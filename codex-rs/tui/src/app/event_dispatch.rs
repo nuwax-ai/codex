@@ -152,7 +152,7 @@ impl App {
                                         if let Some(usage_line) = summary.usage_line {
                                             lines.push(usage_line.into());
                                         }
-                                        if let Some(command) = summary.resume_command {
+                                        if let Some(command) = summary.resume_hint {
                                             let spans = vec![
                                                 "To continue this session, run ".into(),
                                                 command.cyan(),
@@ -296,10 +296,14 @@ impl App {
                 self.chat_widget.on_commit_tick();
             }
             AppEvent::Exit(mode) => {
+                if mode == ExitMode::ShutdownFirst {
+                    self.show_shutdown_feedback(tui)?;
+                }
                 return Ok(self.handle_exit_mode(app_server, mode).await);
             }
             AppEvent::Logout => match app_server.logout_account().await {
                 Ok(()) => {
+                    self.show_shutdown_feedback(tui)?;
                     return Ok(self
                         .handle_exit_mode(app_server, ExitMode::ShutdownFirst)
                         .await);
@@ -1183,11 +1187,15 @@ impl App {
             }
             AppEvent::PersistModelSelection { model, effort } => {
                 let profile = self.active_profile.as_deref();
-                match ConfigEditsBuilder::for_config(&self.config)
-                    .with_profile(profile)
-                    .set_model(Some(model.as_str()), effort)
-                    .apply()
-                    .await
+                match crate::config_update::write_config_batch(
+                    app_server.request_handle(),
+                    crate::config_update::build_model_selection_edits(
+                        profile,
+                        model.as_str(),
+                        effort,
+                    ),
+                )
+                .await
                 {
                     Ok(()) => {
                         let effort_label = effort
@@ -1261,11 +1269,14 @@ impl App {
             }
             AppEvent::PersistPersonalitySelection { personality } => {
                 let profile = self.active_profile.as_deref();
-                match ConfigEditsBuilder::for_config(&self.config)
-                    .with_profile(profile)
-                    .set_personality(Some(personality))
-                    .apply()
-                    .await
+                match crate::config_update::write_config_batch(
+                    app_server.request_handle(),
+                    vec![crate::config_update::replace_config_value(
+                        crate::config_update::profile_scoped_key_path(profile, "personality"),
+                        serde_json::json!(personality.to_string()),
+                    )],
+                )
+                .await
                 {
                     Ok(()) => {
                         let label = Self::personality_label(personality);
@@ -1296,16 +1307,20 @@ impl App {
             }
             AppEvent::PersistServiceTierSelection { service_tier } => {
                 self.refresh_status_line();
-                let profile = self.active_profile.as_deref();
                 self.config.service_tier = service_tier.clone();
-                let mut edits = ConfigEditsBuilder::for_config(&self.config)
-                    .with_profile(profile)
-                    .set_service_tier(service_tier.clone());
+                self.sync_active_thread_service_tier_to_cached_session()
+                    .await;
+                let profile = self.active_profile.as_deref();
+                let edits = crate::config_update::build_service_tier_selection_edits(
+                    profile,
+                    service_tier.as_deref(),
+                );
                 if service_tier.is_none() {
                     self.config.notices.fast_default_opt_out = Some(true);
-                    edits = edits.set_fast_default_opt_out(/*opted_out*/ true);
                 }
-                match edits.apply().await {
+                match crate::config_update::write_config_batch(app_server.request_handle(), edits)
+                    .await
+                {
                     Ok(()) => {
                         let mut message = if let Some(service_tier) = service_tier {
                             format!("Service tier set to {service_tier}")
@@ -1422,8 +1437,10 @@ impl App {
                 if let Err(err) = self
                     .chat_widget
                     .set_permission_profile_from_session_snapshot(
-                        permission_profile_for_chat,
-                        Some(active_permission_profile),
+                        PermissionProfileSnapshot::active(
+                            permission_profile_for_chat,
+                            active_permission_profile,
+                        ),
                     )
                 {
                     tracing::warn!(%err, "failed to set permission profile on chat config");
@@ -1474,23 +1491,17 @@ impl App {
                 self.sync_active_thread_permission_settings_to_cached_session()
                     .await;
                 let profile = self.active_profile.as_deref();
-                let segments = if let Some(profile) = profile {
-                    vec![
-                        "profiles".to_string(),
-                        profile.to_string(),
-                        "approvals_reviewer".to_string(),
-                    ]
-                } else {
-                    vec!["approvals_reviewer".to_string()]
-                };
-                if let Err(err) = ConfigEditsBuilder::for_config(&self.config)
-                    .with_profile(profile)
-                    .with_edits([ConfigEdit::SetPath {
-                        segments,
-                        value: policy.to_string().into(),
-                    }])
-                    .apply()
-                    .await
+                if let Err(err) = crate::config_update::write_config_batch(
+                    app_server.request_handle(),
+                    vec![crate::config_update::replace_config_value(
+                        crate::config_update::profile_scoped_key_path(
+                            profile,
+                            "approvals_reviewer",
+                        ),
+                        serde_json::json!(policy.to_string()),
+                    )],
+                )
+                .await
                 {
                     tracing::error!(
                         error = %err,
@@ -1581,27 +1592,23 @@ impl App {
             }
             AppEvent::PersistPlanModeReasoningEffort(effort) => {
                 let profile = self.active_profile.as_deref();
-                let segments = if let Some(profile) = profile {
-                    vec![
-                        "profiles".to_string(),
-                        profile.to_string(),
-                        "plan_mode_reasoning_effort".to_string(),
-                    ]
-                } else {
-                    vec!["plan_mode_reasoning_effort".to_string()]
-                };
+                let key_path = crate::config_update::profile_scoped_key_path(
+                    profile,
+                    "plan_mode_reasoning_effort",
+                );
                 let edit = if let Some(effort) = effort {
-                    ConfigEdit::SetPath {
-                        segments,
-                        value: effort.to_string().into(),
-                    }
+                    crate::config_update::replace_config_value(
+                        key_path,
+                        serde_json::json!(effort.to_string()),
+                    )
                 } else {
-                    ConfigEdit::ClearPath { segments }
+                    crate::config_update::clear_config_value(key_path)
                 };
-                if let Err(err) = ConfigEditsBuilder::for_config(&self.config)
-                    .with_edits([edit])
-                    .apply()
-                    .await
+                if let Err(err) = crate::config_update::write_config_batch(
+                    app_server.request_handle(),
+                    vec![edit],
+                )
+                .await
                 {
                     tracing::error!(
                         error = %err,

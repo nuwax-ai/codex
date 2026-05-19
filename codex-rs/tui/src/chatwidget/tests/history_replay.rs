@@ -292,10 +292,9 @@ async fn session_configured_syncs_widget_config_permissions_and_cwd() {
     assert_eq!(&chat.config_ref().cwd, &expected_cwd);
 
     let updated_profile = PermissionProfile::workspace_write();
-    chat.set_permission_profile_from_session_snapshot(
+    chat.set_permission_profile_from_session_snapshot(PermissionProfileSnapshot::legacy(
         updated_profile.clone(),
-        /*active_profile*/ None,
-    )
+    ))
     .expect("set permission profile");
     assert_eq!(
         chat.config_ref().permissions.permission_profile(),
@@ -825,6 +824,33 @@ async fn replayed_reasoning_item_shows_raw_reasoning_when_enabled() {
         other => panic!("expected InsertHistoryCell, got {other:?}"),
     };
     assert!(rendered.contains("Raw reasoning"));
+}
+
+#[tokio::test]
+async fn replayed_in_progress_mcp_tool_call_stays_active() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let _ = drain_insert_history(&mut rx);
+
+    chat.replay_thread_item(
+        AppServerThreadItem::McpToolCall {
+            id: "mcp-1".to_string(),
+            server: "copilot-bridge".to_string(),
+            tool: "copilot".to_string(),
+            status: codex_app_server_protocol::McpToolCallStatus::InProgress,
+            arguments: json!({"action": "wait"}),
+            mcp_app_resource_uri: None,
+            result: None,
+            error: None,
+            duration_ms: None,
+        },
+        "turn-1".to_string(),
+        ReplayKind::ThreadSnapshot,
+    );
+
+    assert!(drain_insert_history(&mut rx).is_empty());
+    let active = active_blob(&chat);
+    assert!(active.contains("Calling"));
+    assert!(!active.contains("MCP tool call completed without a result"));
 }
 
 #[tokio::test]
