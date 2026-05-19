@@ -47,6 +47,9 @@ jobs:
           echo "${cargo_home}/bin" >> "$GITHUB_PATH"
           : > "${cargo_home}/config.toml"
 
+      - name: Add musl target
+        run: rustup target add ${{ matrix.target }}
+
       - name: Install Zig
         uses: mlugg/setup-zig@v2
         with:
