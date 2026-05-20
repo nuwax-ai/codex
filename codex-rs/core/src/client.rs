@@ -1256,12 +1256,19 @@ impl ModelClientSession {
             inference_trace_attempt.add_request_headers(&mut options.extra_headers);
             inference_trace_attempt.record_started(&request);
 
+            let wire_api = self.client.state.provider.info().wire_api;
+            let adapter_kind = adapter_kind_for_provider(
+                &client_setup.api_provider,
+                &request.model,
+                wire_api,
+            );
+
             let stream_result = codex_rust_genai_bridge::stream_via_genai(
                 &request,
                 &client_setup.api_provider,
                 &client_setup.api_auth,
                 options.extra_headers,
-                adapter_kind_for_provider(&client_setup.api_provider, &request.model),
+                adapter_kind,
                 client_setup.api_provider.stream_idle_timeout,
             )
             .await;
@@ -2356,16 +2363,26 @@ impl WebsocketTelemetry for ApiTelemetry {
 }
 
 #[cfg(feature = "rust-genai")]
-fn adapter_kind_for_provider(provider: &ApiProvider, model: &str) -> genai::adapter::AdapterKind {
-    use genai::adapter::AdapterKind;
+fn adapter_kind_for_provider(
+    provider: &ApiProvider,
+    model: &str,
+    wire_api: codex_model_provider_info::WireApi,
+) -> genai::adapter::AdapterKind {
+    use genai::adapter::{AdapterKind, WireApi};
 
-    let kind = AdapterKind::from_model_and_url(model, Some(&provider.base_url))
+    let wire = match wire_api {
+        codex_model_provider_info::WireApi::Responses => WireApi::Response,
+        codex_model_provider_info::WireApi::Chat => WireApi::Chat,
+    };
+
+    let kind = AdapterKind::from_model_and_url_for_openai(model, Some(&provider.base_url), wire)
         .unwrap_or(AdapterKind::OpenAI);
 
     tracing::info!(
         provider = %provider.name,
         base_url = %provider.base_url,
         model = %model,
+        wire_api = ?wire_api,
         adapter_kind = %kind,
         "Resolved adapter kind for Chat API provider"
     );
