@@ -795,3 +795,120 @@ async fn hosted_tools_follow_provider_auth_model_and_config_gates() {
     .await;
     unsupported_provider.assert_visible_lacks(&["web_search"]);
 }
+
+#[tokio::test]
+async fn request_user_input_visible_when_no_mcp_ask_tool() {
+    let plan = probe(|_| {}).await;
+    plan.assert_visible_contains(&["request_user_input"]);
+    plan.assert_registered_contains(&["request_user_input"]);
+}
+
+#[tokio::test]
+async fn request_user_input_visible_when_mcp_tools_are_unrelated() {
+    let plan = probe_with(
+        |_| {},
+        ToolPlanInputs {
+            mcp_tools: Some(vec![
+                mcp_tool("memory", "mcp__memory__", "create_entities"),
+                mcp_tool("filesystem", "mcp__filesystem__", "read_file"),
+            ]),
+            ..ToolPlanInputs::default()
+        },
+    )
+    .await;
+    plan.assert_visible_contains(&["request_user_input"]);
+    plan.assert_registered_contains(&["request_user_input"]);
+}
+
+#[tokio::test]
+async fn request_user_input_hidden_when_mcp_ask_question_tool_present() {
+    let plan = probe_with(
+        |_| {},
+        ToolPlanInputs {
+            mcp_tools: Some(vec![mcp_tool(
+                "ask-question",
+                "mcp__ask_question__",
+                "nuwax_ask_question",
+            )]),
+            ..ToolPlanInputs::default()
+        },
+    )
+    .await;
+    plan.assert_visible_lacks(&["request_user_input"]);
+    plan.assert_registered_lacks(&["request_user_input"]);
+}
+
+#[tokio::test]
+async fn request_user_input_hidden_when_mcp_ask_user_tool_in_deferred() {
+    let plan = probe_with(
+        |_| {},
+        ToolPlanInputs {
+            deferred_mcp_tools: Some(vec![mcp_tool(
+                "some-server",
+                "mcp__some_server__",
+                "ask_user",
+            )]),
+            ..ToolPlanInputs::default()
+        },
+    )
+    .await;
+    plan.assert_visible_lacks(&["request_user_input"]);
+    plan.assert_registered_lacks(&["request_user_input"]);
+}
+
+#[tokio::test]
+async fn request_user_input_visible_when_mcp_tool_name_embeds_ask_user_substring() {
+    // "task_user_manager" contains "ask_user" as a raw substring (positions 1-8),
+    // but "ask_user" is NOT a complete underscore-delimited segment here — the
+    // 'ask' portion is embedded inside the word 'task'. This must NOT trigger
+    // suppression.
+    let plan = probe_with(
+        |_| {},
+        ToolPlanInputs {
+            mcp_tools: Some(vec![mcp_tool(
+                "task-mgr",
+                "mcp__task_mgr__",
+                "task_user_manager",
+            )]),
+            ..ToolPlanInputs::default()
+        },
+    )
+    .await;
+    plan.assert_visible_contains(&["request_user_input"]);
+    plan.assert_registered_contains(&["request_user_input"]);
+}
+
+#[test]
+fn contains_tool_name_segment_boundary_cases() {
+    use super::contains_tool_name_segment;
+
+    // Exact match
+    assert!(contains_tool_name_segment("ask_user", "ask_user"));
+    assert!(contains_tool_name_segment("ask_question", "ask_question"));
+
+    // Prefix segment: "ask_user_v2"
+    assert!(contains_tool_name_segment("ask_user_v2", "ask_user"));
+    assert!(contains_tool_name_segment("ask_question_v2", "ask_question"));
+
+    // Suffix segment: "my_ask_user"
+    assert!(contains_tool_name_segment("my_ask_user", "ask_user"));
+    assert!(contains_tool_name_segment("nuwax_ask_question", "ask_question"));
+
+    // Middle segment: "my_ask_user_v2"
+    assert!(contains_tool_name_segment("my_ask_user_v2", "ask_user"));
+
+    // NOT a segment boundary — embedded in a larger word
+    assert!(
+        !contains_tool_name_segment("task_user_manager", "ask_user"),
+        "'task_user_manager' must NOT match 'ask_user'"
+    );
+    assert!(
+        !contains_tool_name_segment("mask_question_gen", "ask_question"),
+        "'mask_question_gen' must NOT match 'ask_question'"
+    );
+
+    // Unrelated names
+    assert!(!contains_tool_name_segment("read_file", "ask_user"));
+    assert!(!contains_tool_name_segment("create_entities", "ask_question"));
+    assert!(!contains_tool_name_segment("", "ask_user"));
+}

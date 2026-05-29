@@ -498,6 +498,43 @@ fn add_mcp_resource_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
     }
 }
 
+/// Known MCP tool name patterns that conflict with the built-in
+/// `request_user_input` tool. When an MCP tool's `callable_name` contains
+/// any of these as a complete underscore-delimited segment, the built-in
+/// tool is suppressed so the model only sees the MCP ask tool.
+const MCP_ASK_TOOL_PATTERNS: &[&str] = &["ask_user", "ask_question"];
+
+/// Returns `true` when any connected MCP server exposes a tool whose name
+/// contains one of [`MCP_ASK_TOOL_PATTERNS`] as a complete underscore-delimited
+/// segment, indicating the user has an external "ask the user" tool that
+/// should take precedence over the built-in `request_user_input`.
+fn has_mcp_ask_tool(context: &CoreToolPlanContext<'_>) -> bool {
+    let all_mcp_tools = [context.mcp_tools, context.deferred_mcp_tools];
+    all_mcp_tools
+        .iter()
+        .filter_map(|opt| *opt)
+        .flatten()
+        .any(|tool| {
+            let name = tool.callable_name.as_str();
+            MCP_ASK_TOOL_PATTERNS
+                .iter()
+                .any(|pattern| contains_tool_name_segment(name, pattern))
+        })
+}
+
+/// Checks whether `name` contains `pattern` as a complete underscore-delimited
+/// segment. For example, `contains_tool_name_segment("my_ask_user_v2", "ask_user")`
+/// returns `true`, but `contains_tool_name_segment("task_user_mgr", "ask_user")`
+/// returns `false` because the `ask` portion is embedded inside the word `task`.
+fn contains_tool_name_segment(name: &str, pattern: &str) -> bool {
+    name.match_indices(pattern).any(|(start, _)| {
+        let before_ok = start == 0 || name.as_bytes()[start - 1] == b'_';
+        let end = start + pattern.len();
+        let after_ok = end == name.len() || name.as_bytes()[end] == b'_';
+        before_ok && after_ok
+    })
+}
+
 fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut PlannedTools) {
     let turn_context = context.turn_context;
     let features = turn_context.features.get();
@@ -510,9 +547,11 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
         planned_tools.add_runtime(UpdateGoalHandler);
     }
 
-    planned_tools.add_runtime(RequestUserInputHandler {
-        available_modes: request_user_input_available_modes(features),
-    });
+    if !has_mcp_ask_tool(context) {
+        planned_tools.add_runtime(RequestUserInputHandler {
+            available_modes: request_user_input_available_modes(features),
+        });
+    }
 
     if features.enabled(Feature::RequestPermissionsTool) {
         planned_tools.add_runtime(RequestPermissionsHandler);
