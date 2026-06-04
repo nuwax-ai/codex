@@ -70,7 +70,7 @@ impl ChatWidget {
             let default_disabled_reason = approval_disabled_reason
                 .clone()
                 .or_else(|| guardian_disabled_reason(false));
-            let requires_confirmation = preset.id == "full-access"
+            let requires_confirmation = matches!(preset.id, "full-access" | "ask")
                 && !self
                     .config
                     .notices
