@@ -38,11 +38,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
         with:
-          toolchain: "1.95.0"
           targets: ${{ matrix.target }}
-
-      - name: Add musl target
-        run: rustup target add ${{ matrix.target }}
 
       - name: Use hermetic Cargo home (musl)
         shell: bash
@@ -52,6 +48,9 @@ jobs:
           echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
           echo "${cargo_home}/bin" >> "$GITHUB_PATH"
           : > "${cargo_home}/config.toml"
+
+      - name: Add musl target
+        run: rustup target add ${{ matrix.target }}
 
       - name: Install Zig
         uses: mlugg/setup-zig@v2
