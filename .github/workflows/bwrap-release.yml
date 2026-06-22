@@ -40,15 +40,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Use hermetic Cargo home (musl)
-        shell: bash
-        run: |
-          cargo_home="${GITHUB_WORKSPACE}/.cargo-home"
-          mkdir -p "${cargo_home}/bin"
-          echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
-          echo "${cargo_home}/bin" >> "$GITHUB_PATH"
-          : > "${cargo_home}/config.toml"
-
       - name: Add musl target
         run: rustup target add ${{ matrix.target }}
 
