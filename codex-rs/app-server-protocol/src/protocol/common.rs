@@ -36,6 +36,37 @@ pub enum AuthMode {
     #[ts(rename = "agentIdentity")]
     #[strum(serialize = "agentIdentity")]
     AgentIdentity,
+    /// Programmatic Codex auth backed by a personal access token.
+    #[serde(rename = "personalAccessToken")]
+    #[ts(rename = "personalAccessToken")]
+    #[strum(serialize = "personalAccessToken")]
+    PersonalAccessToken,
+    /// Amazon Bedrock bearer token managed by Codex.
+    #[serde(rename = "bedrockApiKey")]
+    #[ts(rename = "bedrockApiKey")]
+    #[strum(serialize = "bedrockApiKey")]
+    BedrockApiKey,
+}
+
+impl AuthMode {
+    /// Returns whether this mode represents an authenticated human ChatGPT account.
+    pub fn has_chatgpt_account(self) -> bool {
+        match self {
+            Self::Chatgpt | Self::ChatgptAuthTokens | Self::PersonalAccessToken => true,
+            Self::ApiKey | Self::AgentIdentity | Self::BedrockApiKey => false,
+        }
+    }
+
+    /// Returns whether this mode is backed by Codex services rather than a direct model API.
+    pub fn uses_codex_backend(self) -> bool {
+        match self {
+            Self::Chatgpt
+            | Self::ChatgptAuthTokens
+            | Self::AgentIdentity
+            | Self::PersonalAccessToken => true,
+            Self::ApiKey | Self::BedrockApiKey => false,
+        }
+    }
 }
 
 macro_rules! experimental_reason_expr {
@@ -465,6 +496,11 @@ client_request_definitions! {
         serialization: thread_id(params.thread_id),
         response: v2::ThreadArchiveResponse,
     },
+    ThreadDelete => "thread/delete" {
+        params: v2::ThreadDeleteParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadDeleteResponse,
+    },
     ThreadUnsubscribe => "thread/unsubscribe" {
         params: v2::ThreadUnsubscribeParams,
         serialization: thread_id(params.thread_id),
@@ -494,19 +530,16 @@ client_request_definitions! {
         serialization: thread_id(params.thread_id),
         response: v2::ThreadSetNameResponse,
     },
-    #[experimental("thread/goal/set")]
     ThreadGoalSet => "thread/goal/set" {
         params: v2::ThreadGoalSetParams,
         serialization: thread_id(params.thread_id),
         response: v2::ThreadGoalSetResponse,
     },
-    #[experimental("thread/goal/get")]
     ThreadGoalGet => "thread/goal/get" {
         params: v2::ThreadGoalGetParams,
         serialization: thread_id(params.thread_id),
         response: v2::ThreadGoalGetResponse,
     },
-    #[experimental("thread/goal/clear")]
     ThreadGoalClear => "thread/goal/clear" {
         params: v2::ThreadGoalClearParams,
         serialization: thread_id(params.thread_id),
@@ -516,6 +549,13 @@ client_request_definitions! {
         params: v2::ThreadMetadataUpdateParams,
         serialization: thread_id(params.thread_id),
         response: v2::ThreadMetadataUpdateResponse,
+    },
+    #[experimental("thread/settings/update")]
+    ThreadSettingsUpdate => "thread/settings/update" {
+        params: v2::ThreadSettingsUpdateParams,
+        inspect_params: true,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadSettingsUpdateResponse,
     },
     #[experimental("thread/memoryMode/set")]
     ThreadMemoryModeSet => "thread/memoryMode/set" {
@@ -555,6 +595,18 @@ client_request_definitions! {
         serialization: thread_id(params.thread_id),
         response: v2::ThreadBackgroundTerminalsCleanResponse,
     },
+    #[experimental("thread/backgroundTerminals/list")]
+    ThreadBackgroundTerminalsList => "thread/backgroundTerminals/list" {
+        params: v2::ThreadBackgroundTerminalsListParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadBackgroundTerminalsListResponse,
+    },
+    #[experimental("thread/backgroundTerminals/terminate")]
+    ThreadBackgroundTerminalsTerminate => "thread/backgroundTerminals/terminate" {
+        params: v2::ThreadBackgroundTerminalsTerminateParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadBackgroundTerminalsTerminateResponse,
+    },
     ThreadRollback => "thread/rollback" {
         params: v2::ThreadRollbackParams,
         serialization: thread_id(params.thread_id),
@@ -562,8 +614,15 @@ client_request_definitions! {
     },
     ThreadList => "thread/list" {
         params: v2::ThreadListParams,
+        inspect_params: true,
         serialization: None,
         response: v2::ThreadListResponse,
+    },
+    #[experimental("thread/search")]
+    ThreadSearch => "thread/search" {
+        params: v2::ThreadSearchParams,
+        serialization: None,
+        response: v2::ThreadSearchResponse,
     },
     ThreadLoadedList => "thread/loaded/list" {
         params: v2::ThreadLoadedListParams,
@@ -599,6 +658,11 @@ client_request_definitions! {
         params: v2::SkillsListParams,
         serialization: global_shared_read("config"),
         response: v2::SkillsListResponse,
+    },
+    SkillsExtraRootsSet => "skills/extraRoots/set" {
+        params: v2::SkillsExtraRootsSetParams,
+        serialization: global("config"),
+        response: v2::SkillsExtraRootsSetResponse,
     },
     HooksList => "hooks/list" {
         params: v2::HooksListParams,
@@ -767,6 +831,12 @@ client_request_definitions! {
         serialization: thread_id(params.thread_id),
         response: v2::ThreadRealtimeAppendTextResponse,
     },
+    #[experimental("thread/realtime/appendSpeech")]
+    ThreadRealtimeAppendSpeech => "thread/realtime/appendSpeech" {
+        params: v2::ThreadRealtimeAppendSpeechParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadRealtimeAppendSpeechResponse,
+    },
     #[experimental("thread/realtime/stop")]
     ThreadRealtimeStop => "thread/realtime/stop" {
         params: v2::ThreadRealtimeStopParams,
@@ -812,13 +882,13 @@ client_request_definitions! {
     },
     #[experimental("remoteControl/enable")]
     RemoteControlEnable => "remoteControl/enable" {
-        params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,
+        params: #[serde(skip_serializing_if = "Option::is_none")] v2::NullableRemoteControlEnableParams,
         serialization: global("remote-control"),
         response: v2::RemoteControlEnableResponse,
     },
     #[experimental("remoteControl/disable")]
     RemoteControlDisable => "remoteControl/disable" {
-        params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,
+        params: #[serde(skip_serializing_if = "Option::is_none")] v2::NullableRemoteControlDisableParams,
         serialization: global("remote-control"),
         response: v2::RemoteControlDisableResponse,
     },
@@ -827,6 +897,30 @@ client_request_definitions! {
         params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,
         serialization: global_shared_read("remote-control"),
         response: v2::RemoteControlStatusReadResponse,
+    },
+    #[experimental("remoteControl/pairing/start")]
+    RemoteControlPairingStart => "remoteControl/pairing/start" {
+        params: v2::RemoteControlPairingStartParams,
+        serialization: global("remote-control-pairing"),
+        response: v2::RemoteControlPairingStartResponse,
+    },
+    #[experimental("remoteControl/pairing/status")]
+    RemoteControlPairingStatus => "remoteControl/pairing/status" {
+        params: v2::RemoteControlPairingStatusParams,
+        serialization: global_shared_read("remote-control-pairing"),
+        response: v2::RemoteControlPairingStatusResponse,
+    },
+    #[experimental("remoteControl/client/list")]
+    RemoteControlClientsList => "remoteControl/client/list" {
+        params: v2::RemoteControlClientsListParams,
+        serialization: global_shared_read("remote-control-clients"),
+        response: v2::RemoteControlClientsListResponse,
+    },
+    #[experimental("remoteControl/client/revoke")]
+    RemoteControlClientsRevoke => "remoteControl/client/revoke" {
+        params: v2::RemoteControlClientsRevokeParams,
+        serialization: global("remote-control-clients"),
+        response: v2::RemoteControlClientsRevokeResponse,
     },
     #[experimental("collaborationMode/list")]
     /// Lists collaboration mode presets.
@@ -916,6 +1010,18 @@ client_request_definitions! {
         response: v2::GetAccountRateLimitsResponse,
     },
 
+    ConsumeAccountRateLimitResetCredit => "account/rateLimitResetCredit/consume" {
+        params: v2::ConsumeAccountRateLimitResetCreditParams,
+        serialization: global("account-auth"),
+        response: v2::ConsumeAccountRateLimitResetCreditResponse,
+    },
+
+    GetAccountTokenUsage => "account/usage/read" {
+        params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,
+        serialization: None,
+        response: v2::GetAccountTokenUsageResponse,
+    },
+
     SendAddCreditsNudgeEmail => "account/sendAddCreditsNudgeEmail" {
         params: v2::SendAddCreditsNudgeEmailParams,
         serialization: global("account-auth"),
@@ -997,6 +1103,11 @@ client_request_definitions! {
         serialization: global("config"),
         response: v2::ExternalAgentConfigImportResponse,
     },
+    ExternalAgentConfigImportHistoriesRead => "externalAgentConfig/import/readHistories" {
+        params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,
+        serialization: global_shared_read("config"),
+        response: v2::ExternalAgentConfigImportHistoriesReadResponse,
+    },
     ConfigValueWrite => "config/value/write" {
         params: v2::ConfigValueWriteParams,
         serialization: global("config"),
@@ -1073,7 +1184,8 @@ client_request_definitions! {
 macro_rules! server_request_definitions {
     (
         $(
-            $(#[$variant_meta:meta])*
+            $(#[experimental($reason:expr)])?
+            $(#[doc = $variant_doc:literal])*
             $variant:ident $(=> $wire:literal)? {
                 params: $params:ty,
                 response: $response:ty,
@@ -1086,7 +1198,7 @@ macro_rules! server_request_definitions {
         #[serde(tag = "method", rename_all = "camelCase")]
         pub enum ServerRequest {
             $(
-                $(#[$variant_meta])*
+                $(#[doc = $variant_doc])*
                 $(#[serde(rename = $wire)] #[ts(rename = $wire)])?
                 $variant {
                     #[serde(rename = "id")]
@@ -1126,7 +1238,7 @@ macro_rules! server_request_definitions {
         #[serde(tag = "method", rename_all = "camelCase")]
         pub enum ServerResponse {
             $(
-                $(#[$variant_meta])*
+                $(#[doc = $variant_doc])*
                 $(#[serde(rename = $wire)])?
                 $variant {
                     #[serde(rename = "id")]
@@ -1169,6 +1281,22 @@ macro_rules! server_request_definitions {
                 }
             }
         }
+
+        pub(crate) const EXPERIMENTAL_SERVER_METHODS: &[&str] = &[
+            $(
+                experimental_method_entry!($(#[experimental($reason)])? $(=> $wire)?),
+            )*
+        ];
+        pub(crate) const EXPERIMENTAL_SERVER_METHOD_PARAM_TYPES: &[&str] = &[
+            $(
+                experimental_type_entry!($(#[experimental($reason)])? $params),
+            )*
+        ];
+        pub(crate) const EXPERIMENTAL_SERVER_METHOD_RESPONSE_TYPES: &[&str] = &[
+            $(
+                experimental_type_entry!($(#[experimental($reason)])? $response),
+            )*
+        ];
 
         pub fn export_server_responses(
             out_dir: &::std::path::Path,
@@ -1359,6 +1487,13 @@ server_request_definitions! {
         response: v2::AttestationGenerateResponse,
     },
 
+    #[experimental("currentTime/read")]
+    /// Read the current time from an external clock owned by the client.
+    CurrentTimeRead => "currentTime/read" {
+        params: v2::CurrentTimeReadParams,
+        response: v2::CurrentTimeReadResponse,
+    },
+
     /// DEPRECATED APIs below
     /// Request to approve a patch.
     /// This request is used for Turns started via the legacy APIs (i.e. SendUserTurn, SendUserMessage).
@@ -1462,14 +1597,15 @@ server_notification_definitions! {
     ThreadStarted => "thread/started" (v2::ThreadStartedNotification),
     ThreadStatusChanged => "thread/status/changed" (v2::ThreadStatusChangedNotification),
     ThreadArchived => "thread/archived" (v2::ThreadArchivedNotification),
+    ThreadDeleted => "thread/deleted" (v2::ThreadDeletedNotification),
     ThreadUnarchived => "thread/unarchived" (v2::ThreadUnarchivedNotification),
     ThreadClosed => "thread/closed" (v2::ThreadClosedNotification),
     SkillsChanged => "skills/changed" (v2::SkillsChangedNotification),
     ThreadNameUpdated => "thread/name/updated" (v2::ThreadNameUpdatedNotification),
-    #[experimental("thread/goal/updated")]
     ThreadGoalUpdated => "thread/goal/updated" (v2::ThreadGoalUpdatedNotification),
-    #[experimental("thread/goal/cleared")]
     ThreadGoalCleared => "thread/goal/cleared" (v2::ThreadGoalClearedNotification),
+    #[experimental("thread/settings/updated")]
+    ThreadSettingsUpdated => "thread/settings/updated" (v2::ThreadSettingsUpdatedNotification),
     ThreadTokenUsageUpdated => "thread/tokenUsage/updated" (v2::ThreadTokenUsageUpdatedNotification),
     TurnStarted => "turn/started" (v2::TurnStartedNotification),
     HookStarted => "hook/started" (v2::HookStartedNotification),
@@ -1507,6 +1643,7 @@ server_notification_definitions! {
     AccountRateLimitsUpdated => "account/rateLimits/updated" (v2::AccountRateLimitsUpdatedNotification),
     AppListUpdated => "app/list/updated" (v2::AppListUpdatedNotification),
     RemoteControlStatusChanged => "remoteControl/status/changed" (v2::RemoteControlStatusChangedNotification),
+    ExternalAgentConfigImportProgress => "externalAgentConfig/import/progress" (v2::ExternalAgentConfigImportProgressNotification),
     ExternalAgentConfigImportCompleted => "externalAgentConfig/import/completed" (v2::ExternalAgentConfigImportCompletedNotification),
     FsChanged => "fs/changed" (v2::FsChangedNotification),
     ReasoningSummaryTextDelta => "item/reasoning/summaryTextDelta" (v2::ReasoningSummaryTextDeltaNotification),
@@ -1516,6 +1653,9 @@ server_notification_definitions! {
     ContextCompacted => "thread/compacted" (v2::ContextCompactedNotification),
     ModelRerouted => "model/rerouted" (v2::ModelReroutedNotification),
     ModelVerification => "model/verification" (v2::ModelVerificationNotification),
+    #[experimental("turn/moderationMetadata")]
+    TurnModerationMetadata => "turn/moderationMetadata" (v2::TurnModerationMetadataNotification),
+    ModelSafetyBufferingUpdated => "model/safetyBuffering/updated" (v2::ModelSafetyBufferingUpdatedNotification),
     Warning => "warning" (v2::WarningNotification),
     GuardianWarning => "guardianWarning" (v2::GuardianWarningNotification),
     DeprecationNotice => "deprecationNotice" (v2::DeprecationNoticeNotification),
@@ -1559,7 +1699,9 @@ mod tests {
     use super::*;
     use anyhow::Result;
     use codex_protocol::ThreadId;
+    use codex_protocol::account::AmazonBedrockCredentialSource;
     use codex_protocol::account::PlanType;
+    use codex_protocol::config_types::MultiAgentMode;
     use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_READ_ONLY;
     use codex_protocol::parse_command::ParsedCommand;
     use codex_protocol::protocol::RealtimeConversationVersion;
@@ -1711,6 +1853,17 @@ mod tests {
             Some(ClientRequestSerializationScope::GlobalSharedRead("config"))
         );
 
+        let skills_extra_roots_set = ClientRequest::SkillsExtraRootsSet {
+            request_id: request_id(),
+            params: v2::SkillsExtraRootsSetParams {
+                extra_roots: vec![absolute_path("/tmp/skills")],
+            },
+        };
+        assert_eq!(
+            skills_extra_roots_set.serialization_scope(),
+            Some(ClientRequestSerializationScope::Global("config"))
+        );
+
         let plugin_list = ClientRequest::PluginList {
             request_id: request_id(),
             params: v2::PluginListParams {
@@ -1860,6 +2013,7 @@ mod tests {
             params: v2::EnvironmentAddParams {
                 environment_id: "remote-a".to_string(),
                 exec_server_url: "ws://127.0.0.1:8765".to_string(),
+                connect_timeout_ms: None,
             },
         };
         assert_eq!(
@@ -1951,6 +2105,53 @@ mod tests {
             },
         };
         assert_eq!(mcp_resource_read.serialization_scope(), None);
+
+        let remote_control_pairing_start = ClientRequest::RemoteControlPairingStart {
+            request_id: request_id(),
+            params: v2::RemoteControlPairingStartParams::default(),
+        };
+        assert_eq!(
+            remote_control_pairing_start.serialization_scope(),
+            Some(ClientRequestSerializationScope::Global(
+                "remote-control-pairing"
+            ))
+        );
+        let remote_control_pairing_status = ClientRequest::RemoteControlPairingStatus {
+            request_id: request_id(),
+            params: v2::RemoteControlPairingStatusParams {
+                pairing_code: Some("pairing-code".to_string()),
+                manual_pairing_code: None,
+            },
+        };
+        assert_eq!(
+            remote_control_pairing_status.serialization_scope(),
+            Some(ClientRequestSerializationScope::GlobalSharedRead(
+                "remote-control-pairing"
+            ))
+        );
+        let remote_control_clients_list = ClientRequest::RemoteControlClientsList {
+            request_id: request_id(),
+            params: v2::RemoteControlClientsListParams::default(),
+        };
+        assert_eq!(
+            remote_control_clients_list.serialization_scope(),
+            Some(ClientRequestSerializationScope::GlobalSharedRead(
+                "remote-control-clients"
+            ))
+        );
+        let remote_control_clients_revoke = ClientRequest::RemoteControlClientsRevoke {
+            request_id: request_id(),
+            params: v2::RemoteControlClientsRevokeParams {
+                environment_id: "environment-id".to_string(),
+                client_id: "client-id".to_string(),
+            },
+        };
+        assert_eq!(
+            remote_control_clients_revoke.serialization_scope(),
+            Some(ClientRequestSerializationScope::Global(
+                "remote-control-clients"
+            ))
+        );
     }
 
     #[test]
@@ -1975,7 +2176,7 @@ mod tests {
     }
 
     #[test]
-    fn serialize_initialize_with_opt_out_notification_methods() -> Result<()> {
+    fn serialize_initialize_capabilities() -> Result<()> {
         let request = ClientRequest::Initialize {
             request_id: RequestId::Integer(42),
             params: v1::InitializeParams {
@@ -1987,6 +2188,7 @@ mod tests {
                 capabilities: Some(v1::InitializeCapabilities {
                     experimental_api: true,
                     request_attestation: true,
+                    mcp_server_openai_form_elicitation: true,
                     opt_out_notification_methods: Some(vec![
                         "thread/started".to_string(),
                         "item/agentMessage/delta".to_string(),
@@ -2008,6 +2210,7 @@ mod tests {
                     "capabilities": {
                         "experimentalApi": true,
                         "requestAttestation": true,
+                        "mcpServerOpenaiFormElicitation": true,
                         "optOutNotificationMethods": [
                             "thread/started",
                             "item/agentMessage/delta"
@@ -2021,7 +2224,7 @@ mod tests {
     }
 
     #[test]
-    fn deserialize_initialize_with_opt_out_notification_methods() -> Result<()> {
+    fn deserialize_initialize_capabilities() -> Result<()> {
         let request: ClientRequest = serde_json::from_value(json!({
             "method": "initialize",
             "id": 42,
@@ -2034,6 +2237,7 @@ mod tests {
                 "capabilities": {
                     "experimentalApi": true,
                     "requestAttestation": true,
+                    "mcpServerOpenaiFormElicitation": true,
                     "optOutNotificationMethods": [
                         "thread/started",
                         "item/agentMessage/delta"
@@ -2055,6 +2259,7 @@ mod tests {
                     capabilities: Some(v1::InitializeCapabilities {
                         experimental_api: true,
                         request_attestation: true,
+                        mcp_server_openai_form_elicitation: true,
                         opt_out_notification_methods: Some(vec![
                             "thread/started".to_string(),
                             "item/agentMessage/delta".to_string(),
@@ -2194,6 +2399,32 @@ mod tests {
     }
 
     #[test]
+    fn serialize_current_time_read_request() -> Result<()> {
+        let params = v2::CurrentTimeReadParams {
+            thread_id: "thread-123".to_string(),
+        };
+        let request = ServerRequest::CurrentTimeRead {
+            request_id: RequestId::Integer(10),
+            params: params.clone(),
+        };
+        assert_eq!(
+            json!({
+                "method": "currentTime/read",
+                "id": 10,
+                "params": {
+                    "threadId": "thread-123"
+                }
+            }),
+            serde_json::to_value(&request)?,
+        );
+
+        let payload = ServerRequestPayload::CurrentTimeRead(params);
+        assert_eq!(request.id(), &RequestId::Integer(10));
+        assert_eq!(payload.request_with_id(RequestId::Integer(10)), request);
+        Ok(())
+    }
+
+    #[test]
     fn serialize_server_response() -> Result<()> {
         let response = ServerResponse::CommandExecutionRequestApproval {
             request_id: RequestId::Integer(8),
@@ -2293,6 +2524,24 @@ mod tests {
     }
 
     #[test]
+    fn serialize_get_account_token_usage() -> Result<()> {
+        let request = ClientRequest::GetAccountTokenUsage {
+            request_id: RequestId::Integer(1),
+            params: None,
+        };
+        assert_eq!(request.id(), &RequestId::Integer(1));
+        assert_eq!(request.method(), "account/usage/read");
+        assert_eq!(
+            json!({
+                "method": "account/usage/read",
+                "id": 1,
+            }),
+            serde_json::to_value(&request)?,
+        );
+        Ok(())
+    }
+
+    #[test]
     fn serialize_client_response() -> Result<()> {
         let cwd = absolute_path("/tmp");
         let response = ClientResponse::ThreadStart {
@@ -2302,11 +2551,13 @@ mod tests {
                     id: "67e55044-10b1-426f-9247-bb680e5fe0c8".to_string(),
                     session_id: "67e55044-10b1-426f-9247-bb680e5fe0c7".to_string(),
                     forked_from_id: None,
+                    parent_thread_id: None,
                     preview: "first prompt".to_string(),
                     ephemeral: true,
                     model_provider: "openai".to_string(),
                     created_at: 1,
                     updated_at: 2,
+                    recency_at: Some(3),
                     status: v2::ThreadStatus::Idle,
                     path: None,
                     cwd: cwd.clone(),
@@ -2324,12 +2575,17 @@ mod tests {
                 service_tier: None,
                 cwd,
                 runtime_workspace_roots: Vec::new(),
-                instruction_sources: vec![absolute_path("/tmp/AGENTS.md")],
+                instruction_sources: vec![
+                    codex_utils_path_uri::LegacyAppPathString::from_abs_path(&absolute_path(
+                        "/tmp/AGENTS.md",
+                    )),
+                ],
                 approval_policy: v2::AskForApproval::OnFailure,
                 approvals_reviewer: v2::ApprovalsReviewer::User,
                 sandbox: v2::SandboxPolicy::DangerFullAccess,
                 active_permission_profile: None,
                 reasoning_effort: None,
+                multi_agent_mode: MultiAgentMode::ExplicitRequestOnly,
             },
         };
 
@@ -2344,11 +2600,13 @@ mod tests {
                         "id": "67e55044-10b1-426f-9247-bb680e5fe0c8",
                         "sessionId": "67e55044-10b1-426f-9247-bb680e5fe0c7",
                         "forkedFromId": null,
+                        "parentThreadId": null,
                         "preview": "first prompt",
                         "ephemeral": true,
                         "modelProvider": "openai",
                         "createdAt": 1,
                         "updatedAt": 2,
+                        "recencyAt": 3,
                         "status": {
                             "type": "idle"
                         },
@@ -2375,7 +2633,8 @@ mod tests {
                         "type": "dangerFullAccess"
                     },
                     "activePermissionProfile": null,
-                    "reasoningEffort": null
+                    "reasoningEffort": null,
+                    "multiAgentMode": "explicitRequestOnly"
                 }
             }),
             serde_json::to_value(&response)?,
@@ -2537,8 +2796,22 @@ mod tests {
             json!({
                 "method": "account/read",
                 "id": 6,
+                "params": {}
+            }),
+            serde_json::to_value(&request)?,
+        );
+        let request = ClientRequest::GetAccount {
+            request_id: RequestId::Integer(7),
+            params: v2::GetAccountParams {
+                refresh_token: true,
+            },
+        };
+        assert_eq!(
+            json!({
+                "method": "account/read",
+                "id": 7,
                 "params": {
-                    "refreshToken": false
+                    "refreshToken": true
                 }
             }),
             serde_json::to_value(&request)?,
@@ -2569,6 +2842,41 @@ mod tests {
             serde_json::to_value(&chatgpt)?,
         );
 
+        let codex_managed_bedrock = v2::Account::AmazonBedrock {
+            credential_source: AmazonBedrockCredentialSource::CodexManaged,
+        };
+        assert_eq!(
+            json!({
+                "type": "amazonBedrock",
+                "credentialSource": "codexManaged",
+            }),
+            serde_json::to_value(&codex_managed_bedrock)?,
+        );
+
+        let aws_managed_bedrock = v2::Account::AmazonBedrock {
+            credential_source: AmazonBedrockCredentialSource::AwsManaged,
+        };
+        assert_eq!(
+            json!({
+                "type": "amazonBedrock",
+                "credentialSource": "awsManaged",
+            }),
+            serde_json::to_value(&aws_managed_bedrock)?,
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn account_defaults_legacy_bedrock_credential_source() -> Result<()> {
+        assert_eq!(
+            v2::Account::AmazonBedrock {
+                credential_source: AmazonBedrockCredentialSource::AwsManaged,
+            },
+            serde_json::from_value(json!({
+                "type": "amazonBedrock",
+            }))?,
+        );
         Ok(())
     }
 
@@ -2655,6 +2963,7 @@ mod tests {
             params: v2::EnvironmentAddParams {
                 environment_id: "remote-a".to_string(),
                 exec_server_url: "ws://127.0.0.1:8765".to_string(),
+                connect_timeout_ms: Some(300_000),
             },
         };
         assert_eq!(
@@ -2663,7 +2972,8 @@ mod tests {
                 "id": 9,
                 "params": {
                     "environmentId": "remote-a",
-                    "execServerUrl": "ws://127.0.0.1:8765"
+                    "execServerUrl": "ws://127.0.0.1:8765",
+                    "connectTimeoutMs": 300000
                 }
             }),
             serde_json::to_value(&request)?,
@@ -2783,15 +3093,70 @@ mod tests {
     }
 
     #[test]
+    fn serialize_thread_background_terminals_list() -> Result<()> {
+        let request = ClientRequest::ThreadBackgroundTerminalsList {
+            request_id: RequestId::Integer(8),
+            params: v2::ThreadBackgroundTerminalsListParams {
+                thread_id: "thr_123".to_string(),
+                cursor: None,
+                limit: None,
+            },
+        };
+        assert_eq!(
+            json!({
+                "method": "thread/backgroundTerminals/list",
+                "id": 8,
+                "params": {
+                    "threadId": "thr_123",
+                    "cursor": null,
+                    "limit": null
+                }
+            }),
+            serde_json::to_value(&request)?,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn serialize_thread_background_terminals_terminate() -> Result<()> {
+        let request = ClientRequest::ThreadBackgroundTerminalsTerminate {
+            request_id: RequestId::Integer(8),
+            params: v2::ThreadBackgroundTerminalsTerminateParams {
+                thread_id: "thr_123".to_string(),
+                process_id: "42".to_string(),
+            },
+        };
+        assert_eq!(
+            json!({
+                "method": "thread/backgroundTerminals/terminate",
+                "id": 8,
+                "params": {
+                    "threadId": "thr_123",
+                    "processId": "42"
+                }
+            }),
+            serde_json::to_value(&request)?,
+        );
+        Ok(())
+    }
+
+    #[test]
     fn serialize_thread_realtime_start() -> Result<()> {
         let request = ClientRequest::ThreadRealtimeStart {
             request_id: RequestId::Integer(9),
             params: v2::ThreadRealtimeStartParams {
+                client_managed_handoffs: Some(true),
+                codex_responses_as_items: None,
+                codex_response_item_prefix: None,
+                codex_response_handoff_prefix: Some("silent context".to_string()),
                 thread_id: "thr_123".to_string(),
+                model: Some("realtime-treatment-model".to_string()),
                 output_modality: RealtimeOutputModality::Audio,
+                include_startup_context: Some(false),
                 prompt: Some(Some("You are on a call".to_string())),
                 realtime_session_id: Some("sess_456".to_string()),
                 transport: None,
+                version: Some(RealtimeConversationVersion::V1),
                 voice: Some(RealtimeVoice::Marin),
             },
         };
@@ -2801,10 +3166,17 @@ mod tests {
                 "id": 9,
                 "params": {
                     "threadId": "thr_123",
+                    "clientManagedHandoffs": true,
+                    "codexResponsesAsItems": null,
+                    "codexResponseItemPrefix": null,
+                    "codexResponseHandoffPrefix": "silent context",
+                    "model": "realtime-treatment-model",
                     "outputModality": "audio",
+                    "includeStartupContext": false,
                     "prompt": "You are on a call",
                     "realtimeSessionId": "sess_456",
                     "transport": null,
+                    "version": "v1",
                     "voice": "marin"
                 }
             }),
@@ -2818,11 +3190,18 @@ mod tests {
         let default_prompt_request = ClientRequest::ThreadRealtimeStart {
             request_id: RequestId::Integer(9),
             params: v2::ThreadRealtimeStartParams {
+                client_managed_handoffs: None,
+                codex_responses_as_items: None,
+                codex_response_item_prefix: None,
+                codex_response_handoff_prefix: None,
                 thread_id: "thr_123".to_string(),
+                model: None,
                 output_modality: RealtimeOutputModality::Audio,
+                include_startup_context: None,
                 prompt: None,
                 realtime_session_id: None,
                 transport: None,
+                version: None,
                 voice: None,
             },
         };
@@ -2832,9 +3211,16 @@ mod tests {
                 "id": 9,
                 "params": {
                     "threadId": "thr_123",
+                    "clientManagedHandoffs": null,
+                    "codexResponsesAsItems": null,
+                    "codexResponseItemPrefix": null,
+                    "codexResponseHandoffPrefix": null,
+                    "model": null,
                     "outputModality": "audio",
+                    "includeStartupContext": null,
                     "realtimeSessionId": null,
                     "transport": null,
+                    "version": null,
                     "voice": null
                 }
             }),
@@ -2844,11 +3230,18 @@ mod tests {
         let null_prompt_request = ClientRequest::ThreadRealtimeStart {
             request_id: RequestId::Integer(9),
             params: v2::ThreadRealtimeStartParams {
+                client_managed_handoffs: None,
+                codex_responses_as_items: None,
+                codex_response_item_prefix: None,
+                codex_response_handoff_prefix: None,
                 thread_id: "thr_123".to_string(),
+                model: None,
                 output_modality: RealtimeOutputModality::Audio,
+                include_startup_context: None,
                 prompt: Some(None),
                 realtime_session_id: None,
                 transport: None,
+                version: None,
                 voice: None,
             },
         };
@@ -2858,10 +3251,17 @@ mod tests {
                 "id": 9,
                 "params": {
                     "threadId": "thr_123",
+                    "clientManagedHandoffs": null,
+                    "codexResponsesAsItems": null,
+                    "codexResponseItemPrefix": null,
+                    "codexResponseHandoffPrefix": null,
+                    "model": null,
                     "outputModality": "audio",
+                    "includeStartupContext": null,
                     "prompt": null,
                     "realtimeSessionId": null,
                     "transport": null,
+                    "version": null,
                     "voice": null
                 }
             }),
@@ -2905,6 +3305,29 @@ mod tests {
     }
 
     #[test]
+    fn serialize_thread_realtime_append_speech() -> Result<()> {
+        let request = ClientRequest::ThreadRealtimeAppendSpeech {
+            request_id: RequestId::Integer(10),
+            params: v2::ThreadRealtimeAppendSpeechParams {
+                thread_id: "thr_123".to_string(),
+                text: "Short voice update".to_string(),
+            },
+        };
+        assert_eq!(
+            json!({
+                "method": "thread/realtime/appendSpeech",
+                "id": 10,
+                "params": {
+                    "threadId": "thr_123",
+                    "text": "Short voice update"
+                }
+            }),
+            serde_json::to_value(&request)?,
+        );
+        Ok(())
+    }
+
+    #[test]
     fn serialize_thread_status_changed_notification() -> Result<()> {
         let notification =
             ServerNotification::ThreadStatusChanged(v2::ThreadStatusChangedNotification {
@@ -2919,6 +3342,33 @@ mod tests {
                     "status": {
                         "type": "idle"
                     },
+                }
+            }),
+            serde_json::to_value(&notification)?,
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn serialize_model_safety_buffering_updated_notification() -> Result<()> {
+        let notification = ServerNotification::ModelSafetyBufferingUpdated(
+            v2::ModelSafetyBufferingUpdatedNotification {
+                thread_id: "thr_123".to_string(),
+                turn_id: "turn_123".to_string(),
+                model: "gpt-5.4".to_string(),
+                use_cases: vec!["cyber".to_string()],
+                reasons: vec!["user_risk".to_string()],
+            },
+        );
+        assert_eq!(
+            json!({
+                "method": "model/safetyBuffering/updated",
+                "params": {
+                    "threadId": "thr_123",
+                    "turnId": "turn_123",
+                    "model": "gpt-5.4",
+                    "useCases": ["cyber"],
+                    "reasons": ["user_risk"]
                 }
             }),
             serde_json::to_value(&notification)?,
@@ -2976,6 +3426,7 @@ mod tests {
             params: v2::EnvironmentAddParams {
                 environment_id: "remote-a".to_string(),
                 exec_server_url: "ws://127.0.0.1:8765".to_string(),
+                connect_timeout_ms: None,
             },
         };
         let reason = crate::experimental_api::ExperimentalApi::experimental_reason(&request);
@@ -3013,11 +3464,18 @@ mod tests {
         let request = ClientRequest::ThreadRealtimeStart {
             request_id: RequestId::Integer(1),
             params: v2::ThreadRealtimeStartParams {
+                client_managed_handoffs: None,
+                codex_responses_as_items: None,
+                codex_response_item_prefix: None,
+                codex_response_handoff_prefix: None,
                 thread_id: "thr_123".to_string(),
+                model: None,
                 output_modality: RealtimeOutputModality::Audio,
+                include_startup_context: None,
                 prompt: Some(Some("You are on a call".to_string())),
                 realtime_session_id: None,
                 transport: None,
+                version: None,
                 voice: None,
             },
         };
@@ -3026,7 +3484,7 @@ mod tests {
     }
 
     #[test]
-    fn thread_goal_methods_are_marked_experimental() {
+    fn thread_goal_methods_are_not_marked_experimental() {
         let set_request = ClientRequest::ThreadGoalSet {
             request_id: RequestId::Integer(1),
             params: v2::ThreadGoalSetParams {
@@ -3051,20 +3509,20 @@ mod tests {
 
         assert_eq!(
             crate::experimental_api::ExperimentalApi::experimental_reason(&set_request),
-            Some("thread/goal/set")
+            None
         );
         assert_eq!(
             crate::experimental_api::ExperimentalApi::experimental_reason(&get_request),
-            Some("thread/goal/get")
+            None
         );
         assert_eq!(
             crate::experimental_api::ExperimentalApi::experimental_reason(&clear_request),
-            Some("thread/goal/clear")
+            None
         );
     }
 
     #[test]
-    fn thread_goal_notifications_are_marked_experimental() {
+    fn thread_goal_notifications_are_not_marked_experimental() {
         let goal = v2::ThreadGoal {
             thread_id: "thr_123".to_string(),
             objective: "ship goal mode".to_string(),
@@ -3086,11 +3544,61 @@ mod tests {
 
         assert_eq!(
             crate::experimental_api::ExperimentalApi::experimental_reason(&updated),
-            Some("thread/goal/updated")
+            None
         );
         assert_eq!(
             crate::experimental_api::ExperimentalApi::experimental_reason(&cleared),
-            Some("thread/goal/cleared")
+            None
+        );
+    }
+
+    #[test]
+    fn thread_settings_updated_notification_is_marked_experimental() {
+        let notification =
+            ServerNotification::ThreadSettingsUpdated(v2::ThreadSettingsUpdatedNotification {
+                thread_id: "thr_123".to_string(),
+                thread_settings: v2::ThreadSettings {
+                    cwd: absolute_path("/tmp/repo"),
+                    approval_policy: v2::AskForApproval::Never,
+                    approvals_reviewer: v2::ApprovalsReviewer::User,
+                    sandbox_policy: v2::SandboxPolicy::DangerFullAccess,
+                    active_permission_profile: None,
+                    model: "gpt-5.4".to_string(),
+                    model_provider: "openai".to_string(),
+                    service_tier: None,
+                    effort: None,
+                    summary: None,
+                    collaboration_mode: codex_protocol::config_types::CollaborationMode {
+                        mode: codex_protocol::config_types::ModeKind::Default,
+                        settings: codex_protocol::config_types::Settings {
+                            model: "gpt-5.4".to_string(),
+                            reasoning_effort: None,
+                            developer_instructions: None,
+                        },
+                    },
+                    multi_agent_mode: Default::default(),
+                    personality: None,
+                },
+            });
+
+        assert_eq!(
+            crate::experimental_api::ExperimentalApi::experimental_reason(&notification),
+            Some("thread/settings/updated")
+        );
+    }
+
+    #[test]
+    fn turn_moderation_metadata_notification_is_marked_experimental() {
+        let notification =
+            ServerNotification::TurnModerationMetadata(v2::TurnModerationMetadataNotification {
+                thread_id: "thr_123".to_string(),
+                turn_id: "turn_123".to_string(),
+                metadata: json!({"presentation": "inline"}),
+            });
+
+        assert_eq!(
+            crate::experimental_api::ExperimentalApi::experimental_reason(&notification),
+            Some("turn/moderationMetadata")
         );
     }
 
@@ -3132,6 +3640,7 @@ mod tests {
             item_id: "call_123".to_string(),
             started_at_ms: 0,
             approval_id: None,
+            environment_id: None,
             reason: None,
             network_approval_context: None,
             command: Some("cat file".to_string()),
@@ -3140,7 +3649,7 @@ mod tests {
             additional_permissions: Some(v2::AdditionalPermissionProfile {
                 network: None,
                 file_system: Some(v2::AdditionalFileSystemPermissions {
-                    read: Some(vec![absolute_path("/tmp/allowed")]),
+                    read: Some(vec![absolute_path("/tmp/allowed").into()]),
                     write: None,
                     glob_scan_max_depth: None,
                     entries: None,

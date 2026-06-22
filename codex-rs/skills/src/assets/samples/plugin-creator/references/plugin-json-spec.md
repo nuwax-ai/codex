@@ -62,9 +62,30 @@
 - `keywords` (`array` of `string`): Search/discovery tags.
 - `skills` (`string`): Relative path to skill directories/files.
 - `hooks` (`string`): Hook config path.
-- `mcpServers` (`string`): MCP config path.
+- `mcpServers` (`string` or `object`): MCP config path, or an object whose keys are MCP server names and whose values are MCP server config objects.
 - `apps` (`string`): App manifest path for plugin integrations.
 - `interface` (`object`): Interface/UX metadata block for plugin presentation.
+
+`mcpServers` may be declared as a companion file path:
+
+```json
+{
+  "mcpServers": "./.mcp.json"
+}
+```
+
+Or as an object directly in `plugin.json`:
+
+```json
+{
+  "mcpServers": {
+    "counter": {
+      "type": "http",
+      "url": "https://sample.example/counter/mcp"
+    }
+  }
+}
+```
 
 ### `interface` fields
 
@@ -91,7 +112,7 @@
 ### Path conventions and defaults
 
 - Path values should be relative and begin with `./`.
-- `skills`, `hooks`, and `mcpServers` are supplemented on top of default component discovery; they do not replace defaults.
+- `skills`, `hooks`, and string-valued `mcpServers` are supplemented on top of default component discovery; they do not replace defaults.
 - Custom path values must follow the plugin root convention and naming/namespacing rules.
 - This repo’s scaffold writes `.codex-plugin/plugin.json`; treat that as the manifest location this skill generates.
 
@@ -147,7 +168,8 @@ personal marketplace unless the caller explicitly requests a repo-local destinat
     - Personal plugin in `~/.agents/plugins/marketplace.json`: `./plugins/<plugin-name>`
     - Repo/team plugin: `./plugins/<plugin-name>`
   - The same relative path convention is used for both personal and repo/team marketplaces.
-    - Example: with `~/.agents/plugins/marketplace.json`, `./plugins/<plugin-name>` resolves to `~/plugins/<plugin-name>`.
+    - Example: with `~/.agents/plugins/marketplace.json`, `./plugins/<plugin-name>` resolves to
+      `~/plugins/<plugin-name>`.
 - `policy` (`object`): Marketplace policy block. Always include it.
   - `installation` (`string`): Availability policy.
     - Allowed values: `NOT_AVAILABLE`, `AVAILABLE`, `INSTALLED_BY_DEFAULT`
@@ -168,6 +190,8 @@ personal marketplace unless the caller explicitly requests a repo-local destinat
 - Replace an existing entry for the same plugin only when overwrite is intentional.
 - Default new plugin creation to the personal marketplace.
 - Use a repo/team marketplace only when the user specifically requests that destination.
+- Only override the marketplace `name` when the default `personal` name is already taken or
+  installed and you need to seed a different new marketplace file.
 - Choose marketplace location to match the selected destination:
   - Personal plugin: `~/.agents/plugins/marketplace.json`
   - Repo/team plugin: `<repo-root>/.agents/plugins/marketplace.json`
@@ -183,8 +207,9 @@ personal marketplace unless the caller explicitly requests a repo-local destinat
   present.
 - `composerIcon`, `logo`, and `screenshots` must point to real files inside the plugin archive when
   present.
-- `apps` and `mcpServers` should appear in `plugin.json` only when `.app.json` and `.mcp.json`
-  actually exist.
+- `apps` should appear in `plugin.json` only when `.app.json` actually exists.
+- `mcpServers` may point to `.mcp.json` or contain the MCP server object directly in
+  `plugin.json`.
 - Validation rejects unsupported manifest fields such as `hooks`, so the scaffold keeps them out of
   generated manifests.
 - Run `scripts/validate_plugin.py <plugin-path>` before handing back a generated plugin. It adds one
