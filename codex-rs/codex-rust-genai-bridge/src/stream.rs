@@ -169,6 +169,10 @@ fn build_chat_options(
                     tracing::warn!("XHigh reasoning effort maps to High in genai");
                     ReasoningEffort::High
                 }
+                codex_protocol::openai_models::ReasoningEffort::Custom(s) => {
+                    tracing::warn!(custom_effort = %s, "Custom reasoning effort not supported in genai, using High");
+                    ReasoningEffort::High
+                }
             };
             options.reasoning_effort = Some(re);
         }

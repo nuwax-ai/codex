@@ -82,6 +82,7 @@ pub fn chat_event_to_response_event(
                         call_id: call_id.clone(),
                         name: fn_name.clone(),
                         input: String::new(),
+                        metadata: None,
                     },
                 ));
             }
@@ -144,6 +145,7 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
             role: "assistant".into(),
             content,
             phase: None,
+            metadata: None,
         };
         events.push(ResponseEvent::OutputItemDone(message_item));
     }
@@ -154,12 +156,13 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
         let reasoning_text = std::mem::take(&mut pending.reasoning_buffer);
         let reasoning_id = format!("rsn_{}", pending.reasoning_content_index);
         let reasoning_item = ResponseItem::Reasoning {
-            id: reasoning_id.clone(),
+            id: Some(reasoning_id.clone()),
             summary: vec![],
             content: Some(vec![ReasoningItemContent::ReasoningText {
                 text: reasoning_text.clone(),
             }]),
             encrypted_content: Some(reasoning_text),
+            metadata: None,
         };
         events.push(ResponseEvent::OutputItemAdded(reasoning_item.clone()));
         events.push(ResponseEvent::OutputItemDone(reasoning_item));
@@ -175,6 +178,7 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
             namespace: None,
             arguments: pending_tc.arguments_buffer,
             call_id: pending_tc.id,
+            metadata: None,
         };
         events.push(ResponseEvent::OutputItemDone(tc_item));
     }
@@ -210,6 +214,7 @@ fn ensure_message_item_added(
             role: "assistant".into(),
             content: vec![],
             phase: None,
+            metadata: None,
         }));
     }
 }

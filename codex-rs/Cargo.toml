@@ -259,7 +259,7 @@ mcp_test_support = { path = "mcp-server/tests/common" }
 
 # External
 age = "0.11.1"
-allocative = "=0.3.4"
+allocative = "0.3.6"
 ansi-to-tui = "7.0.0"
 anyhow = "1"
 arboard = { version = "3", features = ["wayland-data-control"] }
@@ -310,7 +310,7 @@ env_logger = "0.11.9"
 eventsource-stream = "0.2.3"
 flate2 = "1.1.8"
 futures = { version = "0.3", default-features = false }
-genai = { git = "https://github.com/soddygo/rust-genai.git", branch = "dev" }
+genai = "0.6.5"
 gethostname = "1.1.0"
 gix = { version = "0.81.0", default-features = false, features = ["sha1"] }
 glob = "0.3"

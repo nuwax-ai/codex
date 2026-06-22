@@ -1267,7 +1267,7 @@ impl ModelClientSession {
             transport = "chat_http",
             http.method = "POST",
             api.path = "chat/completions",
-            turn.has_metadata_header = turn_metadata_header.is_some()
+            turn.has_metadata_header = true
         )
     )]
     async fn stream_chat_api(
@@ -1278,7 +1278,7 @@ impl ModelClientSession {
         effort: Option<ReasoningEffortConfig>,
         summary: ReasoningSummaryConfig,
         service_tier: Option<String>,
-        turn_metadata_header: Option<&str>,
+        responses_metadata: &CodexResponsesMetadata,
         inference_trace: &InferenceTraceContext,
     ) -> Result<ResponseStream> {
         let auth_manager = self.client.state.provider.auth_manager();
@@ -1301,27 +1301,23 @@ impl ModelClientSession {
             );
             let compression = self.responses_request_compression(client_setup.auth.as_ref());
             let mut options = self
-                .build_responses_options(turn_metadata_header, compression)
+                .build_responses_options(responses_metadata, compression, false)
                 .await;
 
             let request = self.client.build_responses_request(
                 &client_setup.api_provider,
                 prompt,
                 model_info,
-                effort,
-                summary,
+                effort.clone(),
+                summary.clone(),
                 service_tier.clone(),
+                responses_metadata,
             )?;
             let inference_trace_attempt = inference_trace.start_attempt();
             inference_trace_attempt.add_request_headers(&mut options.extra_headers);
             inference_trace_attempt.record_started(&request);
 
-            let wire_api = self.client.state.provider.info().wire_api;
-            let adapter_kind = adapter_kind_for_provider(
-                &client_setup.api_provider,
-                &request.model,
-                wire_api,
-            );
+            let adapter_kind = adapter_kind_for_provider();
 
             let stream_result = codex_rust_genai_bridge::stream_via_genai(
                 &request,
@@ -1816,7 +1812,7 @@ impl ModelClientSession {
                     effort,
                     summary,
                     service_tier,
-                    turn_metadata_header,
+                    responses_metadata,
                     inference_trace,
                 )
                 .await
@@ -2406,31 +2402,12 @@ impl WebsocketTelemetry for ApiTelemetry {
 }
 
 #[cfg(feature = "rust-genai")]
-fn adapter_kind_for_provider(
-    provider: &ApiProvider,
-    model: &str,
-    wire_api: codex_model_provider_info::WireApi,
-) -> genai::adapter::AdapterKind {
-    use genai::adapter::{AdapterKind, WireApi};
-
-    let wire = match wire_api {
-        codex_model_provider_info::WireApi::Responses => WireApi::Response,
-        codex_model_provider_info::WireApi::Chat => WireApi::Chat,
-    };
-
-    let kind = AdapterKind::from_model_and_url_for_openai(model, Some(&provider.base_url), wire)
-        .unwrap_or(AdapterKind::OpenAI);
-
-    tracing::info!(
-        provider = %provider.name,
-        base_url = %provider.base_url,
-        model = %model,
-        wire_api = ?wire_api,
-        adapter_kind = %kind,
-        "Resolved adapter kind for Chat API provider"
-    );
-
-    kind
+fn adapter_kind_for_provider() -> genai::adapter::AdapterKind {
+    // This function is only called for the Chat API path (wire_api == Chat).
+    // All Chat Completions providers use OpenAI-compatible protocol.
+    // The bridge overrides endpoint and auth via resolver functions,
+    // so AdapterKind::OpenAI works universally.
+    genai::adapter::AdapterKind::OpenAI
 }
 
 #[cfg(test)]

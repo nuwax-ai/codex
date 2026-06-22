@@ -694,7 +694,9 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
 
     planned_tools.add(PlanHandler);
 
-    if turn_context.config.experimental_request_user_input_enabled {
+    if turn_context.config.experimental_request_user_input_enabled
+        && !has_mcp_ask_tool(context)
+    {
         planned_tools.add_with_exposure(
             RequestUserInputHandler {
                 available_modes: request_user_input_available_modes(features),
@@ -1108,6 +1110,67 @@ fn code_mode_namespace_name<'a>(
         .as_ref()
         .and_then(|namespace| namespace_descriptions.get(namespace))
         .map(|namespace_description| namespace_description.name.as_str())
+}
+
+/// Known MCP tool name patterns that conflict with the built-in
+/// `request_user_input` tool. When an MCP tool's `callable_name` contains
+/// any of these as a complete underscore-delimited segment, the built-in
+/// tool is suppressed so the model only sees the MCP ask tool.
+const MCP_ASK_TOOL_PATTERNS: &[&str] = &["ask_user", "ask_question"];
+
+/// Returns `true` if `tool_name` contains `pattern` as a complete
+/// underscore-delimited segment (not merely as a substring).
+///
+/// Examples:
+/// - `"ask_user"` in `"ask_user"` => true (exact)
+/// - `"ask_user"` in `"ask_user_v2"` => true (prefix segment)
+/// - `"ask_user"` in `"my_ask_user"` => true (suffix segment)
+/// - `"ask_user"` in `"task_user_manager"` => false (embedded in "task")
+fn contains_tool_name_segment(tool_name: &str, pattern: &str) -> bool {
+    if tool_name.is_empty() || pattern.is_empty() {
+        return false;
+    }
+    // Exact match
+    if tool_name == pattern {
+        return true;
+    }
+    // Find each occurrence of pattern and check segment boundaries
+    let mut start = 0;
+    while let Some(pos) = tool_name[start..].find(pattern) {
+        let abs_pos = start + pos;
+        let end = abs_pos + pattern.len();
+
+        // Check left boundary: must be at the start of the string or preceded by '_'
+        let left_ok = abs_pos == 0 || tool_name.as_bytes()[abs_pos - 1] == b'_';
+
+        // Check right boundary: must be at the end of the string or followed by '_'
+        let right_ok = end >= tool_name.len() || tool_name.as_bytes()[end] == b'_';
+
+        if left_ok && right_ok {
+            return true;
+        }
+        start = abs_pos + 1;
+    }
+    false
+}
+
+/// Returns `true` if any MCP tool (direct or deferred) has a `callable_name`
+/// that matches an ask-tool pattern.
+fn has_mcp_ask_tool(context: &CoreToolPlanContext<'_>) -> bool {
+    let all_tools = context
+        .mcp_tools
+        .iter()
+        .chain(context.deferred_mcp_tools.iter())
+        .flat_map(|tools| tools.iter());
+
+    for tool in all_tools {
+        for pattern in MCP_ASK_TOOL_PATTERNS {
+            if contains_tool_name_segment(&tool.callable_name, pattern) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 #[cfg(test)]

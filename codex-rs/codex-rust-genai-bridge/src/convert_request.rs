@@ -124,7 +124,7 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
                     messages.push(ChatMessage::assistant(MessageContent::from(tc_part)));
                 }
             }
-            ResponseItem::FunctionCallOutput { call_id, output } => {
+            ResponseItem::FunctionCallOutput { call_id, output, .. } => {
                 let content = match &output.body {
                     FunctionCallOutputBody::Text(text) => text.clone(),
                     FunctionCallOutputBody::ContentItems(items) => {
@@ -156,7 +156,8 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
             | ResponseItem::ImageGenerationCall { .. }
             | ResponseItem::Compaction { .. }
             | ResponseItem::ContextCompaction { .. }
-            | ResponseItem::CompactionTrigger => {
+            | ResponseItem::CompactionTrigger { .. }
+            | ResponseItem::AgentMessage { .. } => {
                 // Skip — these items are internal to Codex.
             }
             ResponseItem::Other => {
@@ -251,6 +252,7 @@ mod tests {
                     text: "Hello".into(),
                 }],
                 phase: None,
+                metadata: None,
             }],
             tools: vec![],
             tool_choice: "auto".into(),
@@ -282,6 +284,7 @@ mod tests {
                 role: "user".into(),
                 content: vec![ContentItem::InputText { text: "Hi".into() }],
                 phase: None,
+                metadata: None,
             }],
             tools: vec![],
             tool_choice: "auto".into(),
@@ -312,13 +315,16 @@ mod tests {
                     namespace: None,
                     arguments: r#"{"city":"SF"}"#.into(),
                     call_id: "call_1".into(),
+                    metadata: None,
                 },
                 ResponseItem::FunctionCallOutput {
+                    id: None,
                     call_id: "call_1".into(),
                     output: codex_protocol::models::FunctionCallOutputPayload {
                         body: FunctionCallOutputBody::Text("Sunny".into()),
                         success: Some(true),
                     },
+                    metadata: None,
                 },
             ],
             tools: vec![],
@@ -380,6 +386,7 @@ mod tests {
                         text: "Hello".into(),
                     }],
                     phase: None,
+                    metadata: None,
                 },
                 // First turn: assistant responds with text
                 ResponseItem::Message {
@@ -389,13 +396,15 @@ mod tests {
                         text: "Hi there!".into(),
                     }],
                     phase: None,
+                    metadata: None,
                 },
                 // First turn: reasoning content from the assistant's thinking
                 ResponseItem::Reasoning {
-                    id: "rsn_1".into(),
+                    id: Some("rsn_1".into()),
                     summary: vec![],
                     content: None,
                     encrypted_content: Some("Let me think about this...".into()),
+                    metadata: None,
                 },
                 // Second turn: user follows up
                 ResponseItem::Message {
@@ -405,6 +414,7 @@ mod tests {
                         text: "What was my first question?".into(),
                     }],
                     phase: None,
+                    metadata: None,
                 },
             ],
             tools: vec![],
@@ -455,10 +465,11 @@ mod tests {
             input: vec![
                 // Reasoning BEFORE assistant message (should be skipped)
                 ResponseItem::Reasoning {
-                    id: "rsn_orphan".into(),
+                    id: Some("rsn_orphan".into()),
                     summary: vec![],
                     content: None,
                     encrypted_content: Some("orphan reasoning".into()),
+                    metadata: None,
                 },
                 ResponseItem::Message {
                     id: None,
@@ -467,6 +478,7 @@ mod tests {
                         text: "response".into(),
                     }],
                     phase: None,
+                    metadata: None,
                 },
             ],
             tools: vec![],
@@ -508,6 +520,7 @@ mod tests {
                         text: "List files".into(),
                     }],
                     phase: None,
+                    metadata: None,
                 },
                 // Turn 1: assistant responds (empty text — typical when model calls tool immediately)
                 ResponseItem::Message {
@@ -515,13 +528,15 @@ mod tests {
                     role: "assistant".into(),
                     content: vec![],
                     phase: None,
+                    metadata: None,
                 },
                 // Turn 1: reasoning content (from DeepSeek thinking mode)
                 ResponseItem::Reasoning {
-                    id: "rsn_1".into(),
+                    id: Some("rsn_1".into()),
                     summary: vec![],
                     content: None,
                     encrypted_content: Some("I should list the files to help the user.".into()),
+                    metadata: None,
                 },
                 // Turn 1: tool call (model decided to run ls)
                 ResponseItem::FunctionCall {
@@ -530,14 +545,17 @@ mod tests {
                     namespace: None,
                     arguments: r#"{"cmd":"ls"}"#.into(),
                     call_id: "call_1".into(),
+                    metadata: None,
                 },
                 // Turn 1: tool result
                 ResponseItem::FunctionCallOutput {
+                    id: None,
                     call_id: "call_1".into(),
                     output: codex_protocol::models::FunctionCallOutputPayload {
                         body: FunctionCallOutputBody::Text("file1.txt\nfile2.txt".into()),
                         success: Some(true),
                     },
+                    metadata: None,
                 },
             ],
             tools: vec![],
@@ -596,13 +614,15 @@ mod tests {
                         text: "Hello".into(),
                     }],
                     phase: None,
+                    metadata: None,
                 },
                 // Reasoning without a preceding assistant message
                 ResponseItem::Reasoning {
-                    id: "rsn_no_assistant".into(),
+                    id: Some("rsn_no_assistant".into()),
                     summary: vec![],
                     content: None,
                     encrypted_content: Some("thinking".into()),
+                    metadata: None,
                 },
             ],
             tools: vec![],
