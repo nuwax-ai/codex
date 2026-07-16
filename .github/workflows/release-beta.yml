@@ -406,12 +406,26 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          # npm's spam detection can flag rapid batch publishing of similarly-
+          # named packages (nuwax-codex-*). Space out publishes with a delay
+          # and tolerate individual failures so one blocked package does not
+          # abort the rest or block the main package (missing optional deps
+          # are tolerated at install time).
+          set +e
+          failed=()
           for pkg in npm-platform-packages/*/; do
-            echo "Publishing $(basename $pkg) with @beta tag..."
-            cd "$pkg"
-            npm publish --access public --tag beta
-            cd -
+            name=$(basename "$pkg")
+            echo "Publishing $name with @beta tag..."
+            ( cd "$pkg" && npm publish --access public --tag beta )
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+              echo "::warning::$name publish failed (rc=$rc) — continuing"
+              failed+=("$name")
+            fi
+            sleep 45
           done
+          echo "Failed packages: ${failed[*]:-none}"
+          exit 0
 
       - name: Publish main package to npm (@beta)
         env:
