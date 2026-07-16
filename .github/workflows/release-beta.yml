@@ -76,12 +76,6 @@ jobs:
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-musl
             binary_extension: ""
-          - os: ubuntu-22.04-arm
-            target: aarch64-unknown-linux-gnu
-            binary_extension: ""
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-musl
-            binary_extension: ""
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary_extension: ".exe"
@@ -100,7 +94,7 @@ jobs:
           rustup toolchain install 1.95.0 --target ${{ matrix.target }} --profile minimal --no-self-update
           rustup default 1.95.0
 
-      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl' }}
+      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
         name: Use hermetic Cargo home (musl)
         shell: bash
         run: |
@@ -150,7 +144,7 @@ jobs:
           done
 
       - name: Install UBSan runtime (musl)
-        if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl' }}
+        if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -159,19 +153,19 @@ jobs:
             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y libubsan1
           fi
 
-      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl' }}
+      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
         name: Install Zig
         uses: mlugg/setup-zig@v2
         with:
           version: 0.14.0
 
-      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl' }}
+      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
         name: Install musl build tools
         env:
           TARGET: ${{ matrix.target }}
         run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
 
-      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl' }}
+      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
         name: Configure musl rusty_v8 artifact overrides
         env:
           TARGET: ${{ matrix.target }}
@@ -195,7 +189,7 @@ jobs:
           echo "RUSTY_V8_ARCHIVE=${archive}" >> "$GITHUB_ENV"
           echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "$GITHUB_ENV"
 
-      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl' }}
+      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
         name: Configure rustc UBSan wrapper (musl host)
         shell: bash
         run: |
@@ -218,7 +212,7 @@ jobs:
           echo "RUSTC_WRAPPER=${wrapper}" >> "$GITHUB_ENV"
           echo "RUSTC_WORKSPACE_WRAPPER=" >> "$GITHUB_ENV"
 
-      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl' }}
+      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
         name: Clear sanitizer flags (musl)
         shell: bash
         run: |

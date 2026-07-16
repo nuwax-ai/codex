@@ -37,8 +37,6 @@
   "optionalDependencies": {
     "nuwax-codex-darwin-arm64": "0.0.0",
     "nuwax-codex-darwin-x64": "0.0.0",
-    "nuwax-codex-linux-arm64": "0.0.0",
-    "nuwax-codex-linux-arm64-musl": "0.0.0",
     "nuwax-codex-linux-x64": "0.0.0",
     "nuwax-codex-linux-x64-musl": "0.0.0",
     "nuwax-codex-win32-arm64": "0.0.0",

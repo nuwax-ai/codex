@@ -21,9 +21,8 @@ function getPlatformPackage() {
       x64: "nuwax-codex-darwin-x64",
     },
     linux: {
-      arm64: familySync() === "musl"
-        ? "nuwax-codex-linux-arm64-musl"
-        : "nuwax-codex-linux-arm64",
+      // arm64 Linux is not shipped (GitHub arm64 runners are too flaky to build
+      // it reliably); only x64 Linux is supported for now.
       x64: familySync() === "musl"
         ? "nuwax-codex-linux-x64-musl"
         : "nuwax-codex-linux-x64",
