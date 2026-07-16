@@ -258,6 +258,29 @@ jobs:
           target="${{ matrix.target }}"
           cargo build --target "$target" --release --bin nuwax-codex
 
+      # profile.release keeps strip=false so local builds stay symbolicateable;
+      # strip here (just before packaging) to shrink the published binary. The
+      # musl binary in particular balloons to ~1.3 GB unstripped (statically
+      # linked v8/sqlite/aws-lc + full symbol table), which exceeds npm's
+      # upload limit (E413). Windows MSVC release EXEs carry no debug symbols,
+      # so they are skipped.
+      - name: Strip release binary
+        if: ${{ runner.os != 'Windows' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          bin="target/${target}/release/nuwax-codex"
+          before=$(stat -f%z "$bin" 2>/dev/null || stat -c%s "$bin")
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            strip "$bin"
+          else
+            # macOS: strip local + debug symbols.
+            strip -x "$bin"
+          fi
+          after=$(stat -f%z "$bin" 2>/dev/null || stat -c%s "$bin")
+          echo "Stripped $bin: $before -> $after bytes"
+
       - name: Create archive
         id: create_archive
         shell: bash
