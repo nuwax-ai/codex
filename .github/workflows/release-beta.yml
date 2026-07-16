@@ -21,6 +21,11 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Use the system `git` CLI (Homebrew git on macOS) instead of libgit2 to fetch
+  # git dependencies. macOS runners fail intermittently with "SecureTransport
+  # error" when libgit2 fetches the libwebrtc -> libyuv submodule from
+  # googlesource.com; the system git CLI is markedly more reliable here.
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
 jobs:
   get-version:
