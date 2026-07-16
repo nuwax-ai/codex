@@ -132,8 +132,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # arm64 Ubuntu runners intermittently fail to reach ports.ubuntu.com
+          # ("Connection failed [IP: 91.189.91.103 80]"). Retry the install to
+          # ride out the transient apt mirror outage instead of failing the job.
           sudo apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libcap-dev
+          for attempt in 1 2 3 4 5; do
+            if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libcap-dev; then
+              break
+            fi
+            echo "apt install attempt $attempt failed, retrying in 15s..."
+            sleep 15
+            sudo apt-get update -y
+            if [ "$attempt" = "5" ]; then
+              echo "apt install failed after 5 attempts" >&2
+              exit 1
+            fi
+          done
 
       - name: Install UBSan runtime (musl)
         if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl' }}
