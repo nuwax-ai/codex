@@ -21,7 +21,7 @@ use futures::future::BoxFuture;
 use futures::future::Shared;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use tracing::instrument;
+use tracing::{debug, instrument};
 
 #[derive(Clone, Debug)]
 pub(crate) struct TurnSkillsContext {
@@ -796,8 +796,13 @@ impl Session {
         turn_context
     }
 
-    pub(crate) async fn maybe_emit_unknown_model_warning_for_turn(&self, _tc: &TurnContext) {
-        // Suppressed: custom provider models always use fallback metadata.
+    pub(crate) async fn maybe_emit_unknown_model_warning_for_turn(&self, tc: &TurnContext) {
+        if tc.model_info.used_fallback_model_metadata {
+            tracing::debug!(
+                slug = %tc.model_info.slug,
+                "using fallback model metadata for custom provider model"
+            );
+        }
     }
 
     pub(crate) async fn new_default_turn(&self) -> Arc<TurnContext> {
