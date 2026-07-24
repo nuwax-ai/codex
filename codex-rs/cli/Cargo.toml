@@ -31,7 +31,7 @@ codex-chatgpt = { workspace = true }
 codex-cloud-tasks = { path = "../cloud-tasks" }
 codex-utils-cli = { workspace = true }
 codex-config = { workspace = true }
-codex-core = { workspace = true }
+codex-core = { workspace = true, features = ["rust-genai"] }
 codex-core-plugins = { workspace = true }
 codex-home = { workspace = true }
 codex-exec = { workspace = true }
