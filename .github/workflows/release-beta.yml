@@ -422,7 +422,7 @@ jobs:
               echo "::warning::$name publish failed (rc=$rc) — continuing"
               failed+=("$name")
             fi
-            sleep 45
+            sleep 120
           done
           echo "Failed packages: ${failed[*]:-none}"
           exit 0
