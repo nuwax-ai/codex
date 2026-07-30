@@ -1,6 +1,7 @@
 use codex_api::ResponseEvent;
 use codex_protocol::models::{ContentItem, ReasoningItemContent, ResponseItem};
 use codex_protocol::protocol::TokenUsage;
+use codex_protocol::ResponseItemId;
 use genai::chat::ToolChunk;
 use genai::chat::{ChatStreamEvent, StopReason, StreamChunk, StreamEnd};
 
@@ -77,12 +78,13 @@ pub fn chat_event_to_response_event(
                 pending.tool_items_added.insert(call_id.clone(), true);
                 events.push(ResponseEvent::OutputItemAdded(
                     ResponseItem::CustomToolCall {
-                        id: Some(call_id.clone()),
+                        id: Some(ResponseItemId::from_server(call_id.clone())),
                         status: None,
                         call_id: call_id.clone(),
                         name: fn_name.clone(),
+                        namespace: None,
                         input: String::new(),
-                        metadata: None,
+                        internal_chat_message_metadata_passthrough: None,
                     },
                 ));
             }
@@ -121,6 +123,7 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
             .as_ref()
             .and_then(|d| d.cached_tokens)
             .unwrap_or(0) as i64,
+        cache_write_input_tokens: 0,
         output_tokens: u.completion_tokens.unwrap_or(0) as i64,
         reasoning_output_tokens: u
             .completion_tokens_details
@@ -141,11 +144,11 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
             });
         }
         let message_item = ResponseItem::Message {
-            id: pending.text_item_id.take(),
+            id: pending.text_item_id.take().map(ResponseItemId::from_server),
             role: "assistant".into(),
             content,
             phase: None,
-            metadata: None,
+            internal_chat_message_metadata_passthrough: None,
         };
         events.push(ResponseEvent::OutputItemDone(message_item));
     }
@@ -156,13 +159,13 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
         let reasoning_text = std::mem::take(&mut pending.reasoning_buffer);
         let reasoning_id = format!("rsn_{}", pending.reasoning_content_index);
         let reasoning_item = ResponseItem::Reasoning {
-            id: Some(reasoning_id.clone()),
+            id: Some(ResponseItemId::from_server(reasoning_id.clone())),
             summary: vec![],
             content: Some(vec![ReasoningItemContent::ReasoningText {
                 text: reasoning_text.clone(),
             }]),
             encrypted_content: Some(reasoning_text),
-            metadata: None,
+            internal_chat_message_metadata_passthrough: None,
         };
         events.push(ResponseEvent::OutputItemAdded(reasoning_item.clone()));
         events.push(ResponseEvent::OutputItemDone(reasoning_item));
@@ -173,12 +176,13 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
     //    which exec_command and other tools require.
     for (_, pending_tc) in std::mem::take(&mut pending.tool_calls) {
         let tc_item = ResponseItem::FunctionCall {
-            id: Some(pending_tc.id.clone()),
+            id: Some(ResponseItemId::from_server(pending_tc.id.clone())),
             name: pending_tc.name,
             namespace: None,
             arguments: pending_tc.arguments_buffer,
+            encrypted_function_args: None,
             call_id: pending_tc.id,
-            metadata: None,
+            internal_chat_message_metadata_passthrough: None,
         };
         events.push(ResponseEvent::OutputItemDone(tc_item));
     }
@@ -210,11 +214,11 @@ fn ensure_message_item_added(
         let item_id = format!("txt_{}", pending.text_buffer.len());
         pending.text_item_id = Some(item_id.clone());
         events.push(ResponseEvent::OutputItemAdded(ResponseItem::Message {
-            id: Some(item_id),
+            id: Some(ResponseItemId::from_server(item_id)),
             role: "assistant".into(),
             content: vec![],
             phase: None,
-            metadata: None,
+            internal_chat_message_metadata_passthrough: None,
         }));
     }
 }

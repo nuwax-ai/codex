@@ -27,7 +27,15 @@ pub fn responses_request_to_chat_request(request: &ResponsesApiRequest) -> Optio
         chat_req = chat_req.with_system(sys);
     }
 
-    let tools = parse_tools(&request.tools);
+    // `request.tools` is `Option<ResponsesApiTools>` (opaque raw JSON). Extract
+    // the tool array via the Serialize impl (as_raw_value is pub(crate)-gated).
+    let tools: Vec<Value> = request
+        .tools
+        .as_ref()
+        .and_then(|t| serde_json::to_value(t).ok())
+        .and_then(|v| serde_json::from_value::<Vec<Value>>(v).ok())
+        .unwrap_or_default();
+    let tools = parse_tools(&tools);
     if !tools.is_empty() {
         chat_req = chat_req.with_tools(tools);
     }
@@ -149,7 +157,8 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
                 )));
             }
             // Internal/local events — not sent to the model.
-            ResponseItem::LocalShellCall { .. }
+            ResponseItem::AdditionalTools { .. }
+            | ResponseItem::LocalShellCall { .. }
             | ResponseItem::ToolSearchCall { .. }
             | ResponseItem::ToolSearchOutput { .. }
             | ResponseItem::WebSearchCall { .. }
@@ -208,6 +217,11 @@ fn convert_content_items(items: &[ContentItem]) -> Vec<ContentPart> {
                     image_url,
                     None,
                 )))
+            }
+            ContentItem::InputAudio { .. } => {
+                // 国内 LLM 适配暂不支持音频输入，跳过。
+                tracing::warn!("Skipping ContentItem::InputAudio (unsupported by genai bridge)");
+                None
             }
         })
         .collect()
