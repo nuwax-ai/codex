@@ -337,11 +337,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
       - name: Display structure of downloaded files
         run: ls -la artifacts/
 
@@ -368,17 +363,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Flatten artifacts directory
-        run: |
-          mkdir -p flat-artifacts
-          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} flat-artifacts/ \;
-          ls -la flat-artifacts/
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -390,47 +374,11 @@ jobs:
           sudo apt-get update -y
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gettext-base
 
-      - name: Create platform packages
-        env:
-          VERSION: ${{ needs.get-version.outputs.version }}
-        run: |
-          bash npm/publish/create-platform-packages.sh flat-artifacts npm-platform-packages "$VERSION"
-
       - name: Update base package version
         env:
           VERSION: ${{ needs.get-version.outputs.version }}
         run: |
           bash npm/publish/update-base-package.sh "$VERSION"
-
-      - name: Publish platform packages to npm (@beta)
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          # npm's spam detection can flag rapid batch publishing of similarly-
-          # named packages (nuwax-codex-*). Space out publishes with a delay
-          # and tolerate individual failures so one blocked package does not
-          # abort the rest or block the main package (missing optional deps
-          # are tolerated at install time).
-          set +e
-          failed=()
-          # Publish Windows packages first to avoid spam detection on the most-needed platforms
-          for pkg in $(find npm-platform-packages -maxdepth 1 -type d ! -name npm-platform-packages | sort -r); do
-            name=$(basename "$pkg")
-            echo "Publishing $name with @beta tag..."
-            rc=1
-            for attempt in 1 2 3; do
-              ( cd "$pkg" && npm publish --access public --tag beta ) && rc=0 && break
-              echo "::warning::$name publish attempt $attempt failed — retrying in 60s..."
-              sleep 60
-            done
-            if [ "$rc" -ne 0 ]; then
-              echo "::warning::$name publish failed after 3 attempts — continuing"
-              failed+=("$name")
-            fi
-            sleep 120
-          done
-          echo "Failed packages: ${failed[*]:-none}"
-          exit 0
 
       - name: Publish main package to npm (@beta)
         env:

@@ -33,13 +33,5 @@
   },
   "dependencies": {
     "detect-libc": "^2.0.0"
-  },
-  "optionalDependencies": {
-    "nuwax-codex-ts-darwin-arm64": "0.0.0",
-    "nuwax-codex-ts-darwin-x64": "0.0.0",
-    "nuwax-codex-ts-linux-x64": "0.0.0",
-    "nuwax-codex-ts-linux-x64-musl": "0.0.0",
-    "nuwax-codex-ts-win32-arm64": "0.0.0",
-    "nuwax-codex-ts-win32-x64": "0.0.0"
   }
 }
