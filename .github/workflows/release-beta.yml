@@ -416,10 +416,14 @@ jobs:
           for pkg in npm-platform-packages/*/; do
             name=$(basename "$pkg")
             echo "Publishing $name with @beta tag..."
-            ( cd "$pkg" && npm publish --access public --tag beta )
-            rc=$?
+            rc=1
+            for attempt in 1 2 3; do
+              ( cd "$pkg" && npm publish --access public --tag beta ) && rc=0 && break
+              echo "::warning::$name publish attempt $attempt failed — retrying in 60s..."
+              sleep 60
+            done
             if [ "$rc" -ne 0 ]; then
-              echo "::warning::$name publish failed (rc=$rc) — continuing"
+              echo "::warning::$name publish failed after 3 attempts — continuing"
               failed+=("$name")
             fi
             sleep 120
