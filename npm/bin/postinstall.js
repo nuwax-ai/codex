@@ -1,32 +1,33 @@
 #!/usr/bin/env node
-// Launcher for the nuwax-codex-ts npm package.
-// Downloads the native `nuwax-codex` binary from GitHub Releases on first
-// run and caches it locally. No platform-specific npm packages needed.
+// Postinstall script: pre-downloads the native `nuwax-codex` binary from
+// Alibaba Cloud OSS so the first CLI invocation is instant.
 
-import { spawnSync } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, chmodSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, chmodSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
-import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
-import { familySync } from "detect-libc";
+import { pipeline } from "node:stream/promises";
+import { Transform } from "node:stream";
+import { createReadStream } from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const VERSION = require("../package.json").version;
 const OSS_CDN_BASE = "https://nuwa-packages.oss-rg-china-mainland.aliyuncs.com/nuwax-codex";
 
-// -- platform helpers -------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Platform helpers
+// ---------------------------------------------------------------------------
 
 function getTargetTriple() {
   const p = process.platform;
   const a = process.arch;
-
   if (p === "darwin") {
     return a === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
   }
   if (p === "linux") {
     if (a !== "x64") throw new Error(`Unsupported Linux arch: ${a}`);
+    const { familySync } = require("detect-libc");
     return familySync() === "musl"
       ? "x86_64-unknown-linux-musl"
       : "x86_64-unknown-linux-gnu";
@@ -45,8 +46,6 @@ function getBinaryName() {
   return process.platform === "win32" ? "nuwax-codex.exe" : "nuwax-codex";
 }
 
-// -- download & cache -------------------------------------------------------
-
 function cacheDir() {
   return join(homedir(), ".nuwax-codex-cache", VERSION);
 }
@@ -55,16 +54,18 @@ function cachedBinaryPath() {
   return join(cacheDir(), getBinaryName());
 }
 
+// ---------------------------------------------------------------------------
+// Download
+// ---------------------------------------------------------------------------
+
 async function downloadBinary(url, outPath) {
   mkdirSync(dirname(outPath), { recursive: true });
-
   const res = await fetch(url, { redirect: "follow" });
   if (!res.ok) {
     throw new Error(
       `Failed to download binary: HTTP ${res.status} ${res.statusText}\nURL: ${url}`,
     );
   }
-
   const total = parseInt(res.headers.get("content-length") || "0", 10);
   let downloaded = 0;
   const reader = res.body.getReader();
@@ -76,7 +77,6 @@ async function downloadBinary(url, outPath) {
       );
     }
   }, 500);
-
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -89,21 +89,16 @@ async function downloadBinary(url, outPath) {
     ws.end();
   }
   process.stderr.write("\n");
-
   if (process.platform !== "win32") {
     chmodSync(outPath, 0o755);
   }
 }
 
-async function extractTarGz(archivePath, destDir) {
-  // Simple tar.gz extraction: members are listed sequentially as
-  // [header(512B)][content(padded to 512B)]...
-  const { createReadStream } = await import("node:fs");
-  const { createGunzip } = await import("node:zlib");
-  const { pipeline } = await import("node:stream/promises");
-  const { Transform } = await import("node:stream");
-  const { writeFileSync } = await import("node:fs");
+// ---------------------------------------------------------------------------
+// Extraction
+// ---------------------------------------------------------------------------
 
+async function extractTarGz(archivePath, destDir) {
   const gunzip = createGunzip();
   const rs = createReadStream(archivePath);
   let buffer = Buffer.alloc(0);
@@ -115,15 +110,12 @@ async function extractTarGz(archivePath, destDir) {
       transform(chunk, _enc, cb) {
         buffer = Buffer.concat([buffer, chunk]);
         while (buffer.length >= 512) {
-          // Parse tar header
           const name = buffer.toString("utf8", 0, 100).replace(/\0.*$/, "");
           const sizeStr = buffer.toString("utf8", 124, 136).replace(/\0.*$/, "");
           const size = parseInt(sizeStr, 8);
           if (isNaN(size) || size < 0) break;
-
           const totalSize = Math.ceil((512 + size) / 512) * 512;
           if (buffer.length < totalSize) break;
-
           if (name && !name.endsWith("/") && size > 0) {
             const fileData = buffer.subarray(512, 512 + size);
             const outPath = join(destDir, name);
@@ -133,7 +125,6 @@ async function extractTarGz(archivePath, destDir) {
               chmodSync(outPath, 0o755);
             }
           }
-
           buffer = buffer.subarray(totalSize);
         }
         cb();
@@ -144,7 +135,8 @@ async function extractTarGz(archivePath, destDir) {
 
 async function extractZip(archivePath, destDir) {
   // extractZip 仅在 Windows 上触发（getArchiveExt 对 win32 返回 zip）。
-  // Windows 没有内置 `unzip` 命令，改用 PowerShell 的 Expand-Archive 解压。
+  // Windows 没有内置 `unzip` 命令，改用 PowerShell 的 Expand-Archive 解压，
+  // 否则 Windows 用户安装后预下载会被静默吞掉、首次运行 CLI 直接报错退出。
   const { execSync } = await import("node:child_process");
   const psArchive = archivePath.replace(/'/g, "''");
   const psDest = destDir.replace(/'/g, "''");
@@ -154,20 +146,23 @@ async function extractZip(archivePath, destDir) {
   );
 }
 
-// -- main -------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
 
-async function ensureBinary() {
+async function main() {
   const cached = cachedBinaryPath();
   if (existsSync(cached)) {
-    return cached;
+    process.stderr.write(`nuwax-codex ${VERSION} binary already cached, skipping download.\n`);
+    return;
   }
 
   const target = getTargetTriple();
   const ext = getArchiveExt();
   const url = `${OSS_CDN_BASE}/v${VERSION}/nuwax-codex-${VERSION}-${target}.${ext}`;
 
-  console.error(`Downloading nuwax-codex ${VERSION} for ${target} …`);
-  console.error(`  ${url}`);
+  process.stderr.write(`Pre-downloading nuwax-codex ${VERSION} for ${target} …\n`);
+  process.stderr.write(`  ${url}\n`);
 
   const dir = cacheDir();
   mkdirSync(dir, { recursive: true });
@@ -175,36 +170,21 @@ async function ensureBinary() {
 
   await downloadBinary(url, archivePath);
 
-  console.error("  Extracting …");
+  process.stderr.write("  Extracting …\n");
   if (ext === "tar.gz") {
     await extractTarGz(archivePath, dir);
   } else {
     await extractZip(archivePath, dir);
   }
 
-  if (!existsSync(cached)) {
-    console.error("  Error: binary not found after extraction at", cached);
-    process.exit(1);
+  if (existsSync(cached)) {
+    process.stderr.write(`✓ nuwax-codex ${VERSION} ready at ${cached}\n`);
+  } else {
+    process.stderr.write(`⚠ nuwax-codex ${VERSION} download completed but binary not found at ${cached}\n`);
   }
-
-  return cached;
 }
 
-function run() {
-  ensureBinary().then((binaryPath) => {
-    const result = spawnSync(binaryPath, process.argv.slice(2), {
-      stdio: "inherit",
-      windowsHide: true,
-    });
-    if (result.error) {
-      console.error(`Failed to execute ${binaryPath}:`, result.error);
-      process.exit(1);
-    }
-    process.exit(result.status ?? 1);
-  }).catch((err) => {
-    console.error(err.message);
-    process.exit(1);
-  });
-}
-
-run();
+main().catch((err) => {
+  process.stderr.write(`nuwax-codex postinstall: ${err.message}\n`);
+  // Never fail the install — binary will be downloaded on first run instead
+});
