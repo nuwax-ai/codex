@@ -14,7 +14,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const VERSION = require("../package.json").version;
-const REPO = "nuwax-ai/codex";
+const OSS_CDN_BASE = "https://nuwa-packages.oss-rg-china-mainland.aliyuncs.com/nuwax-codex-ts";
 
 // -- platform helpers -------------------------------------------------------
 
@@ -158,7 +158,7 @@ async function ensureBinary() {
 
   const target = getTargetTriple();
   const ext = getArchiveExt();
-  const url = `https://github.com/${REPO}/releases/download/v${VERSION}/nuwax-codex-${VERSION}-${target}.${ext}`;
+  const url = `${OSS_CDN_BASE}/v${VERSION}/nuwax-codex-${VERSION}-${target}.${ext}`;
 
   console.error(`Downloading nuwax-codex ${VERSION} for ${target} …`);
   console.error(`  ${url}`);

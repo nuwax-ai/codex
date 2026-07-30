@@ -385,3 +385,12 @@ jobs:
         run: |
           cd npm
           npm publish --access public
+
+      - name: Trigger OSS sync
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN || github.token }}
+        run: |
+          gh workflow run sync-to-oss.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            -f tag="${{ needs.get-version.outputs.tag_name }}"
