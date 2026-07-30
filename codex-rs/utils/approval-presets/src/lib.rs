@@ -48,6 +48,16 @@ pub fn builtin_approval_presets() -> Vec<ApprovalPreset> {
             permission_profile: PermissionProfile::workspace_write(),
         },
         ApprovalPreset {
+            id: "ask",
+            label: "Ask",
+            description: "Codex has full access to edit files and access the internet, but still asks for approval before executing commands.",
+            approval: AskForApproval::OnRequest,
+            active_permission_profile: ActivePermissionProfile::new(
+                BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS,
+            ),
+            permission_profile: PermissionProfile::Disabled,
+        },
+        ApprovalPreset {
             id: "full-access",
             label: "Full Access",
             description: "Codex can edit files outside this workspace and access the internet without asking for approval. Exercise caution when using.",

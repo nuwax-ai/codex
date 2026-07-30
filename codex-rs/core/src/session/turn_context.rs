@@ -24,7 +24,7 @@ use futures::future::BoxFuture;
 use futures::future::Shared;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use tracing::instrument;
+use tracing::{debug, instrument};
 
 #[derive(Clone, Debug)]
 pub(crate) struct TurnSkillsContext {
@@ -831,16 +831,10 @@ impl Session {
 
     pub(crate) async fn maybe_emit_model_warnings_for_turn(&self, tc: &TurnContext) {
         if tc.model_info.used_fallback_model_metadata {
-            self.send_event(
-                tc,
-                EventMsg::Warning(WarningEvent {
-                    message: format!(
-                        "Model metadata for `{}` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.",
-                        tc.model_info.slug
-                    ),
-                }),
-            )
-            .await;
+            tracing::debug!(
+                slug = %tc.model_info.slug,
+                "using fallback model metadata for custom provider model"
+            );
         }
 
         if let Some(message) =

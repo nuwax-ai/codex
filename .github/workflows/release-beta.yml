@@ -1,0 +1,427 @@
+# Build and publish a beta release of the `nuwax-codex` npm package.
+# Triggered by pushing a `v*beta*` tag (e.g. v0.1.0-beta.1) or manually via
+# workflow_dispatch. Builds the `nuwax-codex` binary (+ bundled `bwrap` on Linux)
+# for 8 targets, ships them as npm platform subpackages, and publishes the
+# `nuwax-codex` umbrella package to the npm `beta` dist-tag.
+name: Release Beta
+
+on:
+  push:
+    tags:
+      - "v*beta*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag name for beta release (e.g. v0.1.0-beta.1)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # Use the system `git` CLI (Homebrew git on macOS) instead of libgit2 to fetch
+  # git dependencies. macOS runners fail intermittently with "SecureTransport
+  # error" when libgit2 fetches the libwebrtc -> libyuv submodule from
+  # googlesource.com; the system git CLI is markedly more reliable here.
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  get-version:
+    name: Get Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      tag_name: ${{ steps.get_version.outputs.tag_name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          # Beta 版本号从 tag 名提取，避免与 @latest 的 Cargo.toml 版本号冲突。
+          # npm 要求版本号唯一：v0.1.0-beta.1 → 0.1.0-beta.1
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            TAG_NAME="${{ github.event.inputs.tag_name }}"
+          else
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          fi
+          # 去掉前缀 v 得到合法的 npm semver 版本号
+          VERSION="${TAG_NAME#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+
+  build:
+    name: Build - ${{ matrix.target }}
+    needs: get-version
+    # 当前仓库的 Rust workspace 根在 codex-rs/，所有 cargo/shell 步骤都在该目录执行。
+    defaults:
+      run:
+        working-directory: codex-rs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            binary_extension: ""
+          - os: macos-14
+            target: x86_64-apple-darwin
+            binary_extension: ""
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            binary_extension: ""
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            binary_extension: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary_extension: ".exe"
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            binary_extension: ".exe"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (1.95.0)
+        shell: bash
+        run: |
+          rustup toolchain install 1.95.0 --target ${{ matrix.target }} --profile minimal --no-self-update
+          rustup default 1.95.0
+
+      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
+        name: Use hermetic Cargo home (musl)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo_home="${GITHUB_WORKSPACE}/.cargo-home"
+          mkdir -p "${cargo_home}/bin"
+          echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
+          echo "${cargo_home}/bin" >> "$GITHUB_PATH"
+          : > "${cargo_home}/config.toml"
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ matrix.os }}-${{ matrix.target }}-cargo-registry-${{ hashFiles('codex-rs/Cargo.lock') }}
+          restore-keys: |
+            ${{ matrix.os }}-${{ matrix.target }}-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ matrix.os }}-${{ matrix.target }}-cargo-git-${{ hashFiles('codex-rs/Cargo.lock') }}
+          restore-keys: |
+            ${{ matrix.os }}-${{ matrix.target }}-cargo-git-
+
+      - name: Install Linux build dependencies
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # arm64 Ubuntu runners intermittently fail to reach ports.ubuntu.com
+          # ("Connection failed [IP: 91.189.91.103 80]"). Retry the install to
+          # ride out the transient apt mirror outage instead of failing the job.
+          sudo apt-get update -y
+          for attempt in 1 2 3 4 5; do
+            if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libcap-dev; then
+              break
+            fi
+            echo "apt install attempt $attempt failed, retrying in 15s..."
+            sleep 15
+            sudo apt-get update -y
+            if [ "$attempt" = "5" ]; then
+              echo "apt install failed after 5 attempts" >&2
+              exit 1
+            fi
+          done
+
+      - name: Install UBSan runtime (musl)
+        if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y libubsan1
+          fi
+
+      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
+        name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.0
+
+      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
+        name: Install musl build tools
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
+
+      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
+        name: Configure musl rusty_v8 artifact overrides
+        env:
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(python3 -c "
+          import tomllib, pathlib
+          lock = tomllib.loads(pathlib.Path('Cargo.lock').read_text())
+          vs = [p['version'] for p in lock['package'] if p['name'] == 'v8']
+          assert len(vs) == 1, f'expected 1 v8 version, got {vs}'
+          print(vs[0])
+          ")
+          release_tag="rusty-v8-v${version}"
+          base_url="https://github.com/openai/codex/releases/download/${release_tag}"
+          archive="${base_url}/librusty_v8_release_${TARGET}.a.gz"
+          binding_dir="${RUNNER_TEMP}/rusty_v8"
+          binding_path="${binding_dir}/src_binding_release_${TARGET}.rs"
+          mkdir -p "${binding_dir}"
+          curl -fsSL "${base_url}/src_binding_release_${TARGET}.rs" -o "${binding_path}"
+          echo "RUSTY_V8_ARCHIVE=${archive}" >> "$GITHUB_ENV"
+          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "$GITHUB_ENV"
+
+      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
+        name: Configure rustc UBSan wrapper (musl host)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ubsan=""
+          if command -v ldconfig >/dev/null 2>&1; then
+            ubsan="$(ldconfig -p | grep -m1 'libubsan\.so\.1' | sed -E 's/.*=> (.*)$/\1/')"
+          fi
+          wrapper_root="${RUNNER_TEMP:-/tmp}"
+          wrapper="${wrapper_root}/rustc-ubsan-wrapper"
+          cat > "${wrapper}" <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ -n "${ubsan}" ]]; then
+            export LD_PRELOAD="${ubsan}\${LD_PRELOAD:+:\${LD_PRELOAD}}"
+          fi
+          exec "\$1" "\${@:2}"
+          EOF
+          chmod +x "${wrapper}"
+          echo "RUSTC_WRAPPER=${wrapper}" >> "$GITHUB_ENV"
+          echo "RUSTC_WORKSPACE_WRAPPER=" >> "$GITHUB_ENV"
+
+      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
+        name: Clear sanitizer flags (musl)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "RUSTFLAGS=" >> "$GITHUB_ENV"
+          echo "CARGO_ENCODED_RUSTFLAGS=" >> "$GITHUB_ENV"
+          echo "RUSTDOCFLAGS=" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_RUSTFLAGS=" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS=" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS=" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS=" >> "$GITHUB_ENV"
+
+          sanitize_flags() {
+            local input="$1"
+            input="${input//-fsanitize=undefined/}"
+            input="${input//-fno-sanitize-recover=undefined/}"
+            input="${input//-fno-sanitize-trap=undefined/}"
+            echo "$input"
+          }
+
+          cflags="$(sanitize_flags "${CFLAGS-}")"
+          cxxflags="$(sanitize_flags "${CXXFLAGS-}")"
+          echo "CFLAGS=${cflags}" >> "$GITHUB_ENV"
+          echo "CXXFLAGS=${cxxflags}" >> "$GITHUB_ENV"
+          echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
+
+      # 先单独构建 bwrap 并算出 digest，写入 CODEX_BWRAP_SHA256。这样后续构建 codex
+      # 时其 build.rs 会通过 option_env! 把 digest 编译进二进制，运行时用于校验
+      # 捆绑的 bwrap。仅 Linux 需要 bwrap（macOS/Windows 沙箱不用 bwrap）。
+      - name: Build bwrap and export digest (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          cargo build --target "$target" --release --bin bwrap
+          bwrap_path="target/${target}/release/bwrap"
+          if [[ ! -f "$bwrap_path" ]]; then
+            echo "bwrap binary ${bwrap_path} not found" >&2
+            exit 1
+          fi
+          digest="$(sha256sum "$bwrap_path" | awk '{print $1}')"
+          echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
+          echo "Built bwrap ${bwrap_path} with sha256:${digest}"
+
+      - name: Build nuwax-codex binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          cargo build --target "$target" --release --bin nuwax-codex
+
+      # profile.release keeps strip=false so local builds stay symbolicateable;
+      # strip here (just before packaging) to shrink the published binary. The
+      # musl binary in particular balloons to ~1.3 GB unstripped (statically
+      # linked v8/sqlite/aws-lc + full symbol table), which exceeds npm's
+      # upload limit (E413). Windows MSVC release EXEs carry no debug symbols,
+      # so they are skipped.
+      - name: Strip release binary
+        if: ${{ runner.os != 'Windows' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          bin="target/${target}/release/nuwax-codex"
+          before=$(stat -f%z "$bin" 2>/dev/null || stat -c%s "$bin")
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            strip "$bin"
+          else
+            # macOS: strip local + debug symbols.
+            strip -x "$bin"
+          fi
+          after=$(stat -f%z "$bin" 2>/dev/null || stat -c%s "$bin")
+          echo "Stripped $bin: $before -> $after bytes"
+
+      - name: Create archive
+        id: create_archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          BINARY_NAME="nuwax-codex${{ matrix.binary_extension }}"
+          ARCHIVE_NAME="nuwax-codex-${{ needs.get-version.outputs.version }}-${{ matrix.target }}"
+
+          cd target/${{ matrix.target }}/release
+
+          # 注意：本 job 设了 defaults.run.working-directory: codex-rs，所以
+          # CWD 起点是 <workspace>/codex-rs。cd 到 release 目录后需要回退 4 级
+          # 才能回到仓库根（GITHUB_WORKSPACE），archive 留在仓库根供 upload-artifact
+          # （它的 path 相对 GITHUB_WORKSPACE 解析）使用。
+          if [ "${{ matrix.os }}" = "windows-latest" ] || [ "${{ matrix.os }}" = "windows-11-arm" ]; then
+            7z a -tzip "${ARCHIVE_NAME}.zip" "${BINARY_NAME}"
+            echo "archive_path=${ARCHIVE_NAME}.zip" >> $GITHUB_OUTPUT
+            echo "archive_name=${ARCHIVE_NAME}.zip" >> $GITHUB_OUTPUT
+            mv "${ARCHIVE_NAME}.zip" ../../../../
+          else
+            archive_items=("${BINARY_NAME}")
+            if [[ "${{ runner.os }}" == "Linux" ]]; then
+              mkdir -p codex-resources
+              cp bwrap codex-resources/bwrap
+              chmod 0755 codex-resources/bwrap
+              archive_items+=(codex-resources/bwrap)
+            fi
+            tar czf "${ARCHIVE_NAME}.tar.gz" "${archive_items[@]}"
+            echo "archive_path=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_OUTPUT
+            echo "archive_name=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_OUTPUT
+            mv "${ARCHIVE_NAME}.tar.gz" ../../../../
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.create_archive.outputs.archive_name }}
+          path: ${{ steps.create_archive.outputs.archive_path }}
+          retention-days: 1
+
+  create-release:
+    name: Create Pre-Release
+    needs: [get-version, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -la artifacts/
+
+      - name: Create Pre-Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.get-version.outputs.tag_name }}
+          name: "Beta Release ${{ needs.get-version.outputs.version }}"
+          draft: false
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-npm:
+    name: Publish to npm (@beta)
+    needs: [get-version, create-release]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install envsubst
+        run: |
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gettext-base
+
+      - name: Update base package version
+        env:
+          VERSION: ${{ needs.get-version.outputs.version }}
+        run: |
+          bash npm/publish/update-base-package.sh "$VERSION"
+
+      - name: Publish main package to npm (@beta)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd npm
+          npm publish --access public --tag beta
+
+      - name: Install ossutil
+        if: success()
+        run: |
+          curl -fSL -o /tmp/ossutil.zip \
+            "https://gosspublic.alicdn.com/ossutil/v2/2.2.0/ossutil-2.2.0-linux-amd64.zip"
+          unzip -q /tmp/ossutil.zip -d /tmp
+          sudo mv /tmp/ossutil-2.2.0-linux-amd64/ossutil /usr/local/bin/
+          ossutil version
+
+      - name: Download release assets for OSS
+        if: success()
+        uses: actions/download-artifact@v4
+        with:
+          path: oss_assets
+
+      - name: Upload binaries to OSS
+        if: success()
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+        run: |
+          cd oss_assets
+          for f in */*.tar.gz */*.zip; do
+            [ -f "$f" ] || continue
+            fname=$(basename "$f")
+            echo "Uploading $fname ..."
+            ossutil cp --force "$f" \
+              "oss://nuwa-packages/nuwax-codex/${{ needs.get-version.outputs.tag_name }}/${fname}" \
+              --endpoint "https://oss-rg-china-mainland.aliyuncs.com" \
+              --region "rg-china-mainland" \
+              --access-key-id "$OSS_ACCESS_KEY_ID" \
+              --access-key-secret "$OSS_ACCESS_KEY_SECRET"
+          done

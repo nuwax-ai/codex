@@ -1,0 +1,22 @@
+{
+  "name": "${PACKAGE_NAME}",
+  "version": "${VERSION}",
+  "description": "Fork of OpenAI Codex CLI - ${OS} ${ARCH} binary",
+  "license": "Apache-2.0",
+  "author": "soddygo <soddygo@qq.com>",
+  "homepage": "https://github.com/nuwax-ai/codex",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nuwax-ai/codex.git"
+  },
+  "os": [
+    "${OS}"
+  ],
+  "cpu": [
+    "${ARCH}"
+  ],
+  "files": [
+    "bin",
+    "codex-resources"
+  ]
+}

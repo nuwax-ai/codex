@@ -7,7 +7,7 @@ build = "build.rs"
 default-run = "codex"
 
 [[bin]]
-name = "codex"
+name = "nuwax-codex"
 path = "src/main.rs"
 
 [[bin]]
@@ -38,7 +38,7 @@ codex-cloud-config = { workspace = true }
 codex-cloud-tasks = { path = "../cloud-tasks" }
 codex-utils-cli = { workspace = true }
 codex-config = { workspace = true }
-codex-core = { workspace = true }
+codex-core = { workspace = true, features = ["rust-genai"] }
 codex-core-plugins = { workspace = true }
 codex-home = { workspace = true }
 codex-http-client = { workspace = true }

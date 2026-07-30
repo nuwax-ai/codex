@@ -1381,6 +1381,129 @@ impl ModelClientSession {
         }
     }
 
+    /// Streams a turn via the Chat Completions API using rust-genai.
+    ///
+    /// Converts the Codex `ResponsesApiRequest` to a genai `ChatRequest` and
+    /// bridges `ChatStreamEvent` back into `ResponseEvent` events so all
+    /// upstream consumers remain unchanged.
+    #[cfg(feature = "rust-genai")]
+    #[allow(clippy::too_many_arguments)]
+    #[instrument(
+        name = "model_client.stream_chat_api",
+        level = "info",
+        skip_all,
+        fields(
+            model = %model_info.slug,
+            wire_api = "chat",
+            transport = "chat_http",
+            http.method = "POST",
+            api.path = "chat/completions",
+            turn.has_metadata_header = true
+        )
+    )]
+    async fn stream_chat_api(
+        &self,
+        prompt: &Prompt,
+        model_info: &ModelInfo,
+        session_telemetry: &SessionTelemetry,
+        effort: Option<ReasoningEffortConfig>,
+        summary: ReasoningSummaryConfig,
+        service_tier: Option<String>,
+        responses_metadata: &CodexResponsesMetadata,
+        inference_trace: &InferenceTraceContext,
+    ) -> Result<ResponseStream> {
+        let auth_manager = self.client.state.provider.auth_manager();
+        let mut auth_recovery = auth_manager
+            .as_ref()
+            .map(AuthManager::unauthorized_recovery);
+        let mut pending_retry = PendingUnauthorizedRetry::default();
+        loop {
+            let client_setup = self.client.current_client_setup().await?;
+            let request_auth_context = AuthRequestTelemetryContext::new(
+                client_setup.auth.as_ref().map(CodexAuth::auth_mode),
+                client_setup.api_auth.as_ref(),
+                pending_retry,
+            );
+            let (_request_telemetry, _sse_telemetry) = Self::build_streaming_telemetry(
+                session_telemetry,
+                request_auth_context,
+                RequestRouteTelemetry::for_endpoint("chat/completions"),
+                self.client.state.auth_env_telemetry.clone(),
+            );
+            let compression = self.responses_request_compression(client_setup.auth.as_ref());
+            let mut options = self
+                .build_responses_options(responses_metadata, compression, false)
+                .await;
+
+            let request = self.client.build_responses_request(
+                &client_setup.api_provider,
+                prompt,
+                model_info,
+                effort.clone(),
+                summary.clone(),
+                service_tier.clone(),
+                responses_metadata,
+            )?;
+            let inference_trace_attempt = inference_trace.start_attempt();
+            inference_trace_attempt.add_request_headers(&mut options.extra_headers);
+            inference_trace_attempt.record_started(&request);
+
+            let adapter_kind = adapter_kind_for_provider();
+
+            let stream_result = codex_rust_genai_bridge::stream_via_genai(
+                &request,
+                &client_setup.api_provider,
+                &client_setup.api_auth,
+                options.extra_headers,
+                adapter_kind,
+                client_setup.api_provider.stream_idle_timeout,
+            )
+            .await;
+
+            match stream_result {
+                Ok(stream) => {
+                    let (stream, _) = map_response_stream(
+                        stream,
+                        session_telemetry.clone(),
+                        inference_trace_attempt,
+                    );
+                    return Ok(stream);
+                }
+                Err(ApiError::Transport(
+                    unauthorized_transport @ TransportError::Http { status, .. },
+                )) if status == HttpStatusCode::UNAUTHORIZED => {
+                    let response_debug_context =
+                        extract_response_debug_context(&unauthorized_transport);
+                    inference_trace_attempt.record_failed(
+                        &unauthorized_transport,
+                        response_debug_context.request_id.as_deref(),
+                        &[],
+                    );
+                    pending_retry = PendingUnauthorizedRetry::from_recovery(
+                        handle_unauthorized(
+                            unauthorized_transport,
+                            &mut auth_recovery,
+                            session_telemetry,
+                        )
+                        .await?,
+                    );
+                    continue;
+                }
+                Err(err) => {
+                    let response_debug_context =
+                        extract_response_debug_context_from_api_error(&err);
+                    let err = map_api_error(err);
+                    inference_trace_attempt.record_failed(
+                        &err,
+                        response_debug_context.request_id.as_deref(),
+                        &[],
+                    );
+                    return Err(err);
+                }
+            }
+        }
+    }
+
     /// Streams a turn via the OpenAI Responses API.
     ///
     /// Handles reasoning summaries, verbosity, and the `text` controls used for output schemas.
@@ -1847,6 +1970,24 @@ impl ModelClientSession {
                 )
                 .await
             }
+            #[cfg(feature = "rust-genai")]
+            WireApi::Chat => {
+                self.stream_chat_api(
+                    prompt,
+                    model_info,
+                    session_telemetry,
+                    effort,
+                    summary,
+                    service_tier,
+                    responses_metadata,
+                    inference_trace,
+                )
+                .await
+            }
+            #[cfg(not(feature = "rust-genai"))]
+            WireApi::Chat => Err(CodexErr::Fatal(
+                "Chat API requires the `rust-genai` feature to be enabled".into(),
+            )),
         }
     }
 
@@ -2439,6 +2580,15 @@ impl WebsocketTelemetry for ApiTelemetry {
         self.session_telemetry
             .record_websocket_event(result, duration);
     }
+}
+
+#[cfg(feature = "rust-genai")]
+fn adapter_kind_for_provider() -> genai::adapter::AdapterKind {
+    // This function is only called for the Chat API path (wire_api == Chat).
+    // All Chat Completions providers use OpenAI-compatible protocol.
+    // The bridge overrides endpoint and auth via resolver functions,
+    // so AdapterKind::OpenAI works universally.
+    genai::adapter::AdapterKind::OpenAI
 }
 
 #[cfg(test)]

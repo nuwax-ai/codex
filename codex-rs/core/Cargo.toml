@@ -58,10 +58,12 @@ codex-plugin = { workspace = true }
 codex-model-provider = { workspace = true }
 codex-protocol = { workspace = true }
 codex-response-debug-context = { workspace = true }
+codex-rust-genai-bridge = { workspace = true, optional = true }
 codex-prompts = { workspace = true }
 codex-rollout = { workspace = true }
 codex-rollout-trace = { workspace = true }
 codex-rmcp-client = { workspace = true }
+genai = { workspace = true, optional = true }
 codex-sandboxing = { workspace = true }
 codex-skills = { workspace = true }
 codex-state = { workspace = true }
@@ -79,6 +81,7 @@ codex-utils-plugins = { workspace = true }
 codex-utils-pty = { workspace = true }
 codex-utils-string = { workspace = true }
 codex-utils-stream-parser = { workspace = true }
+codex-utils-template = { workspace = true }
 codex-windows-sandbox = { package = "codex-windows-sandbox", path = "../windows-sandbox-rs" }
 dirs = { workspace = true }
 dunce = { workspace = true }
@@ -170,3 +173,7 @@ zstd = { workspace = true }
 [package.metadata.cargo-shear]
 ignored = ["openssl-sys"]
 ignored-paths = ["tests/remote_env_windows/*.rs"]
+
+[features]
+default = []
+rust-genai = ["dep:codex-rust-genai-bridge", "dep:genai"]

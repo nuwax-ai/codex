@@ -1,0 +1,37 @@
+{
+  "name": "nuwax-codex",
+  "version": "0.16.13",
+  "type": "module",
+  "description": "Fork of OpenAI Codex CLI with domestic (Chinese) LLM support via genai",
+  "license": "Apache-2.0",
+  "author": "soddygo <soddygo@qq.com>",
+  "homepage": "https://github.com/nuwax-ai/codex",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nuwax-ai/codex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nuwax-ai/codex/issues"
+  },
+  "keywords": [
+    "codex",
+    "agent",
+    "coding",
+    "ai",
+    "assistant",
+    "llm",
+    "genai"
+  ],
+  "bin": {
+    "nuwax-codex": "bin/nuwax-codex.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "detect-libc": "^2.0.0"
+  }
+}
