@@ -407,7 +407,8 @@ jobs:
         run: |
           set +e
           failed=()
-          for pkg in npm-platform-packages/*/; do
+          # Publish Windows packages first to avoid spam detection on the most-needed platforms
+          for pkg in $(find npm-platform-packages -maxdepth 1 -type d ! -name npm-platform-packages | sort -r); do
             name=$(basename "$pkg")
             echo "Publishing $name to npm (latest)..."
             rc=1
