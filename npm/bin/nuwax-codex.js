@@ -14,7 +14,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const VERSION = require("../package.json").version;
-const OSS_CDN_BASE = "https://nuwa-packages.oss-rg-china-mainland.aliyuncs.com/nuwax-codex-ts";
+const OSS_CDN_BASE = "https://nuwa-packages.oss-rg-china-mainland.aliyuncs.com/nuwax-codex";
 
 // -- platform helpers -------------------------------------------------------
 

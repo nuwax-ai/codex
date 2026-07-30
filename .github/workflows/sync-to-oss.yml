@@ -24,7 +24,7 @@ env:
   OSS_REGION: "rg-china-mainland"
   OSS_BUCKET: "oss://nuwa-packages"
   OSS_CDN_BASE: "https://nuwa-packages.oss-rg-china-mainland.aliyuncs.com"
-  OSS_PREFIX: "nuwax-codex-ts"
+  OSS_PREFIX: "nuwax-codex"
 
 jobs:
   sync:

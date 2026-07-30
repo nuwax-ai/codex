@@ -1,5 +1,5 @@
 {
-  "name": "nuwax-codex-ts",
+  "name": "nuwax-codex",
   "version": "0.0.0",
   "type": "module",
   "description": "Fork of OpenAI Codex CLI with domestic (Chinese) LLM support via genai",
@@ -23,7 +23,7 @@
     "genai"
   ],
   "bin": {
-    "nuwax-codex-ts": "bin/nuwax-codex.js"
+    "nuwax-codex": "bin/nuwax-codex.js"
   },
   "files": [
     "bin"
