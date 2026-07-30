@@ -53,11 +53,13 @@ impl ListMcpResourcesHandler {
     ) -> Result<Box<dyn crate::tools::context::ToolOutput>, FunctionCallError> {
         let ToolInvocation {
             session,
-            turn,
+            step_context,
             call_id,
             payload,
             ..
         } = invocation;
+        let turn = std::sync::Arc::clone(&step_context.turn);
+        let mcp = &step_context.mcp;
 
         let arguments = match payload {
             ToolPayload::Function { arguments } => arguments,
@@ -89,7 +91,7 @@ impl ListMcpResourcesHandler {
                 let params = cursor
                     .clone()
                     .map(|value| PaginatedRequestParams::default().with_cursor(Some(value)));
-                let result = session
+                let result = mcp
                     .list_resources(&server_name, params)
                     .await
                     .map_err(|err| {
@@ -106,10 +108,7 @@ impl ListMcpResourcesHandler {
                     ));
                 }
 
-                let resources = session
-                    .services
-                    .mcp_connection_manager
-                    .load_full()
+                let resources = mcp
                     .list_all_resources(|server_name| {
                         model_can_access_mcp_server(turn.as_ref(), server_name)
                     })

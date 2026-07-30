@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use codex_features::Feature;
 use codex_login::CodexAuth;
@@ -36,6 +38,7 @@ use core_test_support::test_codex::local_selections;
 use core_test_support::test_codex::test_codex;
 use core_test_support::test_codex::turn_permission_fields;
 use core_test_support::wait_for_event;
+use core_test_support::wait_for_event_with_timeout;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 use wiremock::MockServer;
@@ -131,7 +134,10 @@ async fn remote_model_override_uses_catalog_model_for_strict_auto_review() -> Re
 
     let models_manager = thread_manager.get_models_manager();
     models_manager
-        .list_models(RefreshStrategy::OnlineIfUncached)
+        .list_models(
+            RefreshStrategy::OnlineIfUncached,
+            codex_core::test_support::default_http_client_factory(),
+        )
         .await;
     let model_info = models_manager
         .get_model_info(model, &config.to_models_manager_config())
@@ -194,7 +200,12 @@ async fn remote_model_override_uses_catalog_model_for_strict_auto_review() -> Re
         })
         .await?;
 
-    wait_for_event(&codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+    wait_for_event_with_timeout(
+        &codex,
+        |event| matches!(event, EventMsg::TurnComplete(_)),
+        Duration::from_secs(15),
+    )
+    .await;
 
     let guardian_request = responses
         .requests()
@@ -241,7 +252,8 @@ fn remote_model_with_auto_review_override(slug: &str, review_model: &str) -> Mod
         upgrade: None,
         base_instructions: "base instructions".to_string(),
         model_messages: None,
-        supports_reasoning_summaries: false,
+        include_skills_usage_instructions: false,
+        supports_reasoning_summary_parameter: true,
         default_reasoning_summary: ReasoningSummary::Auto,
         support_verbosity: false,
         default_verbosity: None,

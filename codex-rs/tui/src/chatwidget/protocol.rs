@@ -147,6 +147,9 @@ impl ChatWidget {
             ServerNotification::ModelVerification(notification) => {
                 self.on_app_server_model_verification(&notification.verifications)
             }
+            ServerNotification::ModelSafetyBufferingUpdated(notification) => {
+                self.on_model_safety_buffering_updated(notification, replay_kind)
+            }
             ServerNotification::Warning(notification) => self.on_warning(notification.message),
             ServerNotification::GuardianWarning(notification) => {
                 self.on_warning(notification.message)
@@ -197,6 +200,7 @@ impl ChatWidget {
             | ServerNotification::ThreadDeleted(_)
             | ServerNotification::ThreadUnarchived(_)
             | ServerNotification::RawResponseItemCompleted(_)
+            | ServerNotification::RawResponseCompleted(_)
             | ServerNotification::CommandExecOutputDelta(_)
             | ServerNotification::ProcessOutputDelta(_)
             | ServerNotification::ProcessExited(_)
@@ -204,11 +208,12 @@ impl ChatWidget {
             | ServerNotification::McpToolCallProgress(_)
             | ServerNotification::McpServerOauthLoginCompleted(_)
             | ServerNotification::AppListUpdated(_)
+            | ServerNotification::EnvironmentConnected(_)
+            | ServerNotification::EnvironmentDisconnected(_)
             | ServerNotification::RemoteControlStatusChanged(_)
             | ServerNotification::ExternalAgentConfigImportProgress(_)
             | ServerNotification::ExternalAgentConfigImportCompleted(_)
             | ServerNotification::FsChanged(_)
-            | ServerNotification::ModelSafetyBufferingUpdated(_)
             | ServerNotification::TurnModerationMetadata(_)
             | ServerNotification::FuzzyFileSearchSessionUpdated(_)
             | ServerNotification::FuzzyFileSearchSessionCompleted(_)
@@ -238,12 +243,43 @@ impl ChatWidget {
         self.last_rendered_user_message_display = None;
         match notification.turn.status {
             TurnStatus::Completed => {
+                let last_agent_message =
+                    notification
+                        .turn
+                        .items
+                        .iter()
+                        .rev()
+                        .find_map(|item| match item {
+                            ThreadItem::AgentMessage {
+                                id,
+                                text,
+                                phase: Some(MessagePhase::FinalAnswer) | None,
+                                ..
+                            } => Some((item.clone(), id.clone(), text.clone())),
+                            _ => None,
+                        });
+                if let Some((item, id, _)) = &last_agent_message
+                    && self
+                        .transcript
+                        .last_completed_agent_message
+                        .as_ref()
+                        .is_none_or(|(turn_id, item_id)| {
+                            turn_id != &notification.turn.id || item_id != id
+                        })
+                {
+                    self.handle_thread_item(
+                        item.clone(),
+                        notification.turn.id.clone(),
+                        replay_kind
+                            .map_or(ThreadItemRenderSource::Live, ThreadItemRenderSource::Replay),
+                    );
+                }
                 self.last_non_retry_error = None;
                 self.on_task_complete(
-                    /*last_agent_message*/ None,
+                    last_agent_message.map(|(_, _, text)| text),
                     notification.turn.duration_ms,
                     replay_kind.is_some(),
-                )
+                );
             }
             TurnStatus::Interrupted => {
                 self.last_non_retry_error = None;
@@ -288,10 +324,10 @@ impl ChatWidget {
                 self.on_patch_apply_begin(file_update_changes_to_display(changes));
             }
             item @ ThreadItem::McpToolCall { .. } => self.on_mcp_tool_call_started(item),
-            ThreadItem::WebSearch { id, .. } => {
-                self.on_web_search_begin(id);
+            ThreadItem::WebSearch(item) => {
+                self.on_web_search_begin(item.id);
             }
-            ThreadItem::ImageGeneration { .. } => {
+            ThreadItem::ImageGeneration(_) => {
                 self.on_image_generation_begin();
             }
             ThreadItem::CollabAgentToolCall {

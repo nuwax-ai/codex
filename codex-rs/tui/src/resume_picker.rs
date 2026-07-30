@@ -9,6 +9,7 @@ use crate::clipboard_paste::normalize_pasted_search_query;
 use crate::color::blend;
 use crate::color::is_light;
 use crate::git_action_directives::parse_assistant_markdown;
+use crate::inline_visualization::InlineVisualizationContext;
 use crate::key_hint::KeyBindingListExt;
 use crate::key_hint::is_plain_text_key_event;
 use crate::keymap::ListKeymap;
@@ -377,6 +378,7 @@ async fn run_resume_picker_with_launch_context(
             app_server,
             include_non_interactive,
             raw_reasoning_visibility(config),
+            (!uses_remote_workspace).then(|| config.codex_home.to_path_buf()),
             bg_tx,
         ),
         bg_rx,
@@ -422,6 +424,7 @@ pub async fn run_fork_picker_with_app_server(
             app_server,
             /*include_non_interactive*/ false,
             raw_reasoning_visibility(config),
+            (!uses_remote_workspace).then(|| config.codex_home.to_path_buf()),
             bg_tx,
         ),
         bg_rx,
@@ -551,6 +554,7 @@ fn spawn_app_server_page_loader(
     app_server: AppServerSession,
     include_non_interactive: bool,
     raw_reasoning_visibility: RawReasoningVisibility,
+    codex_home: Option<PathBuf>,
     bg_tx: mpsc::UnboundedSender<BackgroundEvent>,
 ) -> PickerLoader {
     let (request_tx, mut request_rx) = mpsc::unbounded_channel::<PickerLoadRequest>();
@@ -577,7 +581,9 @@ fn spawn_app_server_page_loader(
                     });
                 }
                 PickerLoadRequest::Preview { thread_id } => {
-                    let preview = load_transcript_preview(&mut app_server, thread_id).await;
+                    let preview =
+                        load_transcript_preview(&mut app_server, thread_id, codex_home.as_deref())
+                            .await;
                     let _ = bg_tx.send(BackgroundEvent::Preview { thread_id, preview });
                 }
                 PickerLoadRequest::Transcript { thread_id } => {
@@ -585,6 +591,7 @@ fn spawn_app_server_page_loader(
                         &mut app_server,
                         thread_id,
                         raw_reasoning_visibility,
+                        codex_home.as_deref(),
                     )
                     .await;
                     let _ = bg_tx.send(BackgroundEvent::Transcript {
@@ -608,7 +615,9 @@ fn spawn_app_server_page_loader(
 fn sort_key_label(sort_key: ThreadSortKey) -> &'static str {
     match sort_key {
         ThreadSortKey::CreatedAt => "Created",
-        ThreadSortKey::UpdatedAt | ThreadSortKey::RecencyAt => "Updated",
+        ThreadSortKey::UpdatedAt | ThreadSortKey::RecencyAt | ThreadSortKey::SectionPosition => {
+            "Updated"
+        }
     }
 }
 
@@ -765,6 +774,7 @@ async fn load_app_server_page(
 async fn load_transcript_preview(
     app_server: &mut AppServerSession,
     thread_id: ThreadId,
+    codex_home: Option<&Path>,
 ) -> std::io::Result<Vec<TranscriptPreviewLine>> {
     const MAX_PREVIEW_LINES: usize = 6;
 
@@ -773,6 +783,11 @@ async fn load_transcript_preview(
         .await
         .map_err(std::io::Error::other)?;
     let cwd = thread.cwd.as_path();
+    let inline_visualization_context = codex_home.and_then(|codex_home| {
+        ThreadId::from_string(&thread.id)
+            .ok()
+            .and_then(|thread_id| InlineVisualizationContext::new(codex_home, thread_id))
+    });
     let mut lines = thread
         .turns
         .iter()
@@ -791,10 +806,27 @@ async fn load_transcript_preview(
                     .collect::<Vec<_>>()
                     .join(" "),
             }),
-            ThreadItem::AgentMessage { text, .. } => Some(TranscriptPreviewLine {
-                speaker: TranscriptPreviewSpeaker::Assistant,
-                text: parse_assistant_markdown(text, cwd).visible_markdown,
-            }),
+            ThreadItem::AgentMessage { text, .. } => {
+                let visible_markdown = parse_assistant_markdown(text, cwd).visible_markdown;
+                let rewritten = crate::inline_visualization::rewrite_inline_visualizations(
+                    &visible_markdown,
+                    inline_visualization_context.as_ref(),
+                );
+                let mut text = rewritten.markdown.into_owned();
+                for (placeholder, link) in &rewritten.trusted_file_links {
+                    text = text.replace(
+                        &format!(
+                            "{}  \n[{}]({placeholder})",
+                            link.markdown_label, link.markdown_destination_label
+                        ),
+                        &format!("{}  \n{}", link.display_label, link.destination),
+                    );
+                }
+                Some(TranscriptPreviewLine {
+                    speaker: TranscriptPreviewSpeaker::Assistant,
+                    text,
+                })
+            }
             _ => None,
         })
         .flat_map(|line| {
@@ -1614,7 +1646,9 @@ impl PickerState {
     fn toggle_sort_key(&mut self) {
         self.sort_key = match self.sort_key {
             ThreadSortKey::CreatedAt => ThreadSortKey::UpdatedAt,
-            ThreadSortKey::UpdatedAt | ThreadSortKey::RecencyAt => ThreadSortKey::CreatedAt,
+            ThreadSortKey::UpdatedAt
+            | ThreadSortKey::RecencyAt
+            | ThreadSortKey::SectionPosition => ThreadSortKey::CreatedAt,
         };
         self.start_initial_load();
     }
@@ -1821,7 +1855,9 @@ fn thread_list_params(
         },
         source_kinds: Some(crate::resume_source_kinds(include_non_interactive)),
         archived: Some(false),
+        section_id: None,
         parent_thread_id: None,
+        ancestor_thread_id: None,
         cwd: cwd_filter.map(|cwd| ThreadListCwdFilter::One(cwd.to_string_lossy().into_owned())),
         use_state_db_only: false,
         search_term: None,
@@ -1870,11 +1906,11 @@ fn draw_picker(tui: &mut Tui, state: &PickerState) -> std::io::Result<()> {
             state.action.title().bold().cyan()
         };
         let header_line: Line = vec![header_title].into();
-        frame.render_widget_ref(header_line, chrome(header));
+        frame.render_widget_ref(&header_line, chrome(header));
 
         // Search line
         let search = chrome(search);
-        frame.render_widget_ref(search_line(state, search.width), search);
+        frame.render_widget_ref(&search_line(state, search.width), search);
 
         let list = Rect::new(
             list.x.saturating_add(2),
@@ -2044,7 +2080,7 @@ fn render_picker_footer(
         if y >= area.bottom() {
             break;
         }
-        frame.render_widget_ref(line, Rect::new(area.x, y, area.width, 1));
+        frame.render_widget_ref(&line, Rect::new(area.x, y, area.width, 1));
     }
 }
 
@@ -2058,7 +2094,7 @@ fn render_picker_footer_separator(
     }
 
     let separator = "─".repeat(area.width as usize);
-    frame.render_widget_ref(Line::from(separator.dim()), area);
+    frame.render_widget_ref(&Line::from(separator.dim()), area);
 
     let progress_width = UnicodeWidthStr::width(progress_label.as_str()) as u16;
     if progress_width < area.width {
@@ -2068,7 +2104,7 @@ fn render_picker_footer_separator(
             progress_width,
             1,
         );
-        frame.render_widget_ref(Line::from(progress_label.dim()), percent_area);
+        frame.render_widget_ref(&Line::from(progress_label.dim()), percent_area);
     }
 }
 
@@ -2307,7 +2343,7 @@ fn render_transcript_loading_overlay(frame: &mut crate::custom_terminal::Frame, 
         message_width.min(overlay.width),
         1,
     );
-    frame.render_widget_ref(Line::from(message.bold()), line);
+    frame.render_widget_ref(&Line::from(message.bold()), line);
 }
 
 fn transcript_loading_overlay_style() -> Style {
@@ -2424,7 +2460,7 @@ fn render_list(frame: &mut crate::custom_terminal::Frame, area: Rect, state: &Pi
     let rows = &state.filtered_rows;
     if rows.is_empty() {
         let message = render_empty_state_line(state);
-        frame.render_widget_ref(message, area);
+        frame.render_widget_ref(&message, area);
         return;
     }
 
@@ -2440,7 +2476,7 @@ fn render_list(frame: &mut crate::custom_terminal::Frame, area: Rect, state: &Pi
     );
     if show_more_above {
         frame.render_widget_ref(
-            more_line("↑ more"),
+            &more_line("↑ more"),
             Rect::new(area.x, area.y, area.width, 1),
         );
     }
@@ -2461,7 +2497,7 @@ fn render_list(frame: &mut crate::custom_terminal::Frame, area: Rect, state: &Pi
             if y >= content_area.y.saturating_add(content_area.height) {
                 break;
             }
-            frame.render_widget_ref(line, Rect::new(area.x, y, area.width, 1));
+            frame.render_widget_ref(&line, Rect::new(area.x, y, area.width, 1));
             y = y.saturating_add(1);
         }
         if state.density == SessionListDensity::Comfortable
@@ -2477,7 +2513,7 @@ fn render_list(frame: &mut crate::custom_terminal::Frame, area: Rect, state: &Pi
     {
         let loading_line: Line = vec!["  ".into(), "Loading older sessions…".italic().dim()].into();
         let rect = Rect::new(area.x, y, area.width, 1);
-        frame.render_widget_ref(loading_line, rect);
+        frame.render_widget_ref(&loading_line, rect);
     }
     if show_more_below {
         let label = if state.pagination.loading.is_pending() {
@@ -2486,7 +2522,7 @@ fn render_list(frame: &mut crate::custom_terminal::Frame, area: Rect, state: &Pi
             "↓ more"
         };
         frame.render_widget_ref(
-            more_line(label),
+            &more_line(label),
             Rect::new(
                 area.x,
                 area.y.saturating_add(area.height.saturating_sub(1)),
@@ -2613,7 +2649,9 @@ fn render_dense_session_lines(
     let updated = format_relative_time(reference, row.updated_at.or(row.created_at));
     let date = match state.sort_key {
         ThreadSortKey::CreatedAt => created,
-        ThreadSortKey::UpdatedAt | ThreadSortKey::RecencyAt => updated,
+        ThreadSortKey::UpdatedAt | ThreadSortKey::RecencyAt | ThreadSortKey::SectionPosition => {
+            updated
+        }
     };
     let mut lines = vec![dense_summary_line(DenseSummaryInput {
         marker,
@@ -2742,7 +2780,9 @@ fn render_footer_lines(
 ) -> Vec<Line<'static>> {
     let date = match sort_key {
         ThreadSortKey::CreatedAt => created,
-        ThreadSortKey::UpdatedAt | ThreadSortKey::RecencyAt => updated,
+        ThreadSortKey::UpdatedAt | ThreadSortKey::RecencyAt | ThreadSortKey::SectionPosition => {
+            updated
+        }
     };
     let mut parts = vec![FooterPart::Date(date.to_string())];
     if show_cwd {
@@ -3732,7 +3772,7 @@ mod tests {
         {
             let mut frame = terminal.get_frame();
             let line = search_line(&state, frame.area().width);
-            frame.render_widget_ref(line, frame.area());
+            frame.render_widget_ref(&line, frame.area());
         }
         terminal.flush().expect("flush");
 
@@ -4631,7 +4671,7 @@ session_picker_view = "dense"
         {
             let mut frame = terminal.get_frame();
             let line = search_line(&state, frame.area().width);
-            frame.render_widget_ref(line, frame.area());
+            frame.render_widget_ref(&line, frame.area());
         }
         terminal.flush().expect("flush");
 
@@ -5720,11 +5760,15 @@ session_picker_view = "dense"
         let thread_id = ThreadId::new();
         let thread = Thread {
             id: thread_id.to_string(),
+            extra: None,
             session_id: thread_id.to_string(),
             forked_from_id: None,
             parent_thread_id: None,
             preview: String::from("remote thread"),
             ephemeral: false,
+            section: None,
+            section_entered_at: None,
+            history_mode: Default::default(),
             model_provider: String::from("openai"),
             created_at: 1,
             updated_at: 2,
@@ -5734,6 +5778,7 @@ session_picker_view = "dense"
             cwd: test_path_buf("/tmp").abs(),
             cli_version: String::from("0.0.0"),
             source: codex_app_server_protocol::SessionSource::Cli,
+            can_accept_direct_input: None,
             thread_source: None,
             agent_nickname: None,
             agent_role: None,
@@ -5756,11 +5801,15 @@ session_picker_view = "dense"
         let thread_id = ThreadId::new();
         let thread = Thread {
             id: thread_id.to_string(),
+            extra: None,
             session_id: thread_id.to_string(),
             forked_from_id: None,
             parent_thread_id: None,
             preview: String::from("preview"),
             ephemeral: false,
+            section: None,
+            section_entered_at: None,
+            history_mode: Default::default(),
             model_provider: String::from("openai"),
             created_at: 1,
             updated_at: 2,
@@ -5770,6 +5819,7 @@ session_picker_view = "dense"
             cwd: test_path_buf("/tmp").abs(),
             cli_version: String::from("0.0.0"),
             source: codex_app_server_protocol::SessionSource::Cli,
+            can_accept_direct_input: None,
             thread_source: None,
             agent_nickname: None,
             agent_role: None,
@@ -5806,12 +5856,16 @@ session_picker_view = "dense"
             }],
         };
 
-        let rendered = thread_to_transcript_cells(&thread, RawReasoningVisibility::Visible)
-            .into_iter()
-            .flat_map(|cell| cell.transcript_lines(/*width*/ 80))
-            .map(|line| line.to_string())
-            .collect::<Vec<_>>()
-            .join("\n");
+        let rendered = thread_to_transcript_cells(
+            thread,
+            RawReasoningVisibility::Visible,
+            /*codex_home*/ None,
+        )
+        .into_iter()
+        .flat_map(|cell| cell.transcript_lines(/*width*/ 80))
+        .map(|line| line.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
 
         assert!(rendered.contains("hello from user"));
         assert!(rendered.contains("hello from assistant"));
@@ -5826,11 +5880,15 @@ session_picker_view = "dense"
         let thread_id = ThreadId::new();
         let thread = Thread {
             id: thread_id.to_string(),
+            extra: None,
             session_id: thread_id.to_string(),
             forked_from_id: None,
             parent_thread_id: None,
             preview: String::from("preview"),
             ephemeral: false,
+            section: None,
+            section_entered_at: None,
+            history_mode: Default::default(),
             model_provider: String::from("openai"),
             created_at: 1,
             updated_at: 2,
@@ -5840,6 +5898,7 @@ session_picker_view = "dense"
             cwd: test_path_buf("/tmp").abs(),
             cli_version: String::from("0.0.0"),
             source: codex_app_server_protocol::SessionSource::Cli,
+            can_accept_direct_input: None,
             thread_source: None,
             agent_nickname: None,
             agent_role: None,
@@ -5861,18 +5920,26 @@ session_picker_view = "dense"
             }],
         };
 
-        let hidden = thread_to_transcript_cells(&thread, RawReasoningVisibility::Hidden)
-            .into_iter()
-            .flat_map(|cell| cell.transcript_lines(/*width*/ 80))
-            .map(|line| line.to_string())
-            .collect::<Vec<_>>()
-            .join("\n");
-        let visible = thread_to_transcript_cells(&thread, RawReasoningVisibility::Visible)
-            .into_iter()
-            .flat_map(|cell| cell.transcript_lines(/*width*/ 80))
-            .map(|line| line.to_string())
-            .collect::<Vec<_>>()
-            .join("\n");
+        let hidden = thread_to_transcript_cells(
+            thread.clone(),
+            RawReasoningVisibility::Hidden,
+            /*codex_home*/ None,
+        )
+        .into_iter()
+        .flat_map(|cell| cell.transcript_lines(/*width*/ 80))
+        .map(|line| line.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+        let visible = thread_to_transcript_cells(
+            thread,
+            RawReasoningVisibility::Visible,
+            /*codex_home*/ None,
+        )
+        .into_iter()
+        .flat_map(|cell| cell.transcript_lines(/*width*/ 80))
+        .map(|line| line.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
 
         assert!(!hidden.contains("private raw chain of thought"));
         assert!(visible.contains("private raw chain of thought"));
@@ -5885,11 +5952,15 @@ session_picker_view = "dense"
         let thread_id = ThreadId::new();
         let thread = Thread {
             id: thread_id.to_string(),
+            extra: None,
             session_id: thread_id.to_string(),
             forked_from_id: None,
             parent_thread_id: None,
             preview: String::from("preview"),
             ephemeral: false,
+            section: None,
+            section_entered_at: None,
+            history_mode: Default::default(),
             model_provider: String::from("openai"),
             created_at: 1,
             updated_at: 2,
@@ -5899,6 +5970,7 @@ session_picker_view = "dense"
             cwd: test_path_buf("/tmp").abs(),
             cli_version: String::from("0.0.0"),
             source: codex_app_server_protocol::SessionSource::Cli,
+            can_accept_direct_input: None,
             thread_source: None,
             agent_nickname: None,
             agent_role: None,
@@ -5920,12 +5992,16 @@ session_picker_view = "dense"
             }],
         };
 
-        let rendered = thread_to_transcript_cells(&thread, RawReasoningVisibility::Visible)
-            .into_iter()
-            .flat_map(|cell| cell.transcript_lines(/*width*/ 80))
-            .map(|line| line.to_string())
-            .collect::<Vec<_>>()
-            .join("\n");
+        let rendered = thread_to_transcript_cells(
+            thread,
+            RawReasoningVisibility::Visible,
+            /*codex_home*/ None,
+        )
+        .into_iter()
+        .flat_map(|cell| cell.transcript_lines(/*width*/ 80))
+        .map(|line| line.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
 
         assert!(rendered.contains("raw reasoning content"));
         assert!(!rendered.contains("public summary"));

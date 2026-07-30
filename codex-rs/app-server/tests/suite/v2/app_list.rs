@@ -6,10 +6,10 @@ use std::sync::Mutex as StdMutex;
 use std::time::Duration;
 
 use anyhow::Result;
-use anyhow::bail;
 use app_test_support::ChatGptAuthFixture;
+use app_test_support::ChatGptIdTokenClaims;
 use app_test_support::TestAppServer;
-use app_test_support::to_response;
+use app_test_support::encode_id_token;
 use app_test_support::write_chatgpt_auth;
 use axum::Json;
 use axum::Router;
@@ -27,22 +27,21 @@ use codex_app_server_protocol::AppReview;
 use codex_app_server_protocol::AppScreenshot;
 use codex_app_server_protocol::AppsListParams;
 use codex_app_server_protocol::AppsListResponse;
-use codex_app_server_protocol::AuthMode;
 use codex_app_server_protocol::JSONRPCError;
-use codex_app_server_protocol::JSONRPCResponse;
+use codex_app_server_protocol::LoginAccountResponse;
 use codex_app_server_protocol::RequestId;
-use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_login::AuthDotJson;
 use codex_login::AuthKeyringBackendKind;
 use codex_login::save_auth;
+use codex_protocol::auth::AuthMode;
 use pretty_assertions::assert_eq;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::JsonObject;
 use rmcp::model::ListToolsResult;
-use rmcp::model::Meta;
+use rmcp::model::MetaObject;
 use rmcp::model::ServerCapabilities;
 use rmcp::model::ServerInfo;
 use rmcp::model::Tool;
@@ -63,9 +62,11 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 #[tokio::test]
 async fn list_apps_returns_empty_when_connectors_disabled() -> Result<()> {
     let codex_home = TempDir::new()?;
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
-
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
 
     let request_id = mcp
         .send_apps_list_request(AppsListParams {
@@ -76,13 +77,8 @@ async fn list_apps_returns_empty_when_connectors_disabled() -> Result<()> {
         })
         .await?;
 
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-
-    let AppsListResponse { data, next_cursor } = to_response(response)?;
+    let AppsListResponse { data, next_cursor } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
 
     assert!(data.is_empty());
     assert!(next_cursor.is_none());
@@ -97,6 +93,8 @@ async fn list_apps_returns_empty_with_api_key_auth() -> Result<()> {
         description: Some("Beta connector".to_string()),
         logo_url: None,
         logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
         distribution_channel: None,
         branding: None,
         app_metadata: None,
@@ -127,8 +125,11 @@ async fn list_apps_returns_empty_with_api_key_auth() -> Result<()> {
         AuthKeyringBackendKind::default(),
     )?;
 
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
 
     let request_id = mcp
         .send_apps_list_request(AppsListParams {
@@ -139,14 +140,85 @@ async fn list_apps_returns_empty_with_api_key_auth() -> Result<()> {
         })
         .await?;
 
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-
-    let AppsListResponse { data, next_cursor } = to_response(response)?;
+    let AppsListResponse { data, next_cursor } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
     assert!(data.is_empty());
+    assert!(next_cursor.is_none());
+
+    server_handle.abort();
+    let _ = server_handle.await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn list_apps_uses_external_chatgpt_auth() -> Result<()> {
+    let access_token = encode_id_token(
+        &ChatGptIdTokenClaims::new()
+            .email("external@example.com")
+            .plan_type("pro")
+            .chatgpt_account_id("account-123"),
+    )?;
+    let connectors = vec![AppInfo {
+        id: "beta".to_string(),
+        name: "Beta".to_string(),
+        description: Some("Beta connector".to_string()),
+        logo_url: None,
+        logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
+        distribution_channel: None,
+        branding: None,
+        app_metadata: None,
+        labels: None,
+        install_url: None,
+        is_accessible: false,
+        is_enabled: true,
+        plugin_display_names: Vec::new(),
+    }];
+    let tools = vec![connector_tool("beta", "Beta App")?];
+    let (server_url, server_handle, _) = start_apps_server_with_delays_and_control_inner(
+        connectors,
+        tools,
+        Duration::ZERO,
+        Duration::ZERO,
+        /*workspace_plugins_enabled*/ true,
+        &access_token,
+    )
+    .await?;
+
+    let codex_home = TempDir::new()?;
+    write_connectors_config(codex_home.path(), &server_url)?;
+
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
+    let login_id = mcp
+        .send_chatgpt_auth_tokens_login_request(
+            access_token,
+            "account-123".to_string(),
+            Some("pro".to_string()),
+        )
+        .await?;
+    let login_response: LoginAccountResponse =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(login_id)).await??;
+    assert_eq!(login_response, LoginAccountResponse::ChatgptAuthTokens {});
+
+    let request_id = mcp
+        .send_apps_list_request(AppsListParams {
+            limit: None,
+            cursor: None,
+            thread_id: None,
+            force_refetch: true,
+        })
+        .await?;
+    let AppsListResponse { data, next_cursor } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
+
+    assert_eq!(data.len(), 1);
+    assert_eq!(data[0].id, "beta");
+    assert!(data[0].is_accessible);
     assert!(next_cursor.is_none());
 
     server_handle.abort();
@@ -162,6 +234,8 @@ async fn list_apps_returns_empty_when_workspace_codex_plugins_disabled() -> Resu
         description: Some("Beta connector".to_string()),
         logo_url: None,
         logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
         distribution_channel: None,
         branding: None,
         app_metadata: None,
@@ -189,8 +263,12 @@ async fn list_apps_returns_empty_when_workspace_codex_plugins_disabled() -> Resu
         AuthCredentialsStoreMode::File,
     )?;
 
-    let mut mcp = TestAppServer::new_without_managed_config(codex_home.path()).await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .without_managed_config()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
 
     let request_id = mcp
         .send_apps_list_request(AppsListParams {
@@ -201,13 +279,8 @@ async fn list_apps_returns_empty_when_workspace_codex_plugins_disabled() -> Resu
         })
         .await?;
 
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-
-    let AppsListResponse { data, next_cursor } = to_response(response)?;
+    let AppsListResponse { data, next_cursor } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
     assert!(data.is_empty());
     assert!(next_cursor.is_none());
 
@@ -234,8 +307,11 @@ async fn list_apps_includes_plugin_apps_for_chatgpt_auth() -> Result<()> {
         AuthCredentialsStoreMode::File,
     )?;
 
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
 
     let request_id = mcp
         .send_apps_list_request(AppsListParams {
@@ -245,12 +321,8 @@ async fn list_apps_includes_plugin_apps_for_chatgpt_auth() -> Result<()> {
             force_refetch: false,
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-    let AppsListResponse { data, next_cursor } = to_response(response)?;
+    let AppsListResponse { data, next_cursor } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
 
     assert!(data.iter().any(|app| app.id == "connector_sample"));
     assert!(next_cursor.is_none());
@@ -268,6 +340,8 @@ async fn list_apps_uses_thread_feature_flag_when_thread_id_is_provided() -> Resu
         description: Some("Beta connector".to_string()),
         logo_url: None,
         logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
         distribution_channel: None,
         branding: None,
         app_metadata: None,
@@ -292,18 +366,16 @@ async fn list_apps_uses_thread_feature_flag_when_thread_id_is_provided() -> Resu
         AuthCredentialsStoreMode::File,
     )?;
 
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
 
     let start_request = mcp
-        .send_thread_start_request(ThreadStartParams::default())
+        .send_thread_start_request_with_auto_env(ThreadStartParams::default())
         .await?;
-    let start_response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(start_request)),
-    )
-    .await??;
-    let ThreadStartResponse { thread, .. } = to_response(start_response)?;
+    let ThreadStartResponse { thread, .. } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(start_request)).await??;
 
     std::fs::write(
         codex_home.path().join("config.toml"),
@@ -326,15 +398,10 @@ connectors = false
             force_refetch: false,
         })
         .await?;
-    let global_response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(global_request)),
-    )
-    .await??;
     let AppsListResponse {
         data: global_data,
         next_cursor: global_next_cursor,
-    } = to_response(global_response)?;
+    } = timeout(DEFAULT_TIMEOUT, mcp.read_response(global_request)).await??;
     assert!(global_data.is_empty());
     assert!(global_next_cursor.is_none());
 
@@ -346,15 +413,10 @@ connectors = false
             force_refetch: false,
         })
         .await?;
-    let thread_response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(thread_request)),
-    )
-    .await??;
     let AppsListResponse {
         data: thread_data,
         next_cursor: thread_next_cursor,
-    } = to_response(thread_response)?;
+    } = timeout(DEFAULT_TIMEOUT, mcp.read_response(thread_request)).await??;
     assert!(thread_data.iter().any(|app| app.id == "beta"));
     assert!(thread_next_cursor.is_none());
 
@@ -372,6 +434,8 @@ async fn list_apps_keeps_apps_with_app_only_tools_accessible() -> Result<()> {
         description: Some("Formerly blocked connector".to_string()),
         logo_url: None,
         logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
         distribution_channel: None,
         branding: None,
         app_metadata: None,
@@ -403,8 +467,11 @@ async fn list_apps_keeps_apps_with_app_only_tools_accessible() -> Result<()> {
         AuthCredentialsStoreMode::File,
     )?;
 
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
 
     let request_id = mcp
         .send_apps_list_request(AppsListParams {
@@ -414,12 +481,8 @@ async fn list_apps_keeps_apps_with_app_only_tools_accessible() -> Result<()> {
             force_refetch: true,
         })
         .await?;
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-    let AppsListResponse { data, next_cursor } = to_response(response)?;
+    let AppsListResponse { data, next_cursor } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
 
     assert_eq!(data.len(), 1);
     assert_eq!(data[0].id, connector_id);
@@ -439,6 +502,8 @@ async fn list_apps_reports_is_enabled_from_config() -> Result<()> {
         description: Some("Beta connector".to_string()),
         logo_url: None,
         logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
         distribution_channel: None,
         branding: None,
         app_metadata: None,
@@ -476,8 +541,11 @@ enabled = false
         AuthCredentialsStoreMode::File,
     )?;
 
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
 
     let request_id = mcp
         .send_apps_list_request(AppsListParams {
@@ -488,15 +556,10 @@ enabled = false
         })
         .await?;
 
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
     let AppsListResponse {
         data: response_data,
         next_cursor,
-    } = to_response(response)?;
+    } = timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
     assert!(next_cursor.is_none());
     assert_eq!(response_data.len(), 1);
     assert_eq!(response_data[0].id, "beta");
@@ -533,7 +596,6 @@ async fn list_apps_emits_updates_and_returns_after_both_lists_load() -> Result<(
         version: Some("1.2.3".to_string()),
         version_id: Some("version_123".to_string()),
         version_notes: Some("Fixes and improvements".to_string()),
-        first_party_type: Some("internal".to_string()),
         first_party_requires_install: Some(true),
         show_in_composer_when_unlinked: Some(true),
     });
@@ -549,6 +611,8 @@ async fn list_apps_emits_updates_and_returns_after_both_lists_load() -> Result<(
             description: Some("Alpha connector".to_string()),
             logo_url: Some("https://example.com/alpha.png".to_string()),
             logo_url_dark: None,
+            icon_assets: None,
+            icon_dark_assets: None,
             distribution_channel: None,
             branding: alpha_branding.clone(),
             app_metadata: alpha_app_metadata.clone(),
@@ -564,6 +628,8 @@ async fn list_apps_emits_updates_and_returns_after_both_lists_load() -> Result<(
             description: None,
             logo_url: None,
             logo_url_dark: None,
+            icon_assets: None,
+            icon_dark_assets: None,
             distribution_channel: None,
             branding: None,
             app_metadata: None,
@@ -595,8 +661,11 @@ async fn list_apps_emits_updates_and_returns_after_both_lists_load() -> Result<(
         AuthCredentialsStoreMode::File,
     )?;
 
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
 
     let request_id = mcp
         .send_apps_list_request(AppsListParams {
@@ -613,6 +682,8 @@ async fn list_apps_emits_updates_and_returns_after_both_lists_load() -> Result<(
         description: None,
         logo_url: None,
         logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
         distribution_channel: None,
         branding: None,
         app_metadata: None,
@@ -633,6 +704,8 @@ async fn list_apps_emits_updates_and_returns_after_both_lists_load() -> Result<(
             description: None,
             logo_url: None,
             logo_url_dark: None,
+            icon_assets: None,
+            icon_dark_assets: None,
             distribution_channel: None,
             branding: None,
             app_metadata: None,
@@ -648,6 +721,8 @@ async fn list_apps_emits_updates_and_returns_after_both_lists_load() -> Result<(
             description: Some("Alpha connector".to_string()),
             logo_url: Some("https://example.com/alpha.png".to_string()),
             logo_url_dark: None,
+            icon_assets: None,
+            icon_dark_assets: None,
             distribution_channel: None,
             branding: alpha_branding,
             app_metadata: alpha_app_metadata,
@@ -662,16 +737,10 @@ async fn list_apps_emits_updates_and_returns_after_both_lists_load() -> Result<(
     let second_update = read_app_list_updated_notification(&mut mcp).await?;
     assert_eq!(second_update.data, expected_merged);
 
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-
     let AppsListResponse {
         data: response_data,
         next_cursor,
-    } = to_response(response)?;
+    } = timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
     assert_eq!(response_data, expected_merged);
     assert!(next_cursor.is_none());
 
@@ -689,6 +758,8 @@ async fn list_apps_waits_for_accessible_data_before_emitting_directory_updates()
             description: Some("Alpha connector".to_string()),
             logo_url: Some("https://example.com/alpha.png".to_string()),
             logo_url_dark: None,
+            icon_assets: None,
+            icon_dark_assets: None,
             distribution_channel: None,
             branding: None,
             app_metadata: None,
@@ -704,6 +775,8 @@ async fn list_apps_waits_for_accessible_data_before_emitting_directory_updates()
             description: None,
             logo_url: None,
             logo_url_dark: None,
+            icon_assets: None,
+            icon_dark_assets: None,
             distribution_channel: None,
             branding: None,
             app_metadata: None,
@@ -735,8 +808,11 @@ async fn list_apps_waits_for_accessible_data_before_emitting_directory_updates()
         AuthCredentialsStoreMode::File,
     )?;
 
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
 
     let request_id = mcp
         .send_apps_list_request(AppsListParams {
@@ -754,6 +830,8 @@ async fn list_apps_waits_for_accessible_data_before_emitting_directory_updates()
             description: None,
             logo_url: None,
             logo_url_dark: None,
+            icon_assets: None,
+            icon_dark_assets: None,
             distribution_channel: None,
             branding: None,
             app_metadata: None,
@@ -769,6 +847,8 @@ async fn list_apps_waits_for_accessible_data_before_emitting_directory_updates()
             description: Some("Alpha connector".to_string()),
             logo_url: Some("https://example.com/alpha.png".to_string()),
             logo_url_dark: None,
+            icon_assets: None,
+            icon_dark_assets: None,
             distribution_channel: None,
             branding: None,
             app_metadata: None,
@@ -792,12 +872,8 @@ async fn list_apps_waits_for_accessible_data_before_emitting_directory_updates()
         );
     }
 
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-    let AppsListResponse { data, next_cursor } = to_response(response)?;
+    let AppsListResponse { data, next_cursor } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
     assert_eq!(data, expected);
     assert!(next_cursor.is_none());
 
@@ -813,6 +889,8 @@ async fn list_apps_does_not_emit_empty_interim_updates() -> Result<()> {
         description: Some("Alpha connector".to_string()),
         logo_url: None,
         logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
         distribution_channel: None,
         branding: None,
         app_metadata: None,
@@ -841,8 +919,11 @@ async fn list_apps_does_not_emit_empty_interim_updates() -> Result<()> {
         AuthCredentialsStoreMode::File,
     )?;
 
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
 
     let request_id = mcp
         .send_apps_list_request(AppsListParams {
@@ -869,6 +950,8 @@ async fn list_apps_does_not_emit_empty_interim_updates() -> Result<()> {
         description: Some("Alpha connector".to_string()),
         logo_url: None,
         logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
         distribution_channel: None,
         branding: None,
         app_metadata: None,
@@ -882,12 +965,8 @@ async fn list_apps_does_not_emit_empty_interim_updates() -> Result<()> {
     let update = read_app_list_updated_notification(&mut mcp).await?;
     assert_eq!(update.data, expected);
 
-    let response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-    let AppsListResponse { data, next_cursor } = to_response(response)?;
+    let AppsListResponse { data, next_cursor } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
     assert_eq!(data, expected);
     assert!(next_cursor.is_none());
 
@@ -904,6 +983,8 @@ async fn list_apps_paginates_results() -> Result<()> {
             description: Some("Alpha connector".to_string()),
             logo_url: None,
             logo_url_dark: None,
+            icon_assets: None,
+            icon_dark_assets: None,
             distribution_channel: None,
             branding: None,
             app_metadata: None,
@@ -919,6 +1000,8 @@ async fn list_apps_paginates_results() -> Result<()> {
             description: None,
             logo_url: None,
             logo_url_dark: None,
+            icon_assets: None,
+            icon_dark_assets: None,
             distribution_channel: None,
             branding: None,
             app_metadata: None,
@@ -950,8 +1033,11 @@ async fn list_apps_paginates_results() -> Result<()> {
         AuthCredentialsStoreMode::File,
     )?;
 
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
 
     let first_request = mcp
         .send_apps_list_request(AppsListParams {
@@ -961,15 +1047,10 @@ async fn list_apps_paginates_results() -> Result<()> {
             force_refetch: false,
         })
         .await?;
-    let first_response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(first_request)),
-    )
-    .await??;
     let AppsListResponse {
         data: first_page,
         next_cursor: first_cursor,
-    } = to_response(first_response)?;
+    } = timeout(DEFAULT_TIMEOUT, mcp.read_response(first_request)).await??;
 
     let expected_first = vec![AppInfo {
         id: "beta".to_string(),
@@ -977,6 +1058,8 @@ async fn list_apps_paginates_results() -> Result<()> {
         description: None,
         logo_url: None,
         logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
         distribution_channel: None,
         branding: None,
         app_metadata: None,
@@ -996,6 +1079,7 @@ async fn list_apps_paginates_results() -> Result<()> {
             break;
         }
     }
+    mcp.clear_message_buffer();
 
     let second_request = mcp
         .send_apps_list_request(AppsListParams {
@@ -1005,15 +1089,10 @@ async fn list_apps_paginates_results() -> Result<()> {
             force_refetch: false,
         })
         .await?;
-    let second_response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(second_request)),
-    )
-    .await??;
     let AppsListResponse {
         data: second_page,
         next_cursor: second_cursor,
-    } = to_response(second_response)?;
+    } = timeout(DEFAULT_TIMEOUT, mcp.read_response(second_request)).await??;
 
     let expected_second = vec![AppInfo {
         id: "alpha".to_string(),
@@ -1021,6 +1100,8 @@ async fn list_apps_paginates_results() -> Result<()> {
         description: Some("Alpha connector".to_string()),
         logo_url: None,
         logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
         distribution_channel: None,
         branding: None,
         app_metadata: None,
@@ -1034,6 +1115,16 @@ async fn list_apps_paginates_results() -> Result<()> {
     assert_eq!(second_page, expected_second);
     assert!(second_cursor.is_none());
 
+    let duplicate_update = timeout(
+        Duration::from_millis(150),
+        read_app_list_updated_notification(&mut mcp),
+    )
+    .await;
+    assert!(
+        duplicate_update.is_err(),
+        "cached app/list page emitted a duplicate full-list update"
+    );
+
     server_handle.abort();
     Ok(())
 }
@@ -1046,6 +1137,8 @@ async fn list_apps_force_refetch_preserves_previous_cache_on_failure() -> Result
         description: Some("Beta connector".to_string()),
         logo_url: None,
         logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
         distribution_channel: None,
         branding: None,
         app_metadata: None,
@@ -1070,8 +1163,11 @@ async fn list_apps_force_refetch_preserves_previous_cache_on_failure() -> Result
         AuthCredentialsStoreMode::File,
     )?;
 
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
 
     let initial_request = mcp
         .send_apps_list_request(AppsListParams {
@@ -1081,15 +1177,10 @@ async fn list_apps_force_refetch_preserves_previous_cache_on_failure() -> Result
             force_refetch: false,
         })
         .await?;
-    let initial_response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(initial_request)),
-    )
-    .await??;
     let AppsListResponse {
         data: initial_data,
         next_cursor: initial_next_cursor,
-    } = to_response(initial_response)?;
+    } = timeout(DEFAULT_TIMEOUT, mcp.read_response(initial_request)).await??;
     assert!(initial_next_cursor.is_none());
     assert_eq!(initial_data.len(), 1);
     assert!(initial_data.iter().all(|app| app.is_accessible));
@@ -1126,15 +1217,10 @@ async fn list_apps_force_refetch_preserves_previous_cache_on_failure() -> Result
             force_refetch: false,
         })
         .await?;
-    let cached_response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(cached_request)),
-    )
-    .await??;
     let AppsListResponse {
         data: cached_data,
         next_cursor: cached_next_cursor,
-    } = to_response(cached_response)?;
+    } = timeout(DEFAULT_TIMEOUT, mcp.read_response(cached_request)).await??;
 
     assert_eq!(cached_data, initial_data);
     assert!(cached_next_cursor.is_none());
@@ -1151,6 +1237,8 @@ async fn list_apps_force_refetch_patches_updates_from_cached_snapshots() -> Resu
             description: Some("Alpha v1".to_string()),
             logo_url: None,
             logo_url_dark: None,
+            icon_assets: None,
+            icon_dark_assets: None,
             distribution_channel: None,
             branding: None,
             app_metadata: None,
@@ -1166,6 +1254,8 @@ async fn list_apps_force_refetch_patches_updates_from_cached_snapshots() -> Resu
             description: Some("Beta v1".to_string()),
             logo_url: None,
             logo_url_dark: None,
+            icon_assets: None,
+            icon_dark_assets: None,
             distribution_channel: None,
             branding: None,
             app_metadata: None,
@@ -1196,8 +1286,11 @@ async fn list_apps_force_refetch_patches_updates_from_cached_snapshots() -> Resu
         AuthCredentialsStoreMode::File,
     )?;
 
-    let mut mcp = TestAppServer::new(codex_home.path()).await?;
-    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
 
     let warm_request = mcp
         .send_apps_list_request(AppsListParams {
@@ -1216,6 +1309,8 @@ async fn list_apps_force_refetch_patches_updates_from_cached_snapshots() -> Resu
             description: None,
             logo_url: None,
             logo_url_dark: None,
+            icon_assets: None,
+            icon_dark_assets: None,
             distribution_channel: None,
             branding: None,
             app_metadata: None,
@@ -1237,6 +1332,8 @@ async fn list_apps_force_refetch_patches_updates_from_cached_snapshots() -> Resu
                 description: Some("Beta v1".to_string()),
                 logo_url: None,
                 logo_url_dark: None,
+                icon_assets: None,
+                icon_dark_assets: None,
                 distribution_channel: None,
                 branding: None,
                 app_metadata: None,
@@ -1252,6 +1349,8 @@ async fn list_apps_force_refetch_patches_updates_from_cached_snapshots() -> Resu
                 description: Some("Alpha v1".to_string()),
                 logo_url: None,
                 logo_url_dark: None,
+                icon_assets: None,
+                icon_dark_assets: None,
                 distribution_channel: None,
                 branding: None,
                 app_metadata: None,
@@ -1264,15 +1363,10 @@ async fn list_apps_force_refetch_patches_updates_from_cached_snapshots() -> Resu
         ]
     );
 
-    let warm_response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(warm_request)),
-    )
-    .await??;
     let AppsListResponse {
         data: warm_data,
         next_cursor: warm_next_cursor,
-    } = to_response(warm_response)?;
+    } = timeout(DEFAULT_TIMEOUT, mcp.read_response(warm_request)).await??;
     assert_eq!(warm_data, warm_second_update.data);
     assert!(warm_next_cursor.is_none());
 
@@ -1282,6 +1376,8 @@ async fn list_apps_force_refetch_patches_updates_from_cached_snapshots() -> Resu
         description: Some("Alpha v2".to_string()),
         logo_url: None,
         logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
         distribution_channel: None,
         branding: None,
         app_metadata: None,
@@ -1312,6 +1408,8 @@ async fn list_apps_force_refetch_patches_updates_from_cached_snapshots() -> Resu
                 description: Some("Beta v1".to_string()),
                 logo_url: None,
                 logo_url_dark: None,
+                icon_assets: None,
+                icon_dark_assets: None,
                 distribution_channel: None,
                 branding: None,
                 app_metadata: None,
@@ -1327,6 +1425,8 @@ async fn list_apps_force_refetch_patches_updates_from_cached_snapshots() -> Resu
                 description: Some("Alpha v1".to_string()),
                 logo_url: None,
                 logo_url_dark: None,
+                icon_assets: None,
+                icon_dark_assets: None,
                 distribution_channel: None,
                 branding: None,
                 app_metadata: None,
@@ -1355,6 +1455,8 @@ async fn list_apps_force_refetch_patches_updates_from_cached_snapshots() -> Resu
         description: Some("Alpha v2".to_string()),
         logo_url: None,
         logo_url_dark: None,
+        icon_assets: None,
+        icon_dark_assets: None,
         distribution_channel: None,
         branding: None,
         app_metadata: None,
@@ -1367,17 +1469,41 @@ async fn list_apps_force_refetch_patches_updates_from_cached_snapshots() -> Resu
     let second_update = read_app_list_updated_notification(&mut mcp).await?;
     assert_eq!(second_update.data, expected_final);
 
-    let refetch_response: JSONRPCResponse = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(refetch_request)),
-    )
-    .await??;
     let AppsListResponse {
         data: refetch_data,
         next_cursor: refetch_next_cursor,
-    } = to_response(refetch_response)?;
+    } = timeout(DEFAULT_TIMEOUT, mcp.read_response(refetch_request)).await??;
     assert_eq!(refetch_data, expected_final);
     assert!(refetch_next_cursor.is_none());
+
+    mcp.clear_message_buffer();
+    let cached_request = mcp
+        .send_apps_list_request(AppsListParams {
+            limit: None,
+            cursor: None,
+            thread_id: None,
+            force_refetch: false,
+        })
+        .await?;
+    let AppsListResponse {
+        data: cached_data,
+        next_cursor: cached_next_cursor,
+    } = timeout(DEFAULT_TIMEOUT, mcp.read_response(cached_request)).await??;
+    assert_eq!(cached_data, expected_final);
+    assert!(cached_next_cursor.is_none());
+
+    let cached_update = read_app_list_updated_notification(&mut mcp).await?;
+    assert_eq!(cached_update.data, expected_final);
+
+    let duplicate_update = timeout(
+        Duration::from_millis(150),
+        read_app_list_updated_notification(&mut mcp),
+    )
+    .await;
+    assert!(
+        duplicate_update.is_err(),
+        "cached initial app/list emitted more than one full-list update"
+    );
 
     server_handle.abort();
     Ok(())
@@ -1386,16 +1512,7 @@ async fn list_apps_force_refetch_patches_updates_from_cached_snapshots() -> Resu
 async fn read_app_list_updated_notification(
     mcp: &mut TestAppServer,
 ) -> Result<AppListUpdatedNotification> {
-    let notification = timeout(
-        DEFAULT_TIMEOUT,
-        mcp.read_stream_until_notification_message("app/list/updated"),
-    )
-    .await??;
-    let parsed: ServerNotification = notification.try_into()?;
-    let ServerNotification::AppListUpdated(payload) = parsed else {
-        bail!("unexpected notification variant");
-    };
-    Ok(payload)
+    timeout(DEFAULT_TIMEOUT, mcp.read_notification("app/list/updated")).await?
 }
 
 #[derive(Clone)]
@@ -1464,16 +1581,12 @@ impl ServerHandler for AppListMcpServer {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .clone();
-            Ok(ListToolsResult {
-                tools,
-                next_cursor: None,
-                meta: None,
-            })
+            Ok(ListToolsResult::with_all_items(tools))
         }
     }
 }
 
-async fn start_apps_server_with_delays(
+pub(super) async fn start_apps_server_with_delays(
     connectors: Vec<AppInfo>,
     tools: Vec<Tool>,
     directory_delay: Duration,
@@ -1497,6 +1610,7 @@ async fn start_apps_server_with_workspace_plugins_enabled(
             Duration::ZERO,
             Duration::ZERO,
             workspace_plugins_enabled,
+            "chatgpt-token",
         )
         .await?;
     Ok((server_url, server_handle))
@@ -1514,6 +1628,7 @@ async fn start_apps_server_with_delays_and_control(
         directory_delay,
         tools_delay,
         /*workspace_plugins_enabled*/ true,
+        "chatgpt-token",
     )
     .await
 }
@@ -1524,13 +1639,14 @@ async fn start_apps_server_with_delays_and_control_inner(
     directory_delay: Duration,
     tools_delay: Duration,
     workspace_plugins_enabled: bool,
+    expected_bearer: &str,
 ) -> Result<(String, JoinHandle<()>, AppsServerControl)> {
     let response = Arc::new(StdMutex::new(
         json!({ "apps": connectors, "next_token": null }),
     ));
     let tools = Arc::new(StdMutex::new(tools));
     let state = AppsServerState {
-        expected_bearer: "Bearer chatgpt-token".to_string(),
+        expected_bearer: format!("Bearer {expected_bearer}"),
         expected_account_id: "account-123".to_string(),
         response: response.clone(),
         directory_delay,
@@ -1633,7 +1749,7 @@ async fn list_directory_connectors(
     }
 }
 
-fn connector_tool(connector_id: &str, connector_name: &str) -> Result<Tool> {
+pub(super) fn connector_tool(connector_id: &str, connector_name: &str) -> Result<Tool> {
     let schema: JsonObject = serde_json::from_value(json!({
         "type": "object",
         "additionalProperties": false
@@ -1645,7 +1761,7 @@ fn connector_tool(connector_id: &str, connector_name: &str) -> Result<Tool> {
     );
     tool.annotations = Some(ToolAnnotations::new().read_only(true));
 
-    let mut meta = Meta::new();
+    let mut meta = MetaObject::new();
     meta.0
         .insert("connector_id".to_string(), json!(connector_id));
     meta.0

@@ -29,6 +29,18 @@ use tokio_util::sync::CancellationToken;
 use crate::session_runtime as runtime;
 use crate::session_runtime::SessionRuntime;
 
+const YIELD_GRACE_PERIOD: Duration = Duration::from_secs(1);
+const MIN_YIELD_TIME_FOR_GRACE: Duration = Duration::from_secs(10);
+
+fn yield_timeout(yield_time_ms: u64) -> Duration {
+    let yield_time = Duration::from_millis(yield_time_ms);
+    if yield_time >= MIN_YIELD_TIME_FOR_GRACE {
+        yield_time.saturating_add(YIELD_GRACE_PERIOD)
+    } else {
+        yield_time
+    }
+}
+
 pub struct NoopCodeModeSessionDelegate;
 
 impl CodeModeSessionDelegate for NoopCodeModeSessionDelegate {
@@ -66,17 +78,17 @@ impl CodeModeSessionProvider for InProcessCodeModeSessionProvider {
     ) -> CodeModeSessionProviderFuture<'a> {
         Box::pin(async move {
             let session: Arc<dyn CodeModeSession> =
-                Arc::new(CodeModeService::with_delegate(delegate));
+                Arc::new(InProcessCodeModeSession::with_delegate(delegate));
             Ok(session)
         })
     }
 }
 
-pub struct CodeModeService {
+pub struct InProcessCodeModeSession {
     runtime: SessionRuntime<ProtocolDelegate>,
 }
 
-impl CodeModeService {
+impl InProcessCodeModeSession {
     pub fn new() -> Self {
         Self::with_delegate(Arc::new(NoopCodeModeSessionDelegate))
     }
@@ -87,13 +99,25 @@ impl CodeModeService {
         }
     }
 
+    pub fn with_delegate_and_task_failure_handler(
+        delegate: Arc<dyn CodeModeSessionDelegate>,
+        task_failure_handler: Arc<dyn Fn(String) + Send + Sync>,
+    ) -> Self {
+        Self {
+            runtime: SessionRuntime::new_with_task_failure_handler(
+                Arc::new(ProtocolDelegate { delegate }),
+                Some(task_failure_handler),
+            ),
+        }
+    }
+
     pub async fn execute(&self, request: ExecuteRequest) -> Result<StartedCell, String> {
         let yield_time_ms = request.yield_time_ms.unwrap_or(DEFAULT_EXEC_YIELD_TIME_MS);
         let started = self
             .runtime
             .execute(
                 runtime_request(request),
-                runtime::ObserveMode::YieldAfter(Duration::from_millis(yield_time_ms)),
+                runtime::ObserveMode::YieldAfter(yield_timeout(yield_time_ms)),
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -148,7 +172,7 @@ impl CodeModeService {
             .runtime
             .begin_observe(
                 &runtime_cell_id,
-                runtime::ObserveMode::YieldAfter(Duration::from_millis(yield_time_ms)),
+                runtime::ObserveMode::YieldAfter(yield_timeout(yield_time_ms)),
             )
             .await
         {
@@ -209,34 +233,30 @@ impl CodeModeService {
     }
 }
 
-impl Default for CodeModeService {
+impl Default for InProcessCodeModeSession {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl CodeModeSession for CodeModeService {
-    fn is_alive(&self) -> bool {
-        self.runtime.is_alive()
-    }
-
+impl CodeModeSession for InProcessCodeModeSession {
     fn execute<'a>(
         &'a self,
         request: ExecuteRequest,
     ) -> CodeModeSessionResultFuture<'a, StartedCell> {
-        Box::pin(CodeModeService::execute(self, request))
+        Box::pin(InProcessCodeModeSession::execute(self, request))
     }
 
     fn wait<'a>(&'a self, request: WaitRequest) -> CodeModeSessionResultFuture<'a, WaitOutcome> {
-        Box::pin(CodeModeService::wait(self, request))
+        Box::pin(InProcessCodeModeSession::wait(self, request))
     }
 
     fn terminate<'a>(&'a self, cell_id: CellId) -> CodeModeSessionResultFuture<'a, WaitOutcome> {
-        Box::pin(CodeModeService::terminate(self, cell_id))
+        Box::pin(InProcessCodeModeSession::terminate(self, cell_id))
     }
 
     fn shutdown<'a>(&'a self) -> CodeModeSessionResultFuture<'a, ()> {
-        Box::pin(CodeModeService::shutdown(self))
+        Box::pin(InProcessCodeModeSession::shutdown(self))
     }
 }
 
@@ -382,6 +402,9 @@ fn output_item(item: runtime::OutputItem) -> FunctionCallOutputContentItem {
                     runtime::ImageDetail::Original => ImageDetail::Original,
                 }),
             }
+        }
+        runtime::OutputItem::Audio { audio_url } => {
+            FunctionCallOutputContentItem::InputAudio { audio_url }
         }
     }
 }

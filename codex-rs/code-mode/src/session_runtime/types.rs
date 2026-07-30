@@ -61,6 +61,9 @@ pub(crate) enum OutputItem {
         image_url: String,
         detail: Option<ImageDetail>,
     },
+    Audio {
+        audio_url: String,
+    },
 }
 
 /// Requested image fidelity for an output image.
@@ -138,6 +141,7 @@ pub(crate) trait SessionRuntimeDelegate: Send + Sync + 'static {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
     ShuttingDown,
+    CellIdSpaceExhausted,
     DuplicateCell(CellId),
     MissingCell(CellId),
     BusyObserver(CellId),
@@ -150,6 +154,9 @@ impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ShuttingDown => formatter.write_str("code mode session is shutting down"),
+            Self::CellIdSpaceExhausted => {
+                formatter.write_str("code mode session exhausted its cell ID space")
+            }
             Self::DuplicateCell(cell_id) => write!(formatter, "exec cell {cell_id} already exists"),
             Self::MissingCell(cell_id) => write!(formatter, "exec cell {cell_id} not found"),
             Self::BusyObserver(cell_id) => {

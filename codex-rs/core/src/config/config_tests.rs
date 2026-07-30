@@ -4,7 +4,12 @@ use crate::config::edit::apply_blocking;
 use assert_matches::assert_matches;
 use codex_config::CONFIG_TOML_FILE;
 use codex_config::ConfigLayerEntry;
+use codex_config::ConfigLayerSource;
 use codex_config::ConfigLayerStack;
+use codex_config::McpServerCommandMatcher;
+use codex_config::McpServerIdentity;
+use codex_config::McpServerRequirement;
+use codex_config::McpServerValueMatcher;
 use codex_config::ProfileV2Name;
 use codex_config::RequirementSource;
 use codex_config::Sourced;
@@ -50,6 +55,7 @@ use codex_config::types::NotificationMethod;
 use codex_config::types::Notifications;
 use codex_config::types::OtelConfigToml;
 use codex_config::types::OtelExporterKind;
+use codex_config::types::ResumeCwdMode;
 use codex_config::types::SandboxWorkspaceWrite;
 use codex_config::types::SessionPickerViewMode;
 use codex_config::types::SkillsConfig;
@@ -70,6 +76,7 @@ use codex_model_provider_info::OLLAMA_OSS_PROVIDER_ID;
 use codex_model_provider_info::WireApi;
 use codex_models_manager::bundled_models_response;
 use codex_network_proxy::NetworkMode;
+use codex_protocol::config_types::ModelProviderAuthInfo;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::models::ActivePermissionProfile;
@@ -89,6 +96,7 @@ use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::NetworkAccess;
 use codex_protocol::protocol::RealtimeVoice;
 use codex_protocol::protocol::SandboxPolicy;
+use codex_utils_path_uri::LegacyAppPathString;
 use serde::Deserialize;
 use tempfile::tempdir;
 
@@ -111,10 +119,15 @@ use std::time::Duration;
 use tempfile::TempDir;
 
 fn stdio_mcp(command: &str) -> McpServerConfig {
+    stdio_mcp_with_args(command, &[])
+}
+
+fn stdio_mcp_with_args(command: &str, args: &[&str]) -> McpServerConfig {
     McpServerConfig {
+        auth: Default::default(),
         transport: McpServerTransportConfig::Stdio {
             command: command.to_string(),
-            args: Vec::new(),
+            args: args.iter().map(ToString::to_string).collect(),
             env: None,
             env_vars: Vec::new(),
             cwd: None,
@@ -138,6 +151,7 @@ fn stdio_mcp(command: &str) -> McpServerConfig {
 
 fn http_mcp(url: &str) -> McpServerConfig {
     McpServerConfig {
+        auth: Default::default(),
         transport: McpServerTransportConfig::StreamableHttp {
             url: url.to_string(),
             bearer_token_env_var: None,
@@ -347,6 +361,7 @@ web_search = true
         Some(ToolsToml {
             web_search: None,
             experimental_request_user_input: None,
+            update_plan: None,
         })
     );
 }
@@ -366,6 +381,7 @@ web_search = false
         Some(ToolsToml {
             web_search: None,
             experimental_request_user_input: None,
+            update_plan: None,
         })
     );
 }
@@ -384,6 +400,7 @@ fn tools_experimental_request_user_input_defaults_to_enabled() {
         Some(ToolsToml {
             web_search: None,
             experimental_request_user_input: Some(ExperimentalRequestUserInput { enabled: true }),
+            update_plan: None,
         })
     );
 }
@@ -403,6 +420,7 @@ enabled = false
         Some(ToolsToml {
             web_search: None,
             experimental_request_user_input: Some(ExperimentalRequestUserInput { enabled: false }),
+            update_plan: None,
         })
     );
 }
@@ -417,6 +435,7 @@ async fn load_config_resolves_experimental_request_user_input_enabled() -> std::
                 experimental_request_user_input: Some(ExperimentalRequestUserInput {
                     enabled: false,
                 }),
+                update_plan: None,
             }),
             ..ConfigToml::default()
         },
@@ -430,6 +449,86 @@ async fn load_config_resolves_experimental_request_user_input_enabled() -> std::
 }
 
 #[tokio::test]
+async fn load_config_resolves_non_prefixed_mcp_tool_servers() -> std::io::Result<()> {
+    let cases = [
+        (
+            "[features]\nnon_prefixed_mcp_tool_names = false\n",
+            None,
+            true,
+        ),
+        (
+            "[features]\nnon_prefixed_mcp_tool_names = true\n",
+            None,
+            false,
+        ),
+        (
+            "[features.non_prefixed_mcp_tool_names]\nenabled = true\n",
+            None,
+            false,
+        ),
+        (
+            "[features.non_prefixed_mcp_tool_names]\nenabled = true\nserver_names = [\"history\", \"notes\"]\n",
+            Some(vec!["history".to_string(), "notes".to_string()]),
+            true,
+        ),
+        (
+            "[features.non_prefixed_mcp_tool_names]\nenabled = true\nserver_names = []\n",
+            Some(Vec::new()),
+            true,
+        ),
+        (
+            "[features.non_prefixed_mcp_tool_names]\nenabled = false\nserver_names = [\"history\"]\n",
+            None,
+            true,
+        ),
+    ];
+
+    for (config_contents, expected_servers, expected_prefix) in cases {
+        let codex_home = tempdir()?;
+        let config_toml = toml::from_str::<ConfigToml>(config_contents)
+            .expect("TOML deserialization should succeed");
+        let config = Config::load_from_base_config_with_overrides(
+            config_toml,
+            ConfigOverrides::default(),
+            codex_home.abs(),
+        )
+        .await?;
+
+        assert_eq!(config.non_prefixed_mcp_tool_servers, expected_servers);
+        assert_eq!(config.prefix_mcp_tool_names(), expected_prefix);
+        let plugins_manager = PluginsManager::new(codex_home.path().to_path_buf());
+        let mcp_config = config.to_mcp_config(&plugins_manager).await;
+        assert_eq!(mcp_config.prefix_mcp_tool_names, expected_prefix);
+        assert_eq!(
+            mcp_config.non_prefixed_mcp_tool_servers,
+            expected_servers.unwrap_or_default()
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn load_config_resolves_update_plan_enabled() -> std::io::Result<()> {
+    let codex_home = tempdir()?;
+    let config_toml = toml::from_str(
+        r#"
+[tools.update_plan]
+enabled = false
+"#,
+    )
+    .expect("TOML deserialization should succeed");
+    let config = Config::load_from_base_config_with_overrides(
+        config_toml,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await?;
+
+    assert!(!config.update_plan_enabled);
+    Ok(())
+}
+
+#[tokio::test]
 async fn load_config_resolves_code_mode_config() -> std::io::Result<()> {
     let codex_home = tempdir()?;
     let config_toml: ConfigToml = toml::from_str(
@@ -438,6 +537,10 @@ async fn load_config_resolves_code_mode_config() -> std::io::Result<()> {
 enabled = true
 excluded_tool_namespaces = ["mcp__codex_apps", "multi_agent_v1"]
 direct_only_tool_namespaces = ["mcp__history", "mcp__notes"]
+
+[features.code_mode_host]
+enabled = true
+disable_in_process_fallback = true
 "#,
     )
     .expect("TOML deserialization should succeed");
@@ -456,7 +559,9 @@ direct_only_tool_namespaces = ["mcp__history", "mcp__notes"]
         config.code_mode.direct_only_tool_namespaces,
         vec!["mcp__history".to_string(), "mcp__notes".to_string()]
     );
+    assert!(config.code_mode.disable_in_process_fallback);
     assert!(config.features.enabled(Feature::CodeMode));
+    assert!(config.features.enabled(Feature::CodeModeHost));
     Ok(())
 }
 
@@ -473,10 +578,16 @@ async fn load_config_resolves_token_budget_config() -> std::io::Result<()> {
 enabled = true
 reminder_threshold_tokens = 16000
 reminder_message_template = "Custom reminder: {n_remaining} tokens."
+guidance_message = "Preserve important state before compaction."
+auto_compact_fallback_prompt = "  Write notes immediately.  "
+auto_compact_fallback_buffer_tokens = 8000
 "#,
             TokenBudgetConfig {
                 reminder_threshold_tokens: Some(16_000),
                 reminder_message_template: "Custom reminder: {n_remaining} tokens.".to_string(),
+                guidance_message: Some("Preserve important state before compaction.".to_string()),
+                auto_compact_fallback_prompt: Some("Write notes immediately.".to_string()),
+                auto_compact_fallback_buffer_tokens: Some(8_000),
             },
         ),
     ] {
@@ -492,6 +603,26 @@ reminder_message_template = "Custom reminder: {n_remaining} tokens."
         assert!(config.features.enabled(Feature::TokenBudget));
         assert_eq!(config.token_budget, Some(expected));
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn load_config_rejects_overlong_auto_compact_fallback_prompt() -> std::io::Result<()> {
+    let codex_home = tempdir()?;
+    let prompt = "x".repeat(AUTO_COMPACT_FALLBACK_PROMPT_MAX_BYTES + 1);
+    let config_toml = toml::from_str(&format!(
+        "[features.token_budget]\nenabled = true\nauto_compact_fallback_prompt = {prompt:?}\n"
+    ))
+    .expect("TOML should deserialize");
+    let error = Config::load_from_base_config_with_overrides(
+        config_toml,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await
+    .expect_err("overlong fallback prompt should be rejected");
+
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     Ok(())
 }
 
@@ -545,6 +676,55 @@ async fn load_config_rejects_non_positive_token_budget_reminder_threshold() -> s
 }
 
 #[tokio::test]
+async fn load_config_rejects_non_positive_auto_compact_fallback_buffer() -> std::io::Result<()> {
+    for auto_compact_fallback_buffer_tokens in [-1, 0] {
+        let codex_home = tempdir()?;
+        let config_toml = toml::from_str(&format!(
+            "[features.token_budget]\nenabled = true\nauto_compact_fallback_prompt = \"Write notes.\"\nauto_compact_fallback_buffer_tokens = {auto_compact_fallback_buffer_tokens}\n"
+        ))
+        .expect("TOML should deserialize");
+        let error = Config::load_from_base_config_with_overrides(
+            config_toml,
+            ConfigOverrides::default(),
+            codex_home.abs(),
+        )
+        .await
+        .expect_err("non-positive fallback buffer should be rejected");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(
+            error.to_string(),
+            "features.token_budget.auto_compact_fallback_buffer_tokens must be positive"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn load_config_rejects_missing_auto_compact_fallback_buffer() -> std::io::Result<()> {
+    let codex_home = tempdir()?;
+    let config_toml = toml::from_str(
+        "[features.token_budget]\nenabled = true\nauto_compact_fallback_prompt = \"Write notes.\"\n",
+    )
+    .expect("TOML should deserialize");
+
+    let error = Config::load_from_base_config_with_overrides(
+        config_toml,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await
+    .expect_err("missing fallback buffer should be rejected");
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(
+        error.to_string(),
+        "features.token_budget.auto_compact_fallback_buffer_tokens is required when auto_compact_fallback_prompt is set"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn load_config_resolves_rollout_budget() -> std::io::Result<()> {
     let codex_home = tempdir()?;
     let config_toml: ConfigToml = toml::from_str(
@@ -552,7 +732,7 @@ async fn load_config_resolves_rollout_budget() -> std::io::Result<()> {
 [features.rollout_budget]
 enabled = true
 limit_tokens = 100000
-reminder_interval_tokens = 10000
+reminder_at_remaining_tokens = [50000, 25000, 10000]
 sampling_token_weight = 1.0
 prefill_token_weight = 0.1
 "#,
@@ -571,7 +751,7 @@ prefill_token_weight = 0.1
         config.rollout_budget,
         Some(RolloutBudgetConfig {
             limit_tokens: 100_000,
-            reminder_interval_tokens: 10_000,
+            reminder_at_remaining_tokens: vec![50_000, 25_000, 10_000],
             sampling_token_weight: 1.0,
             prefill_token_weight: 0.1,
         })
@@ -619,12 +799,16 @@ current_time_reminder = true
             r#"
 [features.current_time_reminder]
 enabled = true
-reminder_interval_model_requests = 4
+reminder_interval_seconds = 0
 clock_source = "external"
+delivery_mode = "after_user_or_tool_output"
+sleep_tool = true
 "#,
             CurrentTimeReminderConfig {
-                reminder_interval_model_requests: 4,
+                reminder_interval_seconds: 0,
                 clock_source: CurrentTimeSource::External,
+                delivery_mode: CurrentTimeReminderDeliveryMode::AfterUserOrToolOutput,
+                sleep_tool: true,
             },
         ),
     ] {
@@ -632,26 +816,6 @@ clock_source = "external"
         assert!(config.features.enabled(Feature::CurrentTimeReminder));
         assert_eq!(config.current_time_reminder, Some(expected));
     }
-    Ok(())
-}
-
-#[tokio::test]
-async fn load_config_rejects_zero_current_time_reminder_interval() -> std::io::Result<()> {
-    let error = load_current_time_reminder_config(
-        r#"
-[features.current_time_reminder]
-enabled = true
-reminder_interval_model_requests = 0
-"#,
-    )
-    .await
-    .expect_err("zero reminder interval should be rejected");
-
-    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
-    assert_eq!(
-        error.to_string(),
-        "features.current_time_reminder.reminder_interval_model_requests must be positive"
-    );
     Ok(())
 }
 
@@ -774,6 +938,53 @@ region = "us-west-2"
 }
 
 #[tokio::test]
+async fn load_config_applies_amazon_bedrock_transport_overrides() {
+    let cfg = toml::from_str::<ConfigToml>(
+        r#"
+model_provider = "amazon-bedrock"
+
+[model_providers.amazon-bedrock]
+base_url = "https://bedrock.example.com/v1"
+http_headers = { "X-Custom-Header" = "value" }
+
+[model_providers.amazon-bedrock.auth]
+command = "print-token"
+"#,
+    )
+    .expect("Amazon Bedrock transport overrides should deserialize");
+
+    let config = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        tempdir().expect("tempdir").abs(),
+    )
+    .await
+    .expect("load config");
+
+    let mut expected_provider = built_in_model_providers(/*openai_base_url*/ None)
+        .remove("amazon-bedrock")
+        .expect("Amazon Bedrock provider should be built in");
+    expected_provider.base_url = Some("https://bedrock.example.com/v1".to_string());
+    expected_provider.auth = Some(ModelProviderAuthInfo {
+        command: "print-token".to_string(),
+        args: Vec::new(),
+        timeout_ms: std::num::NonZeroU64::new(5_000).expect("timeout should be non-zero"),
+        refresh_interval_ms: 300_000,
+        cwd: std::env::current_dir()
+            .expect("current directory should be available")
+            .try_into()
+            .expect("current directory should be absolute"),
+    });
+    expected_provider
+        .http_headers
+        .get_or_insert_default()
+        .insert("X-Custom-Header".to_string(), "value".to_string());
+
+    assert_eq!(config.model_provider_id, "amazon-bedrock");
+    assert_eq!(config.model_provider, expected_provider);
+}
+
+#[tokio::test]
 async fn load_config_rejects_unsupported_amazon_bedrock_overrides() {
     let cfg = toml::from_str::<ConfigToml>(
         r#"
@@ -781,13 +992,8 @@ model_provider = "amazon-bedrock"
 
 [model_providers.amazon-bedrock]
 name = "Custom Bedrock"
-base_url = "https://bedrock.example.com/v1"
 requires_openai_auth = true
 supports_websockets = true
-
-[model_providers.amazon-bedrock.aws]
-profile = "codex-bedrock"
-region = "us-west-2"
 "#,
     )
     .expect("Amazon Bedrock unsupported overrides should deserialize");
@@ -802,7 +1008,7 @@ region = "us-west-2"
 
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     assert!(err.to_string().contains(
-        "model_providers.amazon-bedrock only supports changing `aws.profile` and `aws.region`; other non-default provider fields are not supported"
+        "model_providers.amazon-bedrock only supports changing `base_url`, `auth`, `http_headers`, `aws.profile`, and `aws.region`; other non-default provider fields are not supported"
     ));
 }
 
@@ -832,6 +1038,7 @@ fn config_toml_deserializes_model_availability_nux() {
             pet: None,
             pet_anchor: TuiPetAnchor::Composer,
             session_picker_view: None,
+            resume_cwd: None,
             keymap: TuiKeymap::default(),
             model_availability_nux: ModelAvailabilityNuxConfig {
                 shown_count: HashMap::from([
@@ -1184,16 +1391,16 @@ fn permissions_profile_network_to_proxy_config_preserves_mitm_hooks() {
 
     let config = network.to_network_proxy_config();
 
-    assert_eq!(config.network.mode, NetworkMode::Full);
-    assert!(config.network.mitm);
-    assert_eq!(config.network.mitm_hooks.len(), 1);
-    assert_eq!(config.network.mitm_hooks[0].host, "api.github.com");
+    assert_eq!(config.mode, NetworkMode::Full);
+    assert!(config.mitm);
+    assert_eq!(config.mitm_hooks.len(), 1);
+    assert_eq!(config.mitm_hooks[0].host, "api.github.com");
     assert_eq!(
-        config.network.mitm_hooks[0].matcher.methods,
+        config.mitm_hooks[0].matcher.methods,
         vec!["POST".to_string()]
     );
     assert_eq!(
-        config.network.mitm_hooks[0].actions.strip_request_headers,
+        config.mitm_hooks[0].actions.strip_request_headers,
         vec!["authorization".to_string()]
     );
 }
@@ -1230,13 +1437,13 @@ action = ["noop"]
 
     let config = network.to_network_proxy_config();
 
-    assert_eq!(config.network.mitm_hooks.len(), 2);
+    assert_eq!(config.mitm_hooks.len(), 2);
     assert_eq!(
-        config.network.mitm_hooks[0].matcher.path_prefixes,
+        config.mitm_hooks[0].matcher.path_prefixes,
         vec!["/repos/openai/".to_string()]
     );
     assert_eq!(
-        config.network.mitm_hooks[1].matcher.path_prefixes,
+        config.mitm_hooks[1].matcher.path_prefixes,
         vec!["/repos/".to_string()]
     );
 }
@@ -1592,6 +1799,26 @@ respect_system_proxy = true
     .await?;
 
     assert!(config.respect_system_proxy);
+    assert_eq!(
+        config.http_client_factory().outbound_proxy_policy(),
+        codex_http_client::OutboundProxyPolicy::RespectSystemProxy
+    );
+    assert_eq!(
+        config
+            .auth_route_config()
+            .http_client_factory()
+            .outbound_proxy_policy(),
+        codex_http_client::OutboundProxyPolicy::RespectSystemProxy
+    );
+    assert_eq!(
+        config.plugins_config_input().remote_plugin_service_config(),
+        codex_core_plugins::remote::RemotePluginServiceConfig::new(
+            config.chatgpt_base_url,
+            codex_http_client::HttpClientFactory::new(
+                codex_http_client::OutboundProxyPolicy::RespectSystemProxy,
+            ),
+        )
+    );
     Ok(())
 }
 
@@ -1618,6 +1845,12 @@ respect_system_proxy = true
         &configured,
         Some(&disabled)
     )?);
+    assert_eq!(
+        resolve_bootstrap_auth_route_config(&configured, Some(&disabled))?
+            .http_client_factory()
+            .outbound_proxy_policy(),
+        codex_http_client::OutboundProxyPolicy::ReqwestDefault
+    );
 
     let configured = ConfigToml::default();
     let enabled = Sourced::new(
@@ -1630,6 +1863,12 @@ respect_system_proxy = true
         &configured,
         Some(&enabled)
     )?);
+    assert_eq!(
+        resolve_bootstrap_auth_route_config(&configured, Some(&enabled))?
+            .http_client_factory()
+            .outbound_proxy_policy(),
+        codex_http_client::OutboundProxyPolicy::RespectSystemProxy
+    );
     Ok(())
 }
 
@@ -1908,18 +2147,21 @@ async fn default_permissions_profile_populates_runtime_sandbox_policy() -> std::
                     value: FileSystemSpecialPath::Minimal,
                 },
                 access: FileSystemAccessMode::Read,
+                missing_path_behavior: None,
             },
             FileSystemSandboxEntry {
                 path: FileSystemPath::Path {
                     path: cwd_root.clone(),
                 },
                 access: FileSystemAccessMode::Write,
+                missing_path_behavior: None,
             },
             FileSystemSandboxEntry {
                 path: FileSystemPath::Path {
                     path: cwd_root.join("docs"),
                 },
                 access: FileSystemAccessMode::Read,
+                missing_path_behavior: None,
             },
         ]),
     );
@@ -2166,12 +2408,14 @@ async fn permission_profile_override_keeps_memories_root_out_of_legacy_projectio
                     value: FileSystemSpecialPath::Root,
                 },
                 access: FileSystemAccessMode::Read,
+                missing_path_behavior: None,
             },
             FileSystemSandboxEntry {
                 path: FileSystemPath::Special {
                     value: FileSystemSpecialPath::project_roots(/*subpath*/ None),
                 },
                 access: FileSystemAccessMode::Write,
+                missing_path_behavior: None,
             },
         ]),
         NetworkSandboxPolicy::Restricted,
@@ -2332,6 +2576,7 @@ async fn workspace_root_glob_none_compiles_to_filesystem_pattern_entry() -> std:
                         pattern: expected_pattern,
                     },
                     access: FileSystemAccessMode::Deny,
+                    missing_path_behavior: None,
                 })
         );
     }
@@ -2671,6 +2916,7 @@ async fn default_permissions_profile_can_extend_builtin_workspace() -> std::io::
                     value: FileSystemSpecialPath::SlashTmp,
                 },
                 access: FileSystemAccessMode::Write,
+                missing_path_behavior: None,
             }
         )),
         "expected profile extending :workspace to keep inherited :slash_tmp writes, policy: {policy:?}"
@@ -2683,6 +2929,7 @@ async fn default_permissions_profile_can_extend_builtin_workspace() -> std::io::
                     value: FileSystemSpecialPath::Tmpdir,
                 },
                 access: FileSystemAccessMode::Read,
+                missing_path_behavior: None,
             }
         )),
         "expected child :tmpdir read entry to replace the inherited write entry, policy: {policy:?}"
@@ -2695,6 +2942,7 @@ async fn default_permissions_profile_can_extend_builtin_workspace() -> std::io::
                     value: FileSystemSpecialPath::Tmpdir,
                 },
                 access: FileSystemAccessMode::Write,
+                missing_path_behavior: None,
             }
         )),
         "expected inherited :tmpdir write entry to be removed, policy: {policy:?}"
@@ -3192,9 +3440,10 @@ async fn permissions_profiles_allow_direct_write_roots_outside_workspace_root()
 
     assert_eq!(
         config.custom_permission_profiles,
-        vec![CustomPermissionProfileSummary {
+        vec![PermissionProfileCatalogEntry {
             id: "dev".to_string(),
             description: Some("Workspace access.".to_string()),
+            allowed: true,
         }]
     );
     assert!(
@@ -3316,6 +3565,7 @@ async fn permissions_profiles_allow_unknown_special_paths() -> std::io::Result<(
                 ),
             },
             access: FileSystemAccessMode::Read,
+            missing_path_behavior: None,
         }]),
     );
     assert_eq!(
@@ -3362,6 +3612,7 @@ async fn permissions_profiles_allow_unknown_special_paths_with_nested_entries()
                 value: FileSystemSpecialPath::unknown(":future_special_path", Some("docs".into())),
             },
             access: FileSystemAccessMode::Read,
+            missing_path_behavior: None,
         }]),
     );
     assert!(
@@ -3566,6 +3817,19 @@ session_picker_view = "dense"
 }
 
 #[test]
+fn tui_resume_cwd_deserializes_from_toml() {
+    let cfg = r#"
+[tui]
+resume_cwd = "current"
+"#;
+    let parsed = toml::from_str::<ConfigToml>(cfg).expect("TOML deserialization should succeed");
+    assert_eq!(
+        parsed.tui.as_ref().and_then(|t| t.resume_cwd),
+        Some(ResumeCwdMode::Current),
+    );
+}
+
+#[test]
 fn tui_pet_deserializes_from_toml() {
     let cfg = r#"
 [tui]
@@ -3666,6 +3930,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
             pet: None,
             pet_anchor: TuiPetAnchor::Composer,
             session_picker_view: None,
+            resume_cwd: None,
             keymap: TuiKeymap::default(),
             model_availability_nux: ModelAvailabilityNuxConfig::default(),
             terminal_resize_reflow_max_rows: None,
@@ -3846,6 +4111,35 @@ async fn runtime_config_resolves_session_picker_view_default_and_override() {
         cfg.tui_session_picker_view,
         SessionPickerViewMode::Comfortable
     );
+}
+
+#[tokio::test]
+async fn runtime_config_resolves_resume_cwd_default_and_override() {
+    let cfg = Config::load_from_base_config_with_overrides(
+        ConfigToml::default(),
+        ConfigOverrides::default(),
+        tempdir().expect("tempdir").abs(),
+    )
+    .await
+    .expect("load default config");
+
+    assert_eq!(cfg.tui_resume_cwd, None);
+
+    let cfg = Config::load_from_base_config_with_overrides(
+        ConfigToml {
+            tui: Some(Tui {
+                resume_cwd: Some(ResumeCwdMode::Session),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        ConfigOverrides::default(),
+        tempdir().expect("tempdir").abs(),
+    )
+    .await
+    .expect("load root override config");
+
+    assert_eq!(cfg.tui_resume_cwd, Some(ResumeCwdMode::Session));
 }
 
 #[tokio::test]
@@ -4074,6 +4368,7 @@ exclude_slash_tmp = true
                         .contains(&FileSystemSandboxEntry {
                             path: FileSystemPath::Path { path: cwd.abs() },
                             access: FileSystemAccessMode::Write,
+                            missing_path_behavior: None,
                         })
                 );
                 assert!(
@@ -4084,6 +4379,7 @@ exclude_slash_tmp = true
                                 path: extra_root.clone(),
                             },
                             access: FileSystemAccessMode::Write,
+                            missing_path_behavior: None,
                         })
                 );
                 for subpath in [".git", ".agents", ".codex"] {
@@ -4098,6 +4394,9 @@ exclude_slash_tmp = true
                                     ),
                                 },
                                 access: FileSystemAccessMode::Read,
+                                missing_path_behavior: Some(
+                                    codex_protocol::permissions::FileSystemSandboxEntryMissingPathBehavior::Skip,
+                                ),
                             }),
                         "case `{name}` should materialize `{subpath}` for the runtime workspace \
                          root"
@@ -4137,7 +4436,7 @@ fn filter_mcp_servers_by_allowlist_enforces_identity_rules() {
         BTreeMap::from([
             (
                 MISMATCHED_URL_SERVER.to_string(),
-                McpServerRequirement {
+                McpServerRequirement::Identity {
                     identity: McpServerIdentity::Url {
                         url: "https://example.com/other".to_string(),
                     },
@@ -4145,7 +4444,7 @@ fn filter_mcp_servers_by_allowlist_enforces_identity_rules() {
             ),
             (
                 MISMATCHED_COMMAND_SERVER.to_string(),
-                McpServerRequirement {
+                McpServerRequirement::Identity {
                     identity: McpServerIdentity::Command {
                         command: "other-cmd".to_string(),
                     },
@@ -4153,7 +4452,7 @@ fn filter_mcp_servers_by_allowlist_enforces_identity_rules() {
             ),
             (
                 MATCHED_URL_SERVER.to_string(),
-                McpServerRequirement {
+                McpServerRequirement::Identity {
                     identity: McpServerIdentity::Url {
                         url: GOOD_URL.to_string(),
                     },
@@ -4161,7 +4460,7 @@ fn filter_mcp_servers_by_allowlist_enforces_identity_rules() {
             ),
             (
                 MATCHED_COMMAND_SERVER.to_string(),
-                McpServerRequirement {
+                McpServerRequirement::Identity {
                     identity: McpServerIdentity::Command {
                         command: GOOD_CMD.to_string(),
                     },
@@ -4219,6 +4518,117 @@ fn filter_mcp_servers_by_allowlist_allows_all_when_unset() {
 }
 
 #[test]
+fn filter_mcp_servers_by_matchers_enforces_command_and_positional_args() {
+    let mut servers = HashMap::from([
+        (
+            "internal_mcp_proxy".to_string(),
+            stdio_mcp_with_args(
+                "company-cli",
+                &[
+                    "mcp",
+                    "proxy",
+                    "--server",
+                    "https://pricing.mcp.internal.example.com",
+                ],
+            ),
+        ),
+        (
+            "unlisted".to_string(),
+            stdio_mcp_with_args(
+                "company-cli",
+                &[
+                    "mcp",
+                    "proxy",
+                    "--server",
+                    "https://pricing.mcp.internal.example.com",
+                ],
+            ),
+        ),
+        (
+            "wrong-order".to_string(),
+            stdio_mcp_with_args(
+                "company-cli",
+                &[
+                    "proxy",
+                    "mcp",
+                    "--server",
+                    "https://pricing.mcp.internal.example.com",
+                ],
+            ),
+        ),
+        (
+            "trailing-arg".to_string(),
+            stdio_mcp_with_args(
+                "company-cli",
+                &[
+                    "mcp",
+                    "proxy",
+                    "--server",
+                    "https://pricing.mcp.internal.example.com",
+                    "--verbose",
+                ],
+            ),
+        ),
+        (
+            "wrong-host".to_string(),
+            stdio_mcp_with_args(
+                "company-cli",
+                &["mcp", "proxy", "--server", "https://mcp.example.com"],
+            ),
+        ),
+    ]);
+    let source = RequirementSource::LegacyManagedConfigTomlFromMdm;
+    let requirement = McpServerRequirement::Command(McpServerCommandMatcher {
+        executable: "company-cli".to_string(),
+        args: vec![
+            McpServerValueMatcher::Exact {
+                value: "mcp".to_string(),
+            },
+            McpServerValueMatcher::Exact {
+                value: "proxy".to_string(),
+            },
+            McpServerValueMatcher::Exact {
+                value: "--server".to_string(),
+            },
+            McpServerValueMatcher::Regex {
+                expression:
+                    r"^https://[A-Za-z0-9-]+\.mcp\.internal\.example\.com(?::443)?(?:/.*)?$"
+                        .to_string(),
+            },
+        ],
+    });
+    let requirements = Sourced::new(
+        BTreeMap::from([
+            ("internal_mcp_proxy".to_string(), requirement.clone()),
+            ("wrong-order".to_string(), requirement.clone()),
+            ("trailing-arg".to_string(), requirement.clone()),
+            ("wrong-host".to_string(), requirement),
+        ]),
+        source.clone(),
+    );
+
+    filter_mcp_servers_by_requirements(&mut servers, Some(&requirements));
+
+    let reason = Some(McpServerDisabledReason::Requirements { source });
+    assert_eq!(
+        servers
+            .iter()
+            .map(|(name, server)| (
+                name.clone(),
+                (server.enabled, server.disabled_reason.clone())
+            ))
+            .collect::<HashMap<String, (bool, Option<McpServerDisabledReason>)>>(),
+        HashMap::from([
+            ("internal_mcp_proxy".to_string(), (true, None)),
+            ("unlisted".to_string(), (false, reason.clone())),
+            ("wrong-order".to_string(), (false, reason.clone())),
+            ("trailing-arg".to_string(), (false, reason.clone())),
+            ("wrong-host".to_string(), (false, reason)),
+        ])
+    );
+}
+
+#[test]
 fn filter_mcp_servers_by_allowlist_blocks_all_when_empty() {
     let mut servers = HashMap::from([
         ("server-a".to_string(), stdio_mcp("cmd-a")),
@@ -4228,6 +4638,63 @@ fn filter_mcp_servers_by_allowlist_blocks_all_when_empty() {
     let source = RequirementSource::LegacyManagedConfigTomlFromMdm;
     let requirements = Sourced::new(BTreeMap::new(), source.clone());
     filter_mcp_servers_by_requirements(&mut servers, Some(&requirements));
+
+    let reason = Some(McpServerDisabledReason::Requirements { source });
+    assert_eq!(
+        servers
+            .iter()
+            .map(|(name, server)| (
+                name.clone(),
+                (server.enabled, server.disabled_reason.clone())
+            ))
+            .collect::<HashMap<String, (bool, Option<McpServerDisabledReason>)>>(),
+        HashMap::from([
+            ("server-a".to_string(), (false, reason.clone())),
+            ("server-b".to_string(), (false, reason)),
+        ])
+    );
+}
+
+#[test]
+fn filter_plugin_mcp_servers_without_allowlists_does_not_filter_any_plugin() {
+    let original_servers = HashMap::from([
+        ("server-a".to_string(), stdio_mcp("cmd-a")),
+        ("server-b".to_string(), http_mcp("https://example.com/b")),
+    ]);
+    let requirements = Sourced::new(
+        BTreeMap::from([(
+            "sites@openai-bundled".to_string(),
+            codex_config::PluginRequirementsToml { mcp_servers: None },
+        )]),
+        RequirementSource::LegacyManagedConfigTomlFromMdm,
+    );
+
+    for plugin_name in ["sites@openai-bundled", "sample@test"] {
+        let mut servers = original_servers.clone();
+        filter_plugin_mcp_servers_by_requirements(plugin_name, &mut servers, Some(&requirements));
+
+        assert_eq!(servers, original_servers);
+    }
+}
+
+#[test]
+fn filter_plugin_mcp_servers_by_empty_allowlist_blocks_all() {
+    let mut servers = HashMap::from([
+        ("server-a".to_string(), stdio_mcp("cmd-a")),
+        ("server-b".to_string(), http_mcp("https://example.com/b")),
+    ]);
+    let source = RequirementSource::LegacyManagedConfigTomlFromMdm;
+    let requirements = Sourced::new(
+        BTreeMap::from([(
+            "sample@test".to_string(),
+            codex_config::PluginRequirementsToml {
+                mcp_servers: Some(BTreeMap::new()),
+            },
+        )]),
+        source.clone(),
+    );
+
+    filter_plugin_mcp_servers_by_requirements("sample@test", &mut servers, Some(&requirements));
 
     let reason = Some(McpServerDisabledReason::Requirements { source });
     assert_eq!(
@@ -4268,7 +4735,7 @@ fn filter_plugin_mcp_servers_by_allowlist_enforces_plugin_and_identity_rules() {
                 mcp_servers: Some(BTreeMap::from([
                     (
                         MATCHED_SERVER.to_string(),
-                        McpServerRequirement {
+                        McpServerRequirement::Identity {
                             identity: McpServerIdentity::Command {
                                 command: GOOD_CMD.to_string(),
                             },
@@ -4276,7 +4743,7 @@ fn filter_plugin_mcp_servers_by_allowlist_enforces_plugin_and_identity_rules() {
                     ),
                     (
                         MISMATCHED_SERVER.to_string(),
-                        McpServerRequirement {
+                        McpServerRequirement::Identity {
                             identity: McpServerIdentity::Command {
                                 command: GOOD_CMD.to_string(),
                             },
@@ -4317,7 +4784,7 @@ fn filter_plugin_mcp_servers_by_allowlist_blocks_unlisted_plugin() {
             codex_config::PluginRequirementsToml {
                 mcp_servers: Some(BTreeMap::from([(
                     "server-a".to_string(),
-                    McpServerRequirement {
+                    McpServerRequirement::Identity {
                         identity: McpServerIdentity::Command {
                             command: "cmd-a".to_string(),
                         },
@@ -4348,6 +4815,65 @@ fn filter_plugin_mcp_servers_by_allowlist_blocks_unlisted_plugin() {
     );
 }
 
+#[test]
+fn filter_plugin_mcp_servers_by_matchers_enforces_name_and_invocation() {
+    const MATCHED_SERVER: &str = "matched";
+    const MISMATCHED_SERVER: &str = "mismatched";
+    const UNLISTED_SERVER: &str = "unlisted";
+
+    let mut servers = HashMap::from([
+        (
+            MATCHED_SERVER.to_string(),
+            stdio_mcp_with_args("company-cli", &["approved"]),
+        ),
+        (
+            MISMATCHED_SERVER.to_string(),
+            stdio_mcp_with_args("company-cli", &["rejected"]),
+        ),
+        (
+            UNLISTED_SERVER.to_string(),
+            stdio_mcp_with_args("company-cli", &["approved"]),
+        ),
+    ]);
+    let source = RequirementSource::LegacyManagedConfigTomlFromMdm;
+    let requirement = McpServerRequirement::Command(McpServerCommandMatcher {
+        executable: "company-cli".to_string(),
+        args: vec![McpServerValueMatcher::Exact {
+            value: "approved".to_string(),
+        }],
+    });
+    let requirements = Sourced::new(
+        BTreeMap::from([(
+            "sample@test".to_string(),
+            codex_config::PluginRequirementsToml {
+                mcp_servers: Some(BTreeMap::from([
+                    (MATCHED_SERVER.to_string(), requirement.clone()),
+                    (MISMATCHED_SERVER.to_string(), requirement),
+                ])),
+            },
+        )]),
+        source.clone(),
+    );
+
+    filter_plugin_mcp_servers_by_requirements("sample@test", &mut servers, Some(&requirements));
+
+    let reason = Some(McpServerDisabledReason::Requirements { source });
+    assert_eq!(
+        servers
+            .iter()
+            .map(|(name, server)| (
+                name.clone(),
+                (server.enabled, server.disabled_reason.clone())
+            ))
+            .collect::<HashMap<String, (bool, Option<McpServerDisabledReason>)>>(),
+        HashMap::from([
+            (MATCHED_SERVER.to_string(), (true, None)),
+            (MISMATCHED_SERVER.to_string(), (false, reason.clone())),
+            (UNLISTED_SERVER.to_string(), (false, reason)),
+        ])
+    );
+}
+
 #[tokio::test]
 async fn rebuild_preserving_session_layers_refreshes_requirements() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
@@ -4357,7 +4883,7 @@ async fn rebuild_preserving_session_layers_refreshes_requirements() -> std::io::
     let mcp_requirements = BTreeMap::from([
         (
             "session_overrides_user".to_string(),
-            McpServerRequirement {
+            McpServerRequirement::Identity {
                 identity: McpServerIdentity::Command {
                     command: "session-command".to_string(),
                 },
@@ -4365,7 +4891,7 @@ async fn rebuild_preserving_session_layers_refreshes_requirements() -> std::io::
         ),
         (
             "managed_overrides_session".to_string(),
-            McpServerRequirement {
+            McpServerRequirement::Identity {
                 identity: McpServerIdentity::Command {
                     command: "managed-command".to_string(),
                 },
@@ -4373,7 +4899,7 @@ async fn rebuild_preserving_session_layers_refreshes_requirements() -> std::io::
         ),
         (
             "fresh_global".to_string(),
-            McpServerRequirement {
+            McpServerRequirement::Identity {
                 identity: McpServerIdentity::Command {
                     command: "fresh-global-command".to_string(),
                 },
@@ -4381,7 +4907,7 @@ async fn rebuild_preserving_session_layers_refreshes_requirements() -> std::io::
         ),
         (
             "fresh_project".to_string(),
-            McpServerRequirement {
+            McpServerRequirement::Identity {
                 identity: McpServerIdentity::Command {
                     command: "fresh-project-command".to_string(),
                 },
@@ -4399,7 +4925,7 @@ async fn rebuild_preserving_session_layers_refreshes_requirements() -> std::io::
     let refreshed_layer_stack = ConfigLayerStack::new(
         vec![
             ConfigLayerEntry::new(
-                codex_app_server_protocol::ConfigLayerSource::User {
+                ConfigLayerSource::User {
                     file: user_file.clone(),
                     profile: None,
                 },
@@ -4414,7 +4940,7 @@ async fn rebuild_preserving_session_layers_refreshes_requirements() -> std::io::
                 .into(),
             ),
             ConfigLayerEntry::new(
-                codex_app_server_protocol::ConfigLayerSource::Project {
+                ConfigLayerSource::Project {
                     dot_codex_folder: project_dot_codex.clone(),
                 },
                 toml::toml! {
@@ -4424,7 +4950,7 @@ async fn rebuild_preserving_session_layers_refreshes_requirements() -> std::io::
                 .into(),
             ),
             ConfigLayerEntry::new(
-                codex_app_server_protocol::ConfigLayerSource::LegacyManagedConfigTomlFromMdm,
+                ConfigLayerSource::LegacyManagedConfigTomlFromMdm,
                 toml::toml! {
                     [mcp_servers.managed_overrides_session]
                     command = "managed-command"
@@ -4454,7 +4980,7 @@ async fn rebuild_preserving_session_layers_refreshes_requirements() -> std::io::
     let thread_layer_stack = ConfigLayerStack::new(
         vec![
             ConfigLayerEntry::new(
-                codex_app_server_protocol::ConfigLayerSource::User {
+                ConfigLayerSource::User {
                     file: user_file.clone(),
                     profile: None,
                 },
@@ -4469,7 +4995,7 @@ async fn rebuild_preserving_session_layers_refreshes_requirements() -> std::io::
                 .into(),
             ),
             ConfigLayerEntry::new(
-                codex_app_server_protocol::ConfigLayerSource::Project {
+                ConfigLayerSource::Project {
                     dot_codex_folder: project_dot_codex,
                 },
                 toml::toml! {
@@ -4479,7 +5005,7 @@ async fn rebuild_preserving_session_layers_refreshes_requirements() -> std::io::
                 .into(),
             ),
             ConfigLayerEntry::new(
-                codex_app_server_protocol::ConfigLayerSource::SessionFlags,
+                ConfigLayerSource::SessionFlags,
                 toml::toml! {
                     [mcp_servers.session_overrides_user]
                     command = "session-command"
@@ -4491,7 +5017,7 @@ async fn rebuild_preserving_session_layers_refreshes_requirements() -> std::io::
                 .into(),
             ),
             ConfigLayerEntry::new(
-                codex_app_server_protocol::ConfigLayerSource::LegacyManagedConfigTomlFromMdm,
+                ConfigLayerSource::LegacyManagedConfigTomlFromMdm,
                 toml::toml! {
                     [mcp_servers.managed_overrides_session]
                     command = "old-managed-command"
@@ -4585,7 +5111,7 @@ async fn rebuild_preserving_session_layers_refreshes_plugin_derived_mcp_config()
     let user_file = AbsolutePathBuf::resolve_path_against_base(CONFIG_TOML_FILE, codex_home.path());
     let refreshed_layer_stack = ConfigLayerStack::new(
         vec![ConfigLayerEntry::new(
-            codex_app_server_protocol::ConfigLayerSource::User {
+            ConfigLayerSource::User {
                 file: user_file.clone(),
                 profile: None,
             },
@@ -4614,7 +5140,7 @@ async fn rebuild_preserving_session_layers_refreshes_plugin_derived_mcp_config()
     .await?;
     let thread_layer_stack = ConfigLayerStack::new(
         vec![ConfigLayerEntry::new(
-            codex_app_server_protocol::ConfigLayerSource::User {
+            ConfigLayerSource::User {
                 file: user_file,
                 profile: None,
             },
@@ -4977,7 +5503,7 @@ async fn sqlite_home_defaults_to_codex_home_for_workspace_write() -> std::io::Re
     )
     .await?;
 
-    assert_eq!(config.sqlite_home, codex_home.path().to_path_buf());
+    assert_eq!(config.sqlite.home(), codex_home.path());
 
     Ok(())
 }
@@ -5553,17 +6079,19 @@ async fn load_global_mcp_servers_returns_empty_if_missing() -> anyhow::Result<()
 #[tokio::test]
 async fn replace_mcp_servers_round_trips_entries() -> anyhow::Result<()> {
     let codex_home = TempDir::new()?;
+    let expected_cwd = LegacyAppPathString::from_path(codex_home.path());
 
     let mut servers = BTreeMap::new();
     servers.insert(
         "docs".to_string(),
         McpServerConfig {
+            auth: Default::default(),
             transport: McpServerTransportConfig::Stdio {
                 command: "echo".to_string(),
                 args: vec!["hello".to_string()],
                 env: None,
                 env_vars: Vec::new(),
-                cwd: Some(codex_home.path().to_path_buf()),
+                cwd: Some(expected_cwd.clone()),
             },
             environment_id: "remote".to_string(),
             enabled: true,
@@ -5602,7 +6130,7 @@ async fn replace_mcp_servers_round_trips_entries() -> anyhow::Result<()> {
             assert_eq!(args, &vec!["hello".to_string()]);
             assert!(env.is_none());
             assert!(env_vars.is_empty());
-            assert_eq!(cwd, &Some(codex_home.path().to_path_buf()));
+            assert_eq!(cwd, &Some(expected_cwd));
         }
         other => panic!("unexpected transport {other:?}"),
     }
@@ -5845,10 +6373,49 @@ async fn to_mcp_config_flows_mcp_tool_prefix_from_feature() -> std::io::Result<(
 
     let mcp_config = config.to_mcp_config(&plugins_manager).await;
     assert!(mcp_config.prefix_mcp_tool_names);
+    assert!(mcp_config.non_prefixed_mcp_tool_servers.is_empty());
 
     let _ = config.features.enable(Feature::NonPrefixedMcpToolNames);
     let mcp_config = config.to_mcp_config(&plugins_manager).await;
     assert!(!mcp_config.prefix_mcp_tool_names);
+    assert!(mcp_config.non_prefixed_mcp_tool_servers.is_empty());
+
+    config.non_prefixed_mcp_tool_servers = Some(vec!["history".to_string(), "notes".to_string()]);
+    let mcp_config = config.to_mcp_config(&plugins_manager).await;
+    assert!(mcp_config.prefix_mcp_tool_names);
+    assert_eq!(
+        mcp_config.non_prefixed_mcp_tool_servers,
+        vec!["history".to_string(), "notes".to_string()]
+    );
+
+    let _ = config.features.disable(Feature::NonPrefixedMcpToolNames);
+    let mcp_config = config.to_mcp_config(&plugins_manager).await;
+    assert!(mcp_config.prefix_mcp_tool_names);
+    assert!(mcp_config.non_prefixed_mcp_tool_servers.is_empty());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn to_mcp_config_flows_mcp_2026_feature_from_config() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let mut config = Config::load_from_base_config_with_overrides(
+        ConfigToml::default(),
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await?;
+    let plugins_manager = PluginsManager::new(codex_home.path().to_path_buf());
+
+    let mcp_config = config.to_mcp_config(&plugins_manager).await;
+    assert_eq!(mcp_config.protocol_mode, codex_mcp::McpProtocolMode::Legacy);
+
+    let _ = config.features.enable(Feature::Mcp20260728);
+    let mcp_config = config.to_mcp_config(&plugins_manager).await;
+    assert_eq!(
+        mcp_config.protocol_mode,
+        codex_mcp::McpProtocolMode::V20260728
+    );
 
     Ok(())
 }
@@ -5867,17 +6434,16 @@ async fn to_mcp_config_preserves_auth_elicitation_feature_from_config() -> std::
     let mcp_config = config.to_mcp_config(&plugins_manager).await;
     assert_eq!(
         mcp_config.client_elicitation_capability,
-        ElicitationCapability::default()
+        ElicitationCapability::new()
+            .with_form(FormElicitationCapability::new())
+            .with_url(UrlElicitationCapability::new())
     );
 
-    let _ = config.features.enable(Feature::AuthElicitation);
+    let _ = config.features.disable(Feature::AuthElicitation);
     let mcp_config = config.to_mcp_config(&plugins_manager).await;
     assert_eq!(
         mcp_config.client_elicitation_capability,
-        ElicitationCapability {
-            form: Some(FormElicitationCapability::default()),
-            url: Some(UrlElicitationCapability::default()),
-        }
+        ElicitationCapability::default()
     );
 
     Ok(())
@@ -5915,6 +6481,7 @@ async fn replace_mcp_servers_serializes_env_sorted() -> anyhow::Result<()> {
     let servers = BTreeMap::from([(
         "docs".to_string(),
         McpServerConfig {
+            auth: Default::default(),
             transport: McpServerTransportConfig::Stdio {
                 command: "docs-server".to_string(),
                 args: vec!["--verbose".to_string()],
@@ -5994,6 +6561,7 @@ async fn replace_mcp_servers_serializes_env_vars() -> anyhow::Result<()> {
     let servers = BTreeMap::from([(
         "docs".to_string(),
         McpServerConfig {
+            auth: Default::default(),
             transport: McpServerTransportConfig::Stdio {
                 command: "docs-server".to_string(),
                 args: Vec::new(),
@@ -6049,6 +6617,7 @@ async fn replace_mcp_servers_serializes_sourced_env_vars() -> anyhow::Result<()>
     let servers = BTreeMap::from([(
         "docs".to_string(),
         McpServerConfig {
+            auth: Default::default(),
             transport: McpServerTransportConfig::Stdio {
                 command: "docs-server".to_string(),
                 args: Vec::new(),
@@ -6103,15 +6672,17 @@ async fn replace_mcp_servers_serializes_cwd() -> anyhow::Result<()> {
     let codex_home = TempDir::new()?;
 
     let cwd_path = PathBuf::from("/tmp/codex-mcp");
+    let cwd = LegacyAppPathString::from_path(&cwd_path);
     let servers = BTreeMap::from([(
         "docs".to_string(),
         McpServerConfig {
+            auth: Default::default(),
             transport: McpServerTransportConfig::Stdio {
                 command: "docs-server".to_string(),
                 args: Vec::new(),
                 env: None,
                 env_vars: Vec::new(),
-                cwd: Some(cwd_path.clone()),
+                cwd: Some(cwd.clone()),
             },
             environment_id: codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID.to_string(),
             enabled: true,
@@ -6146,7 +6717,7 @@ async fn replace_mcp_servers_serializes_cwd() -> anyhow::Result<()> {
     let docs = loaded.get("docs").expect("docs entry");
     match &docs.transport {
         McpServerTransportConfig::Stdio { cwd, .. } => {
-            assert_eq!(cwd.as_deref(), Some(Path::new("/tmp/codex-mcp")));
+            assert_eq!(cwd, &Some(LegacyAppPathString::from_path(&cwd_path)));
         }
         other => panic!("unexpected transport {other:?}"),
     }
@@ -6161,6 +6732,7 @@ async fn replace_mcp_servers_streamable_http_serializes_bearer_token() -> anyhow
     let servers = BTreeMap::from([(
         "docs".to_string(),
         McpServerConfig {
+            auth: Default::default(),
             transport: McpServerTransportConfig::StreamableHttp {
                 url: "https://example.com/mcp".to_string(),
                 bearer_token_env_var: Some("MCP_TOKEN".to_string()),
@@ -6228,6 +6800,7 @@ async fn replace_mcp_servers_streamable_http_serializes_custom_headers() -> anyh
     let servers = BTreeMap::from([(
         "docs".to_string(),
         McpServerConfig {
+            auth: Default::default(),
             transport: McpServerTransportConfig::StreamableHttp {
                 url: "https://example.com/mcp".to_string(),
                 bearer_token_env_var: Some("MCP_TOKEN".to_string()),
@@ -6310,6 +6883,7 @@ async fn replace_mcp_servers_streamable_http_removes_optional_sections() -> anyh
     let mut servers = BTreeMap::from([(
         "docs".to_string(),
         McpServerConfig {
+            auth: Default::default(),
             transport: McpServerTransportConfig::StreamableHttp {
                 url: "https://example.com/mcp".to_string(),
                 bearer_token_env_var: Some("MCP_TOKEN".to_string()),
@@ -6348,6 +6922,7 @@ async fn replace_mcp_servers_streamable_http_removes_optional_sections() -> anyh
     servers.insert(
         "docs".to_string(),
         McpServerConfig {
+            auth: Default::default(),
             transport: McpServerTransportConfig::StreamableHttp {
                 url: "https://example.com/mcp".to_string(),
                 bearer_token_env_var: None,
@@ -6415,6 +6990,7 @@ async fn replace_mcp_servers_streamable_http_isolates_headers_between_servers() 
         (
             "docs".to_string(),
             McpServerConfig {
+                auth: Default::default(),
                 transport: McpServerTransportConfig::StreamableHttp {
                     url: "https://example.com/mcp".to_string(),
                     bearer_token_env_var: Some("MCP_TOKEN".to_string()),
@@ -6443,6 +7019,7 @@ async fn replace_mcp_servers_streamable_http_isolates_headers_between_servers() 
         (
             "logs".to_string(),
             McpServerConfig {
+                auth: Default::default(),
                 transport: McpServerTransportConfig::Stdio {
                     command: "logs-server".to_string(),
                     args: vec!["--follow".to_string()],
@@ -6531,6 +7108,7 @@ async fn replace_mcp_servers_serializes_disabled_flag() -> anyhow::Result<()> {
     let servers = BTreeMap::from([(
         "docs".to_string(),
         McpServerConfig {
+            auth: Default::default(),
             transport: McpServerTransportConfig::Stdio {
                 command: "docs-server".to_string(),
                 args: Vec::new(),
@@ -6581,6 +7159,7 @@ async fn replace_mcp_servers_serializes_required_flag() -> anyhow::Result<()> {
     let servers = BTreeMap::from([(
         "docs".to_string(),
         McpServerConfig {
+            auth: Default::default(),
             transport: McpServerTransportConfig::Stdio {
                 command: "docs-server".to_string(),
                 args: Vec::new(),
@@ -6631,6 +7210,7 @@ async fn replace_mcp_servers_serializes_tool_filters() -> anyhow::Result<()> {
     let servers = BTreeMap::from([(
         "docs".to_string(),
         McpServerConfig {
+            auth: Default::default(),
             transport: McpServerTransportConfig::Stdio {
                 command: "docs-server".to_string(),
                 args: Vec::new(),
@@ -6686,6 +7266,7 @@ async fn replace_mcp_servers_streamable_http_serializes_oauth_resource() -> anyh
     let servers = BTreeMap::from([(
         "docs".to_string(),
         McpServerConfig {
+            auth: Default::default(),
             transport: McpServerTransportConfig::StreamableHttp {
                 url: "https://example.com/mcp".to_string(),
                 bearer_token_env_var: None,
@@ -7085,8 +7666,11 @@ async fn load_config_rejects_missing_agent_role_config_file() -> std::io::Result
     let missing_path = codex_home.path().join("agents").join("researcher.toml");
     let cfg = ConfigToml {
         agents: Some(AgentsToml {
-            max_threads: None,
+            enabled: None,
+            max_concurrent_threads_per_session: None,
             max_depth: None,
+            default_subagent_model: None,
+            default_subagent_reasoning_effort: None,
             job_max_runtime_seconds: None,
             interrupt_message: None,
             roles: BTreeMap::from([(
@@ -7189,7 +7773,7 @@ config_file = "./agents/researcher.toml"
     .expect("agent role layer config should parse");
     let config_layer_stack = codex_config::ConfigLayerStack::new(
         vec![codex_config::ConfigLayerEntry::new(
-            codex_app_server_protocol::ConfigLayerSource::User {
+            ConfigLayerSource::User {
                 file: codex_home.path().join(CONFIG_TOML_FILE).abs(),
                 profile: None,
             },
@@ -8005,11 +8589,34 @@ model = "gpt-5-mini"
     Ok(())
 }
 
+#[test]
+fn legacy_agent_job_max_runtime_seconds_is_accepted_as_noop() {
+    let parsed = toml::from_str::<ConfigToml>(
+        r#"
+[agents]
+job_max_runtime_seconds = 900
+"#,
+    )
+    .expect("legacy agent job setting should deserialize");
+
+    assert_eq!(
+        parsed.agents,
+        Some(AgentsToml {
+            job_max_runtime_seconds: Some(900),
+            ..Default::default()
+        })
+    );
+}
+
 #[tokio::test]
-async fn load_config_resolves_agent_interrupt_message() -> std::io::Result<()> {
+async fn load_config_resolves_agent_controls() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     let cfg = ConfigToml {
         agents: Some(AgentsToml {
+            enabled: Some(false),
+            max_depth: Some(2),
+            default_subagent_model: Some("gpt-5.6-terra".to_string()),
+            default_subagent_reasoning_effort: Some(ReasoningEffort::High),
             interrupt_message: Some(false),
             ..Default::default()
         }),
@@ -8023,9 +8630,45 @@ async fn load_config_resolves_agent_interrupt_message() -> std::io::Result<()> {
     )
     .await?;
 
-    assert!(!config.agent_interrupt_message_enabled);
+    assert_eq!(
+        (
+            config.agents_enabled,
+            config.agent_max_depth,
+            config.agent_default_subagent_model.as_deref(),
+            config.agent_default_subagent_reasoning_effort,
+            config.agent_interrupt_message_enabled,
+        ),
+        (
+            false,
+            2,
+            Some("gpt-5.6-terra"),
+            Some(ReasoningEffort::High),
+            false,
+        )
+    );
 
     Ok(())
+}
+
+#[test]
+fn agents_max_threads_alias_matches_canonical_config() {
+    let canonical: ConfigToml = toml::from_str(
+        r#"[agents]
+max_concurrent_threads_per_session = 7
+"#,
+    )
+    .expect("canonical agents thread limit should parse");
+    let legacy: ConfigToml = toml::from_str(
+        r#"[agents]
+max_threads = 7
+"#,
+    )
+    .expect("legacy agents thread limit should parse");
+
+    assert_eq!(legacy, canonical);
+    let serialized = toml::to_string(&legacy).expect("agents config should serialize");
+    assert!(serialized.contains("max_concurrent_threads_per_session = 7"));
+    assert!(!serialized.contains("max_threads"));
 }
 
 #[tokio::test]
@@ -8033,8 +8676,11 @@ async fn load_config_normalizes_agent_role_nickname_candidates() -> std::io::Res
     let codex_home = TempDir::new()?;
     let cfg = ConfigToml {
         agents: Some(AgentsToml {
-            max_threads: None,
+            enabled: None,
+            max_concurrent_threads_per_session: None,
             max_depth: None,
+            default_subagent_model: None,
+            default_subagent_reasoning_effort: None,
             job_max_runtime_seconds: None,
             interrupt_message: None,
             roles: BTreeMap::from([(
@@ -8076,8 +8722,11 @@ async fn load_config_rejects_empty_agent_role_nickname_candidates() -> std::io::
     let codex_home = TempDir::new()?;
     let cfg = ConfigToml {
         agents: Some(AgentsToml {
-            max_threads: None,
+            enabled: None,
+            max_concurrent_threads_per_session: None,
             max_depth: None,
+            default_subagent_model: None,
+            default_subagent_reasoning_effort: None,
             job_max_runtime_seconds: None,
             interrupt_message: None,
             roles: BTreeMap::from([(
@@ -8113,8 +8762,11 @@ async fn load_config_rejects_duplicate_agent_role_nickname_candidates() -> std::
     let codex_home = TempDir::new()?;
     let cfg = ConfigToml {
         agents: Some(AgentsToml {
-            max_threads: None,
+            enabled: None,
+            max_concurrent_threads_per_session: None,
             max_depth: None,
+            default_subagent_model: None,
+            default_subagent_reasoning_effort: None,
             job_max_runtime_seconds: None,
             interrupt_message: None,
             roles: BTreeMap::from([(
@@ -8150,8 +8802,11 @@ async fn load_config_rejects_unsafe_agent_role_nickname_candidates() -> std::io:
     let codex_home = TempDir::new()?;
     let cfg = ConfigToml {
         agents: Some(AgentsToml {
-            max_threads: None,
+            enabled: None,
+            max_concurrent_threads_per_session: None,
             max_depth: None,
+            default_subagent_model: None,
+            default_subagent_reasoning_effort: None,
             job_max_runtime_seconds: None,
             interrupt_message: None,
             roles: BTreeMap::from([(
@@ -8268,7 +8923,7 @@ model_provider = "openai-custom"
 [profiles.zdr]
 model = "o3"
 model_provider = "openai"
-approval_policy = "on-failure"
+approval_policy = "on-request"
 
 [profiles.zdr.analytics]
 enabled = false
@@ -8276,7 +8931,7 @@ enabled = false
 [profiles.gpt5]
 model = "gpt-5.4"
 model_provider = "openai"
-approval_policy = "on-failure"
+approval_policy = "on-request"
 model_reasoning_effort = "high"
 model_reasoning_summary = "detailed"
 model_verbosity = "high"
@@ -8659,6 +9314,12 @@ async fn test_requirements_web_search_mode_allowlist_does_not_warn_when_unset() 
     let fixture = create_test_fixture()?;
 
     let requirements_toml = codex_config::ConfigRequirementsToml {
+        sqlite_home: None,
+        log_dir: None,
+        model_catalog_json: None,
+        check_for_update_on_startup: None,
+        allow_login_shell: None,
+        feedback: None,
         allowed_approval_policies: None,
         allowed_approvals_reviewers: None,
         allowed_sandbox_modes: None,
@@ -8670,16 +9331,19 @@ async fn test_requirements_web_search_mode_allowlist_does_not_warn_when_unset() 
         allow_appshots: None,
         allow_remote_control: None,
         computer_use: None,
+        browser_use: None,
         windows: None,
         feature_requirements: None,
         hooks: None,
         mcp_servers: None,
         plugins: None,
+        marketplaces: None,
         apps: None,
         rules: None,
         enforce_residency: None,
         network: None,
         permissions: None,
+        models: None,
         guardian_policy_config: None,
     };
     let requirement_source = codex_config::RequirementSource::Unknown;
@@ -9551,12 +10215,14 @@ async fn permission_profile_override_preserves_split_write_roots() -> std::io::R
                 value: FileSystemSpecialPath::Root,
             },
             access: FileSystemAccessMode::Read,
+            missing_path_behavior: None,
         },
         FileSystemSandboxEntry {
             path: FileSystemPath::Path {
                 path: outside_root.clone(),
             },
             access: FileSystemAccessMode::Write,
+            missing_path_behavior: None,
         },
     ]);
     let permission_profile = PermissionProfile::from_runtime_permissions_with_enforcement(
@@ -9751,6 +10417,7 @@ async fn browser_feature_requirements_are_valid() -> std::io::Result<()> {
 [features]
 in_app_browser = false
 browser_use = false
+browser_use_full_cdp_access = false
 "#,
             ),
         )
@@ -9759,6 +10426,7 @@ browser_use = false
 
     assert!(!config.features.enabled(Feature::InAppBrowser));
     assert!(!config.features.enabled(Feature::BrowserUse));
+    assert!(!config.features.enabled(Feature::BrowserUseFullCdpAccess));
 
     Ok(())
 }
@@ -10117,9 +10785,16 @@ default_wait_timeout_ms = 30000
 usage_hint_text = "Custom delegation guidance."
 root_agent_usage_hint_text = "Root guidance."
 subagent_usage_hint_text = "Subagent guidance."
+subagent_developer_instructions = "  Delegate carefully.  "
+multi_agent_mode_hint_text = "Custom mode guidance."
 tool_namespace = "agents"
 hide_spawn_agent_metadata = true
+expose_spawn_agent_model_overrides = false
+wait_agent_enabled = false
 non_code_mode_only = true
+
+[agents]
+max_concurrent_threads_per_session = 9
 "#,
     )?;
 
@@ -10139,7 +10814,7 @@ non_code_mode_only = true
             config.agent_max_threads,
             config.effective_agent_max_threads(MultiAgentVersion::V2)
         ),
-        (None, Some(4))
+        (Some(9), Some(4))
     );
     assert_eq!(
         config.multi_agent_v2.usage_hint_text.as_deref(),
@@ -10154,10 +10829,23 @@ non_code_mode_only = true
         Some("Subagent guidance.")
     );
     assert_eq!(
+        config
+            .multi_agent_v2
+            .subagent_developer_instructions
+            .as_deref(),
+        Some("Delegate carefully.")
+    );
+    assert_eq!(
+        config.multi_agent_v2.multi_agent_mode_hint_text.as_deref(),
+        Some("Custom mode guidance.")
+    );
+    assert_eq!(
         config.multi_agent_v2.tool_namespace.as_deref(),
         Some("agents")
     );
     assert!(config.multi_agent_v2.hide_spawn_agent_metadata);
+    assert!(!config.multi_agent_v2.expose_spawn_agent_model_overrides);
+    assert!(!config.multi_agent_v2.wait_agent_enabled);
     assert!(config.multi_agent_v2.non_code_mode_only);
 
     Ok(())
@@ -10179,7 +10867,10 @@ enabled = true
         .build()
         .await?;
 
-    assert_eq!(config.multi_agent_v2, MultiAgentV2Config::default());
+    assert_eq!(
+        config.multi_agent_v2,
+        resolve_multi_agent_v2_config(&ConfigToml::default())
+    );
     assert_eq!(
         (
             config.agent_max_threads,
@@ -10211,8 +10902,111 @@ max_concurrent_threads_per_session = 17
             config.subagent_usage_hint_text,
         ]
         .into_iter()
-        .all(|hint| hint.is_some_and(|hint| hint.ends_with(expected_suffix.as_str())))
+        .all(|hint| hint.is_some_and(|hint| hint.contains(expected_suffix.as_str())))
     );
+}
+
+#[test]
+fn multi_agent_v2_model_override_exposure_preserves_configured_usage_hints() {
+    let config_toml = toml::from_str(
+        r#"[features.multi_agent_v2]
+enabled = true
+root_agent_usage_hint_text = "Root guidance."
+subagent_usage_hint_text = "Subagent guidance."
+expose_spawn_agent_model_overrides = true
+"#,
+    )
+    .expect("multi-agent v2 config should parse");
+
+    let config = resolve_multi_agent_v2_config(&config_toml);
+    assert!(config.expose_spawn_agent_model_overrides);
+    assert_eq!(
+        config.root_agent_usage_hint_text.as_deref(),
+        Some("Root guidance.")
+    );
+    assert_eq!(
+        config.subagent_usage_hint_text.as_deref(),
+        Some("Subagent guidance.")
+    );
+}
+
+#[test]
+fn multi_agent_v2_exposes_model_overrides_by_default() {
+    let config_toml =
+        toml::from_str(r#"[features.multi_agent_v2]"#).expect("multi-agent v2 config should parse");
+
+    let config = resolve_multi_agent_v2_config(&config_toml);
+    assert!(config.expose_spawn_agent_model_overrides);
+    assert!(
+        [
+            config.root_agent_usage_hint_text,
+            config.subagent_usage_hint_text,
+        ]
+        .into_iter()
+        .all(|hint| hint.is_some_and(|hint| {
+            hint.ends_with(DEFAULT_MULTI_AGENT_V2_MODEL_OVERRIDE_USAGE_HINT_TEXT)
+        }))
+    );
+}
+
+#[tokio::test]
+async fn multi_agent_v2_allows_disabled_wait_agent_without_sleep_tool() -> std::io::Result<()> {
+    for config_toml in [
+        r#"
+[features.multi_agent_v2]
+enabled = true
+wait_agent_enabled = false
+"#,
+        r#"
+[features.multi_agent_v2]
+enabled = true
+wait_agent_enabled = false
+
+[features.current_time_reminder]
+enabled = true
+sleep_tool = false
+"#,
+        r#"
+[features.multi_agent_v2]
+enabled = true
+wait_agent_enabled = false
+
+[features.current_time_reminder]
+enabled = false
+sleep_tool = true
+"#,
+    ] {
+        let codex_home = tempdir()?;
+        let config_toml = toml::from_str(config_toml).expect("TOML should deserialize");
+        let config = Config::load_from_base_config_with_overrides(
+            config_toml,
+            ConfigOverrides::default(),
+            codex_home.abs(),
+        )
+        .await?;
+
+        assert!(!config.multi_agent_v2.wait_agent_enabled);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn multi_agent_v2_preserves_empty_mode_hint_override() {
+    let config_toml = toml::from_str(
+        r#"[features.multi_agent_v2]
+multi_agent_mode_hint_text = ""
+subagent_developer_instructions = "  \t  "
+"#,
+    )
+    .expect("multi-agent v2 config should parse");
+
+    let expected = MultiAgentV2Config {
+        subagent_developer_instructions: Some(String::new()),
+        multi_agent_mode_hint_text: Some(String::new()),
+        ..resolve_multi_agent_v2_config(&ConfigToml::default())
+    };
+    assert_eq!(resolve_multi_agent_v2_config(&config_toml), expected);
 }
 
 #[tokio::test]
@@ -10240,7 +11034,7 @@ subagent_usage_hint_text = ""
 }
 
 #[tokio::test]
-async fn multi_agent_v2_feature_rejects_agents_max_threads() -> std::io::Result<()> {
+async fn multi_agent_v2_uses_agents_max_concurrent_threads_per_session() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::write(
         codex_home.path().join(CONFIG_TOML_FILE),
@@ -10248,7 +11042,7 @@ async fn multi_agent_v2_feature_rejects_agents_max_threads() -> std::io::Result<
 enabled = true
 
 [agents]
-max_threads = 3
+max_concurrent_threads_per_session = 7
 "#,
     )?;
 
@@ -10257,25 +11051,19 @@ max_threads = 3
         .fallback_cwd(Some(codex_home.path().to_path_buf()))
         .build()
         .await?;
-    let err = config
-        .validate_multi_agent_v2_config()
-        .expect_err("agents.max_threads should conflict with multi_agent_v2");
-
-    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     assert_eq!(
-        err.to_string(),
-        "agents.max_threads cannot be set when features.multi_agent_v2 is enabled"
-    );
-    assert_eq!(
-        config.effective_agent_max_threads(MultiAgentVersion::V2),
-        Some(3)
+        (
+            config.multi_agent_v2.max_concurrent_threads_per_session,
+            config.effective_agent_max_threads(MultiAgentVersion::V2),
+        ),
+        (8, Some(7))
     );
 
     Ok(())
 }
 
 #[tokio::test]
-async fn catalog_v2_allows_agents_max_threads_when_feature_disabled() -> std::io::Result<()> {
+async fn catalog_v2_allows_agents_thread_limit_when_feature_disabled() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::write(
         codex_home.path().join(CONFIG_TOML_FILE),
@@ -10283,7 +11071,7 @@ async fn catalog_v2_allows_agents_max_threads_when_feature_disabled() -> std::io
 enabled = false
 
 [agents]
-max_threads = 3
+max_concurrent_threads_per_session = 3
 "#,
     )?;
 
@@ -10293,10 +11081,12 @@ max_threads = 3
         .build()
         .await?;
 
-    config.validate_multi_agent_v2_config()?;
     assert_eq!(
-        config.effective_agent_max_threads(MultiAgentVersion::V2),
-        Some(3)
+        (
+            config.multi_agent_v2.max_concurrent_threads_per_session,
+            config.effective_agent_max_threads(MultiAgentVersion::V2),
+        ),
+        (4, Some(3))
     );
 
     Ok(())
@@ -11203,4 +11993,135 @@ fn test_tui_notification_condition_rejects_unknown_value() {
             && err.contains("always"),
         "unexpected error: {err}"
     );
+}
+
+async fn load_with_enterprise_requirement(
+    codex_home: &TempDir,
+    requirements: impl Into<String>,
+) -> std::io::Result<Config> {
+    ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .cloud_config_bundle(
+            CloudConfigBundleFixture::loader_with_enterprise_requirement(requirements),
+        )
+        .build()
+        .await
+}
+
+#[tokio::test]
+async fn exact_requirements_apply_to_runtime_config() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let catalog_path = codex_home.path().join("required-models.json");
+    let mut catalog = bundled_models_response()
+        .unwrap_or_else(|err| panic!("bundled models.json should parse: {err}"));
+    catalog.models = catalog.models.into_iter().take(1).collect();
+    std::fs::write(
+        &catalog_path,
+        serde_json::to_string(&catalog).expect("serialize catalog"),
+    )?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"
+check_for_update_on_startup = true
+allow_login_shell = true
+
+[feedback]
+enabled = true
+
+[windows]
+sandbox_private_desktop = true
+"#,
+    )?;
+
+    let required_sqlite_home = codex_home.path().join("required-state");
+    let required_log_dir = codex_home.path().join("required-logs");
+    let requirements = format!(
+        r#"
+sqlite_home = {:?}
+log_dir = {:?}
+model_catalog_json = {:?}
+check_for_update_on_startup = false
+allow_login_shell = false
+
+[feedback]
+enabled = false
+
+[windows]
+sandbox_private_desktop = false
+"#,
+        required_sqlite_home.display(),
+        required_log_dir.display(),
+        catalog_path.display(),
+    );
+    let config = load_with_enterprise_requirement(&codex_home, requirements).await?;
+
+    assert_eq!(config.sqlite.home(), required_sqlite_home.as_path());
+    assert_eq!(config.log_dir, required_log_dir);
+    assert_eq!(config.model_catalog, Some(catalog));
+    assert!(!config.check_for_update_on_startup);
+    assert!(!config.permissions.allow_login_shell);
+    assert!(!config.feedback_enabled);
+    assert!(!config.permissions.windows_sandbox_private_desktop);
+    assert!(config.startup_warnings.iter().any(|warning| {
+        warning.contains("Configured value for `check_for_update_on_startup` is overridden")
+    }));
+    Ok(())
+}
+
+#[tokio::test]
+async fn absent_allow_login_shell_does_not_report_an_override() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let config = load_with_enterprise_requirement(&codex_home, "allow_login_shell = false").await?;
+
+    assert!(!config.permissions.allow_login_shell);
+    assert!(
+        config
+            .startup_warnings
+            .iter()
+            .all(|warning| !warning.contains("allow_login_shell"))
+    );
+    Ok(())
+}
+
+#[test]
+fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let required = AbsolutePathBuf::try_from(codex_home.path().join("required-state"))?;
+    let environment = codex_home.path().join("environment-state");
+    let requirement = Sourced::new(required.clone(), RequirementSource::Unknown);
+    let mut warnings = Vec::new();
+
+    super::requirements::push_sqlite_home_env_override_warning(
+        /*configured_sqlite_home*/ None,
+        Some(environment.as_path()),
+        Some(&requirement),
+        &mut warnings,
+    );
+    assert_eq!(
+        warnings,
+        vec![format!(
+            "Environment value for `$CODEX_SQLITE_HOME` is overridden by the required `sqlite_home` value {required:?} from {}.",
+            RequirementSource::Unknown
+        )]
+    );
+
+    warnings.clear();
+    super::requirements::push_sqlite_home_env_override_warning(
+        /*configured_sqlite_home*/ None,
+        Some(required.as_path()),
+        Some(&requirement),
+        &mut warnings,
+    );
+    assert!(warnings.is_empty());
+
+    super::requirements::push_sqlite_home_env_override_warning(
+        Some(&required),
+        Some(environment.as_path()),
+        Some(&requirement),
+        &mut warnings,
+    );
+    assert!(warnings.is_empty());
+
+    Ok(())
 }

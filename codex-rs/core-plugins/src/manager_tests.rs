@@ -20,32 +20,36 @@ use crate::startup_sync::curated_plugins_repo_path;
 use crate::test_support::TEST_CURATED_PLUGIN_CACHE_VERSION;
 use crate::test_support::TEST_CURATED_PLUGIN_SHA;
 use crate::test_support::load_plugins_config as load_plugins_config_input;
+use crate::test_support::test_http_client_factory;
 use crate::test_support::write_curated_plugin;
 use crate::test_support::write_curated_plugin_sha_with as write_curated_plugin_sha;
 use crate::test_support::write_file;
 use crate::test_support::write_openai_api_curated_marketplace;
 use crate::test_support::write_openai_curated_marketplace;
-use codex_app_server_protocol::AuthMode;
-use codex_app_server_protocol::ConfigLayerSource;
 use codex_config::AppToolApproval;
 use codex_config::CONFIG_TOML_FILE;
 use codex_config::ConfigLayerEntry;
+use codex_config::ConfigLayerSource;
 use codex_config::ConfigLayerStack;
 use codex_config::ConfigRequirements;
 use codex_config::ConfigRequirementsToml;
 use codex_config::McpServerConfig;
 use codex_config::McpServerOAuthConfig;
 use codex_config::McpServerToolConfig;
+use codex_config::RequirementSource;
+use codex_config::RequirementsLayerEntry;
+use codex_config::compose_requirements;
 use codex_config::types::McpServerTransportConfig;
 use codex_core_skills::PluginSkillSnapshots;
 use codex_core_skills::SkillsLoadInput;
 use codex_core_skills::SkillsService;
-use codex_core_skills::config_rules::SkillConfigRules;
 use codex_login::CodexAuth;
 use codex_plugin::AppDeclaration;
 use codex_plugin::PluginId;
+use codex_protocol::auth::AuthMode;
 use codex_protocol::protocol::HookEventName;
 use codex_protocol::protocol::Product;
+use codex_skills::SkillConfigRules;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_absolute_path::test_support::PathBufExt;
 use pretty_assertions::assert_eq;
@@ -63,6 +67,54 @@ use wiremock::matchers::path;
 use wiremock::matchers::query_param;
 
 const MAX_CAPABILITY_SUMMARY_DESCRIPTION_LEN: usize = 1024;
+
+fn unrestricted_config_layer_stack() -> ConfigLayerStack {
+    ConfigLayerStack::default()
+}
+
+fn config_layer_stack_with_requirements(
+    codex_home: &Path,
+    user_config: &str,
+    requirements: &str,
+) -> ConfigLayerStack {
+    let with_sources = compose_requirements([RequirementsLayerEntry::from_toml(
+        RequirementSource::Unknown,
+        requirements,
+    )])
+    .expect("compose requirements")
+    .expect("requirements should be present");
+    let requirements_toml = with_sources.clone().into_toml();
+    let requirements = ConfigRequirements::try_from(with_sources).expect("normalize requirements");
+    let config_file =
+        AbsolutePathBuf::try_from(codex_home.join(CONFIG_TOML_FILE)).expect("absolute config path");
+    ConfigLayerStack::new(
+        vec![ConfigLayerEntry::new(
+            ConfigLayerSource::User {
+                file: config_file,
+                profile: None,
+            },
+            toml::from_str(user_config).expect("parse user config"),
+        )],
+        requirements,
+        requirements_toml,
+    )
+    .expect("build config layer stack")
+}
+
+fn plugins_config_input_with_requirements(
+    codex_home: &Path,
+    user_config: &str,
+    requirements: &str,
+) -> PluginsConfigInput {
+    PluginsConfigInput::new(
+        config_layer_stack_with_requirements(codex_home, user_config, requirements),
+        String::new(),
+        /*plugins_enabled*/ true,
+        /*remote_plugin_enabled*/ false,
+        String::new(),
+        test_http_client_factory(),
+    )
+}
 
 #[test]
 fn plugins_manager_tracks_auth_mode() {
@@ -84,6 +136,232 @@ fn plugins_manager_tracks_auth_mode() {
         Some(AuthMode::Chatgpt),
     );
     assert_eq!(manager_with_auth.auth_mode(), Some(AuthMode::Chatgpt));
+}
+
+#[test]
+fn curated_repo_sync_stays_deferred_for_remote_chatgpt_catalog() {
+    CURATED_REPO_SYNC_STARTED.store(false, std::sync::atomic::Ordering::SeqCst);
+    let tmp = TempDir::new().unwrap();
+    let config = PluginsConfigInput::new(
+        unrestricted_config_layer_stack(),
+        "openai".to_string(),
+        /*plugins_enabled*/ true,
+        /*remote_plugin_enabled*/ true,
+        "https://chatgpt.com".to_string(),
+        test_http_client_factory(),
+    );
+    let manager = Arc::new(PluginsManager::new_with_options(
+        tmp.path().to_path_buf(),
+        Some(Product::Codex),
+        Some(AuthMode::Chatgpt),
+    ));
+
+    manager.maybe_start_curated_repo_sync_for_config(
+        &config, /*on_effective_plugins_changed*/ None,
+    );
+
+    assert!(!CURATED_REPO_SYNC_STARTED.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+#[test]
+fn marketplace_source_refresh_notifies_only_after_installed_cache_changes() {
+    let tmp = TempDir::new().unwrap();
+    let manager = PluginsManager::new(tmp.path().to_path_buf());
+    let callback_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let callback_count_for_callback = Arc::clone(&callback_count);
+    let callback: EffectivePluginsChangedCallback = Arc::new(move |_change| {
+        callback_count_for_callback.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    });
+
+    manager.clear_caches_after_marketplace_source_refresh(
+        /*installed_plugin_cache_refreshed*/ false,
+        Some(&callback),
+    );
+    assert_eq!(callback_count.load(std::sync::atomic::Ordering::Relaxed), 0);
+
+    manager.clear_caches_after_marketplace_source_refresh(
+        /*installed_plugin_cache_refreshed*/ true,
+        Some(&callback),
+    );
+    assert_eq!(callback_count.load(std::sync::atomic::Ordering::Relaxed), 1);
+}
+
+#[tokio::test]
+async fn marketplace_policy_projection_disables_installed_plugin_and_invalidates_cache() {
+    let codex_home = TempDir::new().expect("create Codex home");
+    write_plugin(
+        &codex_home.path().join("plugins/cache/company"),
+        "sample/local",
+        "sample",
+    );
+    let user_config = r#"
+[marketplaces.company]
+source_type = "git"
+source = "https://github.com/example/company.git"
+
+[plugins."sample@company"]
+enabled = true
+"#;
+    let allowed = plugins_config_input_with_requirements(
+        codex_home.path(),
+        user_config,
+        r#"
+[marketplaces]
+restrict_to_allowed_sources = true
+
+[marketplaces.allowed_sources.company]
+source = "git"
+url = "https://github.com/example/company.git"
+"#,
+    );
+    let blocked = plugins_config_input_with_requirements(
+        codex_home.path(),
+        user_config,
+        r#"
+[marketplaces]
+restrict_to_allowed_sources = true
+
+[marketplaces.allowed_sources.other]
+source = "git"
+url = "https://github.com/example/other.git"
+"#,
+    );
+    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+
+    let allowed_outcome = manager.plugins_for_config(&allowed).await;
+    assert_eq!(allowed_outcome.plugins().len(), 1);
+    assert_eq!(allowed_outcome.plugins()[0].config_name, "sample@company");
+
+    let blocked_outcome = manager.plugins_for_config(&blocked).await;
+    assert_eq!(blocked_outcome, PluginLoadOutcome::default());
+}
+
+#[tokio::test]
+async fn plugin_read_rejects_marketplace_blocked_by_requirements() {
+    let codex_home = TempDir::new().expect("create Codex home");
+    let marketplace_root = codex_home.path().join("marketplace");
+    write_plugin(&marketplace_root, "sample", "sample");
+    write_file(
+        &marketplace_root.join(".agents/plugins/marketplace.json"),
+        r#"{
+  "name": "company",
+  "plugins": [
+    {
+      "name": "sample",
+      "source": {"source": "local", "path": "./sample"}
+    }
+  ]
+}"#,
+    );
+    let config = plugins_config_input_with_requirements(
+        codex_home.path(),
+        "",
+        r#"
+[marketplaces]
+restrict_to_allowed_sources = true
+"#,
+    );
+    let marketplace_path =
+        AbsolutePathBuf::try_from(marketplace_root.join(".agents/plugins/marketplace.json"))
+            .expect("absolute marketplace path");
+
+    let err = PluginsManager::new(codex_home.path().to_path_buf())
+        .read_plugin_for_config(
+            &config,
+            &PluginReadRequest {
+                plugin_name: "sample".to_string(),
+                marketplace_path,
+            },
+        )
+        .await
+        .expect_err("blocked marketplace should not be readable");
+    assert!(matches!(
+        err,
+        MarketplaceError::InvalidMarketplaceFile { .. }
+    ));
+}
+
+#[test]
+fn marketplace_policy_filters_discovered_marketplaces_by_configured_name() {
+    let codex_home = TempDir::new().expect("create Codex home");
+    let repo_root = codex_home.path().join("repo");
+    let subdirectory = repo_root.join("worktree/subdirectory");
+    fs::create_dir_all(&subdirectory).expect("create input subdirectory");
+    write_plugin(&repo_root, "sample", "sample");
+    write_file(
+        &repo_root.join(".agents/plugins/marketplace.json"),
+        r#"{
+  "name": "company",
+  "plugins": [
+    {
+      "name": "sample",
+      "source": {"source": "local", "path": "./sample"}
+    }
+  ]
+}"#,
+    );
+    init_git_repo(&repo_root);
+    let repo_root = AbsolutePathBuf::try_from(repo_root).expect("absolute repository root");
+    let subdirectory =
+        AbsolutePathBuf::try_from(subdirectory).expect("absolute input subdirectory");
+    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+    let user_config = format!(
+        r#"
+[marketplaces.company]
+source_type = "local"
+source = {:?}
+"#,
+        repo_root.as_path()
+    );
+    let allowed = plugins_config_input_with_requirements(
+        codex_home.path(),
+        &user_config,
+        &format!(
+            r#"
+[marketplaces]
+restrict_to_allowed_sources = true
+
+[marketplaces.allowed_sources.company]
+source = "local"
+path = {:?}
+"#,
+            repo_root.as_path()
+        ),
+    );
+    let blocked = plugins_config_input_with_requirements(
+        codex_home.path(),
+        &user_config,
+        &format!(
+            r#"
+[marketplaces]
+restrict_to_allowed_sources = true
+
+[marketplaces.allowed_sources.subdirectory]
+source = "local"
+path = {:?}
+"#,
+            subdirectory.as_path()
+        ),
+    );
+
+    let allowed_outcome = manager
+        .list_marketplaces_for_config(
+            &allowed,
+            std::slice::from_ref(&subdirectory),
+            /*include_openai_curated*/ false,
+        )
+        .expect("list allowed marketplace");
+    assert_eq!(allowed_outcome.marketplaces.len(), 1);
+    assert_eq!(allowed_outcome.marketplaces[0].name, "company");
+
+    let blocked_outcome = manager
+        .list_marketplaces_for_config(
+            &blocked,
+            std::slice::from_ref(&subdirectory),
+            /*include_openai_curated*/ false,
+        )
+        .expect("list blocked marketplace");
+    assert_eq!(blocked_outcome.marketplaces, Vec::new());
 }
 
 fn write_auth_projection_plugin(codex_home: &Path, name: &str, include_app: bool) {
@@ -550,11 +828,17 @@ fn remote_installed_plugin_in_marketplace(
     RemoteInstalledPlugin {
         marketplace_name: marketplace_name.to_string(),
         id: format!("plugins~Plugin_{name}"),
+        version: None,
         name: name.to_string(),
+        installed_at: None,
         enabled: true,
         install_policy: codex_app_server_protocol::PluginInstallPolicy::Available,
+        install_policy_source: None,
+        must_show_installation_interstitial: None,
         auth_policy: codex_app_server_protocol::PluginAuthPolicy::OnUse,
         availability: codex_app_server_protocol::PluginAvailability::Available,
+        disabled_reason: None,
+        eligible_plan_types: None,
         interface: None,
         keywords: Vec::new(),
     }
@@ -570,6 +854,16 @@ fn write_cached_plugin(codex_home: &Path, marketplace_name: &str, plugin_name: &
         plugin_name,
         /*manifest_version*/ Some("local"),
     );
+}
+
+async fn loaded_plugin_names(manager: &PluginsManager, config: &PluginsConfigInput) -> Vec<String> {
+    manager
+        .plugins_for_config(config)
+        .await
+        .plugins()
+        .iter()
+        .map(|plugin| plugin.config_name.clone())
+        .collect()
 }
 
 #[tokio::test]
@@ -628,6 +922,7 @@ async fn load_plugins_loads_default_skills_and_mcp_servers() {
         outcome.plugins(),
         vec![LoadedPlugin {
             config_name: "sample@test".to_string(),
+            remote_plugin_id: None,
             manifest_name: Some("sample".to_string()),
             plugin_namespace: Some("sample".to_string()),
             manifest_description: Some(
@@ -641,6 +936,7 @@ async fn load_plugins_loads_default_skills_and_mcp_servers() {
             mcp_servers: HashMap::from([(
                 "sample".to_string(),
                 McpServerConfig {
+                    auth: Default::default(),
                     transport: McpServerTransportConfig::StreamableHttp {
                         url: "https://sample.example/mcp".to_string(),
                         bearer_token_env_var: None,
@@ -732,6 +1028,7 @@ enabled = true
         HashMap::from([(
             "counter".to_string(),
             McpServerConfig {
+                auth: Default::default(),
                 transport: McpServerTransportConfig::StreamableHttp {
                     url: "https://sample.example/counter/mcp".to_string(),
                     bearer_token_env_var: None,
@@ -827,13 +1124,82 @@ approval_mode = "approve"
 }
 
 #[tokio::test]
+async fn remote_installed_plugin_preserves_configured_mcp_server_policy() {
+    let codex_home = TempDir::new().unwrap();
+    let plugin_root = codex_home
+        .path()
+        .join("plugins/cache/openai-curated-remote/linear/local");
+    write_cached_plugin(codex_home.path(), "openai-curated-remote", "linear");
+    write_file(
+        &plugin_root.join(".mcp.json"),
+        r#"{
+  "mcpServers": {
+    "linear": {
+      "type": "http",
+      "url": "https://linear.example/mcp"
+    }
+  }
+}"#,
+    );
+    write_file(
+        &codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[features]
+plugins = true
+
+[plugins."linear@openai-curated-remote"]
+enabled = false
+
+[plugins."linear@openai-curated-remote".mcp_servers.linear]
+enabled = false
+default_tools_approval_mode = "approve"
+enabled_tools = ["search"]
+disabled_tools = ["delete"]
+
+[plugins."linear@openai-curated-remote".mcp_servers.linear.tools.search]
+approval_mode = "approve"
+"#,
+    );
+
+    let config = load_config(codex_home.path(), codex_home.path()).await;
+    let manager = PluginsManager::new_with_options(
+        codex_home.path().to_path_buf(),
+        Some(Product::Codex),
+        Some(AuthMode::Chatgpt),
+    );
+    manager.write_remote_installed_plugins_cache(vec![remote_installed_linear_plugin()]);
+
+    let outcome = manager.plugins_for_config(&config).await;
+    let plugin = outcome
+        .plugins()
+        .iter()
+        .find(|plugin| plugin.config_name == "linear@openai-curated-remote")
+        .expect("remote plugin should be loaded");
+    let expected_server = serde_json::from_value::<McpServerConfig>(serde_json::json!({
+        "url": "https://linear.example/mcp",
+        "enabled": false,
+        "default_tools_approval_mode": "approve",
+        "enabled_tools": ["search"],
+        "disabled_tools": ["delete"],
+        "tools": {
+            "search": { "approval_mode": "approve" }
+        }
+    }))
+    .expect("valid expected MCP server");
+
+    assert!(plugin.enabled);
+    assert_eq!(
+        plugin.mcp_servers,
+        HashMap::from([("linear".to_string(), expected_server)])
+    );
+}
+
+#[tokio::test]
 async fn remote_installed_cache_ignores_plugins_missing_local_cache() {
     let codex_home = TempDir::new().unwrap();
     write_file(
         &codex_home.path().join(CONFIG_TOML_FILE),
         r#"[features]
 plugins = true
-remote_plugin = true
 "#,
     );
 
@@ -843,6 +1209,198 @@ remote_plugin = true
 
     let outcome = manager.plugins_for_config(&config).await;
     assert_eq!(outcome, PluginLoadOutcome::default());
+}
+
+#[tokio::test]
+async fn installed_plugin_telemetry_metadata_collects_capabilities() {
+    let codex_home = TempDir::new().unwrap();
+    write_cached_plugin(codex_home.path(), "test", "sample");
+    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+    let plugin_id = PluginId::parse("sample@test").expect("plugin id should parse");
+
+    let metadata = manager
+        .telemetry_metadata_for_installed_plugin(&plugin_id)
+        .await;
+
+    assert_eq!(
+        metadata,
+        PluginTelemetryMetadata {
+            plugin_id: Some(plugin_id),
+            remote_plugin_id: None,
+            capability_summary: Some(PluginCapabilitySummary {
+                config_name: "sample@test".to_string(),
+                display_name: "sample".to_string(),
+                description: None,
+                has_skills: true,
+                mcp_server_names: Vec::new(),
+                app_connector_ids: Vec::new(),
+            }),
+        }
+    );
+}
+
+#[tokio::test]
+async fn installed_plugin_telemetry_metadata_resolves_persisted_remote_identity() {
+    let codex_home = TempDir::new().unwrap();
+    write_cached_plugin(codex_home.path(), "openai-curated-remote", "linear");
+    let plugin_id =
+        PluginId::parse("linear@openai-curated-remote").expect("plugin id should parse");
+    PluginStore::new(codex_home.path().to_path_buf())
+        .write_remote_plugin_id(&plugin_id, "plugins~Plugin_linear")
+        .expect("persist remote plugin id");
+    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+
+    let metadata = manager
+        .telemetry_metadata_for_installed_plugin(&plugin_id)
+        .await;
+
+    assert_eq!(
+        metadata,
+        PluginTelemetryMetadata {
+            plugin_id: Some(plugin_id),
+            remote_plugin_id: Some("plugins~Plugin_linear".to_string()),
+            capability_summary: Some(PluginCapabilitySummary {
+                config_name: "linear@openai-curated-remote".to_string(),
+                display_name: "linear".to_string(),
+                description: None,
+                has_skills: true,
+                mcp_server_names: Vec::new(),
+                app_connector_ids: Vec::new(),
+            }),
+        }
+    );
+}
+
+#[test]
+fn plugin_telemetry_ignores_local_marketplace_sidecars() {
+    let codex_home = TempDir::new().unwrap();
+    write_cached_plugin(codex_home.path(), "test", "sample");
+    let plugin_id = PluginId::parse("sample@test").expect("plugin id should parse");
+    PluginStore::new(codex_home.path().to_path_buf())
+        .write_remote_plugin_id(&plugin_id, "plugins~Plugin_sample")
+        .expect("persist remote plugin id");
+    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+
+    assert_eq!(
+        manager.telemetry_metadata_for_plugin_id(&plugin_id),
+        PluginTelemetryMetadata {
+            plugin_id: Some(plugin_id),
+            remote_plugin_id: None,
+            capability_summary: None,
+        }
+    );
+}
+
+#[tokio::test]
+async fn installed_plugin_telemetry_metadata_prefers_remote_snapshot_identity() {
+    let codex_home = TempDir::new().unwrap();
+    write_cached_plugin(codex_home.path(), "openai-curated-remote", "linear");
+    let plugin_id =
+        PluginId::parse("linear@openai-curated-remote").expect("plugin id should parse");
+    PluginStore::new(codex_home.path().to_path_buf())
+        .write_remote_plugin_id(&plugin_id, "plugins~Plugin_stale")
+        .expect("persist remote plugin id");
+    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+    manager.write_remote_installed_plugins_cache(vec![remote_installed_linear_plugin()]);
+
+    let metadata = manager
+        .telemetry_metadata_for_installed_plugin(&plugin_id)
+        .await;
+
+    assert_eq!(
+        metadata,
+        PluginTelemetryMetadata {
+            plugin_id: Some(plugin_id),
+            remote_plugin_id: Some("plugins~Plugin_linear".to_string()),
+            capability_summary: Some(PluginCapabilitySummary {
+                config_name: "linear@openai-curated-remote".to_string(),
+                display_name: "linear".to_string(),
+                description: None,
+                has_skills: true,
+                mcp_server_names: Vec::new(),
+                app_connector_ids: Vec::new(),
+            }),
+        }
+    );
+}
+
+#[tokio::test]
+async fn installed_plugin_telemetry_metadata_accepts_authoritative_remote_identity() {
+    let codex_home = TempDir::new().unwrap();
+    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+    let plugin_id =
+        PluginId::parse("linear@openai-curated-remote").expect("plugin id should parse");
+
+    let metadata = manager
+        .telemetry_metadata_for_installed_plugin_with_remote_id(&plugin_id, "plugins~Plugin_linear")
+        .await;
+
+    assert_eq!(
+        metadata,
+        PluginTelemetryMetadata {
+            plugin_id: Some(plugin_id),
+            remote_plugin_id: Some("plugins~Plugin_linear".to_string()),
+            capability_summary: None,
+        }
+    );
+}
+
+#[test]
+fn capability_summary_telemetry_metadata_uses_local_identity() {
+    let codex_home = TempDir::new().unwrap();
+    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+    let summary = PluginCapabilitySummary {
+        config_name: "linear@openai-curated-remote".to_string(),
+        display_name: "Linear".to_string(),
+        description: Some("Track work".to_string()),
+        has_skills: true,
+        mcp_server_names: vec!["linear".to_string()],
+        app_connector_ids: vec![AppConnectorId("linear-app".to_string())],
+    };
+
+    let metadata = manager.telemetry_metadata_for_capability_summary(&summary);
+
+    assert_eq!(
+        metadata,
+        Some(PluginTelemetryMetadata {
+            plugin_id: Some(
+                PluginId::parse("linear@openai-curated-remote").expect("plugin id should parse"),
+            ),
+            remote_plugin_id: None,
+            capability_summary: Some(summary),
+        })
+    );
+}
+
+#[test]
+fn capability_summary_telemetry_metadata_resolves_persisted_remote_identity() {
+    let codex_home = TempDir::new().unwrap();
+    write_cached_plugin(codex_home.path(), "openai-curated-remote", "linear");
+    let plugin_id =
+        PluginId::parse("linear@openai-curated-remote").expect("plugin id should parse");
+    PluginStore::new(codex_home.path().to_path_buf())
+        .write_remote_plugin_id(&plugin_id, "plugins~Plugin_linear")
+        .expect("persist remote plugin id");
+    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+    let summary = PluginCapabilitySummary {
+        config_name: "linear@openai-curated-remote".to_string(),
+        display_name: "Linear".to_string(),
+        description: Some("Track work".to_string()),
+        has_skills: true,
+        mcp_server_names: vec!["linear".to_string()],
+        app_connector_ids: vec![AppConnectorId("linear-app".to_string())],
+    };
+
+    let metadata = manager.telemetry_metadata_for_capability_summary(&summary);
+
+    assert_eq!(
+        metadata,
+        Some(PluginTelemetryMetadata {
+            plugin_id: Some(plugin_id),
+            remote_plugin_id: Some("plugins~Plugin_linear".to_string()),
+            capability_summary: Some(summary),
+        })
+    );
 }
 
 #[tokio::test]
@@ -859,27 +1417,30 @@ enabled = true
 
 [plugins."calendar@openai-curated"]
 enabled = true
+
+[plugins."linear@openai-api-curated"]
+enabled = true
 "#,
     );
     write_cached_plugin(codex_home.path(), "openai-curated", "linear");
     write_cached_plugin(codex_home.path(), "openai-curated", "calendar");
+    write_cached_plugin(codex_home.path(), "openai-api-curated", "linear");
     write_cached_plugin(codex_home.path(), "openai-curated-remote", "linear");
     write_cached_plugin(codex_home.path(), "openai-curated-remote", "remote-only");
 
     let config = load_config(codex_home.path(), codex_home.path()).await;
-    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+    let manager = PluginsManager::new_with_options(
+        codex_home.path().to_path_buf(),
+        Some(Product::Codex),
+        Some(AuthMode::Chatgpt),
+    );
     manager.write_remote_installed_plugins_cache(vec![
         remote_installed_plugin("linear"),
         remote_installed_plugin("remote-only"),
     ]);
 
-    let outcome = manager.plugins_for_config(&config).await;
     assert_eq!(
-        outcome
-            .plugins()
-            .iter()
-            .map(|plugin| plugin.config_name.clone())
-            .collect::<Vec<_>>(),
+        loaded_plugin_names(&manager, &config).await,
         vec![
             "calendar@openai-curated".to_string(),
             "linear@openai-curated".to_string(),
@@ -889,13 +1450,42 @@ enabled = true
 }
 
 #[tokio::test]
-async fn remote_installed_cache_prefers_remote_curated_conflicts_when_remote_plugin_enabled() {
+async fn api_curated_plugin_does_not_suppress_remote_curated_conflict_for_chatgpt() {
     let codex_home = TempDir::new().unwrap();
     write_file(
         &codex_home.path().join(CONFIG_TOML_FILE),
         r#"[features]
 plugins = true
-remote_plugin = true
+remote_plugin = false
+
+[plugins."linear@openai-api-curated"]
+enabled = true
+"#,
+    );
+    write_cached_plugin(codex_home.path(), "openai-api-curated", "linear");
+    write_cached_plugin(codex_home.path(), "openai-curated-remote", "linear");
+
+    let config = load_config(codex_home.path(), codex_home.path()).await;
+    let manager = PluginsManager::new_with_options(
+        codex_home.path().to_path_buf(),
+        Some(Product::Codex),
+        Some(AuthMode::Chatgpt),
+    );
+    manager.write_remote_installed_plugins_cache(vec![remote_installed_plugin("linear")]);
+
+    assert_eq!(
+        loaded_plugin_names(&manager, &config).await,
+        vec!["linear@openai-curated-remote".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn remote_global_catalog_ignores_local_curated_plugins() {
+    let codex_home = TempDir::new().unwrap();
+    write_file(
+        &codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[features]
+plugins = true
 
 [plugins."linear@openai-curated"]
 enabled = true
@@ -914,24 +1504,82 @@ enabled = true
     write_cached_plugin(codex_home.path(), "openai-curated-remote", "remote-only");
 
     let config = load_config(codex_home.path(), codex_home.path()).await;
-    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+    let manager = PluginsManager::new_with_options(
+        codex_home.path().to_path_buf(),
+        Some(Product::Codex),
+        Some(AuthMode::Chatgpt),
+    );
     manager.write_remote_installed_plugins_cache(vec![
         remote_installed_plugin("linear"),
         remote_installed_plugin("remote-only"),
     ]);
 
-    let outcome = manager.plugins_for_config(&config).await;
     assert_eq!(
-        outcome
-            .plugins()
-            .iter()
-            .map(|plugin| plugin.config_name.clone())
-            .collect::<Vec<_>>(),
+        loaded_plugin_names(&manager, &config).await,
         vec![
-            "calendar@openai-curated".to_string(),
             "linear@openai-curated-remote".to_string(),
             "remote-only@openai-curated-remote".to_string(),
         ]
+    );
+}
+
+#[tokio::test]
+async fn non_chatgpt_auth_rejects_cached_remote_curated_plugins_after_auth_switch() {
+    let codex_home = TempDir::new().unwrap();
+    write_file(
+        &codex_home.path().join(CONFIG_TOML_FILE),
+        r#"[features]
+plugins = true
+
+[plugins."linear@openai-curated"]
+enabled = true
+
+[plugins."linear@openai-api-curated"]
+enabled = true
+"#,
+    );
+    write_cached_plugin(codex_home.path(), "openai-curated", "linear");
+    write_cached_plugin(codex_home.path(), "openai-api-curated", "linear");
+    write_cached_plugin(codex_home.path(), "openai-curated-remote", "remote-only");
+
+    let mut config = load_config(codex_home.path(), codex_home.path()).await;
+    let manager = PluginsManager::new_with_options(
+        codex_home.path().to_path_buf(),
+        Some(Product::Codex),
+        Some(AuthMode::Chatgpt),
+    );
+    manager.write_remote_installed_plugins_cache(vec![remote_installed_plugin("remote-only")]);
+    assert_eq!(
+        loaded_plugin_names(&manager, &config).await,
+        vec!["remote-only@openai-curated-remote".to_string()]
+    );
+
+    manager.set_auth_mode(/*auth_mode*/ None);
+    assert_eq!(
+        loaded_plugin_names(&manager, &config).await,
+        vec!["linear@openai-curated".to_string()]
+    );
+
+    for auth_mode in [AuthMode::ApiKey, AuthMode::BedrockApiKey] {
+        manager.set_auth_mode(Some(auth_mode));
+
+        assert_eq!(
+            loaded_plugin_names(&manager, &config).await,
+            vec!["linear@openai-api-curated".to_string()]
+        );
+    }
+
+    manager.set_auth_mode(/*auth_mode*/ None);
+    config.model_provider_id = AMAZON_BEDROCK_PROVIDER_ID.to_string();
+    assert_eq!(
+        loaded_plugin_names(&manager, &config).await,
+        vec!["linear@openai-api-curated".to_string()]
+    );
+
+    manager.set_auth_mode(Some(AuthMode::Chatgpt));
+    assert_eq!(
+        loaded_plugin_names(&manager, &config).await,
+        vec!["remote-only@openai-curated-remote".to_string()]
     );
 }
 
@@ -957,7 +1605,9 @@ async fn build_remote_installed_plugin_marketplaces_from_cache_uses_remote_metad
         composer_icon: None,
         composer_icon_url: None,
         logo: None,
+        logo_dark: None,
         logo_url: None,
+        logo_url_dark: None,
         screenshots: Vec::new(),
         screenshot_urls: Vec::new(),
     });
@@ -1154,14 +1804,14 @@ async fn plugin_telemetry_metadata_uses_default_mcp_config_path() {
 }"#,
     );
 
-    let metadata = plugin_telemetry_metadata_from_root(
+    let summary = plugin_capability_summary_from_root(
         &PluginId::parse("sample@test").expect("plugin id should parse"),
         &plugin_root.abs(),
     )
     .await;
 
     assert_eq!(
-        metadata.capability_summary,
+        summary,
         Some(PluginCapabilitySummary {
             config_name: "sample@test".to_string(),
             display_name: "sample".to_string(),
@@ -1174,7 +1824,7 @@ async fn plugin_telemetry_metadata_uses_default_mcp_config_path() {
 }
 
 #[tokio::test]
-async fn plugin_telemetry_metadata_uses_manifest_mcp_server_objects() {
+async fn plugin_capability_summary_uses_manifest_mcp_server_objects() {
     let codex_home = TempDir::new().unwrap();
     let plugin_root = codex_home
         .path()
@@ -1195,14 +1845,14 @@ async fn plugin_telemetry_metadata_uses_manifest_mcp_server_objects() {
 }"#,
     );
 
-    let metadata = plugin_telemetry_metadata_from_root(
+    let summary = plugin_capability_summary_from_root(
         &PluginId::parse("counter-sample@test").expect("plugin id should parse"),
         &plugin_root.abs(),
     )
     .await;
 
     assert_eq!(
-        metadata.capability_summary,
+        summary,
         Some(PluginCapabilitySummary {
             config_name: "counter-sample@test".to_string(),
             display_name: "counter-sample".to_string(),
@@ -1407,6 +2057,7 @@ async fn load_plugins_uses_manifest_configured_component_paths() {
             HashMap::from([(
                 "custom".to_string(),
                 McpServerConfig {
+                    auth: Default::default(),
                     transport: McpServerTransportConfig::StreamableHttp {
                         url: "https://custom.example/mcp".to_string(),
                         bearer_token_env_var: None,
@@ -1435,6 +2086,153 @@ async fn load_plugins_uses_manifest_configured_component_paths() {
             vec![app_declaration("custom-app", "connector_custom")]
         );
     }
+}
+
+#[tokio::test]
+async fn install_plugin_materializes_default_command_skills() {
+    let codex_home = TempDir::new().unwrap();
+    let source_root = codex_home.path().join("source/sample");
+
+    write_file(
+        &source_root.join(".codex-plugin/plugin.json"),
+        r#"{
+  "name": "sample",
+  "skills": "./custom-skills/"
+}"#,
+    );
+    fs::create_dir_all(source_root.join("custom-skills")).unwrap();
+    write_file(
+        &source_root.join("custom-skills/source-command-pr-review/SKILL.md"),
+        "---\nname: source-command-pr-review\ndescription: Native review skill\n---\n",
+    );
+    write_file(
+        &source_root.join("commands/pr/review.md"),
+        "---\ndescription: Review a pull request\n---\nInspect the proposed changes.\n",
+    );
+    write_file(
+        &source_root.join("commands/summarize.md"),
+        "---\ndescription: Summarize a change\n---\nSummarize the proposed changes.\n",
+    );
+    write_file(
+        &source_root.join("commands/oversized.md"),
+        &format!("---\ndescription: Oversized\n---\n{}", "x".repeat(4_000)),
+    );
+    write_file(
+        &source_root.join(".codex-plugin/migrated-command-skills/undeclared-command/SKILL.md"),
+        "---\nname: undeclared-command\ndescription: undeclared command\n---\n",
+    );
+    let result = PluginStore::new(codex_home.path().to_path_buf())
+        .install(
+            source_root.abs(),
+            PluginId::parse("sample@test").expect("plugin id should parse"),
+        )
+        .unwrap();
+    let migrated_skill = result
+        .installed_path
+        .join(".codex-plugin/migrated-command-skills/source-command-pr-review/SKILL.md");
+    let expected_migrated_skill = "---\nname: \"source-command-pr-review\"\ndescription: \"Review a pull request\"\n---\n\n# source-command-pr-review\n\nUse this skill when the user asks to run the migrated source command `pr-review`.\n\n## Command Template\n\nInspect the proposed changes.\n";
+    assert_eq!(
+        fs::read_to_string(&migrated_skill).unwrap(),
+        expected_migrated_skill
+    );
+    assert!(
+        !result
+            .installed_path
+            .join(".codex-plugin/migrated-command-skills/undeclared-command")
+            .exists()
+    );
+    assert!(
+        !result
+            .installed_path
+            .join(".codex-plugin/migrated-command-skills/source-command-oversized")
+            .exists()
+    );
+
+    let manifest = crate::manifest::load_plugin_manifest(&result.installed_path).unwrap();
+    let resolved = load_plugin_skills(
+        &result.installed_path,
+        &result.plugin_id,
+        &manifest,
+        /*restriction_product*/ None,
+        &SkillConfigRules::default(),
+        /*plugin_skill_snapshots*/ None,
+        Arc::new(Semaphore::new(MAX_CONCURRENT_ROOT_SCANS)),
+    )
+    .await;
+    assert_eq!(
+        resolved
+            .skills
+            .iter()
+            .map(|skill| skill.path_to_skills_md.clone())
+            .collect::<Vec<_>>(),
+        vec![
+            AbsolutePathBuf::from_absolute_path_checked(
+                fs::canonicalize(
+                    result
+                        .installed_path
+                        .join("custom-skills/source-command-pr-review/SKILL.md")
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            AbsolutePathBuf::from_absolute_path_checked(
+                fs::canonicalize(result.installed_path.join(
+                    ".codex-plugin/migrated-command-skills/source-command-summarize/SKILL.md"
+                ))
+                .unwrap()
+            )
+            .unwrap()
+        ]
+    );
+}
+
+#[test]
+fn install_plugin_ignores_invalid_commands_manifest_field() {
+    let codex_home = TempDir::new().unwrap();
+    let source_root = codex_home.path().join("source/sample");
+    write_file(
+        &source_root.join(".codex-plugin/plugin.json"),
+        r#"{"name":"sample","commands":{}}"#,
+    );
+    write_file(
+        &source_root.join("commands/review.md"),
+        "---\ndescription: Review\n---\nReview the current change.\n",
+    );
+
+    let result = PluginStore::new(codex_home.path().to_path_buf())
+        .install(
+            source_root.abs(),
+            PluginId::parse("sample@test").expect("plugin id should parse"),
+        )
+        .unwrap();
+
+    assert!(
+        !result
+            .installed_path
+            .join(".codex-plugin/migrated-command-skills")
+            .exists()
+    );
+}
+
+#[test]
+fn install_plugin_ignores_command_migration_errors() {
+    let codex_home = TempDir::new().unwrap();
+    let source_root = codex_home.path().join("source/sample");
+    write_file(
+        &source_root.join(".codex-plugin/plugin.json"),
+        r#"{"name":"sample","commands":"./commands/review.md"}"#,
+    );
+    fs::create_dir_all(source_root.join("commands")).unwrap();
+    fs::write(source_root.join("commands/review.md"), [0xff]).unwrap();
+
+    let result = PluginStore::new(codex_home.path().to_path_buf())
+        .install(
+            source_root.abs(),
+            PluginId::parse("sample@test").expect("plugin id should parse"),
+        )
+        .unwrap();
+
+    assert!(result.installed_path.join("commands/review.md").is_file());
 }
 
 #[tokio::test]
@@ -1480,6 +2278,7 @@ async fn load_plugin_skills_dedupes_overlapping_manifest_roots() {
         /*restriction_product*/ None,
         &SkillConfigRules::default(),
         /*plugin_skill_snapshots*/ None,
+        Arc::new(Semaphore::new(MAX_CONCURRENT_ROOT_SCANS)),
     )
     .await;
 
@@ -1587,6 +2386,7 @@ async fn load_plugins_ignores_manifest_component_paths_without_dot_slash() {
         HashMap::from([(
             "default".to_string(),
             McpServerConfig {
+                auth: Default::default(),
                 transport: McpServerTransportConfig::StreamableHttp {
                     url: "https://default.example/mcp".to_string(),
                     bearer_token_env_var: None,
@@ -1691,6 +2491,7 @@ async fn load_plugins_preserves_disabled_plugins_without_effective_contributions
         outcome.plugins(),
         vec![LoadedPlugin {
             config_name: "sample@test".to_string(),
+            remote_plugin_id: None,
             manifest_name: None,
             plugin_namespace: None,
             manifest_description: None,
@@ -1837,6 +2638,7 @@ fn capability_index_filters_inactive_and_zero_capability_plugins() {
     let connector = |id: &str| AppConnectorId(id.to_string());
     let app = |name: &str, connector_id: &str| app_declaration(name, connector_id);
     let http_server = |url: &str| McpServerConfig {
+        auth: Default::default(),
         transport: McpServerTransportConfig::StreamableHttp {
             url: url.to_string(),
             bearer_token_env_var: None,
@@ -1860,6 +2662,7 @@ fn capability_index_filters_inactive_and_zero_capability_plugins() {
     };
     let plugin = |config_name: &str, dir_name: &str, manifest_name: &str| LoadedPlugin {
         config_name: config_name.to_string(),
+        remote_plugin_id: None,
         manifest_name: Some(manifest_name.to_string()),
         plugin_namespace: Some(
             config_name
@@ -2024,9 +2827,11 @@ async fn plugin_cache_ignores_unrelated_session_overrides() {
     let config = |session_config| {
         PluginsConfigInput::new(
             stack(session_config),
+            String::new(),
             /*plugins_enabled*/ true,
             /*remote_plugin_enabled*/ false,
             "https://chatgpt.com".to_string(),
+            test_http_client_factory(),
         )
     };
     let manager = PluginsManager::new(codex_home.path().to_path_buf());
@@ -2044,52 +2849,102 @@ async fn plugin_cache_ignores_unrelated_session_overrides() {
 }
 
 #[tokio::test]
-async fn skills_service_reuses_skills_parsed_during_plugin_load() {
-    let codex_home = TempDir::new().unwrap();
-    let codex_home_abs = codex_home.path().to_path_buf().abs();
-    let plugin_root = codex_home
-        .path()
-        .join("plugins/cache")
-        .join("test/sample/local");
-    write_plugin(
-        codex_home.path().join("plugins/cache/test").as_path(),
-        "sample/local",
-        "sample",
-    );
-    let skill_path = plugin_root.join("skills/SKILL.md");
-    write_file(&skill_path, "---\nname: search\ndescription: first\n---\n");
-    write_file(
-        &codex_home.path().join(CONFIG_TOML_FILE),
-        &plugin_config_toml(/*enabled*/ true, /*plugins_feature_enabled*/ true),
-    );
+async fn skill_snapshots_resolve_remote_plugin_identity_from_authoritative_source() {
+    let mut duplicate_plugin = remote_installed_plugin("sample");
+    duplicate_plugin.id = "plugins~Plugin_duplicate".to_string();
 
-    let config = load_config(codex_home.path(), codex_home.path()).await;
-    let manager = PluginsManager::new(codex_home.path().to_path_buf());
-    let plugin_outcome = manager.plugins_for_config(&config).await;
-    let plugin_skill_snapshots = manager.plugin_skill_snapshots_for_config(&config);
-    write_file(&skill_path, "---\nname: search\ndescription: second\n---\n");
+    for (installed_plugins, expected_remote_plugin_id) in [
+        (None, Some("plugins~Plugin_persisted")),
+        (Some(Vec::new()), None),
+        (
+            Some(vec![remote_installed_plugin("sample"), duplicate_plugin]),
+            Some("plugins~Plugin_sample"),
+        ),
+    ] {
+        let codex_home = TempDir::new().unwrap();
+        let codex_home_abs = codex_home.path().to_path_buf().abs();
+        let plugin_root = codex_home
+            .path()
+            .join("plugins/cache/openai-curated-remote/sample/local");
+        write_plugin(
+            codex_home
+                .path()
+                .join("plugins/cache/openai-curated-remote")
+                .as_path(),
+            "sample/local",
+            "sample",
+        );
+        let skill_path = plugin_root.join("skills/SKILL.md");
+        write_file(&skill_path, "---\nname: search\ndescription: first\n---\n");
+        write_file(
+            &codex_home.path().join(CONFIG_TOML_FILE),
+            r#"[features]
+plugins = true
+remote_plugin = true
 
-    let skills_input = SkillsLoadInput::new(
-        codex_home_abs.clone(),
-        plugin_outcome.effective_plugin_skill_roots(),
-        config.config_layer_stack.clone(),
-        /*bundled_skills_enabled*/ false,
-    )
-    .with_plugin_skill_snapshots(plugin_skill_snapshots);
-    let skills_service = SkillsService::new(codex_home_abs, /*bundled_skills_enabled*/ false);
-    let cached = skills_service
-        .snapshot_for_config(&skills_input, /*fs*/ None)
-        .await;
+[plugins."sample@openai-curated-remote"]
+enabled = true
+"#,
+        );
 
-    assert_eq!(
-        cached
-            .outcome()
-            .skills
-            .iter()
-            .map(|skill| skill.description.as_str())
-            .collect::<Vec<_>>(),
-        vec!["first"]
-    );
+        let plugin_id =
+            PluginId::parse("sample@openai-curated-remote").expect("remote plugin id should parse");
+        PluginStore::new(codex_home.path().to_path_buf())
+            .write_remote_plugin_id(&plugin_id, "plugins~Plugin_persisted")
+            .expect("persist remote plugin id");
+        let config = load_config(codex_home.path(), codex_home.path()).await;
+        let manager = PluginsManager::new_with_options(
+            codex_home.path().to_path_buf(),
+            Some(Product::Codex),
+            Some(AuthMode::Chatgpt),
+        );
+        if let Some(installed_plugins) = installed_plugins {
+            manager.write_remote_installed_plugins_cache(installed_plugins);
+        }
+
+        let plugin_outcome = manager.plugins_for_config(&config).await;
+        assert_eq!(
+            manager
+                .telemetry_metadata_for_plugin_id(&plugin_id)
+                .remote_plugin_id
+                .as_deref(),
+            expected_remote_plugin_id
+        );
+        write_file(&skill_path, "---\nname: search\ndescription: second\n---\n");
+
+        let skills_input = SkillsLoadInput::new(
+            codex_home_abs.clone(),
+            plugin_outcome.effective_plugin_skill_roots(),
+            config.config_layer_stack.clone(),
+            /*bundled_skills_enabled*/ false,
+        )
+        .with_plugin_skill_snapshots(manager.plugin_skill_snapshots_for_config(&config));
+        let skills_service =
+            SkillsService::new(codex_home_abs, /*bundled_skills_enabled*/ false);
+        let snapshot = skills_service
+            .snapshot_for_config(&skills_input, /*fs*/ None)
+            .await;
+
+        assert_eq!(
+            snapshot
+                .outcome()
+                .skills
+                .iter()
+                .map(|skill| {
+                    (
+                        skill.description.as_str(),
+                        skill.plugin_id.as_deref(),
+                        skill.remote_plugin_id.as_deref(),
+                    )
+                })
+                .collect::<Vec<_>>(),
+            vec![(
+                "first",
+                Some("sample@openai-curated-remote"),
+                expected_remote_plugin_id,
+            )]
+        );
+    }
 }
 
 #[test]
@@ -2099,7 +2954,7 @@ fn loaded_plugins_cache_invalidation_rejects_stale_load_completion() {
     let cache_key = PluginLoadCacheKey {
         configured_plugins: HashMap::new(),
         skill_config_rules: SkillConfigRules::default(),
-        remote_plugin_enabled: false,
+        remote_global_catalog_active: false,
     };
     let stale_generation = manager.loaded_plugins_cache_generation();
 
@@ -2183,13 +3038,16 @@ async fn install_plugin_updates_config_with_relative_path_and_plugin_key() {
     .unwrap();
 
     let result = PluginsManager::new(tmp.path().to_path_buf())
-        .install_plugin(PluginInstallRequest {
-            plugin_name: "sample-plugin".to_string(),
-            marketplace_path: AbsolutePathBuf::try_from(
-                repo_root.join(".agents/plugins/marketplace.json"),
-            )
-            .unwrap(),
-        })
+        .install_plugin(
+            &unrestricted_config_layer_stack(),
+            PluginInstallRequest {
+                plugin_name: "sample-plugin".to_string(),
+                marketplace_path: AbsolutePathBuf::try_from(
+                    repo_root.join(".agents/plugins/marketplace.json"),
+                )
+                .unwrap(),
+            },
+        )
         .await
         .unwrap();
 
@@ -2210,6 +3068,85 @@ async fn install_plugin_updates_config_with_relative_path_and_plugin_key() {
 }
 
 #[tokio::test]
+async fn strict_install_requires_allowed_local_marketplace_to_be_added_first() {
+    let codex_home = TempDir::new().expect("create Codex home");
+    let marketplace_root = codex_home.path().join("company-marketplace");
+    write_plugin(&marketplace_root, "sample", "sample");
+    write_file(
+        &marketplace_root.join(".agents/plugins/marketplace.json"),
+        r#"{
+  "name": "company",
+  "plugins": [
+    {
+      "name": "sample",
+      "source": {"source": "local", "path": "./sample"}
+    }
+  ]
+}"#,
+    );
+    let marketplace_root = marketplace_root
+        .canonicalize()
+        .expect("canonical marketplace root");
+    let requirements = format!(
+        r#"
+[marketplaces]
+restrict_to_allowed_sources = true
+
+[marketplaces.allowed_sources.company]
+source = "local"
+path = {marketplace_root:?}
+"#
+    );
+    let config = config_layer_stack_with_requirements(codex_home.path(), "", &requirements);
+    let marketplace_path =
+        AbsolutePathBuf::try_from(marketplace_root.join(".agents/plugins/marketplace.json"))
+            .expect("absolute marketplace path");
+    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+
+    let err = manager
+        .install_plugin(
+            &config,
+            PluginInstallRequest {
+                plugin_name: "sample".to_string(),
+                marketplace_path: marketplace_path.clone(),
+            },
+        )
+        .await
+        .expect_err("unconfigured local marketplace should not be installable in strict mode");
+    assert!(matches!(
+        err,
+        PluginInstallError::Marketplace(MarketplaceError::InvalidMarketplaceFile { .. })
+    ));
+    assert!(err.to_string().contains("must be added to config"));
+    assert!(!codex_home.path().join(CONFIG_TOML_FILE).exists());
+
+    let user_config = format!(
+        r#"
+[marketplaces.company]
+source_type = "local"
+source = {marketplace_root:?}
+"#
+    );
+    write_file(&codex_home.path().join(CONFIG_TOML_FILE), &user_config);
+    let config =
+        config_layer_stack_with_requirements(codex_home.path(), &user_config, &requirements);
+    let outcome = manager
+        .install_plugin(
+            &config,
+            PluginInstallRequest {
+                plugin_name: "sample".to_string(),
+                marketplace_path,
+            },
+        )
+        .await
+        .expect("configured allowlisted marketplace should be installable");
+    assert_eq!(
+        outcome.plugin_id,
+        PluginId::new("sample".to_string(), "company".to_string()).expect("plugin id")
+    );
+}
+
+#[tokio::test]
 async fn install_openai_curated_plugin_uses_short_sha_cache_version() {
     let tmp = tempfile::tempdir().unwrap();
     let curated_root = curated_plugins_repo_path(tmp.path());
@@ -2217,13 +3154,16 @@ async fn install_openai_curated_plugin_uses_short_sha_cache_version() {
     write_curated_plugin_sha(tmp.path(), TEST_CURATED_PLUGIN_SHA);
 
     let result = PluginsManager::new(tmp.path().to_path_buf())
-        .install_plugin(PluginInstallRequest {
-            plugin_name: "slack".to_string(),
-            marketplace_path: AbsolutePathBuf::try_from(
-                curated_root.join(".agents/plugins/marketplace.json"),
-            )
-            .unwrap(),
-        })
+        .install_plugin(
+            &unrestricted_config_layer_stack(),
+            PluginInstallRequest {
+                plugin_name: "slack".to_string(),
+                marketplace_path: AbsolutePathBuf::try_from(
+                    curated_root.join(".agents/plugins/marketplace.json"),
+                )
+                .unwrap(),
+            },
+        )
         .await
         .unwrap();
 
@@ -2275,13 +3215,16 @@ async fn install_plugin_uses_manifest_version_for_non_curated_plugins() {
     .unwrap();
 
     let result = PluginsManager::new(tmp.path().to_path_buf())
-        .install_plugin(PluginInstallRequest {
-            plugin_name: "sample-plugin".to_string(),
-            marketplace_path: AbsolutePathBuf::try_from(
-                repo_root.join(".agents/plugins/marketplace.json"),
-            )
-            .unwrap(),
-        })
+        .install_plugin(
+            &unrestricted_config_layer_stack(),
+            PluginInstallRequest {
+                plugin_name: "sample-plugin".to_string(),
+                marketplace_path: AbsolutePathBuf::try_from(
+                    repo_root.join(".agents/plugins/marketplace.json"),
+                )
+                .unwrap(),
+            },
+        )
         .await
         .unwrap();
 
@@ -2312,6 +3255,10 @@ async fn install_plugin_writes_marketplace_manifest_fallback_when_missing_plugin
         "review skill",
     )
     .unwrap();
+    write_file(
+        &plugin_root.join("commands/review.md"),
+        "---\ndescription: Review code\n---\nReview the current change.\n",
+    );
     fs::write(
         repo_root.join(".agents/plugins/marketplace.json"),
         r#"{
@@ -2327,6 +3274,7 @@ async fn install_plugin_writes_marketplace_manifest_fallback_when_missing_plugin
       "skills": [
         "./skills/thermo-nuclear-code-quality-review"
       ],
+      "commands": ["./commands/review.md"],
       "category": "code-review"
     }
   ]
@@ -2335,13 +3283,16 @@ async fn install_plugin_writes_marketplace_manifest_fallback_when_missing_plugin
     .unwrap();
 
     let result = PluginsManager::new(tmp.path().to_path_buf())
-        .install_plugin(PluginInstallRequest {
-            plugin_name: "quality-review".to_string(),
-            marketplace_path: AbsolutePathBuf::try_from(
-                repo_root.join(".agents/plugins/marketplace.json"),
-            )
-            .unwrap(),
-        })
+        .install_plugin(
+            &unrestricted_config_layer_stack(),
+            PluginInstallRequest {
+                plugin_name: "quality-review".to_string(),
+                marketplace_path: AbsolutePathBuf::try_from(
+                    repo_root.join(".agents/plugins/marketplace.json"),
+                )
+                .unwrap(),
+            },
+        )
         .await
         .unwrap();
 
@@ -2389,6 +3340,14 @@ async fn install_plugin_writes_marketplace_manifest_fallback_when_missing_plugin
         serde_json::json!({ "name": "Byron Grogan" })
     );
     assert_eq!(fallback_json["category"], "code-review");
+    assert_eq!(
+        fs::read_to_string(
+            installed_path
+                .join(".codex-plugin/migrated-command-skills/source-command-review/SKILL.md")
+        )
+        .unwrap(),
+        "---\nname: \"source-command-review\"\ndescription: \"Review code\"\n---\n\n# source-command-review\n\nUse this skill when the user asks to run the migrated source command `review`.\n\n## Command Template\n\nReview the current change.\n"
+    );
 }
 
 #[tokio::test]
@@ -2424,13 +3383,16 @@ async fn install_plugin_supports_git_subdir_marketplace_sources() {
     .unwrap();
 
     let result = PluginsManager::new(tmp.path().to_path_buf())
-        .install_plugin(PluginInstallRequest {
-            plugin_name: "toolkit".to_string(),
-            marketplace_path: AbsolutePathBuf::try_from(
-                repo_root.join(".agents/plugins/marketplace.json"),
-            )
-            .unwrap(),
-        })
+        .install_plugin(
+            &unrestricted_config_layer_stack(),
+            PluginInstallRequest {
+                plugin_name: "toolkit".to_string(),
+                marketplace_path: AbsolutePathBuf::try_from(
+                    repo_root.join(".agents/plugins/marketplace.json"),
+                )
+                .unwrap(),
+            },
+        )
         .await
         .unwrap();
 
@@ -2475,13 +3437,16 @@ async fn install_plugin_supports_relative_git_subdir_marketplace_sources() {
     .unwrap();
 
     let result = PluginsManager::new(tmp.path().to_path_buf())
-        .install_plugin(PluginInstallRequest {
-            plugin_name: "toolkit".to_string(),
-            marketplace_path: AbsolutePathBuf::try_from(
-                repo_root.join(".agents/plugins/marketplace.json"),
-            )
-            .unwrap(),
-        })
+        .install_plugin(
+            &unrestricted_config_layer_stack(),
+            PluginInstallRequest {
+                plugin_name: "toolkit".to_string(),
+                marketplace_path: AbsolutePathBuf::try_from(
+                    repo_root.join(".agents/plugins/marketplace.json"),
+                )
+                .unwrap(),
+            },
+        )
         .await
         .unwrap();
 
@@ -2991,7 +3956,11 @@ plugins = true
         .unwrap()
         .marketplaces
         .into_iter()
-        .find(|marketplace| marketplace.name == "debug")
+        .find(|marketplace| {
+            marketplace.path
+                == AbsolutePathBuf::try_from(repo_root.join(".agents/plugins/marketplace.json"))
+                    .unwrap()
+        })
         .unwrap()
         .plugins
         .into_iter()
@@ -3428,7 +4397,7 @@ enabled = true
     let marketplaces = PluginsManager::new(tmp.path().to_path_buf())
         .list_marketplaces_for_config(
             &config,
-            &[AbsolutePathBuf::try_from(repo_root).unwrap()],
+            &[AbsolutePathBuf::try_from(repo_root.clone()).unwrap()],
             /*include_openai_curated*/ true,
         )
         .unwrap()
@@ -3436,7 +4405,11 @@ enabled = true
 
     let marketplace = marketplaces
         .into_iter()
-        .find(|marketplace| marketplace.name == "debug")
+        .find(|marketplace| {
+            marketplace.path
+                == AbsolutePathBuf::try_from(repo_root.join(".agents/plugins/marketplace.json"))
+                    .unwrap()
+        })
         .expect("debug marketplace should be listed");
 
     let mut plugins = marketplace.plugins;
@@ -3691,6 +4664,88 @@ plugins = true
 }
 
 #[tokio::test]
+async fn list_marketplaces_uses_resolved_provider_instead_of_configured_default() {
+    for (configured_provider, resolved_provider, expected_marketplace) in [
+        (
+            "openai",
+            AMAZON_BEDROCK_PROVIDER_ID,
+            OPENAI_API_CURATED_MARKETPLACE_NAME,
+        ),
+        (
+            AMAZON_BEDROCK_PROVIDER_ID,
+            "openai",
+            OPENAI_CURATED_MARKETPLACE_NAME,
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        let curated_root = curated_plugins_repo_path(tmp.path());
+
+        write_file(
+            &tmp.path().join(CONFIG_TOML_FILE),
+            &format!(
+                r#"model_provider = "{configured_provider}"
+
+[features]
+plugins = true
+"#
+            ),
+        );
+        write_openai_curated_marketplace(&curated_root, &["chatgpt-plugin"]);
+        write_openai_api_curated_marketplace(&curated_root, &["api-plugin"]);
+
+        let mut config = load_config(tmp.path(), tmp.path()).await;
+        config.model_provider_id = resolved_provider.to_string();
+        let marketplaces = PluginsManager::new(tmp.path().to_path_buf())
+            .list_marketplaces_for_config(&config, &[], /*include_openai_curated*/ true)
+            .unwrap()
+            .marketplaces;
+
+        assert!(
+            marketplaces
+                .iter()
+                .any(|marketplace| marketplace.name == expected_marketplace),
+            "expected `{expected_marketplace}` for resolved provider `{resolved_provider}`"
+        );
+    }
+}
+
+#[tokio::test]
+async fn list_marketplaces_uses_chatgpt_curated_manifest_for_bedrock_with_chatgpt_auth() {
+    let tmp = tempfile::tempdir().unwrap();
+    let curated_root = curated_plugins_repo_path(tmp.path());
+
+    write_file(
+        &tmp.path().join(CONFIG_TOML_FILE),
+        r#"model_provider = "amazon-bedrock"
+
+[features]
+plugins = true
+"#,
+    );
+    write_openai_curated_marketplace(&curated_root, &["chatgpt-plugin"]);
+    write_openai_api_curated_marketplace(&curated_root, &["api-plugin"]);
+
+    let config = load_config(tmp.path(), tmp.path()).await;
+    let manager = PluginsManager::new(tmp.path().to_path_buf());
+    manager.set_auth_mode(Some(AuthMode::Chatgpt));
+    let marketplaces = manager
+        .list_marketplaces_for_config(&config, &[], /*include_openai_curated*/ true)
+        .unwrap()
+        .marketplaces;
+
+    assert!(
+        marketplaces
+            .iter()
+            .any(|marketplace| marketplace.name == OPENAI_CURATED_MARKETPLACE_NAME)
+    );
+    assert!(
+        marketplaces
+            .iter()
+            .all(|marketplace| marketplace.name != OPENAI_API_CURATED_MARKETPLACE_NAME)
+    );
+}
+
+#[tokio::test]
 async fn list_marketplaces_skips_missing_api_curated_manifest() {
     let tmp = tempfile::tempdir().unwrap();
     let curated_root = curated_plugins_repo_path(tmp.path());
@@ -3875,7 +4930,7 @@ source = "{remote_repo_url}"
     run_git(&remote_repo, &["add", "."]);
     run_git(&remote_repo, &["commit", "-m", "update plugin"]);
     let upgrade = manager
-        .upgrade_configured_marketplaces_for_config(&config, /*marketplace_name*/ None)
+        .upgrade_configured_marketplaces_for_config(&config, Some("debug"))
         .expect("marketplace upgrade should succeed");
     assert_eq!(upgrade.errors, Vec::new());
     assert_eq!(upgrade.upgraded_roots.len(), 1);
@@ -4322,7 +5377,6 @@ async fn remote_plugin_caches_refresh_warms_recommended_plugins_cache() {
         &tmp.path().join(CONFIG_TOML_FILE),
         r#"[features]
 plugins = true
-remote_plugin = true
 "#,
     );
 
@@ -4383,7 +5437,6 @@ async fn recommended_plugins_mode_deduplicates_concurrent_cache_misses() {
         &tmp.path().join(CONFIG_TOML_FILE),
         r#"[features]
 plugins = true
-remote_plugin = true
 "#,
     );
 
@@ -4461,7 +5514,6 @@ async fn recommended_plugin_candidates_filter_installed_and_disabled_plugins() {
         &tmp.path().join(CONFIG_TOML_FILE),
         r#"[features]
 plugins = true
-remote_plugin = true
 "#,
     );
     let server = MockServer::start().await;
@@ -4534,7 +5586,6 @@ async fn recommended_plugins_mode_caches_explicit_false() {
         &tmp.path().join(CONFIG_TOML_FILE),
         r#"[features]
 plugins = true
-remote_plugin = true
 "#,
     );
 
@@ -4574,7 +5625,6 @@ async fn recommended_plugins_mode_retries_after_fetch_failure() {
         &tmp.path().join(CONFIG_TOML_FILE),
         r#"[features]
 plugins = true
-remote_plugin = true
 "#,
     );
 
@@ -4899,6 +5949,7 @@ enabled = true
         refresh_non_curated_plugin_cache(
             tmp.path(),
             &[AbsolutePathBuf::try_from(repo_root).unwrap()],
+            &["sample-plugin@debug".to_string()],
         )
         .expect("cache refresh should succeed")
     );
@@ -4951,6 +6002,7 @@ enabled = true
         refresh_non_curated_plugin_cache(
             tmp.path(),
             &[AbsolutePathBuf::try_from(repo_root).unwrap()],
+            &["sample-plugin@debug".to_string()],
         )
         .expect("cache refresh should reinstall missing configured plugin")
     );
@@ -5010,6 +6062,7 @@ enabled = true
         refresh_non_curated_plugin_cache(
             tmp.path(),
             &[AbsolutePathBuf::try_from(repo_root).unwrap()],
+            &["sample-plugin@debug".to_string()],
         )
         .expect("cache refresh should materialize configured Git plugin")
     );
@@ -5063,6 +6116,7 @@ enabled = true
         !refresh_non_curated_plugin_cache(
             tmp.path(),
             &[AbsolutePathBuf::try_from(repo_root).unwrap()],
+            &["sample-plugin@debug".to_string()],
         )
         .expect("cache refresh should be a no-op when configured plugins are current")
     );
@@ -5116,6 +6170,7 @@ enabled = true
         refresh_non_curated_plugin_cache_force_reinstall(
             tmp.path(),
             &[AbsolutePathBuf::try_from(repo_root).unwrap()],
+            &["sample-plugin@debug".to_string()],
         )
         .expect("cache refresh should reinstall unchanged local version")
     );
@@ -5174,6 +6229,7 @@ enabled = true
         refresh_non_curated_plugin_cache(
             tmp.path(),
             &[AbsolutePathBuf::try_from(repo_root).unwrap()],
+            &["sample-plugin@debug".to_string()],
         )
         .expect("cache refresh should ignore unrelated invalid plugin manifests")
     );
@@ -5183,6 +6239,47 @@ enabled = true
             .join("plugins/cache/debug/sample-plugin/1.2.3")
             .is_dir()
     );
+}
+
+#[test]
+fn refresh_non_curated_plugin_cache_continues_after_plugin_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo_root = tmp.path().join("repo");
+    fs::create_dir_all(repo_root.join(".git")).unwrap();
+    fs::create_dir_all(repo_root.join(".agents/plugins")).unwrap();
+    write_plugin_with_version(&repo_root, "z-good", "z-good", Some("1.2.3"));
+    write_file(
+        &repo_root.join(".agents/plugins/marketplace.json"),
+        r#"{
+  "name": "debug",
+  "plugins": [
+    {
+      "name": "a-broken",
+      "source": {
+        "source": "local",
+        "path": "./missing"
+      }
+    },
+    {
+      "name": "z-good",
+      "source": {
+        "source": "local",
+        "path": "./z-good"
+      }
+    }
+  ]
+}"#,
+    );
+
+    let err = refresh_non_curated_plugin_cache(
+        tmp.path(),
+        &[AbsolutePathBuf::try_from(repo_root).unwrap()],
+        &["a-broken@debug".to_string(), "z-good@debug".to_string()],
+    )
+    .expect_err("broken plugin should be reported after refreshing the remaining plugins");
+
+    assert!(err.contains("a-broken@debug"));
+    assert!(tmp.path().join("plugins/cache/debug/z-good/1.2.3").is_dir());
 }
 
 #[tokio::test]
@@ -5220,11 +6317,12 @@ async fn load_plugins_ignores_project_config_files() {
 
     let plugins = load_plugins_from_layer_stack(
         &stack,
-        std::collections::HashMap::new(),
+        crate::remote_plugin_id_resolver::RemoteInstalledPluginsSnapshot::default(),
         &PluginStore::new(codex_home.path().to_path_buf()),
         /*plugin_skill_snapshots*/ None,
         Some(Product::Codex),
-        /*prefer_remote_curated_conflicts*/ false,
+        /*remote_global_catalog_active*/ false,
+        Arc::new(Semaphore::new(MAX_CONCURRENT_ROOT_SCANS)),
     )
     .await;
 
@@ -5276,4 +6374,185 @@ async fn plugin_hooks_for_layer_stack_loads_configured_plugin_hooks() {
         "hooks/hooks.json"
     );
     assert_eq!(outcome.hook_load_warnings, Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn plugin_hooks_for_layer_stack_follow_auth_mode_and_provider() {
+    let codex_home = TempDir::new().unwrap();
+    write_file(
+        &codex_home.path().join(CONFIG_TOML_FILE),
+        r#"model_provider = "amazon-bedrock"
+
+[features]
+plugins = true
+remote_plugin = false
+
+[plugins."linear@openai-curated"]
+enabled = true
+
+[plugins."linear@openai-api-curated"]
+enabled = true
+"#,
+    );
+    for marketplace_name in [
+        OPENAI_CURATED_MARKETPLACE_NAME,
+        OPENAI_API_CURATED_MARKETPLACE_NAME,
+    ] {
+        write_cached_plugin(codex_home.path(), marketplace_name, "linear");
+        write_file(
+            &codex_home
+                .path()
+                .join("plugins/cache")
+                .join(marketplace_name)
+                .join("linear/local/hooks/hooks.json"),
+            r#"{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo startup"
+          }
+        ]
+      }
+    ]
+  }
+}"#,
+        );
+    }
+    let config = load_config(codex_home.path(), codex_home.path()).await;
+    let manager = PluginsManager::new_with_options(
+        codex_home.path().to_path_buf(),
+        Some(Product::Codex),
+        Some(AuthMode::Chatgpt),
+    );
+
+    let chatgpt_hooks = manager
+        .plugin_hooks_for_layer_stack(&config.config_layer_stack, &config)
+        .await;
+    assert_eq!(
+        chatgpt_hooks
+            .hook_sources
+            .iter()
+            .map(|source| source.plugin_id.as_key())
+            .collect::<Vec<_>>(),
+        vec!["linear@openai-curated"]
+    );
+
+    assert!(manager.set_auth_mode(Some(AuthMode::ApiKey)));
+    let api_hooks = manager
+        .plugin_hooks_for_layer_stack(&config.config_layer_stack, &config)
+        .await;
+    assert_eq!(
+        api_hooks
+            .hook_sources
+            .iter()
+            .map(|source| source.plugin_id.as_key())
+            .collect::<Vec<_>>(),
+        vec!["linear@openai-api-curated"]
+    );
+
+    assert!(manager.set_auth_mode(/*auth_mode*/ None));
+    let bedrock_hooks = manager
+        .plugin_hooks_for_layer_stack(&config.config_layer_stack, &config)
+        .await;
+    assert_eq!(
+        bedrock_hooks
+            .hook_sources
+            .iter()
+            .map(|source| source.plugin_id.as_key())
+            .collect::<Vec<_>>(),
+        vec!["linear@openai-api-curated"]
+    );
+}
+
+#[test]
+fn remote_installed_plugins_cache_refresh_coalesces_materializations() {
+    let tmp = TempDir::new().unwrap();
+    let manager = std::sync::Arc::new(PluginsManager::new(tmp.path().to_path_buf()));
+    let materialization_callback_count =
+        std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let unrelated_callback_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    manager
+        .remote_installed_plugins_cache_refresh_state
+        .write()
+        .expect("refresh state lock")
+        .in_flight = true;
+    let materialization = |name: &str| RemotePluginMaterialization {
+        plugin_id: PluginId::new(
+            name.to_string(),
+            REMOTE_WORKSPACE_MARKETPLACE_NAME.to_string(),
+        )
+        .expect("valid plugin id"),
+        scope: crate::remote::RemotePluginScope::Workspace,
+        discoverability: Some(crate::remote::RemotePluginShareDiscoverability::Listed),
+        authenticated_account_id: Some("account-123".to_string()),
+    };
+    let change = |name: &str| EffectivePluginsChange {
+        materialized_remote_plugins: vec![materialization(name)],
+    };
+    let callback = |count: std::sync::Arc<std::sync::atomic::AtomicUsize>| {
+        let callback: EffectivePluginsChangedCallback = std::sync::Arc::new(move |_change| {
+            count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        });
+        callback
+    };
+    let request =
+        |change, on_effective_plugins_changed| RemoteInstalledPluginsCacheRefreshRequest {
+            service_config: RemotePluginServiceConfig::new(
+                "https://example.com".to_string(),
+                test_http_client_factory(),
+            ),
+            auth: None,
+            notify: RemoteInstalledPluginsCacheRefreshNotify::IfCacheChanged,
+            on_effective_plugins_changed: Some(on_effective_plugins_changed),
+            change,
+        };
+
+    manager.schedule_remote_installed_plugins_cache_refresh(request(
+        change("beta"),
+        callback(std::sync::Arc::clone(&materialization_callback_count)),
+    ));
+    manager.schedule_remote_installed_plugins_cache_refresh(request(
+        change("alpha"),
+        callback(std::sync::Arc::clone(&unrelated_callback_count)),
+    ));
+
+    let state = manager
+        .remote_installed_plugins_cache_refresh_state
+        .read()
+        .expect("refresh state lock");
+    let request = state.requested.as_ref().expect("pending refresh");
+    assert_eq!(
+        request.change,
+        EffectivePluginsChange {
+            materialized_remote_plugins: vec![materialization("alpha"), materialization("beta"),],
+        }
+    );
+    request
+        .on_effective_plugins_changed
+        .as_ref()
+        .expect("pending callback")(request.change.clone());
+    assert_eq!(
+        materialization_callback_count.load(std::sync::atomic::Ordering::Relaxed),
+        1
+    );
+    assert_eq!(
+        unrelated_callback_count.load(std::sync::atomic::Ordering::Relaxed),
+        0
+    );
+}
+
+#[test]
+fn plugin_install_error_preserves_store_io_sub_error_type() {
+    let error = PluginInstallError::Store(PluginStoreError::Io {
+        context: "failed to copy plugin file",
+        source: std::io::Error::other("copy failed"),
+    });
+
+    assert_eq!(
+        error.sub_error_type(),
+        Some("failed_to_copy_plugin_file".to_string())
+    );
 }

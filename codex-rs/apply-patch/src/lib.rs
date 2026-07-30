@@ -223,7 +223,7 @@ impl Default for AppliedPatchDelta {
 /// A committed file change, preserved in the order it was applied.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppliedPatchChange {
-    pub path: PathBuf,
+    pub path: PathUri,
     pub change: AppliedPatchFileChange,
 }
 
@@ -237,7 +237,7 @@ pub enum AppliedPatchFileChange {
         content: String,
     },
     Update {
-        move_path: Option<PathBuf>,
+        move_path: Option<PathUri>,
         old_content: String,
         overwritten_move_content: Option<String>,
         new_content: String,
@@ -387,7 +387,6 @@ async fn apply_hunks_to_files(
         };
     }
 
-    // TODO(anp): Carry PathUri through committed patch deltas and the turn diff tracker.
     for hunk in hunks {
         let affected_path = hunk.path().to_path_buf();
         let path_uri = hunk.resolve_path(cwd)?;
@@ -406,7 +405,7 @@ async fn apply_hunks_to_files(
                     .await
                 );
                 delta.changes.push(AppliedPatchChange {
-                    path: path_uri.to_path_buf(),
+                    path: path_uri,
                     change: AppliedPatchFileChange::Add {
                         content: contents.clone(),
                         overwritten_content,
@@ -456,7 +455,7 @@ async fn apply_hunks_to_files(
                 }
                 if let Some(content) = deleted_content {
                     delta.changes.push(AppliedPatchChange {
-                        path: path_uri.to_path_buf(),
+                        path: path_uri,
                         change: AppliedPatchFileChange::Delete { content },
                     });
                 }
@@ -486,7 +485,7 @@ async fn apply_hunks_to_files(
                     );
                     let dest_write_change_index = delta.changes.len();
                     delta.changes.push(AppliedPatchChange {
-                        path: dest_uri.to_path_buf(),
+                        path: dest_uri.clone(),
                         change: AppliedPatchFileChange::Add {
                             content: new_contents.clone(),
                             overwritten_content: overwritten_move_content.clone(),
@@ -527,9 +526,9 @@ async fn apply_hunks_to_files(
                         return Err(error);
                     }
                     delta.changes[dest_write_change_index] = AppliedPatchChange {
-                        path: path_uri.to_path_buf(),
+                        path: path_uri,
                         change: AppliedPatchFileChange::Update {
-                            move_path: Some(dest_uri.to_path_buf()),
+                            move_path: Some(dest_uri),
                             old_content: original_contents,
                             overwritten_move_content,
                             new_content: new_contents,
@@ -546,7 +545,7 @@ async fn apply_hunks_to_files(
                             ))
                     );
                     delta.changes.push(AppliedPatchChange {
-                        path: path_uri.to_path_buf(),
+                        path: path_uri,
                         change: AppliedPatchFileChange::Update {
                             move_path: None,
                             old_content: original_contents,
@@ -913,7 +912,7 @@ mod tests {
         let mut stderr = Vec::new();
         apply_patch(
             &patch,
-            &PathUri::from_path(dir.path()).expect("absolute test path"),
+            &PathUri::from_host_native_path(dir.path()).expect("absolute test path"),
             &mut stdout,
             &mut stderr,
             LOCAL_FS.as_ref(),
@@ -937,7 +936,7 @@ mod tests {
     #[tokio::test]
     async fn test_apply_patch_hunks_accept_relative_and_absolute_paths() {
         let dir = tempdir().unwrap();
-        let cwd = PathUri::from_path(dir.path()).expect("absolute test path");
+        let cwd = PathUri::from_host_native_path(dir.path()).expect("absolute test path");
         let relative_add = dir.path().join("relative-add.txt");
         let absolute_add = dir.path().join("absolute-add.txt");
         let relative_delete = dir.path().join("relative-delete.txt");
@@ -1016,7 +1015,7 @@ mod tests {
         let mut stderr = Vec::new();
         apply_patch(
             &patch,
-            &PathUri::from_path(dir.path()).expect("absolute test path"),
+            &PathUri::from_host_native_path(dir.path()).expect("absolute test path"),
             &mut stdout,
             &mut stderr,
             LOCAL_FS.as_ref(),
@@ -1052,7 +1051,7 @@ mod tests {
         let mut stderr = Vec::new();
         apply_patch(
             &patch,
-            &PathUri::from_path(dir.path()).expect("absolute test path"),
+            &PathUri::from_host_native_path(dir.path()).expect("absolute test path"),
             &mut stdout,
             &mut stderr,
             LOCAL_FS.as_ref(),
@@ -1092,7 +1091,7 @@ mod tests {
         let mut stderr = Vec::new();
         apply_patch(
             &patch,
-            &PathUri::from_path(dir.path()).expect("absolute test path"),
+            &PathUri::from_host_native_path(dir.path()).expect("absolute test path"),
             &mut stdout,
             &mut stderr,
             LOCAL_FS.as_ref(),
@@ -1136,7 +1135,7 @@ mod tests {
         let mut stderr = Vec::new();
         let failure = apply_patch(
             &patch,
-            &PathUri::from_path(dir.path()).expect("absolute test path"),
+            &PathUri::from_host_native_path(dir.path()).expect("absolute test path"),
             &mut stdout,
             &mut stderr,
             LOCAL_FS.as_ref(),
@@ -1156,7 +1155,7 @@ mod tests {
             failure.delta(),
             &AppliedPatchDelta::new(
                 vec![AppliedPatchChange {
-                    path: dest.clone(),
+                    path: PathUri::from_host_native_path(&dest).expect("absolute destination path"),
                     change: AppliedPatchFileChange::Add {
                         content: "line2\n".to_string(),
                         overwritten_content: None,
@@ -1196,7 +1195,7 @@ mod tests {
         let mut stderr = Vec::new();
         apply_patch(
             &patch,
-            &PathUri::from_path(dir.path()).expect("absolute test path"),
+            &PathUri::from_host_native_path(dir.path()).expect("absolute test path"),
             &mut stdout,
             &mut stderr,
             LOCAL_FS.as_ref(),
@@ -1254,7 +1253,7 @@ mod tests {
         let mut stderr = Vec::new();
         apply_patch(
             &patch,
-            &PathUri::from_path(dir.path()).expect("absolute test path"),
+            &PathUri::from_host_native_path(dir.path()).expect("absolute test path"),
             &mut stdout,
             &mut stderr,
             LOCAL_FS.as_ref(),
@@ -1298,7 +1297,7 @@ mod tests {
         let mut stderr = Vec::new();
         apply_patch(
             &patch,
-            &PathUri::from_path(dir.path()).expect("absolute test path"),
+            &PathUri::from_host_native_path(dir.path()).expect("absolute test path"),
             &mut stdout,
             &mut stderr,
             LOCAL_FS.as_ref(),
@@ -1341,7 +1340,7 @@ mod tests {
         let mut stderr = Vec::new();
         apply_patch(
             &patch,
-            &PathUri::from_path(dir.path()).expect("absolute test path"),
+            &PathUri::from_host_native_path(dir.path()).expect("absolute test path"),
             &mut stdout,
             &mut stderr,
             LOCAL_FS.as_ref(),
@@ -1391,7 +1390,7 @@ mod tests {
             [Hunk::UpdateFile { chunks, .. }] => chunks,
             _ => panic!("Expected a single UpdateFile hunk"),
         };
-        let path_uri = PathUri::from_path(&path).expect("absolute test path");
+        let path_uri = PathUri::from_host_native_path(&path).expect("absolute test path");
         let diff = unified_diff_from_chunks(
             &path_uri,
             update_file_chunks,
@@ -1439,7 +1438,7 @@ mod tests {
             _ => panic!("Expected a single UpdateFile hunk"),
         };
 
-        let resolved_path = PathUri::from_path(&path).expect("absolute test path");
+        let resolved_path = PathUri::from_host_native_path(&path).expect("absolute test path");
         let diff = unified_diff_from_chunks(
             &resolved_path,
             chunks,
@@ -1485,7 +1484,7 @@ mod tests {
             _ => panic!("Expected a single UpdateFile hunk"),
         };
 
-        let resolved_path = PathUri::from_path(&path).expect("absolute test path");
+        let resolved_path = PathUri::from_host_native_path(&path).expect("absolute test path");
         let diff = unified_diff_from_chunks(
             &resolved_path,
             chunks,
@@ -1529,7 +1528,7 @@ mod tests {
             _ => panic!("Expected a single UpdateFile hunk"),
         };
 
-        let path_uri = PathUri::from_path(&path).expect("absolute test path");
+        let path_uri = PathUri::from_host_native_path(&path).expect("absolute test path");
         let diff =
             unified_diff_from_chunks(&path_uri, chunks, LOCAL_FS.as_ref(), /*sandbox*/ None)
                 .await
@@ -1580,7 +1579,7 @@ mod tests {
             _ => panic!("Expected a single UpdateFile hunk"),
         };
 
-        let path_uri = PathUri::from_path(&path).expect("absolute test path");
+        let path_uri = PathUri::from_host_native_path(&path).expect("absolute test path");
         let diff =
             unified_diff_from_chunks(&path_uri, chunks, LOCAL_FS.as_ref(), /*sandbox*/ None)
                 .await
@@ -1610,7 +1609,7 @@ mod tests {
         let mut stderr = Vec::new();
         apply_patch(
             &patch,
-            &PathUri::from_path(dir.path()).expect("absolute test path"),
+            &PathUri::from_host_native_path(dir.path()).expect("absolute test path"),
             &mut stdout,
             &mut stderr,
             LOCAL_FS.as_ref(),
@@ -1648,7 +1647,7 @@ g
         let mut stderr = Vec::new();
         let result = apply_patch(
             &patch,
-            &PathUri::from_path(dir.path()).expect("absolute test path"),
+            &PathUri::from_host_native_path(dir.path()).expect("absolute test path"),
             &mut stdout,
             &mut stderr,
             LOCAL_FS.as_ref(),
@@ -1667,7 +1666,7 @@ g
         let dir = tempdir().unwrap();
         let path = dir.path().join("binary.dat");
         fs::write(dir.path().join("source.txt"), "before\n").unwrap();
-        let cwd = PathUri::from_path(dir.path()).expect("absolute test path");
+        let cwd = PathUri::from_host_native_path(dir.path()).expect("absolute test path");
 
         for patch in [
             wrap_patch("*** Add File: binary.dat\n+text"),
@@ -1705,7 +1704,7 @@ g
         let mut stderr = Vec::new();
         let delta = apply_patch(
             &patch,
-            &PathUri::from_path(dir.path()).expect("absolute test path"),
+            &PathUri::from_host_native_path(dir.path()).expect("absolute test path"),
             &mut stdout,
             &mut stderr,
             LOCAL_FS.as_ref(),

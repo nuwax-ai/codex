@@ -42,6 +42,7 @@ use codex_sandboxing::SandboxTransformRequest;
 use codex_sandboxing::SandboxType;
 use codex_sandboxing::SandboxablePreference;
 use codex_sandboxing::WindowsSandboxFilesystemOverrides;
+pub(crate) use codex_sandboxing::is_likely_sandbox_denied;
 #[cfg(test)]
 use codex_sandboxing::permission_profile_supports_windows_restricted_token_sandbox;
 use codex_sandboxing::resolve_windows_elevated_filesystem_overrides;
@@ -376,6 +377,7 @@ pub fn build_exec_request(
         args: args.to_vec(),
         cwd,
         env,
+        managed_network: None,
         additional_permissions: None,
     };
     let options = ExecOptions {
@@ -458,6 +460,8 @@ pub(crate) async fn execute_exec_request(
         arg0,
         exec_server_sandbox: _,
         exec_server_enforce_managed_network: _,
+        exec_server_managed_network: _,
+        exec_server_network_proxy: _,
     } = exec_request;
 
     // TODO(anp): Keep PathUri through the local process launch boundary.
@@ -628,6 +632,18 @@ async fn exec_windows_sandbox(
                 network_proxy_environment_error(network_environment_id.as_deref(), err)
             })?;
     }
+    let network_proxy_restricting_sid = network
+        .as_ref()
+        .map(|network| {
+            network
+                .network_proxy_restricting_sid(network_environment_id.as_deref())
+                .ok_or_else(|| {
+                    CodexErr::Io(io::Error::other(
+                        "managed Windows proxy route is missing its restricting SID",
+                    ))
+                })
+        })
+        .transpose()?;
 
     // Windows sandbox capture still receives timeout and cancellation separately.
     let (cancellation, timeout_ms) = if capture_policy.uses_expiration() {
@@ -682,6 +698,7 @@ async fn exec_windows_sandbox(
                     cancellation,
                     use_private_desktop: windows_sandbox_private_desktop,
                     proxy_enforced,
+                    network_proxy_restricting_sid,
                     read_roots_override: elevated_read_roots_override.as_deref(),
                     read_roots_include_platform_defaults:
                         elevated_read_roots_include_platform_defaults,
@@ -817,68 +834,6 @@ fn finalize_exec_result(
             Err(err)
         }
     }
-}
-
-/// We don't have a fully deterministic way to tell if our command failed
-/// because of the sandbox - a command in the user's zshrc file might hit an
-/// error, but the command itself might fail or succeed for other reasons.
-/// For now, we conservatively check for well known command failure exit codes and
-/// also look for common sandbox denial keywords in the command output.
-pub(crate) fn is_likely_sandbox_denied(
-    sandbox_type: SandboxType,
-    exec_output: &ExecToolCallOutput,
-) -> bool {
-    if sandbox_type == SandboxType::None || exec_output.exit_code == 0 {
-        return false;
-    }
-
-    // Quick rejects: well-known non-sandbox shell exit codes
-    // 2: misuse of shell builtins
-    // 126: permission denied
-    // 127: command not found
-    const SANDBOX_DENIED_KEYWORDS: [&str; 7] = [
-        "operation not permitted",
-        "permission denied",
-        "read-only file system",
-        "seccomp",
-        "sandbox",
-        "landlock",
-        "failed to write file",
-    ];
-
-    let has_sandbox_keyword = [
-        &exec_output.stderr.text,
-        &exec_output.stdout.text,
-        &exec_output.aggregated_output.text,
-    ]
-    .into_iter()
-    .any(|section| {
-        let lower = section.to_lowercase();
-        SANDBOX_DENIED_KEYWORDS
-            .iter()
-            .any(|needle| lower.contains(needle))
-    });
-
-    if has_sandbox_keyword {
-        return true;
-    }
-
-    const QUICK_REJECT_EXIT_CODES: [i32; 3] = [2, 126, 127];
-    if QUICK_REJECT_EXIT_CODES.contains(&exec_output.exit_code) {
-        return false;
-    }
-
-    #[cfg(unix)]
-    {
-        const SIGSYS_CODE: i32 = libc::SIGSYS;
-        if sandbox_type == SandboxType::LinuxSeccomp
-            && exec_output.exit_code == EXIT_CODE_SIGNAL_BASE + SIGSYS_CODE
-        {
-            return true;
-        }
-    }
-
-    false
 }
 
 #[derive(Debug)]

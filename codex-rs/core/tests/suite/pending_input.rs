@@ -2,9 +2,11 @@ use core_test_support::test_codex::local_selections;
 use std::sync::Arc;
 
 use codex_core::CodexThread;
+use codex_core::config::CurrentTimeReminderConfig;
+use codex_extension_items::ExtensionItem;
+use codex_extension_items::sleep::SleepItem;
 use codex_features::Feature;
 use codex_protocol::AgentPath;
-use codex_protocol::items::SleepItem;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::protocol::AskForApproval;
@@ -20,6 +22,7 @@ use core_test_support::responses;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_completed_with_tokens;
 use core_test_support::responses::ev_function_call;
+use core_test_support::responses::ev_function_call_with_namespace;
 use core_test_support::responses::ev_message_item_added;
 use core_test_support::responses::ev_output_text_delta;
 use core_test_support::responses::ev_reasoning_item;
@@ -190,7 +193,7 @@ async fn steer_user_input(codex: &CodexThread, text: &str) {
         .expect("steer user input");
 }
 
-async fn submit_queue_only_agent_mail(codex: &CodexThread, text: &str) {
+async fn enqueue_queue_only_agent_mail(codex: &CodexThread, text: &str) {
     codex
         .submit(Op::InterAgentCommunication {
             communication: InterAgentCommunication::new(
@@ -203,6 +206,10 @@ async fn submit_queue_only_agent_mail(codex: &CodexThread, text: &str) {
         })
         .await
         .expect("submit queue-only agent mail");
+}
+
+async fn submit_queue_only_agent_mail(codex: &CodexThread, text: &str) {
+    enqueue_queue_only_agent_mail(codex, text).await;
     codex
         .submit(Op::RealtimeConversationListVoices)
         .await
@@ -242,14 +249,17 @@ async fn wait_for_sleep_item_started(codex: &CodexThread, call_id: &str, duratio
         matches!(
             event,
             EventMsg::ItemStarted(started)
-                if matches!(&started.item, TurnItem::Sleep(item) if item.id == call_id)
+                if matches!(
+                    &started.item,
+                    TurnItem::Extension(ExtensionItem::Sleep(item)) if item.id == call_id
+                )
         )
     })
     .await;
     let EventMsg::ItemStarted(started) = event else {
         unreachable!("wait predicate only accepts item/started events");
     };
-    let TurnItem::Sleep(item) = started.item else {
+    let TurnItem::Extension(ExtensionItem::Sleep(item)) = started.item else {
         unreachable!("wait predicate only accepts sleep items");
     };
     assert_eq!(
@@ -266,14 +276,17 @@ async fn wait_for_sleep_item_completed(codex: &CodexThread, call_id: &str, durat
         matches!(
             event,
             EventMsg::ItemCompleted(completed)
-                if matches!(&completed.item, TurnItem::Sleep(item) if item.id == call_id)
+                if matches!(
+                    &completed.item,
+                    TurnItem::Extension(ExtensionItem::Sleep(item)) if item.id == call_id
+                )
         )
     })
     .await;
     let EventMsg::ItemCompleted(completed) = event else {
         unreachable!("wait predicate only accepts item/completed events");
     };
-    let TurnItem::Sleep(item) = completed.item else {
+    let TurnItem::Extension(ExtensionItem::Sleep(item)) = completed.item else {
         unreachable!("wait predicate only accepts sleep items");
     };
     assert_eq!(
@@ -285,16 +298,76 @@ async fn wait_for_sleep_item_completed(codex: &CodexThread, call_id: &str, durat
     );
 }
 
+struct SleepingRootExtension;
+
+impl codex_extension_api::ThreadLifecycleContributor<codex_core::config::Config>
+    for SleepingRootExtension
+{
+    fn on_thread_start<'a>(
+        &'a self,
+        input: codex_extension_api::ThreadStartInput<'a, codex_core::config::Config>,
+    ) -> codex_extension_api::ExtensionFuture<'a, ()> {
+        Box::pin(async move {
+            input.thread_store.insert(SleepItem {
+                id: "clock-wait-1".to_string(),
+                duration_ms: 60_000,
+            });
+        })
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn queue_only_agent_mail_wakes_sleeping_root_and_persists_message() {
+    const CHILD_MESSAGE: &str = "worker completed";
+
+    let (server, _completions) =
+        start_streaming_sse_server(vec![response_completed_chunks("resp-1")]).await;
+    let mut extensions =
+        codex_extension_api::ExtensionRegistryBuilder::<codex_core::config::Config>::new();
+    extensions.thread_lifecycle_contributor(Arc::new(SleepingRootExtension));
+    let codex = test_codex()
+        .with_model("gpt-5.4")
+        .with_extensions(Arc::new(extensions.build()))
+        .build_with_streaming_server(&server)
+        .await
+        .expect("build Codex test session")
+        .codex;
+
+    enqueue_queue_only_agent_mail(&codex, CHILD_MESSAGE).await;
+    wait_for_turn_complete(&codex).await;
+
+    assert_eq!(server.requests().await.len(), 1);
+    let history = codex
+        .load_history(/*include_archived*/ true)
+        .await
+        .expect("load persisted thread history");
+    assert!(history.items.iter().any(|item| {
+        matches!(
+            item,
+            RolloutItem::ResponseItem(codex_protocol::models::ResponseItem::AgentMessage {
+                content,
+                ..
+            }) if content.iter().any(|content| matches!(
+                content,
+                codex_protocol::models::AgentMessageInputContent::InputText { text }
+                    if text == CHILD_MESSAGE
+            ))
+        )
+    }));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn steer_interrupts_wait_agent_and_is_sent_in_follow_up_request() {
     const WAIT_CALL_ID: &str = "wait-call";
     const INITIAL_PROMPT: &str = "wait for an agent";
     const STEER_PROMPT: &str = "stop waiting and continue";
+    const MULTI_AGENT_V2_NAMESPACE: &str = "collaboration";
 
     let first_chunks = vec![
         chunk(ev_response_created("resp-1")),
-        chunk(ev_function_call(
+        chunk(ev_function_call_with_namespace(
             WAIT_CALL_ID,
+            MULTI_AGENT_V2_NAMESPACE,
             "wait_agent",
             r#"{"timeout_ms":10000}"#,
         )),
@@ -358,8 +431,9 @@ async fn any_new_input_interrupts_sleep() {
 
     let first_chunks = vec![
         chunk(ev_response_created("resp-1")),
-        chunk(ev_function_call(
+        chunk(ev_function_call_with_namespace(
             FIRST_SLEEP_CALL_ID,
+            "clock",
             "sleep",
             &sleep_arguments,
         )),
@@ -367,8 +441,9 @@ async fn any_new_input_interrupts_sleep() {
     ];
     let second_chunks = vec![
         chunk(ev_response_created("resp-2")),
-        chunk(ev_function_call(
+        chunk(ev_function_call_with_namespace(
             SECOND_SLEEP_CALL_ID,
+            "clock",
             "sleep",
             &sleep_arguments,
         )),
@@ -385,8 +460,12 @@ async fn any_new_input_interrupts_sleep() {
         .with_config(|config| {
             config
                 .features
-                .enable(Feature::SleepTool)
-                .expect("test config should allow feature update");
+                .enable(Feature::CurrentTimeReminder)
+                .expect("test config should allow current-time reminders");
+            config.current_time_reminder = Some(CurrentTimeReminderConfig {
+                sleep_tool: true,
+                ..CurrentTimeReminderConfig::default()
+            });
         })
         .build_with_streaming_server(&server)
         .await
@@ -432,7 +511,7 @@ async fn any_new_input_interrupts_sleep() {
         .filter_map(|line| serde_json::from_str::<RolloutLine>(line).ok())
         .filter_map(|line| match line.item {
             RolloutItem::EventMsg(EventMsg::ItemCompleted(event)) => match event.item {
-                TurnItem::Sleep(item) => Some(item),
+                TurnItem::Extension(ExtensionItem::Sleep(item)) => Some(item),
                 _ => None,
             },
             _ => None,
@@ -691,6 +770,131 @@ async fn queued_inter_agent_mail_triggers_follow_up_after_commentary_message_ite
 
     let requests = server.requests().await;
     assert_two_responses_input_snapshot("pending_input_queued_mail_after_commentary", &requests);
+
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn queued_inter_agent_mail_does_not_restart_after_final_answer() {
+    let first_chunks = vec![
+        chunk(ev_response_created("resp-1")),
+        chunk(ev_message_item_added("msg-1", "")),
+        chunk(ev_output_text_delta("first answer")),
+        chunk(json!({
+            "type": "response.output_item.done",
+            "item": {
+                "type": "message",
+                "role": "assistant",
+                "id": "msg-1",
+                "content": [{"type": "output_text", "text": "first answer"}],
+                "phase": "final_answer",
+            }
+        })),
+        chunk(ev_completed("resp-1")),
+    ];
+
+    let (server, _completions) = start_streaming_sse_server(vec![
+        first_chunks,
+        response_completed_chunks("unexpected-resp-2"),
+    ])
+    .await;
+    let codex = build_codex(&server).await;
+
+    submit_queue_only_agent_mail(&codex, "queued child update").await;
+    submit_user_input(&codex, "first prompt").await;
+    wait_for_turn_complete(&codex).await;
+
+    let mut requests = server.requests().await;
+    assert_eq!(requests.len(), 1);
+    let request: Value = from_slice(&requests[0]).expect("parse request");
+    assert!(
+        request["input"]
+            .as_array()
+            .expect("request input")
+            .iter()
+            .all(|item| item.get("type").and_then(Value::as_str) != Some("agent_message"))
+    );
+
+    submit_user_input(&codex, "second prompt").await;
+    wait_for_turn_complete(&codex).await;
+
+    requests = server.requests().await;
+    assert_eq!(requests.len(), 2);
+    let request: Value = from_slice(&requests[1]).expect("parse request");
+    let input = request["input"].as_array().expect("request input");
+    let agent_message = input
+        .iter()
+        .find(|item| item.get("type").and_then(Value::as_str) == Some("agent_message"))
+        .expect("queued child update should be included in the next turn");
+    assert_eq!(
+        agent_message["content"],
+        json!([{"type": "input_text", "text": "queued child update"}])
+    );
+    let user_input = message_input_texts(&request, "user")
+        .into_iter()
+        .filter(|text| text == "second prompt")
+        .collect::<Vec<_>>();
+    assert_eq!(user_input, vec!["second prompt"]);
+
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn injected_response_item_reopens_turn_after_final_answer() {
+    const INITIAL_PROMPT: &str = "first prompt";
+    const INJECTED_CONTEXT: &str = "late injected context";
+    let (gate_completed_tx, gate_completed_rx) = oneshot::channel();
+
+    let first_chunks = vec![
+        chunk(ev_response_created("resp-1")),
+        chunk(ev_message_item_added("msg-1", "")),
+        chunk(ev_output_text_delta("first answer")),
+        chunk(json!({
+            "type": "response.output_item.done",
+            "item": {
+                "type": "message",
+                "role": "assistant",
+                "id": "msg-1",
+                "content": [{"type": "output_text", "text": "first answer"}],
+                "phase": "final_answer",
+            }
+        })),
+        // Keep the response open past an observable event so the answer boundary is established
+        // before the late context is injected.
+        chunk(ev_reasoning_item_added("reason-after-final", &["done"])),
+        gated_chunk(
+            gate_completed_rx,
+            vec![
+                ev_reasoning_item("reason-after-final", &["done"], &[]),
+                ev_completed("resp-1"),
+            ],
+        ),
+    ];
+    let (server, _completions) =
+        start_streaming_sse_server(vec![first_chunks, response_completed_chunks("resp-2")]).await;
+    let codex = build_codex(&server).await;
+
+    submit_user_input(&codex, INITIAL_PROMPT).await;
+    wait_for_reasoning_item_started(&codex).await;
+
+    assert!(
+        codex
+            .inject_if_running(vec![responses::user_message_item(INJECTED_CONTEXT)])
+            .await
+            .is_ok()
+    );
+    let _ = gate_completed_tx.send(());
+
+    wait_for_turn_complete(&codex).await;
+
+    let requests = server.requests().await;
+    assert_eq!(requests.len(), 2);
+    let second: Value = from_slice(&requests[1]).expect("parse second request");
+    let relevant_user_input = message_input_texts(&second, "user")
+        .into_iter()
+        .filter(|text| text == INITIAL_PROMPT || text == INJECTED_CONTEXT)
+        .collect::<Vec<_>>();
+    assert_eq!(relevant_user_input, vec![INITIAL_PROMPT, INJECTED_CONTEXT]);
 
     server.shutdown().await;
 }
