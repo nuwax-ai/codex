@@ -1,5 +1,5 @@
 {
-  "name": "nuwax-codex",
+  "name": "nuwax-codex-ts",
   "version": "0.0.0",
   "type": "module",
   "description": "Fork of OpenAI Codex CLI with domestic (Chinese) LLM support via genai",
@@ -23,7 +23,7 @@
     "genai"
   ],
   "bin": {
-    "nuwax-codex": "bin/nuwax-codex.js"
+    "nuwax-codex-ts": "bin/nuwax-codex.js"
   },
   "files": [
     "bin"
@@ -35,11 +35,11 @@
     "detect-libc": "^2.0.0"
   },
   "optionalDependencies": {
-    "nuwax-codex-darwin-arm64": "0.0.0",
-    "nuwax-codex-darwin-x64": "0.0.0",
-    "nuwax-codex-linux-x64": "0.0.0",
-    "nuwax-codex-linux-x64-musl": "0.0.0",
-    "nuwax-codex-win32-arm64": "0.0.0",
-    "nuwax-codex-win32-x64": "0.0.0"
+    "nuwax-codex-ts-darwin-arm64": "0.0.0",
+    "nuwax-codex-ts-darwin-x64": "0.0.0",
+    "nuwax-codex-ts-linux-x64": "0.0.0",
+    "nuwax-codex-ts-linux-x64-musl": "0.0.0",
+    "nuwax-codex-ts-win32-arm64": "0.0.0",
+    "nuwax-codex-ts-win32-x64": "0.0.0"
   }
 }

@@ -17,19 +17,19 @@ function getPlatformPackage() {
 
   const platformMap = {
     darwin: {
-      arm64: "nuwax-codex-darwin-arm64",
-      x64: "nuwax-codex-darwin-x64",
+      arm64: "nuwax-codex-ts-darwin-arm64",
+      x64: "nuwax-codex-ts-darwin-x64",
     },
     linux: {
       // arm64 Linux is not shipped (GitHub arm64 runners are too flaky to build
       // it reliably); only x64 Linux is supported for now.
       x64: familySync() === "musl"
-        ? "nuwax-codex-linux-x64-musl"
-        : "nuwax-codex-linux-x64",
+        ? "nuwax-codex-ts-linux-x64-musl"
+        : "nuwax-codex-ts-linux-x64",
     },
     win32: {
-      arm64: "nuwax-codex-win32-arm64",
-      x64: "nuwax-codex-win32-x64",
+      arm64: "nuwax-codex-ts-win32-arm64",
+      x64: "nuwax-codex-ts-win32-x64",
     },
   };
 

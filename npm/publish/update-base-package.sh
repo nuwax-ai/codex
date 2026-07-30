@@ -25,14 +25,14 @@ fi
 sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" "$PACKAGE_JSON"
 
 # Update optionalDependencies versions
-sed -i.bak "s/\"nuwax-codex-darwin-arm64\": \".*\"/\"nuwax-codex-darwin-arm64\": \"$VERSION\"/" "$PACKAGE_JSON"
-sed -i.bak "s/\"nuwax-codex-darwin-x64\": \".*\"/\"nuwax-codex-darwin-x64\": \"$VERSION\"/" "$PACKAGE_JSON"
-sed -i.bak "s/\"nuwax-codex-linux-arm64\": \".*\"/\"nuwax-codex-linux-arm64\": \"$VERSION\"/" "$PACKAGE_JSON"
-sed -i.bak "s/\"nuwax-codex-linux-arm64-musl\": \".*\"/\"nuwax-codex-linux-arm64-musl\": \"$VERSION\"/" "$PACKAGE_JSON"
-sed -i.bak "s/\"nuwax-codex-linux-x64\": \".*\"/\"nuwax-codex-linux-x64\": \"$VERSION\"/" "$PACKAGE_JSON"
-sed -i.bak "s/\"nuwax-codex-linux-x64-musl\": \".*\"/\"nuwax-codex-linux-x64-musl\": \"$VERSION\"/" "$PACKAGE_JSON"
-sed -i.bak "s/\"nuwax-codex-win32-arm64\": \".*\"/\"nuwax-codex-win32-arm64\": \"$VERSION\"/" "$PACKAGE_JSON"
-sed -i.bak "s/\"nuwax-codex-win32-x64\": \".*\"/\"nuwax-codex-win32-x64\": \"$VERSION\"/" "$PACKAGE_JSON"
+sed -i.bak "s/\"nuwax-codex-ts-darwin-arm64\": \".*\"/\"nuwax-codex-ts-darwin-arm64\": \"$VERSION\"/" "$PACKAGE_JSON"
+sed -i.bak "s/\"nuwax-codex-ts-darwin-x64\": \".*\"/\"nuwax-codex-ts-darwin-x64\": \"$VERSION\"/" "$PACKAGE_JSON"
+sed -i.bak "s/\"nuwax-codex-ts-linux-arm64\": \".*\"/\"nuwax-codex-ts-linux-arm64\": \"$VERSION\"/" "$PACKAGE_JSON"
+sed -i.bak "s/\"nuwax-codex-ts-linux-arm64-musl\": \".*\"/\"nuwax-codex-ts-linux-arm64-musl\": \"$VERSION\"/" "$PACKAGE_JSON"
+sed -i.bak "s/\"nuwax-codex-ts-linux-x64\": \".*\"/\"nuwax-codex-ts-linux-x64\": \"$VERSION\"/" "$PACKAGE_JSON"
+sed -i.bak "s/\"nuwax-codex-ts-linux-x64-musl\": \".*\"/\"nuwax-codex-ts-linux-x64-musl\": \"$VERSION\"/" "$PACKAGE_JSON"
+sed -i.bak "s/\"nuwax-codex-ts-win32-arm64\": \".*\"/\"nuwax-codex-ts-win32-arm64\": \"$VERSION\"/" "$PACKAGE_JSON"
+sed -i.bak "s/\"nuwax-codex-ts-win32-x64\": \".*\"/\"nuwax-codex-ts-win32-x64\": \"$VERSION\"/" "$PACKAGE_JSON"
 
 # Remove backup file
 rm -f "$PACKAGE_JSON.bak"

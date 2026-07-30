@@ -52,7 +52,7 @@ for target in "${!platforms[@]}"; do
   echo "📦 Processing $target from $(basename "$archive_path")"
 
   # Create package name (includes -musl suffix for musl variants)
-  pkg_name="nuwax-codex-${os}-${arch}${suffix}"
+  pkg_name="nuwax-codex-ts-${os}-${arch}${suffix}"
   pkg_dir="$OUTPUT_DIR/${pkg_name}"
   mkdir -p "${pkg_dir}/bin"
 
