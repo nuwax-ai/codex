@@ -209,6 +209,39 @@ fn handler_looks_up_namespaced_aliases_explicitly() {
 }
 
 #[test]
+fn chat_completions_flat_name_resolves_to_namespaced_tool() {
+    // The Chat-Completions bridge flattens namespaced tools (e.g. an MCP
+    // server's tools) into a single function name (`mcp__memory__create_entities`)
+    // because Chat Completions has no namespace concept. The model calls back
+    // with `namespace: None`, so the registry must resolve that flat name back
+    // to the registered namespaced tool via the flat-name index.
+    let namespaced_name = codex_tools::ToolName::namespaced("mcp__memory", "create_entities");
+    let flat_name = codex_tools::ToolName::plain("mcp__memory__create_entities");
+    let namespaced_handler = Arc::new(TestHandler {
+        tool_name: namespaced_name.clone(),
+    }) as Arc<dyn CoreToolRuntime>;
+    let registry = ToolRegistry::from_tools([Arc::clone(&namespaced_handler)]);
+
+    // Chat-Completions path: the flat name resolves to the namespaced handler.
+    let resolved = registry
+        .tool(&flat_name)
+        .expect("flat MCP name should resolve to the namespaced handler");
+    assert!(Arc::ptr_eq(&resolved, &namespaced_handler));
+
+    // Responses-API path (regression): the structured namespaced key still
+    // resolves directly and must remain unaffected by the flat-name index.
+    let direct = registry
+        .tool(&namespaced_name)
+        .expect("namespaced key should still resolve directly");
+    assert!(Arc::ptr_eq(&direct, &namespaced_handler));
+
+    // A different flat name must not be mis-resolved to this handler.
+    assert!(registry
+        .tool(&codex_tools::ToolName::plain("mcp__memory__nonexistent"))
+        .is_none());
+}
+
+#[test]
 fn registry_preserves_external_winners_and_trusted_synthetic_order() {
     let handler = |tool_name| Arc::new(TestHandler { tool_name }) as Arc<dyn CoreToolRuntime>;
     let [first_name, second_name, synthetic_name] =

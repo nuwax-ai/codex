@@ -1,5 +1,7 @@
 use codex_api::ResponsesApiRequest;
 use codex_protocol::models::{ContentItem, FunctionCallOutputBody, ResponseItem};
+use codex_tools::ToolName;
+use codex_tools::code_mode_name_for_tool_name;
 use genai::chat::{
     ChatMessage, ChatRequest, ChatRole, ContentPart, MessageContent, Tool, ToolCall, ToolResponse,
 };
@@ -29,12 +31,21 @@ pub fn responses_request_to_chat_request(request: &ResponsesApiRequest) -> Optio
 
     // `request.tools` is `Option<ResponsesApiTools>` (opaque raw JSON). Extract
     // the tool array via the Serialize impl (as_raw_value is pub(crate)-gated).
-    let tools: Vec<Value> = request
+    let mut tools: Vec<Value> = request
         .tools
         .as_ref()
         .and_then(|t| serde_json::to_value(t).ok())
         .and_then(|v| serde_json::from_value::<Vec<Value>>(v).ok())
         .unwrap_or_default();
+    // Responses-Lite (`use_responses_lite`) carries the tool list inside a
+    // `ResponseItem::AdditionalTools` in `input` instead of `request.tools`.
+    // Chat Completions needs those tools too, so merge them in here; parse_tools
+    // then flattens any namespace specs exactly like the non-lite path.
+    for item in &request.input {
+        if let ResponseItem::AdditionalTools { tools: extra, .. } = item {
+            tools.extend(extra.iter().cloned());
+        }
+    }
     let tools = parse_tools(&tools);
     if !tools.is_empty() {
         chat_req = chat_req.with_tools(tools);
@@ -228,31 +239,65 @@ fn convert_content_items(items: &[ContentItem]) -> Vec<ContentPart> {
 }
 
 fn parse_tools(tools: &[Value]) -> Vec<Tool> {
-    tools
-        .iter()
-        .filter_map(|v| {
-            let name = v.get("name")?.as_str()?;
-            let description = v
-                .get("description")
-                .and_then(|d| d.as_str())
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string());
-            let schema = v.get("parameters").or(v.get("input_schema")).cloned();
-            Some(Tool {
-                name: name.to_string().into(),
-                description,
-                schema,
-                strict: v.get("strict").and_then(|s| s.as_bool()),
-                config: None,
-            })
-        })
-        .collect()
+    let mut parsed = Vec::new();
+    for v in tools {
+        match v.get("type").and_then(|t| t.as_str()) {
+            // Responses API `namespace` tools group several function tools
+            // (e.g. all tools from one MCP server). Chat Completions has no
+            // namespace concept, so flatten each child function into a
+            // standalone tool whose name follows the conventional
+            // `mcp__<server>__<tool>` form that the model emits and the
+            // registry's flat-name index recognizes.
+            Some("namespace") => {
+                let namespace = v.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                let Some(children) = v.get("tools").and_then(|t| t.as_array()) else {
+                    continue;
+                };
+                for child in children {
+                    let Some(child_name) = child.get("name").and_then(|n| n.as_str()) else {
+                        continue;
+                    };
+                    let flat_name = code_mode_name_for_tool_name(&ToolName::namespaced(
+                        namespace,
+                        child_name,
+                    ));
+                    parsed.push(tool_from_value(child, flat_name));
+                }
+            }
+            // Top-level function tools (and any tool without a recognized
+            // `type`) pass through with their own declared name.
+            _ => {
+                let Some(name) = v.get("name").and_then(|n| n.as_str()) else {
+                    continue;
+                };
+                parsed.push(tool_from_value(v, name.to_string()));
+            }
+        }
+    }
+    parsed
+}
+
+fn tool_from_value(v: &Value, name: String) -> Tool {
+    let description = v
+        .get("description")
+        .and_then(|d| d.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let schema = v.get("parameters").or(v.get("input_schema")).cloned();
+    Tool {
+        name: name.into(),
+        description,
+        schema,
+        strict: v.get("strict").and_then(|s| s.as_bool()),
+        config: None,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use codex_protocol::models::ContentItem;
+    use codex_protocol::ResponseItemId;
 
     #[test]
     fn test_single_user_message() {
@@ -266,14 +311,15 @@ mod tests {
                     text: "Hello".into(),
                 }],
                 phase: None,
-                metadata: None,
+                internal_chat_message_metadata_passthrough: None,
             }],
-            tools: vec![],
+            tools: None,
             tool_choice: "auto".into(),
             parallel_tool_calls: true,
             reasoning: None,
             store: false,
             stream: true,
+            stream_options: None,
             include: vec![],
             service_tier: None,
             prompt_cache_key: None,
@@ -298,14 +344,15 @@ mod tests {
                 role: "user".into(),
                 content: vec![ContentItem::InputText { text: "Hi".into() }],
                 phase: None,
-                metadata: None,
+                internal_chat_message_metadata_passthrough: None,
             }],
-            tools: vec![],
+            tools: None,
             tool_choice: "auto".into(),
             parallel_tool_calls: true,
             reasoning: None,
             store: false,
             stream: true,
+            stream_options: None,
             include: vec![],
             service_tier: None,
             prompt_cache_key: None,
@@ -328,8 +375,9 @@ mod tests {
                     name: "get_weather".into(),
                     namespace: None,
                     arguments: r#"{"city":"SF"}"#.into(),
+                    encrypted_function_args: None,
                     call_id: "call_1".into(),
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
                 ResponseItem::FunctionCallOutput {
                     id: None,
@@ -338,15 +386,16 @@ mod tests {
                         body: FunctionCallOutputBody::Text("Sunny".into()),
                         success: Some(true),
                     },
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
             ],
-            tools: vec![],
+            tools: None,
             tool_choice: "auto".into(),
             parallel_tool_calls: true,
             reasoning: None,
             store: false,
             stream: true,
+            stream_options: None,
             include: vec![],
             service_tier: None,
             prompt_cache_key: None,
@@ -366,12 +415,13 @@ mod tests {
             model: "gpt-5".into(),
             instructions: String::new(),
             input: vec![],
-            tools: vec![],
+            tools: None,
             tool_choice: "auto".into(),
             parallel_tool_calls: true,
             reasoning: None,
             store: false,
             stream: true,
+            stream_options: None,
             include: vec![],
             service_tier: None,
             prompt_cache_key: None,
@@ -400,7 +450,7 @@ mod tests {
                         text: "Hello".into(),
                     }],
                     phase: None,
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
                 // First turn: assistant responds with text
                 ResponseItem::Message {
@@ -410,15 +460,15 @@ mod tests {
                         text: "Hi there!".into(),
                     }],
                     phase: None,
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
                 // First turn: reasoning content from the assistant's thinking
                 ResponseItem::Reasoning {
-                    id: Some("rsn_1".into()),
+                    id: Some(ResponseItemId::from_server("rsn_1".to_string())),
                     summary: vec![],
                     content: None,
                     encrypted_content: Some("Let me think about this...".into()),
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
                 // Second turn: user follows up
                 ResponseItem::Message {
@@ -428,15 +478,16 @@ mod tests {
                         text: "What was my first question?".into(),
                     }],
                     phase: None,
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
             ],
-            tools: vec![],
+            tools: None,
             tool_choice: "auto".into(),
             parallel_tool_calls: true,
             reasoning: None,
             store: false,
             stream: true,
+            stream_options: None,
             include: vec![],
             service_tier: None,
             prompt_cache_key: None,
@@ -479,11 +530,11 @@ mod tests {
             input: vec![
                 // Reasoning BEFORE assistant message (should be skipped)
                 ResponseItem::Reasoning {
-                    id: Some("rsn_orphan".into()),
+                    id: Some(ResponseItemId::from_server("rsn_orphan".to_string())),
                     summary: vec![],
                     content: None,
                     encrypted_content: Some("orphan reasoning".into()),
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
                 ResponseItem::Message {
                     id: None,
@@ -492,15 +543,16 @@ mod tests {
                         text: "response".into(),
                     }],
                     phase: None,
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
             ],
-            tools: vec![],
+            tools: None,
             tool_choice: "auto".into(),
             parallel_tool_calls: true,
             reasoning: None,
             store: false,
             stream: true,
+            stream_options: None,
             include: vec![],
             service_tier: None,
             prompt_cache_key: None,
@@ -534,7 +586,7 @@ mod tests {
                         text: "List files".into(),
                     }],
                     phase: None,
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
                 // Turn 1: assistant responds (empty text — typical when model calls tool immediately)
                 ResponseItem::Message {
@@ -542,15 +594,15 @@ mod tests {
                     role: "assistant".into(),
                     content: vec![],
                     phase: None,
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
                 // Turn 1: reasoning content (from DeepSeek thinking mode)
                 ResponseItem::Reasoning {
-                    id: Some("rsn_1".into()),
+                    id: Some(ResponseItemId::from_server("rsn_1".to_string())),
                     summary: vec![],
                     content: None,
                     encrypted_content: Some("I should list the files to help the user.".into()),
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
                 // Turn 1: tool call (model decided to run ls)
                 ResponseItem::FunctionCall {
@@ -558,8 +610,9 @@ mod tests {
                     name: "exec_command".into(),
                     namespace: None,
                     arguments: r#"{"cmd":"ls"}"#.into(),
+                    encrypted_function_args: None,
                     call_id: "call_1".into(),
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
                 // Turn 1: tool result
                 ResponseItem::FunctionCallOutput {
@@ -569,15 +622,16 @@ mod tests {
                         body: FunctionCallOutputBody::Text("file1.txt\nfile2.txt".into()),
                         success: Some(true),
                     },
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
             ],
-            tools: vec![],
+            tools: None,
             tool_choice: "auto".into(),
             parallel_tool_calls: true,
             reasoning: None,
             store: false,
             stream: true,
+            stream_options: None,
             include: vec![],
             service_tier: None,
             prompt_cache_key: None,
@@ -628,23 +682,24 @@ mod tests {
                         text: "Hello".into(),
                     }],
                     phase: None,
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
                 // Reasoning without a preceding assistant message
                 ResponseItem::Reasoning {
-                    id: Some("rsn_no_assistant".into()),
+                    id: Some(ResponseItemId::from_server("rsn_no_assistant".to_string())),
                     summary: vec![],
                     content: None,
                     encrypted_content: Some("thinking".into()),
-                    metadata: None,
+                    internal_chat_message_metadata_passthrough: None,
                 },
             ],
-            tools: vec![],
+            tools: None,
             tool_choice: "auto".into(),
             parallel_tool_calls: true,
             reasoning: None,
             store: false,
             stream: true,
+            stream_options: None,
             include: vec![],
             service_tier: None,
             prompt_cache_key: None,
@@ -656,5 +711,130 @@ mod tests {
         assert_eq!(result.messages.len(), 1);
         let msg = &result.messages[0];
         assert_eq!(msg.role, ChatRole::User);
+    }
+
+    #[test]
+    fn parse_tools_flattens_namespace_tools() {
+        // A serialized `ToolSpec::Namespace` (e.g. one MCP server's tools).
+        // Chat Completions has no namespace concept, so `parse_tools` must
+        // flatten each child function into a standalone tool named with the
+        // conventional `mcp__<server>__<tool>` form.
+        let tools = vec![serde_json::json!({
+            "type": "namespace",
+            "name": "mcp__memory",
+            "description": "Memory server tools",
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "create_entities",
+                    "description": "Create entities.",
+                    "strict": false,
+                    "parameters": {"type": "object", "properties": {}}
+                },
+                {
+                    "type": "function",
+                    "name": "search_nodes",
+                    "description": "Search nodes.",
+                    "strict": false,
+                    "parameters": {"type": "object", "properties": {}}
+                }
+            ]
+        })];
+
+        let parsed = parse_tools(&tools);
+        assert_eq!(parsed.len(), 2, "each child function should become one tool");
+
+        let names: Vec<String> = parsed.iter().map(|t| t.name.to_string()).collect();
+        assert_eq!(
+            names,
+            vec!["mcp__memory__create_entities", "mcp__memory__search_nodes"],
+            "child names must be flattened with the conventional mcp__<server>__<tool> form"
+        );
+
+        // Schema and description must come from the child, not the namespace wrapper.
+        assert_eq!(parsed[0].description.as_deref(), Some("Create entities."));
+        assert!(
+            parsed[0].schema.is_some(),
+            "child parameters schema must be preserved"
+        );
+    }
+
+    #[test]
+    fn parse_tools_preserves_top_level_function_tools() {
+        // A top-level (non-namespace) function tool must pass through unchanged.
+        let tools = vec![serde_json::json!({
+            "type": "function",
+            "name": "shell",
+            "description": "Run a shell command.",
+            "strict": false,
+            "parameters": {"type": "object"}
+        })];
+
+        let parsed = parse_tools(&tools);
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].name.to_string(), "shell");
+        assert_eq!(parsed[0].description.as_deref(), Some("Run a shell command."));
+    }
+
+    #[test]
+    fn responses_lite_additional_tools_are_flattened() {
+        // Responses-Lite (`use_responses_lite`) carries the tool list inside a
+        // `ResponseItem::AdditionalTools` in `input` with `request.tools = None`.
+        // The Chat-Completions bridge must still surface those tools, flattening
+        // namespace specs exactly like the non-lite path.
+        let request = ResponsesApiRequest {
+            model: "gpt-5".into(),
+            instructions: String::new(),
+            input: vec![
+                ResponseItem::AdditionalTools {
+                    id: None,
+                    role: "developer".to_string(),
+                    tools: vec![serde_json::json!({
+                        "type": "namespace",
+                        "name": "mcp__memory",
+                        "description": "Memory server tools",
+                        "tools": [{
+                            "type": "function",
+                            "name": "create_entities",
+                            "description": "Create entities.",
+                            "strict": false,
+                            "parameters": {"type": "object", "properties": {}}
+                        }]
+                    })],
+                },
+                ResponseItem::Message {
+                    id: None,
+                    role: "user".into(),
+                    content: vec![ContentItem::InputText { text: "hi".into() }],
+                    phase: None,
+                    internal_chat_message_metadata_passthrough: None,
+                },
+            ],
+            tools: None,
+            tool_choice: "auto".into(),
+            parallel_tool_calls: false,
+            reasoning: None,
+            store: false,
+            stream: true,
+            stream_options: None,
+            include: vec![],
+            service_tier: None,
+            prompt_cache_key: None,
+            text: None,
+            client_metadata: None,
+        };
+
+        let result = responses_request_to_chat_request(&request)
+            .expect("lite request with a user message should produce a chat request");
+        let tools = result
+            .tools
+            .expect("AdditionalTools should be surfaced as chat request tools");
+        assert_eq!(
+            tools.len(),
+            1,
+            "the namespace spec should flatten to one tool"
+        );
+        assert_eq!(tools[0].name.to_string(), "mcp__memory__create_entities");
+        assert_eq!(tools[0].description.as_deref(), Some("Create entities."));
     }
 }

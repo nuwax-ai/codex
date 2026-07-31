@@ -77,13 +77,13 @@ pub fn chat_event_to_response_event(
             if !pending.tool_items_added.contains_key(&call_id) {
                 pending.tool_items_added.insert(call_id.clone(), true);
                 events.push(ResponseEvent::OutputItemAdded(
-                    ResponseItem::CustomToolCall {
+                    ResponseItem::FunctionCall {
                         id: Some(ResponseItemId::from_server(call_id.clone())),
-                        status: None,
-                        call_id: call_id.clone(),
                         name: fn_name.clone(),
                         namespace: None,
-                        input: String::new(),
+                        arguments: String::new(),
+                        encrypted_function_args: None,
+                        call_id: call_id.clone(),
                         internal_chat_message_metadata_passthrough: None,
                     },
                 ));
@@ -123,7 +123,11 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
             .as_ref()
             .and_then(|d| d.cached_tokens)
             .unwrap_or(0) as i64,
-        cache_write_input_tokens: 0,
+        cache_write_input_tokens: u
+            .prompt_tokens_details
+            .as_ref()
+            .and_then(|d| d.cache_creation_tokens)
+            .unwrap_or(0) as i64,
         output_tokens: u.completion_tokens.unwrap_or(0) as i64,
         reasoning_output_tokens: u
             .completion_tokens_details
@@ -325,6 +329,41 @@ mod tests {
     }
 
     #[test]
+    fn test_end_captures_cache_write_input_tokens() {
+        let mut pending = PendingAssistantMessage::new();
+        let usage: genai::chat::Usage = serde_json::from_value(serde_json::json!({
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+            "prompt_tokens_details": {
+                "cached_tokens": 10,
+                "cache_creation_tokens": 20
+            }
+        }))
+        .expect("usage should deserialize");
+        let end = StreamEnd {
+            captured_usage: Some(usage),
+            captured_stop_reason: Some(StopReason::Completed("stop".into())),
+            captured_content: None,
+            captured_reasoning_content: None,
+            captured_response_id: Some("resp_1".into()),
+        };
+        let events = chat_event_to_response_event(ChatStreamEvent::End(end), &mut pending);
+        // token_usage is carried on the Completed event — handle_stream_end
+        // `.take()`s it off pending when emitting Completed.
+        let token_usage = events
+            .iter()
+            .find_map(|e| match e {
+                ResponseEvent::Completed { token_usage, .. } => token_usage.as_ref(),
+                _ => None,
+            })
+            .expect("Completed event should carry token_usage");
+        // cache_write_input_tokens was previously hard-coded to 0.
+        assert_eq!(token_usage.cached_input_tokens, 10);
+        assert_eq!(token_usage.cache_write_input_tokens, 20);
+    }
+
+    #[test]
     fn test_reasoning_chunk_increments_content_index() {
         let mut pending = PendingAssistantMessage::new();
         let events1 = chat_event_to_response_event(
@@ -396,7 +435,7 @@ mod tests {
         // First chunk: OutputItemAdded(CustomToolCall) + ToolCallInputDelta
         assert_eq!(events.len(), 2);
         assert!(matches!(&events[0], ResponseEvent::OutputItemAdded(
-            ResponseItem::CustomToolCall { call_id, name, .. }
+            ResponseItem::FunctionCall { call_id, name, .. }
         ) if call_id == "call_1" && name == "get_weather"));
         assert!(matches!(&events[1], ResponseEvent::ToolCallInputDelta {
             call_id, ..

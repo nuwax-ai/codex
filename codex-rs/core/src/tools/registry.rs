@@ -19,6 +19,7 @@ use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
+use crate::tools::flat_name_index::FlatNameIndex;
 use crate::tools::flat_tool_name;
 use crate::tools::handlers::multi_agents_spec::MULTI_AGENT_V1_NAMESPACE;
 use crate::tools::hook_names::HookToolName;
@@ -337,6 +338,9 @@ impl CoreToolRuntime for ExposureOverride {
 #[derive(Default)]
 pub struct ToolRegistry {
     tools: IndexMap<ToolName, Arc<dyn CoreToolRuntime>>,
+    /// Flat-name fallback index for the Chat-Completions path; see the
+    /// `flat_name_index` module.
+    flat_index: FlatNameIndex,
 }
 
 impl ToolRegistry {
@@ -344,6 +348,7 @@ impl ToolRegistry {
     pub(crate) fn from_tools(tools: impl IntoIterator<Item = Arc<dyn CoreToolRuntime>>) -> Self {
         let mut registry = Self {
             tools: IndexMap::new(),
+            flat_index: FlatNameIndex::new(),
         };
 
         for runtime in tools {
@@ -370,7 +375,9 @@ impl ToolRegistry {
     pub(crate) fn register_trusted(&mut self, runtime: Arc<dyn CoreToolRuntime>) {
         match self.tools.entry(runtime.tool_name()) {
             Entry::Vacant(entry) => {
+                let tool_name = entry.key().clone();
                 entry.insert(runtime);
+                self.flat_index.insert(&tool_name);
             }
             Entry::Occupied(entry) => {
                 let tool_name = entry.key();
@@ -386,13 +393,16 @@ impl ToolRegistry {
             return;
         }
 
+        self.flat_index.insert(&tool_name);
         self.tools.shift_insert(0, tool_name, runtime);
     }
 
     pub(crate) fn register_external(&mut self, runtime: Arc<dyn CoreToolRuntime>) -> bool {
         match self.tools.entry(runtime.tool_name()) {
             Entry::Vacant(entry) => {
+                let tool_name = entry.key().clone();
                 entry.insert(runtime);
+                self.flat_index.insert(&tool_name);
                 true
             }
             Entry::Occupied(entry) => {
@@ -406,6 +416,7 @@ impl ToolRegistry {
     }
 
     pub(crate) fn remove(&mut self, tool_name: &ToolName) -> Option<Arc<dyn CoreToolRuntime>> {
+        self.flat_index.remove(tool_name);
         self.tools.shift_remove(tool_name)
     }
 
@@ -458,7 +469,19 @@ impl ToolRegistry {
     }
 
     pub(crate) fn tool(&self, name: &ToolName) -> Option<Arc<dyn CoreToolRuntime>> {
-        self.tools.get(name).map(Arc::clone)
+        if let Some(runtime) = self.tools.get(name) {
+            return Some(Arc::clone(runtime));
+        }
+        // Chat-Completions fallback: the model returns a single flat function
+        // name (`namespace: None`) for flattened namespaced tools. Resolve it
+        // back to the canonical namespaced key via the flat-name index.
+        if name.namespace.is_none()
+            && let Some(canonical) = self.flat_index.resolve(name.name.as_str())
+            && let Some(runtime) = self.tools.get(canonical)
+        {
+            return Some(Arc::clone(runtime));
+        }
+        None
     }
 
     #[cfg(test)]
