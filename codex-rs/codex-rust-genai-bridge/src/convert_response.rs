@@ -28,7 +28,7 @@ pub fn chat_event_to_response_event(
         }
         ChatStreamEvent::ReasoningChunk(StreamChunk { content }) => {
             let mut events = Vec::new();
-            ensure_message_item_added(pending, &mut events);
+            ensure_reasoning_item_added(pending, &mut events);
             let idx = pending.reasoning_content_index;
             pending.reasoning_content_index += 1;
             pending.reasoning_buffer.push_str(&content);
@@ -40,7 +40,7 @@ pub fn chat_event_to_response_event(
         }
         ChatStreamEvent::ThoughtSignatureChunk(StreamChunk { content }) => {
             let mut events = Vec::new();
-            ensure_message_item_added(pending, &mut events);
+            ensure_reasoning_item_added(pending, &mut events);
             let idx = pending.reasoning_content_index;
             pending.reasoning_content_index += 1;
             pending.thought_signatures.push(content.clone());
@@ -139,31 +139,20 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
 
     pending.response_id = end.captured_response_id.clone();
 
-    // 1. Emit OutputItemDone for the assistant message if there was text or reasoning content
-    if !pending.text_buffer.is_empty() || !pending.reasoning_buffer.is_empty() {
-        let mut content: Vec<ContentItem> = Vec::new();
-        if !pending.text_buffer.is_empty() {
-            content.push(ContentItem::OutputText {
-                text: std::mem::take(&mut pending.text_buffer),
-            });
-        }
-        let message_item = ResponseItem::Message {
-            id: pending.text_item_id.take().map(ResponseItemId::from_server),
-            role: "assistant".into(),
-            content,
-            phase: None,
-            internal_chat_message_metadata_passthrough: None,
-        };
-        events.push(ResponseEvent::OutputItemDone(message_item));
-    }
-
-    // Emit Reasoning item so reasoning content is stored for echo-back
-    // to providers that require it in subsequent requests (e.g. DeepSeek).
+    // 1. Emit OutputItemDone for the reasoning item FIRST so it precedes the
+    //    assistant message — matching the provider's thinking→content output
+    //    order on the Chat Completions path (e.g. DeepSeek emits
+    //    `reasoning_content` before `content`). The `OutputItemAdded(Reasoning)`
+    //    was already emitted on the first reasoning chunk, so here we only emit
+    //    Done.
     if !pending.reasoning_buffer.is_empty() {
         let reasoning_text = std::mem::take(&mut pending.reasoning_buffer);
-        let reasoning_id = format!("rsn_{}", pending.reasoning_content_index);
+        let reasoning_id = pending
+            .reasoning_item_id
+            .take()
+            .unwrap_or_else(|| format!("rsn_{}", pending.reasoning_content_index));
         let reasoning_item = ResponseItem::Reasoning {
-            id: Some(ResponseItemId::from_server(reasoning_id.clone())),
+            id: Some(ResponseItemId::from_server(reasoning_id)),
             summary: vec![],
             content: Some(vec![ReasoningItemContent::ReasoningText {
                 text: reasoning_text.clone(),
@@ -171,8 +160,24 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
             encrypted_content: Some(reasoning_text),
             internal_chat_message_metadata_passthrough: None,
         };
-        events.push(ResponseEvent::OutputItemAdded(reasoning_item.clone()));
         events.push(ResponseEvent::OutputItemDone(reasoning_item));
+    }
+
+    // 2. Emit OutputItemDone for the assistant message (text only). Emitted
+    //    AFTER the reasoning item. Only emitted when there is actual text — we
+    //    no longer emit an empty message when only reasoning arrived. The
+    //    `OutputItemAdded(Message)` was already emitted on the first text chunk.
+    if !pending.text_buffer.is_empty() {
+        let message_item = ResponseItem::Message {
+            id: pending.text_item_id.take().map(ResponseItemId::from_server),
+            role: "assistant".into(),
+            content: vec![ContentItem::OutputText {
+                text: std::mem::take(&mut pending.text_buffer),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        };
+        events.push(ResponseEvent::OutputItemDone(message_item));
     }
 
     // 2. Emit OutputItemDone for each tool call as FunctionCall.
@@ -222,6 +227,29 @@ fn ensure_message_item_added(
             role: "assistant".into(),
             content: vec![],
             phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }));
+    }
+}
+
+/// Ensures `OutputItemAdded(Reasoning)` is emitted once before any reasoning
+/// deltas. The reasoning item is emitted independently of (and can precede)
+/// the assistant message item, matching the thinking→content output order of
+/// reasoning models on the Chat Completions path (e.g. DeepSeek emits
+/// `reasoning_content` before `content`).
+fn ensure_reasoning_item_added(
+    pending: &mut PendingAssistantMessage,
+    events: &mut Vec<ResponseEvent>,
+) {
+    if !pending.reasoning_item_added {
+        pending.reasoning_item_added = true;
+        let item_id = format!("rsn_{}", pending.reasoning_content_index);
+        pending.reasoning_item_id = Some(item_id.clone());
+        events.push(ResponseEvent::OutputItemAdded(ResponseItem::Reasoning {
+            id: Some(ResponseItemId::from_server(item_id)),
+            summary: vec![],
+            content: None,
+            encrypted_content: None,
             internal_chat_message_metadata_passthrough: None,
         }));
     }
@@ -396,7 +424,7 @@ mod tests {
     #[test]
     fn test_reasoning_does_not_duplicate_output_item_added_when_text_arrives_first() {
         let mut pending = PendingAssistantMessage::new();
-        // Text arrives first → OutputItemAdded emitted
+        // Text arrives first → OutputItemAdded(Message) emitted
         chat_event_to_response_event(
             ChatStreamEvent::Chunk(StreamChunk {
                 content: "Hello ".into(),
@@ -404,18 +432,31 @@ mod tests {
             &mut pending,
         );
         assert!(pending.text_item_added);
-        // Reasoning arrives later → should NOT emit another OutputItemAdded
+        // Reasoning arrives later → emits its OWN OutputItemAdded(Reasoning)
+        // (reasoning is a separate item from the assistant message, and must be
+        // able to precede it), then the delta.
         let events = chat_event_to_response_event(
             ChatStreamEvent::ReasoningChunk(StreamChunk {
                 content: "thinking...".into(),
             }),
             &mut pending,
         );
-        assert_eq!(events.len(), 1, "should not emit duplicate OutputItemAdded");
+        assert_eq!(events.len(), 2, "reasoning emits its own OutputItemAdded + delta");
         assert!(matches!(
             &events[0],
-            ResponseEvent::ReasoningContentDelta { .. }
+            ResponseEvent::OutputItemAdded(ResponseItem::Reasoning { .. })
         ));
+        assert!(matches!(&events[1], ResponseEvent::ReasoningContentDelta { .. }));
+        assert!(pending.reasoning_item_added);
+        // A second reasoning chunk must NOT emit another OutputItemAdded.
+        let events2 = chat_event_to_response_event(
+            ChatStreamEvent::ReasoningChunk(StreamChunk {
+                content: " more".into(),
+            }),
+            &mut pending,
+        );
+        assert_eq!(events2.len(), 1, "no duplicate reasoning OutputItemAdded");
+        assert!(matches!(&events2[0], ResponseEvent::ReasoningContentDelta { .. }));
     }
 
     #[test]

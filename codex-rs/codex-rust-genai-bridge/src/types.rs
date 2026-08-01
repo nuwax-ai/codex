@@ -22,6 +22,10 @@ pub(crate) struct PendingAssistantMessage {
     pub text_item_added: bool,
     /// Synthetic ID for the text message item (consistent between OutputItemAdded and OutputItemDone).
     pub text_item_id: Option<String>,
+    /// Whether `OutputItemAdded(Reasoning)` has been emitted for the reasoning item.
+    pub reasoning_item_added: bool,
+    /// Synthetic ID for the reasoning item (consistent between OutputItemAdded and OutputItemDone).
+    pub reasoning_item_id: Option<String>,
     /// Per-tool-call flag: whether `OutputItemAdded` was emitted (keyed by call_id, parallel to `tool_calls`).
     pub tool_items_added: BTreeMap<String, bool>,
     /// Incrementing counter for `ReasoningContentDelta.content_index`.
@@ -40,6 +44,8 @@ impl PendingAssistantMessage {
             thought_signatures: Vec::new(),
             text_item_added: false,
             text_item_id: None,
+            reasoning_item_added: false,
+            reasoning_item_id: None,
             tool_items_added: BTreeMap::new(),
             reasoning_content_index: 0,
         }
