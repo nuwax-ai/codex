@@ -49,7 +49,7 @@
 | `parallel_tool_calls` | `parallel_tool_calls` | ⚠️ 未转发（P0-2） |
 | `reasoning.effort` | `reasoning_effort`（顶层字符串） | ⚠️ XHigh/Max 被降级（P0-3） |
 | `reasoning.{summary,context,mode}` | ❌ 无对应 | 走 `extra_body`（部分 provider） |
-| `text.format`（扁平 json_schema） | `response_format`（嵌套 `json_schema:{name,strict,schema}`） | ⚠️ `strict` 被丢弃（P0-4） |
+| `text.format`（扁平 json_schema） | `response_format`（嵌套 `json_schema:{name,strict,schema}`） | ⚠️ `strict` 被丢弃（P0-4，**理论问题**：codex 主流程不用 `text.format`，不触发；等 genai 加 strict 字段） |
 | `stream` | `stream` | 直传 |
 | `stream_options` | `stream_options:{include_usage:true}` | usage 在末 chunk |
 | `store` | `store` | ⚠️ genai Chat 路径不序列化 store，`with_store(true)` 实为 no-op（P3-1） |
@@ -231,7 +231,7 @@
 
 ## 8. Bridge 转换待办清单（三方对齐：代码现状 + 官方语义 + 社区做法）
 
-> 已修复：✅ namespace 工具展平（`parse_tools`）、✅ Responses-Lite `AdditionalTools` 提取、✅ reasoning token 计数、✅ reasoning_content 双字段读取（genai 继承）。
+> 已修复：✅ namespace 工具展平（`parse_tools`）、✅ Responses-Lite `AdditionalTools` 提取、✅ reasoning token 计数、✅ reasoning_content 双字段读取（genai 继承）、✅ P0-1 `tool_choice` / P0-2 `parallel_tool_calls` / P0-3 XHigh-Max effort / P0-5 工具变体统一 / P0-6 cache tokens（codex **v0.17.3**）、✅ reasoning/message item 顺序（thinking→content，codex **v0.17.4**）。
 
 ### P0 — 确认 bug / 静默丢弃（优先修）
 
@@ -240,7 +240,7 @@
 | P0-1 | `tool_choice` 未转发 | `stream.rs:146-225` 从不设 `options.tool_choice`；codex 默认 `"auto"` | 映射到 `ChatOptions::tool_choice`（genai 支持 `Auto/None/Required/Tool{name}`）；指定函数时序列化为嵌套 `{type:function,function:{name}}` | Ollama 静默忽略；GLM 不支持 |
 | P0-2 | `parallel_tool_calls` 未转发 | 同上从不设置 | 走 `ChatOptions::extra_body`（genai v0.6.5 无该字段） | Ollama 静默忽略；DeepSeek 未文档化；vLLM 支持 |
 | P0-3 | `reasoning.effort` 的 `XHigh`/`Max` 降级到 `High` | `stream.rs:168-179` 带 warn | genai v0.6.5 原生有 `XHigh`/`Max`，直传（仅当目标 provider 拒绝时才降级） | — |
-| P0-4 | `TextFormat.strict` 被丢弃 + genai 强制 `strict:true` | `stream.rs:210-217` | Responses `strict:false` 时经 `extra_body`（`response_format.json_schema.strict`）覆盖 | — |
+| P0-4 | `TextFormat.strict` 被丢弃 + genai 强制 `strict:true` | `stream.rs:210-217` | **理论问题，codex 不触发**：codex 主流程（`build_responses_request`）不设 `ResponsesApiRequest.text`（structured output），bridge 的 `text.format` 分支不进，`strict` 无机会生效。不 fork genai，等 genai 给 `JsonSpec` 加 `strict` 字段后接上一行即可 | — |
 | P0-5 | 工具调用变体不一致：add 时 `CustomToolCall`、done 时 `FunctionCall` | `convert_response.rs:79` vs `:177` | 统一为 `FunctionCall`（codex dispatch 依赖 `ToolPayload::Function`） | 内部一致性 |
 | P0-6 | `cache_write_input_tokens` 硬编码 0 | `convert_response.rs:126` | 从 `Usage.prompt_tokens_details.cache_creation_tokens` 取真实值 | — |
 
