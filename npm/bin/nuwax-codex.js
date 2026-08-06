@@ -88,6 +88,13 @@ async function downloadBinary(url, outPath) {
     clearInterval(logInterval);
     ws.end();
   }
+  // 等待写流的文件描述符真正释放后再返回。Windows 上 Expand-Archive 以独占方式
+  // 打开 zip;若 Node 仍持有写句柄,解压会报“正由另一进程使用”。ws.end() 只是
+  // 结束写入,fd 在 ‘close’ 事件时才异步关闭,因此这里必须 await。
+  await new Promise((resolve, reject) => {
+    ws.once("close", resolve);
+    ws.once("error", reject);
+  });
   process.stderr.write("\n");
 
   if (process.platform !== "win32") {
@@ -148,10 +155,28 @@ async function extractZip(archivePath, destDir) {
   const { execSync } = await import("node:child_process");
   const psArchive = archivePath.replace(/'/g, "''");
   const psDest = destDir.replace(/'/g, "''");
-  execSync(
-    `powershell -NoProfile -NonInteractive -Command "Expand-Archive -LiteralPath '${psArchive}' -DestinationPath '${psDest}' -Force"`,
-    { stdio: "inherit" },
-  );
+  const cmd =
+    `powershell -NoProfile -NonInteractive -Command "Expand-Archive -LiteralPath '${psArchive}' -DestinationPath '${psDest}' -Force"`;
+
+  // Expand-Archive 用独占 FileStream 打开 zip。即便 Node 已关闭写句柄,Windows
+  // Defender 仍可能在下载完成的瞬间锁住文件做实时扫描,导致解压报“正由另一进程
+  // 使用”。做有限次重试给杀软让出窗口;仅最后一次失败才把原始错误抛出。
+  const maxAttempts = 3;
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const isLast = attempt === maxAttempts;
+    try {
+      execSync(cmd, { stdio: isLast ? "inherit" : "pipe" });
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (!isLast) {
+        console.error(`  Expand-Archive 被占用(第 ${attempt}/${maxAttempts} 次),重试…`);
+        await new Promise((r) => setTimeout(r, 500 * attempt));
+      }
+    }
+  }
+  throw lastErr;
 }
 
 // -- main -------------------------------------------------------------------
