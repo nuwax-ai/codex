@@ -272,6 +272,20 @@ jobs:
           echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
           echo "Built bwrap ${bwrap_path} with sha256:${digest}"
 
+      # 仓库内 workspace 版本保持 0.0.0,避免本地 dev 构建冒充已发布版本。release
+      # 构建时把 tag 版本 stamp 进 [workspace.package],使 env!("CARGO_PKG_VERSION")
+      # (--version / telemetry / MCP·HTTP user-agent 等)上报真实版本。仅此一行匹配。
+      - name: Stamp release version into workspace manifest
+        shell: bash
+        env:
+          VERSION: ${{ needs.get-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          [[ -n "${VERSION:-}" ]] || { echo "VERSION is empty, refusing to build" >&2; exit 1; }
+          sed -i.bak -E 's/^version = "0\.0\.0"$/version = "'"${VERSION}"'"/' Cargo.toml
+          rm -f Cargo.toml.bak
+          echo "Stamped workspace version: $(grep -m1 -E '^version = "' Cargo.toml)"
+
       - name: Build nuwax-codex binary
         shell: bash
         run: |
