@@ -7,8 +7,6 @@ import { spawnSync } from "node:child_process";
 import { createWriteStream, existsSync, mkdirSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
-import { pipeline } from "node:stream/promises";
-import { createGunzip } from "node:zlib";
 import { familySync } from "detect-libc";
 import { createRequire } from "node:module";
 
@@ -88,9 +86,9 @@ async function downloadBinary(url, outPath) {
     clearInterval(logInterval);
     ws.end();
   }
-  // 等待写流的文件描述符真正释放后再返回。Windows 上 Expand-Archive 以独占方式
-  // 打开 zip;若 Node 仍持有写句柄,解压会报“正由另一进程使用”。ws.end() 只是
-  // 结束写入,fd 在 ‘close’ 事件时才异步关闭,因此这里必须 await。
+  // 等待写流的文件描述符真正释放、数据全部落盘后再返回。解压阶段(tar / yauzl)
+  // 要读取这个归档文件,若 Node 仍持有写句柄,数据未必已刷盘、在 Windows 上还可能
+  // 被独占打开拒绝。ws.end() 只是结束写入,fd 在 ‘close’ 事件时才异步关闭,必须 await。
   await new Promise((resolve, reject) => {
     ws.once("close", resolve);
     ws.once("error", reject);
@@ -103,80 +101,48 @@ async function downloadBinary(url, outPath) {
 }
 
 async function extractTarGz(archivePath, destDir) {
-  // Simple tar.gz extraction: members are listed sequentially as
-  // [header(512B)][content(padded to 512B)]...
-  const { createReadStream } = await import("node:fs");
-  const { createGunzip } = await import("node:zlib");
-  const { pipeline } = await import("node:stream/promises");
-  const { Transform } = await import("node:stream");
-  const { writeFileSync } = await import("node:fs");
-
-  const gunzip = createGunzip();
-  const rs = createReadStream(archivePath);
-  let buffer = Buffer.alloc(0);
-
-  await pipeline(
-    rs,
-    gunzip,
-    new Transform({
-      transform(chunk, _enc, cb) {
-        buffer = Buffer.concat([buffer, chunk]);
-        while (buffer.length >= 512) {
-          // Parse tar header
-          const name = buffer.toString("utf8", 0, 100).replace(/\0.*$/, "");
-          const sizeStr = buffer.toString("utf8", 124, 136).replace(/\0.*$/, "");
-          const size = parseInt(sizeStr, 8);
-          if (isNaN(size) || size < 0) break;
-
-          const totalSize = Math.ceil((512 + size) / 512) * 512;
-          if (buffer.length < totalSize) break;
-
-          if (name && !name.endsWith("/") && size > 0) {
-            const fileData = buffer.subarray(512, 512 + size);
-            const outPath = join(destDir, name);
-            mkdirSync(dirname(outPath), { recursive: true });
-            writeFileSync(outPath, fileData);
-            if (process.platform !== "win32") {
-              chmodSync(outPath, 0o755);
-            }
-          }
-
-          buffer = buffer.subarray(totalSize);
-        }
-        cb();
-      },
-    }),
-  );
+  // 用成熟的 npm `tar` 库流式解压。仓库原先手写 tar 解析器,会把整个 entry 攒进
+  // 一个 Buffer 再落盘,对 codex 这种 ~280MB 的单文件归档是 O(n²) 内存拷贝
+  // (实测 15s 都写不出一个文件),在 macOS/Linux 上表现为“卡在 Extracting”。
+  // `tar` 走流式管道、内存恒定,并按归档内记录的 mode 还原可执行位(已验证 0o755)。
+  const tar = await import("tar");
+  await tar.x({ file: archivePath, cwd: destDir, gzip: true });
 }
 
 async function extractZip(archivePath, destDir) {
-  // extractZip 仅在 Windows 上触发（getArchiveExt 对 win32 返回 zip）。
-  // Windows 没有内置 `unzip` 命令，改用 PowerShell 的 Expand-Archive 解压。
-  const { execSync } = await import("node:child_process");
-  const psArchive = archivePath.replace(/'/g, "''");
-  const psDest = destDir.replace(/'/g, "''");
-  const cmd =
-    `powershell -NoProfile -NonInteractive -Command "Expand-Archive -LiteralPath '${psArchive}' -DestinationPath '${psDest}' -Force"`;
+  // Windows 上用纯 JS 的 yauzl 流式解压。原实现调用 PowerShell Expand-Archive,
+  // 两个硬伤:老版本 Windows PowerShell(5.0 前)没有该 cmdlet;它用独占 FileStream
+  // 打开 zip,极易撞“正由另一进程使用”(Node 写句柄未释放 / Defender 实时扫描)。
+  // yauzl 经 Node fs 以共享只读方式读取,绕开这两类问题,且逐条目流式落盘、内存恒定。
+  const yauzl = await import("yauzl");
+  const { createWriteStream, mkdirSync } = await import("node:fs");
+  const { dirname, join } = await import("node:path");
 
-  // Expand-Archive 用独占 FileStream 打开 zip。即便 Node 已关闭写句柄,Windows
-  // Defender 仍可能在下载完成的瞬间锁住文件做实时扫描,导致解压报“正由另一进程
-  // 使用”。做有限次重试给杀软让出窗口;仅最后一次失败才把原始错误抛出。
-  const maxAttempts = 3;
-  let lastErr;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const isLast = attempt === maxAttempts;
-    try {
-      execSync(cmd, { stdio: isLast ? "inherit" : "pipe" });
-      return;
-    } catch (err) {
-      lastErr = err;
-      if (!isLast) {
-        console.error(`  Expand-Archive 被占用(第 ${attempt}/${maxAttempts} 次),重试…`);
-        await new Promise((r) => setTimeout(r, 500 * attempt));
-      }
-    }
-  }
-  throw lastErr;
+  await new Promise((resolve, reject) => {
+    yauzl.open(archivePath, { lazyEntries: true, autoClose: true }, (err, zipfile) => {
+      if (err) return reject(err);
+      zipfile.on("error", reject);
+      zipfile.on("entry", (entry) => {
+        const outPath = join(destDir, entry.fileName);
+        if (/\/$/.test(entry.fileName)) {
+          mkdirSync(outPath, { recursive: true });
+          zipfile.readEntry();
+          return;
+        }
+        mkdirSync(dirname(outPath), { recursive: true });
+        zipfile.openReadStream(entry, (e, readStream) => {
+          if (e) return reject(e);
+          const ws = createWriteStream(outPath);
+          readStream.on("error", reject);
+          ws.on("error", reject);
+          ws.on("close", () => zipfile.readEntry());
+          readStream.pipe(ws);
+        });
+      });
+      zipfile.on("close", resolve);
+      zipfile.readEntry();
+    });
+  });
 }
 
 // -- main -------------------------------------------------------------------

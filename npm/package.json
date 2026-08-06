@@ -1,6 +1,6 @@
 {
   "name": "nuwax-codex",
-  "version": "0.17.6",
+  "version": "0.17.7",
   "type": "module",
   "description": "Fork of OpenAI Codex CLI with domestic (Chinese) LLM support via genai",
   "license": "Apache-2.0",
@@ -35,6 +35,8 @@
     "node": ">=20"
   },
   "dependencies": {
-    "detect-libc": "^2.0.0"
+    "detect-libc": "^2.0.0",
+    "tar": "^7.0.0",
+    "yauzl": "^3.1.0"
   }
 }
