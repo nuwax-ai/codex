@@ -105,3 +105,48 @@ Rust 社区**没有**成熟的"live LLM/agent E2E 测试框架"——本 crate �
 
 原则:框架不引入,胶水保持自有——我们的核心竞争力是"验证 codex 全链路"这件事
 本身,通用评测工具覆盖不了。
+
+## 9. rig-cassette 评估结论与优化总盘点(2026-09-24)
+
+### 9.1 rig-cassette:暂不接入(三个硬事实)
+
+1. **版本线断裂**:crates.io 上只有 0.0.1(独立实验版本),不在我们锁定的
+   rig-core v0.42.0 tag 内——它是 tag 之后新增的 crate。
+2. **绑定 rig HEAD 架构**:其抽象(EffectLog、provider cassette engine、
+   agent/ECS runtime 集成)面向 rig 自家 0.42 之后的 Wire/Bound/effects 体系,
+   接它 = 接触我们刻意回避的不稳定层。
+3. **覆盖面不匹配**:它录的是 rig 传输层;我们的核心资产是
+   "ResponsesApiRequest → ResponseEvent" 的桥边界,且 genai 桥它覆盖不了。
+
+**替代方案(推荐):桥边界自制 cassette** —— 在我们自己的公共 API 面上录制回放:
+
+- `LIVE_RECORD=1` 时 run_turn 把 (request, events) 落成 JSON fixture
+  (`tests/fixtures/<vendor>/<bridge>-<scenario>.json`);
+- 回放模式无网络构造同样的事件流,**跑同一套断言**——桥重构/rig 升级后全量
+  回放即可验证转换逻辑等价性;
+- 两桥通用、断言零重复、不依赖 rig 内部;
+- 前置小改动:`ResponseEvent` 补 `Serialize, Deserialize` derive(目前仅 Debug);
+  估算 ~150 行 + 每场景录一次。
+
+### 9.2 rig-bridge 优化盘点(按优先级)
+
+| 级 | 项 | 动机 | 估算 |
+|---|---|---|---|
+| P0 | 错误路径 L1 场景:坏 key → 断言 `Http{401}` 透传 | `map_completion_error` 的状态码提取**当前零测试**;401 触发 core 重登录循环是关键链路 | 半天 |
+| P0 | 桥边界 cassette(9.1) | 离线确定性回归,防 rig 升级/桥重构回归 | 1 天 |
+| P1 | Anthropic 工具两轮场景(thinking 签名回放) | anthropic 桥最经典的断裂点;当前 anthropic 只测了纯对话 | 半天 |
+| P1 | 并行工具调用场景(一轮两个 function call) | 多 internal_call_id 累积器逻辑未被真实验证 | 半天 |
+| P1 | usage 合理性不变量(input>0、total≥input+output) | 一行断言,捕获 usage 映射错位 | 0.5h |
+| P2 | 丢弃宿主工具从 debug 提到 warn + 每次 dispatch 带 span | 兼容性静默损失可见化 | 1h |
+| P2 | E5:genai 桥 23 个单测的 rig 版移植 | 离线覆盖转换边角(老 uint 边界等) | 1 天 |
+| P3 | HTTP 客户端复用(当前每轮新建 = 每轮 TLS 握手) | 长会话性能;受 rig 无 per-request header 限制,**等 v0.43+ 传输层稳定做原生传输时一并解决** | 阻塞中 |
+
+### 9.3 live-tests 优化盘点
+
+| 级 | 项 | 动机 | 估算 |
+|---|---|---|---|
+| P0 | E3:每次运行写 manifest.json(git rev、binary mtime、vendor)+ INDEX.md 汇总(每测试 pass/fail + 产物链接) | logs/ 从"目录堆"变成"可浏览报告";排查直接定位 | 半天 |
+| P1 | A/B 自动 diff:两桥同场景事件**种类序列**对比,不一致即报 | 把"两桥可对比"从可能变自动 | 半天 |
+| P1 | CI nightly:GitHub Actions manual-dispatch + LIVE_* secrets 跑全矩阵 | 厂商改版/限流当日发现 | 半天 |
+| P2 | E4:产物保留策略(留最近 N 组) | logs 无限增长 | 1h |
+| P2 | test-group 限并发(nextest groups) | 多厂商并发打限流 | 1h |
