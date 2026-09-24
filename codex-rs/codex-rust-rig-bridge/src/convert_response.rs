@@ -40,7 +40,10 @@ struct PendingRigTool {
     name: String,
     /// Wire id used for codex's `call_id` (provider-issued when present).
     call_id: String,
-    /// Serialized JSON arguments, recorded from the complete ToolCall event.
+    /// Final arguments. Prefers the concatenation of streamed argument
+    /// deltas (byte-identical to what consumers saw via
+    /// `ToolCallInputDelta`); falls back to the complete ToolCall event's
+    /// serialized value when no deltas arrived.
     arguments: String,
     item_added: bool,
 }
@@ -124,6 +127,7 @@ pub(crate) fn rig_event_to_response_events(
                 }
                 ToolCallDeltaContent::Delta(args) => {
                     let entry = pending.entry_for(internal_call_id.clone());
+                    entry.arguments.push_str(&args);
                     // Emit OutputItemAdded before the first argument delta so
                     // turn.rs can attach a diff consumer.
                     if !entry.item_added && !entry.name.is_empty() {
@@ -165,11 +169,14 @@ pub(crate) fn rig_event_to_response_events(
             let wire_call_id = provider_call_id(tool_call.provider.as_ref())
                 .unwrap_or_else(|| tool_call.id.to_string());
             let name = tool_call.function.name.clone();
-            let arguments = tool_call.function.arguments.to_string();
             let entry = pending.entry_for(internal_call_id.clone());
             entry.name = name.clone();
             entry.call_id = wire_call_id.clone();
-            entry.arguments = arguments;
+            // Only overwrite the streamed-delta concatenation when no deltas
+            // arrived for this call (arguments still empty).
+            if entry.arguments.is_empty() {
+                entry.arguments = tool_call.function.arguments.to_string();
+            }
             if !entry.item_added {
                 entry.item_added = true;
                 events.push(ResponseEvent::OutputItemAdded(

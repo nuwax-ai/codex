@@ -11,14 +11,14 @@ use rig_core::client::CompletionClient;
 
 /// Which rig provider implementation serves a given base URL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RigProtocol {
+pub enum RigProtocol {
     /// OpenAI-compatible Chat Completions.
     Chat,
     /// Anthropic Messages protocol (`/anthropic` gateways).
     Anthropic,
 }
 
-pub(crate) fn protocol_for_base_url(base_url: &str) -> RigProtocol {
+pub fn protocol_for_base_url(base_url: &str) -> RigProtocol {
     let path = base_url.split_once("://").map_or(base_url, |(_, rest)| rest);
     if path.contains("/anthropic") {
         RigProtocol::Anthropic

@@ -65,16 +65,29 @@ pub struct LiveConfig {
     /// suites skip when `None` — there must never be a cross-vendor default
     /// here (sending vendor A's key to vendor B's endpoint).
     pub anthropic_base_url: Option<String>,
+    /// Responses-API endpoint, when it differs from the chat endpoint
+    /// (GLM: chat at `/api/coding/paas/v4`, responses at `/api/v1`).
+    /// `None` defaults to the chat URL (same-origin deployments like MiMo).
+    pub responses_base_url: Option<String>,
     pub model: String,
 }
 
-/// Loads the vendor configuration: environment variables first, then
-/// `.env.local` / `.env` at the repository root. Returns `None` (caller
-/// skips the test) when no API key is configured.
+/// Enumerates every vendor under test.
 ///
-/// Single-vendor by design: `LIVE_VENDOR_*` names the vendor under test;
-/// `MIMO_*` remains as a fallback for the original Xiaomi MiMo setup.
-pub fn live_config() -> Option<LiveConfig> {
+/// Primary mode — matrix: `LIVE_VENDORS=mimo,glm` in `.env.local`, with
+/// per-vendor variables `LIVE_<NAME>_API_KEY` / `LIVE_<NAME>_CHAT_URL` /
+/// `LIVE_<NAME>_ANTHROPIC_URL` (optional) / `LIVE_<NAME>_MODEL`. Tests are
+/// generated per vendor (see the `vendor_matrix!` macros in the suites), so
+/// each vendor reports its own pass/fail granularity.
+///
+/// Fallback mode — single vendor: when `LIVE_VENDORS` is unset, the legacy
+/// `LIVE_VENDOR_*` (and `MIMO_*`) variables configure exactly one vendor,
+/// defaulting to `mimo`.
+///
+/// URL rules: no cross-vendor fallbacks ever. The `mimo` vendor has built-in
+/// defaults; every other vendor must declare its URLs explicitly (missing
+/// declarations skip that vendor with a notice instead of guessing).
+pub fn vendors() -> Vec<LiveConfig> {
     let file_env = load_env_files();
     let lookup = |key: &str| -> Option<String> {
         std::env::var(key)
@@ -82,37 +95,79 @@ pub fn live_config() -> Option<LiveConfig> {
             .filter(|v| !v.is_empty())
             .or_else(|| file_env.get(key).cloned())
     };
-    let vendor = lookup("LIVE_VENDOR_NAME").unwrap_or_else(|| "mimo".into());
-    // Defaults below apply only to the mimo vendor; any other vendor must
-    // declare its URLs explicitly in .env.local (fail fast otherwise).
-    let is_mimo = vendor == "mimo";
-    let api_key = lookup("LIVE_VENDOR_API_KEY").or_else(|| lookup("MIMO_API_KEY"));
-    let api_key = match api_key {
-        Some(key) => key,
-        None => {
-            println!("LIVE_VENDOR_API_KEY (or MIMO_API_KEY) not set — skipping live test");
-            return None;
-        }
+    let names: Vec<String> = match lookup("LIVE_VENDORS") {
+        Some(list) => list
+            .split(',')
+            .map(|n| n.trim().to_lowercase())
+            .filter(|n| !n.is_empty())
+            .collect(),
+        None => vec![lookup("LIVE_VENDOR_NAME").unwrap_or_else(|| "mimo".into())],
     };
-    let base_url = lookup("LIVE_VENDOR_CHAT_URL")
-        .or_else(|| lookup("MIMO_BASE_URL"))
-        .or_else(|| is_mimo.then(|| "https://token-plan-cn.xiaomimimo.com/v1".to_string()));
+    names
+        .iter()
+        .map(|name| vendor_from_env(&lookup, name))
+        .flatten()
+        .collect()
+}
+
+/// The configuration for one named vendor, when it is configured.
+pub fn vendor(name: &str) -> Option<LiveConfig> {
+    vendors().into_iter().find(|v| v.vendor == name)
+}
+
+fn vendor_from_env(lookup: &dyn Fn(&str) -> Option<String>, name: &str) -> Option<LiveConfig> {
+    let upper = name.to_uppercase().replace('-', "_");
+    let (key_var, chat_var, anthropic_var, model_var) = if lookup("LIVE_VENDORS").is_some() {
+        (
+            format!("LIVE_{upper}_API_KEY"),
+            format!("LIVE_{upper}_CHAT_URL"),
+            format!("LIVE_{upper}_ANTHROPIC_URL"),
+            format!("LIVE_{upper}_MODEL"),
+        )
+    } else {
+        // Legacy single-vendor variables (mimo keeps its built-in defaults).
+        (
+            "LIVE_VENDOR_API_KEY".to_string(),
+            "LIVE_VENDOR_CHAT_URL".to_string(),
+            "LIVE_VENDOR_ANTHROPIC_URL".to_string(),
+            "LIVE_VENDOR_MODEL".to_string(),
+        )
+    };
+    let is_mimo = name == "mimo";
+    // MIMO_* stays as a fallback so the original .env.local keeps working.
+    let api_key = lookup(&key_var).or_else(|| is_mimo.then(|| lookup("MIMO_API_KEY")).flatten());
+    let Some(api_key) = api_key else {
+        println!("no API key configured for vendor `{name}` ({key_var}) — skipping vendor");
+        return None;
+    };
+    let base_url = lookup(&chat_var).or_else(|| is_mimo.then(|| lookup("MIMO_BASE_URL")).flatten());
     let base_url = match base_url {
         Some(url) => url,
         None => {
-            println!("LIVE_VENDOR_CHAT_URL not set for vendor `{vendor}` — skipping live test");
+            println!("no chat URL configured for vendor `{name}` ({chat_var}) — skipping vendor");
             return None;
         }
     };
+    let model = lookup(&model_var).or_else(|| is_mimo.then(|| lookup("MIMO_MODEL")).flatten());
+    let Some(model) = model else {
+        println!("no model configured for vendor `{name}` ({model_var}) — skipping vendor");
+        return None;
+    };
+    let anthropic_base_url = lookup(&anthropic_var)
+        .or_else(|| is_mimo.then(|| lookup("MIMO_ANTHROPIC_BASE_URL")).flatten());
+    let responses_var = if lookup("LIVE_VENDORS").is_some() {
+        format!("LIVE_{upper}_RESPONSES_URL")
+    } else {
+        "LIVE_VENDOR_RESPONSES_URL".to_string()
+    };
+    let responses_base_url = lookup(&responses_var).or(Some(base_url.clone()));
     Some(LiveConfig {
-        anthropic_base_url: lookup("LIVE_VENDOR_ANTHROPIC_URL")
-            .or_else(|| lookup("MIMO_ANTHROPIC_BASE_URL")),
-        model: lookup("LIVE_VENDOR_MODEL")
-            .or_else(|| lookup("MIMO_MODEL"))
-            .or_else(|| is_mimo.then(|| "mimo-v2.6-flash".to_string()))?,
+        vendor: name.to_string(),
         api_key,
         base_url,
-        vendor,
+        anthropic_base_url,
+        responses_base_url,
+        model,
     })
 }
 
@@ -197,6 +252,15 @@ pub fn vendor_provider(vendor: &str, base_url: &str) -> Provider {
     }
 }
 
+/// Endpoint for the native Responses transport. Defaults to the chat URL
+/// (same-origin deployments); some vendors (GLM) serve it from a different
+/// path, configured via `LIVE_<NAME>_RESPONSES_URL`.
+pub fn responses_url(cfg: &LiveConfig) -> String {
+    cfg.responses_base_url
+        .clone()
+        .unwrap_or_else(|| cfg.base_url.clone())
+}
+
 /// Returns the vendor's Anthropic gateway, or `None` after a skip notice
 /// when the vendor does not expose one — never falls back across vendors.
 pub fn anthropic_url_or_skip(cfg: &LiveConfig) -> Option<String> {
@@ -255,8 +319,49 @@ pub async fn drain_stream(stream: ResponseStream, vendor: &str, tag: &str) -> Ve
     events
 }
 
+/// Which bridge a suite exercises.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Bridge {
+    Genai,
+    Rig,
+}
+
+impl Bridge {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Genai => "genai",
+            Self::Rig => "rig",
+        }
+    }
+}
+
+/// One bridge-level turn through the selected bridge (the vendor's chat URL;
+/// Anthropic gateways are passed by the anthropic scenarios).
+pub async fn run_turn(
+    cfg: &LiveConfig,
+    base_url: &str,
+    bridge: Bridge,
+    request: &ResponsesApiRequest,
+    tag: &str,
+) -> Vec<ResponseEvent> {
+    match bridge {
+        Bridge::Genai => {
+            let is_anthropic =
+                codex_rust_rig_bridge::protocol_for_base_url(base_url)
+                    == codex_rust_rig_bridge::RigProtocol::Anthropic;
+            let adapter_kind = if is_anthropic {
+                genai::adapter::AdapterKind::Anthropic
+            } else {
+                genai::adapter::AdapterKind::OpenAI
+            };
+            run_turn_genai(cfg, base_url, request, adapter_kind, tag).await
+        }
+        Bridge::Rig => run_turn_rig(cfg, base_url, request, tag).await,
+    }
+}
+
 /// One bridge-level turn through the genai bridge.
-pub async fn run_turn_genai(
+async fn run_turn_genai(
     cfg: &LiveConfig,
     base_url: &str,
     request: &ResponsesApiRequest,

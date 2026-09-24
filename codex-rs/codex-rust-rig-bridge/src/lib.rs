@@ -11,4 +11,6 @@ mod convert_request;
 mod convert_response;
 mod stream;
 
+pub use client::protocol_for_base_url;
+pub use client::RigProtocol;
 pub use stream::stream_via_rig;

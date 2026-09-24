@@ -1,6 +1,8 @@
-//! Binary-level live suite: drives the compiled `codex-exec` end to end
-//! across all three MiMo wire protocols and both chat bridges, using the
-//! unforgeable-marker technique (see `codex_live_tests::run_marker_turn`).
+//! Binary-level live matrix: drives the compiled `codex-exec` end to end
+//! across both wire protocols and both bridges for EVERY configured vendor,
+//! using the unforgeable-marker technique (see
+//! `codex_live_tests::run_marker_turn`). Tests are generated per vendor so
+//! nextest reports each vendor separately.
 //!
 //! Build the binary once before running:
 //!
@@ -9,19 +11,37 @@
 //! cargo nextest run -p codex-live-tests --test exec_live --no-capture
 //! ```
 //!
-//! Skipped when `MIMO_API_KEY` is not configured.
+//! Adding a vendor: add it to the `exec_matrix!` lists below + set its
+//! `LIVE_<NAME>_*` variables in `.env.local`.
 
-use codex_live_tests::live_config;
 use codex_live_tests::run_marker_turn;
+use codex_live_tests::vendor;
 
-#[tokio::test(flavor = "multi_thread")]
-async fn e2e_chat_completions_via_genai() -> anyhow::Result<()> {
-    let Some(cfg) = live_config() else {
-        return Ok(());
+/// Generates one test per (vendor, scenario). Keep the vendor list in sync
+/// with `LIVE_VENDORS` in `.env.local`; unconfigured vendors skip at runtime.
+macro_rules! exec_matrix {
+    ($suffix:ident, [$($vendor:literal),*]) => {
+        paste::paste! {
+            $(
+                #[tokio::test(flavor = "multi_thread")]
+                async fn [<$vendor _ $suffix>]() -> anyhow::Result<()> {
+                    match vendor($vendor) {
+                        Some(cfg) => [<$suffix _scenario>](&cfg).await,
+                        None => {
+                            println!("vendor `{}` not configured — skipping", $vendor);
+                            Ok(())
+                        }
+                    }
+                }
+            )*
+        }
     };
+}
+
+async fn chat_genai_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
     run_marker_turn(
         "chat-genai",
-        &cfg,
+        cfg,
         &cfg.base_url,
         "chat",
         Some("genai"),
@@ -33,15 +53,14 @@ async fn e2e_chat_completions_via_genai() -> anyhow::Result<()> {
 
 /// Fork default for third-party Responses providers: `wire_api = "responses"`
 /// with no `experimental_bridge` routes through the rig bridge, which drops
-/// hosted tools MiMo does not support (no `web_search = "disabled"` needed).
-#[tokio::test(flavor = "multi_thread")]
-async fn e2e_responses_via_rig_default() -> anyhow::Result<()> {
-    let Some(cfg) = live_config() else {
-        return Ok(());
-    };
+/// hosted tools the gateway may not support (no `web_search` workaround).
+/// The bridge speaks Chat Completions, so this uses the CHAT URL even though
+/// the provider is configured responses-wire (the responses URL below is
+/// only for the native transport).
+async fn responses_rig_default_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
     run_marker_turn(
         "responses-rig-default",
-        &cfg,
+        cfg,
         &cfg.base_url,
         "responses",
         None,
@@ -53,17 +72,13 @@ async fn e2e_responses_via_rig_default() -> anyhow::Result<()> {
 
 /// Escape hatch: `experimental_bridge = "native"` forces the upstream
 /// transport even for third-party providers (asserted via the native
-/// Responses SSE telemetry instead of the bridge dispatch log). Hosted
-/// tools are disabled because MiMo's Responses gateway rejects `web_search`.
-#[tokio::test(flavor = "multi_thread")]
-async fn e2e_responses_native_escape_hatch() -> anyhow::Result<()> {
-    let Some(cfg) = live_config() else {
-        return Ok(());
-    };
+/// Responses SSE telemetry). Hosted tools are disabled for gateways that
+/// reject them (MiMo does; harmless elsewhere).
+async fn responses_native_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
     run_marker_turn(
         "responses-native",
-        &cfg,
-        &cfg.base_url,
+        cfg,
+        &codex_live_tests::responses_url(cfg),
         "responses",
         Some("native"),
         "web_search = \"disabled\"\n",
@@ -72,17 +87,13 @@ async fn e2e_responses_native_escape_hatch() -> anyhow::Result<()> {
     .await
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn e2e_anthropic_via_genai() -> anyhow::Result<()> {
-    let Some(cfg) = live_config() else {
-        return Ok(());
-    };
-    let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(&cfg) else {
+async fn anthropic_genai_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(cfg) else {
         return Ok(());
     };
     run_marker_turn(
         "anthropic-genai",
-        &cfg,
+        cfg,
         &anthropic_url,
         "chat",
         Some("genai"),
@@ -92,14 +103,10 @@ async fn e2e_anthropic_via_genai() -> anyhow::Result<()> {
     .await
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn e2e_chat_completions_via_rig() -> anyhow::Result<()> {
-    let Some(cfg) = live_config() else {
-        return Ok(());
-    };
+async fn chat_rig_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
     run_marker_turn(
         "chat-rig",
-        &cfg,
+        cfg,
         &cfg.base_url,
         "chat",
         Some("rig"),
@@ -109,17 +116,13 @@ async fn e2e_chat_completions_via_rig() -> anyhow::Result<()> {
     .await
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn e2e_anthropic_via_rig() -> anyhow::Result<()> {
-    let Some(cfg) = live_config() else {
-        return Ok(());
-    };
-    let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(&cfg) else {
+async fn anthropic_rig_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(cfg) else {
         return Ok(());
     };
     run_marker_turn(
         "anthropic-rig",
-        &cfg,
+        cfg,
         &anthropic_url,
         "chat",
         Some("rig"),
@@ -131,14 +134,10 @@ async fn e2e_anthropic_via_rig() -> anyhow::Result<()> {
 
 /// The fork default: without `experimental_bridge`, chat providers must be
 /// served by the rig bridge (asserted via the dispatch log on stderr).
-#[tokio::test(flavor = "multi_thread")]
-async fn e2e_chat_default_bridge_is_rig() -> anyhow::Result<()> {
-    let Some(cfg) = live_config() else {
-        return Ok(());
-    };
+async fn chat_default_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
     run_marker_turn(
         "chat-default",
-        &cfg,
+        cfg,
         &cfg.base_url,
         "chat",
         None,
@@ -147,3 +146,11 @@ async fn e2e_chat_default_bridge_is_rig() -> anyhow::Result<()> {
     )
     .await
 }
+
+exec_matrix!(chat_genai, ["mimo", "glm"]);
+exec_matrix!(chat_rig, ["mimo", "glm"]);
+exec_matrix!(chat_default, ["mimo", "glm"]);
+exec_matrix!(responses_rig_default, ["mimo", "glm"]);
+exec_matrix!(responses_native, ["mimo", "glm"]);
+exec_matrix!(anthropic_genai, ["mimo", "glm"]);
+exec_matrix!(anthropic_rig, ["mimo", "glm"]);

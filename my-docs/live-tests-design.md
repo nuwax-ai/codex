@@ -75,8 +75,8 @@ logs/live-<vendor>/                     # gitignored(/logs/)
 
 | # | 演进项 | 动机 | 形态 |
 |---|---|---|---|
-| E1 | 多厂商矩阵 | 一晚跑 N 家厂商回归 | `LIVE_VENDORS=mimo,deepseek,…` + 声明式宏为每厂商生成测试 fn(保持 nextest 单粒度);产物天然按厂商分目录 |
-| E2 | 能力声明 | 厂商功能差异(有无 anthropic 网关/推理/工具) | `LIVE_VENDOR_CAPABILITIES=chat,tools,reasoning,anthropic`;对应套件按能力跳过(anthropic 已用"可选 URL"实现了该语义) |
+| E1 | 多厂商矩阵 | **已实现(2026-09-24)**:`LIVE_VENDORS=mimo,glm` + `bridge_matrix!`/`exec_matrix!` 宏(paste)按 厂商×桥×场景 生成测试 fn;30 用例全绿。加厂商 = .env 一段 + 宏列表加一个名字 |
+| E2 | 能力声明 | 部分实现:anthropic 网关(可选 URL→跳过)、responses 端点(可选独立 URL,GLM 与 chat 不同源)已按"可选即能力"落地;reasoning/tools 能力开关待真正需要时再加 |
 | E3 | 运行清单 | 知道某次产物测的是什么代码 | 每次运行写 `manifest.json`(git rev、binary mtime、vendor、场景);E1 前置收益最大 |
 | E4 | 产物保留策略 | logs 无限增长 | 保留最近 N 次运行的清理钩子(测试开始时执行) |
 | E5 | rig 桥单测移植 | 23 个 genai 桥单测的 rig 版 | 纯离线,补齐 rig 桥的转换边角覆盖(当前由 L1 live 兜底) |
@@ -88,3 +88,20 @@ cargo build -p codex-exec --bin codex-exec   # L3 前置(改桥/core 后必须�
 cargo nextest run -p codex-live-tests        # 14 用例
 cargo nextest run -p codex-live-tests --no-capture   # 查看逐事件输出与产物路径
 ```
+
+## 8. 社区工具调研(2026-09-24)
+
+Rust 社区**没有**成熟的"live LLM/agent E2E 测试框架"——本 crate 的手写 harness
+填补的正是这个空缺,核心资产(不可伪造 marker、分派矩阵、产物落盘)没有现成替代。
+但以下工具值得按需接入,均与现有结构正交:
+
+| 工具 | 是什么 | 接入价值 | 建议 |
+|---|---|---|---|
+| **rig-cassette**(rig 自带,workspace 内) | HTTP 录制/回放(VCR) | 录一次 MiMo/GLM 真实流 → 离线确定性回归桥转换逻辑,不怕限流/厂商改版;rig 自己的 fixture 语料就这么做的 | **首选**,下个迭代评估其公开 API 能否挂到我们的桥传输层 |
+| **insta** | 快照测试 | 对事件流"形状"(事件种类序列)做脱敏快照,L1 加离线回归层 | 次选,与 cassette 二选一或并用 |
+| **wiremock**(upstream 已用) | mock HTTP | upstream 套件在用;live 场景不适用 | 不动 |
+| **cargo-nextest**(已用) | 测试运行器 | retries 已在吸收 flake;后续可用 test group 把 live 套件限并发,防厂商限流 | 按需 |
+| promptfoo / LangSmith / Braintrust | JS 生态/托管评测 | 不匹配 Rust 嵌入式需求 | 不引入 |
+
+原则:框架不引入,胶水保持自有——我们的核心竞争力是"验证 codex 全链路"这件事
+本身,通用评测工具覆盖不了。

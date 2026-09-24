@@ -15,6 +15,9 @@ license.workspace = true
 path = "src/lib.rs"
 doctest = false
 
+[dev-dependencies]
+paste = "1"
+
 [dependencies]
 anyhow = { workspace = true }
 codex-api = { workspace = true }

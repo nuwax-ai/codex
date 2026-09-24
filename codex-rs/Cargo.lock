@@ -3765,6 +3765,7 @@ dependencies = [
  "codex-rust-rig-bridge",
  "genai",
  "http 1.4.0",
+ "paste",
  "serde_json",
  "tempfile",
  "tokio",
