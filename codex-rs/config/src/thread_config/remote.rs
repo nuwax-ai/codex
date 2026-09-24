@@ -213,6 +213,7 @@ fn model_provider_to_proto(
         env_key_instructions,
         experimental_bearer_token,
         auth,
+        experimental_bridge: _,
         gateway_oauth: _,
         aws: _,
         wire_api,
@@ -313,6 +314,9 @@ fn proto_wire_api(wire_api: WireApi) -> proto::WireApi {
     match wire_api {
         WireApi::Responses => proto::WireApi::Responses,
         WireApi::Chat => proto::WireApi::Chat,
+        // The proto schema has no Anthropic variant yet (fork limitation);
+        // test helpers use this fn, so map it to Chat.
+        WireApi::Anthropic => proto::WireApi::Chat,
     }
 }
 
@@ -556,6 +560,7 @@ mod tests {
             env_key: None,
             env_key_instructions: None,
             experimental_bearer_token: None,
+            experimental_bridge: None,
             auth: Some(ModelProviderAuthInfo {
                 command: "token-helper".to_string(),
                 args: vec!["--json".into()],

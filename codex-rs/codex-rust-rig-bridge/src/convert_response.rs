@@ -59,6 +59,23 @@ impl PendingRigTool {
     }
 }
 
+/// A per-turn unique suffix for synthesized item IDs. Codex retains
+/// assistant history keyed by item ID; a fixed `txt_0` every turn would
+/// make each new message REPLACE the previous one in retained history.
+fn unique_suffix() -> String {
+    use std::sync::atomic::AtomicU64;
+    use std::sync::atomic::Ordering;
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{nanos:x}{seq:x}")
+}
+
 impl PendingRigMessage {
     pub(crate) fn new() -> Self {
         Self {
@@ -225,7 +242,7 @@ fn handle_stream_final(
         let reasoning_id = pending
             .reasoning_item_id
             .take()
-            .unwrap_or_else(|| format!("rsn_{}", pending.reasoning_content_index));
+            .unwrap_or_else(|| format!("rsn_{}", unique_suffix()));
         events.push(ResponseEvent::OutputItemDone(ResponseItem::Reasoning {
             id: Some(ResponseItemId::from_server(reasoning_id)),
             summary: vec![],
@@ -302,7 +319,7 @@ pub(crate) fn map_usage(usage: &RigUsage) -> TokenUsage {
 fn ensure_message_item_added(pending: &mut PendingRigMessage, events: &mut Vec<ResponseEvent>) {
     if !pending.text_item_added {
         pending.text_item_added = true;
-        let item_id = format!("txt_{}", pending.text_buffer.len());
+        let item_id = format!("txt_{}", unique_suffix());
         pending.text_item_id = Some(item_id.clone());
         events.push(ResponseEvent::OutputItemAdded(ResponseItem::Message {
             id: Some(ResponseItemId::from_server(item_id)),
@@ -317,7 +334,7 @@ fn ensure_message_item_added(pending: &mut PendingRigMessage, events: &mut Vec<R
 fn ensure_reasoning_item_added(pending: &mut PendingRigMessage, events: &mut Vec<ResponseEvent>) {
     if !pending.reasoning_item_added {
         pending.reasoning_item_added = true;
-        let item_id = format!("rsn_{}", pending.reasoning_content_index);
+        let item_id = format!("rsn_{}", unique_suffix());
         pending.reasoning_item_id = Some(item_id.clone());
         events.push(ResponseEvent::OutputItemAdded(ResponseItem::Reasoning {
             id: Some(ResponseItemId::from_server(item_id)),

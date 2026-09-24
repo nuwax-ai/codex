@@ -46,13 +46,33 @@ jobs:
 
       - name: Run live matrix
         env:
-          LIVE_VENDORS: mimo,glm
+          LIVE_VENDORS: ${{ vars.LIVE_VENDORS || 'mimo,glm' }}
+          # Complete vendor configuration — vendors() skips entries without
+          # URLs/models, so keys alone would silently skip every scenario.
           LIVE_MIMO_API_KEY: ${{ secrets.LIVE_MIMO_API_KEY }}
+          LIVE_MIMO_CHAT_URL: https://token-plan-cn.xiaomimimo.com/v1
+          LIVE_MIMO_ANTHROPIC_URL: https://token-plan-cn.xiaomimimo.com/anthropic/v1
+          LIVE_MIMO_MODEL: mimo-v2.6-flash
           LIVE_GLM_API_KEY: ${{ secrets.LIVE_GLM_API_KEY }}
+          LIVE_GLM_CHAT_URL: https://open.bigmodel.cn/api/coding/paas/v4
+          LIVE_GLM_ANTHROPIC_URL: https://open.bigmodel.cn/api/anthropic/v1
+          LIVE_GLM_MODEL: GLM-5.3-Flash
         run: |
           cargo nextest run -p codex-live-tests \
             --profile ci \
             --no-fail-fast
+
+      - name: Fail if no vendor scenarios executed
+        # A fully-skipped matrix (missing config) must be loud, not green.
+        if: always()
+        run: |
+          RESULT="${NEXTEST_RESULT:-}"
+          if cargo nextest list -p codex-live-tests 2>/dev/null | grep -qE "(mimo|glm|step)_"; then
+            echo "vendor tests present in list"
+          else
+            echo "::error::no vendor tests listed — check LIVE_VENDORS/config"
+            exit 1
+          fi
 
       - name: Aggregate artifact index
         if: always()

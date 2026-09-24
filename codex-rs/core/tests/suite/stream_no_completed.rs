@@ -55,6 +55,7 @@ async fn retries_on_early_close() {
         env_key: Some("PATH".into()),
         env_key_instructions: None,
         experimental_bearer_token: None,
+        experimental_bridge: None,
         auth: None,
         gateway_oauth: None,
         aws: None,

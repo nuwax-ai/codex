@@ -499,10 +499,14 @@ impl ToolRegistry {
             return Some(Arc::clone(&tool.runtime));
         }
         // Chat-Completions fallback: the model returns a single flat function
-        // name (`namespace: None`) for flattened namespaced tools. Resolve it
-        // back to the canonical namespaced key via the flat-name index.
-        if name.namespace.is_none()
-            && let Some(canonical) = self.flat_index.resolve(name.name.as_str())
+        // name for flattened namespaced tools. The dispatch router wraps the
+        // raw (namespace-less) name with the default namespace BEFORE this
+        // lookup, so the exact-key miss above arrives as
+        // `<default>::mcp__server__tool` — resolve the name part back to the
+        // canonical namespaced key via the flat-name index regardless of the
+        // incoming namespace (the index only contains namespaced tools, so a
+        // genuine default-namespace tool was already found above).
+        if let Some(canonical) = self.flat_index.resolve(name.name.as_str())
             && let Some(tool) = self.tools.get(canonical)
         {
             return Some(Arc::clone(&tool.runtime));

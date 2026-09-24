@@ -875,3 +875,30 @@ fn test_invocation(
         },
     }
 }
+
+#[test]
+fn flat_name_resolves_through_router_wrapped_default_namespace() {
+    // The production dispatch path: router.rs builds the ToolCall with
+    // `with_default_namespace()`, so the registry sees
+    // `<default>::mcp__server__tool`, NOT a plain name. The flat-name
+    // fallback must resolve through that wrapper (regression: the original
+    // `namespace.is_none()` guard made MCP tools unreachable via the chat
+    // bridges in real dispatch).
+    let namespaced = codex_tools::ToolName::namespaced("mcp__memory", "create_entities");
+    let handler = Arc::new(TestHandler {
+        tool_name: namespaced.clone(),
+    }) as Arc<dyn CoreToolRuntime>;
+    let registry = ToolRegistry::from_tools([Arc::clone(&handler)]);
+
+    let flat = codex_tools::ToolName::plain("mcp__memory__create_entities");
+    let router_wrapped = flat.with_default_namespace();
+    assert_ne!(
+        router_wrapped.namespace,
+        None,
+        "router should have wrapped the plain name"
+    );
+    let resolved = registry
+        .tool(&router_wrapped)
+        .expect("flat name must resolve through the router-wrapped form");
+    assert!(Arc::ptr_eq(&resolved, &handler));
+}

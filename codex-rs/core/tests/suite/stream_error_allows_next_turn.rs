@@ -70,6 +70,7 @@ async fn continue_after_stream_error() {
         env_key: Some("PATH".into()),
         env_key_instructions: None,
         experimental_bearer_token: None,
+        experimental_bridge: None,
         auth: None,
         gateway_oauth: None,
         aws: None,

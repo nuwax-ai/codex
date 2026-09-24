@@ -215,3 +215,26 @@ StepFun 的 Anthropic 网关(`api.stepfun.com/step_plan`)**URL 无 `/anthropic`
 - 在线全矩阵:**64/64**(3 厂商 × 7 L1 场景 × 2 桥 + 21 E2E + ab_diff)
 - 离线回放:**43/43,0.119 秒**(无凭据)
 - rig 桥单测 16/16
+
+## 12. 外部 review 分诊与第四批修复(2026-09-25)
+
+Codex 独立 review 给出 44 项发现;分诊结论:**证实并立即修复 7 项,证实待修 20 项
+(排入下批),部分不成立 2 项**。本轮修复:
+
+| # | 发现 | 修复 |
+|---|---|---|
+| 22 | codex-config/core 测试目标 11 处编译错误(experimental_bridge 缺字段 + Anthropic 未覆盖) | 全部补齐;三种 feature 组合 + 测试目标编译验证 |
+| 9 | **MCP 扁平名回查在生产路径失效**(router 先包 default namespace,回查条件 namespace.is_none() 永假)——原单测直接调 registry 绕过了 router,假通过 | 回查改为不依赖入参 namespace(flat index 只含 namespaced 工具,误配不可能);新增 router 包裹形态的回归测试 |
+| 8 | txt_0/rsn_0 固定 ID 使 retained history 每轮覆盖上一条 | 两桥 ID 改为纳秒+计数器唯一后缀 |
+| 31 | nextest 配置位置(仓库根,cargo workspace 在 codex-rs)与语法([[test-group]]/group=)双错,从未生效;此前"分组修好限流"的结论不成立 | 合并进 codex-rs/.config/nextest.toml,官方语法 [test-groups.*] + test-group =,补 ci profile;已验证解析生效 |
+| 29 | replay 缺 fixture 静默转 live,离线跑可能消耗配额 | 缺 fixture 即 panic(fail-fast) |
+| 30 | nightly 只传 key 不传 URL/model → 全部场景静默跳过 | workflow 传完整厂商配置 + "零执行即失败"守卫 |
+| 35 | marker 断言匹配整行 JSON(命令文本也含 marker),stdout 捕获坏了也能过 | 解析 JSON 精确断言 aggregated_output 字段 |
+
+待修 backlog(证实,按 review 建议顺序):#1(P0 图片 base64 文本化)、#3(reasoning
+回放顺序)、#4(AgentMessage)、#5(custom 工具往返)、#7(data URL)、#10/11/44(工具
+流状态机)、#12(anthropic usage)、#14(首事件超时)、#15/16(genai 状态透传/网关头)、
+#36-43(发布链 8 项)。
+
+Review 的价值确认:**#9 和 #31 都是我自建测试的盲区**(单测绕过真实调用路径;配置
+静默不生效),外部视角抓到了内部测试无法发现的结构性问题。

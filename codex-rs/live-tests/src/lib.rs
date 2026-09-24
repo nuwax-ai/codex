@@ -361,9 +361,18 @@ pub async fn run_turn(
     request: &ResponsesApiRequest,
     tag: &str,
 ) -> Vec<ResponseEvent> {
-    if cassette_mode() == CassetteMode::Replay
-        && let Some(fixture) = load_fixture(&cfg.vendor, bridge.name(), tag)
-    {
+    if cassette_mode() == CassetteMode::Replay {
+        let fixture = load_fixture(&cfg.vendor, bridge.name(), tag).unwrap_or_else(|| {
+            // Fail fast: silently falling back to live would consume vendor
+            // quota in what the operator explicitly declared an offline run,
+            // and a green suite could then be evidence of a live call rather
+            // than of the recorded fixture.
+            panic!(
+                "[cassette] replay: no fixture for {}/{}-{} \
+                 (record with LIVE_CASSETTE=record)",
+                cfg.vendor, bridge.name(), tag
+            );
+        });
         println!(
             "[cassette] replaying {}/{}-{} ({} events, offline)",
             cfg.vendor,
@@ -677,12 +686,21 @@ pub async fn run_marker_turn(
         command_events >= 1,
         "[{protocol}] expected at least one command-execution event in the JSONL stream"
     );
-    // Primary proof of the closed loop: the command REALLY executed locally
-    // with exit 0 and the marker in its aggregated output.
+    // Primary proof of the closed loop: parse the completed
+    // command-execution event and check the ACTUAL aggregated output —
+    // matching the raw line would also hit the command string itself
+    // (which contains the marker) even if stdout capture was broken.
     let command_executed_with_marker = stdout.lines().any(|line| {
-        line.contains("\"type\":\"command_execution\"")
-            && line.contains("\"exit_code\":0")
-            && line.contains(&marker)
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(line) else {
+            return false;
+        };
+        let item = event.get("item").unwrap_or(&event);
+        item.get("type").and_then(|t| t.as_str()) == Some("command_execution")
+            && item.get("exit_code").and_then(|c| c.as_i64()) == Some(0)
+            && item
+                .get("aggregated_output")
+                .and_then(|o| o.as_str())
+                .is_some_and(|o| o.contains(&marker))
     });
     anyhow::ensure!(
         command_executed_with_marker,
