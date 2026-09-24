@@ -71,7 +71,7 @@ pub fn build_genai_client(
 /// Builds genai `Headers` from Codex provider, auth, and extra headers.
 pub fn build_extra_headers(
     api_provider: &Provider,
-    _api_auth: &SharedAuthProvider,
+    api_auth: &SharedAuthProvider,
     extra_headers: &HeaderMap,
 ) -> genai::Headers {
     let mut headers: Vec<(String, String)> = Vec::new();
@@ -83,11 +83,21 @@ pub fn build_extra_headers(
         }
     }
 
-    // Auth headers are intentionally NOT forwarded here.
-    // The genai adapter already sets the Authorization header via the
-    // auth resolver (build_genai_client). Duplicating it triggers 400
-    // rejections from reverse proxies (openresty/nginx) that refuse
-    // requests with duplicate Authorization headers.
+    // The PRIMARY Authorization header is intentionally NOT forwarded:
+    // the genai adapter rebuilds it via the auth resolver, and duplicating
+    // it triggers 400 rejections from reverse proxies. SECONDARY auth
+    // headers (gateway OAuth cookies, api-key variants, …) MUST survive —
+    // the adapter only manages the primary header.
+    let primary_authz = api_auth.to_auth_headers().get(http::header::AUTHORIZATION).cloned();
+    let auth_headers = api_auth.to_auth_headers();
+    for (key, value) in auth_headers.iter() {
+        if Some(value) == primary_authz.as_ref() {
+            continue;
+        }
+        if let Ok(v) = value.to_str() {
+            headers.push((key.as_str().to_string(), v.to_string()));
+        }
+    }
 
     // Extra headers take top precedence
     for (key, value) in extra_headers.iter() {

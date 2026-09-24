@@ -26,6 +26,31 @@ const RESPONSE_STREAM_CHANNEL_CAPACITY: usize = 256;
 /// The main entry point: converts a Codex `ResponsesApiRequest` into a genai
 /// `ChatRequest`, streams via rust-genai, and converts each `ChatStreamEvent`
 /// back into a Codex `ResponseEvent` stream.
+/// Maps genai errors onto codex's transport taxonomy, preserving the HTTP
+/// status when genai surfaced one (WebCallFailed → webc::Error::
+/// ResponseFailedStatus) so codex-core's 401-recovery loop triggers for the
+/// genai bridge exactly as it does for rig.
+fn map_genai_error(e: genai::Error) -> ApiError {
+    // Walk the error chain looking for the webc status error.
+    let mut source: Option<&dyn std::error::Error> = Some(&e);
+    while let Some(err) = source {
+        if let Some(webc_err) = err.downcast_ref::<genai::webc::Error>()
+            && let genai::webc::Error::ResponseFailedStatus { status, .. } = webc_err
+            && let Ok(code) = http::StatusCode::from_u16(status.as_u16())
+        {
+            return ApiError::Transport(TransportError::Http {
+                status: code,
+                url: None,
+                headers: None,
+                body: Some(format!("genai request failed: {e}")),
+                retry_after: None,
+            });
+        }
+        source = err.source();
+    }
+    ApiError::Transport(TransportError::Network(format!("genai stream error: {e}")))
+}
+
 pub async fn stream_via_genai(
     request: &ResponsesApiRequest,
     api_provider: &Provider,
@@ -98,7 +123,7 @@ pub async fn stream_via_genai(
                 error = %e,
                 "genai stream failed"
             );
-            ApiError::Transport(TransportError::Network(format!("genai stream error: {e}")))
+            map_genai_error(e)
         })?;
 
     let mut chat_stream = chat_stream_response.stream;
@@ -119,11 +144,7 @@ pub async fn stream_via_genai(
                     }
                 }
                 Ok(Some(Err(e))) => {
-                    let _ = tx
-                        .send(Err(ApiError::Transport(TransportError::Network(format!(
-                            "genai stream error: {e}"
-                        )))))
-                        .await;
+                    let _ = tx.send(Err(map_genai_error(e))).await;
                     return;
                 }
                 Ok(None) => return,

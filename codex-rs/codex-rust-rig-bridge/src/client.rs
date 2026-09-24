@@ -59,13 +59,29 @@ fn api_key_from_auth(api_auth: &SharedAuthProvider) -> String {
 /// client's defaults. Auth headers are deliberately excluded — rig adds the
 /// provider-appropriate scheme itself, and duplicating Authorization trips
 /// reverse proxies that reject duplicate headers.
-fn default_headers(api_provider: &Provider, extra_headers: &HeaderMap) -> reqwest13::header::HeaderMap {
+fn default_headers(
+    api_provider: &Provider,
+    api_auth: &SharedAuthProvider,
+    extra_headers: &HeaderMap,
+) -> reqwest13::header::HeaderMap {
     let mut merged = reqwest13::header::HeaderMap::new();
     let mut insert = |name: &http::header::HeaderName, value: &http::HeaderValue| {
         if let Ok(v) = reqwest13::header::HeaderValue::from_bytes(value.as_bytes()) {
             merged.insert(name.clone(), v);
         }
     };
+    // Gateway OAuth and other secondary auth headers MUST survive: the
+    // adapter only rebuilds the PRIMARY auth header (Authorization/api-key),
+    // so everything else from the auth provider is merged here. The primary
+    // header itself is skipped to avoid duplicate-Authorization rejections.
+    let primary = api_auth.to_auth_headers();
+    let primary_authz = primary.get(http::header::AUTHORIZATION).cloned();
+    for (key, value) in primary.iter() {
+        if Some(value) == primary_authz.as_ref() {
+            continue; // adapter rebuilds this one
+        }
+        insert(&key, &value);
+    }
     for (key, value) in api_provider.headers.iter() {
         insert(&key, &value);
     }
@@ -77,10 +93,11 @@ fn default_headers(api_provider: &Provider, extra_headers: &HeaderMap) -> reqwes
 
 fn http_client(
     api_provider: &Provider,
+    api_auth: &SharedAuthProvider,
     extra_headers: &HeaderMap,
 ) -> Result<reqwest13::Client, codex_api::ApiError> {
     reqwest13::Client::builder()
-        .default_headers(default_headers(api_provider, extra_headers))
+        .default_headers(default_headers(api_provider, api_auth, extra_headers))
         .build()
         .map_err(|e| {
             codex_api::ApiError::Transport(codex_api::TransportError::Network(format!(
@@ -109,7 +126,7 @@ pub(crate) fn build_chat_model(
     let client = rig_core::providers::openai::CompletionsClient::builder()
         .api_key(api_key_from_auth(api_auth))
         .base_url(base_url.to_string())
-        .http_client(http_client(api_provider, extra_headers)?)
+        .http_client(http_client(api_provider, api_auth, extra_headers)?)
         .build()
         .map_err(map_client_error)?;
     Ok(client.completion_model(model_name))
@@ -125,7 +142,7 @@ pub(crate) fn build_anthropic_model(
     let client = rig_core::providers::anthropic::Client::builder()
         .api_key(api_key_from_auth(api_auth))
         .base_url(base_url.to_string())
-        .http_client(http_client(api_provider, extra_headers)?)
+        .http_client(http_client(api_provider, api_auth, extra_headers)?)
         .build()
         .map_err(map_client_error)?;
     Ok(client.completion_model(model_name))

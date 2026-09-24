@@ -266,3 +266,13 @@ review 证实的桥正确性七项全部修复(单元 22/22 + 全矩阵 64/64):
 | 5 | custom/freeform 工具无法往返 | 请求:custom 工具声明为 `{"input": string}` 包装 schema + 名单随请求传递;历史回放同包装;响应:名单内工具的 Done 还原为 CustomToolCall(解包 input 字符串),apply_patch 类 handler 恢复可用(往返单测) |
 
 单元 25/25 + 全矩阵 64/64。
+
+## 15. Review backlog 第三批(2026-09-25):错误/认证/权限
+
+| # | 修复 | 实现 |
+|---|---|---|
+| 15 | genai 桥丢失 HTTP 状态 | 错误链下溯 webc::Error::ResponseFailedStatus 提取 StatusCode → `Http{status}`(401 重登录循环对 genai 桥同样生效) |
+| 16 | 网关 OAuth 附加头丢失 | 两桥:auth 头中除主 Authorization(adapter 会重建,重复会被反代 400)外全部保留——cookie/api-key 变体/网关 OAuth 头随请求发出 |
+| 13 | Ask 预设文案与行为不符 | OnRequest+Unrestricted 语义=非危险命令直接放行(exec_policy 确认);文案改为如实描述(危险命令审批、其余直接运行)。权限语义本身不动(改动风险大于文案修正) |
+
+单元 48/48(两桥合计)+ 全矩阵 64/64。

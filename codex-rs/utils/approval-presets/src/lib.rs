@@ -50,7 +50,7 @@ pub fn builtin_approval_presets() -> Vec<ApprovalPreset> {
         ApprovalPreset {
             id: "ask",
             label: "Ask",
-            description: "Codex has full access to edit files and access the internet, but still asks for approval before executing commands.",
+            description: "Codex has full access to edit files and access the internet. Commands the policy flags as dangerous require approval; other commands run directly without a sandbox. (For per-command approval use Granular policies.)",
             approval: AskForApproval::OnRequest,
             active_permission_profile: ActivePermissionProfile::new(
                 BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS,
