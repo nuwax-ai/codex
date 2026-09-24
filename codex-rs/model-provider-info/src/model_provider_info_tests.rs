@@ -70,6 +70,7 @@ base_url = "http://localhost:11434/v1"
         gateway_oauth: None,
         aws: None,
         wire_api: WireApi::Responses,
+        experimental_bridge: None,
         query_params: None,
         http_headers: None,
         env_http_headers: None,
@@ -105,6 +106,7 @@ query_params = { api-version = "2025-04-01-preview" }
         gateway_oauth: None,
         aws: None,
         wire_api: WireApi::Responses,
+        experimental_bridge: None,
         query_params: Some(maplit::hashmap! {
             "api-version".to_string() => "2025-04-01-preview".into(),
         }),
@@ -144,6 +146,7 @@ supports_standalone_web_search = true
         gateway_oauth: None,
         aws: None,
         wire_api: WireApi::Responses,
+        experimental_bridge: None,
         query_params: None,
         http_headers: Some(maplit::hashmap! {
             "X-Example-Header".to_string() => "example-value".into(),
@@ -336,6 +339,7 @@ fn test_create_amazon_bedrock_provider() {
                 auth_refresh: None,
             }),
             wire_api: WireApi::Responses,
+        experimental_bridge: None,
             query_params: None,
             http_headers: Some(maplit::hashmap! {
                 AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER.to_string() =>
@@ -647,6 +651,7 @@ fn test_merge_configured_model_providers_allows_amazon_bedrock_default_fields() 
                 auth_refresh: None,
             }),
             wire_api: WireApi::Responses,
+        experimental_bridge: None,
             ..ModelProviderInfo::default()
         },
     )]);

@@ -119,14 +119,15 @@ impl fmt::Display for WireApi {
 }
 
 /// Chat-Completions bridge implementation backing `wire_api = "chat"`
-/// providers (fork extension). `Genai` is the default for compatibility.
+/// providers (fork extension). `Rig` is the default; configure
+/// `experimental_bridge = "genai"` to fall back to the original bridge.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ChatBridge {
     /// The `codex-rust-genai-bridge` crate.
-    #[default]
     Genai,
-    /// The `codex-rust-rig-bridge` crate.
+    /// The `codex-rust-rig-bridge` crate (fork default).
+    #[default]
     Rig,
 }
 
@@ -206,7 +207,9 @@ pub struct ModelProviderInfo {
     #[serde(default)]
     pub wire_api: WireApi,
     /// Which Chat-Completions bridge implementation serves this provider
-    /// (fork extension; only consulted when `wire_api = "chat"`).
+    /// (fork extension; only consulted when `wire_api = "chat"`). Unset uses
+    /// the fork default, currently the rig bridge; set `"genai"` to opt back
+    /// into the original genai bridge.
     #[serde(default)]
     pub experimental_bridge: Option<ChatBridge>,
     /// Optional query parameters to append to the base URL.

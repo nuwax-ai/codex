@@ -94,9 +94,11 @@ pub async fn stream_via_rig(
    wire_api = "chat"
    experimental_bridge = "rig"
    ```
-3. `core/src/client.rs` `stream_chat_api` 循环内按 `experimental_bridge` 分派:
-   `rig`(feature 开启)→ `stream_via_rig`;`rig`(feature 未开)→ 明确报错(fail-fast);
-   其余 → 现有 genai 路径
+3. `core/src/client.rs` `stream_chat_api` 循环内按 `experimental_bridge` 分派。
+   **2026-09-24 更新:默认桥已切换为 rig**(`ChatBridge::default = Rig`),
+   即不配置 `experimental_bridge` 的 `wire_api = "chat"` provider 走 rig;
+   配置 `"genai"` 显式回退旧桥。E2E `e2e_chat_default_bridge_is_rig`
+   通过 RUST_LOG 的 dispatch 日志断言验证了默认路径确实走 rig。
 4. cli 默认同时启用 `rust-genai` + `rust-rig`(单二进制可 A/B)
 
 ## 5. 测试方案(复用既有 live 体系)

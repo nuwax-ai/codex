@@ -2405,9 +2405,11 @@ impl ModelClientSession {
                 )
                 .await
             }
-            #[cfg(not(feature = "rust-genai"))]
+            #[cfg(not(any(feature = "rust-genai", feature = "rust-rig")))]
             WireApi::Chat => Err(CodexErr::Fatal(
-                "Chat API requires the `rust-genai` feature to be enabled".into(),
+                "Chat API (`wire_api = \"chat\"`) requires a bridge feature: enable \
+                 `rust-genai` or `rust-rig`"
+                    .into(),
             )),
         }
     }
@@ -3102,8 +3104,10 @@ fn adapter_kind_for_base_url(base_url: &str) -> genai::adapter::AdapterKind {
 }
 
 /// Sends the Chat-Completions request through the bridge the provider
-/// selected via `experimental_bridge` (fork extension). Both bridges expose
-/// the same surface and feed codex's shared retry/telemetry loop.
+/// selected via `experimental_bridge` (fork extension). Unset defaults to
+/// the rig bridge; `"genai"` opts back into the original bridge. Both
+/// bridges expose the same surface and feed codex's shared retry/telemetry
+/// loop.
 #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
 async fn dispatch_chat_bridge(
     request: &codex_api::ResponsesApiRequest,
@@ -3129,7 +3133,8 @@ async fn dispatch_chat_bridge(
         #[cfg(not(feature = "rust-genai"))]
         ChatBridge::Genai => Err(codex_api::ApiError::InvalidRequest {
             message: "experimental_bridge = \"genai\" requires the rust-genai feature \
-                      (this build only enables the rig bridge)"
+                      (this build only enables the rig bridge); remove the key to use \
+                      the default rig bridge"
                 .into(),
         }),
         #[cfg(feature = "rust-rig")]
@@ -3145,8 +3150,8 @@ async fn dispatch_chat_bridge(
         }
         #[cfg(not(feature = "rust-rig"))]
         ChatBridge::Rig => Err(codex_api::ApiError::InvalidRequest {
-            message: "experimental_bridge = \"rig\" requires the rust-rig feature \
-                      (rebuild with the rig bridge enabled)"
+            message: "the default rig bridge requires the rust-rig feature; rebuild with \
+                      it enabled, or set experimental_bridge = \"genai\" on the provider"
                 .into(),
         }),
     }
