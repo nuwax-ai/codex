@@ -3755,6 +3755,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-live-tests"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "codex-api",
+ "codex-protocol",
+ "codex-rust-genai-bridge",
+ "codex-rust-rig-bridge",
+ "genai",
+ "http 1.4.0",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "codex-lmstudio"
 version = "0.0.0"
 dependencies = [

@@ -1,0 +1,31 @@
+[package]
+name = "codex-live-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Dedicated home for every live integration test of the chat bridges: the
+# bridge-level suites (codex-rust-genai-bridge / codex-rust-rig-bridge) and
+# the binary-level codex-exec end-to-end suite share one set of helpers here
+# instead of duplicating them across crates. All tests hit real providers,
+# are gated on MIMO_API_KEY (env or gitignored .env.local), and skip when it
+# is not configured.
+
+[lib]
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+anyhow = { workspace = true }
+codex-api = { workspace = true }
+codex-protocol = { workspace = true }
+codex-rust-genai-bridge = { workspace = true }
+codex-rust-rig-bridge = { workspace = true }
+genai = { workspace = true }
+http = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread", "time"] }
+
+[lints]
+workspace = true

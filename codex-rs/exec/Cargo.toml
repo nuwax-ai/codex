@@ -18,12 +18,6 @@ doctest = false
 name = "all"
 path = "tests/all.rs"
 
-# Live E2E against a real Chat Completions provider via the rust-genai
-# bridge; skips unless MIMO_API_KEY is configured (env or .env.local).
-[[test]]
-name = "live_mimo"
-path = "tests/live_mimo.rs"
-
 [lints]
 workspace = true
 
