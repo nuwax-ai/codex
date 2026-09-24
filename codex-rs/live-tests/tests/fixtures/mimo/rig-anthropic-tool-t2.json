@@ -1,0 +1,163 @@
+{
+  "vendor": "mimo",
+  "bridge": "rig",
+  "tag": "anthropic-tool-t2",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      },
+      {
+        "arguments": "{\"city\": \"北京\"}",
+        "call_id": "call_e3b9053d374a4b14aee100e5",
+        "name": "get_weather",
+        "type": "function_call"
+      },
+      {
+        "call_id": "call_e3b9053d374a4b14aee100e5",
+        "output": "{\"city\":\"北京\",\"condition\":\"晴\",\"temp_c\":23}",
+        "type": "function_call_output"
+      }
+    ],
+    "instructions": "You are a helpful assistant.",
+    "model": "mimo-v2.6-flash",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "description": "Get the current weather for a city",
+        "name": "get_weather",
+        "parameters": {
+          "properties": {
+            "city": {
+              "description": "City name, e.g. 北京",
+              "type": "string"
+            }
+          },
+          "required": [
+            "city"
+          ],
+          "type": "object"
+        },
+        "strict": false,
+        "type": "function"
+      }
+    ]
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": null,
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "The tool",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " returned weather info",
+        "content_index": 1
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " for Beijing.",
+        "content_index": 2
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "北京"
+    },
+    {
+      "OutputTextDelta": "今天天气**"
+    },
+    {
+      "OutputTextDelta": "晴**，气温"
+    },
+    {
+      "OutputTextDelta": "约 **23°C**，"
+    },
+    {
+      "OutputTextDelta": "适合出行"
+    },
+    {
+      "OutputTextDelta": "！☀"
+    },
+    {
+      "OutputTextDelta": "️"
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The tool returned weather info for Beijing."
+          }
+        ],
+        "encrypted_content": "The tool returned weather info for Beijing."
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "北京今天天气**晴**，气温约 **23°C**，适合出行！☀️"
+          }
+        ]
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "",
+        "token_usage": {
+          "input_tokens": 66,
+          "cached_input_tokens": 128,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 31,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 225
+        },
+        "usage_metadata": null,
+        "end_turn": true
+      }
+    }
+  ]
+}

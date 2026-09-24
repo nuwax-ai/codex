@@ -6,6 +6,7 @@ use std::time::Duration;
 use codex_api::ApiError;
 use codex_api::Provider;
 use codex_api::ResponsesApiRequest;
+use codex_api::ResponseEvent;
 use codex_api::ResponseStream;
 use codex_api::SharedAuthProvider;
 use codex_api::TransportError;
@@ -87,14 +88,44 @@ pub async fn stream_via_rig(
 
     let mut rig_stream = stream_response;
 
+    // Eagerly resolve the FIRST stream item before returning: rig defers
+    // HTTP failures (401/5xx) into the stream, so without this a bad-auth
+    // response surfaces mid-stream where codex-core's 401-recovery loop —
+    // which only inspects start errors — can never trigger.
+    let mut next_event = match rig_stream.next().await {
+        Some(Err(e)) => {
+            tracing::error!(model = %model, error = %e, "rig stream failed before first event");
+            return Err(map_completion_error(e));
+        }
+        first => first,
+    };
+
     let (tx, rx) = mpsc::channel(RESPONSE_STREAM_CHANNEL_CAPACITY);
 
     tokio::spawn(async move {
         let mut pending = PendingRigMessage::new();
 
+        // rig streams have no start event; synthesize `Created` so the
+        // event sequence matches the genai bridge (A/B parity) and any
+        // consumer waiting for it sees one.
+        if tx.send(Ok(ResponseEvent::Created { response_id: None })).await.is_err() {
+            return;
+        }
+
         loop {
-            match tokio::time::timeout(idle_timeout, rig_stream.next()).await {
-                Ok(Some(Ok(event))) => {
+            let item = match next_event.take() {
+                Some(item) => Some(item),
+                None => match tokio::time::timeout(idle_timeout, rig_stream.next()).await {
+                    Ok(item) => item,
+                    Err(_elapsed) => {
+                        let _ =
+                            tx.send(Err(ApiError::Transport(TransportError::Timeout))).await;
+                        return;
+                    }
+                },
+            };
+            match item {
+                Some(Ok(event)) => {
                     let events = rig_event_to_response_events(event, &mut pending);
                     for ev in events {
                         if tx.send(Ok(ev)).await.is_err() {
@@ -102,7 +133,7 @@ pub async fn stream_via_rig(
                         }
                     }
                 }
-                Ok(Some(Err(e))) => {
+                Some(Err(e)) => {
                     // rig's contract: a malformed frame surfaces as Err but
                     // the stream may continue; only a transport error is
                     // terminal. Forward the error and stop — codex's retry
@@ -111,7 +142,7 @@ pub async fn stream_via_rig(
                     let _ = tx.send(Err(map_completion_error(e))).await;
                     return;
                 }
-                Ok(None) => {
+                None => {
                     // rig's contract: ending without a terminal record means
                     // truncation, never a successful completion.
                     if !pending.completed_emitted() {
@@ -122,10 +153,6 @@ pub async fn stream_via_rig(
                             ))))
                             .await;
                     }
-                    return;
-                }
-                Err(_elapsed) => {
-                    let _ = tx.send(Err(ApiError::Transport(TransportError::Timeout))).await;
                     return;
                 }
             }
@@ -142,10 +169,19 @@ pub async fn stream_via_rig(
 /// status when rig surfaced one so codex-core's 401-recovery loop still
 /// triggers.
 fn map_completion_error(e: rig_core::completion::request::CompletionError) -> ApiError {
-    if let rig_core::completion::request::CompletionError::HttpError(http_error) = &e
-        && let Some(status) = http_error_status(http_error)
-        && let Ok(status) = http::StatusCode::from_u16(status.as_u16())
-    {
+    use rig_core::completion::request::CompletionError;
+    // Both variants can carry an HTTP status; the Provider variant is what
+    // non-2xx provider responses actually arrive as (rig defers them into
+    // the stream), so both must map to Http{status} for codex-core's
+    // 401-recovery loop to trigger.
+    let status: Option<http::StatusCode> = match &e {
+        CompletionError::HttpError(http_error) => http_error_status(http_error)
+            .map(|s| http::StatusCode::from_u16(s.as_u16()))
+            .and_then(|s| s.ok()),
+        CompletionError::ProviderResponse(provider_error) => provider_error.status,
+        _ => None,
+    };
+    if let Some(status) = status {
         return ApiError::Transport(TransportError::Http {
             status,
             url: None,

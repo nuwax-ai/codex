@@ -1,0 +1,210 @@
+{
+  "vendor": "mimo",
+  "bridge": "rig",
+  "tag": "chat",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "用一句话解释什么是斐波那契数列。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant. Answer in Chinese.",
+    "model": "mimo-v2.6-flash",
+    "parallel_tool_calls": true,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto"
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": null,
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "用",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "一句话简洁",
+        "content_index": 1
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "解释斐波那契数列。",
+        "content_index": 2
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "斐波那契数列是一个"
+    },
+    {
+      "OutputTextDelta": "从0"
+    },
+    {
+      "OutputTextDelta": "和1（"
+    },
+    {
+      "OutputTextDelta": "或1和"
+    },
+    {
+      "OutputTextDelta": "1）开始，此后"
+    },
+    {
+      "OutputTextDelta": "每一项都"
+    },
+    {
+      "OutputTextDelta": "等于前两项之"
+    },
+    {
+      "OutputTextDelta": "和的数列，即"
+    },
+    {
+      "OutputTextDelta": "："
+    },
+    {
+      "OutputTextDelta": "**"
+    },
+    {
+      "OutputTextDelta": "0, 1, 1"
+    },
+    {
+      "OutputTextDelta": ", 2, 3, "
+    },
+    {
+      "OutputTextDelta": "5, 8, 13"
+    },
+    {
+      "OutputTextDelta": ", 21, "
+    },
+    {
+      "OutputTextDelta": "34……"
+    },
+    {
+      "OutputTextDelta": "** "
+    },
+    {
+      "OutputTextDelta": "它广泛"
+    },
+    {
+      "OutputTextDelta": "存在于"
+    },
+    {
+      "OutputTextDelta": "自然界中"
+    },
+    {
+      "OutputTextDelta": "（"
+    },
+    {
+      "OutputTextDelta": "如花瓣"
+    },
+    {
+      "OutputTextDelta": "数"
+    },
+    {
+      "OutputTextDelta": "、螺旋壳"
+    },
+    {
+      "OutputTextDelta": "等"
+    },
+    {
+      "OutputTextDelta": "），且"
+    },
+    {
+      "OutputTextDelta": "相邻"
+    },
+    {
+      "OutputTextDelta": "两项"
+    },
+    {
+      "OutputTextDelta": "之"
+    },
+    {
+      "OutputTextDelta": "比趋"
+    },
+    {
+      "OutputTextDelta": "近于黄金比例"
+    },
+    {
+      "OutputTextDelta": "（约"
+    },
+    {
+      "OutputTextDelta": "0.618"
+    },
+    {
+      "OutputTextDelta": "）。"
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "用一句话简洁解释斐波那契数列。"
+          }
+        ],
+        "encrypted_content": "用一句话简洁解释斐波那契数列。"
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "斐波那契数列是一个从0和1（或1和1）开始，此后每一项都等于前两项之和的数列，即：**0, 1, 1, 2, 3, 5, 8, 13, 21, 34……** 它广泛存在于自然界中（如花瓣数、螺旋壳等），且相邻两项之比趋近于黄金比例（约0.618）。"
+          }
+        ]
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "481e883b-6133-4f50-8c49-45de7e4f20ba_43438a702fce4401ab1a7dbbf3ebe46c",
+        "token_usage": {
+          "input_tokens": 32,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 115,
+          "reasoning_output_tokens": 12,
+          "total_tokens": 147
+        },
+        "usage_metadata": null,
+        "end_turn": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,481 @@
+{
+  "vendor": "glm",
+  "bridge": "rig",
+  "tag": "tool-t2",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      },
+      {
+        "arguments": "{\"city\":\"北京\"}",
+        "call_id": "call_a22d5a5e3d9e436097697ed6",
+        "name": "get_weather",
+        "type": "function_call"
+      },
+      {
+        "call_id": "call_a22d5a5e3d9e436097697ed6",
+        "output": "{\"city\":\"北京\",\"condition\":\"晴\",\"temp_c\":23}",
+        "type": "function_call_output"
+      }
+    ],
+    "instructions": "You are a helpful assistant.",
+    "model": "GLM-5.3-Flash",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "description": "Get the current weather for a city",
+        "name": "get_weather",
+        "parameters": {
+          "properties": {
+            "city": {
+              "description": "City name, e.g. 北京",
+              "type": "string"
+            }
+          },
+          "required": [
+            "city"
+          ],
+          "type": "object"
+        },
+        "strict": false,
+        "type": "function"
+      }
+    ]
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": null,
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "The",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " user",
+        "content_index": 1
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " asked",
+        "content_index": 2
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " about",
+        "content_index": 3
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Beijing",
+        "content_index": 4
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "'s",
+        "content_index": 5
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " weather",
+        "content_index": 6
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " today",
+        "content_index": 7
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " and",
+        "content_index": 8
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " explicitly",
+        "content_index": 9
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " requested",
+        "content_index": 10
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " I",
+        "content_index": 11
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " call",
+        "content_index": 12
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 13
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " get",
+        "content_index": 14
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "_weather",
+        "content_index": 15
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " tool",
+        "content_index": 16
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 17
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " I",
+        "content_index": 18
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " did",
+        "content_index": 19
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ",",
+        "content_index": 20
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " and",
+        "content_index": 21
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " got",
+        "content_index": 22
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " results",
+        "content_index": 23
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ":",
+        "content_index": 24
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Sunny",
+        "content_index": 25
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ",",
+        "content_index": 26
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 27
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "23",
+        "content_index": 28
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "°C",
+        "content_index": 29
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 30
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Let",
+        "content_index": 31
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " me",
+        "content_index": 32
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " answer",
+        "content_index": 33
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " in",
+        "content_index": 34
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Chinese",
+        "content_index": 35
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 36
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "我"
+    },
+    {
+      "OutputTextDelta": "已"
+    },
+    {
+      "OutputTextDelta": "通过"
+    },
+    {
+      "OutputTextDelta": "工具"
+    },
+    {
+      "OutputTextDelta": "查询"
+    },
+    {
+      "OutputTextDelta": "到"
+    },
+    {
+      "OutputTextDelta": "北京"
+    },
+    {
+      "OutputTextDelta": "今天的"
+    },
+    {
+      "OutputTextDelta": "天气"
+    },
+    {
+      "OutputTextDelta": "：\n\n"
+    },
+    {
+      "OutputTextDelta": "-"
+    },
+    {
+      "OutputTextDelta": " **"
+    },
+    {
+      "OutputTextDelta": "天气"
+    },
+    {
+      "OutputTextDelta": "状况"
+    },
+    {
+      "OutputTextDelta": "**"
+    },
+    {
+      "OutputTextDelta": "："
+    },
+    {
+      "OutputTextDelta": "晴"
+    },
+    {
+      "OutputTextDelta": " "
+    },
+    {
+      "OutputTextDelta": "☀"
+    },
+    {
+      "OutputTextDelta": "️"
+    },
+    {
+      "OutputTextDelta": "\n"
+    },
+    {
+      "OutputTextDelta": "-"
+    },
+    {
+      "OutputTextDelta": " **"
+    },
+    {
+      "OutputTextDelta": "气温"
+    },
+    {
+      "OutputTextDelta": "**"
+    },
+    {
+      "OutputTextDelta": "："
+    },
+    {
+      "OutputTextDelta": "23"
+    },
+    {
+      "OutputTextDelta": "°C"
+    },
+    {
+      "OutputTextDelta": "\n\n"
+    },
+    {
+      "OutputTextDelta": "今天"
+    },
+    {
+      "OutputTextDelta": "北京"
+    },
+    {
+      "OutputTextDelta": "天气"
+    },
+    {
+      "OutputTextDelta": "晴"
+    },
+    {
+      "OutputTextDelta": "朗"
+    },
+    {
+      "OutputTextDelta": "，"
+    },
+    {
+      "OutputTextDelta": "气温"
+    },
+    {
+      "OutputTextDelta": "舒适"
+    },
+    {
+      "OutputTextDelta": "宜"
+    },
+    {
+      "OutputTextDelta": "人"
+    },
+    {
+      "OutputTextDelta": "，"
+    },
+    {
+      "OutputTextDelta": "很适合"
+    },
+    {
+      "OutputTextDelta": "外出"
+    },
+    {
+      "OutputTextDelta": "活动"
+    },
+    {
+      "OutputTextDelta": "哦"
+    },
+    {
+      "OutputTextDelta": "！"
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user asked about Beijing's weather today and explicitly requested I call the get_weather tool. I did, and got results: Sunny, 23°C. Let me answer in Chinese."
+          }
+        ],
+        "encrypted_content": "The user asked about Beijing's weather today and explicitly requested I call the get_weather tool. I did, and got results: Sunny, 23°C. Let me answer in Chinese."
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "我已通过工具查询到北京今天的天气：\n\n- **天气状况**：晴 ☀️\n- **气温**：23°C\n\n今天北京天气晴朗，气温舒适宜人，很适合外出活动哦！"
+          }
+        ]
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "202609242143441ef37c5452374ca0",
+        "token_usage": {
+          "input_tokens": 224,
+          "cached_input_tokens": 192,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 84,
+          "reasoning_output_tokens": 37,
+          "total_tokens": 308
+        },
+        "usage_metadata": null,
+        "end_turn": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+# nextest configuration for the codex workspace fork.
+#
+# Live tests hit real providers: cap concurrency (vendor rate limits) and
+# retry with backoff so transient 429/5xx responses surface as flakes, not
+# failures. Scoped to the codex-live-tests package only.
+[[test-group]]
+name = "live"
+max-threads = 2
+
+[[profile.default.overrides]]
+filter = "package(codex-live-tests)"
+group = "live"
+retries = { count = 3, backoff = "10s" }

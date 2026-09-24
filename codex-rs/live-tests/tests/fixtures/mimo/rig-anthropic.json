@@ -1,0 +1,171 @@
+{
+  "vendor": "mimo",
+  "bridge": "rig",
+  "tag": "anthropic",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "用一句话说明二分查找的思想。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant. Answer in Chinese.",
+    "model": "mimo-v2.6-flash",
+    "parallel_tool_calls": true,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto"
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": null,
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "用",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "一句话说明二分查找的思想",
+        "content_index": 1
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "。",
+        "content_index": 2
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "每次"
+    },
+    {
+      "OutputTextDelta": "将搜索"
+    },
+    {
+      "OutputTextDelta": "范围"
+    },
+    {
+      "OutputTextDelta": "折"
+    },
+    {
+      "OutputTextDelta": "半："
+    },
+    {
+      "OutputTextDelta": "先"
+    },
+    {
+      "OutputTextDelta": "比较"
+    },
+    {
+      "OutputTextDelta": "中间"
+    },
+    {
+      "OutputTextDelta": "元素与"
+    },
+    {
+      "OutputTextDelta": "目标值的"
+    },
+    {
+      "OutputTextDelta": "大小，从而排除"
+    },
+    {
+      "OutputTextDelta": "掉"
+    },
+    {
+      "OutputTextDelta": "不可能"
+    },
+    {
+      "OutputTextDelta": "的一半，只"
+    },
+    {
+      "OutputTextDelta": "在剩下"
+    },
+    {
+      "OutputTextDelta": "的一"
+    },
+    {
+      "OutputTextDelta": "半中继续查找"
+    },
+    {
+      "OutputTextDelta": "，直到找到"
+    },
+    {
+      "OutputTextDelta": "目标或范围"
+    },
+    {
+      "OutputTextDelta": "为空。"
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "用一句话说明二分查找的思想。"
+          }
+        ],
+        "encrypted_content": "用一句话说明二分查找的思想。"
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "每次将搜索范围折半：先比较中间元素与目标值的大小，从而排除掉不可能的一半，只在剩下的一半中继续查找，直到找到目标或范围为空。"
+          }
+        ]
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "",
+        "token_usage": {
+          "input_tokens": 29,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 51,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 80
+        },
+        "usage_metadata": null,
+        "end_turn": true
+      }
+    }
+  ]
+}

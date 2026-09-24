@@ -1,0 +1,326 @@
+{
+  "vendor": "glm",
+  "bridge": "genai",
+  "tag": "anthropic-tool-t1",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant.",
+    "model": "GLM-5.3-Flash",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "description": "Get the current weather for a city",
+        "name": "get_weather",
+        "parameters": {
+          "properties": {
+            "city": {
+              "description": "City name, e.g. 北京",
+              "type": "string"
+            }
+          },
+          "required": [
+            "city"
+          ],
+          "type": "object"
+        },
+        "strict": false,
+        "type": "function"
+      }
+    ]
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": null,
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "The",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " user",
+        "content_index": 1
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " asks",
+        "content_index": 2
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " about",
+        "content_index": 3
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 4
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " weather",
+        "content_index": 5
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " in",
+        "content_index": 6
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Beijing",
+        "content_index": 7
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " today",
+        "content_index": 8
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " and",
+        "content_index": 9
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " explicitly",
+        "content_index": 10
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " requests",
+        "content_index": 11
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " I",
+        "content_index": 12
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " call",
+        "content_index": 13
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 14
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " get",
+        "content_index": 15
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "_weather",
+        "content_index": 16
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " tool",
+        "content_index": 17
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 18
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " I",
+        "content_index": 19
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "'ll",
+        "content_index": 20
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " call",
+        "content_index": 21
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " it",
+        "content_index": 22
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " with",
+        "content_index": 23
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " city",
+        "content_index": 24
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " \"",
+        "content_index": 25
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "北京",
+        "content_index": 26
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\".",
+        "content_index": 27
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "f44209e18d044cd8b6438819",
+        "content_index": 28
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "function_call",
+        "id": "call_912f63b8e9c24f79b44de396",
+        "name": "get_weather",
+        "arguments": "",
+        "call_id": "call_912f63b8e9c24f79b44de396"
+      }
+    },
+    {
+      "ToolCallInputDelta": {
+        "item_id": "call_912f63b8e9c24f79b44de396",
+        "call_id": "call_912f63b8e9c24f79b44de396",
+        "delta": "{\""
+      }
+    },
+    {
+      "ToolCallInputDelta": {
+        "item_id": "call_912f63b8e9c24f79b44de396",
+        "call_id": "call_912f63b8e9c24f79b44de396",
+        "delta": "city"
+      }
+    },
+    {
+      "ToolCallInputDelta": {
+        "item_id": "call_912f63b8e9c24f79b44de396",
+        "call_id": "call_912f63b8e9c24f79b44de396",
+        "delta": "\":\""
+      }
+    },
+    {
+      "ToolCallInputDelta": {
+        "item_id": "call_912f63b8e9c24f79b44de396",
+        "call_id": "call_912f63b8e9c24f79b44de396",
+        "delta": "北京"
+      }
+    },
+    {
+      "ToolCallInputDelta": {
+        "item_id": "call_912f63b8e9c24f79b44de396",
+        "call_id": "call_912f63b8e9c24f79b44de396",
+        "delta": "\""
+      }
+    },
+    {
+      "ToolCallInputDelta": {
+        "item_id": "call_912f63b8e9c24f79b44de396",
+        "call_id": "call_912f63b8e9c24f79b44de396",
+        "delta": "}"
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user asks about the weather in Beijing today and explicitly requests I call the get_weather tool. I'll call it with city \"北京\"."
+          }
+        ],
+        "encrypted_content": "The user asks about the weather in Beijing today and explicitly requests I call the get_weather tool. I'll call it with city \"北京\"."
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "function_call",
+        "id": "call_912f63b8e9c24f79b44de396",
+        "name": "get_weather",
+        "arguments": "{\"city\":\"北京\"}",
+        "call_id": "call_912f63b8e9c24f79b44de396"
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "",
+        "token_usage": {
+          "input_tokens": 194,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 40,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 234
+        },
+        "usage_metadata": null,
+        "end_turn": false
+      }
+    }
+  ]
+}

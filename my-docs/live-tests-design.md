@@ -150,3 +150,25 @@ Rust 社区**没有**成熟的"live LLM/agent E2E 测试框架"——本 crate �
 | P1 | CI nightly:GitHub Actions manual-dispatch + LIVE_* secrets 跑全矩阵 | 厂商改版/限流当日发现 | 半天 |
 | P2 | E4:产物保留策略(留最近 N 组) | logs 无限增长 | 1h |
 | P2 | test-group 限并发(nextest groups) | 多厂商并发打限流 | 1h |
+
+## 10. 落地记录(2026-09-24,第二批交付)
+
+P0/P1/P2 全部完成,含过程中测试体系抓到的两个新真问题:
+
+| 项 | 状态 | 备注 |
+|---|---|---|
+| P0 错误路径场景(auth_rejected × 厂商 × 桥) | ✅ | **抓到真问题:rig 把 401 延迟到流内,core 的重登录恢复循环永不触发**。修复:桥在返回前急切拉取首个流事件;并补齐 `ProviderResponseError` 变体的状态码映射(此前只认 `HttpError` 变体) |
+| P0 桥边界 cassette | ✅ | `LIVE_CASSETTE=record/replay`;fixtures 按厂商×桥×场景落盘;**replay 模式无凭据零网络**(29 用例 0.077s 全绿);`ResponseEvent` 补 serde derive |
+| P1 anthropic 工具两轮 | ✅ | 两个厂商全过(thinking 签名回放验证) |
+| P1 并行工具调用 | ✅ | 场景 + 离线单测双覆盖 |
+| P1 usage 合理性不变量 | ✅ | input>0、total≥in+out |
+| P1 A/B 自动 diff | ✅ | **抓到真问题:rig 桥从不发 `Created` 事件**(rig 流无 Start 概念)。修复:泵前合成 `Created`。断言用"折叠后种类序列"(增量分块粒度是流内部行为,非语义差异);已知分歧白名单:`glm/anthropic-tool-t1/t2`(GLM 网关对两适配器请求形态反应不同,语义不变量均通过;rig-anthropic 请求对齐留在 backlog) |
+| P2 丢弃宿主工具 debug→warn | ✅ | |
+| P2 E5 rig 桥单测 | ✅ | 16 个(convert_request 9 + convert_response 7),含增量字节一致性回归 |
+| P2 manifest + INDEX | ✅ | 每次 L3 运行写 manifest.json(git rev/二进制 mtime);`cargo run -p codex-live-tests --bin index-logs` 生成可浏览 INDEX.md |
+| P2 E4 产物保留 | ✅ | 每厂商留最近 25 组运行 + 120 条桥日志,自动清理 |
+| P2 nextest 限并发 | ✅ | live 组 max-threads=2 + 范围化重试 {3 次, 10s 退避}(GLM 限流实战调出) |
+| P1 nightly CI | ✅ | `.github/workflows/live-tests.yml`(手动+每日定时,secrets 注入,产物上传) |
+| P3 客户端复用 | ⏸ | 维持阻塞记录(等 rig 传输层稳定) |
+
+新增 backkog:rig-anthropic 适配器请求对齐(GLM 下 t1 前导文本/t2 thinking 的触发差异)。

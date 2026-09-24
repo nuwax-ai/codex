@@ -369,8 +369,10 @@ fn parse_tools(tools: &[Value]) -> Vec<ToolDefinition> {
             }
             // Responses-only hosted tools (web_search etc.) have no Chat
             // Completions equivalent; drop with a warning like LiteLLM does.
+            // warn-level because losing a tool is a silent capability
+            // regression the user should be able to see in logs.
             Some(other) => {
-                tracing::debug!(tool_type = other, "Dropping non-function tool");
+                tracing::warn!(tool_type = other, "Dropping non-function tool (no Chat Completions equivalent)");
             }
             None => {}
         }
@@ -389,4 +391,216 @@ fn flat_function_tool(v: &Value) -> Option<ToolDefinition> {
             .to_string(),
         parameters: v.get("parameters").cloned().unwrap_or(Value::Null),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_request(input: Vec<ResponseItem>) -> ResponsesApiRequest {
+        ResponsesApiRequest {
+            model: "test-model".into(),
+            instructions: "be helpful".into(),
+            input,
+            tools: None,
+            tool_choice: "auto".into(),
+            parallel_tool_calls: true,
+            reasoning: None,
+            store: false,
+            stream: true,
+            stream_options: None,
+            include: vec![],
+            service_tier: None,
+            prompt_cache_key: None,
+            text: None,
+            client_metadata: None,
+            access_programs: None,
+        }
+    }
+
+    fn user_text(text: &str) -> ResponseItem {
+        ResponseItem::Message {
+            id: None,
+            role: "user".into(),
+            content: vec![ContentItem::InputText {
+                text: text.to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }
+    }
+
+    fn assistant_text(text: &str) -> ResponseItem {
+        ResponseItem::Message {
+            id: None,
+            role: "assistant".into(),
+            content: vec![ContentItem::OutputText {
+                text: text.to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }
+    }
+
+    fn reasoning_item(content: &str) -> ResponseItem {
+        ResponseItem::Reasoning {
+            id: None,
+            summary: vec![],
+            content: Some(vec![codex_protocol::models::ReasoningItemContent::ReasoningText {
+                text: content.to_string(),
+            }]),
+            encrypted_content: Some(content.to_string()),
+            internal_chat_message_metadata_passthrough: None,
+        }
+    }
+
+    fn function_call(call_id: &str, name: &str, arguments: &str) -> ResponseItem {
+        ResponseItem::FunctionCall {
+            id: None,
+            name: name.into(),
+            namespace: None,
+            arguments: arguments.into(),
+            encrypted_function_args: None,
+            call_id: call_id.into(),
+            internal_chat_message_metadata_passthrough: None,
+        }
+    }
+
+    fn tool_output(call_id: &str, output: &str) -> ResponseItem {
+        ResponseItem::FunctionCallOutput {
+            id: None,
+            call_id: Some(call_id.into()),
+            name: None,
+            namespace: None,
+            output: codex_protocol::models::FunctionCallOutputPayload {
+                body: FunctionCallOutputBody::Text(output.into()),
+                success: Some(true),
+            },
+            internal_chat_message_metadata_passthrough: None,
+        }
+    }
+
+    #[test]
+    fn empty_input_yields_none() {
+        assert!(responses_request_to_completion_request(&base_request(vec![])).is_none());
+    }
+
+    #[test]
+    fn system_prompt_becomes_leading_system_message() {
+        let req = responses_request_to_completion_request(&base_request(vec![user_text("hi")]))
+            .expect("convertible");
+        assert_eq!(req.chat_history.len(), 2);
+        assert!(matches!(
+            req.chat_history.first(),
+            Some(Message::System { content }) if content == "be helpful"
+        ));
+    }
+
+    #[test]
+    fn reasoning_echoes_into_previous_assistant_message() {
+        let req = responses_request_to_completion_request(&base_request(vec![
+            assistant_text("answer"),
+            reasoning_item("thinking..."),
+        ]))
+        .expect("convertible");
+        // system + one assistant message carrying text AND reasoning
+        assert_eq!(req.chat_history.len(), 2);
+        let Message::Assistant { content, .. } = req.chat_history.last().expect("assistant") else {
+            panic!("expected assistant message");
+        };
+        assert_eq!(content.len(), 2);
+        assert!(matches!(content[0], AssistantContent::Text(_)));
+        assert!(matches!(content[1], AssistantContent::Reasoning(_)));
+    }
+
+    #[test]
+    fn function_call_merges_into_last_assistant_message() {
+        let req = responses_request_to_completion_request(&base_request(vec![
+            user_text("weather?"),
+            assistant_text("let me check"),
+            function_call("call_1", "get_weather", r#"{"city":"北京"}"#),
+        ]))
+        .expect("convertible");
+        let Message::Assistant { content, .. } = req.chat_history.last().expect("assistant")
+        else {
+            panic!("expected assistant message");
+        };
+        // text + tool call in one assistant message (Chat Completions shape)
+        assert_eq!(content.len(), 2);
+        assert!(matches!(content[1], AssistantContent::ToolCall(_)));
+    }
+
+    #[test]
+    fn tool_result_resolves_name_from_call_id_and_lands_in_user_message() {
+        let req = responses_request_to_completion_request(&base_request(vec![
+            function_call("call_1", "get_weather", r#"{"city":"北京"}"#),
+            tool_output("call_1", "sunny"),
+        ]))
+        .expect("convertible");
+        let Message::User { content } = req.chat_history.last().expect("user") else {
+            panic!("expected user message");
+        };
+        let UserContent::ToolResult(result) = content.last().expect("tool result") else {
+            panic!("expected tool result");
+        };
+        assert_eq!(result.name, "get_weather");
+        assert!(matches!(
+            result.content.first(),
+            Some(ToolResultContent::Text(_))
+        ));
+    }
+
+    #[test]
+    fn namespace_tools_flatten_to_mcp_names() {
+        let tools_json = r#"[{
+            "type": "namespace",
+            "name": "mcp__memory",
+            "tools": [
+                {"type": "function", "name": "create_entities", "description": "d",
+                 "parameters": {"type": "object"}}
+            ]
+        }]"#;
+        let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
+        let parsed = parse_tools(&tools);
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].name, "mcp__memory__create_entities");
+    }
+
+    #[test]
+    fn hosted_tools_are_dropped() {
+        let tools_json = r#"[
+            {"type": "web_search"},
+            {"type": "function", "name": "f", "description": "", "parameters": {}}
+        ]"#;
+        let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
+        let parsed = parse_tools(&tools);
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].name, "f");
+    }
+
+    #[test]
+    fn tool_choice_maps_known_values() {
+        use rig_core::completion::message::ToolChoice;
+        assert!(matches!(map_tool_choice("auto"), Some(ToolChoice::Auto)));
+        assert!(matches!(map_tool_choice("none"), Some(ToolChoice::None)));
+        assert!(matches!(map_tool_choice("required"), Some(ToolChoice::Required)));
+        assert!(matches!(
+            map_tool_choice("get_weather"),
+            Some(ToolChoice::Specific { .. })
+        ));
+    }
+
+    #[test]
+    fn high_reasoning_efforts_pass_through_unclamped() {
+        let mut request = base_request(vec![user_text("hi")]);
+        request.reasoning = Some(codex_api::Reasoning {
+            effort: Some(ReasoningEffort::XHigh),
+            summary: None,
+            context: None,
+        });
+        let req =
+            responses_request_to_completion_request(&request).expect("convertible");
+        let params = req.additional_params.expect("params present");
+        assert_eq!(params["reasoning_effort"], "xhigh");
+    }
 }

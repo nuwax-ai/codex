@@ -136,9 +136,15 @@ fn vendor_from_env(lookup: &dyn Fn(&str) -> Option<String>, name: &str) -> Optio
     let is_mimo = name == "mimo";
     // MIMO_* stays as a fallback so the original .env.local keeps working.
     let api_key = lookup(&key_var).or_else(|| is_mimo.then(|| lookup("MIMO_API_KEY")).flatten());
-    let Some(api_key) = api_key else {
-        println!("no API key configured for vendor `{name}` ({key_var}) — skipping vendor");
-        return None;
+    let api_key = match api_key {
+        Some(key) => key,
+        // Replay mode is fully offline: cassette fixtures carry everything
+        // the assertions need, so a placeholder key keeps the vendor active.
+        None if cassette_mode() == CassetteMode::Replay => "(replay-placeholder)".to_string(),
+        None => {
+            println!("no API key configured for vendor `{name}` ({key_var}) — skipping vendor");
+            return None;
+        }
     };
     let base_url = lookup(&chat_var).or_else(|| is_mimo.then(|| lookup("MIMO_BASE_URL")).flatten());
     let base_url = match base_url {
@@ -344,6 +350,18 @@ pub async fn run_turn(
     request: &ResponsesApiRequest,
     tag: &str,
 ) -> Vec<ResponseEvent> {
+    if cassette_mode() == CassetteMode::Replay
+        && let Some(fixture) = load_fixture(&cfg.vendor, bridge.name(), tag)
+    {
+        println!(
+            "[cassette] replaying {}/{}-{} ({} events, offline)",
+            cfg.vendor,
+            bridge.name(),
+            tag,
+            fixture.events.len()
+        );
+        return fixture.events;
+    }
     match bridge {
         Bridge::Genai => {
             let is_anthropic =
@@ -383,7 +401,9 @@ async fn run_turn_genai(
     .await
     .expect("stream_via_genai started within timeout")
     .expect("stream_via_genai succeeded");
-    drain_stream(stream, &cfg.vendor, tag).await
+    let events = drain_stream(stream, &cfg.vendor, tag).await;
+    record_turn(cfg, Bridge::Genai, tag, request, &events);
+    events
 }
 
 /// One bridge-level turn through the rig bridge (protocol picked from the
@@ -408,7 +428,9 @@ pub async fn run_turn_rig(
     .await
     .expect("stream_via_rig started within timeout")
     .expect("stream_via_rig succeeded");
-    drain_stream(stream, &cfg.vendor, tag).await
+    let events = drain_stream(stream, &cfg.vendor, tag).await;
+    record_turn(cfg, Bridge::Rig, tag, request, &events);
+    events
 }
 
 // ================================================================
@@ -563,6 +585,8 @@ pub async fn run_marker_turn(
         .join(format!("live-{}", cfg.vendor))
         .join(&marker);
     std::fs::create_dir_all(&artifacts_dir)?;
+    write_manifest(&artifacts_dir, cfg, protocol, bridge);
+    prune_artifacts(artifacts_dir.parent().expect("vendor dir").to_path_buf());
 
     let last_message_path = home.path().join("last_message.txt");
     let binary = codex_exec_binary()?;
@@ -666,15 +690,25 @@ pub fn assert_completed_with_usage(events: &[ResponseEvent], context: &str) {
         .filter(|e| matches!(e, ResponseEvent::Completed { .. }))
         .count();
     assert_eq!(completed, 1, "{context}: expected exactly one Completed event");
+    let usage = events.iter().find_map(|e| match e {
+        ResponseEvent::Completed {
+            token_usage: Some(usage),
+            ..
+        } => Some(usage.clone()),
+        _ => None,
+    });
+    let Some(usage) = usage else {
+        panic!("{context}: Completed event should carry token usage");
+    };
+    // Plausibility invariants: a mis-mapped usage counter (e.g. swapped
+    // input/output or a missing normalization) shows up here immediately.
     assert!(
-        events.iter().any(|e| matches!(
-            e,
-            ResponseEvent::Completed {
-                token_usage: Some(_),
-                ..
-            }
-        )),
-        "{context}: Completed event should carry token usage"
+        usage.input_tokens > 0,
+        "{context}: input_tokens should be positive, got {usage:?}"
+    );
+    assert!(
+        usage.total_tokens >= usage.input_tokens + usage.output_tokens,
+        "{context}: total_tokens should cover input+output, got {usage:?}"
     );
 }
 
@@ -760,8 +794,270 @@ pub fn end_turn_of(events: &[ResponseEvent]) -> Option<bool> {
 }
 
 // ================================================================
+// Bridge-boundary cassette (record / replay)
+// ================================================================
+
+/// Cassette mode from `LIVE_CASSETTE`: unset = live only, `record` = live
+/// and persist fixtures, `replay` = serve recorded fixtures when present
+/// (falls back to live with a notice when a fixture is missing).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CassetteMode {
+    Off,
+    Record,
+    Replay,
+}
+
+pub fn cassette_mode() -> CassetteMode {
+    match std::env::var("LIVE_CASSETTE").as_deref() {
+        Ok("record") => CassetteMode::Record,
+        Ok("replay") => CassetteMode::Replay,
+        _ => CassetteMode::Off,
+    }
+}
+
+/// One recorded bridge-boundary turn: the exact request and the exact event
+/// stream, serialized to `tests/fixtures/<vendor>/<bridge>-<tag>.json`.
+/// Fixtures contain prompts and model text only — never credentials.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct TurnFixture {
+    pub vendor: String,
+    pub bridge: String,
+    pub tag: String,
+    /// The request, serialized as plain JSON for documentation (replay only
+    /// consumes `events`, so no typed round-trip is required here).
+    pub request: serde_json::Value,
+    pub events: Vec<ResponseEvent>,
+}
+
+pub fn fixture_path(vendor: &str, bridge: &str, tag: &str) -> Option<PathBuf> {
+    let root = repo_root()?;
+    Some(
+        root.join("codex-rs")
+            .join("live-tests")
+            .join("tests")
+            .join("fixtures")
+            .join(vendor)
+            .join(format!("{bridge}-{tag}.json")),
+    )
+}
+
+pub fn load_fixture(vendor: &str, bridge: &str, tag: &str) -> Option<TurnFixture> {
+    let path = fixture_path(vendor, bridge, tag)?;
+    let contents = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&contents).ok()
+}
+
+pub fn store_fixture(fixture: &TurnFixture) {
+    let Some(path) = fixture_path(&fixture.vendor, &fixture.bridge, &fixture.tag) else {
+        return;
+    };
+    if let Some(parent) = path.parent()
+        && std::fs::create_dir_all(parent).is_ok()
+        && let Ok(json) = serde_json::to_string_pretty(fixture)
+        && std::fs::write(&path, json).is_ok()
+    {
+        println!("[cassette] recorded {}", path.display());
+    }
+}
+
+/// Stable kind tag per event, for A/B sequence diffs between bridges.
+pub fn event_kind(event: &ResponseEvent) -> &'static str {
+    match event {
+        ResponseEvent::Created { .. } => "created",
+        ResponseEvent::OutputItemAdded(item) => match item {
+            ResponseItem::Message { .. } => "added.message",
+            ResponseItem::Reasoning { .. } => "added.reasoning",
+            ResponseItem::FunctionCall { .. } => "added.function_call",
+            _ => "added.other",
+        },
+        ResponseEvent::OutputTextDelta(_) => "delta.text",
+        ResponseEvent::ReasoningContentDelta { .. } => "delta.reasoning",
+        ResponseEvent::ToolCallInputDelta { .. } => "delta.tool",
+        ResponseEvent::OutputItemDone(item) => match item {
+            ResponseItem::Message { .. } => "done.message",
+            ResponseItem::Reasoning { .. } => "done.reasoning",
+            ResponseItem::FunctionCall { .. } => "done.function_call",
+            _ => "done.other",
+        },
+        ResponseEvent::Completed { .. } => "completed",
+        _ => "other",
+    }
+}
+
+// ================================================================
+// Error-path probing
+// ================================================================
+
+/// Starts a turn and returns the bridge's start error (if any) without
+/// draining — used by the auth-rejected scenario to assert HTTP status
+/// passthrough (401 must reach codex-core's re-login loop as Http{401}).
+pub async fn turn_start_error(
+    cfg: &LiveConfig,
+    base_url: &str,
+    bridge: Bridge,
+    request: &ResponsesApiRequest,
+) -> Option<String> {
+    let bad_auth: SharedAuthProvider = Arc::new(StaticBearerAuth(format!(
+        "invalid-key-{}",
+        cfg.api_key.len()
+    )));
+    let provider = vendor_provider(&cfg.vendor, base_url);
+    let result = match bridge {
+        Bridge::Genai => {
+            let adapter_kind =
+                if codex_rust_rig_bridge::protocol_for_base_url(base_url)
+                    == codex_rust_rig_bridge::RigProtocol::Anthropic
+                {
+                    genai::adapter::AdapterKind::Anthropic
+                } else {
+                    genai::adapter::AdapterKind::OpenAI
+                };
+            timeout(
+                TURN_TIMEOUT,
+                codex_rust_genai_bridge::stream_via_genai(
+                    request,
+                    &provider,
+                    &bad_auth,
+                    HeaderMap::new(),
+                    adapter_kind,
+                    provider.stream_idle_timeout,
+                ),
+            )
+            .await
+        }
+        Bridge::Rig => {
+            timeout(
+                TURN_TIMEOUT,
+                codex_rust_rig_bridge::stream_via_rig(
+                    request,
+                    &provider,
+                    &bad_auth,
+                    HeaderMap::new(),
+                    provider.stream_idle_timeout,
+                ),
+            )
+            .await
+        }
+    };
+    match result {
+        Ok(Ok(mut stream)) => {
+            // genai (and any bridge that defers HTTP failures into the
+            // stream) surfaces a bad key as the first error EVENT — drain
+            // until it arrives so the scenario can assert on it either way.
+            loop {
+                match timeout(TURN_TIMEOUT, stream.rx_event.recv()).await {
+                    Ok(Some(Err(api_error))) => return Some(format!("{api_error:#}")),
+                    // A completed turn means the request unexpectedly
+                    // succeeded despite the invalid key.
+                    Ok(Some(Ok(ResponseEvent::Completed { .. }))) => return None,
+                    Ok(None) => return None,
+                    Err(_elapsed) => return Some("drain timed out".to_string()),
+                    Ok(Some(Ok(_))) => {}
+                }
+            }
+        }
+        Ok(Err(api_error)) => Some(format!("{api_error:#}")),
+        Err(_elapsed) => Some("start timed out".to_string()),
+    }
+}
+
+// ================================================================
 // Artifact persistence
 // ================================================================
+
+/// Records what code produced this run: git revision, binary mtime, and the
+/// vendor/scenario — so any artifact directory can be traced back to a
+/// build. Written into every binary-level run directory.
+fn write_manifest(dir: &Path, cfg: &LiveConfig, scenario: &str, bridge: Option<&str>) {
+    let root = repo_root();
+    let git_rev = root
+        .and_then(|root| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .arg("rev-parse")
+                .arg("--short")
+                .arg("HEAD")
+                .output()
+                .ok()
+        })
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string());
+    let binary_mtime = codex_exec_binary()
+        .ok()
+        .and_then(|p| p.metadata().ok())
+        .and_then(|m| m.modified().ok())
+        .map(|t| {
+            t.duration_since(SystemTime::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or_default()
+        });
+    let manifest = serde_json::json!({
+        "timestamp": SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or_default(),
+        "git_rev": git_rev,
+        "binary_mtime_unix": binary_mtime,
+        "vendor": cfg.vendor,
+        "model": cfg.model,
+        "scenario": scenario,
+        "experimental_bridge": bridge,
+    });
+    let _ = std::fs::write(dir.join("manifest.json"), manifest.to_string());
+}
+
+/// Keeps the newest `KEEP_RUNS` run directories (and `KEEP_BRIDGE_LOGS`
+/// bridge event logs) so `logs/` cannot grow unboundedly.
+const KEEP_RUNS: usize = 25;
+const KEEP_BRIDGE_LOGS: usize = 120;
+
+fn prune_artifacts(vendor_dir: PathBuf) {
+    fn prune_dir(dir: &Path, keep: usize) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let mut dirs: Vec<(std::time::SystemTime, PathBuf)> = entries
+            .flatten()
+            .filter_map(|e| {
+                let path = e.path();
+                let mtime = e.metadata().ok()?.modified().ok()?;
+                Some((mtime, path))
+            })
+            .collect();
+        if dirs.len() <= keep {
+            return;
+        }
+        dirs.sort_by(|a, b| b.0.cmp(&a.0)); // newest first
+        for (_, path) in dirs.iter().skip(keep) {
+            if path.is_dir() {
+                let _ = std::fs::remove_dir_all(path);
+            } else {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+    prune_dir(&vendor_dir, KEEP_RUNS);
+    prune_dir(&vendor_dir.join("bridge"), KEEP_BRIDGE_LOGS);
+}
+
+fn record_turn(
+    cfg: &LiveConfig,
+    bridge: Bridge,
+    tag: &str,
+    request: &ResponsesApiRequest,
+    events: &[ResponseEvent],
+) {
+    if cassette_mode() != CassetteMode::Record {
+        return;
+    }
+    store_fixture(&TurnFixture {
+        vendor: cfg.vendor.clone(),
+        bridge: bridge.name().to_string(),
+        tag: tag.to_string(),
+        request: serde_json::to_value(request).unwrap_or(serde_json::Value::Null),
+        events: events.to_vec(),
+    });
+}
 
 fn persist_lines(vendor: &str, subdir: &str, tag: &str, lines: &[String]) {
     let Some(root) = repo_root() else {

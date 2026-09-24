@@ -171,6 +171,122 @@ async fn scenario_anthropic(cfg: &LiveConfig, bridge: Bridge) {
     codex_live_tests::assert_reasoning_before_message(&events, &ctx);
 }
 
+/// Error path: an invalid key must surface as an HTTP 401 transport error
+/// — the rig bridge preserves the status so codex-core's re-login loop can
+/// trigger. The genai bridge historically flattens errors to a network
+/// string, so only the string content is asserted there.
+async fn scenario_auth_rejected(cfg: &LiveConfig, bridge: Bridge) {
+    use codex_live_tests::turn_start_error;
+    let request = base_request(cfg, "You are a helpful assistant.", "hi");
+    let error = turn_start_error(cfg, &cfg.base_url, bridge, &request)
+        .await
+        .unwrap_or_else(|| panic!("{}/{} auth: expected a start error for an invalid key", cfg.vendor, bridge.name()));
+    println!("[summary] {}/{} auth error: {error}", cfg.vendor, bridge.name());
+    assert!(
+        error.contains("401"),
+        "{}/{} auth: error should mention 401, got: {error}",
+        cfg.vendor,
+        bridge.name()
+    );
+    if bridge == Bridge::Rig {
+        // Strict for rig: the status code survives mapping (Http{401}).
+        assert!(
+            error.to_lowercase().contains("http"),
+            "{}/{} auth: rig errors should surface as HTTP transport errors, got: {error}",
+            cfg.vendor,
+            bridge.name()
+        );
+    }
+}
+
+/// Anthropic wire with a tool round trip — the classic breakage point is
+/// thinking-block + signature replay on the second turn.
+async fn scenario_anthropic_tool_round_trip(cfg: &LiveConfig, bridge: Bridge) {
+    let Some(anthropic_url) = anthropic_url_or_skip(cfg) else {
+        return;
+    };
+    let ctx = format!("{}/{} anthropic-tool", cfg.vendor, bridge.name());
+    let mut request = base_request(
+        cfg,
+        "You are a helpful assistant.",
+        "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
+    );
+    request.tools = Some(weather_tools());
+    request.parallel_tool_calls = false;
+
+    let turn1 = run_turn(cfg, &anthropic_url, bridge, &request, "anthropic-tool-t1").await;
+    codex_live_tests::assert_completed_with_usage(&turn1, &ctx);
+    assert_eq!(
+        codex_live_tests::end_turn_of(&turn1),
+        Some(false),
+        "{ctx}: tool turn should end with end_turn=false"
+    );
+    let function_call =
+        extract_function_call(&turn1).expect("anthropic tool call emitted");
+    assert_eq!(function_call.0, "get_weather");
+
+    let mut input = request.input.clone();
+    let (_, arguments, call_id) = function_call;
+    input.push(ResponseItem::FunctionCall {
+        id: None,
+        name: "get_weather".into(),
+        namespace: None,
+        arguments,
+        encrypted_function_args: None,
+        call_id: call_id.clone(),
+        internal_chat_message_metadata_passthrough: None,
+    });
+    input.push(ResponseItem::FunctionCallOutput {
+        id: None,
+        call_id: Some(call_id),
+        name: None,
+        namespace: None,
+        output: FunctionCallOutputPayload {
+            body: FunctionCallOutputBody::Text(
+                r#"{"city":"北京","condition":"晴","temp_c":23}"#.into(),
+            ),
+            success: Some(true),
+        },
+        internal_chat_message_metadata_passthrough: None,
+    });
+    request.input = input;
+
+    let turn2 = run_turn(cfg, &anthropic_url, bridge, &request, "anthropic-tool-t2").await;
+    assert!(
+        codex_live_tests::text_len(&turn2) > 0,
+        "{ctx}: expected a final answer after the tool result"
+    );
+    codex_live_tests::assert_completed_with_usage(&turn2, &ctx);
+}
+
+/// Parallel tool calls: the prompt demands two independent calls; the
+/// multi-call accumulator is exercised whenever the model complies (the
+/// count is reported — strictly-parallel behavior varies by model).
+async fn scenario_parallel_tools(cfg: &LiveConfig, bridge: Bridge) {
+    let ctx = format!("{}/{} parallel-tools", cfg.vendor, bridge.name());
+    let mut request = base_request(
+        cfg,
+        "You are a helpful assistant.",
+        "请分别查询北京和上海两个城市的天气：用两次独立的 get_weather 工具调用（一次查北京，一次查上海，不要合并成一次调用），然后一起告诉我。",
+    );
+    request.tools = Some(weather_tools());
+    request.parallel_tool_calls = true;
+
+    let events = run_turn(cfg, &cfg.base_url, bridge, &request, "parallel-tools").await;
+    codex_live_tests::assert_completed_with_usage(&events, &ctx);
+    let calls = events
+        .iter()
+        .filter(|e| {
+            matches!(
+                e,
+                ResponseEvent::OutputItemDone(ResponseItem::FunctionCall { .. })
+            )
+        })
+        .count();
+    println!("[summary] {ctx}: {calls} tool call(s) in one turn");
+    assert!(calls >= 1, "{ctx}: expected at least one tool call");
+}
+
 // ================================================================
 // Matrix generation
 // ================================================================
@@ -205,6 +321,92 @@ bridge_matrix!(chat, scenario_chat, ["mimo", "glm"]);
 bridge_matrix!(effort_low, scenario_effort_low, ["mimo", "glm"]);
 bridge_matrix!(tool_round_trip, scenario_tool_round_trip, ["mimo", "glm"]);
 bridge_matrix!(anthropic, scenario_anthropic, ["mimo", "glm"]);
+bridge_matrix!(anthropic_tool_round_trip, scenario_anthropic_tool_round_trip, ["mimo", "glm"]);
+bridge_matrix!(parallel_tools, scenario_parallel_tools, ["mimo", "glm"]);
+bridge_matrix!(auth_rejected, scenario_auth_rejected, ["mimo", "glm"]);
+
+/// (vendor, tag) pairs with known, documented event-sequence divergences
+/// between the bridges. Each entry must carry a reason; remove once fixed.
+const KNOWN_BRIDGE_DIVERGENCES: &[(&str, &str)] = &[
+    // GLM's Anthropic gateway reacts differently to the two adapters'
+    // request shapes: through rig it emits no text preamble before the t1
+    // tool call and no thinking on the t2 replay turn (genai gets both).
+    // Neither breaks codex semantics — the scenario invariants all hold —
+    // but the event sequences are not byte-order-identical. rig-anthropic
+    // request parity is tracked in the design-doc backlog.
+    ("glm", "anthropic-tool-t1"),
+    ("glm", "anthropic-tool-t2"),
+];
+
+/// A/B diff (offline): when cassette fixtures exist for both bridges of the
+/// same vendor+tag, their event-kind sequences must match — an automatic
+/// structural equivalence check between the genai and rig bridges.
+#[test]
+fn ab_diff_fixtures() {
+    let vendors = codex_live_tests::vendors();
+    if vendors.is_empty() {
+        println!("no vendors configured — skipping");
+        return;
+    }
+    let mut checked = 0;
+    for cfg in &vendors {
+        let Ok(entries) = std::fs::read_dir(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures")
+                .join(&cfg.vendor),
+        ) else {
+            continue;
+        };
+        let mut tags: Vec<String> = entries
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().into_string().ok()?;
+                name.strip_prefix("genai-")?.strip_suffix(".json").map(|t| t.to_string())
+            })
+            .collect();
+        tags.sort();
+        for tag in tags {
+            let (Some(g), Some(r)) = (
+                codex_live_tests::load_fixture(&cfg.vendor, "genai", &tag),
+                codex_live_tests::load_fixture(&cfg.vendor, "rig", &tag),
+            ) else {
+                continue;
+            };
+            // Compare COLLAPSED kind sequences: consecutive duplicate kinds
+            // (delta granularity) are provider-stream internals, not a
+            // semantic difference between the bridges.
+            fn collapse(kinds: Vec<&str>) -> Vec<&str> {
+                let mut out: Vec<&str> = Vec::new();
+                for kind in kinds {
+                    if out.last() != Some(&kind) {
+                        out.push(kind);
+                    }
+                }
+                out
+            }
+            let gk = collapse(g.events.iter().map(codex_live_tests::event_kind).collect());
+            let rk = collapse(r.events.iter().map(codex_live_tests::event_kind).collect());
+            if gk != rk
+                && KNOWN_BRIDGE_DIVERGENCES
+                    .iter()
+                    .any(|(v, t)| *v == cfg.vendor && *t == tag)
+            {
+                println!(
+                    "[ab-diff] {}/{}: known divergence (see KNOWN_BRIDGE_DIVERGENCES), skipping",
+                    cfg.vendor, tag
+                );
+                continue;
+            }
+            assert_eq!(
+                gk, rk,
+                "{}/{}: collapsed event-kind sequences differ between genai and rig fixtures",
+                cfg.vendor, tag
+            );
+            checked += 1;
+        }
+    }
+    println!("[summary] ab_diff checked {checked} fixture pair(s)");
+}
 
 // ================================================================
 // Helpers

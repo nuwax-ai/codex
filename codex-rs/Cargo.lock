@@ -3766,6 +3766,7 @@ dependencies = [
  "genai",
  "http 1.4.0",
  "paste",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",
