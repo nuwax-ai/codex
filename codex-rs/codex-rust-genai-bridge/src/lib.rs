@@ -6,10 +6,12 @@
 //! `ResponseEvent`s — preserving the existing Codex type system for all
 //! upstream consumers.
 
+mod bridge_impl;
 mod convert_request;
 mod convert_response;
 mod resolver;
 mod stream;
 mod types;
 
+pub use bridge_impl::GenaiChatBridge;
 pub use stream::stream_via_genai;

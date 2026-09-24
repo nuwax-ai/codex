@@ -3111,23 +3111,6 @@ impl WebsocketTelemetry for ApiTelemetry {
     }
 }
 
-#[cfg(feature = "rust-genai")]
-fn adapter_kind_for_base_url(base_url: &str) -> genai::adapter::AdapterKind {
-    // This function is only called for the Chat API path (wire_api == Chat).
-    // Providers whose base URL routes to an Anthropic-protocol gateway
-    // (e.g. Xiaomi MiMo's `https://…/anthropic/v1`) are served by genai's
-    // Anthropic adapter, which posts to `{base_url}messages` with
-    // `x-api-key` auth. Everything else speaks OpenAI-compatible Chat
-    // Completions; endpoint and auth are overridden per provider via the
-    // bridge's resolver functions, so `AdapterKind::OpenAI` covers the rest.
-    let path = base_url.split_once("://").map_or(base_url, |(_, rest)| rest);
-    if path.contains("/anthropic") {
-        genai::adapter::AdapterKind::Anthropic
-    } else {
-        genai::adapter::AdapterKind::OpenAI
-    }
-}
-
 /// Whether a `wire_api = "responses"` provider is served through the chat
 /// bridge instead of the upstream-native Responses transport (fork policy).
 ///
@@ -3152,9 +3135,9 @@ fn responses_routes_via_chat_bridge(
 
 /// Sends the Chat-Completions request through the bridge the provider
 /// selected via `experimental_bridge` (fork extension). Unset defaults to
-/// the rig bridge; `"genai"` opts back into the original bridge. Both
-/// bridges expose the same surface and feed codex's shared retry/telemetry
-/// loop.
+/// the rig bridge; `"genai"` opts back into the original bridge; the
+/// concrete implementations are isolated behind the `ChatModelBridge`
+/// trait in codex-api, so this dispatch knows no bridge-specific types.
 #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
 async fn dispatch_chat_bridge(
     request: &codex_api::ResponsesApiRequest,
@@ -3164,63 +3147,59 @@ async fn dispatch_chat_bridge(
     wire: WireApi,
 ) -> std::result::Result<codex_api::ResponseStream, codex_api::ApiError> {
     use codex_model_provider_info::ChatBridge;
-    match bridge.unwrap_or_default() {
+
+    let protocol = codex_api::chat_wire_protocol(
+        wire == WireApi::Anthropic,
+        &client_setup.api_provider.base_url,
+    );
+
+    let bridge_impl: &dyn codex_api::ChatModelBridge = match bridge.unwrap_or_default() {
         #[cfg(feature = "rust-genai")]
-        ChatBridge::Genai => {
-            let adapter_kind = match wire {
-                WireApi::Anthropic => genai::adapter::AdapterKind::Anthropic,
-                _ => adapter_kind_for_base_url(&client_setup.api_provider.base_url),
-            };
-            codex_rust_genai_bridge::stream_via_genai(
-                request,
-                &client_setup.api_provider,
-                &client_setup.api_auth,
-                extra_headers,
-                adapter_kind,
-                client_setup.api_provider.stream_idle_timeout,
-            )
-            .await
-        }
-        #[cfg(not(feature = "rust-genai"))]
-        ChatBridge::Genai => Err(codex_api::ApiError::InvalidRequest {
-            message: "experimental_bridge = \"genai\" requires the rust-genai feature \
-                      (this build only enables the rig bridge); remove the key to use \
-                      the default rig bridge"
-                .into(),
-        }),
+        ChatBridge::Genai => &codex_rust_genai_bridge::GenaiChatBridge,
         #[cfg(feature = "rust-rig")]
-        ChatBridge::Rig => {
-            let protocol = match wire {
-                WireApi::Anthropic => codex_rust_rig_bridge::RigProtocol::Anthropic,
-                _ => codex_rust_rig_bridge::RigProtocol::from_base_url(
-                    &client_setup.api_provider.base_url,
-                ),
-            };
-            codex_rust_rig_bridge::stream_via_rig(
-                request,
-                &client_setup.api_provider,
-                &client_setup.api_auth,
-                extra_headers,
-                protocol,
-                client_setup.api_provider.stream_idle_timeout,
-            )
-            .await
+        ChatBridge::Rig => &codex_rust_rig_bridge::RigChatBridge,
+        // `native` only applies to the Responses wire; a chat-wire provider
+        // has no native transport to fall back to. Match arms that are
+        // compiled out collapse into one of the above when a single bridge
+        // feature is enabled.
+        #[cfg(not(feature = "rust-genai"))]
+        ChatBridge::Genai => {
+            return Err(codex_api::ApiError::InvalidRequest {
+                message: "experimental_bridge = \"genai\" requires the rust-genai feature; \
+                          remove the key to use the default rig bridge"
+                    .into(),
+            });
         }
         #[cfg(not(feature = "rust-rig"))]
-        ChatBridge::Rig => Err(codex_api::ApiError::InvalidRequest {
-            message: "the default rig bridge requires the rust-rig feature; rebuild with \
-                      it enabled, or set experimental_bridge = \"genai\" on the provider"
-                .into(),
-        }),
-        // `native` only applies to the Responses wire; a chat-wire provider
-        // has no native transport to fall back to.
-        ChatBridge::Native => Err(codex_api::ApiError::InvalidRequest {
-            message: "experimental_bridge = \"native\" requires wire_api = \"responses\"; \
-                      chat-wire providers must use the genai or rig bridge"
-                .into(),
-        }),
-    }
+        ChatBridge::Rig => {
+            return Err(codex_api::ApiError::InvalidRequest {
+                message: "the default rig bridge requires the rust-rig feature; set \
+                          experimental_bridge = \"genai\" on the provider"
+                    .into(),
+            });
+        }
+        #[allow(unreachable_patterns)]
+        ChatBridge::Native => {
+            return Err(codex_api::ApiError::InvalidRequest {
+                message: "experimental_bridge = \"native\" requires wire_api = \"responses\"; \
+                          chat-wire providers must use the genai or rig bridge"
+                    .into(),
+            });
+        }
+    };
+
+    bridge_impl
+        .stream(
+            request,
+            &client_setup.api_provider,
+            &client_setup.api_auth,
+            extra_headers,
+            protocol,
+            client_setup.api_provider.stream_idle_timeout,
+        )
+        .await
 }
+
 
 #[cfg(test)]
 #[path = "client_tests.rs"]

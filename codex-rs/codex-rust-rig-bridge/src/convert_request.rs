@@ -61,7 +61,15 @@ pub(crate) fn responses_request_to_completion_request(
         max_tokens: None,
         tool_choice: map_tool_choice(&request.tool_choice),
         additional_params: build_additional_params(request),
-        output_schema: None,
+        // `text.format` → structured output. rig serializes the schema as
+        // `response_format: {json_schema, strict: true}`; note rig always
+        // requests strict validation, so codex's `strict: false` cannot be
+        // honored (documented in the field-mapping audit).
+        output_schema: request.text.as_ref().and_then(|text| {
+            text.format
+                .as_ref()
+                .and_then(|format| serde_json::from_value(format.schema.clone()).ok())
+        }),
         record_telemetry_content: false,
     })
 }
@@ -72,6 +80,25 @@ pub(crate) fn responses_request_to_completion_request(
 /// provider verbatim.
 fn build_additional_params(request: &ResponsesApiRequest) -> Option<Value> {
     let mut params = serde_json::Map::new();
+    // `text.verbosity` has no typed field on rig's chat wire; forward
+    // verbatim (same string the OpenAI Chat API accepts).
+    if let Some(verbosity) = request
+        .text
+        .as_ref()
+        .and_then(|text| text.verbosity.as_ref())
+    {
+        params.insert(
+            "verbosity".into(),
+            Value::String(
+                match verbosity {
+                    codex_api::OpenAiVerbosity::Low => "low",
+                    codex_api::OpenAiVerbosity::Medium => "medium",
+                    codex_api::OpenAiVerbosity::High => "high",
+                }
+                .to_string(),
+            ),
+        );
+    }
     if let Some(reasoning) = request.reasoning.as_ref()
         && let Some(effort) = reasoning.effort.as_ref()
         && *effort != ReasoningEffort::Medium
@@ -602,5 +629,71 @@ mod tests {
             responses_request_to_completion_request(&request).expect("convertible");
         let params = req.additional_params.expect("params present");
         assert_eq!(params["reasoning_effort"], "xhigh");
+    }
+}
+
+#[cfg(test)]
+mod text_format_tests {
+    use super::*;
+
+    #[test]
+    fn text_format_maps_to_output_schema() {
+        let mut request = base_request(vec![user_text_fixture("hi")]);
+        request.text = Some(codex_api::TextControls {
+            verbosity: None,
+            format: Some(codex_api::TextFormat {
+                r#type: codex_api::TextFormatType::JsonSchema,
+                strict: false,
+                schema: serde_json::json!({"type": "object", "properties": {"answer": {"type": "string"}}}),
+                name: "answer_shape".into(),
+            }),
+        });
+        let req = responses_request_to_completion_request(&request).expect("convertible");
+        let schema = req.output_schema.expect("output_schema mapped");
+        assert!(schema.to_value().get("properties").is_some());
+    }
+
+    #[test]
+    fn verbosity_maps_to_additional_params() {
+        let mut request = base_request(vec![user_text_fixture("hi")]);
+        request.text = Some(codex_api::TextControls {
+            verbosity: Some(codex_api::OpenAiVerbosity::Low),
+            format: None,
+        });
+        let req = responses_request_to_completion_request(&request).expect("convertible");
+        assert_eq!(req.additional_params.expect("params")["verbosity"], "low");
+    }
+
+    fn base_request(input: Vec<ResponseItem>) -> ResponsesApiRequest {
+        ResponsesApiRequest {
+            model: "m".into(),
+            instructions: String::new(),
+            input,
+            tools: None,
+            tool_choice: "auto".into(),
+            parallel_tool_calls: true,
+            reasoning: None,
+            store: false,
+            stream: true,
+            stream_options: None,
+            include: vec![],
+            service_tier: None,
+            prompt_cache_key: None,
+            text: None,
+            client_metadata: None,
+            access_programs: None,
+        }
+    }
+
+    fn user_text_fixture(text: &str) -> ResponseItem {
+        ResponseItem::Message {
+            id: None,
+            role: "user".into(),
+            content: vec![ContentItem::InputText {
+                text: text.to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }
     }
 }

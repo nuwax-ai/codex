@@ -6,11 +6,13 @@
 //! active bridge is selected per provider via `experimental_bridge` in config.
 //! See `my-docs/rig-bridge-implementation-plan.md` for the design.
 
+mod bridge_impl;
 mod client;
 mod convert_request;
 mod convert_response;
 mod stream;
 
+pub use bridge_impl::RigChatBridge;
 pub use client::protocol_for_base_url;
 pub use client::RigProtocol;
 pub use stream::stream_via_rig;

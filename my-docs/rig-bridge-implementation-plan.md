@@ -143,3 +143,61 @@ Responses 实现是残缺的(拒绝 `web_search` 宿主工具等),而其 Chat Co
 
 验证:`e2e_responses_via_rig_default`(默认走桥,无需禁 web_search)与
 `e2e_responses_native_escape_hatch`(原生路径)双双通过。
+
+## 12. 字段映射权威审计(2026-09-25,逐项代码核对)
+
+图例:✅ 完整映射 | ⚠️ 映射但有限制 | ❌ inherent 丢失(Chat 协议无对应,无需修)
+
+### 12.1 请求方向(ResponsesApiRequest → 桥)
+
+| codex 字段 | genai 桥 | rig 桥(默认) | 备注 |
+|---|---|---|---|
+| model / instructions | ✅ | ✅ | |
+| Message 文本 | ✅ | ✅ | |
+| Message.phase | ❌ | ❌ | chat 无 phase 概念 |
+| Reasoning.encrypted_content 回传 | ✅ | ✅ | DeepSeek 必需;rig 走 provenance 机制 |
+| Reasoning.summary | ❌ | ❌ | Responses-only |
+| FunctionCall 三元组 | ✅ | ✅ | |
+| FunctionCall.encrypted_function_args | ❌ | ❌ | 加密参数透传,低价值 |
+| FunctionCallOutput | ✅ | ✅ | rig 反查 name 填 rig 必填字段 |
+| CustomToolCall/Output | ✅ | ✅ | |
+| 图片 URL | ✅ | ✅ | |
+| 图片 detail / file_id / 音频 | ❌ | ❌ | 双桥一致(genai 亦不支持) |
+| function 工具 | ✅(解析 strict 字段) | ⚠️(strict 丢失) | rig ToolDefinition 无 strict;其结构化输出恒 strict:true |
+| namespace 工具展平 | ✅ | ✅ | `mcp__ns__tool` 双向闭环 |
+| hosted 工具(web_search 等) | drop+warn | drop+warn | **fork 设计**:桥路径主动消化残缺 Responses 网关 |
+| tool_choice | ✅ | ✅ | |
+| parallel_tool_calls | ✅ extra_body | ✅ additional_params | rig 在 anthropic 线**主动剥离**(GLM 实测未知字段会禁 thinking) |
+| reasoning.effort | ⚠️ Ultra/Persistent 降级+warn | ✅ 全档字符串直传 | rig 更优 |
+| reasoning summary/context | ❌ | ❌ | Responses-only |
+| service_tier / prompt_cache_key | ✅ | ✅ | chat 线 |
+| text.verbosity | ✅ | ✅(**本轮补齐**) | |
+| text.format(结构化输出) | ✅ JsonSpec | ✅ output_schema(**本轮补齐**) | rig 恒 strict;genai JsonSpec 无 strict |
+| store / include / client_metadata | ❌ | ❌ | trace 经 extra_headers 独立转发 ✅ |
+| stream_options(usage) | ✅ capture_usage | ✅ 自动 include_usage | |
+
+### 12.2 响应方向(provider 流 → ResponseEvent)
+
+| 能力 | genai | rig | 备注 |
+|---|---|---|---|
+| 文本/推理/工具增量 | ✅ | ✅ | 增量与最终参数**字节一致**(测试钉死) |
+| 事件顺序契约 | ✅ | ✅ | Created 现为 rig 合成(A/B diff 抓过缺失) |
+| Created.response_id | ✅ | ⚠️ 恒 None | chat 首事件无 id;不影响 turn 循环 |
+| usage 六项(in/cached/cache_write/out/reasoning/total) | ✅ | ✅ | rig 另有 tool_use_prompt_tokens ❌ |
+| Completed.response_id / end_turn | ✅ | ✅ | |
+| usage_metadata / ServerModel / RateLimits / ModelsEtag 事件 | ❌ | ❌ | chat 无对应;native 路径保留 |
+| 401/5xx 启动错误(重登录循环) | ⚠️ 字符串含 401 | ✅ Http{status} | rig 双修复(急切首事件+ProviderResponse 状态提取) |
+
+### 12.3 结论
+
+**两桥能力对等**(本轮补齐 rig 的 text.format/verbosity 后);剩余 ❌ 全部为
+Chat 协议 inherent 或低价值项,与 my-docs/openai-responses-chat-bridge.md §10
+的 INHERENT 清单一致。rig 相对 genai 的净优势:effort 全档直传、401 透传、
+多 provider 方言(DeepSeek/ollama 原生)。
+
+### 12.4 trait 隔离重构(同轮完成)
+
+`codex-api::ChatModelBridge`(中立 trait + `ChatWireProtocol` + URL 嗅探收敛为
+`chat_wire_protocol()`),两桥以单元结构体实现(`GenaiChatBridge`/`RigChatBridge`),
+core 分派只见 `&dyn ChatModelBridge`——桥的协议类型(AdapterKind/RigProtocol)
+不再泄漏进 core。加第三家桥 = 实现 trait + 一个 match 臂。
