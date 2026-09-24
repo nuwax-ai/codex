@@ -352,6 +352,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Build the tag's exact SHA: a manual dispatch combining a branch
+          # checkout with a tag_name input would otherwise stamp the branch
+          # HEAD as the tag's version.
+          ref: ${{ needs.get-version.outputs.tag_name }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -383,6 +388,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.get-version.outputs.tag_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -400,13 +407,6 @@ jobs:
           VERSION: ${{ needs.get-version.outputs.version }}
         run: |
           bash npm/publish/update-base-package.sh "$VERSION"
-
-      - name: Publish main package to npm (latest)
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          cd npm
-          npm publish --access public
 
       - name: Install ossutil
         if: success()
@@ -441,3 +441,31 @@ jobs:
               --access-key-id "$OSS_ACCESS_KEY_ID" \
               --access-key-secret "$OSS_ACCESS_KEY_SECRET"
           done
+
+      # Publish to npm ONLY after every binary asset is uploaded and
+      # verified: publishing first creates a window where installs 404,
+      # and a later upload failure would leave an uninstallable version
+      # that a re-run cannot fix (npm rejects same-version republish).
+      - name: Verify all release assets are downloadable
+        env:
+          VERSION: ${{ needs.get-version.outputs.version }}
+        run: |
+          EXPECTED=6
+          FOUND=0
+          for t in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl \
+                   aarch64-unknown-linux-musl x86_64-pc-windows-msvc aarch64-pc-windows-msvc; do
+            ext="tar.gz"; [ "${t#*windows}" != "$t" ] && ext="zip"
+            code=$(curl -s -o /dev/null -w "%{http_code}" \
+              "https://nuwa-packages.oss-rg-china-mainland.aliyuncs.com/nuwax-codex/${{ needs.get-version.outputs.tag_name }}/codex-${t}.${ext}")
+            echo "$t -> HTTP $code"
+            [ "$code" = "200" ] && FOUND=$((FOUND+1))
+          done
+          echo "Assets verified: $FOUND/$EXPECTED"
+          [ "$FOUND" -eq "$EXPECTED" ]
+
+      - name: Publish main package to npm (latest)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd npm
+          npm publish --access public

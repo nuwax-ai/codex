@@ -24,10 +24,16 @@ function getTargetTriple() {
     return a === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
   }
   if (p === "linux") {
-    if (a !== "x64") throw new Error(`Unsupported Linux arch: ${a}`);
-    return familySync() === "musl"
-      ? "x86_64-unknown-linux-musl"
-      : "x86_64-unknown-linux-gnu";
+    const musl = familySync() === "musl";
+    if (a === "x64") {
+      return musl ? "x86_64-unknown-linux-musl" : "x86_64-unknown-linux-gnu";
+    }
+    if (a === "arm64") {
+      // Release builds aarch64-unknown-linux-musl; glibc arm64 maps to it
+      // (static musl binaries run on glibc hosts).
+      return "aarch64-unknown-linux-musl";
+    }
+    throw new Error(`Unsupported Linux arch: ${a}`);
   }
   if (p === "win32") {
     return a === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
@@ -46,7 +52,9 @@ function getBinaryName() {
 // -- download & cache -------------------------------------------------------
 
 function cacheDir() {
-  return join(homedir(), ".nuwax-codex-cache", VERSION);
+  // Include the target triple: sharing HOME across glibc/musl containers
+  // or architectures would otherwise execute the wrong binary.
+  return join(homedir(), ".nuwax-codex-cache", VERSION, getTargetTriple());
 }
 
 function cachedBinaryPath() {
@@ -67,6 +75,12 @@ async function downloadBinary(url, outPath) {
   let downloaded = 0;
   const reader = res.body.getReader();
   const ws = createWriteStream(outPath);
+  // Surface write errors (EACCES/ENOSPC/EMFILE) as promise rejections
+  // instead of unhandled 'error' events that kill the process before the
+  // outer catch can make the install fault-tolerant.
+  const writeFailed = new Promise((_, reject) => {
+    ws.on("error", reject);
+  });
   const logInterval = setInterval(() => {
     if (total > 0) {
       process.stderr.write(
@@ -81,6 +95,11 @@ async function downloadBinary(url, outPath) {
       if (done) break;
       ws.write(value);
       downloaded += value.length;
+      // A failed write rejects `writeFailed`; race so it escapes as a
+      // normal rejection the outer catch can tolerate.
+      await Promise.race([writeFailed.then(() => {}, () => {
+        throw new Error(`Failed to write ${outPath} (disk full or permission denied)`);
+      }), Promise.resolve()]);
     }
   } finally {
     clearInterval(logInterval);
