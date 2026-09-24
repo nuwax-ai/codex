@@ -21,6 +21,10 @@ use rig_core::streaming::ToolCallDeltaContent;
 
 /// Accumulated state for one streamed assistant turn.
 pub(crate) struct PendingRigMessage {
+    /// Names of custom (freeform) tools declared in this request: their
+    /// completed calls are restored as CustomToolCall items so codex
+    /// dispatches the Custom payload handlers expect.
+    custom_tools: std::sync::Arc<std::collections::HashSet<String>>,
     text_buffer: String,
     text_item_id: Option<String>,
     text_item_added: bool,
@@ -51,6 +55,10 @@ struct PendingRigTool {
     /// `OutputItemAdded` event always precedes the first
     /// `ToolCallInputDelta`, then flushed in order.
     pending_deltas: Vec<String>,
+    /// Set only by the complete ToolCall event. rig discards calls whose
+    /// arguments never became parseable (finish_reason=length); Final must
+    /// not resurrect them as completed FunctionCall items.
+    confirmed: bool,
 }
 
 impl PendingRigTool {
@@ -61,6 +69,7 @@ impl PendingRigTool {
             arguments: String::new(),
             item_added: false,
             pending_deltas: Vec::new(),
+            confirmed: false,
         }
     }
 }
@@ -83,8 +92,9 @@ fn unique_suffix() -> String {
 }
 
 impl PendingRigMessage {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(custom_tools: std::sync::Arc<std::collections::HashSet<String>>) -> Self {
         Self {
+            custom_tools,
             text_buffer: String::new(),
             text_item_id: None,
             text_item_added: false,
@@ -177,7 +187,16 @@ pub(crate) fn rig_event_to_response_events(
                     }
                 }
                 ToolCallDeltaContent::Delta(args) => {
+                    const MAX_TOOL_ARGS_BYTES: usize = 1_048_576;
                     let entry = pending.entry_for(internal_call_id.clone());
+                    if entry.arguments.len() + args.len() > MAX_TOOL_ARGS_BYTES {
+                        tracing::warn!(
+                            limit = MAX_TOOL_ARGS_BYTES,
+                            "tool arguments exceeded size cap; dropping further deltas"
+                        );
+                        entry.confirmed = false;
+                        return events;
+                    }
                     entry.arguments.push_str(&args);
                     if entry.item_added {
                         if !args.is_empty() {
@@ -203,7 +222,7 @@ pub(crate) fn rig_event_to_response_events(
             internal_call_id,
         } => {
             // The complete tool call is authoritative: record name, wire id
-            // and final arguments; emit `OutputItemAdded` here only when the
+            // and arguments; emit `OutputItemAdded` here only when the
             // deltas never did (name-less fragments).
             let mut events = Vec::new();
             let wire_call_id = provider_call_id(tool_call.provider.as_ref())
@@ -212,9 +231,20 @@ pub(crate) fn rig_event_to_response_events(
             let entry = pending.entry_for(internal_call_id.clone());
             entry.name = name.clone();
             entry.call_id = wire_call_id.clone();
-            // Only overwrite the streamed-delta concatenation when no deltas
-            // arrived for this call (arguments still empty).
-            if entry.arguments.is_empty() {
+            entry.confirmed = true;
+            // Prefer the streamed-delta concatenation (byte-identity with
+            // what consumers already saw) — but fall back to the
+            // authoritative value when the raw concatenation is not valid
+            // JSON (rig repairs placeholder/null-prefixed fragments).
+            if entry.arguments.is_empty()
+                || serde_json::from_str::<serde_json::Value>(&entry.arguments).is_err()
+            {
+                if !entry.arguments.is_empty() {
+                    tracing::warn!(
+                        raw_len = entry.arguments.len(),
+                        "streamed tool arguments unparseable; using rig's authoritative value"
+                    );
+                }
                 entry.arguments = tool_call.function.arguments.to_string();
             }
             if !entry.item_added {
@@ -298,13 +328,41 @@ fn handle_stream_final(
         }));
     }
 
-    // 3. Each tool call completes as a FunctionCall item carrying the final
-    //    serialized arguments in arrival order.
+    // 3. Each CONFIRMED tool call completes as a FunctionCall item carrying
+    //    the final serialized arguments in arrival order. Calls that only
+    //    produced deltas but no complete ToolCall event were discarded by
+    //    rig (e.g. truncated output) and must not be resurrected.
     let tools = std::mem::take(&mut pending.tools);
     for internal_id in std::mem::take(&mut pending.tool_order) {
         let Some(tool) = tools.get(&internal_id) else {
             continue;
         };
+        if !tool.confirmed {
+            tracing::warn!(
+                tool = %tool.name,
+                "dropping unconfirmed tool call (no complete ToolCall event from rig)"
+            );
+            continue;
+        }
+        if pending.custom_tools.contains(tool.name.as_str()) {
+            // Custom (freeform) tool: unwrap the {"input": string} wrapper
+            // the request side declared and restore the CustomToolCall item
+            // codex's dispatch expects for Custom payloads.
+            let input = serde_json::from_str::<serde_json::Value>(&tool.arguments)
+                .ok()
+                .and_then(|v| v.get("input").and_then(|i| i.as_str()).map(str::to_string))
+                .unwrap_or_else(|| tool.arguments.clone());
+            events.push(ResponseEvent::OutputItemDone(ResponseItem::CustomToolCall {
+                id: Some(ResponseItemId::from_server(internal_id.clone())),
+                status: None,
+                call_id: tool.call_id.clone(),
+                name: tool.name.clone(),
+                namespace: None,
+                input,
+                internal_chat_message_metadata_passthrough: None,
+            }));
+            continue;
+        }
         events.push(ResponseEvent::OutputItemDone(ResponseItem::FunctionCall {
             id: Some(ResponseItemId::from_server(internal_id.clone())),
             name: tool.name.clone(),
@@ -472,7 +530,7 @@ mod tests {
     }
 
     fn drive(events: Vec<StreamedAssistantContent>) -> Vec<ResponseEvent> {
-        let mut pending = PendingRigMessage::new();
+        let mut pending = PendingRigMessage::new(std::sync::Arc::new(Default::default()));
         events
             .into_iter()
             .flat_map(|e| rig_event_to_response_events(e, &mut pending))
@@ -605,7 +663,7 @@ mod tests {
     /// detect it.
     #[test]
     fn stream_without_final_never_completes() {
-        let mut pending = PendingRigMessage::new();
+        let mut pending = PendingRigMessage::new(std::sync::Arc::new(Default::default()));
         let events = rig_event_to_response_events(text_delta("hi"), &mut pending);
         assert!(events.iter().all(|e| !matches!(e, ResponseEvent::Completed { .. })));
         assert!(!pending.completed_emitted());
@@ -616,5 +674,93 @@ mod tests {
             ResponseEvent::Completed { end_turn, .. } => *end_turn,
             _ => None,
         })
+    }
+}
+
+#[cfg(test)]
+mod custom_tool_response_tests {
+    use super::*;
+
+    /// A completed call for a declared custom tool restores CustomToolCall
+    /// with the unwrapped input string (codex dispatch expects Custom
+    /// payloads for apply_patch-style handlers); function tools keep the
+    /// FunctionCall item.
+    #[test]
+    fn custom_tool_done_restores_custom_tool_call() {
+        let custom: std::collections::HashSet<String> =
+            ["apply_patch".to_string()].into_iter().collect();
+        let mut pending = PendingRigMessage::new(std::sync::Arc::new(custom));
+
+        let tool_event = StreamedAssistantContent::ToolCall {
+            internal_call_id: "t1".into(),
+            tool_call: rig_core::completion::message::ToolCall {
+                id: rig_core::completion::message::ToolCallId::new_or_mint("call_1"),
+                provider: None,
+                function: rig_core::completion::message::ToolFunction {
+                    name: "apply_patch".into(),
+                    arguments: serde_json::json!({"input": "*** Begin Patch\n+hello"}),
+                },
+                signature: None,
+                additional_params: None,
+            },
+        };
+        let final_event = StreamedAssistantContent::Final(StreamFinal::new(
+            "test",
+            rig_core::completion::request::Usage::new(),
+        ));
+
+        let mut all = Vec::new();
+        all.extend(rig_event_to_response_events(tool_event, &mut pending));
+        all.extend(rig_event_to_response_events(final_event, &mut pending));
+
+        let done_item = all
+            .iter()
+            .find_map(|e| match e {
+                ResponseEvent::OutputItemDone(item) => Some(item.clone()),
+                _ => None,
+            })
+            .expect("one Done item");
+        match done_item {
+            ResponseItem::CustomToolCall { input, name, .. } => {
+                assert_eq!(name, "apply_patch");
+                assert!(input.contains("Begin Patch"), "input unwrapped: {input}");
+            }
+            other => panic!("expected CustomToolCall, got {other:?}"),
+        }
+    }
+
+    /// Unconfirmed calls (deltas only, no complete ToolCall) must NOT be
+    /// resurrected at Final — rig discarded them (e.g. truncated output).
+    #[test]
+    fn unconfirmed_tool_call_not_resurrected_at_final() {
+        let mut pending =
+            PendingRigMessage::new(std::sync::Arc::new(Default::default()));
+        // name arrives → establishes item; deltas accumulate; NO complete event
+        let name_event = StreamedAssistantContent::ToolCallDelta {
+            internal_call_id: "t1".into(),
+            content: ToolCallDeltaContent::Name("get_weather".into()),
+        };
+        let delta_event = StreamedAssistantContent::ToolCallDelta {
+            internal_call_id: "t1".into(),
+            content: ToolCallDeltaContent::Delta(r#"{"city":"# .into()),
+        };
+        let final_event = StreamedAssistantContent::Final(StreamFinal::new(
+            "test",
+            rig_core::completion::request::Usage::new(),
+        ));
+        let mut all = Vec::new();
+        for ev in [name_event, delta_event, final_event] {
+            all.extend(rig_event_to_response_events(ev, &mut pending));
+        }
+        let has_function_call_done = all.iter().any(|e| {
+            matches!(
+                e,
+                ResponseEvent::OutputItemDone(ResponseItem::FunctionCall { .. })
+            )
+        });
+        assert!(
+            !has_function_call_done,
+            "unconfirmed call must not be emitted as Done"
+        );
     }
 }

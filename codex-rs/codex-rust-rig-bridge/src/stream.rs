@@ -34,11 +34,10 @@ pub async fn stream_via_rig(
     protocol: RigProtocol,
     idle_timeout: Duration,
 ) -> Result<ResponseStream, ApiError> {
-    let mut completion_request = responses_request_to_completion_request(request).ok_or(
-        ApiError::InvalidRequest {
+    let (mut completion_request, custom_tool_names) =
+        responses_request_to_completion_request(request).ok_or(ApiError::InvalidRequest {
             message: "No convertible messages in request".into(),
-        },
-    )?;
+        })?;
 
     if protocol == RigProtocol::Anthropic {
         // Anthropic's wire requires max_tokens; codex does not model an
@@ -113,8 +112,9 @@ pub async fn stream_via_rig(
 
     let (tx, rx) = mpsc::channel(RESPONSE_STREAM_CHANNEL_CAPACITY);
 
+    let custom_tool_names = std::sync::Arc::new(custom_tool_names);
     tokio::spawn(async move {
-        let mut pending = PendingRigMessage::new();
+        let mut pending = PendingRigMessage::new(custom_tool_names);
 
         // rig streams have no start event; synthesize `Created` so the
         // event sequence matches the genai bridge (A/B parity) and any

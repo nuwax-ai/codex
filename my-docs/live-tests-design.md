@@ -256,3 +256,13 @@ review 证实的桥正确性七项全部修复(单元 22/22 + 全矩阵 64/64):
 剩余 backlog:#5(custom 工具往返,需工具类型追踪)、#6(output_schema 带工具首请求)、
 #10/#11(Final 时的不完整调用/参数覆盖)、#15/#16(genai 状态透传/网关 OAuth 头)、
 #13(Ask 预设权限)、#17-21(config/proto/schema/Bazel/app-server)、#36-43(发布链)。
+
+## 14. Review backlog 第二批(2026-09-25):工具状态机 + custom 工具
+
+| # | 修复 | 实现 |
+|---|---|---|
+| 10 | Final 复活 rig 已丢弃的不完整调用 | PendingRigTool.confirmed 仅由完整 ToolCall 事件置位;Final 只结束已确认调用,未确认的 warn 后丢弃(覆盖单测) |
+| 11 | 原始拼接覆盖权威参数 + 无上限 | 参数累积 1MB 上限;拼接非法 JSON 时回退 rig 权威值(rig 会修复 null 前缀/残缺 JSON);合法时维持字节一致性契约 |
+| 5 | custom/freeform 工具无法往返 | 请求:custom 工具声明为 `{"input": string}` 包装 schema + 名单随请求传递;历史回放同包装;响应:名单内工具的 Done 还原为 CustomToolCall(解包 input 字符串),apply_patch 类 handler 恢复可用(往返单测) |
+
+单元 25/25 + 全矩阵 64/64。

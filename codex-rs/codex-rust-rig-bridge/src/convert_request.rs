@@ -19,7 +19,7 @@ use serde_json::Value;
 /// internal/local items).
 pub(crate) fn responses_request_to_completion_request(
     request: &ResponsesApiRequest,
-) -> Option<CompletionRequest> {
+) -> Option<(CompletionRequest, std::collections::HashSet<String>)> {
     // rig requires at least one message; the system prompt alone does not
     // count as a convertible turn for our purposes.
     let mut chat_history = convert_response_items(&request.input);
@@ -50,9 +50,9 @@ pub(crate) fn responses_request_to_completion_request(
             tools.extend(extra.iter().cloned());
         }
     }
-    let tools = parse_tools(&tools);
+    let (tools, custom_tool_names) = parse_tools(&tools);
 
-    Some(CompletionRequest {
+    Some((CompletionRequest {
         model: Some(request.model.clone()),
         preamble: None,
         chat_history,
@@ -72,7 +72,7 @@ pub(crate) fn responses_request_to_completion_request(
                 .and_then(|format| serde_json::from_value(format.schema.clone()).ok())
         }),
         record_telemetry_content: false,
-    })
+    }, custom_tool_names))
 }
 
 /// Passes through provider-specific request knobs that rig's chat wire does
@@ -259,8 +259,10 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<Message> {
                 call_id,
                 ..
             } => {
-                let args = serde_json::from_str::<Value>(input)
-                    .unwrap_or_else(|_| Value::String(input.clone()));
+                // Custom tools are declared with an {"input": string}
+                // wrapper schema, so history replays use the same shape the
+                // model was told to produce.
+                let args = serde_json::json!({ "input": input });
                 let part = AssistantContent::tool_call(call_id.clone(), name.clone(), args);
                 match messages.last_mut() {
                     Some(Message::Assistant { content, .. }) => content.push(part),
@@ -521,14 +523,42 @@ fn convert_assistant_content(items: &[ContentItem]) -> Vec<AssistantContent> {
 /// Namespace tools (`{"type":"namespace", ...}`) are flattened into
 /// `mcp__<server>__<tool>` function names — the same convention the
 /// registry's flat-name index resolves on the way back.
-fn parse_tools(tools: &[Value]) -> Vec<ToolDefinition> {
+/// Parses tool specs into (definitions, custom-tool names). Custom
+/// (freeform) tools are declared to Chat Completions with an
+/// `{"input": string}` wrapper schema so the model returns the freeform
+/// text as that field; the response side unwraps it back into a
+/// CustomToolCall.
+fn parse_tools(tools: &[Value]) -> (Vec<ToolDefinition>, std::collections::HashSet<String>) {
     let mut parsed = Vec::new();
+    let mut custom_names = std::collections::HashSet::new();
     for v in tools {
         match v.get("type").and_then(|t| t.as_str()) {
-            Some("function") | Some("custom") => {
+            Some("function") => {
                 if let Some(def) = flat_function_tool(v) {
                     parsed.push(def);
                 }
+            }
+            Some("custom") => {
+                let Some(name) = v.get("name").and_then(|n| n.as_str()) else {
+                    continue;
+                };
+                custom_names.insert(name.to_string());
+                parsed.push(ToolDefinition {
+                    name: name.to_string(),
+                    description: v
+                        .get("description")
+                        .and_then(|d| d.as_str())
+                        .unwrap_or("Custom tool; pass the full input text in the `input` field.")
+                        .to_string(),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "input": {"type": "string", "description": "The complete tool input text"}
+                        },
+                        "required": ["input"],
+                        "additionalProperties": false
+                    }),
+                });
             }
             Some("namespace") => {
                 let Some(children) = v.get("tools").and_then(|t| t.as_array()) else {
@@ -564,7 +594,7 @@ fn parse_tools(tools: &[Value]) -> Vec<ToolDefinition> {
             None => {}
         }
     }
-    parsed
+    (parsed, custom_names)
 }
 
 fn flat_function_tool(v: &Value) -> Option<ToolDefinition> {
@@ -674,7 +704,7 @@ mod tests {
 
     #[test]
     fn system_prompt_becomes_leading_system_message() {
-        let req = responses_request_to_completion_request(&base_request(vec![user_text("hi")]))
+        let (req, _) = responses_request_to_completion_request(&base_request(vec![user_text("hi")]))
             .expect("convertible");
         assert_eq!(req.chat_history.len(), 2);
         assert!(matches!(
@@ -685,7 +715,7 @@ mod tests {
 
     #[test]
     fn reasoning_echoes_into_previous_assistant_message() {
-        let req = responses_request_to_completion_request(&base_request(vec![
+        let (req, _) = responses_request_to_completion_request(&base_request(vec![
             assistant_text("answer"),
             reasoning_item("thinking..."),
         ]))
@@ -702,7 +732,7 @@ mod tests {
 
     #[test]
     fn function_call_merges_into_last_assistant_message() {
-        let req = responses_request_to_completion_request(&base_request(vec![
+        let (req, _) = responses_request_to_completion_request(&base_request(vec![
             user_text("weather?"),
             assistant_text("let me check"),
             function_call("call_1", "get_weather", r#"{"city":"北京"}"#),
@@ -719,7 +749,7 @@ mod tests {
 
     #[test]
     fn tool_result_resolves_name_from_call_id_and_lands_in_user_message() {
-        let req = responses_request_to_completion_request(&base_request(vec![
+        let (req, _) = responses_request_to_completion_request(&base_request(vec![
             function_call("call_1", "get_weather", r#"{"city":"北京"}"#),
             tool_output("call_1", "sunny"),
         ]))
@@ -748,9 +778,10 @@ mod tests {
             ]
         }]"#;
         let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
-        let parsed = parse_tools(&tools);
+        let (parsed, custom) = parse_tools(&tools);
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].name, "mcp__memory__create_entities");
+        assert!(custom.is_empty());
     }
 
     #[test]
@@ -760,7 +791,7 @@ mod tests {
             {"type": "function", "name": "f", "description": "", "parameters": {}}
         ]"#;
         let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
-        let parsed = parse_tools(&tools);
+        let (parsed, _) = parse_tools(&tools);
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].name, "f");
     }
@@ -785,7 +816,7 @@ mod tests {
             summary: None,
             context: None,
         });
-        let req =
+        let (req, _) =
             responses_request_to_completion_request(&request).expect("convertible");
         let params = req.additional_params.expect("params present");
         assert_eq!(params["reasoning_effort"], "xhigh");
@@ -808,7 +839,7 @@ mod text_format_tests {
                 name: "answer_shape".into(),
             }),
         });
-        let req = responses_request_to_completion_request(&request).expect("convertible");
+        let (req, _) = responses_request_to_completion_request(&request).expect("convertible");
         let schema = req.output_schema.expect("output_schema mapped");
         assert!(schema.to_value().get("properties").is_some());
     }
@@ -820,7 +851,7 @@ mod text_format_tests {
             verbosity: Some(codex_api::OpenAiVerbosity::Low),
             format: None,
         });
-        let req = responses_request_to_completion_request(&request).expect("convertible");
+        let (req, _) = responses_request_to_completion_request(&request).expect("convertible");
         assert_eq!(req.additional_params.expect("params")["verbosity"], "low");
     }
 
@@ -937,7 +968,7 @@ mod review_fix_tests {
     /// of the text gets dropped).
     #[test]
     fn real_history_order_merges_into_one_assistant_message() {
-        let req = responses_request_to_completion_request(&base_request(vec![
+        let (req, _) = responses_request_to_completion_request(&base_request(vec![
             user_text("weather?"),
             reasoning("thinking about it"),
             assistant_text("let me check"),
@@ -966,7 +997,7 @@ mod review_fix_tests {
     /// AgentMessage plaintext reaches the model as assistant text.
     #[test]
     fn agent_message_forwards_plaintext() {
-        let req = responses_request_to_completion_request(&base_request(vec![
+        let (req, _) = responses_request_to_completion_request(&base_request(vec![
             ResponseItem::AgentMessage {
                 id: None,
                 author: "agent".into(),
@@ -996,7 +1027,7 @@ mod review_fix_tests {
     /// Tool-result images become typed image blocks, never base64 text.
     #[test]
     fn tool_result_data_url_image_becomes_image_block() {
-        let req = responses_request_to_completion_request(&base_request(vec![
+        let (req, _) = responses_request_to_completion_request(&base_request(vec![
             function_call("c1", "view_image", "{}"),
             ResponseItem::FunctionCallOutput {
                 id: None,
@@ -1045,7 +1076,7 @@ mod review_fix_tests {
     /// would drop them as remote links).
     #[test]
     fn input_data_url_image_decodes_to_base64() {
-        let req = responses_request_to_completion_request(&base_request(vec![ResponseItem::Message {
+        let (req, _) = responses_request_to_completion_request(&base_request(vec![ResponseItem::Message {
             id: None,
             role: "user".into(),
             content: vec![ContentItem::InputImage {
@@ -1066,5 +1097,51 @@ mod review_fix_tests {
             UserContent::Image(ref img)
                 if matches!(img.data, DocumentSourceKind::Base64(_))
         ));
+    }
+}
+
+#[cfg(test)]
+mod custom_tool_tests {
+    use super::*;
+
+    #[test]
+    fn custom_tool_gets_input_wrapper_schema_and_round_trips() {
+        let mut request = ResponsesApiRequest {
+            model: "m".into(),
+            instructions: String::new(),
+            input: vec![ResponseItem::Message {
+                id: None,
+                role: "user".into(),
+                content: vec![ContentItem::InputText {
+                    text: "patch it".into(),
+                }],
+                phase: None,
+                internal_chat_message_metadata_passthrough: None,
+            }],
+            tools: None,
+            tool_choice: "auto".into(),
+            parallel_tool_calls: true,
+            reasoning: None,
+            store: false,
+            stream: true,
+            stream_options: None,
+            include: vec![],
+            service_tier: None,
+            prompt_cache_key: None,
+            text: None,
+            client_metadata: None,
+            access_programs: None,
+        };
+        let tools_json = r#"[{"type":"custom","name":"apply_patch","description":"Apply a patch"}]"#;
+        let raw = serde_json::value::RawValue::from_string(tools_json.to_string()).expect("json");
+        request.tools = Some(codex_api::ResponsesApiTools::from(std::sync::Arc::from(raw)));
+
+        let (req, custom) = responses_request_to_completion_request(&request).expect("ok");
+        assert!(custom.contains("apply_patch"));
+        assert_eq!(req.tools.len(), 1);
+        // wrapper schema: input is a required string
+        let schema = &req.tools[0].parameters;
+        assert_eq!(schema["properties"]["input"]["type"], "string");
+        assert_eq!(schema["required"][0], "input");
     }
 }
