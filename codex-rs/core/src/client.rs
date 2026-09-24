@@ -1710,7 +1710,7 @@ impl ModelClientSession {
             inference_trace_attempt.add_request_headers(&mut options.extra_headers);
             inference_trace_attempt.record_started(&request);
 
-            let adapter_kind = adapter_kind_for_provider();
+            let adapter_kind = adapter_kind_for_base_url(&client_setup.api_provider.base_url);
 
             let stream_result = codex_rust_genai_bridge::stream_via_genai(
                 &request,
@@ -3087,12 +3087,20 @@ impl WebsocketTelemetry for ApiTelemetry {
 }
 
 #[cfg(feature = "rust-genai")]
-fn adapter_kind_for_provider() -> genai::adapter::AdapterKind {
+fn adapter_kind_for_base_url(base_url: &str) -> genai::adapter::AdapterKind {
     // This function is only called for the Chat API path (wire_api == Chat).
-    // All Chat Completions providers use OpenAI-compatible protocol.
-    // The bridge overrides endpoint and auth via resolver functions,
-    // so AdapterKind::OpenAI works universally.
-    genai::adapter::AdapterKind::OpenAI
+    // Providers whose base URL routes to an Anthropic-protocol gateway
+    // (e.g. Xiaomi MiMo's `https://…/anthropic/v1`) are served by genai's
+    // Anthropic adapter, which posts to `{base_url}messages` with
+    // `x-api-key` auth. Everything else speaks OpenAI-compatible Chat
+    // Completions; endpoint and auth are overridden per provider via the
+    // bridge's resolver functions, so `AdapterKind::OpenAI` covers the rest.
+    let path = base_url.split_once("://").map_or(base_url, |(_, rest)| rest);
+    if path.contains("/anthropic") {
+        genai::adapter::AdapterKind::Anthropic
+    } else {
+        genai::adapter::AdapterKind::OpenAI
+    }
 }
 
 #[cfg(test)]

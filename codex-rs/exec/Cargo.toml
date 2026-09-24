@@ -18,6 +18,12 @@ doctest = false
 name = "all"
 path = "tests/all.rs"
 
+# Live E2E against a real Chat Completions provider via the rust-genai
+# bridge; skips unless MIMO_API_KEY is configured (env or .env.local).
+[[test]]
+name = "live_mimo"
+path = "tests/live_mimo.rs"
+
 [lints]
 workspace = true
 
@@ -29,7 +35,9 @@ codex-app-server-client = { workspace = true }
 codex-app-server-protocol = { workspace = true }
 codex-cloud-config = { workspace = true }
 codex-config = { workspace = true }
-codex-core = { workspace = true }
+# Enable the rust-genai Chat Completions bridge so headless `codex exec`
+# sessions work with `wire_api = "chat"` providers, matching the CLI binary.
+codex-core = { workspace = true, features = ["rust-genai"] }
 codex-features = { workspace = true }
 codex-feedback = { workspace = true }
 codex-git-utils = { workspace = true }
@@ -77,6 +85,7 @@ opentelemetry_sdk = { workspace = true }
 predicates = { workspace = true }
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
 tracing-opentelemetry = { workspace = true }
 uuid = { workspace = true }
 walkdir = { workspace = true }
