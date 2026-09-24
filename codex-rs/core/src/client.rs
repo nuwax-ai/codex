@@ -1710,6 +1710,7 @@ impl ModelClientSession {
             inference_trace_attempt.add_request_headers(&mut options.extra_headers);
             inference_trace_attempt.record_started(&request);
 
+            let wire_api = self.client.state.provider.info().wire_api;
             let bridge = self.client.state.provider.info().experimental_bridge;
 
             let stream_result = dispatch_chat_bridge(
@@ -1717,6 +1718,7 @@ impl ModelClientSession {
                 &client_setup,
                 options.extra_headers,
                 bridge,
+                wire_api,
             )
             .await;
 
@@ -2415,7 +2417,7 @@ impl ModelClientSession {
                 .await
             }
             #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
-            WireApi::Chat => {
+            WireApi::Chat | WireApi::Anthropic => {
                 self.stream_chat_api(
                     prompt,
                     model_info,
@@ -3159,12 +3161,16 @@ async fn dispatch_chat_bridge(
     client_setup: &CurrentClientSetup,
     extra_headers: http::HeaderMap,
     bridge: Option<codex_model_provider_info::ChatBridge>,
+    wire: WireApi,
 ) -> std::result::Result<codex_api::ResponseStream, codex_api::ApiError> {
     use codex_model_provider_info::ChatBridge;
     match bridge.unwrap_or_default() {
         #[cfg(feature = "rust-genai")]
         ChatBridge::Genai => {
-            let adapter_kind = adapter_kind_for_base_url(&client_setup.api_provider.base_url);
+            let adapter_kind = match wire {
+                WireApi::Anthropic => genai::adapter::AdapterKind::Anthropic,
+                _ => adapter_kind_for_base_url(&client_setup.api_provider.base_url),
+            };
             codex_rust_genai_bridge::stream_via_genai(
                 request,
                 &client_setup.api_provider,
@@ -3184,11 +3190,18 @@ async fn dispatch_chat_bridge(
         }),
         #[cfg(feature = "rust-rig")]
         ChatBridge::Rig => {
+            let protocol = match wire {
+                WireApi::Anthropic => codex_rust_rig_bridge::RigProtocol::Anthropic,
+                _ => codex_rust_rig_bridge::RigProtocol::from_base_url(
+                    &client_setup.api_provider.base_url,
+                ),
+            };
             codex_rust_rig_bridge::stream_via_rig(
                 request,
                 &client_setup.api_provider,
                 &client_setup.api_auth,
                 extra_headers,
+                protocol,
                 client_setup.api_provider.stream_idle_timeout,
             )
             .await

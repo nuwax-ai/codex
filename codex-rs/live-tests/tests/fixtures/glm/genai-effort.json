@@ -41,6 +41,21 @@
       }
     },
     {
+      "OutputTextDelta": "1"
+    },
+    {
+      "OutputTextDelta": "+"
+    },
+    {
+      "OutputTextDelta": "1"
+    },
+    {
+      "OutputTextDelta": " ="
+    },
+    {
+      "OutputTextDelta": " "
+    },
+    {
       "OutputTextDelta": "2"
     },
     {
@@ -51,7 +66,7 @@
         "content": [
           {
             "type": "output_text",
-            "text": "2"
+            "text": "1+1 = 2"
           }
         ]
       }
@@ -63,9 +78,9 @@
           "input_tokens": 31,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 3,
+          "output_tokens": 8,
           "reasoning_output_tokens": 0,
-          "total_tokens": 34
+          "total_tokens": 39
         },
         "usage_metadata": null,
         "end_turn": true

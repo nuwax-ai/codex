@@ -332,6 +332,16 @@ pub enum Bridge {
     Rig,
 }
 
+/// The wire a scenario drives: explicit, mirroring `wire_api` in provider
+/// config. `Chat` keeps the URL heuristic as fallback (MiMo-style
+/// `/anthropic` gateways); `Anthropic` is the explicit protocol for
+/// gateways like StepFun whose URL carries no marker.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum LiveWire {
+    Chat,
+    Anthropic,
+}
+
 impl Bridge {
     pub fn name(self) -> &'static str {
         match self {
@@ -346,6 +356,7 @@ impl Bridge {
 pub async fn run_turn(
     cfg: &LiveConfig,
     base_url: &str,
+    wire: LiveWire,
     bridge: Bridge,
     request: &ResponsesApiRequest,
     tag: &str,
@@ -364,17 +375,27 @@ pub async fn run_turn(
     }
     match bridge {
         Bridge::Genai => {
-            let is_anthropic =
-                codex_rust_rig_bridge::protocol_for_base_url(base_url)
-                    == codex_rust_rig_bridge::RigProtocol::Anthropic;
-            let adapter_kind = if is_anthropic {
-                genai::adapter::AdapterKind::Anthropic
-            } else {
-                genai::adapter::AdapterKind::OpenAI
+            let adapter_kind = match wire {
+                LiveWire::Anthropic => genai::adapter::AdapterKind::Anthropic,
+                LiveWire::Chat if
+                    codex_rust_rig_bridge::RigProtocol::from_base_url(base_url)
+                        == codex_rust_rig_bridge::RigProtocol::Anthropic =>
+                {
+                    genai::adapter::AdapterKind::Anthropic
+                }
+                LiveWire::Chat => genai::adapter::AdapterKind::OpenAI,
             };
             run_turn_genai(cfg, base_url, request, adapter_kind, tag).await
         }
-        Bridge::Rig => run_turn_rig(cfg, base_url, request, tag).await,
+        Bridge::Rig => {
+            let protocol = match wire {
+                LiveWire::Anthropic => codex_rust_rig_bridge::RigProtocol::Anthropic,
+                LiveWire::Chat => {
+                    codex_rust_rig_bridge::RigProtocol::from_base_url(base_url)
+                }
+            };
+            run_turn_rig(cfg, base_url, protocol, request, tag).await
+        }
     }
 }
 
@@ -411,6 +432,7 @@ async fn run_turn_genai(
 pub async fn run_turn_rig(
     cfg: &LiveConfig,
     base_url: &str,
+    protocol: codex_rust_rig_bridge::RigProtocol,
     request: &ResponsesApiRequest,
     tag: &str,
 ) -> Vec<ResponseEvent> {
@@ -422,6 +444,7 @@ pub async fn run_turn_rig(
             &provider,
             &shared_auth(&cfg.api_key),
             HeaderMap::new(),
+            protocol,
             provider.stream_idle_timeout,
         ),
     )
@@ -574,7 +597,7 @@ pub async fn run_marker_turn(
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or_default();
-    let marker = format!("mimo-{protocol}-{nonce}-{}", std::process::id());
+    let marker = format!("{}-{protocol}-{nonce}-{}", cfg.vendor, std::process::id());
     let prompt = format!(
         "请务必调用 shell 工具真实执行命令 `echo {marker}`（不要只把命令当文本输出），然后把命令的原始输出逐字告诉我，不要添加任何解释。"
     );
@@ -933,6 +956,7 @@ pub async fn turn_start_error(
                     &provider,
                     &bad_auth,
                     HeaderMap::new(),
+                    codex_rust_rig_bridge::RigProtocol::from_base_url(base_url),
                     provider.stream_idle_timeout,
                 ),
             )

@@ -1,14 +1,14 @@
 {
-  "vendor": "glm",
-  "bridge": "genai",
-  "tag": "chat",
+  "vendor": "step",
+  "bridge": "rig",
+  "tag": "anthropic",
   "request": {
     "include": [],
     "input": [
       {
         "content": [
           {
-            "text": "用一句话解释什么是斐波那契数列。",
+            "text": "用一句话说明二分查找的思想。",
             "type": "input_text"
           }
         ],
@@ -17,7 +17,7 @@
       }
     ],
     "instructions": "You are a helpful assistant. Answer in Chinese.",
-    "model": "GLM-5.3-Flash",
+    "model": "step-5-preview",
     "parallel_tool_calls": true,
     "reasoning": null,
     "store": false,
@@ -41,392 +41,344 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "The",
+        "delta": "用户",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " user",
+        "delta": "要求用一句话说明",
         "content_index": 1
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " is",
+        "delta": "二分查找的思想。",
         "content_index": 2
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " asking",
+        "delta": "需要用",
         "content_index": 3
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " me",
+        "delta": "中文回答，",
         "content_index": 4
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " to",
+        "delta": "并且控制",
         "content_index": 5
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " explain",
+        "delta": "在一句话内",
         "content_index": 6
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " what",
+        "delta": "。\n\n二分查找的核心",
         "content_index": 7
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": "思想：",
         "content_index": 8
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Fibonacci",
+        "delta": "在",
         "content_index": 9
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " sequence",
+        "delta": "有序数组中，每次",
         "content_index": 10
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " is",
+        "delta": "比较",
         "content_index": 11
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " in",
+        "delta": "中间元素",
         "content_index": 12
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " one",
+        "delta": "与目标值，",
         "content_index": 13
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " sentence",
+        "delta": "根据比较",
         "content_index": 14
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ",",
+        "delta": "结果将",
         "content_index": 15
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " in",
+        "delta": "搜索",
         "content_index": 16
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Chinese",
+        "delta": "区间缩小一半",
         "content_index": 17
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ".\n\n",
+        "delta": "，直到",
         "content_index": 18
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "The",
+        "delta": "找到目标或",
         "content_index": 19
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Fibonacci",
+        "delta": "区间为空。\n\n要",
         "content_index": 20
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " sequence",
+        "delta": "压缩",
         "content_index": 21
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " is",
+        "delta": "成一句话，可以",
         "content_index": 22
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " a",
+        "delta": "这样说",
         "content_index": 23
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " series",
+        "delta": "：\n\"二分查找",
         "content_index": 24
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " of",
+        "delta": "是在有序序列",
         "content_index": 25
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " numbers",
+        "delta": "中，通过",
         "content_index": 26
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " where",
+        "delta": "每次将待",
         "content_index": 27
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " each",
+        "delta": "查",
         "content_index": 28
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " number",
+        "delta": "区间与中间",
         "content_index": 29
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " is",
+        "delta": "元素比较并",
         "content_index": 30
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": "折",
         "content_index": 31
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " sum",
+        "delta": "半缩小",
         "content_index": 32
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " of",
+        "delta": "范围",
         "content_index": 33
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": "，从而快速",
         "content_index": 34
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " two",
+        "delta": "定位目标",
         "content_index": 35
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " preceding",
+        "delta": "元素的算法",
         "content_index": 36
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " ones",
+        "delta": "。\"\n\n或者更简洁",
         "content_index": 37
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ",",
+        "delta": "：\n\"二分查找",
         "content_index": 38
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " typically",
+        "delta": "通过在",
         "content_index": 39
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " starting",
+        "delta": "有序数组中不断",
         "content_index": 40
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " with",
+        "delta": "比较中间",
         "content_index": 41
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " ",
+        "delta": "元素并丢弃",
         "content_index": 42
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "0",
+        "delta": "不可能",
         "content_index": 43
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " and",
+        "delta": "包含",
         "content_index": 44
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " ",
+        "delta": "目标的一半区间",
         "content_index": 45
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "1",
+        "delta": "，每次",
         "content_index": 46
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " (",
+        "delta": "将搜索",
         "content_index": 47
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "or",
+        "delta": "范围减",
         "content_index": 48
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " ",
+        "delta": "半来",
         "content_index": 49
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "1",
+        "delta": "高效查找目标值",
         "content_index": 50
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " and",
+        "delta": "。\"\n\n选择",
         "content_index": 51
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " ",
+        "delta": "较为",
         "content_index": 52
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "1",
+        "delta": "简洁",
         "content_index": 53
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ").\n\n",
+        "delta": "且准确",
         "content_index": 54
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "Let",
+        "delta": "的一句",
         "content_index": 55
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " me",
+        "delta": "。",
         "content_index": 56
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " write",
-        "content_index": 57
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " this",
-        "content_index": 58
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " in",
-        "content_index": 59
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " Chinese",
-        "content_index": 60
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " in",
-        "content_index": 61
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " one",
-        "content_index": 62
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " sentence",
-        "content_index": 63
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ":",
-        "content_index": 64
       }
     },
     {
@@ -438,166 +390,55 @@
       }
     },
     {
-      "OutputTextDelta": "斐"
+      "OutputTextDelta": "二分查找"
     },
     {
-      "OutputTextDelta": "波"
+      "OutputTextDelta": "是在有序"
     },
     {
-      "OutputTextDelta": "那"
+      "OutputTextDelta": "序列中，每次"
     },
     {
-      "OutputTextDelta": "契"
+      "OutputTextDelta": "将目标"
     },
     {
-      "OutputTextDelta": "数"
+      "OutputTextDelta": "值与区间"
     },
     {
-      "OutputTextDelta": "列"
+      "OutputTextDelta": "中间元素比较"
     },
     {
-      "OutputTextDelta": "是一个"
+      "OutputTextDelta": "，进而"
     },
     {
-      "OutputTextDelta": "从"
+      "OutputTextDelta": "舍弃"
     },
     {
-      "OutputTextDelta": "0"
+      "OutputTextDelta": "不可能"
     },
     {
-      "OutputTextDelta": "和"
+      "OutputTextDelta": "包含"
     },
     {
-      "OutputTextDelta": "1"
+      "OutputTextDelta": "目标的一半区间"
     },
     {
-      "OutputTextDelta": "开始"
+      "OutputTextDelta": "，不断"
     },
     {
-      "OutputTextDelta": "、"
+      "OutputTextDelta": "折"
     },
     {
-      "OutputTextDelta": "之后"
+      "OutputTextDelta": "半缩小范围以"
     },
     {
-      "OutputTextDelta": "每个"
+      "OutputTextDelta": "快速"
     },
     {
-      "OutputTextDelta": "数"
+      "OutputTextDelta": "定位的"
     },
     {
-      "OutputTextDelta": "都"
-    },
-    {
-      "OutputTextDelta": "等于"
-    },
-    {
-      "OutputTextDelta": "前"
-    },
-    {
-      "OutputTextDelta": "两个"
-    },
-    {
-      "OutputTextDelta": "数"
-    },
-    {
-      "OutputTextDelta": "之和"
-    },
-    {
-      "OutputTextDelta": "的"
-    },
-    {
-      "OutputTextDelta": "数"
-    },
-    {
-      "OutputTextDelta": "列"
-    },
-    {
-      "OutputTextDelta": "（"
-    },
-    {
-      "OutputTextDelta": "如"
-    },
-    {
-      "OutputTextDelta": "0"
-    },
-    {
-      "OutputTextDelta": ","
-    },
-    {
-      "OutputTextDelta": " "
-    },
-    {
-      "OutputTextDelta": "1"
-    },
-    {
-      "OutputTextDelta": ","
-    },
-    {
-      "OutputTextDelta": " "
-    },
-    {
-      "OutputTextDelta": "1"
-    },
-    {
-      "OutputTextDelta": ","
-    },
-    {
-      "OutputTextDelta": " "
-    },
-    {
-      "OutputTextDelta": "2"
-    },
-    {
-      "OutputTextDelta": ","
-    },
-    {
-      "OutputTextDelta": " "
-    },
-    {
-      "OutputTextDelta": "3"
-    },
-    {
-      "OutputTextDelta": ","
-    },
-    {
-      "OutputTextDelta": " "
-    },
-    {
-      "OutputTextDelta": "5"
-    },
-    {
-      "OutputTextDelta": ","
-    },
-    {
-      "OutputTextDelta": " "
-    },
-    {
-      "OutputTextDelta": "8"
-    },
-    {
-      "OutputTextDelta": ","
-    },
-    {
-      "OutputTextDelta": " "
-    },
-    {
-      "OutputTextDelta": "13"
-    },
-    {
-      "OutputTextDelta": ","
-    },
-    {
-      "OutputTextDelta": " "
-    },
-    {
-      "OutputTextDelta": "21"
-    },
-    {
-      "OutputTextDelta": "……"
-    },
-    {
-      "OutputTextDelta": "）。"
+      "OutputTextDelta": "算法。"
     },
     {
       "OutputItemDone": {
@@ -607,10 +448,10 @@
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The user is asking me to explain what the Fibonacci sequence is in one sentence, in Chinese.\n\nThe Fibonacci sequence is a series of numbers where each number is the sum of the two preceding ones, typically starting with 0 and 1 (or 1 and 1).\n\nLet me write this in Chinese in one sentence:"
+            "text": "用户要求用一句话说明二分查找的思想。需要用中文回答，并且控制在一句话内。\n\n二分查找的核心思想：在有序数组中，每次比较中间元素与目标值，根据比较结果将搜索区间缩小一半，直到找到目标或区间为空。\n\n要压缩成一句话，可以这样说：\n\"二分查找是在有序序列中，通过每次将待查区间与中间元素比较并折半缩小范围，从而快速定位目标元素的算法。\"\n\n或者更简洁：\n\"二分查找通过在有序数组中不断比较中间元素并丢弃不可能包含目标的一半区间，每次将搜索范围减半来高效查找目标值。\"\n\n选择较为简洁且准确的一句。"
           }
         ],
-        "encrypted_content": "The user is asking me to explain what the Fibonacci sequence is in one sentence, in Chinese.\n\nThe Fibonacci sequence is a series of numbers where each number is the sum of the two preceding ones, typically starting with 0 and 1 (or 1 and 1).\n\nLet me write this in Chinese in one sentence:"
+        "encrypted_content": "用户要求用一句话说明二分查找的思想。需要用中文回答，并且控制在一句话内。\n\n二分查找的核心思想：在有序数组中，每次比较中间元素与目标值，根据比较结果将搜索区间缩小一半，直到找到目标或区间为空。\n\n要压缩成一句话，可以这样说：\n\"二分查找是在有序序列中，通过每次将待查区间与中间元素比较并折半缩小范围，从而快速定位目标元素的算法。\"\n\n或者更简洁：\n\"二分查找通过在有序数组中不断比较中间元素并丢弃不可能包含目标的一半区间，每次将搜索范围减半来高效查找目标值。\"\n\n选择较为简洁且准确的一句。"
       }
     },
     {
@@ -621,7 +462,7 @@
         "content": [
           {
             "type": "output_text",
-            "text": "斐波那契数列是一个从0和1开始、之后每个数都等于前两个数之和的数列（如0, 1, 1, 2, 3, 5, 8, 13, 21……）。"
+            "text": "二分查找是在有序序列中，每次将目标值与区间中间元素比较，进而舍弃不可能包含目标的一半区间，不断折半缩小范围以快速定位的算法。"
           }
         ]
       }
@@ -630,12 +471,12 @@
       "Completed": {
         "response_id": "",
         "token_usage": {
-          "input_tokens": 34,
+          "input_tokens": 33,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 121,
-          "reasoning_output_tokens": 65,
-          "total_tokens": 155
+          "output_tokens": 169,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 202
         },
         "usage_metadata": null,
         "end_turn": true

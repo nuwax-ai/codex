@@ -1,0 +1,206 @@
+{
+  "vendor": "step",
+  "bridge": "rig",
+  "tag": "effort",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "1+1 等于几？直接回答。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant.",
+    "model": "step-5-preview",
+    "parallel_tool_calls": true,
+    "reasoning": {
+      "effort": "low"
+    },
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto"
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": null,
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "The",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " user is asking a",
+        "content_index": 1
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " simple math",
+        "content_index": 2
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " question: \"What",
+        "content_index": 3
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " is 1+",
+        "content_index": 4
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "1?",
+        "content_index": 5
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Answer",
+        "content_index": 6
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " directly.\"\n",
+        "content_index": 7
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\nI need to answer",
+        "content_index": 8
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " directly. ",
+        "content_index": 9
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "1 +",
+        "content_index": 10
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " 1 = ",
+        "content_index": 11
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "2.\n\nThe",
+        "content_index": 12
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " user wants a",
+        "content_index": 13
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " direct answer,",
+        "content_index": 14
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " so I should just",
+        "content_index": 15
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " say ",
+        "content_index": 16
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "2.",
+        "content_index": 17
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "2"
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user is asking a simple math question: \"What is 1+1? Answer directly.\"\n\nI need to answer directly. 1 + 1 = 2.\n\nThe user wants a direct answer, so I should just say 2."
+          }
+        ],
+        "encrypted_content": "The user is asking a simple math question: \"What is 1+1? Answer directly.\"\n\nI need to answer directly. 1 + 1 = 2.\n\nThe user wants a direct answer, so I should just say 2."
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "2"
+          }
+        ]
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "920d4090777422ce8eadc3e8d95ae8f7.f6184c607bba41fb35a56607232b9565",
+        "token_usage": {
+          "input_tokens": 37,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 53,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 90
+        },
+        "usage_metadata": null,
+        "end_turn": true
+      }
+    }
+  ]
+}

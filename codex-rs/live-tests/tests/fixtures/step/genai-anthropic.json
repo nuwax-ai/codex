@@ -1,0 +1,633 @@
+{
+  "vendor": "step",
+  "bridge": "genai",
+  "tag": "anthropic",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "用一句话说明二分查找的思想。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant. Answer in Chinese.",
+    "model": "step-5-preview",
+    "parallel_tool_calls": true,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto"
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": null,
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "用户",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "要求用一句话说明",
+        "content_index": 1
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "二分查找的思想。",
+        "content_index": 2
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "我需要",
+        "content_index": 3
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "用中文",
+        "content_index": 4
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "回答",
+        "content_index": 5
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "，并且",
+        "content_index": 6
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "要简洁、",
+        "content_index": 7
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "准确。\n\n二分查找",
+        "content_index": 8
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "的核心思想是：",
+        "content_index": 9
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "在",
+        "content_index": 10
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "有序数组中，每次",
+        "content_index": 11
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "将查找",
+        "content_index": 12
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "区间一",
+        "content_index": 13
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "分为二",
+        "content_index": 14
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "，通过",
+        "content_index": 15
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "比较中间元素",
+        "content_index": 16
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "与目标值的大小",
+        "content_index": 17
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "，排除",
+        "content_index": 18
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "一半不可能",
+        "content_index": 19
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "包含",
+        "content_index": 20
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "目标的",
+        "content_index": 21
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "区间，从而",
+        "content_index": 22
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "逐步",
+        "content_index": 23
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "缩小查找范围直至",
+        "content_index": 24
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "找到目标或",
+        "content_index": 25
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "确定不存在",
+        "content_index": 26
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "。\n\n我需要",
+        "content_index": 27
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "用",
+        "content_index": 28
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "一句话概括，",
+        "content_index": 29
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "可以",
+        "content_index": 30
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "这样表述：",
+        "content_index": 31
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n\"二分查找的思想",
+        "content_index": 32
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "是在一个",
+        "content_index": 33
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "有序序列",
+        "content_index": 34
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "中，每次将",
+        "content_index": 35
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "查找",
+        "content_index": 36
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "区间对",
+        "content_index": 37
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "半分割",
+        "content_index": 38
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "，根据",
+        "content_index": 39
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "中间元素与目标",
+        "content_index": 40
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "值",
+        "content_index": 41
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "的大小关系",
+        "content_index": 42
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "舍弃",
+        "content_index": 43
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "其中",
+        "content_index": 44
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "一半不可能",
+        "content_index": 45
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "包含",
+        "content_index": 46
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "目标的区间，从而",
+        "content_index": 47
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "将查找范围",
+        "content_index": 48
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "不断",
+        "content_index": 49
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "减",
+        "content_index": 50
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "半直至",
+        "content_index": 51
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "命中",
+        "content_index": 52
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "目标",
+        "content_index": 53
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "或",
+        "content_index": 54
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "确认",
+        "content_index": 55
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "其",
+        "content_index": 56
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "不存在。\"\n\n检查",
+        "content_index": 57
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "一下是否准确",
+        "content_index": 58
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "：\n- 前提",
+        "content_index": 59
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "是有序序列",
+        "content_index": 60
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ✓\n- ",
+        "content_index": 61
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "每次对",
+        "content_index": 62
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "半分割",
+        "content_index": 63
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ✓\n- ",
+        "content_index": 64
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "根据比较",
+        "content_index": 65
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "结果舍弃",
+        "content_index": 66
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "一半区间",
+        "content_index": 67
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ✓\n- ",
+        "content_index": 68
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "逐步",
+        "content_index": 69
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "缩小",
+        "content_index": 70
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "范围 ✓\n-",
+        "content_index": 71
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " 结束",
+        "content_index": 72
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "条件（",
+        "content_index": 73
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "找到或不存在",
+        "content_index": 74
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "）✓",
+        "content_index": 75
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n\n这句话比较完整",
+        "content_index": 76
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "，",
+        "content_index": 77
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "符合",
+        "content_index": 78
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\"",
+        "content_index": 79
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "一句话\"的要求。",
+        "content_index": 80
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "fe98ad44de284cb681da5f8701fc3abf",
+        "content_index": 81
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "二分查找的思想"
+    },
+    {
+      "OutputTextDelta": "是在一个"
+    },
+    {
+      "OutputTextDelta": "有序序列中，"
+    },
+    {
+      "OutputTextDelta": "每次将当前"
+    },
+    {
+      "OutputTextDelta": "查找区间对"
+    },
+    {
+      "OutputTextDelta": "半分割，通过"
+    },
+    {
+      "OutputTextDelta": "比较中间元素与"
+    },
+    {
+      "OutputTextDelta": "目标值的大小关系"
+    },
+    {
+      "OutputTextDelta": "，舍弃其中"
+    },
+    {
+      "OutputTextDelta": "一半不可能包含目标的"
+    },
+    {
+      "OutputTextDelta": "区间，从而不断"
+    },
+    {
+      "OutputTextDelta": "将搜索"
+    },
+    {
+      "OutputTextDelta": "范围减"
+    },
+    {
+      "OutputTextDelta": "半直至找到目标"
+    },
+    {
+      "OutputTextDelta": "或确认"
+    },
+    {
+      "OutputTextDelta": "其不存在。"
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rsn_0",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "用户要求用一句话说明二分查找的思想。我需要用中文回答，并且要简洁、准确。\n\n二分查找的核心思想是：在有序数组中，每次将查找区间一分为二，通过比较中间元素与目标值的大小，排除一半不可能包含目标的区间，从而逐步缩小查找范围直至找到目标或确定不存在。\n\n我需要用一句话概括，可以这样表述：\n\"二分查找的思想是在一个有序序列中，每次将查找区间对半分割，根据中间元素与目标值的大小关系舍弃其中一半不可能包含目标的区间，从而将查找范围不断减半直至命中目标或确认其不存在。\"\n\n检查一下是否准确：\n- 前提是有序序列 ✓\n- 每次对半分割 ✓\n- 根据比较结果舍弃一半区间 ✓\n- 逐步缩小范围 ✓\n- 结束条件（找到或不存在）✓\n\n这句话比较完整，符合\"一句话\"的要求。"
+          }
+        ],
+        "encrypted_content": "用户要求用一句话说明二分查找的思想。我需要用中文回答，并且要简洁、准确。\n\n二分查找的核心思想是：在有序数组中，每次将查找区间一分为二，通过比较中间元素与目标值的大小，排除一半不可能包含目标的区间，从而逐步缩小查找范围直至找到目标或确定不存在。\n\n我需要用一句话概括，可以这样表述：\n\"二分查找的思想是在一个有序序列中，每次将查找区间对半分割，根据中间元素与目标值的大小关系舍弃其中一半不可能包含目标的区间，从而将查找范围不断减半直至命中目标或确认其不存在。\"\n\n检查一下是否准确：\n- 前提是有序序列 ✓\n- 每次对半分割 ✓\n- 根据比较结果舍弃一半区间 ✓\n- 逐步缩小范围 ✓\n- 结束条件（找到或不存在）✓\n\n这句话比较完整，符合\"一句话\"的要求。"
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "二分查找的思想是在一个有序序列中，每次将当前查找区间对半分割，通过比较中间元素与目标值的大小关系，舍弃其中一半不可能包含目标的区间，从而不断将搜索范围减半直至找到目标或确认其不存在。"
+          }
+        ]
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "",
+        "token_usage": {
+          "input_tokens": 66,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 236,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 302
+        },
+        "usage_metadata": null,
+        "end_turn": true
+      }
+    }
+  ]
+}

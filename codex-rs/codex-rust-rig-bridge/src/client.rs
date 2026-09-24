@@ -10,21 +10,32 @@ use reqwest_rig as reqwest13;
 use rig_core::client::CompletionClient;
 
 /// Which rig provider implementation serves a given base URL.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RigProtocol {
     /// OpenAI-compatible Chat Completions.
+    #[default]
     Chat,
     /// Anthropic Messages protocol (`/anthropic` gateways).
     Anthropic,
 }
 
-pub fn protocol_for_base_url(base_url: &str) -> RigProtocol {
-    let path = base_url.split_once("://").map_or(base_url, |(_, rest)| rest);
-    if path.contains("/anthropic") {
-        RigProtocol::Anthropic
-    } else {
-        RigProtocol::Chat
+impl RigProtocol {
+    /// URL heuristic (`/anthropic` gateways) — a fallback for callers that
+    /// do not know the wire; prefer passing the protocol explicitly from
+    /// `wire_api` (see `stream_via_rig`).
+    pub fn from_base_url(base_url: &str) -> Self {
+        let path = base_url.split_once("://").map_or(base_url, |(_, rest)| rest);
+        if path.contains("/anthropic") {
+            Self::Anthropic
+        } else {
+            Self::Chat
+        }
     }
+}
+
+/// Back-compat alias for [`RigProtocol::from_base_url`].
+pub fn protocol_for_base_url(base_url: &str) -> RigProtocol {
+    RigProtocol::from_base_url(base_url)
 }
 
 /// Extracts the bearer token from Codex's auth headers (stripping the

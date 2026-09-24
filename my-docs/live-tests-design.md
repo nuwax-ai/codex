@@ -172,3 +172,46 @@ P0/P1/P2 全部完成,含过程中测试体系抓到的两个新真问题:
 | P3 客户端复用 | ⏸ | 维持阻塞记录(等 rig 传输层稳定) |
 
 新增 backkog:rig-anthropic 适配器请求对齐(GLM 下 t1 前导文本/t2 thinking 的触发差异)。
+
+## 11. 第三批交付 + StepFun 接入 + 限流实证(2026-09-24 晚)
+
+### StepFun(step)接入:显式 Anthropic 协议
+
+StepFun 的 Anthropic 网关(`api.stepfun.com/step_plan`)**URL 无 `/anthropic`
+标记**,URL 嗅探失效——促成 `wire_api = "anthropic"` 显式协议落地:
+- `WireApi::Anthropic` 变体;core 分派到桥并显式指定协议(rig: `RigProtocol`
+  参数;genai: 直接 Anthropic adapter);`wire_api = "chat"` 的 URL 嗅探保留为
+  兼容回退。L1 场景与 E2E anthropic 套件全部改走显式协议。
+- 注意:genai 适配器要求 base_url 带 `/v1`(直接拼 `messages`);rig 会归一化。
+  配置统一带 `/v1` 后缀。
+
+### 厂商限流实测数据(排障定论)
+
+| 厂商 | 限制类型 | 实测证据 |
+|---|---|---|
+| MiMo | **账户级并发 ≤ 5** | `429: concurrency reached, current: 6, limit: 5`(codex-exec 单进程即开多条连接,测试并发会放大) |
+| GLM | **请求频率配额**(code 1302) | 64 用例 45 秒打完触发;串行 430 秒不触发 |
+| Step | 偶发 429 瞬时 | 重试吸收 |
+
+### 并发治理终版(.config/nextest.toml)
+
+- **按厂商分组、组内串行、组间并行**(`test(~<vendor>)` 正则过滤——注意
+  `test(name)` 是精确匹配,`sub()` 不存在,首版配置静默失效过)
+- 64 用例 68 秒全绿;残留瞬时限流由重试(3 次/15s 退避)吸收为 flaky
+- 新厂商 = 加一个 test-group + 一条 override
+
+### 其他修复
+
+- ab_diff 白名单重构为**场景族**判定(工具族=模型非确定性:思考/前导文本
+  可有无,两桥结构等价由场景断言保证);稳定场景(chat/effort/anthropic/auth)
+  保持严格 diff——两个真 bug(Created 缺失、OpenAI 参数泄入 anthropic 线)都是
+  在稳定场景上抓到的
+- marker 前缀硬编码 "mimo" 修复为厂商名(StepFun 产物曾落成 mimo-xxx)
+- StepFun 端点能力:chat(`/step_plan/v1`)+ anthropic(`/step_plan/v1` base)
+  + responses(`/step_plan/v1/responses` 200)全有
+
+### 状态
+
+- 在线全矩阵:**64/64**(3 厂商 × 7 L1 场景 × 2 桥 + 21 E2E + ab_diff)
+- 离线回放:**43/43,0.119 秒**(无凭据)
+- rig 桥单测 16/16

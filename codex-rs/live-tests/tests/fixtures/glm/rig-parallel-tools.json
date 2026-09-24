@@ -97,49 +97,49 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " weather",
+        "delta": " the",
         "content_index": 6
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " for",
+        "delta": " weather",
         "content_index": 7
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Beijing",
+        "delta": " for",
         "content_index": 8
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " and",
+        "delta": " Beijing",
         "content_index": 9
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Shanghai",
+        "delta": " and",
         "content_index": 10
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " using",
+        "delta": " Shanghai",
         "content_index": 11
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " two",
+        "delta": " using",
         "content_index": 12
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " separate",
+        "delta": " two",
         "content_index": 13
       }
     },
@@ -187,7 +187,7 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " these",
+        "delta": " there",
         "content_index": 21
       }
     },
@@ -199,111 +199,179 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " independent",
+        "delta": " no",
         "content_index": 23
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " calls",
+        "delta": " dependencies",
         "content_index": 24
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ",",
+        "delta": " between",
         "content_index": 25
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " I",
+        "delta": " the",
         "content_index": 26
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " should",
+        "delta": " two",
         "content_index": 27
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " make",
+        "delta": " calls",
         "content_index": 28
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " both",
+        "delta": ",",
         "content_index": 29
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " calls",
+        "delta": " I",
         "content_index": 30
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " in",
+        "delta": " should",
         "content_index": 31
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": " make",
         "content_index": 32
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " same",
+        "delta": " both",
         "content_index": 33
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " block",
+        "delta": " calls",
         "content_index": 34
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ".",
+        "delta": " in",
         "content_index": 35
       }
     },
     {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 36
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " same",
+        "content_index": 37
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " function",
+        "content_index": 38
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "_calls",
+        "content_index": 39
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " block",
+        "content_index": 40
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 41
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "我来"
+    },
+    {
+      "OutputTextDelta": "分别"
+    },
+    {
+      "OutputTextDelta": "查询"
+    },
+    {
+      "OutputTextDelta": "北京"
+    },
+    {
+      "OutputTextDelta": "和"
+    },
+    {
+      "OutputTextDelta": "上海的"
+    },
+    {
+      "OutputTextDelta": "天气"
+    },
+    {
+      "OutputTextDelta": "："
+    },
+    {
       "OutputItemAdded": {
         "type": "function_call",
-        "id": "VJvUdXfVAvWr-SiEeNvm0",
+        "id": "3_LQp0xgnSsrn2LPrXV0I",
         "name": "get_weather",
         "arguments": "",
-        "call_id": "VJvUdXfVAvWr-SiEeNvm0"
+        "call_id": "3_LQp0xgnSsrn2LPrXV0I"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "VJvUdXfVAvWr-SiEeNvm0",
-        "call_id": "VJvUdXfVAvWr-SiEeNvm0",
+        "item_id": "3_LQp0xgnSsrn2LPrXV0I",
+        "call_id": "3_LQp0xgnSsrn2LPrXV0I",
         "delta": "{\"city\":\"北京\"}"
       }
     },
     {
       "OutputItemAdded": {
         "type": "function_call",
-        "id": "xQoiL3EVlDphcF55ECvFI",
+        "id": "4gNJd-hJYVcdq1tWOiGgX",
         "name": "get_weather",
         "arguments": "",
-        "call_id": "xQoiL3EVlDphcF55ECvFI"
+        "call_id": "4gNJd-hJYVcdq1tWOiGgX"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "xQoiL3EVlDphcF55ECvFI",
-        "call_id": "xQoiL3EVlDphcF55ECvFI",
+        "item_id": "4gNJd-hJYVcdq1tWOiGgX",
+        "call_id": "4gNJd-hJYVcdq1tWOiGgX",
         "delta": "{\"city\":\"上海\"}"
       }
     },
@@ -315,40 +383,53 @@
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The user wants me to query weather for Beijing and Shanghai using two separate independent get_weather tool calls. Since these are independent calls, I should make both calls in the same block."
+            "text": "The user wants me to query the weather for Beijing and Shanghai using two independent get_weather tool calls. Since there are no dependencies between the two calls, I should make both calls in the same function_calls block."
           }
         ],
-        "encrypted_content": "The user wants me to query weather for Beijing and Shanghai using two separate independent get_weather tool calls. Since these are independent calls, I should make both calls in the same block."
+        "encrypted_content": "The user wants me to query the weather for Beijing and Shanghai using two independent get_weather tool calls. Since there are no dependencies between the two calls, I should make both calls in the same function_calls block."
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "txt_0",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "我来分别查询北京和上海的天气："
+          }
+        ]
       }
     },
     {
       "OutputItemDone": {
         "type": "function_call",
-        "id": "VJvUdXfVAvWr-SiEeNvm0",
+        "id": "3_LQp0xgnSsrn2LPrXV0I",
         "name": "get_weather",
         "arguments": "{\"city\":\"北京\"}",
-        "call_id": "call_c83302ccecbe4b2798966724"
+        "call_id": "call_c8a83123093a41fb9a186399"
       }
     },
     {
       "OutputItemDone": {
         "type": "function_call",
-        "id": "xQoiL3EVlDphcF55ECvFI",
+        "id": "4gNJd-hJYVcdq1tWOiGgX",
         "name": "get_weather",
         "arguments": "{\"city\":\"上海\"}",
-        "call_id": "call_001f694fa1874d6191dc29fa"
+        "call_id": "call_127ab8f989a14e3db3a42b43"
       }
     },
     {
       "Completed": {
-        "response_id": "20260924214340bd1f422babc8470d",
+        "response_id": "2026092423283495a31939e6514541",
         "token_usage": {
           "input_tokens": 212,
           "cached_input_tokens": 192,
           "cache_write_input_tokens": 0,
-          "output_tokens": 58,
-          "reasoning_output_tokens": 36,
-          "total_tokens": 270
+          "output_tokens": 72,
+          "reasoning_output_tokens": 42,
+          "total_tokens": 284
         },
         "usage_metadata": null,
         "end_turn": false

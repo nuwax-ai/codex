@@ -91,7 +91,7 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " check",
+        "delta": " query",
         "content_index": 5
       }
     },
@@ -211,13 +211,13 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " (",
+        "delta": " with",
         "content_index": 25
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "no",
+        "delta": " no",
         "content_index": 26
       }
     },
@@ -241,7 +241,7 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "),",
+        "delta": ",",
         "content_index": 30
       }
     },
@@ -335,40 +335,37 @@
       "OutputTextDelta": "天气"
     },
     {
-      "OutputTextDelta": "情况"
-    },
-    {
       "OutputTextDelta": "。"
     },
     {
       "OutputItemAdded": {
         "type": "function_call",
-        "id": "call_df139a08c3874fe195b8ef45",
+        "id": "call_580726f5d4f145dca5684ac9",
         "name": "get_weather",
         "arguments": "",
-        "call_id": "call_df139a08c3874fe195b8ef45"
+        "call_id": "call_580726f5d4f145dca5684ac9"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "call_df139a08c3874fe195b8ef45",
-        "call_id": "call_df139a08c3874fe195b8ef45",
+        "item_id": "call_580726f5d4f145dca5684ac9",
+        "call_id": "call_580726f5d4f145dca5684ac9",
         "delta": "{\"city\":\"北京\"}"
       }
     },
     {
       "OutputItemAdded": {
         "type": "function_call",
-        "id": "call_b4abc7b32e5d40238e35ec6f",
+        "id": "call_0f3799a6dcf94c9ba481b7eb",
         "name": "get_weather",
         "arguments": "",
-        "call_id": "call_b4abc7b32e5d40238e35ec6f"
+        "call_id": "call_0f3799a6dcf94c9ba481b7eb"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "call_b4abc7b32e5d40238e35ec6f",
-        "call_id": "call_b4abc7b32e5d40238e35ec6f",
+        "item_id": "call_0f3799a6dcf94c9ba481b7eb",
+        "call_id": "call_0f3799a6dcf94c9ba481b7eb",
         "delta": "{\"city\":\"上海\"}"
       }
     },
@@ -380,10 +377,10 @@
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The user wants me to check the weather for Beijing and Shanghai using two independent get_weather tool calls. Since these are independent calls (no dependencies between them), I should make both calls in the same block."
+            "text": "The user wants me to query the weather for Beijing and Shanghai using two independent get_weather tool calls. Since these are independent calls with no dependencies between them, I should make both calls in the same block."
           }
         ],
-        "encrypted_content": "The user wants me to check the weather for Beijing and Shanghai using two independent get_weather tool calls. Since these are independent calls (no dependencies between them), I should make both calls in the same block."
+        "encrypted_content": "The user wants me to query the weather for Beijing and Shanghai using two independent get_weather tool calls. Since these are independent calls with no dependencies between them, I should make both calls in the same block."
       }
     },
     {
@@ -394,7 +391,7 @@
         "content": [
           {
             "type": "output_text",
-            "text": "我来分别查询北京和上海的天气情况。"
+            "text": "我来分别查询北京和上海的天气。"
           }
         ]
       }
@@ -402,19 +399,19 @@
     {
       "OutputItemDone": {
         "type": "function_call",
-        "id": "call_b4abc7b32e5d40238e35ec6f",
+        "id": "call_0f3799a6dcf94c9ba481b7eb",
         "name": "get_weather",
         "arguments": "{\"city\":\"上海\"}",
-        "call_id": "call_b4abc7b32e5d40238e35ec6f"
+        "call_id": "call_0f3799a6dcf94c9ba481b7eb"
       }
     },
     {
       "OutputItemDone": {
         "type": "function_call",
-        "id": "call_df139a08c3874fe195b8ef45",
+        "id": "call_580726f5d4f145dca5684ac9",
         "name": "get_weather",
         "arguments": "{\"city\":\"北京\"}",
-        "call_id": "call_df139a08c3874fe195b8ef45"
+        "call_id": "call_580726f5d4f145dca5684ac9"
       }
     },
     {
@@ -424,9 +421,9 @@
           "input_tokens": 212,
           "cached_input_tokens": 192,
           "cache_write_input_tokens": 0,
-          "output_tokens": 72,
+          "output_tokens": 71,
           "reasoning_output_tokens": 41,
-          "total_tokens": 284
+          "total_tokens": 283
         },
         "usage_metadata": null,
         "end_turn": false

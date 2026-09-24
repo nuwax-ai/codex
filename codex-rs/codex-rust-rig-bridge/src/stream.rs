@@ -31,6 +31,7 @@ pub async fn stream_via_rig(
     api_provider: &Provider,
     api_auth: &SharedAuthProvider,
     extra_headers: HeaderMap,
+    protocol: RigProtocol,
     idle_timeout: Duration,
 ) -> Result<ResponseStream, ApiError> {
     let mut completion_request = responses_request_to_completion_request(request).ok_or(
@@ -39,11 +40,18 @@ pub async fn stream_via_rig(
         },
     )?;
 
-    let protocol = crate::client::protocol_for_base_url(&api_provider.base_url);
-    // Anthropic's wire requires max_tokens; codex does not model an output
-    // cap, so default generously.
-    if protocol == RigProtocol::Anthropic && completion_request.max_tokens.is_none() {
-        completion_request.max_tokens = Some(crate::client::DEFAULT_ANTHROPIC_MAX_TOKENS);
+    if protocol == RigProtocol::Anthropic {
+        // Anthropic's wire requires max_tokens; codex does not model an
+        // output cap, so default generously.
+        if completion_request.max_tokens.is_none() {
+            completion_request.max_tokens = Some(crate::client::DEFAULT_ANTHROPIC_MAX_TOKENS);
+        }
+        // additional_params carries OpenAI-only knobs (parallel_tool_calls,
+        // reasoning_effort, ...) that flatten verbatim onto the wire. On the
+        // Anthropic protocol they are unknown fields with undefined behavior:
+        // GLM's gateway measurably disables thinking when it sees
+        // `parallel_tool_calls`, so drop them there entirely.
+        completion_request.additional_params = None;
     }
 
     let model = request.model.clone();

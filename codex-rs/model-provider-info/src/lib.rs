@@ -106,6 +106,12 @@ pub enum WireApi {
     Responses,
     /// The Chat Completions API exposed at `/v1/chat/completions`.
     Chat,
+    /// The Anthropic Messages API (`/v1/messages`), served through the chat
+    /// bridges (fork extension). Explicit declaration for gateways whose
+    /// Anthropic endpoint is not identifiable by URL (e.g. StepFun's
+    /// `/step_plan`); `/anthropic`-style URLs keep auto-detecting under
+    /// `wire_api = "chat"`.
+    Anthropic,
 }
 
 impl fmt::Display for WireApi {
@@ -113,6 +119,7 @@ impl fmt::Display for WireApi {
         let value = match self {
             Self::Responses => "responses",
             Self::Chat => "chat",
+            Self::Anthropic => "anthropic",
         };
         f.write_str(value)
     }
@@ -175,9 +182,10 @@ impl<'de> Deserialize<'de> for WireApi {
         match value.as_str() {
             "responses" => Ok(Self::Responses),
             "chat" => Ok(Self::Chat),
+            "anthropic" => Ok(Self::Anthropic),
             _ => Err(serde::de::Error::unknown_variant(
                 &value,
-                &["responses", "chat"],
+                &["responses", "chat", "anthropic"],
             )),
         }
     }

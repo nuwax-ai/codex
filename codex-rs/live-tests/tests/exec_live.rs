@@ -147,10 +147,10 @@ async fn chat_default_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Re
     .await
 }
 
-exec_matrix!(chat_genai, ["mimo", "glm"]);
-exec_matrix!(chat_rig, ["mimo", "glm"]);
-exec_matrix!(chat_default, ["mimo", "glm"]);
-exec_matrix!(responses_rig_default, ["mimo", "glm"]);
-exec_matrix!(responses_native, ["mimo", "glm"]);
-exec_matrix!(anthropic_genai, ["mimo", "glm"]);
-exec_matrix!(anthropic_rig, ["mimo", "glm"]);
+exec_matrix!(chat_genai, ["mimo", "glm", "step"]);
+exec_matrix!(chat_rig, ["mimo", "glm", "step"]);
+exec_matrix!(chat_default, ["mimo", "glm", "step"]);
+exec_matrix!(responses_rig_default, ["mimo", "glm", "step"]);
+exec_matrix!(responses_native, ["mimo", "glm", "step"]);
+exec_matrix!(anthropic_genai, ["mimo", "glm", "step"]);
+exec_matrix!(anthropic_rig, ["mimo", "glm", "step"]);

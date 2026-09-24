@@ -217,49 +217,17 @@
     },
     {
       "OutputItemAdded": {
-        "type": "message",
-        "id": "txt_0",
-        "role": "assistant",
-        "content": []
-      }
-    },
-    {
-      "OutputTextDelta": "我来"
-    },
-    {
-      "OutputTextDelta": "为您"
-    },
-    {
-      "OutputTextDelta": "查询"
-    },
-    {
-      "OutputTextDelta": "北京"
-    },
-    {
-      "OutputTextDelta": "今天的"
-    },
-    {
-      "OutputTextDelta": "天气"
-    },
-    {
-      "OutputTextDelta": "情况"
-    },
-    {
-      "OutputTextDelta": "。"
-    },
-    {
-      "OutputItemAdded": {
         "type": "function_call",
-        "id": "call_75285c9180ca48edbdc84a0a",
+        "id": "call_6f24e7bc6a5b474ab99299ad",
         "name": "get_weather",
         "arguments": "",
-        "call_id": "call_75285c9180ca48edbdc84a0a"
+        "call_id": "call_6f24e7bc6a5b474ab99299ad"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "call_75285c9180ca48edbdc84a0a",
-        "call_id": "call_75285c9180ca48edbdc84a0a",
+        "item_id": "call_6f24e7bc6a5b474ab99299ad",
+        "call_id": "call_6f24e7bc6a5b474ab99299ad",
         "delta": "{\"city\":\"北京\"}"
       }
     },
@@ -279,24 +247,11 @@
     },
     {
       "OutputItemDone": {
-        "type": "message",
-        "id": "txt_0",
-        "role": "assistant",
-        "content": [
-          {
-            "type": "output_text",
-            "text": "我来为您查询北京今天的天气情况。"
-          }
-        ]
-      }
-    },
-    {
-      "OutputItemDone": {
         "type": "function_call",
-        "id": "call_75285c9180ca48edbdc84a0a",
+        "id": "call_6f24e7bc6a5b474ab99299ad",
         "name": "get_weather",
         "arguments": "{\"city\":\"北京\"}",
-        "call_id": "call_75285c9180ca48edbdc84a0a"
+        "call_id": "call_6f24e7bc6a5b474ab99299ad"
       }
     },
     {
@@ -306,9 +261,9 @@
           "input_tokens": 194,
           "cached_input_tokens": 192,
           "cache_write_input_tokens": 0,
-          "output_tokens": 46,
+          "output_tokens": 38,
           "reasoning_output_tokens": 26,
-          "total_tokens": 240
+          "total_tokens": 232
         },
         "usage_metadata": null,
         "end_turn": false

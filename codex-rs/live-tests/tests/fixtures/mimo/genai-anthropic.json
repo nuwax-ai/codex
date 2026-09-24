@@ -53,20 +53,14 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "二分查找的核心",
+        "delta": "二分查找的思想。",
         "content_index": 2
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "思想。",
-        "content_index": 3
-      }
-    },
-    {
-      "ReasoningContentDelta": {
         "delta": "",
-        "content_index": 4
+        "content_index": 3
       }
     },
     {
@@ -78,97 +72,58 @@
       }
     },
     {
-      "OutputTextDelta": "**"
+      "OutputTextDelta": "二分"
     },
     {
-      "OutputTextDelta": "二分查找的核心思想"
+      "OutputTextDelta": "查找的核心思想"
     },
     {
-      "OutputTextDelta": "："
+      "OutputTextDelta": "是：**"
     },
     {
-      "OutputTextDelta": "** 每次"
+      "OutputTextDelta": "每次取"
     },
     {
-      "OutputTextDelta": "将有序"
+      "OutputTextDelta": "有序"
     },
     {
-      "OutputTextDelta": "数据"
+      "OutputTextDelta": "序列"
     },
     {
-      "OutputTextDelta": "集"
+      "OutputTextDelta": "的中间元素"
     },
     {
-      "OutputTextDelta": "从"
+      "OutputTextDelta": "与目标值比较，从而"
     },
     {
-      "OutputTextDelta": "中间一"
+      "OutputTextDelta": "排除掉"
     },
     {
-      "OutputTextDelta": "分为"
+      "OutputTextDelta": "一半的"
     },
     {
-      "OutputTextDelta": "二，将"
+      "OutputTextDelta": "不可能"
     },
     {
-      "OutputTextDelta": "目标与"
+      "OutputTextDelta": "区间"
     },
     {
-      "OutputTextDelta": "中间值"
+      "OutputTextDelta": "，不断"
     },
     {
-      "OutputTextDelta": "比较后"
+      "OutputTextDelta": "缩小查找"
     },
     {
-      "OutputTextDelta": "，舍"
-    },
-    {
-      "OutputTextDelta": "弃不可能"
-    },
-    {
-      "OutputTextDelta": "包含"
-    },
-    {
-      "OutputTextDelta": "目标的那一"
-    },
-    {
-      "OutputTextDelta": "半，只"
-    },
-    {
-      "OutputTextDelta": "在剩下"
-    },
-    {
-      "OutputTextDelta": "的一"
-    },
-    {
-      "OutputTextDelta": "半中继续查找"
-    },
-    {
-      "OutputTextDelta": "，从而"
-    },
-    {
-      "OutputTextDelta": "将"
-    },
-    {
-      "OutputTextDelta": "每次查找"
-    },
-    {
-      "OutputTextDelta": "的范围缩小一半"
-    },
-    {
-      "OutputTextDelta": "，直至"
-    },
-    {
-      "OutputTextDelta": "找到"
+      "OutputTextDelta": "范围，直到找到"
     },
     {
       "OutputTextDelta": "目标或"
     },
     {
-      "OutputTextDelta": "范围"
+      "OutputTextDelta": "区间"
     },
     {
-      "OutputTextDelta": "为空。"
+      "OutputTextDelta": "为空。**"
     },
     {
       "OutputItemDone": {
@@ -178,10 +133,10 @@
         "content": [
           {
             "type": "reasoning_text",
-            "text": "用一句话概括二分查找的核心思想。"
+            "text": "用一句话概括二分查找的思想。"
           }
         ],
-        "encrypted_content": "用一句话概括二分查找的核心思想。"
+        "encrypted_content": "用一句话概括二分查找的思想。"
       }
     },
     {
@@ -192,7 +147,7 @@
         "content": [
           {
             "type": "output_text",
-            "text": "**二分查找的核心思想：** 每次将有序数据集从中间一分为二，将目标与中间值比较后，舍弃不可能包含目标的那一半，只在剩下的一半中继续查找，从而将每次查找的范围缩小一半，直至找到目标或范围为空。"
+            "text": "二分查找的核心思想是：**每次取有序序列的中间元素与目标值比较，从而排除掉一半的不可能区间，不断缩小查找范围，直到找到目标或区间为空。**"
           }
         ]
       }
@@ -204,9 +159,9 @@
           "input_tokens": 58,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 75,
+          "output_tokens": 52,
           "reasoning_output_tokens": 0,
-          "total_tokens": 133
+          "total_tokens": 110
         },
         "usage_metadata": null,
         "end_turn": true

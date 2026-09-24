@@ -66,64 +66,55 @@
       }
     },
     {
-      "OutputTextDelta": "每次"
+      "OutputTextDelta": "二分查找的核心思想"
     },
     {
-      "OutputTextDelta": "将搜索"
+      "OutputTextDelta": "是：**"
     },
     {
-      "OutputTextDelta": "范围"
-    },
-    {
-      "OutputTextDelta": "折"
-    },
-    {
-      "OutputTextDelta": "半："
-    },
-    {
-      "OutputTextDelta": "先"
+      "OutputTextDelta": "每次通过"
     },
     {
       "OutputTextDelta": "比较"
     },
     {
-      "OutputTextDelta": "中间"
+      "OutputTextDelta": "目标"
     },
     {
-      "OutputTextDelta": "元素与"
+      "OutputTextDelta": "值与"
     },
     {
-      "OutputTextDelta": "目标值的"
+      "OutputTextDelta": "中间元素"
     },
     {
-      "OutputTextDelta": "大小，从而排除"
+      "OutputTextDelta": "，"
     },
     {
-      "OutputTextDelta": "掉"
+      "OutputTextDelta": "将查找"
     },
     {
-      "OutputTextDelta": "不可能"
+      "OutputTextDelta": "范围缩小一半，"
     },
     {
-      "OutputTextDelta": "的一半，只"
+      "OutputTextDelta": "逐步"
     },
     {
-      "OutputTextDelta": "在剩下"
+      "OutputTextDelta": "逼近"
     },
     {
-      "OutputTextDelta": "的一"
+      "OutputTextDelta": "目标直到"
     },
     {
-      "OutputTextDelta": "半中继续查找"
+      "OutputTextDelta": "找到或"
     },
     {
-      "OutputTextDelta": "，直到找到"
+      "OutputTextDelta": "确认"
     },
     {
-      "OutputTextDelta": "目标或范围"
+      "OutputTextDelta": "不存在"
     },
     {
-      "OutputTextDelta": "为空。"
+      "OutputTextDelta": "。**"
     },
     {
       "OutputItemDone": {
@@ -147,7 +138,7 @@
         "content": [
           {
             "type": "output_text",
-            "text": "每次将搜索范围折半：先比较中间元素与目标值的大小，从而排除掉不可能的一半，只在剩下的一半中继续查找，直到找到目标或范围为空。"
+            "text": "二分查找的核心思想是：**每次通过比较目标值与中间元素，将查找范围缩小一半，逐步逼近目标直到找到或确认不存在。**"
           }
         ]
       }
@@ -159,9 +150,9 @@
           "input_tokens": 29,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 51,
+          "output_tokens": 44,
           "reasoning_output_tokens": 0,
-          "total_tokens": 80
+          "total_tokens": 73
         },
         "usage_metadata": null,
         "end_turn": true

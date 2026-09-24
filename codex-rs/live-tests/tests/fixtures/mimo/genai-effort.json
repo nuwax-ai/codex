@@ -43,20 +43,8 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "1",
+        "delta": "2",
         "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "+1 =",
-        "content_index": 1
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " 2",
-        "content_index": 2
       }
     },
     {
@@ -78,10 +66,10 @@
         "content": [
           {
             "type": "reasoning_text",
-            "text": "1+1 = 2"
+            "text": "2"
           }
         ],
-        "encrypted_content": "1+1 = 2"
+        "encrypted_content": "2"
       }
     },
     {
@@ -104,9 +92,9 @@
           "input_tokens": 29,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 10,
-          "reasoning_output_tokens": 7,
-          "total_tokens": 39
+          "output_tokens": 5,
+          "reasoning_output_tokens": 2,
+          "total_tokens": 34
         },
         "usage_metadata": null,
         "end_turn": true

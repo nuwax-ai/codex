@@ -17,12 +17,12 @@
       },
       {
         "arguments": "{\"city\": \"北京\"}",
-        "call_id": "call_e3b9053d374a4b14aee100e5",
+        "call_id": "call_644004cfa52f4e8e93957f80",
         "name": "get_weather",
         "type": "function_call"
       },
       {
-        "call_id": "call_e3b9053d374a4b14aee100e5",
+        "call_id": "call_644004cfa52f4e8e93957f80",
         "output": "{\"city\":\"北京\",\"condition\":\"晴\",\"temp_c\":23}",
         "type": "function_call_output"
       }
@@ -78,14 +78,20 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " returned weather info",
+        "delta": " returned the weather. Answer",
         "content_index": 1
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " for Beijing.",
+        "delta": " in",
         "content_index": 2
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Chinese.",
+        "content_index": 3
       }
     },
     {
@@ -97,16 +103,16 @@
       }
     },
     {
-      "OutputTextDelta": "北京"
+      "OutputTextDelta": "北京今天天气晴"
     },
     {
-      "OutputTextDelta": "今天天气**"
+      "OutputTextDelta": "朗"
     },
     {
-      "OutputTextDelta": "晴**，气温"
+      "OutputTextDelta": "，气温"
     },
     {
-      "OutputTextDelta": "约 **23°C**，"
+      "OutputTextDelta": "约 23°C，"
     },
     {
       "OutputTextDelta": "适合出行"
@@ -125,10 +131,10 @@
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The tool returned weather info for Beijing."
+            "text": "The tool returned the weather. Answer in Chinese."
           }
         ],
-        "encrypted_content": "The tool returned weather info for Beijing."
+        "encrypted_content": "The tool returned the weather. Answer in Chinese."
       }
     },
     {
@@ -139,7 +145,7 @@
         "content": [
           {
             "type": "output_text",
-            "text": "北京今天天气**晴**，气温约 **23°C**，适合出行！☀️"
+            "text": "北京今天天气晴朗，气温约 23°C，适合出行！☀️"
           }
         ]
       }
@@ -148,12 +154,12 @@
       "Completed": {
         "response_id": "",
         "token_usage": {
-          "input_tokens": 66,
-          "cached_input_tokens": 128,
+          "input_tokens": 198,
+          "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
           "output_tokens": 31,
           "reasoning_output_tokens": 0,
-          "total_tokens": 225
+          "total_tokens": 229
         },
         "usage_metadata": null,
         "end_turn": true
