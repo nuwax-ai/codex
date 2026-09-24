@@ -2431,9 +2431,9 @@ impl ModelClientSession {
                 .await
             }
             #[cfg(not(any(feature = "rust-genai", feature = "rust-rig")))]
-            WireApi::Chat => Err(CodexErr::Fatal(
-                "Chat API (`wire_api = \"chat\"`) requires a bridge feature: enable \
-                 `rust-genai` or `rust-rig`"
+            WireApi::Chat | WireApi::Anthropic => Err(CodexErr::Fatal(
+                "Chat-family APIs (`wire_api = \"chat\" | \"anthropic\"`) require a \
+                 bridge feature: enable `rust-genai` or `rust-rig`"
                     .into(),
             )),
         }

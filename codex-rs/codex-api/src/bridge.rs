@@ -66,3 +66,45 @@ pub fn chat_wire_protocol(wire_anthropic: bool, base_url: &str) -> ChatWireProto
         ChatWireProtocol::ChatCompletions
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_anthropic_wins_over_url() {
+        assert_eq!(
+            chat_wire_protocol(true, "https://api.example.com/v1"),
+            ChatWireProtocol::Anthropic
+        );
+    }
+
+    #[test]
+    fn anthropic_url_marker_sniffs_anthropic() {
+        for url in [
+            "https://token-plan-cn.xiaomimimo.com/anthropic/v1",
+            "https://open.bigmodel.cn/api/anthropic/v1",
+        ] {
+            assert_eq!(
+                chat_wire_protocol(false, url),
+                ChatWireProtocol::Anthropic,
+                "url {url} should sniff as anthropic"
+            );
+        }
+    }
+
+    #[test]
+    fn plain_chat_urls_stay_chat() {
+        for url in [
+            "https://api.stepfun.com/step_plan/v1",
+            "https://api.deepseek.com/v1",
+            "http://localhost:11434/v1",
+        ] {
+            assert_eq!(
+                chat_wire_protocol(false, url),
+                ChatWireProtocol::ChatCompletions,
+                "url {url} should stay chat completions"
+            );
+        }
+    }
+}
