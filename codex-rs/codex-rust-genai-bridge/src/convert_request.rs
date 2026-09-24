@@ -1,5 +1,7 @@
 use codex_api::ResponsesApiRequest;
-use codex_protocol::models::{ContentItem, FunctionCallOutputBody, ResponseItem};
+use codex_protocol::models::{
+    ContentItem, FunctionCallOutputBody, ImageReference, ResponseItem,
+};
 use codex_tools::ToolName;
 use codex_tools::code_mode_name_for_tool_name;
 use genai::chat::{
@@ -151,7 +153,12 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
                     }
                 };
                 messages.push(ChatMessage::tool(MessageContent::from(
-                    ContentPart::ToolResponse(ToolResponse::new(call_id, content)),
+                    ContentPart::ToolResponse(ToolResponse::new(
+                        // `call_id` became optional upstream; Chat Completions
+                        // requires a stable id, so fall back to an empty string.
+                        call_id.clone().unwrap_or_default(),
+                        content,
+                    )),
                 )));
             }
             ResponseItem::CustomToolCallOutput {
@@ -177,6 +184,7 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
             | ResponseItem::Compaction { .. }
             | ResponseItem::ContextCompaction { .. }
             | ResponseItem::CompactionTrigger { .. }
+            | ResponseItem::ConfigurationUpdate { .. }
             | ResponseItem::AgentMessage { .. } => {
                 // Skip — these items are internal to Codex.
             }
@@ -212,7 +220,13 @@ fn convert_content_items(items: &[ContentItem]) -> Vec<ContentPart> {
             ContentItem::InputText { text } | ContentItem::OutputText { text } => {
                 Some(ContentPart::Text(text.clone()))
             }
-            ContentItem::InputImage { image_url, .. } => {
+            ContentItem::InputImage { image, .. } => {
+                let ImageReference::Inline { image_url } = image else {
+                    tracing::warn!(
+                        "Skipping file-referenced image (unsupported by genai bridge)"
+                    );
+                    return None;
+                };
                 // Infer content type from URL extension or default to image/png
                 let content_type = if image_url.ends_with(".jpg") || image_url.ends_with(".jpeg") {
                     "image/jpeg"
@@ -325,6 +339,7 @@ mod tests {
             prompt_cache_key: None,
             text: None,
             client_metadata: None,
+            access_programs: None,
         };
 
         let result = responses_request_to_chat_request(&request).unwrap();
@@ -358,6 +373,7 @@ mod tests {
             prompt_cache_key: None,
             text: None,
             client_metadata: None,
+            access_programs: None,
         };
 
         let result = responses_request_to_chat_request(&request).unwrap();
@@ -381,7 +397,9 @@ mod tests {
                 },
                 ResponseItem::FunctionCallOutput {
                     id: None,
-                    call_id: "call_1".into(),
+                    call_id: Some("call_1".into()),
+                    name: None,
+                    namespace: None,
                     output: codex_protocol::models::FunctionCallOutputPayload {
                         body: FunctionCallOutputBody::Text("Sunny".into()),
                         success: Some(true),
@@ -401,6 +419,7 @@ mod tests {
             prompt_cache_key: None,
             text: None,
             client_metadata: None,
+            access_programs: None,
         };
 
         let result = responses_request_to_chat_request(&request).unwrap();
@@ -427,6 +446,7 @@ mod tests {
             prompt_cache_key: None,
             text: None,
             client_metadata: None,
+            access_programs: None,
         };
 
         assert!(responses_request_to_chat_request(&request).is_none());
@@ -493,6 +513,7 @@ mod tests {
             prompt_cache_key: None,
             text: None,
             client_metadata: None,
+            access_programs: None,
         };
 
         let result = responses_request_to_chat_request(&request).unwrap();
@@ -558,6 +579,7 @@ mod tests {
             prompt_cache_key: None,
             text: None,
             client_metadata: None,
+            access_programs: None,
         };
 
         let result = responses_request_to_chat_request(&request).unwrap();
@@ -617,7 +639,9 @@ mod tests {
                 // Turn 1: tool result
                 ResponseItem::FunctionCallOutput {
                     id: None,
-                    call_id: "call_1".into(),
+                    call_id: Some("call_1".into()),
+                    name: None,
+                    namespace: None,
                     output: codex_protocol::models::FunctionCallOutputPayload {
                         body: FunctionCallOutputBody::Text("file1.txt\nfile2.txt".into()),
                         success: Some(true),
@@ -637,6 +661,7 @@ mod tests {
             prompt_cache_key: None,
             text: None,
             client_metadata: None,
+            access_programs: None,
         };
 
         let result = responses_request_to_chat_request(&request).unwrap();
@@ -705,6 +730,7 @@ mod tests {
             prompt_cache_key: None,
             text: None,
             client_metadata: None,
+            access_programs: None,
         };
 
         let result = responses_request_to_chat_request(&request).unwrap();
@@ -822,6 +848,7 @@ mod tests {
             prompt_cache_key: None,
             text: None,
             client_metadata: None,
+            access_programs: None,
         };
 
         let result = responses_request_to_chat_request(&request)

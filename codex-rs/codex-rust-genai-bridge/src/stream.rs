@@ -245,6 +245,10 @@ fn map_reasoning_effort(
             tracing::warn!("Ultra reasoning effort has no genai equivalent, mapping to Max");
             ReasoningEffort::Max
         }
+        Codex::Persistent => {
+            tracing::warn!("Persistent reasoning effort has no genai equivalent, mapping to Max");
+            ReasoningEffort::Max
+        }
         Codex::Custom(s) => {
             tracing::warn!(
                 custom_effort = %s,

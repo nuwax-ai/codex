@@ -17,7 +17,7 @@ pub fn chat_event_to_response_event(
 ) -> Vec<ResponseEvent> {
     match event {
         ChatStreamEvent::Start => {
-            vec![ResponseEvent::Created]
+            vec![ResponseEvent::Created { response_id: None }]
         }
         ChatStreamEvent::Chunk(StreamChunk { content }) => {
             let mut events = Vec::new();
@@ -135,6 +135,7 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
             .and_then(|d| d.reasoning_tokens)
             .unwrap_or(0) as i64,
         total_tokens: u.total_tokens.unwrap_or(0) as i64,
+        codex_rollout_budget_units: None,
     });
 
     pending.response_id = end.captured_response_id.clone();
@@ -206,6 +207,7 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
     events.push(ResponseEvent::Completed {
         response_id: pending.response_id.clone().unwrap_or_default(),
         token_usage: pending.token_usage.take(),
+        usage_metadata: None,
         end_turn,
     });
 
@@ -265,7 +267,7 @@ mod tests {
         let mut pending = PendingAssistantMessage::new();
         let events = chat_event_to_response_event(ChatStreamEvent::Start, &mut pending);
         assert_eq!(events.len(), 1);
-        assert!(matches!(events[0], ResponseEvent::Created));
+        assert!(matches!(events[0], ResponseEvent::Created { .. }));
     }
 
     #[test]
