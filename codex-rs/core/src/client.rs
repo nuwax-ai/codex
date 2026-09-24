@@ -1632,7 +1632,7 @@ impl ModelClientSession {
     /// Converts the Codex `ResponsesApiRequest` to a genai `ChatRequest` and
     /// bridges `ChatStreamEvent` back into `ResponseEvent` events so all
     /// upstream consumers remain unchanged.
-    #[cfg(feature = "rust-genai")]
+    #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
     #[allow(clippy::too_many_arguments)]
     #[instrument(
         name = "model_client.stream_chat_api",
@@ -1710,15 +1710,13 @@ impl ModelClientSession {
             inference_trace_attempt.add_request_headers(&mut options.extra_headers);
             inference_trace_attempt.record_started(&request);
 
-            let adapter_kind = adapter_kind_for_base_url(&client_setup.api_provider.base_url);
+            let bridge = self.client.state.provider.info().experimental_bridge;
 
-            let stream_result = codex_rust_genai_bridge::stream_via_genai(
+            let stream_result = dispatch_chat_bridge(
                 &request,
-                &client_setup.api_provider,
-                &client_setup.api_auth,
+                &client_setup,
                 options.extra_headers,
-                adapter_kind,
-                client_setup.api_provider.stream_idle_timeout,
+                bridge,
             )
             .await;
 
@@ -2393,7 +2391,7 @@ impl ModelClientSession {
                 )
                 .await
             }
-            #[cfg(feature = "rust-genai")]
+            #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
             WireApi::Chat => {
                 self.stream_chat_api(
                     prompt,
@@ -3100,6 +3098,57 @@ fn adapter_kind_for_base_url(base_url: &str) -> genai::adapter::AdapterKind {
         genai::adapter::AdapterKind::Anthropic
     } else {
         genai::adapter::AdapterKind::OpenAI
+    }
+}
+
+/// Sends the Chat-Completions request through the bridge the provider
+/// selected via `experimental_bridge` (fork extension). Both bridges expose
+/// the same surface and feed codex's shared retry/telemetry loop.
+#[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
+async fn dispatch_chat_bridge(
+    request: &codex_api::ResponsesApiRequest,
+    client_setup: &CurrentClientSetup,
+    extra_headers: http::HeaderMap,
+    bridge: Option<codex_model_provider_info::ChatBridge>,
+) -> std::result::Result<codex_api::ResponseStream, codex_api::ApiError> {
+    use codex_model_provider_info::ChatBridge;
+    match bridge.unwrap_or_default() {
+        #[cfg(feature = "rust-genai")]
+        ChatBridge::Genai => {
+            let adapter_kind = adapter_kind_for_base_url(&client_setup.api_provider.base_url);
+            codex_rust_genai_bridge::stream_via_genai(
+                request,
+                &client_setup.api_provider,
+                &client_setup.api_auth,
+                extra_headers,
+                adapter_kind,
+                client_setup.api_provider.stream_idle_timeout,
+            )
+            .await
+        }
+        #[cfg(not(feature = "rust-genai"))]
+        ChatBridge::Genai => Err(codex_api::ApiError::InvalidRequest {
+            message: "experimental_bridge = \"genai\" requires the rust-genai feature \
+                      (this build only enables the rig bridge)"
+                .into(),
+        }),
+        #[cfg(feature = "rust-rig")]
+        ChatBridge::Rig => {
+            codex_rust_rig_bridge::stream_via_rig(
+                request,
+                &client_setup.api_provider,
+                &client_setup.api_auth,
+                extra_headers,
+                client_setup.api_provider.stream_idle_timeout,
+            )
+            .await
+        }
+        #[cfg(not(feature = "rust-rig"))]
+        ChatBridge::Rig => Err(codex_api::ApiError::InvalidRequest {
+            message: "experimental_bridge = \"rig\" requires the rust-rig feature \
+                      (rebuild with the rig bridge enabled)"
+                .into(),
+        }),
     }
 }
 

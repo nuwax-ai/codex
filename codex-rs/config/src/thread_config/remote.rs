@@ -185,6 +185,7 @@ fn model_provider_from_proto(
         gateway_oauth: None,
         aws: None,
         wire_api,
+        experimental_bridge: None,
         query_params: provider.query_params.map(redacted_string_map),
         http_headers: provider.http_headers.map(redacted_string_map),
         env_http_headers: provider.env_http_headers.map(|map| map.values),

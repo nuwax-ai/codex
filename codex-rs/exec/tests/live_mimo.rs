@@ -7,6 +7,8 @@
 //! | Chat Completions| `wire_api = "chat"`, `/v1`               | rust-genai bridge (OpenAI)    |
 //! | Responses API   | default `wire_api`, `/v1`                | upstream codex (no bridge)    |
 //! | Anthropic       | `wire_api = "chat"`, `/anthropic/v1`     | rust-genai bridge (Anthropic) |
+//! | Chat (rig)      | + `experimental_bridge = "rig"`          | rust-rig bridge (OpenAI)      |
+//! | Anthropic (rig) | + `experimental_bridge = "rig"`          | rust-rig bridge (Anthropic)   |
 //!
 //! Each test drives a real agent loop with the "unforgeable marker"
 //! technique: the model must run `echo <random-marker>` locally and quote
@@ -134,6 +136,7 @@ fn write_config_toml(
     cfg: &LiveConfig,
     base_url: &str,
     wire_api: &str,
+    bridge: &str,
     extra: &str,
 ) -> std::io::Result<()> {
     // `experimental_bearer_token` keeps the key inside the temporary home; it
@@ -148,11 +151,13 @@ sandbox_mode = "danger-full-access"
 name = "MiMo"
 base_url = "{base_url}"
 wire_api = "{wire_api}"
+experimental_bridge = "{bridge}"
 experimental_bearer_token = "{api_key}"
 "#,
         model = cfg.model,
         base_url = base_url,
         wire_api = wire_api,
+        bridge = bridge,
         api_key = cfg.api_key,
     );
     std::fs::write(home.join("config.toml"), toml)
@@ -165,11 +170,12 @@ async fn run_marker_turn(
     cfg: &LiveConfig,
     base_url: &str,
     wire_api: &str,
+    bridge: &str,
     extra_config: &str,
 ) -> anyhow::Result<()> {
     let home = tempfile::TempDir::new()?;
     let cwd = tempfile::TempDir::new()?;
-    write_config_toml(home.path(), cfg, base_url, wire_api, extra_config)?;
+    write_config_toml(home.path(), cfg, base_url, wire_api, bridge, extra_config)?;
 
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -177,7 +183,7 @@ async fn run_marker_turn(
         .unwrap_or_default();
     let marker = format!("mimo-{protocol}-{nonce}-{}", std::process::id());
     let prompt = format!(
-        "请用 shell 工具运行命令 `echo {marker}`，然后把命令的原始输出逐字告诉我，不要添加任何解释。"
+        "请务必调用 shell 工具真实执行命令 `echo {marker}`（不要只把命令当文本输出），然后把命令的原始输出逐字告诉我，不要添加任何解释。"
     );
 
     let artifacts_dir = target_dir().join("live-mimo").join(&marker);
@@ -257,7 +263,7 @@ async fn e2e_chat_completions_protocol() -> anyhow::Result<()> {
     let Some(cfg) = live_config() else {
         return Ok(());
     };
-    run_marker_turn("chat", &cfg, &cfg.base_url, "chat", "").await
+    run_marker_turn("chat-genai", &cfg, &cfg.base_url, "chat", "genai", "").await
 }
 
 /// The upstream-native Responses API path (no bridge involved): guards the
@@ -268,7 +274,7 @@ async fn e2e_responses_api_protocol() -> anyhow::Result<()> {
     let Some(cfg) = live_config() else {
         return Ok(());
     };
-    run_marker_turn("responses", &cfg, &cfg.base_url, "responses", "web_search = \"disabled\"\n").await
+    run_marker_turn("responses", &cfg, &cfg.base_url, "responses", "genai", "web_search = \"disabled\"\n").await
 }
 
 /// Anthropic Messages protocol via the bridge's genai Anthropic adapter,
@@ -278,5 +284,25 @@ async fn e2e_anthropic_protocol() -> anyhow::Result<()> {
     let Some(cfg) = live_config() else {
         return Ok(());
     };
-    run_marker_turn("anthropic", &cfg, &cfg.anthropic_base_url, "chat", "").await
+    run_marker_turn("anthropic-genai", &cfg, &cfg.anthropic_base_url, "chat", "genai", "").await
+}
+
+/// Same chat-protocol loop through the rig bridge (A/B against the genai
+/// variant above; see my-docs/rig-bridge-implementation-plan.md).
+#[tokio::test(flavor = "multi_thread")]
+async fn e2e_chat_completions_protocol_via_rig() -> anyhow::Result<()> {
+    let Some(cfg) = live_config() else {
+        return Ok(());
+    };
+    run_marker_turn("chat-rig", &cfg, &cfg.base_url, "chat", "rig", "").await
+}
+
+/// Anthropic Messages protocol through the rig bridge (A/B against the genai
+/// variant above).
+#[tokio::test(flavor = "multi_thread")]
+async fn e2e_anthropic_protocol_via_rig() -> anyhow::Result<()> {
+    let Some(cfg) = live_config() else {
+        return Ok(());
+    };
+    run_marker_turn("anthropic-rig", &cfg, &cfg.anthropic_base_url, "chat", "rig", "").await
 }

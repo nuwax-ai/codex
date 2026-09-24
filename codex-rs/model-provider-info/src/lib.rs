@@ -118,6 +118,45 @@ impl fmt::Display for WireApi {
     }
 }
 
+/// Chat-Completions bridge implementation backing `wire_api = "chat"`
+/// providers (fork extension). `Genai` is the default for compatibility.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ChatBridge {
+    /// The `codex-rust-genai-bridge` crate.
+    #[default]
+    Genai,
+    /// The `codex-rust-rig-bridge` crate.
+    Rig,
+}
+
+impl fmt::Display for ChatBridge {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            Self::Genai => "genai",
+            Self::Rig => "rig",
+        };
+        f.write_str(value)
+    }
+}
+
+impl<'de> Deserialize<'de> for ChatBridge {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        match value.as_str() {
+            "genai" => Ok(Self::Genai),
+            "rig" => Ok(Self::Rig),
+            _ => Err(serde::de::Error::unknown_variant(
+                &value,
+                &["genai", "rig"],
+            )),
+        }
+    }
+}
+
 impl<'de> Deserialize<'de> for WireApi {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -166,6 +205,10 @@ pub struct ModelProviderInfo {
     /// Which wire protocol this provider expects.
     #[serde(default)]
     pub wire_api: WireApi,
+    /// Which Chat-Completions bridge implementation serves this provider
+    /// (fork extension; only consulted when `wire_api = "chat"`).
+    #[serde(default)]
+    pub experimental_bridge: Option<ChatBridge>,
     /// Optional query parameters to append to the base URL.
     pub query_params: Option<HashMap<String, RedactedString>>,
     /// Additional HTTP headers to include in requests to this provider where
@@ -528,6 +571,7 @@ other non-default provider fields are not supported"
             gateway_oauth: None,
             aws: None,
             wire_api: WireApi::Responses,
+            experimental_bridge: None,
             query_params: None,
             http_headers: Some(
                 [("version".to_string(), env!("CARGO_PKG_VERSION").into())]
@@ -578,6 +622,7 @@ other non-default provider fields are not supported"
                 auth_refresh: None,
             })),
             wire_api: WireApi::Responses,
+            experimental_bridge: None,
             query_params: None,
             http_headers: Some(HashMap::from([(
                 AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER.to_string(),
@@ -754,6 +799,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         gateway_oauth: None,
         aws: None,
         wire_api,
+        experimental_bridge: None,
         query_params: None,
         http_headers: None,
         env_http_headers: None,

@@ -60,6 +60,7 @@ codex-model-provider = { workspace = true }
 codex-protocol = { workspace = true }
 codex-response-debug-context = { workspace = true }
 codex-rust-genai-bridge = { workspace = true, optional = true }
+codex-rust-rig-bridge = { workspace = true, optional = true }
 codex-prompts = { workspace = true }
 codex-rollout = { workspace = true }
 codex-rollout-trace = { workspace = true }
@@ -181,3 +182,4 @@ ignored-paths = ["tests/remote_env_windows/*.rs"]
 [features]
 default = []
 rust-genai = ["dep:codex-rust-genai-bridge", "dep:genai"]
+rust-rig = ["dep:codex-rust-rig-bridge"]

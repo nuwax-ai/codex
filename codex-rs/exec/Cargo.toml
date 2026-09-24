@@ -37,7 +37,7 @@ codex-cloud-config = { workspace = true }
 codex-config = { workspace = true }
 # Enable the rust-genai Chat Completions bridge so headless `codex exec`
 # sessions work with `wire_api = "chat"` providers, matching the CLI binary.
-codex-core = { workspace = true, features = ["rust-genai"] }
+codex-core = { workspace = true, features = ["rust-genai", "rust-rig"] }
 codex-features = { workspace = true }
 codex-feedback = { workspace = true }
 codex-git-utils = { workspace = true }
