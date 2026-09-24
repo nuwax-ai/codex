@@ -1,8 +1,10 @@
-//! Bridge-level live suites: the same MiMo scenarios run through both the
-//! genai bridge and the rig bridge so their event streams can be compared
-//! (A/B) while asserting codex's protocol invariants on real model output.
+//! Bridge-level live suites: the same scenarios run through both the genai
+//! bridge and the rig bridge against the configured vendor
+//! (`LIVE_VENDOR_*`, default Xiaomi MiMo) so their event streams can be
+//! compared (A/B) while asserting codex's protocol invariants on real model
+//! output. Anthropic suites skip for vendors without an Anthropic gateway.
 //!
-//! Skipped entirely when `MIMO_API_KEY` is not configured.
+//! Skipped entirely when no vendor API key is configured.
 
 use codex_api::ResponsesApiRequest;
 use codex_live_tests::live_config;
@@ -219,9 +221,12 @@ async fn genai_anthropic_protocol_chat_round_trip() {
         "用一句话说明二分查找的思想。",
     );
 
+    let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(&cfg) else {
+        return;
+    };
     let events = run_turn_genai(
         &cfg,
-        &cfg.anthropic_base_url,
+        &anthropic_url,
         &request,
         AdapterKind::Anthropic,
         "genai-anthropic",
@@ -362,9 +367,12 @@ async fn rig_anthropic_protocol_chat_round_trip() {
         "用一句话说明二分查找的思想。",
     );
 
+    let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(&cfg) else {
+        return;
+    };
     let events = run_turn_rig(
         &cfg,
-        &cfg.anthropic_base_url,
+        &anthropic_url,
         &request,
         "rig-anthropic",
     )

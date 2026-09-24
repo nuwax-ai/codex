@@ -35,7 +35,6 @@ use std::time::UNIX_EPOCH;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use codex_api::ApiError;
 use codex_api::AuthProvider;
 use codex_api::Provider;
 use codex_api::ResponseEvent;
@@ -62,13 +61,19 @@ pub struct LiveConfig {
     pub vendor: String,
     pub api_key: String,
     pub base_url: String,
-    pub anthropic_base_url: String,
+    /// Anthropic-protocol gateway, when this vendor exposes one. Anthropic
+    /// suites skip when `None` — there must never be a cross-vendor default
+    /// here (sending vendor A's key to vendor B's endpoint).
+    pub anthropic_base_url: Option<String>,
     pub model: String,
 }
 
-/// Loads `MIMO_*` configuration: environment variables first, then
+/// Loads the vendor configuration: environment variables first, then
 /// `.env.local` / `.env` at the repository root. Returns `None` (caller
-/// skips the test) when `MIMO_API_KEY` is unset.
+/// skips the test) when no API key is configured.
+///
+/// Single-vendor by design: `LIVE_VENDOR_*` names the vendor under test;
+/// `MIMO_*` remains as a fallback for the original Xiaomi MiMo setup.
 pub fn live_config() -> Option<LiveConfig> {
     let file_env = load_env_files();
     let lookup = |key: &str| -> Option<String> {
@@ -78,8 +83,10 @@ pub fn live_config() -> Option<LiveConfig> {
             .or_else(|| file_env.get(key).cloned())
     };
     let vendor = lookup("LIVE_VENDOR_NAME").unwrap_or_else(|| "mimo".into());
-    let api_key = lookup("LIVE_VENDOR_API_KEY")
-        .or_else(|| lookup("MIMO_API_KEY"));
+    // Defaults below apply only to the mimo vendor; any other vendor must
+    // declare its URLs explicitly in .env.local (fail fast otherwise).
+    let is_mimo = vendor == "mimo";
+    let api_key = lookup("LIVE_VENDOR_API_KEY").or_else(|| lookup("MIMO_API_KEY"));
     let api_key = match api_key {
         Some(key) => key,
         None => {
@@ -87,20 +94,24 @@ pub fn live_config() -> Option<LiveConfig> {
             return None;
         }
     };
-    // Adding a vendor is pure configuration: set LIVE_VENDOR_* in .env.local
-    // (key, chat URL, optional Anthropic URL, model) — no code changes. The
-    // MIMO_* fallbacks keep the original Xiaomi MiMo defaults working.
+    let base_url = lookup("LIVE_VENDOR_CHAT_URL")
+        .or_else(|| lookup("MIMO_BASE_URL"))
+        .or_else(|| is_mimo.then(|| "https://token-plan-cn.xiaomimimo.com/v1".to_string()));
+    let base_url = match base_url {
+        Some(url) => url,
+        None => {
+            println!("LIVE_VENDOR_CHAT_URL not set for vendor `{vendor}` — skipping live test");
+            return None;
+        }
+    };
     Some(LiveConfig {
-        api_key,
-        base_url: lookup("LIVE_VENDOR_CHAT_URL")
-            .or_else(|| lookup("MIMO_BASE_URL"))
-            .unwrap_or_else(|| "https://token-plan-cn.xiaomimimo.com/v1".into()),
         anthropic_base_url: lookup("LIVE_VENDOR_ANTHROPIC_URL")
-            .or_else(|| lookup("MIMO_ANTHROPIC_BASE_URL"))
-            .unwrap_or_else(|| "https://token-plan-cn.xiaomimimo.com/anthropic/v1".into()),
+            .or_else(|| lookup("MIMO_ANTHROPIC_BASE_URL")),
         model: lookup("LIVE_VENDOR_MODEL")
             .or_else(|| lookup("MIMO_MODEL"))
-            .unwrap_or_else(|| "mimo-v2.6-flash".into()),
+            .or_else(|| is_mimo.then(|| "mimo-v2.6-flash".to_string()))?,
+        api_key,
+        base_url,
         vendor,
     })
 }
@@ -184,6 +195,18 @@ pub fn vendor_provider(vendor: &str, base_url: &str) -> Provider {
         },
         stream_idle_timeout: Duration::from_secs(120),
     }
+}
+
+/// Returns the vendor's Anthropic gateway, or `None` after a skip notice
+/// when the vendor does not expose one — never falls back across vendors.
+pub fn anthropic_url_or_skip(cfg: &LiveConfig) -> Option<String> {
+    if cfg.anthropic_base_url.is_none() {
+        println!(
+            "vendor `{}` has no Anthropic gateway configured (set LIVE_VENDOR_ANTHROPIC_URL) — skipping",
+            cfg.vendor
+        );
+    }
+    cfg.anthropic_base_url.clone()
 }
 
 pub fn user_message(text: &str) -> ResponseItem {
@@ -288,9 +311,13 @@ pub async fn run_turn_rig(
 // ================================================================
 
 /// Locates the `codex-exec` binary. Cargo does not build binaries of other
-/// workspace members for this crate's tests, so resolution walks the usual
-/// target directories; callers fail fast with build instructions when the
-/// binary has not been built yet.
+/// workspace members for this crate's tests, so resolution walks the target
+/// directories (honoring `CARGO_TARGET_DIR`); callers fail fast with build
+/// instructions when the binary has not been built yet.
+///
+/// Warns loudly when the binary is older than the sources that feed the
+/// bridges — a stale binary silently testing old code burned us once
+/// (unknown config variant), so the mtime check makes it visible.
 pub fn codex_exec_binary() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("CARGO_BIN_EXE_codex-exec") {
         let path = PathBuf::from(path);
@@ -301,17 +328,60 @@ pub fn codex_exec_binary() -> Result<PathBuf> {
     let Some(root) = repo_root() else {
         return Err(anyhow!("cannot locate repository root"));
     };
-    let target = root.join("codex-rs").join("target");
-    for profile in ["debug", "release"] {
-        let path = target.join(profile).join("codex-exec");
-        if path.is_file() {
-            return Ok(path);
+    let target = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root.join("codex-rs").join("target"));
+    let binary = ["debug", "release"]
+        .iter()
+        .map(|profile| target.join(profile).join("codex-exec"))
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            anyhow!(
+                "codex-exec binary not found under {}; run \
+                 `cargo build -p codex-exec --bin codex-exec` first",
+                target.display()
+            )
+        })?;
+    warn_if_stale(&binary, &root);
+    Ok(binary)
+}
+
+/// Prints a prominent warning when the binary predates recent changes in the
+/// crates it embeds, so a red suite is not misread as a code regression.
+fn warn_if_stale(binary: &Path, root: &Path) {
+    let Ok(binary_mtime) = binary.metadata().and_then(|m| m.modified()) else {
+        return;
+    };
+    let watched = [
+        "codex-rs/core/src",
+        "codex-rs/codex-rust-rig-bridge/src",
+        "codex-rs/codex-rust-genai-bridge/src",
+        "codex-rs/model-provider-info/src",
+        "codex-rs/exec/src",
+    ];
+    let mut newer = Vec::new();
+    for rel in watched {
+        let dir = root.join(rel);
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            if let Ok(mtime) = entry.metadata().and_then(|m| m.modified())
+                && mtime > binary_mtime
+            {
+                newer.push(entry.path());
+            }
         }
     }
-    Err(anyhow!(
-        "codex-exec binary not found under {}; run `cargo build -p codex-exec --bin codex-exec` first",
-        target.display()
-    ))
+    if !newer.is_empty() {
+        println!(
+            "⚠️  codex-exec binary is older than {} source file(s) under the bridge crates \
+             (e.g. {}); the binary-level suite may be testing stale code. \
+             Rebuild with: cargo build -p codex-exec --bin codex-exec",
+            newer.len(),
+            newer[0].display()
+        );
+    }
 }
 
 /// Writes the provider config for one binary-level run into `home/config.toml`.
@@ -582,12 +652,6 @@ pub fn end_turn_of(events: &[ResponseEvent]) -> Option<bool> {
         ResponseEvent::Completed { end_turn, .. } => *end_turn,
         _ => None,
     })
-}
-
-/// Convenience for tests that only care about `ApiError` type compatibility.
-#[allow(dead_code)]
-pub fn api_error_display(err: &ApiError) -> String {
-    format!("{err:#}")
 }
 
 // ================================================================

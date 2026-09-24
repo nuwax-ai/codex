@@ -77,10 +77,13 @@ async fn e2e_anthropic_via_genai() -> anyhow::Result<()> {
     let Some(cfg) = live_config() else {
         return Ok(());
     };
+    let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(&cfg) else {
+        return Ok(());
+    };
     run_marker_turn(
         "anthropic-genai",
         &cfg,
-        &cfg.anthropic_base_url,
+        &anthropic_url,
         "chat",
         Some("genai"),
         "",
@@ -111,10 +114,13 @@ async fn e2e_anthropic_via_rig() -> anyhow::Result<()> {
     let Some(cfg) = live_config() else {
         return Ok(());
     };
+    let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(&cfg) else {
+        return Ok(());
+    };
     run_marker_turn(
         "anthropic-rig",
         &cfg,
-        &cfg.anthropic_base_url,
+        &anthropic_url,
         "chat",
         Some("rig"),
         "",
