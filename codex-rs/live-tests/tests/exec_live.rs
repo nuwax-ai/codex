@@ -31,22 +31,43 @@ async fn e2e_chat_completions_via_genai() -> anyhow::Result<()> {
     .await
 }
 
-/// The upstream-native Responses API path (no bridge involved): guards the
-/// fork against regressions in stock codex behavior. Hosted tools are
-/// disabled because MiMo's Responses gateway rejects `web_search`.
+/// Fork default for third-party Responses providers: `wire_api = "responses"`
+/// with no `experimental_bridge` routes through the rig bridge, which drops
+/// hosted tools MiMo does not support (no `web_search = "disabled"` needed).
 #[tokio::test(flavor = "multi_thread")]
-async fn e2e_responses_api() -> anyhow::Result<()> {
+async fn e2e_responses_via_rig_default() -> anyhow::Result<()> {
     let Some(cfg) = live_config() else {
         return Ok(());
     };
     run_marker_turn(
-        "responses",
+        "responses-rig-default",
         &cfg,
         &cfg.base_url,
         "responses",
-        Some("genai"),
-        "web_search = \"disabled\"\n",
         None,
+        "",
+        Some("via rig"),
+    )
+    .await
+}
+
+/// Escape hatch: `experimental_bridge = "native"` forces the upstream
+/// transport even for third-party providers (asserted via the native
+/// Responses SSE telemetry instead of the bridge dispatch log). Hosted
+/// tools are disabled because MiMo's Responses gateway rejects `web_search`.
+#[tokio::test(flavor = "multi_thread")]
+async fn e2e_responses_native_escape_hatch() -> anyhow::Result<()> {
+    let Some(cfg) = live_config() else {
+        return Ok(());
+    };
+    run_marker_turn(
+        "responses-native",
+        &cfg,
+        &cfg.base_url,
+        "responses",
+        Some("native"),
+        "web_search = \"disabled\"\n",
+        Some("event.kind=response.completed"),
     )
     .await
 }

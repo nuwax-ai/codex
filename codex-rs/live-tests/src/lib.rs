@@ -1,18 +1,28 @@
 //! Shared support for the live integration tests of the chat bridges.
 //!
-//! Everything here talks to REAL providers (default: Xiaomi MiMo) and is
-//! gated on `MIMO_API_KEY` (environment, or a gitignored `.env.local` /
-//! `.env` at the repository root). Two suites live in this crate:
+//! Everything here talks to REAL providers and is vendor-agnostic: configure
+//! one via `LIVE_VENDOR_*` (environment, or a gitignored `.env.local` /
+//! `.env` at the repository root; Xiaomi MiMo is the default and the
+//! `MIMO_*` variables remain as fallbacks). Adding a vendor is pure
+//! configuration — no code changes. Two suites live in this crate:
 //!
 //! - `tests/bridge_live.rs` — bridge level: `ResponsesApiRequest` → bridge →
 //!   provider SSE → codex `ResponseEvent`s, with protocol invariants asserted
 //!   on real streams; runs the same cases through both bridges for A/B.
 //! - `tests/exec_live.rs` — binary level: the compiled `codex-exec` driven
-//!   end to end with the unforgeable-marker technique.
+//!   end to end with the unforgeable-marker technique, covering both
+//!   `wire_api` values: chat (always via a bridge) and responses (fork
+//!   default: third-party providers also go through the rig bridge;
+//!   `experimental_bridge = "native"` opts back into the upstream
+//!   transport).
 //!
-//! Every run persists artifacts under `<repo>/logs/live-mimo/` (gitignored):
-//! per-turn bridge event logs in `bridge/`, and per-run `events.jsonl` /
-//! `final_message.txt` / `stderr.log` for the binary suite.
+//! Every run persists artifacts under `<repo>/logs/live-<vendor>/`
+//! (gitignored): per-turn bridge event logs in `bridge/`, and per-run
+//! `events.jsonl` / `final_message.txt` / `stderr.log` for the binary suite.
+//!
+//! NOTE: rebuild the binary after changing core/provider code, or the
+//! binary-level suite tests the stale executable:
+//! `cargo build -p codex-exec --bin codex-exec`.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -47,6 +57,9 @@ const EXEC_RUN_TIMEOUT: Duration = Duration::from_secs(300);
 // ================================================================
 
 pub struct LiveConfig {
+    /// Vendor tag: names the provider in generated config and the artifact
+    /// directory (`logs/live-<vendor>/`). Defaults to `mimo`.
+    pub vendor: String,
     pub api_key: String,
     pub base_url: String,
     pub anthropic_base_url: String,
@@ -64,20 +77,31 @@ pub fn live_config() -> Option<LiveConfig> {
             .filter(|v| !v.is_empty())
             .or_else(|| file_env.get(key).cloned())
     };
-    let api_key = match lookup("MIMO_API_KEY") {
+    let vendor = lookup("LIVE_VENDOR_NAME").unwrap_or_else(|| "mimo".into());
+    let api_key = lookup("LIVE_VENDOR_API_KEY")
+        .or_else(|| lookup("MIMO_API_KEY"));
+    let api_key = match api_key {
         Some(key) => key,
         None => {
-            println!("MIMO_API_KEY not set — skipping live test");
+            println!("LIVE_VENDOR_API_KEY (or MIMO_API_KEY) not set — skipping live test");
             return None;
         }
     };
+    // Adding a vendor is pure configuration: set LIVE_VENDOR_* in .env.local
+    // (key, chat URL, optional Anthropic URL, model) — no code changes. The
+    // MIMO_* fallbacks keep the original Xiaomi MiMo defaults working.
     Some(LiveConfig {
         api_key,
-        base_url: lookup("MIMO_BASE_URL")
+        base_url: lookup("LIVE_VENDOR_CHAT_URL")
+            .or_else(|| lookup("MIMO_BASE_URL"))
             .unwrap_or_else(|| "https://token-plan-cn.xiaomimimo.com/v1".into()),
-        anthropic_base_url: lookup("MIMO_ANTHROPIC_BASE_URL")
+        anthropic_base_url: lookup("LIVE_VENDOR_ANTHROPIC_URL")
+            .or_else(|| lookup("MIMO_ANTHROPIC_BASE_URL"))
             .unwrap_or_else(|| "https://token-plan-cn.xiaomimimo.com/anthropic/v1".into()),
-        model: lookup("MIMO_MODEL").unwrap_or_else(|| "mimo-v2.6-flash".into()),
+        model: lookup("LIVE_VENDOR_MODEL")
+            .or_else(|| lookup("MIMO_MODEL"))
+            .unwrap_or_else(|| "mimo-v2.6-flash".into()),
+        vendor,
     })
 }
 
@@ -145,9 +169,9 @@ pub fn shared_auth(api_key: &str) -> SharedAuthProvider {
     Arc::new(StaticBearerAuth(api_key.to_string()))
 }
 
-pub fn mimo_provider(base_url: &str) -> Provider {
+pub fn vendor_provider(vendor: &str, base_url: &str) -> Provider {
     Provider {
-        name: "mimo".into(),
+        name: vendor.to_string(),
         base_url: base_url.to_string(),
         query_params: None,
         headers: HeaderMap::new(),
@@ -180,7 +204,7 @@ pub fn user_message(text: &str) -> ResponseItem {
 
 /// Drains a codex `ResponseStream`, printing and persisting every event
 /// under `<repo>/logs/live-mimo/bridge/<tag>-<nonce>.log`.
-pub async fn drain_stream(stream: ResponseStream, tag: &str) -> Vec<ResponseEvent> {
+pub async fn drain_stream(stream: ResponseStream, vendor: &str, tag: &str) -> Vec<ResponseEvent> {
     let mut stream = stream;
     let mut events = Vec::new();
     let mut log_lines = Vec::new();
@@ -204,25 +228,25 @@ pub async fn drain_stream(stream: ResponseStream, tag: &str) -> Vec<ResponseEven
             None => break,
         }
     }
-    persist_lines("bridge", tag, &log_lines);
+    persist_lines(vendor, "bridge", tag, &log_lines);
     events
 }
 
 /// One bridge-level turn through the genai bridge.
 pub async fn run_turn_genai(
-    request: &ResponsesApiRequest,
+    cfg: &LiveConfig,
     base_url: &str,
-    api_key: &str,
+    request: &ResponsesApiRequest,
     adapter_kind: genai::adapter::AdapterKind,
     tag: &str,
 ) -> Vec<ResponseEvent> {
-    let provider = mimo_provider(base_url);
+    let provider = vendor_provider(&cfg.vendor, base_url);
     let stream: ResponseStream = timeout(
         TURN_TIMEOUT,
         codex_rust_genai_bridge::stream_via_genai(
             request,
             &provider,
-            &shared_auth(api_key),
+            &shared_auth(&cfg.api_key),
             HeaderMap::new(),
             adapter_kind,
             provider.stream_idle_timeout,
@@ -231,24 +255,24 @@ pub async fn run_turn_genai(
     .await
     .expect("stream_via_genai started within timeout")
     .expect("stream_via_genai succeeded");
-    drain_stream(stream, tag).await
+    drain_stream(stream, &cfg.vendor, tag).await
 }
 
 /// One bridge-level turn through the rig bridge (protocol picked from the
 /// provider base URL inside the bridge).
 pub async fn run_turn_rig(
-    request: &ResponsesApiRequest,
+    cfg: &LiveConfig,
     base_url: &str,
-    api_key: &str,
+    request: &ResponsesApiRequest,
     tag: &str,
 ) -> Vec<ResponseEvent> {
-    let provider = mimo_provider(base_url);
+    let provider = vendor_provider(&cfg.vendor, base_url);
     let stream: ResponseStream = timeout(
         TURN_TIMEOUT,
         codex_rust_rig_bridge::stream_via_rig(
             request,
             &provider,
-            &shared_auth(api_key),
+            &shared_auth(&cfg.api_key),
             HeaderMap::new(),
             provider.stream_idle_timeout,
         ),
@@ -256,7 +280,7 @@ pub async fn run_turn_rig(
     .await
     .expect("stream_via_rig started within timeout")
     .expect("stream_via_rig succeeded");
-    drain_stream(stream, tag).await
+    drain_stream(stream, &cfg.vendor, tag).await
 }
 
 // ================================================================
@@ -307,17 +331,18 @@ pub fn write_config_toml(
         .unwrap_or_default();
     let toml = format!(
         r#"model = "{model}"
-model_provider = "mimo"
+model_provider = "{vendor}"
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
 {extra}
-[model_providers.mimo]
-name = "MiMo"
+[model_providers.{vendor}]
+name = "{vendor}"
 base_url = "{base_url}"
 wire_api = "{wire_api}"
 {bridge_line}experimental_bearer_token = "{api_key}"
 "#,
         model = cfg.model,
+        vendor = cfg.vendor,
         base_url = base_url,
         wire_api = wire_api,
         bridge_line = bridge_line,
@@ -360,7 +385,7 @@ pub async fn run_marker_turn(
     let artifacts_dir = repo_root()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("logs")
-        .join("live-mimo")
+        .join(format!("live-{}", cfg.vendor))
         .join(&marker);
     std::fs::create_dir_all(&artifacts_dir)?;
 
@@ -569,11 +594,11 @@ pub fn api_error_display(err: &ApiError) -> String {
 // Artifact persistence
 // ================================================================
 
-fn persist_lines(subdir: &str, tag: &str, lines: &[String]) {
+fn persist_lines(vendor: &str, subdir: &str, tag: &str, lines: &[String]) {
     let Some(root) = repo_root() else {
         return;
     };
-    let dir = root.join("logs").join("live-mimo").join(subdir);
+    let dir = root.join("logs").join(format!("live-{vendor}")).join(subdir);
     if std::fs::create_dir_all(&dir).is_err() {
         return;
     }

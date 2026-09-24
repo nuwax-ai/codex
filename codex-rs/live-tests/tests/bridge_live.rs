@@ -52,9 +52,9 @@ async fn genai_chat_round_trip_streams_text_reasoning_and_usage() {
     );
 
     let events = run_turn_genai(
-        &request,
+        &cfg,
         &cfg.base_url,
-        &cfg.api_key,
+        &request,
         AdapterKind::OpenAI,
         "genai-chat",
     )
@@ -95,9 +95,9 @@ async fn genai_chat_with_reasoning_effort_low_is_accepted() {
     });
 
     let events = run_turn_genai(
-        &request,
+        &cfg,
         &cfg.base_url,
-        &cfg.api_key,
+        &request,
         AdapterKind::OpenAI,
         "genai-effort",
     )
@@ -124,9 +124,9 @@ async fn genai_tool_call_round_trip_with_tool_result_replay() {
     request.parallel_tool_calls = false;
 
     let turn1 = run_turn_genai(
-        &request,
+        &cfg,
         &cfg.base_url,
-        &cfg.api_key,
+        &request,
         AdapterKind::OpenAI,
         "genai-tool-t1",
     )
@@ -193,9 +193,9 @@ async fn genai_tool_call_round_trip_with_tool_result_replay() {
     request.input = input;
 
     let turn2 = run_turn_genai(
-        &request,
+        &cfg,
         &cfg.base_url,
-        &cfg.api_key,
+        &request,
         AdapterKind::OpenAI,
         "genai-tool-t2",
     )
@@ -220,9 +220,9 @@ async fn genai_anthropic_protocol_chat_round_trip() {
     );
 
     let events = run_turn_genai(
-        &request,
+        &cfg,
         &cfg.anthropic_base_url,
-        &cfg.api_key,
+        &request,
         AdapterKind::Anthropic,
         "genai-anthropic",
     )
@@ -256,7 +256,7 @@ async fn rig_chat_round_trip_streams_text_reasoning_and_usage() {
         "用一句话解释什么是斐波那契数列。",
     );
 
-    let events = run_turn_rig(&request, &cfg.base_url, &cfg.api_key, "rig-chat").await;
+    let events = run_turn_rig(&cfg, &cfg.base_url, &request, "rig-chat").await;
 
     assert!(
         codex_live_tests::text_len(&events) > 0,
@@ -289,7 +289,7 @@ async fn rig_tool_call_round_trip_with_tool_result_replay() {
     request.tools = Some(weather_tools());
     request.parallel_tool_calls = false;
 
-    let turn1 = run_turn_rig(&request, &cfg.base_url, &cfg.api_key, "rig-tool-t1").await;
+    let turn1 = run_turn_rig(&cfg, &cfg.base_url, &request, "rig-tool-t1").await;
     codex_live_tests::assert_completed_with_usage(&turn1, "rig tool turn 1");
     codex_live_tests::assert_reasoning_before_message(&turn1, "rig tool turn 1");
     assert_eq!(
@@ -342,7 +342,7 @@ async fn rig_tool_call_round_trip_with_tool_result_replay() {
     });
     request.input = input;
 
-    let turn2 = run_turn_rig(&request, &cfg.base_url, &cfg.api_key, "rig-tool-t2").await;
+    let turn2 = run_turn_rig(&cfg, &cfg.base_url, &request, "rig-tool-t2").await;
     assert!(
         codex_live_tests::text_len(&turn2) > 0,
         "expected the model to answer with text after the tool result"
@@ -363,9 +363,9 @@ async fn rig_anthropic_protocol_chat_round_trip() {
     );
 
     let events = run_turn_rig(
-        &request,
+        &cfg,
         &cfg.anthropic_base_url,
-        &cfg.api_key,
+        &request,
         "rig-anthropic",
     )
     .await;

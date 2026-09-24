@@ -118,9 +118,11 @@ impl fmt::Display for WireApi {
     }
 }
 
-/// Chat-Completions bridge implementation backing `wire_api = "chat"`
-/// providers (fork extension). `Rig` is the default; configure
-/// `experimental_bridge = "genai"` to fall back to the original bridge.
+/// Chat-Completions bridge implementation backing this provider
+/// (fork extension). `Rig` is the default; configure
+/// `experimental_bridge = "genai"` to fall back to the original bridge,
+/// or `"native"` to force the upstream transport (escape hatch for
+/// providers that implement the Responses API fully).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ChatBridge {
@@ -129,6 +131,10 @@ pub enum ChatBridge {
     /// The `codex-rust-rig-bridge` crate (fork default).
     #[default]
     Rig,
+    /// The upstream-native transport. Only meaningful with
+    /// `wire_api = "responses"`; overrides the fork default that routes
+    /// third-party Responses providers through the rig bridge.
+    Native,
 }
 
 impl fmt::Display for ChatBridge {
@@ -136,6 +142,7 @@ impl fmt::Display for ChatBridge {
         let value = match self {
             Self::Genai => "genai",
             Self::Rig => "rig",
+            Self::Native => "native",
         };
         f.write_str(value)
     }
@@ -150,9 +157,10 @@ impl<'de> Deserialize<'de> for ChatBridge {
         match value.as_str() {
             "genai" => Ok(Self::Genai),
             "rig" => Ok(Self::Rig),
+            "native" => Ok(Self::Native),
             _ => Err(serde::de::Error::unknown_variant(
                 &value,
-                &["genai", "rig"],
+                &["genai", "rig", "native"],
             )),
         }
     }

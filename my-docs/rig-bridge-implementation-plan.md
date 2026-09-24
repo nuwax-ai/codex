@@ -127,3 +127,19 @@ pub async fn stream_via_rig(
 - **双 reqwest**:体积/编译时间上升;不影响正确性(类型不跨界);T6 后评估是否提前做原生传输
 - **行为差异**:以 L1/L3 live 测试为验收基准,genai 桥结果为对照
 - **回滚**:`experimental_bridge` 默认 genai,不配置即回到现状;极端情况 feature 关掉 rig 即编译排除
+
+## 8. Responses 协议同样改走 rig 桥(2026-09-24 追加)
+
+第三方 provider 的 `wire_api = "responses"` 现在默认也由 rig 桥承载(转 Chat
+Completions),不再使用 codex 原生 Responses 客户端——动因:MiMo 等 gateway 的
+Responses 实现是残缺的(拒绝 `web_search` 宿主工具等),而其 Chat Completions
+面是完整的;桥在转换时自动丢弃不支持的宿主工具,用户无需任何 workaround 配置。
+
+分派规则(`core/src/client.rs::responses_routes_via_chat_bridge`):
+- 第一方 OpenAI(websocket/宿主工具/ZDR)与 Amazon Bedrock(SigV4)保持原生;
+- 其余(自定义厂商、ollama、lmstudio 内置)默认走 rig 桥;
+- `experimental_bridge = "native"` 显式回退原生(逃生舱);`"genai"`/`"rig"`
+  可显式指定桥(对 responses wire 同样生效)。
+
+验证:`e2e_responses_via_rig_default`(默认走桥,无需禁 web_search)与
+`e2e_responses_native_escape_hatch`(原生路径)双双通过。

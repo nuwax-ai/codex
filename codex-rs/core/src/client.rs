@@ -2352,9 +2352,32 @@ impl ModelClientSession {
         responses_metadata: &CodexResponsesMetadata,
         inference_trace: &InferenceTraceContext,
     ) -> Result<ResponseStream> {
-        let wire_api = self.client.state.provider.info().wire_api;
+        let info = self.client.state.provider.info();
+        let wire_api = info.wire_api;
         match wire_api {
             WireApi::Responses => {
+                // Fork default: third-party Responses providers route through
+                // the chat bridge (rig) — their Responses implementations are
+                // usually partial (e.g. MiMo rejects the hosted `web_search`
+                // tool), while the bridge normalizes everything to Chat
+                // Completions. First-party OpenAI (websocket, hosted tools,
+                // ZDR) and Amazon Bedrock (SigV4) keep the native transport,
+                // and `experimental_bridge = "native"` forces it explicitly.
+                #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
+                if responses_routes_via_chat_bridge(info, info.experimental_bridge) {
+                    return self
+                        .stream_chat_api(
+                            prompt,
+                            model_info,
+                            session_telemetry,
+                            effort,
+                            summary,
+                            service_tier,
+                            responses_metadata,
+                            inference_trace,
+                        )
+                        .await;
+                }
                 if self.client.responses_websocket_enabled() {
                     let request_trace = current_span_w3c_trace_context();
                     match self
@@ -3103,6 +3126,28 @@ fn adapter_kind_for_base_url(base_url: &str) -> genai::adapter::AdapterKind {
     }
 }
 
+/// Whether a `wire_api = "responses"` provider is served through the chat
+/// bridge instead of the upstream-native Responses transport (fork policy).
+///
+/// - `Some(Native)` — explicit opt-out, keep the native transport.
+/// - `Some(Rig)` / `Some(Genai)` — explicit opt-in to a bridge.
+/// - unset — fork default: everything except first-party OpenAI and Amazon
+///   Bedrock goes through the bridge, because third-party Responses
+///   implementations are typically partial while their Chat Completions
+///   surface is complete.
+#[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
+fn responses_routes_via_chat_bridge(
+    info: &codex_model_provider_info::ModelProviderInfo,
+    bridge: Option<codex_model_provider_info::ChatBridge>,
+) -> bool {
+    use codex_model_provider_info::ChatBridge;
+    match bridge {
+        Some(ChatBridge::Native) => false,
+        Some(ChatBridge::Rig) | Some(ChatBridge::Genai) => true,
+        None => !info.is_openai() && !info.is_amazon_bedrock(),
+    }
+}
+
 /// Sends the Chat-Completions request through the bridge the provider
 /// selected via `experimental_bridge` (fork extension). Unset defaults to
 /// the rig bridge; `"genai"` opts back into the original bridge. Both
@@ -3152,6 +3197,13 @@ async fn dispatch_chat_bridge(
         ChatBridge::Rig => Err(codex_api::ApiError::InvalidRequest {
             message: "the default rig bridge requires the rust-rig feature; rebuild with \
                       it enabled, or set experimental_bridge = \"genai\" on the provider"
+                .into(),
+        }),
+        // `native` only applies to the Responses wire; a chat-wire provider
+        // has no native transport to fall back to.
+        ChatBridge::Native => Err(codex_api::ApiError::InvalidRequest {
+            message: "experimental_bridge = \"native\" requires wire_api = \"responses\"; \
+                      chat-wire providers must use the genai or rig bridge"
                 .into(),
         }),
     }
