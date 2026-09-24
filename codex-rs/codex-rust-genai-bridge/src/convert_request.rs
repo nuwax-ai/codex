@@ -69,8 +69,19 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
             ResponseItem::Message { role, content, .. } => {
                 let role = map_role(role);
                 let parts = convert_content_items(content);
-                let msg = ChatMessage::new(role, MessageContent::from_parts(parts));
-                messages.push(msg);
+                // Consecutive assistant items (Reasoning → Message →
+                // FunctionCall from one model turn) merge into a single
+                // assistant message so the reasoning echo stays attached;
+                // non-assistant roles keep their own messages.
+                if role == ChatRole::Assistant
+                    && let Some(last_msg) = messages.last_mut()
+                    && last_msg.role == ChatRole::Assistant
+                {
+                    last_msg.content.extend(parts);
+                } else {
+                    let msg = ChatMessage::new(role, MessageContent::from_parts(parts));
+                    messages.push(msg);
+                }
             }
             ResponseItem::Reasoning {
                 encrypted_content, ..
@@ -148,8 +159,12 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
             ResponseItem::FunctionCallOutput { call_id, output, .. } => {
                 let content = match &output.body {
                     FunctionCallOutputBody::Text(text) => text.clone(),
+                    // genai's ToolResponse is text-only: extract text parts
+                    // and replace image data URLs with short placeholders —
+                    // serializing raw ContentItems would inline megabytes of
+                    // base64 into the message text.
                     FunctionCallOutputBody::ContentItems(items) => {
-                        serde_json::to_string(items).unwrap_or_default()
+                        flatten_tool_output_text(items)
                     }
                 };
                 messages.push(ChatMessage::tool(MessageContent::from(
@@ -166,8 +181,12 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
             } => {
                 let content = match &output.body {
                     FunctionCallOutputBody::Text(text) => text.clone(),
+                    // genai's ToolResponse is text-only: extract text parts
+                    // and replace image data URLs with short placeholders —
+                    // serializing raw ContentItems would inline megabytes of
+                    // base64 into the message text.
                     FunctionCallOutputBody::ContentItems(items) => {
-                        serde_json::to_string(items).unwrap_or_default()
+                        flatten_tool_output_text(items)
                     }
                 };
                 messages.push(ChatMessage::tool(MessageContent::from(
@@ -184,9 +203,38 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
             | ResponseItem::Compaction { .. }
             | ResponseItem::ContextCompaction { .. }
             | ResponseItem::CompactionTrigger { .. }
-            | ResponseItem::ConfigurationUpdate { .. }
-            | ResponseItem::AgentMessage { .. } => {
+            | ResponseItem::ConfigurationUpdate { .. } => {
                 // Skip — these items are internal to Codex.
+            }
+            ResponseItem::AgentMessage { content, .. } => {
+                // Model-visible multi-agent traffic: forward plaintext as
+                // assistant text, skip provider-encrypted parts.
+                let mut text = String::new();
+                for part in content {
+                    match part {
+                        codex_protocol::models::AgentMessageInputContent::InputText {
+                            text: t,
+                        } => {
+                            if !text.is_empty() {
+                                text.push('\n');
+                            }
+                            text.push_str(t);
+                        }
+                        codex_protocol::models::AgentMessageInputContent::EncryptedContent {
+                            ..
+                        } => {}
+                    }
+                }
+                if !text.is_empty() {
+                    if let Some(last_msg) = messages.last_mut()
+                        && last_msg.role == ChatRole::Assistant
+                    {
+                        last_msg.content.push(ContentPart::Text(text.into()));
+                    } else {
+                        messages
+                            .push(ChatMessage::assistant(MessageContent::from(text)));
+                    }
+                }
             }
             ResponseItem::Other => {
                 tracing::warn!("Skipping unknown ResponseItem::Other in request conversion");
@@ -195,6 +243,68 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
     }
 
     messages
+}
+
+/// Renders a tool-result ContentItems list as plain text for genai's
+/// text-only ToolResponse: text parts are kept (with a defensive cap),
+/// image data URLs become placeholders. Never inlines base64 payloads.
+fn flatten_tool_output_text(items: &[codex_protocol::models::FunctionCallOutputContentItem]) -> String {
+    use codex_protocol::models::FunctionCallOutputContentItem;
+    const MAX_TOTAL_CHARS: usize = 200_000;
+    let mut out = String::new();
+    for item in items {
+        match item {
+            FunctionCallOutputContentItem::InputText { text } => {
+                if !out.is_empty() {
+                    out.push('\n');
+                }
+                out.push_str(text);
+            }
+            FunctionCallOutputContentItem::InputImage {
+                image: codex_protocol::models::ImageReference::Inline { image_url },
+                ..
+            } => {
+                if !out.is_empty() {
+                    out.push('\n');
+                }
+                if image_url.starts_with("data:") {
+                    out.push_str("[image attached — omitted in text]");
+                } else {
+                    out.push_str(&format!("[image: {image_url}]"));
+                }
+            }
+            FunctionCallOutputContentItem::InputImage {
+                image: codex_protocol::models::ImageReference::File { file_id },
+                ..
+            } => {
+                if !out.is_empty() {
+                    out.push('\n');
+                }
+                out.push_str(&format!("[image file: {file_id} — omitted]"));
+            }
+            FunctionCallOutputContentItem::InputAudio { .. } => {
+                if !out.is_empty() {
+                    out.push('\n');
+                }
+                out.push_str("[audio omitted]");
+            }
+            FunctionCallOutputContentItem::EncryptedContent { .. } => {
+                if !out.is_empty() {
+                    out.push('\n');
+                }
+                out.push_str("(encrypted content omitted)");
+            }
+        }
+        if out.len() > MAX_TOTAL_CHARS {
+            out.truncate(MAX_TOTAL_CHARS);
+            out.push_str("\n…[truncated]");
+            break;
+        }
+    }
+    if out.is_empty() {
+        out.push_str("(empty tool result)");
+    }
+    out
 }
 
 fn map_role(codex_role: &str) -> ChatRole {

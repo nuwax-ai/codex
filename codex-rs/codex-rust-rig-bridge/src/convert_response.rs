@@ -46,6 +46,11 @@ struct PendingRigTool {
     /// serialized value when no deltas arrived.
     arguments: String,
     item_added: bool,
+    /// Argument deltas that arrived BEFORE the tool name (rig streams can
+    /// send argument fragments first). They are held back so the
+    /// `OutputItemAdded` event always precedes the first
+    /// `ToolCallInputDelta`, then flushed in order.
+    pending_deltas: Vec<String>,
 }
 
 impl PendingRigTool {
@@ -55,6 +60,7 @@ impl PendingRigTool {
             call_id: String::new(),
             arguments: String::new(),
             item_added: false,
+            pending_deltas: Vec::new(),
         }
     }
 }
@@ -140,13 +146,11 @@ pub(crate) fn rig_event_to_response_events(
             let mut events = Vec::new();
             match content {
                 ToolCallDeltaContent::Name(name) => {
-                    pending.entry_for(internal_call_id).name = name;
-                }
-                ToolCallDeltaContent::Delta(args) => {
                     let entry = pending.entry_for(internal_call_id.clone());
-                    entry.arguments.push_str(&args);
-                    // Emit OutputItemAdded before the first argument delta so
-                    // turn.rs can attach a diff consumer.
+                    entry.name = name;
+                    // The name may arrive AFTER argument deltas; establishing
+                    // the item now also releases the buffered deltas in
+                    // order, preserving the Added-before-delta contract.
                     if !entry.item_added && !entry.name.is_empty() {
                         entry.item_added = true;
                         let name = entry.name.clone();
@@ -163,13 +167,32 @@ pub(crate) fn rig_event_to_response_events(
                                 internal_chat_message_metadata_passthrough: None,
                             },
                         ));
+                        for delta in std::mem::take(&mut entry.pending_deltas) {
+                            events.push(ResponseEvent::ToolCallInputDelta {
+                                item_id: internal_call_id.clone(),
+                                call_id: Some(internal_call_id.clone()),
+                                delta,
+                            });
+                        }
                     }
-                    if !args.is_empty() {
-                        events.push(ResponseEvent::ToolCallInputDelta {
-                            item_id: internal_call_id.clone(),
-                            call_id: Some(internal_call_id),
-                            delta: args,
-                        });
+                }
+                ToolCallDeltaContent::Delta(args) => {
+                    let entry = pending.entry_for(internal_call_id.clone());
+                    entry.arguments.push_str(&args);
+                    if entry.item_added {
+                        if !args.is_empty() {
+                            events.push(ResponseEvent::ToolCallInputDelta {
+                                item_id: internal_call_id.clone(),
+                                call_id: Some(internal_call_id),
+                                delta: args,
+                            });
+                        }
+                    } else {
+                        // Name not yet known: buffer so no delta precedes
+                        // the OutputItemAdded event.
+                        if !args.is_empty() {
+                            entry.pending_deltas.push(args);
+                        }
                     }
                 }
             }
@@ -207,6 +230,13 @@ pub(crate) fn rig_event_to_response_events(
                         internal_chat_message_metadata_passthrough: None,
                     },
                 ));
+                for delta in std::mem::take(&mut entry.pending_deltas) {
+                    events.push(ResponseEvent::ToolCallInputDelta {
+                        item_id: internal_call_id.clone(),
+                        call_id: Some(internal_call_id.clone()),
+                        delta,
+                    });
+                }
             }
             events
         }
@@ -222,6 +252,8 @@ pub(crate) fn rig_event_to_response_events(
         StreamedAssistantContent::Final(final_record) => {
             handle_stream_final(final_record, pending)
         }
+        // Note: usage normalization for Anthropic happens inside
+        // handle_stream_final via the provider tag (see map_usage).
         StreamedAssistantContent::Unknown(unknown) => {
             tracing::debug!(?unknown, "Ignoring unmodeled rig stream item");
             Vec::new()
@@ -290,7 +322,7 @@ fn handle_stream_final(
         .as_ref()
         .map(|reason| !matches!(reason, FinishReason::ToolCalls));
     let token_usage = if final_record.usage.has_values() {
-        Some(map_usage(&final_record.usage))
+        Some(map_usage(&final_record.usage, &final_record.provider))
     } else {
         None
     };
@@ -304,9 +336,19 @@ fn handle_stream_final(
     events
 }
 
-pub(crate) fn map_usage(usage: &RigUsage) -> TokenUsage {
+pub(crate) fn map_usage(usage: &RigUsage, provider: &str) -> TokenUsage {
+    // rig's Anthropic usage reports cache read/write OUTSIDE input_tokens,
+    // while codex's TokenUsage.input_tokens is the TOTAL input (its
+    // non-cached derivation subtracts cached_input_tokens). Normalize for
+    // the Anthropic wire so cached turns don't undercount input to zero.
+    let is_anthropic = provider.contains("anthropic");
+    let input_tokens = if is_anthropic {
+        usage.input_tokens + usage.cached_input_tokens + usage.cache_creation_input_tokens
+    } else {
+        usage.input_tokens
+    };
     TokenUsage {
-        input_tokens: usage.input_tokens as i64,
+        input_tokens: input_tokens as i64,
         cached_input_tokens: usage.cached_input_tokens as i64,
         cache_write_input_tokens: usage.cache_creation_input_tokens as i64,
         output_tokens: usage.output_tokens as i64,

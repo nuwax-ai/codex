@@ -4,6 +4,7 @@ use codex_protocol::models::{
 };
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_tools::code_mode_name_for_tool_name;
+use rig_core::completion::message::ImageMediaType;
 use rig_core::completion::message::{
     AssistantContent, DocumentSourceKind, Image as RigImage, Message, ToolResultContent,
     UserContent,
@@ -160,10 +161,21 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<Message> {
                 if role == "assistant" {
                     let parts = convert_assistant_content(content);
                     if !parts.is_empty() {
-                        messages.push(Message::Assistant {
-                            id: None,
-                            content: parts,
-                        });
+                        // Consecutive assistant items belong to the same
+                        // model turn (history order: Reasoning → Message →
+                        // FunctionCall) and MUST merge into one assistant
+                        // message — a reasoning-only message ahead of the
+                        // text is dropped by the OpenAI wire, losing the
+                        // DeepSeek-required reasoning replay.
+                        match messages.last_mut() {
+                            Some(Message::Assistant { content, .. }) => {
+                                content.extend(parts);
+                            }
+                            _ => messages.push(Message::Assistant {
+                                id: None,
+                                content: parts,
+                            }),
+                        }
                     }
                 } else {
                     // "user", "developer"/"system" and anything unknown map to
@@ -212,9 +224,15 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<Message> {
             }
             ResponseItem::FunctionCallOutput { call_id, output, .. } => {
                 let content = match &output.body {
-                    FunctionCallOutputBody::Text(text) => text.clone(),
+                    FunctionCallOutputBody::Text(text) => {
+                        vec![ToolResultContent::text(truncate_tool_text(text))]
+                    }
+                    // Item-by-item conversion: images become real image
+                    // blocks (data URLs decoded to base64 sources) instead of
+                    // megabytes of base64 inside a text string, and text gets
+                    // a defensive cap.
                     FunctionCallOutputBody::ContentItems(items) => {
-                        serde_json::to_string(items).unwrap_or_default()
+                        convert_tool_output_items(items)
                     }
                 };
                 let call_id = call_id.clone().unwrap_or_default();
@@ -230,7 +248,7 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<Message> {
                             ),
                             provider: rig_core::completion::message::ProviderCallId::new(&call_id),
                             name,
-                            content: vec![ToolResultContent::text(content)],
+                            content,
                         },
                     )],
                 });
@@ -289,9 +307,45 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<Message> {
             | ResponseItem::Compaction { .. }
             | ResponseItem::ContextCompaction { .. }
             | ResponseItem::CompactionTrigger { .. }
-            | ResponseItem::ConfigurationUpdate { .. }
-            | ResponseItem::AgentMessage { .. } => {
+            | ResponseItem::ConfigurationUpdate { .. } => {
                 // Skip — these items are internal to Codex.
+            }
+            ResponseItem::AgentMessage { content, .. } => {
+                // Multi-agent task/results traffic (NEW_TASK, MESSAGE,
+                // FINAL_ANSWER) is model-visible history: forward the
+                // plaintext parts as assistant text (merging with a
+                // preceding assistant turn), skip provider-encrypted parts.
+                let mut text = String::new();
+                for part in content {
+                    match part {
+                        codex_protocol::models::AgentMessageInputContent::InputText {
+                            text: t,
+                        } => {
+                            if !text.is_empty() {
+                                text.push('\n');
+                            }
+                            text.push_str(t);
+                        }
+                        codex_protocol::models::AgentMessageInputContent::EncryptedContent {
+                            ..
+                        } => {
+                            tracing::debug!(
+                                "Skipping encrypted agent-message part (not replayable cross-provider)"
+                            );
+                        }
+                    }
+                }
+                if !text.is_empty() {
+                    match messages.last_mut() {
+                        Some(Message::Assistant { content, .. }) => {
+                            content.push(AssistantContent::text(text));
+                        }
+                        _ => messages.push(Message::Assistant {
+                            id: None,
+                            content: vec![AssistantContent::text(text)],
+                        }),
+                    }
+                }
             }
             ResponseItem::Other => {
                 tracing::warn!("Skipping unknown ResponseItem::Other in request conversion");
@@ -300,6 +354,107 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<Message> {
     }
 
     messages
+}
+
+/// Defensive cap on a single tool-result text part. Codex core normally
+/// truncates outputs before they reach the bridge; this guards the bridge
+/// against runaway payloads when that path is bypassed.
+fn truncate_tool_text(text: &str) -> String {
+    const MAX_TOOL_TEXT_CHARS: usize = 200_000;
+    if text.len() <= MAX_TOOL_TEXT_CHARS {
+        return text.to_string();
+    }
+    tracing::warn!(
+        chars = text.len(),
+        limit = MAX_TOOL_TEXT_CHARS,
+        "truncating oversized tool-result text"
+    );
+    let mut cut = text.char_indices().nth(MAX_TOOL_TEXT_CHARS).map(|(i, _)| i).unwrap_or(text.len());
+    cut = cut.min(text.len());
+    format!("{}\n…[truncated]", &text[..cut])
+}
+
+/// Converts a tool-result ContentItems list into rig tool-result parts:
+/// text stays text; images become typed image blocks with data URLs
+/// decoded into base64 sources (never inlined into the text).
+fn convert_tool_output_items(items: &[codex_protocol::models::FunctionCallOutputContentItem]) -> Vec<ToolResultContent> {
+    use codex_protocol::models::FunctionCallOutputContentItem;
+    let mut parts = Vec::new();
+    for item in items {
+        match item {
+            FunctionCallOutputContentItem::InputText { text } => {
+                parts.push(ToolResultContent::text(truncate_tool_text(text)));
+            }
+            FunctionCallOutputContentItem::InputImage { image, .. } => {
+                match image {
+                    ImageReference::Inline { image_url } => {
+                        if let Some(part) = data_url_image_part(image_url) {
+                            parts.push(part);
+                        } else {
+                            // A plain network URL — forward as a URL source.
+                            parts.push(ToolResultContent::Image(RigImage {
+                                data: DocumentSourceKind::Url(image_url.clone()),
+                                media_type: None,
+                                detail: None,
+                                additional_params: None,
+                            }));
+                        }
+                    }
+                    ImageReference::File { file_id } => {
+                        tracing::warn!(
+                            file_id,
+                            "Skipping file-referenced image in tool result (unsupported)"
+                        );
+                    }
+                }
+            }
+            FunctionCallOutputContentItem::InputAudio { .. } => {
+                tracing::warn!("Skipping audio in tool result (unsupported by bridge)");
+            }
+            FunctionCallOutputContentItem::EncryptedContent { .. } => {
+                // Provider-encrypted content cannot be replayed through a
+                // different provider; a placeholder keeps the tool result
+                // visible to the model without leaking opaque bytes.
+                parts.push(ToolResultContent::text("(encrypted content omitted)"));
+            }
+        }
+    }
+    if parts.is_empty() {
+        parts.push(ToolResultContent::text("(empty tool result)"));
+    }
+    parts
+}
+
+/// Parses a `data:<mime>;base64,<payload>` URL into a base64-backed image.
+/// The Anthropic wire renders URL sources as remote links — inline payloads
+/// MUST be base64 sources or the content is lost.
+fn data_url_image(data_url: &str) -> Option<RigImage> {
+    let rest = data_url.strip_prefix("data:")?;
+    let (meta, payload) = rest.split_once(',')?;
+    let mime = meta.strip_suffix(";base64")?;
+    let media_type = match mime {
+        "image/jpeg" | "image/jpg" => ImageMediaType::JPEG,
+        "image/png" => ImageMediaType::PNG,
+        "image/gif" => ImageMediaType::GIF,
+        "image/webp" => ImageMediaType::WEBP,
+        "image/heic" => ImageMediaType::HEIC,
+        "image/heif" => ImageMediaType::HEIF,
+        "image/svg+xml" => ImageMediaType::SVG,
+        other => {
+            tracing::warn!(mime = other, "Unsupported image mime in tool result, skipping");
+            return None;
+        }
+    };
+    Some(RigImage {
+        data: DocumentSourceKind::Base64(payload.to_string()),
+        media_type: Some(media_type),
+        detail: None,
+        additional_params: None,
+    })
+}
+
+fn data_url_image_part(data_url: &str) -> Option<ToolResultContent> {
+    Some(ToolResultContent::Image(data_url_image(data_url)?))
 }
 
 fn convert_user_content(items: &[ContentItem]) -> Vec<UserContent> {
@@ -316,14 +471,17 @@ fn convert_user_content(items: &[ContentItem]) -> Vec<UserContent> {
                     );
                     return None;
                 };
-                // Image `detail` is not forwarded (parity with the genai
-                // bridge; rig models it but codex's ImageDetail enum differs).
-                Some(UserContent::Image(RigImage {
-                    data: DocumentSourceKind::Url(image_url.clone()),
-                    media_type: None,
-                    detail: None,
-                    additional_params: None,
-                }))
+                // data: URLs decode into base64 sources (remote-link
+                // rendering on the Anthropic wire would lose the content);
+                // plain http(s) URLs forward as URL sources.
+                Some(UserContent::Image(
+                    data_url_image(image_url).unwrap_or(RigImage {
+                        data: DocumentSourceKind::Url(image_url.clone()),
+                        media_type: None,
+                        detail: None,
+                        additional_params: None,
+                    }),
+                ))
             }
             ContentItem::InputAudio { .. } => {
                 // 国内 LLM 适配暂不支持音频输入，跳过。
@@ -345,12 +503,14 @@ fn convert_assistant_content(items: &[ContentItem]) -> Vec<AssistantContent> {
                 let ImageReference::Inline { image_url } = image else {
                     return None;
                 };
-                Some(AssistantContent::Image(RigImage {
-                    data: DocumentSourceKind::Url(image_url.clone()),
-                    media_type: None,
-                    detail: None,
-                    additional_params: None,
-                }))
+                Some(AssistantContent::Image(
+                    data_url_image(image_url).unwrap_or(RigImage {
+                        data: DocumentSourceKind::Url(image_url.clone()),
+                        media_type: None,
+                        detail: None,
+                        additional_params: None,
+                    }),
+                ))
             }
             ContentItem::InputAudio { .. } => None,
         })
@@ -695,5 +855,216 @@ mod text_format_tests {
             phase: None,
             internal_chat_message_metadata_passthrough: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod review_fix_tests {
+    use super::*;
+
+    fn base_request(input: Vec<ResponseItem>) -> ResponsesApiRequest {
+        ResponsesApiRequest {
+            model: "m".into(),
+            instructions: String::new(),
+            input,
+            tools: None,
+            tool_choice: "auto".into(),
+            parallel_tool_calls: true,
+            reasoning: None,
+            store: false,
+            stream: true,
+            stream_options: None,
+            include: vec![],
+            service_tier: None,
+            prompt_cache_key: None,
+            text: None,
+            client_metadata: None,
+            access_programs: None,
+        }
+    }
+
+    fn user_text(text: &str) -> ResponseItem {
+        ResponseItem::Message {
+            id: None,
+            role: "user".into(),
+            content: vec![ContentItem::InputText {
+                text: text.to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }
+    }
+
+    fn assistant_text(text: &str) -> ResponseItem {
+        ResponseItem::Message {
+            id: None,
+            role: "assistant".into(),
+            content: vec![ContentItem::OutputText {
+                text: text.to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }
+    }
+
+    fn reasoning(content: &str) -> ResponseItem {
+        ResponseItem::Reasoning {
+            id: None,
+            summary: vec![],
+            content: Some(vec![codex_protocol::models::ReasoningItemContent::ReasoningText {
+                text: content.to_string(),
+            }]),
+            encrypted_content: Some(content.to_string()),
+            internal_chat_message_metadata_passthrough: None,
+        }
+    }
+
+    fn function_call(call_id: &str, name: &str, arguments: &str) -> ResponseItem {
+        ResponseItem::FunctionCall {
+            id: None,
+            name: name.into(),
+            namespace: None,
+            arguments: arguments.into(),
+            encrypted_function_args: None,
+            call_id: call_id.into(),
+            internal_chat_message_metadata_passthrough: None,
+        }
+    }
+
+    /// Real history order is Reasoning → Message → FunctionCall; all three
+    /// MUST merge into a single assistant message so the reasoning replay
+    /// survives the OpenAI wire (a reasoning-only assistant message ahead
+    /// of the text gets dropped).
+    #[test]
+    fn real_history_order_merges_into_one_assistant_message() {
+        let req = responses_request_to_completion_request(&base_request(vec![
+            user_text("weather?"),
+            reasoning("thinking about it"),
+            assistant_text("let me check"),
+            function_call("c1", "get_weather", r#"{"city":"北京"}"#),
+        ]))
+        .expect("convertible");
+        let assistant_count = req
+            .chat_history
+            .iter()
+            .filter(|m| matches!(m, Message::Assistant { .. }))
+            .count();
+        assert_eq!(
+            assistant_count, 1,
+            "reasoning+text+tool call must be ONE assistant message"
+        );
+        let Message::Assistant { content, .. } = req.chat_history.last().expect("assistant")
+        else {
+            panic!()
+        };
+        // reasoning + text + tool call, in order
+        assert!(matches!(content[0], AssistantContent::Reasoning(_)));
+        assert!(matches!(content[1], AssistantContent::Text(_)));
+        assert!(matches!(content[2], AssistantContent::ToolCall(_)));
+    }
+
+    /// AgentMessage plaintext reaches the model as assistant text.
+    #[test]
+    fn agent_message_forwards_plaintext() {
+        let req = responses_request_to_completion_request(&base_request(vec![
+            ResponseItem::AgentMessage {
+                id: None,
+                author: "agent".into(),
+                recipient: "main".into(),
+                content: vec![
+                    codex_protocol::models::AgentMessageInputContent::InputText {
+                        text: "task complete".into(),
+                    },
+                    codex_protocol::models::AgentMessageInputContent::EncryptedContent {
+                        encrypted_content: "opaque".into(),
+                    },
+                ],
+                internal_chat_message_metadata_passthrough: None,
+            },
+        ]))
+        .expect("convertible");
+        let Message::Assistant { content, .. } = req.chat_history.last().expect("assistant")
+        else {
+            panic!("expected assistant message");
+        };
+        assert!(content.iter().any(|part| matches!(
+            part,
+            AssistantContent::Text(t) if t.text.contains("task complete")
+        )));
+    }
+
+    /// Tool-result images become typed image blocks, never base64 text.
+    #[test]
+    fn tool_result_data_url_image_becomes_image_block() {
+        let req = responses_request_to_completion_request(&base_request(vec![
+            function_call("c1", "view_image", "{}"),
+            ResponseItem::FunctionCallOutput {
+                id: None,
+                call_id: Some("c1".into()),
+                name: None,
+                namespace: None,
+                output: codex_protocol::models::FunctionCallOutputPayload {
+                    body: FunctionCallOutputBody::ContentItems(vec![
+                        codex_protocol::models::FunctionCallOutputContentItem::InputImage {
+                            image: ImageReference::Inline {
+                                image_url: "data:image/png;base64,aGVsbG8=".into(),
+                            },
+                            detail: None,
+                        },
+                        codex_protocol::models::FunctionCallOutputContentItem::InputText {
+                            text: "screenshot".into(),
+                        },
+                    ]),
+                    success: Some(true),
+                },
+                internal_chat_message_metadata_passthrough: None,
+            },
+        ]))
+        .expect("convertible");
+        let Message::User { content } = req.chat_history.last().expect("user") else {
+            panic!()
+        };
+        let UserContent::ToolResult(result) = content.last().expect("tool result") else {
+            panic!()
+        };
+        assert_eq!(result.content.len(), 2);
+        assert!(matches!(
+            result.content[0],
+            ToolResultContent::Image(ref img)
+                if matches!(img.data, DocumentSourceKind::Base64(_))
+        ));
+        // No part carries raw base64 inside text.
+        for part in &result.content {
+            if let ToolResultContent::Text(t) = part {
+                assert!(!t.text.contains("aGVsbG8="), "base64 leaked into text");
+            }
+        }
+    }
+
+    /// Input data-URL images decode into base64 sources (Anthropic wire
+    /// would drop them as remote links).
+    #[test]
+    fn input_data_url_image_decodes_to_base64() {
+        let req = responses_request_to_completion_request(&base_request(vec![ResponseItem::Message {
+            id: None,
+            role: "user".into(),
+            content: vec![ContentItem::InputImage {
+                image: ImageReference::Inline {
+                    image_url: "data:image/jpeg;base64,QUJD".into(),
+                },
+                detail: None,
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }]))
+        .expect("convertible");
+        let Message::User { content } = req.chat_history.last().expect("user") else {
+            panic!()
+        };
+        assert!(matches!(
+            content[0],
+            UserContent::Image(ref img)
+                if matches!(img.data, DocumentSourceKind::Base64(_))
+        ));
     }
 }

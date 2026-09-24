@@ -100,12 +100,15 @@ pub async fn stream_via_rig(
     // HTTP failures (401/5xx) into the stream, so without this a bad-auth
     // response surfaces mid-stream where codex-core's 401-recovery loop —
     // which only inspects start errors — can never trigger.
-    let mut next_event = match rig_stream.next().await {
-        Some(Err(e)) => {
+    let mut next_event = match tokio::time::timeout(idle_timeout, rig_stream.next()).await {
+        Err(_elapsed) => {
+            return Err(ApiError::Transport(TransportError::Timeout));
+        }
+        Ok(Some(Err(e))) => {
             tracing::error!(model = %model, error = %e, "rig stream failed before first event");
             return Err(map_completion_error(e));
         }
-        first => first,
+        Ok(first) => first,
     };
 
     let (tx, rx) = mpsc::channel(RESPONSE_STREAM_CHANNEL_CAPACITY);

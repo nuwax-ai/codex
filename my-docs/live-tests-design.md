@@ -238,3 +238,21 @@ Codex 独立 review 给出 44 项发现;分诊结论:**证实并立即修复 7 �
 
 Review 的价值确认:**#9 和 #31 都是我自建测试的盲区**(单测绕过真实调用路径;配置
 静默不生效),外部视角抓到了内部测试无法发现的结构性问题。
+
+## 13. Review backlog 第一批桥修复(2026-09-25)
+
+review 证实的桥正确性七项全部修复(单元 22/22 + 全矩阵 64/64):
+
+| # | 修复 | 实现 |
+|---|---|---|
+| 1 P0 | 工具返回图片 base64 文本化 | rig:逐项转换,data URL 解码为 base64 图片块 + 200KB 文本上限;genai(纯文本 ToolResponse):提取文本,data URL 换占位符;EncryptedContent 换占位符 |
+| 3 | reasoning 回放顺序 | 两桥:连续 assistant 项(Reasoning→Message→FunctionCall)合并为**一条** assistant 消息;新回归测试断言三种部件在同消息内且顺序正确 |
+| 4 | AgentMessage 丢弃 | 两桥:明文部分作为 assistant 文本转发(合并入前一条);加密部分跳过(跨 provider 不可回放) |
+| 7 | data URL 当网络 URL | rig:输入图片(用户+assistant+工具结果)的 data URL 统一解码为 base64 source(anthropic 线会丢远程链接内容) |
+| 44 | Added 晚于 delta | rig:名称未知时参数增量缓冲,名称到达或完整 ToolCall 时先发 Added 再按序释放 |
+| 14 | 首事件无超时 | 急切首事件拉取包 idle_timeout |
+| 12 | anthropic usage 语义 | rig anthropic 的 cache read/write 在 input_tokens 之外 → 归一化相加(按 provider 标签判定,OpenAI 线不变) |
+
+剩余 backlog:#5(custom 工具往返,需工具类型追踪)、#6(output_schema 带工具首请求)、
+#10/#11(Final 时的不完整调用/参数覆盖)、#15/#16(genai 状态透传/网关 OAuth 头)、
+#13(Ask 预设权限)、#17-21(config/proto/schema/Bazel/app-server)、#36-43(发布链)。
