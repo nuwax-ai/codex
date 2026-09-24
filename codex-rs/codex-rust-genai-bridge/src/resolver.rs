@@ -15,7 +15,23 @@ pub fn build_genai_client(
     api_auth: &SharedAuthProvider,
     adapter_kind: AdapterKind,
 ) -> genai::Client {
-    let base_url = api_provider.base_url.clone();
+    let base_url = {
+        // Preserve configured query params (api-version, tenant routing, …)
+        // on the endpoint the resolver forces.
+        let base = api_provider.base_url.clone();
+        match &api_provider.query_params {
+            Some(params) if !params.is_empty() => {
+                let qs = params
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<_>>()
+                    .join("&");
+                let sep = if base.contains('?') { '&' } else { '?' };
+                format!("{base}{sep}{qs}")
+            }
+            _ => base,
+        }
+    };
     // Ensure trailing slash so reqwest::Url::join appends rather than
     // replaces the last path segment (e.g. /v1 + chat/completions
     // -> /v1/chat/completions, not /chat/completions).

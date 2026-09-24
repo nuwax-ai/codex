@@ -276,3 +276,21 @@ review 证实的桥正确性七项全部修复(单元 22/22 + 全矩阵 64/64):
 | 13 | Ask 预设文案与行为不符 | OnRequest+Unrestricted 语义=非危险命令直接放行(exec_policy 确认);文案改为如实描述(危险命令审批、其余直接运行)。权限语义本身不动(改动风险大于文案修正) |
 
 单元 48/48(两桥合计)+ 全矩阵 64/64。
+
+## 16. Review backlog 第五批(2026-09-25):query_params / app-server / Windows helpers / 发布链
+
+| # | 修复 |
+|---|---|
+| 17 | 两桥保留 provider.query_params(api-version/租户路由等)拼入 base_url |
+| 25 | codex-app-server 启用 rust-genai + rust-rig(独立构建不再 Fatal) |
+| 36 | Windows 发布包含 codex-windows-sandbox-setup.exe + codex-command-runner.exe |
+| 37 | 发布顺序:OSS 全量上传 → 6 target HTTP 200 验证 → npm publish(消除 404 窗口) |
+| 41 | build/release job 检出固定为 tag SHA(手动 dispatch 防错) |
+| 39 | npm 缓存键含 target triple(跨 libc/架构共享 HOME 不再执行错产物) |
+| 40 | npm 支持 linux arm64(映射 aarch64-musl 静态产物) |
+| 42 | 下载写流错误即时挂钩 + 读写竞速(EACCES/ENOSPC 不再裸崩) |
+
+至此 review 44 项中 **33 项已修复**。剩余 11 项均为结构性工作(Bazel 集成 ×2、
+proto/schema 同步 ×2、cassette 原始 HTTP 录制、app-server 独立验证、#6 rig
+serializer 限制、#19 身份判定、#20 内置覆盖、#21 远程压缩、#38 原子缓存、#43 升级
+路径),记录于 backlog。

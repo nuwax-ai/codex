@@ -116,6 +116,25 @@ pub(crate) type RigChatModel =
 pub(crate) type RigAnthropicModel =
     rig_core::providers::anthropic::completion::CompletionModel<reqwest13::Client>;
 
+/// Appends the provider's configured query params (api-version, tenant
+/// routing, …) to the base URL so bridge-path requests keep the same
+/// targeting as the native transport.
+fn base_url_with_params(api_provider: &Provider, base_url: &str) -> String {
+    let Some(params) = &api_provider.query_params else {
+        return base_url.to_string();
+    };
+    if params.is_empty() {
+        return base_url.to_string();
+    }
+    let qs = params
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("&");
+    let sep = if base_url.contains('?') { '&' } else { '?' };
+    format!("{base_url}{sep}{qs}")
+}
+
 pub(crate) fn build_chat_model(
     model_name: &str,
     base_url: &str,
@@ -125,7 +144,7 @@ pub(crate) fn build_chat_model(
 ) -> Result<RigChatModel, codex_api::ApiError> {
     let client = rig_core::providers::openai::CompletionsClient::builder()
         .api_key(api_key_from_auth(api_auth))
-        .base_url(base_url.to_string())
+        .base_url(base_url_with_params(api_provider, base_url))
         .http_client(http_client(api_provider, api_auth, extra_headers)?)
         .build()
         .map_err(map_client_error)?;
@@ -141,7 +160,7 @@ pub(crate) fn build_anthropic_model(
 ) -> Result<RigAnthropicModel, codex_api::ApiError> {
     let client = rig_core::providers::anthropic::Client::builder()
         .api_key(api_key_from_auth(api_auth))
-        .base_url(base_url.to_string())
+        .base_url(base_url_with_params(api_provider, base_url))
         .http_client(http_client(api_provider, api_auth, extra_headers)?)
         .build()
         .map_err(map_client_error)?;

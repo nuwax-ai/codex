@@ -293,6 +293,16 @@ jobs:
           target="${{ matrix.target }}"
           cargo build --target "$target" --release --bin nuwax-codex
 
+      # Windows sandbox helpers must ship with the main exe — a clean
+      # install enabling the sandbox fails at runtime without them.
+      - name: Build Windows sandbox helpers
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          cargo build --target "$target" --release             -p codex-windows-sandbox-rs             --bin codex-windows-sandbox-setup             --bin codex-command-runner
+
       - name: Strip release binary
         if: ${{ runner.os != 'Windows' }}
         shell: bash
@@ -320,7 +330,8 @@ jobs:
           cd target/${{ matrix.target }}/release
 
           if [ "${{ matrix.os }}" = "windows-latest" ] || [ "${{ matrix.os }}" = "windows-11-arm" ]; then
-            7z a -tzip "${ARCHIVE_NAME}.zip" "${BINARY_NAME}"
+            7z a -tzip "${ARCHIVE_NAME}.zip" "${BINARY_NAME}" \
+              codex-windows-sandbox-setup.exe codex-command-runner.exe
             echo "archive_path=${ARCHIVE_NAME}.zip" >> $GITHUB_OUTPUT
             echo "archive_name=${ARCHIVE_NAME}.zip" >> $GITHUB_OUTPUT
             mv "${ARCHIVE_NAME}.zip" ../../../../
