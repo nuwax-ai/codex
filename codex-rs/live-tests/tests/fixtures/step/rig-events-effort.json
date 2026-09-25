@@ -1,0 +1,131 @@
+{
+  "vendor": "step",
+  "tag": "effort",
+  "rig_events": [
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "用户"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "问了一个"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "简单"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "的问题：\"1+"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "1 等于几"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "？直接回答。\""
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "（"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "1+1等于"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "几？直接回答"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "。）\n\n这是一个"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "基础的"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "算术"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "问题，"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "答案是2。用户"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "要求直接"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "回答，所以我应该"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "只"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "给出"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "答案"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "，不需要"
+    },
+    {
+      "id": "sDMcEhYFXaTyMnuCNVu2y",
+      "reasoning": "额外解释。"
+    },
+    {
+      "text": "2"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 37,
+        "output_tokens": 52,
+        "total_tokens": 89,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": null,
+      "response_id": "794afd071cc39f4d9d9c752d091d8f6a.6bc16e91ddcca131290a17c3b25ea918",
+      "provider": "openai",
+      "model": "step-5-preview",
+      "raw": {
+        "additional_params": {
+          "agent": "",
+          "created": 1790303484,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "stop",
+        "model": "step-5-preview",
+        "response_id": "794afd071cc39f4d9d9c752d091d8f6a.6bc16e91ddcca131290a17c3b25ea918",
+        "usage": {
+          "completion_tokens": 52,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "prompt_tokens": 37,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 89
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,181 @@
+{
+  "vendor": "mimo",
+  "tag": "parallel-tools",
+  "rig_events": [
+    {
+      "id": "jSZHkLQz2kwJknBT0R1rV",
+      "reasoning": "The user wants two independent"
+    },
+    {
+      "id": "jSZHkLQz2kwJknBT0R1rV",
+      "reasoning": " tool calls,"
+    },
+    {
+      "id": "jSZHkLQz2kwJknBT0R1rV",
+      "reasoning": " one for Beijing,"
+    },
+    {
+      "id": "jSZHkLQz2kwJknBT0R1rV",
+      "reasoning": " one for Shanghai. Let"
+    },
+    {
+      "id": "jSZHkLQz2kwJknBT0R1rV",
+      "reasoning": " me make"
+    },
+    {
+      "id": "jSZHkLQz2kwJknBT0R1rV",
+      "reasoning": " both calls in the"
+    },
+    {
+      "id": "jSZHkLQz2kwJknBT0R1rV",
+      "reasoning": " same block since"
+    },
+    {
+      "id": "jSZHkLQz2kwJknBT0R1rV",
+      "reasoning": " they're independent."
+    },
+    {
+      "internal_call_id": "QT04c7WJPz5z-RaduO_ji",
+      "content": {
+        "Name": "get_weather"
+      }
+    },
+    {
+      "internal_call_id": "QT04c7WJPz5z-RaduO_ji",
+      "content": {
+        "Delta": "{\"city\": "
+      }
+    },
+    {
+      "internal_call_id": "QT04c7WJPz5z-RaduO_ji",
+      "content": {
+        "Delta": "\""
+      }
+    },
+    {
+      "internal_call_id": "QT04c7WJPz5z-RaduO_ji",
+      "content": {
+        "Delta": "北京"
+      }
+    },
+    {
+      "internal_call_id": "QT04c7WJPz5z-RaduO_ji",
+      "content": {
+        "Delta": "\""
+      }
+    },
+    {
+      "internal_call_id": "QT04c7WJPz5z-RaduO_ji",
+      "content": {
+        "Delta": "}"
+      }
+    },
+    {
+      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9",
+      "content": {
+        "Name": "get_weather"
+      }
+    },
+    {
+      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9",
+      "content": {
+        "Delta": "{\"city\": "
+      }
+    },
+    {
+      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9",
+      "content": {
+        "Delta": "\""
+      }
+    },
+    {
+      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9",
+      "content": {
+        "Delta": "上海"
+      }
+    },
+    {
+      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9",
+      "content": {
+        "Delta": "\""
+      }
+    },
+    {
+      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9",
+      "content": {
+        "Delta": "}"
+      }
+    },
+    {
+      "tool_call": {
+        "id": "call_ffe4a0dd7de84b27b2b04d3a",
+        "provider": {
+          "call_id": "call_ffe4a0dd7de84b27b2b04d3a"
+        },
+        "function": {
+          "name": "get_weather",
+          "arguments": {
+            "city": "北京"
+          }
+        },
+        "signature": null,
+        "additional_params": null
+      },
+      "internal_call_id": "QT04c7WJPz5z-RaduO_ji"
+    },
+    {
+      "tool_call": {
+        "id": "call_4bfb91e359b148ba8f00cc30",
+        "provider": {
+          "call_id": "call_4bfb91e359b148ba8f00cc30"
+        },
+        "function": {
+          "name": "get_weather",
+          "arguments": {
+            "city": "上海"
+          }
+        },
+        "signature": null,
+        "additional_params": null
+      },
+      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 151,
+        "output_tokens": 67,
+        "total_tokens": 218,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 31
+      },
+      "finish_reason": "tool_calls",
+      "message_id": null,
+      "response_id": "3d9d7a5a-dee6-488a-aaf7-9eaa787a2c89_df2bb178ff304ddfb3494c0c6ecffd0c",
+      "provider": "openai",
+      "model": "mimo-v2.6-flash",
+      "raw": {
+        "additional_params": {
+          "created": 1790303508,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "tool_calls",
+        "model": "mimo-v2.6-flash",
+        "response_id": "3d9d7a5a-dee6-488a-aaf7-9eaa787a2c89_df2bb178ff304ddfb3494c0c6ecffd0c",
+        "usage": {
+          "completion_tokens": 67,
+          "completion_tokens_details": {
+            "reasoning_tokens": 31
+          },
+          "prompt_tokens": 151,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 218
+        }
+      }
+    }
+  ]
+}

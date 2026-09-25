@@ -1,0 +1,123 @@
+{
+  "vendor": "mimo",
+  "tag": "anthropic",
+  "rig_events": [
+    {
+      "id": "jvWCsBurZedlJfO8Hdb1Z",
+      "reasoning": "用"
+    },
+    {
+      "id": "jvWCsBurZedlJfO8Hdb1Z",
+      "reasoning": "一句话说明二分查找的思想"
+    },
+    {
+      "id": "jvWCsBurZedlJfO8Hdb1Z",
+      "reasoning": "。"
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "用一句话说明二分查找的思想。"
+            }
+          }
+        ]
+      },
+      "id": "jvWCsBurZedlJfO8Hdb1Z"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "二分查找的思想是"
+    },
+    {
+      "text": "：每次将"
+    },
+    {
+      "text": "有序"
+    },
+    {
+      "text": "查找"
+    },
+    {
+      "text": "范围"
+    },
+    {
+      "text": "对"
+    },
+    {
+      "text": "半折，"
+    },
+    {
+      "text": "通过"
+    },
+    {
+      "text": "与"
+    },
+    {
+      "text": "中间元素"
+    },
+    {
+      "text": "比较，"
+    },
+    {
+      "text": "将"
+    },
+    {
+      "text": "解"
+    },
+    {
+      "text": "的"
+    },
+    {
+      "text": "范围缩小一半"
+    },
+    {
+      "text": "，从而"
+    },
+    {
+      "text": "逐步"
+    },
+    {
+      "text": "逼近"
+    },
+    {
+      "text": "目标。"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 46,
+        "total_tokens": 75,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": "msg_6ecb916703874dea8eb85af0",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "mimo-v2.6-flash",
+      "raw": {
+        "message_id": "msg_6ecb916703874dea8eb85af0",
+        "model": "mimo-v2.6-flash",
+        "stop_reason": "end_turn",
+        "usage": {
+          "cache_creation_input_tokens": null,
+          "cache_read_input_tokens": null,
+          "input_tokens": 29,
+          "output_tokens": 46
+        }
+      }
+    }
+  ]
+}

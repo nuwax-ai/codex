@@ -149,15 +149,27 @@ fn vendor_from_env(lookup: &dyn Fn(&str) -> Option<String>, name: &str) -> Optio
     let base_url = lookup(&chat_var).or_else(|| is_mimo.then(|| lookup("MIMO_BASE_URL")).flatten());
     let base_url = match base_url {
         Some(url) => url,
+        // Replay mode is fully offline: fixtures carry everything the
+        // conversion needs, so placeholder URLs/models keep the vendor
+        // active for bridge-boundary replay.
+        None if cassette_mode() == CassetteMode::Replay => {
+            "(replay-placeholder-url)".to_string()
+        }
         None => {
             println!("no chat URL configured for vendor `{name}` ({chat_var}) — skipping vendor");
             return None;
         }
     };
     let model = lookup(&model_var).or_else(|| is_mimo.then(|| lookup("MIMO_MODEL")).flatten());
-    let Some(model) = model else {
-        println!("no model configured for vendor `{name}` ({model_var}) — skipping vendor");
-        return None;
+    let model = match model {
+        Some(m) => m,
+        None if cassette_mode() == CassetteMode::Replay => {
+            "(replay-placeholder-model)".to_string()
+        }
+        None => {
+            println!("no model configured for vendor `{name}` ({model_var}) — skipping vendor");
+            return None;
+        }
     };
     let anthropic_base_url = lookup(&anthropic_var)
         .or_else(|| is_mimo.then(|| lookup("MIMO_ANTHROPIC_BASE_URL")).flatten());
@@ -362,6 +374,19 @@ pub async fn run_turn(
     tag: &str,
 ) -> Vec<ResponseEvent> {
     if cassette_mode() == CassetteMode::Replay {
+        // Rig-event fixtures take priority over event-level ones: they
+        // replay through the CURRENT bridge conversion code (testing the
+        // conversion itself), while event-level fixtures only test the
+        // assertions. Record mode produces both.
+        if bridge == Bridge::Rig
+            && let Some(rig_fixture) = load_rig_event_fixture(&cfg.vendor, tag)
+        {
+            println!(
+                "[cassette-rig] replaying {}/{} through current bridge conversion ({} rig events, offline)",
+                cfg.vendor, tag, rig_fixture.rig_events.len()
+            );
+            return codex_rust_rig_bridge::replay_fixture_events(&rig_fixture);
+        }
         let fixture = load_fixture(&cfg.vendor, bridge.name(), tag).unwrap_or_else(|| {
             // Fail fast: silently falling back to live would consume vendor
             // quota in what the operator explicitly declared an offline run,
@@ -445,16 +470,44 @@ pub async fn run_turn_rig(
     request: &ResponsesApiRequest,
     tag: &str,
 ) -> Vec<ResponseEvent> {
+    // HTTP-level cassette: replay recorded rig events through the CURRENT
+    // bridge conversion code (tests the conversion itself, not just the
+    // assertions). Falls back to event-level replay for legacy fixtures.
+    if cassette_mode() == CassetteMode::Replay {
+        if let Some(fixture) = load_rig_event_fixture(&cfg.vendor, tag) {
+            println!(
+                "[cassette-rig] replaying {}/{} through current bridge conversion ({} rig events, offline)",
+                cfg.vendor, tag, fixture.rig_events.len()
+            );
+            return codex_rust_rig_bridge::replay_fixture_events(&fixture);
+        }
+        if load_fixture(&cfg.vendor, "rig", tag).is_some() {
+            println!(
+                "[cassette-rig] {}/{}: only event-level fixture found; conversion not exercised",
+                cfg.vendor, tag
+            );
+        }
+        // Fall through to live if no fixture at all (the event-level
+        // replay in run_turn handles that case).
+    }
+
     let provider = vendor_provider(&cfg.vendor, base_url);
-    let stream: ResponseStream = timeout(
+    let recorder: codex_rust_rig_bridge::RigEventRecorder =
+        if cassette_mode() == CassetteMode::Record {
+            Some(Arc::new(std::sync::Mutex::new(Vec::new())))
+        } else {
+            None
+        };
+    let (stream, recorder): (ResponseStream, codex_rust_rig_bridge::RigEventRecorder) = timeout(
         TURN_TIMEOUT,
-        codex_rust_rig_bridge::stream_via_rig(
+        codex_rust_rig_bridge::stream_via_rig_with_recording(
             request,
             &provider,
             &shared_auth(&cfg.api_key),
             HeaderMap::new(),
             protocol,
             provider.stream_idle_timeout,
+            recorder,
         ),
     )
     .await
@@ -462,6 +515,12 @@ pub async fn run_turn_rig(
     .expect("stream_via_rig succeeded");
     let events = drain_stream(stream, &cfg.vendor, tag).await;
     record_turn(cfg, Bridge::Rig, tag, request, &events);
+    // Save the rig-event fixture alongside the event-level one.
+    if let Some(rec) = recorder
+        && let Ok(rig_events) = rec.lock()
+    {
+        save_rig_event_fixture(&cfg.vendor, tag, &rig_events);
+    }
     events
 }
 
@@ -879,6 +938,52 @@ pub fn fixture_path(vendor: &str, bridge: &str, tag: &str) -> Option<PathBuf> {
             .join("fixtures")
             .join(vendor)
             .join(format!("{bridge}-{tag}.json")),
+    )
+}
+
+/// Loads a rig-event fixture (the intermediate events the bridge receives,
+/// used for conversion-testing replay).
+pub fn load_rig_event_fixture(
+    vendor: &str,
+    tag: &str,
+) -> Option<codex_rust_rig_bridge::RigEventFixture> {
+    let path = rig_event_fixture_path(vendor, tag)?;
+    let contents = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&contents).ok()
+}
+
+/// Saves a rig-event fixture.
+pub fn save_rig_event_fixture(
+    vendor: &str,
+    tag: &str,
+    rig_events: &[rig_core::streaming::StreamedAssistantContent],
+) {
+    let Some(path) = rig_event_fixture_path(vendor, tag) else {
+        return;
+    };
+    let fixture = codex_rust_rig_bridge::RigEventFixture {
+        vendor: vendor.to_string(),
+        tag: tag.to_string(),
+        rig_events: rig_events.to_vec(),
+    };
+    if let Some(parent) = path.parent()
+        && std::fs::create_dir_all(parent).is_ok()
+        && let Ok(json) = serde_json::to_string_pretty(&fixture)
+        && std::fs::write(&path, json).is_ok()
+    {
+        println!("[cassette-rig] recorded {}", path.display());
+    }
+}
+
+fn rig_event_fixture_path(vendor: &str, tag: &str) -> Option<PathBuf> {
+    let root = repo_root()?;
+    Some(
+        root.join("codex-rs")
+            .join("live-tests")
+            .join("tests")
+            .join("fixtures")
+            .join(vendor)
+            .join(format!("rig-events-{tag}.json")),
     )
 }
 

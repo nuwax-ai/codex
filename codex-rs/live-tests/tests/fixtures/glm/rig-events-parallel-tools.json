@@ -1,0 +1,289 @@
+{
+  "vendor": "glm",
+  "tag": "parallel-tools",
+  "rig_events": [
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": "The"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " user"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " wants"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " me"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " to"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " check"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " the"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " weather"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " for"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " Beijing"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " and"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " Shanghai"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " using"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " two"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " independent"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " get"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": "_weather"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " tool"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " calls"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": "."
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " Since"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " these"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " are"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " independent"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " calls"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " with"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " no"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " dependencies"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " between"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " them"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": ","
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " I"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " should"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " make"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " both"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " calls"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " in"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " the"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " same"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": " block"
+    },
+    {
+      "id": "swYBVQRRdSmgpsHO0Hs_n",
+      "reasoning": "."
+    },
+    {
+      "text": "我来"
+    },
+    {
+      "text": "分别"
+    },
+    {
+      "text": "查询"
+    },
+    {
+      "text": "北京"
+    },
+    {
+      "text": "和"
+    },
+    {
+      "text": "上海的"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "："
+    },
+    {
+      "internal_call_id": "6ABpU0BAPCVYGQvR0ns5u",
+      "content": {
+        "Name": "get_weather"
+      }
+    },
+    {
+      "internal_call_id": "6ABpU0BAPCVYGQvR0ns5u",
+      "content": {
+        "Delta": "{\"city\":\"北京\"}"
+      }
+    },
+    {
+      "internal_call_id": "BWZEB8-4xSAsbtJX5_mTq",
+      "content": {
+        "Name": "get_weather"
+      }
+    },
+    {
+      "internal_call_id": "BWZEB8-4xSAsbtJX5_mTq",
+      "content": {
+        "Delta": "{\"city\":\"上海\"}"
+      }
+    },
+    {
+      "tool_call": {
+        "id": "call_6773414dcea947c5b59a42e0",
+        "provider": {
+          "call_id": "call_6773414dcea947c5b59a42e0"
+        },
+        "function": {
+          "name": "get_weather",
+          "arguments": {
+            "city": "北京"
+          }
+        },
+        "signature": null,
+        "additional_params": null
+      },
+      "internal_call_id": "6ABpU0BAPCVYGQvR0ns5u"
+    },
+    {
+      "tool_call": {
+        "id": "call_de9db03e6c604bacb2399f9b",
+        "provider": {
+          "call_id": "call_de9db03e6c604bacb2399f9b"
+        },
+        "function": {
+          "name": "get_weather",
+          "arguments": {
+            "city": "上海"
+          }
+        },
+        "signature": null,
+        "additional_params": null
+      },
+      "internal_call_id": "BWZEB8-4xSAsbtJX5_mTq"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 212,
+        "output_tokens": 71,
+        "total_tokens": 283,
+        "cached_input_tokens": 192,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 41
+      },
+      "finish_reason": "tool_calls",
+      "message_id": null,
+      "response_id": "20260925103155dbb76f23da564ca4",
+      "provider": "openai",
+      "model": "glm-5.3-flash",
+      "raw": {
+        "additional_params": {
+          "created": 1790303515,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "tool_calls",
+        "model": "glm-5.3-flash",
+        "response_id": "20260925103155dbb76f23da564ca4",
+        "usage": {
+          "completion_tokens": 71,
+          "completion_tokens_details": {
+            "reasoning_tokens": 41
+          },
+          "prompt_tokens": 212,
+          "prompt_tokens_details": {
+            "cached_tokens": 192
+          },
+          "total_tokens": 283
+        }
+      }
+    }
+  ]
+}

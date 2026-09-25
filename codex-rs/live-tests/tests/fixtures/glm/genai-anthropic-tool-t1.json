@@ -53,7 +53,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f8276a059c00",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -121,184 +121,171 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": ",",
+        "delta": " and",
         "content_index": 10
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " and",
+        "delta": " explicitly",
         "content_index": 11
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " explicitly",
+        "delta": " asks",
         "content_index": 12
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " asks",
+        "delta": " me",
         "content_index": 13
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " me",
+        "delta": " to",
         "content_index": 14
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " to",
+        "delta": " call",
         "content_index": 15
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " call",
+        "delta": " the",
         "content_index": 16
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": " get",
         "content_index": 17
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " get",
+        "delta": "_weather",
         "content_index": 18
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "_weather",
+        "delta": " tool",
         "content_index": 19
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " tool",
+        "delta": ".",
         "content_index": 20
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ".",
+        "delta": " Let",
         "content_index": 21
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Let",
+        "delta": " me",
         "content_index": 22
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " me",
+        "delta": " do",
         "content_index": 23
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " do",
+        "delta": " that",
         "content_index": 24
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " that",
+        "delta": ".",
         "content_index": 25
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ".",
+        "delta": "bda31ead7f964b4a8df17309",
         "content_index": 26
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "2c92ce81806442fdac5e9f18",
-        "content_index": 27
       }
     },
     {
       "OutputItemAdded": {
         "type": "function_call",
-        "id": "call_54d10cecc955440fb5c885ab",
+        "id": "call_d183f3d09c874e3fbd4055ba",
         "name": "get_weather",
         "arguments": "",
-        "call_id": "call_54d10cecc955440fb5c885ab"
+        "call_id": "call_d183f3d09c874e3fbd4055ba"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "call_54d10cecc955440fb5c885ab",
-        "call_id": "call_54d10cecc955440fb5c885ab",
+        "item_id": "call_d183f3d09c874e3fbd4055ba",
+        "call_id": "call_d183f3d09c874e3fbd4055ba",
         "delta": "{\""
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "call_54d10cecc955440fb5c885ab",
-        "call_id": "call_54d10cecc955440fb5c885ab",
+        "item_id": "call_d183f3d09c874e3fbd4055ba",
+        "call_id": "call_d183f3d09c874e3fbd4055ba",
         "delta": "city"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "call_54d10cecc955440fb5c885ab",
-        "call_id": "call_54d10cecc955440fb5c885ab",
+        "item_id": "call_d183f3d09c874e3fbd4055ba",
+        "call_id": "call_d183f3d09c874e3fbd4055ba",
         "delta": "\":\""
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "call_54d10cecc955440fb5c885ab",
-        "call_id": "call_54d10cecc955440fb5c885ab",
-        "delta": "北京"
+        "item_id": "call_d183f3d09c874e3fbd4055ba",
+        "call_id": "call_d183f3d09c874e3fbd4055ba",
+        "delta": "北京\""
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "call_54d10cecc955440fb5c885ab",
-        "call_id": "call_54d10cecc955440fb5c885ab",
-        "delta": "\""
-      }
-    },
-    {
-      "ToolCallInputDelta": {
-        "item_id": "call_54d10cecc955440fb5c885ab",
-        "call_id": "call_54d10cecc955440fb5c885ab",
+        "item_id": "call_d183f3d09c874e3fbd4055ba",
+        "call_id": "call_d183f3d09c874e3fbd4055ba",
         "delta": "}"
       }
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f8276a059c00",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The user is asking about the weather in Beijing today, and explicitly asks me to call the get_weather tool. Let me do that."
+            "text": "The user is asking about the weather in Beijing today and explicitly asks me to call the get_weather tool. Let me do that."
           }
         ],
-        "encrypted_content": "The user is asking about the weather in Beijing today, and explicitly asks me to call the get_weather tool. Let me do that."
+        "encrypted_content": "The user is asking about the weather in Beijing today and explicitly asks me to call the get_weather tool. Let me do that."
       }
     },
     {
       "OutputItemDone": {
         "type": "function_call",
-        "id": "call_54d10cecc955440fb5c885ab",
+        "id": "call_d183f3d09c874e3fbd4055ba",
         "name": "get_weather",
         "arguments": "{\"city\":\"北京\"}",
-        "call_id": "call_54d10cecc955440fb5c885ab"
+        "call_id": "call_d183f3d09c874e3fbd4055ba"
       }
     },
     {
@@ -308,9 +295,9 @@
           "input_tokens": 194,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 39,
+          "output_tokens": 38,
           "reasoning_output_tokens": 0,
-          "total_tokens": 233
+          "total_tokens": 232
         },
         "usage_metadata": null,
         "end_turn": false

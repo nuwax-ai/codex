@@ -177,6 +177,12 @@ async fn scenario_anthropic(cfg: &LiveConfig, bridge: Bridge) {
 /// trigger. The genai bridge historically flattens errors to a network
 /// string, so only the string content is asserted there.
 async fn scenario_auth_rejected(cfg: &LiveConfig, bridge: Bridge) {
+    // Auth testing is inherently live: it sends an invalid key to a real
+    // endpoint to verify the 401 mapping. No fixture can represent this.
+    if std::env::var("LIVE_CASSETTE").as_deref() == Ok("replay") {
+        println!("{}/{} auth: live-only scenario, skipping in replay", cfg.vendor, bridge.name());
+        return;
+    }
     use codex_live_tests::turn_start_error;
     let request = base_request(cfg, "You are a helpful assistant.", "hi");
     let error = turn_start_error(cfg, &cfg.base_url, bridge, &request)

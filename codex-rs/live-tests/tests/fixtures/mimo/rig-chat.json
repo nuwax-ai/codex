@@ -33,7 +33,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f8cc38b93080",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -41,62 +41,65 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "用户",
+        "delta": "用",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "要求用",
+        "delta": "一句话解释斐波那契",
         "content_index": 1
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "一句话解释斐波那契数列",
+        "delta": "数列。",
         "content_index": 2
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "。",
-        "content_index": 3
       }
     },
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f8cc39727e01",
         "role": "assistant",
         "content": []
       }
     },
     {
-      "OutputTextDelta": "斐波那契数列"
+      "OutputTextDelta": "斐波那契"
     },
     {
-      "OutputTextDelta": "是从0"
+      "OutputTextDelta": "数列是一个"
     },
     {
-      "OutputTextDelta": "和1（"
+      "OutputTextDelta": "从0"
     },
     {
-      "OutputTextDelta": "或1和"
+      "OutputTextDelta": "和1开始（"
     },
     {
-      "OutputTextDelta": "1）开始，每一项都是"
+      "OutputTextDelta": "或从"
     },
     {
-      "OutputTextDelta": "前两项之"
+      "OutputTextDelta": "1和1开始），每个"
     },
     {
-      "OutputTextDelta": "和的数列（"
+      "OutputTextDelta": "后续"
     },
     {
-      "OutputTextDelta": "如"
+      "OutputTextDelta": "数字"
     },
     {
-      "OutputTextDelta": "0,"
+      "OutputTextDelta": "都等于"
+    },
+    {
+      "OutputTextDelta": "前两个数字之"
+    },
+    {
+      "OutputTextDelta": "和的数列（如0"
+    },
+    {
+      "OutputTextDelta": ","
     },
     {
       "OutputTextDelta": " 1, 1, 2"
@@ -111,48 +114,48 @@
       "OutputTextDelta": "21,"
     },
     {
-      "OutputTextDelta": " 34,"
+      "OutputTextDelta": " 34……"
     },
     {
-      "OutputTextDelta": " …）。"
+      "OutputTextDelta": "）。"
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f8cc38b93080",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "用户要求用一句话解释斐波那契数列。"
+            "text": "用一句话解释斐波那契数列。"
           }
         ],
-        "encrypted_content": "用户要求用一句话解释斐波那契数列。"
+        "encrypted_content": "用一句话解释斐波那契数列。"
       }
     },
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f8cc39727e01",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "斐波那契数列是从0和1（或1和1）开始，每一项都是前两项之和的数列（如0, 1, 1, 2, 3, 5, 8, 13, 21, 34, …）。"
+            "text": "斐波那契数列是一个从0和1开始（或从1和1开始），每个后续数字都等于前两个数字之和的数列（如0, 1, 1, 2, 3, 5, 8, 13, 21, 34……）。"
           }
         ]
       }
     },
     {
       "Completed": {
-        "response_id": "bf3f107a-c820-4366-8fde-10de8133b0a7_8d4b85916e5c48c2b6a5ea81ada9d24d",
+        "response_id": "18a6bc7a-73ad-4c08-aa40-3a6897590a90_9794347ff0b04758a990cc281efa4fef",
         "token_usage": {
           "input_tokens": 32,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 79,
-          "reasoning_output_tokens": 13,
-          "total_tokens": 111
+          "output_tokens": 81,
+          "reasoning_output_tokens": 11,
+          "total_tokens": 113
         },
         "usage_metadata": null,
         "end_turn": true

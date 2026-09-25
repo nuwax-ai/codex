@@ -35,7 +35,7 @@
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f8f8e462f980",
         "role": "assistant",
         "content": []
       }
@@ -46,7 +46,7 @@
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f8f8e462f980",
         "role": "assistant",
         "content": [
           {
@@ -58,7 +58,7 @@
     },
     {
       "Completed": {
-        "response_id": "2026092423282800b8b3f38ad04379",
+        "response_id": "2026092510315300f790da6c1a49c9",
         "token_usage": {
           "input_tokens": 31,
           "cached_input_tokens": 0,

@@ -1,0 +1,339 @@
+{
+  "vendor": "glm",
+  "tag": "tool-t2",
+  "rig_events": [
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": "The"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " user"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " asked"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " about"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " Beijing"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": "'s"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " weather"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " and"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " I"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " called"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " the"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " get"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": "_weather"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " tool"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": "."
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " The"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " result"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " shows"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " it"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": "'s"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " sunny"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " ("
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": "晴"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": ")"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " and"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " "
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": "23"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": "°C"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": "."
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " Let"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " me"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " answer"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " in"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": " Chinese"
+    },
+    {
+      "id": "Lb8-hF2pnduq4ksLngy_S",
+      "reasoning": "."
+    },
+    {
+      "text": "我"
+    },
+    {
+      "text": "已"
+    },
+    {
+      "text": "通过"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "工具"
+    },
+    {
+      "text": "查询"
+    },
+    {
+      "text": "到"
+    },
+    {
+      "text": "北京"
+    },
+    {
+      "text": "今天的"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "情况"
+    },
+    {
+      "text": "：\n\n"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "北京"
+    },
+    {
+      "text": "今日"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "🌤"
+    },
+    {
+      "text": "️"
+    },
+    {
+      "text": "\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " **"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "状况"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "："
+    },
+    {
+      "text": "晴"
+    },
+    {
+      "text": "\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " **"
+    },
+    {
+      "text": "气温"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "："
+    },
+    {
+      "text": "23"
+    },
+    {
+      "text": "°C"
+    },
+    {
+      "text": "\n\n"
+    },
+    {
+      "text": "今天"
+    },
+    {
+      "text": "北京"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "晴"
+    },
+    {
+      "text": "朗"
+    },
+    {
+      "text": "，"
+    },
+    {
+      "text": "气温"
+    },
+    {
+      "text": "舒适"
+    },
+    {
+      "text": "宜"
+    },
+    {
+      "text": "人"
+    },
+    {
+      "text": "，"
+    },
+    {
+      "text": "非常适合"
+    },
+    {
+      "text": "外出"
+    },
+    {
+      "text": "活动"
+    },
+    {
+      "text": "！"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 224,
+        "output_tokens": 90,
+        "total_tokens": 314,
+        "cached_input_tokens": 192,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 35
+      },
+      "finish_reason": "stop",
+      "message_id": null,
+      "response_id": "20260925103204e2dd3d4c300f44bd",
+      "provider": "openai",
+      "model": "glm-5.3-flash",
+      "raw": {
+        "additional_params": {
+          "created": 1790303525,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "stop",
+        "model": "glm-5.3-flash",
+        "response_id": "20260925103204e2dd3d4c300f44bd",
+        "usage": {
+          "completion_tokens": 90,
+          "completion_tokens_details": {
+            "reasoning_tokens": 35
+          },
+          "prompt_tokens": 224,
+          "prompt_tokens_details": {
+            "cached_tokens": 192
+          },
+          "total_tokens": 314
+        }
+      }
+    }
+  ]
+}

@@ -53,7 +53,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f80ed87dbc80",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -61,139 +61,146 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "The",
+        "delta": "用户",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " user wants to",
+        "delta": "询问",
         "content_index": 1
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " know the weather",
+        "delta": "北京今天的",
         "content_index": 2
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " in Beijing today",
+        "delta": "天气，明确",
         "content_index": 3
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " and",
+        "delta": "要求调用 get_",
         "content_index": 4
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " explicitly",
+        "delta": "weather 工具查询",
         "content_index": 5
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " asks me to call",
+        "delta": "。城市",
         "content_index": 6
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the get_weather",
+        "delta": "参数",
         "content_index": 7
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " tool. I should",
+        "delta": "为",
         "content_index": 8
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " call the get_",
+        "delta": "\"北京\"。",
         "content_index": 9
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "weather function with city",
+        "delta": "让我",
         "content_index": 10
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "=\"",
+        "delta": "调用工具",
         "content_index": 11
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "北京\".",
+        "delta": "。",
         "content_index": 12
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "aa2fa1f4ae1d4e1d929867209a705a9f",
+        "delta": "ac67d4bfd5eb4e66a3bf26a161f1ec33",
         "content_index": 13
       }
     },
     {
       "OutputItemAdded": {
         "type": "function_call",
-        "id": "chatcmpl-tool-99e7090b61780bf2",
+        "id": "chatcmpl-tool-802bb9b141a7e59f",
         "name": "get_weather",
         "arguments": "",
-        "call_id": "chatcmpl-tool-99e7090b61780bf2"
+        "call_id": "chatcmpl-tool-802bb9b141a7e59f"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "chatcmpl-tool-99e7090b61780bf2",
-        "call_id": "chatcmpl-tool-99e7090b61780bf2",
+        "item_id": "chatcmpl-tool-802bb9b141a7e59f",
+        "call_id": "chatcmpl-tool-802bb9b141a7e59f",
         "delta": "{"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "chatcmpl-tool-99e7090b61780bf2",
-        "call_id": "chatcmpl-tool-99e7090b61780bf2",
+        "item_id": "chatcmpl-tool-802bb9b141a7e59f",
+        "call_id": "chatcmpl-tool-802bb9b141a7e59f",
         "delta": "\"city\": "
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "chatcmpl-tool-99e7090b61780bf2",
-        "call_id": "chatcmpl-tool-99e7090b61780bf2",
-        "delta": "\"北京\"}"
+        "item_id": "chatcmpl-tool-802bb9b141a7e59f",
+        "call_id": "chatcmpl-tool-802bb9b141a7e59f",
+        "delta": "\"北京\""
+      }
+    },
+    {
+      "ToolCallInputDelta": {
+        "item_id": "chatcmpl-tool-802bb9b141a7e59f",
+        "call_id": "chatcmpl-tool-802bb9b141a7e59f",
+        "delta": "}"
       }
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f80ed87dbc80",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The user wants to know the weather in Beijing today and explicitly asks me to call the get_weather tool. I should call the get_weather function with city=\"北京\"."
+            "text": "用户询问北京今天的天气，明确要求调用 get_weather 工具查询。城市参数为\"北京\"。让我调用工具。"
           }
         ],
-        "encrypted_content": "The user wants to know the weather in Beijing today and explicitly asks me to call the get_weather tool. I should call the get_weather function with city=\"北京\"."
+        "encrypted_content": "用户询问北京今天的天气，明确要求调用 get_weather 工具查询。城市参数为\"北京\"。让我调用工具。"
       }
     },
     {
       "OutputItemDone": {
         "type": "function_call",
-        "id": "chatcmpl-tool-99e7090b61780bf2",
+        "id": "chatcmpl-tool-802bb9b141a7e59f",
         "name": "get_weather",
         "arguments": "{\"city\": \"北京\"}",
-        "call_id": "chatcmpl-tool-99e7090b61780bf2"
+        "call_id": "chatcmpl-tool-802bb9b141a7e59f"
       }
     },
     {
@@ -203,9 +210,9 @@
           "input_tokens": 524,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 59,
+          "output_tokens": 50,
           "reasoning_output_tokens": 0,
-          "total_tokens": 583
+          "total_tokens": 574
         },
         "usage_metadata": null,
         "end_turn": false

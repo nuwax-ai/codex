@@ -33,7 +33,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f83b447f2280",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -47,47 +47,56 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "一句话解释斐波那契",
+        "delta": "一句话解释斐波那契数",
         "content_index": 1
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "数列。",
+        "delta": "列。",
         "content_index": 2
       }
     },
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f83bada61481",
         "role": "assistant",
         "content": []
       }
     },
     {
-      "OutputTextDelta": "斐波那契"
+      "OutputTextDelta": "斐波那契数"
     },
     {
-      "OutputTextDelta": "数列是一个"
+      "OutputTextDelta": "列是一个"
     },
     {
-      "OutputTextDelta": "从第三"
+      "OutputTextDelta": "从0"
     },
     {
-      "OutputTextDelta": "项开始，每一"
+      "OutputTextDelta": "和1开始，"
     },
     {
-      "OutputTextDelta": "项都等于前两项"
+      "OutputTextDelta": "后"
     },
     {
-      "OutputTextDelta": "之和的"
+      "OutputTextDelta": "一项"
     },
     {
-      "OutputTextDelta": "数列（0"
+      "OutputTextDelta": "等于"
     },
     {
-      "OutputTextDelta": ","
+      "OutputTextDelta": "前两项之"
+    },
+    {
+      "OutputTextDelta": "和的数列，"
+    },
+    {
+      "OutputTextDelta": "即："
+    },
+    {
+      "OutputTextDelta": "0,"
     },
     {
       "OutputTextDelta": " 1, 1, 2"
@@ -99,15 +108,12 @@
       "OutputTextDelta": "8, 13, 2"
     },
     {
-      "OutputTextDelta": "1…"
-    },
-    {
-      "OutputTextDelta": "）。"
+      "OutputTextDelta": "1, 34……"
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f83b447f2280",
         "summary": [],
         "content": [
           {
@@ -121,12 +127,12 @@
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f83bada61481",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "斐波那契数列是一个从第三项开始，每一项都等于前两项之和的数列（0, 1, 1, 2, 3, 5, 8, 13, 21…）。"
+            "text": "斐波那契数列是一个从0和1开始，后一项等于前两项之和的数列，即：0, 1, 1, 2, 3, 5, 8, 13, 21, 34……"
           }
         ]
       }
@@ -138,9 +144,9 @@
           "input_tokens": 32,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 66,
+          "output_tokens": 71,
           "reasoning_output_tokens": 11,
-          "total_tokens": 98
+          "total_tokens": 103
         },
         "usage_metadata": null,
         "end_turn": true

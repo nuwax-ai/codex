@@ -1,0 +1,358 @@
+{
+  "vendor": "glm",
+  "tag": "chat",
+  "rig_events": [
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "The"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " user"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " asks"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " in"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " Chinese"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": ":"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " \""
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "用"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "一句话"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "解释"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "什么是"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "斐"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "波"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "那"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "契"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "数"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "列"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "。\""
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " ("
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "Ex"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "plain"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " in"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " one"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " sentence"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " what"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " the"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " Fibonacci"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " sequence"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " is"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": ".)\n\n"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "I"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " should"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " answer"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " in"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " Chinese"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " with"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " one"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": " sentence"
+    },
+    {
+      "id": "cAKcO1EgJeuhxpynV-CqO",
+      "reasoning": "."
+    },
+    {
+      "text": "斐"
+    },
+    {
+      "text": "波"
+    },
+    {
+      "text": "那"
+    },
+    {
+      "text": "契"
+    },
+    {
+      "text": "数"
+    },
+    {
+      "text": "列"
+    },
+    {
+      "text": "是一个"
+    },
+    {
+      "text": "从"
+    },
+    {
+      "text": "0"
+    },
+    {
+      "text": "和"
+    },
+    {
+      "text": "1"
+    },
+    {
+      "text": "开始"
+    },
+    {
+      "text": "、"
+    },
+    {
+      "text": "之后"
+    },
+    {
+      "text": "每一"
+    },
+    {
+      "text": "项"
+    },
+    {
+      "text": "都"
+    },
+    {
+      "text": "等于"
+    },
+    {
+      "text": "前"
+    },
+    {
+      "text": "两项"
+    },
+    {
+      "text": "之和"
+    },
+    {
+      "text": "的"
+    },
+    {
+      "text": "数"
+    },
+    {
+      "text": "列"
+    },
+    {
+      "text": "，"
+    },
+    {
+      "text": "即"
+    },
+    {
+      "text": "0"
+    },
+    {
+      "text": ","
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "1"
+    },
+    {
+      "text": ","
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "1"
+    },
+    {
+      "text": ","
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "2"
+    },
+    {
+      "text": ","
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "3"
+    },
+    {
+      "text": ","
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "5"
+    },
+    {
+      "text": ","
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "8"
+    },
+    {
+      "text": ","
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "13"
+    },
+    {
+      "text": ","
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "21"
+    },
+    {
+      "text": ","
+    },
+    {
+      "text": " 34……"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 34,
+        "output_tokens": 96,
+        "total_tokens": 130,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 39
+      },
+      "finish_reason": "stop",
+      "message_id": null,
+      "response_id": "2026092510315072210018fd894fd7",
+      "provider": "openai",
+      "model": "glm-5.3-flash",
+      "raw": {
+        "additional_params": {
+          "created": 1790303510,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "stop",
+        "model": "glm-5.3-flash",
+        "response_id": "2026092510315072210018fd894fd7",
+        "usage": {
+          "completion_tokens": 96,
+          "completion_tokens_details": {
+            "reasoning_tokens": 39
+          },
+          "prompt_tokens": 34,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 130
+        }
+      }
+    }
+  ]
+}

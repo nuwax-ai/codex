@@ -14,6 +14,7 @@ codex-tools = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 schemars = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 http = { workspace = true }

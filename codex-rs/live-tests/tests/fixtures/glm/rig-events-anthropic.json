@@ -1,0 +1,457 @@
+{
+  "vendor": "glm",
+  "tag": "anthropic",
+  "rig_events": [
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": "The"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " user"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " is"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " asking"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " me"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " to"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " explain"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " the"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " idea"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " of"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " binary"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " search"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " ("
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": "二"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": "分"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": "查找"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": ")"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " in"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " one"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " sentence"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": ","
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " in"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " Chinese"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": ".\n\n"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": "Binary"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " search"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": ":"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " repeatedly"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " divide"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " the"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " sorted"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " search"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " range"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " in"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " half"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " by"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " comparing"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " the"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " target"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " with"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " the"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " middle"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " element"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": ","
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " disc"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": "arding"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " the"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " half"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " that"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " cannot"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " contain"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " the"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " target"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": ","
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " until"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " the"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " target"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " is"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " found"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " or"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " the"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " range"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " is"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " empty"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": ".\n\n"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": "Let"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " me"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " write"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " this"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " in"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " one"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " concise"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " Chinese"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": " sentence"
+    },
+    {
+      "id": "18Z4kpI9xboW4p823NiQh",
+      "reasoning": "."
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "The user is asking me to explain the idea of binary search (二分查找) in one sentence, in Chinese.\n\nBinary search: repeatedly divide the sorted search range in half by comparing the target with the middle element, discarding the half that cannot contain the target, until the target is found or the range is empty.\n\nLet me write this in one concise Chinese sentence.",
+              "signature": "de9e9ce7667b4fc2a1c78cc4"
+            }
+          }
+        ]
+      },
+      "id": "18Z4kpI9xboW4p823NiQh"
+    },
+    {
+      "text": "二"
+    },
+    {
+      "text": "分"
+    },
+    {
+      "text": "查找"
+    },
+    {
+      "text": "的思想"
+    },
+    {
+      "text": "是"
+    },
+    {
+      "text": "："
+    },
+    {
+      "text": "在"
+    },
+    {
+      "text": "有序"
+    },
+    {
+      "text": "数组"
+    },
+    {
+      "text": "中"
+    },
+    {
+      "text": "，"
+    },
+    {
+      "text": "每次"
+    },
+    {
+      "text": "将"
+    },
+    {
+      "text": "查找"
+    },
+    {
+      "text": "范围"
+    },
+    {
+      "text": "与"
+    },
+    {
+      "text": "中间"
+    },
+    {
+      "text": "元素"
+    },
+    {
+      "text": "比较"
+    },
+    {
+      "text": "后"
+    },
+    {
+      "text": "缩减"
+    },
+    {
+      "text": "一半"
+    },
+    {
+      "text": "，"
+    },
+    {
+      "text": "从而"
+    },
+    {
+      "text": "快速"
+    },
+    {
+      "text": "逼近"
+    },
+    {
+      "text": "目标"
+    },
+    {
+      "text": "位置"
+    },
+    {
+      "text": "，"
+    },
+    {
+      "text": "直到"
+    },
+    {
+      "text": "找到"
+    },
+    {
+      "text": "目标"
+    },
+    {
+      "text": "或"
+    },
+    {
+      "text": "确定"
+    },
+    {
+      "text": "目标"
+    },
+    {
+      "text": "不存在。"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 31,
+        "output_tokens": 114,
+        "total_tokens": 145,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": "msg_2026092510313116dd8cb2b0894c1a",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "GLM-5.3-Flash",
+      "raw": {
+        "message_id": "msg_2026092510313116dd8cb2b0894c1a",
+        "model": "GLM-5.3-Flash",
+        "stop_reason": "end_turn",
+        "usage": {
+          "cache_creation_input_tokens": null,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 31,
+          "output_tokens": 114
+        }
+      }
+    }
+  ]
+}

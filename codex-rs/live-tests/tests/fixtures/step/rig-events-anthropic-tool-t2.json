@@ -1,0 +1,182 @@
+{
+  "vendor": "step",
+  "tag": "anthropic-tool-t2",
+  "rig_events": [
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": "The"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " user asked"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " about Beijing"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " weather"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": "."
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " I called the"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " tool and got:"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " city"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " 北京, condition"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " 晴, temp"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": "_c 23."
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " I should answer"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " based"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " on the"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " tool result.\n"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": "\nNote"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " temp"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": "_c 23 -"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " could be current"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " temperature. Let"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " me respond"
+    },
+    {
+      "id": "SDmygL2n31EVVOHvVUSfE",
+      "reasoning": " in Chinese."
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "The user asked about Beijing weather. I called the tool and got: city 北京, condition 晴, temp_c 23. I should answer based on the tool result.\n\nNote temp_c 23 - could be current temperature. Let me respond in Chinese.",
+              "signature": "c570bfdef81848aea473435fee03597e"
+            }
+          }
+        ]
+      },
+      "id": "SDmygL2n31EVVOHvVUSfE"
+    },
+    {
+      "text": "北京"
+    },
+    {
+      "text": "今天天气："
+    },
+    {
+      "text": "**晴**，"
+    },
+    {
+      "text": "当前气温"
+    },
+    {
+      "text": " **23℃"
+    },
+    {
+      "text": "**。\n\n"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "晴朗，温度"
+    },
+    {
+      "text": "适宜，适合外出"
+    },
+    {
+      "text": "活动。不过"
+    },
+    {
+      "text": "建议外出"
+    },
+    {
+      "text": "时仍"
+    },
+    {
+      "text": "注意防晒补水"
+    },
+    {
+      "text": "哦"
+    },
+    {
+      "text": "。"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 314,
+        "output_tokens": 90,
+        "total_tokens": 404,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": "chatcmpl-759f37fffde59c668599aa59cc573038-9900b0dc",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "step-5-preview",
+      "raw": {
+        "message_id": "chatcmpl-759f37fffde59c668599aa59cc573038-9900b0dc",
+        "model": "step-5-preview",
+        "stop_reason": "end_turn",
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 314,
+          "output_tokens": 90
+        }
+      }
+    }
+  ]
+}

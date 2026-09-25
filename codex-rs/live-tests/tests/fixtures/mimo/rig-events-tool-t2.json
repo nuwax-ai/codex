@@ -1,0 +1,68 @@
+{
+  "vendor": "mimo",
+  "tag": "tool-t2",
+  "rig_events": [
+    {
+      "id": "QLblEjkDaAFlW2PcehzRT",
+      "reasoning": "Get"
+    },
+    {
+      "id": "QLblEjkDaAFlW2PcehzRT",
+      "reasoning": " the result and"
+    },
+    {
+      "id": "QLblEjkDaAFlW2PcehzRT",
+      "reasoning": " reply"
+    },
+    {
+      "id": "QLblEjkDaAFlW2PcehzRT",
+      "reasoning": "."
+    },
+    {
+      "text": "北京今天天气："
+    },
+    {
+      "text": "**晴**，气温"
+    },
+    {
+      "text": " **23°C**。"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 204,
+        "output_tokens": 24,
+        "total_tokens": 228,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 7
+      },
+      "finish_reason": "stop",
+      "message_id": null,
+      "response_id": "61254142-5b21-4758-9e0b-85b131cc3a73_ca4a73b3b60444128e4ab980f2a30c93",
+      "provider": "openai",
+      "model": "mimo-v2.6-flash",
+      "raw": {
+        "additional_params": {
+          "created": 1790303511,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "stop",
+        "model": "mimo-v2.6-flash",
+        "response_id": "61254142-5b21-4758-9e0b-85b131cc3a73_ca4a73b3b60444128e4ab980f2a30c93",
+        "usage": {
+          "completion_tokens": 24,
+          "completion_tokens_details": {
+            "reasoning_tokens": 7
+          },
+          "prompt_tokens": 204,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 228
+        }
+      }
+    }
+  ]
+}

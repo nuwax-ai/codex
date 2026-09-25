@@ -35,7 +35,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f8d2ccd63f00",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -50,7 +50,7 @@
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f8d2dc911a01",
         "role": "assistant",
         "content": []
       }
@@ -61,7 +61,7 @@
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f8d2ccd63f00",
         "summary": [],
         "content": [
           {
@@ -75,7 +75,7 @@
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f8d2dc911a01",
         "role": "assistant",
         "content": [
           {
@@ -87,7 +87,7 @@
     },
     {
       "Completed": {
-        "response_id": "48e6f31b-d4a3-4207-a2ed-702c9a3bb7d0_b66d24900df64f1092c02c18858ee896",
+        "response_id": "7dbec85d-3135-4463-9c80-55f3285f9bc3_de88f9485b174a90b9aa15cd0be5d68b",
         "token_usage": {
           "input_tokens": 29,
           "cached_input_tokens": 0,

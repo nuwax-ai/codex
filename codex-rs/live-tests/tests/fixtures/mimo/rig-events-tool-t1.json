@@ -1,0 +1,168 @@
+{
+  "vendor": "mimo",
+  "tag": "tool-t1",
+  "rig_events": [
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "用户"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "要求"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "必须"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "调用 get"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "_weather 工具查询"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "北京天气。这是一个"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "直接"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "的查询"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "，"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "没有"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "违法行为"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "，"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "也不"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "需要其他"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "工具"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "。调"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "用即可"
+    },
+    {
+      "id": "WAMhJpTPnrapN3ulg2WY-",
+      "reasoning": "。"
+    },
+    {
+      "internal_call_id": "0GivfNvgeEo7XWpmCSOTT",
+      "content": {
+        "Name": "get_weather"
+      }
+    },
+    {
+      "internal_call_id": "0GivfNvgeEo7XWpmCSOTT",
+      "content": {
+        "Delta": "{\"city\": "
+      }
+    },
+    {
+      "internal_call_id": "0GivfNvgeEo7XWpmCSOTT",
+      "content": {
+        "Delta": "\""
+      }
+    },
+    {
+      "internal_call_id": "0GivfNvgeEo7XWpmCSOTT",
+      "content": {
+        "Delta": "北京"
+      }
+    },
+    {
+      "internal_call_id": "0GivfNvgeEo7XWpmCSOTT",
+      "content": {
+        "Delta": "\""
+      }
+    },
+    {
+      "internal_call_id": "0GivfNvgeEo7XWpmCSOTT",
+      "content": {
+        "Delta": "}"
+      }
+    },
+    {
+      "tool_call": {
+        "id": "call_bfc41b909c8b43caad1edc4b",
+        "provider": {
+          "call_id": "call_bfc41b909c8b43caad1edc4b"
+        },
+        "function": {
+          "name": "get_weather",
+          "arguments": {
+            "city": "北京"
+          }
+        },
+        "signature": null,
+        "additional_params": null
+      },
+      "internal_call_id": "0GivfNvgeEo7XWpmCSOTT"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 131,
+        "output_tokens": 51,
+        "total_tokens": 182,
+        "cached_input_tokens": 128,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 32
+      },
+      "finish_reason": "tool_calls",
+      "message_id": null,
+      "response_id": "8ef9842f-a96b-4113-b072-6ff4e3b9c56f_c68fe5b449474c14adc78ee9759a380c",
+      "provider": "openai",
+      "model": "mimo-v2.6-flash",
+      "raw": {
+        "additional_params": {
+          "created": 1790303510,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "tool_calls",
+        "model": "mimo-v2.6-flash",
+        "response_id": "8ef9842f-a96b-4113-b072-6ff4e3b9c56f_c68fe5b449474c14adc78ee9759a380c",
+        "usage": {
+          "completion_tokens": 51,
+          "completion_tokens_details": {
+            "reasoning_tokens": 32
+          },
+          "prompt_tokens": 131,
+          "prompt_tokens_details": {
+            "cached_tokens": 128
+          },
+          "total_tokens": 182
+        }
+      }
+    }
+  ]
+}

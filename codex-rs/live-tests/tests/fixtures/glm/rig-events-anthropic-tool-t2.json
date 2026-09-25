@@ -1,0 +1,264 @@
+{
+  "vendor": "glm",
+  "tag": "anthropic-tool-t2",
+  "rig_events": [
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": "The"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": " tool"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": " returned"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": " the"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": " weather"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": " for"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": " Beijing"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": ":"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": " sunny"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": ","
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": " "
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": "23"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": "°C"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": "."
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": " Let"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": " me"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": " answer"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": " the"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": " user"
+    },
+    {
+      "id": "LLgeWdfzybv2hQl-7Lrzf",
+      "reasoning": "."
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "The tool returned the weather for Beijing: sunny, 23°C. Let me answer the user.",
+              "signature": "294107d6964947db9c9693b4"
+            }
+          }
+        ]
+      },
+      "id": "LLgeWdfzybv2hQl-7Lrzf"
+    },
+    {
+      "text": "北京"
+    },
+    {
+      "text": "今天的"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "情况"
+    },
+    {
+      "text": "如下"
+    },
+    {
+      "text": "：\n\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " **"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "状况"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "："
+    },
+    {
+      "text": "晴"
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "☀"
+    },
+    {
+      "text": "️"
+    },
+    {
+      "text": "\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " **"
+    },
+    {
+      "text": "气温"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "："
+    },
+    {
+      "text": "23"
+    },
+    {
+      "text": "°C"
+    },
+    {
+      "text": "\n\n"
+    },
+    {
+      "text": "今天"
+    },
+    {
+      "text": "北京"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "晴"
+    },
+    {
+      "text": "朗"
+    },
+    {
+      "text": "，"
+    },
+    {
+      "text": "温度"
+    },
+    {
+      "text": "适宜"
+    },
+    {
+      "text": "，"
+    },
+    {
+      "text": "很适合"
+    },
+    {
+      "text": "外出"
+    },
+    {
+      "text": "活动"
+    },
+    {
+      "text": "。"
+    },
+    {
+      "text": "需要"
+    },
+    {
+      "text": "查询"
+    },
+    {
+      "text": "其他"
+    },
+    {
+      "text": "城市的"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "吗"
+    },
+    {
+      "text": "？"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 224,
+        "output_tokens": 67,
+        "total_tokens": 291,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": "msg_20260925103141f3bc69953d2c4eb0",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "GLM-5.3-Flash",
+      "raw": {
+        "message_id": "msg_20260925103141f3bc69953d2c4eb0",
+        "model": "GLM-5.3-Flash",
+        "stop_reason": "end_turn",
+        "usage": {
+          "cache_creation_input_tokens": null,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 224,
+          "output_tokens": 67
+        }
+      }
+    }
+  ]
+}

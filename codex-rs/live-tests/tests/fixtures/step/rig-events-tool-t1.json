@@ -1,0 +1,137 @@
+{
+  "vendor": "step",
+  "tag": "tool-t1",
+  "rig_events": [
+    {
+      "id": "QbbulPocwK8gmyWtMj0nJ",
+      "reasoning": "The"
+    },
+    {
+      "id": "QbbulPocwK8gmyWtMj0nJ",
+      "reasoning": " user wants to"
+    },
+    {
+      "id": "QbbulPocwK8gmyWtMj0nJ",
+      "reasoning": " know Beijing"
+    },
+    {
+      "id": "QbbulPocwK8gmyWtMj0nJ",
+      "reasoning": "'s weather today"
+    },
+    {
+      "id": "QbbulPocwK8gmyWtMj0nJ",
+      "reasoning": " and explicitly"
+    },
+    {
+      "id": "QbbulPocwK8gmyWtMj0nJ",
+      "reasoning": " asks to"
+    },
+    {
+      "id": "QbbulPocwK8gmyWtMj0nJ",
+      "reasoning": " use"
+    },
+    {
+      "id": "QbbulPocwK8gmyWtMj0nJ",
+      "reasoning": " the get_weather"
+    },
+    {
+      "id": "QbbulPocwK8gmyWtMj0nJ",
+      "reasoning": " tool. I should"
+    },
+    {
+      "id": "QbbulPocwK8gmyWtMj0nJ",
+      "reasoning": " call get"
+    },
+    {
+      "id": "QbbulPocwK8gmyWtMj0nJ",
+      "reasoning": "_weather with city"
+    },
+    {
+      "id": "QbbulPocwK8gmyWtMj0nJ",
+      "reasoning": " "
+    },
+    {
+      "id": "QbbulPocwK8gmyWtMj0nJ",
+      "reasoning": "北京."
+    },
+    {
+      "internal_call_id": "mmK7KRndy8ehZzpJpw7oT",
+      "content": {
+        "Name": "get_weather"
+      }
+    },
+    {
+      "internal_call_id": "mmK7KRndy8ehZzpJpw7oT",
+      "content": {
+        "Delta": "{"
+      }
+    },
+    {
+      "internal_call_id": "mmK7KRndy8ehZzpJpw7oT",
+      "content": {
+        "Delta": "\"city\": "
+      }
+    },
+    {
+      "internal_call_id": "mmK7KRndy8ehZzpJpw7oT",
+      "content": {
+        "Delta": "\"北京\"}"
+      }
+    },
+    {
+      "tool_call": {
+        "id": "chatcmpl-tool-8a8a3858fb545c21",
+        "provider": {
+          "call_id": "chatcmpl-tool-8a8a3858fb545c21"
+        },
+        "function": {
+          "name": "get_weather",
+          "arguments": {
+            "city": "北京"
+          }
+        },
+        "signature": null,
+        "additional_params": null
+      },
+      "internal_call_id": "mmK7KRndy8ehZzpJpw7oT"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 262,
+        "output_tokens": 55,
+        "total_tokens": 317,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "tool_calls",
+      "message_id": null,
+      "response_id": "2b8f23302a89e04091218501f24be88b.5978dc0e16f1b04d96f9d77bbb8691d9",
+      "provider": "openai",
+      "model": "step-5-preview",
+      "raw": {
+        "additional_params": {
+          "agent": "",
+          "created": 1790303490,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "tool_calls",
+        "model": "step-5-preview",
+        "response_id": "2b8f23302a89e04091218501f24be88b.5978dc0e16f1b04d96f9d77bbb8691d9",
+        "usage": {
+          "completion_tokens": 55,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "prompt_tokens": 262,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 317
+        }
+      }
+    }
+  ]
+}

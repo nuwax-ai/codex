@@ -1,0 +1,50 @@
+{
+  "vendor": "mimo",
+  "tag": "effort",
+  "rig_events": [
+    {
+      "id": "XMgsIW_IkEzilVu6JR7_s",
+      "reasoning": "2"
+    },
+    {
+      "text": "2"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 5,
+        "total_tokens": 34,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 2
+      },
+      "finish_reason": "stop",
+      "message_id": null,
+      "response_id": "7dbec85d-3135-4463-9c80-55f3285f9bc3_de88f9485b174a90b9aa15cd0be5d68b",
+      "provider": "openai",
+      "model": "mimo-v2.6-flash",
+      "raw": {
+        "additional_params": {
+          "created": 1790303504,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "stop",
+        "model": "mimo-v2.6-flash",
+        "response_id": "7dbec85d-3135-4463-9c80-55f3285f9bc3_de88f9485b174a90b9aa15cd0be5d68b",
+        "usage": {
+          "completion_tokens": 5,
+          "completion_tokens_details": {
+            "reasoning_tokens": 2
+          },
+          "prompt_tokens": 29,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 34
+        }
+      }
+    }
+  ]
+}

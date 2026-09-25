@@ -1,0 +1,77 @@
+{
+  "vendor": "mimo",
+  "tag": "anthropic-tool-t2",
+  "rig_events": [
+    {
+      "id": "x8w0yUwg97VeuKgTW1hub",
+      "reasoning": "Answer in"
+    },
+    {
+      "id": "x8w0yUwg97VeuKgTW1hub",
+      "reasoning": " Chinese."
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "Answer in Chinese."
+            }
+          }
+        ]
+      },
+      "id": "x8w0yUwg97VeuKgTW1hub"
+    },
+    {
+      "text": "北京今天天气"
+    },
+    {
+      "text": "晴"
+    },
+    {
+      "text": "朗"
+    },
+    {
+      "text": "，气温约"
+    },
+    {
+      "text": " 23°C，"
+    },
+    {
+      "text": "适合出行"
+    },
+    {
+      "text": "。"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 60,
+        "output_tokens": 23,
+        "total_tokens": 211,
+        "cached_input_tokens": 128,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": "msg_f03d5c439dea4a13aeecf6d7",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "mimo-v2.6-flash",
+      "raw": {
+        "message_id": "msg_f03d5c439dea4a13aeecf6d7",
+        "model": "mimo-v2.6-flash",
+        "stop_reason": "end_turn",
+        "usage": {
+          "cache_creation_input_tokens": null,
+          "cache_read_input_tokens": 128,
+          "input_tokens": 60,
+          "output_tokens": 23
+        }
+      }
+    }
+  ]
+}

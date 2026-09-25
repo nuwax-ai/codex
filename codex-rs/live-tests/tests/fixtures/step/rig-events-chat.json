@@ -1,0 +1,155 @@
+{
+  "vendor": "step",
+  "tag": "chat",
+  "rig_events": [
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": "We"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": " need answer in Chinese"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": ", one sentence."
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": " Need concise"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": ". \"斐波"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": "那契数列是从"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": "0和"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": "1开始，每一项"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": "等于"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": "前两项之和的"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": "无穷"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": "数列，如"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": "0,1,"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": "1,2,"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": "3,5,"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": "8...\""
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": " Ensure"
+    },
+    {
+      "id": "GDEUJJklE3S7Y73GXzA9x",
+      "reasoning": " one sentence."
+    },
+    {
+      "text": "斐波那契"
+    },
+    {
+      "text": "数列是从0和"
+    },
+    {
+      "text": "1开始、"
+    },
+    {
+      "text": "每一项"
+    },
+    {
+      "text": "都"
+    },
+    {
+      "text": "等于前两项之和"
+    },
+    {
+      "text": "的数列，例如"
+    },
+    {
+      "text": "：0, "
+    },
+    {
+      "text": "1, 1"
+    },
+    {
+      "text": ", 2,"
+    },
+    {
+      "text": " 3, "
+    },
+    {
+      "text": "5, 8"
+    },
+    {
+      "text": ", 13……"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 36,
+        "output_tokens": 99,
+        "total_tokens": 135,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": null,
+      "response_id": "7e8fec6dd9073e388a499c52dbbd8007.0468c2fef8752dd43cb1d16bf7b8bdea",
+      "provider": "openai",
+      "model": "step-5-preview",
+      "raw": {
+        "additional_params": {
+          "agent": "",
+          "created": 1790303482,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "stop",
+        "model": "step-5-preview",
+        "response_id": "7e8fec6dd9073e388a499c52dbbd8007.0468c2fef8752dd43cb1d16bf7b8bdea",
+        "usage": {
+          "completion_tokens": 99,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "prompt_tokens": 36,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 135
+        }
+      }
+    }
+  ]
+}

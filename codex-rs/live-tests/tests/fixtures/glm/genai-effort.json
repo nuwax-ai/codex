@@ -35,7 +35,7 @@
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f8651299e780",
         "role": "assistant",
         "content": []
       }
@@ -50,23 +50,35 @@
       "OutputTextDelta": "1"
     },
     {
-      "OutputTextDelta": " ="
+      "OutputTextDelta": " "
     },
     {
-      "OutputTextDelta": " "
+      "OutputTextDelta": "等"
+    },
+    {
+      "OutputTextDelta": "于"
+    },
+    {
+      "OutputTextDelta": " **"
     },
     {
       "OutputTextDelta": "2"
     },
     {
+      "OutputTextDelta": "**"
+    },
+    {
+      "OutputTextDelta": "。"
+    },
+    {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f8651299e780",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "1+1 = 2"
+            "text": "1+1 等于 **2**。"
           }
         ]
       }
@@ -78,9 +90,9 @@
           "input_tokens": 31,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 8,
+          "output_tokens": 13,
           "reasoning_output_tokens": 0,
-          "total_tokens": 39
+          "total_tokens": 44
         },
         "usage_metadata": null,
         "end_turn": true

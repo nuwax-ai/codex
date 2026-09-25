@@ -1,0 +1,239 @@
+{
+  "vendor": "step",
+  "tag": "parallel-tools",
+  "rig_events": [
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "用户"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "要求分别"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "查询北京和上海"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "两个城市的天气，"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "用"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "两次独立的 get_"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "weather 工具调用"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "（"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "一次查北京，"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "一次查上海，"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "不要合并成一次"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "调用），然后一起"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "告诉我"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "。\n\n我"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "需要在同一个"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "块"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "中发起"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "两个独立的调用"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "，"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "每个"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "调用分别"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "查询北京"
+    },
+    {
+      "id": "npV4mAjE3stFo_9WpAdT3",
+      "reasoning": "和上海。"
+    },
+    {
+      "text": "我来分别"
+    },
+    {
+      "text": "查询北京和上海的"
+    },
+    {
+      "text": "天气。"
+    },
+    {
+      "internal_call_id": "5-e7W73RtiUmx0gNaG0FL",
+      "content": {
+        "Name": "get_weather"
+      }
+    },
+    {
+      "internal_call_id": "5-e7W73RtiUmx0gNaG0FL",
+      "content": {
+        "Delta": "{"
+      }
+    },
+    {
+      "internal_call_id": "5-e7W73RtiUmx0gNaG0FL",
+      "content": {
+        "Delta": "\"city\": "
+      }
+    },
+    {
+      "internal_call_id": "5-e7W73RtiUmx0gNaG0FL",
+      "content": {
+        "Delta": "\"北京\""
+      }
+    },
+    {
+      "internal_call_id": "5-e7W73RtiUmx0gNaG0FL",
+      "content": {
+        "Delta": "}"
+      }
+    },
+    {
+      "internal_call_id": "x0q5oa95EIvGURzkra42u",
+      "content": {
+        "Name": "get_weather"
+      }
+    },
+    {
+      "internal_call_id": "x0q5oa95EIvGURzkra42u",
+      "content": {
+        "Delta": "{"
+      }
+    },
+    {
+      "internal_call_id": "x0q5oa95EIvGURzkra42u",
+      "content": {
+        "Delta": "\"city\": "
+      }
+    },
+    {
+      "internal_call_id": "x0q5oa95EIvGURzkra42u",
+      "content": {
+        "Delta": "\"上海\""
+      }
+    },
+    {
+      "internal_call_id": "x0q5oa95EIvGURzkra42u",
+      "content": {
+        "Delta": "}"
+      }
+    },
+    {
+      "tool_call": {
+        "id": "chatcmpl-tool-87f58e549286210a",
+        "provider": {
+          "call_id": "chatcmpl-tool-87f58e549286210a"
+        },
+        "function": {
+          "name": "get_weather",
+          "arguments": {
+            "city": "北京"
+          }
+        },
+        "signature": null,
+        "additional_params": null
+      },
+      "internal_call_id": "5-e7W73RtiUmx0gNaG0FL"
+    },
+    {
+      "tool_call": {
+        "id": "chatcmpl-tool-b0074817995fd49b",
+        "provider": {
+          "call_id": "chatcmpl-tool-b0074817995fd49b"
+        },
+        "function": {
+          "name": "get_weather",
+          "arguments": {
+            "city": "上海"
+          }
+        },
+        "signature": null,
+        "additional_params": null
+      },
+      "internal_call_id": "x0q5oa95EIvGURzkra42u"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 281,
+        "output_tokens": 111,
+        "total_tokens": 392,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "tool_calls",
+      "message_id": null,
+      "response_id": "7a3ce3b00a94f433ac38139f211bbf0e.dee137ccada39830552cf4ca7fd19367",
+      "provider": "openai",
+      "model": "step-5-preview",
+      "raw": {
+        "additional_params": {
+          "agent": "",
+          "created": 1790303487,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "tool_calls",
+        "model": "step-5-preview",
+        "response_id": "7a3ce3b00a94f433ac38139f211bbf0e.dee137ccada39830552cf4ca7fd19367",
+        "usage": {
+          "completion_tokens": 111,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "prompt_tokens": 281,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 392
+        }
+      }
+    }
+  ]
+}

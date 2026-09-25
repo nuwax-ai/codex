@@ -294,3 +294,20 @@ review 证实的桥正确性七项全部修复(单元 22/22 + 全矩阵 64/64):
 proto/schema 同步 ×2、cassette 原始 HTTP 录制、app-server 独立验证、#6 rig
 serializer 限制、#19 身份判定、#20 内置覆盖、#21 远程压缩、#38 原子缓存、#43 升级
 路径),记录于 backlog。
+
+## 17. HTTP 级 Cassette(#28,2026-09-25 完成)
+
+拦截点: rig StreamedAssistantContent 事件——桥转换代码的输入。录制桥收到的
+中间事件,回放时喂给当前桥的 rig_event_to_response_events(),验证转换等价性。
+
+- codex-rust-rig-bridge/src/cassette.rs: RigEventFixture + replay_rig_events()
+- stream_via_rig_with_recording(): 可选 recorder 在泵内收集 rig 事件
+- live-tests: record 同时写两级 fixture;replay 优先 rig-event 级(经过桥)
+- fixture: tests/fixtures/<vendor>/rig-events-<tag>.json(24 个,三厂商)
+- auth_rejected 场景 replay 跳过(live-only:坏 key 测试需要真实端点)
+
+验证闭环:
+1. 无凭据 replay 43/43(0.2s)
+2. 故意破坏桥的 text delta 转换 -> replay 变红
+3. 恢复 -> replay 恢复全绿
+4. 在线全矩阵 64/64

@@ -53,7 +53,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f91e7bd9e880",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -121,185 +121,155 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " and",
+        "delta": ".",
         "content_index": 10
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " explicitly",
+        "delta": " They",
         "content_index": 11
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " asked",
+        "delta": " explicitly",
         "content_index": 12
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " me",
+        "delta": " want",
         "content_index": 13
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " to",
+        "delta": " me",
         "content_index": 14
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " call",
+        "delta": " to",
         "content_index": 15
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": " call",
         "content_index": 16
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " get",
+        "delta": " the",
         "content_index": 17
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "_weather",
+        "delta": " get",
         "content_index": 18
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " tool",
+        "delta": "_weather",
         "content_index": 19
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ".",
+        "delta": " tool",
         "content_index": 20
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " I",
+        "delta": ".",
         "content_index": 21
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " should",
+        "delta": " Let",
         "content_index": 22
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " call",
+        "delta": " me",
         "content_index": 23
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " it",
+        "delta": " do",
         "content_index": 24
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " with",
+        "delta": " that",
         "content_index": 25
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": ".",
         "content_index": 26
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " city",
-        "content_index": 27
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " name",
-        "content_index": 28
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " \"",
-        "content_index": 29
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "北京",
-        "content_index": 30
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "\".",
-        "content_index": 31
       }
     },
     {
       "OutputItemAdded": {
         "type": "function_call",
-        "id": "42roSNe_wgq9gtC12DFjx",
+        "id": "XH02d3QbA-WE6C4BbV_oH",
         "name": "get_weather",
         "arguments": "",
-        "call_id": "42roSNe_wgq9gtC12DFjx"
+        "call_id": "XH02d3QbA-WE6C4BbV_oH"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "42roSNe_wgq9gtC12DFjx",
-        "call_id": "42roSNe_wgq9gtC12DFjx",
+        "item_id": "XH02d3QbA-WE6C4BbV_oH",
+        "call_id": "XH02d3QbA-WE6C4BbV_oH",
         "delta": "{\"city\":\"北京\"}"
       }
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f91e7bd9e880",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The user is asking about the weather in Beijing today and explicitly asked me to call the get_weather tool. I should call it with the city name \"北京\"."
+            "text": "The user is asking about the weather in Beijing today. They explicitly want me to call the get_weather tool. Let me do that."
           }
         ],
-        "encrypted_content": "The user is asking about the weather in Beijing today and explicitly asked me to call the get_weather tool. I should call it with the city name \"北京\"."
+        "encrypted_content": "The user is asking about the weather in Beijing today. They explicitly want me to call the get_weather tool. Let me do that."
       }
     },
     {
       "OutputItemDone": {
         "type": "function_call",
-        "id": "42roSNe_wgq9gtC12DFjx",
+        "id": "XH02d3QbA-WE6C4BbV_oH",
         "name": "get_weather",
         "arguments": "{\"city\":\"北京\"}",
-        "call_id": "call_70b0622c678e4b579cfae11b"
+        "call_id": "call_8dbec5c7428d48098810fc0a"
       }
     },
     {
       "Completed": {
-        "response_id": "202609242328341fab0cc04b814578",
+        "response_id": "20260925103200dc36223a25fb4dff",
         "token_usage": {
           "input_tokens": 194,
           "cached_input_tokens": 192,
           "cache_write_input_tokens": 0,
-          "output_tokens": 44,
-          "reasoning_output_tokens": 32,
-          "total_tokens": 238
+          "output_tokens": 39,
+          "reasoning_output_tokens": 27,
+          "total_tokens": 233
         },
         "usage_metadata": null,
         "end_turn": false

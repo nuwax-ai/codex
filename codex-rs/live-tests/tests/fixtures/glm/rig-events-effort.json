@@ -1,0 +1,46 @@
+{
+  "vendor": "glm",
+  "tag": "effort",
+  "rig_events": [
+    {
+      "text": "2"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 31,
+        "output_tokens": 3,
+        "total_tokens": 34,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": null,
+      "response_id": "2026092510315300f790da6c1a49c9",
+      "provider": "openai",
+      "model": "glm-5.3-flash",
+      "raw": {
+        "additional_params": {
+          "created": 1790303513,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "stop",
+        "model": "glm-5.3-flash",
+        "response_id": "2026092510315300f790da6c1a49c9",
+        "usage": {
+          "completion_tokens": 3,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "prompt_tokens": 31,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 34
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "vendor": "step",
+  "tag": "tool-t2",
+  "rig_events": [
+    {
+      "id": "5qu3KBZHiehb2SuGgSTDh",
+      "reasoning": "The"
+    },
+    {
+      "id": "5qu3KBZHiehb2SuGgSTDh",
+      "reasoning": " weather"
+    },
+    {
+      "id": "5qu3KBZHiehb2SuGgSTDh",
+      "reasoning": " tool returned:"
+    },
+    {
+      "id": "5qu3KBZHiehb2SuGgSTDh",
+      "reasoning": " 北京，晴"
+    },
+    {
+      "id": "5qu3KBZHiehb2SuGgSTDh",
+      "reasoning": "，23"
+    },
+    {
+      "id": "5qu3KBZHiehb2SuGgSTDh",
+      "reasoning": "°"
+    },
+    {
+      "id": "5qu3KBZHiehb2SuGgSTDh",
+      "reasoning": "C. I"
+    },
+    {
+      "id": "5qu3KBZHiehb2SuGgSTDh",
+      "reasoning": " should report"
+    },
+    {
+      "id": "5qu3KBZHiehb2SuGgSTDh",
+      "reasoning": " this to"
+    },
+    {
+      "id": "5qu3KBZHiehb2SuGgSTDh",
+      "reasoning": " the user."
+    },
+    {
+      "text": "已"
+    },
+    {
+      "text": "通过 get_weather"
+    },
+    {
+      "text": " 工具查询到"
+    },
+    {
+      "text": "北京今天天气"
+    },
+    {
+      "text": "："
+    },
+    {
+      "text": "**晴，"
+    },
+    {
+      "text": "气温 23℃"
+    },
+    {
+      "text": "**。"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 314,
+        "output_tokens": 46,
+        "total_tokens": 360,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": null,
+      "response_id": "ca216bc8e7cda59c2e54206271174f68.c48e1efaeb9f1d21d7c59280e1d8e76f",
+      "provider": "openai",
+      "model": "step-5-preview",
+      "raw": {
+        "additional_params": {
+          "agent": "",
+          "created": 1790303491,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "stop",
+        "model": "step-5-preview",
+        "response_id": "ca216bc8e7cda59c2e54206271174f68.c48e1efaeb9f1d21d7c59280e1d8e76f",
+        "usage": {
+          "completion_tokens": 46,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "prompt_tokens": 314,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 360
+        }
+      }
+    }
+  ]
+}

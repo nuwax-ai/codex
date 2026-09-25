@@ -1,6 +1,7 @@
 //! Entry point: streams a Codex `ResponsesApiRequest` through rig and emits
 //! Codex `ResponseEvent`s — the same contract as `stream_via_genai`.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use codex_api::ApiError;
@@ -21,6 +22,11 @@ use crate::convert_request::responses_request_to_completion_request;
 use crate::convert_response::PendingRigMessage;
 use crate::convert_response::rig_event_to_response_events;
 
+/// Shared handle the stream pump fills with raw rig events when the caller
+/// wants to record the bridge boundary (cassette mode). `None` = no
+/// recording overhead.
+pub type RigEventRecorder = Option<Arc<std::sync::Mutex<Vec<rig_core::streaming::StreamedAssistantContent>>>>;
+
 const RESPONSE_STREAM_CHANNEL_CAPACITY: usize = 256;
 
 /// Streams a turn through rig. The wire protocol is selected from the
@@ -34,6 +40,26 @@ pub async fn stream_via_rig(
     protocol: RigProtocol,
     idle_timeout: Duration,
 ) -> Result<ResponseStream, ApiError> {
+    stream_via_rig_with_recording(
+        request, api_provider, api_auth, extra_headers, protocol, idle_timeout, None,
+    )
+    .await
+    .map(|(stream, _)| stream)
+}
+
+/// Same as [`stream_via_rig`], but optionally records the raw rig events
+/// the stream delivers (the input to the bridge's conversion) alongside
+/// the normal codex event flow. The recorder is filled asynchronously by
+/// the pump; read it after the stream completes.
+pub async fn stream_via_rig_with_recording(
+    request: &ResponsesApiRequest,
+    api_provider: &Provider,
+    api_auth: &SharedAuthProvider,
+    extra_headers: HeaderMap,
+    protocol: RigProtocol,
+    idle_timeout: Duration,
+    recorder: RigEventRecorder,
+) -> Result<(ResponseStream, RigEventRecorder), ApiError> {
     let (mut completion_request, custom_tool_names) =
         responses_request_to_completion_request(request).ok_or(ApiError::InvalidRequest {
             message: "No convertible messages in request".into(),
@@ -113,6 +139,7 @@ pub async fn stream_via_rig(
     let (tx, rx) = mpsc::channel(RESPONSE_STREAM_CHANNEL_CAPACITY);
 
     let custom_tool_names = std::sync::Arc::new(custom_tool_names);
+    let pump_recorder = recorder.clone();
     tokio::spawn(async move {
         let mut pending = PendingRigMessage::new(custom_tool_names);
 
@@ -137,6 +164,11 @@ pub async fn stream_via_rig(
             };
             match item {
                 Some(Ok(event)) => {
+                    if let Some(rec) = &pump_recorder {
+                        if let Ok(mut buf) = rec.lock() {
+                            buf.push(event.clone());
+                        }
+                    }
                     let events = rig_event_to_response_events(event, &mut pending);
                     for ev in events {
                         if tx.send(Ok(ev)).await.is_err() {
@@ -170,10 +202,13 @@ pub async fn stream_via_rig(
         }
     });
 
-    Ok(ResponseStream {
-        rx_event: rx,
-        upstream_request_id: None,
-    })
+    Ok((
+        ResponseStream {
+            rx_event: rx,
+            upstream_request_id: None,
+        },
+        recorder,
+    ))
 }
 
 /// Maps rig errors onto codex's transport taxonomy, preserving the HTTP

@@ -53,7 +53,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f909f9165a00",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -91,7 +91,7 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " query",
+        "delta": " check",
         "content_index": 5
       }
     },
@@ -187,7 +187,7 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " there",
+        "delta": " these",
         "content_index": 21
       }
     },
@@ -199,122 +199,116 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " no",
+        "delta": " independent",
         "content_index": 23
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " dependencies",
+        "delta": " calls",
         "content_index": 24
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " between",
+        "delta": " with",
         "content_index": 25
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": " no",
         "content_index": 26
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " two",
+        "delta": " dependencies",
         "content_index": 27
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " calls",
+        "delta": " between",
         "content_index": 28
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ",",
+        "delta": " them",
         "content_index": 29
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " I",
+        "delta": ",",
         "content_index": 30
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " should",
+        "delta": " I",
         "content_index": 31
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " make",
+        "delta": " should",
         "content_index": 32
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " both",
+        "delta": " make",
         "content_index": 33
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " calls",
+        "delta": " both",
         "content_index": 34
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " in",
+        "delta": " calls",
         "content_index": 35
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": " in",
         "content_index": 36
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " same",
+        "delta": " the",
         "content_index": 37
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " function",
+        "delta": " same",
         "content_index": 38
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "_calls",
+        "delta": " block",
         "content_index": 39
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " block",
-        "content_index": 40
-      }
-    },
-    {
-      "ReasoningContentDelta": {
         "delta": ".",
-        "content_index": 41
+        "content_index": 40
       }
     },
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f90c3060ab81",
         "role": "assistant",
         "content": []
       }
@@ -346,53 +340,53 @@
     {
       "OutputItemAdded": {
         "type": "function_call",
-        "id": "3_LQp0xgnSsrn2LPrXV0I",
+        "id": "6ABpU0BAPCVYGQvR0ns5u",
         "name": "get_weather",
         "arguments": "",
-        "call_id": "3_LQp0xgnSsrn2LPrXV0I"
+        "call_id": "6ABpU0BAPCVYGQvR0ns5u"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "3_LQp0xgnSsrn2LPrXV0I",
-        "call_id": "3_LQp0xgnSsrn2LPrXV0I",
+        "item_id": "6ABpU0BAPCVYGQvR0ns5u",
+        "call_id": "6ABpU0BAPCVYGQvR0ns5u",
         "delta": "{\"city\":\"北京\"}"
       }
     },
     {
       "OutputItemAdded": {
         "type": "function_call",
-        "id": "4gNJd-hJYVcdq1tWOiGgX",
+        "id": "BWZEB8-4xSAsbtJX5_mTq",
         "name": "get_weather",
         "arguments": "",
-        "call_id": "4gNJd-hJYVcdq1tWOiGgX"
+        "call_id": "BWZEB8-4xSAsbtJX5_mTq"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "4gNJd-hJYVcdq1tWOiGgX",
-        "call_id": "4gNJd-hJYVcdq1tWOiGgX",
+        "item_id": "BWZEB8-4xSAsbtJX5_mTq",
+        "call_id": "BWZEB8-4xSAsbtJX5_mTq",
         "delta": "{\"city\":\"上海\"}"
       }
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f909f9165a00",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The user wants me to query the weather for Beijing and Shanghai using two independent get_weather tool calls. Since there are no dependencies between the two calls, I should make both calls in the same function_calls block."
+            "text": "The user wants me to check the weather for Beijing and Shanghai using two independent get_weather tool calls. Since these are independent calls with no dependencies between them, I should make both calls in the same block."
           }
         ],
-        "encrypted_content": "The user wants me to query the weather for Beijing and Shanghai using two independent get_weather tool calls. Since there are no dependencies between the two calls, I should make both calls in the same function_calls block."
+        "encrypted_content": "The user wants me to check the weather for Beijing and Shanghai using two independent get_weather tool calls. Since these are independent calls with no dependencies between them, I should make both calls in the same block."
       }
     },
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f90c3060ab81",
         "role": "assistant",
         "content": [
           {
@@ -405,31 +399,31 @@
     {
       "OutputItemDone": {
         "type": "function_call",
-        "id": "3_LQp0xgnSsrn2LPrXV0I",
+        "id": "6ABpU0BAPCVYGQvR0ns5u",
         "name": "get_weather",
         "arguments": "{\"city\":\"北京\"}",
-        "call_id": "call_c8a83123093a41fb9a186399"
+        "call_id": "call_6773414dcea947c5b59a42e0"
       }
     },
     {
       "OutputItemDone": {
         "type": "function_call",
-        "id": "4gNJd-hJYVcdq1tWOiGgX",
+        "id": "BWZEB8-4xSAsbtJX5_mTq",
         "name": "get_weather",
         "arguments": "{\"city\":\"上海\"}",
-        "call_id": "call_127ab8f989a14e3db3a42b43"
+        "call_id": "call_de9db03e6c604bacb2399f9b"
       }
     },
     {
       "Completed": {
-        "response_id": "2026092423283495a31939e6514541",
+        "response_id": "20260925103155dbb76f23da564ca4",
         "token_usage": {
           "input_tokens": 212,
           "cached_input_tokens": 192,
           "cache_write_input_tokens": 0,
-          "output_tokens": 72,
-          "reasoning_output_tokens": 42,
-          "total_tokens": 284
+          "output_tokens": 71,
+          "reasoning_output_tokens": 41,
+          "total_tokens": 283
         },
         "usage_metadata": null,
         "end_turn": false

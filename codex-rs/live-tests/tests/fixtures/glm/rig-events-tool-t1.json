@@ -1,0 +1,180 @@
+{
+  "vendor": "glm",
+  "tag": "tool-t1",
+  "rig_events": [
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": "The"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " user"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " is"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " asking"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " about"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " the"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " weather"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " in"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " Beijing"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " today"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": "."
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " They"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " explicitly"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " want"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " me"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " to"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " call"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " the"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " get"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": "_weather"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " tool"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": "."
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " Let"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " me"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " do"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": " that"
+    },
+    {
+      "id": "Ml1YgmBsfUNt5ZhV1sri6",
+      "reasoning": "."
+    },
+    {
+      "internal_call_id": "XH02d3QbA-WE6C4BbV_oH",
+      "content": {
+        "Name": "get_weather"
+      }
+    },
+    {
+      "internal_call_id": "XH02d3QbA-WE6C4BbV_oH",
+      "content": {
+        "Delta": "{\"city\":\"北京\"}"
+      }
+    },
+    {
+      "tool_call": {
+        "id": "call_8dbec5c7428d48098810fc0a",
+        "provider": {
+          "call_id": "call_8dbec5c7428d48098810fc0a"
+        },
+        "function": {
+          "name": "get_weather",
+          "arguments": {
+            "city": "北京"
+          }
+        },
+        "signature": null,
+        "additional_params": null
+      },
+      "internal_call_id": "XH02d3QbA-WE6C4BbV_oH"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 194,
+        "output_tokens": 39,
+        "total_tokens": 233,
+        "cached_input_tokens": 192,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 27
+      },
+      "finish_reason": "tool_calls",
+      "message_id": null,
+      "response_id": "20260925103200dc36223a25fb4dff",
+      "provider": "openai",
+      "model": "glm-5.3-flash",
+      "raw": {
+        "additional_params": {
+          "created": 1790303520,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "tool_calls",
+        "model": "glm-5.3-flash",
+        "response_id": "20260925103200dc36223a25fb4dff",
+        "usage": {
+          "completion_tokens": 39,
+          "completion_tokens_details": {
+            "reasoning_tokens": 27
+          },
+          "prompt_tokens": 194,
+          "prompt_tokens_details": {
+            "cached_tokens": 192
+          },
+          "total_tokens": 233
+        }
+      }
+    }
+  ]
+}

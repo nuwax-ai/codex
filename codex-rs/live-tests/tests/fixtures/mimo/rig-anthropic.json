@@ -33,7 +33,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f89f604f9800",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -60,40 +60,61 @@
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f89fc6331701",
         "role": "assistant",
         "content": []
       }
     },
     {
-      "OutputTextDelta": "二分查找的核心思想"
+      "OutputTextDelta": "**"
     },
     {
-      "OutputTextDelta": "是：**"
+      "OutputTextDelta": "二分查找的思想是"
     },
     {
-      "OutputTextDelta": "每次通过"
+      "OutputTextDelta": "：每次将"
     },
     {
-      "OutputTextDelta": "比较"
+      "OutputTextDelta": "有序"
     },
     {
-      "OutputTextDelta": "目标"
+      "OutputTextDelta": "查找"
     },
     {
-      "OutputTextDelta": "值与"
+      "OutputTextDelta": "范围"
+    },
+    {
+      "OutputTextDelta": "对"
+    },
+    {
+      "OutputTextDelta": "半折，"
+    },
+    {
+      "OutputTextDelta": "通过"
+    },
+    {
+      "OutputTextDelta": "与"
     },
     {
       "OutputTextDelta": "中间元素"
     },
     {
-      "OutputTextDelta": "，"
+      "OutputTextDelta": "比较，"
     },
     {
-      "OutputTextDelta": "将查找"
+      "OutputTextDelta": "将"
     },
     {
-      "OutputTextDelta": "范围缩小一半，"
+      "OutputTextDelta": "解"
+    },
+    {
+      "OutputTextDelta": "的"
+    },
+    {
+      "OutputTextDelta": "范围缩小一半"
+    },
+    {
+      "OutputTextDelta": "，从而"
     },
     {
       "OutputTextDelta": "逐步"
@@ -102,24 +123,15 @@
       "OutputTextDelta": "逼近"
     },
     {
-      "OutputTextDelta": "目标直到"
+      "OutputTextDelta": "目标。"
     },
     {
-      "OutputTextDelta": "找到或"
-    },
-    {
-      "OutputTextDelta": "确认"
-    },
-    {
-      "OutputTextDelta": "不存在"
-    },
-    {
-      "OutputTextDelta": "。**"
+      "OutputTextDelta": "**"
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f89f604f9800",
         "summary": [],
         "content": [
           {
@@ -133,12 +145,12 @@
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f89fc6331701",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "二分查找的核心思想是：**每次通过比较目标值与中间元素，将查找范围缩小一半，逐步逼近目标直到找到或确认不存在。**"
+            "text": "**二分查找的思想是：每次将有序查找范围对半折，通过与中间元素比较，将解的范围缩小一半，从而逐步逼近目标。**"
           }
         ]
       }
@@ -150,9 +162,9 @@
           "input_tokens": 29,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 44,
+          "output_tokens": 46,
           "reasoning_output_tokens": 0,
-          "total_tokens": 73
+          "total_tokens": 75
         },
         "usage_metadata": null,
         "end_turn": true

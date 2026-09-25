@@ -35,7 +35,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f88c62e56080",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -43,116 +43,134 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "The",
+        "delta": "用户",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " user is asking a",
+        "delta": "问了一个",
         "content_index": 1
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " simple math",
+        "delta": "简单",
         "content_index": 2
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " question: \"What",
+        "delta": "的问题：\"1+",
         "content_index": 3
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " is 1+",
+        "delta": "1 等于几",
         "content_index": 4
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "1?",
+        "delta": "？直接回答。\"",
         "content_index": 5
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Answer",
+        "delta": "（",
         "content_index": 6
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " directly.\"\n",
+        "delta": "1+1等于",
         "content_index": 7
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "\nI need to answer",
+        "delta": "几？直接回答",
         "content_index": 8
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " directly. ",
+        "delta": "。）\n\n这是一个",
         "content_index": 9
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "1 +",
+        "delta": "基础的",
         "content_index": 10
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " 1 = ",
+        "delta": "算术",
         "content_index": 11
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "2.\n\nThe",
+        "delta": "问题，",
         "content_index": 12
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " user wants a",
+        "delta": "答案是2。用户",
         "content_index": 13
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " direct answer,",
+        "delta": "要求直接",
         "content_index": 14
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " so I should just",
+        "delta": "回答，所以我应该",
         "content_index": 15
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " say ",
+        "delta": "只",
         "content_index": 16
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "2.",
+        "delta": "给出",
         "content_index": 17
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "答案",
+        "content_index": 18
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "，不需要",
+        "content_index": 19
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "额外解释。",
+        "content_index": 20
       }
     },
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f88eb4e1ae01",
         "role": "assistant",
         "content": []
       }
@@ -163,21 +181,21 @@
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f88c62e56080",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The user is asking a simple math question: \"What is 1+1? Answer directly.\"\n\nI need to answer directly. 1 + 1 = 2.\n\nThe user wants a direct answer, so I should just say 2."
+            "text": "用户问了一个简单的问题：\"1+1 等于几？直接回答。\"（1+1等于几？直接回答。）\n\n这是一个基础的算术问题，答案是2。用户要求直接回答，所以我应该只给出答案，不需要额外解释。"
           }
         ],
-        "encrypted_content": "The user is asking a simple math question: \"What is 1+1? Answer directly.\"\n\nI need to answer directly. 1 + 1 = 2.\n\nThe user wants a direct answer, so I should just say 2."
+        "encrypted_content": "用户问了一个简单的问题：\"1+1 等于几？直接回答。\"（1+1等于几？直接回答。）\n\n这是一个基础的算术问题，答案是2。用户要求直接回答，所以我应该只给出答案，不需要额外解释。"
       }
     },
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f88eb4e1ae01",
         "role": "assistant",
         "content": [
           {
@@ -189,14 +207,14 @@
     },
     {
       "Completed": {
-        "response_id": "920d4090777422ce8eadc3e8d95ae8f7.f6184c607bba41fb35a56607232b9565",
+        "response_id": "794afd071cc39f4d9d9c752d091d8f6a.6bc16e91ddcca131290a17c3b25ea918",
         "token_usage": {
           "input_tokens": 37,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 53,
+          "output_tokens": 52,
           "reasoning_output_tokens": 0,
-          "total_tokens": 90
+          "total_tokens": 89
         },
         "usage_metadata": null,
         "end_turn": true

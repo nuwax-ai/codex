@@ -1,0 +1,109 @@
+{
+  "vendor": "mimo",
+  "tag": "chat",
+  "rig_events": [
+    {
+      "id": "I9FfTu34wGkME-e88wuQA",
+      "reasoning": "用"
+    },
+    {
+      "id": "I9FfTu34wGkME-e88wuQA",
+      "reasoning": "一句话解释斐波那契"
+    },
+    {
+      "id": "I9FfTu34wGkME-e88wuQA",
+      "reasoning": "数列。"
+    },
+    {
+      "text": "斐波那契"
+    },
+    {
+      "text": "数列是一个"
+    },
+    {
+      "text": "从0"
+    },
+    {
+      "text": "和1开始（"
+    },
+    {
+      "text": "或从"
+    },
+    {
+      "text": "1和1开始），每个"
+    },
+    {
+      "text": "后续"
+    },
+    {
+      "text": "数字"
+    },
+    {
+      "text": "都等于"
+    },
+    {
+      "text": "前两个数字之"
+    },
+    {
+      "text": "和的数列（如0"
+    },
+    {
+      "text": ","
+    },
+    {
+      "text": " 1, 1, 2"
+    },
+    {
+      "text": ", 3, 5, "
+    },
+    {
+      "text": "8, 13, "
+    },
+    {
+      "text": "21,"
+    },
+    {
+      "text": " 34……"
+    },
+    {
+      "text": "）。"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 32,
+        "output_tokens": 81,
+        "total_tokens": 113,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 11
+      },
+      "finish_reason": "stop",
+      "message_id": null,
+      "response_id": "18a6bc7a-73ad-4c08-aa40-3a6897590a90_9794347ff0b04758a990cc281efa4fef",
+      "provider": "openai",
+      "model": "mimo-v2.6-flash",
+      "raw": {
+        "additional_params": {
+          "created": 1790303502,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "stop",
+        "model": "mimo-v2.6-flash",
+        "response_id": "18a6bc7a-73ad-4c08-aa40-3a6897590a90_9794347ff0b04758a990cc281efa4fef",
+        "usage": {
+          "completion_tokens": 81,
+          "completion_tokens_details": {
+            "reasoning_tokens": 11
+          },
+          "prompt_tokens": 32,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 113
+        }
+      }
+    }
+  ]
+}

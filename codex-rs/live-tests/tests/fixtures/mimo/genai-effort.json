@@ -35,7 +35,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f84c93d9a600",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -43,14 +43,14 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "2",
+        "delta": "1",
         "content_index": 0
       }
     },
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f84cb63b2981",
         "role": "assistant",
         "content": []
       }
@@ -61,21 +61,21 @@
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_0",
+        "id": "rsn_18d86f84c93d9a600",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "2"
+            "text": "1"
           }
         ],
-        "encrypted_content": "2"
+        "encrypted_content": "1"
       }
     },
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_0",
+        "id": "txt_18d86f84cb63b2981",
         "role": "assistant",
         "content": [
           {
