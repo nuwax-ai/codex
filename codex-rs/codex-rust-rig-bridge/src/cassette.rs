@@ -71,6 +71,6 @@ pub fn extract_custom_tool_names(request: &codex_api::ResponsesApiRequest) -> Ha
         .iter()
         .filter(|v| v.get("type").and_then(|t| t.as_str()) == Some("custom"))
         .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
-        .map(|s| s.to_string())
+        .map(ToString::to_string)
         .collect()
 }

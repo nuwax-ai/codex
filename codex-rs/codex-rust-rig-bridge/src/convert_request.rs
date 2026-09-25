@@ -64,11 +64,8 @@ pub(crate) fn responses_request_to_completion_request(
     // codex's --output-schema must bind from the first request, so when
     // the gate would swallow the schema, inject it directly into
     // additional_params instead — same wire shape, no gate.
-    let gated = output_schema.is_some()
-        && !tools.is_empty()
-        && !history_has_tool_result(&chat_history);
-    if gated {
-        let schema = output_schema.as_ref().unwrap();
+    let gated = !tools.is_empty() && !history_has_tool_result(&chat_history);
+    if let Some(schema) = output_schema.as_ref().filter(|_| gated) {
         let schema_json = serde_json::to_value(schema).unwrap_or(serde_json::Value::Null);
         let entry = serde_json::json!({
             "response_format": {
@@ -82,11 +79,13 @@ pub(crate) fn responses_request_to_completion_request(
         });
         additional_params = match additional_params {
             Some(mut params) => {
-                if let serde_json::Value::Object(map) = &mut params {
-                    if let serde_json::Value::Object(entry_map) = entry {
-                        for (k, v) in entry_map {
-                            map.insert(k, v);
-                        }
+                if let (
+                    serde_json::Value::Object(map),
+                    serde_json::Value::Object(entry_map),
+                ) = (&mut params, entry)
+                {
+                    for (k, v) in entry_map {
+                        map.insert(k, v);
                     }
                 }
                 Some(params)

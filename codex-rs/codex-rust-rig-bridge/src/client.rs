@@ -50,7 +50,7 @@ fn api_key_from_auth(api_auth: &SharedAuthProvider) -> String {
             headers
                 .get("api-key")
                 .and_then(|v| v.to_str().ok())
-                .map(|v| v.to_string())
+                .map(str::to_string)
         })
         .unwrap_or_default()
 }
@@ -80,13 +80,13 @@ fn default_headers(
         if Some(value) == primary_authz.as_ref() {
             continue; // adapter rebuilds this one
         }
-        insert(&key, &value);
+        insert(key, value);
     }
     for (key, value) in api_provider.headers.iter() {
-        insert(&key, &value);
+        insert(key, value);
     }
     for (key, value) in extra_headers.iter() {
-        insert(&key, &value);
+        insert(key, value);
     }
     merged
 }

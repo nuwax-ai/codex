@@ -114,13 +114,14 @@ impl PendingRigMessage {
     }
 
     fn entry_for(&mut self, internal_call_id: String) -> &mut PendingRigTool {
-        if !self.tools.contains_key(&internal_call_id) {
-            self.tool_order.push(internal_call_id.clone());
-            self.tools.insert(internal_call_id.clone(), PendingRigTool::empty());
+        use std::collections::hash_map::Entry;
+        match self.tools.entry(internal_call_id.clone()) {
+            Entry::Vacant(slot) => {
+                self.tool_order.push(internal_call_id);
+                slot.insert(PendingRigTool::empty())
+            }
+            Entry::Occupied(slot) => slot.into_mut(),
         }
-        self.tools
-            .get_mut(&internal_call_id)
-            .expect("entry just inserted")
     }
 }
 
@@ -385,7 +386,7 @@ fn handle_stream_final(
         None
     };
     events.push(ResponseEvent::Completed {
-        response_id: final_record.response_id.clone().unwrap_or_default(),
+        response_id: final_record.response_id.unwrap_or_default(),
         token_usage,
         usage_metadata: None,
         end_turn,

@@ -164,10 +164,10 @@ pub async fn stream_via_rig_with_recording(
             };
             match item {
                 Some(Ok(event)) => {
-                    if let Some(rec) = &pump_recorder {
-                        if let Ok(mut buf) = rec.lock() {
-                            buf.push(event.clone());
-                        }
+                    if let Some(rec) = &pump_recorder
+                        && let Ok(mut buf) = rec.lock()
+                    {
+                        buf.push(event.clone());
                     }
                     let events = rig_event_to_response_events(event, &mut pending);
                     for ev in events {
@@ -223,7 +223,7 @@ fn map_completion_error(e: rig_core::completion::request::CompletionError) -> Ap
     let status: Option<http::StatusCode> = match &e {
         CompletionError::HttpError(http_error) => http_error_status(http_error)
             .map(|s| http::StatusCode::from_u16(s.as_u16()))
-            .and_then(|s| s.ok()),
+            .and_then(Result::ok),
         CompletionError::ProviderResponse(provider_error) => provider_error.status,
         _ => None,
     };

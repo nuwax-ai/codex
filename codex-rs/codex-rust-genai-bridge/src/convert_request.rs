@@ -229,7 +229,7 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
                     if let Some(last_msg) = messages.last_mut()
                         && last_msg.role == ChatRole::Assistant
                     {
-                        last_msg.content.push(ContentPart::Text(text.into()));
+                        last_msg.content.push(ContentPart::Text(text));
                     } else {
                         messages
                             .push(ChatMessage::assistant(MessageContent::from(text)));

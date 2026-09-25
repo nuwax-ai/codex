@@ -25,6 +25,12 @@
 //! binary-level suite tests the stale executable:
 //! `cargo build -p codex-exec --bin codex-exec`.
 
+// This crate is test infrastructure only (consumed exclusively by its own
+// integration tests under tests/); panicking helpers are the intended
+// fail-fast behavior inside a test runner. Mirrors the lmstudio precedent.
+#![allow(clippy::expect_used)]
+#![allow(clippy::unwrap_used)]
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -106,8 +112,7 @@ pub fn vendors() -> Vec<LiveConfig> {
     };
     names
         .iter()
-        .map(|name| vendor_from_env(&lookup, name))
-        .flatten()
+        .filter_map(|name| vendor_from_env(&lookup, name))
         .collect()
 }
 
@@ -766,7 +771,7 @@ pub async fn run_marker_turn(
         };
         let item = event.get("item").unwrap_or(&event);
         item.get("type").and_then(|t| t.as_str()) == Some("command_execution")
-            && item.get("exit_code").and_then(|c| c.as_i64()) == Some(0)
+            && item.get("exit_code").and_then(serde_json::Value::as_i64) == Some(0)
             && item
                 .get("aggregated_output")
                 .and_then(|o| o.as_str())
@@ -846,7 +851,7 @@ pub fn reasoning_len(events: &[ResponseEvent]) -> usize {
 /// v0.17.4 event-ordering fix must hold on the wire: reasoning starts
 /// streaming before message text, and the reasoning item completes first.
 pub fn assert_reasoning_before_message(events: &[ResponseEvent], context: &str) {
-    let position_of = |pred: &dyn Fn(&ResponseEvent) -> bool| events.iter().position(|e| pred(e));
+    let position_of = |pred: &dyn Fn(&ResponseEvent) -> bool| events.iter().position(pred);
     if let (Some(r), Some(t)) = (
         position_of(&|e| matches!(e, ResponseEvent::ReasoningContentDelta { .. })),
         position_of(&|e| matches!(e, ResponseEvent::OutputTextDelta(_))),
@@ -1187,7 +1192,7 @@ fn prune_artifacts(vendor_dir: PathBuf) {
         if dirs.len() <= keep {
             return;
         }
-        dirs.sort_by(|a, b| b.0.cmp(&a.0)); // newest first
+        dirs.sort_by_key(|(mtime, _)| std::cmp::Reverse(*mtime)); // newest first
         for (_, path) in dirs.iter().skip(keep) {
             if path.is_dir() {
                 let _ = std::fs::remove_dir_all(path);

@@ -10,6 +10,12 @@
 //! Adding a vendor: add it to the `matrix!` list below + set its
 //! `LIVE_<NAME>_*` variables in `.env.local` — nothing else.
 
+// Scenario helpers sit outside `#[test]` functions, so Clippy.toml's
+// `allow-expect-in-tests` does not reach them syntactically; panicking on a
+// violated scenario invariant is the intended fail-fast behavior here.
+#![allow(clippy::expect_used)]
+#![allow(clippy::unwrap_used)]
+
 use codex_api::ResponsesApiRequest;
 use codex_api::ResponseEvent;
 use codex_live_tests::anthropic_url_or_skip;
@@ -359,9 +365,7 @@ const MODEL_NONDETERMINISTIC_TAG_FAMILIES: &[&str] = &[
 ];
 
 fn is_model_nondeterministic(tag: &str) -> bool {
-    MODEL_NONDETERMINISTIC_TAG_FAMILIES
-        .iter()
-        .any(|family| tag == *family)
+    MODEL_NONDETERMINISTIC_TAG_FAMILIES.contains(&tag)
 }
 
 /// A/B diff (offline): when cassette fixtures exist for both bridges of the
@@ -393,7 +397,7 @@ fn ab_diff_fixtures() {
             .flatten()
             .filter_map(|e| {
                 let name = e.file_name().into_string().ok()?;
-                name.strip_prefix("genai-")?.strip_suffix(".json").map(|t| t.to_string())
+                name.strip_prefix("genai-")?.strip_suffix(".json").map(str::to_string)
             })
             .collect();
         tags.sort();
