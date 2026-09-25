@@ -412,11 +412,17 @@ impl ModelProvider for ConfiguredModelProvider {
         // drops CompactionTrigger items — remote compaction is only valid
         // on the native Responses transport, so chat-family wires force
         // local compaction.
-        let native_transport = !matches!(
-            self.info.wire_api,
-            codex_model_provider_info::WireApi::Chat
-                | codex_model_provider_info::WireApi::Anthropic
+        let bridge_forced = matches!(
+            self.info.experimental_bridge,
+            Some(codex_model_provider_info::ChatBridge::Rig)
+                | Some(codex_model_provider_info::ChatBridge::Genai)
         );
+        let native_transport = !bridge_forced
+            && !matches!(
+                self.info.wire_api,
+                codex_model_provider_info::WireApi::Chat
+                    | codex_model_provider_info::WireApi::Anthropic
+            );
         let remote_compaction = if native_transport
             && (self.info.is_openai()
                 || is_azure_responses_provider(&self.info.name, self.info.base_url.as_deref()))
@@ -688,6 +694,8 @@ mod tests {
     fn provider_for(base_url: String) -> ModelProviderInfo {
         ModelProviderInfo {
             name: "mock".into(),
+            experimental_bridge: None,
+            provider_id: None,
             base_url: Some(base_url),
             model_catalog_url: None,
             env_key: None,

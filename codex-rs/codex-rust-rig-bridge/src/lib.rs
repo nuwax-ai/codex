@@ -17,6 +17,7 @@ pub use client::protocol_for_base_url;
 pub use client::RigProtocol;
 pub mod cassette;
 pub use cassette::RigEventFixture;
+pub use cassette::extract_custom_tool_names;
 pub use cassette::replay_fixture_events;
 pub use cassette::replay_rig_events;
 pub use stream::RigEventRecorder;

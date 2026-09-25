@@ -519,7 +519,8 @@ pub async fn run_turn_rig(
     if let Some(rec) = recorder
         && let Ok(rig_events) = rec.lock()
     {
-        save_rig_event_fixture(&cfg.vendor, tag, &rig_events);
+        let custom_tools = codex_rust_rig_bridge::extract_custom_tool_names(request);
+        save_rig_event_fixture(&cfg.vendor, tag, &rig_events, &custom_tools);
     }
     events
 }
@@ -957,6 +958,7 @@ pub fn save_rig_event_fixture(
     vendor: &str,
     tag: &str,
     rig_events: &[rig_core::streaming::StreamedAssistantContent],
+    custom_tools: &std::collections::HashSet<String>,
 ) {
     let Some(path) = rig_event_fixture_path(vendor, tag) else {
         return;
@@ -965,6 +967,7 @@ pub fn save_rig_event_fixture(
         vendor: vendor.to_string(),
         tag: tag.to_string(),
         rig_events: rig_events.to_vec(),
+        custom_tools: custom_tools.iter().cloned().collect(),
     };
     if let Some(parent) = path.parent()
         && std::fs::create_dir_all(parent).is_ok()

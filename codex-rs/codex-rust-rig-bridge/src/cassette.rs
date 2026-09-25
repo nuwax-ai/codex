@@ -27,6 +27,10 @@ pub struct RigEventFixture {
     /// rig's own serde derives. No credentials ever appear here (auth lives
     /// in HTTP headers, which are not captured at this boundary).
     pub rig_events: Vec<StreamedAssistantContent>,
+    /// Names of custom (freeform) tools declared in the recorded request.
+    /// Replay needs these to restore CustomToolCall items instead of
+    /// FunctionCall for tools that were declared as custom.
+    pub custom_tools: Vec<String>,
 }
 
 /// Replays recorded rig events through the CURRENT bridge conversion code,
@@ -50,5 +54,23 @@ pub fn replay_rig_events(
 /// Convenience wrapper that replays from a fixture without custom tools
 /// (the common scenario for recorded scenarios).
 pub fn replay_fixture_events(fixture: &RigEventFixture) -> Vec<ResponseEvent> {
-    replay_rig_events(&fixture.rig_events, HashSet::new())
+    let custom_tools: HashSet<String> = fixture.custom_tools.iter().cloned().collect();
+    replay_rig_events(&fixture.rig_events, custom_tools)
+}
+
+/// Extracts the names of custom (freeform) tools from a request's tool
+/// list, for recording into the fixture alongside the rig events.
+pub fn extract_custom_tool_names(request: &codex_api::ResponsesApiRequest) -> HashSet<String> {
+    let tools_json = request
+        .tools
+        .as_ref()
+        .and_then(|t| serde_json::to_value(t).ok())
+        .and_then(|v| serde_json::from_value::<Vec<serde_json::Value>>(v).ok())
+        .unwrap_or_default();
+    tools_json
+        .iter()
+        .filter(|v| v.get("type").and_then(|t| t.as_str()) == Some("custom"))
+        .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
+        .map(|s| s.to_string())
+        .collect()
 }
