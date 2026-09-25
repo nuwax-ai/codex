@@ -15,7 +15,9 @@ mod mapping {
     fn responses_request_to_completion_request(
         request: &ResponsesApiRequest,
     ) -> Option<(CompletionRequest, std::collections::HashSet<String>)> {
-        super::responses_request_to_completion_request(request, RigProtocol::Chat, "test").ok()
+        super::responses_request_to_completion_request(request, RigProtocol::Chat, "test")
+            .ok()
+            .map(|(request, meta)| (request, meta.custom_names))
     }
 
     fn base_request(input: Vec<ResponseItem>) -> ResponsesApiRequest {
@@ -185,7 +187,7 @@ mod mapping {
         }]"#;
         let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
         let selection = parse_tools(&tools);
-        let (parsed, custom) = (selection.definitions, selection.custom_names);
+        let (parsed, custom) = (selection.definitions, selection.meta.custom_names);
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].name, "mcp__memory__create_entities");
         assert!(custom.is_empty());
@@ -201,6 +203,20 @@ mod mapping {
         let parsed = parse_tools(&tools).definitions;
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].name, "f");
+    }
+
+    #[test]
+    fn custom_tool_without_description_gets_fallback() {
+        let tools_json = r#"[{"type": "custom", "name": "apply_patch"}, {"type": "custom", "name": "rich", "description": "Real description"}]"#;
+        let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
+        let parsed = parse_tools(&tools).definitions;
+        assert_eq!(parsed.len(), 2);
+        assert!(
+            parsed[0].description.contains("`input` field"),
+            "missing custom description should fall back to input guidance, got {:?}",
+            parsed[0].description
+        );
+        assert_eq!(parsed[1].description, "Real description");
     }
 
     #[test]
@@ -230,6 +246,153 @@ mod mapping {
         let params = req.additional_params.expect("params present");
         assert_eq!(params["reasoning_effort"], "xhigh");
     }
+
+    // ─── Robustness fixes (2026-09-25 review round 2) ────────────────
+
+    fn convert_items(
+        input: &[ResponseItem],
+        protocol: RigProtocol,
+    ) -> Result<Vec<rig_core::completion::message::Message>, codex_api::ApiError> {
+        crate::request_messages::convert_response_items(input, protocol, "test")
+    }
+
+    fn user_image_message(url: &str) -> ResponseItem {
+        ResponseItem::Message {
+            id: None,
+            role: "user".into(),
+            content: vec![ContentItem::InputImage {
+                image: codex_protocol::models::ImageReference::Inline {
+                    image_url: url.to_string(),
+                },
+                detail: None,
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }
+    }
+
+    #[test]
+    fn unparseable_history_arguments_skip_call_and_output() {
+        // One bad historical call must not brick the request; its output is
+        // skipped too (a tool result without its call is a provider 400).
+        let input = vec![
+            user_text("hi"),
+            function_call("bad", "broken_tool", "{not json"),
+            tool_output("bad", "\"oops\""),
+            function_call("good", "fine_tool", "{\"city\":\"北京\"}"),
+            tool_output("good", "\"ok\""),
+        ];
+        let messages =
+            convert_items(&input, RigProtocol::Chat).expect("bad history must not error");
+        let tool_calls: usize = messages
+            .iter()
+            .flat_map(|message| match message {
+                rig_core::completion::message::Message::Assistant { content, .. } => content.iter(),
+                _ => [].iter(),
+            })
+            .filter(|part| matches!(part, AssistantContent::ToolCall(_)))
+            .count();
+        assert_eq!(tool_calls, 1, "only the healthy call survives");
+        let results: usize = messages
+            .iter()
+            .flat_map(|message| match message {
+                rig_core::completion::message::Message::User { content } => content.iter(),
+                _ => [].iter(),
+            })
+            .filter(|part| matches!(part, UserContent::ToolResult(_)))
+            .count();
+        assert_eq!(results, 1, "only the healthy output survives");
+    }
+
+    #[test]
+    fn empty_history_arguments_replay_as_empty_object() {
+        let input = vec![
+            user_text("hi"),
+            function_call("c1", "no_arg_tool", ""),
+            tool_output("c1", "\"done\""),
+        ];
+        let messages = convert_items(&input, RigProtocol::Chat).expect("convertible");
+        assert!(messages.iter().any(|message| matches!(
+            message,
+            rig_core::completion::message::Message::Assistant { content, .. }
+                if content.iter().any(|part| matches!(
+                    part,
+                    AssistantContent::ToolCall(call)
+                        if call.function.arguments == serde_json::json!({})
+                ))
+        )));
+    }
+
+    #[test]
+    fn undecodable_data_url_image_differs_per_protocol() {
+        let bmp = "data:image/bmp;base64,QUJD";
+        // Anthropic URL sources must be http(s): drop instead of a 400.
+        let anthropic =
+            convert_items(&[user_image_message(bmp)], RigProtocol::Anthropic).expect("convertible");
+        assert!(
+            anthropic.is_empty(),
+            "undecodable data-URL image must be dropped on the Anthropic wire"
+        );
+        // Chat's image_url legally carries data: URLs — forward as-is.
+        let chat =
+            convert_items(&[user_image_message(bmp)], RigProtocol::Chat).expect("convertible");
+        let forwarded = chat.iter().any(|message| {
+            matches!(
+                message,
+                rig_core::completion::message::Message::User { content, .. }
+                    if content.iter().any(|part| matches!(
+                        part,
+                        UserContent::Image(image)
+                            if matches!(
+                                &image.data,
+                                rig_core::completion::message::DocumentSourceKind::Url(url)
+                                    if url == bmp
+                            )
+                    ))
+            )
+        });
+        assert!(forwarded, "chat wire should forward the raw data URL");
+    }
+
+    #[test]
+    fn multi_block_envelope_replays_one_thinking_block_on_anthropic() {
+        use rig_core::completion::message::Reasoning;
+        let mut state = crate::reasoning::ReasoningState::default();
+        state.complete("a".into(), Reasoning::new("first block"));
+        state.complete("b".into(), Reasoning::new("second block"));
+        let (content, envelope) = state.finish("test").expect("envelope");
+        let item = ResponseItem::Reasoning {
+            id: None,
+            summary: vec![],
+            content: Some(content),
+            encrypted_content: Some(envelope),
+            internal_chat_message_metadata_passthrough: None,
+        };
+        let anthropic = convert_items(&[user_text("hi"), item.clone()], RigProtocol::Anthropic)
+            .expect("convertible");
+        let thinking_count: usize = anthropic
+            .iter()
+            .flat_map(|message| match message {
+                rig_core::completion::message::Message::Assistant { content, .. } => content.iter(),
+                _ => [].iter(),
+            })
+            .filter(|part| matches!(part, AssistantContent::Reasoning(_)))
+            .count();
+        assert_eq!(
+            thinking_count, 1,
+            "Anthropic allows one thinking block per assistant message"
+        );
+        let chat = convert_items(&[user_text("hi"), item], RigProtocol::Chat).expect("convertible");
+        let chat_count: usize = chat
+            .iter()
+            .flat_map(|message| match message {
+                rig_core::completion::message::Message::Assistant { content, .. } => content.iter(),
+                _ => [].iter(),
+            })
+            .filter(|part| matches!(part, AssistantContent::Reasoning(_)))
+            .count();
+        assert_eq!(chat_count, 2, "chat wire replays every block");
+    }
 }
 
 #[cfg(test)]
@@ -243,7 +406,9 @@ mod text_format_tests {
     fn responses_request_to_completion_request(
         request: &ResponsesApiRequest,
     ) -> Option<(CompletionRequest, std::collections::HashSet<String>)> {
-        super::responses_request_to_completion_request(request, RigProtocol::Chat, "test").ok()
+        super::responses_request_to_completion_request(request, RigProtocol::Chat, "test")
+            .ok()
+            .map(|(request, meta)| (request, meta.custom_names))
     }
 
     #[test]
@@ -330,7 +495,9 @@ mod review_fix_tests {
     fn responses_request_to_completion_request(
         request: &ResponsesApiRequest,
     ) -> Option<(CompletionRequest, std::collections::HashSet<String>)> {
-        super::responses_request_to_completion_request(request, RigProtocol::Chat, "test").ok()
+        super::responses_request_to_completion_request(request, RigProtocol::Chat, "test")
+            .ok()
+            .map(|(request, meta)| (request, meta.custom_names))
     }
 
     fn base_request(input: Vec<ResponseItem>) -> ResponsesApiRequest {
@@ -543,7 +710,9 @@ mod custom_tool_tests {
     fn responses_request_to_completion_request(
         request: &ResponsesApiRequest,
     ) -> Option<(CompletionRequest, std::collections::HashSet<String>)> {
-        super::responses_request_to_completion_request(request, RigProtocol::Chat, "test").ok()
+        super::responses_request_to_completion_request(request, RigProtocol::Chat, "test")
+            .ok()
+            .map(|(request, meta)| (request, meta.custom_names))
     }
 
     #[test]

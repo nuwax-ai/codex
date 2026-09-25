@@ -13,6 +13,15 @@ use serde_json::json;
 
 pub(crate) struct RequestTools {
     pub(crate) definitions: Vec<ToolDefinition>,
+    pub(crate) meta: ToolMeta,
+}
+
+/// Request-scoped tool metadata the stream layer needs after the
+/// definitions have been moved into the `CompletionRequest`: names of custom
+/// tools (for `CustomToolCall` restoration) and per-tool `strict` flags (for
+/// wire injection). Returned alongside the definitions so callers never have
+/// to re-parse the tool list.
+pub(crate) struct ToolMeta {
     pub(crate) custom_names: HashSet<String>,
     pub(crate) strict: HashMap<String, bool>,
 }
@@ -64,8 +73,10 @@ pub(crate) fn parse_tools(tools: &[Value]) -> RequestTools {
     }
     RequestTools {
         definitions,
-        custom_names: custom,
-        strict,
+        meta: ToolMeta {
+            custom_names: custom,
+            strict,
+        },
     }
 }
 
@@ -97,9 +108,20 @@ fn append_tool(
     if let Some(value) = tool["strict"].as_bool() {
         strict.insert(name.clone(), value);
     }
+    // Custom tools carry their contract in the wrapper schema; a missing
+    // description still needs to tell the model how to use the input field.
+    let fallback_description = if tool["type"].as_str() == Some("custom") {
+        "Custom tool; pass the complete tool input text in the `input` field."
+    } else {
+        ""
+    };
     definitions.push(ToolDefinition {
         name,
-        description: tool["description"].as_str().unwrap_or_default().to_string(),
+        description: tool["description"]
+            .as_str()
+            .filter(|description| !description.is_empty())
+            .unwrap_or(fallback_description)
+            .to_string(),
         parameters,
     });
 }

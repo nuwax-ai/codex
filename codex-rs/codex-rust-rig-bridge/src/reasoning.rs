@@ -7,7 +7,17 @@ use codex_protocol::models::ResponseItem;
 use rig_core::completion::message::Reasoning;
 use rig_core::completion::message::ReasoningContent;
 
-pub(crate) const REPLAY_PREFIX: &str = "codex-rig-reasoning-v1:";
+/// Marker prefix of the versioned reasoning envelope this bridge stores in
+/// `ResponseItem::Reasoning.encrypted_content`. Public because core's
+/// request-copy filter strips these envelopes before dispatching to the
+/// native or genai transports — the literal must not be duplicated there.
+pub const REPLAY_PREFIX: &str = "codex-rig-reasoning-v1:";
+
+/// Whether an `encrypted_content` value holds this bridge's replay envelope
+/// (as opposed to native Responses ciphertext or legacy duplicated text).
+pub fn is_replay_envelope(value: &str) -> bool {
+    value.starts_with(REPLAY_PREFIX)
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Replay {
@@ -103,7 +113,17 @@ pub(crate) fn replay_reasoning(
     {
         return match serde_json::from_str::<Replay>(encoded) {
             Ok(replay) if replay.source == source => replay.blocks,
-            Ok(_) => Vec::new(),
+            Ok(replay) => {
+                // Recorded against a different endpoint/protocol/model —
+                // e.g. the user switched provider mid-session. Reasoning
+                // replay is silently invalid cross-source; make the loss
+                // visible for troubleshooting.
+                tracing::warn!(
+                    envelope_source = %replay.source,
+                    "Dropping reasoning envelope recorded for a different endpoint/model"
+                );
+                Vec::new()
+            }
             Err(error) => {
                 tracing::warn!(%error, "Ignoring invalid Rig reasoning replay envelope");
                 Vec::new()

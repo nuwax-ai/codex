@@ -80,3 +80,15 @@ fn provider_switch_keeps_native_ciphertext_but_filters_bridge_reasoning() -> any
     }
     Ok(())
 }
+
+#[test]
+#[cfg(feature = "rust-rig")]
+fn rig_reasoning_envelope_prefix_is_v1_mirror() {
+    // core's genai-only fallback in `is_rig_reasoning_envelope` hardcodes
+    // this prefix; if the bridge envelope format ever versions up, update
+    // both sides (grep "codex-rig-reasoning").
+    assert_eq!(
+        codex_rust_rig_bridge::REPLAY_PREFIX,
+        "codex-rig-reasoning-v1:"
+    );
+}

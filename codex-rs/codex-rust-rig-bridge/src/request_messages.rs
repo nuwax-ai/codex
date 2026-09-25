@@ -45,12 +45,17 @@ pub(crate) fn convert_response_items(
         }
     }
 
+    // Tool calls whose historical record is unreplayable (e.g. unparseable
+    // arguments). Their outputs must be skipped too — a tool result without
+    // its call is a guaranteed provider 400 on both wires.
+    let mut dropped_calls: std::collections::HashSet<String> = Default::default();
+
     for item in items {
         match item {
             ResponseItem::Message { role, content, .. } => {
                 let role = role.as_str();
                 if role == "assistant" {
-                    let parts = convert_assistant_content(content);
+                    let parts = convert_assistant_content(content, protocol);
                     if !parts.is_empty() {
                         // Consecutive assistant items belong to the same
                         // model turn (history order: Reasoning → Message →
@@ -80,7 +85,7 @@ pub(crate) fn convert_response_items(
                         content: text.join("\n"),
                     });
                 } else if role == "user" {
-                    let parts = convert_user_content(content);
+                    let parts = convert_user_content(content, protocol);
                     if !parts.is_empty() {
                         messages.push(Message::User { content: parts });
                     }
@@ -91,7 +96,17 @@ pub(crate) fn convert_response_items(
                 }
             }
             ResponseItem::Reasoning { .. } => {
-                for reasoning in crate::reasoning::replay_reasoning(item, source, protocol) {
+                let mut blocks = crate::reasoning::replay_reasoning(item, source, protocol);
+                if protocol == RigProtocol::Anthropic && blocks.len() > 1 {
+                    // Anthropic allows at most one thinking block per
+                    // assistant message; extra blocks are a guaranteed 400.
+                    tracing::warn!(
+                        blocks = blocks.len(),
+                        "Replaying only the first reasoning block on the Anthropic wire"
+                    );
+                    blocks.truncate(1);
+                }
+                for reasoning in blocks {
                     match messages.last_mut() {
                         Some(Message::Assistant { content, .. }) => {
                             content.push(AssistantContent::Reasoning(reasoning));
@@ -110,11 +125,27 @@ pub(crate) fn convert_response_items(
                 namespace,
                 ..
             } => {
-                let args = serde_json::from_str::<Value>(arguments).map_err(|error| {
-                    codex_api::ApiError::InvalidRequest {
-                        message: format!("Invalid arguments for tool {name}: {error}"),
+                // Historical arguments are recorded data, not fresh input: a
+                // single unparseable entry (imported sessions, older bridge
+                // output) must not brick every subsequent request. Skip the
+                // call — and its matching output below — with a warning.
+                let args = if arguments.trim().is_empty() {
+                    Value::Object(Default::default())
+                } else {
+                    match serde_json::from_str::<Value>(arguments) {
+                        Ok(args) => args,
+                        Err(error) => {
+                            tracing::warn!(
+                                tool = %name,
+                                call_id = %call_id,
+                                %error,
+                                "Skipping historical tool call with unparseable arguments"
+                            );
+                            dropped_calls.insert(call_id.clone());
+                            continue;
+                        }
                     }
-                })?;
+                };
                 let part = AssistantContent::tool_call(
                     call_id.clone(),
                     crate::request_tools::flat_name(name, namespace.as_deref()),
@@ -131,6 +162,13 @@ pub(crate) fn convert_response_items(
             ResponseItem::FunctionCallOutput {
                 call_id, output, ..
             } => {
+                if dropped_calls.contains(call_id.as_deref().unwrap_or_default()) {
+                    tracing::warn!(
+                        call_id = ?call_id,
+                        "Skipping tool output whose call was dropped from replay"
+                    );
+                    continue;
+                }
                 append_tool_result(
                     &mut messages,
                     call_id.as_deref().unwrap_or_default(),
@@ -236,7 +274,7 @@ fn append_tool_result(
         FunctionCallOutputBody::Text(text) => {
             vec![ToolResultContent::text(truncate_tool_text(text))]
         }
-        FunctionCallOutputBody::ContentItems(items) => convert_tool_output_items(items),
+        FunctionCallOutputBody::ContentItems(items) => convert_tool_output_items(items, protocol),
     };
     let mut content = Vec::new();
     let mut images = Vec::new();
@@ -295,11 +333,13 @@ fn append_tool_result(
     }
 }
 
-/// Defensive cap on a single tool-result text part. Codex core normally
-/// truncates outputs before they reach the bridge; this guards the bridge
-/// against runaway payloads when that path is bypassed.
+/// Defensive cap on a single tool-result text part. Codex core truncates
+/// outputs at its own budget before they reach the bridge (default 10,000
+/// tokens, see core's `DEFAULT_MAX_OUTPUT_TOKENS`); this safety net sits well
+/// above it so it only binds when that path is bypassed (e.g. runaway base64
+/// payloads), never on legitimate tool outputs.
 fn truncate_tool_text(text: &str) -> String {
-    codex_utils_string::truncate_middle_with_token_budget(text, 8_000).0
+    codex_utils_string::truncate_middle_with_token_budget(text, 24_000).0
 }
 
 /// Converts a tool-result ContentItems list into rig tool-result parts:
@@ -307,6 +347,7 @@ fn truncate_tool_text(text: &str) -> String {
 /// decoded into base64 sources (never inlined into the text).
 fn convert_tool_output_items(
     items: &[codex_protocol::models::FunctionCallOutputContentItem],
+    protocol: RigProtocol,
 ) -> Vec<ToolResultContent> {
     use codex_protocol::models::FunctionCallOutputContentItem;
     let mut parts = Vec::new();
@@ -317,7 +358,9 @@ fn convert_tool_output_items(
             }
             FunctionCallOutputContentItem::InputImage { image, detail } => match image {
                 ImageReference::Inline { image_url } => {
-                    parts.push(ToolResultContent::Image(image_from_url(image_url, *detail)));
+                    if let Some(image) = image_from_url(image_url, *detail, protocol) {
+                        parts.push(ToolResultContent::Image(image));
+                    }
                 }
                 ImageReference::File { file_id } => {
                     tracing::warn!(
@@ -344,8 +387,10 @@ fn convert_tool_output_items(
 }
 
 /// Parses a `data:<mime>;base64,<payload>` URL into a base64-backed image.
-/// The Anthropic wire renders URL sources as remote links — inline payloads
-/// MUST be base64 sources or the content is lost.
+/// Returns `None` for any data URL the bridge cannot decode (unsupported
+/// mime, missing base64 marker); the protocol-aware decision of what to do
+/// with it belongs to the caller. The Anthropic wire renders URL sources as
+/// remote links — inline payloads MUST be base64 sources there.
 fn data_url_image(data_url: &str) -> Option<RigImage> {
     let rest = data_url.strip_prefix("data:")?;
     let (meta, payload) = rest.split_once(',')?;
@@ -358,13 +403,7 @@ fn data_url_image(data_url: &str) -> Option<RigImage> {
         "image/heic" => ImageMediaType::HEIC,
         "image/heif" => ImageMediaType::HEIF,
         "image/svg+xml" => ImageMediaType::SVG,
-        other => {
-            tracing::warn!(
-                mime = other,
-                "Unsupported image mime in tool result, skipping"
-            );
-            return None;
-        }
+        _ => return None,
     };
     Some(RigImage {
         data: DocumentSourceKind::Base64(payload.to_string()),
@@ -374,10 +413,35 @@ fn data_url_image(data_url: &str) -> Option<RigImage> {
     })
 }
 
-fn image_from_url(url: &str, detail: Option<codex_protocol::models::ImageDetail>) -> RigImage {
+fn image_from_url(
+    url: &str,
+    detail: Option<codex_protocol::models::ImageDetail>,
+    protocol: RigProtocol,
+) -> Option<RigImage> {
     use codex_protocol::models::ImageDetail as CodexDetail;
     use rig_core::completion::message::ImageDetail as RigDetail;
-    let mut image = data_url_image(url).unwrap_or(RigImage {
+    let parsed = if url.starts_with("data:") {
+        match data_url_image(url) {
+            Some(image) => Some(image),
+            None => {
+                if protocol == RigProtocol::Anthropic {
+                    // Anthropic URL sources must be http(s); an inline data
+                    // URL there is a guaranteed 400 — drop the image.
+                    tracing::warn!(
+                        "Dropping undecodable data-URL image (Anthropic URL sources must be http(s))"
+                    );
+                    return None;
+                }
+                // Chat's image_url legally carries data: URLs; forward the
+                // raw payload and let the provider decide.
+                tracing::warn!("Forwarding undecodable data-URL image as a URL source (chat wire)");
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let mut image = parsed.unwrap_or(RigImage {
         data: DocumentSourceKind::Url(url.to_string()),
         media_type: None,
         detail: None,
@@ -392,10 +456,10 @@ fn image_from_url(url: &str, detail: Option<codex_protocol::models::ImageDetail>
             RigDetail::High
         }
     });
-    image
+    Some(image)
 }
 
-fn convert_user_content(items: &[ContentItem]) -> Vec<UserContent> {
+fn convert_user_content(items: &[ContentItem], protocol: RigProtocol) -> Vec<UserContent> {
     items
         .iter()
         .filter_map(|item| match item {
@@ -410,7 +474,7 @@ fn convert_user_content(items: &[ContentItem]) -> Vec<UserContent> {
                 // data: URLs decode into base64 sources (remote-link
                 // rendering on the Anthropic wire would lose the content);
                 // plain http(s) URLs forward as URL sources.
-                Some(UserContent::Image(image_from_url(image_url, *detail)))
+                image_from_url(image_url, *detail, protocol).map(UserContent::Image)
             }
             ContentItem::InputAudio { .. } => {
                 // 国内 LLM 适配暂不支持音频输入，跳过。
@@ -421,7 +485,10 @@ fn convert_user_content(items: &[ContentItem]) -> Vec<UserContent> {
         .collect()
 }
 
-fn convert_assistant_content(items: &[ContentItem]) -> Vec<AssistantContent> {
+fn convert_assistant_content(
+    items: &[ContentItem],
+    protocol: RigProtocol,
+) -> Vec<AssistantContent> {
     items
         .iter()
         .filter_map(|item| match item {
@@ -432,7 +499,7 @@ fn convert_assistant_content(items: &[ContentItem]) -> Vec<AssistantContent> {
                 let ImageReference::Inline { image_url } = image else {
                     return None;
                 };
-                Some(AssistantContent::Image(image_from_url(image_url, *detail)))
+                image_from_url(image_url, *detail, protocol).map(AssistantContent::Image)
             }
             ContentItem::InputAudio { .. } => None,
         })

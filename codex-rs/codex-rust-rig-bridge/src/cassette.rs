@@ -69,5 +69,7 @@ pub fn replay_fixture_events(
 /// Extracts the names of custom (freeform) tools from a request's tool
 /// list, for recording into the fixture alongside the rig events.
 pub fn extract_custom_tool_names(request: &codex_api::ResponsesApiRequest) -> HashSet<String> {
-    crate::request_tools::request_tools(request).custom_names
+    crate::request_tools::request_tools(request)
+        .meta
+        .custom_names
 }

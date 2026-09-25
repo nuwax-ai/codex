@@ -20,6 +20,8 @@ mod transport;
 pub use bridge_impl::RigChatBridge;
 pub use client::RigProtocol;
 pub use client::protocol_for_base_url;
+pub use reasoning::REPLAY_PREFIX;
+pub use reasoning::is_replay_envelope;
 pub mod cassette;
 pub use cassette::RigEventFixture;
 pub use cassette::extract_custom_tool_names;

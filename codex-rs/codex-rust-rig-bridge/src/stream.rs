@@ -67,7 +67,7 @@ pub async fn stream_via_rig_with_recording(
     recorder: RigEventRecorder,
 ) -> Result<(ResponseStream, RigEventRecorder), ApiError> {
     let source = crate::client::reasoning_source(api_provider, protocol, &request.model)?;
-    let (completion_request, custom_tool_names) =
+    let (completion_request, tool_meta) =
         responses_request_to_completion_request(request, protocol, &source)?;
     let (base_url, query) = crate::client::endpoint(&api_provider.base_url, api_provider)?;
     let mut headers = api_provider.headers.clone();
@@ -93,7 +93,7 @@ pub async fn stream_via_rig_with_recording(
             .cloned(),
         protocol,
         tool_strict: if protocol == RigProtocol::Chat {
-            crate::request_tools::request_tools(request).strict
+            tool_meta.strict
         } else {
             Default::default()
         },
@@ -147,7 +147,7 @@ pub async fn stream_via_rig_with_recording(
 
     let (tx, rx) = mpsc::channel(RESPONSE_STREAM_CHANNEL_CAPACITY);
 
-    let custom_tool_names = std::sync::Arc::new(custom_tool_names);
+    let custom_tool_names = std::sync::Arc::new(tool_meta.custom_names);
     let pump_recorder = recorder.clone();
     tokio::spawn(async move {
         let mut pending = PendingRigMessage::new(custom_tool_names, source);

@@ -914,7 +914,7 @@ impl ModelClient {
                 else {
                     return true;
                 };
-                if value.starts_with("codex-rig-reasoning-v1:") {
+                if is_rig_reasoning_envelope(value) {
                     return false;
                 }
                 // Legacy bridges duplicated visible reasoning into the encrypted
@@ -3140,6 +3140,21 @@ impl WebsocketTelemetry for ApiTelemetry {
     ) {
         self.session_telemetry
             .record_websocket_event(result, duration);
+    }
+}
+
+/// Whether an `encrypted_content` value holds the rig bridge's replay
+/// envelope. Delegates to the bridge crate when compiled in; other builds
+/// mirror the prefix. `client_bridge_tests` keeps the mirror in sync with
+/// the bridge constant.
+fn is_rig_reasoning_envelope(value: &str) -> bool {
+    #[cfg(feature = "rust-rig")]
+    {
+        codex_rust_rig_bridge::is_replay_envelope(value)
+    }
+    #[cfg(not(feature = "rust-rig"))]
+    {
+        value.starts_with("codex-rig-reasoning-v1:")
     }
 }
 

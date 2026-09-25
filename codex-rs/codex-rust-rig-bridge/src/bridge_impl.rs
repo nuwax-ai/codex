@@ -10,8 +10,8 @@ use codex_api::ApiError;
 use codex_api::ChatModelBridge;
 use codex_api::ChatWireProtocol;
 use codex_api::Provider;
-use codex_api::ResponsesApiRequest;
 use codex_api::ResponseStream;
+use codex_api::ResponsesApiRequest;
 use codex_api::SharedAuthProvider;
 use http::HeaderMap;
 

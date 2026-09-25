@@ -173,3 +173,23 @@ just test -p codex-live-tests --test bridge_live --offline -E 'test(~_rig_) and 
 7. 发布/npm/Bazel 的独立后续修复。
 
 不应把请求包装与响应解包、新 envelope 与回放过滤、新模块与旧模块删改拆成缺少另一半的可发布阶段。
+
+## 复审修复(round 2,同日)
+
+对 90bcbd2e2 独立复审(三路并行审查 + 全链路重验:clippy 清零、单元 549/554 仅存基线即有的 models_endpoint 环境 flake、replay 43/43、在线矩阵 64/64)后修复:
+
+52. **[P1] 历史 FunctionCall 坏 JSON 永久卡死会话 — 已修复。** 历史回放中不可解析的 arguments 改为 warn+跳过该调用及其配对输出(空参数按 `{}` 回放);历史是已记录数据,不再作为新输入 fail-fast。[request_messages.rs](/Users/soddy/Documents/git-rust-work/fork-codex/codex-rs/codex-rust-rig-bridge/src/request_messages.rs)
+
+53. **[P2] 不可解码 data:URL 图片在 Anthropic 线必 400 — 已修复。** 协议感知:Anthropic 丢弃(其 URL source 仅接受 http(s));Chat 合法透传原始 data:URL 并如实告警。此前降级为 `Url("data:...")` 外发,与告警文案矛盾。
+
+54. **[P2] 多块 reasoning envelope 回放违反 Anthropic 单 thinking 块限制 — 已修复。** Anthropic 线仅回放首块并告警;Chat 线保持全部回放。
+
+55. **[P2] 工具文本 8,000-token 截断低于 core 默认 10,000 输出预算 — 已修复。** 安全网上调至 24,000 token(core 预算的 2.4 倍),合法输出不再被二次截断,base64 洪水防护依旧有效。
+
+56. **[P2] reasoning 来源不匹配静默丢弃 — 已修复。** 补 tracing::warn(含 envelope 来源摘要),换端点/模型后推理回放失效可排障。
+
+57. **[P2] envelope 前缀字面量跨 crate 重复 — 已修复。** 桥 crate 导出 `REPLAY_PREFIX`/`is_replay_envelope`;core 在 rust-rig feature 下委托,其余构建保留镜像并由 `rig_reasoning_envelope_prefix_is_v1_mirror` 测试守护同步。
+
+58. **[P2] custom 工具缺描述回退丢失 / 工具每请求解析两次 — 已修复。** 恢复 input 字段使用指引回退;`ToolMeta` 随转换结果返回,stream 层不再二次解析。
+
+新增测试 5 个(坏历史跳过、空参数、双协议 data:URL、Anthropic 单块、描述回退),桥 crate 51/51。

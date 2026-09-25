@@ -13,7 +13,7 @@ pub(crate) fn responses_request_to_completion_request(
     request: &ResponsesApiRequest,
     protocol: RigProtocol,
     source: &str,
-) -> Result<(CompletionRequest, std::collections::HashSet<String>), ApiError> {
+) -> Result<(CompletionRequest, crate::request_tools::ToolMeta), ApiError> {
     let mut chat_history = convert_response_items(&request.input, protocol, source)?;
     if chat_history.is_empty() {
         return Err(ApiError::InvalidRequest {
@@ -94,7 +94,7 @@ pub(crate) fn responses_request_to_completion_request(
             output_schema,
             record_telemetry_content: false,
         },
-        selection.custom_names,
+        selection.meta,
     ))
 }
 
