@@ -4466,16 +4466,22 @@ dependencies = [
 name = "codex-rust-rig-bridge"
 version = "0.0.0"
 dependencies = [
+ "bytes",
  "codex-api",
+ "codex-http-client",
  "codex-protocol",
  "codex-tools",
+ "codex-utils-string",
+ "eventsource-stream",
  "futures",
  "http 1.4.0",
+ "pretty_assertions",
  "reqwest 0.13.4",
  "rig-core",
  "schemars 0.8.22",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tokio",
  "tracing",
 ]

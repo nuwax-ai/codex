@@ -30,30 +30,38 @@ pub struct RigEventFixture {
     /// Names of custom (freeform) tools declared in the recorded request.
     /// Replay needs these to restore CustomToolCall items instead of
     /// FunctionCall for tools that were declared as custom.
+    #[serde(default)]
     pub custom_tools: Vec<String>,
 }
 
 /// Replays recorded rig events through the CURRENT bridge conversion code,
 /// producing the codex events the current implementation would emit.
 ///
-/// This is the core value of the HTTP-boundary cassette: even after the
+/// This is the core value of the Rig-event cassette: even after the
 /// bridge or rig is refactored, the same input events must produce the
 /// same output events — any divergence is a conversion regression.
 pub fn replay_rig_events(
     rig_events: &[StreamedAssistantContent],
     custom_tool_names: HashSet<String>,
-) -> Vec<ResponseEvent> {
-    let mut pending = PendingRigMessage::new(Arc::new(custom_tool_names));
+) -> Result<Vec<ResponseEvent>, codex_api::ApiError> {
+    let mut pending = PendingRigMessage::new(Arc::new(custom_tool_names), "cassette".into());
     let mut out = Vec::new();
     for event in rig_events {
-        out.extend(rig_event_to_response_events(event.clone(), &mut pending));
+        out.extend(rig_event_to_response_events(event.clone(), &mut pending)?);
     }
-    out
+    if !pending.completed_emitted() {
+        return Err(codex_api::ApiError::Stream(
+            "Rig cassette ended without a terminal record".into(),
+        ));
+    }
+    Ok(out)
 }
 
 /// Convenience wrapper that replays from a fixture without custom tools
 /// (the common scenario for recorded scenarios).
-pub fn replay_fixture_events(fixture: &RigEventFixture) -> Vec<ResponseEvent> {
+pub fn replay_fixture_events(
+    fixture: &RigEventFixture,
+) -> Result<Vec<ResponseEvent>, codex_api::ApiError> {
     let custom_tools: HashSet<String> = fixture.custom_tools.iter().cloned().collect();
     replay_rig_events(&fixture.rig_events, custom_tools)
 }
@@ -61,16 +69,5 @@ pub fn replay_fixture_events(fixture: &RigEventFixture) -> Vec<ResponseEvent> {
 /// Extracts the names of custom (freeform) tools from a request's tool
 /// list, for recording into the fixture alongside the rig events.
 pub fn extract_custom_tool_names(request: &codex_api::ResponsesApiRequest) -> HashSet<String> {
-    let tools_json = request
-        .tools
-        .as_ref()
-        .and_then(|t| serde_json::to_value(t).ok())
-        .and_then(|v| serde_json::from_value::<Vec<serde_json::Value>>(v).ok())
-        .unwrap_or_default();
-    tools_json
-        .iter()
-        .filter(|v| v.get("type").and_then(|t| t.as_str()) == Some("custom"))
-        .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
-        .map(ToString::to_string)
-        .collect()
+    crate::request_tools::request_tools(request).custom_names
 }

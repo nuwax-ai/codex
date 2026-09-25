@@ -70,6 +70,28 @@ impl ThreadLifecycleContributor<Config> for GuardianV2Extension {
                     .constrain_guardian_policy(&mut policy, &model.slug);
             }
             let scoring_enabled = policy.scoring_enabled();
+            // The fixed Luna scorer uses native Responses and cannot consume a
+            // Chat/Anthropic provider. Keep the ordinary approval fallback; do
+            // not start an incompatible background inference or prewarm.
+            if input.config.model_provider.uses_chat_bridge() {
+                input.thread_store.remove::<LunaSampler>();
+                input.thread_store.remove::<GuardianV2ScoreProgress>();
+                input.thread_store.remove::<GuardianV2Enabled>();
+                input
+                    .thread_store
+                    .get_or_init(GuardianReviewEvidence::default);
+                input
+                    .thread_store
+                    .insert(TrustedSkillRoots::from_config(input.config));
+                if scoring_enabled {
+                    self.event_sink.emit_warning(ExtensionWarning {
+                        thread_id, turn_id: None,
+                        message: "Guardian V2 background scoring requires a native Responses provider; using the normal approval review fallback.".into(),
+                    });
+                }
+                return;
+            }
+
             let sampler_config = super::startup::sampler_config(
                 &input,
                 Arc::clone(&self.auth_manager),

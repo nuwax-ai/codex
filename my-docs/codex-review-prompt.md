@@ -1,5 +1,7 @@
 # Codex Fork 整体 Review 提示词
 
+> 2026-09-25 修复说明：当前字段与验证边界以 [field-mapping-audit.md](field-mapping-audit.md) 为准。Rig-event cassette 仅回放 SDK 中间事件；最终 HTTP 字段另由本地 wire 集成测试验证。
+
 > 用途:交给 AI agent(或新同事)对 nuwax-ai/codex fork 做整体方案与代码审查。
 > 仓库:`/Users/soddy/Documents/git-rust-work/fork-codex`(branch: test,已发布 npm `nuwax-codex@0.17.9`)。
 
@@ -62,9 +64,9 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
    工具参数最终值与流式增量拼接**字节一致**;401/5xx 必须以 `Http{status}` **启动错误**
    形态返回(rig 会把 HTTP 失败延迟到流内,桥做了"急切拉取首个流事件"修复,否则
    core 的重登录循环永不触发)。
-6. **字段映射审计**:`my-docs/rig-bridge-implementation-plan.md` §12 有逐字段权威表
-   (✅ 映射 / ❌ Chat 协议 inherent 丢失)。已知 inherent:phase、reasoning summary、
-   store、include、usage_metadata、ServerModel/RateLimits 事件等。
+6. **字段映射审计**:以 `my-docs/field-mapping-audit.md` 的当前实现表为准。
+   区分协议限制、SDK 归一化损失和桥尚未实现；store、ServerModel、request ID 等
+   已能保留，不能再统一归类为 inherent 丢失。旧实施方案 §12 仅作历史记录。
 
 ## 四、测试体系(全在 codex-rs/live-tests)
 

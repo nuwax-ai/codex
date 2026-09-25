@@ -1,5 +1,7 @@
 # codex-rust-rig-bridge 实施方案(Plan 层文档)
 
+> 2026-09-25 修复说明：当前字段与验证边界以 [field-mapping-audit.md](field-mapping-audit.md) 为准。Rig-event cassette 仅回放 SDK 中间事件；最终 HTTP 字段另由本地 wire 集成测试验证。
+
 > 目标:新增平行模块 `codex-rust-rig-bridge`,用 rig(rig-core)替代 genai 承载
 > `wire_api = "chat"` 的模型请求;现有 `codex-rust-genai-bridge` 保持不动,
 > 两桥共存可 A/B,验证后切换默认,genai 桥保留作回滚。

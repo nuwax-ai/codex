@@ -1,5 +1,7 @@
 # live-tests 模块设计(Plan 层文档)
 
+> 2026-09-25 修复说明：当前字段与验证边界以 [field-mapping-audit.md](field-mapping-audit.md) 为准。Rig-event cassette 仅回放 SDK 中间事件；最终 HTTP 字段另由本地 wire 集成测试验证。
+
 > 对象:`codex-rs/live-tests`(独立集成测试 crate,不与任何业务 crate 耦合)。
 > 定位:用**真实模型厂商**验证 fork 的桥接层与编译产物,是发布前的最后一道验收。
 > 关联:`rig-bridge-implementation-plan.md`(桥本体)、`openai-responses-chat-bridge.md`(协议映射)。

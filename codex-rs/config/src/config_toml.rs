@@ -877,14 +877,16 @@ pub fn validate_reserved_model_provider_ids(
     model_providers: &HashMap<String, ModelProviderInfo>,
 ) -> Result<(), String> {
     let mut conflicts = model_providers
-        .keys()
-        .filter(|key| {
-            !matches!(
-                key.as_str(),
-                AMAZON_BEDROCK_PROVIDER_ID | AMAZON_BEDROCK_RUNTIME_PROVIDER_ID
-            ) && RESERVED_MODEL_PROVIDER_IDS.contains(&key.as_str())
+        .iter()
+        .filter(|(key, provider)| {
+            !provider.is_builtin_bridge_override()
+                && !matches!(
+                    key.as_str(),
+                    AMAZON_BEDROCK_PROVIDER_ID | AMAZON_BEDROCK_RUNTIME_PROVIDER_ID
+                )
+                && RESERVED_MODEL_PROVIDER_IDS.contains(&key.as_str())
         })
-        .map(|key| format!("`{key}`"))
+        .map(|(key, _)| format!("`{key}`"))
         .collect::<Vec<_>>();
     conflicts.sort_unstable();
     if conflicts.is_empty() {
@@ -917,7 +919,10 @@ pub fn validate_model_providers(
 `{AMAZON_BEDROCK_PROVIDER_ID}` or `{AMAZON_BEDROCK_RUNTIME_PROVIDER_ID}`"
                 ));
             }
-            if provider.name.trim().is_empty() {
+            if provider.name.trim().is_empty()
+                && !(RESERVED_MODEL_PROVIDER_IDS.contains(&key.as_str())
+                    && provider.is_builtin_bridge_override())
+            {
                 return Err(format!(
                     "model_providers.{key}: provider name must not be empty"
                 ));
@@ -1076,3 +1081,7 @@ command = "   "
         );
     }
 }
+
+#[cfg(test)]
+#[path = "bridge_config_tests.rs"]
+mod bridge_config_tests;

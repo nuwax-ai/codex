@@ -412,17 +412,7 @@ impl ModelProvider for ConfiguredModelProvider {
         // drops CompactionTrigger items — remote compaction is only valid
         // on the native Responses transport, so chat-family wires force
         // local compaction.
-        let bridge_forced = matches!(
-            self.info.experimental_bridge,
-            Some(codex_model_provider_info::ChatBridge::Rig)
-                | Some(codex_model_provider_info::ChatBridge::Genai)
-        );
-        let native_transport = !bridge_forced
-            && !matches!(
-                self.info.wire_api,
-                codex_model_provider_info::WireApi::Chat
-                    | codex_model_provider_info::WireApi::Anthropic
-            );
+        let native_transport = !self.info.uses_chat_bridge();
         let remote_compaction = if native_transport
             && (self.info.is_openai()
                 || is_azure_responses_provider(&self.info.name, self.info.base_url.as_deref()))
@@ -797,6 +787,15 @@ mod tests {
                     base_url: Some("https://example.com/openai".to_string()),
                     ..ModelProviderInfo::default()
                 },
+                RemoteCompactionSupport::Unsupported,
+            ),
+            (
+                ModelProviderInfo {
+                    name: "Azure".to_string(),
+                    base_url: Some("https://example.openai.azure.com/openai/v1".to_string()),
+                    experimental_bridge: Some(codex_model_provider_info::ChatBridge::Native),
+                    ..ModelProviderInfo::default()
+                },
                 RemoteCompactionSupport::V2,
             ),
             (
@@ -805,7 +804,7 @@ mod tests {
                     base_url: Some("https://example.openai.azure.com/openai/v1".to_string()),
                     ..ModelProviderInfo::default()
                 },
-                RemoteCompactionSupport::V2,
+                RemoteCompactionSupport::Unsupported,
             ),
             (
                 provider_for("https://example.test/v1".to_string()),

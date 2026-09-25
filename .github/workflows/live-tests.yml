@@ -46,6 +46,7 @@ jobs:
 
       - name: Run live matrix
         env:
+          LIVE_CASSETTE: "off"
           LIVE_VENDORS: ${{ vars.LIVE_VENDORS || 'mimo,glm' }}
           # Complete vendor configuration — vendors() skips entries without
           # URLs/models, so keys alone would silently skip every scenario.
@@ -56,23 +57,21 @@ jobs:
           LIVE_GLM_API_KEY: ${{ secrets.LIVE_GLM_API_KEY }}
           LIVE_GLM_CHAT_URL: https://open.bigmodel.cn/api/coding/paas/v4
           LIVE_GLM_ANTHROPIC_URL: https://open.bigmodel.cn/api/anthropic/v1
+          LIVE_GLM_RESPONSES_URL: https://open.bigmodel.cn/api/v1
           LIVE_GLM_MODEL: GLM-5.3-Flash
         run: |
+          python3 - <<'PY_PREFLIGHT'
+          import os
+          vendors = [v.strip() for v in os.environ.get("LIVE_VENDORS", "").split(",") if v.strip()]
+          if not vendors or any(v not in {"mimo", "glm", "step"} for v in vendors):
+              raise SystemExit("LIVE_VENDORS must select at least one of mimo, glm, step")
+          missing = [f"LIVE_{v.upper()}_{key}" for v in vendors for key in ("API_KEY", "CHAT_URL", "ANTHROPIC_URL", "MODEL") if not os.environ.get(f"LIVE_{v.upper()}_{key}", "").strip()]
+          if missing:
+              raise SystemExit("Missing live test configuration: " + ", ".join(missing))
+          PY_PREFLIGHT
           cargo nextest run -p codex-live-tests \
             --profile ci \
             --no-fail-fast
-
-      - name: Fail if no vendor scenarios executed
-        # A fully-skipped matrix (missing config) must be loud, not green.
-        if: always()
-        run: |
-          RESULT="${NEXTEST_RESULT:-}"
-          if cargo nextest list -p codex-live-tests 2>/dev/null | grep -qE "(mimo|glm|step)_"; then
-            echo "vendor tests present in list"
-          else
-            echo "::error::no vendor tests listed — check LIVE_VENDORS/config"
-            exit 1
-          fi
 
       - name: Aggregate artifact index
         if: always()

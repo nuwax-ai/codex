@@ -269,9 +269,11 @@ fn chat_completions_flat_name_resolves_to_namespaced_tool() {
     assert!(Arc::ptr_eq(&direct, &namespaced_handler));
 
     // A different flat name must not be mis-resolved to this handler.
-    assert!(registry
-        .tool(&codex_tools::ToolName::plain("mcp__memory__nonexistent"))
-        .is_none());
+    assert!(
+        registry
+            .tool(&codex_tools::ToolName::plain("mcp__memory__nonexistent"))
+            .is_none()
+    );
 }
 
 #[test]
@@ -886,15 +888,14 @@ fn flat_name_resolves_through_router_wrapped_default_namespace() {
     // bridges in real dispatch).
     let namespaced = codex_tools::ToolName::namespaced("mcp__memory", "create_entities");
     let handler = Arc::new(TestHandler {
-        tool_name: namespaced.clone(),
+        tool_name: namespaced,
     }) as Arc<dyn CoreToolRuntime>;
     let registry = ToolRegistry::from_tools([Arc::clone(&handler)]);
 
     let flat = codex_tools::ToolName::plain("mcp__memory__create_entities");
     let router_wrapped = flat.with_default_namespace();
     assert_ne!(
-        router_wrapped.namespace,
-        None,
+        router_wrapped.namespace, None,
         "router should have wrapped the plain name"
     );
     let resolved = registry

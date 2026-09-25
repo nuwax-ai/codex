@@ -189,13 +189,16 @@ fn model_provider_from_proto(
         experimental_bridge: provider
             .experimental_bridge
             .as_deref()
-            .and_then(|s| match s {
-                "genai" => Some(codex_model_provider_info::ChatBridge::Genai),
-                "rig" => Some(codex_model_provider_info::ChatBridge::Rig),
-                "native" => Some(codex_model_provider_info::ChatBridge::Native),
-                _ => None,
-            }),
-        provider_id: None,
+            .map(|bridge| match bridge {
+                "genai" => Ok(codex_model_provider_info::ChatBridge::Genai),
+                "rig" => Ok(codex_model_provider_info::ChatBridge::Rig),
+                "native" => Ok(codex_model_provider_info::ChatBridge::Native),
+                other => Err(parse_error(format!(
+                    "remote thread config returned unknown experimental_bridge: {other}"
+                ))),
+            })
+            .transpose()?,
+        provider_id: Some(id.clone()),
         query_params: provider.query_params.map(redacted_string_map),
         http_headers: provider.http_headers.map(redacted_string_map),
         env_http_headers: provider.env_http_headers.map(|map| map.values),
@@ -575,7 +578,7 @@ mod tests {
             env_key_instructions: None,
             experimental_bearer_token: None,
             experimental_bridge: None,
-            provider_id: None,
+            provider_id: Some("local".to_string()),
             auth: Some(ModelProviderAuthInfo {
                 command: "token-helper".to_string(),
                 args: vec!["--json".into()],
@@ -611,3 +614,7 @@ mod tests {
             .join("workspace")
     }
 }
+
+#[cfg(test)]
+#[path = "remote_bridge_tests.rs"]
+mod bridge_tests;

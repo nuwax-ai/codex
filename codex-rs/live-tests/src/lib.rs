@@ -40,13 +40,13 @@ use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use anyhow::anyhow;
 use anyhow::Result;
+use anyhow::anyhow;
 use codex_api::AuthProvider;
 use codex_api::Provider;
 use codex_api::ResponseEvent;
-use codex_api::ResponsesApiRequest;
 use codex_api::ResponseStream;
+use codex_api::ResponsesApiRequest;
 use codex_api::RetryConfig;
 use codex_api::SharedAuthProvider;
 use codex_protocol::models::ContentItem;
@@ -158,9 +158,7 @@ fn vendor_from_env(lookup: &dyn Fn(&str) -> Option<String>, name: &str) -> Optio
         // Replay mode is fully offline: fixtures carry everything the
         // conversion needs, so placeholder URLs/models keep the vendor
         // active for bridge-boundary replay.
-        None if cassette_mode() == CassetteMode::Replay => {
-            "(replay-placeholder-url)".to_string()
-        }
+        None if cassette_mode() == CassetteMode::Replay => "(replay-placeholder-url)".to_string(),
         None => {
             println!("no chat URL configured for vendor `{name}` ({chat_var}) — skipping vendor");
             return None;
@@ -169,9 +167,7 @@ fn vendor_from_env(lookup: &dyn Fn(&str) -> Option<String>, name: &str) -> Optio
     let model = lookup(&model_var).or_else(|| is_mimo.then(|| lookup("MIMO_MODEL")).flatten());
     let model = match model {
         Some(m) => m,
-        None if cassette_mode() == CassetteMode::Replay => {
-            "(replay-placeholder-model)".to_string()
-        }
+        None if cassette_mode() == CassetteMode::Replay => "(replay-placeholder-model)".to_string(),
         None => {
             println!("no model configured for vendor `{name}` ({model_var}) — skipping vendor");
             return None;
@@ -378,6 +374,19 @@ pub fn genai_bridge_enabled() -> bool {
     std::env::var("LIVE_INCLUDE_GENAI").as_deref() == Ok("1")
 }
 
+fn replay_rig_turn(cfg: &LiveConfig, tag: &str) -> Vec<ResponseEvent> {
+    let fixture = load_rig_event_fixture(&cfg.vendor, tag)
+        .unwrap_or_else(|error| panic!("[cassette-rig] {error}"));
+    println!(
+        "[cassette-rig] replaying {}/{} through current bridge conversion ({} rig events, offline)",
+        cfg.vendor,
+        tag,
+        fixture.rig_events.len()
+    );
+    codex_rust_rig_bridge::replay_fixture_events(&fixture)
+        .unwrap_or_else(|error| panic!("[cassette-rig] {}/{}: {error}", cfg.vendor, tag))
+}
+
 /// One bridge-level turn through the selected bridge (the vendor's chat URL;
 /// Anthropic gateways are passed by the anthropic scenarios).
 pub async fn run_turn(
@@ -389,18 +398,10 @@ pub async fn run_turn(
     tag: &str,
 ) -> Vec<ResponseEvent> {
     if cassette_mode() == CassetteMode::Replay {
-        // Rig-event fixtures take priority over event-level ones: they
-        // replay through the CURRENT bridge conversion code (testing the
-        // conversion itself), while event-level fixtures only test the
-        // assertions. Record mode produces both.
-        if bridge == Bridge::Rig
-            && let Some(rig_fixture) = load_rig_event_fixture(&cfg.vendor, tag)
-        {
-            println!(
-                "[cassette-rig] replaying {}/{} through current bridge conversion ({} rig events, offline)",
-                cfg.vendor, tag, rig_fixture.rig_events.len()
-            );
-            return codex_rust_rig_bridge::replay_fixture_events(&rig_fixture);
+        // Rig replay must execute current conversion. Never fall back to the
+        // already-converted ResponseEvent cassette when parsing fails.
+        if bridge == Bridge::Rig {
+            return replay_rig_turn(cfg, tag);
         }
         let fixture = load_fixture(&cfg.vendor, bridge.name(), tag).unwrap_or_else(|| {
             // Fail fast: silently falling back to live would consume vendor
@@ -410,7 +411,9 @@ pub async fn run_turn(
             panic!(
                 "[cassette] replay: no fixture for {}/{}-{} \
                  (record with LIVE_CASSETTE=record)",
-                cfg.vendor, bridge.name(), tag
+                cfg.vendor,
+                bridge.name(),
+                tag
             );
         });
         println!(
@@ -426,8 +429,8 @@ pub async fn run_turn(
         Bridge::Genai => {
             let adapter_kind = match wire {
                 LiveWire::Anthropic => genai::adapter::AdapterKind::Anthropic,
-                LiveWire::Chat if
-                    codex_rust_rig_bridge::RigProtocol::from_base_url(base_url)
+                LiveWire::Chat
+                    if codex_rust_rig_bridge::RigProtocol::from_base_url(base_url)
                         == codex_rust_rig_bridge::RigProtocol::Anthropic =>
                 {
                     genai::adapter::AdapterKind::Anthropic
@@ -439,9 +442,7 @@ pub async fn run_turn(
         Bridge::Rig => {
             let protocol = match wire {
                 LiveWire::Anthropic => codex_rust_rig_bridge::RigProtocol::Anthropic,
-                LiveWire::Chat => {
-                    codex_rust_rig_bridge::RigProtocol::from_base_url(base_url)
-                }
+                LiveWire::Chat => codex_rust_rig_bridge::RigProtocol::from_base_url(base_url),
             };
             run_turn_rig(cfg, base_url, protocol, request, tag).await
         }
@@ -485,25 +486,10 @@ pub async fn run_turn_rig(
     request: &ResponsesApiRequest,
     tag: &str,
 ) -> Vec<ResponseEvent> {
-    // HTTP-level cassette: replay recorded rig events through the CURRENT
-    // bridge conversion code (tests the conversion itself, not just the
-    // assertions). Falls back to event-level replay for legacy fixtures.
+    // Replay recorded Rig events through the current conversion. Missing or
+    // malformed fixtures must never fall through to a real provider request.
     if cassette_mode() == CassetteMode::Replay {
-        if let Some(fixture) = load_rig_event_fixture(&cfg.vendor, tag) {
-            println!(
-                "[cassette-rig] replaying {}/{} through current bridge conversion ({} rig events, offline)",
-                cfg.vendor, tag, fixture.rig_events.len()
-            );
-            return codex_rust_rig_bridge::replay_fixture_events(&fixture);
-        }
-        if load_fixture(&cfg.vendor, "rig", tag).is_some() {
-            println!(
-                "[cassette-rig] {}/{}: only event-level fixture found; conversion not exercised",
-                cfg.vendor, tag
-            );
-        }
-        // Fall through to live if no fixture at all (the event-level
-        // replay in run_turn handles that case).
+        return replay_rig_turn(cfg, tag);
     }
 
     let provider = vendor_provider(&cfg.vendor, base_url);
@@ -673,6 +659,10 @@ pub async fn run_marker_turn(
     extra_config: &str,
     expect_bridge_log: Option<&str>,
 ) -> Result<()> {
+    anyhow::ensure!(
+        cassette_mode() != CassetteMode::Replay,
+        "exec_live cannot replay; use --test bridge_live for offline replay"
+    );
     let home = tempfile::TempDir::new()?;
     let cwd = tempfile::TempDir::new()?;
     write_config_toml(home.path(), cfg, base_url, wire_api, bridge, extra_config)?;
@@ -717,7 +707,9 @@ pub async fn run_marker_turn(
 
     let output = tokio::time::timeout(EXEC_RUN_TIMEOUT, child.wait_with_output())
         .await
-        .map_err(|_| anyhow!("[{protocol}] codex-exec did not finish within {EXEC_RUN_TIMEOUT:?}"))??;
+        .map_err(|_| {
+            anyhow!("[{protocol}] codex-exec did not finish within {EXEC_RUN_TIMEOUT:?}")
+        })??;
 
     // Persist the artifacts first so failed runs can still be inspected.
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -727,7 +719,10 @@ pub async fn run_marker_turn(
     let final_message = std::fs::read_to_string(&last_message_path)
         .unwrap_or_else(|_| "<last_message.txt missing>".to_string());
     std::fs::write(artifacts_dir.join("final_message.txt"), &final_message)?;
-    println!("[{protocol}] artifacts saved to {}", artifacts_dir.display());
+    println!(
+        "[{protocol}] artifacts saved to {}",
+        artifacts_dir.display()
+    );
 
     println!("--- [{protocol}] codex-exec JSONL events ---");
     for line in stdout.lines() {
@@ -805,7 +800,10 @@ pub fn assert_completed_with_usage(events: &[ResponseEvent], context: &str) {
         .iter()
         .filter(|e| matches!(e, ResponseEvent::Completed { .. }))
         .count();
-    assert_eq!(completed, 1, "{context}: expected exactly one Completed event");
+    assert_eq!(
+        completed, 1,
+        "{context}: expected exactly one Completed event"
+    );
     let usage = events.iter().find_map(|e| match e {
         ResponseEvent::Completed {
             token_usage: Some(usage),
@@ -863,10 +861,16 @@ pub fn assert_reasoning_before_message(events: &[ResponseEvent], context: &str) 
     }
     if let (Some(r), Some(m)) = (
         position_of(&|e| {
-            matches!(e, ResponseEvent::OutputItemDone(ResponseItem::Reasoning { .. }))
+            matches!(
+                e,
+                ResponseEvent::OutputItemDone(ResponseItem::Reasoning { .. })
+            )
         }),
         position_of(&|e| {
-            matches!(e, ResponseEvent::OutputItemDone(ResponseItem::Message { .. }))
+            matches!(
+                e,
+                ResponseEvent::OutputItemDone(ResponseItem::Message { .. })
+            )
         }),
     ) {
         assert!(
@@ -962,10 +966,12 @@ pub fn fixture_path(vendor: &str, bridge: &str, tag: &str) -> Option<PathBuf> {
 pub fn load_rig_event_fixture(
     vendor: &str,
     tag: &str,
-) -> Option<codex_rust_rig_bridge::RigEventFixture> {
-    let path = rig_event_fixture_path(vendor, tag)?;
-    let contents = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&contents).ok()
+) -> Result<codex_rust_rig_bridge::RigEventFixture, String> {
+    let path = rig_event_fixture_path(vendor, tag)
+        .ok_or_else(|| "Cannot locate Rig fixtures".to_string())?;
+    let contents =
+        std::fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+    serde_json::from_str(&contents).map_err(|error| format!("{}: {error}", path.display()))
 }
 
 /// Saves a rig-event fixture.
@@ -1068,14 +1074,13 @@ pub async fn turn_start_error(
     let provider = vendor_provider(&cfg.vendor, base_url);
     let result = match bridge {
         Bridge::Genai => {
-            let adapter_kind =
-                if codex_rust_rig_bridge::protocol_for_base_url(base_url)
-                    == codex_rust_rig_bridge::RigProtocol::Anthropic
-                {
-                    genai::adapter::AdapterKind::Anthropic
-                } else {
-                    genai::adapter::AdapterKind::OpenAI
-                };
+            let adapter_kind = if codex_rust_rig_bridge::protocol_for_base_url(base_url)
+                == codex_rust_rig_bridge::RigProtocol::Anthropic
+            {
+                genai::adapter::AdapterKind::Anthropic
+            } else {
+                genai::adapter::AdapterKind::OpenAI
+            };
             timeout(
                 TURN_TIMEOUT,
                 codex_rust_genai_bridge::stream_via_genai(
@@ -1228,7 +1233,10 @@ fn persist_lines(vendor: &str, subdir: &str, tag: &str, lines: &[String]) {
     let Some(root) = repo_root() else {
         return;
     };
-    let dir = root.join("logs").join(format!("live-{vendor}")).join(subdir);
+    let dir = root
+        .join("logs")
+        .join(format!("live-{vendor}"))
+        .join(subdir);
     if std::fs::create_dir_all(&dir).is_err() {
         return;
     }

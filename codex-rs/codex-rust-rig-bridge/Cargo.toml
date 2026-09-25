@@ -12,12 +12,17 @@ codex-api = { workspace = true }
 codex-protocol = { workspace = true }
 codex-tools = { workspace = true }
 futures = { workspace = true }
+eventsource-stream = { workspace = true }
 tokio = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 http = { workspace = true }
+bytes = { workspace = true }
+sha2 = { workspace = true }
+codex-http-client = { workspace = true }
+codex-utils-string = { workspace = true }
 # rig 0.42 embeds a reqwest 0.13 transport while the workspace pins 0.12 for
 # the rest of codex. Depend on rig's major under a rename so the two majors
 # never share a type; TLS comes from feature unification with rig-core.
@@ -25,3 +30,6 @@ reqwest-rig = { package = "reqwest", version = "0.13", default-features = false 
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

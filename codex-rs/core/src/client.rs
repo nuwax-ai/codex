@@ -900,6 +900,38 @@ impl ModelClient {
             // Filter only the request copy; persisted history remains unchanged.
             input.retain(|item| !matches!(item, ResponseItem::ConfigurationUpdate { .. }));
         }
+        let native_transport = !self.state.provider.info().uses_chat_bridge();
+        if native_transport
+            || self.state.provider.info().experimental_bridge
+                == Some(codex_model_provider_info::ChatBridge::Genai)
+        {
+            input.retain(|item| {
+                let ResponseItem::Reasoning {
+                    encrypted_content: Some(value),
+                    content,
+                    ..
+                } = item
+                else {
+                    return true;
+                };
+                if value.starts_with("codex-rig-reasoning-v1:") {
+                    return false;
+                }
+                // Legacy bridges duplicated visible reasoning into the encrypted
+                // field. It is not native Responses ciphertext either.
+                let legacy_text: String = content
+                    .iter()
+                    .flatten()
+                    .map(|part| match part {
+                        codex_protocol::models::ReasoningItemContent::ReasoningText { text }
+                        | codex_protocol::models::ReasoningItemContent::Text { text } => {
+                            text.as_str()
+                        }
+                    })
+                    .collect();
+                !(native_transport && !legacy_text.is_empty() && value == &legacy_text)
+            });
+        }
         let is_openai = self.state.provider.info().is_openai();
         let (instructions, tools) = if model_info.use_responses_lite {
             // These prompt-only items are rebuilt on every request. Hash their visible payloads
@@ -1694,7 +1726,7 @@ impl ModelClientSession {
                 prompt,
                 model_info,
                 effort.clone(),
-                summary.clone(),
+                summary,
                 service_tier.clone(),
                 responses_metadata,
                 include_internal,
@@ -2366,7 +2398,7 @@ impl ModelClientSession {
                 // ZDR) and Amazon Bedrock (SigV4) keep the native transport,
                 // and `experimental_bridge = "native"` forces it explicitly.
                 #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
-                if responses_routes_via_chat_bridge(info, info.experimental_bridge) {
+                if info.uses_chat_bridge() {
                     return self
                         .stream_chat_api(
                             prompt,
@@ -3111,28 +3143,6 @@ impl WebsocketTelemetry for ApiTelemetry {
     }
 }
 
-/// Whether a `wire_api = "responses"` provider is served through the chat
-/// bridge instead of the upstream-native Responses transport (fork policy).
-///
-/// - `Some(Native)` — explicit opt-out, keep the native transport.
-/// - `Some(Rig)` / `Some(Genai)` — explicit opt-in to a bridge.
-/// - unset — fork default: everything except first-party OpenAI and Amazon
-///   Bedrock goes through the bridge, because third-party Responses
-///   implementations are typically partial while their Chat Completions
-///   surface is complete.
-#[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
-fn responses_routes_via_chat_bridge(
-    info: &codex_model_provider_info::ModelProviderInfo,
-    bridge: Option<codex_model_provider_info::ChatBridge>,
-) -> bool {
-    use codex_model_provider_info::ChatBridge;
-    match bridge {
-        Some(ChatBridge::Native) => false,
-        Some(ChatBridge::Rig) | Some(ChatBridge::Genai) => true,
-        None => !info.is_first_party(),
-    }
-}
-
 /// Sends the Chat-Completions request through the bridge the provider
 /// selected via `experimental_bridge` (fork extension). Unset defaults to
 /// the rig bridge; `"genai"` opts back into the original bridge; the
@@ -3199,7 +3209,6 @@ async fn dispatch_chat_bridge(
         )
         .await
 }
-
 
 #[cfg(test)]
 #[path = "client_tests.rs"]

@@ -342,6 +342,7 @@ impl ModelProviderInfo {
     /// Call this on the override before merging it with the built-in provider.
     pub fn validate_bedrock_override(&self) -> Result<(), String> {
         let unsupported_fields = Self {
+            provider_id: None,
             base_url: None,
             auth: None,
             aws: None,
@@ -598,7 +599,7 @@ other non-default provider fields are not supported"
             aws: None,
             wire_api: WireApi::Responses,
             experimental_bridge: None,
-            provider_id: None,
+            provider_id: Some(OPENAI_PROVIDER_ID.to_string()),
             query_params: None,
             http_headers: Some(
                 [("version".to_string(), env!("CARGO_PKG_VERSION").into())]
@@ -650,7 +651,7 @@ other non-default provider fields are not supported"
             })),
             wire_api: WireApi::Responses,
             experimental_bridge: None,
-            provider_id: None,
+            provider_id: Some(AMAZON_BEDROCK_PROVIDER_ID.to_string()),
             query_params: None,
             http_headers: Some(HashMap::from([(
                 AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER.to_string(),
@@ -672,6 +673,7 @@ other non-default provider fields are not supported"
     ) -> ModelProviderInfo {
         let mut provider = Self::create_amazon_bedrock_provider(aws);
         provider.name = AMAZON_BEDROCK_RUNTIME_PROVIDER_NAME.into();
+        provider.provider_id = Some(AMAZON_BEDROCK_RUNTIME_PROVIDER_ID.to_string());
         provider.http_headers = None;
         provider
     }
@@ -693,6 +695,31 @@ other non-default provider fields are not supported"
                 | Some(AMAZON_BEDROCK_PROVIDER_ID)
                 | Some(AMAZON_BEDROCK_RUNTIME_PROVIDER_ID)
         )
+    }
+
+    /// Whether inference uses a Chat/Anthropic bridge under the fork routing policy.
+    /// Auxiliary inference and compaction must consult the same policy as core.
+    pub fn uses_chat_bridge(&self) -> bool {
+        match self.wire_api {
+            WireApi::Chat | WireApi::Anthropic => true,
+            WireApi::Responses => match self.experimental_bridge {
+                Some(ChatBridge::Native) => false,
+                Some(ChatBridge::Rig | ChatBridge::Genai) => true,
+                None => !self.is_first_party(),
+            },
+        }
+    }
+
+    /// Reserved non-Bedrock entries may only select a transport; endpoint and
+    /// authentication changes still require a distinct custom provider ID.
+    pub fn is_builtin_bridge_override(&self) -> bool {
+        self.experimental_bridge.is_some()
+            && Self {
+                name: String::new(),
+                experimental_bridge: None,
+                provider_id: None,
+                ..self.clone()
+            } == Self::default()
     }
 
     pub fn supports_codex_backend_routes(&self) -> bool {
@@ -782,6 +809,7 @@ pub fn merge_configured_model_providers(
     configured_model_providers: HashMap<String, ModelProviderInfo>,
 ) -> Result<HashMap<String, ModelProviderInfo>, String> {
     for (key, mut provider) in configured_model_providers {
+        provider.provider_id = Some(key.clone());
         if matches!(
             key.as_str(),
             AMAZON_BEDROCK_PROVIDER_ID | AMAZON_BEDROCK_RUNTIME_PROVIDER_ID
@@ -876,3 +904,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
 #[cfg(test)]
 #[path = "model_provider_info_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "bridge_routing_tests.rs"]
+mod bridge_routing_tests;

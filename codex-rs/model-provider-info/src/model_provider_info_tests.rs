@@ -342,8 +342,8 @@ fn test_create_amazon_bedrock_provider() {
                 auth_refresh: None,
             }),
             wire_api: WireApi::Responses,
-        experimental_bridge: None,
-        provider_id: None,
+            experimental_bridge: None,
+            provider_id: Some(AMAZON_BEDROCK_PROVIDER_ID.to_string()),
             query_params: None,
             http_headers: Some(maplit::hashmap! {
                 AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER.to_string() =>
@@ -365,6 +365,7 @@ fn test_create_amazon_bedrock_provider() {
 fn test_create_amazon_bedrock_runtime_provider() {
     let mut expected = ModelProviderInfo::create_amazon_bedrock_provider(/*aws*/ None);
     expected.name = "Amazon Bedrock Runtime".to_string();
+    expected.provider_id = Some(AMAZON_BEDROCK_RUNTIME_PROVIDER_ID.to_string());
     expected.http_headers = None;
 
     assert_eq!(
@@ -473,6 +474,7 @@ fn test_built_in_model_providers_include_amazon_bedrock_runtime() {
 fn test_merge_configured_model_providers_adds_custom_provider() {
     let custom_provider = ModelProviderInfo {
         name: "Custom".to_string(),
+        provider_id: Some("custom".to_string()),
         base_url: Some("https://example.com/v1".to_string()),
         ..ModelProviderInfo::default()
     };
@@ -655,8 +657,8 @@ fn test_merge_configured_model_providers_allows_amazon_bedrock_default_fields() 
                 auth_refresh: None,
             }),
             wire_api: WireApi::Responses,
-        experimental_bridge: None,
-        provider_id: None,
+            experimental_bridge: None,
+            provider_id: None,
             ..ModelProviderInfo::default()
         },
     )]);

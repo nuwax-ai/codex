@@ -6,14 +6,13 @@ use std::time::Duration;
 
 use codex_api::ApiError;
 use codex_api::Provider;
-use codex_api::ResponsesApiRequest;
 use codex_api::ResponseEvent;
 use codex_api::ResponseStream;
+use codex_api::ResponsesApiRequest;
 use codex_api::SharedAuthProvider;
 use codex_api::TransportError;
 use futures::StreamExt;
 use http::HeaderMap;
-use reqwest_rig as reqwest13;
 use rig_core::completion::CompletionModel;
 use tokio::sync::mpsc;
 
@@ -25,7 +24,8 @@ use crate::convert_response::rig_event_to_response_events;
 /// Shared handle the stream pump fills with raw rig events when the caller
 /// wants to record the bridge boundary (cassette mode). `None` = no
 /// recording overhead.
-pub type RigEventRecorder = Option<Arc<std::sync::Mutex<Vec<rig_core::streaming::StreamedAssistantContent>>>>;
+pub type RigEventRecorder =
+    Option<Arc<std::sync::Mutex<Vec<rig_core::streaming::StreamedAssistantContent>>>>;
 
 const RESPONSE_STREAM_CHANNEL_CAPACITY: usize = 256;
 
@@ -41,7 +41,13 @@ pub async fn stream_via_rig(
     idle_timeout: Duration,
 ) -> Result<ResponseStream, ApiError> {
     stream_via_rig_with_recording(
-        request, api_provider, api_auth, extra_headers, protocol, idle_timeout, None,
+        request,
+        api_provider,
+        api_auth,
+        extra_headers,
+        protocol,
+        idle_timeout,
+        None,
     )
     .await
     .map(|(stream, _)| stream)
@@ -60,24 +66,38 @@ pub async fn stream_via_rig_with_recording(
     idle_timeout: Duration,
     recorder: RigEventRecorder,
 ) -> Result<(ResponseStream, RigEventRecorder), ApiError> {
-    let (mut completion_request, custom_tool_names) =
-        responses_request_to_completion_request(request).ok_or(ApiError::InvalidRequest {
-            message: "No convertible messages in request".into(),
-        })?;
-
-    if protocol == RigProtocol::Anthropic {
-        // Anthropic's wire requires max_tokens; codex does not model an
-        // output cap, so default generously.
-        if completion_request.max_tokens.is_none() {
-            completion_request.max_tokens = Some(crate::client::DEFAULT_ANTHROPIC_MAX_TOKENS);
-        }
-        // additional_params carries OpenAI-only knobs (parallel_tool_calls,
-        // reasoning_effort, ...) that flatten verbatim onto the wire. On the
-        // Anthropic protocol they are unknown fields with undefined behavior:
-        // GLM's gateway measurably disables thinking when it sees
-        // `parallel_tool_calls`, so drop them there entirely.
-        completion_request.additional_params = None;
-    }
+    let source = crate::client::reasoning_source(api_provider, protocol, &request.model)?;
+    let (completion_request, custom_tool_names) =
+        responses_request_to_completion_request(request, protocol, &source)?;
+    let (base_url, query) = crate::client::endpoint(&api_provider.base_url, api_provider)?;
+    let mut headers = api_provider.headers.clone();
+    headers.extend(extra_headers);
+    // Resolve once: refreshable credentials and gateway conflict checks are
+    // part of the outbound auth contract, not the synchronous telemetry snapshot.
+    headers.extend(
+        api_auth
+            .resolve_auth_headers()
+            .await
+            .map_err(|error| ApiError::Transport(error.into()))?,
+    );
+    let request_id = Arc::new(std::sync::Mutex::new(None));
+    let http = crate::transport::RigHttpClient {
+        inner: crate::client::http_client(&headers, protocol)?,
+        query,
+        disable_anthropic_parallel: protocol == RigProtocol::Anthropic
+            && !request.parallel_tool_calls,
+        request_id: request_id.clone(),
+        authorization_override: headers
+            .get(http::header::AUTHORIZATION)
+            .filter(|_| crate::client::bearer_token(&headers).is_none())
+            .cloned(),
+        protocol,
+        tool_strict: if protocol == RigProtocol::Chat {
+            crate::request_tools::request_tools(request).strict
+        } else {
+            Default::default()
+        },
+    };
 
     let model = request.model.clone();
     tracing::info!(
@@ -94,23 +114,12 @@ pub async fn stream_via_rig_with_recording(
 
     let stream_response = match protocol {
         RigProtocol::Chat => {
-            let chat_model = crate::client::build_chat_model(
-                &model,
-                &api_provider.base_url,
-                api_provider,
-                api_auth,
-                &extra_headers,
-            )?;
+            let chat_model = crate::client::build_chat_model(&model, &base_url, &headers, http)?;
             chat_model.stream(completion_request).await
         }
         RigProtocol::Anthropic => {
-            let anthropic_model = crate::client::build_anthropic_model(
-                &model,
-                &api_provider.base_url,
-                api_provider,
-                api_auth,
-                &extra_headers,
-            )?;
+            let anthropic_model =
+                crate::client::build_anthropic_model(&model, &base_url, &headers, http)?;
             anthropic_model.stream(completion_request).await
         }
     }
@@ -141,12 +150,16 @@ pub async fn stream_via_rig_with_recording(
     let custom_tool_names = std::sync::Arc::new(custom_tool_names);
     let pump_recorder = recorder.clone();
     tokio::spawn(async move {
-        let mut pending = PendingRigMessage::new(custom_tool_names);
+        let mut pending = PendingRigMessage::new(custom_tool_names, source);
 
         // rig streams have no start event; synthesize `Created` so the
         // event sequence matches the genai bridge (A/B parity) and any
         // consumer waiting for it sees one.
-        if tx.send(Ok(ResponseEvent::Created { response_id: None })).await.is_err() {
+        if tx
+            .send(Ok(ResponseEvent::Created { response_id: None }))
+            .await
+            .is_err()
+        {
             return;
         }
 
@@ -156,8 +169,9 @@ pub async fn stream_via_rig_with_recording(
                 None => match tokio::time::timeout(idle_timeout, rig_stream.next()).await {
                     Ok(item) => item,
                     Err(_elapsed) => {
-                        let _ =
-                            tx.send(Err(ApiError::Transport(TransportError::Timeout))).await;
+                        let _ = tx
+                            .send(Err(ApiError::Transport(TransportError::Timeout)))
+                            .await;
                         return;
                     }
                 },
@@ -169,11 +183,20 @@ pub async fn stream_via_rig_with_recording(
                     {
                         buf.push(event.clone());
                     }
-                    let events = rig_event_to_response_events(event, &mut pending);
+                    let events = match rig_event_to_response_events(event, &mut pending) {
+                        Ok(events) => events,
+                        Err(error) => {
+                            let _ = tx.send(Err(error)).await;
+                            return;
+                        }
+                    };
                     for ev in events {
                         if tx.send(Ok(ev)).await.is_err() {
                             return;
                         }
+                    }
+                    if pending.completed_emitted() {
+                        return;
                     }
                 }
                 Some(Err(e)) => {
@@ -205,7 +228,7 @@ pub async fn stream_via_rig_with_recording(
     Ok((
         ResponseStream {
             rx_event: rx,
-            upstream_request_id: None,
+            upstream_request_id: request_id.lock().ok().and_then(|slot| slot.clone()),
         },
         recorder,
     ))
@@ -220,31 +243,29 @@ fn map_completion_error(e: rig_core::completion::request::CompletionError) -> Ap
     // non-2xx provider responses actually arrive as (rig defers them into
     // the stream), so both must map to Http{status} for codex-core's
     // 401-recovery loop to trigger.
-    let status: Option<http::StatusCode> = match &e {
-        CompletionError::HttpError(http_error) => http_error_status(http_error)
-            .map(|s| http::StatusCode::from_u16(s.as_u16()))
-            .and_then(Result::ok),
-        CompletionError::ProviderResponse(provider_error) => provider_error.status,
-        _ => None,
-    };
-    if let Some(status) = status {
+    if let Some(status) = e.provider_response_status() {
+        let headers = e.provider_response_headers().cloned();
+        let retry_after = headers
+            .as_ref()
+            .and_then(codex_http_client::RetryAfter::from_headers);
+        let body = e
+            .provider_response_body()
+            .map(str::to_string)
+            .or_else(|| Some(format!("rig request failed: {e}")));
         return ApiError::Transport(TransportError::Http {
             status,
             url: None,
-            headers: None,
-            body: Some(format!("rig request failed: {e}")),
-            retry_after: None,
+            headers,
+            body,
+            retry_after,
         });
     }
-    ApiError::Transport(TransportError::Network(format!("rig error: {e}")))
-}
-
-fn http_error_status(error: &rig_core::http_client::Error) -> Option<reqwest13::StatusCode> {
-    use rig_core::http_client::Error;
-    match error {
-        Error::InvalidStatusCode(status)
-        | Error::InvalidStatusCodeWithMessage(status, _) => Some(*status),
-        Error::InvalidStatusCodeWithDetails { status, .. } => Some(*status),
-        _ => None,
+    match e {
+        CompletionError::RequestError(_) | CompletionError::UrlError(_) => {
+            ApiError::InvalidRequest {
+                message: format!("rig request failed: {e}"),
+            }
+        }
+        _ => ApiError::Transport(TransportError::Network(format!("rig error: {e}"))),
     }
 }
