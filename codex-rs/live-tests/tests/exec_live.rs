@@ -1,8 +1,10 @@
 //! Binary-level live matrix: drives the compiled `codex-exec` end to end
-//! across both wire protocols and both bridges for EVERY configured vendor,
-//! using the unforgeable-marker technique (see
-//! `codex_live_tests::run_marker_turn`). Tests are generated per vendor so
-//! nextest reports each vendor separately.
+//! across both wire protocols for EVERY configured vendor, using the
+//! unforgeable-marker technique (see `codex_live_tests::run_marker_turn`).
+//! Tests are generated per vendor so nextest reports each vendor separately.
+//!
+//! The genai bridge is shelved: its scenarios (`chat-genai`,
+//! `anthropic-genai`) only run when `LIVE_INCLUDE_GENAI=1` is set.
 //!
 //! Build the binary once before running:
 //!
@@ -39,6 +41,10 @@ macro_rules! exec_matrix {
 }
 
 async fn chat_genai_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    if !codex_live_tests::genai_bridge_enabled() {
+        println!("genai bridge shelved (rig is the fork default) — set LIVE_INCLUDE_GENAI=1 to include");
+        return Ok(());
+    }
     run_marker_turn(
         "chat-genai",
         cfg,
@@ -88,6 +94,10 @@ async fn responses_native_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow
 }
 
 async fn anthropic_genai_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    if !codex_live_tests::genai_bridge_enabled() {
+        println!("genai bridge shelved (rig is the fork default) — set LIVE_INCLUDE_GENAI=1 to include");
+        return Ok(());
+    }
     let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(cfg) else {
         return Ok(());
     };

@@ -1,8 +1,11 @@
-//! Bridge-level live matrix: scenarios run through BOTH bridges against
-//! EVERY configured vendor (`LIVE_VENDORS`, default mimo), asserting codex's
-//! protocol invariants on real model streams. Tests are generated per
-//! vendor × bridge so nextest reports each combination separately; vendors
-//! without an Anthropic gateway skip that scenario.
+//! Bridge-level live matrix: scenarios run through the rig bridge (the fork
+//! default) against EVERY configured vendor (`LIVE_VENDORS`, default mimo),
+//! asserting codex's protocol invariants on real model streams. Tests are
+//! generated per vendor × bridge so nextest reports each combination
+//! separately; vendors without an Anthropic gateway skip that scenario.
+//!
+//! The genai bridge is shelved: its variants only run when
+//! `LIVE_INCLUDE_GENAI=1` is set (re-validation / A/B comparison runs).
 //!
 //! Adding a vendor: add it to the `matrix!` list below + set its
 //! `LIVE_<NAME>_*` variables in `.env.local` — nothing else.
@@ -298,15 +301,20 @@ async fn scenario_parallel_tools(cfg: &LiveConfig, bridge: Bridge) {
 // Matrix generation
 // ================================================================
 
-/// Generates one test per (vendor, scenario) for each bridge. Vendors listed
-/// here skip at runtime when unconfigured — keep this list in sync with
-/// `LIVE_VENDORS` in `.env.local`.
+/// Generates one test per (vendor, scenario) for each bridge. The genai
+/// variants are gated behind `LIVE_INCLUDE_GENAI=1` (bridge shelved; rig is
+/// the fork default). Vendors listed here skip at runtime when unconfigured
+/// — keep this list in sync with `LIVE_VENDORS` in `.env.local`.
 macro_rules! bridge_matrix {
     ($suffix:ident, $scenario:ident, [$($vendor:literal),*]) => {
         paste::paste! {
             $(
                 #[tokio::test]
                 async fn [<$vendor _genai_ $suffix>]() {
+                    if !codex_live_tests::genai_bridge_enabled() {
+                        println!("genai bridge shelved (rig is the fork default) — set LIVE_INCLUDE_GENAI=1 to include");
+                        return;
+                    }
                     match codex_live_tests::vendor($vendor) {
                         Some(cfg) => $scenario(&cfg, Bridge::Genai).await,
                         None => println!("vendor `{}` not configured — skipping", $vendor),
@@ -358,9 +366,15 @@ fn is_model_nondeterministic(tag: &str) -> bool {
 
 /// A/B diff (offline): when cassette fixtures exist for both bridges of the
 /// same vendor+tag, their event-kind sequences must match — an automatic
-/// structural equivalence check between the genai and rig bridges.
+/// structural equivalence check between the genai and rig bridges. Inactive
+/// while genai is shelved (no `LIVE_INCLUDE_GENAI=1`): rig is allowed to
+/// evolve past genai's shape.
 #[test]
 fn ab_diff_fixtures() {
+    if !codex_live_tests::genai_bridge_enabled() {
+        println!("genai shelved — A/B bridge diff inactive (set LIVE_INCLUDE_GENAI=1 to enable)");
+        return;
+    }
     let vendors = codex_live_tests::vendors();
     if vendors.is_empty() {
         println!("no vendors configured — skipping");

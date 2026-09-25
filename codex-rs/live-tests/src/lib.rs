@@ -8,7 +8,8 @@
 //!
 //! - `tests/bridge_live.rs` — bridge level: `ResponsesApiRequest` → bridge →
 //!   provider SSE → codex `ResponseEvent`s, with protocol invariants asserted
-//!   on real streams; runs the same cases through both bridges for A/B.
+//!   on real streams; defaults to the rig bridge, with genai variants opt-in
+//!   via `LIVE_INCLUDE_GENAI=1` (bridge shelved; A/B comparison).
 //! - `tests/exec_live.rs` — binary level: the compiled `codex-exec` driven
 //!   end to end with the unforgeable-marker technique, covering both
 //!   `wire_api` values: chat (always via a bridge) and responses (fork
@@ -361,6 +362,15 @@ impl Bridge {
             Self::Rig => "rig",
         }
     }
+}
+
+/// Whether the shelved genai bridge participates in this run. Rig is the
+/// fork default for every wire; genai live/replay tests are opt-in via
+/// `LIVE_INCLUDE_GENAI=1` (set on the command line like `LIVE_CASSETTE`),
+/// e.g. to re-validate genai before resurrecting it or for A/B comparison
+/// runs. Default runs exercise rig only, halving vendor-quota usage.
+pub fn genai_bridge_enabled() -> bool {
+    std::env::var("LIVE_INCLUDE_GENAI").as_deref() == Ok("1")
 }
 
 /// One bridge-level turn through the selected bridge (the vendor's chat URL;
