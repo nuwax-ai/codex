@@ -75,6 +75,10 @@ pub enum InstallMethod {
     VitePlus,
     /// A Codex binary that appears to come from a Homebrew install prefix.
     Brew,
+    /// Fork: launched via the `nuwax-codex` npm package launcher, which
+    /// sets `CODEX_INSTALL_SOURCE=npm_nuwax`. Updates target the fork's
+    /// npm package (`nuwax-codex`), not upstream `@openai/codex`.
+    NpmNuwax,
     /// Any other execution environment.
     ///
     /// This commonly covers `cargo run`, app-bundled Codex binaries, custom
@@ -129,6 +133,11 @@ impl InstallContext {
                 Some(InstallMethod::Npm)
             } else if std::env::var_os("CODEX_MANAGED_BY_BUN").is_some() {
                 Some(InstallMethod::Bun)
+            } else if std::env::var("CODEX_INSTALL_SOURCE")
+                .as_deref()
+                .is_ok_and(|v| v == "npm_nuwax")
+            {
+                Some(InstallMethod::NpmNuwax)
             } else {
                 None
             };

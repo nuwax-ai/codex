@@ -52,6 +52,49 @@ pub(crate) fn responses_request_to_completion_request(
     }
     let (tools, custom_tool_names) = parse_tools(&tools);
 
+    let output_schema: Option<rig_core::schemars::Schema> = request.text.as_ref().and_then(|text| {
+        text.format
+            .as_ref()
+            .and_then(|format| serde_json::from_value(format.schema.clone()).ok())
+    });
+    let mut additional_params = build_additional_params(request);
+
+    // rig 0.42's OpenAI serializer gates response_format behind
+    // `tools.is_empty() || history_has_tool_result` (llama.cpp compat).
+    // codex's --output-schema must bind from the first request, so when
+    // the gate would swallow the schema, inject it directly into
+    // additional_params instead — same wire shape, no gate.
+    let gated = output_schema.is_some()
+        && !tools.is_empty()
+        && !history_has_tool_result(&chat_history);
+    if gated {
+        let schema = output_schema.as_ref().unwrap();
+        let schema_json = serde_json::to_value(schema).unwrap_or(serde_json::Value::Null);
+        let entry = serde_json::json!({
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "codex_output",
+                    "strict": true,
+                    "schema": schema_json
+                }
+            }
+        });
+        additional_params = match additional_params {
+            Some(mut params) => {
+                if let serde_json::Value::Object(map) = &mut params {
+                    if let serde_json::Value::Object(entry_map) = entry {
+                        for (k, v) in entry_map {
+                            map.insert(k, v);
+                        }
+                    }
+                }
+                Some(params)
+            }
+            None => Some(entry),
+        };
+    }
+
     Some((CompletionRequest {
         model: Some(request.model.clone()),
         preamble: None,
@@ -61,18 +104,24 @@ pub(crate) fn responses_request_to_completion_request(
         temperature: None,
         max_tokens: None,
         tool_choice: map_tool_choice(&request.tool_choice),
-        additional_params: build_additional_params(request),
-        // `text.format` → structured output. rig serializes the schema as
-        // `response_format: {json_schema, strict: true}`; note rig always
-        // requests strict validation, so codex's `strict: false` cannot be
-        // honored (documented in the field-mapping audit).
-        output_schema: request.text.as_ref().and_then(|text| {
-            text.format
-                .as_ref()
-                .and_then(|format| serde_json::from_value(format.schema.clone()).ok())
-        }),
+        additional_params,
+        output_schema: if gated { None } else { output_schema },
         record_telemetry_content: false,
     }, custom_tool_names))
+}
+
+/// Whether the chat history already contains a tool result (the gate rig
+/// uses to decide whether response_format is safe alongside tools).
+fn history_has_tool_result(history: &[Message]) -> bool {
+    history.iter().any(|msg| {
+        matches!(
+            msg,
+            Message::User {
+                content: parts,
+                ..
+            } if parts.iter().any(|p| matches!(p, UserContent::ToolResult(_)))
+        )
+    })
 }
 
 /// Passes through provider-specific request knobs that rig's chat wire does

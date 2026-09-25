@@ -4,7 +4,7 @@
 // run and caches it locally. No platform-specific npm packages needed.
 
 import { spawnSync } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, chmodSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, chmodSync, renameSync, rmSync, cpSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { familySync } from "detect-libc";
@@ -180,16 +180,47 @@ async function ensureBinary() {
   console.error(`  ${url}`);
 
   const dir = cacheDir();
-  mkdirSync(dir, { recursive: true });
-  const archivePath = join(dir, `nuwax-codex.${ext}`);
 
-  await downloadBinary(url, archivePath);
+  // Atomic install (#38): download+extract into unique staging, verify,
+  // then rename into final cache. A crash mid-extract leaves only the
+  // staging dir; the cache never holds a partial install.
+  const lockDir = `${dir}.lock-${process.pid}-${Date.now()}`;
+  mkdirSync(lockDir, { recursive: true });
+  const stagingDir = join(lockDir, "stage");
+  mkdirSync(stagingDir, { recursive: true });
+  const archivePath = join(lockDir, `nuwax-codex.${ext}`);
 
-  console.error("  Extracting …");
-  if (ext === "tar.gz") {
-    await extractTarGz(archivePath, dir);
-  } else {
-    await extractZip(archivePath, dir);
+  try {
+    await downloadBinary(url, archivePath);
+
+    console.error("  Extracting …");
+    if (ext === "tar.gz") {
+      await extractTarGz(archivePath, stagingDir);
+    } else {
+      await extractZip(archivePath, stagingDir);
+    }
+
+    const stagedBinary = join(stagingDir, getBinaryName());
+    if (!existsSync(stagedBinary)) {
+      throw new Error(
+        `Extraction completed but ${getBinaryName()} not found in staging directory`,
+      );
+    }
+
+    mkdirSync(dirname(dir), { recursive: true });
+    try {
+      renameSync(stagingDir, dir);
+    } catch (e) {
+      if (e.code === "ENOTEMPTY" || e.code === "EEXIST") {
+        if (!existsSync(cached)) throw e;
+      } else if (e.code === "EXDEV") {
+        cpSync(stagingDir, dir, { recursive: true });
+      } else {
+        throw e;
+      }
+    }
+  } finally {
+    rmSync(lockDir, { recursive: true, force: true });
   }
 
   if (!existsSync(cached)) {
@@ -202,9 +233,13 @@ async function ensureBinary() {
 
 function run() {
   ensureBinary().then((binaryPath) => {
+    // Tag the child as installed via the nuwax npm package so codex's
+    // update flow targets nuwax-codex (not upstream @openai/codex).
+    const env = { ...process.env, CODEX_INSTALL_SOURCE: "npm_nuwax" };
     const result = spawnSync(binaryPath, process.argv.slice(2), {
       stdio: "inherit",
       windowsHide: true,
+      env,
     });
     if (result.error) {
       console.error(`Failed to execute ${binaryPath}:`, result.error);

@@ -8,6 +8,8 @@ use codex_install_context::StandalonePlatform;
 /// Update action the CLI should perform after the TUI exits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpdateAction {
+    /// Fork: update via `npm install -g nuwax-codex@latest`.
+    NpmNuwaxLatest,
     /// Replace the local daemon after restoring the terminal.
     Daemon(DaemonUpdateSource),
     /// Update via `npm install -g @openai/codex@latest`.
@@ -35,6 +37,8 @@ impl UpdateAction {
             InstallMethod::VitePlus => Some(UpdateAction::VitePlusGlobalLatest),
             InstallMethod::Pnpm => Some(UpdateAction::PnpmGlobalLatest),
             InstallMethod::Brew => Some(UpdateAction::BrewUpgrade),
+            // Fork npm package: update to nuwax-codex, not @openai/codex.
+            InstallMethod::NpmNuwax => Some(UpdateAction::NpmNuwaxLatest),
             InstallMethod::Standalone { platform, .. } => Some(match platform {
                 StandalonePlatform::Unix => UpdateAction::StandaloneUnix,
                 StandalonePlatform::Windows => UpdateAction::StandaloneWindows,
@@ -48,6 +52,7 @@ impl UpdateAction {
         match self {
             UpdateAction::Daemon(source) => ("codex", source.command_args()),
             UpdateAction::NpmGlobalLatest => ("npm", &["install", "-g", "@openai/codex"]),
+            UpdateAction::NpmNuwaxLatest => ("npm", &["install", "-g", "nuwax-codex@latest"]),
             UpdateAction::BunGlobalLatest => ("bun", &["install", "-g", "@openai/codex"]),
             UpdateAction::VitePlusGlobalLatest => ("vp", &["install", "-g", "@openai/codex"]),
             UpdateAction::PnpmGlobalLatest => ("pnpm", &["add", "-g", "@openai/codex"]),
