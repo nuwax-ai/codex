@@ -509,6 +509,32 @@
       },
       "type": "object"
     },
+    "ChatBridge": {
+      "description": "Chat-Completions bridge implementation backing this provider (fork extension). `Rig` is the default; configure `experimental_bridge = \"genai\"` to fall back to the original bridge, or `\"native\"` to force the upstream transport (escape hatch for providers that implement the Responses API fully).",
+      "oneOf": [
+        {
+          "description": "The `codex-rust-genai-bridge` crate.",
+          "enum": [
+            "genai"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The `codex-rust-rig-bridge` crate (fork default).",
+          "enum": [
+            "rig"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The upstream-native transport. Only meaningful with `wire_api = \"responses\"`; overrides the fork default that routes third-party Responses providers through the rig bridge.",
+          "enum": [
+            "native"
+          ],
+          "type": "string"
+        }
+      ]
+    },
     "CloudToml": {
       "additionalProperties": false,
       "description": "Cloud-owned feature settings.",
@@ -2597,6 +2623,15 @@
         "experimental_bearer_token": {
           "description": "Value to use with `Authorization: Bearer <token>` header. Use of this config is discouraged in favor of `env_key` for security reasons, but this may be necessary when using this programmatically.",
           "type": "string"
+        },
+        "experimental_bridge": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ChatBridge"
+            }
+          ],
+          "default": null,
+          "description": "Which Chat-Completions bridge implementation serves this provider (fork extension; only consulted when `wire_api = \"chat\"`). Unset uses the fork default, currently the rig bridge; set `\"genai\"` to opt back into the original genai bridge."
         },
         "gateway_oauth": {
           "allOf": [
@@ -6422,6 +6457,20 @@
           "description": "The Responses API exposed by OpenAI at `/v1/responses`.",
           "enum": [
             "responses"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The Chat Completions API exposed at `/v1/chat/completions`.",
+          "enum": [
+            "chat"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The Anthropic Messages API (`/v1/messages`), served through the chat bridges (fork extension). Explicit declaration for gateways whose Anthropic endpoint is not identifiable by URL (e.g. StepFun's `/step_plan`); `/anthropic`-style URLs keep auto-detecting under `wire_api = \"chat\"`.",
+          "enum": [
+            "anthropic"
           ],
           "type": "string"
         }

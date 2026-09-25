@@ -408,8 +408,18 @@ impl ModelProvider for ConfiguredModelProvider {
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
-        let remote_compaction = if self.info.is_openai()
-            || is_azure_responses_provider(&self.info.name, self.info.base_url.as_deref())
+        // Fork: Azure Responses providers default to the chat bridge, which
+        // drops CompactionTrigger items — remote compaction is only valid
+        // on the native Responses transport, so chat-family wires force
+        // local compaction.
+        let native_transport = !matches!(
+            self.info.wire_api,
+            codex_model_provider_info::WireApi::Chat
+                | codex_model_provider_info::WireApi::Anthropic
+        );
+        let remote_compaction = if native_transport
+            && (self.info.is_openai()
+                || is_azure_responses_provider(&self.info.name, self.info.base_url.as_deref()))
         {
             RemoteCompactionSupport::V2
         } else {

@@ -936,8 +936,13 @@ fn deserialize_model_providers<'de, D>(
 where
     D: serde::Deserializer<'de>,
 {
-    let model_providers = HashMap::<String, ModelProviderInfo>::deserialize(deserializer)?;
+    let mut model_providers = HashMap::<String, ModelProviderInfo>::deserialize(deserializer)?;
     validate_model_providers(&model_providers).map_err(serde::de::Error::custom)?;
+    // Fork: stamp each entry with its config key so identity checks
+    // (`is_first_party`) match on the key, not the display name.
+    for (key, provider) in model_providers.iter_mut() {
+        provider.provider_id = Some(key.clone());
+    }
     Ok(model_providers)
 }
 

@@ -228,6 +228,13 @@ pub struct ModelProviderInfo {
     /// into the original genai bridge.
     #[serde(default)]
     pub experimental_bridge: Option<ChatBridge>,
+    /// Runtime provider identity from the config key (fork extension,
+    /// `#[serde(skip)]` — filled at load time). Used by `is_first_party()`
+    /// instead of matching on the display `name`, which users can set to
+    /// anything (a third-party provider named "OpenAI" must not be routed
+    /// to the native Responses transport).
+    #[serde(skip)]
+    pub provider_id: Option<String>,
     /// Optional query parameters to append to the base URL.
     pub query_params: Option<HashMap<String, RedactedString>>,
     /// Additional HTTP headers to include in requests to this provider where
@@ -591,6 +598,7 @@ other non-default provider fields are not supported"
             aws: None,
             wire_api: WireApi::Responses,
             experimental_bridge: None,
+            provider_id: None,
             query_params: None,
             http_headers: Some(
                 [("version".to_string(), env!("CARGO_PKG_VERSION").into())]
@@ -642,6 +650,7 @@ other non-default provider fields are not supported"
             })),
             wire_api: WireApi::Responses,
             experimental_bridge: None,
+            provider_id: None,
             query_params: None,
             http_headers: Some(HashMap::from([(
                 AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER.to_string(),
@@ -669,6 +678,21 @@ other non-default provider fields are not supported"
 
     pub fn is_openai(&self) -> bool {
         self.name == OPENAI_PROVIDER_NAME
+    }
+
+    /// Identity-based first-party check (fork): OpenAI and Bedrock are the
+    /// only providers entitled to the native Responses transport under the
+    /// fork's default third-party bridging policy. Unlike `is_openai()`,
+    /// this matches on the config key (`provider_id`), not the display
+    /// name, so a user-defined provider named "OpenAI" is still routed
+    /// through the bridge.
+    pub fn is_first_party(&self) -> bool {
+        matches!(
+            self.provider_id.as_deref(),
+            Some(OPENAI_PROVIDER_ID)
+                | Some(AMAZON_BEDROCK_PROVIDER_ID)
+                | Some(AMAZON_BEDROCK_RUNTIME_PROVIDER_ID)
+        )
     }
 
     pub fn supports_codex_backend_routes(&self) -> bool {
@@ -741,7 +765,10 @@ pub fn built_in_model_providers(
         ),
     ]
     .into_iter()
-    .map(|(k, v)| (k.to_string(), v))
+    .map(|(k, mut v)| {
+        v.provider_id = Some(k.to_string());
+        (k.to_string(), v)
+    })
     .collect()
 }
 
@@ -780,7 +807,20 @@ pub fn merge_configured_model_providers(
                 }
             }
         } else {
-            model_providers.entry(key).or_insert(provider);
+            // Fork: when the key collides with a built-in provider, the
+            // user's config can at least override the bridge selection
+            // (e.g. `experimental_bridge = "native"` on ollama) even though
+            // the rest of the built-in defaults stand.
+            match model_providers.entry(key) {
+                std::collections::hash_map::Entry::Vacant(v) => {
+                    v.insert(provider);
+                }
+                std::collections::hash_map::Entry::Occupied(mut o) => {
+                    if o.get().experimental_bridge != provider.experimental_bridge {
+                        o.get_mut().experimental_bridge = provider.experimental_bridge;
+                    }
+                }
+            }
         }
     }
 
@@ -819,6 +859,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         aws: None,
         wire_api,
         experimental_bridge: None,
+        provider_id: None,
         query_params: None,
         http_headers: None,
         env_http_headers: None,

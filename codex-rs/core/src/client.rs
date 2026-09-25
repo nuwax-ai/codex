@@ -3129,7 +3129,7 @@ fn responses_routes_via_chat_bridge(
     match bridge {
         Some(ChatBridge::Native) => false,
         Some(ChatBridge::Rig) | Some(ChatBridge::Genai) => true,
-        None => !info.is_openai() && !info.is_amazon_bedrock(),
+        None => !info.is_first_party(),
     }
 }
 

@@ -71,6 +71,7 @@ async fn continue_after_stream_error() {
         env_key_instructions: None,
         experimental_bearer_token: None,
         experimental_bridge: None,
+            provider_id: None,
         auth: None,
         gateway_oauth: None,
         aws: None,

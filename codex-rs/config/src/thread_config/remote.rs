@@ -161,6 +161,7 @@ fn model_provider_from_proto(
     let wire_api = match proto::WireApi::try_from(provider.wire_api) {
         Ok(proto::WireApi::Responses) => WireApi::Responses,
         Ok(proto::WireApi::Chat) => WireApi::Chat,
+        Ok(proto::WireApi::Anthropic) => WireApi::Anthropic,
         Ok(proto::WireApi::Unspecified) => {
             return Err(parse_error("remote thread config omitted wire_api"));
         }
@@ -185,7 +186,16 @@ fn model_provider_from_proto(
         gateway_oauth: None,
         aws: None,
         wire_api,
-        experimental_bridge: None,
+        experimental_bridge: provider
+            .experimental_bridge
+            .as_deref()
+            .and_then(|s| match s {
+                "genai" => Some(codex_model_provider_info::ChatBridge::Genai),
+                "rig" => Some(codex_model_provider_info::ChatBridge::Rig),
+                "native" => Some(codex_model_provider_info::ChatBridge::Native),
+                _ => None,
+            }),
+        provider_id: None,
         query_params: provider.query_params.map(redacted_string_map),
         http_headers: provider.http_headers.map(redacted_string_map),
         env_http_headers: provider.env_http_headers.map(|map| map.values),
@@ -213,7 +223,8 @@ fn model_provider_to_proto(
         env_key_instructions,
         experimental_bearer_token,
         auth,
-        experimental_bridge: _,
+        experimental_bridge,
+        provider_id: _,
         gateway_oauth: _,
         aws: _,
         wire_api,
@@ -229,6 +240,7 @@ fn model_provider_to_proto(
         supports_standalone_web_search,
     } = provider;
 
+    let experimental_bridge_str = experimental_bridge.map(|b| b.to_string());
     proto::ModelProvider {
         id: id.into(),
         name,
@@ -239,6 +251,7 @@ fn model_provider_to_proto(
         experimental_bearer_token: experimental_bearer_token.map(RedactedString::into_inner),
         auth: auth.map(model_provider_auth_to_proto),
         wire_api: proto_wire_api(wire_api).into(),
+        experimental_bridge: experimental_bridge_str,
         query_params: query_params.map(proto_string_map),
         http_headers: http_headers.map(proto_string_map),
         env_http_headers: env_http_headers.map(|values| proto::StringMap { values }),
@@ -316,7 +329,7 @@ fn proto_wire_api(wire_api: WireApi) -> proto::WireApi {
         WireApi::Chat => proto::WireApi::Chat,
         // The proto schema has no Anthropic variant yet (fork limitation);
         // test helpers use this fn, so map it to Chat.
-        WireApi::Anthropic => proto::WireApi::Chat,
+        WireApi::Anthropic => proto::WireApi::Anthropic,
     }
 }
 
@@ -497,6 +510,7 @@ mod tests {
                                 cwd: workspace_cwd,
                             }),
                             wire_api: proto::WireApi::Responses.into(),
+                            experimental_bridge: None,
                             query_params: Some(proto::StringMap {
                                 values: HashMap::from([(
                                     "api-version".to_string(),
@@ -561,6 +575,7 @@ mod tests {
             env_key_instructions: None,
             experimental_bearer_token: None,
             experimental_bridge: None,
+            provider_id: None,
             auth: Some(ModelProviderAuthInfo {
                 command: "token-helper".to_string(),
                 args: vec!["--json".into()],

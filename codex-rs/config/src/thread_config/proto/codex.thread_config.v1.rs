@@ -79,6 +79,9 @@ pub struct ModelProvider {
     pub supports_standalone_web_search: bool,
     #[prost(string, optional, tag = "19")]
     pub model_catalog_url: ::core::option::Option<::prost::alloc::string::String>,
+    /// Fork: bridge selection ("genai" | "rig" | "native").
+    #[prost(string, optional, tag = "20")]
+    pub experimental_bridge: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StringMap {
@@ -105,6 +108,7 @@ pub enum WireApi {
     Unspecified = 0,
     Responses = 1,
     Chat = 2,
+    Anthropic = 3,
 }
 impl WireApi {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -116,6 +120,7 @@ impl WireApi {
             Self::Unspecified => "WIRE_API_UNSPECIFIED",
             Self::Responses => "WIRE_API_RESPONSES",
             Self::Chat => "WIRE_API_CHAT",
+            Self::Anthropic => "WIRE_API_ANTHROPIC",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -124,6 +129,7 @@ impl WireApi {
             "WIRE_API_UNSPECIFIED" => Some(Self::Unspecified),
             "WIRE_API_RESPONSES" => Some(Self::Responses),
             "WIRE_API_CHAT" => Some(Self::Chat),
+            "WIRE_API_ANTHROPIC" => Some(Self::Anthropic),
             _ => None,
         }
     }
