@@ -471,7 +471,7 @@ jobs:
                    aarch64-unknown-linux-musl x86_64-pc-windows-msvc aarch64-pc-windows-msvc; do
             ext="tar.gz"; [ "${t#*windows}" != "$t" ] && ext="zip"
             code=$(curl -s -o /dev/null -w "%{http_code}" \
-              "https://nuwa-packages.oss-rg-china-mainland.aliyuncs.com/nuwax-codex/${{ needs.get-version.outputs.tag_name }}/codex-${t}.${ext}")
+              "https://nuwa-packages.oss-rg-china-mainland.aliyuncs.com/nuwax-codex/${{ needs.get-version.outputs.tag_name }}/nuwax-codex-${VERSION}-${t}.${ext}")
             echo "$t -> HTTP $code"
             [ "$code" = "200" ] && FOUND=$((FOUND+1))
           done
