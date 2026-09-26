@@ -1,0 +1,266 @@
+{
+  "vendor": "mimo",
+  "bridge": "rig",
+  "tag": "anthropic-effort",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "用一句话说明快速排序的平均复杂度,并简单解释为什么。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant. Answer in Chinese.",
+    "model": "mimo-v2.6-flash",
+    "parallel_tool_calls": true,
+    "reasoning": {
+      "effort": "high"
+    },
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto"
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rsn_18d8ed2f126e52b00",
+        "summary": [],
+        "content": null,
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "The user asks to",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " explain quick",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "sort's average time",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " complexity in one sentence,",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " with a",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " brief explanation of",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " why.",
+        "content_index": 0
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "txt_18d8ed2f1b2ba4981",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "**快速排序的平均"
+    },
+    {
+      "OutputTextDelta": "时间"
+    },
+    {
+      "OutputTextDelta": "复杂度为"
+    },
+    {
+      "OutputTextDelta": " O(n log n"
+    },
+    {
+      "OutputTextDelta": ")。**\n\n"
+    },
+    {
+      "OutputTextDelta": "**原因"
+    },
+    {
+      "OutputTextDelta": "简"
+    },
+    {
+      "OutputTextDelta": "述：** "
+    },
+    {
+      "OutputTextDelta": "每次选取"
+    },
+    {
+      "OutputTextDelta": "基准"
+    },
+    {
+      "OutputTextDelta": "（pivot"
+    },
+    {
+      "OutputTextDelta": "）进行"
+    },
+    {
+      "OutputTextDelta": "划分时，假设"
+    },
+    {
+      "OutputTextDelta": "大致"
+    },
+    {
+      "OutputTextDelta": "能"
+    },
+    {
+      "OutputTextDelta": "将待"
+    },
+    {
+      "OutputTextDelta": "排序"
+    },
+    {
+      "OutputTextDelta": "序列均匀"
+    },
+    {
+      "OutputTextDelta": "地"
+    },
+    {
+      "OutputTextDelta": "分为"
+    },
+    {
+      "OutputTextDelta": "两半"
+    },
+    {
+      "OutputTextDelta": "，那么"
+    },
+    {
+      "OutputTextDelta": "划分"
+    },
+    {
+      "OutputTextDelta": "的"
+    },
+    {
+      "OutputTextDelta": "深度约为"
+    },
+    {
+      "OutputTextDelta": " log n "
+    },
+    {
+      "OutputTextDelta": "层，而每一层的"
+    },
+    {
+      "OutputTextDelta": "划分操作"
+    },
+    {
+      "OutputTextDelta": "都"
+    },
+    {
+      "OutputTextDelta": "需"
+    },
+    {
+      "OutputTextDelta": "对 n"
+    },
+    {
+      "OutputTextDelta": " 个元素进行扫描"
+    },
+    {
+      "OutputTextDelta": "比较"
+    },
+    {
+      "OutputTextDelta": "，因此总"
+    },
+    {
+      "OutputTextDelta": "复杂度"
+    },
+    {
+      "OutputTextDelta": "为"
+    },
+    {
+      "OutputTextDelta": " **"
+    },
+    {
+      "OutputTextDelta": "O"
+    },
+    {
+      "OutputTextDelta": "(n)"
+    },
+    {
+      "OutputTextDelta": " × O(log"
+    },
+    {
+      "OutputTextDelta": " n) = O(n log n)**"
+    },
+    {
+      "OutputTextDelta": "。"
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rsn_18d8ed2f126e52b00",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user asks to explain quicksort's average time complexity in one sentence, with a brief explanation of why."
+          }
+        ],
+        "encrypted_content": "codex-rig-reasoning-v1:{\"source\":\"Anthropic:1d782f075448499f964a1fd0c6ec877184294fe44f63fcd82247102c381f4a5c\",\"blocks\":[{\"id\":null,\"content\":[{\"type\":\"text\",\"content\":{\"text\":\"The user asks to explain quicksort's average time complexity in one sentence, with a brief explanation of why.\"}}]}]}"
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "txt_18d8ed2f1b2ba4981",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "**快速排序的平均时间复杂度为 O(n log n)。**\n\n**原因简述：** 每次选取基准（pivot）进行划分时，假设大致能将待排序序列均匀地分为两半，那么划分的深度约为 log n 层，而每一层的划分操作都需对 n 个元素进行扫描比较，因此总复杂度为 **O(n) × O(log n) = O(n log n)**。"
+          }
+        ]
+      }
+    },
+    {
+      "ServerModel": "mimo-v2.6-flash"
+    },
+    {
+      "Completed": {
+        "response_id": "",
+        "token_usage": {
+          "input_tokens": 36,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 121,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 157
+        },
+        "usage_metadata": null,
+        "end_turn": true
+      }
+    }
+  ]
+}

@@ -213,6 +213,64 @@ async fn scenario_anthropic(cfg: &LiveConfig, bridge: Bridge) {
     codex_live_tests::assert_reasoning_before_message(&events, &ctx);
 }
 
+/// Chat-wire structured output: the gateway must ACCEPT response_format
+/// (json_schema) — the compat risk this guards — without the turn failing.
+/// Whether the model OBEYS the schema is model-dependent; parse success is
+/// logged as a diagnostic, not asserted.
+async fn scenario_chat_output_schema(cfg: &LiveConfig, bridge: Bridge) {
+    let mut request = base_request(
+        cfg,
+        "You are a helpful assistant. Answer in Chinese.",
+        "北京和上海分别叫什么名字?",
+    );
+    request.text = Some(codex_api::TextControls {
+        verbosity: None,
+        format: Some(codex_api::TextFormat {
+            r#type: codex_api::TextFormatType::JsonSchema,
+            strict: false,
+            name: "city_pair".into(),
+            schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "city1": {"type": "string"},
+                    "city2": {"type": "string"}
+                },
+                "required": ["city1", "city2"],
+                "additionalProperties": false
+            }),
+        }),
+    });
+    let events = run_turn(
+        cfg,
+        &cfg.base_url,
+        LiveWire::Chat,
+        bridge,
+        &request,
+        "chat-schema",
+    )
+    .await;
+
+    let ctx = format!("{}/{} chat-schema", cfg.vendor, bridge.name());
+    assert!(
+        codex_live_tests::text_len(&events) > 0,
+        "{ctx}: expected text output through response_format"
+    );
+    codex_live_tests::assert_completed_with_usage(&events, &ctx);
+    let joined: String = events
+        .iter()
+        .filter_map(|event| match event {
+            ResponseEvent::OutputTextDelta(delta) => Some(delta.as_str()),
+            _ => None,
+        })
+        .collect();
+    match serde_json::from_str::<serde_json::Value>(&joined) {
+        Ok(value) => println!("[summary] {ctx}: model obeyed the schema ({})", value),
+        Err(error) => println!(
+            "[summary] {ctx}: gateway accepted response_format; model output not valid JSON ({error})"
+        ),
+    }
+}
+
 /// The effort mapping canary: requesting `high` must surface as real
 /// thinking on the Anthropic wire. A gateway that degrades thinking on the
 /// unknown `output_config.effort` field (the GLM failure mode) turns this
@@ -452,6 +510,11 @@ macro_rules! bridge_matrix {
 }
 
 bridge_matrix!(chat, scenario_chat, ["mimo", "glm", "step"]);
+bridge_matrix!(
+    chat_output_schema,
+    scenario_chat_output_schema,
+    ["mimo", "glm", "step"]
+);
 bridge_matrix!(effort_low, scenario_effort_low, ["mimo", "glm", "step"]);
 bridge_matrix!(
     tool_round_trip,

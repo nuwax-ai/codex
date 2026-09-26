@@ -1,0 +1,1835 @@
+{
+  "vendor": "glm",
+  "tag": "chat-schema",
+  "rig_events": [
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "The"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " user"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " is"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " asking"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " in"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Chinese"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ":"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " \""
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "北京"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "和"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "上海"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "分别"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "叫"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "什么"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "名字"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "?\""
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " which"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " translates"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " to"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " \""
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "What"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " are"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " the"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " names"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " of"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Beijing"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " and"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Shanghai"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " respectively"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "?\"\n\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "This"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " is"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " a"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " bit"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " of"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " an"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " ambiguous"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " question"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "."
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Let"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " me"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " think"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " about"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " what"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " they"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " might"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " be"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " asking"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ":\n\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "1"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "."
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " They"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " could"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " be"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " asking"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " about"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " the"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " historical"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "/"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "alternate"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " names"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " of"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Beijing"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " and"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Shanghai"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "2"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "."
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " They"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " could"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " be"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " asking"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " about"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " abbrev"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "iations"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "/n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "ick"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "names"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " of"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " these"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " cities"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "3"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "."
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " The"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " question"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " is"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " somewhat"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " odd"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " because"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " \""
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "Be"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "ijing"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\""
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " and"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " \""
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "Sh"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "anghai"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\""
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " ARE"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " their"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " names"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\n\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "Let"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " me"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " think"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " about"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " the"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " common"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " interpretations"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ":\n\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "**"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "Be"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "ijing"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " ("
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "北京"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "):"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "**\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "-"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Abb"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "rev"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "iation"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ":"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " 京"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " ("
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "J"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "ī"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "ng"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ")\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "-"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Historical"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " names"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ":"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " "
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "燕"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "京"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ","
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " 北"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "平"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ","
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " 大"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "都"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " ("
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "D"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "adu"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ","
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Yuan"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " dynasty"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "),"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " 北"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "平"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ","
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " "
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "蓟"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ","
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " "
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "幽"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "州"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "-"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Nick"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "name"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ":"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " "
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "帝"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "都"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\n\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "**"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "Sh"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "anghai"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " ("
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "上海"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "):"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "**\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "-"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Abb"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "rev"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "iation"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ":"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " "
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "沪"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " ("
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "H"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "ù"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ")"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " or"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " "
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "申"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " ("
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "Sh"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "ē"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ")\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "-"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Historical"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " names"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ":"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " 华"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "亭"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ","
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " 松"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "江"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "府"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "-"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Nick"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "name"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ":"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " "
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "魔"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "都"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ","
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " "
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "申"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "城"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ","
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " "
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "沪"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "上"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\n\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "So"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " the"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " most"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " likely"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " interpretation"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " is"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " asking"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " about"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " the"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " abbrev"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "iations"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " ("
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "简称"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ")"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " of"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " these"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " two"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " cities"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ","
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " which"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " is"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " a"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " common"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " question"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " in"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Chinese"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " education"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ":\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "-"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " 北京"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "简称"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\""
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "京"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\"\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "-"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " 上海"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "简称"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\""
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "沪"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\""
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "或"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\""
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "申"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "\"\n\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "I"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " should"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " answer"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " this"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " compreh"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "ensively"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ","
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " covering"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ":\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "1"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "."
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " The"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " abbrev"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "iations"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " ("
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "简称"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ")\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "2"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "."
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Historical"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " names"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " ("
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "历史"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "名称"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ")\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "3"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "."
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Common"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " nick"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "names"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " ("
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "别"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "称"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "/"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "昵"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "称"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ")\n\n"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "Since"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " the"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " question"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " is"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " ambiguous"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": ","
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " I"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "'ll"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " cover"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " the"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " most"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " likely"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " interpretations"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "."
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " The"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " answer"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " should"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " be"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " in"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " Chinese"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " as"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": " instructed"
+    },
+    {
+      "id": "dY85uKvyIj0FFGZJ6xmvy",
+      "reasoning": "."
+    },
+    {
+      "text": "北京"
+    },
+    {
+      "text": "和"
+    },
+    {
+      "text": "上海"
+    },
+    {
+      "text": "作为中国"
+    },
+    {
+      "text": "两大"
+    },
+    {
+      "text": "重要"
+    },
+    {
+      "text": "城市"
+    },
+    {
+      "text": "，"
+    },
+    {
+      "text": "有"
+    },
+    {
+      "text": "多个"
+    },
+    {
+      "text": "名称"
+    },
+    {
+      "text": "：\n\n"
+    },
+    {
+      "text": "##"
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "简"
+    },
+    {
+      "text": "称"
+    },
+    {
+      "text": "\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " **"
+    },
+    {
+      "text": "北京"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "："
+    },
+    {
+      "text": "简称"
+    },
+    {
+      "text": "“"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "京"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "”\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " **"
+    },
+    {
+      "text": "上海"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "："
+    },
+    {
+      "text": "简称"
+    },
+    {
+      "text": "“"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "沪"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "”，"
+    },
+    {
+      "text": "也称"
+    },
+    {
+      "text": "“"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "申"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "”\n\n"
+    },
+    {
+      "text": "##"
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "历"
+    },
+    {
+      "text": "史"
+    },
+    {
+      "text": "名称"
+    },
+    {
+      "text": "\n\n"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "北京"
+    },
+    {
+      "text": "："
+    },
+    {
+      "text": "**\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "燕"
+    },
+    {
+      "text": "京"
+    },
+    {
+      "text": "（"
+    },
+    {
+      "text": "古代"
+    },
+    {
+      "text": "燕"
+    },
+    {
+      "text": "国"
+    },
+    {
+      "text": "都"
+    },
+    {
+      "text": "城"
+    },
+    {
+      "text": "）\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "蓟"
+    },
+    {
+      "text": "、"
+    },
+    {
+      "text": "幽"
+    },
+    {
+      "text": "州"
+    },
+    {
+      "text": "（"
+    },
+    {
+      "text": "古代"
+    },
+    {
+      "text": "称"
+    },
+    {
+      "text": "谓"
+    },
+    {
+      "text": "）\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " 大"
+    },
+    {
+      "text": "都"
+    },
+    {
+      "text": "（"
+    },
+    {
+      "text": "元"
+    },
+    {
+      "text": "朝"
+    },
+    {
+      "text": "时期"
+    },
+    {
+      "text": "）\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " 北"
+    },
+    {
+      "text": "平"
+    },
+    {
+      "text": "（"
+    },
+    {
+      "text": "民国"
+    },
+    {
+      "text": "时期"
+    },
+    {
+      "text": "，"
+    },
+    {
+      "text": "192"
+    },
+    {
+      "text": "8"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": "19"
+    },
+    {
+      "text": "4"
+    },
+    {
+      "text": "9"
+    },
+    {
+      "text": "年"
+    },
+    {
+      "text": "）\n\n"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "上海"
+    },
+    {
+      "text": "："
+    },
+    {
+      "text": "**\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " 华"
+    },
+    {
+      "text": "亭"
+    },
+    {
+      "text": "（"
+    },
+    {
+      "text": "古代"
+    },
+    {
+      "text": "）\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " 松"
+    },
+    {
+      "text": "江"
+    },
+    {
+      "text": "府"
+    },
+    {
+      "text": "（"
+    },
+    {
+      "text": "明清"
+    },
+    {
+      "text": "时期"
+    },
+    {
+      "text": "）\n\n"
+    },
+    {
+      "text": "##"
+    },
+    {
+      "text": " "
+    },
+    {
+      "text": "常"
+    },
+    {
+      "text": "见"
+    },
+    {
+      "text": "别"
+    },
+    {
+      "text": "称"
+    },
+    {
+      "text": "/"
+    },
+    {
+      "text": "雅"
+    },
+    {
+      "text": "号"
+    },
+    {
+      "text": "\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " **"
+    },
+    {
+      "text": "北京"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "："
+    },
+    {
+      "text": "帝"
+    },
+    {
+      "text": "都"
+    },
+    {
+      "text": "\n"
+    },
+    {
+      "text": "-"
+    },
+    {
+      "text": " **"
+    },
+    {
+      "text": "上海"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "："
+    },
+    {
+      "text": "魔"
+    },
+    {
+      "text": "都"
+    },
+    {
+      "text": "、"
+    },
+    {
+      "text": "申"
+    },
+    {
+      "text": "城"
+    },
+    {
+      "text": "、"
+    },
+    {
+      "text": "沪"
+    },
+    {
+      "text": "上"
+    },
+    {
+      "text": "、"
+    },
+    {
+      "text": "东方"
+    },
+    {
+      "text": "明珠"
+    },
+    {
+      "text": "\n\n"
+    },
+    {
+      "text": "您"
+    },
+    {
+      "text": "想"
+    },
+    {
+      "text": "了解"
+    },
+    {
+      "text": "哪"
+    },
+    {
+      "text": "方面的"
+    },
+    {
+      "text": "具体"
+    },
+    {
+      "text": "信息"
+    },
+    {
+      "text": "呢"
+    },
+    {
+      "text": "？"
+    },
+    {
+      "text": "我可以"
+    },
+    {
+      "text": "为您"
+    },
+    {
+      "text": "详细介绍。"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 31,
+        "output_tokens": 503,
+        "total_tokens": 534,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 324
+      },
+      "finish_reason": "stop",
+      "message_id": null,
+      "response_id": "20260927005405debc18625b8b4c69",
+      "provider": "openai",
+      "model": "glm-5.3-flash",
+      "raw": {
+        "additional_params": {
+          "created": 1790441645,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "stop",
+        "model": "glm-5.3-flash",
+        "response_id": "20260927005405debc18625b8b4c69",
+        "usage": {
+          "completion_tokens": 503,
+          "completion_tokens_details": {
+            "reasoning_tokens": 324
+          },
+          "prompt_tokens": 31,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 534
+        }
+      }
+    }
+  ],
+  "custom_tools": []
+}

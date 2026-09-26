@@ -1,0 +1,359 @@
+{
+  "vendor": "mimo",
+  "bridge": "rig",
+  "tag": "chat-schema",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "北京和上海分别叫什么名字?",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant. Answer in Chinese.",
+    "model": "mimo-v2.6-flash",
+    "parallel_tool_calls": true,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "text": {
+      "format": {
+        "name": "city_pair",
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "city1": {
+              "type": "string"
+            },
+            "city2": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "city1",
+            "city2"
+          ],
+          "type": "object"
+        },
+        "strict": false,
+        "type": "json_schema"
+      }
+    },
+    "tool_choice": "auto"
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rsn_18d8ed30111b0df80",
+        "summary": [],
+        "content": null,
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "The user is",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " asking about the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " names of Beijing and Shanghai.\n\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "Be",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "ijing and",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Shanghai are both",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " cities in China",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".\n\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "- ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "北京 (B",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "ěij",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "īng) -",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " The",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " capital of China",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ", which",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " means",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " \"Northern",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Capital.\"\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "- 上海 (Shàn",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "gh",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "ǎi) - A",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " major city in China, which literally",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " means \"On",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the Sea\" or \"Up",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " to the Sea.\"\n\nThe question",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " seems",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " straightforward",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " - they",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "'re asking what",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Beijing",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " and Shanghai are called. Let",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " me provide their",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " names and",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " brief",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " information",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 0
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "txt_18d8ed3049fe32081",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "{\""
+    },
+    {
+      "OutputTextDelta": "c"
+    },
+    {
+      "OutputTextDelta": "it"
+    },
+    {
+      "OutputTextDelta": "y"
+    },
+    {
+      "OutputTextDelta": "1"
+    },
+    {
+      "OutputTextDelta": "\":\"Be"
+    },
+    {
+      "OutputTextDelta": "ijing\",\"cit"
+    },
+    {
+      "OutputTextDelta": "y2\":\"Shanghai\"}"
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rsn_18d8ed30111b0df80",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user is asking about the names of Beijing and Shanghai.\n\nBeijing and Shanghai are both cities in China.\n\n- 北京 (Běijīng) - The capital of China, which means \"Northern Capital.\"\n- 上海 (Shànghǎi) - A major city in China, which literally means \"On the Sea\" or \"Up to the Sea.\"\n\nThe question seems straightforward - they're asking what Beijing and Shanghai are called. Let me provide their names and brief information."
+          }
+        ],
+        "encrypted_content": "codex-rig-reasoning-v1:{\"source\":\"Chat:092a95d161d77be7d3b5de3b9a6905742790245a2e5854e30fa19061ef19dfa2\",\"blocks\":[{\"id\":null,\"content\":[{\"type\":\"text\",\"content\":{\"text\":\"The user is asking about the names of Beijing and Shanghai.\\n\\nBeijing and Shanghai are both cities in China.\\n\\n- 北京 (Běijīng) - The capital of China, which means \\\"Northern Capital.\\\"\\n- 上海 (Shànghǎi) - A major city in China, which literally means \\\"On the Sea\\\" or \\\"Up to the Sea.\\\"\\n\\nThe question seems straightforward - they're asking what Beijing and Shanghai are called. Let me provide their names and brief information.\"}}]}]}"
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "txt_18d8ed3049fe32081",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "{\"city1\":\"Beijing\",\"city2\":\"Shanghai\"}"
+          }
+        ]
+      }
+    },
+    {
+      "ServerModel": "mimo-v2.6-flash"
+    },
+    {
+      "Completed": {
+        "response_id": "3b99bed7-2c5a-4c97-99a0-03caccbc2257_35d043f47c714e67a6a5b851b3308563",
+        "token_usage": {
+          "input_tokens": 29,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 121,
+          "reasoning_output_tokens": 102,
+          "total_tokens": 150
+        },
+        "usage_metadata": null,
+        "end_turn": true
+      }
+    }
+  ]
+}

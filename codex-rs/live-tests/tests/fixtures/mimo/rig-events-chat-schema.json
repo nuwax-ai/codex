@@ -1,0 +1,212 @@
+{
+  "vendor": "mimo",
+  "tag": "chat-schema",
+  "rig_events": [
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": "The user is"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " asking about the"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " names of Beijing and Shanghai.\n\n"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": "Be"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": "ijing and"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " Shanghai are both"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " cities in China"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": ".\n\n"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": "- "
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": "北京 (B"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": "ěij"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": "īng) -"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " The"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " capital of China"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": ", which"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " means"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " \"Northern"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " Capital.\"\n"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": "- 上海 (Shàn"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": "gh"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": "ǎi) - A"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " major city in China, which literally"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " means \"On"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " the Sea\" or \"Up"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " to the Sea.\"\n\nThe question"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " seems"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " straightforward"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " - they"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": "'re asking what"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " Beijing"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " and Shanghai are called. Let"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " me provide their"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " names and"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " brief"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": " information"
+    },
+    {
+      "id": "aZdtT-gaXD2Us30KkAbWJ",
+      "reasoning": "."
+    },
+    {
+      "text": "{\""
+    },
+    {
+      "text": "c"
+    },
+    {
+      "text": "it"
+    },
+    {
+      "text": "y"
+    },
+    {
+      "text": "1"
+    },
+    {
+      "text": "\":\"Be"
+    },
+    {
+      "text": "ijing\",\"cit"
+    },
+    {
+      "text": "y2\":\"Shanghai\"}"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 121,
+        "total_tokens": 150,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 102
+      },
+      "finish_reason": "stop",
+      "message_id": null,
+      "response_id": "3b99bed7-2c5a-4c97-99a0-03caccbc2257_35d043f47c714e67a6a5b851b3308563",
+      "provider": "openai",
+      "model": "mimo-v2.6-flash",
+      "raw": {
+        "additional_params": {
+          "created": 1790441643,
+          "object": "chat.completion.chunk"
+        },
+        "finish_reason": "stop",
+        "model": "mimo-v2.6-flash",
+        "response_id": "3b99bed7-2c5a-4c97-99a0-03caccbc2257_35d043f47c714e67a6a5b851b3308563",
+        "usage": {
+          "completion_tokens": 121,
+          "completion_tokens_details": {
+            "reasoning_tokens": 102
+          },
+          "prompt_tokens": 29,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 150
+        }
+      }
+    }
+  ],
+  "custom_tools": []
+}

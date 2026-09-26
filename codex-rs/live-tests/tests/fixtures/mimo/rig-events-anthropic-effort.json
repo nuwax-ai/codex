@@ -1,0 +1,203 @@
+{
+  "vendor": "mimo",
+  "tag": "anthropic-effort",
+  "rig_events": [
+    {
+      "id": "6qz4M7u1d5Qdf83lrMfXu",
+      "reasoning": "The user asks to"
+    },
+    {
+      "id": "6qz4M7u1d5Qdf83lrMfXu",
+      "reasoning": " explain quick"
+    },
+    {
+      "id": "6qz4M7u1d5Qdf83lrMfXu",
+      "reasoning": "sort's average time"
+    },
+    {
+      "id": "6qz4M7u1d5Qdf83lrMfXu",
+      "reasoning": " complexity in one sentence,"
+    },
+    {
+      "id": "6qz4M7u1d5Qdf83lrMfXu",
+      "reasoning": " with a"
+    },
+    {
+      "id": "6qz4M7u1d5Qdf83lrMfXu",
+      "reasoning": " brief explanation of"
+    },
+    {
+      "id": "6qz4M7u1d5Qdf83lrMfXu",
+      "reasoning": " why."
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "The user asks to explain quicksort's average time complexity in one sentence, with a brief explanation of why."
+            }
+          }
+        ]
+      },
+      "id": "6qz4M7u1d5Qdf83lrMfXu"
+    },
+    {
+      "text": "**快速排序的平均"
+    },
+    {
+      "text": "时间"
+    },
+    {
+      "text": "复杂度为"
+    },
+    {
+      "text": " O(n log n"
+    },
+    {
+      "text": ")。**\n\n"
+    },
+    {
+      "text": "**原因"
+    },
+    {
+      "text": "简"
+    },
+    {
+      "text": "述：** "
+    },
+    {
+      "text": "每次选取"
+    },
+    {
+      "text": "基准"
+    },
+    {
+      "text": "（pivot"
+    },
+    {
+      "text": "）进行"
+    },
+    {
+      "text": "划分时，假设"
+    },
+    {
+      "text": "大致"
+    },
+    {
+      "text": "能"
+    },
+    {
+      "text": "将待"
+    },
+    {
+      "text": "排序"
+    },
+    {
+      "text": "序列均匀"
+    },
+    {
+      "text": "地"
+    },
+    {
+      "text": "分为"
+    },
+    {
+      "text": "两半"
+    },
+    {
+      "text": "，那么"
+    },
+    {
+      "text": "划分"
+    },
+    {
+      "text": "的"
+    },
+    {
+      "text": "深度约为"
+    },
+    {
+      "text": " log n "
+    },
+    {
+      "text": "层，而每一层的"
+    },
+    {
+      "text": "划分操作"
+    },
+    {
+      "text": "都"
+    },
+    {
+      "text": "需"
+    },
+    {
+      "text": "对 n"
+    },
+    {
+      "text": " 个元素进行扫描"
+    },
+    {
+      "text": "比较"
+    },
+    {
+      "text": "，因此总"
+    },
+    {
+      "text": "复杂度"
+    },
+    {
+      "text": "为"
+    },
+    {
+      "text": " **"
+    },
+    {
+      "text": "O"
+    },
+    {
+      "text": "(n)"
+    },
+    {
+      "text": " × O(log"
+    },
+    {
+      "text": " n) = O(n log n)**"
+    },
+    {
+      "text": "。"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 36,
+        "output_tokens": 121,
+        "total_tokens": 157,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": "msg_5b5b24792a754dfa8854245e",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "mimo-v2.6-flash",
+      "raw": {
+        "message_id": "msg_5b5b24792a754dfa8854245e",
+        "model": "mimo-v2.6-flash",
+        "stop_reason": "end_turn",
+        "usage": {
+          "cache_creation_input_tokens": null,
+          "cache_read_input_tokens": null,
+          "input_tokens": 36,
+          "output_tokens": 121
+        }
+      }
+    }
+  ],
+  "custom_tools": []
+}

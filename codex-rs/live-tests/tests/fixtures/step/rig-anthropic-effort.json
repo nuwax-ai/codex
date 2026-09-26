@@ -1,0 +1,548 @@
+{
+  "vendor": "step",
+  "bridge": "rig",
+  "tag": "anthropic-effort",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "用一句话说明快速排序的平均复杂度,并简单解释为什么。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant. Answer in Chinese.",
+    "model": "step-5-preview",
+    "parallel_tool_calls": true,
+    "reasoning": {
+      "effort": "high"
+    },
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto"
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rsn_18d8ed2f13d19fb80",
+        "summary": [],
+        "content": null,
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "用户",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "要求用一句话说明",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "快速排序的平均复杂度",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "，并简单解释",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "为什么。\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n快速",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "排序的平均",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "时间复杂度是",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " O(n log n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ")。原因是",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "每次划分",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "选定",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "基准",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "值",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "后，每次",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "遍历",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "把",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "当前",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "数组分成两个子",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "数组，平均情况下",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "每次",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "都能",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "把数组分成",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "近似",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "等",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "长的两部分",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "，所以",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "递归树的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "深度约为",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " log",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " n，而每一",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "层需要",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "遍历全部",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "元素",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "进行",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "划分",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "，即",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "每",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "层需要",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " O(n) ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "的时间，因此总",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "平均",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "复杂度为 O(n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " log n)。\n\n需要用",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "中文",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "回答，并且",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "“",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "一句话说明”",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "平均",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "复杂度，然后",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "简单解释。可以",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "组织",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "成：",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " 第一",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "句给出",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "复杂度",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "。",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n- 然后用",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "一两",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "句",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "简单",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "解释。\n\n确保",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "简洁",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "。",
+        "content_index": 0
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "txt_18d8ed2fa3670e101",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "快速排序"
+    },
+    {
+      "OutputTextDelta": "的平均时间复杂度是 **"
+    },
+    {
+      "OutputTextDelta": "O(n log n"
+    },
+    {
+      "OutputTextDelta": ")**。  \n"
+    },
+    {
+      "OutputTextDelta": "因为在平均情况下，"
+    },
+    {
+      "OutputTextDelta": "每次划分都能"
+    },
+    {
+      "OutputTextDelta": "近似"
+    },
+    {
+      "OutputTextDelta": "把数组均匀"
+    },
+    {
+      "OutputTextDelta": "分成两个子问题"
+    },
+    {
+      "OutputTextDelta": "，递归"
+    },
+    {
+      "OutputTextDelta": "深度约为 log"
+    },
+    {
+      "OutputTextDelta": " n，而每"
+    },
+    {
+      "OutputTextDelta": "层划分"
+    },
+    {
+      "OutputTextDelta": "总共要"
+    },
+    {
+      "OutputTextDelta": "遍历 O"
+    },
+    {
+      "OutputTextDelta": "(n)"
+    },
+    {
+      "OutputTextDelta": " 个元素，"
+    },
+    {
+      "OutputTextDelta": "所以总复杂度为"
+    },
+    {
+      "OutputTextDelta": " O(n log n"
+    },
+    {
+      "OutputTextDelta": ")。"
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rsn_18d8ed2f13d19fb80",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "用户要求用一句话说明快速排序的平均复杂度，并简单解释为什么。\n\n快速排序的平均时间复杂度是 O(n log n)。原因是每次划分选定基准值后，每次遍历把当前数组分成两个子数组，平均情况下每次都能把数组分成近似等长的两部分，所以递归树的深度约为 log n，而每一层需要遍历全部元素进行划分，即每层需要 O(n) 的时间，因此总平均复杂度为 O(n log n)。\n\n需要用中文回答，并且“一句话说明”平均复杂度，然后简单解释。可以组织成：\n- 第一句给出复杂度。\n- 然后用一两句简单解释。\n\n确保简洁。"
+          }
+        ],
+        "encrypted_content": "codex-rig-reasoning-v1:{\"source\":\"Anthropic:b00fab0031fb8980d885dd1cecf7ed0ae707a093a049143a89751f70c6d9e53b\",\"blocks\":[{\"id\":null,\"content\":[{\"type\":\"text\",\"content\":{\"text\":\"用户要求用一句话说明快速排序的平均复杂度，并简单解释为什么。\\n\\n快速排序的平均时间复杂度是 O(n log n)。原因是每次划分选定基准值后，每次遍历把当前数组分成两个子数组，平均情况下每次都能把数组分成近似等长的两部分，所以递归树的深度约为 log n，而每一层需要遍历全部元素进行划分，即每层需要 O(n) 的时间，因此总平均复杂度为 O(n log n)。\\n\\n需要用中文回答，并且“一句话说明”平均复杂度，然后简单解释。可以组织成：\\n- 第一句给出复杂度。\\n- 然后用一两句简单解释。\\n\\n确保简洁。\",\"signature\":\"d5130f2f02ca48c88853481ebf314a26\"}}]}]}"
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "txt_18d8ed2fa3670e101",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "快速排序的平均时间复杂度是 **O(n log n)**。  \n因为在平均情况下，每次划分都能近似把数组均匀分成两个子问题，递归深度约为 log n，而每层划分总共要遍历 O(n) 个元素，所以总复杂度为 O(n log n)。"
+          }
+        ]
+      }
+    },
+    {
+      "ServerModel": "step-5-preview"
+    },
+    {
+      "Completed": {
+        "response_id": "",
+        "token_usage": {
+          "input_tokens": 39,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 191,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 230
+        },
+        "usage_metadata": null,
+        "end_turn": true
+      }
+    }
+  ]
+}

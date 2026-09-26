@@ -1,0 +1,722 @@
+{
+  "vendor": "step",
+  "bridge": "rig",
+  "tag": "chat-schema",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "北京和上海分别叫什么名字?",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant. Answer in Chinese.",
+    "model": "step-5-preview",
+    "parallel_tool_calls": true,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "text": {
+      "format": {
+        "name": "city_pair",
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "city1": {
+              "type": "string"
+            },
+            "city2": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "city1",
+            "city2"
+          ],
+          "type": "object"
+        },
+        "strict": false,
+        "type": "json_schema"
+      }
+    },
+    "tool_choice": "auto"
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rsn_18d8ed3065dd8a780",
+        "summary": [],
+        "content": null,
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "用户",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "问的是“北京",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "和上海分别叫什么",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "名字”，这是一个关于",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "中国地理",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "/",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "城市名称",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "的简单问题。\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n北京，",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "简称“京",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "”，是",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "中华人民共和",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "国的首都。",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n上海，",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "简称“沪”",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "或“申”，",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "是中国",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "最大的城市",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "之一。\n\n用户",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "可能是在问：",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n1. 城市的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "简称",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n2. 城市的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "别称/",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "美称\n3",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ". 城市的全",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "称\n\n考虑到",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "问题的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "简洁",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "性，最",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "可能的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "意图",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "是询问",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "两",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "座",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "城市的简称或",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "别称。\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n北京",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "：",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n- 简称：",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "京\n-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " 别称：",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "燕京",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "、北平",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "（",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "历史名称",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "）、帝都",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "等",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n\n上海：",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n- 简称：",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "沪、申",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n- 别称",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "：魔",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "都、东方",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "巴黎",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "、申",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "城等\n\n我应该",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "给出最常见的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "称呼",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "（",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "简称和著名",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "别称），",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "这样最",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "全面且",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "有用。\n\n回答",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "结构：\n-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " 直接",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "回答最常见的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "称呼\n- ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "补充说明",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "简称",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "和别称\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n北京",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "简称“",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "京”，别",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "称有",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "燕",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "京、北平",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "（",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "历史上",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "）等；",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "上海简称“",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "沪”或“",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "申”，别称",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "有“魔",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "都”“申城",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "”等。",
+        "content_index": 0
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "txt_18d8ed312bc2fa981",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "{"
+    },
+    {
+      "OutputTextDelta": " "
+    },
+    {
+      "OutputTextDelta": "\t\t\t\t\t\t\t\t\t\t"
+    },
+    {
+      "OutputTextDelta": "\t"
+    },
+    {
+      "OutputTextDelta": "\t"
+    },
+    {
+      "OutputTextDelta": "\""
+    },
+    {
+      "OutputTextDelta": "city"
+    },
+    {
+      "OutputTextDelta": "1"
+    },
+    {
+      "OutputTextDelta": "\": \"京"
+    },
+    {
+      "OutputTextDelta": "，"
+    },
+    {
+      "OutputTextDelta": "别"
+    },
+    {
+      "OutputTextDelta": "称燕"
+    },
+    {
+      "OutputTextDelta": "京、北平（"
+    },
+    {
+      "OutputTextDelta": "历史上）等"
+    },
+    {
+      "OutputTextDelta": "，"
+    },
+    {
+      "OutputTextDelta": "是首都"
+    },
+    {
+      "OutputTextDelta": "\","
+    },
+    {
+      "OutputTextDelta": " "
+    },
+    {
+      "OutputTextDelta": "\t\t\t\t\t\t\t\t\t\t\t"
+    },
+    {
+      "OutputTextDelta": "\"city2"
+    },
+    {
+      "OutputTextDelta": "\": \"沪"
+    },
+    {
+      "OutputTextDelta": "或申，别"
+    },
+    {
+      "OutputTextDelta": "称魔"
+    },
+    {
+      "OutputTextDelta": "都、申"
+    },
+    {
+      "OutputTextDelta": "城等\" "
+    },
+    {
+      "OutputTextDelta": "\t\t\t\t\t\t\t\t\t\t"
+    },
+    {
+      "OutputTextDelta": "\t}"
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rsn_18d8ed3065dd8a780",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "用户问的是“北京和上海分别叫什么名字”，这是一个关于中国地理/城市名称的简单问题。\n\n北京，简称“京”，是中华人民共和国的首都。\n上海，简称“沪”或“申”，是中国最大的城市之一。\n\n用户可能是在问：\n1. 城市的简称\n2. 城市的别称/美称\n3. 城市的全称\n\n考虑到问题的简洁性，最可能的意图是询问两座城市的简称或别称。\n\n北京：\n- 简称：京\n- 别称：燕京、北平（历史名称）、帝都等\n\n上海：\n- 简称：沪、申\n- 别称：魔都、东方巴黎、申城等\n\n我应该给出最常见的称呼（简称和著名别称），这样最全面且有用。\n\n回答结构：\n- 直接回答最常见的称呼\n- 补充说明简称和别称\n\n北京简称“京”，别称有燕京、北平（历史上）等；上海简称“沪”或“申”，别称有“魔都”“申城”等。"
+          }
+        ],
+        "encrypted_content": "codex-rig-reasoning-v1:{\"source\":\"Chat:b00fab0031fb8980d885dd1cecf7ed0ae707a093a049143a89751f70c6d9e53b\",\"blocks\":[{\"id\":null,\"content\":[{\"type\":\"text\",\"content\":{\"text\":\"用户问的是“北京和上海分别叫什么名字”，这是一个关于中国地理/城市名称的简单问题。\\n\\n北京，简称“京”，是中华人民共和国的首都。\\n上海，简称“沪”或“申”，是中国最大的城市之一。\\n\\n用户可能是在问：\\n1. 城市的简称\\n2. 城市的别称/美称\\n3. 城市的全称\\n\\n考虑到问题的简洁性，最可能的意图是询问两座城市的简称或别称。\\n\\n北京：\\n- 简称：京\\n- 别称：燕京、北平（历史名称）、帝都等\\n\\n上海：\\n- 简称：沪、申\\n- 别称：魔都、东方巴黎、申城等\\n\\n我应该给出最常见的称呼（简称和著名别称），这样最全面且有用。\\n\\n回答结构：\\n- 直接回答最常见的称呼\\n- 补充说明简称和别称\\n\\n北京简称“京”，别称有燕京、北平（历史上）等；上海简称“沪”或“申”，别称有“魔都”“申城”等。\"}}]}]}"
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "txt_18d8ed312bc2fa981",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "{ \t\t\t\t\t\t\t\t\t\t\t\t\"city1\": \"京，别称燕京、北平（历史上）等，是首都\", \t\t\t\t\t\t\t\t\t\t\t\"city2\": \"沪或申，别称魔都、申城等\" \t\t\t\t\t\t\t\t\t\t\t}"
+          }
+        ]
+      }
+    },
+    {
+      "ServerModel": "step-5-preview"
+    },
+    {
+      "Completed": {
+        "response_id": "75a682ccc2af5ab92d0e0177e74838ab.3d7d47915f07d63158b35a2f73262200",
+        "token_usage": {
+          "input_tokens": 33,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 270,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 303
+        },
+        "usage_metadata": null,
+        "end_turn": true
+      }
+    }
+  ]
+}
