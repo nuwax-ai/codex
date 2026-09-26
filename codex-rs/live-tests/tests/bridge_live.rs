@@ -181,6 +181,42 @@ async fn scenario_anthropic(cfg: &LiveConfig, bridge: Bridge) {
     codex_live_tests::assert_reasoning_before_message(&events, &ctx);
 }
 
+/// The effort mapping canary: requesting `high` must surface as real
+/// thinking on the Anthropic wire. A gateway that degrades thinking on the
+/// unknown `output_config.effort` field (the GLM failure mode) turns this
+/// red — every vendor in the matrix emits reasoning on this wire by default.
+async fn scenario_anthropic_effort(cfg: &LiveConfig, bridge: Bridge) {
+    let Some(anthropic_url) = anthropic_url_or_skip(cfg) else {
+        return;
+    };
+    let mut request = base_request(
+        cfg,
+        "You are a helpful assistant. Answer in Chinese.",
+        "用一句话说明快速排序的平均复杂度,并简单解释为什么。",
+    );
+    request.reasoning = Some(codex_api::Reasoning {
+        effort: Some(codex_protocol::openai_models::ReasoningEffort::High),
+        summary: None,
+        context: None,
+    });
+    let events = run_turn(cfg, &anthropic_url, LiveWire::Anthropic, bridge, &request, "anthropic-effort").await;
+
+    let ctx = format!("{}/{} anthropic-effort", cfg.vendor, bridge.name());
+    assert!(
+        codex_live_tests::text_len(&events) > 0,
+        "{ctx}: expected text output"
+    );
+    assert!(
+        codex_live_tests::reasoning_len(&events) > 0,
+        "{ctx}: explicit high effort must produce visible thinking — a gateway          degrading on the injected output_config.effort field would zero this"
+    );
+    codex_live_tests::assert_completed_with_usage(&events, &ctx);
+    println!(
+        "[summary] {ctx}: reasoning_chars={}",
+        codex_live_tests::reasoning_len(&events)
+    );
+}
+
 /// Error path: an invalid key must surface as an HTTP 401 transport error
 /// — the rig bridge preserves the status so codex-core's re-login loop can
 /// trigger. The genai bridge historically flattens errors to a network
@@ -342,6 +378,7 @@ bridge_matrix!(chat, scenario_chat, ["mimo", "glm", "step"]);
 bridge_matrix!(effort_low, scenario_effort_low, ["mimo", "glm", "step"]);
 bridge_matrix!(tool_round_trip, scenario_tool_round_trip, ["mimo", "glm", "step"]);
 bridge_matrix!(anthropic, scenario_anthropic, ["mimo", "glm", "step"]);
+bridge_matrix!(anthropic_effort, scenario_anthropic_effort, ["mimo", "glm", "step"]);
 bridge_matrix!(anthropic_tool_round_trip, scenario_anthropic_tool_round_trip, ["mimo", "glm", "step"]);
 bridge_matrix!(parallel_tools, scenario_parallel_tools, ["mimo", "glm", "step"]);
 bridge_matrix!(auth_rejected, scenario_auth_rejected, ["mimo", "glm", "step"]);

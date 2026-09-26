@@ -93,6 +93,7 @@ async fn output_schema_survives_first_tool_turn_on_both_protocols() {
             }
             RigProtocol::Anthropic => {
                 assert_eq!(wire["body"]["output_config"]["format"]["schema"], schema);
+                assert_eq!(wire["body"]["tools"][0]["strict"], false);
                 assert_eq!(
                     wire["body"]["tool_choice"]["disable_parallel_tool_use"],
                     true
@@ -105,6 +106,67 @@ async fn output_schema_survives_first_tool_turn_on_both_protocols() {
             }
         }
     }
+}
+
+#[tokio::test]
+async fn anthropic_wire_carries_effort_and_service_tier_where_they_overlap() {
+    let cases = [
+        (ReasoningEffort::Low, "low"),
+        (ReasoningEffort::Minimal, "low"),
+        (ReasoningEffort::Medium, "medium"),
+        (ReasoningEffort::High, "high"),
+        (ReasoningEffort::XHigh, "xhigh"),
+        (ReasoningEffort::Max, "max"),
+        (ReasoningEffort::Ultra, "max"),
+    ];
+    for (effort, expected) in cases {
+        let mut req = request(vec![user()]);
+        req.reasoning = Some(Reasoning {
+            effort: Some(effort.clone()),
+            summary: None,
+            context: None,
+        });
+        let (wire, _, _) = capture(&req, RigProtocol::Anthropic).await;
+        assert_eq!(
+            wire["body"]["output_config"]["effort"], expected,
+            "effort {effort:?} should map to {expected}"
+        );
+    }
+    // No-overlap values stay absent rather than risking gateway degradation.
+    for effort in [ReasoningEffort::None, ReasoningEffort::Persistent] {
+        let mut req = request(vec![user()]);
+        req.reasoning = Some(Reasoning {
+            effort: Some(effort.clone()),
+            summary: None,
+            context: None,
+        });
+        let (wire, _, _) = capture(&req, RigProtocol::Anthropic).await;
+        assert!(
+            wire["body"].get("output_config").is_none(),
+            "{effort:?} must not inject output_config"
+        );
+    }
+    // Service tiers: only the two matching semantics cross over.
+    for (tier, expected) in [("auto", "auto"), ("standard", "standard_only")] {
+        let mut req = request(vec![user()]);
+        req.service_tier = Some(tier.into());
+        let (wire, _, _) = capture(&req, RigProtocol::Anthropic).await;
+        assert_eq!(wire["body"]["service_tier"], expected, "tier {tier}");
+    }
+    let mut req = request(vec![user()]);
+    req.service_tier = Some("flex".into());
+    let (wire, _, _) = capture(&req, RigProtocol::Anthropic).await;
+    assert!(wire["body"].get("service_tier").is_none());
+    // The chat wire keeps its own effort spelling and gains none of the above.
+    let mut req = request(vec![user()]);
+    req.reasoning = Some(Reasoning {
+        effort: Some(ReasoningEffort::High),
+        summary: None,
+        context: None,
+    });
+    let (wire, _, _) = capture(&req, RigProtocol::Chat).await;
+    assert_eq!(wire["body"]["reasoning_effort"], "high");
+    assert!(wire["body"].get("output_config").is_none());
 }
 
 #[tokio::test]

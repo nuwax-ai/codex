@@ -109,6 +109,37 @@ fn map_tool_choice(choice: &str) -> Option<ToolChoice> {
     })
 }
 
+/// Maps a codex reasoning effort onto Anthropic's `output_config.effort`
+/// scale (low/medium/high/xhigh/max). Values with no Anthropic counterpart
+/// (`none`, `persistent`, unknown customs) stay unset — thinking remains
+/// under gateway control rather than risking an unknown-field degradation.
+pub(crate) fn anthropic_effort(request: &ResponsesApiRequest) -> Option<String> {
+    use codex_protocol::openai_models::ReasoningEffort;
+    let effort = request.reasoning.as_ref()?.effort.as_ref()?;
+    match effort {
+        ReasoningEffort::Minimal | ReasoningEffort::Low => Some("low".into()),
+        ReasoningEffort::Medium => Some("medium".into()),
+        ReasoningEffort::High => Some("high".into()),
+        ReasoningEffort::XHigh => Some("xhigh".into()),
+        ReasoningEffort::Max => Some("max".into()),
+        ReasoningEffort::Ultra => {
+            tracing::warn!("reasoning effort `ultra` has no Anthropic level; clamping to `max`");
+            Some("max".into())
+        }
+        ReasoningEffort::None | ReasoningEffort::Persistent | ReasoningEffort::Custom(_) => None,
+    }
+}
+
+/// Only the two semantically matching OpenAI tiers cross over; `flex` and
+/// `priority` are OpenAI pricing concepts with no Messages equivalent.
+pub(crate) fn anthropic_service_tier(request: &ResponsesApiRequest) -> Option<String> {
+    match request.service_tier.as_deref() {
+        Some("auto") => Some("auto".into()),
+        Some("standard") => Some("standard_only".into()),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 #[path = "convert_request_tests.rs"]
 mod tests;

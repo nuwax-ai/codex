@@ -21,6 +21,12 @@ pub(crate) struct RigHttpClient {
     pub(crate) query: Vec<(String, String)>,
     pub(crate) disable_anthropic_parallel: bool,
     pub(crate) tool_strict: std::collections::HashMap<String, bool>,
+    /// Anthropic `output_config.effort`, mapped from codex reasoning effort
+    /// where the scales overlap. `None` leaves the field untouched.
+    pub(crate) anthropic_effort: Option<String>,
+    /// Anthropic `service_tier`, mapped from the two semantically matching
+    /// OpenAI values. `None` leaves the field untouched.
+    pub(crate) anthropic_service_tier: Option<String>,
     pub(crate) request_id: Arc<Mutex<Option<String>>>,
     pub(crate) authorization_override: Option<http::HeaderValue>,
     pub(crate) protocol: crate::RigProtocol,
@@ -101,7 +107,11 @@ impl HttpClientExt for RigHttpClient {
         let request = self.prepare(request).map(|request| request.map(Into::into));
         async move {
             let mut request: Request<Bytes> = request?;
-            if self.disable_anthropic_parallel || !self.tool_strict.is_empty() {
+            if self.disable_anthropic_parallel
+                || !self.tool_strict.is_empty()
+                || self.anthropic_effort.is_some()
+                || self.anthropic_service_tier.is_some()
+            {
                 let mut body: serde_json::Value = serde_json::from_slice(request.body())
                     .map_err(|error| Error::Instance(error.into()))?;
                 if self.disable_anthropic_parallel
@@ -117,16 +127,46 @@ impl HttpClientExt for RigHttpClient {
                     .and_then(serde_json::Value::as_array_mut)
                 {
                     for tool in tools {
-                        if let Some(function) = tool
-                            .get_mut("function")
-                            .and_then(serde_json::Value::as_object_mut)
-                            && let Some(value) = function
-                                .get("name")
-                                .and_then(serde_json::Value::as_str)
-                                .and_then(|name| self.tool_strict.get(name))
-                        {
-                            function.insert("strict".into(), (*value).into());
+                        // Chat nests the name under `function`; Anthropic
+                        // tools carry it (and their `strict` flag) at the
+                        // top level.
+                        let name = match self.protocol {
+                            crate::RigProtocol::Chat => tool
+                                .get("function")
+                                .and_then(|function| function.get("name")),
+                            crate::RigProtocol::Anthropic => tool.get("name"),
                         }
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string);
+                        let Some(value) =
+                            name.as_deref().and_then(|name| self.tool_strict.get(name))
+                        else {
+                            continue;
+                        };
+                        let target = match self.protocol {
+                            crate::RigProtocol::Chat => tool
+                                .get_mut("function")
+                                .and_then(serde_json::Value::as_object_mut),
+                            crate::RigProtocol::Anthropic => tool.as_object_mut(),
+                        };
+                        if let Some(target) = target {
+                            target.insert("strict".into(), (*value).into());
+                        }
+                    }
+                }
+                if let Some(body_map) = body.as_object_mut() {
+                    if let Some(effort) = &self.anthropic_effort {
+                        // Merge into any existing output_config (rig may have
+                        // serialized output_config.format from output_schema).
+                        let config = body_map
+                            .entry("output_config")
+                            .or_insert_with(|| serde_json::json!({}));
+                        if let Some(config) = config.as_object_mut() {
+                            config.insert("effort".into(), effort.clone().into());
+                        }
+                    }
+                    if let Some(tier) = &self.anthropic_service_tier {
+                        body_map.insert("service_tier".into(), tier.clone().into());
                     }
                 }
                 *request.body_mut() = serde_json::to_vec(&body)

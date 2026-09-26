@@ -92,11 +92,13 @@ pub async fn stream_via_rig_with_recording(
             .filter(|_| crate::client::bearer_token(&headers).is_none())
             .cloned(),
         protocol,
-        tool_strict: if protocol == RigProtocol::Chat {
-            tool_meta.strict
-        } else {
-            Default::default()
-        },
+        tool_strict: tool_meta.strict,
+        anthropic_effort: (protocol == RigProtocol::Anthropic)
+            .then(|| crate::convert_request::anthropic_effort(request))
+            .flatten(),
+        anthropic_service_tier: (protocol == RigProtocol::Anthropic)
+            .then(|| crate::convert_request::anthropic_service_tier(request))
+            .flatten(),
     };
 
     let model = request.model.clone();

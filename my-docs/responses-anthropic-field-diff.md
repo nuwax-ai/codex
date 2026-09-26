@@ -28,10 +28,10 @@
 | `text.format.schema` | `output_config.format: {type:"json_schema", schema}` | ✅ typed output_schema |
 | `stream` | `stream` | ✅ 桥始终流式 |
 | `stream_options.include_usage` | 无需请求:Anthropic SSE 的 `message_delta` 事件总带 usage | ✅ 内部消化 |
-| `reasoning.effort` | `output_config.effort`(low/medium/high/xhigh/max) | 🔧 **协议有对应,桥未映射**(见修复机会 #1) |
-| `service_tier: auto/standard` | `service_tier: auto/standard_only` | 🔧 枚举部分对应(flex/priority 无对应,见 B-7) |
+| `reasoning.effort` | `output_config.effort`(low/medium/high/xhigh/max) | ✅ 已映射(2026-09-26):minimal→low、low/medium/high/xhigh/max 直传、ultra→max 钳制告警;none/persistent/custom 不注入 |
+| `service_tier: auto/standard` | `service_tier: auto/standard_only` | ✅ 已映射(2026-09-26);flex/priority 仍丢弃(B-7) |
 | `reasoning.summary` | `thinking.display`(summarized/omitted) | 🔧 语义近似(见 B-6,低价值) |
-| 工具 `strict` 标志 | tool 定义新增 `strict: boolean`(2026 文档确认) | 🔧 协议已支持,桥未实现(旧结论"协议不支持"已过时) |
+| 工具 `strict` 标志 | tool 定义新增 `strict: boolean`(2026 文档确认) | ✅ 已映射(2026-09-26):Chat 注入 function.strict,Anthropic 注入 tool 顶层 strict |
 
 ## B. 无等价物——Responses/OpenAI 侧独有(核心清单,逐项说明)
 
@@ -116,11 +116,11 @@
 
 按价值排序的候选修复(每项都必须:①确认协议字段 ②live 矩阵实测国产网关行为 ③不破坏 GLM thinking 修复):
 
-1. **`reasoning.effort` → `output_config.effort`**(或 `thinking` 配置):当前 Anthropic 线 effort 完全丢失,thinking 是否开启全凭网关默认。映射后 codex 的 low/high 档位设置才真正生效。注意 minimal 档无对应(需决策:降 low 或 disabled);**先确认 GLM/StepFun/MiMo 网关认不认 output_config**。
-2. **工具 `strict` → Anthropic tool `strict`**:协议已支持(旧审计记"协议不支持"过时了);rig `ToolDefinition` 需扩展承载或走传输层注入(与 Chat 线 strict 注入同一机制)。
-3. **自动 `cache_control` 断点**:system + tools 稳定前缀打断点,长会话成本收益大;需实测网关计费行为。
-4. **`service_tier` 保守映射**:仅 auto/standard 两档,flex/priority 继续丢。
-5. 复核本清单每一条"桥处理"描述与当前代码([convert_request.rs](../codex-rs/codex-rust-rig-bridge/src/convert_request.rs) 等)是否一致——尤其 B 类各项是否仍为"丢弃",有无回归。
+1. ✅ **`reasoning.effort` → `output_config.effort`**(2026-09-26 完成,传输层注入,与已有 output_config.format 合并;无对应档位不注入以避免未知字段降级)
+2. ✅ **工具 `strict` → Anthropic tool `strict`**(2026-09-26 完成,与 Chat 线共用 tool_strict 映射,传输层按协议选择注入位置)
+3. ⏳ **自动 `cache_control` 断点**:system + tools 稳定前缀打断点,长会话成本收益大;**未做**——涉及网关计费行为验证,属于性能优化而非正确性修复,单独实施。
+4. ✅ **`service_tier` 保守映射**(2026-09-26 完成:auto→auto、standard→standard_only;flex/priority 丢弃)
+5. 复核本清单每一条"桥处理"描述与当前代码([convert_request.rs](../codex-rust-rig-bridge/src/convert_request.rs)、[transport.rs](../codex-rs/codex-rust-rig-bridge/src/transport.rs))是否一致——尤其 B 类各项是否仍为"丢弃",有无回归。
 
 ## 来源
 
