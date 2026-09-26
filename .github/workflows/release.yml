@@ -301,7 +301,7 @@ jobs:
         run: |
           set -euo pipefail
           target="${{ matrix.target }}"
-          cargo build --target "$target" --release             -p codex-windows-sandbox-rs             --bin codex-windows-sandbox-setup             --bin codex-command-runner
+          cargo build --target "$target" --release             -p codex-windows-sandbox             --bin codex-windows-sandbox-setup             --bin codex-command-runner
 
       - name: Strip release binary
         if: ${{ runner.os != 'Windows' }}
