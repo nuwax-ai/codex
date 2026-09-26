@@ -4,6 +4,11 @@ use std::collections::HashMap;
 #[cfg(not(debug_assertions))]
 pub(crate) const PACKAGE_URL: &str = "https://registry.npmjs.org/@openai%2fcodex";
 
+/// Fork channel: `nuwax-codex` on npm. Unlike the OpenAI flow there is no
+/// GitHub-release cross-check — this registry IS the authoritative source.
+#[cfg(not(debug_assertions))]
+pub(crate) const NUWAX_PACKAGE_URL: &str = "https://registry.npmjs.org/nuwax-codex";
+
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct NpmPackageInfo {
     #[serde(rename = "dist-tags")]
@@ -38,6 +43,18 @@ pub(crate) fn ensure_version_ready(
 
     version_info_with_dist(package_info, version)?;
     Ok(())
+}
+
+/// The package's `latest` dist-tag — the fork's update channel resolves the
+/// newest version directly from npm instead of cross-checking GitHub.
+pub(crate) fn latest_version(package_info: &NpmPackageInfo) -> anyhow::Result<String> {
+    let latest = package_info
+        .dist_tags
+        .get("latest")
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("npm package is missing latest dist-tag"))?;
+    version_info_with_dist(package_info, &latest)?;
+    Ok(latest)
 }
 
 fn version_info_with_dist<'a>(
@@ -125,6 +142,25 @@ mod tests {
         assert!(
             err.to_string().contains("missing dist metadata"),
             "error should name missing dist metadata: {err}"
+        );
+    }
+
+    #[test]
+    fn latest_version_returns_dist_tag_and_checks_dist() {
+        let package_info = package_info("1.2.3", "1.2.3");
+        assert_eq!(
+            latest_version(&package_info).expect("latest resolvable"),
+            "1.2.3"
+        );
+
+        let broken: NpmPackageInfo = serde_json::from_value(serde_json::json!({
+            "dist-tags": { "latest": "1.2.3" },
+            "versions": { "1.2.3": {} },
+        }))
+        .expect("valid npm package metadata");
+        assert!(
+            latest_version(&broken).is_err(),
+            "latest without dist metadata must not become an update target"
         );
     }
 }

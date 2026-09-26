@@ -94,6 +94,20 @@ async fn check_for_update(
                 .await?;
             version
         }
+        Some(UpdateAction::NpmNuwaxLatest) => {
+            // Fork channel: the nuwax-codex npm registry is the authoritative
+            // latest-version source; still verify the version has dist
+            // metadata so a broken publish never becomes an update target.
+            let package_info = client_pool
+                .get(npm_registry::NUWAX_PACKAGE_URL)
+                .headers(default_headers())
+                .send()
+                .await?
+                .error_for_status()?
+                .json::<NpmPackageInfo>()
+                .await?;
+            npm_registry::latest_version(&package_info)?
+        }
         Some(UpdateAction::NpmGlobalLatest)
         | Some(UpdateAction::BunGlobalLatest)
         | Some(UpdateAction::VitePlusGlobalLatest)
