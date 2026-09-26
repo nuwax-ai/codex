@@ -291,7 +291,7 @@ jobs:
         run: |
           set -euo pipefail
           target="${{ matrix.target }}"
-          cargo build --target "$target" --release --bin nuwax-codex
+          cargo build --target "$target" --release --bin codex
 
       # Windows sandbox helpers must ship with the main exe — a clean
       # install enabling the sandbox fails at runtime without them.
@@ -309,7 +309,7 @@ jobs:
         run: |
           set -euo pipefail
           target="${{ matrix.target }}"
-          bin="target/${target}/release/nuwax-codex"
+          bin="target/${target}/release/codex"
           before=$(stat -f%z "$bin" 2>/dev/null || stat -c%s "$bin")
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             strip "$bin"
@@ -328,6 +328,10 @@ jobs:
           ARCHIVE_NAME="nuwax-codex-${{ needs.get-version.outputs.version }}-${{ matrix.target }}"
 
           cd target/${{ matrix.target }}/release
+
+          # The cargo bin keeps the upstream name (`codex`); the npm
+          # product name is applied when packaging.
+          mv "codex${{ matrix.binary_extension }}" "${BINARY_NAME}"
 
           if [ "${{ matrix.os }}" = "windows-latest" ] || [ "${{ matrix.os }}" = "windows-11-arm" ]; then
             7z a -tzip "${ARCHIVE_NAME}.zip" "${BINARY_NAME}" \

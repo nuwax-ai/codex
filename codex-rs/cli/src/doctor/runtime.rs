@@ -108,6 +108,7 @@ fn install_method_name(context: &InstallContext) -> &'static str {
     match &context.method {
         InstallMethod::Standalone { .. } => "standalone",
         InstallMethod::Npm => "npm",
+        InstallMethod::NpmNuwax => "npm (nuwax-codex)",
         InstallMethod::Bun => "bun",
         InstallMethod::VitePlus => "vite+",
         InstallMethod::Pnpm => "pnpm",

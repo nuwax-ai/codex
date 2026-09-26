@@ -1037,6 +1037,10 @@ fn describe_install_context(context: &InstallContext) -> String {
         InstallMethod::Npm => {
             describe_method_with_package_layout("npm", context.package_layout.as_ref())
         }
+        InstallMethod::NpmNuwax => describe_method_with_package_layout(
+            "npm (nuwax-codex)",
+            context.package_layout.as_ref(),
+        ),
         InstallMethod::Bun => {
             describe_method_with_package_layout("bun", context.package_layout.as_ref())
         }

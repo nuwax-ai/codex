@@ -281,7 +281,7 @@ jobs:
         run: |
           set -euo pipefail
           target="${{ matrix.target }}"
-          cargo build --target "$target" --release --bin nuwax-codex
+          cargo build --target "$target" --release --bin codex
 
       # profile.release keeps strip=false so local builds stay symbolicateable;
       # strip here (just before packaging) to shrink the published binary. The
@@ -295,7 +295,7 @@ jobs:
         run: |
           set -euo pipefail
           target="${{ matrix.target }}"
-          bin="target/${target}/release/nuwax-codex"
+          bin="target/${target}/release/codex"
           before=$(stat -f%z "$bin" 2>/dev/null || stat -c%s "$bin")
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             strip "$bin"
@@ -315,6 +315,10 @@ jobs:
           ARCHIVE_NAME="nuwax-codex-${{ needs.get-version.outputs.version }}-${{ matrix.target }}"
 
           cd target/${{ matrix.target }}/release
+
+          # The cargo bin keeps the upstream name (`codex`); the npm
+          # product name is applied when packaging.
+          mv "codex${{ matrix.binary_extension }}" "${BINARY_NAME}"
 
           # 注意：本 job 设了 defaults.run.working-directory: codex-rs，所以
           # CWD 起点是 <workspace>/codex-rs。cd 到 release 目录后需要回退 4 级
