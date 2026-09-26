@@ -16,14 +16,14 @@
 #![allow(clippy::expect_used)]
 #![allow(clippy::unwrap_used)]
 
-use codex_api::ResponsesApiRequest;
 use codex_api::ResponseEvent;
+use codex_api::ResponsesApiRequest;
+use codex_live_tests::Bridge;
+use codex_live_tests::LiveConfig;
+use codex_live_tests::LiveWire;
 use codex_live_tests::anthropic_url_or_skip;
 use codex_live_tests::run_turn;
 use codex_live_tests::user_message;
-use codex_live_tests::Bridge;
-use codex_live_tests::LiveWire;
-use codex_live_tests::LiveConfig;
 use codex_protocol::models::FunctionCallOutputBody;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ResponseItem;
@@ -71,7 +71,15 @@ async fn scenario_effort_low(cfg: &LiveConfig, bridge: Bridge) {
         summary: None,
         context: None,
     });
-    let events = run_turn(cfg, &cfg.base_url, LiveWire::Chat, bridge, &request, "effort").await;
+    let events = run_turn(
+        cfg,
+        &cfg.base_url,
+        LiveWire::Chat,
+        bridge,
+        &request,
+        "effort",
+    )
+    .await;
     assert!(
         codex_live_tests::text_len(&events) > 0,
         "expected an answer to the question"
@@ -92,7 +100,15 @@ async fn scenario_tool_round_trip(cfg: &LiveConfig, bridge: Bridge) {
     request.tools = Some(weather_tools());
     request.parallel_tool_calls = false;
 
-    let turn1 = run_turn(cfg, &cfg.base_url, LiveWire::Chat, bridge, &request, "tool-t1").await;
+    let turn1 = run_turn(
+        cfg,
+        &cfg.base_url,
+        LiveWire::Chat,
+        bridge,
+        &request,
+        "tool-t1",
+    )
+    .await;
     codex_live_tests::assert_completed_with_usage(&turn1, &ctx);
     codex_live_tests::assert_reasoning_before_message(&turn1, &ctx);
     codex_live_tests::assert_tool_deltas_reassemble(&turn1, &ctx);
@@ -102,8 +118,8 @@ async fn scenario_tool_round_trip(cfg: &LiveConfig, bridge: Bridge) {
         "{ctx}: tool-call turn should end with end_turn=false"
     );
 
-    let function_call = extract_function_call(&turn1)
-        .expect("model should emit a get_weather function call");
+    let function_call =
+        extract_function_call(&turn1).expect("model should emit a get_weather function call");
     println!(
         "[summary] function_call name={} call_id={} arguments={}",
         function_call.0, function_call.2, function_call.1
@@ -144,7 +160,15 @@ async fn scenario_tool_round_trip(cfg: &LiveConfig, bridge: Bridge) {
     });
     request.input = input;
 
-    let turn2 = run_turn(cfg, &cfg.base_url, LiveWire::Chat, bridge, &request, "tool-t2").await;
+    let turn2 = run_turn(
+        cfg,
+        &cfg.base_url,
+        LiveWire::Chat,
+        bridge,
+        &request,
+        "tool-t2",
+    )
+    .await;
     assert!(
         codex_live_tests::text_len(&turn2) > 0,
         "{ctx}: expected the model to answer with text after the tool result"
@@ -165,7 +189,15 @@ async fn scenario_anthropic(cfg: &LiveConfig, bridge: Bridge) {
         "You are a helpful assistant. Answer in Chinese.",
         "用一句话说明二分查找的思想。",
     );
-    let events = run_turn(cfg, &anthropic_url, LiveWire::Anthropic, bridge, &request, "anthropic").await;
+    let events = run_turn(
+        cfg,
+        &anthropic_url,
+        LiveWire::Anthropic,
+        bridge,
+        &request,
+        "anthropic",
+    )
+    .await;
 
     let ctx = format!("{}/{} anthropic", cfg.vendor, bridge.name());
     assert!(
@@ -199,7 +231,15 @@ async fn scenario_anthropic_effort(cfg: &LiveConfig, bridge: Bridge) {
         summary: None,
         context: None,
     });
-    let events = run_turn(cfg, &anthropic_url, LiveWire::Anthropic, bridge, &request, "anthropic-effort").await;
+    let events = run_turn(
+        cfg,
+        &anthropic_url,
+        LiveWire::Anthropic,
+        bridge,
+        &request,
+        "anthropic-effort",
+    )
+    .await;
 
     let ctx = format!("{}/{} anthropic-effort", cfg.vendor, bridge.name());
     assert!(
@@ -225,15 +265,29 @@ async fn scenario_auth_rejected(cfg: &LiveConfig, bridge: Bridge) {
     // Auth testing is inherently live: it sends an invalid key to a real
     // endpoint to verify the 401 mapping. No fixture can represent this.
     if std::env::var("LIVE_CASSETTE").as_deref() == Ok("replay") {
-        println!("{}/{} auth: live-only scenario, skipping in replay", cfg.vendor, bridge.name());
+        println!(
+            "{}/{} auth: live-only scenario, skipping in replay",
+            cfg.vendor,
+            bridge.name()
+        );
         return;
     }
     use codex_live_tests::turn_start_error;
     let request = base_request(cfg, "You are a helpful assistant.", "hi");
     let error = turn_start_error(cfg, &cfg.base_url, bridge, &request)
         .await
-        .unwrap_or_else(|| panic!("{}/{} auth: expected a start error for an invalid key", cfg.vendor, bridge.name()));
-    println!("[summary] {}/{} auth error: {error}", cfg.vendor, bridge.name());
+        .unwrap_or_else(|| {
+            panic!(
+                "{}/{} auth: expected a start error for an invalid key",
+                cfg.vendor,
+                bridge.name()
+            )
+        });
+    println!(
+        "[summary] {}/{} auth error: {error}",
+        cfg.vendor,
+        bridge.name()
+    );
     assert!(
         error.contains("401"),
         "{}/{} auth: error should mention 401, got: {error}",
@@ -266,15 +320,22 @@ async fn scenario_anthropic_tool_round_trip(cfg: &LiveConfig, bridge: Bridge) {
     request.tools = Some(weather_tools());
     request.parallel_tool_calls = false;
 
-    let turn1 = run_turn(cfg, &anthropic_url, LiveWire::Anthropic, bridge, &request, "anthropic-tool-t1").await;
+    let turn1 = run_turn(
+        cfg,
+        &anthropic_url,
+        LiveWire::Anthropic,
+        bridge,
+        &request,
+        "anthropic-tool-t1",
+    )
+    .await;
     codex_live_tests::assert_completed_with_usage(&turn1, &ctx);
     assert_eq!(
         codex_live_tests::end_turn_of(&turn1),
         Some(false),
         "{ctx}: tool turn should end with end_turn=false"
     );
-    let function_call =
-        extract_function_call(&turn1).expect("anthropic tool call emitted");
+    let function_call = extract_function_call(&turn1).expect("anthropic tool call emitted");
     assert_eq!(function_call.0, "get_weather");
 
     let mut input = request.input.clone();
@@ -303,7 +364,15 @@ async fn scenario_anthropic_tool_round_trip(cfg: &LiveConfig, bridge: Bridge) {
     });
     request.input = input;
 
-    let turn2 = run_turn(cfg, &anthropic_url, LiveWire::Anthropic, bridge, &request, "anthropic-tool-t2").await;
+    let turn2 = run_turn(
+        cfg,
+        &anthropic_url,
+        LiveWire::Anthropic,
+        bridge,
+        &request,
+        "anthropic-tool-t2",
+    )
+    .await;
     assert!(
         codex_live_tests::text_len(&turn2) > 0,
         "{ctx}: expected a final answer after the tool result"
@@ -324,7 +393,15 @@ async fn scenario_parallel_tools(cfg: &LiveConfig, bridge: Bridge) {
     request.tools = Some(weather_tools());
     request.parallel_tool_calls = true;
 
-    let events = run_turn(cfg, &cfg.base_url, LiveWire::Chat, bridge, &request, "parallel-tools").await;
+    let events = run_turn(
+        cfg,
+        &cfg.base_url,
+        LiveWire::Chat,
+        bridge,
+        &request,
+        "parallel-tools",
+    )
+    .await;
     codex_live_tests::assert_completed_with_usage(&events, &ctx);
     let calls = events
         .iter()
@@ -376,12 +453,32 @@ macro_rules! bridge_matrix {
 
 bridge_matrix!(chat, scenario_chat, ["mimo", "glm", "step"]);
 bridge_matrix!(effort_low, scenario_effort_low, ["mimo", "glm", "step"]);
-bridge_matrix!(tool_round_trip, scenario_tool_round_trip, ["mimo", "glm", "step"]);
+bridge_matrix!(
+    tool_round_trip,
+    scenario_tool_round_trip,
+    ["mimo", "glm", "step"]
+);
 bridge_matrix!(anthropic, scenario_anthropic, ["mimo", "glm", "step"]);
-bridge_matrix!(anthropic_effort, scenario_anthropic_effort, ["mimo", "glm", "step"]);
-bridge_matrix!(anthropic_tool_round_trip, scenario_anthropic_tool_round_trip, ["mimo", "glm", "step"]);
-bridge_matrix!(parallel_tools, scenario_parallel_tools, ["mimo", "glm", "step"]);
-bridge_matrix!(auth_rejected, scenario_auth_rejected, ["mimo", "glm", "step"]);
+bridge_matrix!(
+    anthropic_effort,
+    scenario_anthropic_effort,
+    ["mimo", "glm", "step"]
+);
+bridge_matrix!(
+    anthropic_tool_round_trip,
+    scenario_anthropic_tool_round_trip,
+    ["mimo", "glm", "step"]
+);
+bridge_matrix!(
+    parallel_tools,
+    scenario_parallel_tools,
+    ["mimo", "glm", "step"]
+);
+bridge_matrix!(
+    auth_rejected,
+    scenario_auth_rejected,
+    ["mimo", "glm", "step"]
+);
 
 /// Scenario families where the MODEL legitimately varies per call whether
 /// it emits thinking or a text preamble before/around tool calls. Two live
@@ -434,7 +531,9 @@ fn ab_diff_fixtures() {
             .flatten()
             .filter_map(|e| {
                 let name = e.file_name().into_string().ok()?;
-                name.strip_prefix("genai-")?.strip_suffix(".json").map(str::to_string)
+                name.strip_prefix("genai-")?
+                    .strip_suffix(".json")
+                    .map(str::to_string)
             })
             .collect();
         tags.sort();
@@ -528,7 +627,7 @@ fn weather_tools() -> codex_api::ResponsesApiTools {
         },
         "strict": false
     }]"#;
-    let raw = serde_json::value::RawValue::from_string(tools_json.to_string())
-        .expect("valid tool json");
+    let raw =
+        serde_json::value::RawValue::from_string(tools_json.to_string()).expect("valid tool json");
     codex_api::ResponsesApiTools::from(Arc::from(raw))
 }

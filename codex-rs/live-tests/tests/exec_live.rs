@@ -42,7 +42,9 @@ macro_rules! exec_matrix {
 
 async fn chat_genai_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
     if !codex_live_tests::genai_bridge_enabled() {
-        println!("genai bridge shelved (rig is the fork default) — set LIVE_INCLUDE_GENAI=1 to include");
+        println!(
+            "genai bridge shelved (rig is the fork default) — set LIVE_INCLUDE_GENAI=1 to include"
+        );
         return Ok(());
     }
     run_marker_turn(
@@ -95,7 +97,9 @@ async fn responses_native_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow
 
 async fn anthropic_genai_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
     if !codex_live_tests::genai_bridge_enabled() {
-        println!("genai bridge shelved (rig is the fork default) — set LIVE_INCLUDE_GENAI=1 to include");
+        println!(
+            "genai bridge shelved (rig is the fork default) — set LIVE_INCLUDE_GENAI=1 to include"
+        );
         return Ok(());
     }
     let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(cfg) else {
