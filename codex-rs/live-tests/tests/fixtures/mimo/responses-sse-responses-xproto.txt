@@ -1,0 +1,54 @@
+event:response.created
+data:{"type":"response.created","sequence_number":0,"response":{"id":"resp_06058a811cd54cf78130814f820b6e2a","object":"response","created_at":1790550008,"model":"mimo-v2.6-flash","metadata":null,"status":"in_progress","output":[]}}
+
+event:response.in_progress
+data:{"type":"response.in_progress","sequence_number":1,"response":{"id":"resp_06058a811cd54cf78130814f820b6e2a","object":"response","created_at":1790550008,"model":"mimo-v2.6-flash","metadata":null,"status":"in_progress","output":[]}}
+
+event:response.output_item.added
+data:{"type":"response.output_item.added","sequence_number":2,"output_index":0,"item":{"id":"rs_d722e1d964e042e3bb8176f04121be73","type":"reasoning","summary":[],"content":[],"status":"in_progress"}}
+
+event:response.content_part.added
+data:{"type":"response.content_part.added","sequence_number":3,"item_id":"rs_d722e1d964e042e3bb8176f04121be73","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":""}}
+
+event:response.reasoning_text.delta
+data:{"type":"response.reasoning_text.delta","sequence_number":4,"item_id":"rs_d722e1d964e042e3bb8176f04121be73","output_index":0,"content_index":0,"delta":"The user wants me to copy"}
+
+event:response.reasoning_text.delta
+data:{"type":"response.reasoning_text.delta","sequence_number":5,"item_id":"rs_d722e1d964e042e3bb8176f04121be73","output_index":0,"content_index":0,"delta":" the report_token field value"}
+
+event:response.reasoning_text.delta
+data:{"type":"response.reasoning_text.delta","sequence_number":6,"item_id":"rs_d722e1d964e042e3bb8176f04121be73","output_index":0,"content_index":0,"delta":" exactly."}
+
+event:response.output_item.added
+data:{"type":"response.output_item.added","sequence_number":7,"output_index":1,"item":{"id":"msg_9d6846accc3f49ffa350c4ab65face5f","type":"message","status":"in_progress","role":"assistant","content":[]}}
+
+event:response.content_part.added
+data:{"type":"response.content_part.added","sequence_number":8,"item_id":"msg_9d6846accc3f49ffa350c4ab65face5f","output_index":1,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":9,"item_id":"msg_9d6846accc3f49ffa350c4ab65face5f","output_index":1,"content_index":0,"delta":"XPROTO"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":10,"item_id":"msg_9d6846accc3f49ffa350c4ab65face5f","output_index":1,"content_index":0,"delta":"_mimo_7d31a"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":11,"item_id":"msg_9d6846accc3f49ffa350c4ab65face5f","output_index":1,"content_index":0,"delta":"94e"}
+
+event:response.reasoning_text.done
+data:{"type":"response.reasoning_text.done","sequence_number":12,"item_id":"rs_d722e1d964e042e3bb8176f04121be73","output_index":0,"content_index":0,"text":"The user wants me to copy the report_token field value exactly."}
+
+event:response.output_item.done
+data:{"type":"response.output_item.done","sequence_number":13,"output_index":0,"item":{"id":"rs_d722e1d964e042e3bb8176f04121be73","type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"The user wants me to copy the report_token field value exactly."}],"status":"completed"}}
+
+event:response.output_text.done
+data:{"type":"response.output_text.done","sequence_number":14,"item_id":"msg_9d6846accc3f49ffa350c4ab65face5f","output_index":1,"content_index":0,"text":"XPROTO_mimo_7d31a94e"}
+
+event:response.content_part.done
+data:{"type":"response.content_part.done","sequence_number":15,"item_id":"msg_9d6846accc3f49ffa350c4ab65face5f","output_index":1,"content_index":0,"part":{"type":"output_text","text":"XPROTO_mimo_7d31a94e","annotations":[]}}
+
+event:response.output_item.done
+data:{"type":"response.output_item.done","sequence_number":16,"output_index":1,"item":{"id":"msg_9d6846accc3f49ffa350c4ab65face5f","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"XPROTO_mimo_7d31a94e","annotations":[]}]}}
+
+event:response.completed
+data:{"type":"response.completed","sequence_number":17,"response":{"id":"resp_06058a811cd54cf78130814f820b6e2a","object":"response","created_at":1790550008,"status":"completed","error":null,"incomplete_details":null,"model":"mimo-v2.6-flash","metadata":null,"output":[{"id":"rs_d722e1d964e042e3bb8176f04121be73","type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"The user wants me to copy the report_token field value exactly."}],"status":"completed"},{"id":"msg_9d6846accc3f49ffa350c4ab65face5f","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"XPROTO_mimo_7d31a94e","annotations":[]}]}],"output_text":"XPROTO_mimo_7d31a94e","usage":{"input_tokens":167,"input_tokens_details":{"cached_tokens":0},"output_tokens":29,"output_tokens_details":{"reasoning_tokens":14},"total_tokens":196}}}
+

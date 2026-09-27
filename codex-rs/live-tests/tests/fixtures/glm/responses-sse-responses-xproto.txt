@@ -1,0 +1,341 @@
+event: response.created
+data: {"response":{"created_at":1790550006,"id":"resp_20260928070005946f3d1cd0bf4119","model":"GLM-5.3-Flash","object":"response","output":[],"status":"in_progress"},"sequence_number":0,"type":"response.created"}
+
+event: response.in_progress
+data: {"response":{"created_at":1790550006,"id":"resp_20260928070005946f3d1cd0bf4119","model":"GLM-5.3-Flash","object":"response","output":[],"status":"in_progress"},"sequence_number":1,"type":"response.in_progress"}
+
+event: response.output_item.added
+data: {"item":{"content":[],"id":"rs_resp_20260928070005946f3d1cd0bf4119","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+event: response.content_part.added
+data: {"content_index":0,"item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"part":{"text":"","type":"reasoning_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"The","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":4,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" user","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":5,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" asked","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":6,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" me","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":7,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" to","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":8,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" copy","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":9,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" the","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":10,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" report","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":11,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"_token","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":12,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" field","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":13,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" from","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":14,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" the","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":15,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" tool","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":16,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" result","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":17,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" ver","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":18,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"batim","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":19,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":",","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":20,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" output","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":21,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"ting","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":22,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" only","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":23,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" that","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":24,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" field","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":25,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"'s","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":26,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" value","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":27,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":".\n\n","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":28,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"Looking","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":29,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" at","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":30,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" the","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":31,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" system","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":32,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" prompt","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":33,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" instructions","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":34,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":":","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":35,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" \"","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":36,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"Read","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":37,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" the","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":38,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" tool","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":39,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" result","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":40,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" in","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":41,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" the","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":42,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" conversation","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":43,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" and","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":44,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" reply","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":45,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" with","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":46,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" its","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":47,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" report","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":48,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"_token","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":49,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" exactly","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":50,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":".","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":51,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" Do","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":52,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" not","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":53,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" add","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":54,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" any","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":55,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" other","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":56,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" words","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":57,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":".\"\n\n","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":58,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"The","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":59,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" tool","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":60,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" result","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":61,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" contains","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":62,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":":","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":63,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" \"","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":64,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"report","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":65,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"_token","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":66,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"\":\"","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":67,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"X","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":68,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"PROTO","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":69,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"_g","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":70,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"lm","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":71,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"_","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":72,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"7","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":73,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"d","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":74,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"31","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":75,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"a","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":76,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"94","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":77,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"e","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":78,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"\"\n\n","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":79,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"So","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":80,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" I","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":81,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" should","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":82,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" output","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":83,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" only","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":84,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":":","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":85,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" X","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":86,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"PROTO","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":87,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"_g","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":88,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"lm","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":89,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"_","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":90,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"7","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":91,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"d","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":92,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"31","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":93,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"a","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":94,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"94","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":95,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"e","item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":96,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.done
+data: {"content_index":0,"item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"sequence_number":97,"text":"The user asked me to copy the report_token field from the tool result verbatim, outputting only that field's value.\n\nLooking at the system prompt instructions: \"Read the tool result in the conversation and reply with its report_token exactly. Do not add any other words.\"\n\nThe tool result contains: \"report_token\":\"XPROTO_glm_7d31a94e\"\n\nSo I should output only: XPROTO_glm_7d31a94e","type":"response.reasoning_text.done"}
+
+event: response.content_part.done
+data: {"content_index":0,"item_id":"rs_resp_20260928070005946f3d1cd0bf4119","output_index":0,"part":{"text":"The user asked me to copy the report_token field from the tool result verbatim, outputting only that field's value.\n\nLooking at the system prompt instructions: \"Read the tool result in the conversation and reply with its report_token exactly. Do not add any other words.\"\n\nThe tool result contains: \"report_token\":\"XPROTO_glm_7d31a94e\"\n\nSo I should output only: XPROTO_glm_7d31a94e","type":"reasoning_text"},"sequence_number":98,"type":"response.content_part.done"}
+
+event: response.output_item.done
+data: {"item":{"content":[{"text":"The user asked me to copy the report_token field from the tool result verbatim, outputting only that field's value.\n\nLooking at the system prompt instructions: \"Read the tool result in the conversation and reply with its report_token exactly. Do not add any other words.\"\n\nThe tool result contains: \"report_token\":\"XPROTO_glm_7d31a94e\"\n\nSo I should output only: XPROTO_glm_7d31a94e","type":"reasoning_text"}],"encrypted_content":null,"id":"rs_resp_20260928070005946f3d1cd0bf4119","status":"completed","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":99,"type":"response.output_item.done"}
+
+event: response.output_item.added
+data: {"item":{"content":[],"id":"msg_resp_20260928070005946f3d1cd0bf4119","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":100,"type":"response.output_item.added"}
+
+event: response.content_part.added
+data: {"content_index":0,"item_id":"msg_resp_20260928070005946f3d1cd0bf4119","output_index":1,"part":{"annotations":[],"text":"","type":"output_text"},"sequence_number":101,"type":"response.content_part.added"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"X","item_id":"msg_resp_20260928070005946f3d1cd0bf4119","logprobs":[],"output_index":1,"sequence_number":102,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"PROTO","item_id":"msg_resp_20260928070005946f3d1cd0bf4119","logprobs":[],"output_index":1,"sequence_number":103,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"_g","item_id":"msg_resp_20260928070005946f3d1cd0bf4119","logprobs":[],"output_index":1,"sequence_number":104,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"lm","item_id":"msg_resp_20260928070005946f3d1cd0bf4119","logprobs":[],"output_index":1,"sequence_number":105,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"_","item_id":"msg_resp_20260928070005946f3d1cd0bf4119","logprobs":[],"output_index":1,"sequence_number":106,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"7","item_id":"msg_resp_20260928070005946f3d1cd0bf4119","logprobs":[],"output_index":1,"sequence_number":107,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"d31a94e","item_id":"msg_resp_20260928070005946f3d1cd0bf4119","logprobs":[],"output_index":1,"sequence_number":108,"type":"response.output_text.delta"}
+
+event: response.output_text.done
+data: {"content_index":0,"item_id":"msg_resp_20260928070005946f3d1cd0bf4119","output_index":1,"sequence_number":109,"text":"XPROTO_glm_7d31a94e","type":"response.output_text.done"}
+
+event: response.content_part.done
+data: {"content_index":0,"item_id":"msg_resp_20260928070005946f3d1cd0bf4119","output_index":1,"part":{"annotations":[],"text":"XPROTO_glm_7d31a94e","type":"output_text"},"sequence_number":110,"type":"response.content_part.done"}
+
+event: response.output_item.done
+data: {"item":{"content":[{"annotations":[],"text":"XPROTO_glm_7d31a94e","type":"output_text"}],"id":"msg_resp_20260928070005946f3d1cd0bf4119","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":111,"type":"response.output_item.done"}
+
+event: response.completed
+data: {"response":{"conversation_id":"","created_at":1790550006,"error":null,"id":"resp_20260928070005946f3d1cd0bf4119","incomplete_details":null,"instructions":"Read the tool result in the conversation and reply with its report_token exactly. Do not add any other words.","metadata":null,"model":"GLM-5.3-Flash","object":"response","output":[{"content":[{"text":"The user asked me to copy the report_token field from the tool result verbatim, outputting only that field's value.\n\nLooking at the system prompt instructions: \"Read the tool result in the conversation and reply with its report_token exactly. Do not add any other words.\"\n\nThe tool result contains: \"report_token\":\"XPROTO_glm_7d31a94e\"\n\nSo I should output only: XPROTO_glm_7d31a94e","type":"reasoning_text"}],"encrypted_content":null,"id":"rs_resp_20260928070005946f3d1cd0bf4119","status":"completed","summary":[],"type":"reasoning"},{"content":[{"annotations":[],"text":"XPROTO_glm_7d31a94e","type":"output_text"}],"id":"msg_resp_20260928070005946f3d1cd0bf4119","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"previous_response_id":"","status":"completed","usage":{"input_tokens":147,"input_tokens_details":{"cached_tokens":0},"output_tokens":106,"output_tokens_details":{"reasoning_tokens":93},"total_tokens":253}},"sequence_number":112,"type":"response.completed"}
+
+data: [DONE]
+

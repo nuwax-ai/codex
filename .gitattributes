@@ -1,3 +1,5 @@
 codex-rs/app-server-protocol/schema/** linguist-generated
 codex-rs/hooks/schema/generated/** linguist-generated
 third_party/voice/sources.json text eol=lf
+# Raw SSE recordings end with a blank line delimiting the final event.
+codex-rs/live-tests/tests/fixtures/*/responses-sse-*.txt whitespace=-blank-at-eof

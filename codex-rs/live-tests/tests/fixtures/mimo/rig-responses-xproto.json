@@ -1,0 +1,169 @@
+{
+  "vendor": "mimo",
+  "bridge": "rig",
+  "tag": "responses-xproto",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      },
+      {
+        "content": [
+          {
+            "text": "用户要求必须调用 get_weather 工具查询北京天气。这是一个直接的查询，没有违法行为，也不需要其他工具。调用即可。",
+            "type": "reasoning_text"
+          }
+        ],
+        "encrypted_content": "codex-rig-reasoning-v1:{\"source\":\"cassette\",\"blocks\":[{\"id\":null,\"content\":[{\"type\":\"text\",\"content\":{\"text\":\"用户要求必须调用 get_weather 工具查询北京天气。这是一个直接的查询，没有违法行为，也不需要其他工具。调用即可。\"}}]}]}",
+        "id": "rsn_18d94fbede1db0580",
+        "summary": [],
+        "type": "reasoning"
+      },
+      {
+        "arguments": "{\"city\": \"北京\"}",
+        "call_id": "call_bfc41b909c8b43caad1edc4b",
+        "id": "0GivfNvgeEo7XWpmCSOTT",
+        "name": "get_weather",
+        "type": "function_call"
+      },
+      {
+        "call_id": "call_bfc41b909c8b43caad1edc4b",
+        "output": "{\"city\":\"北京\",\"condition\":\"晴\",\"report_token\":\"XPROTO_mimo_7d31a94e\",\"temp_c\":22}",
+        "type": "function_call_output"
+      },
+      {
+        "content": [
+          {
+            "text": "请逐字复制工具结果中的 report_token 字段，只输出该字段的值。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "Read the tool result in the conversation and reply with its report_token exactly. Do not add any other words.",
+    "model": "mimo-v2.6-flash",
+    "parallel_tool_calls": true,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto"
+  },
+  "events": [
+    {
+      "ServerModel": "mimo-v2.6-flash"
+    },
+    {
+      "Created": {
+        "response_id": "resp_06058a811cd54cf78130814f820b6e2a"
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rs_d722e1d964e042e3bb8176f04121be73",
+        "summary": [],
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "The user wants me to copy",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the report_token field value",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " exactly.",
+        "content_index": 0
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "msg_9d6846accc3f49ffa350c4ab65face5f",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "XPROTO"
+    },
+    {
+      "OutputTextDelta": "_mimo_7d31a"
+    },
+    {
+      "OutputTextDelta": "94e"
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rs_d722e1d964e042e3bb8176f04121be73",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user wants me to copy the report_token field value exactly."
+          }
+        ],
+        "encrypted_content": null
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "msg_9d6846accc3f49ffa350c4ab65face5f",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "XPROTO_mimo_7d31a94e"
+          }
+        ]
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "resp_06058a811cd54cf78130814f820b6e2a",
+        "token_usage": {
+          "input_tokens": 167,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 29,
+          "reasoning_output_tokens": 14,
+          "total_tokens": 196
+        },
+        "usage_metadata": {
+          "amount": null,
+          "metadata": {
+            "input_tokens": 167,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 29,
+            "output_tokens_details": {
+              "reasoning_tokens": 14
+            },
+            "total_tokens": 196
+          }
+        },
+        "end_turn": null
+      }
+    }
+  ]
+}

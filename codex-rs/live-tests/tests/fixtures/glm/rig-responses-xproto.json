@@ -1,0 +1,721 @@
+{
+  "vendor": "glm",
+  "bridge": "rig",
+  "tag": "responses-xproto",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      },
+      {
+        "content": [
+          {
+            "text": "The user is asking about the weather in Beijing today. They explicitly want me to call the get_weather tool. Let me do that.",
+            "type": "reasoning_text"
+          }
+        ],
+        "encrypted_content": "codex-rig-reasoning-v1:{\"source\":\"cassette\",\"blocks\":[{\"id\":null,\"content\":[{\"type\":\"text\",\"content\":{\"text\":\"The user is asking about the weather in Beijing today. They explicitly want me to call the get_weather tool. Let me do that.\"}}]}]}",
+        "id": "rsn_18d94fbe525cd1700",
+        "summary": [],
+        "type": "reasoning"
+      },
+      {
+        "arguments": "{\"city\":\"北京\"}",
+        "call_id": "call_8dbec5c7428d48098810fc0a",
+        "id": "XH02d3QbA-WE6C4BbV_oH",
+        "name": "get_weather",
+        "type": "function_call"
+      },
+      {
+        "call_id": "call_8dbec5c7428d48098810fc0a",
+        "output": "{\"city\":\"北京\",\"condition\":\"晴\",\"report_token\":\"XPROTO_glm_7d31a94e\",\"temp_c\":22}",
+        "type": "function_call_output"
+      },
+      {
+        "content": [
+          {
+            "text": "请逐字复制工具结果中的 report_token 字段，只输出该字段的值。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "Read the tool result in the conversation and reply with its report_token exactly. Do not add any other words.",
+    "model": "GLM-5.3-Flash",
+    "parallel_tool_calls": true,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto"
+  },
+  "events": [
+    {
+      "ServerModel": "GLM-5.3-Flash"
+    },
+    {
+      "Created": {
+        "response_id": "resp_20260928070005946f3d1cd0bf4119"
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rs_resp_20260928070005946f3d1cd0bf4119",
+        "summary": [],
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "The",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " user",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " asked",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " me",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " to",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " copy",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " report",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "_token",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " field",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " from",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " tool",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " result",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ver",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "batim",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ",",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " output",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "ting",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " only",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " that",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " field",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "'s",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " value",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".\n\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "Looking",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " at",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " system",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " prompt",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " instructions",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ":",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " \"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "Read",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " tool",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " result",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " in",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " conversation",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " and",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " reply",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " with",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " its",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " report",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "_token",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " exactly",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Do",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " not",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " add",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " any",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " other",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " words",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".\"\n\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "The",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " tool",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " result",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " contains",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ":",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " \"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "report",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "_token",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\":\"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "X",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "PROTO",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "_g",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "lm",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "_",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "7",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "d",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "31",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "a",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "94",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "e",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\"\n\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "So",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " I",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " should",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " output",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " only",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ":",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " X",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "PROTO",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "_g",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "lm",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "_",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "7",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "d",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "31",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "a",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "94",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "e",
+        "content_index": 0
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rs_resp_20260928070005946f3d1cd0bf4119",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user asked me to copy the report_token field from the tool result verbatim, outputting only that field's value.\n\nLooking at the system prompt instructions: \"Read the tool result in the conversation and reply with its report_token exactly. Do not add any other words.\"\n\nThe tool result contains: \"report_token\":\"XPROTO_glm_7d31a94e\"\n\nSo I should output only: XPROTO_glm_7d31a94e"
+          }
+        ],
+        "encrypted_content": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "msg_resp_20260928070005946f3d1cd0bf4119",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "X"
+    },
+    {
+      "OutputTextDelta": "PROTO"
+    },
+    {
+      "OutputTextDelta": "_g"
+    },
+    {
+      "OutputTextDelta": "lm"
+    },
+    {
+      "OutputTextDelta": "_"
+    },
+    {
+      "OutputTextDelta": "7"
+    },
+    {
+      "OutputTextDelta": "d31a94e"
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "msg_resp_20260928070005946f3d1cd0bf4119",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "XPROTO_glm_7d31a94e"
+          }
+        ]
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "resp_20260928070005946f3d1cd0bf4119",
+        "token_usage": {
+          "input_tokens": 147,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 106,
+          "reasoning_output_tokens": 93,
+          "total_tokens": 253
+        },
+        "usage_metadata": {
+          "amount": null,
+          "metadata": {
+            "input_tokens": 147,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 106,
+            "output_tokens_details": {
+              "reasoning_tokens": 93
+            },
+            "total_tokens": 253
+          }
+        },
+        "end_turn": null
+      }
+    }
+  ]
+}
