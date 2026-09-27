@@ -1723,8 +1723,11 @@ impl ModelClientSession {
                 self.client.state.auth_env_telemetry.clone(),
             );
             let compression = self.responses_request_compression(client_setup.auth.as_ref());
+            let use_responses_lite = self.client.state.provider.info().wire_api
+                == WireApi::Responses
+                && model_info.use_responses_lite;
             let mut options = self
-                .build_responses_options(responses_metadata, compression, false)
+                .build_responses_options(responses_metadata, compression, use_responses_lite)
                 .await;
 
             let include_internal = is_internal_metadata_destination(&client_setup.api_provider);
@@ -1751,14 +1754,8 @@ impl ModelClientSession {
             let wire_api = self.client.state.provider.info().wire_api;
             let bridge = self.client.state.provider.info().experimental_bridge;
 
-            let stream_result = dispatch_model_bridge(
-                &request,
-                &client_setup,
-                options.extra_headers,
-                bridge,
-                wire_api,
-            )
-            .await;
+            let stream_result =
+                dispatch_model_bridge(&request, &client_setup, options, bridge, wire_api).await;
 
             match stream_result {
                 Ok(stream) => {
@@ -3184,7 +3181,7 @@ fn is_rig_reasoning_envelope(value: &str) -> bool {
 async fn dispatch_model_bridge(
     request: &codex_api::ResponsesApiRequest,
     client_setup: &CurrentClientSetup,
-    extra_headers: http::HeaderMap,
+    options: ApiResponsesOptions,
     bridge: Option<codex_model_provider_info::ChatBridge>,
     wire: WireApi,
 ) -> std::result::Result<codex_api::ResponseStream, codex_api::ApiError> {
@@ -3236,9 +3233,12 @@ async fn dispatch_model_bridge(
             request,
             &client_setup.api_provider,
             &client_setup.api_auth,
-            extra_headers,
-            protocol,
-            client_setup.api_provider.stream_idle_timeout,
+            codex_api::ModelBridgeOptions {
+                extra_headers: options.extra_headers,
+                protocol,
+                idle_timeout: client_setup.api_provider.stream_idle_timeout,
+                turn_state: options.turn_state,
+            },
         )
         .await
 }

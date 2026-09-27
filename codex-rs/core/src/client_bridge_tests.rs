@@ -147,7 +147,7 @@ async fn missing_bridge_features_reject_before_native_responses_dispatch() {
         };
         assert_eq!(
             message,
-            "The selected model provider requires a chat bridge; enable `rust-rig` or \
+            "The selected model provider requires a model bridge; enable `rust-rig` or \
              `rust-genai`, or select `experimental_bridge = \"native\"` for a Responses provider"
         );
     }

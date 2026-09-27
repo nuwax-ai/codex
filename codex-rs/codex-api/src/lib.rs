@@ -34,6 +34,7 @@ pub use crate::sse::ResponsesStreamEvent;
 pub use crate::sse::process_responses_event;
 pub use crate::sse::spawn_strict_response_stream;
 pub use bridge::ModelBridge;
+pub use bridge::ModelBridgeOptions;
 pub use bridge::ModelWireProtocol;
 
 pub use crate::common::AccessPrograms;

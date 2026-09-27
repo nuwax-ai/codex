@@ -12,6 +12,8 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::ApiError;
@@ -46,6 +48,15 @@ impl ModelWireProtocol {
     }
 }
 
+/// Per-request transport options, including Responses routing state that
+/// the next request in the same turn must return to the server.
+pub struct ModelBridgeOptions {
+    pub extra_headers: HeaderMap,
+    pub protocol: ModelWireProtocol,
+    pub idle_timeout: Duration,
+    pub turn_state: Option<Arc<OnceLock<String>>>,
+}
+
 /// A model bridge: sends a Codex `ResponsesApiRequest` on the given wire and
 /// streams back Codex `ResponseEvent`s, preserving the event contract codex's
 /// turn loop expects (item-added before deltas, reasoning before message,
@@ -62,8 +73,6 @@ pub trait ModelBridge: std::fmt::Debug + Send + Sync {
         request: &'a ResponsesApiRequest,
         provider: &'a Provider,
         auth: &'a SharedAuthProvider,
-        extra_headers: HeaderMap,
-        protocol: ModelWireProtocol,
-        idle_timeout: Duration,
+        options: ModelBridgeOptions,
     ) -> Pin<Box<dyn Future<Output = Result<ResponseStream, ApiError>> + Send + 'a>>;
 }

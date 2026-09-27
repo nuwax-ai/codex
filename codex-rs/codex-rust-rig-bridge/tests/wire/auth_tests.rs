@@ -54,9 +54,8 @@ async fn each_protocol_resolves_auth_once_and_preserves_gateway_headers() {
         .await;
         let headers = wire["headers"].as_str().unwrap();
         let primary = match protocol {
-            RigProtocol::Responses | RigProtocol::Chat => {
-                "authorization: Bearer refreshed-dummy\r\n"
-            }
+            RigProtocol::Responses => "authorization: bearer refreshed-dummy\r\n",
+            RigProtocol::Chat => "authorization: Bearer refreshed-dummy\r\n",
             RigProtocol::Anthropic => "x-api-key: refreshed-dummy\r\n",
         };
         assert!(headers.contains(primary), "resolved primary header missing");

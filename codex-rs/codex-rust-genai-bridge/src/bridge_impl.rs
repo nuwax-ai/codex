@@ -6,17 +6,16 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::time::Duration;
 
 use codex_api::ApiError;
 use codex_api::ModelBridge;
+use codex_api::ModelBridgeOptions;
 use codex_api::ModelWireProtocol;
 use codex_api::Provider;
 use codex_api::ResponseStream;
 use codex_api::ResponsesApiRequest;
 use codex_api::SharedAuthProvider;
 use genai::adapter::AdapterKind;
-use http::HeaderMap;
 
 /// The genai bridge as a `ModelBridge` implementor (stateless unit).
 #[derive(Debug)]
@@ -32,11 +31,9 @@ impl ModelBridge for GenaiChatBridge {
         request: &'a ResponsesApiRequest,
         provider: &'a Provider,
         auth: &'a SharedAuthProvider,
-        extra_headers: HeaderMap,
-        protocol: ModelWireProtocol,
-        idle_timeout: Duration,
+        options: ModelBridgeOptions,
     ) -> Pin<Box<dyn Future<Output = Result<ResponseStream, ApiError>> + Send + 'a>> {
-        let adapter_kind = match protocol {
+        let adapter_kind = match options.protocol {
             ModelWireProtocol::Anthropic => AdapterKind::Anthropic,
             ModelWireProtocol::ChatCompletions => AdapterKind::OpenAI,
             ModelWireProtocol::Responses => {
@@ -52,9 +49,9 @@ impl ModelBridge for GenaiChatBridge {
             request,
             provider,
             auth,
-            extra_headers,
+            options.extra_headers,
             adapter_kind,
-            idle_timeout,
+            options.idle_timeout,
         ))
     }
 }

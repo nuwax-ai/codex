@@ -55,6 +55,7 @@ pub async fn stream_via_rig(
             api_auth,
             extra_headers,
             idle_timeout,
+            /*turn_state*/ None,
         )
         .await;
     }

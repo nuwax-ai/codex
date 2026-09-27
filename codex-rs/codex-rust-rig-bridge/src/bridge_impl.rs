@@ -5,16 +5,15 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::time::Duration;
 
 use codex_api::ApiError;
 use codex_api::ModelBridge;
+use codex_api::ModelBridgeOptions;
 use codex_api::ModelWireProtocol;
 use codex_api::Provider;
 use codex_api::ResponseStream;
 use codex_api::ResponsesApiRequest;
 use codex_api::SharedAuthProvider;
-use http::HeaderMap;
 
 use crate::client::RigProtocol;
 
@@ -32,12 +31,19 @@ impl ModelBridge for RigModelBridge {
         request: &'a ResponsesApiRequest,
         provider: &'a Provider,
         auth: &'a SharedAuthProvider,
-        extra_headers: HeaderMap,
-        protocol: ModelWireProtocol,
-        idle_timeout: Duration,
+        options: ModelBridgeOptions,
     ) -> Pin<Box<dyn Future<Output = Result<ResponseStream, ApiError>> + Send + 'a>> {
-        let protocol = match protocol {
-            ModelWireProtocol::Responses => RigProtocol::Responses,
+        let protocol = match options.protocol {
+            ModelWireProtocol::Responses => {
+                return Box::pin(crate::responses::stream_responses_via_rig(
+                    request,
+                    provider,
+                    auth,
+                    options.extra_headers,
+                    options.idle_timeout,
+                    options.turn_state,
+                ));
+            }
             ModelWireProtocol::Anthropic => RigProtocol::Anthropic,
             ModelWireProtocol::ChatCompletions => RigProtocol::Chat,
         };
@@ -45,9 +51,9 @@ impl ModelBridge for RigModelBridge {
             request,
             provider,
             auth,
-            extra_headers,
+            options.extra_headers,
             protocol,
-            idle_timeout,
+            options.idle_timeout,
         ))
     }
 }

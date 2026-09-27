@@ -1,6 +1,6 @@
-//! Unit tests for the Responses passthrough: cross-protocol history rejection
-//! and the strict terminal pump. Wire-level behavior (outbound JSON, headers,
-//! SSE fixtures over real HTTP) lives in `tests/wire/`.
+//! Unit tests for the Responses passthrough: cross-protocol history
+//! projection and the strict terminal pump. Wire-level behavior (outbound
+//! JSON, headers, SSE fixtures over real HTTP) lives in `tests/wire/`.
 
 use std::time::Duration;
 
@@ -8,40 +8,38 @@ use bytes::Bytes;
 use codex_api::ApiError;
 use codex_api::ResponseEvent;
 use codex_api::TransportError;
+use codex_protocol::models::ReasoningItemContent;
+use codex_protocol::models::ReasoningItemReasoningSummary;
 use codex_protocol::models::ResponseItem;
+use futures::StreamExt;
 use futures::stream;
 use pretty_assertions::assert_eq;
-use tokio::sync::mpsc;
 
-use crate::responses::reject_cross_protocol_history;
+use crate::responses::project_cross_protocol_history;
 
-fn reasoning_item(encrypted: Option<String>) -> ResponseItem {
+fn reasoning_item(
+    encrypted: Option<String>,
+    summary: Vec<ReasoningItemReasoningSummary>,
+    content: Option<Vec<ReasoningItemContent>>,
+) -> ResponseItem {
     ResponseItem::Reasoning {
         id: None,
-        summary: Vec::new(),
-        content: None,
+        summary,
+        content,
         encrypted_content: encrypted,
         internal_chat_message_metadata_passthrough: None,
     }
 }
 
 #[test]
-fn rejects_history_carrying_rig_replay_envelopes() {
-    let input = vec![reasoning_item(Some(
-        "codex-rig-reasoning-v1:0123abcd".to_string(),
-    ))];
-    let error = reject_cross_protocol_history(&input).expect_err("envelope must be rejected");
-    assert!(
-        matches!(error, ApiError::InvalidRequest { .. }),
-        "expected InvalidRequest, got {error:?}"
-    );
-}
-
-#[test]
-fn accepts_native_and_absent_encrypted_reasoning() {
-    let input = vec![
-        reasoning_item(None),
-        reasoning_item(Some("real-provider-ciphertext".to_string())),
+fn projection_clears_envelopes_but_keeps_the_visible_item() {
+    let summary = vec![ReasoningItemReasoningSummary::SummaryText {
+        text: "thought".into(),
+    }];
+    let content = Some(vec![ReasoningItemContent::ReasoningText {
+        text: "visible thinking".into(),
+    }]);
+    let mut input = vec![
         ResponseItem::Message {
             id: None,
             role: "user".into(),
@@ -49,8 +47,43 @@ fn accepts_native_and_absent_encrypted_reasoning() {
             phase: None,
             internal_chat_message_metadata_passthrough: None,
         },
+        reasoning_item(
+            Some("codex-rig-reasoning-v1:source-payload".to_string()),
+            summary.clone(),
+            content.clone(),
+        ),
     ];
-    assert!(reject_cross_protocol_history(&input).is_ok());
+    let projected = project_cross_protocol_history(&mut input);
+    assert_eq!(projected, 1);
+    // The reasoning item survives with its visible payload intact; only the
+    // envelope payload is cleared (it serializes as `encrypted_content: null`,
+    // the same shape as any ciphertext-less reasoning item).
+    assert_eq!(input[1], reasoning_item(None, summary, content));
+}
+
+#[test]
+fn projection_passes_non_envelope_ciphertext_and_plain_items_through() {
+    let mut input = vec![
+        reasoning_item(
+            Some("gAAAA-same-gateway-ciphertext".to_string()),
+            vec![],
+            None,
+        ),
+        reasoning_item(None, vec![], None),
+        ResponseItem::FunctionCall {
+            id: None,
+            name: "lookup".into(),
+            namespace: None,
+            arguments: "{}".into(),
+            encrypted_function_args: None,
+            call_id: "c1".into(),
+            internal_chat_message_metadata_passthrough: None,
+        },
+    ];
+    let before = input.clone();
+    let projected = project_cross_protocol_history(&mut input);
+    assert_eq!(projected, 0, "nothing to project");
+    assert_eq!(input, before, "verbatim passthrough");
 }
 
 // ---------------------------------------------------------------------
@@ -72,14 +105,17 @@ async fn run_pump_with_timeout(
     let byte_stream: codex_api::ByteStream = Box::pin(stream::iter(
         frames.into_iter().map(Ok::<_, TransportError>),
     ));
-    let (tx, mut rx) = mpsc::channel(64);
-    tokio::spawn(crate::responses::strict_responses_pump(
-        byte_stream,
-        tx,
+    let mut stream = codex_api::spawn_strict_response_stream(
+        codex_api::StreamResponse {
+            status: http::StatusCode::OK,
+            headers: http::HeaderMap::new(),
+            bytes: byte_stream,
+        },
         idle_timeout,
-    ));
+        /*turn_state*/ None,
+    );
     let mut events = Vec::new();
-    while let Some(event) = rx.recv().await {
+    while let Some(event) = stream.next().await {
         events.push(event);
     }
     events
@@ -191,13 +227,16 @@ async fn truncated_stream_reports_missing_completion() {
 #[tokio::test]
 async fn idle_timeout_errors_instead_of_hanging() {
     let pending: codex_api::ByteStream = Box::pin(stream::pending());
-    let (tx, mut rx) = mpsc::channel(64);
-    tokio::spawn(crate::responses::strict_responses_pump(
-        pending,
-        tx,
+    let mut stream = codex_api::spawn_strict_response_stream(
+        codex_api::StreamResponse {
+            status: http::StatusCode::OK,
+            headers: http::HeaderMap::new(),
+            bytes: pending,
+        },
         Duration::from_millis(50),
-    ));
-    let event = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        /*turn_state*/ None,
+    );
+    let event = tokio::time::timeout(Duration::from_secs(5), stream.next())
         .await
         .expect("pump must terminate")
         .expect("channel must yield the timeout error");

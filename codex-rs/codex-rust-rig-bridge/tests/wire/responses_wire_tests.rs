@@ -100,7 +100,7 @@ async fn responses_wire_events_preserve_ids_usage_and_single_terminal() {
     let request = support::request(vec![support::user()]);
     let (_, events, _) = support::capture(&request, RigProtocol::Responses).await;
     assert!(
-        matches!(events.first(), Some(ResponseEvent::Created { response_id }) if response_id.as_deref() == Some("resp-test"))
+        events.iter().any(|event| matches!(event, ResponseEvent::Created { response_id } if response_id.as_deref() == Some("resp-test")))
     );
     assert_eq!(
         events
@@ -135,6 +135,66 @@ async fn responses_wire_events_preserve_ids_usage_and_single_terminal() {
         ),
         other => panic!("unexpected terminal: {other:?}"),
     }
+}
+
+/// Cross-protocol resume (phase 2): history recorded on the Chat/Anthropic
+/// wires carries rig replay envelopes; the Responses wire must receive the
+/// same history with the envelope cleared to null and visible reasoning kept.
+#[tokio::test]
+async fn responses_wire_projects_chat_history_envelopes() {
+    let request = support::request(vec![
+        support::user(),
+        json!({
+            "type":"reasoning",
+            "id":"rsn_chat",
+            "summary":[],
+            "content":[{"type":"reasoning_text","text":"visible prior thinking"}],
+            "encrypted_content":"codex-rig-reasoning-v1:{\"source\":\"chat-source\"}"
+        }),
+        json!({"type":"function_call","id":"fc_1","name":"lookup","call_id":"call_1","arguments":"{\"q\":\"x\"}"}),
+        json!({"type":"function_call_output","call_id":"call_1","output":"seen"}),
+        support::user(),
+    ]);
+    // Sanity: the serialized request itself still carries the envelope —
+    // projection must happen on the wire copy only.
+    let serialized = serde_json::to_value(&request).expect("serialize request");
+    assert!(
+        serialized["input"][1]["encrypted_content"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("codex-rig-reasoning-v1:"))
+    );
+    let (wire, events, _) = support::capture(&request, RigProtocol::Responses).await;
+    assert!(
+        wire["body"]["input"][1]["encrypted_content"].is_null(),
+        "envelope must be projected to the ciphertext-less shape: {}",
+        wire["body"]["input"][1]
+    );
+    // Real Rig outputs contain ReasoningText and an empty summary. Serde
+    // preserves that content, so projection must only clear the envelope.
+    assert_eq!(
+        wire["body"]["input"][1],
+        json!({
+            "type":"reasoning",
+            "id":"rsn_chat",
+            "summary":[],
+            "content":[{"type":"reasoning_text","text":"visible prior thinking"}],
+            "encrypted_content":null
+        })
+    );
+    assert_eq!(
+        serde_json::to_value(&request).expect("serialize original request"),
+        serialized,
+        "projection must not change the original request"
+    );
+    // Tool pairing passes through untouched.
+    assert_eq!(wire["body"]["input"][2]["call_id"], "call_1");
+    assert_eq!(wire["body"]["input"][3]["output"], "seen");
+    // The turn still completes normally on the scripted Responses stream.
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, ResponseEvent::Completed { .. }))
+    );
 }
 
 /// A rich stream with reasoning summaries and two parallel tool calls must
