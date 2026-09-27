@@ -2,6 +2,59 @@ use super::*;
 use serde_json::json;
 
 #[test]
+fn fixture_root_override_keeps_both_recordings_together() {
+    const CHILD_ROOT: &str = "CODEX_CASSETTE_TEST_ROOT";
+    const VERIFIED: &str = "cassette fixture paths verified";
+    if let Some(root) = std::env::var_os(CHILD_ROOT) {
+        let root = PathBuf::from(root);
+        assert_eq!(
+            (
+                fixture_path("vendor", "rig", "turn"),
+                rig_event_fixture_path("vendor", "turn"),
+            ),
+            (
+                Some(root.join("vendor/rig-turn.json")),
+                Some(root.join("vendor/rig-events-turn.json")),
+            )
+        );
+        println!("{VERIFIED}");
+        return;
+    }
+
+    // A child process isolates environment-dependent path selection from
+    // concurrent tests and from a developer's recording configuration.
+    let root = tempfile::tempdir().expect("temporary fixture root");
+    for custom_root in [Some(root.path().to_path_buf()), None] {
+        let expected_root = custom_root.clone().unwrap_or_else(|| {
+            repo_root()
+                .expect("repository root")
+                .join("codex-rs/live-tests/tests/fixtures")
+        });
+        let mut command =
+            std::process::Command::new(std::env::current_exe().expect("test executable"));
+        command
+            .args([
+                "--exact",
+                "cassette::tests::fixture_root_override_keeps_both_recordings_together",
+                "--nocapture",
+            ])
+            .env(CHILD_ROOT, expected_root);
+        if let Some(custom_root) = custom_root {
+            command.env("LIVE_FIXTURE_DIR", custom_root);
+        } else {
+            command.env_remove("LIVE_FIXTURE_DIR");
+        }
+        let output = command.output().expect("run isolated fixture path test");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains(VERIFIED),
+            "{stdout}\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
 fn fixture_write_round_trips_the_complete_record() {
     let root = tempfile::tempdir().expect("temporary fixture root");
     let path = root.path().join("vendor/rig-turn.json");

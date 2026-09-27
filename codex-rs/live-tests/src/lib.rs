@@ -168,7 +168,12 @@ pub fn user_message(text: &str) -> ResponseItem {
 pub async fn drain_stream(stream: ResponseStream, vendor: &str, tag: &str) -> Vec<ResponseEvent> {
     let mut stream = stream;
     let mut events = Vec::new();
-    let mut log_lines = Vec::new();
+    let request_id = format!(
+        "[{tag}] upstream_request_id={:?}",
+        stream.upstream_request_id
+    );
+    println!("{request_id}");
+    let mut log_lines = vec![request_id];
     loop {
         let event = timeout(TURN_TIMEOUT, stream.rx_event.recv())
             .await

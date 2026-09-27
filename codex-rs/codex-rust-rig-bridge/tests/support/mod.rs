@@ -126,6 +126,15 @@ pub async fn capture_with_auth(
 
 /// Capture one actual SDK request and reply with scripted provider SSE.
 pub async fn serve_payload(listener: &tokio::net::TcpListener, payload: &str) -> Value {
+    serve_payload_with_headers(listener, payload, &[("x-request-id", "req-local")]).await
+}
+
+/// Reply with provider-specific diagnostic headers as well as scripted SSE.
+pub async fn serve_payload_with_headers(
+    listener: &tokio::net::TcpListener,
+    payload: &str,
+    response_headers: &[(&str, &str)],
+) -> Value {
     let (mut socket, _) = listener.accept().await.expect("accept");
     let mut data = Vec::new();
     let split = loop {
@@ -153,8 +162,12 @@ pub async fn serve_payload(listener: &tokio::net::TcpListener, payload: &str) ->
         data.extend_from_slice(&chunk[..read]);
     }
     let body: Value = serde_json::from_slice(&data[split..split + length]).expect("request JSON");
+    let response_headers: String = response_headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect();
     let response = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nx-request-id: req-local\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n{response_headers}Content-Length: {}\r\nConnection: close\r\n\r\n{payload}",
         payload.len()
     );
     socket

@@ -207,12 +207,19 @@ impl HttpClientExt for RigHttpClient {
             let response = HttpClientExt::send_streaming(&self.inner, request)
                 .await
                 .map_err(sanitize_error)?;
-            let id = response
-                .headers()
-                .get("x-request-id")
-                .or_else(|| response.headers().get("request-id"))
-                .and_then(|value| value.to_str().ok())
-                .map(str::to_string);
+            // Compatible gateways may expose only a trace/log correlation ID.
+            // Keep canonical request IDs first; this never replaces the model's
+            // response ID carried in the SSE body.
+            let id = ["x-request-id", "request-id", "x-trace-id", "x-log-id"]
+                .into_iter()
+                .find_map(|name| {
+                    response
+                        .headers()
+                        .get(name)
+                        .and_then(|value| value.to_str().ok())
+                        .filter(|value| !value.trim().is_empty())
+                        .map(str::to_string)
+                });
             if let Ok(mut slot) = self.request_id.lock() {
                 *slot = id;
             }

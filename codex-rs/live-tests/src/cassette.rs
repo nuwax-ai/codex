@@ -31,7 +31,7 @@ pub fn cassette_mode() -> CassetteMode {
 }
 
 /// One recorded bridge-boundary turn: the exact request and the exact event
-/// stream, serialized to `tests/fixtures/<vendor>/<bridge>-<tag>.json`.
+/// stream, serialized under `LIVE_FIXTURE_DIR` (default: `tests/fixtures`).
 /// Fixtures contain prompts and model text only — never credentials.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct TurnFixture {
@@ -45,15 +45,16 @@ pub struct TurnFixture {
 }
 
 pub fn fixture_path(vendor: &str, bridge: &str, tag: &str) -> Option<PathBuf> {
-    let root = repo_root()?;
-    Some(
-        root.join("codex-rs")
-            .join("live-tests")
-            .join("tests")
-            .join("fixtures")
-            .join(vendor)
-            .join(format!("{bridge}-{tag}.json")),
-    )
+    let root = fixture_root()?;
+    Some(root.join(vendor).join(format!("{bridge}-{tag}.json")))
+}
+
+/// A separate recording root keeps a live audit independent of checked-in fixtures.
+/// Both recording and replay use the same override.
+fn fixture_root() -> Option<PathBuf> {
+    std::env::var_os("LIVE_FIXTURE_DIR")
+        .map(PathBuf::from)
+        .or_else(|| repo_root().map(|root| root.join("codex-rs/live-tests/tests/fixtures")))
 }
 
 /// Loads a rig-event fixture (the intermediate events the bridge receives,
@@ -92,15 +93,8 @@ pub fn save_rig_event_fixture(
 }
 
 fn rig_event_fixture_path(vendor: &str, tag: &str) -> Option<PathBuf> {
-    let root = repo_root()?;
-    Some(
-        root.join("codex-rs")
-            .join("live-tests")
-            .join("tests")
-            .join("fixtures")
-            .join(vendor)
-            .join(format!("rig-events-{tag}.json")),
-    )
+    let root = fixture_root()?;
+    Some(root.join(vendor).join(format!("rig-events-{tag}.json")))
 }
 
 pub fn load_fixture(vendor: &str, bridge: &str, tag: &str) -> Option<TurnFixture> {

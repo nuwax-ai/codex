@@ -411,7 +411,9 @@ pub fn create_text_param_for_request(
 
 pub struct ResponseStream {
     pub rx_event: mpsc::Receiver<Result<ResponseEvent, ApiError>>,
-    /// Server-assigned `x-request-id` response header, when present.
+    /// Server-assigned request ID, when present. Compatible bridges may fall
+    /// back to a provider's trace/log correlation header for diagnostics.
+    /// Distinct from the model response ID delivered in stream events.
     pub upstream_request_id: Option<String>,
 }
 
