@@ -4,7 +4,9 @@
 //! terminal handling stays with each caller.
 
 pub mod responses;
+mod responses_policy;
 
 pub use responses::ResponsesStreamEvent;
 pub use responses::process_responses_event;
 pub use responses::spawn_response_stream;
+pub use responses_policy::spawn_strict_response_stream;

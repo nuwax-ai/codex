@@ -1,3 +1,4 @@
+use super::responses_policy::ResponseStreamPolicy;
 use crate::common::ResponseEvent;
 use crate::common::ResponseStream;
 use crate::common::SafetyBuffering;
@@ -40,7 +41,30 @@ pub fn spawn_response_stream(
     telemetry: Option<Arc<dyn SseTelemetry>>,
     turn_state: Option<Arc<OnceLock<String>>>,
 ) -> ResponseStream {
-    let rate_limit_snapshots = parse_all_rate_limits(&stream_response.headers);
+    spawn_response_stream_with_policy(
+        stream_response,
+        idle_timeout,
+        telemetry,
+        turn_state,
+        ResponseStreamPolicy::Native,
+    )
+}
+
+pub(super) fn spawn_response_stream_with_policy(
+    stream_response: StreamResponse,
+    idle_timeout: Duration,
+    telemetry: Option<Arc<dyn SseTelemetry>>,
+    turn_state: Option<Arc<OnceLock<String>>>,
+    policy: ResponseStreamPolicy,
+) -> ResponseStream {
+    let mut rate_limit_snapshots = parse_all_rate_limits(&stream_response.headers);
+    if policy == ResponseStreamPolicy::Strict {
+        // Compatible providers often send no Codex quota headers. Do not
+        // invent an empty account quota update for those responses.
+        rate_limit_snapshots.retain(|snapshot| {
+            snapshot.limit_name.is_some() || crate::rate_limits::has_rate_limit_data(snapshot)
+        });
+    }
     let models_etag = stream_response
         .headers
         .get("X-Models-Etag")
@@ -92,6 +116,7 @@ pub fn spawn_response_stream(
             idle_timeout,
             telemetry,
             safety_buffering_treatment,
+            policy,
         )
         .await;
     });
@@ -576,6 +601,7 @@ pub async fn process_sse(
         idle_timeout,
         telemetry,
         SafetyBufferingTreatment::default(),
+        ResponseStreamPolicy::Native,
     )
     .await;
 }
@@ -586,6 +612,7 @@ async fn process_sse_with_treatment(
     idle_timeout: Duration,
     telemetry: Option<Arc<dyn SseTelemetry>>,
     safety_buffering_treatment: SafetyBufferingTreatment,
+    policy: ResponseStreamPolicy,
 ) {
     let mut stream = stream.eventsource();
     let mut response_error: Option<ApiError> = None;
@@ -631,24 +658,30 @@ async fn process_sse_with_treatment(
 
         trace!("SSE event: {}", &sse.data);
 
-        let event: ResponsesStreamEvent = match serde_json::from_str(&sse.data) {
-            Ok(event) => event,
-            Err(e) => {
-                debug!(
-                    error_category = ?e.classify(),
-                    error_line = e.line(),
-                    error_column = e.column(),
-                    payload_bytes = sse.data.len(),
-                    "Failed to parse SSE event"
-                );
-                continue;
+        let event = match policy.decode(&sse.data) {
+            Ok(Some(event)) => event,
+            Ok(None) => continue,
+            Err(error) => {
+                let _ = tx_event.send(Err(error)).await;
+                return;
             }
         };
         let model_verifications = event.model_verifications();
         let turn_moderation_metadata = event.turn_moderation_metadata();
         let safety_buffering = event.safety_buffering(&safety_buffering_treatment);
 
-        if let Some(model) = event.response_model()
+        let server_model = event.response_model().or_else(|| {
+            if policy != ResponseStreamPolicy::Strict {
+                return None;
+            }
+            event
+                .response
+                .as_ref()?
+                .get("model")?
+                .as_str()
+                .map(str::to_owned)
+        });
+        if let Some(model) = server_model
             && last_server_model.as_deref() != Some(model.as_str())
         {
             if tx_event
@@ -685,6 +718,7 @@ async fn process_sse_with_treatment(
             return;
         }
 
+        let kind = event.kind().to_string();
         match process_responses_event(event) {
             Ok(Some(event)) => {
                 let is_completed = matches!(event, ResponseEvent::Completed { .. });
@@ -695,8 +729,17 @@ async fn process_sse_with_treatment(
                     return;
                 }
             }
-            Ok(None) => {}
+            Ok(None) => {
+                if let Err(error) = policy.missing_event(&kind) {
+                    let _ = tx_event.send(Err(error)).await;
+                    return;
+                }
+            }
             Err(error) => {
+                if policy == ResponseStreamPolicy::Strict {
+                    let _ = tx_event.send(Err(error.into_api_error())).await;
+                    return;
+                }
                 response_error = Some(error.into_api_error());
             }
         };

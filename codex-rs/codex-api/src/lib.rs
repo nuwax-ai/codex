@@ -32,6 +32,7 @@ pub use crate::auth::auth_header_telemetry;
 mod bridge;
 pub use crate::sse::ResponsesStreamEvent;
 pub use crate::sse::process_responses_event;
+pub use crate::sse::spawn_strict_response_stream;
 pub use bridge::ModelBridge;
 pub use bridge::ModelWireProtocol;
 
