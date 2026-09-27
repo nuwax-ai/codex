@@ -33,6 +33,7 @@
 
 mod cassette;
 mod config;
+mod responses_replay;
 
 pub use cassette::CassetteMode;
 pub use cassette::TurnFixture;
@@ -266,9 +267,8 @@ pub async fn run_turn(
     tag: &str,
 ) -> Vec<ResponseEvent> {
     if cassette_mode() == CassetteMode::Replay {
-        // The Responses passthrough replays its recorded raw SSE bytes
-        // through the strict pump — not the Chat/Anthropic conversion
-        // fixtures below.
+        // Responses replay sends the current request through the real bridge
+        // to a loopback server serving the recorded raw SSE bytes.
         if bridge == Bridge::Rig && wire == LiveWire::Responses {
             return run_responses_turn_rig(cfg, base_url, request, tag).await;
         }
@@ -333,9 +333,8 @@ pub async fn run_turn(
 }
 
 /// One bridge-level turn on the Responses wire (same-protocol passthrough).
-/// Cassette mode records/replays the RAW wire SSE bytes — the replay runs
-/// through the same strict terminal policy as the live path, not prebuilt
-/// Codex success events.
+/// Cassette replay exercises request projection and HTTP dispatch against a
+/// loopback server serving the recorded raw SSE bytes, then the live decoder.
 pub async fn run_responses_turn_rig(
     cfg: &LiveConfig,
     base_url: &str,
@@ -343,19 +342,7 @@ pub async fn run_responses_turn_rig(
     tag: &str,
 ) -> Vec<ResponseEvent> {
     if cassette_mode() == CassetteMode::Replay {
-        let sse = load_responses_sse_fixture(&cfg.vendor, tag)
-            .unwrap_or_else(|error| panic!("[cassette-responses] {error}"));
-        println!(
-            "[cassette-responses] replaying {}/{} through the strict passthrough pump ({} bytes, offline)",
-            cfg.vendor,
-            tag,
-            sse.len()
-        );
-        return codex_rust_rig_bridge::replay_responses_sse(&sse)
-            .await
-            .unwrap_or_else(|error| {
-                panic!("[cassette-responses] {}/{}: {error}", cfg.vendor, tag)
-            });
+        return responses_replay::replay_turn(cfg, request, tag).await;
     }
     let provider = vendor_provider(&cfg.vendor, base_url);
     let recorder: codex_rust_rig_bridge::RigSseRecorder = if cassette_mode() == CassetteMode::Record
@@ -837,10 +824,12 @@ pub fn assert_responses_tool_arguments_complete(events: &[ResponseEvent], contex
             ResponseEvent::ToolCallInputDelta { item_id, delta, .. } => {
                 *deltas.entry(item_id.clone()).or_default() += delta
             }
-            ResponseEvent::OutputItemDone(ResponseItem::FunctionCall { id, arguments, .. }) => {
-                if let Some(id) = id {
-                    final_args.insert(id.to_string(), arguments.clone());
-                }
+            ResponseEvent::OutputItemDone(ResponseItem::FunctionCall {
+                id: Some(id),
+                arguments,
+                ..
+            }) => {
+                final_args.insert(id.to_string(), arguments.clone());
             }
             _ => {}
         }

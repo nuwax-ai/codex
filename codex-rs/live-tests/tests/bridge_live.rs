@@ -18,6 +18,8 @@
 
 #[path = "bridge_live/anthropic_controls.rs"]
 mod anthropic_controls;
+#[path = "bridge_live/responses_cross_protocol.rs"]
+mod responses_cross_protocol;
 
 use anthropic_controls::scenario_anthropic_effort_none;
 use anthropic_controls::scenario_anthropic_output_schema;
@@ -34,6 +36,7 @@ use codex_live_tests::user_message;
 use codex_protocol::models::FunctionCallOutputBody;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ResponseItem;
+use responses_cross_protocol::scenario_responses_cross_protocol;
 use std::sync::Arc;
 
 // ================================================================
@@ -621,6 +624,11 @@ macro_rules! responses_matrix {
 }
 
 responses_matrix!(responses, scenario_responses, ["mimo", "glm", "step"]);
+responses_matrix!(
+    responses_cross_protocol,
+    scenario_responses_cross_protocol,
+    ["mimo", "glm", "step"]
+);
 responses_matrix!(
     responses_tool_round_trip,
     scenario_responses_tool_round_trip,

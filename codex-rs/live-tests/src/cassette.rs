@@ -30,7 +30,7 @@ pub fn cassette_mode() -> CassetteMode {
     }
 }
 
-/// One recorded bridge-boundary turn: the exact request and the exact event
+/// One recorded bridge-boundary turn: the input request and returned event
 /// stream, serialized under `LIVE_FIXTURE_DIR` (default: `tests/fixtures`).
 /// Fixtures contain prompts and model text only — never credentials.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -38,8 +38,10 @@ pub struct TurnFixture {
     pub vendor: String,
     pub bridge: String,
     pub tag: String,
-    /// The request, serialized as plain JSON for documentation (replay only
-    /// consumes `events`, so no typed round-trip is required here).
+    /// The caller's request before bridge projection or protocol conversion,
+    /// serialized as JSON. This is not an HTTP request body capture. Responses
+    /// replay sends the current scenario input and checks its loopback wire body;
+    /// freshly converted Chat history can have different generated item IDs.
     pub request: serde_json::Value,
     pub events: Vec<ResponseEvent>,
 }
