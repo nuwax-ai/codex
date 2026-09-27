@@ -206,6 +206,19 @@ impl HttpClientExt for RigHttpClient {
 
 fn sanitize_error(error: Error) -> Error {
     match error {
+        Error::InvalidStatusCodeWithDetails {
+            status,
+            body,
+            headers,
+        } if body.starts_with("failed to read error response body:") => {
+            // Rig 0.42 has already formatted reqwest's URL-bearing read error.
+            // No response body was obtained; retain status/headers, not that URL.
+            Error::InvalidStatusCodeWithDetails {
+                status,
+                headers,
+                body: "failed to read error response body".into(),
+            }
+        }
         Error::Instance(error) => match error.downcast::<reqwest_rig::Error>() {
             Ok(error) => Error::Instance(Box::new(error.without_url())),
             Err(error) => Error::Instance(error),

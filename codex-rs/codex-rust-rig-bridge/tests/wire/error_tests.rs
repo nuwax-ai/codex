@@ -38,6 +38,10 @@ enum Reply {
     Stall,
     Truncated,
     CompletedThenStall,
+    MissingTerminal,
+    ErrorAfterFinish,
+    Malformed,
+    TruncatedStatus,
 }
 
 const CHAT_WITH_TRAILING_USAGE: &str = concat!(
@@ -56,7 +60,12 @@ async fn serve(
     tokio::task::JoinHandle<()>,
 ) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let provider = provider(listener.local_addr().unwrap());
+    let mut provider = provider(listener.local_addr().unwrap());
+    provider.query_params = Some(
+        [("api_key".into(), "query-secret-not-for-logs".into())]
+            .into_iter()
+            .collect(),
+    );
     let server = tokio::spawn(async move {
         let (mut socket, _) = listener.accept().await.unwrap();
         let mut request = Vec::new();
@@ -85,6 +94,29 @@ async fn serve(
             RigProtocol::Anthropic => support::ANTHROPIC_SSE,
         };
         match reply {
+            Reply::TruncatedStatus => {
+                socket.write_all(b"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: 9999\r\nConnection: close\r\n\r\n{\"error\":").await.unwrap();
+            }
+            Reply::MissingTerminal | Reply::ErrorAfterFinish | Reply::Malformed => {
+                let terminal = match protocol {
+                    RigProtocol::Chat => "data: [DONE]\n\n",
+                    RigProtocol::Anthropic => {
+                        "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+                    }
+                };
+                let mut payload = payload.replace(terminal, "");
+                if matches!(reply, Reply::ErrorAfterFinish) {
+                    payload.push_str("event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"late failure\"}}\n\n");
+                }
+                if matches!(reply, Reply::Malformed) {
+                    payload.push_str("data: {broken json\n\n");
+                }
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+                    payload.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
             Reply::Status(status) => {
                 let body =
                     r#"{"error":{"message":"test rejection","type":"invalid_request_error"}}"#;
@@ -144,6 +176,59 @@ async fn serve(
     )
     .await;
     (stream, server)
+}
+
+#[tokio::test]
+async fn finish_reason_alone_cannot_hide_truncation_or_late_errors() {
+    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+        for reply in [
+            Reply::MissingTerminal,
+            Reply::ErrorAfterFinish,
+            Reply::Malformed,
+        ] {
+            let (result, server) = serve(protocol, reply).await;
+            let mut failed = result.is_err();
+            if let Ok(mut stream) = result {
+                while let Some(event) = stream.next().await {
+                    assert!(!matches!(event, Ok(ResponseEvent::Completed { .. })));
+                    assert!(!matches!(
+                        event,
+                        Ok(ResponseEvent::OutputItemDone(
+                            codex_protocol::models::ResponseItem::FunctionCall { .. }
+                        ))
+                    ));
+                    failed |= event.is_err();
+                }
+            }
+            assert!(failed, "broken terminal must fail for {protocol:?}");
+            server.await.unwrap();
+        }
+    }
+}
+
+#[tokio::test]
+async fn failed_http_error_body_read_preserves_status_without_query_secrets() {
+    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+        let (result, server) = serve(protocol, Reply::TruncatedStatus).await;
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("expected status failure"),
+        };
+        let rendered = format!("{error:?} {error}");
+        assert!(
+            !rendered.contains("query-secret-not-for-logs"),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("api_key="), "{rendered}");
+        assert!(matches!(
+            error,
+            ApiError::Transport(TransportError::Http {
+                status: StatusCode::UNAUTHORIZED,
+                ..
+            })
+        ));
+        server.await.unwrap();
+    }
 }
 
 #[tokio::test]
