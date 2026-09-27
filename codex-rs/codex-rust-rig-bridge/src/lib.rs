@@ -11,6 +11,7 @@ mod client;
 mod convert_request;
 mod convert_response;
 mod reasoning;
+mod request_content;
 mod request_messages;
 mod request_tools;
 mod response_tools;

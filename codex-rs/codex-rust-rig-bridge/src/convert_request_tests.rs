@@ -272,36 +272,20 @@ mod mapping {
     }
 
     #[test]
-    fn unparseable_history_arguments_skip_call_and_output() {
-        // One bad historical call must not brick the request; its output is
-        // skipped too (a tool result without its call is a provider 400).
-        let input = vec![
-            user_text("hi"),
-            function_call("bad", "broken_tool", "{not json"),
-            tool_output("bad", "\"oops\""),
-            function_call("good", "fine_tool", "{\"city\":\"北京\"}"),
-            tool_output("good", "\"ok\""),
-        ];
-        let messages =
-            convert_items(&input, RigProtocol::Chat).expect("bad history must not error");
-        let tool_calls: usize = messages
-            .iter()
-            .flat_map(|message| match message {
-                rig_core::completion::message::Message::Assistant { content, .. } => content.iter(),
-                _ => [].iter(),
-            })
-            .filter(|part| matches!(part, AssistantContent::ToolCall(_)))
-            .count();
-        assert_eq!(tool_calls, 1, "only the healthy call survives");
-        let results: usize = messages
-            .iter()
-            .flat_map(|message| match message {
-                rig_core::completion::message::Message::User { content } => content.iter(),
-                _ => [].iter(),
-            })
-            .filter(|part| matches!(part, UserContent::ToolResult(_)))
-            .count();
-        assert_eq!(results, 1, "only the healthy output survives");
+    fn invalid_history_arguments_fail_without_rewriting_history() {
+        for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+            for args in ["{not json", "null", "[]", "42", "\"string\""] {
+                let input = vec![
+                    user_text("hi"),
+                    function_call("bad", "broken_tool", args),
+                    tool_output("bad", "oops"),
+                ];
+                assert!(
+                    convert_items(&input, protocol).is_err(),
+                    "invalid arguments: {args}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -324,38 +308,114 @@ mod mapping {
     }
 
     #[test]
-    fn undecodable_data_url_image_differs_per_protocol() {
-        let bmp = "data:image/bmp;base64,QUJD";
-        // Anthropic URL sources must be http(s): drop instead of a 400.
-        let anthropic =
-            convert_items(&[user_image_message(bmp)], RigProtocol::Anthropic).expect("convertible");
-        assert!(
-            anthropic.is_empty(),
-            "undecodable data-URL image must be dropped on the Anthropic wire"
-        );
-        // Chat's image_url legally carries data: URLs — forward as-is.
-        let chat =
-            convert_items(&[user_image_message(bmp)], RigProtocol::Chat).expect("convertible");
-        let forwarded = chat.iter().any(|message| {
-            matches!(
-                message,
-                rig_core::completion::message::Message::User { content, .. }
-                    if content.iter().any(|part| matches!(
-                        part,
-                        UserContent::Image(image)
-                            if matches!(
-                                &image.data,
-                                rig_core::completion::message::DocumentSourceKind::Url(url)
-                                    if url == bmp
-                            )
-                    ))
-            )
-        });
-        assert!(forwarded, "chat wire should forward the raw data URL");
+    fn empty_history_call_ids_fail_before_rig_can_mint_replacements() {
+        for (call_type, output_type, payload) in [
+            (
+                "function_call",
+                "function_call_output",
+                serde_json::json!({"arguments":"{}"}),
+            ),
+            (
+                "custom_tool_call",
+                "custom_tool_call_output",
+                serde_json::json!({"input":"command"}),
+            ),
+        ] {
+            for (call_id, output_id) in [("", "valid-call"), ("valid-call", "")] {
+                let mut call =
+                    serde_json::json!({"type":call_type,"name":"lookup","call_id":call_id});
+                call.as_object_mut()
+                    .expect("call object")
+                    .extend(payload.as_object().expect("payload object").clone());
+                let input = vec![
+                    user_text("hi"),
+                    serde_json::from_value(call).expect("tool call"),
+                    serde_json::from_value(
+                        serde_json::json!({"type":output_type,"call_id":output_id,"output":"ok"}),
+                    )
+                    .expect("tool output"),
+                ];
+                for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+                    let Err(ApiError::InvalidRequest { message }) = convert_items(&input, protocol)
+                    else {
+                        panic!("empty {call_type} or {output_type} ID must fail locally");
+                    };
+                    assert_eq!(message, "Historical tool call IDs must not be empty");
+                }
+            }
+        }
     }
 
     #[test]
-    fn multi_block_envelope_replays_one_thinking_block_on_anthropic() {
+    fn paired_tool_history_is_stable_and_absent_ids_remain_external_events() {
+        for (call, output, arguments) in [
+            (
+                serde_json::json!({"type":"function_call","name":"lookup","call_id":"call-1","arguments":"{}"}),
+                serde_json::json!({"type":"function_call_output","call_id":"call-1","output":"ok"}),
+                serde_json::json!({}),
+            ),
+            (
+                serde_json::json!({"type":"custom_tool_call","name":"lookup","call_id":"call-1","input":"command"}),
+                serde_json::json!({"type":"custom_tool_call_output","call_id":"call-1","output":"ok"}),
+                serde_json::json!({"input":"command"}),
+            ),
+        ] {
+            let input = vec![
+                user_text("hi"),
+                serde_json::from_value(call).expect("tool call"),
+                serde_json::from_value(output).expect("tool output"),
+                serde_json::from_value(serde_json::json!({"type":"function_call_output","name":"notification","output":"external"})).expect("external event"),
+            ];
+            let expected = vec![
+                Message::user("hi"),
+                Message::Assistant {
+                    id: None,
+                    content: vec![AssistantContent::tool_call("call-1", "lookup", arguments)],
+                },
+                Message::User {
+                    content: vec![UserContent::tool_result_from_wire(
+                        "call-1",
+                        "lookup",
+                        vec![ToolResultContent::text("ok")],
+                    )],
+                },
+                Message::User {
+                    content: vec![
+                        UserContent::text("External event from notification:"),
+                        UserContent::text("external"),
+                    ],
+                },
+            ];
+            for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+                assert_eq!(
+                    convert_items(&input, protocol).expect("paired history"),
+                    expected
+                );
+                assert_eq!(
+                    convert_items(&input, protocol).expect("repeated history"),
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn unsupported_image_sources_fail_without_discarding_content() {
+        for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+            for url in [
+                "data:image/bmp;base64,QUJD",
+                "data:image/svg+xml;base64,QUJD",
+                "data:image/heic;base64,QUJD",
+                "data:image/png,raw",
+                "file:///tmp/private.png",
+            ] {
+                assert!(convert_items(&[user_image_message(url)], protocol).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn multi_block_envelope_replays_all_thinking_blocks_on_anthropic() {
         use rig_core::completion::message::Reasoning;
         let mut state = crate::reasoning::ReasoningState::default();
         state.complete("a".into(), Reasoning::new("first block"));
@@ -379,8 +439,8 @@ mod mapping {
             .filter(|part| matches!(part, AssistantContent::Reasoning(_)))
             .count();
         assert_eq!(
-            thinking_count, 1,
-            "Anthropic allows one thinking block per assistant message"
+            thinking_count, 2,
+            "Anthropic requires every original thinking block"
         );
         let chat = convert_items(&[user_text("hi"), item], RigProtocol::Chat).expect("convertible");
         let chat_count: usize = chat

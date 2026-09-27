@@ -1,16 +1,12 @@
 //! History conversion shared by the two Rig wire protocols.
 use crate::client::RigProtocol;
+use crate::request_content::append_tool_result;
+use crate::request_content::convert_assistant_content;
+use crate::request_content::convert_user_content;
 use codex_protocol::models::ContentItem;
-use codex_protocol::models::FunctionCallOutputBody;
-use codex_protocol::models::ImageReference;
 use codex_protocol::models::ResponseItem;
 use rig_core::completion::message::AssistantContent;
-use rig_core::completion::message::DocumentSourceKind;
-use rig_core::completion::message::Image as RigImage;
-use rig_core::completion::message::ImageMediaType;
 use rig_core::completion::message::Message;
-use rig_core::completion::message::ToolResultContent;
-use rig_core::completion::message::UserContent;
 use serde_json::Value;
 
 pub(crate) fn convert_response_items(
@@ -45,17 +41,27 @@ pub(crate) fn convert_response_items(
         }
     }
 
-    // Tool calls whose historical record is unreplayable (e.g. unparseable
-    // arguments). Their outputs must be skipped too — a tool result without
-    // its call is a guaranteed provider 400 on both wires.
-    let mut dropped_calls: std::collections::HashSet<String> = Default::default();
-
     for item in items {
         match item {
+            ResponseItem::FunctionCall { call_id, .. }
+            | ResponseItem::CustomToolCall { call_id, .. }
+            | ResponseItem::FunctionCallOutput {
+                call_id: Some(call_id),
+                ..
+            }
+            | ResponseItem::CustomToolCallOutput { call_id, .. }
+                if call_id.is_empty() =>
+            {
+                // Rig mints a fresh ID for each empty string, which would
+                // disconnect saved calls from their outputs on every replay.
+                return Err(codex_api::ApiError::InvalidRequest {
+                    message: "Historical tool call IDs must not be empty".into(),
+                });
+            }
             ResponseItem::Message { role, content, .. } => {
                 let role = role.as_str();
                 if role == "assistant" {
-                    let parts = convert_assistant_content(content, protocol);
+                    let parts = convert_assistant_content(content, protocol)?;
                     if !parts.is_empty() {
                         // Consecutive assistant items belong to the same
                         // model turn (history order: Reasoning → Message →
@@ -85,7 +91,7 @@ pub(crate) fn convert_response_items(
                         content: text.join("\n"),
                     });
                 } else if role == "user" {
-                    let parts = convert_user_content(content, protocol);
+                    let parts = convert_user_content(content, protocol)?;
                     if !parts.is_empty() {
                         messages.push(Message::User { content: parts });
                     }
@@ -96,17 +102,7 @@ pub(crate) fn convert_response_items(
                 }
             }
             ResponseItem::Reasoning { .. } => {
-                let mut blocks = crate::reasoning::replay_reasoning(item, source, protocol);
-                if protocol == RigProtocol::Anthropic && blocks.len() > 1 {
-                    // Anthropic allows at most one thinking block per
-                    // assistant message; extra blocks are a guaranteed 400.
-                    tracing::warn!(
-                        blocks = blocks.len(),
-                        "Replaying only the first reasoning block on the Anthropic wire"
-                    );
-                    blocks.truncate(1);
-                }
-                for reasoning in blocks {
+                for reasoning in crate::reasoning::replay_reasoning(item, source, protocol) {
                     match messages.last_mut() {
                         Some(Message::Assistant { content, .. }) => {
                             content.push(AssistantContent::Reasoning(reasoning));
@@ -125,24 +121,26 @@ pub(crate) fn convert_response_items(
                 namespace,
                 ..
             } => {
-                // Historical arguments are recorded data, not fresh input: a
-                // single unparseable entry (imported sessions, older bridge
-                // output) must not brick every subsequent request. Skip the
-                // call — and its matching output below — with a warning.
+                // Preserve history: invalid calls must be diagnosed rather than
+                // silently removed together with their results or coerced by Rig.
                 let args = if arguments.trim().is_empty() {
                     Value::Object(Default::default())
                 } else {
                     match serde_json::from_str::<Value>(arguments) {
-                        Ok(args) => args,
+                        Ok(args @ Value::Object(_)) => args,
+                        Ok(_) => {
+                            return Err(codex_api::ApiError::InvalidRequest {
+                                message: format!(
+                                    "Historical tool {name} ({call_id}) arguments must be a JSON object"
+                                ),
+                            });
+                        }
                         Err(error) => {
-                            tracing::warn!(
-                                tool = %name,
-                                call_id = %call_id,
-                                %error,
-                                "Skipping historical tool call with unparseable arguments"
-                            );
-                            dropped_calls.insert(call_id.clone());
-                            continue;
+                            return Err(codex_api::ApiError::InvalidRequest {
+                                message: format!(
+                                    "Invalid historical arguments for tool {name} ({call_id}): {error}"
+                                ),
+                            });
                         }
                     }
                 };
@@ -160,22 +158,22 @@ pub(crate) fn convert_response_items(
                 }
             }
             ResponseItem::FunctionCallOutput {
-                call_id, output, ..
+                call_id,
+                output,
+                name,
+                namespace,
+                ..
             } => {
-                if dropped_calls.contains(call_id.as_deref().unwrap_or_default()) {
-                    tracing::warn!(
-                        call_id = ?call_id,
-                        "Skipping tool output whose call was dropped from replay"
-                    );
+                let Some(call_id) = call_id else {
+                    crate::request_content::append_external_output(
+                        &mut messages,
+                        name.as_deref(),
+                        namespace.as_deref(),
+                        output,
+                    )?;
                     continue;
-                }
-                append_tool_result(
-                    &mut messages,
-                    call_id.as_deref().unwrap_or_default(),
-                    output,
-                    &tool_names,
-                    protocol,
-                );
+                };
+                append_tool_result(&mut messages, call_id, output, &tool_names, protocol)?;
             }
             ResponseItem::CustomToolCall {
                 name,
@@ -204,7 +202,7 @@ pub(crate) fn convert_response_items(
             ResponseItem::CustomToolCallOutput {
                 call_id, output, ..
             } => {
-                append_tool_result(&mut messages, call_id, output, &tool_names, protocol);
+                append_tool_result(&mut messages, call_id, output, &tool_names, protocol)?;
             }
             // Internal/local events — not sent to the model.
             ResponseItem::AdditionalTools { .. }
@@ -261,247 +259,4 @@ pub(crate) fn convert_response_items(
     }
 
     Ok(messages)
-}
-
-fn append_tool_result(
-    messages: &mut Vec<Message>,
-    call_id: &str,
-    output: &codex_protocol::models::FunctionCallOutputPayload,
-    tool_names: &std::collections::HashMap<String, String>,
-    protocol: RigProtocol,
-) {
-    let parts = match &output.body {
-        FunctionCallOutputBody::Text(text) => {
-            vec![ToolResultContent::text(truncate_tool_text(text))]
-        }
-        FunctionCallOutputBody::ContentItems(items) => convert_tool_output_items(items, protocol),
-    };
-    let mut content = Vec::new();
-    let mut images = Vec::new();
-    for part in parts {
-        match part {
-            ToolResultContent::Image(image)
-                if protocol == RigProtocol::Chat
-                    || matches!(image.data, DocumentSourceKind::Url(_)) =>
-            {
-                images.push(UserContent::Image(image));
-            }
-            part => content.push(part),
-        }
-    }
-    if !images.is_empty() {
-        content.push(ToolResultContent::text(
-            "Images from this tool result are attached in the following user message.",
-        ));
-    }
-    let result = UserContent::ToolResult(rig_core::completion::message::ToolResult {
-        call: rig_core::completion::message::ToolCallId::new_or_mint(call_id.to_string()),
-        provider: rig_core::completion::message::ProviderCallId::new(call_id),
-        name: tool_names
-            .get(call_id)
-            .cloned()
-            .unwrap_or_else(|| "unknown_tool".into()),
-        content,
-    });
-    // Accumulate adjacent tool results before supplemental images. Rig's Chat serializer
-    // emits ToolResult entries first, preserving the required parallel call/result order.
-    match messages.last_mut() {
-        Some(Message::User { content })
-            if content
-                .iter()
-                .any(|part| matches!(part, UserContent::ToolResult(_))) =>
-        {
-            content.insert(
-                content
-                    .iter()
-                    .take_while(|part| matches!(part, UserContent::ToolResult(_)))
-                    .count(),
-                result,
-            )
-        }
-        _ => messages.push(Message::User {
-            content: vec![result],
-        }),
-    }
-    if !images.is_empty()
-        && let Some(Message::User { content }) = messages.last_mut()
-    {
-        content.push(UserContent::text(format!(
-            "Images returned by tool call {call_id}:"
-        )));
-        content.extend(images);
-    }
-}
-
-/// Defensive cap on a single tool-result text part. Codex core truncates
-/// outputs at its own budget before they reach the bridge (default 10,000
-/// tokens, see core's `DEFAULT_MAX_OUTPUT_TOKENS`); this safety net sits well
-/// above it so it only binds when that path is bypassed (e.g. runaway base64
-/// payloads), never on legitimate tool outputs.
-fn truncate_tool_text(text: &str) -> String {
-    codex_utils_string::truncate_middle_with_token_budget(text, 24_000).0
-}
-
-/// Converts a tool-result ContentItems list into rig tool-result parts:
-/// text stays text; images become typed image blocks with data URLs
-/// decoded into base64 sources (never inlined into the text).
-fn convert_tool_output_items(
-    items: &[codex_protocol::models::FunctionCallOutputContentItem],
-    protocol: RigProtocol,
-) -> Vec<ToolResultContent> {
-    use codex_protocol::models::FunctionCallOutputContentItem;
-    let mut parts = Vec::new();
-    for item in items {
-        match item {
-            FunctionCallOutputContentItem::InputText { text } => {
-                parts.push(ToolResultContent::text(truncate_tool_text(text)));
-            }
-            FunctionCallOutputContentItem::InputImage { image, detail } => match image {
-                ImageReference::Inline { image_url } => {
-                    if let Some(image) = image_from_url(image_url, *detail, protocol) {
-                        parts.push(ToolResultContent::Image(image));
-                    }
-                }
-                ImageReference::File { file_id } => {
-                    tracing::warn!(
-                        file_id,
-                        "Skipping file-referenced image in tool result (unsupported)"
-                    );
-                }
-            },
-            FunctionCallOutputContentItem::InputAudio { .. } => {
-                tracing::warn!("Skipping audio in tool result (unsupported by bridge)");
-            }
-            FunctionCallOutputContentItem::EncryptedContent { .. } => {
-                // Provider-encrypted content cannot be replayed through a
-                // different provider; a placeholder keeps the tool result
-                // visible to the model without leaking opaque bytes.
-                parts.push(ToolResultContent::text("(encrypted content omitted)"));
-            }
-        }
-    }
-    if parts.is_empty() {
-        parts.push(ToolResultContent::text("(empty tool result)"));
-    }
-    parts
-}
-
-/// Parses a `data:<mime>;base64,<payload>` URL into a base64-backed image.
-/// Returns `None` for any data URL the bridge cannot decode (unsupported
-/// mime, missing base64 marker); the protocol-aware decision of what to do
-/// with it belongs to the caller. The Anthropic wire renders URL sources as
-/// remote links — inline payloads MUST be base64 sources there.
-fn data_url_image(data_url: &str) -> Option<RigImage> {
-    let rest = data_url.strip_prefix("data:")?;
-    let (meta, payload) = rest.split_once(',')?;
-    let mime = meta.strip_suffix(";base64")?;
-    let media_type = match mime {
-        "image/jpeg" | "image/jpg" => ImageMediaType::JPEG,
-        "image/png" => ImageMediaType::PNG,
-        "image/gif" => ImageMediaType::GIF,
-        "image/webp" => ImageMediaType::WEBP,
-        "image/heic" => ImageMediaType::HEIC,
-        "image/heif" => ImageMediaType::HEIF,
-        "image/svg+xml" => ImageMediaType::SVG,
-        _ => return None,
-    };
-    Some(RigImage {
-        data: DocumentSourceKind::Base64(payload.to_string()),
-        media_type: Some(media_type),
-        detail: None,
-        additional_params: None,
-    })
-}
-
-fn image_from_url(
-    url: &str,
-    detail: Option<codex_protocol::models::ImageDetail>,
-    protocol: RigProtocol,
-) -> Option<RigImage> {
-    use codex_protocol::models::ImageDetail as CodexDetail;
-    use rig_core::completion::message::ImageDetail as RigDetail;
-    let parsed = if url.starts_with("data:") {
-        match data_url_image(url) {
-            Some(image) => Some(image),
-            None => {
-                if protocol == RigProtocol::Anthropic {
-                    // Anthropic URL sources must be http(s); an inline data
-                    // URL there is a guaranteed 400 — drop the image.
-                    tracing::warn!(
-                        "Dropping undecodable data-URL image (Anthropic URL sources must be http(s))"
-                    );
-                    return None;
-                }
-                // Chat's image_url legally carries data: URLs; forward the
-                // raw payload and let the provider decide.
-                tracing::warn!("Forwarding undecodable data-URL image as a URL source (chat wire)");
-                None
-            }
-        }
-    } else {
-        None
-    };
-    let mut image = parsed.unwrap_or(RigImage {
-        data: DocumentSourceKind::Url(url.to_string()),
-        media_type: None,
-        detail: None,
-        additional_params: None,
-    });
-    image.detail = detail.map(|detail| match detail {
-        CodexDetail::Auto => RigDetail::Auto,
-        CodexDetail::Low => RigDetail::Low,
-        CodexDetail::High => RigDetail::High,
-        CodexDetail::Original => {
-            tracing::warn!("Chat image detail original is unsupported; using high");
-            RigDetail::High
-        }
-    });
-    Some(image)
-}
-
-fn convert_user_content(items: &[ContentItem], protocol: RigProtocol) -> Vec<UserContent> {
-    items
-        .iter()
-        .filter_map(|item| match item {
-            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
-                Some(UserContent::text(text.clone()))
-            }
-            ContentItem::InputImage { image, detail } => {
-                let ImageReference::Inline { image_url } = image else {
-                    tracing::warn!("Skipping file-referenced image (unsupported by rig bridge)");
-                    return None;
-                };
-                // data: URLs decode into base64 sources (remote-link
-                // rendering on the Anthropic wire would lose the content);
-                // plain http(s) URLs forward as URL sources.
-                image_from_url(image_url, *detail, protocol).map(UserContent::Image)
-            }
-            ContentItem::InputAudio { .. } => {
-                // 国内 LLM 适配暂不支持音频输入，跳过。
-                tracing::warn!("Skipping ContentItem::InputAudio (unsupported by rig bridge)");
-                None
-            }
-        })
-        .collect()
-}
-
-fn convert_assistant_content(
-    items: &[ContentItem],
-    protocol: RigProtocol,
-) -> Vec<AssistantContent> {
-    items
-        .iter()
-        .filter_map(|item| match item {
-            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
-                Some(AssistantContent::text(text.clone()))
-            }
-            ContentItem::InputImage { image, detail } => {
-                let ImageReference::Inline { image_url } = image else {
-                    return None;
-                };
-                image_from_url(image_url, *detail, protocol).map(AssistantContent::Image)
-            }
-            ContentItem::InputAudio { .. } => None,
-        })
-        .collect()
 }
