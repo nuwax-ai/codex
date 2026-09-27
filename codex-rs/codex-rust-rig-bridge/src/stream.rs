@@ -21,7 +21,7 @@ use crate::convert_request::responses_request_to_completion_request;
 use crate::convert_response::PendingRigMessage;
 use crate::convert_response::rig_event_to_response_events;
 
-/// Shared handle the stream pump fills with raw rig events when the caller
+/// Shared handle the stream pump fills with Rig events when the caller
 /// wants to record the bridge boundary (cassette mode). `None` = no
 /// recording overhead.
 pub type RigEventRecorder =
@@ -53,8 +53,8 @@ pub async fn stream_via_rig(
     .map(|(stream, _)| stream)
 }
 
-/// Same as [`stream_via_rig`], but optionally records the raw rig events
-/// the stream delivers (the input to the bridge's conversion) alongside
+/// Same as [`stream_via_rig`], but optionally records Rig events after wire
+/// usage correction (the input to the bridge's conversion) alongside
 /// the normal codex event flow. The recorder is filled asynchronously by
 /// the pump; read it after the stream completes.
 pub async fn stream_via_rig_with_recording(
@@ -81,12 +81,16 @@ pub async fn stream_via_rig_with_recording(
             .map_err(|error| ApiError::Transport(error.into()))?,
     );
     let request_id = Arc::new(std::sync::Mutex::new(None));
+    let anthropic_usage = Arc::new(std::sync::Mutex::new(
+        crate::usage::AnthropicUsage::default(),
+    ));
     let http = crate::transport::RigHttpClient {
         inner: crate::client::http_client(&headers, protocol)?,
         query,
         disable_anthropic_parallel: protocol == RigProtocol::Anthropic
             && !request.parallel_tool_calls,
         request_id: request_id.clone(),
+        anthropic_usage: anthropic_usage.clone(),
         authorization_override: headers
             .get(http::header::AUTHORIZATION)
             .filter(|_| crate::client::bearer_token(&headers).is_none())
@@ -179,7 +183,22 @@ pub async fn stream_via_rig_with_recording(
                 },
             };
             match item {
-                Some(Ok(event)) => {
+                Some(Ok(mut event)) => {
+                    if protocol == RigProtocol::Anthropic
+                        && let rig_core::streaming::StreamedAssistantContent::Final(record) =
+                            &mut event
+                    {
+                        let normalized = anthropic_usage
+                            .lock()
+                            .map(|usage| usage.apply(&mut record.usage))
+                            .map_err(|_| {
+                                ApiError::Stream("Anthropic usage state is unavailable".into())
+                            });
+                        if let Err(error) = normalized {
+                            let _ = tx.send(Err(error)).await;
+                            return;
+                        }
+                    }
                     if let Some(rec) = &pump_recorder
                         && let Ok(mut buf) = rec.lock()
                     {

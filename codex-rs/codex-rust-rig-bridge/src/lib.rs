@@ -14,8 +14,10 @@ mod reasoning;
 mod request_messages;
 mod request_tools;
 mod response_tools;
+mod sse;
 mod stream;
 mod transport;
+mod usage;
 
 pub use bridge_impl::RigChatBridge;
 pub use client::RigProtocol;

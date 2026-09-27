@@ -2,7 +2,6 @@
 //! Codex retains URL targeting, custom trust roots and response request IDs.
 
 use bytes::Bytes;
-use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use rig_core::http_client::Error;
 use rig_core::http_client::HttpClientExt;
@@ -30,6 +29,7 @@ pub(crate) struct RigHttpClient {
     pub(crate) request_id: Arc<Mutex<Option<String>>>,
     pub(crate) authorization_override: Option<http::HeaderValue>,
     pub(crate) protocol: crate::RigProtocol,
+    pub(crate) anthropic_usage: Arc<Mutex<crate::usage::AnthropicUsage>>,
 }
 
 impl std::fmt::Debug for RigHttpClient {
@@ -186,49 +186,19 @@ impl HttpClientExt for RigHttpClient {
             if let Ok(mut slot) = self.request_id.lock() {
                 *slot = id;
             }
-            let stop_at_done =
-                self.protocol == crate::RigProtocol::Chat && response.status().is_success();
+            let check_terminal = response.status().is_success();
             Ok(response.map(|body| {
-                let body = body.map(|chunk| chunk.map_err(sanitize_error));
-                if !stop_at_done {
-                    return Box::pin(body) as rig_core::http_client::sse::BoxedStream;
+                let body = Box::pin(body.map(|chunk| chunk.map_err(sanitize_error)))
+                    as rig_core::http_client::sse::BoxedStream;
+                if check_terminal {
+                    crate::sse::with_terminal_check(
+                        body,
+                        self.protocol,
+                        self.anthropic_usage.clone(),
+                    )
+                } else {
+                    body
                 }
-                // Rig 0.42 only flushes Chat's terminal record at EOF, even
-                // after [DONE]. End the body at that SSE frame so a gateway
-                // keeping HTTP open cannot turn a completed turn into a timeout.
-                // Use the SSE parser to handle split bytes, CRLF and multiline
-                // data; do not search raw chunks for a sentinel substring.
-                Box::pin(futures::stream::unfold(
-                    (Box::pin(body.eventsource()), false),
-                    |(mut frames, done)| async move {
-                        if done {
-                            return None;
-                        }
-                        let frame = frames.next().await?;
-                        let (bytes, done) = match frame {
-                            Ok(event) => {
-                                let done = event.data == "[DONE]";
-                                let mut encoded =
-                                    format!("event: {}\nid: {}\n", event.event, event.id);
-                                if let Some(retry) = event.retry {
-                                    encoded.push_str(&format!("retry: {}\n", retry.as_millis()));
-                                }
-                                for line in event.data.split('\n') {
-                                    encoded.push_str("data: ");
-                                    encoded.push_str(line);
-                                    encoded.push('\n');
-                                }
-                                encoded.push('\n');
-                                (Ok(Bytes::from(encoded)), done)
-                            }
-                            Err(eventsource_stream::EventStreamError::Transport(error)) => {
-                                (Err(error), true)
-                            }
-                            Err(error) => (Err(Error::Instance(Box::new(error))), true),
-                        };
-                        Some((bytes, (frames, done)))
-                    },
-                )) as rig_core::http_client::sse::BoxedStream
             }))
         }
     }

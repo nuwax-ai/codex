@@ -6,6 +6,8 @@ mod auth_tests;
 #[path = "wire/error_tests.rs"]
 mod error_tests;
 mod support;
+#[path = "wire/usage_tests.rs"]
+mod usage_tests;
 #[path = "wire/version_tests.rs"]
 mod version_tests;
 
