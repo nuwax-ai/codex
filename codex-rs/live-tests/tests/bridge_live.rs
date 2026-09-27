@@ -135,16 +135,8 @@ async fn scenario_tool_round_trip(cfg: &LiveConfig, bridge: Bridge) {
     // Turn 2: replay history plus the tool result — the stateless
     // multi-turn shape codex uses for chat providers.
     let mut input = request.input.clone();
-    let (_, arguments, call_id) = function_call;
-    input.push(ResponseItem::FunctionCall {
-        id: None,
-        name: "get_weather".into(),
-        namespace: None,
-        arguments,
-        encrypted_function_args: None,
-        call_id: call_id.clone(),
-        internal_chat_message_metadata_passthrough: None,
-    });
+    let (_, _, call_id) = function_call;
+    append_turn_outputs(&mut input, &turn1);
     input.push(ResponseItem::FunctionCallOutput {
         id: None,
         call_id: Some(call_id),
@@ -213,10 +205,9 @@ async fn scenario_anthropic(cfg: &LiveConfig, bridge: Bridge) {
     codex_live_tests::assert_reasoning_before_message(&events, &ctx);
 }
 
-/// Chat-wire structured output: the gateway must ACCEPT response_format
-/// (json_schema) — the compat risk this guards — without the turn failing.
-/// Whether the model OBEYS the schema is model-dependent; parse success is
-/// logged as a diagnostic, not asserted.
+/// Chat-wire acceptance smoke test for response_format (json_schema).
+/// HTTP success does not establish that a gateway applies the field or that
+/// the model obeys the schema. Replay exercises response conversion only.
 async fn scenario_chat_output_schema(cfg: &LiveConfig, bridge: Bridge) {
     let mut request = base_request(
         cfg,
@@ -264,17 +255,18 @@ async fn scenario_chat_output_schema(cfg: &LiveConfig, bridge: Bridge) {
         })
         .collect();
     match serde_json::from_str::<serde_json::Value>(&joined) {
-        Ok(value) => println!("[summary] {ctx}: model obeyed the schema ({})", value),
-        Err(error) => println!(
-            "[summary] {ctx}: gateway accepted response_format; model output not valid JSON ({error})"
+        Ok(value) => println!(
+            "[summary] {ctx}: output is valid JSON ({value}); schema compliance was not checked"
         ),
+        Err(error) => println!("[summary] {ctx}: output is not valid JSON ({error})"),
     }
 }
 
-/// The effort mapping canary: requesting `high` must surface as real
-/// thinking on the Anthropic wire. A gateway that degrades thinking on the
-/// unknown `output_config.effort` field (the GLM failure mode) turns this
-/// red — every vendor in the matrix emits reasoning on this wire by default.
+/// Acceptance smoke test for an explicit high-effort request. Visible
+/// thinking is diagnostic: effort neither enables thinking nor guarantees
+/// visible reasoning, and an ignoring gateway may still think by default.
+/// The final request field is covered by deterministic HTTP tests; replay
+/// exercises response conversion without establishing gateway acceptance.
 async fn scenario_anthropic_effort(cfg: &LiveConfig, bridge: Bridge) {
     let Some(anthropic_url) = anthropic_url_or_skip(cfg) else {
         return;
@@ -304,13 +296,9 @@ async fn scenario_anthropic_effort(cfg: &LiveConfig, bridge: Bridge) {
         codex_live_tests::text_len(&events) > 0,
         "{ctx}: expected text output"
     );
-    assert!(
-        codex_live_tests::reasoning_len(&events) > 0,
-        "{ctx}: explicit high effort must produce visible thinking — a gateway          degrading on the injected output_config.effort field would zero this"
-    );
     codex_live_tests::assert_completed_with_usage(&events, &ctx);
     println!(
-        "[summary] {ctx}: reasoning_chars={}",
+        "[summary] {ctx}: visible_reasoning_chars={} (does not establish effort enforcement)",
         codex_live_tests::reasoning_len(&events)
     );
 }
@@ -397,16 +385,8 @@ async fn scenario_anthropic_tool_round_trip(cfg: &LiveConfig, bridge: Bridge) {
     assert_eq!(function_call.0, "get_weather");
 
     let mut input = request.input.clone();
-    let (_, arguments, call_id) = function_call;
-    input.push(ResponseItem::FunctionCall {
-        id: None,
-        name: "get_weather".into(),
-        namespace: None,
-        arguments,
-        encrypted_function_args: None,
-        call_id: call_id.clone(),
-        internal_chat_message_metadata_passthrough: None,
-    });
+    let (_, _, call_id) = function_call;
+    append_turn_outputs(&mut input, &turn1);
     input.push(ResponseItem::FunctionCallOutput {
         id: None,
         call_id: Some(call_id),
@@ -664,6 +644,13 @@ fn base_request(cfg: &LiveConfig, instructions: &str, prompt: &str) -> Responses
     }
 }
 
+fn append_turn_outputs(input: &mut Vec<ResponseItem>, events: &[ResponseEvent]) {
+    input.extend(events.iter().filter_map(|event| match event {
+        ResponseEvent::OutputItemDone(item) => Some(item.clone()),
+        _ => None,
+    }));
+}
+
 fn extract_function_call(events: &[ResponseEvent]) -> Option<(String, String, String)> {
     events.iter().find_map(|e| match e {
         ResponseEvent::OutputItemDone(ResponseItem::FunctionCall {
@@ -694,3 +681,7 @@ fn weather_tools() -> codex_api::ResponsesApiTools {
         serde_json::value::RawValue::from_string(tools_json.to_string()).expect("valid tool json");
     codex_api::ResponsesApiTools::from(Arc::from(raw))
 }
+
+#[cfg(test)]
+#[path = "bridge_live/history_tests.rs"]
+mod history_tests;
