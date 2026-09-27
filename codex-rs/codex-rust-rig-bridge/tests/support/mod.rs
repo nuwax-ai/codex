@@ -78,47 +78,11 @@ pub async fn capture_with_auth(
         .expect("bind loopback");
     let address = listener.local_addr().expect("address");
     let server = tokio::spawn(async move {
-        let (mut socket, _) = listener.accept().await.expect("accept");
-        let mut data = Vec::new();
-        let split = loop {
-            let mut chunk = [0; 8192];
-            let read = socket.read(&mut chunk).await.expect("read");
-            assert_ne!(read, 0);
-            data.extend_from_slice(&chunk[..read]);
-            if let Some(index) = data.windows(4).position(|window| window == b"\r\n\r\n") {
-                break index + 4;
-            }
-        };
-        let headers = String::from_utf8(data[..split].to_vec()).expect("headers");
-        let length: usize = headers
-            .lines()
-            .find_map(|line| {
-                let (key, value) = line.split_once(':')?;
-                key.eq_ignore_ascii_case("content-length")
-                    .then(|| value.trim().parse().expect("length"))
-            })
-            .expect("content length");
-        while data.len() < split + length {
-            let mut chunk = [0; 8192];
-            let read = socket.read(&mut chunk).await.expect("body");
-            assert_ne!(read, 0);
-            data.extend_from_slice(&chunk[..read]);
-        }
-        let body: Value =
-            serde_json::from_slice(&data[split..split + length]).expect("request JSON");
         let payload = match protocol {
             RigProtocol::Chat => CHAT_SSE,
             RigProtocol::Anthropic => ANTHROPIC_SSE,
         };
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nx-request-id: req-local\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
-            payload.len()
-        );
-        socket
-            .write_all(response.as_bytes())
-            .await
-            .expect("response");
-        json!({"request_line":headers.lines().next(), "headers":headers, "body":body})
+        serve_payload(&listener, payload).await
     });
     let provider = Provider {
         name: "local test".into(),
@@ -158,4 +122,44 @@ pub async fn capture_with_auth(
         .expect("server timeout")
         .expect("server task");
     (wire, events, request_id)
+}
+
+/// Capture one actual SDK request and reply with scripted provider SSE.
+pub async fn serve_payload(listener: &tokio::net::TcpListener, payload: &str) -> Value {
+    let (mut socket, _) = listener.accept().await.expect("accept");
+    let mut data = Vec::new();
+    let split = loop {
+        let mut chunk = [0; 8192];
+        let read = socket.read(&mut chunk).await.expect("read");
+        assert_ne!(read, 0);
+        data.extend_from_slice(&chunk[..read]);
+        if let Some(index) = data.windows(4).position(|window| window == b"\r\n\r\n") {
+            break index + 4;
+        }
+    };
+    let headers = String::from_utf8(data[..split].to_vec()).expect("headers");
+    let length: usize = headers
+        .lines()
+        .find_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            key.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse().expect("length"))
+        })
+        .expect("content length");
+    while data.len() < split + length {
+        let mut chunk = [0; 8192];
+        let read = socket.read(&mut chunk).await.expect("body");
+        assert_ne!(read, 0);
+        data.extend_from_slice(&chunk[..read]);
+    }
+    let body: Value = serde_json::from_slice(&data[split..split + length]).expect("request JSON");
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nx-request-id: req-local\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+        payload.len()
+    );
+    socket
+        .write_all(response.as_bytes())
+        .await
+        .expect("response");
+    json!({"request_line":headers.lines().next(), "headers":headers, "body":body})
 }

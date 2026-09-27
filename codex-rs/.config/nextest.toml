@@ -37,6 +37,11 @@ max-threads = 1
 [test-groups.app_server_integration_local]
 max-threads = 4
 
+[test-groups.rig_bridge_wire_local]
+# Each wire test builds fresh HTTP/TLS clients; concurrent platform setup
+# can exceed initialization deadlines on developer machines.
+max-threads = 4
+
 [test-groups.core_apply_patch_cli_integration]
 max-threads = 1
 
@@ -75,6 +80,10 @@ test-group = 'app_server_integration'
 # limits this to the machine's logical CPU count.
 filter = 'package(codex-app-server) & kind(test)'
 test-group = 'app_server_integration_local'
+
+[[profile.local.overrides]]
+filter = 'package(codex-rust-rig-bridge) & binary(wire)'
+test-group = 'rig_bridge_wire_local'
 
 [[profile.default.overrides]]
 # These tests exercise full Codex turns and apply_patch execution, and they are
