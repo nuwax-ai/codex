@@ -9,6 +9,8 @@ mod error_tests;
 mod history_tests;
 #[path = "wire/request_id_tests.rs"]
 mod request_id_tests;
+#[path = "wire/responses_regression_tests.rs"]
+mod responses_regression_tests;
 #[path = "wire/responses_wire_tests.rs"]
 mod responses_wire_tests;
 mod support;

@@ -147,6 +147,24 @@ pub async fn serve_payload_with_headers(
     response_headers: &[(&str, &str)],
 ) -> Value {
     let (mut socket, _) = listener.accept().await.expect("accept");
+    let request = read_request(&mut socket).await;
+    let response_headers: String = response_headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect();
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n{response_headers}Content-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+        payload.len()
+    );
+    socket
+        .write_all(response.as_bytes())
+        .await
+        .expect("response");
+    request
+}
+
+/// Read a full HTTP request, retaining its original body before JSON parsing.
+pub async fn read_request(socket: &mut tokio::net::TcpStream) -> Value {
     let mut data = Vec::new();
     let split = loop {
         let mut chunk = [0; 8192];
@@ -172,18 +190,7 @@ pub async fn serve_payload_with_headers(
         assert_ne!(read, 0);
         data.extend_from_slice(&chunk[..read]);
     }
-    let body: Value = serde_json::from_slice(&data[split..split + length]).expect("request JSON");
-    let response_headers: String = response_headers
-        .iter()
-        .map(|(name, value)| format!("{name}: {value}\r\n"))
-        .collect();
-    let response = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n{response_headers}Content-Length: {}\r\nConnection: close\r\n\r\n{payload}",
-        payload.len()
-    );
-    socket
-        .write_all(response.as_bytes())
-        .await
-        .expect("response");
-    json!({"request_line":headers.lines().next(), "headers":headers, "body":body})
+    let body_raw = std::str::from_utf8(&data[split..split + length]).expect("request UTF-8");
+    let body: Value = serde_json::from_str(body_raw).expect("request JSON");
+    json!({"request_line":headers.lines().next(), "headers":headers, "body":body, "body_raw":body_raw})
 }
