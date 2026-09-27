@@ -31,8 +31,18 @@
 #![allow(clippy::expect_used)]
 #![allow(clippy::unwrap_used)]
 
+mod cassette;
 mod config;
 
+pub use cassette::CassetteMode;
+pub use cassette::TurnFixture;
+pub use cassette::cassette_mode;
+pub use cassette::fixture_path;
+pub use cassette::load_fixture;
+pub use cassette::load_rig_event_fixture;
+use cassette::record_turn;
+pub use cassette::save_rig_event_fixture;
+pub use cassette::store_fixture;
 pub use config::LiveConfig;
 pub use config::load_env_files;
 pub use config::vendor;
@@ -317,7 +327,7 @@ async fn run_turn_genai(
     .expect("stream_via_genai started within timeout")
     .expect("stream_via_genai succeeded");
     let events = drain_stream(stream, &cfg.vendor, tag).await;
-    record_turn(cfg, Bridge::Genai, tag, request, &events);
+    record_turn(cfg, Bridge::Genai, tag, request, &events).expect("record GenAI turn");
     events
 }
 
@@ -359,13 +369,13 @@ pub async fn run_turn_rig(
     .expect("stream_via_rig started within timeout")
     .expect("stream_via_rig succeeded");
     let events = drain_stream(stream, &cfg.vendor, tag).await;
-    record_turn(cfg, Bridge::Rig, tag, request, &events);
+    record_turn(cfg, Bridge::Rig, tag, request, &events).expect("record Rig turn");
     // Save the rig-event fixture alongside the event-level one.
-    if let Some(rec) = recorder
-        && let Ok(rig_events) = rec.lock()
-    {
+    if let Some(rec) = recorder {
+        let rig_events = rec.lock().expect("Rig recorder lock");
         let custom_tools = codex_rust_rig_bridge::extract_custom_tool_names(request);
-        save_rig_event_fixture(&cfg.vendor, tag, &rig_events, &custom_tools);
+        save_rig_event_fixture(&cfg.vendor, tag, &rig_events, &custom_tools)
+            .expect("record Rig events");
     }
     events
 }
@@ -761,119 +771,6 @@ pub fn end_turn_of(events: &[ResponseEvent]) -> Option<bool> {
 // Bridge-boundary cassette (record / replay)
 // ================================================================
 
-/// Cassette mode from `LIVE_CASSETTE`: unset = live only, `record` = live
-/// and persist fixtures, `replay` = serve recorded fixtures when present
-/// (falls back to live with a notice when a fixture is missing).
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum CassetteMode {
-    Off,
-    Record,
-    Replay,
-}
-
-pub fn cassette_mode() -> CassetteMode {
-    match std::env::var("LIVE_CASSETTE").as_deref() {
-        Ok("record") => CassetteMode::Record,
-        Ok("replay") => CassetteMode::Replay,
-        _ => CassetteMode::Off,
-    }
-}
-
-/// One recorded bridge-boundary turn: the exact request and the exact event
-/// stream, serialized to `tests/fixtures/<vendor>/<bridge>-<tag>.json`.
-/// Fixtures contain prompts and model text only — never credentials.
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct TurnFixture {
-    pub vendor: String,
-    pub bridge: String,
-    pub tag: String,
-    /// The request, serialized as plain JSON for documentation (replay only
-    /// consumes `events`, so no typed round-trip is required here).
-    pub request: serde_json::Value,
-    pub events: Vec<ResponseEvent>,
-}
-
-pub fn fixture_path(vendor: &str, bridge: &str, tag: &str) -> Option<PathBuf> {
-    let root = repo_root()?;
-    Some(
-        root.join("codex-rs")
-            .join("live-tests")
-            .join("tests")
-            .join("fixtures")
-            .join(vendor)
-            .join(format!("{bridge}-{tag}.json")),
-    )
-}
-
-/// Loads a rig-event fixture (the intermediate events the bridge receives,
-/// used for conversion-testing replay).
-pub fn load_rig_event_fixture(
-    vendor: &str,
-    tag: &str,
-) -> Result<codex_rust_rig_bridge::RigEventFixture, String> {
-    let path = rig_event_fixture_path(vendor, tag)
-        .ok_or_else(|| "Cannot locate Rig fixtures".to_string())?;
-    let contents =
-        std::fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
-    serde_json::from_str(&contents).map_err(|error| format!("{}: {error}", path.display()))
-}
-
-/// Saves a rig-event fixture.
-pub fn save_rig_event_fixture(
-    vendor: &str,
-    tag: &str,
-    rig_events: &[rig_core::streaming::StreamedAssistantContent],
-    custom_tools: &std::collections::HashSet<String>,
-) {
-    let Some(path) = rig_event_fixture_path(vendor, tag) else {
-        return;
-    };
-    let fixture = codex_rust_rig_bridge::RigEventFixture {
-        vendor: vendor.to_string(),
-        tag: tag.to_string(),
-        rig_events: rig_events.to_vec(),
-        custom_tools: custom_tools.iter().cloned().collect(),
-    };
-    if let Some(parent) = path.parent()
-        && std::fs::create_dir_all(parent).is_ok()
-        && let Ok(json) = serde_json::to_string_pretty(&fixture)
-        && std::fs::write(&path, json).is_ok()
-    {
-        println!("[cassette-rig] recorded {}", path.display());
-    }
-}
-
-fn rig_event_fixture_path(vendor: &str, tag: &str) -> Option<PathBuf> {
-    let root = repo_root()?;
-    Some(
-        root.join("codex-rs")
-            .join("live-tests")
-            .join("tests")
-            .join("fixtures")
-            .join(vendor)
-            .join(format!("rig-events-{tag}.json")),
-    )
-}
-
-pub fn load_fixture(vendor: &str, bridge: &str, tag: &str) -> Option<TurnFixture> {
-    let path = fixture_path(vendor, bridge, tag)?;
-    let contents = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&contents).ok()
-}
-
-pub fn store_fixture(fixture: &TurnFixture) {
-    let Some(path) = fixture_path(&fixture.vendor, &fixture.bridge, &fixture.tag) else {
-        return;
-    };
-    if let Some(parent) = path.parent()
-        && std::fs::create_dir_all(parent).is_ok()
-        && let Ok(json) = serde_json::to_string_pretty(fixture)
-        && std::fs::write(&path, json).is_ok()
-    {
-        println!("[cassette] recorded {}", path.display());
-    }
-}
-
 /// Stable kind tag per event, for A/B sequence diffs between bridges.
 pub fn event_kind(event: &ResponseEvent) -> &'static str {
     match event {
@@ -1052,25 +949,6 @@ fn prune_artifacts(vendor_dir: PathBuf) {
     }
     prune_dir(&vendor_dir, KEEP_RUNS);
     prune_dir(&vendor_dir.join("bridge"), KEEP_BRIDGE_LOGS);
-}
-
-fn record_turn(
-    cfg: &LiveConfig,
-    bridge: Bridge,
-    tag: &str,
-    request: &ResponsesApiRequest,
-    events: &[ResponseEvent],
-) {
-    if cassette_mode() != CassetteMode::Record {
-        return;
-    }
-    store_fixture(&TurnFixture {
-        vendor: cfg.vendor.clone(),
-        bridge: bridge.name().to_string(),
-        tag: tag.to_string(),
-        request: serde_json::to_value(request).unwrap_or(serde_json::Value::Null),
-        events: events.to_vec(),
-    });
 }
 
 fn persist_lines(vendor: &str, subdir: &str, tag: &str, lines: &[String]) {

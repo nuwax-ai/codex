@@ -23,9 +23,10 @@ use crate::convert_response::rig_event_to_response_events;
 pub struct RigEventFixture {
     pub vendor: String,
     pub tag: String,
-    /// The rig events exactly as the stream delivered them, serialized with
-    /// rig's own serde derives. No credentials ever appear here (auth lives
-    /// in HTTP headers, which are not captured at this boundary).
+    /// Rig events at the bridge boundary, serialized with Rig's serde derives.
+    /// Anthropic cumulative usage is corrected from wire counters before recording;
+    /// the SDK-native payload in `Final.raw` is unchanged. HTTP auth headers are
+    /// not captured at this boundary.
     pub rig_events: Vec<StreamedAssistantContent>,
     /// Names of custom (freeform) tools declared in the recorded request.
     /// Replay needs these to restore CustomToolCall items instead of
@@ -45,16 +46,17 @@ pub fn replay_rig_events(
     custom_tool_names: HashSet<String>,
 ) -> Result<Vec<ResponseEvent>, codex_api::ApiError> {
     let mut pending = PendingRigMessage::new(Arc::new(custom_tool_names), "cassette".into());
-    let mut out = Vec::new();
+    let mut out = vec![ResponseEvent::Created { response_id: None }];
     for event in rig_events {
         out.extend(rig_event_to_response_events(event.clone(), &mut pending)?);
+        // The live pump stops polling the provider as soon as completion is emitted.
+        if pending.completed_emitted() {
+            return Ok(out);
+        }
     }
-    if !pending.completed_emitted() {
-        return Err(codex_api::ApiError::Stream(
-            "Rig cassette ended without a terminal record".into(),
-        ));
-    }
-    Ok(out)
+    Err(codex_api::ApiError::Stream(
+        "Rig cassette ended without a terminal record".into(),
+    ))
 }
 
 /// Convenience wrapper that replays from a fixture without custom tools
@@ -73,3 +75,7 @@ pub fn extract_custom_tool_names(request: &codex_api::ResponsesApiRequest) -> Ha
         .meta
         .custom_names
 }
+
+#[cfg(test)]
+#[path = "cassette_tests.rs"]
+mod tests;
