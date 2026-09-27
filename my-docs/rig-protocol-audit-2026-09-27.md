@@ -277,6 +277,14 @@ Nextest run IDs：Rig `84b52772-df43-4711-b634-feff14aee385`；API `81ae3a33-aa2
 
 第 4 组包含 340 行独立生命周期测试，第 6 组包含内容转换抽取；保留实现与对应测试为同一提交，其余代码组均少于 500 行。审计与提示词作为第 11 个文档提交。已用 SHA-256 核对这 10 个提交合成后的全部 37 个源码/配置文件，与提交前已审查且经 §7.2 验证的内容逐字节相同；没有逐个中间提交重新编译或运行测试。仅本地提交，未 push。
 
+### 复核补充(2026-09-27,live 门禁扩展)
+
+三个新 live 门禁场景补齐本轮修复分支的真实网关验证(101/101 全绿):
+
+- **R02 live**:三家网关均接受经 additional_params 携带的 output_config.format,thinking 不受影响。
+- **R09 live**:is_error 工具失败结果被三家接受,模型能就失败作出回答。
+- **R10 live + 新发现**:MiMo/GLM 正确尊重 `thinking:{type:"disabled"}`(零思考输出);**StepFun 网关静默忽略该字段**(仍产出思考,实测 77 字符)。这是服务端对显式关闭配置的第三种反应(拒绝/执行/无视),已在测试中作为 documented deviation 记录——桥的显式关闭行为正确,偏离属于网关特性。
+
 ## 8. 仍缺失的能力 Top 3
 
 1. **真正的 Rig Responses wire 和显式能力路由。** 目前 Responses 输入兼容层不等于 Responses 传输；只有 Responses endpoint 的提供方仍需 native。

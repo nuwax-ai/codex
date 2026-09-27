@@ -1,0 +1,102 @@
+{
+  "vendor": "mimo",
+  "tag": "anthropic-tool-err-t1",
+  "rig_events": [
+    {
+      "id": "xnHqOtV8sKRQ3_brrPz0C",
+      "reasoning": "The user wants"
+    },
+    {
+      "id": "xnHqOtV8sKRQ3_brrPz0C",
+      "reasoning": " to query"
+    },
+    {
+      "id": "xnHqOtV8sKRQ3_brrPz0C",
+      "reasoning": " Beijing weather."
+    },
+    {
+      "id": "xnHqOtV8sKRQ3_brrPz0C",
+      "reasoning": " Let"
+    },
+    {
+      "id": "xnHqOtV8sKRQ3_brrPz0C",
+      "reasoning": " me call the"
+    },
+    {
+      "id": "xnHqOtV8sKRQ3_brrPz0C",
+      "reasoning": " tool."
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "The user wants to query Beijing weather. Let me call the tool."
+            }
+          }
+        ]
+      },
+      "id": "xnHqOtV8sKRQ3_brrPz0C"
+    },
+    {
+      "internal_call_id": "0iR9SfIRLw0Rxay3YqY7S",
+      "content": {
+        "Name": "get_weather"
+      }
+    },
+    {
+      "internal_call_id": "0iR9SfIRLw0Rxay3YqY7S",
+      "content": {
+        "Delta": "{\"city\": \"北京\"}"
+      }
+    },
+    {
+      "tool_call": {
+        "id": "call_b48f496a42f1403ea3a6ae47",
+        "provider": {
+          "call_id": "call_b48f496a42f1403ea3a6ae47"
+        },
+        "function": {
+          "name": "get_weather",
+          "arguments": {
+            "city": "北京"
+          }
+        },
+        "signature": null,
+        "additional_params": null
+      },
+      "internal_call_id": "0iR9SfIRLw0Rxay3YqY7S"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 132,
+        "output_tokens": 34,
+        "total_tokens": 166,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "tool_calls",
+      "message_id": "msg_f058b9023f7446fb9290002c",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "mimo-v2.6-flash",
+      "raw": {
+        "message_id": "msg_f058b9023f7446fb9290002c",
+        "model": "mimo-v2.6-flash",
+        "stop_reason": "tool_use",
+        "usage": {
+          "cache_creation_input_tokens": null,
+          "cache_read_input_tokens": null,
+          "input_tokens": 132,
+          "output_tokens": 34
+        }
+      }
+    }
+  ],
+  "custom_tools": []
+}

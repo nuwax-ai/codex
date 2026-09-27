@@ -1,0 +1,137 @@
+{
+  "vendor": "step",
+  "tag": "anthropic-tool-err-t1",
+  "rig_events": [
+    {
+      "id": "pTLWfY7UiS6vtDEUUuLD6",
+      "reasoning": "The"
+    },
+    {
+      "id": "pTLWfY7UiS6vtDEUUuLD6",
+      "reasoning": " user wants me to"
+    },
+    {
+      "id": "pTLWfY7UiS6vtDEUUuLD6",
+      "reasoning": " call get"
+    },
+    {
+      "id": "pTLWfY7UiS6vtDEUUuLD6",
+      "reasoning": "_weather for"
+    },
+    {
+      "id": "pTLWfY7UiS6vtDEUUuLD6",
+      "reasoning": " Beijing."
+    },
+    {
+      "id": "pTLWfY7UiS6vtDEUUuLD6",
+      "reasoning": " Let me do"
+    },
+    {
+      "id": "pTLWfY7UiS6vtDEUUuLD6",
+      "reasoning": " that."
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "The user wants me to call get_weather for Beijing. Let me do that.",
+              "signature": "9467ad3179f148c49688b915595e7c2c"
+            }
+          }
+        ]
+      },
+      "id": "pTLWfY7UiS6vtDEUUuLD6"
+    },
+    {
+      "text": "我来"
+    },
+    {
+      "text": "为你"
+    },
+    {
+      "text": "查询北京的"
+    },
+    {
+      "text": "天气。"
+    },
+    {
+      "internal_call_id": "aNpjgihNa0fN-MvmnY6Rm",
+      "content": {
+        "Name": "get_weather"
+      }
+    },
+    {
+      "internal_call_id": "aNpjgihNa0fN-MvmnY6Rm",
+      "content": {
+        "Delta": "{"
+      }
+    },
+    {
+      "internal_call_id": "aNpjgihNa0fN-MvmnY6Rm",
+      "content": {
+        "Delta": "\"city\": "
+      }
+    },
+    {
+      "internal_call_id": "aNpjgihNa0fN-MvmnY6Rm",
+      "content": {
+        "Delta": "\"北京\""
+      }
+    },
+    {
+      "internal_call_id": "aNpjgihNa0fN-MvmnY6Rm",
+      "content": {
+        "Delta": "}"
+      }
+    },
+    {
+      "tool_call": {
+        "id": "chatcmpl-tool-aa0d3306f9544444",
+        "provider": {
+          "call_id": "chatcmpl-tool-aa0d3306f9544444"
+        },
+        "function": {
+          "name": "get_weather",
+          "arguments": {
+            "city": "北京"
+          }
+        },
+        "signature": null,
+        "additional_params": null
+      },
+      "internal_call_id": "aNpjgihNa0fN-MvmnY6Rm"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 265,
+        "output_tokens": 47,
+        "total_tokens": 312,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "tool_calls",
+      "message_id": "chatcmpl-04d7075d3ede3c39c2dd0e28f3337a9a-9299e31a",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "step-5-preview",
+      "raw": {
+        "message_id": "chatcmpl-04d7075d3ede3c39c2dd0e28f3337a9a-9299e31a",
+        "model": "step-5-preview",
+        "stop_reason": "tool_use",
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 265,
+          "output_tokens": 47
+        }
+      }
+    }
+  ],
+  "custom_tools": []
+}

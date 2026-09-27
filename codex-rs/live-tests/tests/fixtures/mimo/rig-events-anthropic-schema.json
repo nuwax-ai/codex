@@ -1,0 +1,208 @@
+{
+  "vendor": "mimo",
+  "tag": "anthropic-schema",
+  "rig_events": [
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": "The user is asking what"
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": " Beijing"
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": " and Shanghai are called respectively"
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": ". This seems"
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": " like a straightforward question about the"
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": " names of these"
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": " two Chinese"
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": " cities.\n\nBe"
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": "ijing ("
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": "北京) and Shanghai (上海) are"
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": " the names"
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": " of two"
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": " major"
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": " cities"
+    },
+    {
+      "id": "qZ5S2r3V8Enj4iaqo4sZO",
+      "reasoning": " in China."
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "The user is asking what Beijing and Shanghai are called respectively. This seems like a straightforward question about the names of these two Chinese cities.\n\nBeijing (北京) and Shanghai (上海) are the names of two major cities in China."
+            }
+          }
+        ]
+      },
+      "id": "qZ5S2r3V8Enj4iaqo4sZO"
+    },
+    {
+      "text": "**"
+    },
+    {
+      "text": "北京**"
+    },
+    {
+      "text": "和**上海**就是"
+    },
+    {
+      "text": "它们"
+    },
+    {
+      "text": "各自的名称：\n\n- **"
+    },
+    {
+      "text": "北京**（"
+    },
+    {
+      "text": "Beijing），"
+    },
+    {
+      "text": "是中国的"
+    },
+    {
+      "text": "首都，全"
+    },
+    {
+      "text": "称\""
+    },
+    {
+      "text": "京"
+    },
+    {
+      "text": "\""
+    },
+    {
+      "text": "。\n"
+    },
+    {
+      "text": "- **上海**（Shanghai"
+    },
+    {
+      "text": "），是"
+    },
+    {
+      "text": "位于"
+    },
+    {
+      "text": "中国"
+    },
+    {
+      "text": "东部的直辖市"
+    },
+    {
+      "text": "，简"
+    },
+    {
+      "text": "称为"
+    },
+    {
+      "text": "\"沪\"或"
+    },
+    {
+      "text": "\"申\"。\n\n你"
+    },
+    {
+      "text": "具体"
+    },
+    {
+      "text": "想了解"
+    },
+    {
+      "text": "的是哪"
+    },
+    {
+      "text": "方面的"
+    },
+    {
+      "text": "信息呢"
+    },
+    {
+      "text": "？比如别"
+    },
+    {
+      "text": "称、英文"
+    },
+    {
+      "text": "名"
+    },
+    {
+      "text": "、还是"
+    },
+    {
+      "text": "其他"
+    },
+    {
+      "text": "？😊"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 126,
+        "total_tokens": 155,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": "msg_56069565c1ad45d8a42b9ad1",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "mimo-v2.6-flash",
+      "raw": {
+        "message_id": "msg_56069565c1ad45d8a42b9ad1",
+        "model": "mimo-v2.6-flash",
+        "stop_reason": "end_turn",
+        "usage": {
+          "cache_creation_input_tokens": null,
+          "cache_read_input_tokens": null,
+          "input_tokens": 29,
+          "output_tokens": 126
+        }
+      }
+    }
+  ],
+  "custom_tools": []
+}

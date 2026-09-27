@@ -1,0 +1,523 @@
+{
+  "vendor": "step",
+  "tag": "anthropic-schema",
+  "rig_events": [
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "用户"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "问的是“北京"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "和上海分别叫什么"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "名字？"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "”，这个问题"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "看起来很简单直"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "白，"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "但可能有"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "不同的"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "理解角度"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "。"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "用户"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "可能是"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "想了解这两个"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "城市"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "的基本名称，也可能是"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "想了解它们的"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "别称、"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "简称或历史名称"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "。\n\n考虑到"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "用户用"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "中文提问，我应该"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "用中文回答。"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "最"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "直接的理解"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "是：北京和"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "上海就是"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "这两个城市的名称"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "。但这样"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "回答"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "可能太简单了"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "，用户"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "可能想知道"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "更多。\n"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "\n让我"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "想想这两个"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "城市的"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "别称：\n-"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": " 北京：简称"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "“京”，"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "古称有"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "燕京"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "、北平"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "、大都"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "、"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "顺"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "天府"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "等"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "\n- 上海："
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "简称“沪”"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "或“申”，"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "别称有"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "申"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "城、魔"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "都等\n\n我应该"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "给出全面的"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "回答，包括"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "："
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "\n1. 正式"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "名称（"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "就是"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "北京、"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "上海）\n2"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": ". 简称"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "\n3. 著名"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "别称/"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "古"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "称\n\n这样既"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "回答了直接"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "问题，又提供了"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "额外有用"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "信息。\n"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "\n回答"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "结构：\n-"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": " 先说明正式"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "名称\n- "
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "分别"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "介绍两个"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "城市的简称"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "和别称"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "\n- 保持"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "简洁清晰"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "\n\n确保"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "信息"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "准确：\n- "
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "北京：直辖市"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "，简称"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "京"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "\n- 上海："
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "直辖市，简称沪"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "或申"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "\n- 北京"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "别称：燕"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "京、北平"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "（"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "历史上曾"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "用"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "名）\n- "
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "上海别称："
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "申城（"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "源自"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "春"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "申君"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "）、魔"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "都（现代"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "流行"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "称呼"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "）\n\n这样"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "回答比较完整"
+    },
+    {
+      "id": "wxrhju8eI2RqgXzwEyGSs",
+      "reasoning": "。"
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "用户问的是“北京和上海分别叫什么名字？”，这个问题看起来很简单直白，但可能有不同的理解角度。用户可能是想了解这两个城市的基本名称，也可能是想了解它们的别称、简称或历史名称。\n\n考虑到用户用中文提问，我应该用中文回答。最直接的理解是：北京和上海就是这两个城市的名称。但这样回答可能太简单了，用户可能想知道更多。\n\n让我想想这两个城市的别称：\n- 北京：简称“京”，古称有燕京、北平、大都、顺天府等\n- 上海：简称“沪”或“申”，别称有申城、魔都等\n\n我应该给出全面的回答，包括：\n1. 正式名称（就是北京、上海）\n2. 简称\n3. 著名别称/古称\n\n这样既回答了直接问题，又提供了额外有用信息。\n\n回答结构：\n- 先说明正式名称\n- 分别介绍两个城市的简称和别称\n- 保持简洁清晰\n\n确保信息准确：\n- 北京：直辖市，简称京\n- 上海：直辖市，简称沪或申\n- 北京别称：燕京、北平（历史上曾用名）\n- 上海别称：申城（源自春申君）、魔都（现代流行称呼）\n\n这样回答比较完整。",
+              "signature": "d0058cd84aa545c985fd77b49937cc14"
+            }
+          }
+        ]
+      },
+      "id": "wxrhju8eI2RqgXzwEyGSs"
+    },
+    {
+      "text": "{"
+    },
+    {
+      "text": "\r"
+    },
+    {
+      "text": "\n\""
+    },
+    {
+      "text": "city"
+    },
+    {
+      "text": "1"
+    },
+    {
+      "text": "\": \"北京市"
+    },
+    {
+      "text": "\",\r"
+    },
+    {
+      "text": "\n\"city2"
+    },
+    {
+      "text": "\": \"上海市"
+    },
+    {
+      "text": "\"\r"
+    },
+    {
+      "text": "\n}"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 33,
+        "output_tokens": 295,
+        "total_tokens": 328,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": "chatcmpl-6ff359d9a4507932c936f95b06592da5-bc28b66f",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "step-5-preview",
+      "raw": {
+        "message_id": "chatcmpl-6ff359d9a4507932c936f95b06592da5-bc28b66f",
+        "model": "step-5-preview",
+        "stop_reason": "end_turn",
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 33,
+          "output_tokens": 295
+        }
+      }
+    }
+  ],
+  "custom_tools": []
+}

@@ -1,0 +1,175 @@
+{
+  "vendor": "glm",
+  "tag": "anthropic-tool-err-t1",
+  "rig_events": [
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": "The"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": " user"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": " wants"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": " me"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": " to"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": " call"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": " get"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": "_weather"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": " for"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": " Beijing"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": " ("
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": "北京"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": ")."
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": " Let"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": " me"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": " do"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": " that"
+    },
+    {
+      "id": "fJz0HqyX2N2jXkhnKYt3r",
+      "reasoning": "."
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "The user wants me to call get_weather for Beijing (北京). Let me do that.",
+              "signature": "f6b7d1277df2476b816c8656"
+            }
+          }
+        ]
+      },
+      "id": "fJz0HqyX2N2jXkhnKYt3r"
+    },
+    {
+      "internal_call_id": "9Pmj_SSfKr7FX-YDFQI9e",
+      "content": {
+        "Name": "get_weather"
+      }
+    },
+    {
+      "internal_call_id": "9Pmj_SSfKr7FX-YDFQI9e",
+      "content": {
+        "Delta": "{\""
+      }
+    },
+    {
+      "internal_call_id": "9Pmj_SSfKr7FX-YDFQI9e",
+      "content": {
+        "Delta": "city"
+      }
+    },
+    {
+      "internal_call_id": "9Pmj_SSfKr7FX-YDFQI9e",
+      "content": {
+        "Delta": "\":\""
+      }
+    },
+    {
+      "internal_call_id": "9Pmj_SSfKr7FX-YDFQI9e",
+      "content": {
+        "Delta": "北京\""
+      }
+    },
+    {
+      "internal_call_id": "9Pmj_SSfKr7FX-YDFQI9e",
+      "content": {
+        "Delta": "}"
+      }
+    },
+    {
+      "tool_call": {
+        "id": "call_2864f74f062f405099eff795",
+        "provider": {
+          "call_id": "call_2864f74f062f405099eff795"
+        },
+        "function": {
+          "name": "get_weather",
+          "arguments": {
+            "city": "北京"
+          }
+        },
+        "signature": null,
+        "additional_params": null
+      },
+      "internal_call_id": "9Pmj_SSfKr7FX-YDFQI9e"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 196,
+        "output_tokens": 30,
+        "total_tokens": 226,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "tool_calls",
+      "message_id": "msg_20260927114137cb68129798724660",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "GLM-5.3-Flash",
+      "raw": {
+        "message_id": "msg_20260927114137cb68129798724660",
+        "model": "GLM-5.3-Flash",
+        "stop_reason": "tool_use",
+        "usage": {
+          "cache_creation_input_tokens": null,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 196,
+          "output_tokens": 30
+        }
+      }
+    }
+  ],
+  "custom_tools": []
+}

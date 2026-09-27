@@ -262,6 +262,173 @@ async fn scenario_chat_output_schema(cfg: &LiveConfig, bridge: Bridge) {
     }
 }
 
+/// R02 live gate: the Anthropic wire now carries the output schema through
+/// additional_params.output_config — the very channel the GLM thinking
+/// lesson taught us to treat carefully. The gateway must ACCEPT the turn.
+async fn scenario_anthropic_output_schema(cfg: &LiveConfig, bridge: Bridge) {
+    let Some(anthropic_url) = anthropic_url_or_skip(cfg) else {
+        return;
+    };
+    let mut request = base_request(
+        cfg,
+        "You are a helpful assistant. Answer in Chinese.",
+        "北京和上海分别叫什么名字?",
+    );
+    request.text = Some(codex_api::TextControls {
+        verbosity: None,
+        format: Some(codex_api::TextFormat {
+            r#type: codex_api::TextFormatType::JsonSchema,
+            strict: false,
+            name: "city_pair".into(),
+            schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "city1": {"type": "string"},
+                    "city2": {"type": "string"}
+                },
+                "required": ["city1", "city2"],
+                "additionalProperties": false
+            }),
+        }),
+    });
+    let events = run_turn(
+        cfg,
+        &anthropic_url,
+        LiveWire::Anthropic,
+        bridge,
+        &request,
+        "anthropic-schema",
+    )
+    .await;
+
+    let ctx = format!("{}/{} anthropic-schema", cfg.vendor, bridge.name());
+    assert!(
+        codex_live_tests::text_len(&events) > 0,
+        "{ctx}: expected text output; a gateway rejecting output_config would fail here"
+    );
+    codex_live_tests::assert_completed_with_usage(&events, &ctx);
+    println!(
+        "[summary] {ctx}: reasoning_chars={} (thinking must survive schema + gateway)",
+        codex_live_tests::reasoning_len(&events)
+    );
+}
+
+/// R10 live gate: explicit effort none injects thinking:{type:"disabled"}.
+/// A gateway that rejects the field must surface an error (fail-fast), and
+/// one that honors it must not emit thinking blocks.
+async fn scenario_anthropic_effort_none(cfg: &LiveConfig, bridge: Bridge) {
+    let Some(anthropic_url) = anthropic_url_or_skip(cfg) else {
+        return;
+    };
+    let mut request = base_request(
+        cfg,
+        "You are a helpful assistant. Answer in Chinese.",
+        "用一句话回答:法国的首都是哪里?",
+    );
+    request.reasoning = Some(codex_api::Reasoning {
+        effort: Some(codex_protocol::openai_models::ReasoningEffort::None),
+        summary: None,
+        context: None,
+    });
+    let events = run_turn(
+        cfg,
+        &anthropic_url,
+        LiveWire::Anthropic,
+        bridge,
+        &request,
+        "anthropic-effort-none",
+    )
+    .await;
+
+    let ctx = format!("{}/{} anthropic-effort-none", cfg.vendor, bridge.name());
+    assert!(
+        codex_live_tests::text_len(&events) > 0,
+        "{ctx}: expected an answer with thinking disabled"
+    );
+    // Acceptance is the hard gate (a rejecting gateway fails the turn).
+    // Honoring is diagnostic: gateways may silently ignore the disabled
+    // config (observed: StepFun still emits thinking) — that deviation is
+    // the server's choice, not a bridge error.
+    let reasoning = codex_live_tests::reasoning_len(&events);
+    if reasoning > 0 {
+        println!(
+            "[summary] {ctx}: gateway ignored thinking:{{disabled}} ({reasoning} reasoning chars) — documented deviation"
+        );
+    }
+    codex_live_tests::assert_completed_with_usage(&events, &ctx);
+}
+
+/// R09 live gate: a failed tool result maps to Anthropic is_error=true and
+/// the follow-up turn still answers.
+async fn scenario_anthropic_tool_error(cfg: &LiveConfig, bridge: Bridge) {
+    let Some(anthropic_url) = anthropic_url_or_skip(cfg) else {
+        return;
+    };
+    let ctx = format!("{}/{} anthropic-tool-error", cfg.vendor, bridge.name());
+    let mut request = base_request(
+        cfg,
+        "You are a helpful assistant.",
+        "请调用 get_weather 查询北京天气;如果工具报错,请直接告诉用户工具失败了。",
+    );
+    request.tools = Some(weather_tools());
+    request.parallel_tool_calls = false;
+
+    let turn1 = run_turn(
+        cfg,
+        &anthropic_url,
+        LiveWire::Anthropic,
+        bridge,
+        &request,
+        "anthropic-tool-err-t1",
+    )
+    .await;
+    codex_live_tests::assert_completed_with_usage(&turn1, &ctx);
+    let function_call =
+        extract_function_call(&turn1).unwrap_or_else(|| panic!("{ctx}: tool call emitted"));
+    assert_eq!(function_call.0, "get_weather");
+
+    let mut input = request.input.clone();
+    let (_, arguments, call_id) = function_call;
+    input.push(ResponseItem::FunctionCall {
+        id: None,
+        name: "get_weather".into(),
+        namespace: None,
+        arguments,
+        encrypted_function_args: None,
+        call_id: call_id.clone(),
+        internal_chat_message_metadata_passthrough: None,
+    });
+    input.push(ResponseItem::FunctionCallOutput {
+        id: None,
+        call_id: Some(call_id),
+        name: None,
+        namespace: None,
+        output: FunctionCallOutputPayload {
+            body: FunctionCallOutputBody::Text(
+                r#"{"error":"weather service unavailable (simulated)"}"#.into(),
+            ),
+            success: Some(false),
+        },
+        internal_chat_message_metadata_passthrough: None,
+    });
+    request.input = input;
+
+    let turn2 = run_turn(
+        cfg,
+        &anthropic_url,
+        LiveWire::Anthropic,
+        bridge,
+        &request,
+        "anthropic-tool-err-t2",
+    )
+    .await;
+    assert!(
+        codex_live_tests::text_len(&turn2) > 0,
+        "{ctx}: model should explain the tool failure after an is_error result"
+    );
+    codex_live_tests::assert_completed_with_usage(&turn2, &ctx);
+}
+
 /// Acceptance smoke test for an explicit high-effort request. Visible
 /// thinking is diagnostic: effort neither enables thinking nor guarantees
 /// visible reasoning, and an ignoring gateway may still think by default.
@@ -510,6 +677,21 @@ bridge_matrix!(
 bridge_matrix!(
     anthropic_tool_round_trip,
     scenario_anthropic_tool_round_trip,
+    ["mimo", "glm", "step"]
+);
+bridge_matrix!(
+    anthropic_output_schema,
+    scenario_anthropic_output_schema,
+    ["mimo", "glm", "step"]
+);
+bridge_matrix!(
+    anthropic_effort_none,
+    scenario_anthropic_effort_none,
+    ["mimo", "glm", "step"]
+);
+bridge_matrix!(
+    anthropic_tool_error,
+    scenario_anthropic_tool_error,
     ["mimo", "glm", "step"]
 );
 bridge_matrix!(

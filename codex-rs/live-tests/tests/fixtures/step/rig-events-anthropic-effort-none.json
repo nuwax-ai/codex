@@ -1,0 +1,140 @@
+{
+  "vendor": "step",
+  "tag": "anthropic-effort-none",
+  "rig_events": [
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "用户"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "要求用一句话回答"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "\""
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "法国的首都是哪里"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "?\"。这是一个简单的"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "常识问题"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "。\n\n法国的"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "首都是巴黎("
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "Paris)。"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "我需要用中文简洁"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "地回答。\n"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "\n可能的"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "回答:"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "\n- 法国的首"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "都是巴黎。\n-"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": " 巴黎是法国的"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "首都。\n\n两种"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "都可以，"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "保持"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "简洁直接"
+    },
+    {
+      "id": "-M9WhxDX-XT-0crjoyA5r",
+      "reasoning": "。"
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "用户要求用一句话回答\"法国的首都是哪里?\"。这是一个简单的常识问题。\n\n法国的首都是巴黎(Paris)。我需要用中文简洁地回答。\n\n可能的回答:\n- 法国的首都是巴黎。\n- 巴黎是法国的首都。\n\n两种都可以，保持简洁直接。",
+              "signature": "4e3965cfedc2466b8efed77cf7eb3d65"
+            }
+          }
+        ]
+      },
+      "id": "-M9WhxDX-XT-0crjoyA5r"
+    },
+    {
+      "text": "法国的"
+    },
+    {
+      "text": "首都是巴黎。"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 35,
+        "output_tokens": 61,
+        "total_tokens": 96,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": "chatcmpl-624c8a95a3f4ca8b41a3eda5150f5b8d-96088f87",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "step-5-preview",
+      "raw": {
+        "message_id": "chatcmpl-624c8a95a3f4ca8b41a3eda5150f5b8d-96088f87",
+        "model": "step-5-preview",
+        "stop_reason": "end_turn",
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 35,
+          "output_tokens": 61
+        }
+      }
+    }
+  ],
+  "custom_tools": []
+}

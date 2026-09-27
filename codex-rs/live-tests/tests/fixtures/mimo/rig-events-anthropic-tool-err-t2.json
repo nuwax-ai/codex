@@ -1,0 +1,97 @@
+{
+  "vendor": "mimo",
+  "tag": "anthropic-tool-err-t2",
+  "rig_events": [
+    {
+      "id": "etCcYPeC5mbSXv3U99J5k",
+      "reasoning": "The tool returned an error. The"
+    },
+    {
+      "id": "etCcYPeC5mbSXv3U99J5k",
+      "reasoning": " user said"
+    },
+    {
+      "id": "etCcYPeC5mbSXv3U99J5k",
+      "reasoning": " if"
+    },
+    {
+      "id": "etCcYPeC5mbSXv3U99J5k",
+      "reasoning": " the tool fails, directly"
+    },
+    {
+      "id": "etCcYPeC5mbSXv3U99J5k",
+      "reasoning": " tell them it"
+    },
+    {
+      "id": "etCcYPeC5mbSXv3U99J5k",
+      "reasoning": " failed."
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "The tool returned an error. The user said if the tool fails, directly tell them it failed."
+            }
+          }
+        ]
+      },
+      "id": "etCcYPeC5mbSXv3U99J5k"
+    },
+    {
+      "text": "工具"
+    },
+    {
+      "text": "调"
+    },
+    {
+      "text": "用失败了,"
+    },
+    {
+      "text": "天气服务"
+    },
+    {
+      "text": "当前"
+    },
+    {
+      "text": "不可用,"
+    },
+    {
+      "text": "无法查询北京"
+    },
+    {
+      "text": "天气。"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 56,
+        "output_tokens": 40,
+        "total_tokens": 224,
+        "cached_input_tokens": 128,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": "msg_e2fd5dc059774661a3ec3519",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "mimo-v2.6-flash",
+      "raw": {
+        "message_id": "msg_e2fd5dc059774661a3ec3519",
+        "model": "mimo-v2.6-flash",
+        "stop_reason": "end_turn",
+        "usage": {
+          "cache_creation_input_tokens": null,
+          "cache_read_input_tokens": 128,
+          "input_tokens": 56,
+          "output_tokens": 40
+        }
+      }
+    }
+  ],
+  "custom_tools": []
+}

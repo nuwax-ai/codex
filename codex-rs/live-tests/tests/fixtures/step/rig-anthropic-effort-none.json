@@ -1,0 +1,230 @@
+{
+  "vendor": "step",
+  "bridge": "rig",
+  "tag": "anthropic-effort-none",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "用一句话回答:法国的首都是哪里?",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant. Answer in Chinese.",
+    "model": "step-5-preview",
+    "parallel_tool_calls": true,
+    "reasoning": {
+      "effort": "none"
+    },
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto"
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rsn_18d910823ae9c2d00",
+        "summary": [],
+        "content": null,
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "用户",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "要求用一句话回答",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "法国的首都是哪里",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "?\"。这是一个简单的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "常识问题",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "。\n\n法国的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "首都是巴黎(",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "Paris)。",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "我需要用中文简洁",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "地回答。\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n可能的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "回答:",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n- 法国的首",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "都是巴黎。\n-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " 巴黎是法国的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "首都。\n\n两种",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "都可以，",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "保持",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "简洁直接",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "。",
+        "content_index": 0
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rsn_18d910823ae9c2d00",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "用户要求用一句话回答\"法国的首都是哪里?\"。这是一个简单的常识问题。\n\n法国的首都是巴黎(Paris)。我需要用中文简洁地回答。\n\n可能的回答:\n- 法国的首都是巴黎。\n- 巴黎是法国的首都。\n\n两种都可以，保持简洁直接。"
+          }
+        ],
+        "encrypted_content": "codex-rig-reasoning-v1:{\"source\":\"Anthropic:b00fab0031fb8980d885dd1cecf7ed0ae707a093a049143a89751f70c6d9e53b\",\"blocks\":[{\"id\":null,\"content\":[{\"type\":\"text\",\"content\":{\"text\":\"用户要求用一句话回答\\\"法国的首都是哪里?\\\"。这是一个简单的常识问题。\\n\\n法国的首都是巴黎(Paris)。我需要用中文简洁地回答。\\n\\n可能的回答:\\n- 法国的首都是巴黎。\\n- 巴黎是法国的首都。\\n\\n两种都可以，保持简洁直接。\",\"signature\":\"4e3965cfedc2466b8efed77cf7eb3d65\"}}]}]}"
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "txt_18d910825dd4e4c81",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "法国的"
+    },
+    {
+      "OutputTextDelta": "首都是巴黎。"
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "txt_18d910825dd4e4c81",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "法国的首都是巴黎。"
+          }
+        ]
+      }
+    },
+    {
+      "ServerModel": "step-5-preview"
+    },
+    {
+      "Completed": {
+        "response_id": "chatcmpl-624c8a95a3f4ca8b41a3eda5150f5b8d-96088f87",
+        "token_usage": {
+          "input_tokens": 35,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 61,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 96
+        },
+        "usage_metadata": null,
+        "end_turn": true
+      }
+    }
+  ]
+}

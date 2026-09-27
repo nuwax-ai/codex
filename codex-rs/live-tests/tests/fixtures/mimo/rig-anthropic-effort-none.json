@@ -1,0 +1,81 @@
+{
+  "vendor": "mimo",
+  "bridge": "rig",
+  "tag": "anthropic-effort-none",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "用一句话回答:法国的首都是哪里?",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant. Answer in Chinese.",
+    "model": "mimo-v2.6-flash",
+    "parallel_tool_calls": true,
+    "reasoning": {
+      "effort": "none"
+    },
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto"
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "txt_18d91083086775680",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "法国"
+    },
+    {
+      "OutputTextDelta": "的首都是巴黎。"
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "txt_18d91083086775680",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "法国的首都是巴黎。"
+          }
+        ]
+      }
+    },
+    {
+      "ServerModel": "mimo-v2.6-flash"
+    },
+    {
+      "Completed": {
+        "response_id": "msg_81913699c4f04eb2ac2753ea",
+        "token_usage": {
+          "input_tokens": 33,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 7,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 40
+        },
+        "usage_metadata": null,
+        "end_turn": true
+      }
+    }
+  ]
+}

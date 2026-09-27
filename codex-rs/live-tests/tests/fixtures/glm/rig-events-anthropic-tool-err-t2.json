@@ -1,0 +1,317 @@
+{
+  "vendor": "glm",
+  "tag": "anthropic-tool-err-t2",
+  "rig_events": [
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": "The"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " tool"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " call"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " returned"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " an"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " error"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": ":"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " \""
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": "weather"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " service"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " unavailable"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " ("
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": "sim"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": "ulated"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": ")\"."
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " The"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " user"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " instructed"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " me"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " to"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " tell"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " them"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " directly"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " if"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " the"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " tool"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " fails"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": "."
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " So"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " I"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " should"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " inform"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " the"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " user"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " that"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " the"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " tool"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": " failed"
+    },
+    {
+      "id": "6sfs6881Jm4W-3rK5MCn8",
+      "reasoning": "."
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "The tool call returned an error: \"weather service unavailable (simulated)\". The user instructed me to tell them directly if the tool fails. So I should inform the user that the tool failed.",
+              "signature": "37250db756234ba5a6972703"
+            }
+          }
+        ]
+      },
+      "id": "6sfs6881Jm4W-3rK5MCn8"
+    },
+    {
+      "text": "很"
+    },
+    {
+      "text": "抱歉"
+    },
+    {
+      "text": ","
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "查询"
+    },
+    {
+      "text": "工具"
+    },
+    {
+      "text": "调用"
+    },
+    {
+      "text": "失败了"
+    },
+    {
+      "text": ","
+    },
+    {
+      "text": "无法"
+    },
+    {
+      "text": "获取"
+    },
+    {
+      "text": "北京的"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "信息"
+    },
+    {
+      "text": "。"
+    },
+    {
+      "text": "请"
+    },
+    {
+      "text": "稍"
+    },
+    {
+      "text": "后再"
+    },
+    {
+      "text": "试"
+    },
+    {
+      "text": ","
+    },
+    {
+      "text": "或"
+    },
+    {
+      "text": "通过"
+    },
+    {
+      "text": "其他"
+    },
+    {
+      "text": "渠道"
+    },
+    {
+      "text": "("
+    },
+    {
+      "text": "如"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": " App"
+    },
+    {
+      "text": "、"
+    },
+    {
+      "text": "中国"
+    },
+    {
+      "text": "天气"
+    },
+    {
+      "text": "网"
+    },
+    {
+      "text": "等"
+    },
+    {
+      "text": ")"
+    },
+    {
+      "text": "查询"
+    },
+    {
+      "text": "实时"
+    },
+    {
+      "text": "天气。"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 223,
+        "output_tokens": 79,
+        "total_tokens": 302,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": "msg_20260927114141e57548d638b141a5",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "GLM-5.3-Flash",
+      "raw": {
+        "message_id": "msg_20260927114141e57548d638b141a5",
+        "model": "GLM-5.3-Flash",
+        "stop_reason": "end_turn",
+        "usage": {
+          "cache_creation_input_tokens": null,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 223,
+          "output_tokens": 79
+        }
+      }
+    }
+  ],
+  "custom_tools": []
+}

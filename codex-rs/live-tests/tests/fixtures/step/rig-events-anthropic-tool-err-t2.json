@@ -1,0 +1,103 @@
+{
+  "vendor": "step",
+  "tag": "anthropic-tool-err-t2",
+  "rig_events": [
+    {
+      "id": "Sin3HpQ9wgY7i7dUI276L",
+      "reasoning": "工具"
+    },
+    {
+      "id": "Sin3HpQ9wgY7i7dUI276L",
+      "reasoning": "报错了"
+    },
+    {
+      "id": "Sin3HpQ9wgY7i7dUI276L",
+      "reasoning": ","
+    },
+    {
+      "id": "Sin3HpQ9wgY7i7dUI276L",
+      "reasoning": "按"
+    },
+    {
+      "id": "Sin3HpQ9wgY7i7dUI276L",
+      "reasoning": "用户要求"
+    },
+    {
+      "id": "Sin3HpQ9wgY7i7dUI276L",
+      "reasoning": "直接告诉"
+    },
+    {
+      "id": "Sin3HpQ9wgY7i7dUI276L",
+      "reasoning": "用户工具失败了"
+    },
+    {
+      "id": "Sin3HpQ9wgY7i7dUI276L",
+      "reasoning": "。"
+    },
+    {
+      "reasoning": {
+        "id": null,
+        "content": [
+          {
+            "type": "text",
+            "content": {
+              "text": "工具报错了,按用户要求直接告诉用户工具失败了。",
+              "signature": "a77dc36e7ffa4bd0824e62464b6e4b4f"
+            }
+          }
+        ]
+      },
+      "id": "Sin3HpQ9wgY7i7dUI276L"
+    },
+    {
+      "text": "工具调用"
+    },
+    {
+      "text": "失败"
+    },
+    {
+      "text": ":天气"
+    },
+    {
+      "text": "服务当前"
+    },
+    {
+      "text": "不可用("
+    },
+    {
+      "text": "模拟错误"
+    },
+    {
+      "text": ")。"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 314,
+        "output_tokens": 28,
+        "total_tokens": 342,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": "chatcmpl-6d4dcb5e153a0958bc796e2d5675e520-9f8194a0",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "step-5-preview",
+      "raw": {
+        "message_id": "chatcmpl-6d4dcb5e153a0958bc796e2d5675e520-9f8194a0",
+        "model": "step-5-preview",
+        "stop_reason": "end_turn",
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 314,
+          "output_tokens": 28
+        }
+      }
+    }
+  ],
+  "custom_tools": []
+}

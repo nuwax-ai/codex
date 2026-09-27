@@ -1,0 +1,41 @@
+{
+  "vendor": "mimo",
+  "tag": "anthropic-effort-none",
+  "rig_events": [
+    {
+      "text": "法国"
+    },
+    {
+      "text": "的首都是巴黎。"
+    },
+    {
+      "kind": "final",
+      "usage": {
+        "input_tokens": 33,
+        "output_tokens": 7,
+        "total_tokens": 40,
+        "cached_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "tool_use_prompt_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "finish_reason": "stop",
+      "message_id": "msg_81913699c4f04eb2ac2753ea",
+      "response_id": null,
+      "provider": "anthropic",
+      "model": "mimo-v2.6-flash",
+      "raw": {
+        "message_id": "msg_81913699c4f04eb2ac2753ea",
+        "model": "mimo-v2.6-flash",
+        "stop_reason": "end_turn",
+        "usage": {
+          "cache_creation_input_tokens": null,
+          "cache_read_input_tokens": null,
+          "input_tokens": 33,
+          "output_tokens": 7
+        }
+      }
+    }
+  ],
+  "custom_tools": []
+}
