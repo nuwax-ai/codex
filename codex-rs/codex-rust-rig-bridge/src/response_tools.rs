@@ -18,6 +18,7 @@ const MAX_TOOL_ARGS_BYTES: usize = 1_048_576;
 struct PendingTool {
     raw: String,
     done: Option<ResponseItem>,
+    events: Vec<ResponseEvent>,
 }
 
 pub(crate) struct PendingTools {
@@ -57,11 +58,10 @@ impl PendingTools {
         Ok(())
     }
 
-    pub(crate) fn complete(
-        &mut self,
-        id: String,
-        call: ToolCall,
-    ) -> Result<Vec<ResponseEvent>, ApiError> {
+    pub(crate) fn complete(&mut self, id: String, call: ToolCall) -> Result<(), ApiError> {
+        if !call.function.arguments.is_object() {
+            return Err(invalid_tool("arguments must be a JSON object"));
+        }
         let custom = self.custom.contains(&call.function.name);
         let entry = self.entry(id.clone());
         if entry.done.is_some() {
@@ -129,26 +129,32 @@ impl PendingTools {
             (added, item, arguments)
         };
         entry.done = Some(done);
-        Ok(vec![
+        entry.events = vec![
             ResponseEvent::OutputItemAdded(added),
             ResponseEvent::ToolCallInputDelta {
                 item_id: id,
                 call_id: Some(call_id),
                 delta,
             },
-        ])
+        ];
+        Ok(())
     }
 
-    pub(crate) fn finish(&mut self) -> Vec<ResponseEvent> {
-        std::mem::take(&mut self.order)
-            .into_iter()
-            .filter_map(|id| {
-                self.calls
-                    .remove(&id)
-                    .and_then(|tool| tool.done)
-                    .map(ResponseEvent::OutputItemDone)
-            })
-            .collect()
+    pub(crate) fn finish(&mut self) -> Result<HashMap<String, Vec<ResponseEvent>>, ApiError> {
+        if self.calls.values().any(|tool| tool.done.is_none()) {
+            return Err(invalid_tool("stream ended with an unconfirmed tool call"));
+        }
+        let mut calls = HashMap::new();
+        for id in std::mem::take(&mut self.order) {
+            if let Some(tool) = self.calls.remove(&id) {
+                let mut events = tool.events;
+                if let Some(done) = tool.done {
+                    events.push(ResponseEvent::OutputItemDone(done));
+                }
+                calls.insert(id, events);
+            }
+        }
+        Ok(calls)
     }
 }
 

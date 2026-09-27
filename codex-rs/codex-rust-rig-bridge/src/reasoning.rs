@@ -68,6 +68,7 @@ impl ReasoningState {
             return None;
         }
         let blocks = std::mem::take(&mut self.blocks);
+        self.ids.clear();
         let content = blocks
             .iter()
             .flat_map(|reasoning| reasoning.content.iter())

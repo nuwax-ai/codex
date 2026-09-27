@@ -9,6 +9,12 @@ use rig_core::completion::request::FinishReason;
 use rig_core::completion::request::Usage as RigUsage;
 use rig_core::streaming::StreamFinal;
 use rig_core::streaming::StreamedAssistantContent;
+use std::collections::HashSet;
+
+enum DeferredOutput {
+    Event(Box<ResponseEvent>),
+    Tool(String),
+}
 
 pub(crate) struct PendingRigMessage {
     tools: crate::response_tools::PendingTools,
@@ -18,6 +24,10 @@ pub(crate) struct PendingRigMessage {
     reasoning_item_id: Option<String>,
     source: String,
     completed: bool,
+    active_reasoning_ids: HashSet<String>,
+    closed_reasoning_ids: HashSet<String>,
+    tool_positions: HashSet<String>,
+    suffix: Vec<DeferredOutput>,
 }
 
 fn unique_suffix() -> String {
@@ -47,13 +57,27 @@ impl PendingRigMessage {
             reasoning_item_id: None,
             source,
             completed: false,
+            active_reasoning_ids: HashSet::new(),
+            closed_reasoning_ids: HashSet::new(),
+            tool_positions: HashSet::new(),
+            suffix: Vec::new(),
         }
     }
     pub(crate) fn completed_emitted(&self) -> bool {
         self.completed
     }
 
-    fn reasoning_added(&mut self, events: &mut Vec<ResponseEvent>) {
+    fn reasoning_added(
+        &mut self,
+        id: &str,
+        events: &mut Vec<ResponseEvent>,
+    ) -> Result<(), ApiError> {
+        if self.closed_reasoning_ids.contains(id) {
+            return Err(ApiError::Stream(
+                "Rig reasoning changed after its item was completed".into(),
+            ));
+        }
+        self.active_reasoning_ids.insert(id.to_string());
         if self.reasoning_item_id.is_none() {
             let id = format!("rsn_{}", unique_suffix());
             self.reasoning_item_id = Some(id.clone());
@@ -64,6 +88,17 @@ impl PendingRigMessage {
                 encrypted_content: None,
                 internal_chat_message_metadata_passthrough: None,
             }));
+        }
+        Ok(())
+    }
+
+    fn tool_position(&mut self, id: &str, events: &mut Vec<ResponseEvent>) {
+        finish_reasoning(self, events);
+        finish_text(self, events);
+        self.suffix
+            .extend(events.drain(..).map(Box::new).map(DeferredOutput::Event));
+        if self.tool_positions.insert(id.to_string()) {
+            self.suffix.push(DeferredOutput::Tool(id.to_string()));
         }
     }
 }
@@ -78,6 +113,7 @@ pub(crate) fn rig_event_to_response_events(
     let mut events = Vec::new();
     match event {
         StreamedAssistantContent::Text(text) => {
+            finish_reasoning(pending, &mut events);
             if pending.text_item_id.is_none() {
                 let id = format!("txt_{}", unique_suffix());
                 pending.text_item_id = Some(id.clone());
@@ -93,7 +129,8 @@ pub(crate) fn rig_event_to_response_events(
             events.push(ResponseEvent::OutputTextDelta(text.text));
         }
         StreamedAssistantContent::ReasoningDelta { id, reasoning, .. } => {
-            pending.reasoning_added(&mut events);
+            finish_text(pending, &mut events);
+            pending.reasoning_added(&id, &mut events)?;
             let index = pending.reasoning.delta(id, &reasoning);
             events.push(ResponseEvent::ReasoningContentDelta {
                 delta: reasoning,
@@ -101,30 +138,45 @@ pub(crate) fn rig_event_to_response_events(
             });
         }
         StreamedAssistantContent::Reasoning { id, reasoning } => {
-            pending.reasoning_added(&mut events);
+            finish_text(pending, &mut events);
+            pending.reasoning_added(&id, &mut events)?;
             pending.reasoning.complete(id, reasoning);
         }
         StreamedAssistantContent::ToolCallDelta {
             internal_call_id,
             content,
-        } => pending.tools.delta(internal_call_id, content)?,
+        } => {
+            pending.tool_position(&internal_call_id, &mut events);
+            pending.tools.delta(internal_call_id, content)?;
+        }
         StreamedAssistantContent::ToolCall {
             internal_call_id,
             tool_call,
-        } => events.extend(pending.tools.complete(internal_call_id, tool_call)?),
+        } => {
+            pending.tool_position(&internal_call_id, &mut events);
+            pending.tools.complete(internal_call_id, tool_call)?;
+        }
         StreamedAssistantContent::Final(record) => {
-            events.extend(handle_stream_final(record, pending))
+            events.extend(handle_stream_final(record, pending)?)
         }
         StreamedAssistantContent::Unknown(unknown) => {
             tracing::debug!(?unknown, "Ignoring unmodeled Rig stream item")
         }
     }
+    if !pending.completed && !pending.suffix.is_empty() {
+        pending
+            .suffix
+            .extend(events.into_iter().map(Box::new).map(DeferredOutput::Event));
+        return Ok(Vec::new());
+    }
     Ok(events)
 }
 
-fn handle_stream_final(record: StreamFinal, pending: &mut PendingRigMessage) -> Vec<ResponseEvent> {
-    let mut events = Vec::new();
+fn finish_reasoning(pending: &mut PendingRigMessage, events: &mut Vec<ResponseEvent>) {
     if let Some((content, encoded)) = pending.reasoning.finish(&pending.source) {
+        pending
+            .closed_reasoning_ids
+            .extend(pending.active_reasoning_ids.drain());
         events.push(ResponseEvent::OutputItemDone(ResponseItem::Reasoning {
             id: pending
                 .reasoning_item_id
@@ -136,6 +188,9 @@ fn handle_stream_final(record: StreamFinal, pending: &mut PendingRigMessage) -> 
             internal_chat_message_metadata_passthrough: None,
         }));
     }
+}
+
+fn finish_text(pending: &mut PendingRigMessage, events: &mut Vec<ResponseEvent>) {
     if let Some(id) = pending.text_item_id.take() {
         events.push(ResponseEvent::OutputItemDone(ResponseItem::Message {
             id: Some(ResponseItemId::from_server(id)),
@@ -147,26 +202,65 @@ fn handle_stream_final(record: StreamFinal, pending: &mut PendingRigMessage) -> 
             internal_chat_message_metadata_passthrough: None,
         }));
     }
-    events.extend(pending.tools.finish());
+}
+
+fn handle_stream_final(
+    record: StreamFinal,
+    pending: &mut PendingRigMessage,
+) -> Result<Vec<ResponseEvent>, ApiError> {
+    // Match native Responses' response.incomplete behavior. Never publish
+    // executable tool Done items from a truncated or unsupported terminal.
+    let end_turn = match record.finish_reason.as_ref() {
+        Some(FinishReason::Stop) => Some(true),
+        Some(FinishReason::ToolCalls) => Some(false),
+        Some(FinishReason::Other(reason)) if reason == "model_context_window_exceeded" => {
+            return Err(ApiError::ContextWindowExceeded);
+        }
+        Some(
+            reason @ (FinishReason::Length | FinishReason::ContentFilter | FinishReason::Other(_)),
+        ) => {
+            return Err(ApiError::Stream(format!(
+                "Incomplete Rig response, reason: {reason:?}"
+            )));
+        }
+        None => None,
+    };
+    let mut tool_events = pending.tools.finish()?;
+    let mut events = Vec::new();
+    finish_reasoning(pending, &mut events);
+    finish_text(pending, &mut events);
+    if !pending.suffix.is_empty() {
+        pending
+            .suffix
+            .extend(events.drain(..).map(Box::new).map(DeferredOutput::Event));
+        for item in std::mem::take(&mut pending.suffix) {
+            match item {
+                DeferredOutput::Event(event) => events.push(*event),
+                DeferredOutput::Tool(id) => {
+                    if let Some(call) = tool_events.remove(&id) {
+                        events.extend(call);
+                    }
+                }
+            }
+        }
+    }
     if let Some(model) = record.model {
         events.push(ResponseEvent::ServerModel(model));
     }
-    let end_turn = record
-        .finish_reason
-        .as_ref()
-        .map(|reason| !matches!(reason, FinishReason::ToolCalls));
     let token_usage = record
         .usage
         .has_values()
         .then(|| map_usage(&record.usage, &record.provider));
     events.push(ResponseEvent::Completed {
-        response_id: record.response_id.unwrap_or_default(),
+        // Chat reports response_id; Anthropic reports message_id. Codex uses
+        // one completion identifier for both, never a transport request ID.
+        response_id: record.response_id.or(record.message_id).unwrap_or_default(),
         token_usage,
         usage_metadata: None,
         end_turn,
     });
     pending.completed = true;
-    events
+    Ok(events)
 }
 
 pub(crate) fn map_usage(usage: &RigUsage, provider: &str) -> TokenUsage {

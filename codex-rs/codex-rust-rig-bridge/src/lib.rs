@@ -36,3 +36,7 @@ pub use stream::stream_via_rig_with_recording;
 #[cfg(test)]
 #[path = "stream_contract_tests.rs"]
 mod stream_contract_tests;
+
+#[cfg(test)]
+#[path = "stream_lifecycle_tests.rs"]
+mod stream_lifecycle_tests;

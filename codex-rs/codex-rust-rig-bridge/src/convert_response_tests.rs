@@ -321,19 +321,9 @@ mod custom_tool_response_tests {
             "test",
             rig_core::completion::request::Usage::new(),
         ));
-        let mut all = Vec::new();
-        for ev in [name_event, delta_event, final_event] {
-            all.extend(rig_event_to_response_events(ev, &mut pending));
-        }
-        let has_function_call_done = all.iter().any(|e| {
-            matches!(
-                e,
-                ResponseEvent::OutputItemDone(ResponseItem::FunctionCall { .. })
-            )
-        });
-        assert!(
-            !has_function_call_done,
-            "unconfirmed call must not be emitted as Done"
-        );
+        assert!(rig_event_to_response_events(name_event, &mut pending).is_empty());
+        assert!(rig_event_to_response_events(delta_event, &mut pending).is_empty());
+        assert!(super::rig_event_to_response_events(final_event, &mut pending).is_err());
+        assert!(!pending.completed_emitted());
     }
 }
