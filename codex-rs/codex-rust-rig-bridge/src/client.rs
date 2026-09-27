@@ -23,13 +23,9 @@ impl RigProtocol {
     /// do not know the wire; prefer passing the protocol explicitly from
     /// `wire_api` (see `stream_via_rig`).
     pub fn from_base_url(base_url: &str) -> Self {
-        let path = base_url
-            .split_once("://")
-            .map_or(base_url, |(_, rest)| rest);
-        if path.contains("/anthropic") {
-            Self::Anthropic
-        } else {
-            Self::Chat
+        match codex_api::chat_wire_protocol(/*wire_anthropic*/ false, base_url) {
+            codex_api::ChatWireProtocol::ChatCompletions => Self::Chat,
+            codex_api::ChatWireProtocol::Anthropic => Self::Anthropic,
         }
     }
 }
@@ -185,12 +181,19 @@ pub(crate) fn build_anthropic_model(
     headers: &HeaderMap,
     http: crate::transport::RigHttpClient,
 ) -> Result<RigAnthropicModel, codex_api::ApiError> {
-    let client = rig_core::providers::anthropic::Client::builder()
+    let mut builder = rig_core::providers::anthropic::Client::builder()
         .api_key(api_key_from_headers(headers, RigProtocol::Anthropic))
         .base_url(base_url)
-        .http_client(http)
-        .build()
-        .map_err(map_client_error)?;
+        .http_client(http);
+    if let Some(version) = headers.get("anthropic-version") {
+        let version = version
+            .to_str()
+            .map_err(|_| codex_api::ApiError::InvalidRequest {
+                message: "Invalid anthropic-version header: expected an ASCII value".into(),
+            })?;
+        builder = builder.anthropic_version(version);
+    }
+    let client = builder.build().map_err(map_client_error)?;
     Ok(client.completion_model(model_name))
 }
 

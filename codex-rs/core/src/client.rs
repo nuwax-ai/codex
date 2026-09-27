@@ -2387,6 +2387,14 @@ impl ModelClientSession {
         inference_trace: &InferenceTraceContext,
     ) -> Result<ResponseStream> {
         let info = self.client.state.provider.info();
+        #[cfg(not(any(feature = "rust-genai", feature = "rust-rig")))]
+        if info.uses_chat_bridge() {
+            return Err(CodexErr::Fatal(
+                "The selected model provider requires a chat bridge; enable `rust-rig` or \
+                 `rust-genai`, or select `experimental_bridge = \"native\"` for a Responses provider"
+                    .into(),
+            ));
+        }
         let wire_api = info.wire_api;
         match wire_api {
             WireApi::Responses => {

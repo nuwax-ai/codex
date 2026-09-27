@@ -6,6 +6,8 @@ mod auth_tests;
 #[path = "wire/error_tests.rs"]
 mod error_tests;
 mod support;
+#[path = "wire/version_tests.rs"]
+mod version_tests;
 
 use codex_api::Reasoning;
 use codex_api::ResponseEvent;

@@ -20,6 +20,22 @@ fn provider(base_url: &str) -> Provider {
 }
 
 #[test]
+fn legacy_protocol_detection_uses_only_the_url_path() {
+    for (url, expected) in [
+        ("https://api.example/anthropic/v1", RigProtocol::Anthropic),
+        (
+            "https://api.example/v1?next=/anthropic/v1",
+            RigProtocol::Chat,
+        ),
+        ("https://api.example/v1#docs/anthropic", RigProtocol::Chat),
+        ("https://anthropic:token@api.example/v1", RigProtocol::Chat),
+    ] {
+        assert_eq!(RigProtocol::from_base_url(url), expected, "{url}");
+        assert_eq!(protocol_for_base_url(url), expected, "{url}");
+    }
+}
+
+#[test]
 fn reasoning_source_includes_query_routing_without_persisting_credentials() {
     let a = provider("https://host.test/v1?tenant=A&tenant=B");
     let b = provider("https://host.test/v1?tenant=B&tenant=A");

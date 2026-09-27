@@ -10,11 +10,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
-use crate::Provider;
-use crate::ResponsesApiRequest;
-use crate::ResponseStream;
-use crate::SharedAuthProvider;
 use crate::ApiError;
+use crate::Provider;
+use crate::ResponseStream;
+use crate::ResponsesApiRequest;
+use crate::SharedAuthProvider;
 use http::HeaderMap;
 
 /// Which Chat-Completions-family wire the bridge should speak. Neutral so
@@ -59,8 +59,7 @@ pub fn chat_wire_protocol(wire_anthropic: bool, base_url: &str) -> ChatWireProto
     if wire_anthropic {
         return ChatWireProtocol::Anthropic;
     }
-    let path = base_url.split_once("://").map_or(base_url, |(_, rest)| rest);
-    if path.contains("/anthropic") {
+    if url::Url::parse(base_url).is_ok_and(|url| url.path().contains("/anthropic")) {
         ChatWireProtocol::Anthropic
     } else {
         ChatWireProtocol::ChatCompletions
@@ -70,6 +69,7 @@ pub fn chat_wire_protocol(wire_anthropic: bool, base_url: &str) -> ChatWireProto
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn explicit_anthropic_wins_over_url() {
@@ -104,6 +104,23 @@ mod tests {
                 chat_wire_protocol(false, url),
                 ChatWireProtocol::ChatCompletions,
                 "url {url} should stay chat completions"
+            );
+        }
+    }
+
+    #[test]
+    fn protocol_detection_ignores_url_authority_query_and_fragment() {
+        for url in [
+            "https://anthropic.example/v1",
+            "https://anthropic:token@api.example/v1",
+            "https://user:%2Fanthropic@api.example/v1",
+            "https://api.example/v1?next=/anthropic/v1",
+            "https://api.example/v1#docs/anthropic",
+        ] {
+            assert_eq!(
+                chat_wire_protocol(/*wire_anthropic*/ false, url),
+                ChatWireProtocol::ChatCompletions,
+                "only the path may select the protocol: {url}"
             );
         }
     }

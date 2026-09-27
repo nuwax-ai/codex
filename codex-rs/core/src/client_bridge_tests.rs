@@ -92,3 +92,70 @@ fn rig_reasoning_envelope_prefix_is_v1_mirror() {
         "codex-rig-reasoning-v1:"
     );
 }
+
+#[tokio::test]
+#[cfg(not(any(feature = "rust-genai", feature = "rust-rig")))]
+async fn missing_bridge_features_reject_before_native_responses_dispatch() {
+    use codex_model_provider_info::ChatBridge;
+
+    let server = MockServer::start().await;
+    for (wire_api, experimental_bridge) in [
+        (WireApi::Responses, None),
+        (WireApi::Responses, Some(ChatBridge::Rig)),
+        (WireApi::Responses, Some(ChatBridge::Genai)),
+        (WireApi::Chat, None),
+        (WireApi::Anthropic, None),
+    ] {
+        let mut client = test_model_client(SessionSource::Cli);
+        Arc::get_mut(&mut client.state)
+            .expect("test client has unique state")
+            .provider = create_model_provider(
+            ModelProviderInfo {
+                name: "bridge-required".into(),
+                base_url: Some(format!("{}/v1", server.uri())),
+                wire_api,
+                experimental_bridge,
+                ..Default::default()
+            },
+            /*auth_manager*/ None,
+        );
+        let metadata = test_responses_metadata_for_client(
+            &client,
+            /*turn_id*/ None,
+            "turn:0".into(),
+            /*parent_thread_id*/ None,
+            TestCodexResponsesRequestKind::Turn,
+        );
+        let result = client
+            .new_session()
+            .stream(
+                &Prompt::default(),
+                &test_model_info(),
+                &test_session_telemetry(),
+                /*effort*/ None,
+                codex_protocol::config_types::ReasoningSummary::None,
+                /*service_tier*/ None,
+                &metadata,
+                &InferenceTraceContext::disabled(),
+            )
+            .await;
+        let Err(error) = result else {
+            panic!("an unavailable bridge must fail before any native request");
+        };
+        let CodexErrorDetails::Fatal(message) = error.details() else {
+            panic!("expected a fatal configuration error, got {error}");
+        };
+        assert_eq!(
+            message,
+            "The selected model provider requires a chat bridge; enable `rust-rig` or \
+             `rust-genai`, or select `experimental_bridge = \"native\"` for a Responses provider"
+        );
+    }
+    assert!(
+        server
+            .received_requests()
+            .await
+            .expect("captured requests")
+            .is_empty()
+    );
+}
