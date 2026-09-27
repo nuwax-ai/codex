@@ -1015,9 +1015,7 @@ async fn permissions_selection_history_snapshot_after_mode_switch() {
     }
     chat.set_feature_enabled(Feature::GuardianApproval, /*enabled*/ false);
     chat.open_permissions_popup();
-    chat.handle_key_event(KeyEvent::from(KeyCode::Down));
-    #[cfg(target_os = "windows")]
-    chat.handle_key_event(KeyEvent::from(KeyCode::Down));
+    chat.handle_key_event(KeyEvent::from(KeyCode::End));
     chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
 
     let (preset, return_to_permissions, profile_selection) =
@@ -1061,11 +1059,9 @@ async fn permissions_selection_history_snapshot_full_access_to_default() {
         .expect("set permission profile");
 
     chat.open_permissions_popup();
-    let popup = render_bottom_popup(&chat, /*width*/ 120);
-    chat.handle_key_event(KeyEvent::from(KeyCode::Up));
-    if popup.contains("Approve for me") {
-        chat.handle_key_event(KeyEvent::from(KeyCode::Up));
-    }
+    chat.handle_key_event(KeyEvent::from(KeyCode::Home));
+    #[cfg(target_os = "windows")]
+    chat.handle_key_event(KeyEvent::from(KeyCode::Down));
     chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
 
     let cells = drain_insert_history(&mut rx);
@@ -1384,9 +1380,7 @@ async fn permissions_full_access_history_cell_emitted_only_after_confirmation() 
     }
     chat.set_feature_enabled(Feature::GuardianApproval, /*enabled*/ false);
     chat.open_permissions_popup();
-    chat.handle_key_event(KeyEvent::from(KeyCode::Down));
-    #[cfg(target_os = "windows")]
-    chat.handle_key_event(KeyEvent::from(KeyCode::Down));
+    chat.handle_key_event(KeyEvent::from(KeyCode::End));
     chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
 
     let mut open_confirmation_event = None;

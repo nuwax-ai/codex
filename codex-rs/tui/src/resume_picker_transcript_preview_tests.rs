@@ -1,7 +1,7 @@
 use super::*;
 use crate::legacy_core::config::ConfigBuilder;
+use app_test_support::MockResponsesConfig;
 use app_test_support::create_mock_responses_server_sequence;
-use app_test_support::write_mock_responses_config_toml;
 use codex_app_server_client::AppServerEvent;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::ImageReference;
@@ -324,16 +324,11 @@ async fn transcript_preview_for_history_mode(
         .collect();
     let server = create_mock_responses_server_sequence(model_responses).await;
     let codex_home = tempdir().expect("tempdir");
-    write_mock_responses_config_toml(
-        codex_home.path(),
-        &server.uri(),
-        &Default::default(),
-        /*auto_compact_limit*/ 100_000,
-        /*requires_openai_auth*/ None,
-        "mock_provider",
-        "compact",
-    )
-    .expect("write mock config");
+    MockResponsesConfig::new(&server.uri())
+        .with_root_config("compact_prompt = \"compact\"\nmodel_auto_compact_token_limit = 100000")
+        .with_provider_config("supports_websockets = false\nexperimental_bridge = \"native\"")
+        .write(codex_home.path())
+        .expect("write mock config");
     let config = ConfigBuilder::default()
         .codex_home(codex_home.path().to_path_buf())
         .fallback_cwd(Some(codex_home.path().to_path_buf()))

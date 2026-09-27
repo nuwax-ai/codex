@@ -8,7 +8,11 @@ expression: popup
 › 1. Ask for approval  Read and edit workspace files and run commands, with
                        approval required for internet access or edits outside
                        the workspace
-  2. Full Access       Use with caution: Codex can edit files outside this
+  2. Ask               Codex has full access to edit files and access the
+                       internet. Commands the policy flags as dangerous require
+                       approval; other commands run directly without a sandbox.
+                       (For per-command approval use Granular policies.)
+  3. Full Access       Use with caution: Codex can edit files outside this
                        workspace and access the internet without approval
 
   enter select · esc back

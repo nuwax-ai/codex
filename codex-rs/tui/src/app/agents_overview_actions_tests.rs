@@ -5,6 +5,7 @@ use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ThreadLoadedListParams;
 use codex_app_server_protocol::TurnStartParams;
 use codex_app_server_protocol::TurnStartResponse;
+use codex_model_provider_info::ChatBridge;
 use codex_model_provider_info::ModelProviderInfo;
 use core_test_support::responses;
 use core_test_support::streaming_sse::StreamingSseChunk;
@@ -427,6 +428,7 @@ async fn lifecycle_removes_background_and_current_tasks_without_losing_the_dashb
         app.config.model_provider = ModelProviderInfo {
             name: "Lifecycle test".into(),
             base_url: Some(format!("{}/v1", server.uri())),
+            experimental_bridge: Some(ChatBridge::Native),
             request_max_retries: Some(0),
             stream_max_retries: Some(0),
             ..ModelProviderInfo::default()
@@ -435,6 +437,7 @@ async fn lifecycle_removes_background_and_current_tasks_without_losing_the_dashb
             .with_model("gpt-5.2")
             .with_model_provider("lifecycle-test")
             .with_provider_name("Lifecycle test")
+            .with_provider_config("experimental_bridge = \"native\"")
             .write(app.config.codex_home.as_path())?;
         let mut app_server =
             Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await?;

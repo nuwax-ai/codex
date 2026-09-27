@@ -8,6 +8,7 @@ use codex_app_server_client::AppServerEvent;
 use codex_app_server_protocol::ServerNotification;
 use codex_login::AuthCredentialsStoreMode;
 use codex_login::AuthKeyringBackendKind;
+use codex_model_provider_info::ChatBridge;
 use codex_model_provider_info::ModelProviderInfo;
 use core_test_support::responses;
 use core_test_support::responses::WebSocketConnectionConfig;
@@ -90,6 +91,7 @@ async fn delegated_core_events_keep_private_output_hidden_and_deliver_final_spee
     let (mut app, mut app_events, mut ops) = make_test_app_with_channels().await;
     let codex_home = tempfile::tempdir()?;
     MockResponsesConfig::new(&model_server.uri())
+        .with_provider_config("experimental_bridge = \"native\"")
         .with_root_config(&format!(
             "experimental_realtime_ws_base_url = {:?}\nexperimental_realtime_webrtc_call_base_url = {:?}",
             realtime_server.uri(),
@@ -111,6 +113,7 @@ async fn delegated_core_events_keep_private_output_hidden_and_deliver_final_spee
     app.config.model_provider = ModelProviderInfo {
         name: "Mock provider for test".to_string(),
         base_url: Some(format!("{}/v1", model_server.uri())),
+        experimental_bridge: Some(ChatBridge::Native),
         request_max_retries: Some(0),
         stream_max_retries: Some(0),
         ..ModelProviderInfo::default()

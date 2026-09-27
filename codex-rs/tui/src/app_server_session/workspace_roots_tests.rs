@@ -39,6 +39,7 @@ writable_roots = [{extra_root_toml}]
 name = "OpenAI"
 base_url = "{base_url}/v1"
 wire_api = "responses"
+experimental_bridge = "native"
 request_max_retries = 0
 stream_max_retries = 0
 "#

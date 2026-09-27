@@ -91,6 +91,8 @@ impl PidBackend {
         command
             // Handoff suppression belongs to the foreground CLI, not its long-lived children.
             .env_remove(crate::telemetry::HANDOFF_ENV)
+            // Effort is a per-client/thread choice, not a shared daemon default.
+            .env_remove("CODEX_MODEL_REASONING_EFFORT")
             .args(self.command_args().iter().map(std::borrow::Cow::as_ref))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -321,3 +323,7 @@ impl PidBackend {
         Ok(Some(pid))
     }
 }
+
+#[cfg(all(test, unix))]
+#[path = "pid_start_tests.rs"]
+mod tests;

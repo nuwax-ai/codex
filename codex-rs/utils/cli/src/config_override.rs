@@ -10,6 +10,7 @@
 use clap::ArgAction;
 use clap::Parser;
 use serde::de::Error as SerdeError;
+use std::ffi::OsStr;
 use toml::Value;
 
 /// CLI option that captures arbitrary configuration overrides specified as
@@ -84,7 +85,7 @@ impl CliConfigOverrides {
             .collect::<Result<Vec<_>, String>>()?;
         apply_env_effort_override(
             &mut overrides,
-            std::env::var(MODEL_REASONING_EFFORT_ENV).ok().as_deref(),
+            std::env::var_os(MODEL_REASONING_EFFORT_ENV).as_deref(),
         )?;
         Ok(overrides)
     }
@@ -98,16 +99,23 @@ const MODEL_REASONING_EFFORT_ENV: &str = "CODEX_MODEL_REASONING_EFFORT";
 
 fn apply_env_effort_override(
     overrides: &mut Vec<(String, Value)>,
-    env_value: Option<&str>,
+    env_value: Option<&OsStr>,
 ) -> Result<(), String> {
-    let Some(raw) = env_value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(());
-    };
     if overrides
         .iter()
         .any(|(key, _)| key == "model_reasoning_effort")
     {
         // An explicit -c wins over the environment.
+        return Ok(());
+    }
+    let Some(value) = env_value else {
+        return Ok(());
+    };
+    let raw = value
+        .to_str()
+        .ok_or_else(|| format!("Invalid {MODEL_REASONING_EFFORT_ENV}: expected Unicode text"))?
+        .trim();
+    if raw.is_empty() {
         return Ok(());
     }
     let canonical = raw.to_ascii_lowercase();
@@ -215,50 +223,8 @@ mod tests {
         assert_eq!(tbl.get("a").unwrap().as_integer(), Some(1));
         assert_eq!(tbl.get("b").unwrap().as_integer(), Some(2));
     }
-
-    #[test]
-    fn env_effort_seeds_when_not_explicitly_overridden() {
-        let mut overrides = vec![("model".to_string(), Value::String("x".into()))];
-        apply_env_effort_override(&mut overrides, Some("NONE")).expect("valid");
-        assert_eq!(
-            overrides.last(),
-            Some(&(
-                "model_reasoning_effort".to_string(),
-                Value::String("none".into())
-            ))
-        );
-    }
-
-    #[test]
-    fn env_effort_yields_to_explicit_override() {
-        let mut overrides = vec![(
-            "model_reasoning_effort".to_string(),
-            Value::String("high".into()),
-        )];
-        apply_env_effort_override(&mut overrides, Some("none")).expect("no conflict");
-        assert_eq!(
-            overrides.len(),
-            1,
-            "explicit -c must not be duplicated or changed"
-        );
-    }
-
-    #[test]
-    fn env_effort_rejects_unknown_values_with_the_valid_list() {
-        let mut overrides = vec![];
-        let error = apply_env_effort_override(&mut overrides, Some("hight"))
-            .expect_err("typo must fail fast");
-        assert!(
-            error.contains("hight") && error.contains("none/minimal"),
-            "{error}"
-        );
-    }
-
-    #[test]
-    fn env_effort_ignores_unset_or_blank() {
-        let mut overrides = vec![];
-        apply_env_effort_override(&mut overrides, None).expect("unset is a no-op");
-        apply_env_effort_override(&mut overrides, Some("   ")).expect("blank is a no-op");
-        assert!(overrides.is_empty());
-    }
 }
+
+#[cfg(test)]
+#[path = "env_effort_tests.rs"]
+mod env_effort_tests;

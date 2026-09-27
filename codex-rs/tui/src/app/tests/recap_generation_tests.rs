@@ -3,6 +3,7 @@ use crate::app::session_lifecycle::ThreadAttachPresentation;
 use crate::app::tests::session_lifecycle_requests::recorded_params;
 use crate::app::tests::session_lifecycle_requests::start_recording_remote_app_server;
 use crate::app_event::RecapTrigger;
+use codex_model_provider_info::ChatBridge;
 use codex_model_provider_info::ModelProviderInfo;
 use core_test_support::responses;
 use core_test_support::responses::ev_assistant_message;
@@ -86,6 +87,7 @@ model_provider = "{MODEL_PROVIDER_ID}"
 name = "Recap generation test"
 base_url = "{}/v1"
 wire_api = "responses"
+experimental_bridge = "native"
 request_max_retries = 0
 stream_max_retries = 0
 "#,
@@ -99,6 +101,7 @@ stream_max_retries = 0
     app.config.model_provider = ModelProviderInfo {
         name: "Recap generation test".to_string(),
         base_url: Some(format!("{}/v1", model_server.uri())),
+        experimental_bridge: Some(ChatBridge::Native),
         request_max_retries: Some(0),
         stream_max_retries: Some(0),
         ..ModelProviderInfo::default()

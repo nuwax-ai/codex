@@ -5,6 +5,7 @@ use crate::chatwidget::UserMessage;
 use crate::chatwidget::tests::helpers::normalize_completion_timestamps;
 use codex_app_server_client::AppServerEvent;
 use codex_app_server_protocol::ModelSafetyBufferingUpdatedNotification;
+use codex_model_provider_info::ChatBridge;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_protocol::models::ManagedFileSystemPermissions;
 use codex_protocol::openai_models::ToolMode;
@@ -199,6 +200,7 @@ model_provider = "{MODEL_PROVIDER_ID}"
 name = "Interrupt test"
 base_url = "{}/v1"
 wire_api = "responses"
+experimental_bridge = "native"
 request_max_retries = 0
 stream_max_retries = 0
 "#,
@@ -212,6 +214,7 @@ stream_max_retries = 0
     app.config.model_provider = ModelProviderInfo {
         name: "Interrupt test".to_string(),
         base_url: Some(format!("{}/v1", server.uri())),
+        experimental_bridge: Some(ChatBridge::Native),
         request_max_retries: Some(0),
         stream_max_retries: Some(0),
         ..ModelProviderInfo::default()
@@ -543,6 +546,7 @@ model_catalog_json = {model_catalog_path}
 name = "Safety retry test"
 base_url = "{}/v1"
 wire_api = "responses"
+experimental_bridge = "native"
 request_max_retries = 0
 stream_max_retries = 0
 
@@ -560,6 +564,7 @@ goals = true
     app.config.model_provider = ModelProviderInfo {
         name: "Safety retry test".to_string(),
         base_url: Some(format!("{}/v1", server.uri())),
+        experimental_bridge: Some(ChatBridge::Native),
         request_max_retries: Some(0),
         stream_max_retries: Some(0),
         ..ModelProviderInfo::default()

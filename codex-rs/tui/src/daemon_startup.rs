@@ -59,6 +59,10 @@ pub(super) fn config_exclusion(
     if !cli_kv_overrides
         .iter()
         .all(|(key, value)| match key.as_str() {
+            // Sent with each thread start/resume/fork request, not daemon-wide state.
+            "model_reasoning_effort" => value
+                .as_str()
+                .is_some_and(|effort| !effort.trim().is_empty()),
             "suppress_unstable_features_warning" | "tui.fullscreen_transcript" => value.is_bool(),
             "tui" => value.as_table().is_some_and(|tui| {
                 tui.len() == 1

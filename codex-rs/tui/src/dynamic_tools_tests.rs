@@ -179,6 +179,7 @@ tool_output_token_limit = 2500
 name = "Readback test"
 base_url = "{base_url}/v1"
 wire_api = "responses"
+experimental_bridge = "native"
 request_max_retries = 0
 stream_max_retries = 0
 "#

@@ -279,11 +279,11 @@ Nextest run IDs：Rig `84b52772-df43-4711-b634-feff14aee385`；API `81ae3a33-aa2
 
 ### 复核补充(2026-09-27,live 门禁扩展)
 
-三个新 live 门禁场景补齐本轮修复分支的真实网关验证(101/101 全绿):
+Claude 新增了三个 Anthropic live 场景和 24 个事件/Rig fixtures。原 JUnit 的确记录 101 项通过、零失败，但该数字包含禁用 GenAI/AB 后直接返回的测试；不能写成 101 次真实厂商验证。源码、记录和本轮修复详见 [增量复审](claude-delta-review-2026-09-27.md)。
 
-- **R02 live**:三家网关均接受经 additional_params 携带的 output_config.format,thinking 不受影响。
-- **R09 live**:is_error 工具失败结果被三家接受,模型能就失败作出回答。
-- **R10 live + 新发现**:MiMo/GLM 正确尊重 `thinking:{type:"disabled"}`(零思考输出);**StepFun 网关静默忽略该字段**(仍产出思考,实测 77 字符)。这是服务端对显式关闭配置的第三种反应(拒绝/执行/无视),已在测试中作为 documented deviation 记录——桥的显式关闭行为正确,偏离属于网关特性。
+- **R02 live**：三家录制均完成且有文本，支持网关接受请求。断言没有校验 JSON schema，也没有校验 thinking 保持；MiMo/GLM 的新 fixture 文本不是符合该 schema 的 JSON，只有 Step 的输出符合 city1/city2 结构。
+- **R09 live**：原录制支持失败结果续轮得到文本和 Completed。但该场景重建历史时丢失首轮 reasoning、助手文本和工具调用 item ID（`FunctionCall.id`；`call_id` 关联原本保留）；本轮改为保留所有完成项，并用捕获实际续轮请求的回归测试覆盖。修复后的完整历史尚未重新进行真实网关录制；`is_error` 字段映射以既有 HTTP mock 测试为证。
+- **R10 live**：MiMo/GLM 录制中未见可见 reasoning，Step 仍有可见 reasoning（提交的 fixture 为 111 字符，本次找到的最后一次日志为 75 字符）。这是可见输出观察，不能证明前两家没有隐藏推理；测试门禁只要求请求被接受。原“77 字符”的轮次未能从本次证据中定位。
 
 ## 8. 仍缺失的能力 Top 3
 

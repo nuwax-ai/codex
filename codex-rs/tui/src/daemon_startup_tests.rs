@@ -34,6 +34,11 @@ fn audited_overrides_allow_daemon_without_allowing_arbitrary_config() {
         ("tui={fullscreen_transcript='true'}", false),
         ("tui={fullscreen_transcript=true,animations=false}", false),
         ("features={}", false),
+        ("model_reasoning_effort=none", true),
+        ("model_reasoning_effort=high", true),
+        ("model_reasoning_effort=''", false),
+        ("model_reasoning_effort='  '", false),
+        ("model_reasoning_effort=true", false),
         ("model='test'", false),
     ] {
         let overrides = codex_utils_cli::CliConfigOverrides {
@@ -59,6 +64,7 @@ fn audited_overrides_allow_daemon_without_allowing_arbitrary_config() {
 fn monorepo_wrapper_overrides_are_eligible_and_select_only_server_features() {
     let overrides = codex_utils_cli::CliConfigOverrides {
         raw_overrides: [
+            "model_reasoning_effort=none",
             "features.realtime_conversation=true",
             "features.worktrees=true",
             "features.remote_models=true",

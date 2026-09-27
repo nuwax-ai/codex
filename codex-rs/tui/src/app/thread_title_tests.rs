@@ -24,6 +24,7 @@ use codex_app_server_protocol::ThreadSource;
 use codex_app_server_protocol::Turn;
 use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::UserInput;
+use codex_model_provider_info::ChatBridge;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_protocol::models::MessagePhase;
 use core_test_support::responses;
@@ -228,6 +229,7 @@ async fn check_thread_title_generation(scenario: TitleScenario) -> color_eyre::R
              name = \"Thread title test\"\n\
              base_url = \"{}/v1\"\n\
              wire_api = \"responses\"\n\
+             experimental_bridge = \"native\"\n\
              request_max_retries = 0\n\
              stream_max_retries = 0\n",
             server.uri()
@@ -246,6 +248,7 @@ async fn check_thread_title_generation(scenario: TitleScenario) -> color_eyre::R
     app.config.model_provider = ModelProviderInfo {
         name: "Thread title test".to_string(),
         base_url: Some(format!("{}/v1", server.uri())),
+        experimental_bridge: Some(ChatBridge::Native),
         request_max_retries: Some(0),
         stream_max_retries: Some(0),
         ..ModelProviderInfo::default()
