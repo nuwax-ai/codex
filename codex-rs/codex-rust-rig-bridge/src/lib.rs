@@ -1,10 +1,13 @@
-//! Bridge crate that converts between Codex types (`ResponseItem`, `ResponseEvent`)
-//! and rig (rig-core) types (`Message`, `StreamEvent`) for providers configured
-//! with `wire_api = "chat"`.
+//! Bridge crate serving third-party providers through rig (rig-core):
+//! - `wire_api = "responses"` → same-protocol Responses passthrough
+//!   (`responses.rs`; Codex's request serialized verbatim to `{base}/responses`);
+//! - `wire_api = "chat"` / `"anthropic"` → Chat-Completions / Anthropic-Messages
+//!   conversion (`convert_request.rs` & co).
 //!
 //! Sibling of `codex-rust-genai-bridge` with an identical public surface; the
 //! active bridge is selected per provider via `experimental_bridge` in config.
-//! See `my-docs/rig-bridge-implementation-plan.md` for the design.
+//! See `my-docs/rig-bridge-implementation-plan.md` and
+//! `my-docs/rig-responses-phase1/` for the designs.
 
 mod bridge_impl;
 mod client;
@@ -15,16 +18,20 @@ mod request_content;
 mod request_messages;
 mod request_tools;
 mod response_tools;
+mod responses;
 mod sse;
 mod stream;
 mod transport;
 mod usage;
 
-pub use bridge_impl::RigChatBridge;
+pub use bridge_impl::RigModelBridge;
 pub use client::RigProtocol;
 pub use client::protocol_for_base_url;
 pub use reasoning::REPLAY_PREFIX;
 pub use reasoning::is_replay_envelope;
+pub use responses::RigSseRecorder;
+pub use responses::replay_responses_sse;
+pub use responses::stream_responses_via_rig_with_sse_recording;
 pub mod cassette;
 pub use cassette::RigEventFixture;
 pub use cassette::extract_custom_tool_names;

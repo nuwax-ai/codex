@@ -1,0 +1,95 @@
+event:response.created
+data:{"type":"response.created","sequence_number":0,"response":{"id":"resp_102ffe98b303448db3439a885e16ad8a","object":"response","created_at":1790529297,"model":"mimo-v2.6-flash","metadata":null,"status":"in_progress","output":[]}}
+
+event:response.in_progress
+data:{"type":"response.in_progress","sequence_number":1,"response":{"id":"resp_102ffe98b303448db3439a885e16ad8a","object":"response","created_at":1790529297,"model":"mimo-v2.6-flash","metadata":null,"status":"in_progress","output":[]}}
+
+: PROCESSING
+
+event:response.output_item.added
+data:{"type":"response.output_item.added","sequence_number":2,"output_index":0,"item":{"id":"rs_deaa08e19d1c4c908ab36494c89639ba","type":"reasoning","summary":[],"content":[],"status":"in_progress"}}
+
+event:response.content_part.added
+data:{"type":"response.content_part.added","sequence_number":3,"item_id":"rs_deaa08e19d1c4c908ab36494c89639ba","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":""}}
+
+event:response.reasoning_text.delta
+data:{"type":"response.reasoning_text.delta","sequence_number":4,"item_id":"rs_deaa08e19d1c4c908ab36494c89639ba","output_index":0,"content_index":0,"delta":"Report"}
+
+event:response.reasoning_text.delta
+data:{"type":"response.reasoning_text.delta","sequence_number":5,"item_id":"rs_deaa08e19d1c4c908ab36494c89639ba","output_index":0,"content_index":0,"delta":" the"}
+
+event:response.reasoning_text.delta
+data:{"type":"response.reasoning_text.delta","sequence_number":6,"item_id":"rs_deaa08e19d1c4c908ab36494c89639ba","output_index":0,"content_index":0,"delta":" weather."}
+
+event:response.output_item.added
+data:{"type":"response.output_item.added","sequence_number":7,"output_index":1,"item":{"id":"msg_905fafaab71a47aebf1d6c084cabb54d","type":"message","status":"in_progress","role":"assistant","content":[]}}
+
+event:response.content_part.added
+data:{"type":"response.content_part.added","sequence_number":8,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":9,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"上海今天的"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":10,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"天气情况"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":11,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"：\n\n- **"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":12,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"天气状况"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":13,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"**：多云\n"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":14,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"- **气温**：26"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":15,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"°C\n\n总体"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":16,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"来说"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":17,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"比较舒适"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":18,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"，适合出行"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":19,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"。如果您"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":20,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"需要更"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":21,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"详细的天气"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":22,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"信息（如湿度"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":23,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"、风力"}
+
+event:response.output_text.delta
+data:{"type":"response.output_text.delta","sequence_number":24,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"delta":"等），可以告诉我。"}
+
+event:response.reasoning_text.done
+data:{"type":"response.reasoning_text.done","sequence_number":25,"item_id":"rs_deaa08e19d1c4c908ab36494c89639ba","output_index":0,"content_index":0,"text":"Report the weather."}
+
+event:response.output_item.done
+data:{"type":"response.output_item.done","sequence_number":26,"output_index":0,"item":{"id":"rs_deaa08e19d1c4c908ab36494c89639ba","type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"Report the weather."}],"status":"completed"}}
+
+event:response.output_text.done
+data:{"type":"response.output_text.done","sequence_number":27,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"text":"上海今天的天气情况：\n\n- **天气状况**：多云\n- **气温**：26°C\n\n总体来说比较舒适，适合出行。如果您需要更详细的天气信息（如湿度、风力等），可以告诉我。"}
+
+event:response.content_part.done
+data:{"type":"response.content_part.done","sequence_number":28,"item_id":"msg_905fafaab71a47aebf1d6c084cabb54d","output_index":1,"content_index":0,"part":{"type":"output_text","text":"上海今天的天气情况：\n\n- **天气状况**：多云\n- **气温**：26°C\n\n总体来说比较舒适，适合出行。如果您需要更详细的天气信息（如湿度、风力等），可以告诉我。","annotations":[]}}
+
+event:response.output_item.done
+data:{"type":"response.output_item.done","sequence_number":29,"output_index":1,"item":{"id":"msg_905fafaab71a47aebf1d6c084cabb54d","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"上海今天的天气情况：\n\n- **天气状况**：多云\n- **气温**：26°C\n\n总体来说比较舒适，适合出行。如果您需要更详细的天气信息（如湿度、风力等），可以告诉我。","annotations":[]}]}}
+
+event:response.completed
+data:{"type":"response.completed","sequence_number":30,"response":{"id":"resp_102ffe98b303448db3439a885e16ad8a","object":"response","created_at":1790529297,"status":"completed","error":null,"incomplete_details":null,"model":"mimo-v2.6-flash","metadata":null,"output":[{"id":"rs_deaa08e19d1c4c908ab36494c89639ba","type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"Report the weather."}],"status":"completed"},{"id":"msg_905fafaab71a47aebf1d6c084cabb54d","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"上海今天的天气情况：\n\n- **天气状况**：多云\n- **气温**：26°C\n\n总体来说比较舒适，适合出行。如果您需要更详细的天气信息（如湿度、风力等），可以告诉我。","annotations":[]}]}],"output_text":"上海今天的天气情况：\n\n- **天气状况**：多云\n- **气温**：26°C\n\n总体来说比较舒适，适合出行。如果您需要更详细的天气信息（如湿度、风力等），可以告诉我。","usage":{"input_tokens":190,"input_tokens_details":{"cached_tokens":0},"output_tokens":55,"output_tokens_details":{"reasoning_tokens":5},"total_tokens":245}}}
+

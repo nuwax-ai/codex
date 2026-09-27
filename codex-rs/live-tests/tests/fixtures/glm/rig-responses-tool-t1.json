@@ -1,0 +1,302 @@
+{
+  "vendor": "glm",
+  "bridge": "rig",
+  "tag": "responses-tool-t1",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant.",
+    "model": "GLM-5.3-Flash",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "description": "Get the current weather for a city",
+        "name": "get_weather",
+        "parameters": {
+          "properties": {
+            "city": {
+              "description": "City name, e.g. 北京",
+              "type": "string"
+            }
+          },
+          "required": [
+            "city"
+          ],
+          "type": "object"
+        },
+        "strict": false,
+        "type": "function"
+      }
+    ]
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": "resp_2026092801145372af02a600e9474f"
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rs_resp_2026092801145372af02a600e9474f",
+        "summary": [],
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "The",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " user",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " is",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " asking",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " about",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " weather",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " in",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Shanghai",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " (",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "上海",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ")",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " today",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " They",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " explicitly",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " asked",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " me",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " to",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " call",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " get",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "_weather",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " tool",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Let",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " me",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " do",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " that",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 0
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rs_resp_2026092801145372af02a600e9474f",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user is asking about the weather in Shanghai (上海) today. They explicitly asked me to call the get_weather tool. Let me do that."
+          }
+        ],
+        "encrypted_content": null
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "function_call",
+        "id": "fc_call_d38d5b5ffec34bae97764e9e",
+        "name": "get_weather",
+        "arguments": "",
+        "call_id": "call_d38d5b5ffec34bae97764e9e"
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "function_call",
+        "id": "fc_call_d38d5b5ffec34bae97764e9e",
+        "name": "get_weather",
+        "arguments": "{\"city\":\"上海\"}",
+        "call_id": "call_d38d5b5ffec34bae97764e9e"
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "resp_2026092801145372af02a600e9474f",
+        "token_usage": {
+          "input_tokens": 194,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 42,
+          "reasoning_output_tokens": 30,
+          "total_tokens": 236
+        },
+        "usage_metadata": {
+          "amount": null,
+          "metadata": {
+            "input_tokens": 194,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 42,
+            "output_tokens_details": {
+              "reasoning_tokens": 30
+            },
+            "total_tokens": 236
+          }
+        },
+        "end_turn": null
+      }
+    }
+  ]
+}

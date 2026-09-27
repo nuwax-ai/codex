@@ -38,12 +38,17 @@ async fn provider_correlation_headers_preserve_priority_and_response_identity() 
         ),
         (vec![], None),
     ];
-    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+    for protocol in [
+        RigProtocol::Responses,
+        RigProtocol::Chat,
+        RigProtocol::Anthropic,
+    ] {
         for (headers, expected) in &cases {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let provider = provider(listener.local_addr().unwrap());
             let response_headers = headers.clone();
             let (payload, response_id) = match protocol {
+                RigProtocol::Responses => (support::RESPONSES_SSE, "resp-test"),
                 RigProtocol::Chat => (support::CHAT_SSE, "chatcmpl-test"),
                 RigProtocol::Anthropic => (support::ANTHROPIC_SSE, "msg-test"),
             };

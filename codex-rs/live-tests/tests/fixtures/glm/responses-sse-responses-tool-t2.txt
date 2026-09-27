@@ -1,0 +1,197 @@
+event: response.created
+data: {"response":{"created_at":1790529297,"id":"resp_20260928011457e72bb515a9a74ea1","model":"GLM-5.3-Flash","object":"response","output":[],"status":"in_progress"},"sequence_number":0,"type":"response.created"}
+
+event: response.in_progress
+data: {"response":{"created_at":1790529297,"id":"resp_20260928011457e72bb515a9a74ea1","model":"GLM-5.3-Flash","object":"response","output":[],"status":"in_progress"},"sequence_number":1,"type":"response.in_progress"}
+
+event: response.output_item.added
+data: {"item":{"content":[],"id":"msg_resp_20260928011457e72bb515a9a74ea1","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+event: response.content_part.added
+data: {"content_index":0,"item_id":"msg_resp_20260928011457e72bb515a9a74ea1","output_index":0,"part":{"annotations":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"根据","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"查询","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"结果","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"，","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"上海","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"今天的","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"天气","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"情况","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"如下","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":12,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"：\n\n","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":13,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"-","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":14,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" **","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":15,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"天气","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"状况","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"**","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":18,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"：","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":19,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"多云","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":20,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" ","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":21,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"☁","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":22,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"️","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":23,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"\n","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":24,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"-","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":25,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" **","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":26,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"气温","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":27,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"**","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":28,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"：","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":29,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"26","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":30,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"°C","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":31,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"\n\n","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":32,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"今天","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":33,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"上海","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":34,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"天气","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":35,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"还不错","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":36,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"，","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":37,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"多云","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":38,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"天气","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":39,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"，","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":40,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"气温","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":41,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"也比较","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":42,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"舒适","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":43,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"宜","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":44,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"人","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":45,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"。","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":46,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"如果","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":47,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"外出","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":48,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"的话","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":49,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"，","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":50,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"建议","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":51,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"可以","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":52,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"带","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":53,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"一件","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":54,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"薄","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":55,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"外套","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":56,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"以","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":57,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"备","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":58,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"温度","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":59,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"变化。","item_id":"msg_resp_20260928011457e72bb515a9a74ea1","logprobs":[],"output_index":0,"sequence_number":60,"type":"response.output_text.delta"}
+
+event: response.output_text.done
+data: {"content_index":0,"item_id":"msg_resp_20260928011457e72bb515a9a74ea1","output_index":0,"sequence_number":61,"text":"根据查询结果，上海今天的天气情况如下：\n\n- **天气状况**：多云 ☁️\n- **气温**：26°C\n\n今天上海天气还不错，多云天气，气温也比较舒适宜人。如果外出的话，建议可以带一件薄外套以备温度变化。","type":"response.output_text.done"}
+
+event: response.content_part.done
+data: {"content_index":0,"item_id":"msg_resp_20260928011457e72bb515a9a74ea1","output_index":0,"part":{"annotations":[],"text":"根据查询结果，上海今天的天气情况如下：\n\n- **天气状况**：多云 ☁️\n- **气温**：26°C\n\n今天上海天气还不错，多云天气，气温也比较舒适宜人。如果外出的话，建议可以带一件薄外套以备温度变化。","type":"output_text"},"sequence_number":62,"type":"response.content_part.done"}
+
+event: response.output_item.done
+data: {"item":{"content":[{"annotations":[],"text":"根据查询结果，上海今天的天气情况如下：\n\n- **天气状况**：多云 ☁️\n- **气温**：26°C\n\n今天上海天气还不错，多云天气，气温也比较舒适宜人。如果外出的话，建议可以带一件薄外套以备温度变化。","type":"output_text"}],"id":"msg_resp_20260928011457e72bb515a9a74ea1","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":63,"type":"response.output_item.done"}
+
+event: response.completed
+data: {"response":{"conversation_id":"","created_at":1790529297,"error":null,"id":"resp_20260928011457e72bb515a9a74ea1","incomplete_details":null,"instructions":"You are a helpful assistant.","metadata":null,"model":"GLM-5.3-Flash","object":"response","output":[{"content":[{"annotations":[],"text":"根据查询结果，上海今天的天气情况如下：\n\n- **天气状况**：多云 ☁️\n- **气温**：26°C\n\n今天上海天气还不错，多云天气，气温也比较舒适宜人。如果外出的话，建议可以带一件薄外套以备温度变化。","type":"output_text"}],"id":"msg_resp_20260928011457e72bb515a9a74ea1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"previous_response_id":"","status":"completed","usage":{"input_tokens":254,"input_tokens_details":{"cached_tokens":0},"output_tokens":60,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":314}},"sequence_number":64,"type":"response.completed"}
+
+data: [DONE]
+

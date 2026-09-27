@@ -1,0 +1,164 @@
+{
+  "vendor": "mimo",
+  "bridge": "rig",
+  "tag": "responses-tool-t1",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant.",
+    "model": "mimo-v2.6-flash",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "description": "Get the current weather for a city",
+        "name": "get_weather",
+        "parameters": {
+          "properties": {
+            "city": {
+              "description": "City name, e.g. 北京",
+              "type": "string"
+            }
+          },
+          "required": [
+            "city"
+          ],
+          "type": "object"
+        },
+        "strict": false,
+        "type": "function"
+      }
+    ]
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": "resp_2b58559160a74722a2e8b3756ea57fe0"
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rs_46eb92cb141e4b94a38984948d0a5431",
+        "summary": [],
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "The user wants",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " weather",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " for Shanghai.",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Call",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " get_weather with",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " city 上",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "海.",
+        "content_index": 0
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "function_call",
+        "id": "fc_139956faf2ea452aaaca646ad63b110c",
+        "name": "get_weather",
+        "arguments": "",
+        "call_id": "call_7b148e8c981044a1b422ef1b"
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rs_46eb92cb141e4b94a38984948d0a5431",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user wants weather for Shanghai. Call get_weather with city 上海."
+          }
+        ],
+        "encrypted_content": null
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "function_call",
+        "id": "fc_139956faf2ea452aaaca646ad63b110c",
+        "name": "get_weather",
+        "arguments": "{\"city\": \"上海\"}",
+        "call_id": "call_7b148e8c981044a1b422ef1b"
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "resp_2b58559160a74722a2e8b3756ea57fe0",
+        "token_usage": {
+          "input_tokens": 132,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 35,
+          "reasoning_output_tokens": 16,
+          "total_tokens": 167
+        },
+        "usage_metadata": {
+          "amount": null,
+          "metadata": {
+            "input_tokens": 132,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 35,
+            "output_tokens_details": {
+              "reasoning_tokens": 16
+            },
+            "total_tokens": 167
+          }
+        },
+        "end_turn": null
+      }
+    }
+  ]
+}

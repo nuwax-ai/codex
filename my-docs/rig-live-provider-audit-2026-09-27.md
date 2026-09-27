@@ -18,7 +18,7 @@
 | GLM | `https://open.bigmodel.cn/api/coding/paas/v4/chat/completions` | `https://open.bigmodel.cn/api/anthropic/v1/messages` | `https://open.bigmodel.cn/api/v1/responses` |
 | Step | `https://api.stepfun.com/step_plan/v1/chat/completions` | `https://api.stepfun.com/step_plan/v1/messages` | 本轮未测 |
 
-Rig 的 Anthropic 客户端会规范化 base URL 的 `/v1` 后缀，实际路径没有重复 `/v1`。Chat 和 Messages 经 Rig；MiMo/GLM 的 Responses 通过 `experimental_bridge = "native"` 验证。**当前 Rig 适配只有 Chat/Anthropic，没有新增 Rig Responses wire 实现。** 第三方 `wire_api = "responses"` 的默认 Rig 路由仍会请求 Chat，不能与本表的原生 Responses 混称。
+Rig 的 Anthropic 客户端会规范化 base URL 的 `/v1` 后缀，实际路径没有重复 `/v1`。Chat 和 Messages 经 Rig；MiMo/GLM 的 Responses 通过 `experimental_bridge = "native"` 验证。**当前本 fork 的 Rig bridge 只接入 Chat/Anthropic；Rig 0.42.0 本身已有 Responses 客户端，本桥尚未接入。** 第三方 `wire_api = "responses"` 的默认 Rig 路由仍会请求 Chat，不能与本表的原生 Responses 混称。SDK 与本桥的源码依据见 [协议审计中的能力澄清](rig-protocol-audit-2026-09-27.md)。本轮真实请求没有覆盖 Rig Responses 路径。
 
 ## 2. 实测矩阵和证据
 
@@ -146,3 +146,33 @@ just fmt
 6. 未新增验证图像/音视频/文件、跨厂商历史迁移、redacted thinking、真实网络中断/429/5xx、Linux/Windows。已有协议审计中不等价或未映射字段仍保持原边界。
 
 本轮没有更改厂商控制策略，也没有把模型不遵从参数改成静默降级。此次生产修复仅补齐诊断关联字段；通用 schema 强校验或厂商能力配置应作为独立需求设计，不能用这一轮偶发生成结果自动改写模型能力。
+
+---
+
+## 追加：Rig Responses 第一阶段真实验证（2026-09-28）
+
+本轮实施同协议直通（`my-docs/rig-responses-phase1/`）：`wire_api = "responses"` 的第三方
+provider 默认经 rig 桥直发 `POST {base}/responses`（Codex `ResponsesApiRequest` 原样序列化，
+不经 Chat 转换）。真实厂商证据：
+
+| 场景 | MiMo | GLM | Step |
+|---|---|---|---|
+| bridge 级文本（responses 直通） | ✅（reasoning+text+usage） | ✅ | 跳过（无 Responses 端点） |
+| bridge 级两轮工具闭环 | ✅ t1 调用/t2 回传 | ✅ | 跳过 |
+| exec 级 marker 闭环（responses-rig-default） | ✅ | ✅ | 跳过 |
+| Chat/Anthropic 转换回归 | ✅ | ✅ | ✅ |
+| native Responses 回归 | ✅ | ✅ | 跳过 |
+
+厂商行为发现（接受 ≠ 遵守，分别登记）：
+
+- **MiMo Responses 网关拒绝 hosted tools**：携带 `web_search` 工具的请求收到
+  HTTP 400 `responses_feature_not_supported`（"tool type 'web_search' is not supported by
+  this gateway phase"）。直通路线如实暴露该差异；配置层 `web_search = "disabled"` 是
+  显式解法（与 native 场景先例一致）。旧 Chat 转换路线掩盖了这一点。
+- **MiMo Responses 不发送 `response.function_call_arguments.delta`**：函数调用以
+  output_item.added+done 整体下发（完整参数在 done 中）。官方协议中 delta 帧可选；
+  responses 工具场景断言已按"有增量必须可重组 / 无增量则整体参数完整有效 JSON"放宽。
+- **GLM Responses 接受 hosted `web_search` 工具**（请求 200 并完成闭环）；是否真正
+  执行搜索未单独验证。
+- 原始 SSE fixtures 已录制并入库（`live-tests/tests/fixtures/{mimo,glm}/responses-sse-*.txt`），
+  replay 经同一严格终止泵离线回归。

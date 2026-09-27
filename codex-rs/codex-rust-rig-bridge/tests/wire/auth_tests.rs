@@ -38,7 +38,11 @@ impl AuthProvider for RefreshingAuth {
 
 #[tokio::test]
 async fn each_protocol_resolves_auth_once_and_preserves_gateway_headers() {
-    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+    for protocol in [
+        RigProtocol::Responses,
+        RigProtocol::Chat,
+        RigProtocol::Anthropic,
+    ] {
         let auth = Arc::new(RefreshingAuth {
             calls: AtomicUsize::new(0),
         });
@@ -50,7 +54,9 @@ async fn each_protocol_resolves_auth_once_and_preserves_gateway_headers() {
         .await;
         let headers = wire["headers"].as_str().unwrap();
         let primary = match protocol {
-            RigProtocol::Chat => "authorization: Bearer refreshed-dummy\r\n",
+            RigProtocol::Responses | RigProtocol::Chat => {
+                "authorization: Bearer refreshed-dummy\r\n"
+            }
             RigProtocol::Anthropic => "x-api-key: refreshed-dummy\r\n",
         };
         assert!(headers.contains(primary), "resolved primary header missing");

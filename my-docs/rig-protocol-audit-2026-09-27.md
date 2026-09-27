@@ -14,9 +14,20 @@
 
 - Codex 内部 `ResponsesApiRequest` 是桥输入，**不等于所有请求都会发送到 `/responses`**。
 - 第三方默认桥为 Rig：实际使用 `/chat/completions` 或 `/messages`；显式 Anthropic 协议优先，旧配置仅根据 URL **path** 中的 `/anthropic` 识别。
-- 内置 OpenAI、Bedrock 和 `experimental_bridge = "native"` 保留原生 Responses 路径。当前没有实现 Rig 的 Responses wire 适配。
+- 内置 OpenAI、Bedrock 和 `experimental_bridge = "native"` 保留原生路径。当前本 fork 的 Rig bridge 尚未接入 SDK 已有的 Responses 客户端。
 - 第三方只有 Responses endpoint 时，应使用 native；默认强行转换为 Chat 不会让该 endpoint 自动兼容。GenAI 仍是显式选项，本轮未扩展它。
 - 模型预加载等独立辅助路径不因此全部变为 Rig。不能用主推理桥的测试声称“所有模型 HTTP 请求都经过 Rig”。
+
+### Rig SDK 能力与本 fork 接入范围（澄清）
+
+**“Rig 0.42.0 没有 Responses 适配器”是错误说法。** 本轮重新核对锁定版本源码和发布文档：`openai::Client` 默认使用 `OpenAIResponsesExt`，`openai::CompletionsClient` 使用 `OpenAICompletionsExt`；后者还提供 `responses_api()` 切换入口。[Rig OpenAI 客户端源码](https://docs.rs/rig-core/latest/src/rig_core/providers/openai/client.rs.html)、[CompletionsClient 文档](https://docs.rs/rig-core/latest/rig_core/providers/openai/client/type.CompletionsClient.html)（核对时版本为 0.42.0）。
+
+- SDK 的 `providers/openai/responses_api/mod.rs` 已有 `/responses` 请求实现和流式入口；不能把本桥的两种协议分支当作 SDK 的全部能力。
+- 本 fork 的 `codex-rust-rig-bridge/src/client.rs::RigProtocol` 只有 Chat/Anthropic，`build_chat_model()` 显式构造 `CompletionsClient`，流终止检查也只有这两种协议。
+- `rig-bridge-implementation-plan.md` §8 记录的转 Chat 动因是部分网关的兼容性。这是本项目的路由选择，不能据此推断 Rig 缺少 Responses 支持。
+- 接入 SDK 已有 Responses 路径仍需补齐协议分派、请求/事件转换和终止语义，并验证工具续轮、reasoning、usage 等字段。SDK 有该接口不代表 Codex 字段已经无损对齐。
+
+此处修正文档归因；此前 Chat/Messages 的测试证据和 native Responses 的实测范围保持原来的限定，没有验证本 fork 经 Rig 请求 Responses。
 
 ## 2. 官方基准与分类
 
@@ -25,7 +36,7 @@
 - **A：文档/契约冲突**，例如删除必须原样回传的 thinking、修改 schema 含义。
 - **B：合法协议字段，但型号/网关能力有条件**，例如 effort、strict、tier、thinking disabled。
 - **C：无直接等价项，明确不映射**，例如 Responses include → Messages。
-- **D：桥或 SDK 能力缺口**，不能写成“官方 API 不支持”，例如文件 ID、引用元数据、Rig Responses wire。
+- **D：桥或 SDK 能力缺口**，不能写成“官方 API 不支持”，例如文件 ID、引用元数据；其中 Responses 属于本桥尚未接入 SDK 已有实现的缺口。
 
 请求形状以 [OpenAI Responses Create](https://developers.openai.com/api/reference/cli/resources/responses/methods/create)、[OpenAI Chat Create](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) 和 [Anthropic Messages Create](https://platform.claude.com/docs/en/api/messages/create) 为公开协议基准；下面表格的“当前行为”来自本仓库及锁定 SDK，而不是把这三份 API 全集当作 Codex 已发送的字段。
 
@@ -289,7 +300,7 @@ Claude 新增了三个 Anthropic live 场景和 24 个事件/Rig fixtures。原 
 
 ## 8. 仍缺失的能力 Top 3
 
-1. **真正的 Rig Responses wire 和显式能力路由。** 目前 Responses 输入兼容层不等于 Responses 传输；只有 Responses endpoint 的提供方仍需 native。
+1. **接入 Rig 已有的 Responses 客户端，并建立显式协议路由。** 目前本桥的 Responses 输入兼容层不等于 Responses 传输；只有 Responses endpoint 的提供方仍需 native。
 2. **按型号的 thinking 模式、输出 cap、effort 能力约束。** hard cap 与 soft effort 分开配置，避免固定 16384 或 unsupported effort 在新型号上误导用户。属于功能设计，不宜用统一预算比例猜测。
 3. **Anthropic prompt caching 策略。** 官方现有顶层自动 cache_control，也有块级断点；当前均未用。它不是 prompt_cache_key 的重命名，网关兼容性和成本收益需单独验收。[Prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)
 

@@ -1,12 +1,18 @@
 use codex_api::ResponsesApiRequest;
-use codex_protocol::models::{
-    ContentItem, FunctionCallOutputBody, ImageReference, ResponseItem,
-};
+use codex_protocol::models::ContentItem;
+use codex_protocol::models::FunctionCallOutputBody;
+use codex_protocol::models::ImageReference;
+use codex_protocol::models::ResponseItem;
 use codex_tools::ToolName;
 use codex_tools::code_mode_name_for_tool_name;
-use genai::chat::{
-    ChatMessage, ChatRequest, ChatRole, ContentPart, MessageContent, Tool, ToolCall, ToolResponse,
-};
+use genai::chat::ChatMessage;
+use genai::chat::ChatRequest;
+use genai::chat::ChatRole;
+use genai::chat::ContentPart;
+use genai::chat::MessageContent;
+use genai::chat::Tool;
+use genai::chat::ToolCall;
+use genai::chat::ToolResponse;
 use serde_json::Value;
 
 /// Converts a Codex `ResponsesApiRequest` into a rust-genai `ChatRequest`.
@@ -156,16 +162,16 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
                     messages.push(ChatMessage::assistant(MessageContent::from(tc_part)));
                 }
             }
-            ResponseItem::FunctionCallOutput { call_id, output, .. } => {
+            ResponseItem::FunctionCallOutput {
+                call_id, output, ..
+            } => {
                 let content = match &output.body {
                     FunctionCallOutputBody::Text(text) => text.clone(),
                     // genai's ToolResponse is text-only: extract text parts
                     // and replace image data URLs with short placeholders —
                     // serializing raw ContentItems would inline megabytes of
                     // base64 into the message text.
-                    FunctionCallOutputBody::ContentItems(items) => {
-                        flatten_tool_output_text(items)
-                    }
+                    FunctionCallOutputBody::ContentItems(items) => flatten_tool_output_text(items),
                 };
                 messages.push(ChatMessage::tool(MessageContent::from(
                     ContentPart::ToolResponse(ToolResponse::new(
@@ -185,9 +191,7 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
                     // and replace image data URLs with short placeholders —
                     // serializing raw ContentItems would inline megabytes of
                     // base64 into the message text.
-                    FunctionCallOutputBody::ContentItems(items) => {
-                        flatten_tool_output_text(items)
-                    }
+                    FunctionCallOutputBody::ContentItems(items) => flatten_tool_output_text(items),
                 };
                 messages.push(ChatMessage::tool(MessageContent::from(
                     ContentPart::ToolResponse(ToolResponse::new(call_id, content)),
@@ -212,9 +216,7 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
                 let mut text = String::new();
                 for part in content {
                     match part {
-                        codex_protocol::models::AgentMessageInputContent::InputText {
-                            text: t,
-                        } => {
+                        codex_protocol::models::AgentMessageInputContent::InputText { text: t } => {
                             if !text.is_empty() {
                                 text.push('\n');
                             }
@@ -231,8 +233,7 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
                     {
                         last_msg.content.push(ContentPart::Text(text));
                     } else {
-                        messages
-                            .push(ChatMessage::assistant(MessageContent::from(text)));
+                        messages.push(ChatMessage::assistant(MessageContent::from(text)));
                     }
                 }
             }
@@ -248,7 +249,9 @@ fn convert_response_items(items: &[ResponseItem]) -> Vec<ChatMessage> {
 /// Renders a tool-result ContentItems list as plain text for genai's
 /// text-only ToolResponse: text parts are kept (with a defensive cap),
 /// image data URLs become placeholders. Never inlines base64 payloads.
-fn flatten_tool_output_text(items: &[codex_protocol::models::FunctionCallOutputContentItem]) -> String {
+fn flatten_tool_output_text(
+    items: &[codex_protocol::models::FunctionCallOutputContentItem],
+) -> String {
     use codex_protocol::models::FunctionCallOutputContentItem;
     const MAX_TOTAL_CHARS: usize = 200_000;
     let mut out = String::new();
@@ -332,9 +335,7 @@ fn convert_content_items(items: &[ContentItem]) -> Vec<ContentPart> {
             }
             ContentItem::InputImage { image, .. } => {
                 let ImageReference::Inline { image_url } = image else {
-                    tracing::warn!(
-                        "Skipping file-referenced image (unsupported by genai bridge)"
-                    );
+                    tracing::warn!("Skipping file-referenced image (unsupported by genai bridge)");
                     return None;
                 };
                 // Infer content type from URL extension or default to image/png
@@ -381,10 +382,8 @@ fn parse_tools(tools: &[Value]) -> Vec<Tool> {
                     let Some(child_name) = child.get("name").and_then(|n| n.as_str()) else {
                         continue;
                     };
-                    let flat_name = code_mode_name_for_tool_name(&ToolName::namespaced(
-                        namespace,
-                        child_name,
-                    ));
+                    let flat_name =
+                        code_mode_name_for_tool_name(&ToolName::namespaced(namespace, child_name));
                     parsed.push(tool_from_value(child, flat_name));
                 }
             }
@@ -420,8 +419,8 @@ fn tool_from_value(v: &Value, name: String) -> Tool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codex_protocol::models::ContentItem;
     use codex_protocol::ResponseItemId;
+    use codex_protocol::models::ContentItem;
 
     #[test]
     fn test_single_user_message() {
@@ -878,7 +877,11 @@ mod tests {
         })];
 
         let parsed = parse_tools(&tools);
-        assert_eq!(parsed.len(), 2, "each child function should become one tool");
+        assert_eq!(
+            parsed.len(),
+            2,
+            "each child function should become one tool"
+        );
 
         let names: Vec<String> = parsed.iter().map(|t| t.name.to_string()).collect();
         assert_eq!(
@@ -909,7 +912,10 @@ mod tests {
         let parsed = parse_tools(&tools);
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].name.to_string(), "shell");
-        assert_eq!(parsed[0].description.as_deref(), Some("Run a shell command."));
+        assert_eq!(
+            parsed[0].description.as_deref(),
+            Some("Run a shell command.")
+        );
     }
 
     #[test]

@@ -17,9 +17,10 @@ pub struct LiveConfig {
     /// suites skip when `None` — there must never be a cross-vendor default
     /// here (sending vendor A's key to vendor B's endpoint).
     pub anthropic_base_url: Option<String>,
-    /// Responses-API endpoint, when it differs from the chat endpoint
-    /// (GLM: chat at `/api/coding/paas/v4`, responses at `/api/v1`).
-    /// `None` defaults to the chat URL (same-origin deployments like MiMo).
+    /// Responses-API endpoint. Explicit only: a missing declaration skips
+    /// the vendor's Responses scenarios with a notice — never a silent
+    /// fallback to the chat URL (same-origin deployments like MiMo set the
+    /// same value explicitly). Step declares none.
     pub responses_base_url: Option<String>,
     pub model: String,
 }
@@ -132,7 +133,9 @@ fn vendor_from_env(
     } else {
         "LIVE_VENDOR_RESPONSES_URL".to_string()
     };
-    let responses_base_url = lookup(&responses_var).or(Some(base_url.clone()));
+    // No replay placeholder: an unconfigured Responses endpoint must skip
+    // the vendor's Responses scenarios in every mode, never guess an URL.
+    let responses_base_url = lookup(&responses_var);
     Some(LiveConfig {
         vendor: name.to_string(),
         api_key,

@@ -28,6 +28,7 @@ use codex_live_tests::Bridge;
 use codex_live_tests::LiveConfig;
 use codex_live_tests::LiveWire;
 use codex_live_tests::anthropic_url_or_skip;
+use codex_live_tests::responses_url_or_skip;
 use codex_live_tests::run_turn;
 use codex_live_tests::user_message;
 use codex_protocol::models::FunctionCallOutputBody;
@@ -64,6 +65,111 @@ async fn scenario_chat(cfg: &LiveConfig, bridge: Bridge) {
         Some(true),
         "{ctx}: plain chat turn should end with end_turn=true"
     );
+}
+
+/// Same-protocol Responses passthrough through the rig bridge (the fork
+/// default for `wire_api = "responses"`). Requires the vendor's explicit
+/// Responses endpoint; vendors without one skip with a notice.
+async fn scenario_responses(cfg: &LiveConfig) {
+    let Some(responses_url) = responses_url_or_skip(cfg) else {
+        return;
+    };
+    let request = base_request(
+        cfg,
+        "You are a helpful assistant. Answer in Chinese.",
+        "用一句话解释什么是递归。",
+    );
+    let events = run_turn(
+        cfg,
+        &responses_url,
+        LiveWire::Responses,
+        Bridge::Rig,
+        &request,
+        "responses",
+    )
+    .await;
+
+    let ctx = format!("{}/rig responses", cfg.vendor);
+    assert!(
+        codex_live_tests::text_len(&events) > 0,
+        "{ctx}: expected text output on the Responses wire"
+    );
+    println!(
+        "[summary] responses text_chars={} reasoning_chars={}",
+        codex_live_tests::text_len(&events),
+        codex_live_tests::reasoning_len(&events)
+    );
+    codex_live_tests::assert_completed_with_usage(&events, &ctx);
+}
+
+/// Two-turn tool loop on the Responses wire: the model must emit a
+/// `get_weather` function_call, and the second request must replay the full
+/// first-turn history plus the paired tool result verbatim.
+async fn scenario_responses_tool_round_trip(cfg: &LiveConfig) {
+    let Some(responses_url) = responses_url_or_skip(cfg) else {
+        return;
+    };
+    let ctx = format!("{}/rig responses-tool", cfg.vendor);
+    let mut request = base_request(
+        cfg,
+        "You are a helpful assistant.",
+        "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
+    );
+    request.tools = Some(weather_tools());
+    request.parallel_tool_calls = false;
+
+    let turn1 = run_turn(
+        cfg,
+        &responses_url,
+        LiveWire::Responses,
+        Bridge::Rig,
+        &request,
+        "responses-tool-t1",
+    )
+    .await;
+    codex_live_tests::assert_completed_with_usage(&turn1, &ctx);
+    codex_live_tests::assert_responses_tool_arguments_complete(&turn1, &ctx);
+
+    let function_call =
+        extract_function_call(&turn1).expect("model should emit a get_weather function call");
+    assert_eq!(function_call.0, "get_weather");
+    println!(
+        "[summary] responses function_call name={} call_id={} arguments={}",
+        function_call.0, function_call.2, function_call.1
+    );
+
+    let mut input = request.input.clone();
+    let (_, _, call_id) = function_call;
+    append_turn_outputs(&mut input, &turn1);
+    input.push(ResponseItem::FunctionCallOutput {
+        id: None,
+        call_id: Some(call_id),
+        name: None,
+        namespace: None,
+        output: FunctionCallOutputPayload {
+            body: FunctionCallOutputBody::Text(
+                r#"{"city":"上海","condition":"多云","temp_c":26}"#.into(),
+            ),
+            success: Some(true),
+        },
+        internal_chat_message_metadata_passthrough: None,
+    });
+    request.input = input;
+
+    let turn2 = run_turn(
+        cfg,
+        &responses_url,
+        LiveWire::Responses,
+        Bridge::Rig,
+        &request,
+        "responses-tool-t2",
+    )
+    .await;
+    assert!(
+        codex_live_tests::text_len(&turn2) > 0,
+        "{ctx}: expected the model to answer with text after the tool result"
+    );
+    codex_live_tests::assert_completed_with_usage(&turn2, &ctx);
 }
 
 async fn scenario_effort_low(cfg: &LiveConfig, bridge: Bridge) {
@@ -496,6 +602,30 @@ macro_rules! bridge_matrix {
 }
 
 bridge_matrix!(chat, scenario_chat, ["mimo", "glm", "step"]);
+
+/// Responses-wire scenarios are rig-only (genai does not speak the wire).
+macro_rules! responses_matrix {
+    ($suffix:ident, $scenario:ident, [$($vendor:literal),*]) => {
+        paste::paste! {
+            $(
+                #[tokio::test]
+                async fn [<$vendor _rig_ $suffix>]() {
+                    match codex_live_tests::vendor($vendor) {
+                        Some(cfg) => $scenario(&cfg).await,
+                        None => println!("vendor `{}` not configured — skipping", $vendor),
+                    }
+                }
+            )*
+        }
+    };
+}
+
+responses_matrix!(responses, scenario_responses, ["mimo", "glm", "step"]);
+responses_matrix!(
+    responses_tool_round_trip,
+    scenario_responses_tool_round_trip,
+    ["mimo", "glm", "step"]
+);
 bridge_matrix!(
     chat_output_schema,
     scenario_chat_output_schema,

@@ -60,6 +60,16 @@ impl AuthProvider for DummyAuth {
 pub const IMAGE: &str = "data:image/png;base64,aGVsbG8=";
 pub const CHAT_SSE: &str = "data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"server-model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"ok\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"server-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":1,\"total_tokens\":5}}\n\ndata: [DONE]\n\n";
 pub const ANTHROPIC_SSE: &str = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg-test\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"server-model\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":4,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":1}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+/// Wire-shape Responses stream (data-only frames, mirroring CHAT_SSE): one
+/// assistant message and a completed terminal with usage. Richer reasoning /
+/// tool flows have dedicated fixtures in the responses wire tests.
+pub const RESPONSES_SSE: &str = concat!(
+    "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp-test\",\"model\":\"server-model\"}}\n\n",
+    "data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"id\":\"msg_1\"}}\n\n",
+    "data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"delta\":\"ok\"}\n\n",
+    "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}],\"id\":\"msg_1\"}}\n\n",
+    "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-test\",\"usage\":{\"input_tokens\":4,\"output_tokens\":1,\"total_tokens\":5}}}\n\n",
+);
 
 pub async fn capture(
     request: &ResponsesApiRequest,
@@ -79,6 +89,7 @@ pub async fn capture_with_auth(
     let address = listener.local_addr().expect("address");
     let server = tokio::spawn(async move {
         let payload = match protocol {
+            RigProtocol::Responses => RESPONSES_SSE,
             RigProtocol::Chat => CHAT_SSE,
             RigProtocol::Anthropic => ANTHROPIC_SSE,
         };

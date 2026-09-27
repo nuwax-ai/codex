@@ -412,7 +412,7 @@ impl ModelProvider for ConfiguredModelProvider {
         // drops CompactionTrigger items — remote compaction is only valid
         // on the native Responses transport, so chat-family wires force
         // local compaction.
-        let native_transport = !self.info.uses_chat_bridge();
+        let native_transport = !self.info.uses_model_bridge();
         let remote_compaction = if native_transport
             && (self.info.is_openai()
                 || is_azure_responses_provider(&self.info.name, self.info.base_url.as_deref()))

@@ -73,7 +73,7 @@ impl ThreadLifecycleContributor<Config> for GuardianV2Extension {
             // The fixed Luna scorer uses native Responses and cannot consume a
             // Chat/Anthropic provider. Keep the ordinary approval fallback; do
             // not start an incompatible background inference or prewarm.
-            if input.config.model_provider.uses_chat_bridge() {
+            if input.config.model_provider.uses_model_bridge() {
                 input.thread_store.remove::<LunaSampler>();
                 input.thread_store.remove::<GuardianV2ScoreProgress>();
                 input.thread_store.remove::<GuardianV2Enabled>();

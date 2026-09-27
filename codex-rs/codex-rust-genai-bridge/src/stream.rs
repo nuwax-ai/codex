@@ -305,7 +305,10 @@ mod tests {
             map_reasoning_effort(&Codex::XHigh),
             ReasoningEffort::XHigh
         ));
-        assert!(matches!(map_reasoning_effort(&Codex::Max), ReasoningEffort::Max));
+        assert!(matches!(
+            map_reasoning_effort(&Codex::Max),
+            ReasoningEffort::Max
+        ));
         // Ultra has no genai equivalent → falls back to Max (closest, not High).
         assert!(matches!(
             map_reasoning_effort(&Codex::Ultra),

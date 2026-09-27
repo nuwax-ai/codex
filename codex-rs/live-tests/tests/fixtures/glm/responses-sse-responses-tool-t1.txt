@@ -1,0 +1,143 @@
+event: response.created
+data: {"response":{"created_at":1790529293,"id":"resp_2026092801145372af02a600e9474f","model":"GLM-5.3-Flash","object":"response","output":[],"status":"in_progress"},"sequence_number":0,"type":"response.created"}
+
+event: response.in_progress
+data: {"response":{"created_at":1790529293,"id":"resp_2026092801145372af02a600e9474f","model":"GLM-5.3-Flash","object":"response","output":[],"status":"in_progress"},"sequence_number":1,"type":"response.in_progress"}
+
+event: response.output_item.added
+data: {"item":{"content":[],"id":"rs_resp_2026092801145372af02a600e9474f","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+event: response.content_part.added
+data: {"content_index":0,"item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"part":{"text":"","type":"reasoning_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"The","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":4,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" user","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":5,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" is","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":6,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" asking","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":7,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" about","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":8,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" the","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":9,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" weather","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":10,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" in","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":11,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" Shanghai","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":12,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" (","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":13,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"上海","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":14,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":")","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":15,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" today","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":16,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":".","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":17,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" They","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":18,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" explicitly","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":19,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" asked","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":20,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" me","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":21,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" to","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":22,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" call","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":23,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" the","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":24,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" get","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":25,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":"_weather","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":26,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" tool","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":27,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":".","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":28,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" Let","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":29,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" me","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":30,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" do","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":31,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":" that","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":32,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.delta
+data: {"content_index":0,"delta":".","item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":33,"type":"response.reasoning_text.delta"}
+
+event: response.reasoning_text.done
+data: {"content_index":0,"item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"sequence_number":34,"text":"The user is asking about the weather in Shanghai (上海) today. They explicitly asked me to call the get_weather tool. Let me do that.","type":"response.reasoning_text.done"}
+
+event: response.content_part.done
+data: {"content_index":0,"item_id":"rs_resp_2026092801145372af02a600e9474f","output_index":0,"part":{"text":"The user is asking about the weather in Shanghai (上海) today. They explicitly asked me to call the get_weather tool. Let me do that.","type":"reasoning_text"},"sequence_number":35,"type":"response.content_part.done"}
+
+event: response.output_item.done
+data: {"item":{"content":[{"text":"The user is asking about the weather in Shanghai (上海) today. They explicitly asked me to call the get_weather tool. Let me do that.","type":"reasoning_text"}],"encrypted_content":null,"id":"rs_resp_2026092801145372af02a600e9474f","status":"completed","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":36,"type":"response.output_item.done"}
+
+event: response.output_item.added
+data: {"item":{"arguments":"","call_id":"call_d38d5b5ffec34bae97764e9e","id":"fc_call_d38d5b5ffec34bae97764e9e","name":"get_weather","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":37,"type":"response.output_item.added"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"{\"","item_id":"fc_call_d38d5b5ffec34bae97764e9e","output_index":1,"sequence_number":38,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"city","item_id":"fc_call_d38d5b5ffec34bae97764e9e","output_index":1,"sequence_number":39,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"\":\"","item_id":"fc_call_d38d5b5ffec34bae97764e9e","output_index":1,"sequence_number":40,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"上海","item_id":"fc_call_d38d5b5ffec34bae97764e9e","output_index":1,"sequence_number":41,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"\"","item_id":"fc_call_d38d5b5ffec34bae97764e9e","output_index":1,"sequence_number":42,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.delta
+data: {"delta":"}","item_id":"fc_call_d38d5b5ffec34bae97764e9e","output_index":1,"sequence_number":43,"type":"response.function_call_arguments.delta"}
+
+event: response.function_call_arguments.done
+data: {"arguments":"{\"city\":\"上海\"}","item_id":"fc_call_d38d5b5ffec34bae97764e9e","name":"get_weather","output_index":1,"sequence_number":44,"type":"response.function_call_arguments.done"}
+
+event: response.output_item.done
+data: {"item":{"arguments":"{\"city\":\"上海\"}","call_id":"call_d38d5b5ffec34bae97764e9e","id":"fc_call_d38d5b5ffec34bae97764e9e","name":"get_weather","status":"completed","type":"function_call"},"output_index":1,"sequence_number":45,"type":"response.output_item.done"}
+
+event: response.completed
+data: {"response":{"conversation_id":"","created_at":1790529293,"error":null,"id":"resp_2026092801145372af02a600e9474f","incomplete_details":null,"instructions":"You are a helpful assistant.","metadata":null,"model":"GLM-5.3-Flash","object":"response","output":[{"content":[{"text":"The user is asking about the weather in Shanghai (上海) today. They explicitly asked me to call the get_weather tool. Let me do that.","type":"reasoning_text"}],"encrypted_content":null,"id":"rs_resp_2026092801145372af02a600e9474f","status":"completed","summary":[],"type":"reasoning"},{"arguments":"{\"city\":\"上海\"}","call_id":"call_d38d5b5ffec34bae97764e9e","id":"fc_call_d38d5b5ffec34bae97764e9e","name":"get_weather","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"previous_response_id":"","status":"completed","usage":{"input_tokens":194,"input_tokens_details":{"cached_tokens":0},"output_tokens":42,"output_tokens_details":{"reasoning_tokens":30},"total_tokens":236}},"sequence_number":46,"type":"response.completed"}
+
+data: [DONE]
+

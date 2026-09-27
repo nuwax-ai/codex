@@ -107,6 +107,33 @@ pub struct CodexHarnessMetadata {
     /// Sender context captured by the host when this task message was accepted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sender_user_messages: Option<Box<SenderUserMessages>>,
+
+    /// Provenance of a model-generated output, captured from the request
+    /// context that produced it (never backfilled from the config in effect
+    /// at resume time). Harness-owned: never sent to the model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_output_provenance: Option<ModelOutputProvenance>,
+}
+
+/// Where a model output came from: the wire actually spoken, the bridge that
+/// spoke it, and the provider/model identity. No credentials, no endpoints.
+/// Used by cross-protocol resume to project history onto the target wire
+/// without guessing from IDs.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+pub struct ModelOutputProvenance {
+    /// Wire protocol of the producing request: `responses`, `chat`, or
+    /// `anthropic` (the `wire_api` vocabulary).
+    pub wire_protocol: String,
+    /// Bridge that produced the output (`rig`, `genai`); absent for the
+    /// native transport.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge: Option<String>,
+    /// Configured provider name, when recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Model slug of the producing request, when recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 fn deserialize_mcp_attribution_checkpoint<'de, D>(

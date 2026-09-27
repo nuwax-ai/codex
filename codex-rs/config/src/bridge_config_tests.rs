@@ -24,7 +24,7 @@ fn stamped_bedrock_overrides_survive_load_validation_and_merge() {
             provider.aws.as_ref().and_then(|aws| aws.region.as_deref()),
             Some("us-west-2")
         );
-        assert!(!provider.uses_chat_bridge());
+        assert!(!provider.uses_model_bridge());
     }
 }
 

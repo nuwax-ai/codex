@@ -14,8 +14,10 @@ pub(crate) mod sse;
 pub(crate) mod telemetry;
 
 pub use crate::requests::headers::build_session_headers;
+pub use codex_client::ByteStream;
 pub use codex_client::RequestTelemetry;
 pub use codex_client::ReqwestTransport;
+pub use codex_client::StreamResponse;
 pub use codex_client::TransportError;
 
 pub use crate::api_bridge::map_api_error;
@@ -28,9 +30,10 @@ pub use crate::auth::AuthProviderFuture;
 pub use crate::auth::SharedAuthProvider;
 pub use crate::auth::auth_header_telemetry;
 mod bridge;
-pub use bridge::ChatModelBridge;
-pub use bridge::ChatWireProtocol;
-pub use bridge::chat_wire_protocol;
+pub use crate::sse::ResponsesStreamEvent;
+pub use crate::sse::process_responses_event;
+pub use bridge::ModelBridge;
+pub use bridge::ModelWireProtocol;
 
 pub use crate::common::AccessPrograms;
 pub use crate::common::MemorySummarizeInput;

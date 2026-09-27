@@ -2,7 +2,8 @@ use codex_api::Provider;
 use codex_api::SharedAuthProvider;
 use genai::ServiceTarget;
 use genai::adapter::AdapterKind;
-use genai::resolver::{AuthData, Endpoint};
+use genai::resolver::AuthData;
+use genai::resolver::Endpoint;
 use http::HeaderMap;
 
 /// Builds a rust-genai `Client` with Codex's auth and endpoint routing.
@@ -104,7 +105,10 @@ pub fn build_extra_headers(
     // it triggers 400 rejections from reverse proxies. SECONDARY auth
     // headers (gateway OAuth cookies, api-key variants, …) MUST survive —
     // the adapter only manages the primary header.
-    let primary_authz = api_auth.to_auth_headers().get(http::header::AUTHORIZATION).cloned();
+    let primary_authz = api_auth
+        .to_auth_headers()
+        .get(http::header::AUTHORIZATION)
+        .cloned();
     let auth_headers = api_auth.to_auth_headers();
     for (key, value) in auth_headers.iter() {
         if Some(value) == primary_authz.as_ref() {

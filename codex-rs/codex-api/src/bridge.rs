@@ -1,10 +1,14 @@
-//! The contract every Chat-Completions bridge implements.
+//! The contract every model bridge implements.
 //!
-//! Codex core speaks only this trait; concrete bridges (genai, rig) live in
+//! Codex core speaks only this trait; concrete bridges (rig, genai) live in
 //! their own crates and register implementations behind cargo features.
-//! Keeping the trait here — in `codex-api`, the crate both bridges already
-//! depend on — avoids any dependency of the bridges on `codex-core` and any
+//! Keeping the trait here — in `codex-api`, the crate every bridge already
+//! depends on — avoids any dependency of the bridges on `codex-core` and any
 //! dependency of this crate on a concrete bridge.
+//!
+//! The protocol argument is derived from the provider's explicit `wire_api`
+//! alone; URL guessing must never override it (a `wire_api = "responses"`
+//! provider is served Responses, not silently converted to Chat).
 
 use std::future::Future;
 use std::pin::Pin;
@@ -17,23 +21,36 @@ use crate::ResponsesApiRequest;
 use crate::SharedAuthProvider;
 use http::HeaderMap;
 
-/// Which Chat-Completions-family wire the bridge should speak. Neutral so
-/// neither bridge's protocol type leaks into core; each bridge maps it onto
-/// its own adapter/protocol enum.
+/// Which wire the bridge should speak. Neutral so neither bridge's protocol
+/// type leaks into core; each bridge maps it onto its own adapter/protocol
+/// enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChatWireProtocol {
+pub enum ModelWireProtocol {
+    /// OpenAI Responses (`POST {base}/responses`).
+    Responses,
     /// OpenAI-compatible Chat Completions.
     ChatCompletions,
     /// Anthropic Messages.
     Anthropic,
 }
 
-/// A Chat-Completions bridge: converts a Codex `ResponsesApiRequest` into a
-/// provider request on the given wire and streams back Codex
-/// `ResponseEvent`s, preserving the event contract codex's turn loop
-/// expects (item-added before deltas, reasoning before message, exactly one
-/// terminal `Completed`, HTTP statuses on start errors).
-pub trait ChatModelBridge: std::fmt::Debug + Send + Sync {
+impl ModelWireProtocol {
+    /// Stable wire name for logs and error messages; matches the `wire_api`
+    /// config vocabulary.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Responses => "responses",
+            Self::ChatCompletions => "chat",
+            Self::Anthropic => "anthropic",
+        }
+    }
+}
+
+/// A model bridge: sends a Codex `ResponsesApiRequest` on the given wire and
+/// streams back Codex `ResponseEvent`s, preserving the event contract codex's
+/// turn loop expects (item-added before deltas, reasoning before message,
+/// exactly one terminal `Completed`, HTTP statuses on start errors).
+pub trait ModelBridge: std::fmt::Debug + Send + Sync {
     /// Stable identifier for logs and error messages ("genai", "rig").
     fn name(&self) -> &'static str;
 
@@ -46,82 +63,7 @@ pub trait ChatModelBridge: std::fmt::Debug + Send + Sync {
         provider: &'a Provider,
         auth: &'a SharedAuthProvider,
         extra_headers: HeaderMap,
-        protocol: ChatWireProtocol,
+        protocol: ModelWireProtocol,
         idle_timeout: Duration,
     ) -> Pin<Box<dyn Future<Output = Result<ResponseStream, ApiError>> + Send + 'a>>;
-}
-
-/// Resolves the neutral wire protocol for a provider: explicit
-/// `wire_api = "anthropic"` wins; otherwise `/anthropic`-style base URLs
-/// (e.g. MiMo's, GLM's) route to the Anthropic Messages wire, everything
-/// else to Chat Completions.
-pub fn chat_wire_protocol(wire_anthropic: bool, base_url: &str) -> ChatWireProtocol {
-    if wire_anthropic {
-        return ChatWireProtocol::Anthropic;
-    }
-    if url::Url::parse(base_url).is_ok_and(|url| url.path().contains("/anthropic")) {
-        ChatWireProtocol::Anthropic
-    } else {
-        ChatWireProtocol::ChatCompletions
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use pretty_assertions::assert_eq;
-
-    #[test]
-    fn explicit_anthropic_wins_over_url() {
-        assert_eq!(
-            chat_wire_protocol(true, "https://api.example.com/v1"),
-            ChatWireProtocol::Anthropic
-        );
-    }
-
-    #[test]
-    fn anthropic_url_marker_sniffs_anthropic() {
-        for url in [
-            "https://token-plan-cn.xiaomimimo.com/anthropic/v1",
-            "https://open.bigmodel.cn/api/anthropic/v1",
-        ] {
-            assert_eq!(
-                chat_wire_protocol(false, url),
-                ChatWireProtocol::Anthropic,
-                "url {url} should sniff as anthropic"
-            );
-        }
-    }
-
-    #[test]
-    fn plain_chat_urls_stay_chat() {
-        for url in [
-            "https://api.stepfun.com/step_plan/v1",
-            "https://api.deepseek.com/v1",
-            "http://localhost:11434/v1",
-        ] {
-            assert_eq!(
-                chat_wire_protocol(false, url),
-                ChatWireProtocol::ChatCompletions,
-                "url {url} should stay chat completions"
-            );
-        }
-    }
-
-    #[test]
-    fn protocol_detection_ignores_url_authority_query_and_fragment() {
-        for url in [
-            "https://anthropic.example/v1",
-            "https://anthropic:token@api.example/v1",
-            "https://user:%2Fanthropic@api.example/v1",
-            "https://api.example/v1?next=/anthropic/v1",
-            "https://api.example/v1#docs/anthropic",
-        ] {
-            assert_eq!(
-                chat_wire_protocol(/*wire_anthropic*/ false, url),
-                ChatWireProtocol::ChatCompletions,
-                "only the path may select the protocol: {url}"
-            );
-        }
-    }
 }

@@ -33,6 +33,10 @@ fn tool_prefix(protocol: RigProtocol) -> String {
     ];
     let mut frames = Vec::new();
     match protocol {
+        // The Responses passthrough publishes items as they arrive via
+        // codex-api's decoder; its lifecycle semantics are covered by the
+        // responses wire and unit suites, not this conversion-gated harness.
+        RigProtocol::Responses => {}
         RigProtocol::Chat => {
             for (index, (id, name, arguments)) in calls.into_iter().enumerate() {
                 frames.push(json!({"id":"chatcmpl-tools","object":"chat.completion.chunk","created":1,"model":"review-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":index,"id":id,"type":"function","function":{"name":name,"arguments":arguments.to_string()}}]},"finish_reason":null}]}));
@@ -54,6 +58,7 @@ fn tool_prefix(protocol: RigProtocol) -> String {
     frames
         .into_iter()
         .map(|frame| match protocol {
+            RigProtocol::Responses => String::new(),
             RigProtocol::Chat => format!("data: {frame}\n\n"),
             RigProtocol::Anthropic => {
                 format!(
@@ -104,6 +109,9 @@ async fn controlled_stream(
             let tail = match (protocol, ending) {
                 (RigProtocol::Chat, Ending::Complete) => "data: [DONE]\n\n",
                 (RigProtocol::Anthropic, Ending::Complete) => "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+                // Unreachable: Responses never enters this harness (see
+                // `tool_prefix`).
+                (RigProtocol::Responses, Ending::Complete) => "",
                 (_, Ending::Eof) => "",
                 (_, Ending::Error) => "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"late failure\"}}\n\n",
                 (_, Ending::Malformed) => "data: {broken json\n\n",
@@ -254,6 +262,7 @@ async fn function_and_custom_lifecycles_wait_for_the_released_terminal_frame() {
         }
         expected.push(ResponseEvent::Completed {
             response_id: match protocol {
+                RigProtocol::Responses => unreachable!("harness excludes responses"),
                 RigProtocol::Chat => "chatcmpl-tools",
                 RigProtocol::Anthropic => "msg-tools",
             }

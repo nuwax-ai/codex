@@ -1,26 +1,28 @@
-//! `ChatModelBridge` implementation — a thin adapter over the crate's free
+//! `ModelBridge` implementation — a thin adapter over the crate's free
 //! function so codex-core can dispatch through the neutral trait without
-//! knowing genai's adapter types.
+//! knowing genai's adapter types. Genai speaks Chat Completions and Anthropic
+//! Messages only; the Responses wire belongs to the rig bridge (passthrough)
+//! or the native transport.
 
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
 use codex_api::ApiError;
-use codex_api::ChatModelBridge;
-use codex_api::ChatWireProtocol;
+use codex_api::ModelBridge;
+use codex_api::ModelWireProtocol;
 use codex_api::Provider;
-use codex_api::ResponsesApiRequest;
 use codex_api::ResponseStream;
+use codex_api::ResponsesApiRequest;
 use codex_api::SharedAuthProvider;
 use genai::adapter::AdapterKind;
 use http::HeaderMap;
 
-/// The genai bridge as a `ChatModelBridge` implementor (stateless unit).
+/// The genai bridge as a `ModelBridge` implementor (stateless unit).
 #[derive(Debug)]
 pub struct GenaiChatBridge;
 
-impl ChatModelBridge for GenaiChatBridge {
+impl ModelBridge for GenaiChatBridge {
     fn name(&self) -> &'static str {
         "genai"
     }
@@ -31,12 +33,20 @@ impl ChatModelBridge for GenaiChatBridge {
         provider: &'a Provider,
         auth: &'a SharedAuthProvider,
         extra_headers: HeaderMap,
-        protocol: ChatWireProtocol,
+        protocol: ModelWireProtocol,
         idle_timeout: Duration,
     ) -> Pin<Box<dyn Future<Output = Result<ResponseStream, ApiError>> + Send + 'a>> {
         let adapter_kind = match protocol {
-            ChatWireProtocol::Anthropic => AdapterKind::Anthropic,
-            ChatWireProtocol::ChatCompletions => AdapterKind::OpenAI,
+            ModelWireProtocol::Anthropic => AdapterKind::Anthropic,
+            ModelWireProtocol::ChatCompletions => AdapterKind::OpenAI,
+            ModelWireProtocol::Responses => {
+                return Box::pin(std::future::ready(Err(ApiError::InvalidRequest {
+                    message: "the genai bridge does not implement wire_api = \"responses\"; \
+                              use the default rig bridge (remove experimental_bridge) or \
+                              experimental_bridge = \"native\""
+                        .into(),
+                })));
+            }
         };
         Box::pin(crate::stream_via_genai(
             request,

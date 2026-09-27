@@ -1,0 +1,215 @@
+{
+  "vendor": "mimo",
+  "bridge": "rig",
+  "tag": "responses-tool-t2",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      },
+      {
+        "content": [
+          {
+            "text": "The user wants weather for Shanghai. Call get_weather with city 上海.",
+            "type": "reasoning_text"
+          }
+        ],
+        "encrypted_content": null,
+        "id": "rs_46eb92cb141e4b94a38984948d0a5431",
+        "summary": [],
+        "type": "reasoning"
+      },
+      {
+        "arguments": "{\"city\": \"上海\"}",
+        "call_id": "call_7b148e8c981044a1b422ef1b",
+        "id": "fc_139956faf2ea452aaaca646ad63b110c",
+        "name": "get_weather",
+        "type": "function_call"
+      },
+      {
+        "call_id": "call_7b148e8c981044a1b422ef1b",
+        "output": "{\"city\":\"上海\",\"condition\":\"多云\",\"temp_c\":26}",
+        "type": "function_call_output"
+      }
+    ],
+    "instructions": "You are a helpful assistant.",
+    "model": "mimo-v2.6-flash",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "description": "Get the current weather for a city",
+        "name": "get_weather",
+        "parameters": {
+          "properties": {
+            "city": {
+              "description": "City name, e.g. 北京",
+              "type": "string"
+            }
+          },
+          "required": [
+            "city"
+          ],
+          "type": "object"
+        },
+        "strict": false,
+        "type": "function"
+      }
+    ]
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": "resp_102ffe98b303448db3439a885e16ad8a"
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rs_deaa08e19d1c4c908ab36494c89639ba",
+        "summary": [],
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "Report",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " weather.",
+        "content_index": 0
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "msg_905fafaab71a47aebf1d6c084cabb54d",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "上海今天的"
+    },
+    {
+      "OutputTextDelta": "天气情况"
+    },
+    {
+      "OutputTextDelta": "：\n\n- **"
+    },
+    {
+      "OutputTextDelta": "天气状况"
+    },
+    {
+      "OutputTextDelta": "**：多云\n"
+    },
+    {
+      "OutputTextDelta": "- **气温**：26"
+    },
+    {
+      "OutputTextDelta": "°C\n\n总体"
+    },
+    {
+      "OutputTextDelta": "来说"
+    },
+    {
+      "OutputTextDelta": "比较舒适"
+    },
+    {
+      "OutputTextDelta": "，适合出行"
+    },
+    {
+      "OutputTextDelta": "。如果您"
+    },
+    {
+      "OutputTextDelta": "需要更"
+    },
+    {
+      "OutputTextDelta": "详细的天气"
+    },
+    {
+      "OutputTextDelta": "信息（如湿度"
+    },
+    {
+      "OutputTextDelta": "、风力"
+    },
+    {
+      "OutputTextDelta": "等），可以告诉我。"
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rs_deaa08e19d1c4c908ab36494c89639ba",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "Report the weather."
+          }
+        ],
+        "encrypted_content": null
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "msg_905fafaab71a47aebf1d6c084cabb54d",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "上海今天的天气情况：\n\n- **天气状况**：多云\n- **气温**：26°C\n\n总体来说比较舒适，适合出行。如果您需要更详细的天气信息（如湿度、风力等），可以告诉我。"
+          }
+        ]
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "resp_102ffe98b303448db3439a885e16ad8a",
+        "token_usage": {
+          "input_tokens": 190,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 55,
+          "reasoning_output_tokens": 5,
+          "total_tokens": 245
+        },
+        "usage_metadata": {
+          "amount": null,
+          "metadata": {
+            "input_tokens": 190,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 55,
+            "output_tokens_details": {
+              "reasoning_tokens": 5
+            },
+            "total_tokens": 245
+          }
+        },
+        "end_turn": null
+      }
+    }
+  ]
+}

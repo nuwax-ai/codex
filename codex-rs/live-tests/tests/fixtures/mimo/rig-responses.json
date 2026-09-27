@@ -1,0 +1,186 @@
+{
+  "vendor": "mimo",
+  "bridge": "rig",
+  "tag": "responses",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "用一句话解释什么是递归。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      }
+    ],
+    "instructions": "You are a helpful assistant. Answer in Chinese.",
+    "model": "mimo-v2.6-flash",
+    "parallel_tool_calls": true,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto"
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": "resp_6dd2c4dd9134435d9839d3e5a6bc5b99"
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "reasoning",
+        "id": "rs_3d338301b0f8436c91245361c3e7dfcc",
+        "summary": [],
+        "encrypted_content": null
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "用",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "一句话解释递",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "归。",
+        "content_index": 0
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "msg_e6b58713ce064be98a9e660a27de982b",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "递归就是"
+    },
+    {
+      "OutputTextDelta": "函数在"
+    },
+    {
+      "OutputTextDelta": "运行"
+    },
+    {
+      "OutputTextDelta": "过程中调"
+    },
+    {
+      "OutputTextDelta": "用自身"
+    },
+    {
+      "OutputTextDelta": "来"
+    },
+    {
+      "OutputTextDelta": "解决一个"
+    },
+    {
+      "OutputTextDelta": "规模"
+    },
+    {
+      "OutputTextDelta": "更"
+    },
+    {
+      "OutputTextDelta": "小的"
+    },
+    {
+      "OutputTextDelta": "同类问题，直到"
+    },
+    {
+      "OutputTextDelta": "达到"
+    },
+    {
+      "OutputTextDelta": "可以"
+    },
+    {
+      "OutputTextDelta": "直接"
+    },
+    {
+      "OutputTextDelta": "给出"
+    },
+    {
+      "OutputTextDelta": "答案"
+    },
+    {
+      "OutputTextDelta": "的基本"
+    },
+    {
+      "OutputTextDelta": "情况"
+    },
+    {
+      "OutputTextDelta": "（base"
+    },
+    {
+      "OutputTextDelta": " case）为止"
+    },
+    {
+      "OutputTextDelta": "。"
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rs_3d338301b0f8436c91245361c3e7dfcc",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "用一句话解释递归。"
+          }
+        ],
+        "encrypted_content": null
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "msg_e6b58713ce064be98a9e660a27de982b",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "递归就是函数在运行过程中调用自身来解决一个规模更小的同类问题，直到达到可以直接给出答案的基本情况（base case）为止。"
+          }
+        ]
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "resp_6dd2c4dd9134435d9839d3e5a6bc5b99",
+        "token_usage": {
+          "input_tokens": 28,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 43,
+          "reasoning_output_tokens": 7,
+          "total_tokens": 71
+        },
+        "usage_metadata": {
+          "amount": null,
+          "metadata": {
+            "input_tokens": 28,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 43,
+            "output_tokens_details": {
+              "reasoning_tokens": 7
+            },
+            "total_tokens": 71
+          }
+        },
+        "end_turn": null
+      }
+    }
+  ]
+}

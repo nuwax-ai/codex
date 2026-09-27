@@ -29,9 +29,17 @@ pub type RigEventRecorder =
 
 const RESPONSE_STREAM_CHANNEL_CAPACITY: usize = 256;
 
-/// Streams a turn through rig. The wire protocol is selected from the
-/// provider's base URL (`/anthropic` gateways → Anthropic Messages;
-/// everything else → OpenAI Chat Completions).
+/// Shared by the entry guard and the exhaustive dispatch match below: the
+/// rig-event recorder observes the Chat/Anthropic conversion boundary, which
+/// the Responses passthrough never enters.
+const RECORDER_REJECTS_RESPONSES_MSG: &str = "the rig event recorder only covers the \
+                                              Chat/Anthropic conversion pipeline; use \
+                                              stream_via_rig for the Responses passthrough";
+
+/// Streams a turn through rig. The wire protocol comes from the provider's
+/// explicit `wire_api`: `Responses` is a same-protocol passthrough (no Chat
+/// conversion); Chat Completions and Anthropic Messages go through the
+/// history/tool conversion pipeline below.
 pub async fn stream_via_rig(
     request: &ResponsesApiRequest,
     api_provider: &Provider,
@@ -40,6 +48,16 @@ pub async fn stream_via_rig(
     protocol: RigProtocol,
     idle_timeout: Duration,
 ) -> Result<ResponseStream, ApiError> {
+    if protocol == RigProtocol::Responses {
+        return crate::responses::stream_responses_via_rig(
+            request,
+            api_provider,
+            api_auth,
+            extra_headers,
+            idle_timeout,
+        )
+        .await;
+    }
     stream_via_rig_with_recording(
         request,
         api_provider,
@@ -66,6 +84,11 @@ pub async fn stream_via_rig_with_recording(
     idle_timeout: Duration,
     recorder: RigEventRecorder,
 ) -> Result<(ResponseStream, RigEventRecorder), ApiError> {
+    if protocol == RigProtocol::Responses {
+        return Err(ApiError::InvalidRequest {
+            message: RECORDER_REJECTS_RESPONSES_MSG.into(),
+        });
+    }
     let source = crate::client::reasoning_source(api_provider, protocol, &request.model)?;
     let (completion_request, tool_meta) =
         responses_request_to_completion_request(request, protocol, &source)?;
@@ -96,6 +119,7 @@ pub async fn stream_via_rig_with_recording(
             .filter(|_| crate::client::bearer_token(&headers).is_none())
             .cloned(),
         protocol,
+        responses_sse_recorder: None,
         tool_strict: tool_meta.strict,
         tool_result_errors: tool_meta.result_errors,
         disable_anthropic_thinking: protocol == RigProtocol::Anthropic
@@ -134,6 +158,12 @@ pub async fn stream_via_rig_with_recording(
             let anthropic_model =
                 crate::client::build_anthropic_model(&model, &base_url, &headers, http)?;
             anthropic_model.stream(completion_request).await
+        }
+        // Unreachable: rejected at the top of this function.
+        RigProtocol::Responses => {
+            return Err(ApiError::InvalidRequest {
+                message: RECORDER_REJECTS_RESPONSES_MSG.into(),
+            });
         }
     }
     .map_err(|e| {

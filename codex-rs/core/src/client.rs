@@ -900,7 +900,7 @@ impl ModelClient {
             // Filter only the request copy; persisted history remains unchanged.
             input.retain(|item| !matches!(item, ResponseItem::ConfigurationUpdate { .. }));
         }
-        let native_transport = !self.state.provider.info().uses_chat_bridge();
+        let native_transport = !self.state.provider.info().uses_model_bridge();
         if native_transport
             || self.state.provider.info().experimental_bridge
                 == Some(codex_model_provider_info::ChatBridge::Genai)
@@ -1659,27 +1659,26 @@ impl ModelClientSession {
         }
     }
 
-    /// Streams a turn via the Chat Completions API using rust-genai.
-    ///
-    /// Converts the Codex `ResponsesApiRequest` to a genai `ChatRequest` and
-    /// bridges `ChatStreamEvent` back into `ResponseEvent` events so all
-    /// upstream consumers remain unchanged.
+    /// Streams a turn through the model bridge selected by the provider
+    /// (fork extension). The bridge speaks the provider's explicit wire:
+    /// Responses (same-protocol passthrough on rig), Chat Completions, or
+    /// Anthropic Messages; conversion internals live in the bridge crates.
     #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
     #[allow(clippy::too_many_arguments)]
     #[instrument(
-        name = "model_client.stream_chat_api",
+        name = "model_client.stream_model_bridge",
         level = "info",
         skip_all,
         fields(
             model = %model_info.slug,
-            wire_api = "chat",
-            transport = "chat_http",
+            wire_api = %self.client.state.provider.info().wire_api,
+            transport = "model_bridge",
             http.method = "POST",
-            api.path = "chat/completions",
+            api.path = tracing::field::Empty,
             turn.has_metadata_header = true
         )
     )]
-    async fn stream_chat_api(
+    async fn stream_model_bridge(
         &self,
         prompt: &Prompt,
         model_info: &ModelInfo,
@@ -1697,13 +1696,20 @@ impl ModelClientSession {
         let mut provider_auth_recovery_attempted = false;
         let mut pending_retry = PendingUnauthorizedRetry::default();
         loop {
-            // Chat providers are always user-configured entries; keep the
+            // Bridged providers are always user-configured entries; keep the
             // pre-refactor behavior of resolving exactly the configured
             // provider (workspace routing only applies to first-party auth).
             let client_setup = self
                 .client
                 .current_client_setup(ClientRouting::ConfiguredProvider)
                 .await?;
+            // Reflect the real wire in telemetry: a responses-wire provider
+            // bridged through rig hits /responses, not chat/completions.
+            let endpoint = match self.client.state.provider.info().wire_api {
+                WireApi::Responses => "/responses",
+                WireApi::Chat | WireApi::Anthropic => "chat/completions",
+            };
+            tracing::Span::current().record("api.path", endpoint);
             let request_auth_context = AuthRequestTelemetryContext::new(
                 client_setup.auth.as_ref().map(CodexAuth::auth_mode),
                 client_setup.api_auth.as_ref(),
@@ -1713,7 +1719,7 @@ impl ModelClientSession {
             let (_request_telemetry, _sse_telemetry) = Self::build_streaming_telemetry(
                 session_telemetry,
                 request_auth_context,
-                RequestRouteTelemetry::for_endpoint("chat/completions"),
+                RequestRouteTelemetry::for_endpoint(endpoint),
                 self.client.state.auth_env_telemetry.clone(),
             );
             let compression = self.responses_request_compression(client_setup.auth.as_ref());
@@ -1745,7 +1751,7 @@ impl ModelClientSession {
             let wire_api = self.client.state.provider.info().wire_api;
             let bridge = self.client.state.provider.info().experimental_bridge;
 
-            let stream_result = dispatch_chat_bridge(
+            let stream_result = dispatch_model_bridge(
                 &request,
                 &client_setup,
                 options.extra_headers,
@@ -2388,9 +2394,9 @@ impl ModelClientSession {
     ) -> Result<ResponseStream> {
         let info = self.client.state.provider.info();
         #[cfg(not(any(feature = "rust-genai", feature = "rust-rig")))]
-        if info.uses_chat_bridge() {
+        if info.uses_model_bridge() {
             return Err(CodexErr::Fatal(
-                "The selected model provider requires a chat bridge; enable `rust-rig` or \
+                "The selected model provider requires a model bridge; enable `rust-rig` or \
                  `rust-genai`, or select `experimental_bridge = \"native\"` for a Responses provider"
                     .into(),
             ));
@@ -2399,16 +2405,16 @@ impl ModelClientSession {
         match wire_api {
             WireApi::Responses => {
                 // Fork default: third-party Responses providers route through
-                // the chat bridge (rig) — their Responses implementations are
-                // usually partial (e.g. MiMo rejects the hosted `web_search`
-                // tool), while the bridge normalizes everything to Chat
-                // Completions. First-party OpenAI (websocket, hosted tools,
-                // ZDR) and Amazon Bedrock (SigV4) keep the native transport,
-                // and `experimental_bridge = "native"` forces it explicitly.
+                // the rig bridge, which speaks the SAME Responses wire
+                // (same-protocol passthrough; hosted-tool capability gaps are
+                // handled by config, not silent protocol conversion).
+                // First-party OpenAI (websocket, hosted tools, ZDR) and Amazon
+                // Bedrock (SigV4) keep the native transport, and
+                // `experimental_bridge = "native"` forces it explicitly.
                 #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
-                if info.uses_chat_bridge() {
+                if info.uses_model_bridge() {
                     return self
-                        .stream_chat_api(
+                        .stream_model_bridge(
                             prompt,
                             model_info,
                             session_telemetry,
@@ -2458,7 +2464,7 @@ impl ModelClientSession {
             }
             #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
             WireApi::Chat | WireApi::Anthropic => {
-                self.stream_chat_api(
+                self.stream_model_bridge(
                     prompt,
                     model_info,
                     session_telemetry,
@@ -3166,13 +3172,16 @@ fn is_rig_reasoning_envelope(value: &str) -> bool {
     }
 }
 
-/// Sends the Chat-Completions request through the bridge the provider
-/// selected via `experimental_bridge` (fork extension). Unset defaults to
-/// the rig bridge; `"genai"` opts back into the original bridge; the
-/// concrete implementations are isolated behind the `ChatModelBridge`
-/// trait in codex-api, so this dispatch knows no bridge-specific types.
+/// Sends the model request through the bridge the provider selected via
+/// `experimental_bridge` (fork extension). Unset defaults to the rig bridge;
+/// `"genai"` opts back into the original bridge; the concrete implementations
+/// are isolated behind the `ModelBridge` trait in codex-api, so this dispatch
+/// knows no bridge-specific types. The wire protocol comes from the
+/// provider's EXPLICIT `wire_api` — URL guessing must never override it, and
+/// `wire_api = "responses"` reaches the rig bridge as a same-protocol
+/// passthrough instead of a silent Chat conversion.
 #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
-async fn dispatch_chat_bridge(
+async fn dispatch_model_bridge(
     request: &codex_api::ResponsesApiRequest,
     client_setup: &CurrentClientSetup,
     extra_headers: http::HeaderMap,
@@ -3181,16 +3190,17 @@ async fn dispatch_chat_bridge(
 ) -> std::result::Result<codex_api::ResponseStream, codex_api::ApiError> {
     use codex_model_provider_info::ChatBridge;
 
-    let protocol = codex_api::chat_wire_protocol(
-        wire == WireApi::Anthropic,
-        &client_setup.api_provider.base_url,
-    );
+    let protocol = match wire {
+        WireApi::Responses => codex_api::ModelWireProtocol::Responses,
+        WireApi::Chat => codex_api::ModelWireProtocol::ChatCompletions,
+        WireApi::Anthropic => codex_api::ModelWireProtocol::Anthropic,
+    };
 
-    let bridge_impl: &dyn codex_api::ChatModelBridge = match bridge.unwrap_or_default() {
+    let bridge_impl: &dyn codex_api::ModelBridge = match bridge.unwrap_or_default() {
         #[cfg(feature = "rust-genai")]
         ChatBridge::Genai => &codex_rust_genai_bridge::GenaiChatBridge,
         #[cfg(feature = "rust-rig")]
-        ChatBridge::Rig => &codex_rust_rig_bridge::RigChatBridge,
+        ChatBridge::Rig => &codex_rust_rig_bridge::RigModelBridge,
         // `native` only applies to the Responses wire; a chat-wire provider
         // has no native transport to fall back to. Match arms that are
         // compiled out collapse into one of the above when a single bridge

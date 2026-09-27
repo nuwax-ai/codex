@@ -60,20 +60,26 @@ async fn chat_genai_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Resu
 }
 
 /// Fork default for third-party Responses providers: `wire_api = "responses"`
-/// with no `experimental_bridge` routes through the rig bridge, which drops
-/// hosted tools the gateway may not support (no `web_search` workaround).
-/// The bridge speaks Chat Completions, so this uses the CHAT URL even though
-/// the provider is configured responses-wire (the responses URL below is
-/// only for the native transport).
+/// with no `experimental_bridge` routes through the rig bridge, which now
+/// speaks the SAME Responses wire (same-protocol passthrough). The endpoint
+/// must be the vendor's explicit Responses URL — never the chat URL.
 async fn responses_rig_default_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    let Some(responses_url) = codex_live_tests::responses_url_or_skip(cfg) else {
+        return Ok(());
+    };
     run_marker_turn(
         "responses-rig-default",
         cfg,
-        &cfg.base_url,
+        &responses_url,
         "responses",
         None,
-        "",
-        Some("via rig"),
+        // Same-protocol passthrough exposes gateway capability gaps instead
+        // of hiding them behind a Chat conversion: MiMo's Responses gateway
+        // rejects hosted tools outright (HTTP 400 responses_feature_not_
+        // supported). Disabling web_search is the explicit config-level
+        // declaration; harmless for gateways that accept it (GLM).
+        "web_search = \"disabled\"\n",
+        Some("Dispatching responses stream via rig"),
     )
     .await
 }
@@ -83,10 +89,13 @@ async fn responses_rig_default_scenario(cfg: &codex_live_tests::LiveConfig) -> a
 /// Responses SSE telemetry). Hosted tools are disabled for gateways that
 /// reject them (MiMo does; harmless elsewhere).
 async fn responses_native_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    let Some(responses_url) = codex_live_tests::responses_url_or_skip(cfg) else {
+        return Ok(());
+    };
     run_marker_turn(
         "responses-native",
         cfg,
-        &codex_live_tests::responses_url(cfg),
+        &responses_url,
         "responses",
         Some("native"),
         "web_search = \"disabled\"\n",

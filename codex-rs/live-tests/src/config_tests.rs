@@ -42,7 +42,8 @@ fn replay_keeps_anthropic_scenarios_active_without_credentials_or_urls() {
             "(replay-placeholder)".into(),
             "(replay-placeholder-url)".into(),
             Some("(replay-placeholder-anthropic-url)".into()),
-            Some("(replay-placeholder-url)".into()),
+            // An unconfigured Responses endpoint skips in every mode.
+            None,
             "(replay-placeholder-model)".into(),
         )
     );

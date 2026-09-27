@@ -1,14 +1,15 @@
-//! `ChatModelBridge` implementation — thin adapter over `stream_via_rig` so
+//! `ModelBridge` implementation — thin adapter over `stream_via_rig` so
 //! codex-core dispatches through the neutral trait without knowing rig's
-//! protocol types.
+//! protocol types. The neutral protocol mirrors the provider's explicit
+//! `wire_api`: Responses is a same-protocol passthrough inside the bridge.
 
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
 use codex_api::ApiError;
-use codex_api::ChatModelBridge;
-use codex_api::ChatWireProtocol;
+use codex_api::ModelBridge;
+use codex_api::ModelWireProtocol;
 use codex_api::Provider;
 use codex_api::ResponseStream;
 use codex_api::ResponsesApiRequest;
@@ -17,11 +18,11 @@ use http::HeaderMap;
 
 use crate::client::RigProtocol;
 
-/// The rig bridge as a `ChatModelBridge` implementor (stateless unit).
+/// The rig bridge as a `ModelBridge` implementor (stateless unit).
 #[derive(Debug)]
-pub struct RigChatBridge;
+pub struct RigModelBridge;
 
-impl ChatModelBridge for RigChatBridge {
+impl ModelBridge for RigModelBridge {
     fn name(&self) -> &'static str {
         "rig"
     }
@@ -32,12 +33,13 @@ impl ChatModelBridge for RigChatBridge {
         provider: &'a Provider,
         auth: &'a SharedAuthProvider,
         extra_headers: HeaderMap,
-        protocol: ChatWireProtocol,
+        protocol: ModelWireProtocol,
         idle_timeout: Duration,
     ) -> Pin<Box<dyn Future<Output = Result<ResponseStream, ApiError>> + Send + 'a>> {
         let protocol = match protocol {
-            ChatWireProtocol::Anthropic => RigProtocol::Anthropic,
-            ChatWireProtocol::ChatCompletions => RigProtocol::Chat,
+            ModelWireProtocol::Responses => RigProtocol::Responses,
+            ModelWireProtocol::Anthropic => RigProtocol::Anthropic,
+            ModelWireProtocol::ChatCompletions => RigProtocol::Chat,
         };
         Box::pin(crate::stream_via_rig(
             request,

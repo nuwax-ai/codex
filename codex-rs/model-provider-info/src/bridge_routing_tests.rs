@@ -8,13 +8,13 @@ fn route_selection_distinguishes_builtin_identity_from_display_name() {
         ModelProviderInfo::create_amazon_bedrock_provider(None),
         ModelProviderInfo::create_amazon_bedrock_runtime_provider(None),
     ] {
-        assert!(!provider.uses_chat_bridge());
+        assert!(!provider.uses_model_bridge());
         assert!(
             ModelProviderInfo {
                 experimental_bridge: Some(ChatBridge::Rig),
                 ..provider
             }
-            .uses_chat_bridge()
+            .uses_model_bridge()
         );
     }
     let custom = ModelProviderInfo {
@@ -22,13 +22,13 @@ fn route_selection_distinguishes_builtin_identity_from_display_name() {
         provider_id: Some("my-gateway".into()),
         ..Default::default()
     };
-    assert!(custom.uses_chat_bridge());
+    assert!(custom.uses_model_bridge());
     assert!(
         !ModelProviderInfo {
             experimental_bridge: Some(ChatBridge::Native),
             ..custom
         }
-        .uses_chat_bridge()
+        .uses_model_bridge()
     );
     for wire_api in [WireApi::Chat, WireApi::Anthropic] {
         assert_eq!(
@@ -36,7 +36,7 @@ fn route_selection_distinguishes_builtin_identity_from_display_name() {
                 wire_api,
                 ..Default::default()
             }
-            .uses_chat_bridge(),
+            .uses_model_bridge(),
             true
         );
     }

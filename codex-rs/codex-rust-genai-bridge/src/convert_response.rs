@@ -1,9 +1,14 @@
 use codex_api::ResponseEvent;
-use codex_protocol::models::{ContentItem, ReasoningItemContent, ResponseItem};
-use codex_protocol::protocol::TokenUsage;
 use codex_protocol::ResponseItemId;
+use codex_protocol::models::ContentItem;
+use codex_protocol::models::ReasoningItemContent;
+use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::TokenUsage;
+use genai::chat::ChatStreamEvent;
+use genai::chat::StopReason;
+use genai::chat::StreamChunk;
+use genai::chat::StreamEnd;
 use genai::chat::ToolChunk;
-use genai::chat::{ChatStreamEvent, StopReason, StreamChunk, StreamEnd};
 
 use crate::types::PendingAssistantMessage;
 
@@ -76,17 +81,15 @@ pub fn chat_event_to_response_event(
             // Emit OutputItemAdded before the first delta so turn.rs creates a diff consumer.
             if !pending.tool_items_added.contains_key(&call_id) {
                 pending.tool_items_added.insert(call_id.clone(), true);
-                events.push(ResponseEvent::OutputItemAdded(
-                    ResponseItem::FunctionCall {
-                        id: Some(ResponseItemId::from_server(call_id.clone())),
-                        name: fn_name.clone(),
-                        namespace: None,
-                        arguments: String::new(),
-                        encrypted_function_args: None,
-                        call_id: call_id.clone(),
-                        internal_chat_message_metadata_passthrough: None,
-                    },
-                ));
+                events.push(ResponseEvent::OutputItemAdded(ResponseItem::FunctionCall {
+                    id: Some(ResponseItemId::from_server(call_id.clone())),
+                    name: fn_name.clone(),
+                    namespace: None,
+                    arguments: String::new(),
+                    encrypted_function_args: None,
+                    call_id: call_id.clone(),
+                    internal_chat_message_metadata_passthrough: None,
+                }));
             }
 
             pending.tool_calls.insert(
@@ -460,12 +463,19 @@ mod tests {
             }),
             &mut pending,
         );
-        assert_eq!(events.len(), 2, "reasoning emits its own OutputItemAdded + delta");
+        assert_eq!(
+            events.len(),
+            2,
+            "reasoning emits its own OutputItemAdded + delta"
+        );
         assert!(matches!(
             &events[0],
             ResponseEvent::OutputItemAdded(ResponseItem::Reasoning { .. })
         ));
-        assert!(matches!(&events[1], ResponseEvent::ReasoningContentDelta { .. }));
+        assert!(matches!(
+            &events[1],
+            ResponseEvent::ReasoningContentDelta { .. }
+        ));
         assert!(pending.reasoning_item_added);
         // A second reasoning chunk must NOT emit another OutputItemAdded.
         let events2 = chat_event_to_response_event(
@@ -475,7 +485,10 @@ mod tests {
             &mut pending,
         );
         assert_eq!(events2.len(), 1, "no duplicate reasoning OutputItemAdded");
-        assert!(matches!(&events2[0], ResponseEvent::ReasoningContentDelta { .. }));
+        assert!(matches!(
+            &events2[0],
+            ResponseEvent::ReasoningContentDelta { .. }
+        ));
     }
 
     #[test]

@@ -39,8 +39,10 @@ pub use cassette::TurnFixture;
 pub use cassette::cassette_mode;
 pub use cassette::fixture_path;
 pub use cassette::load_fixture;
+pub use cassette::load_responses_sse_fixture;
 pub use cassette::load_rig_event_fixture;
 use cassette::record_turn;
+pub use cassette::save_responses_sse_fixture;
 pub use cassette::save_rig_event_fixture;
 pub use cassette::store_fixture;
 pub use config::LiveConfig;
@@ -126,13 +128,18 @@ pub fn vendor_provider(vendor: &str, base_url: &str) -> Provider {
     }
 }
 
-/// Endpoint for the native Responses transport. Defaults to the chat URL
-/// (same-origin deployments); some vendors (GLM) serve it from a different
-/// path, configured via `LIVE_<NAME>_RESPONSES_URL`.
-pub fn responses_url(cfg: &LiveConfig) -> String {
-    cfg.responses_base_url
-        .clone()
-        .unwrap_or_else(|| cfg.base_url.clone())
+/// Returns the vendor's Responses endpoint, or `None` after a skip notice
+/// when none is configured — never a silent fallback to the chat URL (a
+/// missing Responses endpoint must skip, not guess; Step declares none).
+pub fn responses_url_or_skip(cfg: &LiveConfig) -> Option<String> {
+    if cfg.responses_base_url.is_none() {
+        println!(
+            "vendor `{}` has no Responses endpoint configured (set LIVE_{}_RESPONSES_URL) — skipping",
+            cfg.vendor,
+            cfg.vendor.to_uppercase().replace('-', "_")
+        );
+    }
+    cfg.responses_base_url.clone()
 }
 
 /// Returns the vendor's Anthropic gateway, or `None` after a skip notice
@@ -208,11 +215,13 @@ pub enum Bridge {
 /// The wire a scenario drives: explicit, mirroring `wire_api` in provider
 /// config. `Chat` keeps the URL heuristic as fallback (MiMo-style
 /// `/anthropic` gateways); `Anthropic` is the explicit protocol for
-/// gateways like StepFun whose URL carries no marker.
+/// gateways like StepFun whose URL carries no marker; `Responses` is the
+/// same-protocol passthrough (explicit endpoint required).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum LiveWire {
     Chat,
     Anthropic,
+    Responses,
 }
 
 impl Bridge {
@@ -257,6 +266,12 @@ pub async fn run_turn(
     tag: &str,
 ) -> Vec<ResponseEvent> {
     if cassette_mode() == CassetteMode::Replay {
+        // The Responses passthrough replays its recorded raw SSE bytes
+        // through the strict pump — not the Chat/Anthropic conversion
+        // fixtures below.
+        if bridge == Bridge::Rig && wire == LiveWire::Responses {
+            return run_responses_turn_rig(cfg, base_url, request, tag).await;
+        }
         // Rig replay must execute current conversion. Never fall back to the
         // already-converted ResponseEvent cassette when parsing fails.
         if bridge == Bridge::Rig {
@@ -288,6 +303,10 @@ pub async fn run_turn(
         Bridge::Genai => {
             let adapter_kind = match wire {
                 LiveWire::Anthropic => genai::adapter::AdapterKind::Anthropic,
+                // Genai speaks Chat/Anthropic only; the Responses wire is rig
+                // passthrough (or native). Responses scenarios never register
+                // a genai variant.
+                LiveWire::Responses => panic!("genai does not speak the Responses wire"),
                 LiveWire::Chat
                     if codex_rust_rig_bridge::RigProtocol::from_base_url(base_url)
                         == codex_rust_rig_bridge::RigProtocol::Anthropic =>
@@ -301,11 +320,73 @@ pub async fn run_turn(
         Bridge::Rig => {
             let protocol = match wire {
                 LiveWire::Anthropic => codex_rust_rig_bridge::RigProtocol::Anthropic,
+                LiveWire::Responses => codex_rust_rig_bridge::RigProtocol::Responses,
                 LiveWire::Chat => codex_rust_rig_bridge::RigProtocol::from_base_url(base_url),
             };
-            run_turn_rig(cfg, base_url, protocol, request, tag).await
+            if protocol == codex_rust_rig_bridge::RigProtocol::Responses {
+                run_responses_turn_rig(cfg, base_url, request, tag).await
+            } else {
+                run_turn_rig(cfg, base_url, protocol, request, tag).await
+            }
         }
     }
+}
+
+/// One bridge-level turn on the Responses wire (same-protocol passthrough).
+/// Cassette mode records/replays the RAW wire SSE bytes — the replay runs
+/// through the same strict terminal policy as the live path, not prebuilt
+/// Codex success events.
+pub async fn run_responses_turn_rig(
+    cfg: &LiveConfig,
+    base_url: &str,
+    request: &ResponsesApiRequest,
+    tag: &str,
+) -> Vec<ResponseEvent> {
+    if cassette_mode() == CassetteMode::Replay {
+        let sse = load_responses_sse_fixture(&cfg.vendor, tag)
+            .unwrap_or_else(|error| panic!("[cassette-responses] {error}"));
+        println!(
+            "[cassette-responses] replaying {}/{} through the strict passthrough pump ({} bytes, offline)",
+            cfg.vendor,
+            tag,
+            sse.len()
+        );
+        return codex_rust_rig_bridge::replay_responses_sse(&sse)
+            .await
+            .unwrap_or_else(|error| {
+                panic!("[cassette-responses] {}/{}: {error}", cfg.vendor, tag)
+            });
+    }
+    let provider = vendor_provider(&cfg.vendor, base_url);
+    let recorder: codex_rust_rig_bridge::RigSseRecorder = if cassette_mode() == CassetteMode::Record
+    {
+        Some(Arc::new(std::sync::Mutex::new(Vec::new())))
+    } else {
+        None
+    };
+    let stream = timeout(
+        TURN_TIMEOUT,
+        codex_rust_rig_bridge::stream_responses_via_rig_with_sse_recording(
+            request,
+            &provider,
+            &shared_auth(&cfg.api_key),
+            HeaderMap::new(),
+            provider.stream_idle_timeout,
+            recorder.clone(),
+        ),
+    )
+    .await
+    .expect("responses stream_via_rig started within timeout")
+    .expect("responses stream_via_rig succeeded");
+    let events = drain_stream(stream, &cfg.vendor, tag).await;
+    record_turn(cfg, Bridge::Rig, tag, request, &events).expect("record Rig responses turn");
+    if let Some(recorder) = recorder {
+        let bytes = recorder.lock().expect("SSE recorder lock").clone();
+        let sse = String::from_utf8(bytes)
+            .unwrap_or_else(|error| panic!("[cassette-responses] non-UTF8 SSE body: {error}"));
+        save_responses_sse_fixture(&cfg.vendor, tag, &sse).expect("record responses SSE");
+    }
+    events
 }
 
 /// One bridge-level turn through the genai bridge.
@@ -742,6 +823,49 @@ pub fn assert_reasoning_before_message(events: &[ResponseEvent], context: &str) 
 /// Concatenated `ToolCallInputDelta`s must reassemble into exactly the final
 /// `FunctionCall.arguments` string — validates delta computation on a real
 /// stream.
+/// Responses-wire variant: argument deltas are OPTIONAL on the wire (some
+/// gateways deliver each call as one added+done pair without
+/// `*.arguments.delta` frames). When deltas exist they must reassemble into
+/// the final arguments; when none exist, every done FunctionCall must still
+/// carry complete, parseable arguments.
+pub fn assert_responses_tool_arguments_complete(events: &[ResponseEvent], context: &str) {
+    use std::collections::HashMap;
+    let mut deltas: HashMap<String, String> = HashMap::new();
+    let mut final_args: HashMap<String, String> = HashMap::new();
+    for event in events {
+        match event {
+            ResponseEvent::ToolCallInputDelta { item_id, delta, .. } => {
+                *deltas.entry(item_id.clone()).or_default() += delta
+            }
+            ResponseEvent::OutputItemDone(ResponseItem::FunctionCall { id, arguments, .. }) => {
+                if let Some(id) = id {
+                    final_args.insert(id.to_string(), arguments.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    if deltas.is_empty() {
+        assert!(
+            !final_args.is_empty(),
+            "{context}: no argument deltas and no complete function call — nothing reassembles"
+        );
+        for (id, arguments) in &final_args {
+            serde_json::from_str::<serde_json::Value>(arguments).unwrap_or_else(|error| {
+                panic!("{context}: call {id} arguments are not valid JSON ({error}): {arguments}")
+            });
+        }
+        return;
+    }
+    for (id, arguments) in &final_args {
+        let assembled = deltas.get(id).map(String::as_str).unwrap_or("");
+        assert_eq!(
+            assembled, arguments,
+            "{context}: concatenated deltas for {id} must equal the final arguments"
+        );
+    }
+}
+
 pub fn assert_tool_deltas_reassemble(events: &[ResponseEvent], context: &str) {
     let reassembled: String = events
         .iter()

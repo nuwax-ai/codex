@@ -90,6 +90,7 @@ async fn serve(
             }
         }
         let payload = match protocol {
+            RigProtocol::Responses => support::RESPONSES_SSE,
             RigProtocol::Chat => support::CHAT_SSE,
             RigProtocol::Anthropic => support::ANTHROPIC_SSE,
         };
@@ -102,6 +103,9 @@ async fn serve(
                     RigProtocol::Chat => "data: [DONE]\n\n",
                     RigProtocol::Anthropic => {
                         "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+                    }
+                    RigProtocol::Responses => {
+                        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-test\",\"usage\":{\"input_tokens\":4,\"output_tokens\":1,\"total_tokens\":5}}}\n\n"
                     }
                 };
                 let mut payload = payload.replace(terminal, "");
@@ -130,6 +134,7 @@ async fn serve(
                 let frames = match protocol {
                     RigProtocol::Chat => 1,
                     RigProtocol::Anthropic => 3,
+                    RigProtocol::Responses => 2,
                 };
                 let first = payload
                     .split("\n\n")
@@ -147,7 +152,7 @@ async fn serve(
                 if matches!(reply, Reply::CompletedThenStall) {
                     let payload = match protocol {
                         RigProtocol::Chat => CHAT_WITH_TRAILING_USAGE,
-                        RigProtocol::Anthropic => payload,
+                        RigProtocol::Responses | RigProtocol::Anthropic => payload,
                     };
                     // Split CRLF, JSON, UTF-8 and [DONE] over independent HTTP chunks.
                     for chunk in payload.as_bytes().chunks(7) {
@@ -180,7 +185,11 @@ async fn serve(
 
 #[tokio::test]
 async fn finish_reason_alone_cannot_hide_truncation_or_late_errors() {
-    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+    for protocol in [
+        RigProtocol::Responses,
+        RigProtocol::Chat,
+        RigProtocol::Anthropic,
+    ] {
         for reply in [
             Reply::MissingTerminal,
             Reply::ErrorAfterFinish,
@@ -208,7 +217,11 @@ async fn finish_reason_alone_cannot_hide_truncation_or_late_errors() {
 
 #[tokio::test]
 async fn failed_http_error_body_read_preserves_status_without_query_secrets() {
-    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+    for protocol in [
+        RigProtocol::Responses,
+        RigProtocol::Chat,
+        RigProtocol::Anthropic,
+    ] {
         let (result, server) = serve(protocol, Reply::TruncatedStatus).await;
         let error = match result {
             Err(error) => error,
@@ -233,7 +246,11 @@ async fn failed_http_error_body_read_preserves_status_without_query_secrets() {
 
 #[tokio::test]
 async fn http_status_errors_are_returned_before_a_stream_is_created() {
-    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+    for protocol in [
+        RigProtocol::Responses,
+        RigProtocol::Chat,
+        RigProtocol::Anthropic,
+    ] {
         for expected in [
             StatusCode::UNAUTHORIZED,
             StatusCode::TOO_MANY_REQUESTS,
@@ -269,19 +286,44 @@ async fn http_status_errors_are_returned_before_a_stream_is_created() {
 
 #[tokio::test]
 async fn missing_first_event_times_out_during_stream_start() {
-    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+    for protocol in [
+        RigProtocol::Responses,
+        RigProtocol::Chat,
+        RigProtocol::Anthropic,
+    ] {
         let (result, server) = serve(protocol, Reply::Stall).await;
-        assert!(matches!(
-            result,
-            Err(ApiError::Transport(TransportError::Timeout))
-        ));
+        match protocol {
+            // The conversion pipeline eagerly resolves the first rig event,
+            // so a stalled stream surfaces as a start error.
+            RigProtocol::Chat | RigProtocol::Anthropic => {
+                assert!(matches!(
+                    result,
+                    Err(ApiError::Transport(TransportError::Timeout))
+                ));
+            }
+            // The passthrough awaits the HTTP response itself (start errors
+            // are HTTP failures) and reports body-level stalls as the first
+            // stream event, matching the native Responses transport.
+            RigProtocol::Responses => {
+                let mut stream = result.expect("headers arrived; stream created");
+                let first = stream.next().await;
+                assert!(
+                    matches!(&first, Some(Err(ApiError::Stream(message))) if message.contains("idle timeout")),
+                    "expected an idle-timeout event, got {first:?}"
+                );
+            }
+        }
         server.await.unwrap();
     }
 }
 
 #[tokio::test]
 async fn truncated_stream_never_reports_completion() {
-    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+    for protocol in [
+        RigProtocol::Responses,
+        RigProtocol::Chat,
+        RigProtocol::Anthropic,
+    ] {
         let (result, server) = serve(protocol, Reply::Truncated).await;
         let mut stream = result.expect("first event");
         let mut failed = false;
@@ -299,7 +341,11 @@ async fn truncated_stream_never_reports_completion() {
 
 #[tokio::test]
 async fn completion_closes_stream_before_http_idle_timeout() {
-    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+    for protocol in [
+        RigProtocol::Responses,
+        RigProtocol::Chat,
+        RigProtocol::Anthropic,
+    ] {
         let (result, server) = serve(protocol, Reply::CompletedThenStall).await;
         let mut stream = result.expect("first event");
         let mut completed = 0;
@@ -310,13 +356,20 @@ async fn completion_closes_stream_before_http_idle_timeout() {
                     ResponseEvent::OutputTextDelta(delta) => text.push_str(&delta),
                     ResponseEvent::Completed { token_usage, .. } => {
                         completed += 1;
-                        if protocol == RigProtocol::Chat {
+                        // The Anthropic pipeline asserts usage separately
+                        // (see the usage suite); here only the streams that
+                        // report usage in their terminal frame are checked.
+                        if let Some(expected_usage) = match protocol {
+                            RigProtocol::Chat => Some((23, 7, 30)),
+                            RigProtocol::Responses => Some((4, 1, 5)),
+                            RigProtocol::Anthropic => None,
+                        } {
                             pretty_assertions::assert_eq!(
                                 token_usage,
                                 Some(codex_protocol::protocol::TokenUsage {
-                                    input_tokens: 23,
-                                    output_tokens: 7,
-                                    total_tokens: 30,
+                                    input_tokens: expected_usage.0,
+                                    output_tokens: expected_usage.1,
+                                    total_tokens: expected_usage.2,
                                     ..Default::default()
                                 })
                             );
@@ -333,7 +386,7 @@ async fn completion_closes_stream_before_http_idle_timeout() {
             text,
             match protocol {
                 RigProtocol::Chat => "完成✅",
-                RigProtocol::Anthropic => "ok",
+                RigProtocol::Responses | RigProtocol::Anthropic => "ok",
             }
         );
         server.await.unwrap();

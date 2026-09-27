@@ -32,6 +32,9 @@ pub(crate) struct RigHttpClient {
     pub(crate) authorization_override: Option<http::HeaderValue>,
     pub(crate) protocol: crate::RigProtocol,
     pub(crate) anthropic_usage: Arc<Mutex<crate::usage::AnthropicUsage>>,
+    /// Responses passthrough only: tee the raw wire SSE bytes for cassette
+    /// recording. `None` in production.
+    pub(crate) responses_sse_recorder: Option<Arc<Mutex<Vec<u8>>>>,
 }
 
 impl std::fmt::Debug for RigHttpClient {
@@ -109,14 +112,19 @@ impl HttpClientExt for RigHttpClient {
         let request = self.prepare(request).map(|request| request.map(Into::into));
         async move {
             let mut request: Request<Bytes> = request?;
-            if self.disable_anthropic_parallel
-                || self.disable_anthropic_thinking
-                || (self.protocol == crate::RigProtocol::Anthropic
-                    && !self.tool_result_errors.is_empty())
-                || !self.tool_strict.is_empty()
-                || self.anthropic_effort.is_some()
-                || self.anthropic_service_tier.is_some()
-            {
+            // Responses passthrough sends Codex's serialized request verbatim:
+            // no Chat/Anthropic-specific body injections (tool strict flags,
+            // parallel-tool-use gating, thinking toggles, effort/tier merges,
+            // tool-result error markers) may touch it.
+            let chat_family_rewrite = self.protocol != crate::RigProtocol::Responses
+                && (self.disable_anthropic_parallel
+                    || self.disable_anthropic_thinking
+                    || (self.protocol == crate::RigProtocol::Anthropic
+                        && !self.tool_result_errors.is_empty())
+                    || !self.tool_strict.is_empty()
+                    || self.anthropic_effort.is_some()
+                    || self.anthropic_service_tier.is_some());
+            if chat_family_rewrite {
                 let mut body: serde_json::Value = serde_json::from_slice(request.body())
                     .map_err(|error| Error::Instance(error.into()))?;
                 if self.disable_anthropic_parallel
@@ -134,12 +142,13 @@ impl HttpClientExt for RigHttpClient {
                     for tool in tools {
                         // Chat nests the name under `function`; Anthropic
                         // tools carry it (and their `strict` flag) at the
-                        // top level.
+                        // top level. Responses never enters this rewrite.
                         let name = match self.protocol {
                             crate::RigProtocol::Chat => tool
                                 .get("function")
                                 .and_then(|function| function.get("name")),
                             crate::RigProtocol::Anthropic => tool.get("name"),
+                            crate::RigProtocol::Responses => None,
                         }
                         .and_then(serde_json::Value::as_str)
                         .map(str::to_string);
@@ -153,6 +162,7 @@ impl HttpClientExt for RigHttpClient {
                                 .get_mut("function")
                                 .and_then(serde_json::Value::as_object_mut),
                             crate::RigProtocol::Anthropic => tool.as_object_mut(),
+                            crate::RigProtocol::Responses => None,
                         };
                         if let Some(target) = target {
                             target.insert("strict".into(), (*value).into());
@@ -224,17 +234,33 @@ impl HttpClientExt for RigHttpClient {
                 *slot = id;
             }
             let check_terminal = response.status().is_success();
+            let sse_recorder = self.responses_sse_recorder.clone();
             Ok(response.map(|body| {
                 let body = Box::pin(body.map(|chunk| chunk.map_err(sanitize_error)))
                     as rig_core::http_client::sse::BoxedStream;
-                if check_terminal {
-                    crate::sse::with_terminal_check(
+                match self.protocol {
+                    // Responses passthrough consumes the raw SSE bytes with
+                    // codex-api's decoder and its own strict terminal policy;
+                    // no [DONE]/terminal rewriting at this layer. In record
+                    // mode, tee the exact wire bytes for offline replay.
+                    crate::RigProtocol::Responses => match sse_recorder {
+                        Some(recorder) => Box::pin(body.map(move |chunk| {
+                            if let Ok(bytes) = &chunk
+                                && let Ok(mut buffer) = recorder.lock()
+                            {
+                                buffer.extend_from_slice(bytes);
+                            }
+                            chunk
+                        }))
+                            as rig_core::http_client::sse::BoxedStream,
+                        None => body,
+                    },
+                    protocol if check_terminal => crate::sse::with_terminal_check(
                         body,
-                        self.protocol,
+                        protocol,
                         self.anthropic_usage.clone(),
-                    )
-                } else {
-                    body
+                    ),
+                    _ => body,
                 }
             }))
         }

@@ -98,7 +98,7 @@ pub(crate) async fn record_completed_response_item_with_finalized_facts(
     finalized_facts: Option<&FinalizedTurnItemFacts>,
 ) {
     let turn_context = &step_context.turn;
-    sess.record_conversation_items(
+    sess.record_model_generated_items(
         turn_context,
         &step_context.settings.model_info,
         std::slice::from_ref(item),

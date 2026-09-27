@@ -9,6 +9,8 @@ mod error_tests;
 mod history_tests;
 #[path = "wire/request_id_tests.rs"]
 mod request_id_tests;
+#[path = "wire/responses_wire_tests.rs"]
+mod responses_wire_tests;
 mod support;
 #[path = "wire/terminal_tests.rs"]
 mod terminal_tests;
@@ -93,6 +95,11 @@ async fn output_schema_survives_first_tool_turn_on_both_protocols() {
         request.parallel_tool_calls = false;
         let (wire, _, _) = capture(&request, protocol).await;
         match protocol {
+            RigProtocol::Responses => {
+                // Passthrough fidelity is asserted exhaustively in the
+                // responses wire suite; this conversion-matrix test stays
+                // scoped to the converting wires below.
+            }
             RigProtocol::Chat => {
                 assert_eq!(wire["body"]["tools"][0]["function"]["strict"], false);
                 assert_eq!(wire["body"]["store"], false);
@@ -202,6 +209,14 @@ async fn function_and_custom_image_results_reach_both_protocols_as_images() {
                 "image JSON was inlined into text"
             );
             match protocol {
+                RigProtocol::Responses => {
+                    // No conversion: the image result item round-trips
+                    // verbatim in `input`.
+                    assert_eq!(
+                        wire["body"]["input"][2]["output"][0],
+                        json!({"type":"input_image","image_url":IMAGE,"detail":"high"})
+                    );
+                }
                 RigProtocol::Chat => {
                     let messages = wire["body"]["messages"].as_array().unwrap();
                     let result_index = messages

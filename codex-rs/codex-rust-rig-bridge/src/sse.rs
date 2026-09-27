@@ -95,6 +95,18 @@ pub(crate) fn with_terminal_check(
                             _ => false,
                         }
                     }
+                    // Exhaustiveness: the transport never routes the Responses
+                    // passthrough through this check (raw bytes go straight to
+                    // codex-api's decoder with its own strict terminal policy).
+                    RigProtocol::Responses => {
+                        let error = std::io::Error::other(
+                            "with_terminal_check does not apply to the Responses passthrough",
+                        );
+                        return Some((
+                            Err(Error::Instance(Box::new(error))),
+                            (frames, true, None, usage),
+                        ));
+                    }
                 };
                 return Some((
                     Ok(Bytes::from(encoded)),

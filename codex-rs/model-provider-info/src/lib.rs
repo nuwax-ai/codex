@@ -697,9 +697,12 @@ other non-default provider fields are not supported"
         )
     }
 
-    /// Whether inference uses a Chat/Anthropic bridge under the fork routing policy.
-    /// Auxiliary inference and compaction must consult the same policy as core.
-    pub fn uses_chat_bridge(&self) -> bool {
+    /// Whether inference is routed through a model bridge under the fork
+    /// routing policy. The bridge speaks the provider's explicit `wire_api`
+    /// (Responses, Chat Completions, or Anthropic) — "bridged" does not imply
+    /// Chat Completions. Auxiliary inference and compaction must consult the
+    /// same policy as core.
+    pub fn uses_model_bridge(&self) -> bool {
         match self.wire_api {
             WireApi::Chat | WireApi::Anthropic => true,
             WireApi::Responses => match self.experimental_bridge {

@@ -97,6 +97,34 @@ fn rig_event_fixture_path(vendor: &str, tag: &str) -> Option<PathBuf> {
     Some(root.join(vendor).join(format!("rig-events-{tag}.json")))
 }
 
+/// Path of a recorded raw Responses SSE body (wire bytes, plain text).
+fn responses_sse_fixture_path(vendor: &str, tag: &str) -> Option<PathBuf> {
+    let root = fixture_root()?;
+    Some(root.join(vendor).join(format!("responses-sse-{tag}.txt")))
+}
+
+/// Saves a recorded raw Responses SSE body.
+pub fn save_responses_sse_fixture(vendor: &str, tag: &str, sse: &str) -> Result<()> {
+    let path = responses_sse_fixture_path(vendor, tag)
+        .ok_or_else(|| anyhow!("Cannot locate bridge fixtures"))?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow!("Fixture path has no parent: {}", path.display()))?;
+    std::fs::create_dir_all(parent)
+        .with_context(|| format!("Create fixture directory {}", parent.display()))?;
+    std::fs::write(&path, sse).with_context(|| format!("Write fixture {}", path.display()))?;
+    println!("[cassette-responses] recorded {}", path.display());
+    Ok(())
+}
+
+/// Loads a recorded raw Responses SSE body; replay runs it through the same
+/// strict terminal policy as the live path.
+pub fn load_responses_sse_fixture(vendor: &str, tag: &str) -> Result<String, String> {
+    let path = responses_sse_fixture_path(vendor, tag)
+        .ok_or_else(|| "Cannot locate bridge fixtures".to_string())?;
+    std::fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))
+}
+
 pub fn load_fixture(vendor: &str, bridge: &str, tag: &str) -> Option<TurnFixture> {
     let path = fixture_path(vendor, bridge, tag)?;
     let contents = std::fs::read_to_string(path).ok()?;

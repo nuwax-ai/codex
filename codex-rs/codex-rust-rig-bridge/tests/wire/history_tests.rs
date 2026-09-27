@@ -207,9 +207,21 @@ async fn schema_constraints_optional_fields_effort_and_tool_strict_coexist() {
         &mut request,
         json!([{"type":"function","name":"lookup","strict":true,"parameters":{"type":"object","properties":{},"additionalProperties":false}}]),
     );
-    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+    for protocol in [
+        RigProtocol::Responses,
+        RigProtocol::Chat,
+        RigProtocol::Anthropic,
+    ] {
         let (wire, _, _) = support::capture(&request, protocol).await;
         match protocol {
+            RigProtocol::Responses => {
+                // Same-protocol passthrough: the wire body is the serialized
+                // request itself, so schema constraints, effort, and tool
+                // strict flags all survive untouched.
+                assert_eq!(wire["body"], serde_json::to_value(&request).unwrap());
+                assert_eq!(wire["body"]["text"]["format"]["name"], "original-name");
+                assert_eq!(wire["body"]["tools"][0]["strict"], true);
+            }
             RigProtocol::Chat => {
                 assert_eq!(
                     wire["body"]["response_format"],

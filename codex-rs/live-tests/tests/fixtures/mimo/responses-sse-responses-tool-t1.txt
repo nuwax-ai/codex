@@ -1,0 +1,66 @@
+event:response.created
+data:{"type":"response.created","sequence_number":0,"response":{"id":"resp_2b58559160a74722a2e8b3756ea57fe0","object":"response","created_at":1790529293,"model":"mimo-v2.6-flash","metadata":null,"status":"in_progress","output":[]}}
+
+event:response.in_progress
+data:{"type":"response.in_progress","sequence_number":1,"response":{"id":"resp_2b58559160a74722a2e8b3756ea57fe0","object":"response","created_at":1790529293,"model":"mimo-v2.6-flash","metadata":null,"status":"in_progress","output":[]}}
+
+event:response.output_item.added
+data:{"type":"response.output_item.added","sequence_number":2,"output_index":0,"item":{"id":"rs_46eb92cb141e4b94a38984948d0a5431","type":"reasoning","summary":[],"content":[],"status":"in_progress"}}
+
+event:response.content_part.added
+data:{"type":"response.content_part.added","sequence_number":3,"item_id":"rs_46eb92cb141e4b94a38984948d0a5431","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":""}}
+
+event:response.reasoning_text.delta
+data:{"type":"response.reasoning_text.delta","sequence_number":4,"item_id":"rs_46eb92cb141e4b94a38984948d0a5431","output_index":0,"content_index":0,"delta":"The user wants"}
+
+event:response.reasoning_text.delta
+data:{"type":"response.reasoning_text.delta","sequence_number":5,"item_id":"rs_46eb92cb141e4b94a38984948d0a5431","output_index":0,"content_index":0,"delta":" weather"}
+
+event:response.reasoning_text.delta
+data:{"type":"response.reasoning_text.delta","sequence_number":6,"item_id":"rs_46eb92cb141e4b94a38984948d0a5431","output_index":0,"content_index":0,"delta":" for Shanghai."}
+
+event:response.reasoning_text.delta
+data:{"type":"response.reasoning_text.delta","sequence_number":7,"item_id":"rs_46eb92cb141e4b94a38984948d0a5431","output_index":0,"content_index":0,"delta":" Call"}
+
+event:response.reasoning_text.delta
+data:{"type":"response.reasoning_text.delta","sequence_number":8,"item_id":"rs_46eb92cb141e4b94a38984948d0a5431","output_index":0,"content_index":0,"delta":" get_weather with"}
+
+event:response.reasoning_text.delta
+data:{"type":"response.reasoning_text.delta","sequence_number":9,"item_id":"rs_46eb92cb141e4b94a38984948d0a5431","output_index":0,"content_index":0,"delta":" city 上"}
+
+event:response.reasoning_text.delta
+data:{"type":"response.reasoning_text.delta","sequence_number":10,"item_id":"rs_46eb92cb141e4b94a38984948d0a5431","output_index":0,"content_index":0,"delta":"海."}
+
+event:response.output_item.added
+data:{"type":"response.output_item.added","sequence_number":11,"output_index":1,"item":{"id":"fc_139956faf2ea452aaaca646ad63b110c","type":"function_call","call_id":"call_7b148e8c981044a1b422ef1b","name":"get_weather","arguments":"","status":"in_progress"}}
+
+event:response.function_call_arguments.delta
+data:{"type":"response.function_call_arguments.delta","sequence_number":12,"item_id":"fc_139956faf2ea452aaaca646ad63b110c","output_index":1,"delta":"{\"city\": "}
+
+event:response.function_call_arguments.delta
+data:{"type":"response.function_call_arguments.delta","sequence_number":13,"item_id":"fc_139956faf2ea452aaaca646ad63b110c","output_index":1,"delta":"\""}
+
+event:response.function_call_arguments.delta
+data:{"type":"response.function_call_arguments.delta","sequence_number":14,"item_id":"fc_139956faf2ea452aaaca646ad63b110c","output_index":1,"delta":"上海"}
+
+event:response.function_call_arguments.delta
+data:{"type":"response.function_call_arguments.delta","sequence_number":15,"item_id":"fc_139956faf2ea452aaaca646ad63b110c","output_index":1,"delta":"\""}
+
+event:response.function_call_arguments.delta
+data:{"type":"response.function_call_arguments.delta","sequence_number":16,"item_id":"fc_139956faf2ea452aaaca646ad63b110c","output_index":1,"delta":"}"}
+
+event:response.reasoning_text.done
+data:{"type":"response.reasoning_text.done","sequence_number":17,"item_id":"rs_46eb92cb141e4b94a38984948d0a5431","output_index":0,"content_index":0,"text":"The user wants weather for Shanghai. Call get_weather with city 上海."}
+
+event:response.output_item.done
+data:{"type":"response.output_item.done","sequence_number":18,"output_index":0,"item":{"id":"rs_46eb92cb141e4b94a38984948d0a5431","type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"The user wants weather for Shanghai. Call get_weather with city 上海."}],"status":"completed"}}
+
+event:response.function_call_arguments.done
+data:{"type":"response.function_call_arguments.done","sequence_number":19,"item_id":"fc_139956faf2ea452aaaca646ad63b110c","output_index":1,"arguments":"{\"city\": \"上海\"}"}
+
+event:response.output_item.done
+data:{"type":"response.output_item.done","sequence_number":20,"output_index":1,"item":{"id":"fc_139956faf2ea452aaaca646ad63b110c","type":"function_call","call_id":"call_7b148e8c981044a1b422ef1b","name":"get_weather","arguments":"{\"city\": \"上海\"}","status":"completed"}}
+
+event:response.completed
+data:{"type":"response.completed","sequence_number":21,"response":{"id":"resp_2b58559160a74722a2e8b3756ea57fe0","object":"response","created_at":1790529293,"status":"completed","error":null,"incomplete_details":null,"model":"mimo-v2.6-flash","metadata":null,"output":[{"id":"rs_46eb92cb141e4b94a38984948d0a5431","type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"The user wants weather for Shanghai. Call get_weather with city 上海."}],"status":"completed"},{"id":"fc_139956faf2ea452aaaca646ad63b110c","type":"function_call","call_id":"call_7b148e8c981044a1b422ef1b","name":"get_weather","arguments":"{\"city\": \"上海\"}","status":"completed"}],"output_text":"","usage":{"input_tokens":132,"input_tokens_details":{"cached_tokens":0},"output_tokens":35,"output_tokens_details":{"reasoning_tokens":16},"total_tokens":167}}}
+

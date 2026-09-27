@@ -1,0 +1,298 @@
+{
+  "vendor": "glm",
+  "bridge": "rig",
+  "tag": "responses-tool-t2",
+  "request": {
+    "include": [],
+    "input": [
+      {
+        "content": [
+          {
+            "text": "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "type": "message"
+      },
+      {
+        "content": [
+          {
+            "text": "The user is asking about the weather in Shanghai (上海) today. They explicitly asked me to call the get_weather tool. Let me do that.",
+            "type": "reasoning_text"
+          }
+        ],
+        "encrypted_content": null,
+        "id": "rs_resp_2026092801145372af02a600e9474f",
+        "summary": [],
+        "type": "reasoning"
+      },
+      {
+        "arguments": "{\"city\":\"上海\"}",
+        "call_id": "call_d38d5b5ffec34bae97764e9e",
+        "id": "fc_call_d38d5b5ffec34bae97764e9e",
+        "name": "get_weather",
+        "type": "function_call"
+      },
+      {
+        "call_id": "call_d38d5b5ffec34bae97764e9e",
+        "output": "{\"city\":\"上海\",\"condition\":\"多云\",\"temp_c\":26}",
+        "type": "function_call_output"
+      }
+    ],
+    "instructions": "You are a helpful assistant.",
+    "model": "GLM-5.3-Flash",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "stream": true,
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "description": "Get the current weather for a city",
+        "name": "get_weather",
+        "parameters": {
+          "properties": {
+            "city": {
+              "description": "City name, e.g. 北京",
+              "type": "string"
+            }
+          },
+          "required": [
+            "city"
+          ],
+          "type": "object"
+        },
+        "strict": false,
+        "type": "function"
+      }
+    ]
+  },
+  "events": [
+    {
+      "Created": {
+        "response_id": "resp_20260928011457e72bb515a9a74ea1"
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "message",
+        "id": "msg_resp_20260928011457e72bb515a9a74ea1",
+        "role": "assistant",
+        "content": []
+      }
+    },
+    {
+      "OutputTextDelta": "根据"
+    },
+    {
+      "OutputTextDelta": "查询"
+    },
+    {
+      "OutputTextDelta": "结果"
+    },
+    {
+      "OutputTextDelta": "，"
+    },
+    {
+      "OutputTextDelta": "上海"
+    },
+    {
+      "OutputTextDelta": "今天的"
+    },
+    {
+      "OutputTextDelta": "天气"
+    },
+    {
+      "OutputTextDelta": "情况"
+    },
+    {
+      "OutputTextDelta": "如下"
+    },
+    {
+      "OutputTextDelta": "：\n\n"
+    },
+    {
+      "OutputTextDelta": "-"
+    },
+    {
+      "OutputTextDelta": " **"
+    },
+    {
+      "OutputTextDelta": "天气"
+    },
+    {
+      "OutputTextDelta": "状况"
+    },
+    {
+      "OutputTextDelta": "**"
+    },
+    {
+      "OutputTextDelta": "："
+    },
+    {
+      "OutputTextDelta": "多云"
+    },
+    {
+      "OutputTextDelta": " "
+    },
+    {
+      "OutputTextDelta": "☁"
+    },
+    {
+      "OutputTextDelta": "️"
+    },
+    {
+      "OutputTextDelta": "\n"
+    },
+    {
+      "OutputTextDelta": "-"
+    },
+    {
+      "OutputTextDelta": " **"
+    },
+    {
+      "OutputTextDelta": "气温"
+    },
+    {
+      "OutputTextDelta": "**"
+    },
+    {
+      "OutputTextDelta": "："
+    },
+    {
+      "OutputTextDelta": "26"
+    },
+    {
+      "OutputTextDelta": "°C"
+    },
+    {
+      "OutputTextDelta": "\n\n"
+    },
+    {
+      "OutputTextDelta": "今天"
+    },
+    {
+      "OutputTextDelta": "上海"
+    },
+    {
+      "OutputTextDelta": "天气"
+    },
+    {
+      "OutputTextDelta": "还不错"
+    },
+    {
+      "OutputTextDelta": "，"
+    },
+    {
+      "OutputTextDelta": "多云"
+    },
+    {
+      "OutputTextDelta": "天气"
+    },
+    {
+      "OutputTextDelta": "，"
+    },
+    {
+      "OutputTextDelta": "气温"
+    },
+    {
+      "OutputTextDelta": "也比较"
+    },
+    {
+      "OutputTextDelta": "舒适"
+    },
+    {
+      "OutputTextDelta": "宜"
+    },
+    {
+      "OutputTextDelta": "人"
+    },
+    {
+      "OutputTextDelta": "。"
+    },
+    {
+      "OutputTextDelta": "如果"
+    },
+    {
+      "OutputTextDelta": "外出"
+    },
+    {
+      "OutputTextDelta": "的话"
+    },
+    {
+      "OutputTextDelta": "，"
+    },
+    {
+      "OutputTextDelta": "建议"
+    },
+    {
+      "OutputTextDelta": "可以"
+    },
+    {
+      "OutputTextDelta": "带"
+    },
+    {
+      "OutputTextDelta": "一件"
+    },
+    {
+      "OutputTextDelta": "薄"
+    },
+    {
+      "OutputTextDelta": "外套"
+    },
+    {
+      "OutputTextDelta": "以"
+    },
+    {
+      "OutputTextDelta": "备"
+    },
+    {
+      "OutputTextDelta": "温度"
+    },
+    {
+      "OutputTextDelta": "变化。"
+    },
+    {
+      "OutputItemDone": {
+        "type": "message",
+        "id": "msg_resp_20260928011457e72bb515a9a74ea1",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "根据查询结果，上海今天的天气情况如下：\n\n- **天气状况**：多云 ☁️\n- **气温**：26°C\n\n今天上海天气还不错，多云天气，气温也比较舒适宜人。如果外出的话，建议可以带一件薄外套以备温度变化。"
+          }
+        ]
+      }
+    },
+    {
+      "Completed": {
+        "response_id": "resp_20260928011457e72bb515a9a74ea1",
+        "token_usage": {
+          "input_tokens": 254,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 60,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 314
+        },
+        "usage_metadata": {
+          "amount": null,
+          "metadata": {
+            "input_tokens": 254,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 60,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 314
+          }
+        },
+        "end_turn": null
+      }
+    }
+  ]
+}

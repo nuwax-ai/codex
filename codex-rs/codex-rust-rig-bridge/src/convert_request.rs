@@ -9,11 +9,22 @@ use rig_core::completion::message::ToolChoice;
 use serde_json::Value;
 use serde_json::json;
 
+/// Shared by the entry guard and the exhaustive protocol match below: the
+/// Responses wire is served by the same-protocol passthrough, never here.
+const RESPONSES_NOT_CONVERTIBLE_MSG: &str = "the Chat/Anthropic conversion pipeline \
+                                             cannot serve the Responses wire; use the \
+                                             same-protocol passthrough in `responses.rs`";
+
 pub(crate) fn responses_request_to_completion_request(
     request: &ResponsesApiRequest,
     protocol: RigProtocol,
     source: &str,
 ) -> Result<(CompletionRequest, crate::request_tools::ToolMeta), ApiError> {
+    if protocol == RigProtocol::Responses {
+        return Err(ApiError::InvalidRequest {
+            message: RESPONSES_NOT_CONVERTIBLE_MSG.into(),
+        });
+    }
     if !request.stream {
         return Err(ApiError::InvalidRequest {
             message: "The Rig bridge requires a streaming request".into(),
@@ -139,6 +150,12 @@ pub(crate) fn responses_request_to_completion_request(
                 );
             }
             None
+        }
+        // Exhaustiveness: rejected by the entry guard above.
+        RigProtocol::Responses => {
+            return Err(ApiError::InvalidRequest {
+                message: RESPONSES_NOT_CONVERTIBLE_MSG.into(),
+            });
         }
     };
     Ok((

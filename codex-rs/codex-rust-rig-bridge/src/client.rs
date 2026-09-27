@@ -11,6 +11,9 @@ use rig_core::client::CompletionClient;
 /// Which rig provider implementation serves a given base URL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RigProtocol {
+    /// OpenAI Responses (`POST {base}/responses`) — same-protocol passthrough
+    /// of Codex's `ResponsesApiRequest`.
+    Responses,
     /// OpenAI-compatible Chat Completions.
     #[default]
     Chat,
@@ -20,13 +23,17 @@ pub enum RigProtocol {
 
 impl RigProtocol {
     /// URL heuristic (`/anthropic` gateways) — a fallback for callers that
-    /// do not know the wire; prefer passing the protocol explicitly from
-    /// `wire_api` (see `stream_via_rig`).
+    /// do not know the wire; dispatch must derive the protocol from the
+    /// provider's explicit `wire_api` instead (see `stream_via_rig`).
+    /// Only the URL path may select the protocol; authority, credentials,
+    /// query, and fragment are ignored.
     pub fn from_base_url(base_url: &str) -> Self {
-        match codex_api::chat_wire_protocol(/*wire_anthropic*/ false, base_url) {
-            codex_api::ChatWireProtocol::ChatCompletions => Self::Chat,
-            codex_api::ChatWireProtocol::Anthropic => Self::Anthropic,
+        if let Ok(url) = reqwest13::Url::parse(base_url)
+            && url.path().contains("/anthropic")
+        {
+            return Self::Anthropic;
         }
+        Self::Chat
     }
 }
 
@@ -67,11 +74,13 @@ fn api_key_from_headers(headers: &HeaderMap, protocol: RigProtocol) -> String {
 /// Preserves the effective request headers except the primary auth header
 /// rebuilt by Rig. In Anthropic mode, a bearer token is translated to x-api-key;
 /// an explicitly configured x-api-key may coexist with gateway Authorization.
+/// Responses and Chat both use Rig's Bearer scheme, so they rebuild the same
+/// Authorization header.
 fn default_headers(headers: &HeaderMap, protocol: RigProtocol) -> reqwest13::header::HeaderMap {
     let mut merged = reqwest13::header::HeaderMap::new();
     for (key, value) in headers {
         let rebuilt = match protocol {
-            RigProtocol::Chat => key == http::header::AUTHORIZATION,
+            RigProtocol::Responses | RigProtocol::Chat => key == http::header::AUTHORIZATION,
             RigProtocol::Anthropic => {
                 key == "x-api-key"
                     || (key == http::header::AUTHORIZATION
@@ -173,6 +182,25 @@ pub(crate) fn build_chat_model(
         .build()
         .map_err(map_client_error)?;
     Ok(client.completion_model(model_name))
+}
+
+/// rig's OpenAI client speaking the Responses wire. The model capability is
+/// unused by the passthrough path — it serializes Codex's
+/// `ResponsesApiRequest` directly and drives `post_sse` + `send_streaming`
+/// on the returned client — but constructing the client through rig keeps
+/// URI joining, Bearer auth, and provider customization in rig's hands.
+pub(crate) fn build_responses_client(
+    base_url: &str,
+    headers: &HeaderMap,
+    http: crate::transport::RigHttpClient,
+) -> Result<rig_core::providers::openai::Client<crate::transport::RigHttpClient>, codex_api::ApiError>
+{
+    rig_core::providers::openai::Client::builder()
+        .api_key(api_key_from_headers(headers, RigProtocol::Responses))
+        .base_url(base_url)
+        .http_client(http)
+        .build()
+        .map_err(map_client_error)
 }
 
 pub(crate) fn build_anthropic_model(
