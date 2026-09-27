@@ -17,6 +17,7 @@ use codex_http_client::OutboundProxyPolicy;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
 use codex_login::auth::AgentIdentityAuthPolicy;
+use codex_model_provider_info::ChatBridge;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::WireApi;
 use codex_otel::MetricsClient;
@@ -2629,7 +2630,7 @@ fn websocket_provider_with_connect_timeout(
         env_key: None,
         env_key_instructions: None,
         experimental_bearer_token: None,
-        experimental_bridge: None,
+        experimental_bridge: Some(ChatBridge::Native),
         provider_id: None,
         auth: None,
         gateway_oauth: None,

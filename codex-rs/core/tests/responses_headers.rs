@@ -7,6 +7,7 @@ use codex_core::ResponseEvent;
 use codex_features::Feature;
 use codex_login::CodexAuth;
 use codex_login::auth::AgentIdentityAuthPolicy;
+use codex_model_provider_info::ChatBridge;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::WireApi;
 use codex_otel::SessionTelemetry;
@@ -78,7 +79,7 @@ async fn responses_stream_includes_subagent_header_on_review() {
         env_key: None,
         env_key_instructions: None,
         experimental_bearer_token: None,
-        experimental_bridge: None,
+        experimental_bridge: Some(ChatBridge::Native),
         provider_id: None,
         auth: None,
         gateway_oauth: None,
@@ -222,7 +223,7 @@ async fn responses_stream_includes_subagent_header_on_other() {
         env_key: None,
         env_key_instructions: None,
         experimental_bearer_token: None,
-        experimental_bridge: None,
+        experimental_bridge: Some(ChatBridge::Native),
         provider_id: None,
         auth: None,
         gateway_oauth: None,
@@ -347,7 +348,7 @@ async fn responses_respects_model_info_overrides_from_config() {
         env_key: None,
         env_key_instructions: None,
         experimental_bearer_token: None,
-        experimental_bridge: None,
+        experimental_bridge: Some(ChatBridge::Native),
         provider_id: None,
         auth: None,
         gateway_oauth: None,

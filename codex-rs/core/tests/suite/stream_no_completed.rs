@@ -2,6 +2,7 @@
 //! delivering a `response.completed` event.
 
 use codex_core::TurnInputRequest;
+use codex_model_provider_info::ChatBridge;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::WireApi;
 use codex_protocol::protocol::EventMsg;
@@ -55,7 +56,7 @@ async fn retries_on_early_close() {
         env_key: Some("PATH".into()),
         env_key_instructions: None,
         experimental_bearer_token: None,
-        experimental_bridge: None,
+        experimental_bridge: Some(ChatBridge::Native),
         provider_id: None,
         auth: None,
         gateway_oauth: None,

@@ -106,11 +106,9 @@ pub enum WireApi {
     Responses,
     /// The Chat Completions API exposed at `/v1/chat/completions`.
     Chat,
-    /// The Anthropic Messages API (`/v1/messages`), served through the chat
-    /// bridges (fork extension). Explicit declaration for gateways whose
-    /// Anthropic endpoint is not identifiable by URL (e.g. StepFun's
-    /// `/step_plan`); `/anthropic`-style URLs keep auto-detecting under
-    /// `wire_api = "chat"`.
+    /// The Anthropic Messages API (`/v1/messages`), served through a model
+    /// bridge (fork extension). Select this wire explicitly; the endpoint
+    /// URL does not override `wire_api`.
     Anthropic,
 }
 
@@ -125,11 +123,11 @@ impl fmt::Display for WireApi {
     }
 }
 
-/// Chat-Completions bridge implementation backing this provider
-/// (fork extension). `Rig` is the default; configure
-/// `experimental_bridge = "genai"` to fall back to the original bridge,
-/// or `"native"` to force the upstream transport (escape hatch for
-/// providers that implement the Responses API fully).
+/// Model bridge implementation backing this provider (fork extension).
+/// `Rig` is the default for third-party providers and supports the explicitly
+/// selected Responses, Chat Completions, or Anthropic wire. `Native` selects
+/// the upstream Responses transport. The legacy `Genai` bridge only supports
+/// Chat Completions and Anthropic.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ChatBridge {
@@ -222,10 +220,10 @@ pub struct ModelProviderInfo {
     /// Which wire protocol this provider expects.
     #[serde(default)]
     pub wire_api: WireApi,
-    /// Which Chat-Completions bridge implementation serves this provider
-    /// (fork extension; only consulted when `wire_api = "chat"`). Unset uses
-    /// the fork default, currently the rig bridge; set `"genai"` to opt back
-    /// into the original genai bridge.
+    /// Which model bridge serves this provider (fork extension). Unset uses
+    /// Rig for third-party providers and the native transport for first-party
+    /// providers. `native` requires the Responses wire; the legacy `genai`
+    /// bridge only supports Chat Completions and Anthropic.
     #[serde(default)]
     pub experimental_bridge: Option<ChatBridge>,
     /// Runtime provider identity from the config key (fork extension,
