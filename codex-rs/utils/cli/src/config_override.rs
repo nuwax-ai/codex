@@ -47,7 +47,8 @@ impl CliConfigOverrides {
     /// Parse the raw strings captured from the CLI into a list of `(path,
     /// value)` tuples where `value` is a `serde_json::Value`.
     pub fn parse_overrides(&self) -> Result<Vec<(String, Value)>, String> {
-        self.raw_overrides
+        let mut overrides: Vec<(String, Value)> = self
+            .raw_overrides
             .iter()
             .map(|s| {
                 // Only split on the *first* '=' so values are free to contain
@@ -80,8 +81,55 @@ impl CliConfigOverrides {
 
                 Ok((canonicalize_override_key(key), value))
             })
-            .collect()
+            .collect::<Result<Vec<_>, String>>()?;
+        apply_env_effort_override(
+            &mut overrides,
+            std::env::var(MODEL_REASONING_EFFORT_ENV).ok().as_deref(),
+        )?;
+        Ok(overrides)
     }
+}
+
+/// Fork: `CODEX_MODEL_REASONING_EFFORT` seeds `model_reasoning_effort` at a
+/// precedence between config.toml and an explicit `-c` override. Values are
+/// validated against the canonical effort levels — an unknown value errors
+/// here instead of silently becoming a Custom effort that some wires drop.
+const MODEL_REASONING_EFFORT_ENV: &str = "CODEX_MODEL_REASONING_EFFORT";
+
+fn apply_env_effort_override(
+    overrides: &mut Vec<(String, Value)>,
+    env_value: Option<&str>,
+) -> Result<(), String> {
+    let Some(raw) = env_value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+    if overrides
+        .iter()
+        .any(|(key, _)| key == "model_reasoning_effort")
+    {
+        // An explicit -c wins over the environment.
+        return Ok(());
+    }
+    let canonical = raw.to_ascii_lowercase();
+    const VALID: [&str; 9] = [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra",
+        "persistent",
+    ];
+    if !VALID.contains(&canonical.as_str()) {
+        return Err(format!(
+            "Invalid {MODEL_REASONING_EFFORT_ENV} value {raw:?}; expected one of {}",
+            VALID.join("/")
+        ));
+    }
+    overrides.push(("model_reasoning_effort".into(), Value::String(canonical)));
+    Ok(())
 }
 
 fn canonicalize_override_key(key: &str) -> String {
@@ -166,5 +214,51 @@ mod tests {
         let tbl = v.as_table().expect("table");
         assert_eq!(tbl.get("a").unwrap().as_integer(), Some(1));
         assert_eq!(tbl.get("b").unwrap().as_integer(), Some(2));
+    }
+
+    #[test]
+    fn env_effort_seeds_when_not_explicitly_overridden() {
+        let mut overrides = vec![("model".to_string(), Value::String("x".into()))];
+        apply_env_effort_override(&mut overrides, Some("NONE")).expect("valid");
+        assert_eq!(
+            overrides.last(),
+            Some(&(
+                "model_reasoning_effort".to_string(),
+                Value::String("none".into())
+            ))
+        );
+    }
+
+    #[test]
+    fn env_effort_yields_to_explicit_override() {
+        let mut overrides = vec![(
+            "model_reasoning_effort".to_string(),
+            Value::String("high".into()),
+        )];
+        apply_env_effort_override(&mut overrides, Some("none")).expect("no conflict");
+        assert_eq!(
+            overrides.len(),
+            1,
+            "explicit -c must not be duplicated or changed"
+        );
+    }
+
+    #[test]
+    fn env_effort_rejects_unknown_values_with_the_valid_list() {
+        let mut overrides = vec![];
+        let error = apply_env_effort_override(&mut overrides, Some("hight"))
+            .expect_err("typo must fail fast");
+        assert!(
+            error.contains("hight") && error.contains("none/minimal"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn env_effort_ignores_unset_or_blank() {
+        let mut overrides = vec![];
+        apply_env_effort_override(&mut overrides, None).expect("unset is a no-op");
+        apply_env_effort_override(&mut overrides, Some("   ")).expect("blank is a no-op");
+        assert!(overrides.is_empty());
     }
 }
