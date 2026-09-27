@@ -14,6 +14,62 @@ pub(crate) fn responses_request_to_completion_request(
     protocol: RigProtocol,
     source: &str,
 ) -> Result<(CompletionRequest, crate::request_tools::ToolMeta), ApiError> {
+    if !request.stream {
+        return Err(ApiError::InvalidRequest {
+            message: "The Rig bridge requires a streaming request".into(),
+        });
+    }
+    // Log names only: metadata, cache keys and payloads can be sensitive.
+    let mut omitted = Vec::new();
+    if request
+        .reasoning
+        .as_ref()
+        .is_some_and(|value| value.summary.is_some())
+    {
+        omitted.push("reasoning.summary");
+    }
+    if request
+        .reasoning
+        .as_ref()
+        .is_some_and(|value| value.context.is_some())
+    {
+        omitted.push("reasoning.context");
+    }
+    if !request.include.is_empty() {
+        omitted.push("include");
+    }
+    if request.stream_options.is_some() {
+        omitted.push("stream_options (Rig supplies its own)");
+    }
+    if request.client_metadata.is_some() {
+        omitted.push("client_metadata");
+    }
+    if request.access_programs.is_some() {
+        omitted.push("access_programs");
+    }
+    if protocol == RigProtocol::Anthropic {
+        if request.store {
+            omitted.push("store");
+        }
+        if request.prompt_cache_key.is_some() {
+            omitted.push("prompt_cache_key");
+        }
+        if let Some(text) = &request.text {
+            if text.verbosity.is_some() {
+                omitted.push("text.verbosity");
+            }
+            if text.format.is_some() {
+                omitted.push("text.format.name/strict (Anthropic format has neither)");
+            }
+        }
+    }
+    if !omitted.is_empty() {
+        tracing::debug!(
+            ?protocol,
+            ?omitted,
+            "Responses controls without a Rig wire equivalent"
+        );
+    }
     let mut chat_history = convert_response_items(&request.input, protocol, source)?;
     if chat_history.is_empty() {
         return Err(ApiError::InvalidRequest {
@@ -71,12 +127,18 @@ pub(crate) fn responses_request_to_completion_request(
         RigProtocol::Anthropic => {
             // OpenAI knobs must not leak onto the Messages wire. Anthropic has
             // its own tool_choice parallelism control, applied below the SDK.
-            format
-                .map(|format| serde_json::from_value(format.schema.clone()))
-                .transpose()
-                .map_err(|error| ApiError::InvalidRequest {
-                    message: format!("Invalid output schema: {error}"),
-                })?
+            if let Some(format) = format {
+                // Rig's typed schema sanitizer makes optional properties required
+                // and removes numeric constraints. Keep the caller's schema:
+                // unsupported constraints should fail at the provider, not vanish.
+                params.insert(
+                    "output_config".into(),
+                    json!({
+                        "format": { "type": "json_schema", "schema": format.schema }
+                    }),
+                );
+            }
+            None
         }
     };
     Ok((
@@ -111,8 +173,8 @@ fn map_tool_choice(choice: &str) -> Option<ToolChoice> {
 
 /// Maps a codex reasoning effort onto Anthropic's `output_config.effort`
 /// scale (low/medium/high/xhigh/max). Values with no Anthropic counterpart
-/// (`none`, `persistent`, unknown customs) stay unset — thinking remains
-/// under gateway control rather than risking an unknown-field degradation.
+/// (`persistent`, unknown customs) stay unset. Explicit `none` disables
+/// thinking separately; effort itself does not enable thinking.
 pub(crate) fn anthropic_effort(request: &ResponsesApiRequest) -> Option<String> {
     use codex_protocol::openai_models::ReasoningEffort;
     let effort = request.reasoning.as_ref()?.effort.as_ref()?;
@@ -126,17 +188,27 @@ pub(crate) fn anthropic_effort(request: &ResponsesApiRequest) -> Option<String> 
             tracing::warn!("reasoning effort `ultra` has no Anthropic level; clamping to `max`");
             Some("max".into())
         }
-        ReasoningEffort::None | ReasoningEffort::Persistent | ReasoningEffort::Custom(_) => None,
+        ReasoningEffort::None => None,
+        ReasoningEffort::Persistent | ReasoningEffort::Custom(_) => {
+            tracing::warn!(
+                "Requested reasoning effort has no Anthropic equivalent; omitting effort"
+            );
+            None
+        }
     }
 }
 
-/// Only the two semantically matching OpenAI tiers cross over; `flex` and
+/// Only the semantically matching OpenAI tiers cross over; `flex` and
 /// `priority` are OpenAI pricing concepts with no Messages equivalent.
 pub(crate) fn anthropic_service_tier(request: &ResponsesApiRequest) -> Option<String> {
     match request.service_tier.as_deref() {
         Some("auto") => Some("auto".into()),
-        Some("standard") => Some("standard_only".into()),
-        _ => None,
+        Some("default" | "standard") => Some("standard_only".into()),
+        Some(_) => {
+            tracing::warn!("Requested service tier has no Anthropic equivalent; omitting it");
+            None
+        }
+        None => None,
     }
 }
 

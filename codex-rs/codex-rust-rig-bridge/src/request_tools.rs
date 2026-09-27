@@ -24,6 +24,7 @@ pub(crate) struct RequestTools {
 pub(crate) struct ToolMeta {
     pub(crate) custom_names: HashSet<String>,
     pub(crate) strict: HashMap<String, bool>,
+    pub(crate) result_errors: HashMap<String, bool>,
 }
 
 pub(crate) fn flat_name(name: &str, namespace: Option<&str>) -> String {
@@ -45,7 +46,27 @@ pub(crate) fn request_tools(request: &ResponsesApiRequest) -> RequestTools {
             tools.extend(extra.iter().cloned());
         }
     }
-    parse_tools(&tools)
+    let mut selection = parse_tools(&tools);
+    for item in &request.input {
+        let (call_id, output) = match item {
+            ResponseItem::FunctionCallOutput {
+                call_id: Some(call_id),
+                output,
+                ..
+            }
+            | ResponseItem::CustomToolCallOutput {
+                call_id, output, ..
+            } => (call_id, output),
+            _ => continue,
+        };
+        if let Some(success) = output.success {
+            selection
+                .meta
+                .result_errors
+                .insert(call_id.clone(), !success);
+        }
+    }
+    selection
 }
 
 pub(crate) fn parse_tools(tools: &[Value]) -> RequestTools {
@@ -76,6 +97,7 @@ pub(crate) fn parse_tools(tools: &[Value]) -> RequestTools {
         meta: ToolMeta {
             custom_names: custom,
             strict,
+            result_errors: HashMap::new(),
         },
     }
 }

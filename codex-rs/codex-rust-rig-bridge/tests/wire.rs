@@ -5,6 +5,8 @@
 mod auth_tests;
 #[path = "wire/error_tests.rs"]
 mod error_tests;
+#[path = "wire/history_tests.rs"]
+mod history_tests;
 mod support;
 #[path = "wire/terminal_tests.rs"]
 mod terminal_tests;

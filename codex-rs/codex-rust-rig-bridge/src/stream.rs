@@ -97,6 +97,13 @@ pub async fn stream_via_rig_with_recording(
             .cloned(),
         protocol,
         tool_strict: tool_meta.strict,
+        tool_result_errors: tool_meta.result_errors,
+        disable_anthropic_thinking: protocol == RigProtocol::Anthropic
+            && request
+                .reasoning
+                .as_ref()
+                .and_then(|value| value.effort.as_ref())
+                == Some(&codex_protocol::openai_models::ReasoningEffort::None),
         anthropic_effort: (protocol == RigProtocol::Anthropic)
             .then(|| crate::convert_request::anthropic_effort(request))
             .flatten(),

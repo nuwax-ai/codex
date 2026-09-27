@@ -20,6 +20,8 @@ pub(crate) struct RigHttpClient {
     pub(crate) query: Vec<(String, String)>,
     pub(crate) disable_anthropic_parallel: bool,
     pub(crate) tool_strict: std::collections::HashMap<String, bool>,
+    pub(crate) tool_result_errors: std::collections::HashMap<String, bool>,
+    pub(crate) disable_anthropic_thinking: bool,
     /// Anthropic `output_config.effort`, mapped from codex reasoning effort
     /// where the scales overlap. `None` leaves the field untouched.
     pub(crate) anthropic_effort: Option<String>,
@@ -108,6 +110,9 @@ impl HttpClientExt for RigHttpClient {
         async move {
             let mut request: Request<Bytes> = request?;
             if self.disable_anthropic_parallel
+                || self.disable_anthropic_thinking
+                || (self.protocol == crate::RigProtocol::Anthropic
+                    && !self.tool_result_errors.is_empty())
                 || !self.tool_strict.is_empty()
                 || self.anthropic_effort.is_some()
                 || self.anthropic_service_tier.is_some()
@@ -155,6 +160,9 @@ impl HttpClientExt for RigHttpClient {
                     }
                 }
                 if let Some(body_map) = body.as_object_mut() {
+                    if self.disable_anthropic_thinking {
+                        body_map.insert("thinking".into(), serde_json::json!({"type":"disabled"}));
+                    }
                     if let Some(effort) = &self.anthropic_effort {
                         // Merge into any existing output_config (rig may have
                         // serialized output_config.format from output_schema).
@@ -167,6 +175,28 @@ impl HttpClientExt for RigHttpClient {
                     }
                     if let Some(tier) = &self.anthropic_service_tier {
                         body_map.insert("service_tier".into(), tier.clone().into());
+                    }
+                }
+                if self.protocol == crate::RigProtocol::Anthropic
+                    && let Some(messages) = body
+                        .get_mut("messages")
+                        .and_then(serde_json::Value::as_array_mut)
+                {
+                    for message in messages {
+                        if let Some(content) = message
+                            .get_mut("content")
+                            .and_then(serde_json::Value::as_array_mut)
+                        {
+                            for block in content {
+                                if block["type"] == "tool_result"
+                                    && let Some(is_error) = block["tool_use_id"]
+                                        .as_str()
+                                        .and_then(|id| self.tool_result_errors.get(id))
+                                {
+                                    block["is_error"] = (*is_error).into();
+                                }
+                            }
+                        }
                     }
                 }
                 *request.body_mut() = serde_json::to_vec(&body)
