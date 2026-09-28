@@ -41,6 +41,7 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
 | `codex-rs/core/src/session/turn_context.rs`、`models-manager/model_info.rs` | fallback 模型元数据告警降噪(自定义厂商必然 fallback,不该每轮弹警告) |
 | `codex-rs/config/src/thread_config/remote.rs` | 新字段初始化 |
 | `codex-rs/utils/home-dir/src/lib.rs`(小改)+ `src/nuwax_default.rs`(fork 新增文件) | **分层默认配置目录**:`CODEX_HOME` 未设置时优先 `~/.codex-nuwax`(存在即用,Fail Fast 校验),回落上游 `~/.codex`。fork 配置与官方 codex 默认目录隔离,官方二进制解析零改动。设计见 `my-docs/nuwax-home/` |
+| `codex-rs/tui/src/daemon_startup.rs`(小改)+ `daemon_startup_tests.rs`、`startup_orchestration.rs`(1 行传参) | **npm 安装不自启 daemon**:npm 单二进制包无完整本地包布局,daemon 自安装必失败。`exclusion()` 增加 NpmNuwax 排除(装方式以参数注入,hermetic 可测);`providers/set` 的 apiType=anthropic 同轮在 ACP-TS 支持 |
 | `codex-rs/cli/Cargo.toml`、`codex-rs/exec/Cargo.toml` | 启用 `rust-genai` + `rust-rig` 双 feature |
 | `npm/`(bin/postinstall/package.json) | npm 包 `nuwax-codex`,postinstall 从阿里云 OSS 下载平台二进制 |
 | `.github/workflows/release.yml`、`live-tests.yml` | 发版 CI(tag 触发,6 平台)+ live 测试 CI(manual/nightly) |
