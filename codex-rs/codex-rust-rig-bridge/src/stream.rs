@@ -271,21 +271,25 @@ pub async fn stream_via_rig_with_recording(
                     };
                     // rig's public streaming surface omits Anthropic
                     // server-tool blocks; re-read them from the teed wire
-                    // bytes and emit their items, keeping Completed last.
+                    // bytes and splice their items in front of the Completed
+                    // terminal. Copy the bytes out first so no lock is held
+                    // across the await.
                     if pending.completed_emitted()
                         && let Some(tee) = &pump_sse_tee
-                        && let Ok(bytes) = tee.lock()
+                        && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
+                        && !events.is_empty()
                     {
-                        // Insert before the Completed terminal, which stays last.
-                        let at = events.len().saturating_sub(1);
-                        let mut inserted = 0;
+                        let mut injected = Vec::new();
                         for block in
-                            crate::hosted_tools::web_search_blocks_from_anthropic_sse(&bytes)
+                            crate::hosted_tools::web_search_blocks_from_anthropic_sse(&sse_bytes)
+                                .await
                         {
-                            for event in crate::hosted_tools::web_search_call_events(&block) {
-                                events.insert(at + inserted, event);
-                                inserted += 1;
-                            }
+                            injected.extend(crate::hosted_tools::web_search_call_events(&block));
+                        }
+                        if !injected.is_empty() {
+                            let terminal = events.split_off(events.len() - 1);
+                            events.extend(injected);
+                            events.extend(terminal);
                         }
                     }
                     for ev in events {

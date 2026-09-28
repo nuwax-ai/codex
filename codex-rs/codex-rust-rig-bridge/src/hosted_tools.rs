@@ -13,6 +13,8 @@ use codex_api::ResponseEvent;
 use codex_protocol::ResponseItemId;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::models::WebSearchAction;
+use eventsource_stream::Eventsource;
+use futures::StreamExt;
 use serde_json::Value;
 use serde_json::json;
 
@@ -59,84 +61,96 @@ pub(crate) fn web_search_action(input: &Value) -> WebSearchAction {
     }
 }
 
+/// One `server_tool_use` block being assembled from its wire frames.
+#[derive(Default)]
+struct OpenServerToolUse {
+    index: u64,
+    id: String,
+    name: String,
+    /// Input inlined on `content_block_start` (GLM's shape).
+    initial_input: Value,
+    /// Input accumulated from `input_json_delta` frames (Anthropic's shape).
+    input_json: String,
+}
+
+impl OpenServerToolUse {
+    fn finish(self) -> Value {
+        let input = serde_json::from_str::<Value>(&self.input_json)
+            .ok()
+            .filter(|input| !input.is_null())
+            .unwrap_or(self.initial_input);
+        json!({"id": self.id, "name": self.name, "input": input})
+    }
+}
+
 /// Assembled web-search `server_tool_use` blocks from one Anthropic SSE body.
 ///
 /// rig 0.42 models `server_tool_use` internally but never exposes it on its
 /// public streaming surface (frame data is deliberately internal), so the
 /// bridge tees the raw wire bytes at the transport and re-reads the blocks
-/// from them. Unmodeled vendor result blocks (Anthropic's
+/// from them. SSE framing goes through `eventsource-stream`, the same decoder
+/// codex-api uses, so CRLF/multi-line data handling matches the spec instead
+/// of hand-rolled splitting. Unmodeled vendor result blocks (Anthropic's
 /// `web_search_tool_result`, GLM's assistant-side `tool_result`) carry no
 /// Codex item and are ignored. Malformed frames are skipped: the semantic
 /// stream has already validated the response by the time this runs.
-pub(crate) fn web_search_blocks_from_anthropic_sse(bytes: &[u8]) -> Vec<Value> {
+pub(crate) async fn web_search_blocks_from_anthropic_sse(bytes: &[u8]) -> Vec<Value> {
     let mut blocks = Vec::new();
-    // (index, id, name, initial input, accumulated input_json). Gateways
-    // differ: Anthropic streams the input via input_json_delta, GLM inlines
-    // the complete object on content_block_start.
-    let mut open: Option<(u64, String, String, Value, String)> = None;
-    let text = String::from_utf8_lossy(bytes);
-    for frame in text.split("\n\n") {
-        let Some(data) = frame
-            .lines()
-            .find_map(|line| line.strip_prefix("data:"))
-            .map(str::trim)
-        else {
-            continue;
-        };
-        let Ok(event) = serde_json::from_str::<Value>(data) else {
+    let mut open: Option<OpenServerToolUse> = None;
+    let frames = futures::stream::iter(vec![Ok::<_, std::convert::Infallible>(
+        bytes::Bytes::copy_from_slice(bytes),
+    )])
+    .eventsource();
+    futures::pin_mut!(frames);
+    while let Some(Ok(frame)) = frames.next().await {
+        let Ok(event) = serde_json::from_str::<Value>(&frame.data) else {
             continue;
         };
         match event.get("type").and_then(Value::as_str) {
             Some("content_block_start") => {
                 let block = &event["content_block"];
                 if block.get("type").and_then(Value::as_str) == Some("server_tool_use") {
-                    let initial_input = block.get("input").cloned().unwrap_or(json!({}));
-                    open = Some((
-                        event.get("index").and_then(Value::as_u64).unwrap_or(0),
-                        block
-                            .get("id")
-                            .and_then(Value::as_str)
-                            .unwrap_or_default()
-                            .to_string(),
-                        block
-                            .get("name")
-                            .and_then(Value::as_str)
-                            .unwrap_or_default()
-                            .to_string(),
-                        initial_input,
-                        String::new(),
-                    ));
+                    open = Some(OpenServerToolUse {
+                        index: event.get("index").and_then(Value::as_u64).unwrap_or(0),
+                        id: string_field(block, "id"),
+                        name: string_field(block, "name"),
+                        initial_input: block.get("input").cloned().unwrap_or(json!({})),
+                        input_json: String::new(),
+                    });
                 }
             }
             Some("content_block_delta")
                 if event["delta"].get("type").and_then(Value::as_str)
                     == Some("input_json_delta")
-                    && open.as_ref().is_some_and(|(index, ..)| {
-                        event.get("index").and_then(Value::as_u64) == Some(*index)
+                    && open.as_ref().is_some_and(|open| {
+                        event.get("index").and_then(Value::as_u64) == Some(open.index)
                     }) =>
             {
-                if let Some((_, _, _, _, input_json)) = open.as_mut()
-                    && let Some(fragment) =
-                        event["delta"].get("partial_json").and_then(Value::as_str)
+                if let Some(fragment) = event["delta"].get("partial_json").and_then(Value::as_str)
+                    && let Some(open) = open.as_mut()
                 {
-                    input_json.push_str(fragment);
+                    open.input_json.push_str(fragment);
                 }
             }
             Some("content_block_stop") => {
-                if let Some((_, id, name, initial_input, input_json)) = open.take()
-                    && is_web_search_server_use(&name)
+                if let Some(open) = open.take()
+                    && is_web_search_server_use(&open.name)
                 {
-                    let input = serde_json::from_str::<Value>(&input_json)
-                        .ok()
-                        .filter(|input| !input.is_null())
-                        .unwrap_or(initial_input);
-                    blocks.push(json!({"id": id, "name": name, "input": input}));
+                    blocks.push(open.finish());
                 }
             }
             _ => {}
         }
     }
     blocks
+}
+
+fn string_field(block: &Value, key: &str) -> String {
+    block
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// Emits a completed web-search call item pair for one assembled

@@ -71,7 +71,7 @@ fn sse_parser_reads_inline_gateway_input_without_deltas() {
         "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
     );
     assert_eq!(
-        web_search_blocks_from_anthropic_sse(sse.as_bytes()),
+        futures::executor::block_on(web_search_blocks_from_anthropic_sse(sse.as_bytes())),
         vec![json!({
             "id": "srvu_inline",
             "name": "web_search_prime",
@@ -90,7 +90,7 @@ fn sse_parser_skips_non_web_search_server_tools_and_malformed_frames() {
         "data: not-json\n\n",
     );
     assert_eq!(
-        web_search_blocks_from_anthropic_sse(sse.as_bytes()),
+        futures::executor::block_on(web_search_blocks_from_anthropic_sse(sse.as_bytes())),
         Vec::<serde_json::Value>::new()
     );
 }

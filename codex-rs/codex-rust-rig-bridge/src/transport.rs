@@ -266,44 +266,15 @@ impl HttpClientExt for RigHttpClient {
                     // codex-api's decoder and its own strict terminal policy;
                     // no [DONE]/terminal rewriting at this layer. In record
                     // mode, tee the exact wire bytes for offline replay.
-                    crate::RigProtocol::Responses => match sse_recorder {
-                        Some(recorder) => Box::pin(body.map(move |chunk| {
-                            if let Ok(bytes) = &chunk
-                                && let Ok(mut buffer) = recorder.lock()
-                            {
-                                buffer.extend_from_slice(bytes);
-                            }
-                            chunk
-                        }))
-                            as rig_core::http_client::sse::BoxedStream,
-                        None => body,
-                    },
+                    crate::RigProtocol::Responses => tee_wire_bytes(body, sse_recorder),
                     // rig never exposes server-tool blocks on its public
                     // streaming surface, so the Anthropic pump re-reads them
                     // from the teed wire bytes at terminal time.
-                    crate::RigProtocol::Anthropic => match anthropic_sse_tee {
-                        Some(tee) => {
-                            let body = Box::pin(body.map(move |chunk| {
-                                if let Ok(bytes) = &chunk
-                                    && let Ok(mut buffer) = tee.lock()
-                                {
-                                    buffer.extend_from_slice(bytes);
-                                }
-                                chunk
-                            }))
-                                as rig_core::http_client::sse::BoxedStream;
-                            crate::sse::with_terminal_check(
-                                body,
-                                self.protocol,
-                                self.anthropic_usage.clone(),
-                            )
-                        }
-                        None => crate::sse::with_terminal_check(
-                            body,
-                            self.protocol,
-                            self.anthropic_usage.clone(),
-                        ),
-                    },
+                    crate::RigProtocol::Anthropic => crate::sse::with_terminal_check(
+                        tee_wire_bytes(body, anthropic_sse_tee),
+                        self.protocol,
+                        self.anthropic_usage.clone(),
+                    ),
                     protocol if check_terminal => crate::sse::with_terminal_check(
                         body,
                         protocol,
@@ -313,6 +284,25 @@ impl HttpClientExt for RigHttpClient {
                 }
             }))
         }
+    }
+}
+
+/// Copies every wire chunk into the shared buffer while passing the stream
+/// through unchanged. Recording only; `None` returns the stream untouched.
+fn tee_wire_bytes(
+    body: rig_core::http_client::sse::BoxedStream,
+    recorder: Option<Arc<Mutex<Vec<u8>>>>,
+) -> rig_core::http_client::sse::BoxedStream {
+    match recorder {
+        Some(recorder) => Box::pin(body.map(move |chunk| {
+            if let Ok(bytes) = &chunk
+                && let Ok(mut buffer) = recorder.lock()
+            {
+                buffer.extend_from_slice(bytes);
+            }
+            chunk
+        })) as rig_core::http_client::sse::BoxedStream,
+        None => body,
     }
 }
 
