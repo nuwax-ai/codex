@@ -40,6 +40,7 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
 | `codex-rs/core/src/tools/flat_name_index.rs`(新增)+ `registry.rs`(小改) | namespace 工具展平为 `mcp__ns__tool` 后的回环索引 |
 | `codex-rs/core/src/session/turn_context.rs`、`models-manager/model_info.rs` | fallback 模型元数据告警降噪(自定义厂商必然 fallback,不该每轮弹警告) |
 | `codex-rs/config/src/thread_config/remote.rs` | 新字段初始化 |
+| `codex-rs/utils/home-dir/src/lib.rs`(小改)+ `src/nuwax_default.rs`(fork 新增文件) | **分层默认配置目录**:`CODEX_HOME` 未设置时优先 `~/.codex-nuwax`(存在即用,Fail Fast 校验),回落上游 `~/.codex`。fork 配置与官方 codex 默认目录隔离,官方二进制解析零改动。设计见 `my-docs/nuwax-home/` |
 | `codex-rs/cli/Cargo.toml`、`codex-rs/exec/Cargo.toml` | 启用 `rust-genai` + `rust-rig` 双 feature |
 | `npm/`(bin/postinstall/package.json) | npm 包 `nuwax-codex`,postinstall 从阿里云 OSS 下载平台二进制 |
 | `.github/workflows/release.yml`、`live-tests.yml` | 发版 CI(tag 触发,6 平台)+ live 测试 CI(manual/nightly) |
