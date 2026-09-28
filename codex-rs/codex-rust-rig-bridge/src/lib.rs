@@ -13,6 +13,7 @@ mod bridge_impl;
 mod client;
 mod convert_request;
 mod convert_response;
+mod hosted_tools;
 mod reasoning;
 mod request_content;
 mod request_messages;

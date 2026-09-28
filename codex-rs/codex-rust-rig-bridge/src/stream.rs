@@ -108,6 +108,11 @@ pub async fn stream_via_rig_with_recording(
     let anthropic_usage = Arc::new(std::sync::Mutex::new(
         crate::usage::AnthropicUsage::default(),
     ));
+    // rig never exposes Anthropic server-tool blocks on its public streaming
+    // surface; the transport tees the wire bytes and the pump re-reads them
+    // at terminal time.
+    let anthropic_sse_tee = (protocol == RigProtocol::Anthropic)
+        .then(|| Arc::new(std::sync::Mutex::new(Vec::<u8>::new())));
     let http = crate::transport::RigHttpClient {
         inner: crate::client::http_client(&headers, protocol)?,
         query,
@@ -121,6 +126,7 @@ pub async fn stream_via_rig_with_recording(
             .cloned(),
         protocol,
         responses_sse_recorder: None,
+        anthropic_sse_tee: anthropic_sse_tee.clone(),
         tool_strict: tool_meta.strict,
         tool_result_errors: tool_meta.result_errors,
         disable_anthropic_thinking: protocol == RigProtocol::Anthropic
@@ -135,6 +141,19 @@ pub async fn stream_via_rig_with_recording(
         anthropic_service_tier: (protocol == RigProtocol::Anthropic)
             .then(|| crate::convert_request::anthropic_service_tier(request))
             .flatten(),
+        // Hosted (Responses) tools only exist on the Anthropic wire, where
+        // they translate into server-tool entries; Chat drops them.
+        anthropic_server_tools: if protocol == RigProtocol::Anthropic {
+            {
+                tool_meta
+                    .hosted_tools
+                    .iter()
+                    .filter_map(crate::hosted_tools::anthropic_server_tool)
+                    .collect::<Vec<_>>()
+            }
+        } else {
+            Default::default()
+        },
     };
 
     let model = request.model.clone();
@@ -193,6 +212,7 @@ pub async fn stream_via_rig_with_recording(
 
     let custom_tool_names = std::sync::Arc::new(tool_meta.custom_names);
     let pump_recorder = recorder.clone();
+    let pump_sse_tee = anthropic_sse_tee;
     tokio::spawn(async move {
         let mut pending = PendingRigMessage::new(custom_tool_names, source);
 
@@ -242,13 +262,32 @@ pub async fn stream_via_rig_with_recording(
                     {
                         buf.push(event.clone());
                     }
-                    let events = match rig_event_to_response_events(event, &mut pending) {
+                    let mut events = match rig_event_to_response_events(event, &mut pending) {
                         Ok(events) => events,
                         Err(error) => {
                             let _ = tx.send(Err(error)).await;
                             return;
                         }
                     };
+                    // rig's public streaming surface omits Anthropic
+                    // server-tool blocks; re-read them from the teed wire
+                    // bytes and emit their items, keeping Completed last.
+                    if pending.completed_emitted()
+                        && let Some(tee) = &pump_sse_tee
+                        && let Ok(bytes) = tee.lock()
+                    {
+                        // Insert before the Completed terminal, which stays last.
+                        let at = events.len().saturating_sub(1);
+                        let mut inserted = 0;
+                        for block in
+                            crate::hosted_tools::web_search_blocks_from_anthropic_sse(&bytes)
+                        {
+                            for event in crate::hosted_tools::web_search_call_events(&block) {
+                                events.insert(at + inserted, event);
+                                inserted += 1;
+                            }
+                        }
+                    }
                     for ev in events {
                         if tx.send(Ok(ev)).await.is_err() {
                             return;

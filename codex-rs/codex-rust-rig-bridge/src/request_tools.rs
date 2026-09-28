@@ -25,6 +25,10 @@ pub(crate) struct ToolMeta {
     pub(crate) custom_names: HashSet<String>,
     pub(crate) strict: HashMap<String, bool>,
     pub(crate) result_errors: HashMap<String, bool>,
+    /// Raw hosted (server-side) tool declarations from the Responses request.
+    /// Protocol-specific translation happens in `hosted_tools` (Anthropic
+    /// server tools; Chat has no hosted-tool concept and drops them).
+    pub(crate) hosted_tools: Vec<Value>,
 }
 
 pub(crate) fn flat_name(name: &str, namespace: Option<&str>) -> String {
@@ -73,6 +77,7 @@ pub(crate) fn parse_tools(tools: &[Value]) -> RequestTools {
     let mut definitions = Vec::new();
     let mut custom = HashSet::new();
     let mut strict = HashMap::new();
+    let mut hosted_tools = Vec::new();
     for tool in tools {
         if tool["type"] == "namespace" {
             if let (Some(namespace), Some(children)) =
@@ -85,11 +90,19 @@ pub(crate) fn parse_tools(tools: &[Value]) -> RequestTools {
                         &mut definitions,
                         &mut custom,
                         &mut strict,
+                        &mut hosted_tools,
                     );
                 }
             }
         } else {
-            append_tool(tool, None, &mut definitions, &mut custom, &mut strict);
+            append_tool(
+                tool,
+                None,
+                &mut definitions,
+                &mut custom,
+                &mut strict,
+                &mut hosted_tools,
+            );
         }
     }
     RequestTools {
@@ -98,6 +111,7 @@ pub(crate) fn parse_tools(tools: &[Value]) -> RequestTools {
             custom_names: custom,
             strict,
             result_errors: HashMap::new(),
+            hosted_tools,
         },
     }
 }
@@ -108,7 +122,15 @@ fn append_tool(
     definitions: &mut Vec<ToolDefinition>,
     custom: &mut HashSet<String>,
     strict: &mut HashMap<String, bool>,
+    hosted_tools: &mut Vec<Value>,
 ) {
+    // Hosted (server-side) tools carry no function schema and no `name`;
+    // they never become function definitions. Keep the raw declaration for
+    // per-protocol translation by `hosted_tools`.
+    if !matches!(tool["type"].as_str(), Some("function") | Some("custom")) {
+        hosted_tools.push(tool.clone());
+        return;
+    }
     let Some(name) = tool["name"].as_str() else {
         return;
     };
@@ -122,10 +144,8 @@ fn append_tool(
             .get("parameters")
             .cloned()
             .unwrap_or_else(|| json!({"type":"object", "properties":{}})),
-        other => {
-            tracing::warn!(tool_type = ?other, "Dropping hosted tool with no chat protocol equivalent");
-            return;
-        }
+        // Unreachable: hosted tool types returned above.
+        _ => return,
     };
     if let Some(value) = tool["strict"].as_bool() {
         strict.insert(name.clone(), value);

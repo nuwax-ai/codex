@@ -108,8 +108,10 @@ async fn stream_responses_via_rig_inner(
         anthropic_service_tier: None,
         tool_strict: Default::default(),
         tool_result_errors: Default::default(),
+        anthropic_server_tools: Vec::new(),
         anthropic_usage: Arc::new(std::sync::Mutex::new(Default::default())),
         responses_sse_recorder: sse_recorder,
+        anthropic_sse_tee: None,
     };
 
     let client = crate::client::build_responses_client(&base_url, &headers, http)?;

@@ -7,6 +7,8 @@ mod auth_tests;
 mod error_tests;
 #[path = "wire/history_tests.rs"]
 mod history_tests;
+#[path = "wire/hosted_tools_wire_tests.rs"]
+mod hosted_tools_wire_tests;
 #[path = "wire/request_id_tests.rs"]
 mod request_id_tests;
 #[path = "wire/responses_regression_tests.rs"]

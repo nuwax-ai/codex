@@ -30,7 +30,7 @@ pub(crate) struct PendingRigMessage {
     suffix: Vec<DeferredOutput>,
 }
 
-fn unique_suffix() -> String {
+pub(crate) fn unique_suffix() -> String {
     use std::sync::atomic::AtomicU64;
     use std::sync::atomic::Ordering;
     use std::time::SystemTime;

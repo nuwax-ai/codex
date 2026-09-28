@@ -28,6 +28,10 @@ pub(crate) struct RigHttpClient {
     /// Anthropic `service_tier`, mapped from the two semantically matching
     /// OpenAI values. `None` leaves the field untouched.
     pub(crate) anthropic_service_tier: Option<String>,
+    /// Translated Anthropic server-tool entries for the request's hosted
+    /// (Responses) tools; empty when none translate. Chat keeps dropping
+    /// hosted tools — they have no Chat Completions representation.
+    pub(crate) anthropic_server_tools: Vec<serde_json::Value>,
     pub(crate) request_id: Arc<Mutex<Option<String>>>,
     pub(crate) authorization_override: Option<http::HeaderValue>,
     pub(crate) protocol: crate::RigProtocol,
@@ -35,6 +39,10 @@ pub(crate) struct RigHttpClient {
     /// Responses passthrough only: tee the raw wire SSE bytes for cassette
     /// recording. `None` in production.
     pub(crate) responses_sse_recorder: Option<Arc<Mutex<Vec<u8>>>>,
+    /// Anthropic wire only: tee the raw wire SSE bytes so the stream pump can
+    /// recover server-tool blocks rig never exposes on its public streaming
+    /// surface. `None` in production for the other protocols.
+    pub(crate) anthropic_sse_tee: Option<Arc<Mutex<Vec<u8>>>>,
 }
 
 impl std::fmt::Debug for RigHttpClient {
@@ -121,6 +129,8 @@ impl HttpClientExt for RigHttpClient {
                     || self.disable_anthropic_thinking
                     || (self.protocol == crate::RigProtocol::Anthropic
                         && !self.tool_result_errors.is_empty())
+                    || (self.protocol == crate::RigProtocol::Anthropic
+                        && !self.anthropic_server_tools.is_empty())
                     || !self.tool_strict.is_empty()
                     || self.anthropic_effort.is_some()
                     || self.anthropic_service_tier.is_some());
@@ -172,6 +182,18 @@ impl HttpClientExt for RigHttpClient {
                 if let Some(body_map) = body.as_object_mut() {
                     if self.disable_anthropic_thinking {
                         body_map.insert("thinking".into(), serde_json::json!({"type":"disabled"}));
+                    }
+                    if self.protocol == crate::RigProtocol::Anthropic
+                        && !self.anthropic_server_tools.is_empty()
+                    {
+                        // Server tools have no function schema; they join the
+                        // serialized function tools as raw typed entries.
+                        let tools = body_map
+                            .entry("tools")
+                            .or_insert_with(|| serde_json::json!([]));
+                        if let Some(tools) = tools.as_array_mut() {
+                            tools.extend(self.anthropic_server_tools.iter().cloned());
+                        }
                     }
                     if let Some(effort) = &self.anthropic_effort {
                         // Merge into any existing output_config (rig may have
@@ -235,6 +257,7 @@ impl HttpClientExt for RigHttpClient {
             }
             let check_terminal = response.status().is_success();
             let sse_recorder = self.responses_sse_recorder.clone();
+            let anthropic_sse_tee = self.anthropic_sse_tee.clone();
             Ok(response.map(|body| {
                 let body = Box::pin(body.map(|chunk| chunk.map_err(sanitize_error)))
                     as rig_core::http_client::sse::BoxedStream;
@@ -254,6 +277,32 @@ impl HttpClientExt for RigHttpClient {
                         }))
                             as rig_core::http_client::sse::BoxedStream,
                         None => body,
+                    },
+                    // rig never exposes server-tool blocks on its public
+                    // streaming surface, so the Anthropic pump re-reads them
+                    // from the teed wire bytes at terminal time.
+                    crate::RigProtocol::Anthropic => match anthropic_sse_tee {
+                        Some(tee) => {
+                            let body = Box::pin(body.map(move |chunk| {
+                                if let Ok(bytes) = &chunk
+                                    && let Ok(mut buffer) = tee.lock()
+                                {
+                                    buffer.extend_from_slice(bytes);
+                                }
+                                chunk
+                            }))
+                                as rig_core::http_client::sse::BoxedStream;
+                            crate::sse::with_terminal_check(
+                                body,
+                                self.protocol,
+                                self.anthropic_usage.clone(),
+                            )
+                        }
+                        None => crate::sse::with_terminal_check(
+                            body,
+                            self.protocol,
+                            self.anthropic_usage.clone(),
+                        ),
                     },
                     protocol if check_terminal => crate::sse::with_terminal_check(
                         body,

@@ -200,9 +200,15 @@ mod mapping {
             {"type": "function", "name": "f", "description": "", "parameters": {}}
         ]"#;
         let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
-        let parsed = parse_tools(&tools).definitions;
-        assert_eq!(parsed.len(), 1);
-        assert_eq!(parsed[0].name, "f");
+        let selection = parse_tools(&tools);
+        assert_eq!(selection.definitions.len(), 1);
+        assert_eq!(selection.definitions[0].name, "f");
+        // Hosted declarations stay available for per-protocol translation
+        // (Anthropic server tools) instead of vanishing entirely.
+        assert_eq!(
+            selection.meta.hosted_tools,
+            vec![json!({"type": "web_search"})]
+        );
     }
 
     #[test]
