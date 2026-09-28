@@ -377,11 +377,26 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
                 &[],
                 &LoaderOverrides::default(),
                 /*workload_identity_selected*/ false,
-                /*exec_server_url*/ None
+                /*exec_server_url*/ None,
+                &codex_install_context::InstallMethod::Other
             ),
             expected
         );
     }
+    // Fork: the nuwax-codex npm package ships a single binary without a
+    // complete local package, so the daemon is never auto-started or reused.
+    let npm_cli = Cli::parse_from(["codex"]);
+    assert_eq!(
+        daemon_startup::exclusion(
+            &npm_cli,
+            &[],
+            &LoaderOverrides::default(),
+            /*workload_identity_selected*/ false,
+            /*exec_server_url*/ None,
+            &codex_install_context::InstallMethod::NpmNuwax
+        ),
+        Some("npm single-binary install (nuwax-codex)")
+    );
     let mut cli = Cli::parse_from(["codex"]);
     let overrides = vec![("web_search".into(), toml::Value::String("live".into()))];
     let loader = LoaderOverrides {
@@ -413,7 +428,14 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
         ),
     ] {
         assert_eq!(
-            daemon_startup::exclusion(&cli, kv, &loader, workload, executor),
+            daemon_startup::exclusion(
+                &cli,
+                kv,
+                &loader,
+                workload,
+                executor,
+                &codex_install_context::InstallMethod::Other
+            ),
             Some(expected)
         );
     }
@@ -425,7 +447,8 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
             &overrides,
             &LoaderOverrides::default(),
             /*workload_identity_selected*/ false,
-            /*exec_server_url*/ None
+            /*exec_server_url*/ None,
+            &codex_install_context::InstallMethod::Other
         ),
         None
     );

@@ -179,6 +179,7 @@ pub(super) async fn run_main_inner(
         &launch_loader_overrides,
         workload_identity_selected,
         std::env::var_os(codex_exec_server::CODEX_EXEC_SERVER_URL_ENV_VAR).as_deref(),
+        &codex_install_context::InstallContext::current().method,
     );
     let reuse_implicit_local_daemon = daemon_exclusion.is_none();
     let search_only_config_override = !workload_identity_selected
