@@ -423,12 +423,15 @@ async fn bridge_chat_compact_recovers_from_context_window_rejection() -> Result<
         retried_messages < rejected_messages,
         "retry must shed history: {retried_messages} !< {rejected_messages}"
     );
+    // The compaction prompt's distinctive template header — the base
+    // instructions also ride along in every request, so a generic substring
+    // like "summarize" would match ordinary turns too.
     assert!(
-        body(2)?.to_string().contains("summarize"),
-        "rejected request is the compaction summarize call"
+        body(2)?.to_string().contains("CONTEXT CHECKPOINT COMPACTION"),
+        "rejected request is the compaction call"
     );
     assert!(
-        body(3)?.to_string().contains("summarize"),
+        body(3)?.to_string().contains("CONTEXT CHECKPOINT COMPACTION"),
         "retried request is still the compaction call"
     );
     assert!(
