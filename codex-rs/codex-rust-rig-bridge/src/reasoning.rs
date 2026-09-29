@@ -46,6 +46,10 @@ impl ReasoningState {
         }) = self.blocks[index].content.first_mut()
         {
             accumulated.push_str(text);
+        } else {
+            // Out of rig's contract: a delta after the complete Reasoning
+            // for this id replaced the block (completion supersedes deltas).
+            tracing::debug!(id = %self.ids[index], "dropping reasoning delta after its completed block");
         }
         self.blocks[..index]
             .iter()

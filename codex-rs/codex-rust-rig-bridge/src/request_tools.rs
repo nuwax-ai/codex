@@ -39,12 +39,23 @@ pub(crate) fn flat_name(name: &str, namespace: Option<&str>) -> String {
 }
 
 pub(crate) fn request_tools(request: &ResponsesApiRequest) -> RequestTools {
-    let mut tools: Vec<Value> = request
-        .tools
-        .as_ref()
-        .and_then(|tools| serde_json::to_value(tools).ok())
-        .and_then(|value| serde_json::from_value(value).ok())
-        .unwrap_or_default();
+    let mut tools: Vec<Value> = match request.tools.as_ref() {
+        None => Vec::new(),
+        // Practically unreachable: the raw tool JSON was already valid and
+        // shallow. A silent empty list would strip every tool from the
+        // request, so surface it loudly in debug builds (only a >128-deep
+        // nested schema can trip serde_json's depth limit).
+        Some(tools) => serde_json::to_value(tools)
+            .ok()
+            .and_then(|value| serde_json::from_value(value).ok())
+            .unwrap_or_else(|| {
+                debug_assert!(
+                    false,
+                    "failed to round-trip request tools into the tool list"
+                );
+                Vec::new()
+            }),
+    };
     for item in &request.input {
         if let ResponseItem::AdditionalTools { tools: extra, .. } = item {
             tools.extend(extra.iter().cloned());
