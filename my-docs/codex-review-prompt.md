@@ -34,8 +34,8 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
 | 文件 | 改动 |
 |---|---|
 | `codex-rs/model-provider-info/src/lib.rs` | ① 重新加回 `WireApi::Chat`(上游已删),② 新增 `WireApi::Anthropic`(显式声明 Anthropic 协议,解决 StepFun 等 URL 无标记的网关),③ 新增 `ChatBridge` 枚举(`rig`默认/`genai`/`native`逃生舱)+ `experimental_bridge` 配置字段 |
-| `codex-rs/core/src/client.rs` | ① `stream_chat_api()`(fork 的 chat 路径入口,feature 门控),② `dispatch_chat_bridge()`(经 `&dyn ChatModelBridge` 分派,见下),③ `responses_routes_via_chat_bridge()`(**fork 关键策略:第三方厂商的 responses-wire 默认也走 rig 桥**,只有第一方 OpenAI 和 Bedrock 走原生),④ WireApi 分派臂扩展 |
-| `codex-rs/codex-api/src/bridge.rs` | **中立 trait 定义**:`ChatModelBridge`(对象安全)+ `ChatWireProtocol` 枚举 + `chat_wire_protocol()`(URL 嗅探 `/anthropic` 的唯一收敛点)。两桥实现此 trait,core 不感知桥的具体类型 |
+| `codex-rs/core/src/client.rs` | ① `stream_model_bridge()`(fork 的桥路径入口,feature 门控),② `dispatch_model_bridge()`(经 `&dyn ModelBridge` 分派,见下),③ **fork 关键策略:第三方厂商的 responses-wire 默认也走 rig 桥**(由 `uses_model_bridge()` 判定),只有第一方 OpenAI 和 Bedrock 走原生,④ WireApi 分派臂扩展 |
+| `codex-rs/codex-api/src/bridge.rs` | **中立 trait 定义**:`ModelBridge`(对象安全)+ `ModelWireProtocol` 枚举。两桥实现此 trait,core 不感知桥的具体类型 |
 | `codex-rs/codex-api/src/common.rs` | `ResponseEvent` 补了 `Serialize, Deserialize`(cassette 需要);`SafetyBuffering` 补 Serialize;导出 `TextFormat` 等 |
 | `codex-rs/core/src/tools/flat_name_index.rs`(新增)+ `registry.rs`(小改) | namespace 工具展平为 `mcp__ns__tool` 后的回环索引 |
 | `codex-rs/core/src/session/turn_context.rs`、`models-manager/model_info.rs` | fallback 模型元数据告警降噪(自定义厂商必然 fallback,不该每轮弹警告) |
@@ -55,8 +55,8 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
    - `wire_api = "responses"` + 第一方 OpenAI/Bedrock → 原生(WebSocket/宿主工具/SigV4 不能丢)
    - `wire_api = "responses"` + **其他所有厂商 → 默认走 rig 桥**(厂商 Responses 实现残缺,桥转 Chat 更兼容;桥会丢弃宿主工具并 warn)
    - `experimental_bridge` 可显式选 `"rig"`(默认)/`"genai"`/`"native"`(强制原生,逃生舱)
-2. **trait 隔离**:`codex-api::ChatModelBridge` 是唯一契约,两桥以单元结构体实现;
-   core 的 `dispatch_chat_bridge` 只见 `&dyn ChatModelBridge`。
+2. **trait 隔离**:`codex-api::ModelBridge` 是唯一契约,两桥以单元结构体实现;
+   core 的 `dispatch_model_bridge` 只见 `&dyn ModelBridge`。
 3. **rig 版本策略**:`rig-core = "=0.42.0"` 精确锁定(rig 上游高频 breaking,0.42 之后
    5 周 44 个破坏性变更);升级只动 rig-bridge 一个 crate。
 4. **双 reqwest 共存**:workspace 其他部分用 reqwest 0.12,rig-bridge 以重命名依赖
@@ -94,7 +94,7 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
    - 事件契约五条(见三.5)是否有遗漏场景(如:并行工具、流中断、超长参数)
    - `stream_via_rig` 的急切首事件 + mpsc 泵逻辑:`next_event` 预取模式是否有竞态或
      事件丢失/乱序风险;`Created` 合成的位置
-   - core 的分派逻辑:`responses_routes_via_chat_bridge` 对 Bedrock/ollama/lmstudio
+   - core 的分派逻辑:`uses_model_bridge()` 对 Bedrock/ollama/lmstudio
      内置 provider 的判定是否安全(`is_openai()`/`is_amazon_bedrock()` 按名称匹配,
      用户自定义同名 provider 会不会误判)
 2. **安全**:

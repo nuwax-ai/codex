@@ -47,7 +47,7 @@ cli/exec/app-server 二进制启用。
 
 - **Chat / Anthropic wire**：一律走桥（官方原生只认 OpenAI）。
 - **Responses wire**：第一方 OpenAI/Bedrock 走官方原生；**第三方厂商默认也走桥**
-  （`responses_routes_via_chat_bridge`，fork 关键策略）。
+  （`uses_model_bridge()` 判定 + `dispatch_model_bridge` 分派，fork 关键策略）。
 
 ### 3.4 Responses 同协议透传（rig 桥内）
 
@@ -127,3 +127,14 @@ code-mode-host、rg）。fork 的 npm 包只发单二进制 → 自启必失败
 一致。fork 补丁面全景见 `codex-review-prompt.md` §二；设计文档见
 `my-docs/nuwax-home/`、`my-docs/anthropic-hosted-tools/`、
 `my-docs/rig-responses-phase1|2/`。
+
+## 10. 已知局限（非缺陷，已定位或有规划）
+
+| 局限 | 坐标/依据 | 状态 |
+|---|---|---|
+| Anthropic 固定 `max_tokens=16384`，长输出/重思考模型命中即整轮报错 | `codex-rust-rig-bridge/src/client.rs:120`；与官方 `response.incomplete` 行为一致（对齐而非缺陷） | backlog（可配置化） |
+| 无 Anthropic prompt caching（`cache_control`） | 桥内零出现（grep 实证） | backlog |
+| 每轮新建 reqwest client（每轮 TLS 握手） | `stream.rs`/`responses.rs` 每次 `http_client(...)` | backlog |
+| 跨轮 web_search 检索上下文丢失：`WebSearchCall` 条目无结果字段，桥回放时丢弃（无悬空块风险，assistant 文本保留） | `protocol/src/models.rs:1190-1203`、`request_messages.rs:207-219`；两轮复核定案"丢弃正确" | **phase-3 增强**：新增结果持久化字段 + 成对回放 `server_tool_use`/`web_search_tool_result` |
+| 病态网关"HTTP 200 + 非 SSE JSON 错误体"两线均 EOF 丢体 | `sse.rs` EOF 路径；三家目标厂商 live 未见此行为 | 已知边界（可选加固：EOF 时附 body 摘要） |
+| 测试序列化兜底 `unwrap_or_default()` 仅在工具 schema >128 层嵌套时可达（静默零工具） | `request_tools.rs:41-47`（serde_json 递归深度限制，实测无现实 schema 可触发） | P3 nit（debug_assert） |

@@ -1,5 +1,7 @@
 # codex-rust-rig-bridge 实施方案(Plan 层文档)
 
+> ⚠️ **历史文档，已被 [FORK.md](FORK.md) 取代**（2026-09-29）：本文 §8 的 Responses→Chat 转换、§12.4 的 `ChatModelBridge`/`chat_wire_protocol()` 均为旧设计（真实 trait 是 `ModelBridge`/`ModelWireProtocol`，Responses 走同协议透传）；§"分派规则"引用的 `responses_routes_via_chat_bridge` 函数不存在（真实机制是 `uses_model_bridge()` 判定）；hosted 工具现状是翻译表（见 FORK.md §4）而非本文所述"自动丢弃"。保留仅作历史。
+
 > 2026-09-25 修复说明：当前字段与验证边界以 [field-mapping-audit.md](field-mapping-audit.md) 为准。Rig-event cassette 仅回放 SDK 中间事件；最终 HTTP 字段另由本地 wire 集成测试验证。
 
 > 目标:新增平行模块 `codex-rust-rig-bridge`,用 rig(rig-core)替代 genai 承载
