@@ -894,6 +894,80 @@ async fn spawn_exec_turn(
     Ok((stdout, stderr))
 }
 
+/// Two-turn live web-search run on the Anthropic wire: the second turn's
+/// request replays turn 1's history WITHOUT the dropped `WebSearchCall`
+/// items (the pinned cross-turn behavior, see the bridge wire test
+/// `anthropic_replay_drops_web_search_call_history`). Completing turn 2
+/// against the real gateway proves the replay shape is accepted; this is
+/// the live baseline for the phase-3 faithful-replay enhancement.
+pub async fn run_websearch_turns(
+    protocol: &str,
+    cfg: &LiveConfig,
+    base_url: &str,
+    bridge: Option<&str>,
+) -> Result<()> {
+    anyhow::ensure!(
+        cassette_mode() != CassetteMode::Replay,
+        "exec_live cannot replay; use --test bridge_live for offline replay"
+    );
+    let home = tempfile::TempDir::new()?;
+    let cwd = tempfile::TempDir::new()?;
+    write_config_toml(home.path(), cfg, base_url, "anthropic", bridge, "")?;
+
+    let artifacts_dir = repo_root()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("logs")
+        .join(format!("live-{}", cfg.vendor))
+        .join(format!("websearch-{protocol}"));
+    std::fs::create_dir_all(&artifacts_dir)?;
+
+    let binary = codex_exec_binary()?;
+    let last1 = home.path().join("last_message_1.txt");
+    spawn_exec_turn(
+        &binary,
+        home.path(),
+        cwd.path(),
+        &[],
+        "用 web 搜索今天北京的天气，然后用一句话总结。",
+        &last1,
+        &artifacts_dir,
+        "turn1",
+        protocol,
+    )
+    .await?;
+    let answer1 = std::fs::read_to_string(&last1).unwrap_or_default();
+    anyhow::ensure!(
+        !answer1.trim().is_empty(),
+        "[{protocol}] turn 1 produced no answer"
+    );
+
+    let last2 = home.path().join("last_message_2.txt");
+    spawn_exec_turn(
+        &binary,
+        home.path(),
+        cwd.path(),
+        &["resume", "--last"],
+        "再用 web 搜索今天上海的天气，然后用一句话总结。",
+        &last2,
+        &artifacts_dir,
+        "turn2",
+        protocol,
+    )
+    .await?;
+    let answer2 = std::fs::read_to_string(&last2).unwrap_or_default();
+    anyhow::ensure!(
+        !answer2.trim().is_empty(),
+        "[{protocol}] turn 2 (replayed history without web_search items) produced no answer — \
+         gateway may be rejecting the dropped-history replay"
+    );
+    println!(
+        "[{protocol}] OK websearch turns answer1_chars={} answer2_chars={}",
+        answer1.chars().count(),
+        answer2.chars().count()
+    );
+    Ok(())
+}
+
 /// All session rollout files recorded under a codex home, oldest first.
 fn session_rollouts(home: &Path) -> Vec<PathBuf> {
     fn visit(dir: &Path, out: &mut Vec<PathBuf>) {

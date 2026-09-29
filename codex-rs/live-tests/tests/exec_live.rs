@@ -224,6 +224,25 @@ exec_matrix!(responses_rig_default, ["mimo", "glm", "step"]);
 exec_matrix!(responses_native, ["mimo", "glm", "step"]);
 exec_matrix!(anthropic_genai, ["mimo", "glm", "step"]);
 exec_matrix!(anthropic_rig, ["mimo", "glm", "step"]);
+/// Cross-turn web_search on the Anthropic wire: turn 2 replays turn 1's
+/// history with the WebSearchCall items dropped (pinned behavior); the live
+/// gateway accepting both turns is the baseline for the phase-3 replay.
+async fn websearch_anthropic_rig_scenario(
+    cfg: &codex_live_tests::LiveConfig,
+) -> anyhow::Result<()> {
+    let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(cfg) else {
+        return Ok(());
+    };
+    codex_live_tests::run_websearch_turns(
+        "websearch-anthropic-rig",
+        cfg,
+        &anthropic_url,
+        Some("rig"),
+    )
+    .await
+}
+
+exec_matrix!(websearch_anthropic_rig, ["mimo", "glm", "step"]);
 exec_matrix!(compact_chat_rig, ["mimo", "glm", "step"]);
 exec_matrix!(compact_anthropic_rig, ["mimo", "glm", "step"]);
 exec_matrix!(compact_responses_rig, ["mimo", "glm", "step"]);

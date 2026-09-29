@@ -195,3 +195,60 @@ async fn anthropic_server_tool_without_a_codex_item_is_ignored() {
     );
     assert_eq!(done_items.len(), 1, "only the text message: {done_items:?}");
 }
+
+// Fork: cross-turn web_search replay on the Anthropic wire. `WebSearchCall`
+// items carry no result payload (protocol/src/models.rs), so the only sound
+// replay is to drop them — this pins that behavior as the regression
+// baseline for the phase-3 faithful-replay enhancement (paired
+// server_tool_use / web_search_tool_result blocks).
+#[tokio::test]
+async fn anthropic_replay_drops_web_search_call_history() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let provider = provider(listener.local_addr().unwrap());
+    let server =
+        tokio::spawn(
+            async move { support::serve_payload(&listener, support::ANTHROPIC_SSE).await },
+        );
+    let web_search_call: Value = serde_json::from_str(
+        r#"{"type":"web_search_call","id":"call_prev","status":"completed",
+            "action":{"type":"search","query":"last turn query"}}"#,
+    )
+    .unwrap();
+    let request = support::request(vec![
+        support::user(),
+        web_search_call,
+        serde_json::json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"prior answer"}]}),
+        serde_json::json!({"type":"message","role":"user","content":[{"type":"input_text","text":"next question"}]}),
+    ]);
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = stream.next().await {
+        event.unwrap();
+    }
+    let wire = server.await.unwrap();
+    let encoded = wire["body"]["messages"].to_string();
+    assert!(
+        !encoded.contains("server_tool_use"),
+        "replay must not carry server_tool_use blocks: {encoded}"
+    );
+    assert!(
+        !encoded.contains("web_search_tool_result") && !encoded.contains("\"tool_result\""),
+        "replay must not carry search result blocks: {encoded}"
+    );
+    assert!(
+        !encoded.contains("last turn query"),
+        "dropped items must not leak their payloads: {encoded}"
+    );
+    // The retained assistant text and the new user turn survive.
+    assert!(encoded.contains("prior answer"));
+    assert!(encoded.contains("next question"));
+}

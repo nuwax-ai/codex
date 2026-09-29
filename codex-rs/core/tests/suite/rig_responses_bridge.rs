@@ -324,3 +324,132 @@ async fn responses_bridge_resumes_history_without_backfilling_provenance() -> Re
     );
     Ok(())
 }
+
+// Fork (nuwax-codex): the compaction trim-retry loop must engage on the
+// BRIDGE wires too. Chat-wire providers have no native transport (core
+// rejects them Fatal without a bridge feature), so a completed turn here is
+// itself structural proof the rig bridge served the request; the mock
+// additionally asserts chat-completions-shaped request paths and bodies.
+// The rejected compaction request carries the vendor 400 body through the
+// bridge's error mapping into the shared context-window classifier.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn bridge_chat_compact_recovers_from_context_window_rejection() -> Result<()> {
+    use codex_core::compact::SUMMARIZATION_PROMPT;
+    use wiremock::matchers::method;
+    use wiremock::matchers::path_regex;
+
+    fn chat_sse(text: &str, total_tokens: i64) -> wiremock::ResponseTemplate {
+        let first = json!({
+            "id": "chatcmpl-x", "object": "chat.completion.chunk", "created": 1,
+            "model": "server-model",
+            "choices": [{"index": 0, "delta": {"role": "assistant", "content": text}, "finish_reason": null}]
+        });
+        let final_chunk = json!({
+            "id": "chatcmpl-x", "object": "chat.completion.chunk", "created": 1,
+            "model": "server-model",
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": total_tokens}
+        });
+        let body = format!("data: {first}\n\ndata: {final_chunk}\n\ndata: [DONE]\n\n");
+        responses::sse_response(body)
+    }
+
+    let server = MockServer::start().await;
+    // Mount in chronological order; each mock exhausts after one hit, so the
+    // next request falls through to the next mock (wiremock matches by
+    // stable priority = registration order).
+    let rejection = wiremock::ResponseTemplate::new(400).set_body_json(json!({
+        "error": {
+            "code": "context_length_exceeded",
+            "message": "This model's maximum context length is 8192 tokens.",
+        }
+    }));
+    let sequence = [
+        chat_sse("FIRST_REPLY", /*total_tokens*/ 70_000),
+        chat_sse("SECOND_REPLY", /*total_tokens*/ 330_000),
+        rejection,
+        chat_sse("AUTO_SUMMARY", /*total_tokens*/ 200),
+        chat_sse("FINAL_REPLY", /*total_tokens*/ 120),
+    ];
+    let request_log = ChatRequestLog::default();
+    for template in sequence {
+        wiremock::Mock::given(method("POST"))
+            .and(path_regex(".*/chat/completions$"))
+            .and(request_log.clone())
+            .respond_with(template)
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+    }
+
+    let provider = ModelProviderInfo {
+        name: "rig-chat".into(),
+        wire_api: WireApi::Chat,
+        ..bridged_responses_provider(&server)
+    };
+    let test = test_codex()
+        .with_config(move |config| {
+            config.model_provider = provider;
+            config.model_auto_compact_token_limit = Some(200_000);
+            config.compact_prompt = Some(SUMMARIZATION_PROMPT.to_string());
+        })
+        .build_with_auto_env(&server)
+        .await
+        .context("build")?;
+    test.submit_text_turn("token limit start").await?;
+    test.submit_text_turn("token limit push").await?;
+    test.submit_text_turn("post auto follow-up").await?;
+
+    let requests = request_log.requests();
+    let paths: Vec<String> = requests.iter().map(|r| r.url.path().to_string()).collect();
+    assert_eq!(
+        paths,
+        vec!["/v1/chat/completions".to_string(); 5],
+        "every request must be chat-completions shaped (bridge wire)"
+    );
+    let body = |index: usize| {
+        serde_json::from_slice::<Value>(&requests[index].body).context("request body json")
+    };
+    // Request 3 is the rejected compaction; request 4 is the trimmed retry.
+    let rejected_messages = body(2)?["messages"]
+        .as_array()
+        .context("rejected request messages")?
+        .len();
+    let retried_messages = body(3)?["messages"]
+        .as_array()
+        .context("retried request messages")?
+        .len();
+    assert!(
+        retried_messages < rejected_messages,
+        "retry must shed history: {retried_messages} !< {rejected_messages}"
+    );
+    assert!(
+        body(2)?.to_string().contains("summarize"),
+        "rejected request is the compaction summarize call"
+    );
+    assert!(
+        body(3)?.to_string().contains("summarize"),
+        "retried request is still the compaction call"
+    );
+    assert!(
+        body(4)?.to_string().contains("post auto follow-up"),
+        "the follow-up turn must run after recovery"
+    );
+    Ok(())
+}
+
+#[derive(Clone, Default)]
+struct ChatRequestLog(std::sync::Arc<std::sync::Mutex<Vec<wiremock::Request>>>);
+
+impl ChatRequestLog {
+    fn requests(&self) -> Vec<wiremock::Request> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl wiremock::Match for ChatRequestLog {
+    fn matches(&self, request: &wiremock::Request) -> bool {
+        self.0.lock().unwrap().push(request.clone());
+        true
+    }
+}
