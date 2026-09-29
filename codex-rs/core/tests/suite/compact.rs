@@ -5675,3 +5675,107 @@ async fn remote_v2_compaction_refreshes_instructions_and_preserves_them_on_cold_
 
     Ok(())
 }
+
+// Fork (nuwax-codex): bridge wires surface vendor context-window rejections
+// as plain HTTP 400 bodies. The error classification must recognize them so
+// the compaction trim-retry loop sheds history instead of failing the turn
+// with a generic invalid request after exhausting retries.
+#[tokio::test(flavor = "multi_thread")]
+async fn auto_compact_recovers_from_http_context_window_rejection_by_trimming() {
+    skip_if_no_network!();
+
+    let server = start_mock_server().await;
+
+    let sse1 = sse(vec![
+        ev_assistant_message("m1", FIRST_REPLY),
+        ev_completed_with_tokens("r1", /*total_tokens*/ 70_000),
+    ]);
+    let sse2 = sse(vec![
+        ev_assistant_message("m2", "SECOND_REPLY"),
+        ev_completed_with_tokens("r2", /*total_tokens*/ 330_000),
+    ]);
+    let context_window_rejection =
+        wiremock::ResponseTemplate::new(/*status*/ 400).set_body_json(json!({
+            "error": {
+                "code": "context_length_exceeded",
+                "message": "This model's maximum context length is 8192 tokens.",
+            }
+        }));
+    let sse3 = sse(vec![
+        ev_assistant_message("m3", AUTO_SUMMARY_TEXT),
+        ev_completed_with_tokens("r3", /*total_tokens*/ 200),
+    ]);
+    let sse4 = sse(vec![
+        ev_assistant_message("m4", FINAL_REPLY),
+        ev_completed_with_tokens("r4", /*total_tokens*/ 120),
+    ]);
+
+    let request_log = mount_response_sequence(
+        &server,
+        vec![
+            sse_response(sse1),
+            sse_response(sse2),
+            context_window_rejection,
+            sse_response(sse3),
+            sse_response(sse4),
+        ],
+    )
+    .await;
+
+    let model_provider = non_openai_model_provider(&server);
+    let mut builder = test_codex().with_config(move |config| {
+        config.model_provider = model_provider;
+        set_test_compact_prompt(config);
+        config.model_auto_compact_token_limit = Some(200_000);
+    });
+    let codex = builder.build(&server).await.unwrap().codex;
+
+    for msg in [FIRST_AUTO_MSG, SECOND_AUTO_MSG, POST_AUTO_USER_MSG] {
+        codex
+            .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+                text: msg.into(),
+                text_elements: Vec::new(),
+            }]))
+            .await
+            .unwrap();
+        wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    }
+
+    let requests = request_log.requests();
+    let bodies: Vec<String> = requests
+        .iter()
+        .map(|request| request.body_json().to_string())
+        .collect();
+    assert_eq!(
+        bodies.len(),
+        5,
+        "expected two turns, a rejected compaction, the retried compaction, and the follow-up"
+    );
+    let compaction_indices: Vec<usize> = bodies
+        .iter()
+        .enumerate()
+        .filter(|(_, body)| body_contains_text(body, SUMMARIZATION_PROMPT))
+        .map(|(index, _)| index)
+        .collect();
+    assert_eq!(
+        compaction_indices,
+        vec![2, 3],
+        "compaction should be rejected once, then retried"
+    );
+    // The retry must carry strictly fewer input items than the rejected
+    // attempt: the trim loop removed the oldest history item.
+    let input_len =
+        |body: &serde_json::Value| body["input"].as_array().map(Vec::len).unwrap_or_default();
+    let rejected = requests[2].body_json();
+    let retried = requests[3].body_json();
+    assert!(
+        input_len(&retried) < input_len(&rejected),
+        "retry must shed history: {} !< {}",
+        input_len(&retried),
+        input_len(&rejected)
+    );
+    assert!(
+        bodies[4].contains(POST_AUTO_USER_MSG)
+            && !body_contains_text(&bodies[4], SUMMARIZATION_PROMPT)
+    );
+}

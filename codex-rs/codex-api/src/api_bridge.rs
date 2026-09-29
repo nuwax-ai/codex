@@ -93,6 +93,21 @@ fn map_api_error_details(err: ApiError) -> CodexErr {
             } => {
                 let body_text = body.unwrap_or_default();
 
+                // Fork (nuwax-codex): bridge wires surface vendor
+                // context-window rejections as plain HTTP error bodies.
+                // Without this classification the compaction trim-retry loop
+                // in core (`remove_first_item` on overflow) and the
+                // turn-level overflow handling never trigger, so long
+                // contexts fail compaction with a generic invalid-request
+                // error after burning retries on the same oversized request.
+                if matches!(
+                    status,
+                    http::StatusCode::BAD_REQUEST | http::StatusCode::PAYLOAD_TOO_LARGE
+                ) && body_indicates_context_window_exceeded(&body_text)
+                {
+                    return CodexErr::ContextWindowExceeded;
+                }
+
                 if status == http::StatusCode::SERVICE_UNAVAILABLE
                     && let Ok(value) = serde_json::from_str::<serde_json::Value>(&body_text)
                     && let Some(error) = value.get("error")
@@ -318,6 +333,34 @@ fn extract_x_error_json_code(headers: Option<&HeaderMap>) -> Option<String> {
         .and_then(|error| error.get("code"))
         .and_then(Value::as_str)
         .map(str::to_string)
+}
+
+/// Fork (nuwax-codex): recognizes vendor context-window rejections on HTTP
+/// bodies. The structured check covers the OpenAI-family error code that
+/// most OpenAI-compatible gateways use (DeepSeek, GLM, ...); the marker
+/// list covers Anthropic's Messages wording and the common free-text
+/// spellings. Markers stay specific — a generic 400 must keep classifying
+/// as an invalid request, not silently shed history.
+fn body_indicates_context_window_exceeded(body_text: &str) -> bool {
+    if let Ok(parsed) = serde_json::from_str::<Value>(body_text)
+        && let Some(code) = parsed
+            .get("error")
+            .and_then(|error| error.get("code"))
+            .and_then(Value::as_str)
+        && code == "context_length_exceeded"
+    {
+        return true;
+    }
+    const MARKERS: [&str; 6] = [
+        "context_length_exceeded",
+        "context length exceeded",
+        "exceeds the context window",
+        "exceed the context window",
+        "maximum context length",
+        "prompt is too long",
+    ];
+    let lowered = body_text.to_ascii_lowercase();
+    MARKERS.iter().any(|marker| lowered.contains(marker))
 }
 
 #[derive(Debug, Deserialize)]

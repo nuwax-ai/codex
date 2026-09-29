@@ -655,3 +655,60 @@ fn map_api_error_extracts_identity_auth_details_from_headers() {
     );
     assert_eq!(err.identity_error_code.as_deref(), Some("token_expired"));
 }
+
+// Fork (nuwax-codex): bridge wires surface vendor context-window
+// rejections as HTTP bodies; these must classify as ContextWindowExceeded
+// so the compaction trim-retry loop and turn overflow handling engage.
+#[test]
+fn map_api_error_classifies_http_context_window_rejections() {
+    for (status, body) in [
+        (
+            http::StatusCode::BAD_REQUEST,
+            r#"{"error":{"code":"context_length_exceeded","message":"This model's maximum context length is 8192 tokens."}}"#,
+        ),
+        (
+            http::StatusCode::BAD_REQUEST,
+            "prompt is too long: 20000 tokens > 8192 maximum",
+        ),
+        (
+            http::StatusCode::BAD_REQUEST,
+            "Your input exceeds the context window of this model.",
+        ),
+        (
+            http::StatusCode::PAYLOAD_TOO_LARGE,
+            "request context length exceeded the limit",
+        ),
+    ] {
+        let err = map_api_error(ApiError::Transport(TransportError::Http {
+            retry_after: None,
+            status,
+            url: None,
+            headers: None,
+            body: Some(body.to_string()),
+        }));
+        assert!(
+            matches!(err.details(), CodexErrorDetails::ContextWindowExceeded),
+            "body {body:?} should classify as context window exceeded"
+        );
+    }
+}
+
+#[test]
+fn map_api_error_keeps_generic_bad_requests_invalid() {
+    for body in [
+        r#"{"error":{"code":"invalid_request_error","message":"unknown parameter"}}"#,
+        "The image data you provided does not represent a valid image",
+    ] {
+        let err = map_api_error(ApiError::Transport(TransportError::Http {
+            retry_after: None,
+            status: http::StatusCode::BAD_REQUEST,
+            url: None,
+            headers: None,
+            body: Some(body.to_string()),
+        }));
+        assert!(
+            !matches!(err.details(), CodexErrorDetails::ContextWindowExceeded),
+            "body {body:?} must stay a generic invalid request"
+        );
+    }
+}
