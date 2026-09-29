@@ -7318,6 +7318,11 @@
       "description": "Optional override of model selection.",
       "type": "string"
     },
+    "model_auto_compact_ratio": {
+      "description": "Fork (nuwax-codex): fraction of the effective context window that triggers auto-compaction (e.g. `0.8`). Only consulted when `model_auto_compact_token_limit` is unset; keeps deployments from hardcoding absolute token counts per vendor.",
+      "format": "double",
+      "type": "number"
+    },
     "model_auto_compact_token_limit": {
       "description": "Token usage threshold triggering auto-compaction of conversation history.",
       "format": "int64",

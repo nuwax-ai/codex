@@ -28,6 +28,23 @@ pub fn with_config_overrides(mut model: ModelInfo, config: &ModelsManagerConfig)
     }
     if let Some(auto_compact_token_limit) = config.model_auto_compact_token_limit {
         model.auto_compact_token_limit = Some(auto_compact_token_limit);
+    } else if let Some(ratio) = config.model_auto_compact_ratio {
+        // Fork (nuwax-codex): ratio-based threshold derives from the
+        // effective context window (the override above already applied), so
+        // deployments can say "compact at 80% of the window" without
+        // hardcoding per-vendor token counts. An explicit absolute limit
+        // always wins; an out-of-range ratio is ignored with a warning
+        // rather than silently clamping a typo.
+        if !(0.0..=1.0).contains(&ratio) {
+            tracing::warn!(
+                ratio,
+                "model_auto_compact_ratio must be within (0, 1]; ignoring it"
+            );
+        } else if ratio > 0.0
+            && let Some(context_window) = model.context_window
+        {
+            model.auto_compact_token_limit = Some((context_window as f64 * ratio) as i64);
+        }
     }
     if let Some(token_limit) = config.tool_output_token_limit {
         model.truncation_policy = match model.truncation_policy.mode {

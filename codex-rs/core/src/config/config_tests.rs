@@ -13390,3 +13390,47 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
 
     Ok(())
 }
+
+// Fork (nuwax-codex): ratio-derived auto-compact limits must stay within
+// (0, 1]; a negative ratio must not derive a negative limit, which would
+// trigger compaction on every turn.
+#[tokio::test]
+async fn to_models_manager_config_rejects_out_of_range_ratio_derivation() {
+    let codex_home = tempdir().expect("tempdir");
+    let base = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .cli_overrides(vec![
+            ("model_context_window".to_string(), toml::Value::Integer(60_000)),
+            ("model_auto_compact_ratio".to_string(), toml::Value::Float(0.8)),
+        ])
+        .build()
+        .await
+        .expect("base config");
+    assert_eq!(
+        base.to_models_manager_config().model_auto_compact_token_limit,
+        Some(48_000)
+    );
+
+    for ratio in [-0.5, 0.0, 1.5] {
+        let config = Config {
+            model_auto_compact_ratio: Some(ratio),
+            ..base.clone()
+        };
+        assert_eq!(
+            config.to_models_manager_config().model_auto_compact_token_limit,
+            None,
+            "ratio {ratio} must not derive a limit"
+        );
+    }
+
+    // An explicit absolute limit always wins over the ratio.
+    let config = Config {
+        model_auto_compact_token_limit: Some(12_345),
+        model_auto_compact_ratio: Some(0.8),
+        ..base
+    };
+    assert_eq!(
+        config.to_models_manager_config().model_auto_compact_token_limit,
+        Some(12_345)
+    );
+}

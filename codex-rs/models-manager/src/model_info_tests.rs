@@ -275,3 +275,60 @@ fn model_context_window_uses_model_value_without_override() {
 
     assert_eq!(updated, model);
 }
+
+// Fork (nuwax-codex): ratio-derived auto-compact thresholds.
+#[test]
+fn auto_compact_ratio_derives_limit_from_the_effective_window() {
+    let mut model = model_info_from_slug("unknown-model");
+    model.context_window = Some(100_000);
+    let config = ModelsManagerConfig {
+        model_auto_compact_ratio: Some(0.8),
+        ..Default::default()
+    };
+    let updated = with_config_overrides(model, &config);
+    assert_eq!(updated.auto_compact_token_limit, Some(80_000));
+}
+
+#[test]
+fn auto_compact_ratio_respects_window_overrides_and_absolute_limits() {
+    // The context-window override applies first; the ratio uses it.
+    let mut model = model_info_from_slug("unknown-model");
+    model.context_window = Some(100_000);
+    model.max_context_window = Some(60_000);
+    let config = ModelsManagerConfig {
+        model_context_window: Some(200_000),
+        model_auto_compact_ratio: Some(0.5),
+        ..Default::default()
+    };
+    let updated = with_config_overrides(model, &config);
+    // min(200_000, max_context_window 60_000) * 0.5
+    assert_eq!(updated.auto_compact_token_limit, Some(30_000));
+
+    // An explicit absolute limit always wins over the ratio.
+    let mut model = model_info_from_slug("unknown-model");
+    model.context_window = Some(100_000);
+    let config = ModelsManagerConfig {
+        model_auto_compact_token_limit: Some(12_345),
+        model_auto_compact_ratio: Some(0.8),
+        ..Default::default()
+    };
+    let updated = with_config_overrides(model, &config);
+    assert_eq!(updated.auto_compact_token_limit, Some(12_345));
+}
+
+#[test]
+fn out_of_range_auto_compact_ratio_is_ignored_with_a_warning() {
+    let mut model = model_info_from_slug("unknown-model");
+    model.context_window = Some(100_000);
+    for ratio in [0.0, -0.5, 1.5] {
+        let config = ModelsManagerConfig {
+            model_auto_compact_ratio: Some(ratio),
+            ..Default::default()
+        };
+        let updated = with_config_overrides(model_info_from_slug("unknown-model"), &config);
+        assert_eq!(
+            updated.auto_compact_token_limit, None,
+            "ratio {ratio} must not derive a limit"
+        );
+    }
+}

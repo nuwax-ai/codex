@@ -177,6 +177,12 @@ pub struct ConfigToml {
     /// Token usage threshold triggering auto-compaction of conversation history.
     pub model_auto_compact_token_limit: Option<i64>,
 
+    /// Fork (nuwax-codex): fraction of the effective context window that
+    /// triggers auto-compaction (e.g. `0.8`). Only consulted when
+    /// `model_auto_compact_token_limit` is unset; keeps deployments from
+    /// hardcoding absolute token counts per vendor.
+    pub model_auto_compact_ratio: Option<f64>,
+
     /// Controls whether the auto-compaction limit applies to the full context or
     /// only to tokens after the carried prefix in the current compaction window.
     pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>,

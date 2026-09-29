@@ -205,6 +205,7 @@ impl ModelInfoOverrides {
         ModelsManagerConfig {
             model_context_window: self.context_window,
             model_auto_compact_token_limit: self.auto_compact_token_limit,
+            model_auto_compact_ratio: None,
             tool_output_token_limit: self.tool_output_token_limit,
             base_instructions: self.base_instructions.clone(),
             personality,

@@ -87,6 +87,12 @@ impl CliConfigOverrides {
             &mut overrides,
             std::env::var_os(MODEL_REASONING_EFFORT_ENV).as_deref(),
         )?;
+        apply_env_context_seeds(
+            &mut overrides,
+            std::env::var_os(MODEL_CONTEXT_WINDOW_ENV).as_deref(),
+            std::env::var_os(AUTO_COMPACT_TOKEN_LIMIT_ENV).as_deref(),
+            std::env::var_os(AUTO_COMPACT_RATIO_ENV).as_deref(),
+        )?;
         Ok(overrides)
     }
 }
@@ -97,28 +103,119 @@ impl CliConfigOverrides {
 /// here instead of silently becoming a Custom effort that some wires drop.
 const MODEL_REASONING_EFFORT_ENV: &str = "CODEX_MODEL_REASONING_EFFORT";
 
+/// Fork: `CODEX_MODEL_CONTEXT_WINDOW` seeds `model_context_window`,
+/// `CODEX_AUTO_COMPACT_TOKEN_LIMIT` seeds `model_auto_compact_token_limit`,
+/// and `CODEX_AUTO_COMPACT_RATIO` seeds `model_auto_compact_ratio` — each at
+/// a precedence between config.toml and an explicit `-c` override. Container
+/// deployments set these instead of baking vendor-specific token counts into
+/// config files.
+const MODEL_CONTEXT_WINDOW_ENV: &str = "CODEX_MODEL_CONTEXT_WINDOW";
+const AUTO_COMPACT_TOKEN_LIMIT_ENV: &str = "CODEX_AUTO_COMPACT_TOKEN_LIMIT";
+const AUTO_COMPACT_RATIO_ENV: &str = "CODEX_AUTO_COMPACT_RATIO";
+
+fn apply_env_context_seeds(
+    overrides: &mut Vec<(String, Value)>,
+    context_window: Option<&OsStr>,
+    token_limit: Option<&OsStr>,
+    ratio: Option<&OsStr>,
+) -> Result<(), String> {
+    seed_env_integer(
+        overrides,
+        MODEL_CONTEXT_WINDOW_ENV,
+        "model_context_window",
+        context_window,
+    )?;
+    seed_env_integer(
+        overrides,
+        AUTO_COMPACT_TOKEN_LIMIT_ENV,
+        "model_auto_compact_token_limit",
+        token_limit,
+    )?;
+    seed_env_ratio(
+        overrides,
+        AUTO_COMPACT_RATIO_ENV,
+        "model_auto_compact_ratio",
+        ratio,
+    )?;
+    Ok(())
+}
+
+/// Shared preamble for one environment-seeded override: skips when an
+/// explicit `-c` already set the key, and normalizes the raw value. `Ok(None)`
+/// means "nothing to seed" (unset or blank).
+fn env_override_text<'a>(
+    overrides: &[(String, Value)],
+    config_key: &str,
+    env_name: &str,
+    value: Option<&'a OsStr>,
+) -> Result<Option<&'a str>, String> {
+    if overrides.iter().any(|(key, _)| key == config_key) {
+        // An explicit -c wins over the environment.
+        return Ok(None);
+    }
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let raw = value
+        .to_str()
+        .ok_or_else(|| format!("Invalid {env_name}: expected Unicode text"))?
+        .trim();
+    Ok((!raw.is_empty()).then_some(raw))
+}
+
+fn seed_env_integer(
+    overrides: &mut Vec<(String, Value)>,
+    env_name: &str,
+    config_key: &str,
+    value: Option<&OsStr>,
+) -> Result<(), String> {
+    let Some(raw) = env_override_text(overrides, config_key, env_name, value)? else {
+        return Ok(());
+    };
+    let invalid =
+        || format!("Invalid {env_name} value {raw:?}; expected a positive integer token count");
+    let parsed: i64 = raw.parse().map_err(|_| invalid())?;
+    if parsed <= 0 {
+        return Err(invalid());
+    }
+    overrides.push((config_key.into(), Value::Integer(parsed)));
+    Ok(())
+}
+
+fn seed_env_ratio(
+    overrides: &mut Vec<(String, Value)>,
+    env_name: &str,
+    config_key: &str,
+    value: Option<&OsStr>,
+) -> Result<(), String> {
+    let Some(raw) = env_override_text(overrides, config_key, env_name, value)? else {
+        return Ok(());
+    };
+    let invalid = || format!("Invalid {env_name} value {raw:?}; expected a ratio within (0, 1]");
+    let parsed: f64 = raw
+        .parse()
+        .map_err(|_| format!("Invalid {env_name} value {raw:?}; expected a ratio like 0.8"))?;
+    if !(0.0..=1.0).contains(&parsed) || parsed == 0.0 {
+        return Err(invalid());
+    }
+    overrides.push((config_key.into(), Value::Float(parsed)));
+    Ok(())
+}
+
 fn apply_env_effort_override(
     overrides: &mut Vec<(String, Value)>,
     env_value: Option<&OsStr>,
 ) -> Result<(), String> {
-    if overrides
-        .iter()
-        .any(|(key, _)| key == "model_reasoning_effort")
-    {
-        // An explicit -c wins over the environment.
-        return Ok(());
-    }
-    let Some(value) = env_value else {
+    let Some(text) = env_override_text(
+        overrides,
+        "model_reasoning_effort",
+        MODEL_REASONING_EFFORT_ENV,
+        env_value,
+    )?
+    else {
         return Ok(());
     };
-    let raw = value
-        .to_str()
-        .ok_or_else(|| format!("Invalid {MODEL_REASONING_EFFORT_ENV}: expected Unicode text"))?
-        .trim();
-    if raw.is_empty() {
-        return Ok(());
-    }
-    let canonical = raw.to_ascii_lowercase();
+    let canonical = text.to_ascii_lowercase();
     const VALID: [&str; 9] = [
         "none",
         "minimal",
@@ -132,7 +229,7 @@ fn apply_env_effort_override(
     ];
     if !VALID.contains(&canonical.as_str()) {
         return Err(format!(
-            "Invalid {MODEL_REASONING_EFFORT_ENV} value {raw:?}; expected one of {}",
+            "Invalid {MODEL_REASONING_EFFORT_ENV} value {text:?}; expected one of {}",
             VALID.join("/")
         ));
     }
@@ -228,3 +325,7 @@ mod tests {
 #[cfg(test)]
 #[path = "env_effort_tests.rs"]
 mod env_effort_tests;
+
+#[cfg(test)]
+#[path = "env_context_seeds_tests.rs"]
+mod env_context_seeds_tests;

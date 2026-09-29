@@ -1078,3 +1078,42 @@ fn project_config_cannot_change_system_proxy_routing() {
         }
     }
 }
+
+// Fork (nuwax-codex): the runtime (-c / env-seeded) override for the ratio
+// must survive layer merging and ConfigToml deserialization exactly like
+// the absolute limit does.
+#[tokio::test]
+async fn runtime_override_carries_auto_compact_ratio_into_merged_config() {
+    let tmp = tempdir().expect("tempdir");
+    std::fs::write(tmp.path().join(CONFIG_TOML_FILE), "").expect("write empty user config");
+
+    let stack = load_config_layers_state(
+        &TestFileSystem,
+        tmp.path(),
+        /*cwd*/ None,
+        &[
+            (
+                "model_auto_compact_token_limit".to_string(),
+                TomlValue::Integer(11400),
+            ),
+            (
+                "model_auto_compact_ratio".to_string(),
+                TomlValue::Float(0.2),
+            ),
+        ],
+        ConfigLoadOptions {
+            loader_overrides: LoaderOverrides::without_managed_config_for_tests(),
+            strict_config: false,
+            cloud_config_bundle: Default::default(),
+        },
+        &crate::NoopThreadConfigLoader,
+    )
+    .await
+    .expect("load config with runtime overrides");
+
+    let merged = stack.effective_config();
+    let parsed: crate::config_toml::ConfigToml =
+        merged.try_into().expect("deserialize merged config");
+    assert_eq!(parsed.model_auto_compact_token_limit, Some(11400));
+    assert_eq!(parsed.model_auto_compact_ratio, Some(0.2));
+}

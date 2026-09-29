@@ -633,6 +633,11 @@ pub struct Config {
     /// Token usage threshold triggering auto-compaction of conversation history.
     pub model_auto_compact_token_limit: Option<i64>,
 
+    /// Fork (nuwax-codex): fraction of the effective context window that
+    /// triggers pre-turn auto-compaction (e.g. `0.8`). Only consulted when
+    /// `model_auto_compact_token_limit` is unset.
+    pub model_auto_compact_ratio: Option<f64>,
+
     /// Controls whether `model_auto_compact_token_limit` applies to the full
     /// active context or only tokens after the carried compaction-window prefix.
     pub model_auto_compact_token_limit_scope: AutoCompactTokenLimitScope,
@@ -1647,9 +1652,23 @@ impl Config {
     }
 
     pub fn to_models_manager_config(&self) -> ModelsManagerConfig {
+        // Fork (nuwax-codex): derive the absolute auto-compact limit from
+        // the ratio here, where both config fields are guaranteed present.
+        // Deriving only at the model-info layer lets call sites that build
+        // ModelsManagerConfig from partial state apply the ratio against the
+        // model's native window instead of the configured one. Out-of-range
+        // ratios derive nothing (a negative limit would compact every turn);
+        // the model-info layer emits the range warning.
+        let model_auto_compact_token_limit = self.model_auto_compact_token_limit.or_else(|| {
+            self.model_auto_compact_ratio
+                .filter(|ratio| (0.0..=1.0).contains(ratio) && *ratio > 0.0)
+                .zip(self.model_context_window)
+                .map(|(ratio, window)| (window as f64 * ratio) as i64)
+        });
         ModelsManagerConfig {
             model_context_window: self.model_context_window,
-            model_auto_compact_token_limit: self.model_auto_compact_token_limit,
+            model_auto_compact_token_limit,
+            model_auto_compact_ratio: self.model_auto_compact_ratio,
             tool_output_token_limit: self.tool_output_token_limit,
             base_instructions: self.base_instructions.clone().filter(|_| {
                 !matches!(
@@ -4244,6 +4263,7 @@ impl Config {
             review_model,
             model_context_window: cfg.model_context_window,
             model_auto_compact_token_limit: cfg.model_auto_compact_token_limit,
+            model_auto_compact_ratio: cfg.model_auto_compact_ratio,
             model_auto_compact_token_limit_scope: cfg
                 .model_auto_compact_token_limit_scope
                 .unwrap_or_default(),
