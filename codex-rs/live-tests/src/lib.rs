@@ -72,6 +72,7 @@ use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use http::HeaderMap;
 use http::header::AUTHORIZATION;
+use serde_json::Value;
 use tokio::time::timeout;
 
 const TURN_TIMEOUT: Duration = Duration::from_secs(180);
@@ -614,35 +615,19 @@ pub async fn run_marker_turn(
 
     let last_message_path = home.path().join("last_message.txt");
     let binary = codex_exec_binary()?;
-    let child = tokio::process::Command::new(&binary)
-        .arg("--skip-git-repo-check")
-        .arg("--json")
-        .arg("--color")
-        .arg("never")
-        .arg("--output-last-message")
-        .arg(&last_message_path)
-        .arg(&prompt)
-        .env("CODEX_HOME", home.path())
-        .env("CODEX_SQLITE_HOME", home.path())
-        .env("RUST_LOG", "info")
-        .current_dir(cwd.path())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()?;
+    let (stdout, stderr) = spawn_exec_turn(
+        &binary,
+        home.path(),
+        cwd.path(),
+        &[],
+        &prompt,
+        &last_message_path,
+        &artifacts_dir,
+        "",
+        protocol,
+    )
+    .await?;
 
-    let output = tokio::time::timeout(EXEC_RUN_TIMEOUT, child.wait_with_output())
-        .await
-        .map_err(|_| {
-            anyhow!("[{protocol}] codex-exec did not finish within {EXEC_RUN_TIMEOUT:?}")
-        })??;
-
-    // Persist the artifacts first so failed runs can still be inspected.
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    std::fs::write(artifacts_dir.join("events.jsonl"), &*stdout)?;
-    std::fs::write(artifacts_dir.join("stderr.log"), &*stderr)?;
     let final_message = std::fs::read_to_string(&last_message_path)
         .unwrap_or_else(|_| "<last_message.txt missing>".to_string());
     std::fs::write(artifacts_dir.join("final_message.txt"), &final_message)?;
@@ -651,13 +636,6 @@ pub async fn run_marker_turn(
         artifacts_dir.display()
     );
 
-    println!("--- [{protocol}] codex-exec JSONL events ---");
-    for line in stdout.lines() {
-        println!("[{protocol}] {line}");
-    }
-    if !stderr.trim().is_empty() {
-        println!("--- [{protocol}] codex-exec stderr ---\n{stderr}");
-    }
     if let Some(expected) = expect_bridge_log {
         anyhow::ensure!(
             stderr.contains(expected),
@@ -665,12 +643,6 @@ pub async fn run_marker_turn(
         );
     }
 
-    anyhow::ensure!(
-        output.status.success(),
-        "[{protocol}] codex-exec exited with {:?}; see {}stderr.log",
-        output.status.code(),
-        artifacts_dir.display(),
-    );
     anyhow::ensure!(
         stdout.contains(&marker),
         "[{protocol}] JSONL event stream should contain the executed command marker {marker}"
@@ -716,6 +688,231 @@ pub async fn run_marker_turn(
         final_message.chars().count()
     );
     Ok(())
+}
+
+/// Two-turn binary-level auto-compact run: teach a unique passphrase, then
+/// resume with a token limit far below any real turn so codex must compact
+/// the context locally before the second model call, and finally recall the
+/// passphrase. Verifies three things: the recall answer carries the
+/// passphrase, the rollout contains a `compacted` record (guarding against
+/// the no-compaction false pass where the full history would also answer),
+/// and that record precedes the recalling answer while carrying the
+/// passphrase itself.
+pub async fn run_compact_turn(
+    protocol: &str,
+    cfg: &LiveConfig,
+    base_url: &str,
+    wire_api: &str,
+    bridge: Option<&str>,
+    extra_config: &str,
+) -> Result<()> {
+    anyhow::ensure!(
+        cassette_mode() != CassetteMode::Replay,
+        "exec_live cannot replay; use --test bridge_live for offline replay"
+    );
+    let home = tempfile::TempDir::new()?;
+    let cwd = tempfile::TempDir::new()?;
+    // The tiny limit forces one local compaction before the resumed turn's
+    // model call on every wire: bridge providers report remote compaction
+    // unsupported, so codex always summarizes locally.
+    write_config_toml(
+        home.path(),
+        cfg,
+        base_url,
+        wire_api,
+        bridge,
+        &format!("{extra_config}model_auto_compact_token_limit = 200\n"),
+    )?;
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let marker = format!("PASSPHRASE-{protocol}-{nonce}-{}", std::process::id());
+
+    let artifacts_dir = repo_root()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("logs")
+        .join(format!("live-{}", cfg.vendor))
+        .join(format!("compact-{marker}"));
+    std::fs::create_dir_all(&artifacts_dir)?;
+    write_manifest(&artifacts_dir, cfg, protocol, bridge);
+
+    let binary = codex_exec_binary()?;
+    let first_prompt = format!("请记住暗号：{marker}。只回复OK。");
+    let last_message_1 = home.path().join("last_message_1.txt");
+    spawn_exec_turn(
+        &binary,
+        home.path(),
+        cwd.path(),
+        &[],
+        &first_prompt,
+        &last_message_1,
+        &artifacts_dir,
+        "turn1",
+        protocol,
+    )
+    .await?;
+
+    let last_message_2 = home.path().join("last_message_2.txt");
+    spawn_exec_turn(
+        &binary,
+        home.path(),
+        cwd.path(),
+        &["resume", "--last"],
+        "暗号是什么？直接回答暗号本身，不要任何其他内容。",
+        &last_message_2,
+        &artifacts_dir,
+        "turn2",
+        protocol,
+    )
+    .await?;
+    let answer = std::fs::read_to_string(&last_message_2)
+        .unwrap_or_else(|_| "<last_message_2.txt missing>".to_string());
+    anyhow::ensure!(
+        answer.contains(&marker),
+        "[{protocol}] passphrase lost after compaction; answer: {answer}"
+    );
+
+    // The compacted record must exist, carry the passphrase (summary or
+    // retained original message), and precede the recalling answer.
+    let rollouts = session_rollouts(home.path());
+    anyhow::ensure!(
+        !rollouts.is_empty(),
+        "[{protocol}] no session rollout under {}",
+        home.path().display()
+    );
+    let mut compacted_at = None;
+    let mut answer_at = None;
+    let mut compacted_carries_marker = false;
+    for rollout in &rollouts {
+        for (index, line) in std::fs::read_to_string(rollout)
+            .unwrap_or_default()
+            .lines()
+            .enumerate()
+        {
+            let Ok(record) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            if record.get("type").and_then(Value::as_str) == Some("compacted") {
+                if compacted_at.is_none() {
+                    compacted_at = Some(index);
+                }
+                if serde_json::to_string(&record).is_ok_and(|encoded| encoded.contains(&marker)) {
+                    compacted_carries_marker = true;
+                }
+            }
+            // The recalling answer: an assistant message that carries the
+            // passphrase and is not itself a compaction record.
+            if compacted_at.is_some()
+                && answer_at.is_none()
+                && record.get("type").and_then(Value::as_str) == Some("response_item")
+                && record["payload"]["type"].as_str() == Some("message")
+                && record["payload"]["role"].as_str() == Some("assistant")
+                && serde_json::to_string(&record).is_ok_and(|encoded| encoded.contains(&marker))
+            {
+                answer_at = Some(index);
+            }
+        }
+    }
+    let compacted_index =
+        compacted_at.ok_or_else(|| anyhow!("[{protocol}] no compacted record in the rollout"))?;
+    anyhow::ensure!(
+        answer_at.is_some_and(|index| index > compacted_index),
+        "[{protocol}] the recall answer must follow the compacted record"
+    );
+    anyhow::ensure!(
+        compacted_carries_marker,
+        "[{protocol}] the compacted record must carry the passphrase (summary or retained message)"
+    );
+    println!(
+        "[{protocol}] OK compact marker={marker} answer_chars={}",
+        answer.chars().count()
+    );
+    Ok(())
+}
+
+/// Spawns one `codex-exec` turn with the shared live-test environment,
+/// persists its stdout/stderr artifacts (label-prefixed unless the label is
+/// empty, so failed runs stay inspectable), echoes the JSONL event stream,
+/// and returns the captured `(stdout, stderr)` for caller-specific checks.
+async fn spawn_exec_turn(
+    binary: &Path,
+    home: &Path,
+    cwd: &Path,
+    subcommand_args: &[&str],
+    prompt: &str,
+    last_message_path: &Path,
+    artifacts_dir: &Path,
+    label: &str,
+    protocol: &str,
+) -> Result<(String, String)> {
+    let prefix = if label.is_empty() {
+        String::new()
+    } else {
+        format!("{label}.")
+    };
+    let child = tokio::process::Command::new(binary)
+        .arg("--skip-git-repo-check")
+        .arg("--json")
+        .arg("--color")
+        .arg("never")
+        .arg("--output-last-message")
+        .arg(last_message_path)
+        .args(subcommand_args)
+        .arg(prompt)
+        .env("CODEX_HOME", home)
+        .env("CODEX_SQLITE_HOME", home)
+        .env("RUST_LOG", "info")
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()?;
+    let output = tokio::time::timeout(EXEC_RUN_TIMEOUT, child.wait_with_output())
+        .await
+        .map_err(|_| {
+            anyhow!("[{protocol}] {label} did not finish within {EXEC_RUN_TIMEOUT:?}")
+        })??;
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    std::fs::write(artifacts_dir.join(format!("{prefix}events.jsonl")), &stdout)?;
+    std::fs::write(artifacts_dir.join(format!("{prefix}stderr.log")), &stderr)?;
+    println!("--- [{protocol}] {label} codex-exec JSONL events ---");
+    for line in stdout.lines() {
+        println!("[{protocol}] {line}");
+    }
+    if !stderr.trim().is_empty() {
+        println!("--- [{protocol}] {label} codex-exec stderr ---\n{stderr}");
+    }
+    anyhow::ensure!(
+        output.status.success(),
+        "[{protocol}] {label} exited with {}",
+        output.status
+    );
+    Ok((stdout, stderr))
+}
+
+/// All session rollout files recorded under a codex home, oldest first.
+fn session_rollouts(home: &Path) -> Vec<PathBuf> {
+    fn visit(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                visit(&path, out);
+            } else if path.extension().is_some_and(|ext| ext == "jsonl") {
+                out.push(path);
+            }
+        }
+    }
+    let mut rollouts = Vec::new();
+    visit(&home.join("sessions"), &mut rollouts);
+    rollouts.sort();
+    rollouts
 }
 
 // ================================================================

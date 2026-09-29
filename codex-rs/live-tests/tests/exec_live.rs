@@ -170,6 +170,53 @@ async fn chat_default_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Re
     .await
 }
 
+/// Auto-compact across all three wires: teach a unique passphrase, force a
+/// local compaction on the resumed turn (token limit far below any real
+/// turn), and recall it. See `run_compact_turn` for the full assertions.
+async fn compact_chat_rig_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    codex_live_tests::run_compact_turn(
+        "compact-chat-rig",
+        cfg,
+        &cfg.base_url,
+        "chat",
+        Some("rig"),
+        "",
+    )
+    .await
+}
+
+async fn compact_anthropic_rig_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(cfg) else {
+        return Ok(());
+    };
+    codex_live_tests::run_compact_turn(
+        "compact-anthropic-rig",
+        cfg,
+        &anthropic_url,
+        "anthropic",
+        Some("rig"),
+        "",
+    )
+    .await
+}
+
+async fn compact_responses_rig_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    let Some(responses_url) = codex_live_tests::responses_url_or_skip(cfg) else {
+        return Ok(());
+    };
+    codex_live_tests::run_compact_turn(
+        "compact-responses-rig",
+        cfg,
+        &responses_url,
+        "responses",
+        None,
+        // MiMo's Responses gateway rejects hosted tools (see
+        // responses_rig_default_scenario); harmless for GLM.
+        "web_search = \"disabled\"\n",
+    )
+    .await
+}
+
 exec_matrix!(chat_genai, ["mimo", "glm", "step"]);
 exec_matrix!(chat_rig, ["mimo", "glm", "step"]);
 exec_matrix!(chat_default, ["mimo", "glm", "step"]);
@@ -177,3 +224,6 @@ exec_matrix!(responses_rig_default, ["mimo", "glm", "step"]);
 exec_matrix!(responses_native, ["mimo", "glm", "step"]);
 exec_matrix!(anthropic_genai, ["mimo", "glm", "step"]);
 exec_matrix!(anthropic_rig, ["mimo", "glm", "step"]);
+exec_matrix!(compact_chat_rig, ["mimo", "glm", "step"]);
+exec_matrix!(compact_anthropic_rig, ["mimo", "glm", "step"]);
+exec_matrix!(compact_responses_rig, ["mimo", "glm", "step"]);
