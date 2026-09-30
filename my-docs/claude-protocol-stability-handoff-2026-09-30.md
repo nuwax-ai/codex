@@ -335,6 +335,10 @@ fix/fmt 结果、后续源码复查：
 - 修复前状态（无法用测试复现的运行时证据缺口即缺陷本身）：固定目录覆盖 + 无 manifest（index-logs 不收录）+ 仅断言非空回答——已由代码对照确认，行为修复的证据在 B3 真实运行时补齐。
 - A4b 离线验证：`just test -p codex-live-tests --offline --retries 0 -E 'test(binary_turns::tests) | test(config::) | test(cassette::)'` → **10/10 pass**。
 
+#### 合并 origin/main（2026-10-01，提交 1f9841304）
+
+用户同步官方代码到 main 后（本地 main 落后 origin/main 315 提交，实际目标是 origin/main `67727e7cf`）。`git merge-tree` 预演 9 个冲突，实际解决：bazel.yml 保持 fork 删除；codex-api sse 三处（fork 公开模块+策略 与 main 的 responses_error 抽取并集，错误臂 Strict‖FlexUnavailable 双早退）；model-provider-info 两处（fork 的 bedrock runtime id 固定）；tui 投影（fork 数值种子 + main origins 门控并存）；compact 测试（fork 回归 + main program_tests 模块）；Cargo.lock 取 main 重解 + sha2 边；schema 重生成。上游 API 适配 3 处：ResponseStream.interrupt（两桥 None）、include_internal_metadata 替换目标检查、测试字面量补字段。本机环境事项：brew 安装 gstreamer（voice-host）；v8 系成员仍不可本机构建（既有 rusty_v8 限制）。合并后回归：工作区 check 绿（除 v8 系）；桥+api 338/338；core 选择集 153/165（12 失败=已知 code_mode 簇，与合并前一致）；tui 选择集 120 通过+4 负载 flake（空闲复跑通过、纯 origin/main 亦通过）；exec nuwax 4/4（重建二进制）；live 离线 93-94/94（每轮单个不同的负载 flake，隔离均过）。
+
 #### 批次 B3（最终集成与真实请求验证）
 
 - 构建绑定：`cargo build --locked -p codex-exec --bin codex-exec --offline`（cwd `codex-rs`，target `/tmp/codex-stability-20260930-target`），binary 绝对路径 `/tmp/codex-stability-20260930-target/debug/codex-exec`，SHA256 `581400825c6e03ea528bfeeebee81d7d693e10a71c0d1e2933743c01bda03529`，源 `5913e929f`+websearch 场景修正（后续提交 `351ea7770`，仅 live-tests crate，不影响该二进制）。
