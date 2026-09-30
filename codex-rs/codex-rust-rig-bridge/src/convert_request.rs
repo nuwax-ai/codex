@@ -96,6 +96,12 @@ pub(crate) fn responses_request_to_completion_request(
         );
     }
     let selection = crate::request_tools::request_tools(request);
+    let advertised: Vec<&str> = selection
+        .definitions
+        .iter()
+        .map(|tool| tool.name.as_str())
+        .collect();
+    validate_tool_choice(&request.tool_choice, &advertised)?;
     let mut params = serde_json::Map::new();
     let format = request.text.as_ref().and_then(|text| text.format.as_ref());
     let output_schema = match protocol {
@@ -185,6 +191,49 @@ fn map_tool_choice(choice: &str) -> Option<ToolChoice> {
         other => ToolChoice::Specific {
             function_names: vec![other.to_string()],
         },
+    })
+}
+
+/// Fails fast when the Responses `tool_choice` cannot be honored on the
+/// chat-family wire: `required` or a specific tool name needs at least one
+/// advertised function tool. Hosted (server-side) tools cannot be forced, so
+/// a hosted-only request cannot satisfy those choices — an explicit error
+/// beats silently widening to `auto`.
+pub(crate) fn validate_tool_choice(
+    choice: &str,
+    function_tool_names: &[&str],
+) -> Result<(), ApiError> {
+    match choice {
+        "auto" | "none" => Ok(()),
+        "required" if function_tool_names.is_empty() => Err(ApiError::InvalidRequest {
+            message: "tool_choice \"required\" needs at least one function tool; hosted \
+                      server tools cannot be forced — use \"auto\" or \"none\""
+                .into(),
+        }),
+        "required" => Ok(()),
+        name if !function_tool_names.contains(&name) => Err(ApiError::InvalidRequest {
+            message: format!(
+                "tool_choice references tool {name:?} which is not an advertised function tool"
+            ),
+        }),
+        _ => Ok(()),
+    }
+}
+
+/// The Anthropic wire shape of the Responses `tool_choice`, restored by the
+/// transport when post-injected server tools left the serialized body without
+/// one (rig's streaming path drops `tool_choice` when its typed tool list is
+/// empty, and the transport re-advertises the tools afterwards).
+pub(crate) fn anthropic_tool_choice(
+    choice: &str,
+    function_tool_names: &[&str],
+) -> Result<Value, ApiError> {
+    validate_tool_choice(choice, function_tool_names)?;
+    Ok(match choice {
+        "auto" => json!({"type": "auto"}),
+        "none" => json!({"type": "none"}),
+        "required" => json!({"type": "any"}),
+        name => json!({"type": "tool", "name": name}),
     })
 }
 

@@ -113,6 +113,28 @@ pub async fn stream_via_rig_with_recording(
     // at terminal time.
     let anthropic_sse_tee = (protocol == RigProtocol::Anthropic)
         .then(|| Arc::new(std::sync::Mutex::new(Vec::<u8>::new())));
+    // Hosted (Responses) tools only exist on the Anthropic wire, where they
+    // translate into server-tool entries; Chat drops them. Non-representable
+    // search modes fail the request before anything is sent.
+    let anthropic_server_tools = if protocol == RigProtocol::Anthropic {
+        crate::hosted_tools::translate_anthropic_server_tools(&tool_meta.hosted_tools)?
+    } else {
+        Vec::new()
+    };
+    // The wire shape of the requested tool choice, restored by the transport
+    // when hosted-only tools left the serialized body without one.
+    let advertised: Vec<&str> = completion_request
+        .tools
+        .iter()
+        .map(|tool| tool.name.as_str())
+        .collect();
+    let anthropic_tool_choice = match protocol {
+        RigProtocol::Anthropic => Some(crate::convert_request::anthropic_tool_choice(
+            &request.tool_choice,
+            &advertised,
+        )?),
+        RigProtocol::Chat | RigProtocol::Responses => None,
+    };
     let http = crate::transport::RigHttpClient {
         inner: crate::client::http_client(&headers, protocol)?,
         query,
@@ -141,19 +163,12 @@ pub async fn stream_via_rig_with_recording(
         anthropic_service_tier: (protocol == RigProtocol::Anthropic)
             .then(|| crate::convert_request::anthropic_service_tier(request))
             .flatten(),
-        // Hosted (Responses) tools only exist on the Anthropic wire, where
-        // they translate into server-tool entries; Chat drops them.
-        anthropic_server_tools: if protocol == RigProtocol::Anthropic {
-            {
-                tool_meta
-                    .hosted_tools
-                    .iter()
-                    .filter_map(crate::hosted_tools::anthropic_server_tool)
-                    .collect::<Vec<_>>()
-            }
-        } else {
-            Default::default()
-        },
+        anthropic_server_tools,
+        anthropic_tool_choice,
+        // validate_tool_choice already rejected `required`/specific choices
+        // for a hosted-only request, so at most `auto`/`none` dangle here.
+        chat_drop_orphan_tool_choice: protocol == RigProtocol::Chat
+            && completion_request.tools.is_empty(),
     };
 
     let model = request.model.clone();

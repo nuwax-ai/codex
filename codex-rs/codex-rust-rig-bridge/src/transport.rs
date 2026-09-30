@@ -28,6 +28,15 @@ pub(crate) struct RigHttpClient {
     /// Anthropic `service_tier`, mapped from the two semantically matching
     /// OpenAI values. `None` leaves the field untouched.
     pub(crate) anthropic_service_tier: Option<String>,
+    /// Anthropic wire shape of the Responses `tool_choice`, restored when
+    /// post-injected server tools left the serialized body without one (rig's
+    /// streaming path drops `tool_choice` alongside an empty typed tool list).
+    /// `None` leaves the serialized choice untouched.
+    pub(crate) anthropic_tool_choice: Option<serde_json::Value>,
+    /// Chat wire only: the request advertised no function tools (hosted tools
+    /// are dropped on Chat), so a serialized `tool_choice` would dangle and
+    /// providers reject it — it is removed instead of widening behavior.
+    pub(crate) chat_drop_orphan_tool_choice: bool,
     /// Translated Anthropic server-tool entries for the request's hosted
     /// (Responses) tools; empty when none translate. Chat keeps dropping
     /// hosted tools — they have no Chat Completions representation.
@@ -71,6 +80,173 @@ impl RigHttpClient {
                 .map_err(|error: http::uri::InvalidUri| Error::Instance(error.into()))?;
         }
         Ok(request)
+    }
+
+    /// Borrows this request's Chat/Anthropic rewrite knobs for [`send_streaming`].
+    fn chat_family_rewrite(&self) -> ChatFamilyRewrite<'_> {
+        ChatFamilyRewrite {
+            protocol: self.protocol,
+            disable_anthropic_parallel: self.disable_anthropic_parallel,
+            disable_anthropic_thinking: self.disable_anthropic_thinking,
+            tool_strict: &self.tool_strict,
+            tool_result_errors: &self.tool_result_errors,
+            anthropic_server_tools: &self.anthropic_server_tools,
+            anthropic_tool_choice: self.anthropic_tool_choice.as_ref(),
+            anthropic_effort: self.anthropic_effort.as_ref(),
+            anthropic_service_tier: self.anthropic_service_tier.as_ref(),
+            chat_drop_orphan_tool_choice: self.chat_drop_orphan_tool_choice,
+        }
+    }
+}
+
+/// One Chat/Anthropic wire rewrite of the serialized request body. Kept as a
+/// standalone borrow-only struct so the exact body transformation is testable
+/// without standing up an HTTP stack; [`send_streaming`] is its only caller.
+struct ChatFamilyRewrite<'a> {
+    protocol: crate::RigProtocol,
+    disable_anthropic_parallel: bool,
+    disable_anthropic_thinking: bool,
+    tool_strict: &'a std::collections::HashMap<String, bool>,
+    tool_result_errors: &'a std::collections::HashMap<String, bool>,
+    anthropic_server_tools: &'a [serde_json::Value],
+    anthropic_tool_choice: Option<&'a serde_json::Value>,
+    anthropic_effort: Option<&'a String>,
+    anthropic_service_tier: Option<&'a String>,
+    chat_drop_orphan_tool_choice: bool,
+}
+
+impl ChatFamilyRewrite<'_> {
+    fn needed(&self) -> bool {
+        self.protocol != crate::RigProtocol::Responses
+            && (self.disable_anthropic_parallel
+                || self.disable_anthropic_thinking
+                || self.chat_drop_orphan_tool_choice
+                || (self.protocol == crate::RigProtocol::Anthropic
+                    && (!self.tool_result_errors.is_empty()
+                        || !self.anthropic_server_tools.is_empty()
+                        || self.anthropic_tool_choice.is_some()))
+                || !self.tool_strict.is_empty()
+                || self.anthropic_effort.is_some()
+                || self.anthropic_service_tier.is_some())
+    }
+
+    fn apply(&self, body: &mut serde_json::Value) {
+        // rig's streaming path drops a caller-set `tool_choice` when its typed
+        // tool list is empty (Anthropic rejects the dangling field). The
+        // server tools injected below re-advertise tools, so the requested
+        // choice is restored alongside them — never widened to `auto`.
+        if self.protocol == crate::RigProtocol::Anthropic
+            && !self.anthropic_server_tools.is_empty()
+            && let Some(choice) = self.anthropic_tool_choice
+            && body.get("tool_choice").is_none()
+            && let Some(body_map) = body.as_object_mut()
+        {
+            body_map.insert("tool_choice".into(), choice.clone());
+        }
+        // A hosted-only request drops every Chat tool, leaving the serialized
+        // `tool_choice` dangling; providers reject that shape, so it is
+        // removed rather than silently widening what the model may call.
+        if self.chat_drop_orphan_tool_choice
+            && let Some(body_map) = body.as_object_mut()
+            && body_map.remove("tool_choice").is_some()
+        {
+            tracing::warn!(
+                "no function tools are advertised on the Chat wire; dropping tool_choice"
+            );
+        }
+        if self.disable_anthropic_parallel
+            && let Some(choice) = body
+                .get_mut("tool_choice")
+                .and_then(serde_json::Value::as_object_mut)
+            && choice.get("type").and_then(serde_json::Value::as_str) != Some("none")
+        {
+            choice.insert("disable_parallel_tool_use".into(), true.into());
+        }
+        if let Some(tools) = body
+            .get_mut("tools")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            for tool in tools {
+                // Chat nests the name under `function`; Anthropic
+                // tools carry it (and their `strict` flag) at the
+                // top level. Responses never enters this rewrite.
+                let name = match self.protocol {
+                    crate::RigProtocol::Chat => tool
+                        .get("function")
+                        .and_then(|function| function.get("name")),
+                    crate::RigProtocol::Anthropic => tool.get("name"),
+                    crate::RigProtocol::Responses => None,
+                }
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+                let Some(value) = name.as_deref().and_then(|name| self.tool_strict.get(name))
+                else {
+                    continue;
+                };
+                let target = match self.protocol {
+                    crate::RigProtocol::Chat => tool
+                        .get_mut("function")
+                        .and_then(serde_json::Value::as_object_mut),
+                    crate::RigProtocol::Anthropic => tool.as_object_mut(),
+                    crate::RigProtocol::Responses => None,
+                };
+                if let Some(target) = target {
+                    target.insert("strict".into(), (*value).into());
+                }
+            }
+        }
+        if let Some(body_map) = body.as_object_mut() {
+            if self.disable_anthropic_thinking {
+                body_map.insert("thinking".into(), serde_json::json!({"type":"disabled"}));
+            }
+            if self.protocol == crate::RigProtocol::Anthropic
+                && !self.anthropic_server_tools.is_empty()
+            {
+                // Server tools have no function schema; they join the
+                // serialized function tools as raw typed entries.
+                let tools = body_map
+                    .entry("tools")
+                    .or_insert_with(|| serde_json::json!([]));
+                if let Some(tools) = tools.as_array_mut() {
+                    tools.extend(self.anthropic_server_tools.iter().cloned());
+                }
+            }
+            if let Some(effort) = self.anthropic_effort {
+                // Merge into any existing output_config (rig may have
+                // serialized output_config.format from output_schema).
+                let config = body_map
+                    .entry("output_config")
+                    .or_insert_with(|| serde_json::json!({}));
+                if let Some(config) = config.as_object_mut() {
+                    config.insert("effort".into(), (*effort).clone().into());
+                }
+            }
+            if let Some(tier) = self.anthropic_service_tier {
+                body_map.insert("service_tier".into(), (*tier).clone().into());
+            }
+        }
+        if self.protocol == crate::RigProtocol::Anthropic
+            && let Some(messages) = body
+                .get_mut("messages")
+                .and_then(serde_json::Value::as_array_mut)
+        {
+            for message in messages {
+                if let Some(content) = message
+                    .get_mut("content")
+                    .and_then(serde_json::Value::as_array_mut)
+                {
+                    for block in content {
+                        if block["type"] == "tool_result"
+                            && let Some(is_error) = block["tool_use_id"]
+                                .as_str()
+                                .and_then(|id| self.tool_result_errors.get(id))
+                        {
+                            block["is_error"] = (*is_error).into();
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -123,114 +299,13 @@ impl HttpClientExt for RigHttpClient {
             // Responses passthrough sends Codex's serialized request verbatim:
             // no Chat/Anthropic-specific body injections (tool strict flags,
             // parallel-tool-use gating, thinking toggles, effort/tier merges,
-            // tool-result error markers) may touch it.
-            let chat_family_rewrite = self.protocol != crate::RigProtocol::Responses
-                && (self.disable_anthropic_parallel
-                    || self.disable_anthropic_thinking
-                    || (self.protocol == crate::RigProtocol::Anthropic
-                        && !self.tool_result_errors.is_empty())
-                    || (self.protocol == crate::RigProtocol::Anthropic
-                        && !self.anthropic_server_tools.is_empty())
-                    || !self.tool_strict.is_empty()
-                    || self.anthropic_effort.is_some()
-                    || self.anthropic_service_tier.is_some());
+            // tool-result error markers, tool-choice repair) may touch it.
+            let rewrite = self.chat_family_rewrite();
+            let chat_family_rewrite = rewrite.needed();
             if chat_family_rewrite {
                 let mut body: serde_json::Value = serde_json::from_slice(request.body())
                     .map_err(|error| Error::Instance(error.into()))?;
-                if self.disable_anthropic_parallel
-                    && let Some(choice) = body
-                        .get_mut("tool_choice")
-                        .and_then(serde_json::Value::as_object_mut)
-                    && choice.get("type").and_then(serde_json::Value::as_str) != Some("none")
-                {
-                    choice.insert("disable_parallel_tool_use".into(), true.into());
-                }
-                if let Some(tools) = body
-                    .get_mut("tools")
-                    .and_then(serde_json::Value::as_array_mut)
-                {
-                    for tool in tools {
-                        // Chat nests the name under `function`; Anthropic
-                        // tools carry it (and their `strict` flag) at the
-                        // top level. Responses never enters this rewrite.
-                        let name = match self.protocol {
-                            crate::RigProtocol::Chat => tool
-                                .get("function")
-                                .and_then(|function| function.get("name")),
-                            crate::RigProtocol::Anthropic => tool.get("name"),
-                            crate::RigProtocol::Responses => None,
-                        }
-                        .and_then(serde_json::Value::as_str)
-                        .map(str::to_string);
-                        let Some(value) =
-                            name.as_deref().and_then(|name| self.tool_strict.get(name))
-                        else {
-                            continue;
-                        };
-                        let target = match self.protocol {
-                            crate::RigProtocol::Chat => tool
-                                .get_mut("function")
-                                .and_then(serde_json::Value::as_object_mut),
-                            crate::RigProtocol::Anthropic => tool.as_object_mut(),
-                            crate::RigProtocol::Responses => None,
-                        };
-                        if let Some(target) = target {
-                            target.insert("strict".into(), (*value).into());
-                        }
-                    }
-                }
-                if let Some(body_map) = body.as_object_mut() {
-                    if self.disable_anthropic_thinking {
-                        body_map.insert("thinking".into(), serde_json::json!({"type":"disabled"}));
-                    }
-                    if self.protocol == crate::RigProtocol::Anthropic
-                        && !self.anthropic_server_tools.is_empty()
-                    {
-                        // Server tools have no function schema; they join the
-                        // serialized function tools as raw typed entries.
-                        let tools = body_map
-                            .entry("tools")
-                            .or_insert_with(|| serde_json::json!([]));
-                        if let Some(tools) = tools.as_array_mut() {
-                            tools.extend(self.anthropic_server_tools.iter().cloned());
-                        }
-                    }
-                    if let Some(effort) = &self.anthropic_effort {
-                        // Merge into any existing output_config (rig may have
-                        // serialized output_config.format from output_schema).
-                        let config = body_map
-                            .entry("output_config")
-                            .or_insert_with(|| serde_json::json!({}));
-                        if let Some(config) = config.as_object_mut() {
-                            config.insert("effort".into(), effort.clone().into());
-                        }
-                    }
-                    if let Some(tier) = &self.anthropic_service_tier {
-                        body_map.insert("service_tier".into(), tier.clone().into());
-                    }
-                }
-                if self.protocol == crate::RigProtocol::Anthropic
-                    && let Some(messages) = body
-                        .get_mut("messages")
-                        .and_then(serde_json::Value::as_array_mut)
-                {
-                    for message in messages {
-                        if let Some(content) = message
-                            .get_mut("content")
-                            .and_then(serde_json::Value::as_array_mut)
-                        {
-                            for block in content {
-                                if block["type"] == "tool_result"
-                                    && let Some(is_error) = block["tool_use_id"]
-                                        .as_str()
-                                        .and_then(|id| self.tool_result_errors.get(id))
-                                {
-                                    block["is_error"] = (*is_error).into();
-                                }
-                            }
-                        }
-                    }
-                }
+                rewrite.apply(&mut body);
                 *request.body_mut() = serde_json::to_vec(&body)
                     .map_err(|error| Error::Instance(error.into()))?
                     .into();
@@ -332,3 +407,7 @@ fn sanitize_error(error: Error) -> Error {
 fn sanitize_response<U: Send + 'static>(response: Response<LazyBody<U>>) -> Response<LazyBody<U>> {
     response.map(|body| Box::pin(async move { body.await.map_err(sanitize_error) }) as LazyBody<U>)
 }
+
+#[cfg(test)]
+#[path = "transport_rewrite_tests.rs"]
+mod tests;

@@ -241,6 +241,82 @@ mod mapping {
     }
 
     #[test]
+    fn anthropic_tool_choice_maps_the_wire_shapes() {
+        assert_eq!(
+            anthropic_tool_choice("auto", &[]).expect("auto maps"),
+            serde_json::json!({"type": "auto"})
+        );
+        assert_eq!(
+            anthropic_tool_choice("none", &[]).expect("none maps"),
+            serde_json::json!({"type": "none"})
+        );
+        assert_eq!(
+            anthropic_tool_choice("required", &["shell"]).expect("required maps"),
+            serde_json::json!({"type": "any"})
+        );
+        assert_eq!(
+            anthropic_tool_choice("shell", &["shell", "apply_patch"]).expect("specific maps"),
+            serde_json::json!({"type": "tool", "name": "shell"})
+        );
+    }
+
+    #[test]
+    fn required_or_specific_choice_without_function_tools_is_rejected() {
+        for choice in ["required", "shell", "web_search"] {
+            let error = validate_tool_choice(choice, &[])
+                .expect_err("a choice with no advertised function tool must fail");
+            assert!(
+                matches!(error, codex_api::ApiError::InvalidRequest { .. }),
+                "expected InvalidRequest for {choice:?}"
+            );
+        }
+        assert!(validate_tool_choice("auto", &[]).is_ok());
+        assert!(validate_tool_choice("none", &[]).is_ok());
+        assert!(validate_tool_choice("shell", &["shell"]).is_ok());
+    }
+
+    #[test]
+    fn hosted_only_anthropic_request_translates_and_restores_choice() {
+        // The public bridge entry contract for F06: a hosted-only request
+        // carries no function tools, so the restored choice must still be
+        // expressible, and the hosted tool must keep its constraints.
+        let mut request = base_request(vec![user_text("search the web")]);
+        let tools_json = r#"[{"type":"web_search","external_web_access":true,"filters":{"allowed_domains":["docs.rs"]}}]"#;
+        let raw = serde_json::value::RawValue::from_string(tools_json.to_string()).expect("json");
+        request.tools = Some(codex_api::ResponsesApiTools::from(std::sync::Arc::from(
+            raw,
+        )));
+        let (completion, meta) = super::responses_request_to_completion_request(
+            &request,
+            RigProtocol::Anthropic,
+            "test",
+        )
+        .expect("hosted-only anthropic request converts");
+        assert!(
+            completion.tools.is_empty(),
+            "hosted tools never become function definitions"
+        );
+        assert_eq!(meta.hosted_tools.len(), 1);
+        assert_eq!(
+            crate::hosted_tools::anthropic_server_tool(&meta.hosted_tools[0]),
+            Ok(Some(serde_json::json!({
+                "type": "web_search_20250305",
+                "name": "web_search",
+                "allowed_domains": ["docs.rs"],
+            })))
+        );
+        let advertised: Vec<&str> = completion
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect();
+        assert_eq!(
+            anthropic_tool_choice(&request.tool_choice, &advertised).expect("auto maps"),
+            serde_json::json!({"type": "auto"})
+        );
+    }
+
+    #[test]
     fn high_reasoning_efforts_pass_through_unclamped() {
         let mut request = base_request(vec![user_text("hi")]);
         request.reasoning = Some(codex_api::Reasoning {

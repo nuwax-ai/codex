@@ -2,6 +2,7 @@
 
 use super::anthropic_server_tool;
 use super::is_web_search_server_use;
+use super::translate_anthropic_server_tools;
 use super::web_search_action;
 use super::web_search_blocks_from_anthropic_sse;
 use pretty_assertions::assert_eq;
@@ -11,7 +12,9 @@ use serde_json::json;
 fn web_search_translates_to_the_anthropic_server_tool() {
     assert_eq!(
         anthropic_server_tool(&json!({"type": "web_search"})),
-        Some(json!({"type": "web_search_20250305", "name": "web_search"}))
+        Ok(Some(
+            json!({"type": "web_search_20250305", "name": "web_search"})
+        ))
     );
 }
 
@@ -19,9 +22,120 @@ fn web_search_translates_to_the_anthropic_server_tool() {
 fn unknown_hosted_tools_have_no_translation() {
     assert_eq!(
         anthropic_server_tool(&json!({"type": "image_generation"})),
-        None
+        Ok(None)
     );
-    assert_eq!(anthropic_server_tool(&json!({})), None);
+    assert_eq!(anthropic_server_tool(&json!({})), Ok(None));
+}
+
+#[test]
+fn allowed_domains_and_user_location_cross_the_translation() {
+    assert_eq!(
+        anthropic_server_tool(&json!({
+            "type": "web_search",
+            "external_web_access": true,
+            "filters": {"allowed_domains": ["docs.rs", "example.com/blog"]},
+            "user_location": {
+                "type": "approximate",
+                "city": "Shanghai",
+                "country": "CN",
+                "timezone": "Asia/Shanghai",
+            },
+        })),
+        Ok(Some(json!({
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "allowed_domains": ["docs.rs", "example.com/blog"],
+            "user_location": {
+                "type": "approximate",
+                "city": "Shanghai",
+                "country": "CN",
+                "timezone": "Asia/Shanghai",
+            },
+        })))
+    );
+}
+
+#[test]
+fn cached_mode_is_rejected_before_anything_is_sent() {
+    let error = anthropic_server_tool(&json!({
+        "type": "web_search",
+        "external_web_access": false,
+    }))
+    .expect_err("cached search must fail the request");
+    assert!(
+        error.contains("cached mode") && error.contains("live search mode"),
+        "error must name the mode and the supported alternative: {error}"
+    );
+}
+
+#[test]
+fn indexed_mode_is_rejected_before_anything_is_sent() {
+    let error = anthropic_server_tool(&json!({
+        "type": "web_search",
+        "indexed_web_access": true,
+    }))
+    .expect_err("indexed search must fail the request");
+    assert!(
+        error.contains("indexed mode") && error.contains("live search mode"),
+        "error must name the mode and the supported alternative: {error}"
+    );
+}
+
+#[test]
+fn malformed_domain_entries_are_named_in_the_error() {
+    for (domains, expected) in [
+        (json!(["https://docs.rs"]), "scheme"),
+        (json!(["*.example.com"]), "wildcards in the domain"),
+        (json!([""]), "must not be empty"),
+        (json!([]), "must not be empty"),
+        (json!([42]), "must be strings"),
+    ] {
+        let error = anthropic_server_tool(&json!({
+            "type": "web_search",
+            "filters": {"allowed_domains": domains},
+        }))
+        .expect_err("malformed allowed_domains must fail the request");
+        assert!(
+            error.contains(expected),
+            "expected {expected:?} in {error:?} for {domains}"
+        );
+    }
+}
+
+#[test]
+fn user_location_without_any_field_is_rejected() {
+    let error = anthropic_server_tool(&json!({
+        "type": "web_search",
+        "user_location": {"type": "approximate"},
+    }))
+    .expect_err("an all-empty user_location must fail the request");
+    assert!(
+        error.contains("city, region, country or timezone"),
+        "{error}"
+    );
+}
+
+#[test]
+fn batch_translation_fails_fast_on_the_first_bad_declaration() {
+    let error = translate_anthropic_server_tools(&[
+        json!({"type": "web_search"}),
+        json!({"type": "web_search", "external_web_access": false}),
+    ])
+    .expect_err("one non-representable mode must abort the batch");
+    assert!(error.to_string().contains("cached mode"));
+}
+
+#[test]
+fn batch_translation_drops_unknown_tools_and_keeps_web_search() {
+    let translated = translate_anthropic_server_tools(&[
+        json!({"type": "web_search"}),
+        json!({"type": "image_generation"}),
+    ])
+    .expect("unknown hosted tools drop with a warning");
+    assert_eq!(
+        translated,
+        vec![json!({"type": "web_search_20250305", "name": "web_search"})]
+    );
 }
 
 #[test]
