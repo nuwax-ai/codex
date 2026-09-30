@@ -6494,6 +6494,27 @@ fn web_search_mode_for_turn_uses_preference_for_read_only() {
     assert_eq!(mode, WebSearchMode::Cached);
 }
 
+// Fork: the default cached mode fails closed to disabled on wires that
+// cannot express it (chat-family bridge), never silently widening to live.
+#[test]
+fn web_search_mode_for_turn_disables_cached_when_the_wire_cannot_express_it() {
+    let web_search_mode = Constrained::allow_any(WebSearchMode::Cached);
+    let bridge_wire = ProviderCapabilities {
+        cached_web_search: false,
+        ..ProviderCapabilities::default()
+    };
+    for permission_profile in [PermissionProfile::read_only(), PermissionProfile::Disabled] {
+        let mode =
+            resolve_web_search_mode_for_turn(&web_search_mode, &permission_profile, bridge_wire);
+        assert_eq!(mode, WebSearchMode::Disabled);
+    }
+    // An explicit live choice is untouched by the cached rule.
+    let live = Constrained::allow_any(WebSearchMode::Live);
+    let mode =
+        resolve_web_search_mode_for_turn(&live, &PermissionProfile::read_only(), bridge_wire);
+    assert_eq!(mode, WebSearchMode::Live);
+}
+
 #[test]
 fn web_search_mode_for_turn_prefers_live_for_disabled_permissions() {
     let web_search_mode = Constrained::allow_any(WebSearchMode::Cached);
@@ -13391,46 +13412,79 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
     Ok(())
 }
 
-// Fork (nuwax-codex): ratio-derived auto-compact limits must stay within
-// (0, 1]; a negative ratio must not derive a negative limit, which would
-// trigger compaction on every turn.
+// Fork (nuwax-codex): the ratio travels untouched to the models manager,
+// which derives it against the model's EFFECTIVE window in one place.
+// Deriving at the Config layer would freeze the threshold against the
+// unclamped configured window (200k window override + ratio 0.5 on a model
+// whose max_context_window is 60k must compact at 30k, not 100k).
 #[tokio::test]
-async fn to_models_manager_config_rejects_out_of_range_ratio_derivation() {
+async fn to_models_manager_config_passes_the_ratio_through_for_model_layer_derivation() {
     let codex_home = tempdir().expect("tempdir");
     let base = ConfigBuilder::without_managed_config_for_tests()
         .codex_home(codex_home.path().to_path_buf())
         .cli_overrides(vec![
-            ("model_context_window".to_string(), toml::Value::Integer(60_000)),
-            ("model_auto_compact_ratio".to_string(), toml::Value::Float(0.8)),
+            (
+                "model_context_window".to_string(),
+                toml::Value::Integer(60_000),
+            ),
+            (
+                "model_auto_compact_ratio".to_string(),
+                toml::Value::Float(0.8),
+            ),
         ])
         .build()
         .await
         .expect("base config");
-    assert_eq!(
-        base.to_models_manager_config().model_auto_compact_token_limit,
-        Some(48_000)
-    );
+    let derived = base.to_models_manager_config();
+    assert_eq!(derived.model_auto_compact_token_limit, None);
+    assert_eq!(derived.model_auto_compact_ratio, Some(0.8));
+    assert_eq!(derived.model_context_window, Some(60_000));
 
+    // The F03 regression shape: a window override above the model's
+    // max_context_window must not pre-bake a threshold here.
+    let clamped = Config {
+        model_context_window: Some(200_000),
+        ..base.clone()
+    };
+    let derived = clamped.to_models_manager_config();
+    assert_eq!(derived.model_auto_compact_token_limit, None);
+    assert_eq!(derived.model_auto_compact_ratio, Some(0.8));
+
+    // Out-of-range ratios are passed through verbatim; the models manager
+    // owns the single diagnosis (warn + ignore), including NaN, which never
+    // matches the (0, 1] range check there.
     for ratio in [-0.5, 0.0, 1.5] {
         let config = Config {
             model_auto_compact_ratio: Some(ratio),
             ..base.clone()
         };
+        let derived = config.to_models_manager_config();
         assert_eq!(
-            config.to_models_manager_config().model_auto_compact_token_limit,
-            None,
-            "ratio {ratio} must not derive a limit"
+            derived.model_auto_compact_ratio,
+            Some(ratio),
+            "ratio {ratio} must travel untouched for model-layer diagnosis"
         );
+        assert!(derived.model_auto_compact_token_limit.is_none());
     }
+    let nan_config = Config {
+        model_auto_compact_ratio: Some(f64::NAN),
+        ..base.clone()
+    };
+    assert!(
+        nan_config
+            .to_models_manager_config()
+            .model_auto_compact_ratio
+            .is_some_and(f64::is_nan)
+    );
 
-    // An explicit absolute limit always wins over the ratio.
+    // An explicit absolute limit also travels; precedence (absolute wins)
+    // is resolved where the effective window is known.
     let config = Config {
         model_auto_compact_token_limit: Some(12_345),
         model_auto_compact_ratio: Some(0.8),
         ..base
     };
-    assert_eq!(
-        config.to_models_manager_config().model_auto_compact_token_limit,
-        Some(12_345)
-    );
+    let derived = config.to_models_manager_config();
+    assert_eq!(derived.model_auto_compact_token_limit, Some(12_345));
+    assert_eq!(derived.model_auto_compact_ratio, Some(0.8));
 }

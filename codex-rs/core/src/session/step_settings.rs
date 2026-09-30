@@ -178,10 +178,15 @@ impl ResolvedStepSettings {
 /// Explicit startup overrides applied to catalog-derived model metadata.
 /// Construct from `Config::to_models_manager_config()` so model-derived base
 /// instructions are not mistaken for explicit overrides.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct ModelInfoOverrides {
     pub(crate) context_window: Option<i64>,
     pub(crate) auto_compact_token_limit: Option<i64>,
+    /// Fork (nuwax-codex): ratio-based compaction threshold, derived against
+    /// the effective model window by the models manager. Must survive this
+    /// round-trip or the first turn (and every resume/model switch through
+    /// `models_manager_config`) silently loses the configuration.
+    pub(crate) auto_compact_ratio: Option<f64>,
     pub(crate) tool_output_token_limit: Option<usize>,
     pub(crate) base_instructions: Option<String>,
 }
@@ -191,6 +196,7 @@ impl From<ModelsManagerConfig> for ModelInfoOverrides {
         Self {
             context_window: config.model_context_window,
             auto_compact_token_limit: config.model_auto_compact_token_limit,
+            auto_compact_ratio: config.model_auto_compact_ratio,
             tool_output_token_limit: config.tool_output_token_limit,
             base_instructions: config.base_instructions,
         }
@@ -205,7 +211,7 @@ impl ModelInfoOverrides {
         ModelsManagerConfig {
             model_context_window: self.context_window,
             model_auto_compact_token_limit: self.auto_compact_token_limit,
-            model_auto_compact_ratio: None,
+            model_auto_compact_ratio: self.auto_compact_ratio,
             tool_output_token_limit: self.tool_output_token_limit,
             base_instructions: self.base_instructions.clone(),
             personality,

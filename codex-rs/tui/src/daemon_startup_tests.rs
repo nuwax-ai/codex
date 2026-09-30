@@ -39,6 +39,18 @@ fn audited_overrides_allow_daemon_without_allowing_arbitrary_config() {
         ("model_reasoning_effort=''", false),
         ("model_reasoning_effort='  '", false),
         ("model_reasoning_effort=true", false),
+        // Fork (nuwax-codex): env-seeded context/compact values ride the
+        // per-thread config projection, so they keep the daemon eligible.
+        ("model_context_window=60000", true),
+        ("model_auto_compact_token_limit=12000", true),
+        ("model_auto_compact_ratio=0.2", true),
+        ("model_auto_compact_ratio=1", true),
+        ("model_context_window=-1", false),
+        ("model_auto_compact_token_limit=0", false),
+        ("model_auto_compact_ratio=0", false),
+        ("model_auto_compact_ratio=1.5", false),
+        ("model_auto_compact_ratio='0.2'", false),
+        ("model_auto_compact_ratio=60000", false),
         ("model='test'", false),
     ] {
         let overrides = codex_utils_cli::CliConfigOverrides {
@@ -383,6 +395,23 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
             expected
         );
     }
+    // Fork (nuwax-codex): the NUWAX_* environment provider references
+    // per-process credentials; it must force the embedded backend.
+    let nuwax_cli = Cli::parse_from(["codex"]);
+    assert_eq!(
+        daemon_startup::exclusion(
+            &nuwax_cli,
+            &[(
+                "model_providers.nuwax_env".to_string(),
+                toml::Value::String("seeded".into())
+            )],
+            &LoaderOverrides::default(),
+            /*workload_identity_selected*/ false,
+            /*exec_server_url*/ None,
+            &codex_install_context::InstallMethod::Other
+        ),
+        Some("NUWAX environment provider (per-run credentials)")
+    );
     // Fork: the nuwax-codex npm package ships a single binary without a
     // complete local package, so the daemon is never auto-started or reused.
     let npm_cli = Cli::parse_from(["codex"]);

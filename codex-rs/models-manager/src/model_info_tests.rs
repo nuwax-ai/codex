@@ -332,3 +332,18 @@ fn out_of_range_auto_compact_ratio_is_ignored_with_a_warning() {
         );
     }
 }
+
+// A ratio so small it rounds to zero must not become a zero threshold —
+// that would compact on every turn. The model's own limit survives instead.
+#[test]
+fn tiny_auto_compact_ratio_deriving_zero_keeps_the_model_limit() {
+    let mut model = model_info_from_slug("unknown-model");
+    model.context_window = Some(1_000);
+    model.auto_compact_token_limit = Some(900);
+    let config = ModelsManagerConfig {
+        model_auto_compact_ratio: Some(0.0001), // 1_000 * 0.0001 rounds to 0
+        ..Default::default()
+    };
+    let updated = with_config_overrides(model, &config);
+    assert_eq!(updated.auto_compact_token_limit, Some(900));
+}

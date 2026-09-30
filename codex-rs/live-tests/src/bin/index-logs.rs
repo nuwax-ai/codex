@@ -65,16 +65,27 @@ fn write_index(vendor_dir: &std::path::Path) {
     index.push_str("# Live-test artifacts\n\n");
     index.push_str("Regenerate with `cargo run -p codex-live-tests --bin index-logs`.\n\n");
     index.push_str("## Binary-level runs\n\n");
-    index.push_str("| run | timestamp | git rev | scenario | bridge | model |\n");
-    index.push_str("|---|---|---|---|---|---|\n");
+    index.push_str(
+        "| run | timestamp | git rev | dirty | scenario | bridge | model | binary sha256 |\n",
+    );
+    index.push_str("|---|---|---|---|---|---|---|---|\n");
     for (name, m) in &runs {
         let ts = m["timestamp"].as_u64().unwrap_or(0);
         let rev = m["git_rev"].as_str().unwrap_or("?");
+        let dirty = if m["git_dirty"].as_bool().unwrap_or(false) {
+            "yes"
+        } else {
+            "no"
+        };
         let scenario = m["scenario"].as_str().unwrap_or("?");
         let bridge = m["experimental_bridge"].as_str().unwrap_or("(default)");
         let model = m["model"].as_str().unwrap_or("?");
+        let binary = m["binary_sha256"]
+            .as_str()
+            .map(|sha| &sha[..sha.len().min(12)])
+            .unwrap_or("?");
         index.push_str(&format!(
-            "| [{name}](./{name}/events.jsonl) | {ts} | {rev} | {scenario} | {bridge} | {model} |\n"
+            "| [{name}](./{name}/events.jsonl) | {ts} | {rev} | {dirty} | {scenario} | {bridge} | {model} | {binary} |\n"
         ));
     }
 

@@ -91,8 +91,14 @@ impl PidBackend {
         command
             // Handoff suppression belongs to the foreground CLI, not its long-lived children.
             .env_remove(crate::telemetry::HANDOFF_ENV)
-            // Effort is a per-client/thread choice, not a shared daemon default.
+            // Effort and the context/compact seeds are per-client/thread
+            // model choices, not shared daemon defaults; inheriting them
+            // would bake one client's settings into every other client's
+            // background turns.
             .env_remove("CODEX_MODEL_REASONING_EFFORT")
+            .env_remove("CODEX_MODEL_CONTEXT_WINDOW")
+            .env_remove("CODEX_AUTO_COMPACT_TOKEN_LIMIT")
+            .env_remove("CODEX_AUTO_COMPACT_RATIO")
             .args(self.command_args().iter().map(std::borrow::Cow::as_ref))
             .stdin(Stdio::null())
             .stdout(Stdio::null())

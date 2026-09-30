@@ -53,6 +53,11 @@ jobs:
           LIVE_MIMO_API_KEY: ${{ secrets.LIVE_MIMO_API_KEY }}
           LIVE_MIMO_CHAT_URL: https://token-plan-cn.xiaomimimo.com/v1
           LIVE_MIMO_ANTHROPIC_URL: https://token-plan-cn.xiaomimimo.com/anthropic/v1
+          # Same gateway base as chat; the token-plan endpoint serves the
+          # Responses wire too (validated locally). Without this the mimo
+          # responses scenarios silently skipped at runtime and still
+          # counted as PASS.
+          LIVE_MIMO_RESPONSES_URL: https://token-plan-cn.xiaomimimo.com/v1
           LIVE_MIMO_MODEL: mimo-v2.6-flash
           LIVE_GLM_API_KEY: ${{ secrets.LIVE_GLM_API_KEY }}
           LIVE_GLM_CHAT_URL: https://open.bigmodel.cn/api/coding/paas/v4
@@ -65,7 +70,10 @@ jobs:
           vendors = [v.strip() for v in os.environ.get("LIVE_VENDORS", "").split(",") if v.strip()]
           if not vendors or any(v not in {"mimo", "glm", "step"} for v in vendors):
               raise SystemExit("LIVE_VENDORS must select at least one of mimo, glm, step")
-          missing = [f"LIVE_{v.upper()}_{key}" for v in vendors for key in ("API_KEY", "CHAT_URL", "ANTHROPIC_URL", "MODEL") if not os.environ.get(f"LIVE_{v.upper()}_{key}", "").strip()]
+          # Every selected vendor must declare the complete endpoint set,
+          # including the Responses URL, so a runtime skip can never quietly
+          # pass as a green scenario.
+          missing = [f"LIVE_{v.upper()}_{key}" for v in vendors for key in ("API_KEY", "CHAT_URL", "ANTHROPIC_URL", "RESPONSES_URL", "MODEL") if not os.environ.get(f"LIVE_{v.upper()}_{key}", "").strip()]
           if missing:
               raise SystemExit("Missing live test configuration: " + ", ".join(missing))
           PY_PREFLIGHT

@@ -49,11 +49,11 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
 
 ## 三、核心设计决策(审查时请验证合理性)
 
-1. **分派策略**(core/src/client.rs):
-   - `wire_api = "chat"` → 走桥;URL 含 `/anthropic` 自动切 Anthropic Messages
-   - `wire_api = "anthropic"` → 显式走桥的 Anthropic 路由(StepFun 类网关)
+1. **分派策略**(core/src/client.rs)——以 2026-09-30 HEAD 为准:
+   - `wire_api = "chat"` → 桥的 Chat Completions 路由(显式协议,不按 URL 推断;URL 启发式仅存在于 live 测试 harness 的桥级直连辅助)
+   - `wire_api = "anthropic"` → 显式走桥的 Anthropic Messages 路由(StepFun 类网关)
    - `wire_api = "responses"` + 第一方 OpenAI/Bedrock → 原生(WebSocket/宿主工具/SigV4 不能丢)
-   - `wire_api = "responses"` + **其他所有厂商 → 默认走 rig 桥**(厂商 Responses 实现残缺,桥转 Chat 更兼容;桥会丢弃宿主工具并 warn)
+   - `wire_api = "responses"` + **其他所有厂商 → 默认走 rig 桥的 Responses 同协议直传**(POST /responses,RawValue 类型层投影,不转 Chat);宿主工具在 Chat 线丢弃并 warn,在 Anthropic 线翻译为 server-tool 条目(约束保留,cached/indexed 显式报错)
    - `experimental_bridge` 可显式选 `"rig"`(默认)/`"genai"`/`"native"`(强制原生,逃生舱)
 2. **trait 隔离**:`codex-api::ModelBridge` 是唯一契约,两桥以单元结构体实现;
    core 的 `dispatch_model_bridge` 只见 `&dyn ModelBridge`。

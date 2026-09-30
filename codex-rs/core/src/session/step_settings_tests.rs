@@ -485,3 +485,46 @@ async fn model_resolution_preserves_startup_overrides_and_instruction_provenance
         );
     }
 }
+
+// Fork (nuwax-codex): a ratio-only compaction configuration must survive the
+// ModelInfoOverrides round-trip (first turn, resume, and every model switch
+// rebuild model info through it) and derive against the model's EFFECTIVE
+// window — the max-context-window clamp applies before the ratio, never
+// after a threshold frozen against the unclamped configured window.
+#[tokio::test]
+async fn ratio_only_compact_threshold_survives_override_resolution() {
+    let mut model = model_info_from_slug("model-b");
+    model.context_window = Some(90_000);
+    model.max_context_window = Some(60_000);
+    model.auto_compact_token_limit = Some(50_000);
+    let catalog = ModelsResponse {
+        models: vec![model],
+    };
+    let models_manager = StaticModelsManager::new(/*auth_manager*/ None, catalog.clone());
+
+    let mut config = test_config().await;
+    config.model = Some("model-a".to_string());
+    config.model_catalog = Some(catalog);
+    config.model_context_window = Some(200_000);
+    config.model_auto_compact_ratio = Some(0.5);
+
+    let overrides = ModelInfoOverrides::from(config.to_models_manager_config());
+    assert_eq!(overrides.auto_compact_ratio, Some(0.5));
+    assert_eq!(
+        overrides.auto_compact_token_limit, None,
+        "the Config layer must not pre-derive a threshold"
+    );
+
+    let mut settings = configured_settings();
+    settings.collaboration_mode = settings.collaboration_mode.with_updates(
+        Some("model-b".to_string()),
+        /*effort*/ None,
+        /*developer_instructions*/ None,
+    );
+    let resolved = settings
+        .resolve_model_info(&models_manager, &overrides)
+        .await;
+    // Effective window min(200_000, 60_000) first, then the ratio:
+    assert_eq!(resolved.context_window, Some(60_000));
+    assert_eq!(resolved.auto_compact_token_limit, Some(30_000));
+}

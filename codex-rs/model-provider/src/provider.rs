@@ -54,6 +54,12 @@ pub struct ProviderCapabilities {
     pub image_generation: bool,
     pub web_search: bool,
     pub external_web_access: bool,
+    /// Whether the provider can serve the hosted web_search tool in its
+    /// CACHED mode. Fork: chat-family bridge wires cannot express it
+    /// (Anthropic speaks live search only; Chat has no hosted tools), so the
+    /// DEFAULT cached tool must fail closed to disabled there instead of
+    /// being advertised and rejected per request.
+    pub cached_web_search: bool,
     pub remote_compaction: RemoteCompactionSupport,
 }
 
@@ -64,6 +70,7 @@ impl Default for ProviderCapabilities {
             image_generation: true,
             web_search: true,
             external_web_access: true,
+            cached_web_search: true,
             remote_compaction: RemoteCompactionSupport::Unsupported,
         }
     }
@@ -424,6 +431,7 @@ impl ModelProvider for ConfiguredModelProvider {
 
         ProviderCapabilities {
             remote_compaction,
+            cached_web_search: native_transport,
             ..ProviderCapabilities::default()
         }
     }

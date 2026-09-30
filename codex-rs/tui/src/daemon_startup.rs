@@ -42,6 +42,15 @@ pub(super) fn exclusion(
         Some("npm single-binary install (nuwax-codex)")
     } else if cli.no_daemon {
         Some("--no-daemon")
+    } else if cli_kv_overrides
+        .iter()
+        .any(|(key, _)| key == "model_providers.nuwax_env")
+    {
+        // Fork (nuwax-codex): the NUWAX_* startup group references
+        // per-process credentials (`env_key = NUWAX_API_KEY`); a shared
+        // daemon must not bake one client's environment into its defaults.
+        // The embedded app-server resolves the group in this process.
+        Some("NUWAX environment provider (per-run credentials)")
     } else if cli.oss {
         Some("--oss")
     } else if workload_identity_selected {
@@ -75,6 +84,16 @@ pub(super) fn config_exclusion(
             "model_reasoning_effort" => value
                 .as_str()
                 .is_some_and(|effort| !effort.trim().is_empty()),
+            // Fork (nuwax-codex): the context/compact model seeds ride the
+            // same per-thread config projection as effort, so clients seeded
+            // from the environment keep reusing the shared daemon.
+            "model_context_window" | "model_auto_compact_token_limit" => {
+                value.as_integer().is_some_and(|limit| limit > 0)
+            }
+            "model_auto_compact_ratio" => value
+                .as_float()
+                .or_else(|| value.as_integer().map(|integer| integer as f64))
+                .is_some_and(|ratio| ratio > 0.0 && ratio <= 1.0),
             "suppress_unstable_features_warning" | "tui.fullscreen_transcript" => value.is_bool(),
             "tui" => value.as_table().is_some_and(|tui| {
                 tui.len() == 1

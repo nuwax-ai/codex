@@ -1652,22 +1652,16 @@ impl Config {
     }
 
     pub fn to_models_manager_config(&self) -> ModelsManagerConfig {
-        // Fork (nuwax-codex): derive the absolute auto-compact limit from
-        // the ratio here, where both config fields are guaranteed present.
-        // Deriving only at the model-info layer lets call sites that build
-        // ModelsManagerConfig from partial state apply the ratio against the
-        // model's native window instead of the configured one. Out-of-range
-        // ratios derive nothing (a negative limit would compact every turn);
-        // the model-info layer emits the range warning.
-        let model_auto_compact_token_limit = self.model_auto_compact_token_limit.or_else(|| {
-            self.model_auto_compact_ratio
-                .filter(|ratio| (0.0..=1.0).contains(ratio) && *ratio > 0.0)
-                .zip(self.model_context_window)
-                .map(|(ratio, window)| (window as f64 * ratio) as i64)
-        });
+        // Fork (nuwax-codex): the absolute limit and the ratio travel
+        // untouched; the models manager derives the ratio against the
+        // model's EFFECTIVE window (after the max-context-window clamp) in
+        // one place. Deriving here instead would freeze the threshold
+        // against the unclamped configured window and silently bypass that
+        // clamp (a 200k window override with ratio 0.5 on a 60k model must
+        // compact at 30k, not 100k).
         ModelsManagerConfig {
             model_context_window: self.model_context_window,
-            model_auto_compact_token_limit,
+            model_auto_compact_token_limit: self.model_auto_compact_token_limit,
             model_auto_compact_ratio: self.model_auto_compact_ratio,
             tool_output_token_limit: self.tool_output_token_limit,
             base_instructions: self.base_instructions.clone().filter(|_| {
@@ -3081,6 +3075,13 @@ pub(crate) fn resolve_web_search_mode_for_turn(
     provider_capabilities: ProviderCapabilities,
 ) -> WebSearchMode {
     let preferred = web_search_mode.value();
+    // Fork: the DEFAULT web search mode is cached; chat-family bridge wires
+    // cannot express it. Fail closed to disabled rather than advertising a
+    // tool the wire would reject (or silently running live searches the
+    // configured mode never asked for). An explicit live choice is unaffected.
+    if matches!(preferred, WebSearchMode::Cached) && !provider_capabilities.cached_web_search {
+        return WebSearchMode::Disabled;
+    }
     let is_allowed = |mode: WebSearchMode| {
         let provider_supports_mode = match mode {
             WebSearchMode::Live | WebSearchMode::Indexed => {

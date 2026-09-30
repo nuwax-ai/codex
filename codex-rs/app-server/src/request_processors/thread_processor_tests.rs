@@ -598,6 +598,8 @@ mod thread_processor_behavior_tests {
             env_key: None,
             env_key_instructions: None,
             experimental_bearer_token: None,
+            experimental_bridge: None,
+            provider_id: None,
             auth: None,
             gateway_oauth: None,
             aws: None,

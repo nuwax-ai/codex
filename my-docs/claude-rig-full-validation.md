@@ -24,12 +24,16 @@
 结果：**4712 项：4479 通过 / 225 失败 / 8 超时 / 27 跳过**（2940s，
 `/tmp/val-core-rigrig.log`）。
 
-失败聚类与 2026-09-28 全量基线**完全一致**（`my-docs/nuwax-home/tasks.md` T2.3
-已逐类归因）：code_mode 簇 146+、realtime_conversation 22、remote_env 14、
-scenarios 12、guardian_* 20、hooks/mcp_optional/unified_exec/client 等——均为
-`codex-code-mode-host` 本机构建缺失（rusty_v8 归档 404）或其负载竞态；
-`suite::compact` 全部通过（含新回归测试）。新增的桥线端到端测试在 `suite::
-rig_responses_bridge` 下**通过**。
+失败归因口径（2026-09-30 修订）：225 个失败**按失败名称聚类**后与
+2026-09-28 全量基线的记录（`my-docs/nuwax-home/tasks.md` T2.3）名称集合一致，
+其中 code_mode/realtime_conversation/remote_env/scenarios/guardian_* 等簇
+已逐类给出 `codex-code-mode-host` 本机构建缺失（rusty_v8 归档 404）或其
+负载竞态的直接证据；**但"全部失败均为环境原因"只是基于聚类的推断，
+未对每个失败逐项复跑核实**，不应当作逐项证明引用。`suite::compact` 全部
+通过（含新回归测试）。新增的桥线端到端测试在 `suite::rig_responses_bridge`
+下**通过**。剩余集合的权威覆盖以 CI（Linux）workflow 实际运行为准——
+截至今日本文档**没有**附上对应 run 链接，此缺口登记在
+`claude-protocol-stability-handoff-2026-09-30.md` F10。
 
 ## 3. 本轮新测试证据（全部通过）
 

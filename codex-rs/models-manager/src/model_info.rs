@@ -43,7 +43,18 @@ pub fn with_config_overrides(mut model: ModelInfo, config: &ModelsManagerConfig)
         } else if ratio > 0.0
             && let Some(context_window) = model.context_window
         {
-            model.auto_compact_token_limit = Some((context_window as f64 * ratio) as i64);
+            let derived = (context_window as f64 * ratio) as i64;
+            if derived <= 0 {
+                // A zero threshold would compact every turn; treat the same
+                // as an unusable ratio and keep the model's own limit.
+                tracing::warn!(
+                    ratio,
+                    context_window,
+                    "model_auto_compact_ratio derives a zero token limit; ignoring it"
+                );
+            } else {
+                model.auto_compact_token_limit = Some(derived);
+            }
         }
     }
     if let Some(token_limit) = config.tool_output_token_limit {

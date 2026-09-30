@@ -29,6 +29,7 @@ http = { workspace = true }
 rig-core = "=0.42.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread", "time"] }
 

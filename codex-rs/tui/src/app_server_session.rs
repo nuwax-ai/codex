@@ -1856,6 +1856,19 @@ fn config_request_overrides_from_config(
         "web_search",
         Some(config.web_search_mode.value().to_string()),
     );
+    // Fork (nuwax-codex): the context/compact model seeds are per-thread
+    // values (possibly env-seeded in this client); project them so a shared
+    // daemon thread reproduces this client's window and compaction
+    // threshold. Numeric overrides bypass the string-only `insert` closure.
+    if let Some(window) = config.model_context_window {
+        overrides.insert("model_context_window".to_string(), window.into());
+    }
+    if let Some(limit) = config.model_auto_compact_token_limit {
+        overrides.insert("model_auto_compact_token_limit".to_string(), limit.into());
+    }
+    if let Some(ratio) = config.model_auto_compact_ratio {
+        overrides.insert("model_auto_compact_ratio".to_string(), ratio.into());
+    }
     if config.bypass_hook_trust {
         overrides.insert("bypass_hook_trust".to_string(), true.into());
     }
@@ -3333,6 +3346,11 @@ mod tests {
             .expect("test web search mode should be allowed");
         config.bypass_hook_trust = true;
         config.service_tier = Some(ServiceTier::Fast.request_value().to_string());
+        // Fork (nuwax-codex): env-seeded context/compact values must ride
+        // the same per-thread projection on start/resume/fork.
+        config.model_context_window = Some(60_000);
+        config.model_auto_compact_token_limit = Some(12_000);
+        config.model_auto_compact_ratio = Some(0.2);
         let thread_id = ThreadId::new();
 
         let start = thread_start_params_from_config(
@@ -3366,6 +3384,9 @@ mod tests {
             ("model_verbosity".to_string(), string("low")),
             ("web_search".to_string(), string("disabled")),
             ("bypass_hook_trust".to_string(), true.into()),
+            ("model_context_window".to_string(), 60_000.into()),
+            ("model_auto_compact_token_limit".to_string(), 12_000.into()),
+            ("model_auto_compact_ratio".to_string(), 0.2.into()),
         ]);
         let mut expected_start_config = expected_config.clone();
         expected_start_config.insert(
