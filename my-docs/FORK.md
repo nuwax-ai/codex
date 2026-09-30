@@ -64,7 +64,17 @@ codex 以 Responses 形态声明 hosted 工具（`{"type":"web_search"}`）；�
 Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
 
 - 请求侧：`web_search` → Anthropic `web_search_20250305` 服务端工具（GLM 网关
-  实测接受）；无对应物的工具仍丢弃并告警。新工具 = 加表项。
+  实测接受）；`filters.allowed_domains`、`user_location` 等可表达约束随翻译保留
+  （域名格式/地点字段前置校验），cached/indexed 模式在发请求前显式报错（不静默
+  放宽为 live）；无对应物的工具仍丢弃并告警。新工具 = 加表项。
+- hosted-only 请求的 tool_choice：rig 流式路径在 typed 工具为空时丢弃
+  tool_choice，transport 注入服务端工具后恢复请求值（none/any/tool 原语义，
+  禁并行标志随恢复生效；required/指定工具在无函数工具时前置报错；Chat 线无
+  工具时移除悬挂 tool_choice）。
+- 默认 fail-closed：`web_search_mode` 默认 cached，而 chat-family 桥线无法表达
+  cached → 新增 `ProviderCapabilities.cached_web_search`，默认 cached 在此类线
+  上降级为 Disabled（此前字段丢弃翻译会让 GLM 实际执行 live 搜索，与配置模式
+  相反）。需要搜索请显式 `web_search = "live"`。
 - 响应侧：rig 0.42 公开流式面不暴露 `server_tool_use`，transport 层 tee 原始
   SSE（`anthropic_sse_tee`，eventsource-stream 解帧），流泵在 Completed 前回收
   web-search 块 → `WebSearchCall` 条目（兼容 GLM 的 `web_search_prime` 改名、
@@ -83,11 +93,12 @@ turn 级超窗处理才会触发（官方代码里这两个机制只认该分类
 
 ### 5.2 ratio 派生阈值 + 环境变量（v0.18.10）
 
-- 配置键 `model_auto_compact_ratio`（0<r≤1）：limit = ratio × context_window；
-  绝对值 `model_auto_compact_token_limit` 优先；推导在
-  `Config::to_models_manager_config`（两字段保证同源），越界（负数/0/>1）不推导
-  ——负 limit 会导致每轮压缩。只设 ratio 不设 window 时，model-info 层按模型
-  实际窗口推导（多厂商容器免写死 token 数）。
+- 配置键 `model_auto_compact_ratio`（0<r≤1）：limit = ratio × **有效**窗口；
+  绝对值 `model_auto_compact_token_limit` 优先；**推导唯一归属 models-manager**
+  （在 max_context_window 裁剪之后进行——200k 窗口覆盖 + ratio 0.5 在 60k 模型
+  上阈值是 30000 而非 100000）；ratio 经 `ModelInfoOverrides` 全链保持（首轮/
+  resume/切模型不丢）；越界（负数/0/>1/NaN）或取整为 0 时忽略并告警（0 阈值
+  会导致每轮压缩）。三个键均可由环境变量注入并按 thread 投影到共享 daemon。
 - 环境变量（优先级：显式 `-c` > env > config.toml；非法值带变量名报错）：
   `CODEX_MODEL_CONTEXT_WINDOW` / `CODEX_AUTO_COMPACT_TOKEN_LIMIT` /
   `CODEX_AUTO_COMPACT_RATIO`。同类先行：`CODEX_MODEL_REASONING_EFFORT`。
@@ -109,6 +120,15 @@ code-mode-host、rg）。fork 的 npm 包只发单二进制 → 自启必失败
 **环境变量**：`CODEX_INSTALL_SOURCE=npm_nuwax`（launcher 设置，install-context
 识别 NpmNuwax）、`CODEX_MODEL_REASONING_EFFORT`、`CODEX_MODEL_CONTEXT_WINDOW`、
 `CODEX_AUTO_COMPACT_TOKEN_LIMIT`、`CODEX_AUTO_COMPACT_RATIO`。
+
+**NUWAX 启动组**（2026-10-01 起；来自真实进程环境，`$CODEX_HOME/.env` 不可注入）：
+`NUWAX_BASE_URL`+`NUWAX_WIRE_API`（responses|chat|anthropic）+`NUWAX_API_KEY`
+三者齐设激活本次运行的临时 provider `nuwax_env`（凭据仅以
+`env_key="NUWAX_API_KEY"` 引用，不落 config/rollout/诊断），`NUWAX_MODEL` 可单
+独选既有 provider 的模型。优先级：typed CLI（-m/--oss）> 显式 `-c` > 本组 >
+config 文件；显式选其他 provider 时整组忽略。CLI/TUI/exec/standalone
+app-server 同语义接线；组激活时共享 daemon 被排除（每进程凭据），doctor
+`--json` 新增 `config.model_routing` 检查。部分设置/非法值 fail-fast 报变量名。
 （ACP-TS 侧另有 `CODEX_BASE_URL`/`CODEX_API_PROTOCOL`/`CODEX_WIRE_API`/
 `INITIAL_AGENT_MODE` 等，见该仓库。）
 

@@ -263,11 +263,11 @@ Anthropic citations、pause_turn、搜索结果回放目前属于已经登记的
 - [x] T06 修正文档现状、基线失败口径、live 必需配置与执行统计；增加相关离线 CI 任务，完成 A4c。（workflow 改动未运行，登记 not-run）
 - [x] T07 实现本文件的 NUWAX env 契约，覆盖所有优先级/冲突/缺值/认证隔离规则，完成 B1。（12 项矩阵测试，43/43）
 - [x] T08 接通 CLI/TUI/exec/standalone app-server，明确共享 daemon 限制并完善 doctor，完成 B2。（三入口接线 + 排除分支 + doctor 新检查 + 二进制层三协议 4/4）
-- [ ] T09 验证旧 config/profile/native/GenAI 配置兼容，生成必要 schema，检查新增文件的 Bazel 可见性。
-- [ ] T10 重建并绑定测试二进制，跑本地三协议及最小 MiMo/GLM live，完成 B3。
-- [ ] T11 区分实际运行与未运行的平台、厂商和 CI；登记全部剩余失败及能力边界。
-- [ ] T12 完成 scoped fix、fmt、diff-check 后独立源码质量复查；检查日志、fixture、暂存候选中没有凭据。
-- [ ] T13 更新 FORK.md、审查入口和本文执行记录；交付改动摘要、精确命令、结果与下一阶段建议。
+- [x] T09 验证旧 config/profile/native/GenAI 配置兼容，生成必要 schema，检查新增文件的 Bazel 可见性。（既有 config_tests/套件全绿覆盖旧配置路径；本轮未新增 ConfigToml 字段故无需 schema 重生成；sha2 依赖变更经 `just bazel-lock-update` 核实 MODULE.bazel.lock 无漂移；无新增静态 include）
+- [x] T10 重建并绑定测试二进制，跑本地三协议及最小 MiMo/GLM live，完成 B3。（见 §15 批次 B3）
+- [x] T11 区分实际运行与未运行的平台、厂商和 CI；登记全部剩余失败及能力边界。（见 §15 批次 B3 与下方最终边界清单）
+- [x] T12 完成 scoped fix、fmt、diff-check 后独立源码质量复查；检查日志、fixture、暂存候选中没有凭据。（fix 4 处自动修复 + fmt + diff-check；凭据扫描零命中）
+- [x] T13 更新 FORK.md、审查入口和本文执行记录；交付改动摘要、精确命令、结果与下一阶段建议。（FORK.md 增补本轮差异；摘要见最终回复）
 
 清单只有在对应实现和证据齐全时勾选。缺少凭据、平台或构建依赖的测试标记 not-run，不补填通过。全部 T 项完成仅代表 A/B 的约定范围完成，不代表 C/D/E 完成。
 
@@ -335,6 +335,15 @@ fix/fmt 结果、后续源码复查：
 - 修复前状态（无法用测试复现的运行时证据缺口即缺陷本身）：固定目录覆盖 + 无 manifest（index-logs 不收录）+ 仅断言非空回答——已由代码对照确认，行为修复的证据在 B3 真实运行时补齐。
 - A4b 离线验证：`just test -p codex-live-tests --offline --retries 0 -E 'test(binary_turns::tests) | test(config::) | test(cassette::)'` → **10/10 pass**。
 
+#### 批次 B3（最终集成与真实请求验证）
+
+- 构建绑定：`cargo build --locked -p codex-exec --bin codex-exec --offline`（cwd `codex-rs`，target `/tmp/codex-stability-20260930-target`），binary 绝对路径 `/tmp/codex-stability-20260930-target/debug/codex-exec`，SHA256 `581400825c6e03ea528bfeeebee81d7d693e10a71c0d1e2933743c01bda03529`，源 `5913e929f`+websearch 场景修正（后续提交 `351ea7770`，仅 live-tests crate，不影响该二进制）。
+- 三协议本地 HTTP（同一构建产物）：`just test -p codex-exec --offline --retries 0 -E 'test(nuwax_env)'` → **4/4 pass**（`/tmp/b3-exec-final.log`；path/Bearer/x-api-key/body-model 断言 + 部分组零请求）。
+- 真实网关：GLM websearch（anthropic 线，A1 约束翻译 + A4b rollout 断言）`just test -p codex-live-tests --offline --retries 0 -E 'test(glm_websearch_anthropic_rig)'` → **PASS 83.8s**（`/tmp/b3-glm-websearch.log`）；NUWAX 组最小 live：GLM chat/anthropic/responses + MiMo chat 各一轮 `只回复两个字：收到` → **4/4 exit=0 均回复"收到"**（`/tmp/b3-*.out|err`，凭据仅经环境变量注入，未回显；产物 `/tmp/b3-*`）。MiMo anthropic/responses 与 Step 未在本轮 NUWAX live 中运行（既有 live 套件覆盖其协议矩阵；NUWAX 组入口与协议无关，按最小原则未重复消耗配额）。
+- 顺带修复：websearch 场景需显式 `web_search = "live"`（fail-closed 默认的必然结果），提交 `351ea7770`。
+- fix/fmt：`just fix` 全部触及 crate（nuwax_env.rs 3 处、exec/lib.rs 1 处自动修复）+ `just fmt` + `git diff --check` 通过；fmt 后按 B3 重建重跑上述二进制层测试（绑定最终源）；另修复一个**既有**的 upstream 同步测试字面量缺口（app-server thread_processor_tests 缺 fork 字段，非本轮引入）。未在 fix/fmt 后重跑已验证的其余套件。
+- 凭据扫描：新增/修改文档与测试中无任何密钥子串（`7274b51*`/`QFEbxeJq*` 零命中）。
+
 #### 批次 A4c（F09+F10+F11：文档现状、基线口径、live 必需配置）
 
 - F11：`my-docs/codex-review-prompt.md` 分派策略改为显式 wire_api 语义（Chat 不按 URL 推断；Responses 同协议直传；hosted 工具两线行为与 cached/indexed 报错）。live `LiveWire` 注释核实为准确（其描述的是测试 harness 显式调用 `RigProtocol::from_base_url`，非生产路由），未改。
@@ -353,7 +362,7 @@ fix/fmt 结果、后续源码复查：
 - daemon 边界：`daemon_startup.rs` 准入表新增分支——kv 含 `model_providers.nuwax_env` → Some("NUWAX environment provider (per-run credentials)")，强制嵌入式后端并给出诊断（§5.3：临时凭据不跨共享 daemon，不塞明文 key 进 thread 配置；queue 对此组合报能力错误的路径由既有"embedded+daemon 并存"检查承担）。
 - doctor：新检查 `config.model_routing`（`cli/src/doctor/model_routing.rs`）——model、provider id、wire api、bridge/native、脱敏 endpoint（scheme://host，剥 path/query）、experimental 覆盖、窗口/绝对阈值/ratio 配置、有效窗口与有效压缩阈值（经 models-manager 派生）、后端选择说明；JSON 形状仅增 check id，字段兼容。
 - 连带修复（测试暴露的真实缺陷）：默认 `web_search_mode=Cached` 在 chat-family 桥线不可表达，A1 的显式报错会使**默认配置**的 anthropic 会话失败。新增 `ProviderCapabilities.cached_web_search`（默认 true；ConfiguredModelProvider 按非 native 传输置 false，Bedrock 字面量同步）+ `resolve_web_search_mode_for_turn` 规则：preferred=Cached 且线不支持 → **Disabled（fail-closed）**，显式 Live 不受影响；桥内 cached/indexed 显式报错保留为纵深防御。语义权衡记录：fork 此前默认 cached 工具经字段丢弃翻译在 anthropic 线实际执行 live 搜索——查询泄漏到外网与配置模式相反，本身就是缺陷；现默认无托管搜索，需要搜索显式 `web_search="live"`。
-- 验证：tui 选择集 **3/3**（含 NUWAX 排除用例，`/tmp/b2-tui.log`）；**二进制层端到端 4/4**（`exec/tests/suite/nuwax_env.rs`：三协议真实 codex-exec + loopback，断言实际 path/Bearer/x-api-key 凭据/body model + 部分组 fail-fast 零请求，`/tmp/b2-exec-nuwax4.log`，中途两轮失败为共享 `mount_sse_once_match` 硬编码 `/responses` 路径的测试基建伪影与本轮 fail-closed 修复，均已解决）。doctor/capability 与 core web_search_mode 回归见 `/tmp/b2-doctor-cap.log`、`/tmp/b2-core-wsm.log`（提交前补记数字）。
+- 验证：tui 选择集 **3/3**（含 NUWAX 排除用例，`/tmp/b2-tui.log`）；**二进制层端到端 4/4**（`exec/tests/suite/nuwax_env.rs`：三协议真实 codex-exec + loopback，断言实际 path/Bearer/x-api-key 凭据/body model + 部分组 fail-fast 零请求，`/tmp/b2-exec-nuwax4.log`，中途两轮失败为共享 `mount_sse_once_match` 硬编码 `/responses` 路径的测试基建伪影与本轮 fail-closed 修复，均已解决）。doctor/capability 回归：`just test -p codex-cli -p codex-model-provider --offline --retries 0 -E 'test(doctor) | test(capabilit)'` → **148/148 pass**（doctor 快照不受新增 check 影响，`/tmp/b2-doctor-cap2.log`）；core 解析回归 `test(web_search_mode_for_turn)` → **9/9 pass**（含新增 fail-closed 用例）。
 
 ### 16 开始工作前的阅读顺序
 
