@@ -66,7 +66,10 @@ pub(crate) trait CoreToolRuntime: ToolExecutor<ToolInvocation> {
     }
 
     /// Returns lazily cached Code Mode definitions owned by this runtime.
-    fn cached_code_mode_definitions(&self) -> Option<&[codex_code_mode::ToolDefinition]> {
+    fn cached_code_mode_definitions(
+        &self,
+        _code_mode_input_schema_max_bytes: Option<usize>,
+    ) -> Option<&[codex_code_mode::ToolDefinition]> {
         None
     }
 
@@ -837,12 +840,7 @@ async fn handle_any_tool(
         result: output,
         post_tool_use_payload,
     };
-    // Capture confirmed delivery before any further await, including post-tool hooks.
-    if let Some(call_state) = call_state
-        && let Some(text) = result.delivered_assistant_message()
-    {
-        let _ = call_state.delivered_assistant_message.set(text);
-    }
+    super::user_messaging::capture_delivery(&result, call_state);
     if result.result.contains_external_context()
         && invocation.turn.config.memories.disable_on_external_context
     {

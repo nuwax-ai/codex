@@ -346,6 +346,9 @@ pub async fn stream_via_rig_with_recording(
         ResponseStream {
             rx_event: rx,
             upstream_request_id: request_id.lock().ok().and_then(|slot| slot.clone()),
+            // The bridge has no graceful-interrupt channel yet; cancellation
+            // drops the stream, matching native's plain SSE spawns.
+            interrupt: None,
         },
         recorder,
     ))

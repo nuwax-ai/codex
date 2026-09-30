@@ -11,13 +11,17 @@ use crate::context::ContextualUserFragment;
 use crate::tools::MULTI_AGENT_V2_NAMESPACE_DESCRIPTION;
 use chrono::DateTime;
 use chrono::Utc;
+use codex_agent_message_board_client::AccessToken;
+use codex_agent_message_board_client::RemoteAgentMessageBoard;
 use codex_agent_message_board_extension::AgentMessageBoard;
+use codex_agent_message_board_extension::InMemoryMessageBoards;
 use codex_agent_message_board_extension::LocalAgentMessageBoard;
 use codex_agent_message_board_extension::MessageBoardHost;
 use codex_agent_message_board_extension::NotificationDelivery;
 use codex_agent_message_board_extension::PostPreview;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_features::Feature;
+use codex_http_client::ClientRouteClass;
 use codex_protocol::AgentPath;
 use codex_protocol::SessionId;
 use codex_protocol::ThreadId;
@@ -29,33 +33,65 @@ use futures::future::BoxFuture;
 use std::sync::Arc;
 use std::sync::Weak;
 
-/// Registers the local board for opted-in, persistent MAv2 runtimes.
-/// Shared session identity and the configured SQLite home survive runtime reloads.
+/// Registers the configured board for opted-in MAv2 runtimes.
+/// Training can share an in-memory board per tree, including ephemeral sessions.
 pub fn install_agent_message_board(
     registry: &mut ExtensionRegistryBuilder<Config>,
     manager: Weak<ThreadManager>,
 ) {
+    let in_memory_boards = Arc::new(InMemoryMessageBoards::default());
     codex_agent_message_board_extension::install(
         registry,
         MULTI_AGENT_V2_NAMESPACE_DESCRIPTION,
         |config: &Config| config.multi_agent_v2.tool_namespace.clone(),
         move |config: &Config, tree, caller| {
-            // MAv2 supplies tree paths; ephemeral runtimes must not open durable storage.
+            let in_memory = config.multi_agent_v2.message_board_in_memory;
+            // MAv2 supplies tree paths; ephemeral runtimes must not open local SQLite.
             if !config.features.enabled(Feature::AgentMessageBoard)
                 || !config.features.enabled(Feature::MultiAgentV2)
-                || config.ephemeral
+                || (config.ephemeral
+                    && !in_memory
+                    && config.multi_agent_v2.message_board_remote.is_none())
             {
                 return Box::pin(async { Ok(None) });
             }
             let sqlite = config.sqlite_config().clone();
+            let remote = config.multi_agent_v2.message_board_remote.clone();
+            let http_factory = config.http_client_factory();
+            let in_memory_boards = Arc::clone(&in_memory_boards);
             let host = Arc::new(LocalBoardHost {
                 manager: manager.clone(),
                 tree,
                 caller,
             });
             Box::pin(async move {
-                let board = LocalAgentMessageBoard::open(&sqlite, tree, host).await?;
-                Ok(Some(Arc::new(board) as Arc<dyn AgentMessageBoard>))
+                let board: Arc<dyn AgentMessageBoard> = if let Some(remote) = remote {
+                    let token = match remote.bearer_token_env_var {
+                        Some(name) => std::env::var(name).map_err(|_| CodexErr::InvalidRequest(
+                            "message-board credential environment variable is missing or invalid".into(),
+                        ))?,
+                        None => remote.bearer_token.ok_or_else(|| CodexErr::InvalidRequest(
+                            "remote message board requires a credential".into(),
+                        ))?.into_inner(),
+                    };
+                    let token = AccessToken::new(token)
+                        .map_err(|err| CodexErr::InvalidRequest(err.to_string()))?;
+                    let http = http_factory
+                        .build_client(&remote.url, ClientRouteClass::Api)
+                        .map_err(|err| CodexErr::Io(std::io::Error::other(err)))?;
+                    let board = RemoteAgentMessageBoard::new(http, &remote.url, tree, token)
+                        .map_err(|err| CodexErr::InvalidRequest(err.to_string()))?
+                        .with_clock(move |caller| {
+                            let host = host.clone();
+                            Box::pin(async move { host.current_time(caller).await })
+                        });
+                    Arc::new(board)
+                } else if in_memory {
+                    Arc::new(in_memory_boards.open(tree, host).await)
+                } else {
+                    Arc::new(LocalAgentMessageBoard::open(&sqlite, tree, host).await?)
+                };
+                Ok(Some(board))
             })
         },
     );
@@ -179,12 +215,18 @@ impl MessageBoardHost for LocalBoardHost {
                 /*trigger_turn*/ false,
             );
             Ok(
-                match recipient
-                    .inject_if_running(vec![communication.to_model_input_item()])
+                if recipient
+                    .session
+                    .input_queue
+                    .deliver_mailbox_communication_to_current_turn(
+                        &recipient.session.active_turn,
+                        communication,
+                    )
                     .await
                 {
-                    Ok(()) => NotificationDelivery::Accepted,
-                    Err(_) => NotificationDelivery::SkippedInactive,
+                    NotificationDelivery::Accepted
+                } else {
+                    NotificationDelivery::SkippedInactive
                 },
             )
         })

@@ -2441,7 +2441,8 @@ fn websocket_error_detail(err: &ApiError) -> String {
             format!("handshake API error: {status} {message}")
         }
         ApiError::Stream(message) => format!("handshake stream error: {message}"),
-        ApiError::ContextWindowExceeded
+        ApiError::ContentFilter
+        | ApiError::ContextWindowExceeded
         | ApiError::QuotaExceeded
         | ApiError::UsageNotIncluded
         | ApiError::Retryable { .. }
@@ -2452,6 +2453,7 @@ fn websocket_error_detail(err: &ApiError) -> String {
         | ApiError::CyberPolicy { .. }
         | ApiError::BioPolicy { .. }
         | ApiError::MisalignmentPolicyViolation { .. }
+        | ApiError::FlexUnavailable
         | ApiError::ServerOverloaded { .. } => format!("handshake error: {err}"),
     }
 }

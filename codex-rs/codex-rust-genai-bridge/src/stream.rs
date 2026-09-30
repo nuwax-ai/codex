@@ -161,6 +161,7 @@ pub async fn stream_via_genai(
     Ok(ResponseStream {
         rx_event: rx,
         upstream_request_id: None,
+        interrupt: None,
     })
 }
 

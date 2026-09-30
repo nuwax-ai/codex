@@ -226,6 +226,7 @@ async fn resume(test: &TestCodex, thread: &CodexThread) -> Result<Arc<CodexThrea
         .resume_thread_with_history(
             test.config.clone(),
             InitialHistory::Resumed(ResumedHistory {
+                history_revision: None,
                 conversation_id: thread_id,
                 history: Arc::new(items),
                 rollout_path: None,
@@ -282,7 +283,10 @@ async fn streamed_question_precedes_reply_across_resume(
         ],
         vec![StreamingSseChunk {
             gate: None,
-            body: sse(vec![ev_completed("answer-response")]),
+            body: sse(vec![
+                ev_assistant_message("empty-final", ""),
+                ev_completed("answer-response"),
+            ]),
         }],
     ])
     .await;
@@ -340,6 +344,7 @@ async fn streamed_question_precedes_reply_across_resume(
     let retained = history
         .retained_context()
         .context("live retained context")?;
+    assert!(!retained.has_omitted_assistant_messages());
     assert_eq!(
         retained
             .ordered_entries()
@@ -552,6 +557,12 @@ async fn retained_instructions_keep_identity_across_compaction_and_resume(
         }
     }
     let history = thread.conversation_history_snapshot().await;
+    let retained = history.retained_context().context("retained originals")?;
+    let revisions = retained
+        .ordered_entries()
+        .filter_map(|(_, entry)| retained.source(entry))
+        .map(|source| (source.id.message_id, source.revision))
+        .collect::<std::collections::HashMap<_, _>>();
     // Shared order: initial input, ordinary question, first tool call, steer, first
     // answer, second tool call, second answer. Recording the queued steer later must not move it.
     let user_messages = [(0, initial.as_str()), (3, STEER)]
@@ -574,7 +585,7 @@ async fn retained_instructions_keep_identity_across_compaction_and_resume(
                 .expect("original user-message identity");
             json!({
                 "order": order, "turn_id": answers[index].turn_id,
-                "message_id": message_id.as_str(),
+                "message_id": message_id.as_str(), "revision": revisions[message_id.as_str()],
                 "text": codex_guardian_context::truncate_text(text, /*max_tokens*/ 900),
                 "complete": index != 0 || matches!(instruction_size, InstructionSize::Normal),
             })
@@ -593,7 +604,8 @@ async fn retained_instructions_keep_identity_across_compaction_and_resume(
     let expected = json!({
         "user_messages": user_messages, "user_messages_incomplete": false,
         "assistant_messages": [{"order": 1, "turn_id": answers[0].turn_id,
-            "message_id": "ordinary-question", "text": QUESTION, "complete": true}],
+            "message_id": "ordinary-question", "revision": revisions["ordinary-question"],
+            "text": QUESTION, "complete": true}],
         "assistant_messages_incomplete": false,
         "verified_answers": ordered_answers, "incomplete": false, "next_order": next_order,
     });
@@ -735,7 +747,7 @@ async fn legacy_checkpoint_recovers_root_excerpt_before_discarding_backup(
                 text: "Never publish publicly.".to_owned(),
             }];
             window.push(shortened.into());
-            checkpoint.guardian_history = Some(GuardianHistoryCheckpoint(vec![source]));
+            checkpoint.guardian_history = Some(GuardianHistoryCheckpoint(vec![source.into()]));
         }
         LegacyInstructionSource::ModelWindow => window.push(source.into()),
         LegacyInstructionSource::Missing => expected = legacy,
@@ -912,6 +924,7 @@ async fn standalone_fork_retains_inherited_user_instructions(
                 ForkSnapshot::Interrupted,
                 codex_core::StartThreadOptions::new(test.config.clone()),
                 InitialHistory::Resumed(ResumedHistory {
+                    history_revision: None,
                     conversation_id: worker.startup_metadata().thread_id,
                     history: Arc::new(load_context(&test, &worker).await?),
                     rollout_path: None,
@@ -1110,6 +1123,21 @@ async fn forked_parent_instructions_do_not_become_local_authorization(
                 PARENT_GRANT.to_owned()
             ))
     );
+
+    let goal = "Inspect only; do not publish.";
+    test.codex
+        .record_user_goal_update(codex_core::context::UserGoalUpdate::Set {
+            objective: Some(goal.to_owned()),
+            status: None,
+        })
+        .await?;
+    let snapshot = child
+        .guardian_root_snapshot()
+        .await
+        .context("root after goal")?;
+    assert!(snapshot.messages.iter().any(|message| {
+        matches!(message, codex_core::GuardianRootMessage::User(text) if text.contains(goal))
+    }));
 
     mount_sse_once_match(
         &server,

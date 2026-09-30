@@ -7,6 +7,7 @@ mod tool_policy;
 mod turn_admission;
 mod user_instructions;
 
+pub use session_isolation::IsolatedSessionExtensions;
 pub use session_isolation::SessionIsolation;
 pub use tool_policy::ToolPolicy;
 
@@ -61,6 +62,8 @@ pub use contributors::PreviousWorldStateSection;
 pub use contributors::PromptFragment;
 pub use contributors::PromptSlot;
 pub use contributors::RenderedWorldStateFragment;
+pub use contributors::SelectedPlugin;
+pub use contributors::SelectedPluginContribution;
 pub use contributors::SelectedPluginIdentity;
 pub use contributors::SelectedPluginSnapshot;
 pub use contributors::SkillInvocationContributor;

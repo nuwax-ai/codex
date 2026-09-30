@@ -49,6 +49,7 @@ fn bridged_responses_provider(server: &MockServer) -> ModelProviderInfo {
         requires_openai_auth: false,
         supports_websockets: false,
         supports_standalone_web_search: false,
+        include_internal_metadata: false,
     }
 }
 
@@ -427,11 +428,15 @@ async fn bridge_chat_compact_recovers_from_context_window_rejection() -> Result<
     // instructions also ride along in every request, so a generic substring
     // like "summarize" would match ordinary turns too.
     assert!(
-        body(2)?.to_string().contains("CONTEXT CHECKPOINT COMPACTION"),
+        body(2)?
+            .to_string()
+            .contains("CONTEXT CHECKPOINT COMPACTION"),
         "rejected request is the compaction call"
     );
     assert!(
-        body(3)?.to_string().contains("CONTEXT CHECKPOINT COMPACTION"),
+        body(3)?
+            .to_string()
+            .contains("CONTEXT CHECKPOINT COMPACTION"),
         "retried request is still the compaction call"
     );
     assert!(

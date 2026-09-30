@@ -468,7 +468,14 @@ pub async fn run_websearch_turns(
     // Both prompts demand a web search, and the fork fails the DEFAULT
     // cached mode closed on chat-family bridge wires — request live search
     // explicitly so the hosted tool is actually advertised.
-    write_config_toml(home.path(), cfg, base_url, "anthropic", bridge, "web_search = \"live\"\n")?;
+    write_config_toml(
+        home.path(),
+        cfg,
+        base_url,
+        "anthropic",
+        bridge,
+        "web_search = \"live\"\n",
+    )?;
 
     // Unique per run (a fixed directory silently overwrote earlier evidence,
     // including the failure trail of a flaky retry) and manifest-bound so

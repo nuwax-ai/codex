@@ -21,6 +21,7 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
 pub const WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY: &str = "ws_request_header_traceparent";
 pub const WS_REQUEST_HEADER_TRACESTATE_CLIENT_METADATA_KEY: &str = "ws_request_header_tracestate";
@@ -415,6 +416,8 @@ pub struct ResponseStream {
     /// back to a provider's trace/log correlation header for diagnostics.
     /// Distinct from the model response ID delivered in stream events.
     pub upstream_request_id: Option<String>,
+    /// Requests a graceful interrupt. Keep consuming events through completion.
+    pub interrupt: Option<oneshot::Sender<()>>,
 }
 
 impl Stream for ResponseStream {

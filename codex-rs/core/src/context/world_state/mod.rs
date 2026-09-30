@@ -7,6 +7,7 @@ mod environment;
 mod environments_instructions;
 mod managed_developer_instructions;
 mod model;
+mod model_catalog;
 mod multi_agent_mode;
 mod multi_agent_usage_hint;
 mod permissions;
@@ -46,6 +47,7 @@ pub(crate) use managed_developer_instructions::ManagedDeveloperInstructions;
 pub(crate) use managed_developer_instructions::ManagedDeveloperInstructionsState;
 pub(crate) use managed_developer_instructions::validate_managed_developer_instructions;
 pub(crate) use model::ModelInstructionsState;
+pub(crate) use model_catalog::ModelCatalogState;
 pub(crate) use multi_agent_mode::MultiAgentModeState;
 pub(crate) use multi_agent_usage_hint::MultiAgentUsageHintState;
 pub(crate) use permissions::PermissionsState;
@@ -400,6 +402,7 @@ impl WorldState {
     }
 
     /// Renders each section against the exact persisted snapshot when available.
+    #[cfg(test)]
     pub(crate) fn render_diff(
         &self,
         previous: &WorldStateSnapshot,
