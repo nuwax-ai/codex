@@ -465,7 +465,10 @@ pub async fn run_websearch_turns(
     );
     let home = tempfile::TempDir::new()?;
     let cwd = tempfile::TempDir::new()?;
-    write_config_toml(home.path(), cfg, base_url, "anthropic", bridge, "")?;
+    // Both prompts demand a web search, and the fork fails the DEFAULT
+    // cached mode closed on chat-family bridge wires — request live search
+    // explicitly so the hosted tool is actually advertised.
+    write_config_toml(home.path(), cfg, base_url, "anthropic", bridge, "web_search = \"live\"\n")?;
 
     // Unique per run (a fixed directory silently overwrote earlier evidence,
     // including the failure trail of a flaky retry) and manifest-bound so
