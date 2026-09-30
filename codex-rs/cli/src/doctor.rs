@@ -77,6 +77,7 @@ mod desktop;
 mod disk;
 mod filesystem_paths;
 mod git;
+mod model_routing;
 mod network;
 mod output;
 mod progress;
@@ -410,6 +411,7 @@ async fn build_report(
                 config_check,
                 auth_check,
                 updates_check,
+                model_routing_check,
                 network_check,
                 websocket_check,
                 mcp_check,
@@ -446,6 +448,11 @@ async fn build_report(
                     })
                 },
                 run_async_check("updates", progress.clone(), updates_check(config)),
+                run_async_check(
+                    "model routing",
+                    progress.clone(),
+                    model_routing::check(config, auth_manager.clone()),
+                ),
                 async {
                     run_sync_check("network", progress.clone(), || network::check(Some(config)))
                 },
@@ -500,6 +507,7 @@ async fn build_report(
                 config_check,
                 auth_check,
                 updates_check,
+                model_routing_check,
                 network_check,
                 websocket_check,
                 mcp_check,

@@ -256,13 +256,13 @@ Anthropic citations、pause_turn、搜索结果回放目前属于已经登记的
 
 - [x] T00 记录起始 SHA、dirty 状态、依赖版本、适用 AGENTS；确认本文件坐标和源码一致。（起始 `b9200b1fe` 干净；F01–F12 全部坐标逐一核对属实；rig-core =0.42.0 registry 源核对）
 - [x] T01 为 F01/F06 增加可复现回归，完成 A1，保留修复前失败和修复后通过证据。（见 §15 批次 A1）
-- [ ] T02 为 ratio-only、窗口裁剪、首轮/resume/切模型和数值边界增加回归，完成 A2。
-- [ ] T03 配套修复 daemon 准入、thread 参数与后台 env，完成 A3 的两个客户端隔离验证。
-- [ ] T04 机械提取 live runner/工件/场景模块，记录行为对照，完成 A4a。
-- [ ] T05 修正搜索有效执行断言、唯一工件和构建来源，完成 A4b。
-- [ ] T06 修正文档现状、基线失败口径、live 必需配置与执行统计；增加相关离线 CI 任务，完成 A4c。
-- [ ] T07 实现本文件的 NUWAX env 契约，覆盖所有优先级/冲突/缺值/认证隔离规则，完成 B1。
-- [ ] T08 接通 CLI/TUI/exec/standalone app-server，明确共享 daemon 限制并完善 doctor，完成 B2。
+- [x] T02 为 ratio-only、窗口裁剪、首轮/resume/切模型和数值边界增加回归，完成 A2。（见 §15 批次 A2）
+- [x] T03 配套修复 daemon 准入、thread 参数与后台 env，完成 A3 的两个客户端隔离验证。（机制级验证见 §15 批次 A3；未建双进程专用测试）
+- [x] T04 机械提取 live runner/工件/场景模块，记录行为对照，完成 A4a。（字节级 diff + 84/84 复跑）
+- [x] T05 修正搜索有效执行断言、唯一工件和构建来源，完成 A4b。（离线单测 10/10；真实验证留 B3）
+- [x] T06 修正文档现状、基线失败口径、live 必需配置与执行统计；增加相关离线 CI 任务，完成 A4c。（workflow 改动未运行，登记 not-run）
+- [x] T07 实现本文件的 NUWAX env 契约，覆盖所有优先级/冲突/缺值/认证隔离规则，完成 B1。（12 项矩阵测试，43/43）
+- [x] T08 接通 CLI/TUI/exec/standalone app-server，明确共享 daemon 限制并完善 doctor，完成 B2。（三入口接线 + 排除分支 + doctor 新检查 + 二进制层三协议 4/4）
 - [ ] T09 验证旧 config/profile/native/GenAI 配置兼容，生成必要 schema，检查新增文件的 Bazel 可见性。
 - [ ] T10 重建并绑定测试二进制，跑本地三协议及最小 MiMo/GLM live，完成 B3。
 - [ ] T11 区分实际运行与未运行的平台、厂商和 CI；登记全部剩余失败及能力边界。
@@ -303,6 +303,57 @@ fix/fmt 结果、后续源码复查：
 - 真实厂商请求：本批未运行（A1 为离线行为修复；live 验证在 B3 统一执行，避免重复计费场景）。
 - fix/fmt：`just fix -p codex-rust-rig-bridge`（1 处自动修复：transport.rs）；`just fmt` 后丢弃两份与本批无关文件的纯 rustfmt 漂移重排（`core/src/config/config_tests.rs`、`core/tests/suite/rig_responses_bridge.rs`，仅换行无语义；上一批次先例）。fix/fmt 后按仓库规则未重跑测试。
 - 遗留：core 套件 `rig_responses_bridge|compact` 选择集回归在 A2 结束后与 A2 改动一起跑（两者都触及请求构建路径）；`anthropic_server_tool` 返回 `Result` 是 crate 内 API，core 不直接调用，无破坏面。
+
+#### 批次 A2（F02+F03：ratio 全链传递与单处派生）
+
+- 开始 `3ca07d64c`（A1 后）；改动：`Config::to_models_manager_config` 移除本层 ratio→absolute 派生（F03 根因：派生发生在 max_context_window 裁剪前，200k 窗口 + ratio 0.5 在 60k 模型上会冻结成 100000 而非 30000）；`ModelInfoOverrides` 新增 `auto_compact_ratio` 字段并在 From/models_manager_config 双向保持（F02：首轮/resume/切模型经该往返重建模型信息）；模型层 `with_config_overrides` 保留唯一派生点并新增零值下限（极小比例取整为 0 时 warn 并忽略，避免每轮压缩）。
+- 新增/重写回归：`to_models_manager_config_passes_the_ratio_through_for_model_layer_derivation`（重写自旧 Config 派生测试；含 F03 200k 形状与 NaN 透传断言）、`ratio_only_compact_threshold_survives_override_resolution`（Config→overrides→切模型解析，断言有效窗口 60000→阈值 30000）、`tiny_auto_compact_ratio_deriving_zero_keeps_the_model_limit`。
+- 修复前失败（stash 三个 src + 引用新字段的测试文件）：`tiny_auto_compact_ratio_deriving_zero…` → FAIL（旧代码派生出 Some(0)）；`to_models_manager_config_passes_the_ratio_through…` → FAIL（旧代码派生 Some(48000)/Some(160000)）；均退出码 100，日志 `/tmp/a2-prefix-repro.log`。
+- 修复后：`just test -p codex-config -p codex-models-manager -p codex-utils-cli --offline --retries 0` → **439 run：439 pass / 1 skip**；core lib 选择集（4 项含新回归与既有 model_resolution）→ **4/4 pass**。日志 `/tmp/a2-config-packages.log`、`/tmp/a2-core-lib.log`。cwd `codex-rs`，同上隔离 target。
+- 语义边界：absolute 优先（配置文件 absolute + env ratio 组合按既有 -c>env>config 顺序解析后同层绝对值优先，模型层 `if let Some(absolute)` 先行）；NaN/负数/0/1.5 在模型层统一 warn+忽略；Config 层不再有第二套阈值算法。
+
+#### 批次 A3（F04+F05：daemon 准入、thread 投影、后台 env 隔离）
+
+- 改动：`tui/src/daemon_startup.rs` 准入表新增 `model_context_window`/`model_auto_compact_token_limit`（正整数）与 `model_auto_compact_ratio`（(0,1] 浮点，整数 1 协变）三键；`tui/src/app_server_session.rs` 的 `config_request_overrides_from_config` 在 start/resume/fork 共享的投影中补三个数值键（置于字符串 `insert` 闭包最后使用之后，避免双借用）；`app-server-daemon/src/backend/pid_start.rs` 对 AppServer 与 updater 两类子进程统一 `env_remove` 四个模型种子（effort + 三 context）。
+- queue 坐标核实：`thread/queue/add` 仅对已存在线程追加消息（参数无 config），其受影响面只是 daemon 准入（env 种子不再把客户端挤到 embedded 后端从而触发"daemon 已存在却用 embedded"报错）——白名单修复即闭环，未改 queue 本身。
+- 新增/扩展回归：`audited_overrides_allow_daemon_without_allowing_arbitrary_config`（+10 用例：合法三键放行、非法值/字符串/越界拒绝）；`thread_lifecycle_params_forward_config_overrides_and_service_tier`（+三键期望值，start/resume/fork 三形态）；`detached_children_do_not_capture_client_effort` → `detached_children_do_not_capture_client_model_seeds`（子进程 shim 记录四变量，断言全部 unset，覆盖 app-server 与 updater）。
+- 修复前失败：stash 后 `audited_overrides…` 与 `detached_children_do_not_capture_client_model_seeds` → **2 FAIL / 1 pass（旧行测试）/ 退出码 100**（`/tmp/a3-prefix-repro.log`）；投影坐标用"临时禁用投影块 + 保留新测试"复现 → FAIL 退出码 100（`/tmp/a3-prefix-projection.log`）。三个坐标均有行为级失败证据。
+- 修复后：`just test -p codex-tui -p codex-app-server-daemon --offline --retries 0 -E 'test(audited_overrides_allow_daemon) | test(thread_lifecycle_params_forward_config_overrides) | test(detached_children_do_not_capture_client_model_seeds) | test(daemon_eligibility_preserves)'` → **4 run / 4 pass / 0 fail**（`/tmp/a3-postfix.log`）。
+- 两客户端隔离的机制保证：per-thread 投影（各客户端线程请求各带各值）+ 后台 env 清除（daemon 默认不被任何客户端种子污染）；未另建双进程专用测试。
+
+#### 批次 A4a（F12：live 执行/工件/场景机械提取）
+
+- 改动：`live-tests/src/lib.rs`（1362 行）按层拆为 `env.rs`（vendor/endpoint/auth）、`bridge_turns.rs`（L1 桥级）、`binary_turns.rs`（L3 二进制级）、`assertions.rs`、`error_probe.rs`、`artifacts.rs`；lib.rs 保留全部原 pub 面（26 个集成测试引用项逐一再导出）+ `pub(crate)` 三处跨模块管道（persist_lines/write_manifest/prune_artifacts）。各模块 `use super::*` 复用原命名空间。
+- 机械等价证据：六个模块体与原文件对应行区间 **diff 逐字节一致**（仅上述三处可见性标注差异）；`cargo check --tests --bins` 零警告。
+- 行为对照：`binary(bridge_live) | config:: | cassette::` → 首轮 91 run：90 pass / 1 fail（`step_rig_parallel_tools`，并行负载下 2.3s 失败；隔离复跑 7.9s pass，整批复跑 **84/84 pass**，非本批引入，登记为既有并行 flake）。
+- 未运行：exec_live 真实请求场景（需绑定构建的二进制与凭据，B3 统一执行）。
+
+#### 批次 A4b（F07+F08：搜索断言、唯一工件、manifest、构建来源）
+
+- 改动：`run_websearch_turns` 工件目录改为每次运行唯一（`websearch-{protocol}-{nonce}-{pid}`）并写 manifest、纳入 prune；新增 `completed_web_search_calls` rollout 解析器——turn1 后断言 ≥1 个 completed `web_search_call`、turn2 后断言计数增长（非空回答不再单独算作搜索证据，F07）；`write_manifest` 新增 `git_dirty`、`binary_path`、`binary_sha256`（sha2 流式计算，运行时 rev+mtime 不能证明构建来源，F08）；`index-logs` 表格补 dirty 与 binary sha256 前 12 位；websearch 运行自此可被索引。依赖：live-tests 增加 `sha2`（workspace 已有 0.10，仅 Cargo.lock 成员依赖表变化）。
+- 新增单元测试：`completed_web_search_calls_counts_only_completed_items`、`completed_web_search_calls_sums_across_rollout_files`、`completed_web_search_calls_on_an_empty_home_is_zero`（离线可验证部分）。真实验证在 B3。
+- 修复前状态（无法用测试复现的运行时证据缺口即缺陷本身）：固定目录覆盖 + 无 manifest（index-logs 不收录）+ 仅断言非空回答——已由代码对照确认，行为修复的证据在 B3 真实运行时补齐。
+- A4b 离线验证：`just test -p codex-live-tests --offline --retries 0 -E 'test(binary_turns::tests) | test(config::) | test(cassette::)'` → **10/10 pass**。
+
+#### 批次 A4c（F09+F10+F11：文档现状、基线口径、live 必需配置）
+
+- F11：`my-docs/codex-review-prompt.md` 分派策略改为显式 wire_api 语义（Chat 不按 URL 推断；Responses 同协议直传；hosted 工具两线行为与 cached/indexed 报错）。live `LiveWire` 注释核实为准确（其描述的是测试 harness 显式调用 `RigProtocol::from_base_url`，非生产路由），未改。
+- F09：`my-docs/claude-rig-full-validation.md` §2 归因口径改为"按名称聚类一致 + 已逐类举证的簇 + 未逐项复跑核实的推断"，并显式登记"CI Linux workflow run 链接缺失"。
+- F10：`.github/workflows/live-tests.yml` 补 `LIVE_MIMO_RESPONSES_URL`（本地 .env.local 同值，token-plan 网关同基址）；preflight 必需键加入 RESPONSES_URL——所选厂商缺 Responses 配置直接构建失败，运行时静默跳过不再可能计为绿。新增/修改的 workflow **未实际运行**（需 push 后 manual dispatch，未获授权；登记为 not-run）。
+
+#### 批次 B1（NUWAX env 解析、优先级、临时 provider 构造）
+
+- 新模块 `utils/cli/src/nuwax_env.rs`（私有，lib.rs 再导出 3 个入口）：`NUWAX_BASE_URL`+`NUWAX_WIRE_API`+`NUWAX_API_KEY` 三者同设才激活；部分设置 fail-fast 报缺失变量名（不含值）；`NUWAX_MODEL` 可单独选已有 provider 模型；激活时构造 `model_providers.nuwax_env` 种子（name/base_url/wire_api/**env_key="NUWAX_API_KEY"**——凭据仅引用不落值）+ `model_provider="nuwax_env"` + `model`。校验：wire 严格枚举、URL 绝对 http(s) 带主机、空白/非 Unicode 拒绝、保留 id 冲突硬错。优先级落点：typed CLI（-m/--oss）> 显式 -c > 本组 env > config 文件（复用既有 ConfigOverrides 合并序，`model.or(cfg.model)` 与 `required_model_provider().or(typed).or(cfg)` 已核实）；typed/-c 显式选其他 provider 时整组忽略且**不校验**（未采用值不使有效配置失败）；显式选 `nuwax_env` 时使用完整组。
+- dotenv 边界：`arg0` 的 `.env` 过滤前缀从 `CODEX_` 扩为 `CODEX_`+`NUWAX_`（§5.2：启动组只来自真实进程环境）。
+- 测试 `nuwax_env_tests.rs` 12 项矩阵：三协议种子形状+凭据不回显、model-only、部分组报缺失名、无模型报错、typed/-c 满足模型要求、typed/-c 选其他 provider 忽略+免校验、-c 选保留 id 用全组、非法值/空白/非 Unicode 报字段名、保留 id 冲突、-c model 优先。`just test -p codex-utils-cli --offline --retries 0` → **43/43 pass**（+1 既有 skip）。
+
+#### 批次 B2（各入口接线与 doctor）
+
+- 接线：`exec/src/lib.rs`（typed model_cli_arg + oss/oss_provider）、`tui/src/startup_orchestration.rs`（cli.shared.model + oss/oss_provider，TUI 全入口共享）、`app-server/src/lib.rs`（standalone：cli_model/cli_provider 均 None——线程参数保持既有优先级）。种子并入 `cli_kv_overrides` 后进入既有 ConfigBuilder。
+- daemon 边界：`daemon_startup.rs` 准入表新增分支——kv 含 `model_providers.nuwax_env` → Some("NUWAX environment provider (per-run credentials)")，强制嵌入式后端并给出诊断（§5.3：临时凭据不跨共享 daemon，不塞明文 key 进 thread 配置；queue 对此组合报能力错误的路径由既有"embedded+daemon 并存"检查承担）。
+- doctor：新检查 `config.model_routing`（`cli/src/doctor/model_routing.rs`）——model、provider id、wire api、bridge/native、脱敏 endpoint（scheme://host，剥 path/query）、experimental 覆盖、窗口/绝对阈值/ratio 配置、有效窗口与有效压缩阈值（经 models-manager 派生）、后端选择说明；JSON 形状仅增 check id，字段兼容。
+- 连带修复（测试暴露的真实缺陷）：默认 `web_search_mode=Cached` 在 chat-family 桥线不可表达，A1 的显式报错会使**默认配置**的 anthropic 会话失败。新增 `ProviderCapabilities.cached_web_search`（默认 true；ConfiguredModelProvider 按非 native 传输置 false，Bedrock 字面量同步）+ `resolve_web_search_mode_for_turn` 规则：preferred=Cached 且线不支持 → **Disabled（fail-closed）**，显式 Live 不受影响；桥内 cached/indexed 显式报错保留为纵深防御。语义权衡记录：fork 此前默认 cached 工具经字段丢弃翻译在 anthropic 线实际执行 live 搜索——查询泄漏到外网与配置模式相反，本身就是缺陷；现默认无托管搜索，需要搜索显式 `web_search="live"`。
+- 验证：tui 选择集 **3/3**（含 NUWAX 排除用例，`/tmp/b2-tui.log`）；**二进制层端到端 4/4**（`exec/tests/suite/nuwax_env.rs`：三协议真实 codex-exec + loopback，断言实际 path/Bearer/x-api-key 凭据/body model + 部分组 fail-fast 零请求，`/tmp/b2-exec-nuwax4.log`，中途两轮失败为共享 `mount_sse_once_match` 硬编码 `/responses` 路径的测试基建伪影与本轮 fail-closed 修复，均已解决）。doctor/capability 与 core web_search_mode 回归见 `/tmp/b2-doctor-cap.log`、`/tmp/b2-core-wsm.log`（提交前补记数字）。
 
 ### 16 开始工作前的阅读顺序
 

@@ -63,7 +63,7 @@ pub(super) async fn run_main_inner(
     let raw_overrides = cli.config_overrides.raw_overrides.clone();
     // `oss` model provider.
     let overrides_cli = codex_utils_cli::CliConfigOverrides { raw_overrides };
-    let cli_kv_overrides = match overrides_cli.parse_overrides() {
+    let mut cli_kv_overrides = match overrides_cli.parse_overrides() {
         // Parse `-c` overrides from the CLI.
         Ok(v) => v,
         #[allow(clippy::print_stderr)]
@@ -72,6 +72,26 @@ pub(super) async fn run_main_inner(
             std::process::exit(1);
         }
     };
+    // Fork (nuwax-codex): seed the NUWAX_* environment startup group at env
+    // precedence — below the typed `-m`/`--oss` selections, above config
+    // files. An explicit `--oss` provider selection makes the group
+    // irrelevant (ignored and unvalidated).
+    match codex_utils_cli::nuwax_env_overrides(
+        codex_utils_cli::nuwax_env_from_process(),
+        cli.shared.model.as_deref(),
+        cli.shared
+            .oss
+            .then_some("oss")
+            .or_else(|| cli.shared.oss_provider.as_deref()),
+        &cli_kv_overrides,
+    ) {
+        Ok(seeds) => cli_kv_overrides.extend(seeds),
+        #[allow(clippy::print_stderr)]
+        Err(e) => {
+            eprintln!("Error parsing NUWAX_* environment: {e}");
+            std::process::exit(1);
+        }
+    }
     if explicit_remote_endpoint.is_some()
         && cli_kv_overrides.iter().any(|(key, value)| {
             key == "sandbox_workspace_write.writable_roots"

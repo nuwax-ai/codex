@@ -9,6 +9,7 @@ mod completion_backfill;
 mod ephemeral;
 mod hooks;
 mod mcp_required_exit;
+mod nuwax_env;
 mod originator;
 mod output_schema;
 mod prompt_stdin;
