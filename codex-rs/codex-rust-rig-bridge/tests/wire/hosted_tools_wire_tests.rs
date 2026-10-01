@@ -957,3 +957,115 @@ async fn mixed_turn_result_arriving_in_the_next_response_closes_the_pending_call
     );
     assert_eq!(encoded.matches("ENC_LATE").count(), 1, "{encoded}");
 }
+
+/// R3: cited text blocks persist inside the capture envelope and replay
+/// after their pair inside the same assistant group.
+#[tokio::test]
+async fn cited_text_blocks_persist_and_replay_after_their_pair() {
+    let cited_sse = concat!(
+        "event: message_start\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"m1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":4,\"output_tokens\":0}}}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"server_tool_use\",\"id\":\"srvu_cited\",\"name\":\"web_search\",\"input\":{}}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\\\"cited\\\"}\"}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"web_search_tool_result\",\"tool_use_id\":\"srvu_cited\",\"content\":[{\"type\":\"web_search_result\",\"url\":\"https://example.com\",\"encrypted_content\":\"ENC_CIT\"}]}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"text\",\"text\":\"\",\"citations\":[{\"type\":\"search_result_location\",\"cited_text\":\"finding\",\"source\":\"https://example.com\",\"title\":\"Example\",\"search_result_index\":0,\"start_block_index\":1,\"end_block_index\":2}]}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"text_delta\",\"text\":\"answer citing \"}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"text_delta\",\"text\":\"the result\"}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":2}\n\n",
+        "event: message_delta\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":5}}\n\n",
+        "event: message_stop\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    )
+    .to_string();
+    let (address, server) =
+        support::sequence_server(vec![cited_sse, support::ANTHROPIC_SSE.to_string()]).await;
+    let provider = provider(address);
+    let source =
+        codex_rust_rig_bridge::reasoning_source(&provider, RigProtocol::Anthropic, "review-model")
+            .expect("source identity");
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+
+    // Turn 1: the emitted search item carries the cited text in its envelope.
+    let mut request = support::request(vec![support::user()]);
+    support::set_tools(&mut request, json!([{"type":"web_search"}]));
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    let mut captured_envelope = None;
+    while let Some(event) = stream.next().await {
+        if let Ok(codex_api::ResponseEvent::OutputItemDone(item)) = event
+            && let ResponseItem::WebSearchCall { wire_blocks, .. } = item
+        {
+            captured_envelope = wire_blocks;
+        }
+    }
+    let envelope = captured_envelope.expect("search item emitted");
+    assert_eq!(envelope["source"], json!(source));
+    assert_eq!(
+        envelope["cited_text"],
+        json!([{
+            "type":"text",
+            "text":"answer citing the result",
+            "citations":[{"type":"search_result_location","cited_text":"finding","source":"https://example.com","title":"Example","search_result_index":0,"start_block_index":1,"end_block_index":2}]
+        }]),
+        "the cited text block persists with its terminal text and citations"
+    );
+
+    // Turn 2: the cited block replays after the pair, inside the assistant.
+    request.input = vec![
+        serde_json::from_value(support::user()).unwrap(),
+        serde_json::from_value(json!({
+            "type":"web_search_call","id":"srvu_cited","status":"completed",
+            "action":{"type":"search","query":"cited"},
+            "wire_blocks":envelope
+        }))
+        .unwrap(),
+    ];
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = stream.next().await {
+        event.unwrap();
+    }
+    let bodies = server.await.unwrap();
+    let messages = bodies[1]["messages"].as_array().expect("messages");
+    let assistant = messages
+        .iter()
+        .find(|message| message["role"] == "assistant")
+        .expect("assistant with replay");
+    assert_eq!(
+        assistant["content"],
+        json!([
+            {"type":"server_tool_use","id":"srvu_cited","name":"web_search","input":{"query":"cited"}},
+            {"type":"web_search_tool_result","tool_use_id":"srvu_cited","content":[{"type":"web_search_result","url":"https://example.com","encrypted_content":"ENC_CIT"}]},
+            {"type":"text","text":"answer citing the result","citations":[{"type":"search_result_location","cited_text":"finding","source":"https://example.com","title":"Example","search_result_index":0,"start_block_index":1,"end_block_index":2}]},
+        ]),
+        "pair first, cited text after, verbatim"
+    );
+}

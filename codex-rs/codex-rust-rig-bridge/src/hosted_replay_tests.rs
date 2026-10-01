@@ -13,7 +13,7 @@ fn result(id: &str) -> Value {
 
 #[test]
 fn envelope_round_trips_and_bare_arrays_parse_as_legacy() {
-    let value = envelope("Anthropic:abc", vec![call("s1"), result("s1")]);
+    let value = envelope("Anthropic:abc", vec![call("s1"), result("s1")], Vec::new());
     let parsed = parse_envelope(&value).expect("v1 envelope");
     assert_eq!(parsed.source.as_deref(), Some("Anthropic:abc"));
     assert_eq!(parsed.blocks.len(), 2);
@@ -30,7 +30,7 @@ fn envelope_round_trips_and_bare_arrays_parse_as_legacy() {
 fn replay_requires_an_exact_source_match() {
     let current = "Anthropic:abc";
     assert!(replayable(
-        &parse_envelope(&envelope(current, vec![call("s1")])).expect("envelope"),
+        &parse_envelope(&envelope(current, vec![call("s1")], Vec::new())).expect("envelope"),
         current
     ));
     for other in [
@@ -44,7 +44,7 @@ fn replay_requires_an_exact_source_match() {
         let payload = if other.is_empty() {
             json!([call("s1")])
         } else {
-            envelope(other, vec![call("s1")])
+            envelope(other, vec![call("s1")], Vec::new())
         };
         assert!(
             !replayable(&parse_envelope(&payload).expect("envelope"), current),
@@ -62,6 +62,7 @@ fn groups(pairs: &[(usize, Value, Option<Value>)]) -> Vec<ReplayGroup> {
                 Some(result) => vec![call.clone(), result.clone()],
                 None => vec![call.clone()],
             },
+            cited_text: Vec::new(),
         })
         .collect()
 }

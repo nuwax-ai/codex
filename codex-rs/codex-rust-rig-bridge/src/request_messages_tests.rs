@@ -58,6 +58,7 @@ fn hosted_replay_tracks_each_assistant_across_user_turns() {
                 vec![crate::hosted_replay::ReplayGroup {
                     index: 1,
                     blocks: expected_blocks.clone(),
+                    cited_text: Vec::new(),
                 }]
             );
             assert!(matches!(messages.last(), Some(Message::Assistant { .. })));
@@ -90,6 +91,7 @@ fn hosted_replay_after_tool_result_does_not_attach_to_the_tool_call_turn() {
         vec![crate::hosted_replay::ReplayGroup {
             index: 1,
             blocks: expected_blocks.clone(),
+            cited_text: Vec::new(),
         }]
     );
     let Some(Message::Assistant { content, .. }) = messages.last() else {

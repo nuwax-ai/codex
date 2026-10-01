@@ -463,12 +463,15 @@ fn stream_via_rig_attempt(
                                     &sse_bytes,
                                 )
                                 .await;
-                            let paired = crate::hosted_tools::pair_web_search_blocks(capture);
+                            let mut paired = crate::hosted_tools::pair_web_search_blocks(capture);
                             let mut injected = Vec::new();
+                            let mut cited_text = std::mem::take(&mut paired.cited_text);
                             for pair in paired.pairs {
+                                let cited = std::mem::take(&mut cited_text);
                                 injected.extend(crate::hosted_tools::web_search_call_events(
                                     pair,
                                     &pump_source,
+                                    cited,
                                 ));
                             }
                             // A result with no call in THIS response closes a
@@ -502,6 +505,7 @@ fn stream_via_rig_attempt(
                                         result: Some(result),
                                     },
                                     &pump_source,
+                                    Vec::new(),
                                 ));
                             }
                             if !injected.is_empty() {

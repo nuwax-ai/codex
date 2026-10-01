@@ -344,6 +344,9 @@ impl ChatFamilyRewrite<'_> {
                     };
                     for group in groups {
                         content.extend(group.blocks.iter().cloned());
+                        // Cited text blocks follow their pair inside the
+                        // same assistant group.
+                        content.extend(group.cited_text.iter().cloned());
                     }
                 }
                 if !pending.is_empty() {

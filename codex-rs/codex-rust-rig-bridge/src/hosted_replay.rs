@@ -28,11 +28,22 @@ pub(crate) struct Envelope {
     /// bare arrays — those never replay.
     pub(crate) source: Option<String>,
     pub(crate) blocks: Vec<Value>,
+    /// Finished text blocks that carried search citations, in stream order;
+    /// replayed after the pair blocks inside the same assistant group.
+    pub(crate) cited_text: Vec<Value>,
 }
 
 /// Builds the envelope written at capture time.
-pub(crate) fn envelope(source: &str, blocks: Vec<Value>) -> Value {
-    json!({"version": ENVELOPE_VERSION, "source": source, "blocks": blocks})
+pub(crate) fn envelope(source: &str, blocks: Vec<Value>, cited_text: Vec<Value>) -> Value {
+    // `cited_text` rides the envelope only when present; empty stays absent
+    // so payloads without citations keep their minimal shape.
+    let mut value = json!({"version": ENVELOPE_VERSION, "source": source, "blocks": blocks});
+    if !cited_text.is_empty()
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert("cited_text".into(), Value::Array(cited_text));
+    }
+    value
 }
 
 /// Parses a persisted payload. `None` for shapes this bridge cannot
@@ -43,6 +54,7 @@ pub(crate) fn parse_envelope(value: &Value) -> Option<Envelope> {
         return Some(Envelope {
             source: None,
             blocks: blocks.clone(),
+            cited_text: Vec::new(),
         });
     }
     let object = value.as_object()?;
@@ -55,6 +67,11 @@ pub(crate) fn parse_envelope(value: &Value) -> Option<Envelope> {
             .and_then(Value::as_str)
             .map(str::to_string),
         blocks: object.get("blocks")?.as_array()?.clone(),
+        cited_text: object
+            .get("cited_text")
+            .and_then(Value::as_array)
+            .map(|blocks| blocks.to_vec())
+            .unwrap_or_default(),
     })
 }
 
@@ -70,6 +87,8 @@ pub(crate) struct ReplayGroup {
     /// Index of the assistant message the pairs followed in history.
     pub(crate) index: usize,
     pub(crate) blocks: Vec<Value>,
+    /// Cited text blocks replayed after the pair blocks in this group.
+    pub(crate) cited_text: Vec<Value>,
 }
 
 /// Applies the request-side hard caps and shape checks to the collected
@@ -78,6 +97,10 @@ pub(crate) struct ReplayGroup {
 /// downgrade rules.
 pub(crate) fn sanitize_for_request(groups: Vec<ReplayGroup>) -> Vec<ReplayGroup> {
     let indices: Vec<usize> = groups.iter().map(|group| group.index).collect();
+    let cited: Vec<Vec<Value>> = groups
+        .iter()
+        .map(|group| group.cited_text.clone())
+        .collect();
     let mut flat: Vec<(usize, Vec<Value>)> = Vec::new();
     for (position, group) in groups.iter().enumerate() {
         flat.extend(pair_group_blocks(&group.blocks, position));
@@ -92,12 +115,24 @@ pub(crate) fn sanitize_for_request(groups: Vec<ReplayGroup>) -> Vec<ReplayGroup>
         flat.drain(..dropped);
     }
     let mut result: Vec<ReplayGroup> = Vec::new();
+    let mut cited_by_index: std::collections::BTreeMap<usize, Vec<Value>> =
+        std::collections::BTreeMap::new();
     for (position, blocks) in flat {
         let index = indices[position];
+        for cited in &cited[position] {
+            cited_by_index.entry(index).or_default().push(cited.clone());
+        }
         match result.last_mut().filter(|last| last.index == index) {
             Some(last) => last.blocks.extend(blocks),
-            None => result.push(ReplayGroup { index, blocks }),
+            None => result.push(ReplayGroup {
+                index,
+                blocks,
+                cited_text: Vec::new(),
+            }),
         }
+    }
+    for group in &mut result {
+        group.cited_text = cited_by_index.remove(&group.index).unwrap_or_default();
     }
     result
 }

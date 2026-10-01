@@ -244,6 +244,7 @@ fn official_result_blocks_pair_by_id() {
             result: pairs[0].result.clone(),
         },
         "test-source",
+        Vec::new(),
     );
     let done = events
         .iter()
@@ -282,6 +283,7 @@ fn unpaired_call_emits_in_progress_with_use_block_only() {
             result: None,
         },
         "test-source",
+        Vec::new(),
     );
     let done = events
         .iter()

@@ -234,6 +234,9 @@ impl OpenServerToolUse {
 pub(crate) async fn web_search_blocks_from_anthropic_sse(bytes: &[u8]) -> WebSearchWireCapture {
     let mut capture = WebSearchWireCapture::default();
     let mut open: Option<OpenServerToolUse> = None;
+    // A cited text block: the start frame carries the citations, deltas
+    // stream the text; captured finished at its stop frame.
+    let mut open_cited: Option<(Value, String)> = None;
     let frames = futures::stream::iter(vec![Ok::<_, std::convert::Infallible>(
         bytes::Bytes::copy_from_slice(bytes),
     )])
@@ -265,6 +268,17 @@ pub(crate) async fn web_search_blocks_from_anthropic_sse(bytes: &[u8]) -> WebSea
                         // reference a server call id are search results.
                         capture.results.push(block.clone());
                     }
+                    Some("text")
+                        if block.get("citations").is_some_and(|value| !value.is_null()) =>
+                    {
+                        let mut block = block.clone();
+                        if let Some(object) = block.as_object_mut() {
+                            object
+                                .entry("text".to_string())
+                                .or_insert_with(|| Value::String(String::new()));
+                        }
+                        open_cited = Some((block, String::new()));
+                    }
                     _ => {}
                 }
             }
@@ -281,11 +295,27 @@ pub(crate) async fn web_search_blocks_from_anthropic_sse(bytes: &[u8]) -> WebSea
                     open.input_json.push_str(fragment);
                 }
             }
+            Some("content_block_delta")
+                if event["delta"].get("type").and_then(Value::as_str) == Some("text_delta")
+                    && open_cited.is_some() =>
+            {
+                if let Some(fragment) = event["delta"].get("text").and_then(Value::as_str)
+                    && let Some((_, text)) = open_cited.as_mut()
+                {
+                    text.push_str(fragment);
+                }
+            }
             Some("content_block_stop") => {
                 if let Some(open) = open.take()
                     && is_web_search_server_use(&open.name)
                 {
                     capture.uses.push(open.finish());
+                }
+                if let Some((mut block, text)) = open_cited.take()
+                    && let Some(object) = block.as_object_mut()
+                {
+                    object.insert("text".into(), Value::String(text));
+                    capture.cited_text.push(block);
                 }
             }
             _ => {}
@@ -302,6 +332,8 @@ pub(crate) struct WebSearchWireCapture {
     /// Result blocks: official `web_search_tool_result` or GLM's
     /// assistant-side `tool_result`, matched by id below.
     pub(crate) results: Vec<Value>,
+    /// Finished text blocks that carried search citations, in stream order.
+    pub(crate) cited_text: Vec<Value>,
 }
 
 /// One use/result pair in original call order. A missing result means the
@@ -319,12 +351,17 @@ pub(crate) struct PairedWebSearchBlocks {
 pub(crate) struct PairedWebSearch {
     pub(crate) pairs: Vec<PairedWebSearchBlocks>,
     pub(crate) unmatched_results: Vec<Value>,
+    pub(crate) cited_text: Vec<Value>,
 }
 
 pub(crate) fn pair_web_search_blocks(capture: WebSearchWireCapture) -> PairedWebSearch {
-    let mut remaining_results = capture.results;
-    let pairs = capture
-        .uses
+    let WebSearchWireCapture {
+        uses,
+        results,
+        cited_text,
+    } = capture;
+    let mut remaining_results = results;
+    let pairs = uses
         .into_iter()
         .map(|call| {
             let id = call.get("id").and_then(Value::as_str).map(str::to_string);
@@ -340,6 +377,7 @@ pub(crate) fn pair_web_search_blocks(capture: WebSearchWireCapture) -> PairedWeb
     PairedWebSearch {
         pairs,
         unmatched_results: remaining_results,
+        cited_text,
     }
 }
 
@@ -351,6 +389,7 @@ pub(crate) fn pair_web_search_blocks(capture: WebSearchWireCapture) -> PairedWeb
 pub(crate) fn web_search_call_events(
     pair: PairedWebSearchBlocks,
     source: &str,
+    cited_text: Vec<Value>,
 ) -> Vec<ResponseEvent> {
     let PairedWebSearchBlocks { call, result } = pair;
     let id = call
@@ -382,7 +421,7 @@ pub(crate) fn web_search_call_events(
         );
         None
     } else {
-        Some(crate::hosted_replay::envelope(source, blocks))
+        Some(crate::hosted_replay::envelope(source, blocks, cited_text))
     };
     let make = |status: Option<String>, wire_blocks: Option<Value>| ResponseItem::WebSearchCall {
         id: Some(ResponseItemId::from_server(id.clone())),
@@ -416,7 +455,9 @@ pub(crate) async fn assistant_continuation_items(
     source: &str,
 ) -> crate::hosted_replay::PauseCapture {
     let capture = web_search_blocks_from_anthropic_sse(bytes).await;
-    let pairs = pair_web_search_blocks(capture).pairs;
+    let paired = pair_web_search_blocks(capture);
+    let pairs = paired.pairs;
+    let mut cited_text = paired.cited_text;
     let mut items = Vec::new();
     let text = assembled_text(bytes).await;
     if !text.is_empty() {
@@ -430,8 +471,9 @@ pub(crate) async fn assistant_continuation_items(
     }
     for pair in pairs {
         // Reuse the event builder (envelope + size cap included), then keep
-        // the item.
-        for event in web_search_call_events(pair, source) {
+        // the item; citations ride the first pair's envelope.
+        let cited = std::mem::take(&mut cited_text);
+        for event in web_search_call_events(pair, source, cited) {
             if let ResponseEvent::OutputItemDone(item) = event {
                 items.push(item);
             }

@@ -216,6 +216,7 @@ fn pause_raw_content_replaces_final_assistant_or_appends_one() {
         websearch_replay: &[crate::hosted_replay::ReplayGroup {
             index: 1,
             blocks: vec![json!({"type":"server_tool_use","id":"x","name":"web_search","input":{}})],
+            cited_text: Vec::new(),
         }],
         ..rewrite(RigProtocol::Anthropic, &strict, &errors, &[], None)
     }

@@ -207,6 +207,7 @@ pub(crate) fn convert_response_items(
                             continue;
                         }
                         let blocks = envelope.blocks;
+                        let cited_text = envelope.cited_text;
                         if blocks.is_empty() {
                             tracing::warn!(
                                 "persisted web-search pair carries no blocks; dropping it"
@@ -237,10 +238,14 @@ pub(crate) fn convert_response_items(
                         }
                         let target = assistant_messages - 1;
                         match websearch_replay.last_mut() {
-                            Some(group) if group.index == target => group.blocks.extend(blocks),
+                            Some(group) if group.index == target => {
+                                group.blocks.extend(blocks);
+                                group.cited_text.extend(cited_text);
+                            }
                             _ => websearch_replay.push(crate::hosted_replay::ReplayGroup {
                                 index: target,
                                 blocks,
+                                cited_text,
                             }),
                         }
                     }
