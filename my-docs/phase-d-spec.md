@@ -1,6 +1,8 @@
 # 阶段 D Spec：会话与 hosted 工具完整流程（规范文档）
 
-状态：已评审并实施（2026-10-01）。评审修正 6 处已写回本文：持久化载体为
+状态：初版已实施，尚未完整验收（2026-10-01）。Codex 后续复查发现来源隔离、
+恢复侧硬上限、完整暂停块及混合轮仍需修复，见 `codex-review-2026-10-01.md`。
+此前评审修正 6 处已写回本文：持久化载体为
 WebSearchCall.wire_blocks 单 opaque 字段（非 context fragment）；pause_turn 为桥内
 透明续接（原缺陷为直接 Stream 错误）；顺序保真限于对间/对内；上限在桥边界
 强制（bytes/4 近似）；开关走 provider 字段 hosted_results_replay；GLM 结果块按

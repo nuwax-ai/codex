@@ -85,10 +85,11 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
   续轮把对原样还原进对应 assistant 消息（含 `encrypted_content`，仅
   Anthropic→Anthropic；GLM 非标准 tool_result 按原样形状）。provider 级
   `hosted_results_replay=false` 一行回退旧行为。上限：单对 ~10K tokens
-  （bytes/4，超限丢载荷保调用）、每请求 64 对。
+  （bytes/4，超限丢载荷保调用）。2026-10-01 后续审查确认请求侧限制实际为
+  64 个 assistant 分组，恢复侧载荷验证与来源隔离未完成，不能称为 64 对硬上限。
 - **pause_turn 桥内透明续接（阶段 D3）**：原实现把 pause_turn 归为未知
-  finish_reason 直接报错；现从 tee 提取本次全部 assistant 原始块（文本 + 搜索
-  对），按官方配方原样追加回请求续接（工具数组不变），上限 4 次，超出明确报
+  finish_reason 直接报错；初版从 tee 重建文本和搜索对后续接，尚未保留全部
+  thinking/signature/citations 与原始块顺序；工具数组保留，上限 4 次，超出明确报
   错。每用户可见 turn 恰一个 Created。
 - **hosted 搜索厂商能力矩阵**（2026-10-01 live 实测，工件在
   `logs/live-<vendor>/websearch-*`）：GLM 服务端执行 + 回放被接受（PASS）；
@@ -97,6 +98,9 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
   anthropic 场景 PASS，隔离出变量）。后两者是网关能力边界，websearch live 矩
   阵收敛为 `["glm"]`，网关支持后加回。pause_turn：三家网关均未产生（本轮全
   部 live 日志零命中），覆盖以离线 wire 测试为准。
+
+阶段 D 完整验收和后续任务见 `my-docs/codex-review-2026-10-01.md`；当前不能
+宣称跨厂商搜索载荷兼容、完整暂停保真或混合 server/client 轮全部完成。
 
 设计：`my-docs/anthropic-hosted-tools/`。
 
@@ -181,10 +185,10 @@ app-server 同语义接线；组激活时共享 daemon 被排除（每进程凭�
 
 | 局限 | 坐标/依据 | 状态 |
 |---|---|---|
-| Anthropic 固定 `max_tokens=16384`，长输出/重思考模型命中即整轮报错 | `codex-rust-rig-bridge/src/client.rs:120`；与官方 `response.incomplete` 行为一致（对齐而非缺陷） | backlog（可配置化） |
+| Chat/Anthropic 输出预算可通过 provider.max_output_tokens 配置；Anthropic 未配置时仍默认 16384，Responses passthrough 暂不采用该字段 | `codex-rust-rig-bridge/src/stream.rs`、`client.rs` | chat-family 已实现；Responses 预算语义待统一 |
 | 无 Anthropic prompt caching（`cache_control`） | 桥内零出现（grep 实证） | backlog |
-| 每轮新建 reqwest client（每轮 TLS 握手） | `stream.rs`/`responses.rs` 每次 `http_client(...)` | backlog |
-| 跨轮 web_search 检索上下文丢失：`WebSearchCall` 条目无结果字段，桥回放时丢弃（无悬空块风险，assistant 文本保留） | `protocol/src/models.rs:1190-1203`、`request_messages.rs:207-219`；两轮复核定案"丢弃正确" | **phase-3 增强**：新增结果持久化字段 + 成对回放 `server_tool_use`/`web_search_tool_result` |
+| 普通 TLS 客户端复用且请求头按轮注入；自定义 CA 仍专用构建 | `codex-rust-rig-bridge/src/client.rs`、`transport.rs` | 已修复全局缓存按每轮 header 永久增长的问题；取消和长会话验收待做 |
+| 搜索原始结果初版已持久化和回放，来源隔离、恢复侧硬上限、混合轮跨响应配对仍缺失 | `protocol/src/models.rs`、`request_messages.rs`、`hosted_tools.rs` | 后续任务见 `codex-review-2026-10-01.md` R2/R3 |
 | 病态网关"HTTP 200 + 非 SSE JSON 错误体"两线均 EOF 丢体 | `sse.rs` EOF 路径；三家目标厂商 live 未见此行为 | 已知边界（可选加固：EOF 时附 body 摘要） |
 | 测试序列化兜底 `unwrap_or_default()` 仅在工具 schema >128 层嵌套时可达（静默零工具） | `request_tools.rs:41-47`（serde_json 递归深度限制，实测无现实 schema 可触发） | P3 nit（debug_assert） |
 
