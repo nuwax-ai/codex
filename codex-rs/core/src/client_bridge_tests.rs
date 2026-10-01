@@ -2,6 +2,73 @@ use super::*;
 use pretty_assertions::assert_eq;
 
 #[test]
+fn responses_requests_clear_hosted_replay_payloads_without_changing_history() -> anyhow::Result<()>
+{
+    let original: ResponseItem = serde_json::from_value(serde_json::json!({
+        "type":"web_search_call", "id":"search_saved", "status":"completed",
+        "action":{"type":"search", "query":"saved query"},
+        "wire_blocks":[{"type":"server_tool_use", "id":"srv_saved", "name":"web_search", "input":{"query":"saved query"}}]
+    }))?;
+    for (wire_api, bridge) in [
+        (
+            WireApi::Responses,
+            codex_model_provider_info::ChatBridge::Native,
+        ),
+        (
+            WireApi::Responses,
+            codex_model_provider_info::ChatBridge::Rig,
+        ),
+        (
+            WireApi::Anthropic,
+            codex_model_provider_info::ChatBridge::Rig,
+        ),
+    ] {
+        let mut client = test_model_client(SessionSource::Cli);
+        Arc::get_mut(&mut client.state)
+            .expect("unique state")
+            .provider = create_model_provider(
+            ModelProviderInfo {
+                wire_api,
+                experimental_bridge: Some(bridge),
+                ..Default::default()
+            },
+            None,
+        );
+        let prompt = Prompt {
+            input: vec![original.clone()],
+            ..Default::default()
+        };
+        let metadata = test_responses_metadata_for_client(
+            &client,
+            None,
+            "turn:0".into(),
+            None,
+            TestCodexResponsesRequestKind::Turn,
+        );
+        let mut model = test_model_info();
+        model.use_responses_lite = false;
+        let request = client.build_responses_request(
+            &prompt,
+            &model,
+            None,
+            codex_protocol::config_types::ReasoningSummary::None,
+            None,
+            &metadata,
+            false,
+        )?;
+        let mut expected = original.clone();
+        if wire_api == WireApi::Responses
+            && let ResponseItem::WebSearchCall { wire_blocks, .. } = &mut expected
+        {
+            *wire_blocks = None;
+        }
+        assert_eq!(request.input, vec![expected]);
+        assert_eq!(prompt.input, vec![original.clone()]);
+    }
+    Ok(())
+}
+
+#[test]
 fn provider_switch_keeps_native_ciphertext_but_filters_bridge_reasoning() -> anyhow::Result<()> {
     use codex_protocol::models::ReasoningItemContent;
     let native = ResponseItem::Reasoning {

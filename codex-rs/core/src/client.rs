@@ -905,6 +905,13 @@ impl ModelClient {
             input.retain(|item| !matches!(item, ResponseItem::ConfigurationUpdate { .. }));
         }
         let native_transport = !self.state.provider.info().uses_model_bridge();
+        if self.state.provider.info().wire_api == WireApi::Responses {
+            for item in &mut input {
+                if let ResponseItem::WebSearchCall { wire_blocks, .. } = item {
+                    *wire_blocks = None;
+                }
+            }
+        }
         if native_transport
             || self.state.provider.info().experimental_bridge
                 == Some(codex_model_provider_info::ChatBridge::Genai)

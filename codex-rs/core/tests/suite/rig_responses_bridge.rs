@@ -134,6 +134,14 @@ async fn responses_bridge_resumes_history_without_backfilling_provenance() -> Re
     let reasoning =
         responses::ev_reasoning_item("rs_original", &["saved summary"], &["saved thought"]);
     let assistant = responses::ev_assistant_message("msg_original", "first answer");
+    let hosted_item = json!({
+        "type":"web_search_call", "id":"search_saved", "status":"completed",
+        "action":{"type":"search", "query":"saved query"},
+        "wire_blocks":[
+            {"type":"server_tool_use", "id":"srv_saved", "name":"web_search", "input":{"query":"saved query"}},
+            {"type":"web_search_tool_result", "tool_use_id":"srv_saved", "content":[{"type":"web_search_result", "encrypted_content":"vendor-secret"}]}
+        ]
+    });
     let plan_args = json!({"plan": [{"step": "save history", "status": "completed"}]}).to_string();
     let initial_mock = responses::mount_response_sequence(
         &server,
@@ -148,6 +156,7 @@ async fn responses_bridge_resumes_history_without_backfilling_provenance() -> Re
             responses::sse_response(responses::sse(vec![
                 responses::ev_response_created("resp_original"),
                 assistant.clone(),
+                json!({"type":"response.output_item.done", "item":hosted_item}),
                 responses::ev_completed("resp_original"),
             ])),
         ],
@@ -196,13 +205,25 @@ async fn responses_bridge_resumes_history_without_backfilling_provenance() -> Re
     let rollout_path = initial.codex.rollout_path().context("rollout path")?;
     let original_contents = std::fs::read_to_string(&rollout_path)?;
     let original_items = persisted_response_items(&original_contents)?;
+    let saved_search = original_items
+        .iter()
+        .find(|item| item.id().is_some_and(|id| id.as_str() == "search_saved"))
+        .context("persisted hosted search")?;
+    let mut saved_search_payload = serde_json::to_value(&saved_search.item)?;
+    // Core stamps its own turn metadata while persisting output. Compare the
+    // provider payload separately from that dynamic, runtime-owned field.
+    saved_search_payload
+        .as_object_mut()
+        .context("saved search object")?
+        .remove("internal_chat_message_metadata_passthrough");
+    assert_eq!(saved_search_payload, hosted_item);
     let original_provenance = ModelOutputProvenance {
         wire_protocol: "responses".into(),
         bridge: Some("rig".into()),
         provider: Some("rig-responses".into()),
         model: Some("rig-original-model".into()),
     };
-    for id in ["rs_original", "msg_original"] {
+    for id in ["rs_original", "msg_original", "search_saved"] {
         let item = original_items
             .iter()
             .find(|item| item.id().is_some_and(|item_id| item_id.as_str() == id))
@@ -285,6 +306,15 @@ async fn responses_bridge_resumes_history_without_backfilling_provenance() -> Re
             Some(expected)
         );
     }
+    let mut expected_search = hosted_item.clone();
+    expected_search
+        .as_object_mut()
+        .context("hosted search object")?
+        .remove("wire_blocks");
+    assert_eq!(
+        input.iter().find(|item| item["id"] == "search_saved"),
+        Some(&expected_search)
+    );
     assert!(
         !request
             .body_json()
@@ -453,13 +483,19 @@ struct ChatRequestLog(std::sync::Arc<std::sync::Mutex<Vec<wiremock::Request>>>);
 
 impl ChatRequestLog {
     fn requests(&self) -> Vec<wiremock::Request> {
-        self.0.lock().unwrap().clone()
+        self.0
+            .lock()
+            .expect("read captured compaction requests")
+            .clone()
     }
 }
 
 impl wiremock::Match for ChatRequestLog {
     fn matches(&self, request: &wiremock::Request) -> bool {
-        self.0.lock().unwrap().push(request.clone());
+        self.0
+            .lock()
+            .expect("capture compaction request")
+            .push(request.clone());
         true
     }
 }

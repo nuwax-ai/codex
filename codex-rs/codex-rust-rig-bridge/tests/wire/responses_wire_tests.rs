@@ -153,6 +153,14 @@ async fn responses_wire_projects_chat_history_envelopes() {
         }),
         json!({"type":"function_call","id":"fc_1","name":"lookup","call_id":"call_1","arguments":"{\"q\":\"x\"}"}),
         json!({"type":"function_call_output","call_id":"call_1","output":"seen"}),
+        json!({
+            "type":"web_search_call", "id":"search_saved", "status":"completed",
+            "action":{"type":"search", "query":"saved query"},
+            "wire_blocks":[
+                {"type":"server_tool_use", "id":"srv_saved", "name":"web_search", "input":{"query":"saved query"}},
+                {"type":"web_search_tool_result", "tool_use_id":"srv_saved", "content":[{"type":"web_search_result", "encrypted_content":"vendor-secret"}]}
+            ]
+        }),
         support::user(),
     ]);
     // Sanity: the serialized request itself still carries the envelope —
@@ -189,6 +197,14 @@ async fn responses_wire_projects_chat_history_envelopes() {
     // Tool pairing passes through untouched.
     assert_eq!(wire["body"]["input"][2]["call_id"], "call_1");
     assert_eq!(wire["body"]["input"][3]["output"], "seen");
+    assert_eq!(
+        wire["body"]["input"][4],
+        json!({
+            "type":"web_search_call", "id":"search_saved", "status":"completed",
+            "action":{"type":"search", "query":"saved query"}
+        }),
+        "Anthropic replay state must stay out of the Responses wire"
+    );
     // The turn still completes normally on the scripted Responses stream.
     assert!(
         events

@@ -136,7 +136,7 @@ async fn stream_responses_via_rig_inner(
         bridge = "rig",
         endpoint = "POST /responses",
         input_items = request.input.len(),
-        projected_reasoning_envelopes = projected,
+        projected_history_payloads = projected,
         "Dispatching responses stream via rig"
     );
     let body = serde_json::to_vec(&wire_request).map_err(|error| ApiError::InvalidRequest {
@@ -192,7 +192,7 @@ async fn stream_responses_via_rig_inner(
     Ok(stream)
 }
 
-/// Request-time cross-protocol projection (phase 2): history recorded on the
+/// Request-time cross-protocol projection: history recorded on the
 /// Chat/Anthropic wires carries this bridge's replay envelopes in
 /// `Reasoning.encrypted_content`. Those payloads are bridge-internal and
 /// vendor-specific signatures that must not be replayed on the Responses
@@ -201,10 +201,19 @@ async fn stream_responses_via_rig_inner(
 /// keeping the item, its summary, and its identity. Everything else —
 /// including non-envelope ciphertext whose origin is not known here —
 /// passes through verbatim; cross-provider ciphertext may be rejected. The persisted rollout is never
-/// rewritten; returns the number of projected items.
+/// rewritten. Anthropic search wire blocks are also cleared from the copy;
+/// returns the number of projected items.
 fn project_cross_protocol_history(input: &mut [codex_protocol::models::ResponseItem]) -> usize {
     let mut projected = 0;
     for item in input {
+        // This fork's persisted Anthropic payload is not a Responses field.
+        // Keep the search item itself and clear only the request copy.
+        if let codex_protocol::models::ResponseItem::WebSearchCall { wire_blocks, .. } = item {
+            if wire_blocks.take().is_some() {
+                projected += 1;
+            }
+            continue;
+        }
         if let codex_protocol::models::ResponseItem::Reasoning {
             encrypted_content, ..
         } = item
