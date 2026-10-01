@@ -203,8 +203,8 @@ fn model_provider_from_proto(
         http_headers: provider.http_headers.map(redacted_string_map),
         env_http_headers: provider.env_http_headers.map(|map| map.values),
         request_max_retries: provider.request_max_retries,
-        max_output_tokens: None, // fork fields; the proto has no wire for them yet
-        hosted_results_replay: None,
+        max_output_tokens: provider.max_output_tokens,
+        hosted_results_replay: provider.hosted_results_replay,
         stream_max_retries: provider.stream_max_retries,
         stream_idle_timeout_ms: provider.stream_idle_timeout_ms,
         websocket_connect_timeout_ms: provider.websocket_connect_timeout_ms,
@@ -238,8 +238,8 @@ fn model_provider_to_proto(
         http_headers,
         env_http_headers,
         request_max_retries,
-        max_output_tokens: _, // fork fields; remote thread config has no wire for them yet
-        hosted_results_replay: _,
+        max_output_tokens,
+        hosted_results_replay,
         stream_max_retries,
         stream_idle_timeout_ms,
         websocket_connect_timeout_ms,
@@ -265,6 +265,8 @@ fn model_provider_to_proto(
         http_headers: http_headers.map(proto_string_map),
         env_http_headers: env_http_headers.map(|values| proto::StringMap { values }),
         request_max_retries,
+        max_output_tokens,
+        hosted_results_replay,
         stream_max_retries,
         stream_idle_timeout_ms,
         websocket_connect_timeout_ms,
@@ -539,6 +541,8 @@ mod tests {
                                 )]),
                             }),
                             request_max_retries: Some(7),
+                            max_output_tokens: Some(16_384),
+                            hosted_results_replay: Some(false),
                             stream_max_retries: Some(8),
                             stream_idle_timeout_ms: Some(9_000),
                             websocket_connect_timeout_ms: Some(10_000),
@@ -612,8 +616,10 @@ mod tests {
             gateway_oauth: None,
             aws: None,
             include_internal_metadata: false,
-            max_output_tokens: None,
-            hosted_results_replay: None,
+            // Fork fields round-trip: the replay=false rollback strategy
+            // must survive the remote thread config.
+            max_output_tokens: Some(16_384),
+            hosted_results_replay: Some(false),
         }
     }
 

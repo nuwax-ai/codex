@@ -40,6 +40,11 @@ message ModelProvider {
   optional ModelProviderAuthInfo auth = 7;
   WireApi wire_api = 8;
   optional string experimental_bridge = 20;
+  // Fork (nuwax-codex): provider output budget and hosted-search replay
+  // fallback must ride the remote thread config; dropping them silently
+  // would lose the replay=false rollback strategy.
+  optional uint64 max_output_tokens = 21;
+  optional bool hosted_results_replay = 22;
   optional StringMap query_params = 9;
   optional StringMap http_headers = 10;
   optional StringMap env_http_headers = 11;

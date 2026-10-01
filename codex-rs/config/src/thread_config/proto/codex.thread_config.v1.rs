@@ -82,6 +82,10 @@ pub struct ModelProvider {
     /// Fork: bridge selection ("genai" | "rig" | "native").
     #[prost(string, optional, tag = "20")]
     pub experimental_bridge: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag = "21")]
+    pub max_output_tokens: ::core::option::Option<u64>,
+    #[prost(bool, optional, tag = "22")]
+    pub hosted_results_replay: ::core::option::Option<bool>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StringMap {
