@@ -14,7 +14,6 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
 /// One paused attempt (text + a completed search pair, ending on

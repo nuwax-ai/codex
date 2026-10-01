@@ -77,7 +77,7 @@ fn drive(input: Vec<StreamedAssistantContent>) -> Vec<ResponseEvent> {
 }
 
 /// Model core's single active item and reconstruct each Done from its deltas.
-fn assert_lifecycle(events: &[ResponseEvent]) -> Vec<ResponseItem> {
+fn assert_lifecycle(events: &[ResponseEvent], expected_completions: usize) -> Vec<ResponseItem> {
     let mut active: Option<ResponseItem> = None;
     let mut done = Vec::new();
     let mut completed = 0;
@@ -169,7 +169,7 @@ fn assert_lifecycle(events: &[ResponseEvent]) -> Vec<ResponseItem> {
         }
     }
     assert_eq!(active, None);
-    assert_eq!(completed, 1);
+    assert_eq!(completed, expected_completions);
     done
 }
 
@@ -184,7 +184,7 @@ fn text_and_reasoning_switches_close_each_item_before_the_next_delta() {
         StreamedAssistantContent::text("answer two"),
         terminal(FinishReason::Stop),
     ]);
-    let done = assert_lifecycle(&events);
+    let done = assert_lifecycle(&events, /*expected_completions*/ 1);
     assert_eq!(done.len(), 4);
     for (index, id, text) in [(0, "r1", "first"), (2, "r2", "second")] {
         assert_eq!(
@@ -221,7 +221,7 @@ fn reasoning_after_a_tool_keeps_its_position_and_is_deferred_until_final() {
     events.extend(
         rig_event_to_response_events(terminal(FinishReason::ToolCalls), &mut state).expect("final"),
     );
-    let done = assert_lifecycle(&events);
+    let done = assert_lifecycle(&events, /*expected_completions*/ 1);
     assert!(matches!(
         done.as_slice(),
         [
@@ -257,7 +257,7 @@ fn interleaved_parallel_calls_commit_in_first_seen_order_with_matching_ids_and_i
     }
     let events =
         rig_event_to_response_events(terminal(FinishReason::ToolCalls), &mut state).expect("final");
-    let done = assert_lifecycle(&events);
+    let done = assert_lifecycle(&events, /*expected_completions*/ 1);
     assert_eq!(
         events.len(),
         7,
@@ -268,6 +268,35 @@ fn interleaved_parallel_calls_commit_in_first_seen_order_with_matching_ids_and_i
         if id.as_str() == "t1" && call_id == "wire-t1" && arguments == "{\"key\": 1}"
             && custom_id.as_str() == "t2" && custom_call_id == "wire-t2" && input == "raw input")
     );
+}
+
+#[test]
+fn paused_final_flushes_text_tool_text_in_order_without_completed() {
+    let mut state = pending();
+    let mut events = Vec::new();
+    for event in [
+        StreamedAssistantContent::text("before"),
+        tool("t1", "lookup", json!({"key": 1})),
+        StreamedAssistantContent::text("after"),
+    ] {
+        events.extend(rig_event_to_response_events(event, &mut state).expect("stream event"));
+    }
+    events.extend(
+        crate::convert_response::paused_final_events(
+            StreamFinal::new("test", Usage::new())
+                .with_finish_reason(FinishReason::Other("pause_turn".into())),
+            &mut state,
+        )
+        .expect("paused final"),
+    );
+    let done = assert_lifecycle(&events, /*expected_completions*/ 0);
+    assert!(
+        matches!(done.as_slice(), [ResponseItem::Message { content: before, .. }, ResponseItem::FunctionCall { call_id, .. }, ResponseItem::Message { content: after, .. }]
+        if before == &vec![ContentItem::OutputText { text: "before".into() }]
+            && call_id == "wire-t1"
+            && after == &vec![ContentItem::OutputText { text: "after".into() }])
+    );
+    assert!(!state.completed_emitted());
 }
 
 #[test]

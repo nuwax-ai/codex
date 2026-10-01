@@ -1425,6 +1425,35 @@ fn for_prompt_clears_image_generation_result_when_images_are_unsupported() {
 }
 
 #[test]
+fn web_search_wire_blocks_increase_retained_history_token_estimate() {
+    let estimate = |payload: &str| {
+        let item = ResponseItem::WebSearchCall {
+            id: None,
+            status: Some("completed".into()),
+            action: None,
+            wire_blocks: Some(
+                serde_json::json!([{"type":"web_search_tool_result", "content":payload}]),
+            ),
+            internal_chat_message_metadata_passthrough: None,
+        };
+        let history = create_history_with_items(vec![item]);
+        history
+            .estimate_token_count_with_base_instructions(&BaseInstructions {
+                text: String::new(),
+                provenance: None,
+            })
+            .expect("history estimate")
+    };
+    let short = estimate(&"x".repeat(8));
+    let long = estimate(&"x".repeat(8_008));
+    assert_eq!(long - short, 2_000);
+    assert!(
+        short < 1_000 && long > 1_000,
+        "search payload must affect the compaction threshold"
+    );
+}
+
+#[test]
 fn estimate_token_count_with_base_instructions_uses_provided_text() {
     let history = create_history_with_items(vec![assistant_msg("hello from history")]);
     let short_base = BaseInstructions {

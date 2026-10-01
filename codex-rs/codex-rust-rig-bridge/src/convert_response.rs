@@ -211,10 +211,7 @@ pub(crate) fn paused_final_events(
     record: StreamFinal,
     pending: &mut PendingRigMessage,
 ) -> Result<Vec<ResponseEvent>, ApiError> {
-    let mut events = Vec::new();
-    finish_reasoning(pending, &mut events);
-    finish_text(pending, &mut events);
-    events.extend(pending.tools.finish()?.into_values().flatten());
+    let mut events = finish_pending_output(pending)?;
     if let Some(model) = record.model {
         events.push(ResponseEvent::ServerModel(model));
     }
@@ -242,6 +239,27 @@ fn handle_stream_final(
         }
         None => None,
     };
+    let mut events = finish_pending_output(pending)?;
+    if let Some(model) = record.model {
+        events.push(ResponseEvent::ServerModel(model));
+    }
+    let token_usage = record
+        .usage
+        .has_values()
+        .then(|| map_usage(&record.usage, &record.provider));
+    events.push(ResponseEvent::Completed {
+        // Chat reports response_id; Anthropic reports message_id. Codex uses
+        // one completion identifier for both, never a transport request ID.
+        response_id: record.response_id.or(record.message_id).unwrap_or_default(),
+        token_usage,
+        usage_metadata: None,
+        end_turn,
+    });
+    pending.completed = true;
+    Ok(events)
+}
+
+fn finish_pending_output(pending: &mut PendingRigMessage) -> Result<Vec<ResponseEvent>, ApiError> {
     let mut tool_events = pending.tools.finish()?;
     let mut events = Vec::new();
     finish_reasoning(pending, &mut events);
@@ -261,22 +279,6 @@ fn handle_stream_final(
             }
         }
     }
-    if let Some(model) = record.model {
-        events.push(ResponseEvent::ServerModel(model));
-    }
-    let token_usage = record
-        .usage
-        .has_values()
-        .then(|| map_usage(&record.usage, &record.provider));
-    events.push(ResponseEvent::Completed {
-        // Chat reports response_id; Anthropic reports message_id. Codex uses
-        // one completion identifier for both, never a transport request ID.
-        response_id: record.response_id.or(record.message_id).unwrap_or_default(),
-        token_usage,
-        usage_metadata: None,
-        end_turn,
-    });
-    pending.completed = true;
     Ok(events)
 }
 

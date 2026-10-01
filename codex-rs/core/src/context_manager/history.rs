@@ -1148,9 +1148,20 @@ fn estimate_response_item_model_visible_bytes(item: &ResponseItem) -> i64 {
         ResponseItem::ToolSearchCall { arguments, .. } => json_content_bytes(arguments),
         ResponseItem::ToolSearchOutput { tools, .. } => json_content_bytes(tools),
         ResponseItem::LocalShellCall { action, .. } => json_content_bytes(action),
-        ResponseItem::WebSearchCall { action, .. } => {
-            action.as_ref().map(json_content_bytes).unwrap_or_default()
-        }
+        ResponseItem::WebSearchCall {
+            action,
+            wire_blocks,
+            ..
+        } => action
+            .as_ref()
+            .map(json_content_bytes)
+            .unwrap_or_default()
+            .saturating_add(
+                wire_blocks
+                    .as_ref()
+                    .map(json_content_bytes)
+                    .unwrap_or_default(),
+            ),
         ResponseItem::ImageGenerationCall {
             revised_prompt,
             result,
