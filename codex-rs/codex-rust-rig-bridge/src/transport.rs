@@ -58,6 +58,10 @@ pub(crate) struct RigHttpClient {
     /// recover server-tool blocks rig never exposes on its public streaming
     /// surface. `None` in production for the other protocols.
     pub(crate) anthropic_sse_tee: Option<Arc<Mutex<Vec<u8>>>>,
+    /// Pause continuation (official recipe): the paused assistant message's
+    /// reassembled raw content blocks replace the content of the FINAL
+    /// assistant message wholesale, instead of replay groups appending.
+    pub(crate) anthropic_pause_raw_content: Option<Vec<serde_json::Value>>,
 }
 
 impl std::fmt::Debug for RigHttpClient {
@@ -100,6 +104,7 @@ impl RigHttpClient {
         ChatFamilyRewrite {
             protocol: self.protocol,
             websearch_replay: &self.anthropic_websearch_replay,
+            anthropic_pause_raw_content: self.anthropic_pause_raw_content.as_deref(),
             disable_anthropic_parallel: self.disable_anthropic_parallel,
             disable_anthropic_thinking: self.disable_anthropic_thinking,
             tool_strict: &self.tool_strict,
@@ -119,6 +124,8 @@ impl RigHttpClient {
 struct ChatFamilyRewrite<'a> {
     protocol: crate::RigProtocol,
     websearch_replay: &'a [crate::hosted_replay::ReplayGroup],
+    /// Verbatim content replacement for the final assistant message.
+    anthropic_pause_raw_content: Option<&'a [serde_json::Value]>,
     disable_anthropic_parallel: bool,
     disable_anthropic_thinking: bool,
     tool_strict: &'a std::collections::HashMap<String, bool>,
@@ -134,7 +141,8 @@ impl ChatFamilyRewrite<'_> {
     fn needed(&self) -> bool {
         match self.protocol {
             crate::RigProtocol::Responses => false,
-            // Raw-content anchors must be cleaned even when replay is disabled.
+            // Raw-content anchors must be cleaned even when replay is
+            // disabled; pause replacement applies its own rewrite.
             crate::RigProtocol::Anthropic => true,
             crate::RigProtocol::Chat => {
                 self.disable_anthropic_parallel
@@ -276,7 +284,26 @@ impl ChatFamilyRewrite<'_> {
             // into the content array of the assistant message each pair
             // followed in history. The index counts assistant-role messages,
             // matching how history conversion numbered them.
-            if !self.websearch_replay.is_empty() {
+            let pause_replacement = self.anthropic_pause_raw_content;
+            if !self.websearch_replay.is_empty() || pause_replacement.is_some() {
+                let assistant_total = messages
+                    .iter()
+                    .filter(|message| message["role"] == "assistant")
+                    .count();
+                // The continuation items append last, so the paused
+                // assistant is the final one; its raw content replaces the
+                // whole array (the groups it produced are inside the raw
+                // blocks — splice must not duplicate them).
+                let replaced_index = pause_replacement.and_then(|_| assistant_total.checked_sub(1));
+                if let (Some(raw), None) = (pause_replacement, replaced_index) {
+                    // No assistant at all follows the user history (a
+                    // thinking-only pause converts to no items); the paused
+                    // assistant enters the wire whole, at the end.
+                    messages.push(serde_json::json!({
+                        "role": "assistant",
+                        "content": raw,
+                    }));
+                }
                 let mut assistant_seen = 0usize;
                 let mut pending: Vec<&crate::hosted_replay::ReplayGroup> =
                     self.websearch_replay.iter().collect();
@@ -287,6 +314,15 @@ impl ChatFamilyRewrite<'_> {
                     }
                     let current = assistant_seen;
                     assistant_seen += 1;
+                    if replaced_index == Some(current)
+                        && let Some(raw) = pause_replacement
+                    {
+                        pending.retain(|group| group.index != current);
+                        if let Some(content) = message.get_mut("content") {
+                            *content = serde_json::Value::Array(raw.to_vec());
+                        }
+                        continue;
+                    }
                     let groups: Vec<&crate::hosted_replay::ReplayGroup> = pending
                         .iter()
                         .filter(|group| group.index == current)

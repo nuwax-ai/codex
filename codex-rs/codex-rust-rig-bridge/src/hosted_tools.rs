@@ -392,13 +392,16 @@ fn string_field(block: &Value, key: &str) -> String {
         .to_string()
 }
 
-/// Builds the history items that continue a PAUSED Anthropic turn: the
-/// official recipe is to re-send the paused assistant message unchanged, so
-/// every content block from the attempt's wire bytes becomes history —
-/// text blocks merge into one assistant message, server-tool blocks become
-/// `WebSearchCall` items carrying the raw wire pair (reusing the D2 replay
-/// channel), and unmodeled blocks are dropped with a warning.
-pub(crate) async fn assistant_continuation_items(bytes: &[u8], source: &str) -> Vec<ResponseItem> {
+/// Builds the state that continues a PAUSED Anthropic turn. The
+/// user-visible items keep today's shape (one text message plus search
+/// calls reusing the D2 replay channel); the continuation REQUEST instead
+/// re-sends the paused assistant message's raw content blocks verbatim
+/// (thinking/signatures, citations, interleaving included) per the
+/// official recipe.
+pub(crate) async fn assistant_continuation_items(
+    bytes: &[u8],
+    source: &str,
+) -> crate::hosted_replay::PauseCapture {
     let capture = web_search_blocks_from_anthropic_sse(bytes).await;
     let pairs = pair_web_search_blocks(capture);
     let mut items = Vec::new();
@@ -421,7 +424,10 @@ pub(crate) async fn assistant_continuation_items(bytes: &[u8], source: &str) -> 
             }
         }
     }
-    items
+    crate::hosted_replay::PauseCapture {
+        items,
+        raw_content: crate::hosted_replay::raw_assistant_content(bytes).await,
+    }
 }
 
 /// Concatenates the text deltas of plain text blocks (in stream order) into

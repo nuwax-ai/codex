@@ -95,6 +95,7 @@ pub async fn stream_via_rig_with_recording(
         idle_timeout,
         recorder,
         /*pause_depth*/ 0,
+        /*pause_raw_content*/ None,
     )
     .await
 }
@@ -117,6 +118,7 @@ fn stream_via_rig_attempt(
     idle_timeout: Duration,
     recorder: RigEventRecorder,
     pause_depth: u32,
+    pause_raw_content: Option<Vec<serde_json::Value>>,
 ) -> impl Future<Output = Result<(ResponseStream, RigEventRecorder), ApiError>> + Send {
     async move {
         if protocol == RigProtocol::Responses {
@@ -172,11 +174,10 @@ fn stream_via_rig_attempt(
         };
         // rig never exposes Anthropic server-tool blocks on its public streaming
         // surface; the transport tees the wire bytes and the pump re-reads them
-        // at terminal time. Without advertised server tools there is nothing to
-        // recover, so the tee (and its buffer) is skipped entirely.
-        let anthropic_sse_tee = (protocol == RigProtocol::Anthropic
-            && !anthropic_server_tools.is_empty())
-        .then(|| Arc::new(std::sync::Mutex::new(Vec::<u8>::new())));
+        // at terminal time. The tee also feeds the pause_turn continuation
+        // (verbatim assistant content), so every Anthropic attempt keeps it.
+        let anthropic_sse_tee = (protocol == RigProtocol::Anthropic)
+            .then(|| Arc::new(std::sync::Mutex::new(Vec::<u8>::new())));
         // The wire shape of the requested tool choice, restored by the transport
         // when hosted-only tools left the serialized body without one.
         let advertised: Vec<&str> = completion_request
@@ -214,6 +215,9 @@ fn stream_via_rig_attempt(
             protocol,
             responses_sse_recorder: None,
             anthropic_sse_tee: anthropic_sse_tee.clone(),
+            // Official pause recipe: verbatim replacement of the trailing
+            // assistant's content on the continuation request.
+            anthropic_pause_raw_content: pause_raw_content,
             tool_strict: tool_meta.strict,
             tool_result_errors: tool_meta.result_errors,
             disable_anthropic_thinking: protocol == RigProtocol::Anthropic
@@ -296,9 +300,9 @@ fn stream_via_rig_attempt(
         let pump_sse_tee = anthropic_sse_tee;
         // Filled by the pump when the attempt ends PAUSED; the chainer below
         // turns it into a bridge-internal continuation attempt.
-        let paused_items: Arc<std::sync::Mutex<Option<Vec<codex_protocol::models::ResponseItem>>>> =
+        let paused_capture: Arc<std::sync::Mutex<Option<crate::hosted_replay::PauseCapture>>> =
             Arc::new(std::sync::Mutex::new(None));
-        let pump_paused_items = paused_items.clone();
+        let pump_paused_capture = paused_capture.clone();
         let pump_source = source.clone();
         let pump_tx = tx.clone();
         let pump_task = tokio::spawn(async move {
@@ -392,16 +396,20 @@ fn stream_via_rig_attempt(
                                     return;
                                 }
                             };
-                            let mut items = Vec::new();
+                            let mut capture = crate::hosted_replay::PauseCapture {
+                                items: Vec::new(),
+                                raw_content: Vec::new(),
+                            };
                             if let Some(tee) = &pump_sse_tee
                                 && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
                             {
-                                items = crate::hosted_tools::assistant_continuation_items(
+                                capture = crate::hosted_tools::assistant_continuation_items(
                                     &sse_bytes,
                                     &pump_source,
                                 )
                                 .await;
                             }
+                            let items = capture.items.clone();
                             // The user-visible events carry the recovered pairs
                             // too (same recovery as a completed turn): an Added
                             // without status, then the item itself as Done.
@@ -422,8 +430,8 @@ fn stream_via_rig_attempt(
                                     events.push(ResponseEvent::OutputItemDone(item.clone()));
                                 }
                             }
-                            if let Ok(mut slot) = pump_paused_items.lock() {
-                                *slot = Some(items);
+                            if let Ok(mut slot) = pump_paused_capture.lock() {
+                                *slot = Some(capture);
                             }
                             for ev in events {
                                 if tx.send(Ok(ev)).await.is_err() {
@@ -518,9 +526,15 @@ fn stream_via_rig_attempt(
             let idle = idle_timeout;
             tokio::spawn(async move {
                 let _ = pump_task.await;
-                let items = paused_items.lock().ok().and_then(|mut slot| slot.take());
-                if let Some(items) = items {
-                    continuation_request.input.extend(items);
+                let capture = paused_capture.lock().ok().and_then(|mut slot| slot.take());
+                if let Some(capture) = capture {
+                    // The official recipe resends the paused assistant
+                    // message UNCHANGED: the raw content blocks ride the
+                    // request as a verbatim replacement for the trailing
+                    // assistant the items synthesize — or, for a pause with
+                    // no convertible items (thinking-only), as a whole
+                    // appended assistant message at the transport.
+                    continuation_request.input.extend(capture.items);
                     let continued = stream_via_rig_attempt(
                         &continuation_request,
                         &provider,
@@ -530,6 +544,7 @@ fn stream_via_rig_attempt(
                         idle,
                         /*recorder*/ None,
                         pause_depth + 1,
+                        Some(capture.raw_content),
                     )
                     .await;
                     match continued {

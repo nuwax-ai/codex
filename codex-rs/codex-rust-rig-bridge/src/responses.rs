@@ -95,6 +95,7 @@ async fn stream_responses_via_rig_inner(
     let http = crate::transport::RigHttpClient {
         inner: crate::client::http_client(crate::RigProtocol::Responses)?,
         request_headers: crate::client::request_headers(&headers, crate::RigProtocol::Responses),
+        anthropic_pause_raw_content: None,
         query,
         request_id: request_id.clone(),
         authorization_override: headers

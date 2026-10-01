@@ -15,6 +15,7 @@ fn rewrite<'a>(
     anthropic_tool_choice: Option<&'a Value>,
 ) -> super::ChatFamilyRewrite<'a> {
     super::ChatFamilyRewrite {
+        anthropic_pause_raw_content: None,
         protocol,
         websearch_replay: &[],
         disable_anthropic_parallel: false,
@@ -194,5 +195,54 @@ async fn wire_tee_caps_its_buffer_and_passes_every_chunk_through() {
     assert!(
         captured >= cap - 1024 * 1024,
         "capture should reach the cap"
+    );
+}
+
+#[test]
+fn pause_raw_content_replaces_final_assistant_or_appends_one() {
+    let strict = HashMap::new();
+    let errors = HashMap::new();
+    let raw = vec![json!({"type":"thinking","thinking":"t","signature":"s"})];
+
+    // With a trailing assistant, its content is replaced wholesale and its
+    // replay groups are not duplicated.
+    let mut with_assistant = json!({"messages": [
+        {"role":"user","content":[{"type":"text","text":"q"}]},
+        {"role":"assistant","content":[{"type":"text","text":"partial"}]},
+    ]});
+    super::ChatFamilyRewrite {
+        anthropic_pause_raw_content: Some(&raw),
+        protocol: RigProtocol::Anthropic,
+        websearch_replay: &[crate::hosted_replay::ReplayGroup {
+            index: 1,
+            blocks: vec![json!({"type":"server_tool_use","id":"x","name":"web_search","input":{}})],
+        }],
+        ..rewrite(RigProtocol::Anthropic, &strict, &errors, &[], None)
+    }
+    .apply(&mut with_assistant);
+    assert_eq!(
+        with_assistant["messages"][1]["content"],
+        serde_json::Value::Array(raw.clone()),
+        "the trailing assistant's content is replaced verbatim, groups skipped"
+    );
+
+    // Without any assistant (thinking-only pause), the assistant enters the
+    // wire whole at the end.
+    let mut without_assistant = json!({"messages": [
+        {"role":"user","content":[{"type":"text","text":"q"}]},
+    ]});
+    super::ChatFamilyRewrite {
+        anthropic_pause_raw_content: Some(&raw),
+        protocol: RigProtocol::Anthropic,
+        websearch_replay: &[],
+        ..rewrite(RigProtocol::Anthropic, &strict, &errors, &[], None)
+    }
+    .apply(&mut without_assistant);
+    assert_eq!(
+        without_assistant["messages"],
+        json!([
+            {"role":"user","content":[{"type":"text","text":"q"}]},
+            {"role":"assistant","content":raw},
+        ])
     );
 }

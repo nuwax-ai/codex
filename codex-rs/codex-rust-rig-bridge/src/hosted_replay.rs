@@ -167,6 +167,175 @@ fn pair_group_blocks(blocks: &[Value], position: usize) -> Vec<(usize, Vec<Value
     result
 }
 
+/// The paused attempt's recovered state: user-visible history items (events
+/// + persistence) plus the verbatim raw assistant content blocks for the
+/// continuation request.
+pub(crate) struct PauseCapture {
+    pub(crate) items: Vec<codex_protocol::models::ResponseItem>,
+    /// Every assistant content block of the paused attempt, reassembled in
+    /// original order with all fields the wire carried (thinking signatures,
+    /// citations, interleaving) — the official continuation recipe resends
+    /// the paused assistant message unchanged.
+    pub(crate) raw_content: Vec<Value>,
+}
+
+/// Reassembles the assistant content blocks of one Anthropic SSE body in
+/// original index order. A block starts from its `content_block_start` JSON
+/// (preserving every field, known or not) and accumulates the four streamed
+/// delta kinds to their terminal state: `text_delta` → text,
+/// `input_json_delta` → input (parsed), `thinking_delta` → thinking,
+/// `signature_delta` → signature. Blocks complete on their start frame
+/// (`redacted_thinking`, results) pass through untouched. Unknown delta
+/// kinds cannot be rebuilt faithfully and leave the block at its start-frame
+/// state with a warning — never fabricated.
+pub(crate) async fn raw_assistant_content(bytes: &[u8]) -> Vec<Value> {
+    use eventsource_stream::Eventsource;
+    use futures::StreamExt;
+    let frames = futures::stream::iter(vec![Ok::<_, std::convert::Infallible>(
+        bytes::Bytes::copy_from_slice(bytes),
+    )])
+    .eventsource();
+    futures::pin_mut!(frames);
+    #[derive(Default)]
+    struct Open {
+        base: Option<Value>,
+        kind: Option<String>,
+        text: String,
+        input_json: String,
+        thinking: String,
+        signature: String,
+        saw_delta: bool,
+    }
+    let mut open = std::collections::BTreeMap::<u64, Open>::new();
+    let mut complete = std::collections::BTreeMap::<u64, Value>::new();
+    while let Some(Ok(frame)) = frames.next().await {
+        let Ok(event) = serde_json::from_str::<Value>(&frame.data) else {
+            continue;
+        };
+        let index = event
+            .get("index")
+            .and_then(Value::as_u64)
+            .unwrap_or_default();
+        match event.get("type").and_then(Value::as_str) {
+            Some("content_block_start") => {
+                let Some(block) = event.get("content_block") else {
+                    continue;
+                };
+                let block_kind = event["content_block"]["type"].as_str();
+                let block = block.clone();
+                // Delta-streaming block kinds stay open until their stop
+                // frame so the four delta families reach their terminal
+                // state; complete-on-start kinds pass through untouched.
+                let streaming_kind = matches!(
+                    block_kind,
+                    Some("text") | Some("thinking") | Some("server_tool_use") | Some("tool_use")
+                );
+                if streaming_kind {
+                    let mut block = block;
+                    if let Some(object) = block.as_object_mut() {
+                        // Normalize only the fields this kind accumulates, so
+                        // verbatim blocks never gain fields they never had.
+                        let fields = match block_kind {
+                            Some("text") => &["text"][..],
+                            Some("thinking") => &["thinking", "signature"][..],
+                            _ => &[][..],
+                        };
+                        for field in fields {
+                            object
+                                .entry(field.to_string())
+                                .or_insert_with(|| Value::String(String::new()));
+                        }
+                    }
+                    let entry = open.entry(index).or_default();
+                    entry.base = Some(block);
+                    entry.kind = block_kind.map(str::to_string);
+                } else {
+                    complete.insert(index, block);
+                }
+            }
+            Some("content_block_delta") => {
+                let delta = &event["delta"];
+                let Some(entry) = open.get_mut(&index) else {
+                    continue;
+                };
+                entry.saw_delta = true;
+                match delta.get("type").and_then(Value::as_str) {
+                    Some("text_delta") => {
+                        if let Some(fragment) = delta.get("text").and_then(Value::as_str) {
+                            entry.text.push_str(fragment);
+                        }
+                    }
+                    Some("input_json_delta") => {
+                        if let Some(fragment) = delta.get("partial_json").and_then(Value::as_str) {
+                            entry.input_json.push_str(fragment);
+                        }
+                    }
+                    Some("thinking_delta") => {
+                        if let Some(fragment) = delta.get("thinking").and_then(Value::as_str) {
+                            entry.thinking.push_str(fragment);
+                        }
+                    }
+                    Some("signature_delta") => {
+                        if let Some(fragment) = delta.get("signature").and_then(Value::as_str) {
+                            entry.signature.push_str(fragment);
+                        }
+                    }
+                    other => {
+                        tracing::warn!(
+                            delta_type = ?other,
+                            "paused block carries an unknown delta kind; the block continues at its start-frame state"
+                        );
+                    }
+                }
+            }
+            Some("content_block_stop") => {
+                if let Some(mut entry) = open.remove(&index) {
+                    let Some(base) = entry.base.take() else {
+                        continue;
+                    };
+                    let Some(object) = base.as_object() else {
+                        complete.insert(index, base);
+                        continue;
+                    };
+                    let mut object = object.clone();
+                    // Apply only the accumulators this block kind streams;
+                    // a block that never streamed keeps its start-frame
+                    // fields (GLM inlines values).
+                    if entry.saw_delta {
+                        match entry.kind.as_deref() {
+                            Some("text") => {
+                                object.insert("text".into(), Value::String(entry.text.clone()));
+                            }
+                            Some("thinking") => {
+                                object.insert(
+                                    "thinking".into(),
+                                    Value::String(entry.thinking.clone()),
+                                );
+                                object.insert(
+                                    "signature".into(),
+                                    Value::String(entry.signature.clone()),
+                                );
+                            }
+                            Some("server_tool_use") | Some("tool_use") => {
+                                if !entry.input_json.is_empty()
+                                    && let Some(input) =
+                                        serde_json::from_str::<Value>(&entry.input_json).ok()
+                                {
+                                    object.insert("input".into(), input);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    complete.insert(index, Value::Object(object));
+                }
+            }
+            _ => {}
+        }
+    }
+    complete.into_values().collect()
+}
+
 #[cfg(test)]
 #[path = "hosted_replay_tests.rs"]
 mod tests;
