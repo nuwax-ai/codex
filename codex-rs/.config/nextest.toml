@@ -6,6 +6,12 @@ slow-timeout = { period = "30s", terminate-after = 2 }
 retries = 1
 
 [[profile.default.overrides]]
+# Decompressing and comparing the precomputed schema exports is CPU-bound
+# and regularly brushes past the default window on loaded machines.
+filter = 'package(codex-app-server-protocol) & test(precomputed_exports_match_generated)'
+slow-timeout = { period = "1m", terminate-after = 3 }
+
+[[profile.default.overrides]]
 # These cases cold-start a daemon before confirming a second launch with new settings.
 filter = 'package(codex-cli) & binary(daemon_startup) & test(requires_confirmation_to_disable_)'
 slow-timeout = { period = "1m", terminate-after = 2 }

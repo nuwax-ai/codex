@@ -8983,6 +8983,12 @@ class WebSearchCallResponseItem(BaseModel):
     internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
     status: str | None = None
     type: Annotated[Literal["web_search_call"], Field(title="WebSearchCallResponseItemType")]
+    wire_blocks: Annotated[
+        Any | None,
+        Field(
+            description="Fork (nuwax-codex): the raw wire blocks for faithful cross-turn replay on the Anthropic wire — `[server_tool_use, result?]`, captured verbatim from the provider stream (including any encrypted content). Opaque JSON: never synthesized or edited; absent on legacy rollouts, which replay as before (dropped)."
+        ),
+    ] = None
 
 
 class ConfigurationUpdateResponseItem(BaseModel):
