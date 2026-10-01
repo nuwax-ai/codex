@@ -7,6 +7,7 @@ use super::DoctorCheck;
 use codex_core::build_models_manager;
 use codex_core::config::Config;
 use codex_login::AuthManager;
+use codex_protocol::config_types::AutoCompactTokenLimitScope;
 use std::sync::Arc;
 
 pub(super) async fn check(config: &Config, auth_manager: Option<Arc<AuthManager>>) -> DoctorCheck {
@@ -58,6 +59,10 @@ pub(super) async fn check(config: &Config, auth_manager: Option<Arc<AuthManager>
             .map(|ratio| ratio.to_string())
             .unwrap_or_else(|| "<unset>".into())
     ));
+    details.push(format!(
+        "auto compact limit scope: {}",
+        config.model_auto_compact_token_limit_scope
+    ));
     let backend = if config.model_provider_id == "nuwax_env" {
         "embedded app-server (NUWAX environment provider: per-run credentials \
          cannot ride a shared daemon)"
@@ -74,17 +79,29 @@ pub(super) async fn check(config: &Config, auth_manager: Option<Arc<AuthManager>
             let model = config.model.clone().unwrap_or_default();
             let overrides = config.to_models_manager_config();
             let model_info = manager.get_model_info(&model, &overrides).await;
+            let compact_limit = match config.model_auto_compact_token_limit_scope {
+                AutoCompactTokenLimitScope::Total => model_info.auto_compact_token_limit(),
+                AutoCompactTokenLimitScope::BodyAfterPrefix => config
+                    .model_auto_compact_token_limit
+                    .or_else(|| model_info.auto_compact_token_limit()),
+            };
             details.push(format!(
                 "effective context window: {}",
                 model_info
-                    .context_window
+                    .resolved_context_window()
+                    .map(|window| window.to_string())
+                    .unwrap_or_else(|| "<unknown>".into())
+            ));
+            details.push(format!(
+                "full usable context window: {}",
+                model_info
+                    .usable_context_window()
                     .map(|window| window.to_string())
                     .unwrap_or_else(|| "<unknown>".into())
             ));
             details.push(format!(
                 "effective auto compact threshold: {}",
-                model_info
-                    .auto_compact_token_limit
+                compact_limit
                     .map(|limit| limit.to_string())
                     .unwrap_or_else(|| "<model default>".into())
             ));
@@ -105,10 +122,19 @@ fn redacted_endpoint(base_url: Option<&str>) -> String {
     let Some(base_url) = base_url else {
         return "<provider default>".into();
     };
-    let (scheme, rest) = base_url.split_once("://").unwrap_or(("", base_url));
-    if scheme.is_empty() {
+    let Ok(url) = url::Url::parse(base_url) else {
         return "<unparsed>".into();
-    }
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    format!("{scheme}://{authority}")
+    };
+    let Some(host) = url.host() else {
+        return "<unparsed>".into();
+    };
+    let port = url
+        .port()
+        .map(|port| format!(":{port}"))
+        .unwrap_or_default();
+    format!("{}://{host}{port}", url.scheme())
 }
+
+#[cfg(test)]
+#[path = "model_routing_tests.rs"]
+mod tests;

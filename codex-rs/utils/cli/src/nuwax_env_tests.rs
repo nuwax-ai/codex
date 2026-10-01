@@ -298,3 +298,82 @@ fn explicit_dash_c_model_wins_over_the_environment_model() {
         "-c model wins; the environment must not add a competing seed: {seeds:?}"
     );
 }
+
+#[test]
+fn replaced_blank_model_is_not_validated_for_active_or_inactive_group() {
+    for active in [false, true] {
+        for typed in [false, true] {
+            let existing = if typed {
+                vec![]
+            } else {
+                vec![("model".to_string(), Value::String("explicit".into()))]
+            };
+            let seeds = nuwax_env_overrides(
+                input(
+                    Some(" "),
+                    active.then_some("https://gw.example"),
+                    active.then_some("chat"),
+                    active.then_some("k"),
+                ),
+                typed.then_some("explicit"),
+                /*cli_provider*/ None,
+                &existing,
+            )
+            .expect("unused model must not fail startup");
+            assert!(seeds.iter().all(|(key, _)| key != "model"));
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn replaced_non_unicode_model_is_not_validated() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let mut input = input(None, Some("https://gw.example"), Some("chat"), Some("k"));
+    input.model = Some(OsString::from_vec(vec![0xff]));
+    let seeds = nuwax_env_overrides(
+        input,
+        /*cli_model*/ Some("explicit"),
+        /*cli_provider*/ None,
+        &[],
+    )
+    .expect("explicit model replaces non-Unicode environment value");
+    assert!(seeds.iter().all(|(key, _)| key != "model"));
+}
+
+#[test]
+fn repeated_provider_overrides_adopt_only_the_final_selection() {
+    for (first, last, expected_keys) in [
+        (
+            "other",
+            "nuwax_env",
+            vec!["model_providers.nuwax_env", "model"],
+        ),
+        ("nuwax_env", "other", vec![]),
+    ] {
+        let existing = vec![
+            ("model_provider".into(), Value::String(first.into())),
+            ("model_provider".into(), Value::String(last.into())),
+        ];
+        let seeds = nuwax_env_overrides(
+            input(
+                Some("m1"),
+                Some("https://gw.example"),
+                Some("chat"),
+                Some("k"),
+            ),
+            /*cli_model*/ None,
+            /*cli_provider*/ None,
+            &existing,
+        )
+        .expect("last provider override determines environment adoption");
+        assert_eq!(
+            seeds
+                .iter()
+                .map(|(key, _)| key.as_str())
+                .collect::<Vec<_>>(),
+            expected_keys
+        );
+    }
+}

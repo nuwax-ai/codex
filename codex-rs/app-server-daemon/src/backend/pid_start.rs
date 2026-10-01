@@ -99,6 +99,11 @@ impl PidBackend {
             .env_remove("CODEX_MODEL_CONTEXT_WINDOW")
             .env_remove("CODEX_AUTO_COMPACT_TOKEN_LIMIT")
             .env_remove("CODEX_AUTO_COMPACT_RATIO")
+            // The temporary provider and its credentials belong to the foreground client.
+            .env_remove("NUWAX_MODEL")
+            .env_remove("NUWAX_BASE_URL")
+            .env_remove("NUWAX_WIRE_API")
+            .env_remove("NUWAX_API_KEY")
             .args(self.command_args().iter().map(std::borrow::Cow::as_ref))
             .stdin(Stdio::null())
             .stdout(Stdio::null())

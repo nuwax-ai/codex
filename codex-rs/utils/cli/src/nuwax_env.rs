@@ -82,6 +82,7 @@ pub fn nuwax_env_overrides(
         // else makes it irrelevant.
         let selected = existing
             .iter()
+            .rev()
             .find(|(key, _)| key == "model_provider")
             .and_then(|(_, value)| value.as_str())
             .unwrap_or_default();
@@ -89,7 +90,12 @@ pub fn nuwax_env_overrides(
             return Ok(Vec::new());
         }
     }
-    let model = unicode(input.model.as_deref(), MODEL_ENV)?;
+    // Do not validate an environment model that an explicit selection replaces.
+    let model = if cli_model.is_some() || has_existing("model") {
+        None
+    } else {
+        unicode(input.model.as_deref(), MODEL_ENV)?
+    };
     let base_url = unicode(input.base_url.as_deref(), BASE_URL_ENV)?;
     let wire_api = unicode(input.wire_api.as_deref(), WIRE_API_ENV)?;
     let api_key = unicode(input.api_key.as_deref(), API_KEY_ENV)?;
@@ -100,7 +106,7 @@ pub fn nuwax_env_overrides(
         // Group inactive: NUWAX_MODEL may still select an existing
         // provider's model, at env precedence (below explicit -c and the
         // typed CLI flag).
-        return seed_model_only(Ok(model), cli_model, existing);
+        return seed_model_only(model);
     }
     if set_count < 3 {
         let missing = [
@@ -175,21 +181,11 @@ pub fn nuwax_env_overrides(
     Ok(seeds)
 }
 
-fn seed_model_only(
-    model: Result<Option<&str>, String>,
-    cli_model: Option<&str>,
-    existing: &[(String, Value)],
-) -> Result<Vec<(String, Value)>, String> {
-    let has_existing = |key: &str| existing.iter().any(|(other, _)| other == key);
-    let model = match model? {
-        Some(model) => Some(require_non_blank(Some(model), MODEL_ENV)?),
-        None => None,
-    };
-    // Explicit -c and the typed CLI flag both outrank the environment.
-    if model.is_none() || cli_model.is_some() || has_existing("model") {
+fn seed_model_only(model: Option<&str>) -> Result<Vec<(String, Value)>, String> {
+    let Some(model) = model else {
         return Ok(Vec::new());
-    }
-    let model = model.unwrap_or_default();
+    };
+    let model = require_non_blank(Some(model), MODEL_ENV)?;
     Ok(vec![("model".into(), Value::String(model.to_string()))])
 }
 

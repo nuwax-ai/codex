@@ -11,6 +11,7 @@ pub use codex_protocol::config_types::ProfileV2Name;
 pub use config_override::CliConfigOverrides;
 pub use format_env_display::format_env_display;
 pub use nuwax_env::NUWAX_ENV_PROVIDER_ID;
+pub use nuwax_env::NuwaxEnvInput;
 pub use nuwax_env::from_process as nuwax_env_from_process;
 pub use nuwax_env::nuwax_env_overrides;
 pub use resume_command::resume_command;

@@ -36,6 +36,14 @@ pub(crate) async fn config_builder(
     let cli_overrides = config_overrides
         .parse_overrides()
         .map_err(anyhow::Error::msg)?;
+    config_builder_from_parsed_overrides(cli_overrides, loader_overrides, harness_overrides).await
+}
+
+pub(crate) async fn config_builder_from_parsed_overrides(
+    cli_overrides: Vec<(String, toml::Value)>,
+    loader_overrides: LoaderOverrides,
+    harness_overrides: ConfigOverrides,
+) -> Result<ConfigBuilder> {
     let codex_home = find_codex_home().context("failed to resolve CODEX_HOME")?;
     let cwd = match harness_overrides.cwd.as_deref() {
         Some(cwd) => AbsolutePathBuf::relative_to_current_dir(cwd),

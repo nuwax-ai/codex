@@ -95,6 +95,10 @@ mod windows_dev_drive;
 #[path = "doctor/desktop_tests.rs"]
 mod desktop_tests;
 
+#[cfg(test)]
+#[path = "doctor/model_config_tests.rs"]
+mod model_config_tests;
+
 use background::background_server_check;
 use git::git_check;
 use output::HumanOutputOptions;
@@ -636,8 +640,13 @@ async fn load_config(
         ..config_overrides_from_interactive(interactive, arg0_paths)
     };
 
-    crate::cloud_config::config_builder(
+    let cli_overrides = model_cli_overrides(
         &root_config_overrides,
+        interactive,
+        codex_utils_cli::nuwax_env_from_process(),
+    )?;
+    crate::cloud_config::config_builder_from_parsed_overrides(
+        cli_overrides,
         LoaderOverrides::default(),
         overrides,
     )
@@ -645,6 +654,25 @@ async fn load_config(
     .build()
     .await
     .context("failed to load Codex config")
+}
+
+fn model_cli_overrides(
+    config: &CliConfigOverrides,
+    interactive: &TuiCli,
+    input: codex_utils_cli::NuwaxEnvInput,
+) -> anyhow::Result<Vec<(String, toml::Value)>> {
+    let explicit = config.parse_overrides().map_err(anyhow::Error::msg)?;
+    let mut seeds = codex_utils_cli::nuwax_env_overrides(
+        input,
+        interactive.model.as_deref(),
+        interactive
+            .oss
+            .then_some(interactive.oss_provider.as_deref().unwrap_or("oss")),
+        &explicit,
+    )
+    .map_err(anyhow::Error::msg)?;
+    seeds.extend(explicit);
+    Ok(seeds)
 }
 
 fn config_overrides_from_interactive(
