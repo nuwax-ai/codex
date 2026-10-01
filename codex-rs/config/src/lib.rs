@@ -12,6 +12,7 @@ mod config_requirements;
 pub mod config_toml;
 mod constraint;
 mod diagnostics;
+pub mod env_group_isolation;
 mod filesystem_constraints;
 mod fingerprint;
 mod guardian;

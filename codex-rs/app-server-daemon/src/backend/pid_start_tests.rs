@@ -104,3 +104,47 @@ async fn launch_with_client_model_seeds() {
     )
     .expect("write completion marker");
 }
+
+#[test]
+fn two_clients_with_different_temporary_credentials_do_not_leak_into_daemon_children() {
+    // Two clients started with different NUWAX_* credentials each exercise
+    // the real detached-start path; neither client's secrets may appear in
+    // any daemon-spawned child environment, regardless of value.
+    for (index, (model, secret)) in [
+        ("client-model-a", "client-secret-a"),
+        ("client-model-b", "client-secret-b"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let completed = temp.path().join(format!("completed-{index}"));
+        let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+            .args([
+                "--exact",
+                "backend::pid::start::tests::launch_with_client_model_seeds",
+                "--ignored",
+            ])
+            .env("CODEX_MODEL_REASONING_EFFORT", "none")
+            .env("CODEX_MODEL_CONTEXT_WINDOW", "60000")
+            .env("CODEX_AUTO_COMPACT_TOKEN_LIMIT", "12000")
+            .env("CODEX_AUTO_COMPACT_RATIO", "0.2")
+            .env("NUWAX_MODEL", model)
+            .env("NUWAX_BASE_URL", "https://client.example/v1")
+            .env("NUWAX_WIRE_API", "chat")
+            .env("NUWAX_API_KEY", secret)
+            .env("CODEX_TEST_DAEMON_EFFORT_COMPLETE", &completed)
+            .output()
+            .expect("run isolated launcher");
+        assert!(
+            output.status.success(),
+            "launcher failed: {}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            std::fs::read_to_string(&completed).expect("subprocess exercised both launch paths"),
+            "app-server,updater"
+        );
+    }
+}

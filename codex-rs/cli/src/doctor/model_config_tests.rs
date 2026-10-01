@@ -24,12 +24,30 @@ async fn doctor_resolves_environment_provider_and_reports_scope_aware_compact_li
             &interactive,
             NuwaxEnvInput {
                 model: Some("doctor-model".into()),
-                base_url: Some("https://user:secret@gateway.example:8443/v1?token=secret".into()),
+                // Credential-free URL; the query still exercises redaction.
+                base_url: Some("https://gateway.example:8443/v1?token=secret".into()),
                 wire_api: Some("chat".into()),
                 api_key: Some("private-key".into()),
             },
         )
         .expect("doctor model overrides");
+        // Credentials in the URL userinfo are rejected at seed time and
+        // never become an endpoint.
+        let rejected = model_cli_overrides(
+            &CliConfigOverrides::default(),
+            &interactive,
+            NuwaxEnvInput {
+                base_url: Some("https://user:secret@gateway.example".into()),
+                wire_api: Some("chat".into()),
+                api_key: Some("private-key".into()),
+                ..Default::default()
+            },
+        )
+        .expect_err("userinfo URLs must fail the group");
+        assert!(
+            !rejected.to_string().contains("secret"),
+            "the error must not echo the credential: {rejected}"
+        );
         let config = ConfigBuilder::default()
             .codex_home(home.path().to_path_buf())
             .cli_overrides(seeds)
@@ -42,12 +60,19 @@ async fn doctor_resolves_environment_provider_and_reports_scope_aware_compact_li
             AuthManager::shared_from_config(&config, /*enable_codex_api_key_env*/ false)
                 .await
                 .expect("local auth manager");
-        let report = model_routing::check(&config, Some(auth)).await;
+        let sources = model_routing::ModelRoutingSources {
+            plain_oss: false,
+            provider: model_routing::ProviderSource::NuwaxEnvironmentGroup,
+            model: model_routing::ModelSource::NuwaxModelEnvironment,
+        };
+        let report = model_routing::check(&config, Some(auth), &sources).await;
         for detail in [
             format!("effective auto compact threshold: {threshold}"),
             format!("auto compact limit scope: {scope}"),
             "full usable context window: 95000".to_string(),
             "endpoint (redacted): https://gateway.example:8443".to_string(),
+            "provider source: NUWAX_* environment group (temporary, per-run credentials)".into(),
+            "model source: NUWAX_MODEL environment".into(),
         ] {
             assert!(
                 report.details.iter().any(|value| value == &detail),

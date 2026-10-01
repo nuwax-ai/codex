@@ -206,6 +206,21 @@ fn invalid_values_are_rejected_with_field_names_only() {
         ),
         (Some("https://"), Some("chat"), Some("k"), "NUWAX_BASE_URL"),
         (Some("  "), Some("chat"), Some("k"), "NUWAX_BASE_URL"),
+        // Hostless authority that the old hand-rolled split accepted.
+        (Some("http://@"), Some("chat"), Some("k"), "NUWAX_BASE_URL"),
+        // Credentials in the userinfo never reach an endpoint.
+        (
+            Some("https://user:secret@gw.example"),
+            Some("chat"),
+            Some("k"),
+            "NUWAX_BASE_URL",
+        ),
+        (
+            Some("https://gw.example:notaport"),
+            Some("chat"),
+            Some("k"),
+            "NUWAX_BASE_URL",
+        ),
         (
             Some("https://gw.example"),
             Some("websocket"),

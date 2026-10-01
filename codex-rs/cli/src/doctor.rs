@@ -373,7 +373,14 @@ async fn build_report(
 
     progress.begin("config");
     let config_started = Instant::now();
-    let config_result = load_config(root_config_overrides, interactive, arg0_paths).await;
+    let nuwax_input = codex_utils_cli::nuwax_env_from_process();
+    let config_result = load_config(
+        root_config_overrides.clone(),
+        interactive,
+        arg0_paths,
+        nuwax_input.clone(),
+    )
+    .await;
     let config_duration = config_started.elapsed();
     let cwd = config_result
         .as_ref()
@@ -394,6 +401,8 @@ async fn build_report(
     }));
     match &config_result {
         Ok(config) => {
+            let sources =
+                routing_sources(config, interactive, &root_config_overrides, &nuwax_input);
             // Other checks below do synchronous work inside join!. Keep the
             // probe deadlines independent of those checks' scheduler delays.
             let filesystem_paths_check = run_async_check(
@@ -455,7 +464,7 @@ async fn build_report(
                 run_async_check(
                     "model routing",
                     progress.clone(),
-                    model_routing::check(config, auth_manager.clone()),
+                    model_routing::check(config, auth_manager.clone(), &sources),
                 ),
                 async {
                     run_sync_check("network", progress.clone(), || network::check(Some(config)))
@@ -624,10 +633,66 @@ async fn build_report(
     }
 }
 
+/// Field-level routing provenance for the model-routing check. Derived from
+/// the effective config plus the same CLI/env inputs the load path used —
+/// display only, never a second source of loading truth. The reserved
+/// provider id can only be selected through the environment group's seeds
+/// (the loader rejects any other shape), so the id itself identifies the
+/// group.
+fn routing_sources(
+    config: &Config,
+    interactive: &TuiCli,
+    config_overrides: &codex_utils_cli::CliConfigOverrides,
+    nuwax_input: &codex_utils_cli::NuwaxEnvInput,
+) -> model_routing::ModelRoutingSources {
+    use model_routing::ModelSource;
+    use model_routing::ProviderSource;
+    let (explicit_model, explicit_provider) = {
+        let overrides = config_overrides.parse_overrides().unwrap_or_default();
+        let explicit_model = overrides.iter().any(|(key, _)| key == "model");
+        // Selecting the reserved id through -c still adopts the group (the
+        // seed path treats it as a group activation), so it does not count
+        // as an unrelated explicit selection here.
+        let explicit_provider = interactive.oss
+            || overrides.iter().any(|(key, value)| {
+                key == "model_provider"
+                    && value.as_str() != Some(codex_utils_cli::NUWAX_ENV_PROVIDER_ID)
+            });
+        (explicit_model, explicit_provider)
+    };
+    model_routing::ModelRoutingSources {
+        plain_oss: interactive.oss && interactive.oss_provider.is_none(),
+        provider: if config.model_provider_id == codex_utils_cli::NUWAX_ENV_PROVIDER_ID {
+            ProviderSource::NuwaxEnvironmentGroup
+        } else {
+            ProviderSource::ConfigLayers
+        },
+        model: if interactive.model.is_some() {
+            ModelSource::ModelFlag
+        } else if explicit_model {
+            ModelSource::CliOverride
+        } else if explicit_provider {
+            // An explicit provider selection makes the environment group
+            // irrelevant, so its model is never adopted.
+            ModelSource::ConfigLayers
+        } else if nuwax_input
+            .model
+            .as_deref()
+            .and_then(std::ffi::OsStr::to_str)
+            .is_some_and(|model| !model.trim().is_empty())
+        {
+            ModelSource::NuwaxModelEnvironment
+        } else {
+            ModelSource::ConfigLayers
+        },
+    }
+}
+
 async fn load_config(
     mut root_config_overrides: CliConfigOverrides,
     interactive: &TuiCli,
     arg0_paths: &Arg0DispatchPaths,
+    nuwax_input: codex_utils_cli::NuwaxEnvInput,
 ) -> anyhow::Result<Config> {
     if interactive.web_search {
         root_config_overrides
@@ -640,11 +705,7 @@ async fn load_config(
         ..config_overrides_from_interactive(interactive, arg0_paths)
     };
 
-    let cli_overrides = model_cli_overrides(
-        &root_config_overrides,
-        interactive,
-        codex_utils_cli::nuwax_env_from_process(),
-    )?;
+    let cli_overrides = model_cli_overrides(&root_config_overrides, interactive, nuwax_input)?;
     crate::cloud_config::config_builder_from_parsed_overrides(
         cli_overrides,
         LoaderOverrides::default(),

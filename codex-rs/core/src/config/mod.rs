@@ -1558,6 +1558,10 @@ impl ConfigBuilder {
 }
 
 async fn config_toml_from_layers(layers: &ConfigLayerStack) -> std::io::Result<ConfigToml> {
+    // Fork (nuwax-codex): the NUWAX_* temporary provider must stay owned by
+    // its environment seeds; foreign fields merged in from any config layer
+    // fail the load before a request can carry them.
+    codex_config::env_group_isolation::validate_env_group_isolation(layers)?;
     // The loader resolves paths relative to each layer's file before deserialization.
     match layers.effective_config().try_into() {
         Ok(config_toml) => Ok(config_toml),

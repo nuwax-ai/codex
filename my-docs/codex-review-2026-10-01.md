@@ -142,7 +142,7 @@ just test -p codex-core -p codex-cli -p codex-app-server-daemon \
 
 ## 下一轮 Tasks 完成标准
 
-- [ ] T01 R1：真实四层配置冲突与 URL 校验；零请求、不改原配置；普通/OSS/default model 的诊断边界和双客户端隔离。
+- [x] T01 R1：真实配置来源冲突（用户文件/profile/`-c` 子键；项目来源经核实被上游结构性忽略并断言该边界）与 URL 正规校验；零请求、不改原配置；doctor 逐字段来源与 plain --oss 边界行；双客户端隔离子进程测试。证据与偏差见 `r1-temp-provider-isolation.md`。
 - [ ] T02 R2：独立 Spec/Plan；版本化来源和未知来源降级；真实 pair/byte 上限；新建/加载/resume/fork/切换全部执行相同验证。
 - [ ] T03 R3：所有 assistant 块原样暂停续接；跨响应 server id 配对；引用持久化；完整 content/tools 深比较和真实保存恢复。
 - [ ] T04 R4：取消关闭 socket/pump/递归续接；远程配置保留预算与 replay=false；三协议字段契约和厂商能力矩阵。

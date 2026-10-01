@@ -22,8 +22,10 @@ use toml::Value;
 
 /// Reserved provider id for the per-run provider (§ spec 5.1): a collision
 /// with a user-configured provider of the same id is a hard error, never a
-/// silent merge of auth fields.
-pub const NUWAX_ENV_PROVIDER_ID: &str = "nuwax_env";
+/// silent merge of auth fields. Canonical definition in
+/// `codex_protocol::config_types` so the config loader enforces the same
+/// reservation at effective-config time.
+pub use codex_protocol::config_types::NUWAX_ENV_PROVIDER_ID;
 
 const MODEL_ENV: &str = "NUWAX_MODEL";
 const BASE_URL_ENV: &str = "NUWAX_BASE_URL";
@@ -212,18 +214,24 @@ fn require_non_blank<'a>(value: Option<&'a str>, name: &str) -> Result<&'a str, 
     Ok(value)
 }
 
-/// Absolute HTTP/HTTPS URL with a host; anything else fails the group before
-/// a request is ever built. No URL-based protocol inference — the wire comes
-/// from `NUWAX_WIRE_API` alone.
+/// Absolute HTTP/HTTPS URL with a host and no credentials; anything else
+/// fails the group before a request is ever built. Parsed with the standard
+/// URL type so hostless authorities, invalid ports and malformed IPv6 are
+/// rejected by the parser, and credentials in the userinfo never reach an
+/// endpoint. No URL-based protocol inference — the wire comes from
+/// `NUWAX_WIRE_API` alone.
 fn validate_base_url(base_url: &str) -> Result<(), String> {
-    let invalid =
-        || format!("Invalid {BASE_URL_ENV} value: expected an absolute http:// or https:// URL");
-    let (scheme, rest) = base_url.split_once("://").ok_or_else(invalid)?;
-    if !matches!(scheme, "http" | "https") || rest.trim() != rest || rest.is_empty() {
+    let invalid = || {
+        format!(
+            "Invalid {BASE_URL_ENV} value: expected an absolute http:// or https:// URL \
+             with a host and without credentials"
+        )
+    };
+    let url = url::Url::parse(base_url).map_err(|_| invalid())?;
+    if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
         return Err(invalid());
     }
-    let host = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    if host.is_empty() || host.contains(char::is_whitespace) {
+    if !url.username().is_empty() || url.password().is_some() {
         return Err(invalid());
     }
     Ok(())

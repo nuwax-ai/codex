@@ -10,14 +10,62 @@ use codex_login::AuthManager;
 use codex_protocol::config_types::AutoCompactTokenLimitScope;
 use std::sync::Arc;
 
-pub(super) async fn check(config: &Config, auth_manager: Option<Arc<AuthManager>>) -> DoctorCheck {
+/// Where the effective routing selections came from, so a doctor report can
+/// distinguish a temporary `NUWAX_*` session from durable configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ProviderSource {
+    NuwaxEnvironmentGroup,
+    ConfigLayers,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ModelSource {
+    ModelFlag,
+    CliOverride,
+    NuwaxModelEnvironment,
+    ConfigLayers,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct ModelRoutingSources {
+    pub provider: ProviderSource,
+    pub model: ModelSource,
+    /// `--oss` without an explicit `--local-provider`: actual startup resolves
+    /// the local provider from config `oss_provider` plus interactive local
+    /// discovery, which diagnostics must not replicate (side effects).
+    pub plain_oss: bool,
+}
+
+pub(super) async fn check(
+    config: &Config,
+    auth_manager: Option<Arc<AuthManager>>,
+    sources: &ModelRoutingSources,
+) -> DoctorCheck {
     let mut details = Vec::new();
     let provider = &config.model_provider;
     details.push(format!(
         "model: {}",
         config.model.as_deref().unwrap_or("<default>")
     ));
+    details.push(format!(
+        "model source: {}",
+        match sources.model {
+            ModelSource::ModelFlag => "--model flag",
+            ModelSource::CliOverride => "-c model override",
+            ModelSource::NuwaxModelEnvironment => "NUWAX_MODEL environment",
+            ModelSource::ConfigLayers => "config file / model default",
+        }
+    ));
     details.push(format!("provider id: {}", config.model_provider_id));
+    details.push(format!(
+        "provider source: {}",
+        match sources.provider {
+            ProviderSource::NuwaxEnvironmentGroup => {
+                "NUWAX_* environment group (temporary, per-run credentials)"
+            }
+            ProviderSource::ConfigLayers => "config file / default",
+        }
+    ));
     details.push(format!("wire api: {}", provider.wire_api));
     let bridged = provider.uses_model_bridge();
     details.push(format!(
@@ -34,6 +82,14 @@ pub(super) async fn check(config: &Config, auth_manager: Option<Arc<AuthManager>
     ));
     if let Some(experimental) = provider.experimental_bridge {
         details.push(format!("experimental bridge override: {experimental:?}"));
+    }
+    if sources.plain_oss {
+        details.push(
+            "oss mode: startup additionally applies the config oss_provider and interactive \
+             local discovery (lmstudio/ollama), which this diagnostic does not replicate; \
+             the routing above reflects the base config"
+                .into(),
+        );
     }
     // Compaction: report both the configured inputs and the derived
     // threshold against the effective model window (where one is knowable

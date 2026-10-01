@@ -4691,3 +4691,193 @@ prefix_rules = []
         Ok(())
     }
 }
+
+// Fork (nuwax-codex): the NUWAX_* environment group owns the reserved
+// provider entirely. Foreign fields merged in from any configuration
+// source must fail the load before a request can carry them, and the
+// on-disk configuration must stay untouched.
+use codex_config::ProfileV2Name;
+
+async fn nuwax_group_seeds() -> Vec<(String, TomlValue)> {
+    let provider: TomlValue = toml::from_str(
+        r#"
+name = "nuwax env provider"
+base_url = "https://gateway.example/v1"
+wire_api = "chat"
+env_key = "NUWAX_API_KEY"
+"#,
+    )
+    .expect("seed table");
+    vec![
+        ("model_providers.nuwax_env".to_string(), provider),
+        (
+            "model_provider".to_string(),
+            TomlValue::String("nuwax_env".into()),
+        ),
+        ("model".to_string(), TomlValue::String("env-model".into())),
+    ]
+}
+
+const NUWAX_CONFLICTING_TABLE: &str = r#"
+[model_providers.nuwax_env]
+name = "stale definition"
+http_headers = { x-old-gateway = "stale-credential" }
+aws = { region = "us-east-1" }
+"#;
+
+async fn assert_nuwax_conflict(
+    case: &str,
+    expected_key: &str,
+    codex_home: &Path,
+    seeds: Vec<(String, TomlValue)>,
+    harness: ConfigOverrides,
+    loader: LoaderOverrides,
+    protected_files: &[std::path::PathBuf],
+) {
+    let before: Vec<Vec<u8>> = protected_files
+        .iter()
+        .map(|file| std::fs::read(file).expect("read config before"))
+        .collect();
+    let error = ConfigBuilder::default()
+        .codex_home(codex_home.to_path_buf())
+        .cli_overrides(seeds)
+        .harness_overrides(harness)
+        .loader_overrides(loader)
+        .build()
+        .await
+        .expect_err(&format!(
+            "foreign fields in the reserved provider must fail the load ({case})"
+        ));
+    let message = error.to_string();
+    assert!(message.contains("nuwax_env"), "{message}");
+    assert!(message.contains(expected_key), "{message}");
+    assert!(
+        !message.contains("stale-credential") && !message.contains("us-east-1"),
+        "the error must name keys, never values: {message}"
+    );
+    for (file, before) in protected_files.iter().zip(before) {
+        assert_eq!(
+            std::fs::read(file).expect("read config after"),
+            before,
+            "{} must not be rewritten",
+            file.display()
+        );
+    }
+}
+
+#[tokio::test]
+async fn nuwax_env_group_rejects_foreign_fields_from_four_config_sources() -> std::io::Result<()> {
+    // 1. The base user config file.
+    let home = tempdir().expect("tempdir");
+    let home_config = home.path().join(CONFIG_TOML_FILE);
+    tokio::fs::write(&home_config, NUWAX_CONFLICTING_TABLE).await?;
+    assert_nuwax_conflict(
+        "user file",
+        "http_headers",
+        home.path(),
+        nuwax_group_seeds().await,
+        ConfigOverrides::default(),
+        LoaderOverrides::default(),
+        &[home_config],
+    )
+    .await;
+
+    // 2. A selected profile-v2 config file.
+    let home = tempdir().expect("tempdir");
+    let profile_config = home.path().join("work.config.toml");
+    tokio::fs::write(&profile_config, NUWAX_CONFLICTING_TABLE).await?;
+    let profile: ProfileV2Name = "work".parse().expect("profile name");
+    let profile_path = crate::config::resolve_profile_v2_config_path(home.path(), &profile);
+    assert!(
+        profile_path.as_path() == profile_config,
+        "{} != {}",
+        profile_path.as_path().display(),
+        profile_config.display()
+    );
+    assert_nuwax_conflict(
+        "profile file",
+        "http_headers",
+        home.path(),
+        nuwax_group_seeds().await,
+        ConfigOverrides::default(),
+        LoaderOverrides {
+            user_config_path: Some(profile_path),
+            user_config_profile: Some(profile),
+            ..Default::default()
+        },
+        &[profile_config],
+    )
+    .await;
+
+    // 3. A trusted project's `.codex/config.toml`: provider definitions are a
+    // structurally unsupported project-local key — the loader ignores them
+    // with a startup warning, so this source can never contribute fields to
+    // the reserved provider. Assert that boundary instead of a conflict.
+    let home = tempdir().expect("tempdir");
+    let project = tempdir().expect("tempdir");
+    let project_config = project.path().join(".codex").join(CONFIG_TOML_FILE);
+    tokio::fs::create_dir_all(project_config.parent().expect("parent")).await?;
+    tokio::fs::write(&project_config, NUWAX_CONFLICTING_TABLE).await?;
+    make_config_for_test(
+        home.path(),
+        project.path(),
+        TrustLevel::Trusted,
+        /*project_root_markers*/ None,
+    )
+    .await?;
+    let before = std::fs::read(&project_config).expect("read project config before");
+    let config = ConfigBuilder::default()
+        .codex_home(home.path().to_path_buf())
+        .cli_overrides(nuwax_group_seeds().await)
+        .harness_overrides(ConfigOverrides {
+            cwd: Some(project.path().to_path_buf()),
+            ..Default::default()
+        })
+        .build()
+        .await
+        .expect("project-local provider definitions are ignored, not merged");
+    assert_eq!(config.model_provider_id, "nuwax_env");
+    assert!(
+        config.startup_warnings.iter().any(|warning| warning
+            .contains("Ignored unsupported project-local config keys")
+            && warning.contains("model_providers")),
+        "the ignored source must be reported: {:?}",
+        config.startup_warnings
+    );
+    assert_eq!(
+        std::fs::read(&project_config).expect("read project config after"),
+        before
+    );
+
+    // 4. A `-c` subkey override targeting the reserved provider.
+    let home = tempdir().expect("tempdir");
+    let mut seeds = nuwax_group_seeds().await;
+    seeds.push((
+        "model_providers.nuwax_env.query_params".to_string(),
+        toml::from_str("tenant = \"t1\"").expect("subkey table"),
+    ));
+    assert_nuwax_conflict(
+        "-c subkey",
+        "query_params",
+        home.path(),
+        seeds,
+        ConfigOverrides::default(),
+        LoaderOverrides::default(),
+        &[],
+    )
+    .await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn nuwax_env_group_loads_cleanly_without_conflicting_sources() -> std::io::Result<()> {
+    let home = tempdir().expect("tempdir");
+    let config = ConfigBuilder::default()
+        .codex_home(home.path().to_path_buf())
+        .cli_overrides(nuwax_group_seeds().await)
+        .build()
+        .await?;
+    assert_eq!(config.model_provider_id, "nuwax_env");
+    assert_eq!(config.model.as_deref(), Some("env-model"));
+    Ok(())
+}

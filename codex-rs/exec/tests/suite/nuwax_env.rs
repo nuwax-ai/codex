@@ -179,3 +179,69 @@ async fn nuwax_env_partial_group_fails_fast_without_a_request() -> anyhow::Resul
     );
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nuwax_env_reserved_provider_conflict_fails_before_any_request() -> anyhow::Result<()> {
+    let test = test_codex_exec();
+    let server = start_mock_server().await;
+    let repo_root = codex_utils_cargo_bin::repo_root()?;
+    let log = RequestLog::default();
+    Mock::given(method("POST"))
+        .and(path_regex(".*"))
+        .and(log.clone())
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_raw(RESPONSES_SSE.to_string(), "text/event-stream"),
+        )
+        .mount(&server)
+        .await;
+    // A stale reserved-id definition in the user config file carries old
+    // credentials toward the environment endpoint; loading must fail before
+    // any request, and the file must stay untouched.
+    let home_config = test.home_path().join("config.toml");
+    let conflicting = std::fs::read_to_string(&home_config).unwrap_or_default();
+    let conflicting = if conflicting.is_empty() {
+        r#"[model_providers.nuwax_env]
+name = "stale definition"
+http_headers = { x-old-gateway = "stale-credential" }
+"#
+        .to_string()
+    } else {
+        format!(
+            "{conflicting}\n[model_providers.nuwax_env]\nname = \"stale definition\"\nhttp_headers = {{ x-old-gateway = \"stale-credential\" }}\n"
+        )
+    };
+    std::fs::write(&home_config, &conflicting)?;
+    let output = test
+        .cmd()
+        .arg("--skip-git-repo-check")
+        .arg("-C")
+        .arg(&repo_root)
+        .arg("hello")
+        .env("NUWAX_BASE_URL", format!("{}/v1", server.uri()))
+        .env("NUWAX_WIRE_API", "responses")
+        .env("NUWAX_API_KEY", "nuwax-test-key")
+        .env("NUWAX_MODEL", "nuwax-test-model")
+        .output()?;
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("nuwax_env") && stderr.contains("http_headers"),
+        "expected the reserved-provider conflict error, got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("stale-credential"),
+        "the error must not echo config values: {stderr}"
+    );
+    assert!(
+        log.0.lock().unwrap().is_empty(),
+        "no request may be attempted while the provider definition conflicts"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&home_config)?,
+        conflicting,
+        "the config file must not be rewritten"
+    );
+    Ok(())
+}

@@ -536,6 +536,13 @@ pub enum ServiceTier {
 /// selected no service tier, so model catalog defaults should not apply.
 pub const SERVICE_TIER_DEFAULT_REQUEST_VALUE: &str = "default";
 
+/// Fork (nuwax-codex): reserved model-provider id for the per-run `NUWAX_*`
+/// environment provider. Single source of truth shared by the CLI seed
+/// builder (codex-utils-cli) and the load-time isolation check
+/// (codex-config). A provider with this id must be defined solely by the
+/// environment group's seeds; any other configured field is a conflict.
+pub const NUWAX_ENV_PROVIDER_ID: &str = "nuwax_env";
+
 impl ServiceTier {
     pub const fn request_value(self) -> &'static str {
         match self {
