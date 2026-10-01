@@ -132,18 +132,20 @@ struct ChatFamilyRewrite<'a> {
 
 impl ChatFamilyRewrite<'_> {
     fn needed(&self) -> bool {
-        self.protocol != crate::RigProtocol::Responses
-            && (self.disable_anthropic_parallel
-                || self.disable_anthropic_thinking
-                || self.chat_drop_orphan_tool_choice
-                || (self.protocol == crate::RigProtocol::Anthropic
-                    && (!self.tool_result_errors.is_empty()
-                        || !self.anthropic_server_tools.is_empty()
-                        || self.anthropic_tool_choice.is_some()))
-                || !self.tool_strict.is_empty()
-                || !self.websearch_replay.is_empty()
-                || self.anthropic_effort.is_some()
-                || self.anthropic_service_tier.is_some())
+        match self.protocol {
+            crate::RigProtocol::Responses => false,
+            // Raw-content anchors must be cleaned even when replay is disabled.
+            crate::RigProtocol::Anthropic => true,
+            crate::RigProtocol::Chat => {
+                self.disable_anthropic_parallel
+                    || self.disable_anthropic_thinking
+                    || self.chat_drop_orphan_tool_choice
+                    || !self.tool_strict.is_empty()
+                    || !self.websearch_replay.is_empty()
+                    || self.anthropic_effort.is_some()
+                    || self.anthropic_service_tier.is_some()
+            }
+        }
     }
 
     fn apply(&self, body: &mut serde_json::Value) {
@@ -247,10 +249,17 @@ impl ChatFamilyRewrite<'_> {
                 .and_then(serde_json::Value::as_array_mut)
         {
             for message in messages.iter_mut() {
+                let assistant = message["role"] == "assistant";
                 if let Some(content) = message
                     .get_mut("content")
                     .and_then(serde_json::Value::as_array_mut)
                 {
+                    if assistant {
+                        // The SDK's server_tool_use entries are only nonempty
+                        // anchors; full raw blocks (including unknown fields)
+                        // are restored below, or dropped when replay is disabled.
+                        content.retain(|block| block["type"] != "server_tool_use");
+                    }
                     for block in content {
                         if block["type"] == "tool_result"
                             && let Some(is_error) = block["tool_use_id"]
@@ -308,6 +317,10 @@ impl ChatFamilyRewrite<'_> {
                     );
                 }
             }
+            messages.retain(|message| {
+                message["role"] != "assistant"
+                    || !message["content"].as_array().is_some_and(Vec::is_empty)
+            });
         }
     }
 }

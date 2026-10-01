@@ -551,3 +551,145 @@ async fn anthropic_replay_drops_web_search_call_history() {
     assert!(encoded.contains("prior answer"));
     assert!(encoded.contains("next question"));
 }
+
+enum SearchReplay {
+    Enabled,
+    Disabled,
+}
+
+fn search_pair(id: &str) -> Value {
+    json!([
+        {"type":"server_tool_use","id":id,"name":"web_search","input":{"query":id},"vendor_field":"preserve"},
+        {"type":"web_search_tool_result","tool_use_id":id,"content":[{"type":"web_search_result","url":"https://example.com","title":id,"encrypted_content":"original-ciphertext"}]},
+    ])
+}
+
+async fn capture_search_replay(items: Vec<Value>, replay: SearchReplay) -> Value {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut provider = provider(listener.local_addr().unwrap());
+    provider.hosted_results_replay = match replay {
+        SearchReplay::Enabled => Some(true),
+        SearchReplay::Disabled => Some(false),
+    };
+    let server =
+        tokio::spawn(
+            async move { support::serve_payload(&listener, support::ANTHROPIC_SSE).await },
+        );
+    let request = support::request(items);
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = stream.next().await {
+        event.unwrap();
+    }
+    let wire = tokio::time::timeout(Duration::from_secs(5), server)
+        .await
+        .unwrap()
+        .unwrap();
+    let messages = wire["body"]["messages"].clone();
+    assert!(
+        messages.as_array().unwrap().iter().all(|message| {
+            message["role"] != "assistant" || !message["content"].as_array().unwrap().is_empty()
+        }),
+        "no empty assistant may reach the provider: {messages}"
+    );
+    messages
+}
+
+#[tokio::test]
+async fn anthropic_two_search_only_turns_replay_exact_raw_groups() {
+    let first = search_pair("search-first");
+    let second = search_pair("search-second");
+    let messages = capture_search_replay(
+        vec![
+            support::user(),
+            json!({"type":"web_search_call","wire_blocks":first}),
+            support::user(),
+            json!({"type":"web_search_call","wire_blocks":second}),
+            support::user(),
+        ],
+        SearchReplay::Enabled,
+    )
+    .await;
+    let user = json!({"role":"user","content":[{"type":"text","text":"hello"}]});
+    assert_eq!(
+        messages,
+        json!([
+            user, {"role":"assistant","content":first},
+            user, {"role":"assistant","content":second}, user,
+        ])
+    );
+}
+
+#[tokio::test]
+async fn anthropic_search_only_after_tool_result_replays_in_its_own_assistant() {
+    let blocks = search_pair("search-after-tool");
+    let messages = capture_search_replay(
+        vec![
+            support::user(),
+            json!({"type":"function_call","name":"lookup","call_id":"call-1","arguments":"{}"}),
+            json!({"type":"function_call_output","call_id":"call-1","output":"result"}),
+            json!({"type":"web_search_call","wire_blocks":blocks}),
+            support::user(),
+        ],
+        SearchReplay::Enabled,
+    )
+    .await;
+    let user = json!({"role":"user","content":[{"type":"text","text":"hello"}]});
+    assert_eq!(
+        messages,
+        json!([
+            user,
+            {"role":"assistant","content":[{"type":"tool_use","id":"call-1","name":"lookup","input":{}}]},
+            {"role":"user","content":[{"type":"tool_result","tool_use_id":"call-1","content":[{"type":"text","text":"result"}]}]},
+            {"role":"assistant","content":blocks}, user,
+        ])
+    );
+}
+
+#[tokio::test]
+async fn anthropic_search_only_opt_out_removes_sdk_anchors_and_empty_assistants() {
+    let messages = capture_search_replay(vec![
+        support::user(),
+        json!({"type":"web_search_call","wire_blocks":search_pair("search-first")}),
+        support::user(),
+        json!({"type":"web_search_call","wire_blocks":search_pair("search-second")}),
+        support::user(),
+        json!({"type":"web_search_call","wire_blocks":[{"type":"unknown_legacy_block","opaque":"unused"}]}),
+    ], SearchReplay::Disabled).await;
+    let user = json!({"role":"user","content":[{"type":"text","text":"hello"}]});
+    assert_eq!(messages, json!([user, user, user]));
+}
+
+#[tokio::test]
+async fn anthropic_replay_group_cap_removes_dropped_search_only_anchors() {
+    let mut items = vec![support::user()];
+    for index in 0..65 {
+        items.push(
+            json!({"type":"web_search_call","wire_blocks":search_pair(&format!("search-{index}"))}),
+        );
+        items.push(support::user());
+    }
+    let messages = capture_search_replay(items, SearchReplay::Enabled).await;
+    let assistants = messages
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|message| message["role"] == "assistant")
+        .map(|message| message["content"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        assistants,
+        (1..65)
+            .map(|index| search_pair(&format!("search-{index}")))
+            .collect::<Vec<_>>()
+    );
+}

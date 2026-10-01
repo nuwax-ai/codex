@@ -144,10 +144,25 @@ pub(crate) fn convert_response_items(
                             );
                             continue;
                         }
-                        if assistant_messages == 0 {
+                        if !matches!(messages.last(), Some(Message::Assistant { .. })) {
+                            let call = blocks
+                                .iter()
+                                .find(|block| block["type"] == "server_tool_use")
+                                .ok_or_else(|| codex_api::ApiError::InvalidRequest {
+                                    message: "Search-only replay requires a server_tool_use block"
+                                        .into(),
+                                })?;
                             messages.push(Message::Assistant {
                                 id: None,
-                                content: Vec::new(),
+                                // Rig rejects empty assistant messages before HTTP injection.
+                                // Carry a genuine raw call through its supported raw-content
+                                // channel; transport replaces this anchor with the full pair.
+                                content: vec![AssistantContent::Text(rig_core::completion::message::Text {
+                                    text: String::new(),
+                                    additional_params: rig_core::completion::message::AdditionalParams::from_entries([
+                                        ("anthropic_content", call.clone()),
+                                    ]),
+                                })],
                             });
                             assistant_messages += 1;
                         }
@@ -206,10 +221,13 @@ pub(crate) fn convert_response_items(
                 );
                 match messages.last_mut() {
                     Some(Message::Assistant { content, .. }) => content.push(part),
-                    _ => messages.push(Message::Assistant {
-                        id: None,
-                        content: vec![part],
-                    }),
+                    _ => {
+                        messages.push(Message::Assistant {
+                            id: None,
+                            content: vec![part],
+                        });
+                        assistant_messages += 1;
+                    }
                 }
             }
             ResponseItem::FunctionCallOutput {
@@ -248,10 +266,13 @@ pub(crate) fn convert_response_items(
                 );
                 match messages.last_mut() {
                     Some(Message::Assistant { content, .. }) => content.push(part),
-                    _ => messages.push(Message::Assistant {
-                        id: None,
-                        content: vec![part],
-                    }),
+                    _ => {
+                        messages.push(Message::Assistant {
+                            id: None,
+                            content: vec![part],
+                        });
+                        assistant_messages += 1;
+                    }
                 }
             }
             ResponseItem::CustomToolCallOutput {
@@ -299,10 +320,13 @@ pub(crate) fn convert_response_items(
                         Some(Message::Assistant { content, .. }) => {
                             content.push(AssistantContent::text(text));
                         }
-                        _ => messages.push(Message::Assistant {
-                            id: None,
-                            content: vec![AssistantContent::text(text)],
-                        }),
+                        _ => {
+                            messages.push(Message::Assistant {
+                                id: None,
+                                content: vec![AssistantContent::text(text)],
+                            });
+                            assistant_messages += 1;
+                        }
                     }
                 }
             }
@@ -314,3 +338,7 @@ pub(crate) fn convert_response_items(
 
     Ok(messages)
 }
+
+#[cfg(test)]
+#[path = "request_messages_tests.rs"]
+mod tests;

@@ -125,8 +125,20 @@ fn stream_via_rig_attempt(
             });
         }
         let source = crate::client::reasoning_source(api_provider, protocol, &request.model)?;
+        // An opted-out replay payload is unused: drop it from the conversion
+        // copy before SDK validation, including unknown legacy wire shapes.
+        let mut conversion_request = std::borrow::Cow::Borrowed(request);
+        if protocol == RigProtocol::Anthropic && api_provider.hosted_results_replay == Some(false) {
+            for item in &mut conversion_request.to_mut().input {
+                if let codex_protocol::models::ResponseItem::WebSearchCall { wire_blocks, .. } =
+                    item
+                {
+                    *wire_blocks = None;
+                }
+            }
+        }
         let (mut completion_request, tool_meta) =
-            responses_request_to_completion_request(request, protocol, &source)?;
+            responses_request_to_completion_request(&conversion_request, protocol, &source)?;
         // Fork (nuwax-codex): an explicit provider output budget overrides the
         // bridge's default cap (Anthropic requires max_tokens on the wire; Chat
         // accepts it optionally). The Responses passthrough is verbatim and
