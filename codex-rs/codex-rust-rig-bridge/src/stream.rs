@@ -104,6 +104,10 @@ pub async fn stream_via_rig_with_recording(
 /// looping forever.
 const PAUSE_CONTINUATION_LIMIT: u32 = 4;
 
+// Recursive continuations need an explicit Send future contract; rewriting
+// this as async fn makes Send inference circular at tokio::spawn. Keep the
+// attempt arguments aligned with the public entry until the pump is extracted.
+#[allow(clippy::manual_async_fn, clippy::too_many_arguments)]
 fn stream_via_rig_attempt(
     request: &ResponsesApiRequest,
     api_provider: &Provider,
@@ -176,7 +180,8 @@ fn stream_via_rig_attempt(
             RigProtocol::Chat | RigProtocol::Responses => None,
         };
         let http = crate::transport::RigHttpClient {
-            inner: crate::client::http_client(&headers, protocol)?,
+            inner: crate::client::http_client(protocol)?,
+            request_headers: crate::client::request_headers(&headers, protocol),
             // Persisted web-search pairs replay unless the provider opts out.
             anthropic_websearch_replay: if protocol == RigProtocol::Anthropic
                 && api_provider.hosted_results_replay != Some(false)
@@ -487,7 +492,7 @@ fn stream_via_rig_attempt(
         // attempts are their own — the final Completed carries the last
         // attempt's numbers.
         if protocol == RigProtocol::Anthropic && pause_depth < PAUSE_CONTINUATION_LIMIT {
-            let chainer_tx = tx.clone();
+            let chainer_tx = tx;
             let mut continuation_request = request.clone();
             let provider = api_provider.clone();
             let auth = api_auth.clone();

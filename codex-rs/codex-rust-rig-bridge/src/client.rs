@@ -76,7 +76,7 @@ fn api_key_from_headers(headers: &HeaderMap, protocol: RigProtocol) -> String {
 /// an explicitly configured x-api-key may coexist with gateway Authorization.
 /// Responses and Chat both use Rig's Bearer scheme, so they rebuild the same
 /// Authorization header.
-fn default_headers(headers: &HeaderMap, protocol: RigProtocol) -> reqwest13::header::HeaderMap {
+pub(crate) fn request_headers(headers: &HeaderMap, protocol: RigProtocol) -> HeaderMap {
     let mut merged = reqwest13::header::HeaderMap::new();
     for (key, value) in headers {
         let rebuilt = match protocol {
@@ -95,17 +95,11 @@ fn default_headers(headers: &HeaderMap, protocol: RigProtocol) -> reqwest13::hea
     merged
 }
 
-pub(crate) fn http_client(
-    headers: &HeaderMap,
-    protocol: RigProtocol,
-) -> Result<reqwest13::Client, codex_api::ApiError> {
-    let defaults = default_headers(headers, protocol);
-    // Auth headers never ride the client defaults (they are injected per
-    // request), so a client built for one header set is reusable for every
-    // turn with the same static headers — sharing reqwest's connection pool
-    // instead of a fresh TLS handshake per turn. Custom trust roots come
-    // from process-global configuration; that path stays per-turn to avoid
-    // keying a shared pool on an unhashable TLS config.
+pub(crate) fn http_client(protocol: RigProtocol) -> Result<reqwest13::Client, codex_api::ApiError> {
+    // Headers belong to the request decorator, including gateway credentials
+    // and per-turn trace IDs. Keeping them in client defaults would create a
+    // permanent pool for every turn and retain old credentials. Only three
+    // protocol clients are cached. Custom trust roots stay per-request.
     let custom_ca =
         codex_http_client::maybe_build_rustls_client_config_with_custom_ca().map_err(|error| {
             codex_api::ApiError::InvalidRequest {
@@ -113,7 +107,7 @@ pub(crate) fn http_client(
             }
         })?;
     let build = || {
-        let mut builder = reqwest13::Client::builder().default_headers(defaults.clone());
+        let mut builder = reqwest13::Client::builder();
         if let Some(config) = custom_ca.as_ref() {
             builder = builder.tls_backend_preconfigured((**config).clone());
         }
@@ -126,73 +120,34 @@ pub(crate) fn http_client(
     if custom_ca.is_some() {
         return build();
     }
-    let key = (protocol, header_fingerprint(&defaults));
+    Ok((*pooled_http_client(protocol)?).clone())
+}
+
+fn pooled_http_client(
+    protocol: RigProtocol,
+) -> Result<std::sync::Arc<reqwest13::Client>, codex_api::ApiError> {
     let mut cache = SHARED_HTTP_CLIENTS
         .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
         .lock()
         .map_err(|_| {
             codex_api::ApiError::Stream("shared rig client cache is unavailable".into())
         })?;
-    if let Some(client) = cache.get(&key) {
-        return Ok((**client).clone());
+    if let Some(client) = cache.get(&protocol) {
+        return Ok(std::sync::Arc::clone(client));
     }
-    let client = build()?;
-    cache.insert(key, std::sync::Arc::new(client.clone()));
+    let client = std::sync::Arc::new(reqwest13::Client::builder().build().map_err(|error| {
+        codex_api::ApiError::Transport(codex_api::TransportError::Network(format!(
+            "rig http client build failed: {error}"
+        )))
+    })?);
+    cache.insert(protocol, std::sync::Arc::clone(&client));
     Ok(client)
 }
 
-/// Pool-shared clients keyed by `(protocol, static-header fingerprint)`.
-/// `Arc` so tests can assert identity across calls.
+/// At most one header-free pool for each protocol.
 static SHARED_HTTP_CLIENTS: std::sync::OnceLock<
-    std::sync::Mutex<
-        std::collections::HashMap<(RigProtocol, String), std::sync::Arc<reqwest13::Client>>,
-    >,
+    std::sync::Mutex<std::collections::HashMap<RigProtocol, std::sync::Arc<reqwest13::Client>>>,
 > = std::sync::OnceLock::new();
-
-#[cfg(test)]
-pub(crate) fn shared_client_for_test(
-    headers: &HeaderMap,
-    protocol: RigProtocol,
-) -> Result<std::sync::Arc<reqwest13::Client>, codex_api::ApiError> {
-    let defaults = default_headers(headers, protocol);
-    let key = (protocol, header_fingerprint(&defaults));
-    let mut cache = SHARED_HTTP_CLIENTS
-        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
-        .lock()
-        .map_err(|_| {
-            codex_api::ApiError::Stream("shared rig client cache is unavailable".into())
-        })?;
-    if let Some(client) = cache.get(&key) {
-        return Ok(std::sync::Arc::clone(client));
-    }
-    let client = build_for_defaults_test(defaults)?;
-    let shared = std::sync::Arc::new(client);
-    cache.insert(key, std::sync::Arc::clone(&shared));
-    Ok(shared)
-}
-
-#[cfg(test)]
-fn build_for_defaults_test(
-    defaults: reqwest13::header::HeaderMap,
-) -> Result<reqwest13::Client, codex_api::ApiError> {
-    reqwest13::Client::builder()
-        .default_headers(defaults)
-        .build()
-        .map_err(|e| {
-            codex_api::ApiError::Transport(codex_api::TransportError::Network(format!(
-                "rig http client build failed: {e}"
-            )))
-        })
-}
-
-fn header_fingerprint(headers: &reqwest13::header::HeaderMap) -> String {
-    let mut parts: Vec<String> = headers
-        .iter()
-        .map(|(name, value)| format!("{}:{}", name.as_str(), value.to_str().unwrap_or("<binary>")))
-        .collect();
-    parts.sort();
-    parts.join("\u{0}")
-}
 
 /// Anthropic's wire requires `max_tokens`; codex does not model an output
 /// cap, so default generously (documented in the plan: revisit per model).

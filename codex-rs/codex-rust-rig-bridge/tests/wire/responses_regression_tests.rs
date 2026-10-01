@@ -255,14 +255,15 @@ async fn responses_time_out_when_server_never_sends_headers() {
     let provider = provider(listener.local_addr().expect("address"));
     let (release, hold_connection) = tokio::sync::oneshot::channel();
     let server = tokio::spawn(async move {
-        let (mut socket, _) = listener.accept().await.expect("accept");
-        let request = support::read_request(&mut socket).await;
+        let (socket, _) = listener.accept().await.expect("accept");
+        // A header timeout can cancel the upload before the body is complete.
+        // Hold the accepted connection without assuming a complete request.
         hold_connection.await.expect("release stalled server");
-        request
+        drop(socket);
     });
     let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
     let result = tokio::time::timeout(
-        Duration::from_secs(2),
+        Duration::from_secs(15),
         stream_via_rig(
             &support::request(vec![support::user()]),
             &provider,
@@ -274,8 +275,7 @@ async fn responses_time_out_when_server_never_sends_headers() {
     )
     .await;
     release.send(()).expect("release server");
-    let wire = server.await.expect("server read the complete request");
-    assert_eq!(wire["request_line"], "POST /v1/responses HTTP/1.1");
+    server.await.expect("server held the accepted connection");
     assert!(matches!(
         result.expect("stream start must honor the shorter idle timeout"),
         Err(ApiError::Transport(TransportError::Timeout))

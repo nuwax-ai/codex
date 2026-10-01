@@ -66,6 +66,73 @@ async fn each_protocol_resolves_auth_once_and_preserves_gateway_headers() {
 
 struct ConflictingAuth;
 
+struct RotatingAuth {
+    calls: AtomicUsize,
+}
+
+impl AuthProvider for RotatingAuth {
+    fn add_auth_headers(&self, _: &mut HeaderMap) {
+        panic!("outbound requests must resolve current authentication");
+    }
+
+    fn resolve_auth_headers(&self) -> AuthHeadersFuture<'_> {
+        let turn = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+        Box::pin(async move {
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                http::header::AUTHORIZATION,
+                HeaderValue::from_str(&format!("Bearer dummy-{turn}")).unwrap(),
+            );
+            headers.insert(
+                "x-gateway-auth",
+                HeaderValue::from_str(&format!("gateway-{turn}")).unwrap(),
+            );
+            headers.insert(
+                "x-codex-turn-metadata",
+                HeaderValue::from_str(&format!("turn-{turn}")).unwrap(),
+            );
+            Ok(headers)
+        })
+    }
+}
+
+#[tokio::test]
+async fn shared_pool_preserves_each_turn_auth_and_metadata() {
+    for protocol in [
+        RigProtocol::Responses,
+        RigProtocol::Chat,
+        RigProtocol::Anthropic,
+    ] {
+        let auth = Arc::new(RotatingAuth {
+            calls: AtomicUsize::new(0),
+        });
+        for turn in 1..=2 {
+            let (wire, _, _) = support::capture_with_auth(
+                &support::request(vec![support::user()]),
+                protocol,
+                auth.clone(),
+            )
+            .await;
+            let headers = wire["headers"].as_str().unwrap();
+            let primary = match protocol {
+                RigProtocol::Responses | RigProtocol::Chat => {
+                    format!("authorization: Bearer dummy-{turn}\r\n")
+                }
+                RigProtocol::Anthropic => format!("x-api-key: dummy-{turn}\r\n"),
+            };
+            assert!(headers.contains(&primary), "{headers}");
+            assert!(headers.contains(&format!("x-gateway-auth: gateway-{turn}\r\n")));
+            assert!(headers.contains(&format!("x-codex-turn-metadata: turn-{turn}\r\n")));
+            if turn == 2 {
+                assert!(!headers.contains("dummy-1"));
+                assert!(!headers.contains("gateway-1"));
+                assert!(!headers.contains("turn-1"));
+            }
+        }
+        assert_eq!(auth.calls.load(Ordering::SeqCst), 2);
+    }
+}
+
 struct GatewayAuth {
     model_key_header: &'static str,
 }

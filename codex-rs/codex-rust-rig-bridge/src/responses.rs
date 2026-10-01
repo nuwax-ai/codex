@@ -93,7 +93,8 @@ async fn stream_responses_via_rig_inner(
     );
     let request_id = Arc::new(std::sync::Mutex::new(None));
     let http = crate::transport::RigHttpClient {
-        inner: crate::client::http_client(&headers, crate::RigProtocol::Responses)?,
+        inner: crate::client::http_client(crate::RigProtocol::Responses)?,
+        request_headers: crate::client::request_headers(&headers, crate::RigProtocol::Responses),
         query,
         request_id: request_id.clone(),
         authorization_override: headers

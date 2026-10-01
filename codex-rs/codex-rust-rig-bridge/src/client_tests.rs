@@ -82,31 +82,16 @@ async fn query_credentials_are_redacted_from_transport_errors() {
     assert!(!format!("{error:?} {error}").contains("dummy-query-secret"));
 }
 
-// Fork: the shared connection pool must hand the same client (and therefore
-// reqwest connection pool) to every turn with identical static headers,
-// while a different header set gets its own client.
+// The production pool stores no per-turn headers or credentials.
 #[test]
-fn shared_http_client_pool_reuses_clients_per_header_fingerprint() {
-    use crate::client::RigProtocol;
-    use http::HeaderMap;
-
-    let mut headers = HeaderMap::new();
-    headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
-    let first = crate::client::shared_client_for_test(&headers, RigProtocol::Anthropic)
-        .expect("first client");
-    let second = crate::client::shared_client_for_test(&headers, RigProtocol::Anthropic)
-        .expect("second client");
-    assert!(
-        std::sync::Arc::ptr_eq(&first, &second),
-        "identical headers must reuse the pooled client"
-    );
-
-    let mut other = headers.clone();
-    other.insert("x-gateway", "other".parse().unwrap());
-    let third = crate::client::shared_client_for_test(&other, RigProtocol::Anthropic)
-        .expect("third client");
-    assert!(
-        !std::sync::Arc::ptr_eq(&first, &third),
-        "different headers must get a distinct client"
-    );
+fn shared_http_client_pool_reuses_production_clients() {
+    for protocol in [
+        RigProtocol::Chat,
+        RigProtocol::Anthropic,
+        RigProtocol::Responses,
+    ] {
+        let first = pooled_http_client(protocol).unwrap();
+        let second = pooled_http_client(protocol).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+    }
 }

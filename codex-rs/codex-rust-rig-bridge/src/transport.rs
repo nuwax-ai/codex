@@ -17,6 +17,8 @@ use std::sync::Mutex;
 #[derive(Clone, Default)]
 pub(crate) struct RigHttpClient {
     pub(crate) inner: reqwest_rig::Client,
+    /// Per-attempt headers; never retained in the shared connection pool.
+    pub(crate) request_headers: http::HeaderMap,
     pub(crate) query: Vec<(String, String)>,
     pub(crate) disable_anthropic_parallel: bool,
     pub(crate) tool_strict: std::collections::HashMap<String, bool>,
@@ -69,6 +71,13 @@ impl std::fmt::Debug for RigHttpClient {
 
 impl RigHttpClient {
     fn prepare<T>(&self, mut request: Request<T>) -> Result<Request<T>, Error> {
+        for (name, value) in &self.request_headers {
+            // Match reqwest default-header precedence: explicit SDK/request
+            // headers win over caller defaults.
+            if !request.headers().contains_key(name) {
+                request.headers_mut().insert(name.clone(), value.clone());
+            }
+        }
         if let Some(value) = &self.authorization_override {
             request
                 .headers_mut()
