@@ -3,6 +3,8 @@
 
 #[path = "wire/auth_tests.rs"]
 mod auth_tests;
+#[path = "wire/cancellation_tests.rs"]
+mod cancellation_tests;
 #[path = "wire/error_tests.rs"]
 mod error_tests;
 #[path = "wire/history_tests.rs"]

@@ -103,6 +103,28 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
 宣称跨厂商搜索载荷兼容、完整暂停保真或混合 server/client 轮全部完成。
 
 设计：`my-docs/anthropic-hosted-tools/`。
+### 三协议字段契约（2026-10-01，R4）
+
+fork 明确每个跨协议字段在三条线（Responses passthrough / Chat / Anthropic）
+上的语义，避免"开关在一条线生效、另一条静默丢失"：
+
+| 字段/能力 | Responses passthrough | Chat 桥 | Anthropic 桥 |
+|---|---|---|---|
+| `max_output_tokens` | **忽略**（逐字透传，不注入） | 映射 `max_tokens` | 映射 `max_tokens`；未配置默认 16384 |
+| `hosted_results_replay` | 不适用（无桥回放） | 不适用 | false 时整体关闭回放（含旧格式） |
+| reasoning effort/summary | 原样 | 映射 reasoning_effort（best-effort） | none→`thinking:disabled`；其余映射 effort |
+| structured output | 原样 | `output_config.format` 原样 schema | 同 Chat |
+| usage/缓存计数 | 原样 | usage 映射（无 cache 计数） | 含 cache 计数（首帧/增量语义） |
+| 重试/限流 | codex-api 层 | rig 层 + provider request/stream_max_retries | 同 Chat |
+| web_search 模式 | 原样（含 cached/indexed） | 丢弃声明（无 hosted 概念） | 仅 live；cached/indexed fail-fast |
+| `parallel_tool_calls` | 原样 | 原样 | hosted-only 时还原 tool_choice 并关 parallel |
+
+`cached_web_search` 能力当前按 `native_transport` 绑定（model-provider
+`provider.rs`）：Rig Responses 线同 native 一样默认 Cached→Disabled 由
+capability 决定，而 Chat/Anthropic 桥线在请求翻译处 fail-fast。按协议×厂商
+的精细能力矩阵仍为登记项（R5 追踪），本轮未改默认搜索策略。
+
+
 
 ## 5. 上下文压缩（compact）
 

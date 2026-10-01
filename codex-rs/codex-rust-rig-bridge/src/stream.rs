@@ -326,15 +326,25 @@ fn stream_via_rig_attempt(
             loop {
                 let item = match next_event.take() {
                     Some(item) => Some(item),
-                    None => match tokio::time::timeout(idle_timeout, rig_stream.next()).await {
-                        Ok(item) => item,
-                        Err(_elapsed) => {
-                            let _ = tx
-                                .send(Err(ApiError::Transport(TransportError::Timeout)))
-                                .await;
-                            return;
+                    None => {
+                        // Real cancellation, not an idle-timeout substitute:
+                        // when the consumer drops the stream, stop waiting on
+                        // the model immediately — dropping this future drops
+                        // the in-flight request and releases its socket.
+                        tokio::select! {
+                            biased;
+                            _ = tx.closed() => return,
+                            item = tokio::time::timeout(idle_timeout, rig_stream.next()) => match item {
+                                Ok(item) => item,
+                                Err(_elapsed) => {
+                                    let _ = tx
+                                        .send(Err(ApiError::Transport(TransportError::Timeout)))
+                                        .await;
+                                    return;
+                                }
+                            },
                         }
-                    },
+                    }
                 };
                 match item {
                     Some(Ok(mut event)) => {
@@ -565,6 +575,10 @@ fn stream_via_rig_attempt(
             let idle = idle_timeout;
             tokio::spawn(async move {
                 let _ = pump_task.await;
+                // A cancelled turn must not spawn a continuation attempt.
+                if chainer_tx.is_closed() {
+                    return;
+                }
                 let capture = paused_capture.lock().ok().and_then(|mut slot| slot.take());
                 if let Some(capture) = capture {
                     // The official recipe resends the paused assistant
