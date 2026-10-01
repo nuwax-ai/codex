@@ -245,6 +245,11 @@ pub struct ModelProviderInfo {
     pub env_http_headers: Option<HashMap<String, String>>,
     /// Maximum number of times to retry a failed HTTP request to this provider.
     pub request_max_retries: Option<u64>,
+    /// Fork (nuwax-codex): optional output budget for this provider. The
+    /// chat bridge maps it to the wire `max_tokens` (required by Anthropic,
+    /// optional for Chat) instead of its built-in default; the Responses
+    /// passthrough sends requests verbatim and ignores it.
+    pub max_output_tokens: Option<u64>,
     /// Number of times to retry reconnecting a dropped streaming response before failing.
     pub stream_max_retries: Option<u64>,
     /// Idle timeout (in milliseconds) to wait for activity on a streaming response before treating
@@ -538,6 +543,7 @@ other non-default provider fields are not supported"
             headers,
             retry,
             stream_idle_timeout: self.stream_idle_timeout(),
+            max_output_tokens: self.max_output_tokens,
         })
     }
 
@@ -623,6 +629,7 @@ other non-default provider fields are not supported"
             ),
             // Use global defaults for retry/timeout unless overridden in config.toml.
             request_max_retries: None,
+            max_output_tokens: None,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -664,6 +671,7 @@ other non-default provider fields are not supported"
             )])),
             env_http_headers: None,
             request_max_retries: None,
+            max_output_tokens: None,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -679,8 +687,10 @@ other non-default provider fields are not supported"
     ) -> ModelProviderInfo {
         let mut provider = Self::create_amazon_bedrock_provider(aws);
         provider.name = AMAZON_BEDROCK_RUNTIME_PROVIDER_NAME.into();
+        // Fork: pin the runtime provider id (first-party routing checks);
+        // upstream keeps the mantle client-agent header for both bedrock
+        // providers, so http_headers is no longer cleared here.
         provider.provider_id = Some(AMAZON_BEDROCK_RUNTIME_PROVIDER_ID.to_string());
-        provider.http_headers = None;
         provider
     }
 
@@ -901,6 +911,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         http_headers: None,
         env_http_headers: None,
         request_max_retries: None,
+        max_output_tokens: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
         websocket_connect_timeout_ms: None,

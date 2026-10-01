@@ -2734,6 +2734,12 @@
           "description": "Additional HTTP headers to include in requests to this provider where the (key, value) pairs are the header name and value.",
           "type": "object"
         },
+        "max_output_tokens": {
+          "description": "Fork (nuwax-codex): optional output budget for this provider. The chat bridge maps it to the wire `max_tokens` (required by Anthropic, optional for Chat) instead of its built-in default; the Responses passthrough sends requests verbatim and ignores it.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
         "model_catalog_url": {
           "description": "Optional full URL for a Codex-native model catalog. When unset, OpenAI discovery uses the Codex backend unless `base_url` overrides the inference endpoint.",
           "type": "string"

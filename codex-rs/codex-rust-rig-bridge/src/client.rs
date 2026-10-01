@@ -9,7 +9,7 @@ use reqwest_rig as reqwest13;
 use rig_core::client::CompletionClient;
 
 /// Which rig provider implementation serves a given base URL.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub enum RigProtocol {
     /// OpenAI Responses (`POST {base}/responses`) — same-protocol passthrough
     /// of Codex's `ResponsesApiRequest`.
@@ -99,25 +99,104 @@ pub(crate) fn http_client(
     headers: &HeaderMap,
     protocol: RigProtocol,
 ) -> Result<reqwest13::Client, codex_api::ApiError> {
-    let mut builder =
-        reqwest13::Client::builder().default_headers(default_headers(headers, protocol));
-    if let Some(config) = codex_http_client::maybe_build_rustls_client_config_with_custom_ca()
-        .map_err(|error| codex_api::ApiError::InvalidRequest {
-            message: format!("Rig TLS configuration: {error}"),
-        })?
-    {
-        builder = builder.tls_backend_preconfigured((*config).clone());
+    let defaults = default_headers(headers, protocol);
+    // Auth headers never ride the client defaults (they are injected per
+    // request), so a client built for one header set is reusable for every
+    // turn with the same static headers — sharing reqwest's connection pool
+    // instead of a fresh TLS handshake per turn. Custom trust roots come
+    // from process-global configuration; that path stays per-turn to avoid
+    // keying a shared pool on an unhashable TLS config.
+    let custom_ca =
+        codex_http_client::maybe_build_rustls_client_config_with_custom_ca().map_err(|error| {
+            codex_api::ApiError::InvalidRequest {
+                message: format!("Rig TLS configuration: {error}"),
+            }
+        })?;
+    let build = || {
+        let mut builder = reqwest13::Client::builder().default_headers(defaults.clone());
+        if let Some(config) = custom_ca.as_ref() {
+            builder = builder.tls_backend_preconfigured((**config).clone());
+        }
+        builder.build().map_err(|e| {
+            codex_api::ApiError::Transport(codex_api::TransportError::Network(format!(
+                "rig http client build failed: {e}"
+            )))
+        })
+    };
+    if custom_ca.is_some() {
+        return build();
     }
-    builder.build().map_err(|e| {
-        codex_api::ApiError::Transport(codex_api::TransportError::Network(format!(
-            "rig http client build failed: {e}"
-        )))
-    })
+    let key = (protocol, header_fingerprint(&defaults));
+    let mut cache = SHARED_HTTP_CLIENTS
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+        .lock()
+        .map_err(|_| {
+            codex_api::ApiError::Stream("shared rig client cache is unavailable".into())
+        })?;
+    if let Some(client) = cache.get(&key) {
+        return Ok((**client).clone());
+    }
+    let client = build()?;
+    cache.insert(key, std::sync::Arc::new(client.clone()));
+    Ok(client)
+}
+
+/// Pool-shared clients keyed by `(protocol, static-header fingerprint)`.
+/// `Arc` so tests can assert identity across calls.
+static SHARED_HTTP_CLIENTS: std::sync::OnceLock<
+    std::sync::Mutex<
+        std::collections::HashMap<(RigProtocol, String), std::sync::Arc<reqwest13::Client>>,
+    >,
+> = std::sync::OnceLock::new();
+
+#[cfg(test)]
+pub(crate) fn shared_client_for_test(
+    headers: &HeaderMap,
+    protocol: RigProtocol,
+) -> Result<std::sync::Arc<reqwest13::Client>, codex_api::ApiError> {
+    let defaults = default_headers(headers, protocol);
+    let key = (protocol, header_fingerprint(&defaults));
+    let mut cache = SHARED_HTTP_CLIENTS
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+        .lock()
+        .map_err(|_| {
+            codex_api::ApiError::Stream("shared rig client cache is unavailable".into())
+        })?;
+    if let Some(client) = cache.get(&key) {
+        return Ok(std::sync::Arc::clone(client));
+    }
+    let client = build_for_defaults_test(defaults)?;
+    let shared = std::sync::Arc::new(client);
+    cache.insert(key, std::sync::Arc::clone(&shared));
+    Ok(shared)
+}
+
+#[cfg(test)]
+fn build_for_defaults_test(
+    defaults: reqwest13::header::HeaderMap,
+) -> Result<reqwest13::Client, codex_api::ApiError> {
+    reqwest13::Client::builder()
+        .default_headers(defaults)
+        .build()
+        .map_err(|e| {
+            codex_api::ApiError::Transport(codex_api::TransportError::Network(format!(
+                "rig http client build failed: {e}"
+            )))
+        })
+}
+
+fn header_fingerprint(headers: &reqwest13::header::HeaderMap) -> String {
+    let mut parts: Vec<String> = headers
+        .iter()
+        .map(|(name, value)| format!("{}:{}", name.as_str(), value.to_str().unwrap_or("<binary>")))
+        .collect();
+    parts.sort();
+    parts.join("\u{0}")
 }
 
 /// Anthropic's wire requires `max_tokens`; codex does not model an output
 /// cap, so default generously (documented in the plan: revisit per model).
-pub(crate) const DEFAULT_ANTHROPIC_MAX_TOKENS: u64 = 16384;
+pub const DEFAULT_ANTHROPIC_MAX_TOKENS: u64 = 16384;
 
 pub(crate) type RigChatModel =
     rig_core::providers::openai::completion::CompletionModel<crate::transport::RigHttpClient>;

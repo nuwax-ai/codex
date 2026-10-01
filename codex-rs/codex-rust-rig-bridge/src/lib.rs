@@ -26,6 +26,7 @@ mod transport;
 mod usage;
 
 pub use bridge_impl::RigModelBridge;
+pub use client::DEFAULT_ANTHROPIC_MAX_TOKENS;
 pub use client::RigProtocol;
 pub use client::protocol_for_base_url;
 pub use reasoning::REPLAY_PREFIX;

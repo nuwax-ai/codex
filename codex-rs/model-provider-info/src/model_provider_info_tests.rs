@@ -92,6 +92,7 @@ base_url = "http://localhost:11434/v1"
         http_headers: None,
         env_http_headers: None,
         request_max_retries: None,
+        max_output_tokens: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
         websocket_connect_timeout_ms: None,
@@ -132,6 +133,7 @@ query_params = { api-version = "2025-04-01-preview" }
         http_headers: None,
         env_http_headers: None,
         request_max_retries: None,
+        max_output_tokens: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
         websocket_connect_timeout_ms: None,
@@ -176,6 +178,7 @@ supports_standalone_web_search = true
             "X-Example-Env-Header".to_string() => "EXAMPLE_ENV_VAR".to_string(),
         }),
         request_max_retries: None,
+        max_output_tokens: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
         websocket_connect_timeout_ms: None,
@@ -370,6 +373,7 @@ fn test_create_amazon_bedrock_provider() {
             }),
             env_http_headers: None,
             request_max_retries: None,
+            max_output_tokens: None,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -385,8 +389,9 @@ fn test_create_amazon_bedrock_provider() {
 fn test_create_amazon_bedrock_runtime_provider() {
     let mut expected = ModelProviderInfo::create_amazon_bedrock_provider(/*aws*/ None);
     expected.name = "Amazon Bedrock Runtime".to_string();
+    // Fork pins the runtime provider id; the mantle header stays set
+    // (upstream behavior).
     expected.provider_id = Some(AMAZON_BEDROCK_RUNTIME_PROVIDER_ID.to_string());
-    expected.http_headers = None;
 
     assert_eq!(
         ModelProviderInfo::create_amazon_bedrock_runtime_provider(/*aws*/ None),
@@ -893,4 +898,39 @@ model_catalog_url = "https://gateway.example/codex/catalog?token=catalog-secret"
             .base_url,
         "https://gateway.example/v1"
     );
+}
+
+// Fork (nuwax-codex): the provider-level output budget flows into the api
+// Provider for the chat bridge to map onto the wire `max_tokens`.
+#[test]
+fn max_output_budget_parses_and_flows_into_the_api_provider() {
+    let provider: ModelProviderInfo = toml::from_str(
+        r#"
+name = "budgeted"
+base_url = "https://gateway.example/v1"
+wire_api = "anthropic"
+env_key = "BUDGET_KEY"
+max_output_tokens = 4096
+"#,
+    )
+    .unwrap();
+    assert_eq!(provider.max_output_tokens, Some(4096));
+    assert_eq!(
+        provider
+            .to_api_provider(Some(AuthMode::ApiKey))
+            .unwrap()
+            .max_output_tokens,
+        Some(4096)
+    );
+    // Omitted stays unset (the bridge default applies).
+    let provider: ModelProviderInfo = toml::from_str(
+        r#"
+name = "default"
+base_url = "https://gateway.example/v1"
+wire_api = "chat"
+env_key = "KEY"
+"#,
+    )
+    .unwrap();
+    assert_eq!(provider.max_output_tokens, None);
 }

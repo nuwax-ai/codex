@@ -121,6 +121,17 @@ code-mode-host、rg）。fork 的 npm 包只发单二进制 → 自启必失败
 识别 NpmNuwax）、`CODEX_MODEL_REASONING_EFFORT`、`CODEX_MODEL_CONTEXT_WINDOW`、
 `CODEX_AUTO_COMPACT_TOKEN_LIMIT`、`CODEX_AUTO_COMPACT_RATIO`。
 
+**provider 级输出预算**（2026-10-01 起）：`model_providers.*.max_output_tokens`
+（正整数）→ 桥线 `max_tokens`（Anthropic 必填字段由此覆盖默认 16384；Chat 可选）；
+Responses 直传按原文发送不受影响。远程 thread config 尚无此字段线格式（转 None）。
+
+**桥性能/安全项**（2026-10-01 起）：
+- 连接复用：同静态头的请求共享 reqwest 连接池（按 protocol+头指纹进程级缓存，
+  免每轮 TLS 握手；鉴权头始终按轮注入，custom CA 路径仍逐轮构建）。
+- tee 有界：Anthropic wire tee 与 cassette 录制缓冲上限 8 MiB，溢出停采并告警
+  （流本身不受影响；块恢复只解析完整帧，截断尾不产生半块）；未声明 hosted 工具
+  时 tee 整体跳过。
+
 **NUWAX 启动组**（2026-10-01 起；来自真实进程环境，`$CODEX_HOME/.env` 不可注入）：
 `NUWAX_BASE_URL`+`NUWAX_WIRE_API`（responses|chat|anthropic）+`NUWAX_API_KEY`
 三者齐设激活本次运行的临时 provider `nuwax_env`（凭据仅以
@@ -158,3 +169,6 @@ app-server 同语义接线；组激活时共享 daemon 被排除（每进程凭�
 | 跨轮 web_search 检索上下文丢失：`WebSearchCall` 条目无结果字段，桥回放时丢弃（无悬空块风险，assistant 文本保留） | `protocol/src/models.rs:1190-1203`、`request_messages.rs:207-219`；两轮复核定案"丢弃正确" | **phase-3 增强**：新增结果持久化字段 + 成对回放 `server_tool_use`/`web_search_tool_result` |
 | 病态网关"HTTP 200 + 非 SSE JSON 错误体"两线均 EOF 丢体 | `sse.rs` EOF 路径；三家目标厂商 live 未见此行为 | 已知边界（可选加固：EOF 时附 body 摘要） |
 | 测试序列化兜底 `unwrap_or_default()` 仅在工具 schema >128 层嵌套时可达（静默零工具） | `request_tools.rs:41-47`（serde_json 递归深度限制，实测无现实 schema 可触发） | P3 nit（debug_assert） |
+
+阶段 D（搜索结果持久化/pause_turn/混合轮）已立项：Spec 见
+`phase-d-spec.md`，Plan 见 `phase-d-plan.md`（2026-10-01）。

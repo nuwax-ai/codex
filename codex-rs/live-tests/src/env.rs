@@ -52,6 +52,7 @@ pub fn vendor_provider(vendor: &str, base_url: &str) -> Provider {
             retry_transport: false,
         },
         stream_idle_timeout: Duration::from_secs(120),
+        max_output_tokens: None,
     }
 }
 

@@ -165,3 +165,33 @@ fn responses_passthrough_is_never_rewritten() {
     rewrite.chat_drop_orphan_tool_choice = true;
     assert!(!rewrite.needed());
 }
+
+#[tokio::test]
+async fn wire_tee_caps_its_buffer_and_passes_every_chunk_through() {
+    use bytes::Bytes;
+    use futures::StreamExt;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+
+    let cap = super::WIRE_TEE_CAP_BYTES;
+    let recorder = Arc::new(Mutex::new(Vec::<u8>::new()));
+    // 12 MiB in 1 MiB chunks: well past the cap, all chunks must still flow.
+    let chunk = Bytes::from(vec![b'x'; 1024 * 1024]);
+    let source = futures::stream::iter((0..12).map(move |_| Ok(chunk.clone())));
+    let body = Box::pin(source) as rig_core::http_client::sse::BoxedStream;
+    let tee = super::tee_wire_bytes(body, Some(recorder.clone()));
+    let passed: Vec<_> = tee.collect().await;
+    assert_eq!(passed.len(), 12, "the cap must never drop stream chunks");
+    assert!(
+        passed
+            .iter()
+            .all(|chunk| chunk.as_ref().is_ok_and(|bytes| bytes.len() == 1024 * 1024)),
+        "chunks pass through unchanged"
+    );
+    let captured = recorder.lock().unwrap().len();
+    assert!(captured <= cap, "captured {captured} > cap {cap}");
+    assert!(
+        captured >= cap - 1024 * 1024,
+        "capture should reach the cap"
+    );
+}

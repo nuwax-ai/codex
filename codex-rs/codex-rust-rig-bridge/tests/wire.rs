@@ -9,6 +9,8 @@ mod error_tests;
 mod history_tests;
 #[path = "wire/hosted_tools_wire_tests.rs"]
 mod hosted_tools_wire_tests;
+#[path = "wire/max_tokens_tests.rs"]
+mod max_tokens_tests;
 #[path = "wire/request_id_tests.rs"]
 mod request_id_tests;
 #[path = "wire/responses_regression_tests.rs"]

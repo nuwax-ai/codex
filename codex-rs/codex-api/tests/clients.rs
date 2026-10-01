@@ -149,6 +149,7 @@ fn provider(name: &str) -> Provider {
             retry_transport: true,
         },
         stream_idle_timeout: Duration::from_millis(10),
+        max_output_tokens: None,
     }
 }
 

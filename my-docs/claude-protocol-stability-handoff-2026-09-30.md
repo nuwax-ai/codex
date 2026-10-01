@@ -335,6 +335,22 @@ fix/fmt 结果、后续源码复查：
 - 修复前状态（无法用测试复现的运行时证据缺口即缺陷本身）：固定目录覆盖 + 无 manifest（index-logs 不收录）+ 仅断言非空回答——已由代码对照确认，行为修复的证据在 B3 真实运行时补齐。
 - A4b 离线验证：`just test -p codex-live-tests --offline --retries 0 -E 'test(binary_turns::tests) | test(config::) | test(cassette::)'` → **10/10 pass**。
 
+#### 阶段 C/E 提前完成项（2026-10-01 第二轮）
+
+用户指示"未完成的、可以做的，继续做"。按 §13 逐项评估后落地三件（其余受阻项见后）：
+
+- **C：输出预算可配置**：`model_providers.*.max_output_tokens`（正整数，schema 已重生成）→ `ModelProviderInfo` → `codex_api::Provider` → 桥在 convert 后覆盖 `CompletionRequest.max_tokens`（Anthropic 覆盖默认 16384；Chat 可选携带）；Responses 直传不受影响（verbatim）；远程 thread config 尚无对应 proto 字段（转 None，注释登记）。wire 测试 3 项（两协议到达 body、无预算保持默认）+ 解析测试 2 断言。
+- **E：tee 有界缓存**：`tee_wire_bytes` 上限 8 MiB，溢出停采+告警，流不受影响（块恢复只解析完整帧，截断尾不产生半块——安全降级路径分析见 transport.rs 注释）；单测断言 12 MiB 输入全部透传且缓冲触顶。**未声明 hosted 工具时 tee 整体跳过**（stream.rs 重排翻译在前，pump 对 None 已优雅处理）。
+- **E：HTTP 连接复用**：`http_client` 进程级共享池（key=protocol+静态头指纹；鉴权头从不到客户端默认——按轮注入，共享安全；custom CA 路径保持逐轮构建避免对不可哈希 TLS 配置做键）。`RigProtocol` 补 derive(Hash)。单测断言同头同客户端（Arc::ptr_eq）、异头异客户端。
+- **D：立项文档**：`phase-d-spec.md`（目标/非目标/数据模型硬上限/失败矩阵/验收契约）+ `phase-d-plan.md`（D1 采集→D2 回放→D3 pause_turn/混合轮→D4 上限与 provenance，含决策点与回退开关）——满足 §13 D 行"先独立 Spec/Plan"的开始条件。
+- **live-tests.yml 预检**：脚本逻辑本地正反例验证（缺 RESPONSES_URL 被正确点名）；真实 dispatch 仍需 push 后进行。
+
+验证（最终树，fix/fmt 后复跑）：桥+provider-info 全量、`max_output`/`budget`/`wire_tee`/`shared_http_client` 选择集、exec `nuwax_env` 二进制 4/4（重建二进制，鉴权穿过共享池）、真实 GLM chat 一轮（池 + 真网关 TLS）"收到" exit 0。工作区 check 0 错误。既有 flake：`responses_time_out_when_server_never_sends_headers` 单次超时（多轮在案）。
+
+**合并遗留修正**：本轮全量跑暴露 `test_amazon_bedrock_providers_add_mantle_client_agent_header` 与 `test_create_amazon_bedrock_runtime_provider` 失败——1f9841304 冲突解决时保留的 fork 行 `http_headers = None` 与上游新 mantle 头测试冲突。已修正：保留 fork 的 runtime provider_id 钉住，恢复上游保留 mantle 头的行为（两测试期望同步）。provider-info 35/35；桥+provider-info 最终 174/175（唯一失败为 `responses_time_out_when_server_never_sends_headers` 既有竞态，隔离 0.7s 通过，2026-09-28 起多轮在案）。
+
+**仍受阻/未做**：push+CI dispatch、发版（未授权）；D 实施本体（Spec/Plan 待评审）；MiMo/Step 的 NUWAX live 全矩阵与 pause_turn 真实验证（依赖 D3 或网关支持）；E 剩余项（取消释放、长会话稳定性、三平台安装回归——需发布周期）。
+
 #### 合并 origin/main（2026-10-01，提交 1f9841304）
 
 用户同步官方代码到 main 后（本地 main 落后 origin/main 315 提交，实际目标是 origin/main `67727e7cf`）。`git merge-tree` 预演 9 个冲突，实际解决：bazel.yml 保持 fork 删除；codex-api sse 三处（fork 公开模块+策略 与 main 的 responses_error 抽取并集，错误臂 Strict‖FlexUnavailable 双早退）；model-provider-info 两处（fork 的 bedrock runtime id 固定）；tui 投影（fork 数值种子 + main origins 门控并存）；compact 测试（fork 回归 + main program_tests 模块）；Cargo.lock 取 main 重解 + sha2 边；schema 重生成。上游 API 适配 3 处：ResponseStream.interrupt（两桥 None）、include_internal_metadata 替换目标检查、测试字面量补字段。本机环境事项：brew 安装 gstreamer（voice-host）；v8 系成员仍不可本机构建（既有 rusty_v8 限制）。合并后回归：工作区 check 绿（除 v8 系）；桥+api 338/338；core 选择集 153/165（12 失败=已知 code_mode 簇，与合并前一致）；tui 选择集 120 通过+4 负载 flake（空闲复跑通过、纯 origin/main 亦通过）；exec nuwax 4/4（重建二进制）；live 离线 93-94/94（每轮单个不同的负载 flake，隔离均过）。

@@ -362,21 +362,50 @@ impl HttpClientExt for RigHttpClient {
     }
 }
 
-/// Copies every wire chunk into the shared buffer while passing the stream
-/// through unchanged. Recording only; `None` returns the stream untouched.
+/// Upper bound for a wire tee buffer. The tee exists to recover Anthropic
+/// server-tool blocks and to record cassettes — an unbounded copy of a
+/// runaway stream is a memory hazard, so capture stops (with a warning)
+/// once the cap is hit. Degradation is graceful: block recovery parses only
+/// complete SSE frames, so a truncated tail can never produce a half block.
+const WIRE_TEE_CAP_BYTES: usize = 8 * 1024 * 1024;
+
+/// Copies wire chunks into the shared buffer while passing the stream
+/// through unchanged, up to [`WIRE_TEE_CAP_BYTES`]. Recording only; `None`
+/// returns the stream untouched.
 fn tee_wire_bytes(
     body: rig_core::http_client::sse::BoxedStream,
     recorder: Option<Arc<Mutex<Vec<u8>>>>,
 ) -> rig_core::http_client::sse::BoxedStream {
     match recorder {
-        Some(recorder) => Box::pin(body.map(move |chunk| {
-            if let Ok(bytes) = &chunk
+        Some(recorder) => {
+            let mut capped = false;
+            Box::pin(body.map(move |chunk| {
+                if let Ok(bytes) = &chunk
+                && !capped
                 && let Ok(mut buffer) = recorder.lock()
             {
-                buffer.extend_from_slice(bytes);
-            }
-            chunk
-        })) as rig_core::http_client::sse::BoxedStream,
+                    if buffer.len() >= WIRE_TEE_CAP_BYTES {
+                        capped = true;
+                        tracing::warn!(
+                            cap_bytes = WIRE_TEE_CAP_BYTES,
+                            "wire tee buffer cap reached; server-tool recovery and                              cassette recording stop here (the stream itself is unaffected)"
+                        );
+                    } else {
+                        let remaining = WIRE_TEE_CAP_BYTES - buffer.len();
+                        let take = remaining.min(bytes.len());
+                        buffer.extend_from_slice(&bytes[..take]);
+                        if take < bytes.len() {
+                            capped = true;
+                            tracing::warn!(
+                                cap_bytes = WIRE_TEE_CAP_BYTES,
+                                "wire tee buffer cap reached; server-tool recovery and                                  cassette recording stop here (the stream itself is unaffected)"
+                            );
+                        }
+                    }
+                }
+                chunk
+            })) as rig_core::http_client::sse::BoxedStream
+        }
         None => body,
     }
 }

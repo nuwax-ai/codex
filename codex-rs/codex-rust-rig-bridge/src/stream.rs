@@ -91,8 +91,15 @@ pub async fn stream_via_rig_with_recording(
         });
     }
     let source = crate::client::reasoning_source(api_provider, protocol, &request.model)?;
-    let (completion_request, tool_meta) =
+    let (mut completion_request, tool_meta) =
         responses_request_to_completion_request(request, protocol, &source)?;
+    // Fork (nuwax-codex): an explicit provider output budget overrides the
+    // bridge's default cap (Anthropic requires max_tokens on the wire; Chat
+    // accepts it optionally). The Responses passthrough is verbatim and
+    // never reaches here.
+    if let Some(max_output_tokens) = api_provider.max_output_tokens {
+        completion_request.max_tokens = Some(max_output_tokens);
+    }
     let (base_url, query) = crate::client::endpoint(&api_provider.base_url, api_provider)?;
     let mut headers = api_provider.headers.clone();
     headers.extend(extra_headers);
@@ -108,11 +115,6 @@ pub async fn stream_via_rig_with_recording(
     let anthropic_usage = Arc::new(std::sync::Mutex::new(
         crate::usage::AnthropicUsage::default(),
     ));
-    // rig never exposes Anthropic server-tool blocks on its public streaming
-    // surface; the transport tees the wire bytes and the pump re-reads them
-    // at terminal time.
-    let anthropic_sse_tee = (protocol == RigProtocol::Anthropic)
-        .then(|| Arc::new(std::sync::Mutex::new(Vec::<u8>::new())));
     // Hosted (Responses) tools only exist on the Anthropic wire, where they
     // translate into server-tool entries; Chat drops them. Non-representable
     // search modes fail the request before anything is sent.
@@ -121,6 +123,13 @@ pub async fn stream_via_rig_with_recording(
     } else {
         Vec::new()
     };
+    // rig never exposes Anthropic server-tool blocks on its public streaming
+    // surface; the transport tees the wire bytes and the pump re-reads them
+    // at terminal time. Without advertised server tools there is nothing to
+    // recover, so the tee (and its buffer) is skipped entirely.
+    let anthropic_sse_tee = (protocol == RigProtocol::Anthropic
+        && !anthropic_server_tools.is_empty())
+    .then(|| Arc::new(std::sync::Mutex::new(Vec::<u8>::new())));
     // The wire shape of the requested tool choice, restored by the transport
     // when hosted-only tools left the serialized body without one.
     let advertised: Vec<&str> = completion_request

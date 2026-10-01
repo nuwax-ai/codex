@@ -49,6 +49,11 @@ pub struct Provider {
     pub headers: HeaderMap,
     pub retry: RetryConfig,
     pub stream_idle_timeout: Duration,
+    /// Fork (nuwax-codex): optional per-provider output budget. The chat
+    /// bridge maps it to the wire `max_tokens` (required by Anthropic;
+    /// optional for Chat) instead of the built-in default. The Responses
+    /// passthrough sends the request verbatim and ignores this field.
+    pub max_output_tokens: Option<u64>,
 }
 
 impl Provider {
