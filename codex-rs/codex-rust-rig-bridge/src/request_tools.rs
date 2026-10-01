@@ -29,6 +29,10 @@ pub(crate) struct ToolMeta {
     /// Protocol-specific translation happens in `hosted_tools` (Anthropic
     /// server tools; Chat has no hosted-tool concept and drops them).
     pub(crate) hosted_tools: Vec<Value>,
+    /// Persisted web-search wire pairs to replay into the serialized body:
+    /// (index of the assistant rig message, raw blocks in order). Populated
+    /// by history conversion on the Anthropic wire.
+    pub(crate) websearch_replay: Vec<(usize, Vec<Value>)>,
 }
 
 pub(crate) fn flat_name(name: &str, namespace: Option<&str>) -> String {
@@ -123,6 +127,7 @@ pub(crate) fn parse_tools(tools: &[Value]) -> RequestTools {
             strict,
             result_errors: HashMap::new(),
             hosted_tools,
+            websearch_replay: Vec::new(),
         },
     }
 }

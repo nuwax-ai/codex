@@ -321,6 +321,12 @@ async fn anthropic_server_tool_use_maps_to_a_web_search_call_item() {
             "id":"srvu_glm",
             "status":"completed",
             "action":{"type":"search","query":"上海天气"},
+            // D1: the raw wire pair rides the item for faithful replay —
+            // GLM's non-standard assistant-side tool_result included.
+            "wire_blocks":[
+                {"type":"server_tool_use","id":"srvu_glm","name":"web_search_prime","input":{"search_query":"上海天气","location":"cn"}},
+                {"type":"tool_result","tool_use_id":"srvu_glm","content":"[{'text': [{'title': 'weather', 'link': 'https://example.com'}]}]"},
+            ],
         })
     );
     let messages: Vec<&ResponseItem> = done_items
@@ -380,6 +386,113 @@ async fn anthropic_server_tool_without_a_codex_item_is_ignored() {
         "unmapped server tools must not become web search calls: {done_items:?}"
     );
     assert_eq!(done_items.len(), 1, "only the text message: {done_items:?}");
+}
+
+// Fork (nuwax-codex) D2: a persisted wire pair replays verbatim into the
+// assistant message it followed — server_tool_use, the result block and its
+// encrypted content all reach the outbound body unchanged.
+#[tokio::test]
+async fn anthropic_replay_restores_persisted_web_search_blocks() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let provider = provider(listener.local_addr().unwrap());
+    let server =
+        tokio::spawn(
+            async move { support::serve_payload(&listener, support::ANTHROPIC_SSE).await },
+        );
+    let request = support::request(vec![
+        support::user(),
+        serde_json::json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"prior answer"}]}),
+        serde_json::json!({
+            "type":"web_search_call","id":"call_prev","status":"completed",
+            "action":{"type":"search","query":"last turn query"},
+            "wire_blocks":[
+                {"type":"server_tool_use","id":"srvtoolu_prev","name":"web_search","input":{"query":"last turn query"}},
+                {"type":"web_search_tool_result","tool_use_id":"srvtoolu_prev","content":[{"type":"web_search_result","url":"https://example.com","encrypted_content":"ENCRYPTED_PAYLOAD"}]},
+            ],
+        }),
+        serde_json::json!({"type":"message","role":"user","content":[{"type":"input_text","text":"next question"}]}),
+    ]);
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = stream.next().await {
+        event.unwrap();
+    }
+    let wire = server.await.unwrap();
+    let messages = &wire["body"]["messages"];
+    let encoded = messages.to_string();
+    let assistant = messages
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| message["role"] == "assistant")
+        .expect("assistant message");
+    let content = assistant["content"].as_array().expect("content array");
+    // Text first (history order), then the replayed pair, verbatim.
+    assert_eq!(content[0]["type"], json!("text"));
+    assert_eq!(content[0]["text"], json!("prior answer"));
+    assert_eq!(content[1]["type"], json!("server_tool_use"));
+    assert_eq!(content[1]["id"], json!("srvtoolu_prev"));
+    assert_eq!(content[2]["type"], json!("web_search_tool_result"));
+    assert_eq!(
+        content[2]["content"][0]["encrypted_content"],
+        json!("ENCRYPTED_PAYLOAD"),
+        "encrypted content must round-trip unmodified"
+    );
+    assert!(encoded.contains("next question"));
+}
+
+// D2: opting out via the provider knob drops the pairs (legacy behavior).
+#[tokio::test]
+async fn anthropic_replay_opt_out_drops_persisted_blocks() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut provider = provider(listener.local_addr().unwrap());
+    provider.hosted_results_replay = Some(false);
+    let server =
+        tokio::spawn(
+            async move { support::serve_payload(&listener, support::ANTHROPIC_SSE).await },
+        );
+    let request = support::request(vec![
+        support::user(),
+        serde_json::json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"prior answer"}]}),
+        serde_json::json!({
+            "type":"web_search_call","id":"call_prev","status":"completed",
+            "wire_blocks":[
+                {"type":"server_tool_use","id":"srvtoolu_prev","name":"web_search","input":{"query":"q"}},
+                {"type":"web_search_tool_result","tool_use_id":"srvtoolu_prev","content":[]},
+            ],
+        }),
+        serde_json::json!({"type":"message","role":"user","content":[{"type":"input_text","text":"next question"}]}),
+    ]);
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = stream.next().await {
+        event.unwrap();
+    }
+    let wire = server.await.unwrap();
+    let encoded = wire["body"]["messages"].to_string();
+    assert!(
+        !encoded.contains("server_tool_use") && !encoded.contains("ENCRYPTED"),
+        "opted-out replay must drop the pair: {encoded}"
+    );
+    assert!(encoded.contains("prior answer") && encoded.contains("next question"));
 }
 
 // Fork: cross-turn web_search replay on the Anthropic wire. `WebSearchCall`

@@ -225,6 +225,7 @@ mod tests {
             },
             stream_idle_timeout: Duration::from_secs(1),
             max_output_tokens: None,
+            hosted_results_replay: None,
         }
     }
 

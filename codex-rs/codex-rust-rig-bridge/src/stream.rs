@@ -11,6 +11,7 @@ use codex_api::ResponseStream;
 use codex_api::ResponsesApiRequest;
 use codex_api::SharedAuthProvider;
 use codex_api::TransportError;
+use futures::Future;
 use futures::StreamExt;
 use http::HeaderMap;
 use rig_core::completion::CompletionModel;
@@ -85,282 +86,454 @@ pub async fn stream_via_rig_with_recording(
     idle_timeout: Duration,
     recorder: RigEventRecorder,
 ) -> Result<(ResponseStream, RigEventRecorder), ApiError> {
-    if protocol == RigProtocol::Responses {
-        return Err(ApiError::InvalidRequest {
-            message: RECORDER_REJECTS_RESPONSES_MSG.into(),
-        });
-    }
-    let source = crate::client::reasoning_source(api_provider, protocol, &request.model)?;
-    let (mut completion_request, tool_meta) =
-        responses_request_to_completion_request(request, protocol, &source)?;
-    // Fork (nuwax-codex): an explicit provider output budget overrides the
-    // bridge's default cap (Anthropic requires max_tokens on the wire; Chat
-    // accepts it optionally). The Responses passthrough is verbatim and
-    // never reaches here.
-    if let Some(max_output_tokens) = api_provider.max_output_tokens {
-        completion_request.max_tokens = Some(max_output_tokens);
-    }
-    let (base_url, query) = crate::client::endpoint(&api_provider.base_url, api_provider)?;
-    let mut headers = api_provider.headers.clone();
-    headers.extend(extra_headers);
-    // Resolve once: refreshable credentials and gateway conflict checks are
-    // part of the outbound auth contract, not the synchronous telemetry snapshot.
-    headers.extend(
-        api_auth
-            .resolve_auth_headers()
-            .await
-            .map_err(|error| ApiError::Transport(error.into()))?,
-    );
-    let request_id = Arc::new(std::sync::Mutex::new(None));
-    let anthropic_usage = Arc::new(std::sync::Mutex::new(
-        crate::usage::AnthropicUsage::default(),
-    ));
-    // Hosted (Responses) tools only exist on the Anthropic wire, where they
-    // translate into server-tool entries; Chat drops them. Non-representable
-    // search modes fail the request before anything is sent.
-    let anthropic_server_tools = if protocol == RigProtocol::Anthropic {
-        crate::hosted_tools::translate_anthropic_server_tools(&tool_meta.hosted_tools)?
-    } else {
-        Vec::new()
-    };
-    // rig never exposes Anthropic server-tool blocks on its public streaming
-    // surface; the transport tees the wire bytes and the pump re-reads them
-    // at terminal time. Without advertised server tools there is nothing to
-    // recover, so the tee (and its buffer) is skipped entirely.
-    let anthropic_sse_tee = (protocol == RigProtocol::Anthropic
-        && !anthropic_server_tools.is_empty())
-    .then(|| Arc::new(std::sync::Mutex::new(Vec::<u8>::new())));
-    // The wire shape of the requested tool choice, restored by the transport
-    // when hosted-only tools left the serialized body without one.
-    let advertised: Vec<&str> = completion_request
-        .tools
-        .iter()
-        .map(|tool| tool.name.as_str())
-        .collect();
-    let anthropic_tool_choice = match protocol {
-        RigProtocol::Anthropic => Some(crate::convert_request::anthropic_tool_choice(
-            &request.tool_choice,
-            &advertised,
-        )?),
-        RigProtocol::Chat | RigProtocol::Responses => None,
-    };
-    let http = crate::transport::RigHttpClient {
-        inner: crate::client::http_client(&headers, protocol)?,
-        query,
-        disable_anthropic_parallel: protocol == RigProtocol::Anthropic
-            && !request.parallel_tool_calls,
-        request_id: request_id.clone(),
-        anthropic_usage: anthropic_usage.clone(),
-        authorization_override: headers
-            .get(http::header::AUTHORIZATION)
-            .filter(|_| crate::client::bearer_token(&headers).is_none())
-            .cloned(),
+    stream_via_rig_attempt(
+        request,
+        api_provider,
+        api_auth,
+        extra_headers,
         protocol,
-        responses_sse_recorder: None,
-        anthropic_sse_tee: anthropic_sse_tee.clone(),
-        tool_strict: tool_meta.strict,
-        tool_result_errors: tool_meta.result_errors,
-        disable_anthropic_thinking: protocol == RigProtocol::Anthropic
-            && request
-                .reasoning
-                .as_ref()
-                .and_then(|value| value.effort.as_ref())
-                == Some(&codex_protocol::openai_models::ReasoningEffort::None),
-        anthropic_effort: (protocol == RigProtocol::Anthropic)
-            .then(|| crate::convert_request::anthropic_effort(request))
-            .flatten(),
-        anthropic_service_tier: (protocol == RigProtocol::Anthropic)
-            .then(|| crate::convert_request::anthropic_service_tier(request))
-            .flatten(),
-        anthropic_server_tools,
-        anthropic_tool_choice,
-        // validate_tool_choice already rejected `required`/specific choices
-        // for a hosted-only request, so at most `auto`/`none` dangle here.
-        chat_drop_orphan_tool_choice: protocol == RigProtocol::Chat
-            && completion_request.tools.is_empty(),
-    };
+        idle_timeout,
+        recorder,
+        /*pause_depth*/ 0,
+    )
+    .await
+}
 
-    let model = request.model.clone();
-    tracing::info!(
-        model = %model,
-        protocol = ?protocol,
-        message_count = completion_request.chat_history.len(),
-        tool_count = completion_request.tools.len(),
-        has_reasoning_effort = completion_request
-            .additional_params
-            .as_ref()
-            .is_some_and(|p| p.get("reasoning_effort").is_some()),
-        "Dispatching chat stream via rig"
-    );
+/// Hard cap on bridge-internal pause_turn continuations (spec §1.2): a
+/// turn that keeps pausing past this fails with a clear error instead of
+/// looping forever.
+const PAUSE_CONTINUATION_LIMIT: u32 = 4;
 
-    let stream_response = match protocol {
-        RigProtocol::Chat => {
-            let chat_model = crate::client::build_chat_model(&model, &base_url, &headers, http)?;
-            chat_model.stream(completion_request).await
-        }
-        RigProtocol::Anthropic => {
-            let anthropic_model =
-                crate::client::build_anthropic_model(&model, &base_url, &headers, http)?;
-            anthropic_model.stream(completion_request).await
-        }
-        // Unreachable: rejected at the top of this function.
-        RigProtocol::Responses => {
+fn stream_via_rig_attempt(
+    request: &ResponsesApiRequest,
+    api_provider: &Provider,
+    api_auth: &SharedAuthProvider,
+    extra_headers: HeaderMap,
+    protocol: RigProtocol,
+    idle_timeout: Duration,
+    recorder: RigEventRecorder,
+    pause_depth: u32,
+) -> impl Future<Output = Result<(ResponseStream, RigEventRecorder), ApiError>> + Send {
+    async move {
+        if protocol == RigProtocol::Responses {
             return Err(ApiError::InvalidRequest {
                 message: RECORDER_REJECTS_RESPONSES_MSG.into(),
             });
         }
-    }
-    .map_err(|e| {
-        tracing::error!(model = %model, error = %e, "rig stream failed");
-        map_completion_error(e)
-    })?;
-
-    let mut rig_stream = stream_response;
-
-    // Eagerly resolve the FIRST stream item before returning: rig defers
-    // HTTP failures (401/5xx) into the stream, so without this a bad-auth
-    // response surfaces mid-stream where codex-core's 401-recovery loop —
-    // which only inspects start errors — can never trigger.
-    let mut next_event = match tokio::time::timeout(idle_timeout, rig_stream.next()).await {
-        Err(_elapsed) => {
-            return Err(ApiError::Transport(TransportError::Timeout));
+        let source = crate::client::reasoning_source(api_provider, protocol, &request.model)?;
+        let (mut completion_request, tool_meta) =
+            responses_request_to_completion_request(request, protocol, &source)?;
+        // Fork (nuwax-codex): an explicit provider output budget overrides the
+        // bridge's default cap (Anthropic requires max_tokens on the wire; Chat
+        // accepts it optionally). The Responses passthrough is verbatim and
+        // never reaches here.
+        if let Some(max_output_tokens) = api_provider.max_output_tokens {
+            completion_request.max_tokens = Some(max_output_tokens);
         }
-        Ok(Some(Err(e))) => {
-            tracing::error!(model = %model, error = %e, "rig stream failed before first event");
-            return Err(map_completion_error(e));
-        }
-        Ok(first) => first,
-    };
+        let (base_url, query) = crate::client::endpoint(&api_provider.base_url, api_provider)?;
+        let mut headers = api_provider.headers.clone();
+        let chainer_headers = extra_headers.clone();
+        headers.extend(extra_headers);
+        // Resolve once: refreshable credentials and gateway conflict checks are
+        // part of the outbound auth contract, not the synchronous telemetry snapshot.
+        headers.extend(
+            api_auth
+                .resolve_auth_headers()
+                .await
+                .map_err(|error| ApiError::Transport(error.into()))?,
+        );
+        let request_id = Arc::new(std::sync::Mutex::new(None));
+        let anthropic_usage = Arc::new(std::sync::Mutex::new(
+            crate::usage::AnthropicUsage::default(),
+        ));
+        // Hosted (Responses) tools only exist on the Anthropic wire, where they
+        // translate into server-tool entries; Chat drops them. Non-representable
+        // search modes fail the request before anything is sent.
+        let anthropic_server_tools = if protocol == RigProtocol::Anthropic {
+            crate::hosted_tools::translate_anthropic_server_tools(&tool_meta.hosted_tools)?
+        } else {
+            Vec::new()
+        };
+        // rig never exposes Anthropic server-tool blocks on its public streaming
+        // surface; the transport tees the wire bytes and the pump re-reads them
+        // at terminal time. Without advertised server tools there is nothing to
+        // recover, so the tee (and its buffer) is skipped entirely.
+        let anthropic_sse_tee = (protocol == RigProtocol::Anthropic
+            && !anthropic_server_tools.is_empty())
+        .then(|| Arc::new(std::sync::Mutex::new(Vec::<u8>::new())));
+        // The wire shape of the requested tool choice, restored by the transport
+        // when hosted-only tools left the serialized body without one.
+        let advertised: Vec<&str> = completion_request
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect();
+        let anthropic_tool_choice = match protocol {
+            RigProtocol::Anthropic => Some(crate::convert_request::anthropic_tool_choice(
+                &request.tool_choice,
+                &advertised,
+            )?),
+            RigProtocol::Chat | RigProtocol::Responses => None,
+        };
+        let http = crate::transport::RigHttpClient {
+            inner: crate::client::http_client(&headers, protocol)?,
+            // Persisted web-search pairs replay unless the provider opts out.
+            anthropic_websearch_replay: if protocol == RigProtocol::Anthropic
+                && api_provider.hosted_results_replay != Some(false)
+            {
+                tool_meta.websearch_replay
+            } else {
+                Vec::new()
+            },
+            query,
+            disable_anthropic_parallel: protocol == RigProtocol::Anthropic
+                && !request.parallel_tool_calls,
+            request_id: request_id.clone(),
+            anthropic_usage: anthropic_usage.clone(),
+            authorization_override: headers
+                .get(http::header::AUTHORIZATION)
+                .filter(|_| crate::client::bearer_token(&headers).is_none())
+                .cloned(),
+            protocol,
+            responses_sse_recorder: None,
+            anthropic_sse_tee: anthropic_sse_tee.clone(),
+            tool_strict: tool_meta.strict,
+            tool_result_errors: tool_meta.result_errors,
+            disable_anthropic_thinking: protocol == RigProtocol::Anthropic
+                && request
+                    .reasoning
+                    .as_ref()
+                    .and_then(|value| value.effort.as_ref())
+                    == Some(&codex_protocol::openai_models::ReasoningEffort::None),
+            anthropic_effort: (protocol == RigProtocol::Anthropic)
+                .then(|| crate::convert_request::anthropic_effort(request))
+                .flatten(),
+            anthropic_service_tier: (protocol == RigProtocol::Anthropic)
+                .then(|| crate::convert_request::anthropic_service_tier(request))
+                .flatten(),
+            anthropic_server_tools,
+            anthropic_tool_choice,
+            // validate_tool_choice already rejected `required`/specific choices
+            // for a hosted-only request, so at most `auto`/`none` dangle here.
+            chat_drop_orphan_tool_choice: protocol == RigProtocol::Chat
+                && completion_request.tools.is_empty(),
+        };
 
-    let (tx, rx) = mpsc::channel(RESPONSE_STREAM_CHANNEL_CAPACITY);
+        let model = request.model.clone();
+        tracing::info!(
+            model = %model,
+            protocol = ?protocol,
+            message_count = completion_request.chat_history.len(),
+            tool_count = completion_request.tools.len(),
+            has_reasoning_effort = completion_request
+                .additional_params
+                .as_ref()
+                .is_some_and(|p| p.get("reasoning_effort").is_some()),
+            "Dispatching chat stream via rig"
+        );
 
-    let custom_tool_names = std::sync::Arc::new(tool_meta.custom_names);
-    let pump_recorder = recorder.clone();
-    let pump_sse_tee = anthropic_sse_tee;
-    tokio::spawn(async move {
-        let mut pending = PendingRigMessage::new(custom_tool_names, source);
-
-        // rig streams have no start event; synthesize `Created` so the
-        // event sequence matches the genai bridge (A/B parity) and any
-        // consumer waiting for it sees one.
-        if tx
-            .send(Ok(ResponseEvent::Created { response_id: None }))
-            .await
-            .is_err()
-        {
-            return;
-        }
-
-        loop {
-            let item = match next_event.take() {
-                Some(item) => Some(item),
-                None => match tokio::time::timeout(idle_timeout, rig_stream.next()).await {
-                    Ok(item) => item,
-                    Err(_elapsed) => {
-                        let _ = tx
-                            .send(Err(ApiError::Transport(TransportError::Timeout)))
-                            .await;
-                        return;
-                    }
-                },
-            };
-            match item {
-                Some(Ok(mut event)) => {
-                    if protocol == RigProtocol::Anthropic
-                        && let rig_core::streaming::StreamedAssistantContent::Final(record) =
-                            &mut event
-                    {
-                        let normalized = anthropic_usage
-                            .lock()
-                            .map(|usage| usage.apply(&mut record.usage))
-                            .map_err(|_| {
-                                ApiError::Stream("Anthropic usage state is unavailable".into())
-                            });
-                        if let Err(error) = normalized {
-                            let _ = tx.send(Err(error)).await;
-                            return;
-                        }
-                    }
-                    if let Some(rec) = &pump_recorder
-                        && let Ok(mut buf) = rec.lock()
-                    {
-                        buf.push(event.clone());
-                    }
-                    let mut events = match rig_event_to_response_events(event, &mut pending) {
-                        Ok(events) => events,
-                        Err(error) => {
-                            let _ = tx.send(Err(error)).await;
-                            return;
-                        }
-                    };
-                    // rig's public streaming surface omits Anthropic
-                    // server-tool blocks; re-read them from the teed wire
-                    // bytes and splice their items in front of the Completed
-                    // terminal. Copy the bytes out first so no lock is held
-                    // across the await.
-                    if pending.completed_emitted()
-                        && let Some(tee) = &pump_sse_tee
-                        && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
-                        && !events.is_empty()
-                    {
-                        let mut injected = Vec::new();
-                        for block in
-                            crate::hosted_tools::web_search_blocks_from_anthropic_sse(&sse_bytes)
-                                .await
-                        {
-                            injected.extend(crate::hosted_tools::web_search_call_events(&block));
-                        }
-                        if !injected.is_empty() {
-                            let terminal = events.split_off(events.len() - 1);
-                            events.extend(injected);
-                            events.extend(terminal);
-                        }
-                    }
-                    for ev in events {
-                        if tx.send(Ok(ev)).await.is_err() {
-                            return;
-                        }
-                    }
-                    if pending.completed_emitted() {
-                        return;
-                    }
-                }
-                Some(Err(e)) => {
-                    // rig's contract: a malformed frame surfaces as Err but
-                    // the stream may continue; only a transport error is
-                    // terminal. Forward the error and stop — codex's retry
-                    // machinery handles reattempts.
-                    tracing::error!(error = %e, "rig stream error");
-                    let _ = tx.send(Err(map_completion_error(e))).await;
-                    return;
-                }
-                None => {
-                    // rig's contract: ending without a terminal record means
-                    // truncation, never a successful completion.
-                    if !pending.completed_emitted() {
-                        let _ = tx
-                            .send(Err(ApiError::Transport(TransportError::Network(
-                                "rig stream ended without a terminal record (truncated)"
-                                    .to_string(),
-                            ))))
-                            .await;
-                    }
-                    return;
-                }
+        let stream_response = match protocol {
+            RigProtocol::Chat => {
+                let chat_model =
+                    crate::client::build_chat_model(&model, &base_url, &headers, http)?;
+                chat_model.stream(completion_request).await
+            }
+            RigProtocol::Anthropic => {
+                let anthropic_model =
+                    crate::client::build_anthropic_model(&model, &base_url, &headers, http)?;
+                anthropic_model.stream(completion_request).await
+            }
+            // Unreachable: rejected at the top of this function.
+            RigProtocol::Responses => {
+                return Err(ApiError::InvalidRequest {
+                    message: RECORDER_REJECTS_RESPONSES_MSG.into(),
+                });
             }
         }
-    });
+        .map_err(|e| {
+            tracing::error!(model = %model, error = %e, "rig stream failed");
+            map_completion_error(e)
+        })?;
 
-    Ok((
-        ResponseStream {
-            rx_event: rx,
-            upstream_request_id: request_id.lock().ok().and_then(|slot| slot.clone()),
-            // The bridge has no graceful-interrupt channel yet; cancellation
-            // drops the stream, matching native's plain SSE spawns.
-            interrupt: None,
-        },
-        recorder,
-    ))
+        let mut rig_stream = stream_response;
+
+        // Eagerly resolve the FIRST stream item before returning: rig defers
+        // HTTP failures (401/5xx) into the stream, so without this a bad-auth
+        // response surfaces mid-stream where codex-core's 401-recovery loop —
+        // which only inspects start errors — can never trigger.
+        let mut next_event = match tokio::time::timeout(idle_timeout, rig_stream.next()).await {
+            Err(_elapsed) => {
+                return Err(ApiError::Transport(TransportError::Timeout));
+            }
+            Ok(Some(Err(e))) => {
+                tracing::error!(model = %model, error = %e, "rig stream failed before first event");
+                return Err(map_completion_error(e));
+            }
+            Ok(first) => first,
+        };
+
+        let (tx, rx) = mpsc::channel(RESPONSE_STREAM_CHANNEL_CAPACITY);
+
+        let custom_tool_names = std::sync::Arc::new(tool_meta.custom_names);
+        let pump_recorder = recorder.clone();
+        let pump_sse_tee = anthropic_sse_tee;
+        // Filled by the pump when the attempt ends PAUSED; the chainer below
+        // turns it into a bridge-internal continuation attempt.
+        let paused_items: Arc<std::sync::Mutex<Option<Vec<codex_protocol::models::ResponseItem>>>> =
+            Arc::new(std::sync::Mutex::new(None));
+        let pump_paused_items = paused_items.clone();
+        let pump_tx = tx.clone();
+        let pump_task = tokio::spawn(async move {
+            let tx = pump_tx;
+            let mut pending = PendingRigMessage::new(custom_tool_names, source);
+
+            // rig streams have no start event; synthesize `Created` so the
+            // event sequence matches the genai bridge (A/B parity) and any
+            // consumer waiting for it sees one. Continuation attempts are part
+            // of the SAME user-visible turn: exactly one Created per turn.
+            if pause_depth == 0
+                && tx
+                    .send(Ok(ResponseEvent::Created { response_id: None }))
+                    .await
+                    .is_err()
+            {
+                return;
+            }
+
+            loop {
+                let item = match next_event.take() {
+                    Some(item) => Some(item),
+                    None => match tokio::time::timeout(idle_timeout, rig_stream.next()).await {
+                        Ok(item) => item,
+                        Err(_elapsed) => {
+                            let _ = tx
+                                .send(Err(ApiError::Transport(TransportError::Timeout)))
+                                .await;
+                            return;
+                        }
+                    },
+                };
+                match item {
+                    Some(Ok(mut event)) => {
+                        if protocol == RigProtocol::Anthropic
+                            && let rig_core::streaming::StreamedAssistantContent::Final(record) =
+                                &mut event
+                        {
+                            let normalized = anthropic_usage
+                                .lock()
+                                .map(|usage| usage.apply(&mut record.usage))
+                                .map_err(|_| {
+                                    ApiError::Stream("Anthropic usage state is unavailable".into())
+                                });
+                            if let Err(error) = normalized {
+                                let _ = tx.send(Err(error)).await;
+                                return;
+                            }
+                        }
+                        if let Some(rec) = &pump_recorder
+                            && let Ok(mut buf) = rec.lock()
+                        {
+                            buf.push(event.clone());
+                        }
+                        // Fork (nuwax-codex) D3: a paused turn continues
+                        // bridge-internally — flush this attempt's content
+                        // WITHOUT a Completed terminal and hand the raw wire
+                        // blocks to the chainer for the official re-send recipe.
+                        let paused = protocol == RigProtocol::Anthropic
+                            && matches!(
+                                &event,
+                                rig_core::streaming::StreamedAssistantContent::Final(record)
+                                    if matches!(
+                                        record.finish_reason.as_ref(),
+                                        Some(rig_core::completion::request::FinishReason::Other(reason))
+                                            if reason == "pause_turn"
+                                    )
+                            );
+                        if paused {
+                            if pause_depth >= PAUSE_CONTINUATION_LIMIT {
+                                let _ = tx
+                                    .send(Err(ApiError::Stream(format!(
+                                        "Anthropic turn kept pausing (pause_turn) beyond the \
+                                     continuation cap of {PAUSE_CONTINUATION_LIMIT}"
+                                    ))))
+                                    .await;
+                                return;
+                            }
+                            let rig_core::streaming::StreamedAssistantContent::Final(record) =
+                                event
+                            else {
+                                return;
+                            };
+                            let mut events = match crate::convert_response::paused_final_events(
+                                record,
+                                &mut pending,
+                            ) {
+                                Ok(events) => events,
+                                Err(error) => {
+                                    let _ = tx.send(Err(error)).await;
+                                    return;
+                                }
+                            };
+                            let mut items = Vec::new();
+                            if let Some(tee) = &pump_sse_tee
+                                && let Ok(bytes) = tee.lock()
+                            {
+                                items = crate::hosted_tools::assistant_continuation_items(&bytes);
+                            }
+                            // The user-visible events carry the recovered pairs
+                            // too (same recovery as a completed turn): an Added
+                            // without status, then the item itself as Done.
+                            for item in &items {
+                                if let codex_protocol::models::ResponseItem::WebSearchCall {
+                                    ..
+                                } = item
+                                {
+                                    let mut added = item.clone();
+                                    if let codex_protocol::models::ResponseItem::WebSearchCall {
+                                        status,
+                                        ..
+                                    } = &mut added
+                                    {
+                                        *status = None;
+                                    }
+                                    events.push(ResponseEvent::OutputItemAdded(added));
+                                    events.push(ResponseEvent::OutputItemDone(item.clone()));
+                                }
+                            }
+                            if let Ok(mut slot) = pump_paused_items.lock() {
+                                *slot = Some(items);
+                            }
+                            for ev in events {
+                                if tx.send(Ok(ev)).await.is_err() {
+                                    return;
+                                }
+                            }
+                            return;
+                        }
+                        let mut events = match rig_event_to_response_events(event, &mut pending) {
+                            Ok(events) => events,
+                            Err(error) => {
+                                let _ = tx.send(Err(error)).await;
+                                return;
+                            }
+                        };
+                        // rig's public streaming surface omits Anthropic
+                        // server-tool blocks; re-read them from the teed wire
+                        // bytes and splice their items in front of the Completed
+                        // terminal. Copy the bytes out first so no lock is held
+                        // across the await.
+                        if pending.completed_emitted()
+                            && let Some(tee) = &pump_sse_tee
+                            && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
+                            && !events.is_empty()
+                        {
+                            let capture =
+                                crate::hosted_tools::web_search_blocks_from_anthropic_sse(
+                                    &sse_bytes,
+                                )
+                                .await;
+                            let mut injected = Vec::new();
+                            for pair in crate::hosted_tools::pair_web_search_blocks(capture) {
+                                injected.extend(crate::hosted_tools::web_search_call_events(pair));
+                            }
+                            if !injected.is_empty() {
+                                let terminal = events.split_off(events.len() - 1);
+                                events.extend(injected);
+                                events.extend(terminal);
+                            }
+                        }
+                        for ev in events {
+                            if tx.send(Ok(ev)).await.is_err() {
+                                return;
+                            }
+                        }
+                        if pending.completed_emitted() {
+                            return;
+                        }
+                    }
+                    Some(Err(e)) => {
+                        // rig's contract: a malformed frame surfaces as Err but
+                        // the stream may continue; only a transport error is
+                        // terminal. Forward the error and stop — codex's retry
+                        // machinery handles reattempts.
+                        tracing::error!(error = %e, "rig stream error");
+                        let _ = tx.send(Err(map_completion_error(e))).await;
+                        return;
+                    }
+                    None => {
+                        // rig's contract: ending without a terminal record means
+                        // truncation, never a successful completion.
+                        if !pending.completed_emitted() {
+                            let _ = tx
+                                .send(Err(ApiError::Transport(TransportError::Network(
+                                    "rig stream ended without a terminal record (truncated)"
+                                        .to_string(),
+                                ))))
+                                .await;
+                        }
+                        return;
+                    }
+                }
+            }
+        });
+
+        // Fork (nuwax-codex) D3: chain pause continuations onto the same
+        // channel. The chainer holds a Sender clone so the stream stays open
+        // after the pump ends; if the attempt paused, it re-sends the request
+        // with the paused assistant content appended (official recipe) and
+        // forwards the continuation's events. Usage/request IDs of continuation
+        // attempts are their own — the final Completed carries the last
+        // attempt's numbers.
+        if protocol == RigProtocol::Anthropic && pause_depth < PAUSE_CONTINUATION_LIMIT {
+            let chainer_tx = tx.clone();
+            let mut continuation_request = request.clone();
+            let provider = api_provider.clone();
+            let auth = api_auth.clone();
+            let headers = chainer_headers;
+            let idle = idle_timeout;
+            tokio::spawn(async move {
+                let _ = pump_task.await;
+                let items = paused_items.lock().ok().and_then(|mut slot| slot.take());
+                if let Some(items) = items {
+                    continuation_request.input.extend(items);
+                    let continued = stream_via_rig_attempt(
+                        &continuation_request,
+                        &provider,
+                        &auth,
+                        headers,
+                        RigProtocol::Anthropic,
+                        idle,
+                        /*recorder*/ None,
+                        pause_depth + 1,
+                    )
+                    .await;
+                    match continued {
+                        Ok((mut stream, _)) => {
+                            while let Some(event) = stream.next().await {
+                                if chainer_tx.send(event).await.is_err() {
+                                    return;
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            let _ = chainer_tx.send(Err(error)).await;
+                        }
+                    }
+                }
+            });
+        }
+
+        Ok((
+            ResponseStream {
+                rx_event: rx,
+                upstream_request_id: request_id.lock().ok().and_then(|slot| slot.clone()),
+                // The bridge has no graceful-interrupt channel yet; cancellation
+                // drops the stream, matching native's plain SSE spawns.
+                interrupt: None,
+            },
+            recorder,
+        ))
+    }
 }
 
 /// Maps rig errors onto codex's transport taxonomy, preserving the HTTP

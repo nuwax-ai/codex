@@ -476,6 +476,7 @@ fn exec_command_tool_output_reserves_metadata_budget_and_preserves_policy_units(
             raw_output: raw_output.clone(),
             truncation_policy: policy,
             max_output_tokens: None,
+            hosted_results_replay: None,
             process_id: None,
             exit_code: Some(0),
             original_token_count: Some(123),

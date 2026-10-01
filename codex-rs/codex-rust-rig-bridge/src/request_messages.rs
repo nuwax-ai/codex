@@ -13,8 +13,12 @@ pub(crate) fn convert_response_items(
     items: &[ResponseItem],
     protocol: RigProtocol,
     source: &str,
+    websearch_replay: &mut Vec<(usize, Vec<Value>)>,
 ) -> Result<Vec<Message>, codex_api::ApiError> {
     let mut messages: Vec<Message> = Vec::new();
+    // How many assistant rig messages have been emitted so far; persisted
+    // web-search pairs attach to the message their call followed (count-1).
+    let mut assistant_messages = 0usize;
 
     // rig's ToolResult requires the executed tool's *name*, which codex only
     // carries on the FunctionCall item — index call_id → name up front.
@@ -73,10 +77,13 @@ pub(crate) fn convert_response_items(
                             Some(Message::Assistant { content, .. }) => {
                                 content.extend(parts);
                             }
-                            _ => messages.push(Message::Assistant {
-                                id: None,
-                                content: parts,
-                            }),
+                            _ => {
+                                messages.push(Message::Assistant {
+                                    id: None,
+                                    content: parts,
+                                });
+                                assistant_messages += 1;
+                            }
                         }
                     }
                 } else if matches!(role, "system" | "developer") {
@@ -107,10 +114,58 @@ pub(crate) fn convert_response_items(
                         Some(Message::Assistant { content, .. }) => {
                             content.push(AssistantContent::Reasoning(reasoning));
                         }
-                        _ => messages.push(Message::Assistant {
-                            id: None,
-                            content: vec![AssistantContent::Reasoning(reasoning)],
-                        }),
+                        _ => {
+                            messages.push(Message::Assistant {
+                                id: None,
+                                content: vec![AssistantContent::Reasoning(reasoning)],
+                            });
+                            assistant_messages += 1;
+                        }
+                    }
+                }
+            }
+            ResponseItem::WebSearchCall { wire_blocks, .. } => {
+                // Fork (nuwax-codex): persisted raw wire pairs replay into
+                // the assistant message they followed — Anthropic wire only
+                // (cross-wire ciphertext is not compatible); Chat keeps
+                // dropping hosted-tool history.
+                match (protocol, wire_blocks) {
+                    (RigProtocol::Anthropic, Some(blocks)) => {
+                        if assistant_messages == 0 {
+                            messages.push(Message::Assistant {
+                                id: None,
+                                content: Vec::new(),
+                            });
+                            assistant_messages += 1;
+                        }
+                        let target = assistant_messages - 1;
+                        let blocks = blocks
+                            .as_array()
+                            .cloned()
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter(|block| !block.is_null())
+                            .collect::<Vec<_>>();
+                        if blocks.is_empty() {
+                            tracing::warn!(
+                                "persisted web-search pair carries no blocks; dropping it"
+                            );
+                            continue;
+                        }
+                        match websearch_replay.last_mut() {
+                            Some((index, group)) if *index == target => group.extend(blocks),
+                            _ => websearch_replay.push((target, blocks)),
+                        }
+                    }
+                    (RigProtocol::Anthropic, None) => {
+                        tracing::debug!(
+                            "legacy web-search call without wire blocks; replay drops it"
+                        );
+                    }
+                    _ => {
+                        tracing::debug!(
+                            "web-search history is not replayable on the Chat wire; dropping"
+                        );
                     }
                 }
             }
@@ -209,7 +264,6 @@ pub(crate) fn convert_response_items(
             | ResponseItem::LocalShellCall { .. }
             | ResponseItem::ToolSearchCall { .. }
             | ResponseItem::ToolSearchOutput { .. }
-            | ResponseItem::WebSearchCall { .. }
             | ResponseItem::ImageGenerationCall { .. }
             | ResponseItem::Compaction { .. }
             | ResponseItem::ContextCompaction { .. }

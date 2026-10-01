@@ -37,6 +37,10 @@ pub(crate) struct RigHttpClient {
     /// are dropped on Chat), so a serialized `tool_choice` would dangle and
     /// providers reject it — it is removed instead of widening behavior.
     pub(crate) chat_drop_orphan_tool_choice: bool,
+    /// Anthropic wire only: persisted web-search wire pairs to splice into
+    /// their assistant message's content array ((assistant-message index,
+    /// raw blocks in history order)).
+    pub(crate) anthropic_websearch_replay: Vec<(usize, Vec<serde_json::Value>)>,
     /// Translated Anthropic server-tool entries for the request's hosted
     /// (Responses) tools; empty when none translate. Chat keeps dropping
     /// hosted tools — they have no Chat Completions representation.
@@ -86,6 +90,7 @@ impl RigHttpClient {
     fn chat_family_rewrite(&self) -> ChatFamilyRewrite<'_> {
         ChatFamilyRewrite {
             protocol: self.protocol,
+            websearch_replay: &self.anthropic_websearch_replay,
             disable_anthropic_parallel: self.disable_anthropic_parallel,
             disable_anthropic_thinking: self.disable_anthropic_thinking,
             tool_strict: &self.tool_strict,
@@ -104,6 +109,7 @@ impl RigHttpClient {
 /// without standing up an HTTP stack; [`send_streaming`] is its only caller.
 struct ChatFamilyRewrite<'a> {
     protocol: crate::RigProtocol,
+    websearch_replay: &'a [(usize, Vec<serde_json::Value>)],
     disable_anthropic_parallel: bool,
     disable_anthropic_thinking: bool,
     tool_strict: &'a std::collections::HashMap<String, bool>,
@@ -126,6 +132,7 @@ impl ChatFamilyRewrite<'_> {
                         || !self.anthropic_server_tools.is_empty()
                         || self.anthropic_tool_choice.is_some()))
                 || !self.tool_strict.is_empty()
+                || !self.websearch_replay.is_empty()
                 || self.anthropic_effort.is_some()
                 || self.anthropic_service_tier.is_some())
     }
@@ -230,7 +237,7 @@ impl ChatFamilyRewrite<'_> {
                 .get_mut("messages")
                 .and_then(serde_json::Value::as_array_mut)
         {
-            for message in messages {
+            for message in messages.iter_mut() {
                 if let Some(content) = message
                     .get_mut("content")
                     .and_then(serde_json::Value::as_array_mut)
@@ -244,6 +251,52 @@ impl ChatFamilyRewrite<'_> {
                             block["is_error"] = (*is_error).into();
                         }
                     }
+                }
+            }
+            // Fork (nuwax-codex): splice persisted web-search wire pairs
+            // (server_tool_use + result, verbatim incl. encrypted content)
+            // into the content array of the assistant message each pair
+            // followed in history. The index counts assistant-role messages,
+            // matching how history conversion numbered them.
+            if !self.websearch_replay.is_empty() {
+                let mut assistant_seen = 0usize;
+                let mut pending: Vec<&(usize, Vec<serde_json::Value>)> =
+                    self.websearch_replay.iter().collect();
+                for message in messages.iter_mut() {
+                    if message.get("role").and_then(serde_json::Value::as_str) != Some("assistant")
+                    {
+                        continue;
+                    }
+                    let current = assistant_seen;
+                    assistant_seen += 1;
+                    let groups: Vec<&(usize, Vec<serde_json::Value>)> = pending
+                        .iter()
+                        .filter(|(index, _)| *index == current)
+                        .copied()
+                        .collect();
+                    if groups.is_empty() {
+                        continue;
+                    }
+                    pending.retain(|(index, _)| *index != current);
+                    let Some(content) = message
+                        .get_mut("content")
+                        .and_then(serde_json::Value::as_array_mut)
+                    else {
+                        tracing::warn!(
+                            index = current,
+                            "assistant message has no content array; web-search replay skipped"
+                        );
+                        continue;
+                    };
+                    for (_, blocks) in groups {
+                        content.extend(blocks.iter().cloned());
+                    }
+                }
+                if !pending.is_empty() {
+                    tracing::warn!(
+                        pairs = pending.len(),
+                        "web-search replay pairs reference unknown assistant messages; dropped"
+                    );
                 }
             }
         }

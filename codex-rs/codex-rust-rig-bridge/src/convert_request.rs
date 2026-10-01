@@ -81,7 +81,9 @@ pub(crate) fn responses_request_to_completion_request(
             "Responses controls without a Rig wire equivalent"
         );
     }
-    let mut chat_history = convert_response_items(&request.input, protocol, source)?;
+    let mut websearch_replay = Vec::new();
+    let mut chat_history =
+        convert_response_items(&request.input, protocol, source, &mut websearch_replay)?;
     if chat_history.is_empty() {
         return Err(ApiError::InvalidRequest {
             message: "No convertible messages in request".into(),
@@ -164,6 +166,20 @@ pub(crate) fn responses_request_to_completion_request(
             });
         }
     };
+    // Hard cap on projected pairs (spec §3): keep the newest, drop the
+    // oldest with a warning.
+    const MAX_REPLAY_GROUPS: usize = 64;
+    if websearch_replay.len() > MAX_REPLAY_GROUPS {
+        let dropped = websearch_replay.len() - MAX_REPLAY_GROUPS;
+        websearch_replay.drain(..dropped);
+        tracing::warn!(
+            dropped,
+            MAX_REPLAY_GROUPS,
+            "web-search replay pairs exceed the per-request cap; oldest dropped"
+        );
+    }
+    let mut selection = selection;
+    selection.meta.websearch_replay = websearch_replay;
     Ok((
         CompletionRequest {
             model: Some(request.model.clone()),

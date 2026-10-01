@@ -2727,6 +2727,10 @@
           ],
           "description": "Secondary OAuth credentials required by the provider's gateway."
         },
+        "hosted_results_replay": {
+          "description": "Fork (nuwax-codex): whether the Anthropic bridge replays persisted web-search wire blocks (server_tool_use + result pairs, including encrypted content) into follow-up requests. Default true; set false to fall back to dropping search history (the pre-D2 behavior).",
+          "type": "boolean"
+        },
         "http_headers": {
           "additionalProperties": {
             "type": "string"

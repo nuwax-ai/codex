@@ -54,6 +54,9 @@ pub struct Provider {
     /// optional for Chat) instead of the built-in default. The Responses
     /// passthrough sends the request verbatim and ignores this field.
     pub max_output_tokens: Option<u64>,
+    /// Fork (nuwax-codex): whether the Anthropic bridge replays persisted
+    /// web-search wire blocks into follow-up requests (default true).
+    pub hosted_results_replay: Option<bool>,
 }
 
 impl Provider {

@@ -335,6 +335,32 @@ fix/fmt 结果、后续源码复查：
 - 修复前状态（无法用测试复现的运行时证据缺口即缺陷本身）：固定目录覆盖 + 无 manifest（index-logs 不收录）+ 仅断言非空回答——已由代码对照确认，行为修复的证据在 B3 真实运行时补齐。
 - A4b 离线验证：`just test -p codex-live-tests --offline --retries 0 -E 'test(binary_turns::tests) | test(config::) | test(cassette::)'` → **10/10 pass**。
 
+#### 阶段 D 实施（2026-10-01 第三轮，Spec/Plan 评审后）
+
+评审：`phase-d-spec.md`/`phase-d-plan.md` 自审发现 6 处需修正（持久化载体、
+pause_turn 实施形态、顺序保真范围、上限执行点与度量、开关位置、GLM 形状），
+已写回文档后实施。
+
+- **D1 采集配对**：SSE 汇编器同时回收结果块（官方 `web_search_tool_result` 单帧
+  完整 + GLM assistant 侧 `tool_result`），按 id/tool_use_id 配对；未配对（混合轮
+  pending）→ `in_progress`。`WebSearchCall` 新增可选 `wire_blocks`（含修复：块需
+  带 `type` 字段否则回放被网关 400 拒绝——GLM 诊断实证）。
+- **D2 回放投影**：request_messages 收集 (assistant 消息索引, 原始块)，transport
+  改写把对原样拼进对应 assistant 消息 content（含 encrypted_content；仅
+  Anthropic 线）；provider 级 `hosted_results_replay`（默认 true）一行回退。
+  每请求 64 对上限（丢最旧）。
+- **D3 pause_turn**：`paused_final_events` 冲刷（无 Completed）+ tee 全块提取
+  （文本增量重组 + 搜索对）→ 桥内递归续接（chainer 持 Sender 复用通道，深度
+  上限 4，超出明确报错；续接尝试抑制重复 Created）。混合轮 pending 对回放仅
+  use 块（自然落入 D2 路径）。
+- **D4 上限**：发射侧单对 ~10K tokens（bytes/4，超限丢载荷保调用）；GLM live
+  双轮 websearch **PASS 89.8s**（修复 type 后；此前 400 诊断证明块到达 turn2
+  wire，构成回放载运的 live 证据）。
+- 验证：桥+provider-info **180/181**（唯一失败为 `responses_time_out…` 既有
+  竞态，隔离 0.8s 通过）；新增 wire 测试 6 项（回放还原/开关回退/pause 续接/
+  cap 报错/配对/无配对）全过；fmt 后复跑关键套件。provenance 核实：core 侧
+  WebSearchCall 匹配臂均用 `..`，新增字段不影响 provenance 映射。
+
 #### 阶段 C/E 提前完成项（2026-10-01 第二轮）
 
 用户指示"未完成的、可以做的，继续做"。按 §13 逐项评估后落地三件（其余受阻项见后）：

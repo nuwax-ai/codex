@@ -108,6 +108,7 @@ async fn stream_responses_via_rig_inner(
         anthropic_service_tier: None,
         anthropic_tool_choice: None,
         chat_drop_orphan_tool_choice: false,
+        anthropic_websearch_replay: Vec::new(),
         tool_strict: Default::default(),
         tool_result_errors: Default::default(),
         anthropic_server_tools: Vec::new(),

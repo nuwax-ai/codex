@@ -250,6 +250,11 @@ pub struct ModelProviderInfo {
     /// optional for Chat) instead of its built-in default; the Responses
     /// passthrough sends requests verbatim and ignores it.
     pub max_output_tokens: Option<u64>,
+    /// Fork (nuwax-codex): whether the Anthropic bridge replays persisted
+    /// web-search wire blocks (server_tool_use + result pairs, including
+    /// encrypted content) into follow-up requests. Default true; set false
+    /// to fall back to dropping search history (the pre-D2 behavior).
+    pub hosted_results_replay: Option<bool>,
     /// Number of times to retry reconnecting a dropped streaming response before failing.
     pub stream_max_retries: Option<u64>,
     /// Idle timeout (in milliseconds) to wait for activity on a streaming response before treating
@@ -544,6 +549,7 @@ other non-default provider fields are not supported"
             retry,
             stream_idle_timeout: self.stream_idle_timeout(),
             max_output_tokens: self.max_output_tokens,
+            hosted_results_replay: self.hosted_results_replay,
         })
     }
 
@@ -630,6 +636,7 @@ other non-default provider fields are not supported"
             // Use global defaults for retry/timeout unless overridden in config.toml.
             request_max_retries: None,
             max_output_tokens: None,
+            hosted_results_replay: None,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -672,6 +679,7 @@ other non-default provider fields are not supported"
             env_http_headers: None,
             request_max_retries: None,
             max_output_tokens: None,
+            hosted_results_replay: None,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -912,6 +920,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         env_http_headers: None,
         request_max_retries: None,
         max_output_tokens: None,
+        hosted_results_replay: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
         websocket_connect_timeout_ms: None,

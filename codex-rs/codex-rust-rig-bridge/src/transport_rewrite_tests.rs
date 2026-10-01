@@ -16,6 +16,7 @@ fn rewrite<'a>(
 ) -> super::ChatFamilyRewrite<'a> {
     super::ChatFamilyRewrite {
         protocol,
+        websearch_replay: &[],
         disable_anthropic_parallel: false,
         disable_anthropic_thinking: false,
         tool_strict,

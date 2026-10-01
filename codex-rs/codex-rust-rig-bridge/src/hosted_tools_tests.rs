@@ -1,10 +1,13 @@
 //! Table tests for hosted tool translation.
 
+use super::PairedWebSearchBlocks;
 use super::anthropic_server_tool;
 use super::is_web_search_server_use;
+use super::pair_web_search_blocks;
 use super::translate_anthropic_server_tools;
 use super::web_search_action;
 use super::web_search_blocks_from_anthropic_sse;
+use super::web_search_call_events;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
@@ -184,14 +187,19 @@ fn sse_parser_reads_inline_gateway_input_without_deltas() {
         "event: content_block_stop\n",
         "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
     );
+    let capture = futures::executor::block_on(web_search_blocks_from_anthropic_sse(sse.as_bytes()));
+    let pairs = pair_web_search_blocks(capture);
     assert_eq!(
-        futures::executor::block_on(web_search_blocks_from_anthropic_sse(sse.as_bytes())),
-        vec![json!({
+        serde_json::to_value(pairs.iter().map(|pair| &pair.call).collect::<Vec<_>>())
+            .expect("encode"),
+        json!([{
+            "type": "server_tool_use",
             "id": "srvu_inline",
             "name": "web_search_prime",
             "input": {"search_query": "上海天气", "location": "cn"},
-        })]
+        }])
     );
+    assert!(pairs[0].result.is_none(), "no result block in this fixture");
 }
 
 #[test]
@@ -203,8 +211,70 @@ fn sse_parser_skips_non_web_search_server_tools_and_malformed_frames() {
         "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
         "data: not-json\n\n",
     );
-    assert_eq!(
-        futures::executor::block_on(web_search_blocks_from_anthropic_sse(sse.as_bytes())),
-        Vec::<serde_json::Value>::new()
+    let capture = futures::executor::block_on(web_search_blocks_from_anthropic_sse(sse.as_bytes()));
+    assert!(pair_web_search_blocks(capture).is_empty());
+}
+
+// D1: result blocks pair with their calls by id, in original call order.
+#[test]
+fn official_result_blocks_pair_by_id() {
+    let sse = concat!(
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"server_tool_use\",\"id\":\"srvu_1\",\"name\":\"web_search\",\"input\":{}}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\\\"q1\\\"}\"}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"web_search_tool_result\",\"tool_use_id\":\"srvu_1\",\"content\":[{\"type\":\"web_search_result\",\"url\":\"https://example.com\",\"encrypted_content\":\"ENC\"}]}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
     );
+    let capture = futures::executor::block_on(web_search_blocks_from_anthropic_sse(sse.as_bytes()));
+    let pairs = pair_web_search_blocks(capture);
+    assert_eq!(pairs.len(), 1);
+    assert_eq!(
+        pairs[0].result.as_ref().expect("paired result")["tool_use_id"],
+        json!("srvu_1")
+    );
+    // The emitted item carries both raw blocks and a completed status.
+    let events = web_search_call_events(PairedWebSearchBlocks {
+        call: pairs[0].call.clone(),
+        result: pairs[0].result.clone(),
+    });
+    let done = events
+        .iter()
+        .find_map(|event| match event {
+            codex_api::ResponseEvent::OutputItemDone(item) => Some(item.clone()),
+            _ => None,
+        })
+        .expect("done item");
+    let encoded = serde_json::to_value(&done).expect("encode");
+    assert_eq!(encoded["status"], json!("completed"));
+    assert_eq!(
+        encoded["wire_blocks"],
+        json!([pairs[0].call, pairs[0].result.clone().expect("paired"),]),
+        "the raw wire pair must ride the item verbatim"
+    );
+}
+
+// D1: an unpaired call (mixed server/client turn) emits in_progress with
+// only the use block.
+#[test]
+fn unpaired_call_emits_in_progress_with_use_block_only() {
+    let call = json!({"id": "srvu_2", "name": "web_search", "input": {"query": "q"}});
+    let events = web_search_call_events(PairedWebSearchBlocks {
+        call: call.clone(),
+        result: None,
+    });
+    let done = events
+        .iter()
+        .find_map(|event| match event {
+            codex_api::ResponseEvent::OutputItemDone(item) => Some(item.clone()),
+            _ => None,
+        })
+        .expect("done item");
+    let encoded = serde_json::to_value(&done).expect("encode");
+    assert_eq!(encoded["status"], json!("in_progress"));
+    assert_eq!(encoded["wire_blocks"], json!([call]));
 }

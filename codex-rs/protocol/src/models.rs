@@ -1198,6 +1198,14 @@ pub enum ResponseItem {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         action: Option<WebSearchAction>,
+        /// Fork (nuwax-codex): the raw wire blocks for faithful cross-turn
+        /// replay on the Anthropic wire — `[server_tool_use, result?]`,
+        /// captured verbatim from the provider stream (including any
+        /// encrypted content). Opaque JSON: never synthesized or edited;
+        /// absent on legacy rollouts, which replay as before (dropped).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        wire_blocks: Option<serde_json::Value>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         internal_chat_message_metadata_passthrough: Option<InternalChatMessageMetadataPassthrough>,

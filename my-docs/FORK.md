@@ -79,6 +79,17 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
   SSE（`anthropic_sse_tee`，eventsource-stream 解帧），流泵在 Completed 前回收
   web-search 块 → `WebSearchCall` 条目（兼容 GLM 的 `web_search_prime` 改名、
   `search_query` 字段、非标准 assistant 侧 `tool_result` 块）。
+- **结果对持久化与忠实回放（2026-10-01，阶段 D1/D2）**：`server_tool_use` 与
+  结果块按 id 配对（未配对=混合轮 pending → `in_progress`），原始块以
+  `WebSearchCall.wire_blocks` 不透明字段入 rollout（旧 rollout 兼容为 None）；
+  续轮把对原样还原进对应 assistant 消息（含 `encrypted_content`，仅
+  Anthropic→Anthropic；GLM 非标准 tool_result 按原样形状）。provider 级
+  `hosted_results_replay=false` 一行回退旧行为。上限：单对 ~10K tokens
+  （bytes/4，超限丢载荷保调用）、每请求 64 对。
+- **pause_turn 桥内透明续接（阶段 D3）**：原实现把 pause_turn 归为未知
+  finish_reason 直接报错；现从 tee 提取本次全部 assistant 原始块（文本 + 搜索
+  对），按官方配方原样追加回请求续接（工具数组不变），上限 4 次，超出明确报
+  错。每用户可见 turn 恰一个 Created。
 
 设计：`my-docs/anthropic-hosted-tools/`。
 

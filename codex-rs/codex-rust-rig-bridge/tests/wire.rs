@@ -11,6 +11,8 @@ mod history_tests;
 mod hosted_tools_wire_tests;
 #[path = "wire/max_tokens_tests.rs"]
 mod max_tokens_tests;
+#[path = "wire/pause_turn_tests.rs"]
+mod pause_turn_tests;
 #[path = "wire/request_id_tests.rs"]
 mod request_id_tests;
 #[path = "wire/responses_regression_tests.rs"]

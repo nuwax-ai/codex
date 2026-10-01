@@ -203,7 +203,8 @@ fn model_provider_from_proto(
         http_headers: provider.http_headers.map(redacted_string_map),
         env_http_headers: provider.env_http_headers.map(|map| map.values),
         request_max_retries: provider.request_max_retries,
-        max_output_tokens: None, // fork field; the proto has no wire for it yet
+        max_output_tokens: None, // fork fields; the proto has no wire for them yet
+        hosted_results_replay: None,
         stream_max_retries: provider.stream_max_retries,
         stream_idle_timeout_ms: provider.stream_idle_timeout_ms,
         websocket_connect_timeout_ms: provider.websocket_connect_timeout_ms,
@@ -237,7 +238,8 @@ fn model_provider_to_proto(
         http_headers,
         env_http_headers,
         request_max_retries,
-        max_output_tokens: _, // fork field; remote thread config has no wire for it yet
+        max_output_tokens: _, // fork fields; remote thread config has no wire for them yet
+        hosted_results_replay: _,
         stream_max_retries,
         stream_idle_timeout_ms,
         websocket_connect_timeout_ms,

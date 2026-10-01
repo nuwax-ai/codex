@@ -1,6 +1,10 @@
 # 阶段 D Spec：会话与 hosted 工具完整流程（规范文档）
 
-状态：草案（实施前需评审通过）。日期：2026-10-01。
+状态：已评审并实施（2026-10-01）。评审修正 6 处已写回本文：持久化载体为
+WebSearchCall.wire_blocks 单 opaque 字段（非 context fragment）；pause_turn 为桥内
+透明续接（原缺陷为直接 Stream 错误）；顺序保真限于对间/对内；上限在桥边界
+强制（bytes/4 近似）；开关走 provider 字段 hosted_results_replay；GLM 结果块按
+原样形状回放。
 上游依据：`claude-protocol-stability-handoff-2026-09-30.md` §13 D 行与 §1 契约；
 协议事实以官方文档为准（Anthropic server-tools / web-search-tool 页，2026-09 核对）。
 
@@ -8,10 +12,16 @@
 
 让 Anthropic 线的 hosted（服务端）工具会话从"能跑通"升级为"可多轮保真续接"：
 
-1. **搜索结果成对持久化**：`server_tool_use` 与 `web_search_tool_result` 块按原始
-   顺序进入历史，续轮回放时原样送回（含 `encrypted_content`），不再丢弃。
-2. **pause_turn 续接**：`stop_reason: "pause_turn"` 时按官方语义把暂停的 assistant
-   内容原样回传续接，续接次数有硬上限；不用"重试原 prompt"代替。
+1. **搜索结果成对持久化**：`server_tool_use` 与结果块（官方
+   `web_search_tool_result`；GLM 的 assistant 侧非标准 `tool_result` 按其原样
+   形状）成对进入历史，续轮回放时原样送回（含 `encrypted_content`），不再丢弃。
+   顺序保真范围：**对间顺序与对内顺序保持**；与 assistant 文本的原始字节级
+   交错不保证（事件时序决定文本项先落、对在后）——登记为已知近似。
+2. **pause_turn 续接**：现状缺陷——桥把 `pause_turn` 归入未知 finish_reason
+   直接报 Stream 错误。修复为**桥内透明续接**：从 tee 提取本次全部 assistant
+   原始块，按官方语义原样追加回请求续接（工具数组不变），续接次数硬上限 4；
+   超限给出明确错误。不引入新的核心协议状态（codex-core 无 Paused 概念，
+   桥内闭环）。
 3. **混合 server/client 工具轮**：`tool_use` 与 `server_tool_use` 并存且 server 工具
    结果未决时，按官方语义先回 client `tool_result`，再收 server 结果块。
 4. **provenance 参与投影**：桥线输出条目的 provenance 标记进入投影决策，resume/
@@ -28,11 +38,15 @@
 
 ## 3. 数据模型边界（审查重点）
 
-- 历史仍保持**追加语义**；新条目类型必须是 `core/context` 中的 struct 并实现
-  ContextualUserFragment。
-- **硬上限**：每条持久化搜索结果对 ≤ 10K tokens；单轮会话累计搜索结果对 ≤ 64 个；
-  超限走"截断+标记"而不是无界增长。任何单项 >1K tokens 的注入路径按仓库规则
-  标注 P0 人工复审。
+- 历史仍保持**追加语义**。持久化载体是 `ResponseItem::WebSearchCall` 新增的
+  单个可选 `wire_blocks` 字段（原始 Anthropic 块的不透明 JSON 数组，向后兼容：
+  旧 rollout 反序列化为 None）。这些是**历史条目**而非 app 注入 fragment，故不
+  走 ContextualUserFragment；仓库 context 规则（有界、硬上限）以桥边界强制的
+  方式满足（见下）。
+- **硬上限**（桥边界强制）：单对载荷 ≤ 10K tokens（按 bytes/4 近似估算，
+  超限丢弃该对载荷并告警——降级为可回放性丢失，不截断密文本身）；单次请求
+  投影 ≤ 64 对（超出丢弃最旧并告警）。任何单项 >1K tokens 的注入路径按仓库
+  规则标注 P0 人工复审。
 - 密文字段按不透明 base64 blob 存储，不解析、不复用、不跨会话拼接。
 - rollout 格式变更需带版本化读取（旧 rollout 无新字段时按"丢弃搜索历史"降级，
   与当前行为兼容）。

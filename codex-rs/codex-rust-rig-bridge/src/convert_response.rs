@@ -204,6 +204,23 @@ fn finish_text(pending: &mut PendingRigMessage, events: &mut Vec<ResponseEvent>)
     }
 }
 
+/// Flushes a PAUSED attempt's content without a Completed terminal: the
+/// turn continues via bridge-internal re-request (see stream.rs), and the
+/// concatenated events of all attempts form the user-visible turn.
+pub(crate) fn paused_final_events(
+    record: StreamFinal,
+    pending: &mut PendingRigMessage,
+) -> Result<Vec<ResponseEvent>, ApiError> {
+    let mut events = Vec::new();
+    finish_reasoning(pending, &mut events);
+    finish_text(pending, &mut events);
+    events.extend(pending.tools.finish()?.into_values().flatten());
+    if let Some(model) = record.model {
+        events.push(ResponseEvent::ServerModel(model));
+    }
+    Ok(events)
+}
+
 fn handle_stream_final(
     record: StreamFinal,
     pending: &mut PendingRigMessage,

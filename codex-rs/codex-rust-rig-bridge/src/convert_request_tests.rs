@@ -335,7 +335,7 @@ mod mapping {
         input: &[ResponseItem],
         protocol: RigProtocol,
     ) -> Result<Vec<rig_core::completion::message::Message>, codex_api::ApiError> {
-        crate::request_messages::convert_response_items(input, protocol, "test")
+        crate::request_messages::convert_response_items(input, protocol, "test", &mut Vec::new())
     }
 
     fn user_image_message(url: &str) -> ResponseItem {
