@@ -145,9 +145,9 @@ just test -p codex-core -p codex-cli -p codex-app-server-daemon \
 - [x] T01 R1：真实配置来源冲突（用户文件/profile/`-c` 子键；项目来源经核实被上游结构性忽略并断言该边界）与 URL 正规校验；零请求、不改原配置；doctor 逐字段来源与 plain --oss 边界行；双客户端隔离子进程测试。证据与偏差见 `r1-temp-provider-isolation.md`。
 - [x] T02 R2：版本化 envelope + 来源门禁 + 请求侧真实 pair/byte/形状上限（`eff9c9d6c`）；旧格式与跨来源保守降级；实现与证据见 `r2-r3-hosted-fidelity-{spec,plan,tasks}.md`。
 - [x] T03 R3：全块原样暂停续接（含 thinking/signature/citations/交错，`e9e31e2f7`）；跨响应配对与追加完成条目 + 投影去重（`18e97a41a`）；引用持久化进 envelope（`407d5b2de`）；深比较 wire 回归与 core rollout 持久化（B5）。核心级 resume 当前覆盖 Responses 场景的 envelope 持久化；Anthropic 核心级全链路由桥 wire 测试覆盖。
-- [ ] T04 R4：取消关闭 socket/pump/递归续接；远程配置保留预算与 replay=false；三协议字段契约和厂商能力矩阵。
-- [ ] T05 R5：schema/Bazel 与 CI 范围准确；失败现场和 rollout 保留；构建 receipt 绑定 source/features/platform/binary；实际执行和跳过分开统计。
-- [ ] T06 相关离线回归完成后，最小 GLM hosted live 与最终工件验收；其余厂商/平台无配置或未运行时登记 not-run；更新本文和 Phase D 状态。
+- [x] T04 R4：drop 取消（pump select on tx.closed、chainer 拒绝已取消续接、socket 快速释放 + 无第二请求回归，`26920086c`）；远程 thread-config proto 增 21/22 双向字段 + round-trip 回归（`74636d922`）；三协议字段契约表入 FORK.md。
+- [x] T05 R5：schema 全表面重生成含 wire_blocks（`6d2d97be6`，需 UV_PYTHON=3.12）；失败现场先落盘（bridge 部分事件 / 子进程缓冲 stdout+stderr+exit.txt）；manifest 构建_receipt（build.rs 的 build-time SHA/target/profile + 与运行时 HEAD 比对）；websearch 场景保留 rollout 并断言 v1 envelope 持久化；workflows README 改为如实描述 fork 实际工作流。断言强度经 B5 深比较升级。Bazel BUILD.bazel for 桥/live-tests 与 CI dispatch 仍为登记项（fork 无 PR CI，本地合约为准）。
+- [x] T06 最小 GLM hosted live 在最终 HEAD 复验 PASS（72.9s，rollout 内 v1 envelope ×2、turn1/turn2 各含 web_search 事件；工件 `logs/live-glm/websearch-*-7306` 含 rollout/exit.txt/manifest receipt）。MiMo/Step 维持厂商能力边界（矩阵见 FORK.md）；pause_turn 三家网关仍零出现，not-run。
 
 ## Claude 下一轮执行提示词
 
@@ -162,3 +162,30 @@ just test -p codex-core -p codex-cli -p codex-app-server-daemon \
 
 持续更新每批 Tasks：文件、行为、精确命令与退出码、实际断言/跳过/失败数、source/features/binary hash 与工件路径。每批复杂逻辑 <500 行，独立可构建；完成后说明剩余边界。提交仅按明确用户授权，禁止自动 push、发 PR 或发布。
 ```
+
+## 第五轮执行记录（2026-10-01/02，Claude）
+
+- F01–F12 修复按五个可构建批次提交：`1ad6311f9`（①启动与诊断）、
+  `b02cc4c69`（②连接池与请求头）、`6a9e7f4e6`（③Responses 投影）、
+  `e1d0b36bd`（④暂停 flush/估算）、`e129ee8cf`（⑤SDK anchor/回放开关），
+  文档 `f29e8b83d`。每批 stash 隔离做 `cargo check --tests` 可构建验证。
+  全量选择 1073 run：1071 直接过 + 2 个 daemon 测试（沙箱 ps 阻断 + 5 天前
+  泄漏的测试守护进程干扰；清理后隔离复验 2/2 过，`/tmp/daemon-rerun.log`）。
+- R1：`b00c9ce02`。发现：项目级 `model_providers` 被上游结构性忽略（回归
+  改为断言该边界）；profile 需同时给路径与名称。
+- R2+R3：B1 `eff9c9d6c`、B2 `e9e31e2f7`、B3 `18e97a41a`、B4 `407d5b2de`、
+  B5 `24161808b`；批次证据见 `r2-r3-hosted-fidelity-tasks.md`。实施中发现
+  并修复：无 hosted 工具时 tee 未挂载（thinking-only 暂停丢内容）→ 每个
+  Anthropic attempt 挂 tee。
+- R4：`74636d922`（远程字段）、`26920086c`（取消 + 字段契约表）。
+- R5：`6d2d97be6`（schema）、`c9340ed81`（失败现场/receipt/rollout 保留）。
+  发现并登记：测试内重建 codex-exec 会因 workspace feature 统一反复重编
+  core（双侧指纹互斥）， freshness 改为调用方合约并在解析点注释；真实
+  网关的出站 body 捕获需 MITM 代理，当前以保留 rollout + envelope 断言
+  为验收边界。
+- 最终 GLM live：见 T06。测试证据日志：`/tmp/r1-tests-*.log`、
+  `/tmp/b[1-5]-*.log`、`/tmp/r410-full.log`、`/tmp/r5-proto4.log`、
+  `/tmp/t06-glm5.log`。
+- 未做（登记）：桥/live-tests 的 BUILD.bazel、CI dispatch 实跑、
+  cancel 后工具不重复执行的 core 级集成断言（桥级已证无第二请求）、
+  npm 三平台安装回归。

@@ -79,18 +79,27 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
   SSE（`anthropic_sse_tee`，eventsource-stream 解帧），流泵在 Completed 前回收
   web-search 块 → `WebSearchCall` 条目（兼容 GLM 的 `web_search_prime` 改名、
   `search_query` 字段、非标准 assistant 侧 `tool_result` 块）。
-- **结果对持久化与忠实回放（2026-10-01，阶段 D1/D2）**：`server_tool_use` 与
-  结果块按 id 配对（未配对=混合轮 pending → `in_progress`），原始块以
-  `WebSearchCall.wire_blocks` 不透明字段入 rollout（旧 rollout 兼容为 None）；
-  续轮把对原样还原进对应 assistant 消息（含 `encrypted_content`，仅
-  Anthropic→Anthropic；GLM 非标准 tool_result 按原样形状）。provider 级
-  `hosted_results_replay=false` 一行回退旧行为。上限：单对 ~10K tokens
-  （bytes/4，超限丢载荷保调用）。2026-10-01 后续审查确认请求侧限制实际为
-  64 个 assistant 分组，恢复侧载荷验证与来源隔离未完成，不能称为 64 对硬上限。
-- **pause_turn 桥内透明续接（阶段 D3）**：原实现把 pause_turn 归为未知
-  finish_reason 直接报错；初版从 tee 重建文本和搜索对后续接，尚未保留全部
-  thinking/signature/citations 与原始块顺序；工具数组保留，上限 4 次，超出明确报
-  错。每用户可见 turn 恰一个 Created。
+- **结果对持久化与忠实回放（阶段 D1/D2 + R2+R3 复验后落地）**：
+  `server_tool_use` 与结果块按 id 配对；未配对=混合轮 pending
+  （`in_progress`），后续响应带回的结果按 server id 回配请求历史中的
+  pending call，发出**新的追加**完成条目（rollout 只追加），请求构建时
+  同 id 以首个 completed 为准去重。载荷以 `WebSearchCall.wire_blocks` 的
+  版本化 envelope 持久化：`{"version":1,"source":<凭据无关来源身份>,
+  "blocks":[...],"cited_text":[...]}`（空 cited_text 不序列化）。回放要求
+  来源身份与当前请求一致——旧版裸数组与跨来源密文保守降级（不回放、不
+  截断）；请求侧按**真实对**强制上限：≤64 对/请求（丢最旧）、单对序列化
+  ≤40,960 字节（整体丢弃）、id/形状校验，resume/fork/导入同路径执行。
+  带 citations 的文本块随 envelope 持久化并按原位回放；provider 级
+  `hosted_results_replay=false` 整体关闭回放（含旧格式）。
+- **pause_turn 桥内透明续接（阶段 D3 + R3 B2 原样续接）**：每个
+  Anthropic attempt 挂 tee；暂停时重组**全部** assistant 块（thinking/
+  signature、text+citations、tool_use、server_tool_use、结果块，按原始
+  index 顺序，四类增量到终态），续接请求原样替换/追加暂停 assistant 的
+  content（深度相等 wire 回归锁定），工具数组不变，上限 4 次，超出明确
+  报错。每用户可见 turn 恰一个 Created。
+- **流取消（R4）**：消费端 drop 后 pump 立即停止等待模型（select 于
+  channel 关闭，非 idle 超时替代），在途请求与 socket 随之释放；已取消
+  的 turn 不再启动暂停续接。回归证：drop 后连接快速中止且无第二请求。
 - **hosted 搜索厂商能力矩阵**（2026-10-01 live 实测，工件在
   `logs/live-<vendor>/websearch-*`）：GLM 服务端执行 + 回放被接受（PASS）；
   MiMo 把声明的 server tool 回成客户端 tool_use（core 拒绝后模型降级 shell 查
