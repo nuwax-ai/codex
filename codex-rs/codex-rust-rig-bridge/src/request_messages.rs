@@ -13,7 +13,7 @@ pub(crate) fn convert_response_items(
     items: &[ResponseItem],
     protocol: RigProtocol,
     source: &str,
-    websearch_replay: &mut Vec<(usize, Vec<Value>)>,
+    websearch_replay: &mut Vec<crate::hosted_replay::ReplayGroup>,
 ) -> Result<Vec<Message>, codex_api::ApiError> {
     let mut messages: Vec<Message> = Vec::new();
     // How many assistant rig messages have been emitted so far; persisted
@@ -126,18 +126,25 @@ pub(crate) fn convert_response_items(
             }
             ResponseItem::WebSearchCall { wire_blocks, .. } => {
                 // Fork (nuwax-codex): persisted raw wire pairs replay into
-                // the assistant message they followed — Anthropic wire only
-                // (cross-wire ciphertext is not compatible); Chat keeps
-                // dropping hosted-tool history.
+                // the assistant message they followed — Anthropic wire only,
+                // and only when the payload was captured by the same source
+                // identity sending this request (legacy bare arrays and
+                // cross-endpoint ciphertext are conservatively dropped).
                 match (protocol, wire_blocks) {
-                    (RigProtocol::Anthropic, Some(blocks)) => {
-                        let blocks = blocks
-                            .as_array()
-                            .cloned()
-                            .unwrap_or_default()
-                            .into_iter()
-                            .filter(|block| !block.is_null())
-                            .collect::<Vec<_>>();
+                    (RigProtocol::Anthropic, Some(payload)) => {
+                        let Some(envelope) = crate::hosted_replay::parse_envelope(payload) else {
+                            tracing::warn!(
+                                "persisted web-search payload has an unrecognized shape; dropping it"
+                            );
+                            continue;
+                        };
+                        if !crate::hosted_replay::replayable(&envelope, source) {
+                            tracing::warn!(
+                                "persisted web-search payload is from another source; dropping it"
+                            );
+                            continue;
+                        }
+                        let blocks = envelope.blocks;
                         if blocks.is_empty() {
                             tracing::warn!(
                                 "persisted web-search pair carries no blocks; dropping it"
@@ -168,8 +175,11 @@ pub(crate) fn convert_response_items(
                         }
                         let target = assistant_messages - 1;
                         match websearch_replay.last_mut() {
-                            Some((index, group)) if *index == target => group.extend(blocks),
-                            _ => websearch_replay.push((target, blocks)),
+                            Some(group) if group.index == target => group.blocks.extend(blocks),
+                            _ => websearch_replay.push(crate::hosted_replay::ReplayGroup {
+                                index: target,
+                                blocks,
+                            }),
                         }
                     }
                     (RigProtocol::Anthropic, None) => {

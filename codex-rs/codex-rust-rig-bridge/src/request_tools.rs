@@ -32,7 +32,7 @@ pub(crate) struct ToolMeta {
     /// Persisted web-search wire pairs to replay into the serialized body:
     /// (index of the assistant rig message, raw blocks in order). Populated
     /// by history conversion on the Anthropic wire.
-    pub(crate) websearch_replay: Vec<(usize, Vec<Value>)>,
+    pub(crate) websearch_replay: Vec<crate::hosted_replay::ReplayGroup>,
 }
 
 pub(crate) fn flat_name(name: &str, namespace: Option<&str>) -> String {

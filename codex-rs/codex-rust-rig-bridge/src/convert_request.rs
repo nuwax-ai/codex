@@ -166,18 +166,11 @@ pub(crate) fn responses_request_to_completion_request(
             });
         }
     };
-    // Hard cap on projected pairs (spec §3): keep the newest, drop the
-    // oldest with a warning.
-    const MAX_REPLAY_GROUPS: usize = 64;
-    if websearch_replay.len() > MAX_REPLAY_GROUPS {
-        let dropped = websearch_replay.len() - MAX_REPLAY_GROUPS;
-        websearch_replay.drain(..dropped);
-        tracing::warn!(
-            dropped,
-            MAX_REPLAY_GROUPS,
-            "web-search replay pairs exceed the per-request cap; oldest dropped"
-        );
-    }
+    // Authoritative request-side caps and shape checks (spec §3): count
+    // real pairs — not assistant groups — reject malformed payloads, and
+    // drop oversized or oldest pairs whole. Runs on every request build, so
+    // resumed or imported history passes the same validation.
+    let websearch_replay = crate::hosted_replay::sanitize_for_request(websearch_replay);
     let mut selection = selection;
     selection.meta.websearch_replay = websearch_replay;
     Ok((

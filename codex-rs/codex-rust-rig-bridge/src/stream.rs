@@ -299,6 +299,7 @@ fn stream_via_rig_attempt(
         let paused_items: Arc<std::sync::Mutex<Option<Vec<codex_protocol::models::ResponseItem>>>> =
             Arc::new(std::sync::Mutex::new(None));
         let pump_paused_items = paused_items.clone();
+        let pump_source = source.clone();
         let pump_tx = tx.clone();
         let pump_task = tokio::spawn(async move {
             let tx = pump_tx;
@@ -395,9 +396,11 @@ fn stream_via_rig_attempt(
                             if let Some(tee) = &pump_sse_tee
                                 && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
                             {
-                                items =
-                                    crate::hosted_tools::assistant_continuation_items(&sse_bytes)
-                                        .await;
+                                items = crate::hosted_tools::assistant_continuation_items(
+                                    &sse_bytes,
+                                    &pump_source,
+                                )
+                                .await;
                             }
                             // The user-visible events carry the recovered pairs
                             // too (same recovery as a completed turn): an Added
@@ -453,7 +456,10 @@ fn stream_via_rig_attempt(
                                 .await;
                             let mut injected = Vec::new();
                             for pair in crate::hosted_tools::pair_web_search_blocks(capture) {
-                                injected.extend(crate::hosted_tools::web_search_call_events(pair));
+                                injected.extend(crate::hosted_tools::web_search_call_events(
+                                    pair,
+                                    &pump_source,
+                                ));
                             }
                             if !injected.is_empty() {
                                 let terminal = events.split_off(events.len() - 1);

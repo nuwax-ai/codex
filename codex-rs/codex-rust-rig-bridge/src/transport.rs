@@ -42,7 +42,7 @@ pub(crate) struct RigHttpClient {
     /// Anthropic wire only: persisted web-search wire pairs to splice into
     /// their assistant message's content array ((assistant-message index,
     /// raw blocks in history order)).
-    pub(crate) anthropic_websearch_replay: Vec<(usize, Vec<serde_json::Value>)>,
+    pub(crate) anthropic_websearch_replay: Vec<crate::hosted_replay::ReplayGroup>,
     /// Translated Anthropic server-tool entries for the request's hosted
     /// (Responses) tools; empty when none translate. Chat keeps dropping
     /// hosted tools — they have no Chat Completions representation.
@@ -118,7 +118,7 @@ impl RigHttpClient {
 /// without standing up an HTTP stack; [`send_streaming`] is its only caller.
 struct ChatFamilyRewrite<'a> {
     protocol: crate::RigProtocol,
-    websearch_replay: &'a [(usize, Vec<serde_json::Value>)],
+    websearch_replay: &'a [crate::hosted_replay::ReplayGroup],
     disable_anthropic_parallel: bool,
     disable_anthropic_thinking: bool,
     tool_strict: &'a std::collections::HashMap<String, bool>,
@@ -278,7 +278,7 @@ impl ChatFamilyRewrite<'_> {
             // matching how history conversion numbered them.
             if !self.websearch_replay.is_empty() {
                 let mut assistant_seen = 0usize;
-                let mut pending: Vec<&(usize, Vec<serde_json::Value>)> =
+                let mut pending: Vec<&crate::hosted_replay::ReplayGroup> =
                     self.websearch_replay.iter().collect();
                 for message in messages.iter_mut() {
                     if message.get("role").and_then(serde_json::Value::as_str) != Some("assistant")
@@ -287,15 +287,15 @@ impl ChatFamilyRewrite<'_> {
                     }
                     let current = assistant_seen;
                     assistant_seen += 1;
-                    let groups: Vec<&(usize, Vec<serde_json::Value>)> = pending
+                    let groups: Vec<&crate::hosted_replay::ReplayGroup> = pending
                         .iter()
-                        .filter(|(index, _)| *index == current)
+                        .filter(|group| group.index == current)
                         .copied()
                         .collect();
                     if groups.is_empty() {
                         continue;
                     }
-                    pending.retain(|(index, _)| *index != current);
+                    pending.retain(|group| group.index != current);
                     let Some(content) = message
                         .get_mut("content")
                         .and_then(serde_json::Value::as_array_mut)
@@ -306,8 +306,8 @@ impl ChatFamilyRewrite<'_> {
                         );
                         continue;
                     };
-                    for (_, blocks) in groups {
-                        content.extend(blocks.iter().cloned());
+                    for group in groups {
+                        content.extend(group.blocks.iter().cloned());
                     }
                 }
                 if !pending.is_empty() {

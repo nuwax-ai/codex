@@ -186,7 +186,7 @@ pub(crate) fn endpoint(
     Ok((url.to_string().trim_end_matches('/').to_string(), query))
 }
 
-pub(crate) fn reasoning_source(
+pub fn reasoning_source(
     provider: &Provider,
     protocol: RigProtocol,
     model: &str,

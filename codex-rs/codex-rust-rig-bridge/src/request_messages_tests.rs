@@ -2,6 +2,12 @@ use super::*;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
+fn envelope(payload: serde_json::Value) -> serde_json::Value {
+    // Same-source v1 envelope for these conversion tests; the gate itself is
+    // covered by hosted_replay_tests.
+    json!({"version": 1, "source": "source", "blocks": payload})
+}
+
 #[test]
 fn hosted_replay_tracks_each_assistant_across_user_turns() {
     let assistant_items = [
@@ -10,7 +16,14 @@ fn hosted_replay_tracks_each_assistant_across_user_turns() {
         json!({"type":"agent_message", "author":"worker", "recipient":"main", "content":[{"type":"input_text", "text":"result"}]}),
         json!({"type":"message", "role":"assistant", "content":[{"type":"output_text", "text":"answer"}]}),
     ];
-    let blocks = json!([{"type":"server_tool_use", "id":"search-2", "name":"web_search", "input":{"query":"new turn"}}]);
+    let expected_blocks = json!([
+        {"type": "server_tool_use", "id": "search-2", "name": "web_search",
+         "input": {"query": "new turn"}}
+    ])
+    .as_array()
+    .expect("blocks")
+    .clone();
+    let blocks = envelope(json!(expected_blocks));
     for first in &assistant_items {
         // A search-only second turn must still get its own assistant message.
         for second in std::iter::once(None).chain(assistant_items.iter().map(Some)) {
@@ -42,7 +55,10 @@ fn hosted_replay_tracks_each_assistant_across_user_turns() {
             );
             assert_eq!(
                 replay,
-                vec![(1, blocks.as_array().expect("blocks").clone())]
+                vec![crate::hosted_replay::ReplayGroup {
+                    index: 1,
+                    blocks: expected_blocks.clone(),
+                }]
             );
             assert!(matches!(messages.last(), Some(Message::Assistant { .. })));
         }
@@ -51,7 +67,14 @@ fn hosted_replay_tracks_each_assistant_across_user_turns() {
 
 #[test]
 fn hosted_replay_after_tool_result_does_not_attach_to_the_tool_call_turn() {
-    let blocks = json!([{"type":"server_tool_use", "id":"search-2", "name":"web_search", "input":{"query":"after tool"}}]);
+    let expected_blocks = json!([
+        {"type": "server_tool_use", "id": "search-2", "name": "web_search",
+         "input": {"query": "after tool"}}
+    ])
+    .as_array()
+    .expect("blocks")
+    .clone();
+    let blocks = envelope(json!(expected_blocks));
     let items = serde_json::from_value::<Vec<ResponseItem>>(json!([
         {"type":"function_call", "name":"lookup", "call_id":"call-1", "arguments":"{}"},
         {"type":"function_call_output", "call_id":"call-1", "output":"result"},
@@ -64,7 +87,10 @@ fn hosted_replay_after_tool_result_does_not_attach_to_the_tool_call_turn() {
     assert_eq!(messages.len(), 3);
     assert_eq!(
         replay,
-        vec![(1, blocks.as_array().expect("blocks").clone())]
+        vec![crate::hosted_replay::ReplayGroup {
+            index: 1,
+            blocks: expected_blocks.clone(),
+        }]
     );
     let Some(Message::Assistant { content, .. }) = messages.last() else {
         panic!("search assistant");
@@ -79,6 +105,42 @@ fn hosted_replay_after_tool_result_does_not_attach_to_the_tool_call_turn() {
             .additional_params
             .as_ref()
             .and_then(|params| params.get("anthropic_content")),
-        blocks.as_array().and_then(|blocks| blocks.first())
+        expected_blocks.first()
     );
+}
+
+#[test]
+fn legacy_and_foreign_payloads_do_not_replay_and_create_no_assistant() {
+    for (label, payload) in [
+        (
+            "legacy bare array",
+            json!([
+                {"type": "server_tool_use", "id": "old", "name": "web_search", "input": {}}
+            ]),
+        ),
+        (
+            "foreign source",
+            json!({"version": 1, "source": "Anthropic:other", "blocks": [
+                {"type": "server_tool_use", "id": "x", "name": "web_search", "input": {}}
+            ]}),
+        ),
+        ("unrecognized shape", json!({"unexpected": true})),
+    ] {
+        let items = serde_json::from_value::<Vec<ResponseItem>>(json!([
+            {"type":"message", "role":"user", "content":[{"type":"input_text", "text":"q"}]},
+            {"type":"web_search_call", "wire_blocks":payload}
+        ]))
+        .expect("history");
+        let mut replay = Vec::new();
+        let messages =
+            convert_response_items(&items, RigProtocol::Anthropic, "source", &mut replay)
+                .expect("convert history");
+        assert!(replay.is_empty(), "{label} must not replay");
+        assert!(
+            !messages
+                .iter()
+                .any(|message| matches!(message, Message::Assistant { .. })),
+            "{label} must not synthesize an assistant message"
+        );
+    }
 }

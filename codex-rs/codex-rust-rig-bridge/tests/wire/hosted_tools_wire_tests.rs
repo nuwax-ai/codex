@@ -314,6 +314,9 @@ async fn anthropic_server_tool_use_maps_to_a_web_search_call_item() {
         .filter(|item| matches!(item, ResponseItem::WebSearchCall { .. }))
         .collect();
     assert_eq!(web_search_calls.len(), 1, "items: {done_items:?}");
+    let source =
+        codex_rust_rig_bridge::reasoning_source(&provider, RigProtocol::Anthropic, "review-model")
+            .expect("source identity");
     assert_eq!(
         serde_json::to_value(web_search_calls[0]).unwrap(),
         json!({
@@ -321,12 +324,17 @@ async fn anthropic_server_tool_use_maps_to_a_web_search_call_item() {
             "id":"srvu_glm",
             "status":"completed",
             "action":{"type":"search","query":"上海天气"},
-            // D1: the raw wire pair rides the item for faithful replay —
-            // GLM's non-standard assistant-side tool_result included.
-            "wire_blocks":[
-                {"type":"server_tool_use","id":"srvu_glm","name":"web_search_prime","input":{"search_query":"上海天气","location":"cn"}},
-                {"type":"tool_result","tool_use_id":"srvu_glm","content":"[{'text': [{'title': 'weather', 'link': 'https://example.com'}]}]"},
-            ],
+            // D1+R2: the raw wire pair rides the item inside the versioned
+            // same-source envelope — GLM's non-standard assistant-side
+            // tool_result included, verbatim.
+            "wire_blocks":{
+                "version":1,
+                "source":source,
+                "blocks":[
+                    {"type":"server_tool_use","id":"srvu_glm","name":"web_search_prime","input":{"search_query":"上海天气","location":"cn"}},
+                    {"type":"tool_result","tool_use_id":"srvu_glm","content":"[{'text': [{'title': 'weather', 'link': 'https://example.com'}]}]"},
+                ],
+            },
         })
     );
     let messages: Vec<&ResponseItem> = done_items
@@ -399,16 +407,26 @@ async fn anthropic_replay_restores_persisted_web_search_blocks() {
         tokio::spawn(
             async move { support::serve_payload(&listener, support::ANTHROPIC_SSE).await },
         );
+    // The persisted payload is the versioned envelope captured by the SAME
+    // source identity this request will use (computed through the bridge's
+    // own identity function), so the replay gate accepts it.
+    let source =
+        codex_rust_rig_bridge::reasoning_source(&provider, RigProtocol::Anthropic, "review-model")
+            .expect("source identity");
     let request = support::request(vec![
         support::user(),
         serde_json::json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"prior answer"}]}),
         serde_json::json!({
             "type":"web_search_call","id":"call_prev","status":"completed",
             "action":{"type":"search","query":"last turn query"},
-            "wire_blocks":[
-                {"type":"server_tool_use","id":"srvtoolu_prev","name":"web_search","input":{"query":"last turn query"}},
-                {"type":"web_search_tool_result","tool_use_id":"srvtoolu_prev","content":[{"type":"web_search_result","url":"https://example.com","encrypted_content":"ENCRYPTED_PAYLOAD"}]},
-            ],
+            "wire_blocks":{
+                "version":1,
+                "source":source,
+                "blocks":[
+                    {"type":"server_tool_use","id":"srvtoolu_prev","name":"web_search","input":{"query":"last turn query"}},
+                    {"type":"web_search_tool_result","tool_use_id":"srvtoolu_prev","content":[{"type":"web_search_result","url":"https://example.com","encrypted_content":"ENCRYPTED_PAYLOAD"}]},
+                ],
+            },
         }),
         serde_json::json!({"type":"message","role":"user","content":[{"type":"input_text","text":"next question"}]}),
     ]);
@@ -448,6 +466,57 @@ async fn anthropic_replay_restores_persisted_web_search_blocks() {
         "encrypted content must round-trip unmodified"
     );
     assert!(encoded.contains("next question"));
+}
+
+// R2: payloads captured by a different endpoint/model identity never ride a
+// request to this endpoint — the gate drops them before the wire.
+#[tokio::test]
+async fn anthropic_replay_drops_payloads_from_another_source() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let provider = provider(listener.local_addr().unwrap());
+    let server =
+        tokio::spawn(
+            async move { support::serve_payload(&listener, support::ANTHROPIC_SSE).await },
+        );
+    let foreign = json!({
+        "version": 1,
+        "source": "Anthropic:0000000000000000000000000000000000000000000000000000000000000000",
+        "blocks": [
+            {"type":"server_tool_use","id":"srvtoolu_foreign","name":"web_search","input":{"query":"q"}},
+            {"type":"web_search_tool_result","tool_use_id":"srvtoolu_foreign","content":[{"type":"web_search_result","encrypted_content":"FOREIGN_CIPHERTEXT"}]},
+        ],
+    });
+    let request = support::request(vec![
+        support::user(),
+        serde_json::json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"prior answer"}]}),
+        serde_json::json!({
+            "type":"web_search_call","id":"call_prev","status":"completed",
+            "action":{"type":"search","query":"q"},
+            "wire_blocks":foreign,
+        }),
+        serde_json::json!({"type":"message","role":"user","content":[{"type":"input_text","text":"next question"}]}),
+    ]);
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = stream.next().await {
+        event.unwrap();
+    }
+    let wire = server.await.unwrap();
+    let encoded = wire["body"]["messages"].to_string();
+    assert!(
+        !encoded.contains("server_tool_use") && !encoded.contains("FOREIGN_CIPHERTEXT"),
+        "cross-source ciphertext must not ride the request: {encoded}"
+    );
+    assert!(encoded.contains("prior answer") && encoded.contains("next question"));
 }
 
 // D2: opting out via the provider knob drops the pairs (legacy behavior).
@@ -564,7 +633,7 @@ fn search_pair(id: &str) -> Value {
     ])
 }
 
-async fn capture_search_replay(items: Vec<Value>, replay: SearchReplay) -> Value {
+async fn capture_search_replay(raw_items: Vec<Value>, replay: SearchReplay) -> Value {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mut provider = provider(listener.local_addr().unwrap());
     provider.hosted_results_replay = match replay {
@@ -575,6 +644,27 @@ async fn capture_search_replay(items: Vec<Value>, replay: SearchReplay) -> Value
         tokio::spawn(
             async move { support::serve_payload(&listener, support::ANTHROPIC_SSE).await },
         );
+    // Fixtures write bare block arrays; wrap them into the versioned
+    // envelope of the SAME source identity this request will use, exactly
+    // like a captured turn would carry them.
+    let source =
+        codex_rust_rig_bridge::reasoning_source(&provider, RigProtocol::Anthropic, "review-model")
+            .expect("source identity");
+    let items = raw_items
+        .into_iter()
+        .map(|mut item| {
+            if item["type"] == "web_search_call"
+                && let Some(blocks) = item["wire_blocks"].as_array()
+            {
+                item["wire_blocks"] = json!({
+                    "version": 1,
+                    "source": source,
+                    "blocks": blocks,
+                });
+            }
+            item
+        })
+        .collect();
     let request = support::request(items);
     let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
     let mut stream = stream_via_rig(

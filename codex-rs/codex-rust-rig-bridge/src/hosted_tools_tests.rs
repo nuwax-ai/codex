@@ -238,10 +238,13 @@ fn official_result_blocks_pair_by_id() {
         json!("srvu_1")
     );
     // The emitted item carries both raw blocks and a completed status.
-    let events = web_search_call_events(PairedWebSearchBlocks {
-        call: pairs[0].call.clone(),
-        result: pairs[0].result.clone(),
-    });
+    let events = web_search_call_events(
+        PairedWebSearchBlocks {
+            call: pairs[0].call.clone(),
+            result: pairs[0].result.clone(),
+        },
+        "test-source",
+    );
     let done = events
         .iter()
         .find_map(|event| match event {
@@ -253,8 +256,18 @@ fn official_result_blocks_pair_by_id() {
     assert_eq!(encoded["status"], json!("completed"));
     assert_eq!(
         encoded["wire_blocks"],
-        json!([pairs[0].call, pairs[0].result.clone().expect("paired"),]),
-        "the raw wire pair must ride the item verbatim"
+        json!({
+            "version": 1,
+            "source": "test-source",
+            "blocks": [
+                {"type": "server_tool_use", "id": "srvu_1", "name": "web_search",
+                 "input": {"query": "q1"}},
+                {"type": "web_search_tool_result", "tool_use_id": "srvu_1",
+                 "content": [{"type": "web_search_result", "url": "https://example.com",
+                              "encrypted_content": "ENC"}]},
+            ],
+        }),
+        "the raw wire pair must ride the item verbatim in the versioned envelope"
     );
 }
 
@@ -262,11 +275,14 @@ fn official_result_blocks_pair_by_id() {
 // only the use block.
 #[test]
 fn unpaired_call_emits_in_progress_with_use_block_only() {
-    let call = json!({"id": "srvu_2", "name": "web_search", "input": {"query": "q"}});
-    let events = web_search_call_events(PairedWebSearchBlocks {
-        call: call.clone(),
-        result: None,
-    });
+    let events = web_search_call_events(
+        PairedWebSearchBlocks {
+            call: json!({"type": "server_tool_use", "id": "srvu_2", "name": "web_search",
+                         "input": {"query": "mixed turn query"}}),
+            result: None,
+        },
+        "test-source",
+    );
     let done = events
         .iter()
         .find_map(|event| match event {
@@ -276,5 +292,13 @@ fn unpaired_call_emits_in_progress_with_use_block_only() {
         .expect("done item");
     let encoded = serde_json::to_value(&done).expect("encode");
     assert_eq!(encoded["status"], json!("in_progress"));
-    assert_eq!(encoded["wire_blocks"], json!([call]));
+    assert_eq!(
+        encoded["wire_blocks"],
+        json!({
+            "version": 1,
+            "source": "test-source",
+            "blocks": [{"type": "server_tool_use", "id": "srvu_2", "name": "web_search",
+                        "input": {"query": "mixed turn query"}}],
+        })
+    );
 }

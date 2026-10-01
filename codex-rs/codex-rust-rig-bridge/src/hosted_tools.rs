@@ -331,10 +331,14 @@ pub(crate) fn pair_web_search_blocks(capture: WebSearchWireCapture) -> Vec<Paire
 }
 
 /// Emits a completed web-search call item for one recovered pair, carrying
-/// the raw blocks for faithful replay. `in_progress` marks a pending call
-/// whose result has not arrived (mixed server/client turn); its result block
-/// arrives in a follow-up response.
-pub(crate) fn web_search_call_events(pair: PairedWebSearchBlocks) -> Vec<ResponseEvent> {
+/// the raw blocks in the versioned replay envelope for faithful same-source
+/// replay. `in_progress` marks a pending call whose result has not arrived
+/// (mixed server/client turn); its result block arrives in a follow-up
+/// response.
+pub(crate) fn web_search_call_events(
+    pair: PairedWebSearchBlocks,
+    source: &str,
+) -> Vec<ResponseEvent> {
     let PairedWebSearchBlocks { call, result } = pair;
     let id = call
         .get("id")
@@ -348,22 +352,24 @@ pub(crate) fn web_search_call_events(pair: PairedWebSearchBlocks) -> Vec<Respons
     } else {
         "in_progress"
     };
-    // Spec §3 hard cap: a pair larger than ~10K tokens (bytes/4) loses its
-    // replay payload (the call itself still completes) — never truncated
-    // mid-ciphertext, never unbounded history growth.
-    const MAX_PAIR_BYTES: usize = 40_960;
-    let wire_blocks = match &result {
-        Some(result) => json!([call, result]),
-        None => json!([call]),
+    // Event-side first defense: a pair larger than ~10K tokens (bytes/4)
+    // loses its replay payload (the call itself still completes) — never
+    // truncated mid-ciphertext. The request-side sanitize pass re-checks
+    // every payload, whatever produced it.
+    let blocks = match &result {
+        Some(result) => vec![call, result.clone()],
+        None => vec![call],
     };
-    let wire_blocks = if wire_blocks.to_string().len() > MAX_PAIR_BYTES {
+    let wire_blocks = if serde_json::to_string(&blocks).map_or(true, |serialized| {
+        serialized.len() > crate::hosted_replay::MAX_PAIR_BYTES
+    }) {
         tracing::warn!(
-            MAX_PAIR_BYTES,
+            max_pair_bytes = crate::hosted_replay::MAX_PAIR_BYTES,
             "web-search result pair exceeds the replay size cap; dropping its replay payload"
         );
         None
     } else {
-        Some(wire_blocks)
+        Some(crate::hosted_replay::envelope(source, blocks))
     };
     let make = |status: Option<String>, wire_blocks: Option<Value>| ResponseItem::WebSearchCall {
         id: Some(ResponseItemId::from_server(id.clone())),
@@ -392,7 +398,7 @@ fn string_field(block: &Value, key: &str) -> String {
 /// text blocks merge into one assistant message, server-tool blocks become
 /// `WebSearchCall` items carrying the raw wire pair (reusing the D2 replay
 /// channel), and unmodeled blocks are dropped with a warning.
-pub(crate) async fn assistant_continuation_items(bytes: &[u8]) -> Vec<ResponseItem> {
+pub(crate) async fn assistant_continuation_items(bytes: &[u8], source: &str) -> Vec<ResponseItem> {
     let capture = web_search_blocks_from_anthropic_sse(bytes).await;
     let pairs = pair_web_search_blocks(capture);
     let mut items = Vec::new();
@@ -407,8 +413,9 @@ pub(crate) async fn assistant_continuation_items(bytes: &[u8]) -> Vec<ResponseIt
         });
     }
     for pair in pairs {
-        // Reuse the event builder (size cap included), then keep the item.
-        for event in web_search_call_events(pair) {
+        // Reuse the event builder (envelope + size cap included), then keep
+        // the item.
+        for event in web_search_call_events(pair, source) {
             if let ResponseEvent::OutputItemDone(item) = event {
                 items.push(item);
             }
