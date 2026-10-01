@@ -97,18 +97,23 @@ async fn paused_turn_continues_with_verbatim_assistant_blocks() {
     assert!(texts.contains(&"ok".to_string()));
 
     // The continuation request re-sent the paused assistant content:
-    // text first, then the raw search pair (D2 channel), before the
-    // trailing empty assistant message rig serializes for the history item.
-    let second = bodies[1].to_string();
-    assert!(
-        second.contains("partial so far"),
-        "paused text must ride the continuation request: {second}"
+    // The paused assistant re-sends VERBATIM (deep equality, not substring
+    // probes): the streamed search pair and the partial text in original
+    // block order.
+    let messages = bodies[1]["messages"].as_array().expect("messages");
+    let last_assistant = messages
+        .iter()
+        .rev()
+        .find(|message| message["role"] == "assistant")
+        .expect("paused assistant message");
+    assert_eq!(
+        last_assistant["content"],
+        serde_json::Value::Array(vec![
+            json!({"type":"server_tool_use","id":"srvu_p1","name":"web_search","input":{"query":"pause q"}}),
+            json!({"type":"web_search_tool_result","tool_use_id":"srvu_p1","content":[{"type":"web_search_result","url":"https://example.com","encrypted_content":"ENC_P1"}]}),
+            json!({"type":"text","text":"partial so far"}),
+        ])
     );
-    assert!(
-        second.contains("ENC_P1"),
-        "encrypted result content must ride the continuation request verbatim: {second}"
-    );
-    assert!(second.contains("srvu_p1"));
 }
 
 #[tokio::test]

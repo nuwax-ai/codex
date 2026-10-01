@@ -143,8 +143,8 @@ just test -p codex-core -p codex-cli -p codex-app-server-daemon \
 ## 下一轮 Tasks 完成标准
 
 - [x] T01 R1：真实配置来源冲突（用户文件/profile/`-c` 子键；项目来源经核实被上游结构性忽略并断言该边界）与 URL 正规校验；零请求、不改原配置；doctor 逐字段来源与 plain --oss 边界行；双客户端隔离子进程测试。证据与偏差见 `r1-temp-provider-isolation.md`。
-- [ ] T02 R2：独立 Spec/Plan；版本化来源和未知来源降级；真实 pair/byte 上限；新建/加载/resume/fork/切换全部执行相同验证。
-- [ ] T03 R3：所有 assistant 块原样暂停续接；跨响应 server id 配对；引用持久化；完整 content/tools 深比较和真实保存恢复。
+- [x] T02 R2：版本化 envelope + 来源门禁 + 请求侧真实 pair/byte/形状上限（`eff9c9d6c`）；旧格式与跨来源保守降级；实现与证据见 `r2-r3-hosted-fidelity-{spec,plan,tasks}.md`。
+- [x] T03 R3：全块原样暂停续接（含 thinking/signature/citations/交错，`e9e31e2f7`）；跨响应配对与追加完成条目 + 投影去重（`18e97a41a`）；引用持久化进 envelope（`407d5b2de`）；深比较 wire 回归与 core rollout 持久化（B5）。核心级 resume 当前覆盖 Responses 场景的 envelope 持久化；Anthropic 核心级全链路由桥 wire 测试覆盖。
 - [ ] T04 R4：取消关闭 socket/pump/递归续接；远程配置保留预算与 replay=false；三协议字段契约和厂商能力矩阵。
 - [ ] T05 R5：schema/Bazel 与 CI 范围准确；失败现场和 rollout 保留；构建 receipt 绑定 source/features/platform/binary；实际执行和跳过分开统计。
 - [ ] T06 相关离线回归完成后，最小 GLM hosted live 与最终工件验收；其余厂商/平台无配置或未运行时登记 not-run；更新本文和 Phase D 状态。

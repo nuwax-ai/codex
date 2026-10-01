@@ -134,13 +134,23 @@ async fn responses_bridge_resumes_history_without_backfilling_provenance() -> Re
     let reasoning =
         responses::ev_reasoning_item("rs_original", &["saved summary"], &["saved thought"]);
     let assistant = responses::ev_assistant_message("msg_original", "first answer");
+    // Versioned same-source envelope (R2): persisted verbatim through the
+    // rollout and cleared from the Responses request copy below.
     let hosted_item = json!({
         "type":"web_search_call", "id":"search_saved", "status":"completed",
         "action":{"type":"search", "query":"saved query"},
-        "wire_blocks":[
-            {"type":"server_tool_use", "id":"srv_saved", "name":"web_search", "input":{"query":"saved query"}},
-            {"type":"web_search_tool_result", "tool_use_id":"srv_saved", "content":[{"type":"web_search_result", "encrypted_content":"vendor-secret"}]}
-        ]
+        "wire_blocks":{
+            "version":1,
+            "source":"Anthropic:0000000000000000000000000000000000000000000000000000000000000000",
+            "blocks":[
+                {"type":"server_tool_use", "id":"srv_saved", "name":"web_search", "input":{"query":"saved query"}},
+                {"type":"web_search_tool_result", "tool_use_id":"srv_saved", "content":[{"type":"web_search_result", "encrypted_content":"vendor-secret"}]}
+            ],
+            "cited_text":[
+                {"type":"text", "text":"cited answer",
+                 "citations":[{"type":"search_result_location","cited_text":"finding","source":"https://example.com","search_result_index":0,"start_block_index":1,"end_block_index":2}]}
+            ]
+        }
     });
     let plan_args = json!({"plan": [{"step": "save history", "status": "completed"}]}).to_string();
     let initial_mock = responses::mount_response_sequence(
