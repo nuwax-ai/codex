@@ -242,7 +242,18 @@ async fn websearch_anthropic_rig_scenario(
     .await
 }
 
-exec_matrix!(websearch_anthropic_rig, ["mimo", "glm", "step"]);
+// Hosted web search on the Anthropic wire — vendor capability matrix
+// (live-verified 2026-10-01, artifacts under logs/live-<vendor>/websearch-*):
+//   glm:  executes server-side; result pairs replay on turn 2 (PASS).
+//   mimo: echoes the declared server tool back as a CLIENT tool_use —
+//         core rejects it ("unsupported call: web_search") and the model
+//         falls back to shell lookups; no hosted search happens.
+//   step: rejects the web_search_20250305 declaration outright
+//         (400 input_invalid); the no-search anthropic scenario passes,
+//         isolating the declaration as the trigger.
+// Both are gateway capability boundaries, not bridge defects; re-add a
+// vendor here once its gateway runs the tool server-side.
+exec_matrix!(websearch_anthropic_rig, ["glm"]);
 exec_matrix!(compact_chat_rig, ["mimo", "glm", "step"]);
 exec_matrix!(compact_anthropic_rig, ["mimo", "glm", "step"]);
 exec_matrix!(compact_responses_rig, ["mimo", "glm", "step"]);

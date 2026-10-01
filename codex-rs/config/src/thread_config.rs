@@ -319,6 +319,8 @@ mod tests {
             supports_websockets: true,
             supports_standalone_web_search: true,
             include_internal_metadata: false,
+            max_output_tokens: None,
+            hosted_results_replay: None,
         }
     }
 }

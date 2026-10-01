@@ -59,6 +59,7 @@ fn external_context_pollution_items_include_web_search_and_tool_search() {
             status: Some("completed".to_string()),
             action: None,
             internal_chat_message_metadata_passthrough: None,
+            wire_blocks: None,
         },
         ResponseItem::ToolSearchCall {
             id: None,

@@ -50,6 +50,8 @@ fn bridged_responses_provider(server: &MockServer) -> ModelProviderInfo {
         supports_websockets: false,
         supports_standalone_web_search: false,
         include_internal_metadata: false,
+        max_output_tokens: None,
+        hosted_results_replay: None,
     }
 }
 

@@ -715,6 +715,8 @@ mod tests {
             supports_websockets: false,
             supports_standalone_web_search: false,
             include_internal_metadata: false,
+            max_output_tokens: None,
+            hosted_results_replay: None,
         }
     }
 

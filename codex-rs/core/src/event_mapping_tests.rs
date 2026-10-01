@@ -591,6 +591,7 @@ fn parses_web_search_call() {
             queries: None,
         }),
         internal_chat_message_metadata_passthrough: None,
+        wire_blocks: None,
     };
 
     let turn_item = parse_turn_item(&item).expect("expected web search turn item");
@@ -621,6 +622,7 @@ fn parses_web_search_open_page_call() {
             url: Some("https://example.com".to_string()),
         }),
         internal_chat_message_metadata_passthrough: None,
+        wire_blocks: None,
     };
 
     let turn_item = parse_turn_item(&item).expect("expected web search turn item");
@@ -651,6 +653,7 @@ fn parses_web_search_find_in_page_call() {
             pattern: Some("needle".to_string()),
         }),
         internal_chat_message_metadata_passthrough: None,
+        wire_blocks: None,
     };
 
     let turn_item = parse_turn_item(&item).expect("expected web search turn item");
@@ -679,6 +682,7 @@ fn parses_partial_web_search_call_without_action_as_other() {
         status: Some("in_progress".to_string()),
         action: None,
         internal_chat_message_metadata_passthrough: None,
+        wire_blocks: None,
     };
 
     let turn_item = parse_turn_item(&item).expect("expected web search turn item");

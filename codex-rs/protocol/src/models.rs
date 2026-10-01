@@ -3890,6 +3890,7 @@ mod tests {
                 id: expected_id.clone(),
                 status: expected_status.clone(),
                 action: expected_action.clone(),
+                wire_blocks: None,
                 internal_chat_message_metadata_passthrough: None,
             };
             assert_eq!(parsed, expected);

@@ -335,6 +335,16 @@ fix/fmt 结果、后续源码复查：
 - 修复前状态（无法用测试复现的运行时证据缺口即缺陷本身）：固定目录覆盖 + 无 manifest（index-logs 不收录）+ 仅断言非空回答——已由代码对照确认，行为修复的证据在 B3 真实运行时补齐。
 - A4b 离线验证：`just test -p codex-live-tests --offline --retries 0 -E 'test(binary_turns::tests) | test(config::) | test(cassette::)'` → **10/10 pass**。
 
+#### 阶段 D 复查与 MiMo/Step 验证（2026-10-01 第四轮）
+
+- **代码复查**：通读 `201a72d6e` 全 diff。发现并修复：(1) `assistant_continuation_items`/`assembled_text` 在异步泵里用 `futures::executor::block_on` 且跨 `MutexGuard`——改为 async 并先克隆字节；(2) 空 `wire_blocks` 时先推空 assistant 消息再丢对的顺序问题——先过滤再补消息；(3) **提交内污染**：首轮字面量脚本把 `hosted_results_replay: None` 注进了非 ModelProviderInfo 结构（ExecCommandToolOutput/WriteStdinRequest 等 4 个 core 测试文件）且当时未编译 core 测试——全部清除后按结构逐一正确补齐；工作区（除 v8 系）`cargo check --tests` 归零（含 login/app-server/config/model-provider/protocol 此前从未编译到的 12 处字面量）。
+- **回归**：core rust-rig 选择集 165 run：151 pass / 14 fail——12 个为已知 code_mode/guardian/scenarios v8 簇；`remote_env::deferred_executor…` 与 `rmcp_client::interrupt…pre_sampling` 两项隔离 4/4 通过（负载 flake）。桥全量 145 pass + 1 既有 flake。
+- **MiMo websearch live**：**厂商能力边界**——网关把声明的 `web_search_20250305` 回成客户端 tool_use（`unsupported call: web_search`），模型降级 shell 查询后作答；无 hosted 搜索发生（工件 `logs/live-mimo/websearch-*-23722`）。
+- **Step websearch live**：**厂商能力边界**——带声明 400 `input_invalid`；同二进制无搜索的 `step_anthropic_rig` PASS，隔离出声明是触发因素（工件 `logs/live-step/websearch-*-33651`）。
+- **矩阵处置**：`exec_matrix!(websearch_anthropic_rig, ["glm"])` + 证据注释（FORK.md 同步厂商矩阵）。
+- **GLM 终验**：复查修复后的二进制（git 201a72d6e+dirty，sha 15080c2cb4a3）重跑 `glm_websearch_anthropic_rig` → **PASS 146.8s**，turn1/turn2 events 均含 web_search 项（9/13 处）。
+- **pause_turn live**：三网关全部 live 日志零命中 pause_turn——登记 not-run（无网关暂停行为可触发），覆盖以离线 wire 双测为准。
+
 #### 阶段 D 实施（2026-10-01 第三轮，Spec/Plan 评审后）
 
 评审：`phase-d-spec.md`/`phase-d-plan.md` 自审发现 6 处需修正（持久化载体、

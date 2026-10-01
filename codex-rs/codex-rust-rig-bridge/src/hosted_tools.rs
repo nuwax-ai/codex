@@ -392,11 +392,11 @@ fn string_field(block: &Value, key: &str) -> String {
 /// text blocks merge into one assistant message, server-tool blocks become
 /// `WebSearchCall` items carrying the raw wire pair (reusing the D2 replay
 /// channel), and unmodeled blocks are dropped with a warning.
-pub(crate) fn assistant_continuation_items(bytes: &[u8]) -> Vec<ResponseItem> {
-    let capture = futures::executor::block_on(web_search_blocks_from_anthropic_sse(bytes));
+pub(crate) async fn assistant_continuation_items(bytes: &[u8]) -> Vec<ResponseItem> {
+    let capture = web_search_blocks_from_anthropic_sse(bytes).await;
     let pairs = pair_web_search_blocks(capture);
     let mut items = Vec::new();
-    let text = assembled_text(bytes);
+    let text = assembled_text(bytes).await;
     if !text.is_empty() {
         items.push(ResponseItem::Message {
             id: None,
@@ -420,12 +420,12 @@ pub(crate) fn assistant_continuation_items(bytes: &[u8]) -> Vec<ResponseItem> {
 /// Concatenates the text deltas of plain text blocks (in stream order) into
 /// one string. The continuation history approximates the original
 /// text/pair interleaving (documented limitation: text first, pairs after).
-fn assembled_text(bytes: &[u8]) -> String {
+async fn assembled_text(bytes: &[u8]) -> String {
     let frames = futures::stream::iter(vec![Ok::<_, std::convert::Infallible>(
         bytes::Bytes::copy_from_slice(bytes),
     )])
     .eventsource();
-    futures::executor::block_on(async move {
+    (async {
         let mut open_text = false;
         let mut text = String::new();
         let mut frames = frames;
@@ -452,6 +452,7 @@ fn assembled_text(bytes: &[u8]) -> String {
         }
         text
     })
+    .await
 }
 
 #[cfg(test)]

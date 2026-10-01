@@ -131,14 +131,6 @@ pub(crate) fn convert_response_items(
                 // dropping hosted-tool history.
                 match (protocol, wire_blocks) {
                     (RigProtocol::Anthropic, Some(blocks)) => {
-                        if assistant_messages == 0 {
-                            messages.push(Message::Assistant {
-                                id: None,
-                                content: Vec::new(),
-                            });
-                            assistant_messages += 1;
-                        }
-                        let target = assistant_messages - 1;
                         let blocks = blocks
                             .as_array()
                             .cloned()
@@ -152,6 +144,14 @@ pub(crate) fn convert_response_items(
                             );
                             continue;
                         }
+                        if assistant_messages == 0 {
+                            messages.push(Message::Assistant {
+                                id: None,
+                                content: Vec::new(),
+                            });
+                            assistant_messages += 1;
+                        }
+                        let target = assistant_messages - 1;
                         match websearch_replay.last_mut() {
                             Some((index, group)) if *index == target => group.extend(blocks),
                             _ => websearch_replay.push((target, blocks)),

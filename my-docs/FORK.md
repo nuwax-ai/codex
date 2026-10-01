@@ -90,6 +90,13 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
   finish_reason 直接报错；现从 tee 提取本次全部 assistant 原始块（文本 + 搜索
   对），按官方配方原样追加回请求续接（工具数组不变），上限 4 次，超出明确报
   错。每用户可见 turn 恰一个 Created。
+- **hosted 搜索厂商能力矩阵**（2026-10-01 live 实测，工件在
+  `logs/live-<vendor>/websearch-*`）：GLM 服务端执行 + 回放被接受（PASS）；
+  MiMo 把声明的 server tool 回成客户端 tool_use（core 拒绝后模型降级 shell 查
+  询，无 hosted 搜索发生）；Step 直接 400 `input_invalid` 拒绝声明（无搜索的
+  anthropic 场景 PASS，隔离出变量）。后两者是网关能力边界，websearch live 矩
+  阵收敛为 `["glm"]`，网关支持后加回。pause_turn：三家网关均未产生（本轮全
+  部 live 日志零命中），覆盖以离线 wire 测试为准。
 
 设计：`my-docs/anthropic-hosted-tools/`。
 

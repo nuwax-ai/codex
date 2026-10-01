@@ -615,6 +615,8 @@ mod thread_processor_behavior_tests {
             supports_websockets: true,
             supports_standalone_web_search: false,
             include_internal_metadata: false,
+            max_output_tokens: None,
+            hosted_results_replay: None,
         };
         let config_manager = ConfigManager::new(
             temp_dir.path().to_path_buf(),

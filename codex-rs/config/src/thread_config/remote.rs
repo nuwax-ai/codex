@@ -612,6 +612,8 @@ mod tests {
             gateway_oauth: None,
             aws: None,
             include_internal_metadata: false,
+            max_output_tokens: None,
+            hosted_results_replay: None,
         }
     }
 

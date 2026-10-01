@@ -1661,6 +1661,8 @@ async fn send_provider_auth_request(server: &MockServer, auth: ModelProviderAuth
         supports_websockets: false,
         supports_standalone_web_search: false,
         include_internal_metadata: false,
+        max_output_tokens: None,
+        hosted_results_replay: None,
     };
 
     send_request_with_provider(provider).await;
@@ -3182,6 +3184,8 @@ async fn azure_responses_request_does_not_store_and_preserves_prefixed_item_ids(
         supports_websockets: false,
         supports_standalone_web_search: false,
         include_internal_metadata: false,
+        max_output_tokens: None,
+        hosted_results_replay: None,
     };
 
     let codex_home = TempDir::new().unwrap();
@@ -3262,6 +3266,7 @@ async fn azure_responses_request_does_not_store_and_preserves_prefixed_item_ids(
             queries: None,
         }),
         internal_chat_message_metadata_passthrough: None,
+        wire_blocks: None,
     });
     prompt.input.push(ResponseItem::FunctionCall {
         id: Some(ResponseItemId::with_suffix("fc", "function-id")),
@@ -3822,6 +3827,8 @@ async fn azure_overrides_assign_properties_used_for_responses_url() {
         supports_websockets: false,
         supports_standalone_web_search: false,
         include_internal_metadata: false,
+        max_output_tokens: None,
+        hosted_results_replay: None,
     };
 
     // Init session
@@ -3911,6 +3918,8 @@ async fn env_var_overrides_loaded_auth() {
         supports_websockets: false,
         supports_standalone_web_search: false,
         include_internal_metadata: false,
+        max_output_tokens: None,
+        hosted_results_replay: None,
     };
 
     // Init session

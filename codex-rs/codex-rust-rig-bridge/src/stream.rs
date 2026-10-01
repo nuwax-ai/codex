@@ -376,9 +376,11 @@ fn stream_via_rig_attempt(
                             };
                             let mut items = Vec::new();
                             if let Some(tee) = &pump_sse_tee
-                                && let Ok(bytes) = tee.lock()
+                                && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
                             {
-                                items = crate::hosted_tools::assistant_continuation_items(&bytes);
+                                items =
+                                    crate::hosted_tools::assistant_continuation_items(&sse_bytes)
+                                        .await;
                             }
                             // The user-visible events carry the recovered pairs
                             // too (same recovery as a completed turn): an Added

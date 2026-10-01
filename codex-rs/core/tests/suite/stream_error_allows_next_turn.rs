@@ -88,6 +88,8 @@ async fn continue_after_stream_error() {
         supports_websockets: false,
         supports_standalone_web_search: false,
         include_internal_metadata: false,
+        max_output_tokens: None,
+        hosted_results_replay: None,
     };
 
     let TestCodex { codex, .. } = test_codex()
