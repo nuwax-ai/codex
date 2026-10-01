@@ -196,3 +196,30 @@ pub async fn read_request(socket: &mut tokio::net::TcpStream) -> Value {
     let body: Value = serde_json::from_str(body_raw).expect("request JSON");
     json!({"request_line":headers.lines().next(), "headers":headers, "body":body, "body_raw":body_raw})
 }
+
+/// A loopback server that answers each request in sequence with its payload
+/// and records every request body (the parsed body JSON, not the wrapper).
+pub async fn sequence_server(
+    payloads: Vec<String>,
+) -> (
+    std::net::SocketAddr,
+    tokio::task::JoinHandle<Vec<serde_json::Value>>,
+) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let mut bodies = Vec::new();
+        for payload in payloads {
+            let (mut socket, _) = listener.accept().await.expect("accept");
+            let request = crate::support::read_request(&mut socket).await;
+            bodies.push(request["body"].clone());
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nx-request-id: req\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+                payload.len()
+            );
+            socket.write_all(response.as_bytes()).await.expect("write");
+        }
+        bodies
+    });
+    (address, server)
+}

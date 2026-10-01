@@ -312,9 +312,18 @@ pub(crate) struct PairedWebSearchBlocks {
     pub(crate) result: Option<Value>,
 }
 
-pub(crate) fn pair_web_search_blocks(capture: WebSearchWireCapture) -> Vec<PairedWebSearchBlocks> {
+/// Pairs uses with their results by id. Returns the pairs plus every result
+/// that matched no call in THIS response — a mixed server/client turn
+/// delivers those in a follow-up response, where the pump re-associates them
+/// with the pending call persisted in the request history.
+pub(crate) struct PairedWebSearch {
+    pub(crate) pairs: Vec<PairedWebSearchBlocks>,
+    pub(crate) unmatched_results: Vec<Value>,
+}
+
+pub(crate) fn pair_web_search_blocks(capture: WebSearchWireCapture) -> PairedWebSearch {
     let mut remaining_results = capture.results;
-    capture
+    let pairs = capture
         .uses
         .into_iter()
         .map(|call| {
@@ -327,7 +336,11 @@ pub(crate) fn pair_web_search_blocks(capture: WebSearchWireCapture) -> Vec<Paire
             let result = position.map(|position| remaining_results.remove(position));
             PairedWebSearchBlocks { call, result }
         })
-        .collect()
+        .collect();
+    PairedWebSearch {
+        pairs,
+        unmatched_results: remaining_results,
+    }
 }
 
 /// Emits a completed web-search call item for one recovered pair, carrying
@@ -403,7 +416,7 @@ pub(crate) async fn assistant_continuation_items(
     source: &str,
 ) -> crate::hosted_replay::PauseCapture {
     let capture = web_search_blocks_from_anthropic_sse(bytes).await;
-    let pairs = pair_web_search_blocks(capture);
+    let pairs = pair_web_search_blocks(capture).pairs;
     let mut items = Vec::new();
     let text = assembled_text(bytes).await;
     if !text.is_empty() {

@@ -14,7 +14,6 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::AsyncWriteExt;
 
 /// One paused attempt (text + a completed search pair, ending on
 /// stop_reason pause_turn), then a final attempt.
@@ -43,37 +42,10 @@ fn paused_sse() -> String {
         .collect()
 }
 
-/// A loopback server that answers each request in sequence with its payload
-/// and records every request body.
-async fn sequence_server(
-    payloads: Vec<String>,
-) -> (
-    std::net::SocketAddr,
-    tokio::task::JoinHandle<Vec<serde_json::Value>>,
-) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let server = tokio::spawn(async move {
-        let mut bodies = Vec::new();
-        for payload in payloads {
-            let (mut socket, _) = listener.accept().await.expect("accept");
-            let request = support::read_request(&mut socket).await;
-            bodies.push(request["body"].clone());
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nx-request-id: req\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
-                payload.len()
-            );
-            socket.write_all(response.as_bytes()).await.expect("write");
-        }
-        bodies
-    });
-    (address, server)
-}
-
 #[tokio::test]
 async fn paused_turn_continues_with_verbatim_assistant_blocks() {
     let (address, server) =
-        sequence_server(vec![paused_sse(), support::ANTHROPIC_SSE.to_string()]).await;
+        support::sequence_server(vec![paused_sse(), support::ANTHROPIC_SSE.to_string()]).await;
     let provider = provider(address);
     let mut request = support::request(vec![support::user()]);
     support::set_tools(&mut request, json!([{"type":"web_search"}]));
@@ -145,7 +117,7 @@ async fn pause_continuation_cap_fails_with_a_clear_error() {
     // turn with an explicit error, never a loop.
     // depth 0..=4 = 5 attempts, then the cap error; the server sees each.
     let pauses: Vec<String> = (0..5).map(|_| paused_sse()).collect();
-    let (address, server) = sequence_server(pauses).await;
+    let (address, server) = support::sequence_server(pauses).await;
     let provider = provider(address);
     let mut request = support::request(vec![support::user()]);
     support::set_tools(&mut request, json!([{"type":"web_search"}]));
@@ -221,7 +193,7 @@ fn paused_rich_sse() -> String {
 #[tokio::test]
 async fn paused_turn_continuation_content_is_verbatim() {
     let (address, server) =
-        sequence_server(vec![paused_rich_sse(), support::ANTHROPIC_SSE.to_string()]).await;
+        support::sequence_server(vec![paused_rich_sse(), support::ANTHROPIC_SSE.to_string()]).await;
     let provider = provider(address);
     let mut request = support::request(vec![support::user()]);
     support::set_tools(&mut request, json!([{"type":"web_search"}]));
@@ -296,7 +268,8 @@ async fn thinking_only_pause_continues_verbatim() {
             )
         })
         .collect::<String>();
-    let (address, server) = sequence_server(vec![paused, support::ANTHROPIC_SSE.to_string()]).await;
+    let (address, server) =
+        support::sequence_server(vec![paused, support::ANTHROPIC_SSE.to_string()]).await;
     let provider = provider(address);
     let request = support::request(vec![support::user()]);
     let auth: SharedAuthProvider = Arc::new(support::DummyAuth);

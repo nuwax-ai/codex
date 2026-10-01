@@ -188,7 +188,7 @@ fn sse_parser_reads_inline_gateway_input_without_deltas() {
         "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
     );
     let capture = futures::executor::block_on(web_search_blocks_from_anthropic_sse(sse.as_bytes()));
-    let pairs = pair_web_search_blocks(capture);
+    let pairs = pair_web_search_blocks(capture).pairs;
     assert_eq!(
         serde_json::to_value(pairs.iter().map(|pair| &pair.call).collect::<Vec<_>>())
             .expect("encode"),
@@ -212,7 +212,7 @@ fn sse_parser_skips_non_web_search_server_tools_and_malformed_frames() {
         "data: not-json\n\n",
     );
     let capture = futures::executor::block_on(web_search_blocks_from_anthropic_sse(sse.as_bytes()));
-    assert!(pair_web_search_blocks(capture).is_empty());
+    assert!(pair_web_search_blocks(capture).pairs.is_empty());
 }
 
 // D1: result blocks pair with their calls by id, in original call order.
@@ -231,7 +231,7 @@ fn official_result_blocks_pair_by_id() {
         "data: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
     );
     let capture = futures::executor::block_on(web_search_blocks_from_anthropic_sse(sse.as_bytes()));
-    let pairs = pair_web_search_blocks(capture);
+    let pairs = pair_web_search_blocks(capture).pairs;
     assert_eq!(pairs.len(), 1);
     assert_eq!(
         pairs[0].result.as_ref().expect("paired result")["tool_use_id"],

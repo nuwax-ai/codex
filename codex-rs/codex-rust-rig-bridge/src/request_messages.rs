@@ -45,6 +45,42 @@ pub(crate) fn convert_response_items(
         }
     }
 
+    // R3: a mixed server/client turn closes its pending search with a NEW
+    // appended completed item; the earlier in_progress item (and any later
+    // duplicate) for the same server call must not replay twice. First
+    // completed occurrence wins; projection-level only, history untouched.
+    let mut first_completed_search: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut duplicate_search: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for item in items {
+        let ResponseItem::WebSearchCall { wire_blocks, .. } = item else {
+            continue;
+        };
+        let Some(blocks) = wire_blocks
+            .as_ref()
+            .and_then(crate::hosted_replay::parse_envelope)
+            .map(|envelope| envelope.blocks)
+        else {
+            continue;
+        };
+        let has_result = blocks.iter().any(|block| {
+            matches!(
+                block.get("type").and_then(Value::as_str),
+                Some("web_search_tool_result") | Some("tool_result")
+            ) && block.get("tool_use_id").and_then(Value::as_str).is_some()
+        });
+        let Some(id) = blocks
+            .iter()
+            .find(|block| block.get("type").and_then(Value::as_str) == Some("server_tool_use"))
+            .and_then(|block| block.get("id").and_then(Value::as_str))
+        else {
+            continue;
+        };
+        if has_result && !first_completed_search.insert(id.to_string()) {
+            duplicate_search.insert(id.to_string());
+        }
+    }
+
     for item in items {
         match item {
             ResponseItem::FunctionCall { call_id, .. }
@@ -130,8 +166,34 @@ pub(crate) fn convert_response_items(
                 // and only when the payload was captured by the same source
                 // identity sending this request (legacy bare arrays and
                 // cross-endpoint ciphertext are conservatively dropped).
+                // The earlier in_progress item of a closed mixed turn (and any
+                // duplicate completed item) must not replay alongside the winning
+                // completed pair.
+                let superseded_search = wire_blocks
+                    .as_ref()
+                    .and_then(crate::hosted_replay::parse_envelope)
+                    .and_then(|envelope| {
+                        envelope
+                            .blocks
+                            .iter()
+                            .find(|block| {
+                                block.get("type").and_then(Value::as_str) == Some("server_tool_use")
+                            })
+                            .and_then(|block| block.get("id").and_then(Value::as_str))
+                            .map(|id| {
+                                let completed_here = envelope.blocks.iter().any(|block| {
+                                    matches!(
+                                        block.get("type").and_then(Value::as_str),
+                                        Some("web_search_tool_result") | Some("tool_result")
+                                    ) && block.get("tool_use_id").and_then(Value::as_str).is_some()
+                                });
+                                duplicate_search.contains(id)
+                                    || (!completed_here && first_completed_search.contains(id))
+                            })
+                    })
+                    .unwrap_or(false);
                 match (protocol, wire_blocks) {
-                    (RigProtocol::Anthropic, Some(payload)) => {
+                    (RigProtocol::Anthropic, Some(payload)) if !superseded_search => {
                         let Some(envelope) = crate::hosted_replay::parse_envelope(payload) else {
                             tracing::warn!(
                                 "persisted web-search payload has an unrecognized shape; dropping it"

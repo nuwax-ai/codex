@@ -783,3 +783,177 @@ async fn anthropic_replay_group_cap_removes_dropped_search_only_anchors() {
             .collect::<Vec<_>>()
     );
 }
+
+/// R3: a mixed server/client turn — the server tool call arrives in
+/// response 1 (pending), the client tool returns, and ONLY the search
+/// result arrives in response 2. The result must close the pending call
+/// from history as a NEW completed item, and the following request must
+/// replay the pair exactly once (no duplicate call block).
+#[tokio::test]
+async fn mixed_turn_result_arriving_in_the_next_response_closes_the_pending_call() {
+    let sse_with_pending_call = concat!(
+        "event: message_start\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"m1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":4,\"output_tokens\":0}}}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"server_tool_use\",\"id\":\"srvu_mixed\",\"name\":\"web_search\",\"input\":{}}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\\\"mixed\\\"}\"}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"tool_1\",\"name\":\"lookup\",\"input\":{}}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
+        "event: message_delta\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":6}}\n\n",
+        "event: message_stop\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    )
+    .to_string();
+    let sse_with_late_result = concat!(
+        "event: message_start\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"m2\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":4,\"output_tokens\":0}}}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"web_search_tool_result\",\"tool_use_id\":\"srvu_mixed\",\"content\":[{\"type\":\"web_search_result\",\"url\":\"https://example.com\",\"encrypted_content\":\"ENC_LATE\"}]}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "event: message_delta\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":2}}\n\n",
+        "event: message_stop\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    )
+    .to_string();
+    let (address, server) = support::sequence_server(vec![
+        sse_with_pending_call,
+        sse_with_late_result.clone(),
+        support::ANTHROPIC_SSE.to_string(),
+    ])
+    .await;
+    let provider = provider(address);
+    let source =
+        codex_rust_rig_bridge::reasoning_source(&provider, RigProtocol::Anthropic, "review-model")
+            .expect("source identity");
+    let pending_call = json!([
+        {"type":"server_tool_use","id":"srvu_mixed","name":"web_search","input":{"query":"mixed"}}
+    ]);
+    let mut search_events: Vec<serde_json::Value> = Vec::new();
+
+    // Request 1: the pending call is emitted in_progress.
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut request = support::request(vec![support::user()]);
+    support::set_tools(
+        &mut request,
+        json!([{"type":"web_search"}, {"type":"function","name":"lookup"}]),
+    );
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = stream.next().await {
+        if let Ok(codex_api::ResponseEvent::OutputItemDone(item)) = event
+            && let ResponseItem::WebSearchCall { status, .. } = &item
+        {
+            search_events.push(json!({"phase": 1, "status": status}));
+        }
+    }
+
+    // Request 2: the history carries the client tool result plus the pending
+    // search item; the response delivers ONLY the late result.
+    request.input = vec![
+        serde_json::from_value(support::user()).unwrap(),
+        serde_json::from_value(json!({
+            "type":"function_call","name":"lookup","call_id":"tool_1","arguments":"{}"
+        }))
+        .unwrap(),
+        serde_json::from_value(json!({
+            "type":"function_call_output","call_id":"tool_1","output":"client result"
+        }))
+        .unwrap(),
+        serde_json::from_value(json!({
+            "type":"web_search_call","id":"srvu_mixed","status":"in_progress",
+            "action":{"type":"search","query":"mixed"},
+            "wire_blocks":{"version":1,"source":source,"blocks":pending_call}
+        }))
+        .unwrap(),
+    ];
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    let mut completed_pair = None;
+    while let Some(event) = stream.next().await {
+        if let Ok(codex_api::ResponseEvent::OutputItemDone(item)) = event
+            && let ResponseItem::WebSearchCall {
+                wire_blocks,
+                status,
+                ..
+            } = item
+        {
+            search_events.push(json!({"phase": 2, "status": status}));
+            if status.as_deref() == Some("completed") {
+                completed_pair = wire_blocks;
+            }
+        }
+    }
+    let completed_pair = completed_pair.expect("the late result closes the pending call");
+    assert_eq!(
+        completed_pair["blocks"],
+        json!([
+            {"type":"server_tool_use","id":"srvu_mixed","name":"web_search","input":{"query":"mixed"}},
+            {"type":"web_search_tool_result","tool_use_id":"srvu_mixed","content":[{"type":"web_search_result","url":"https://example.com","encrypted_content":"ENC_LATE"}]},
+        ]),
+        "the appended item carries call+result"
+    );
+    assert_eq!(completed_pair["source"], json!(source));
+
+    // Request 3: history carries BOTH items (in_progress + appended
+    // completed); the replay must contain the call exactly once.
+    request.input = vec![
+        serde_json::from_value(support::user()).unwrap(),
+        serde_json::from_value(json!({
+            "type":"web_search_call","id":"srvu_mixed","status":"in_progress",
+            "action":{"type":"search","query":"mixed"},
+            "wire_blocks":{"version":1,"source":source,"blocks":pending_call}
+        }))
+        .unwrap(),
+        serde_json::from_value(json!({
+            "type":"web_search_call","id":"srvu_mixed","status":"completed",
+            "action":{"type":"search","query":"mixed"},
+            "wire_blocks":completed_pair
+        }))
+        .unwrap(),
+    ];
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = stream.next().await {
+        event.unwrap();
+    }
+    let bodies = server.await.unwrap();
+    let encoded = bodies[2]["messages"].to_string();
+    let call_occurrences = encoded.matches("srvu_mixed").count();
+    assert_eq!(
+        call_occurrences, 2,
+        "call id once in the use block + once in tool_use_id: {encoded}"
+    );
+    assert_eq!(encoded.matches("ENC_LATE").count(), 1, "{encoded}");
+}

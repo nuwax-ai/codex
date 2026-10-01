@@ -304,6 +304,7 @@ fn stream_via_rig_attempt(
             Arc::new(std::sync::Mutex::new(None));
         let pump_paused_capture = paused_capture.clone();
         let pump_source = source.clone();
+        let pump_request = request.clone();
         let pump_tx = tx.clone();
         let pump_task = tokio::spawn(async move {
             let tx = pump_tx;
@@ -462,10 +463,44 @@ fn stream_via_rig_attempt(
                                     &sse_bytes,
                                 )
                                 .await;
+                            let paired = crate::hosted_tools::pair_web_search_blocks(capture);
                             let mut injected = Vec::new();
-                            for pair in crate::hosted_tools::pair_web_search_blocks(capture) {
+                            for pair in paired.pairs {
                                 injected.extend(crate::hosted_tools::web_search_call_events(
                                     pair,
+                                    &pump_source,
+                                ));
+                            }
+                            // A result with no call in THIS response closes a
+                            // mixed server/client turn: re-associate it with
+                            // the pending call persisted in the request
+                            // history and emit a NEW completed item (the old
+                            // in_progress item stays untouched, append-only).
+                            for result in paired.unmatched_results {
+                                let id = result
+                                    .get("tool_use_id")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(str::to_string);
+                                let Some(id) = id.filter(|id| !id.is_empty()) else {
+                                    tracing::warn!(
+                                        "web-search result without tool_use_id; dropping it"
+                                    );
+                                    continue;
+                                };
+                                let Some(call) =
+                                    pending_call_from_history(&pump_request.input, &id)
+                                else {
+                                    tracing::warn!(
+                                        id,
+                                        "web-search result matches no pending call; dropping it"
+                                    );
+                                    continue;
+                                };
+                                injected.extend(crate::hosted_tools::web_search_call_events(
+                                    crate::hosted_tools::PairedWebSearchBlocks {
+                                        call,
+                                        result: Some(result),
+                                    },
                                     &pump_source,
                                 ));
                             }
@@ -610,4 +645,46 @@ fn map_completion_error(e: rig_core::completion::request::CompletionError) -> Ap
         }
         _ => ApiError::Transport(TransportError::Network(format!("rig error: {e}"))),
     }
+}
+
+/// Finds the `server_tool_use` call block for a still-pending (result-less)
+/// search in the request history, so a late result can close it. Returns
+/// None when the id is unknown or already completed — a completed pair must
+/// not be closed twice.
+fn pending_call_from_history(
+    input: &[codex_protocol::models::ResponseItem],
+    id: &str,
+) -> Option<serde_json::Value> {
+    let envelopes: Vec<_> = input
+        .iter()
+        .filter_map(|item| match item {
+            codex_protocol::models::ResponseItem::WebSearchCall { wire_blocks, .. } => {
+                wire_blocks.as_ref()
+            }
+            _ => None,
+        })
+        .filter_map(crate::hosted_replay::parse_envelope)
+        .collect();
+    let has_result = |blocks: &[serde_json::Value]| {
+        blocks.iter().any(|block| {
+            matches!(
+                block.get("type").and_then(serde_json::Value::as_str),
+                Some("web_search_tool_result") | Some("tool_result")
+            ) && block.get("tool_use_id").and_then(serde_json::Value::as_str) == Some(id)
+        })
+    };
+    if envelopes
+        .iter()
+        .any(|envelope| has_result(&envelope.blocks))
+    {
+        return None;
+    }
+    envelopes
+        .iter()
+        .flat_map(|envelope| envelope.blocks.iter())
+        .find(|block| {
+            block.get("type").and_then(serde_json::Value::as_str) == Some("server_tool_use")
+                && block.get("id").and_then(serde_json::Value::as_str) == Some(id)
+        })
+        .cloned()
 }
