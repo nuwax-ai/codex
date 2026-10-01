@@ -19,9 +19,20 @@ pub async fn drain_stream(stream: ResponseStream, vendor: &str, tag: &str) -> Ve
     println!("{request_id}");
     let mut log_lines = vec![request_id];
     loop {
-        let event = timeout(TURN_TIMEOUT, stream.rx_event.recv())
-            .await
-            .expect("next event within timeout");
+        let event = match timeout(TURN_TIMEOUT, stream.rx_event.recv()).await {
+            Ok(event) => event,
+            Err(_elapsed) => {
+                // The failure scene must land on disk before the panic:
+                // partial events beat a clean directory that proves nothing.
+                let line = format!(
+                    "[{tag}] turn timed out after {TURN_TIMEOUT:?} waiting for the next event"
+                );
+                println!("{line}");
+                log_lines.push(line);
+                persist_lines(vendor, "bridge", tag, &log_lines);
+                panic!("turn timed out waiting for the next event");
+            }
+        };
         match event {
             Some(Ok(event)) => {
                 let line = format!("[{tag}] {event:?}");
@@ -33,6 +44,7 @@ pub async fn drain_stream(stream: ResponseStream, vendor: &str, tag: &str) -> Ve
                 let line = format!("[{tag}] stream error: {err:#}");
                 println!("{line}");
                 log_lines.push(line);
+                persist_lines(vendor, "bridge", tag, &log_lines);
                 panic!("stream error from bridge: {err:#}");
             }
             None => break,

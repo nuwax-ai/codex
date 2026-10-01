@@ -40,6 +40,13 @@ pub(crate) fn write_manifest(dir: &Path, cfg: &LiveConfig, scenario: &str, bridg
                 .map(|d| d.as_secs())
                 .unwrap_or_default()
         });
+    // Build receipt: source/target/profile captured at BUILD time (build.rs),
+    // compared against the runtime HEAD so a stale binary under a moved
+    // commit is visible instead of silently misattributed.
+    let build_git_sha = env!("LIVE_TESTS_BUILD_GIT_SHA");
+    let build_matches_runtime = git_rev
+        .as_ref()
+        .map(|git_rev| build_git_sha.starts_with(git_rev.as_str()));
     let manifest = serde_json::json!({
         "timestamp": SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -50,6 +57,12 @@ pub(crate) fn write_manifest(dir: &Path, cfg: &LiveConfig, scenario: &str, bridg
         "binary_path": binary_path,
         "binary_sha256": binary_sha256,
         "binary_mtime_unix": binary_mtime,
+        "build": {
+            "git_sha": build_git_sha,
+            "target": env!("LIVE_TESTS_BUILD_TARGET"),
+            "profile": env!("LIVE_TESTS_BUILD_PROFILE"),
+            "matches_runtime_head": build_matches_runtime,
+        },
         "vendor": cfg.vendor,
         "model": cfg.model,
         "scenario": scenario,

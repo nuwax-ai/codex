@@ -25,6 +25,12 @@ pub fn codex_exec_binary() -> Result<PathBuf> {
     let Some(root) = repo_root() else {
         return Err(anyhow!("cannot locate repository root"));
     };
+    // NOTE: the resolved binary is whatever the target dir holds. Building
+    // it inside the test thrashes workspace feature unification (the test
+    // graph and the binary graph alternate fingerprints, recompiling core
+    // both ways), so freshness is the CALLER's contract: build codex-exec in
+    // the same cargo invocation as the tests, or point CARGO_BIN_EXE_codex-exec
+    // at a known binary. The manifest records the binding for review.
     let target = std::env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| root.join("codex-rs").join("target"));
@@ -401,7 +407,7 @@ async fn spawn_exec_turn(
     } else {
         format!("{label}.")
     };
-    let child = tokio::process::Command::new(binary)
+    let mut child = tokio::process::Command::new(binary)
         .arg("--skip-git-repo-check")
         .arg("--json")
         .arg("--color")
@@ -419,15 +425,52 @@ async fn spawn_exec_turn(
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()?;
-    let output = tokio::time::timeout(EXEC_RUN_TIMEOUT, child.wait_with_output())
-        .await
-        .map_err(|_| {
-            anyhow!("[{protocol}] {label} did not finish within {EXEC_RUN_TIMEOUT:?}")
-        })??;
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    // Pipe the streams through readers we own: on a timeout the buffered
+    // output still lands in the artifact directory with the partial exit
+    // status, instead of vanishing with the child.
+    let stdout_pipe = child.stdout.take();
+    let stderr_pipe = child.stderr.take();
+    let stdout_task = tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+        let mut pipe = stdout_pipe;
+        let mut buffer = Vec::new();
+        if let Some(mut pipe) = pipe.take() {
+            let _ = pipe.read_to_end(&mut buffer).await;
+        }
+        buffer
+    });
+    let stderr_task = tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+        let mut pipe = stderr_pipe;
+        let mut buffer = Vec::new();
+        if let Some(mut pipe) = pipe.take() {
+            let _ = pipe.read_to_end(&mut buffer).await;
+        }
+        buffer
+    });
+    let (status, timed_out) = match tokio::time::timeout(EXEC_RUN_TIMEOUT, child.wait()).await {
+        Ok(status) => (Some(status?), /*timed_out*/ false),
+        Err(_elapsed) => {
+            let _ = child.kill().await;
+            (/*status*/ None, /*timed_out*/ true)
+        }
+    };
+    let stdout_bytes = stdout_task.await.unwrap_or_default();
+    let stderr_bytes = stderr_task.await.unwrap_or_default();
+    let stdout = String::from_utf8_lossy(&stdout_bytes).into_owned();
+    let stderr = String::from_utf8_lossy(&stderr_bytes).into_owned();
     std::fs::write(artifacts_dir.join(format!("{prefix}events.jsonl")), &stdout)?;
     std::fs::write(artifacts_dir.join(format!("{prefix}stderr.log")), &stderr)?;
+    std::fs::write(
+        artifacts_dir.join(format!("{prefix}exit.txt")),
+        match &status {
+            Some(status) => format!("{status}\n"),
+            None => format!("timeout after {EXEC_RUN_TIMEOUT:?}\n"),
+        },
+    )?;
+    if timed_out {
+        anyhow::bail!("[{protocol}] {label} did not finish within {EXEC_RUN_TIMEOUT:?}");
+    }
     println!("--- [{protocol}] {label} codex-exec JSONL events ---");
     for line in stdout.lines() {
         println!("[{protocol}] {line}");
@@ -436,9 +479,9 @@ async fn spawn_exec_turn(
         println!("--- [{protocol}] {label} codex-exec stderr ---\n{stderr}");
     }
     anyhow::ensure!(
-        output.status.success(),
+        status.is_some_and(|status| status.success()),
         "[{protocol}] {label} exited with {}",
-        output.status
+        status.map(|status| status.to_string()).unwrap_or_default()
     );
     Ok((stdout, stderr))
 }
@@ -547,6 +590,28 @@ pub async fn run_websearch_turns(
         "[{protocol}] turn 2 added no completed web_search_call \
          ({searches_after_turn2} total after {searches_after_turn1} from turn 1) — \
          the second search must actually execute, not just answer"
+    );
+    // Keep the rollouts with the artifacts: the persisted search items (and
+    // their replay envelopes) are the evidence the next turn's request was
+    // built from — the outbound body itself is not observable against a real
+    // gateway without a MITM proxy (registered boundary).
+    let rollout_dir = artifacts_dir.join("rollout");
+    std::fs::create_dir_all(&rollout_dir)?;
+    for path in session_rollouts(home.path()) {
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned());
+        if let Some(name) = name {
+            let _ = std::fs::copy(&path, rollout_dir.join(name));
+        }
+    }
+    let persisted_envelopes = session_rollouts(home.path())
+        .iter()
+        .filter_map(|path| std::fs::read_to_string(path).ok())
+        .any(|contents| contents.contains("\"wire_blocks\"") && contents.contains("\"version\""));
+    anyhow::ensure!(
+        persisted_envelopes,
+        "[{protocol}] no persisted search replay envelope found in the retained rollout"
     );
     println!(
         "[{protocol}] OK websearch turns answer1_chars={} answer2_chars={} searches={}/{}",
