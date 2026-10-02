@@ -386,6 +386,7 @@ async fn status_snapshot_shows_chatgpt_plan_without_email() {
         &config,
         &crate::AppServerTarget::Embedded,
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         loader_overrides,
         /*state_db*/ None,
         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),

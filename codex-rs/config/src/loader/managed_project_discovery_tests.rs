@@ -75,6 +75,7 @@ impl Fixture {
                 ),
                 ("model".into(), TomlValue::String("session".into())),
             ],
+            /*env_seed_overrides*/ &[],
             self.overrides.clone(),
             &NoopThreadConfigLoader,
         )

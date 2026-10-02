@@ -17,7 +17,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use crate::Cli;
 use crate::keymap::RuntimeKeymap;
 use crate::legacy_core::config::ConfigTomlLoadResult;
-use crate::legacy_core::config::load_config_toml_with_layer_stack;
+use crate::legacy_core::config::load_config_toml_with_layer_stack_and_env_seed;
 use crate::startup_draft::StartupScreen;
 
 /// Screen policy and the already-loaded bootstrap configuration for this exact loading context.
@@ -37,12 +37,14 @@ pub(super) async fn load(
     codex_home: &Path,
     loader_overrides: LoaderOverrides,
     cli_kv_overrides: Vec<(String, TomlValue)>,
+    env_seed_overrides: Vec<(String, TomlValue)>,
     config_cwd: Option<AbsolutePathBuf>,
 ) -> io::Result<StartupPresentation> {
-    let bootstrap_config = load_config_toml_with_layer_stack(
+    let bootstrap_config = load_config_toml_with_layer_stack_and_env_seed(
         codex_home,
         config_cwd.as_ref(),
         cli_kv_overrides,
+        env_seed_overrides,
         ConfigLoadOptions {
             loader_overrides,
             strict_config: cli.strict_config,

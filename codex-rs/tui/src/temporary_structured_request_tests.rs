@@ -93,6 +93,7 @@ async fn managed_workspace_default_respects_read_only_availability() -> color_ey
             Default::default(),
             config,
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             loader_overrides,
             /*strict_config*/ false,
             Default::default(),

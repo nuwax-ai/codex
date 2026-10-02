@@ -1,5 +1,6 @@
 use super::model_cli_overrides;
 use super::model_routing;
+use super::routing_sources;
 use clap::Parser;
 use codex_core::config::ConfigBuilder;
 use codex_login::AuthManager;
@@ -13,7 +14,7 @@ async fn doctor_resolves_environment_provider_and_reports_scope_aware_compact_li
     let interactive = TuiCli::parse_from(["codex"]);
     for (scope, threshold) in [("total", 90000), ("body_after_prefix", 120000)] {
         let home = tempfile::tempdir().expect("temporary Codex home");
-        let seeds = model_cli_overrides(
+        let (explicit_overrides, seeds) = model_cli_overrides(
             &CliConfigOverrides {
                 raw_overrides: vec![
                     "model_context_window=100000".into(),
@@ -50,7 +51,8 @@ async fn doctor_resolves_environment_provider_and_reports_scope_aware_compact_li
         );
         let config = ConfigBuilder::default()
             .codex_home(home.path().to_path_buf())
-            .cli_overrides(seeds)
+            .cli_overrides(explicit_overrides)
+            .env_seed_overrides(seeds)
             .build()
             .await
             .expect("doctor effective config");
@@ -108,7 +110,136 @@ fn doctor_oss_without_a_provider_ignores_full_and_malformed_environment_groups()
     ] {
         assert_eq!(
             model_cli_overrides(&config, &interactive, input).expect("OSS ignores unused env"),
-            expected
+            (expected.clone(), Vec::new())
         );
     }
+}
+
+#[tokio::test]
+async fn doctor_sources_use_the_final_provider_override_and_adopted_model_seed() {
+    use model_routing::ModelSource;
+    use model_routing::ProviderSource;
+    let interactive = TuiCli::parse_from(["codex"]);
+    for (first, last, provider, model) in [
+        (
+            "openai",
+            "nuwax_env",
+            ProviderSource::NuwaxEnvironmentGroup,
+            ModelSource::NuwaxModelEnvironment,
+        ),
+        (
+            "nuwax_env",
+            "openai",
+            ProviderSource::CliOverride,
+            ModelSource::ConfigLayers,
+        ),
+    ] {
+        let home = tempfile::tempdir().expect("temporary Codex home");
+        let explicit = CliConfigOverrides {
+            raw_overrides: vec![
+                format!("model_provider=\"{first}\""),
+                format!("model_provider=\"{last}\""),
+            ],
+        };
+        let input = NuwaxEnvInput {
+            model: Some("env-model".into()),
+            base_url: Some("https://gateway.example/v1".into()),
+            wire_api: Some("chat".into()),
+            api_key: Some("private-key".into()),
+        };
+        let (explicit_pairs, seeds) =
+            model_cli_overrides(&explicit, &interactive, input.clone()).expect("seeds");
+        let config = ConfigBuilder::default()
+            .codex_home(home.path().to_path_buf())
+            .cli_overrides(explicit_pairs)
+            .env_seed_overrides(seeds)
+            .build()
+            .await
+            .expect("effective config");
+        assert_eq!(
+            routing_sources(&config, &interactive, &explicit),
+            model_routing::ModelRoutingSources {
+                plain_oss: false,
+                provider,
+                model
+            }
+        );
+    }
+}
+
+#[tokio::test]
+async fn doctor_endpoint_source_tracks_required_provider_definitions() -> anyhow::Result<()> {
+    for (requirements, origin, endpoint) in [
+        (
+            "model_provider = 'gateway'",
+            "user",
+            "https://local.example",
+        ),
+        (
+            "[model_providers.gateway]\nname = 'Managed gateway'\nbase_url = 'https://managed.example/v1'\nwire_api = 'responses'",
+            "managed requirements",
+            "https://managed.example",
+        ),
+        (
+            "model_provider = 'gateway'\n[model_providers.gateway]\nname = 'Managed gateway'\nbase_url = 'https://managed.example/v1'\nwire_api = 'responses'",
+            "managed requirements",
+            "https://managed.example",
+        ),
+        (
+            "[model_providers.other]\nname = 'Other managed provider'\nbase_url = 'https://other.example/v1'\nwire_api = 'responses'",
+            "user",
+            "https://local.example",
+        ),
+        (
+            "[model_providers.gateway]\nname = 'Managed default endpoint'\nwire_api = 'responses'",
+            "no base_url override (built-in provider)",
+            "<provider default>",
+        ),
+    ] {
+        let home = tempfile::tempdir()?;
+        let config_path = home.path().join("config.toml");
+        std::fs::write(
+            &config_path,
+            "model_provider = 'gateway'\n[model_providers.gateway]\nname = 'Local gateway'\nbase_url = 'https://local.example/v1'\nwire_api = 'responses'",
+        )?;
+        std::fs::write(home.path().join("requirements.toml"), requirements)?;
+        let config = ConfigBuilder::default()
+            .codex_home(home.path().to_path_buf())
+            .loader_overrides(
+                codex_config::LoaderOverrides::with_managed_config_path_for_tests(
+                    home.path().join("managed_config.toml"),
+                ),
+            )
+            .build()
+            .await?;
+        let report = model_routing::check(
+            &config,
+            /*auth_manager*/ None,
+            &model_routing::ModelRoutingSources {
+                plain_oss: false,
+                provider: model_routing::ProviderSource::ConfigLayers,
+                model: model_routing::ModelSource::ConfigLayers,
+            },
+        )
+        .await;
+        let endpoint_details = report
+            .details
+            .into_iter()
+            .filter(|detail| detail.starts_with("endpoint "))
+            .collect::<Vec<_>>();
+        let source = if origin == "user" {
+            format!("user ({})", config_path.display())
+        } else {
+            origin.to_string()
+        };
+        assert_eq!(
+            endpoint_details,
+            vec![
+                format!("endpoint (redacted): {endpoint}"),
+                format!("endpoint source: {source}"),
+            ],
+            "requirements: {requirements}",
+        );
+    }
+    Ok(())
 }

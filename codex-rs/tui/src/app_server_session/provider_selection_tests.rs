@@ -171,3 +171,99 @@ async fn required_provider_overrides_oss_history_selection() -> Result<()> {
     server.shutdown().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn environment_provider_is_explicit_in_remote_start_fork_resume_and_history() -> Result<()> {
+    let home = tempfile::tempdir()?;
+    let seeds = codex_utils_cli::nuwax_env_overrides(
+        codex_utils_cli::NuwaxEnvInput {
+            model: Some("environment-model".into()),
+            base_url: Some("https://gateway.example/v1".into()),
+            wire_api: Some("chat".into()),
+            api_key: Some("test-key".into()),
+        },
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &[],
+    )
+    .map_err(color_eyre::eyre::Report::msg)?;
+    let server_overrides = vec![(
+        "model_provider".into(),
+        toml::Value::String("openai".into()),
+    )];
+    let loader_overrides = codex_config::LoaderOverrides::without_managed_config_for_tests();
+    let server_config = ConfigBuilder::default()
+        .codex_home(home.path().to_path_buf())
+        .cli_overrides(server_overrides.clone())
+        .env_seed_overrides(seeds.clone())
+        .loader_overrides(loader_overrides.clone())
+        .build()
+        .await?;
+    let client_config = ConfigBuilder::default()
+        .codex_home(home.path().to_path_buf())
+        .env_seed_overrides(seeds.clone())
+        .loader_overrides(loader_overrides.clone())
+        .build()
+        .await?;
+    let parent = crate::tests::write_session_rollout(
+        home.path(),
+        "2025-01-02T10-00-00",
+        "2025-01-02T10:00:00Z",
+        "OpenAI history",
+        "openai",
+        server_config.cwd.as_path(),
+    )?;
+    let state_db = codex_rollout::state_db::try_init(&server_config)
+        .await
+        .map_err(color_eyre::eyre::Report::msg)?;
+    let client = crate::start_embedded_app_server(
+        codex_arg0::Arg0DispatchPaths::default(),
+        server_config,
+        server_overrides,
+        seeds,
+        loader_overrides,
+        /*strict_config*/ false,
+        codex_config::CloudConfigBundleLoader::default(),
+        codex_feedback::CodexFeedback::new(),
+        /*log_db*/ None,
+        Some(state_db),
+        Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
+        Default::default(),
+    )
+    .await?;
+    let mut server =
+        AppServerSession::new(AppServerClient::InProcess(client), ThreadParamsMode::Remote);
+    assert_eq!(
+        server.history_model_provider(&client_config).await?,
+        Some("nuwax_env".into()),
+    );
+    let local_settings = LocalSettings::from(&client_config);
+    let started = server.start_thread(&client_config).await?;
+    let forked = server
+        .fork_thread(&local_settings, client_config.clone(), parent)
+        .await?;
+    let resumed = server
+        .resume_thread(
+            &local_settings,
+            client_config,
+            parent,
+            ResumeModelSettings::OverrideFromCurrentConfig,
+        )
+        .await?;
+    assert_eq!(
+        (
+            started.session.model_provider_id,
+            forked.session.model_provider_id,
+            resumed.session.model_provider_id,
+            resumed.session.model,
+        ),
+        (
+            "nuwax_env".to_string(),
+            "nuwax_env".to_string(),
+            "nuwax_env".to_string(),
+            "environment-model".to_string(),
+        ),
+    );
+    server.shutdown().await?;
+    Ok(())
+}

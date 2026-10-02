@@ -1,22 +1,28 @@
-//! Build receipt for live-test artifacts: binds the compiled test binary to
-//! the source revision and target it was built from, so a run's manifest can
-//! prove (or refute) that the executed binary matches the reported HEAD.
-//!
-//! The runtime manifest re-reads git at execution time; without this binding
-//! a stale binary under a moved HEAD was indistinguishable from a fresh one.
+//! Revision receipt for the live-test harness, not the separate codex-exec
+//! binary launched by binary-level tests.
 
-fn main() {
-    // Rebuild when the checked-out commit changes so the receipt stays
-    // honest across commits.
-    println!("cargo:rerun-if-changed=../../.git/HEAD");
-    let sha = std::process::Command::new("git")
-        .arg("rev-parse")
-        .arg("HEAD")
+fn git_output(args: &[&str]) -> Option<String> {
+    std::process::Command::new("git")
+        .args(args)
         .output()
         .ok()
         .filter(|out| out.status.success())
         .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
-        .unwrap_or_else(|| "unknown".into());
+}
+
+fn main() {
+    // HEAD usually contains a branch name, whose ref changes on commit.
+    // Ask Git for paths so worktree .git files and shared refs also work.
+    let branch = git_output(&["symbolic-ref", "--quiet", "HEAD"]);
+    for reference in [Some("HEAD"), branch.as_deref(), Some("packed-refs")]
+        .into_iter()
+        .flatten()
+    {
+        if let Some(path) = git_output(&["rev-parse", "--git-path", reference]) {
+            println!("cargo:rerun-if-changed={path}");
+        }
+    }
+    let sha = git_output(&["rev-parse", "HEAD"]).unwrap_or_else(|| "unknown".into());
     println!("cargo:rustc-env=LIVE_TESTS_BUILD_GIT_SHA={sha}");
     let target = std::env::var("TARGET").unwrap_or_else(|_| "unknown".into());
     println!("cargo:rustc-env=LIVE_TESTS_BUILD_TARGET={target}");

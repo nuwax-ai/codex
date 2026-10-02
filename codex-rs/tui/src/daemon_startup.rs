@@ -25,6 +25,7 @@ pub(super) struct CompatibilityError {
 pub(super) fn exclusion(
     cli: &Cli,
     cli_kv_overrides: &[(String, toml::Value)],
+    env_seed_overrides: &[(String, toml::Value)],
     loader_overrides: &LoaderOverrides,
     workload_identity_selected: bool,
     exec_server_url: Option<&std::ffi::OsStr>,
@@ -43,7 +44,7 @@ pub(super) fn exclusion(
         Some("npm single-binary install (nuwax-codex)")
     } else if cli.no_daemon {
         Some("--no-daemon")
-    } else if cli_kv_overrides
+    } else if env_seed_overrides
         .iter()
         .any(|(key, _)| key == "model_providers.nuwax_env")
     {

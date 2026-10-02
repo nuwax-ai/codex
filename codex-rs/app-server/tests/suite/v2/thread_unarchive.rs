@@ -294,6 +294,7 @@ async fn thread_unarchive_preserves_pathless_store_metadata() -> Result<()> {
         arg0_paths: Arg0DispatchPaths::default(),
         config: Arc::new(config),
         cli_overrides: Vec::new(),
+        env_seed_overrides: Vec::new(),
         loader_overrides,
         strict_config: false,
         cloud_config_bundle: CloudConfigBundleLoader::default(),

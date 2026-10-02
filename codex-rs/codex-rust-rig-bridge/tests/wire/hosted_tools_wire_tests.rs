@@ -661,6 +661,8 @@ async fn capture_search_replay(raw_items: Vec<Value>, replay: SearchReplay) -> V
                     "source": source,
                     "blocks": blocks,
                 });
+            } else if item["wire_blocks"]["source"] == "test-current" {
+                item["wire_blocks"]["source"] = json!(source);
             }
             item
         })
@@ -782,6 +784,189 @@ async fn anthropic_replay_group_cap_removes_dropped_search_only_anchors() {
             .map(|index| search_pair(&format!("search-{index}")))
             .collect::<Vec<_>>()
     );
+}
+
+#[tokio::test]
+async fn anthropic_search_dedupe_keeps_first_valid_same_source_completed_item() {
+    let first = search_pair("same-id");
+    let mut later = first.clone();
+    later[1]["content"][0]["encrypted_content"] = json!("LATER");
+    let pending = json!([first[0]]);
+    let foreign = json!({"version":1, "source":"another-endpoint", "blocks":later});
+    let oversized = json!({"version":1, "source":"test-current", "blocks":later,
+        "cited_text":[{"type":"text", "text":"x".repeat(40_960), "citations":[]}]});
+    for (payloads, expected) in [
+        (vec![first.clone(), later], first.clone()),
+        (vec![foreign.clone(), first.clone()], first.clone()),
+        (vec![pending.clone(), foreign], pending),
+        (vec![oversized, first.clone()], first),
+    ] {
+        let mut items = vec![support::user()];
+        items.extend(
+            payloads
+                .into_iter()
+                .map(|payload| json!({"type":"web_search_call", "wire_blocks":payload})),
+        );
+        items.push(support::user());
+        let messages = capture_search_replay(items, SearchReplay::Enabled).await;
+        let assistants: Vec<Value> = messages
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|message| message["role"] == "assistant")
+            .map(|message| message["content"].clone())
+            .collect();
+        assert_eq!(assistants, vec![expected]);
+    }
+}
+
+#[tokio::test]
+async fn anthropic_malformed_loaded_search_payloads_drop_before_sdk_conversion() {
+    let call = search_pair("loaded")[0].clone();
+    for payload in [
+        json!({"version":1, "source":"test-current", "blocks":[{"type":"server_tool_use", "id":"loaded", "input":{}}]}),
+        json!({"version":1, "source":"test-current", "blocks":[{"type":"server_tool_use", "id":"loaded", "name":"web_search", "input":false}]}),
+        json!({"version":1, "source":"test-current", "blocks":[call.clone(), {"type":"web_search_tool_result", "tool_use_id":"loaded", "content":false}]}),
+        json!({"version":1, "source":"test-current", "blocks":[call.clone()], "cited_text":[{"type":"tool_use", "text":"x", "citations":[]}]}),
+        json!({"version":1, "source":"test-current", "blocks":[call], "cited_text":[{"type":"text", "text":"x", "citations":{}}]}),
+    ] {
+        let messages = capture_search_replay(
+            vec![
+                support::user(),
+                json!({"type":"web_search_call", "wire_blocks":payload}),
+                support::user(),
+            ],
+            SearchReplay::Enabled,
+        )
+        .await;
+        assert_eq!(
+            messages,
+            json!([
+                {"role":"user", "content":[{"type":"text", "text":"hello"}]},
+                {"role":"user", "content":[{"type":"text", "text":"hello"}]},
+            ])
+        );
+    }
+}
+
+#[tokio::test]
+async fn anthropic_late_search_results_preserve_response_positions_and_raw_fields() {
+    for result_type in ["web_search_tool_result", "tool_result"] {
+        for plain_message in [false, true] {
+            let mut pair = search_pair("late");
+            pair[1]["type"] = json!(result_type);
+            if result_type == "tool_result" {
+                pair[1]["content"] =
+                    json!("[{'text': [{'title': 'GLM result', 'link': 'https://example.com'}]}]");
+            }
+            pair[1]["vendor_result"] = json!({"opaque":"terminal", "number":9007199254740993u64});
+            let cited = json!({"type":"text", "text":"late answer", "citations":[], "vendor_cite":"preserve"});
+            let mut items = vec![
+                support::user(),
+                json!({"type":"function_call", "name":"lookup", "call_id":"client", "arguments":"{}"}),
+                json!({"type":"web_search_call", "wire_blocks":[pair[0].clone()]}),
+                json!({"type":"function_call_output", "call_id":"client", "output":"client result"}),
+            ];
+            if plain_message {
+                items.push(json!({"type":"message", "role":"assistant", "content":[{"type":"output_text", "text":"late answer"}]}));
+            }
+            items.extend([
+                json!({"type":"web_search_call", "wire_blocks":{"version":1, "source":"test-current", "blocks":pair, "cited_text":[cited.clone()]}}),
+                support::user(),
+            ]);
+            let user = json!({"role":"user", "content":[{"type":"text", "text":"hello"}]});
+            assert_eq!(
+                capture_search_replay(items, SearchReplay::Enabled).await,
+                json!([
+                    user,
+                    {"role":"assistant", "content":[{"type":"tool_use", "id":"client", "name":"lookup", "input":{}}, pair[0].clone()]},
+                    {"role":"user", "content":[{"type":"tool_result", "tool_use_id":"client", "content":[{"type":"text", "text":"client result"}]}]},
+                    {"role":"assistant", "content":[pair[1].clone(), cited]},
+                    user,
+                ]),
+                "{result_type}, plain_message={plain_message}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn anthropic_late_search_result_opt_out_removes_result_only_anchors() {
+    for result_type in ["web_search_tool_result", "tool_result"] {
+        let mut pair = search_pair("disabled-late");
+        pair[1]["type"] = json!(result_type);
+        let items = vec![
+            support::user(),
+            json!({"type":"web_search_call", "wire_blocks":[pair[0].clone()]}),
+            support::user(),
+            json!({"type":"web_search_call", "wire_blocks":pair}),
+            support::user(),
+        ];
+        let user = json!({"role":"user", "content":[{"type":"text", "text":"hello"}]});
+        assert_eq!(
+            capture_search_replay(items, SearchReplay::Disabled).await,
+            json!([user, user, user])
+        );
+    }
+}
+
+#[tokio::test]
+async fn anthropic_search_dedupe_across_user_messages_keeps_one_call_and_result() {
+    let pair = search_pair("across-users");
+    let mut duplicate = pair.clone();
+    duplicate[1]["vendor_result"] = json!("must not replay");
+    let messages = capture_search_replay(
+        vec![
+            support::user(),
+            json!({"type":"web_search_call", "wire_blocks":[pair[0].clone()]}),
+            support::user(),
+            json!({"type":"web_search_call", "wire_blocks":pair}),
+            support::user(),
+            json!({"type":"web_search_call", "wire_blocks":duplicate}),
+            support::user(),
+            json!({"type":"web_search_call", "wire_blocks":[pair[0].clone()]}),
+            support::user(),
+        ],
+        SearchReplay::Enabled,
+    )
+    .await;
+    let user = json!({"role":"user", "content":[{"type":"text", "text":"hello"}]});
+    assert_eq!(
+        messages,
+        json!([
+            user, {"role":"assistant", "content":[pair[0].clone()]},
+            user, {"role":"assistant", "content":[pair[1].clone()]}, user, user, user,
+        ])
+    );
+}
+
+#[tokio::test]
+async fn anthropic_split_search_pair_cap_drops_both_wire_positions() {
+    let mut items = vec![support::user()];
+    for index in 0..65 {
+        let pair = search_pair(&format!("split-{index}"));
+        items.extend([
+            json!({"type":"web_search_call", "wire_blocks":[pair[0].clone()]}),
+            support::user(),
+            json!({"type":"web_search_call", "wire_blocks":pair}),
+            support::user(),
+        ]);
+    }
+    let messages = capture_search_replay(items, SearchReplay::Enabled).await;
+    let assistants: Vec<Value> = messages
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|message| message["role"] == "assistant")
+        .map(|message| message["content"].clone())
+        .collect();
+    let expected: Vec<Value> = (1..65)
+        .flat_map(|index| {
+            let pair = search_pair(&format!("split-{index}"));
+            [json!([pair[0].clone()]), json!([pair[1].clone()])]
+        })
+        .collect();
+    assert_eq!(assistants, expected);
 }
 
 /// R3: a mixed server/client turn — the server tool call arrives in
@@ -1067,5 +1252,330 @@ async fn cited_text_blocks_persist_and_replay_after_their_pair() {
             {"type":"text","text":"answer citing the result","citations":[{"type":"search_result_location","cited_text":"finding","source":"https://example.com","title":"Example","search_result_index":0,"start_block_index":1,"end_block_index":2}]},
         ]),
         "pair first, cited text after, verbatim"
+    );
+}
+
+/// N2: the assistant's plain answer and the envelope's cited text describe
+/// the SAME streamed text; the projection must carry it exactly once, with
+/// the citations attached at the answer's position.
+#[tokio::test]
+async fn cited_text_replaces_the_plain_answer_projection_in_place() {
+    let cited_sse = concat!(
+        "event: message_start\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"m1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":4,\"output_tokens\":0}}}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"server_tool_use\",\"id\":\"srvu_once\",\"name\":\"web_search\",\"input\":{}}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\\\"once\\\"}\"}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"web_search_tool_result\",\"tool_use_id\":\"srvu_once\",\"content\":[{\"type\":\"web_search_result\",\"url\":\"https://example.com\",\"encrypted_content\":\"ENC_ONCE\"}]}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"text\",\"text\":\"\",\"citations\":[{\"type\":\"search_result_location\",\"cited_text\":\"finding\",\"source\":\"https://example.com\",\"title\":\"Example\",\"search_result_index\":0,\"start_block_index\":1,\"end_block_index\":2}]}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"text_delta\",\"text\":\"the single answer\"}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":2}\n\n",
+        "event: message_delta\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":5}}\n\n",
+        "event: message_stop\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    )
+    .to_string();
+    let (address, server) =
+        support::sequence_server(vec![cited_sse, support::ANTHROPIC_SSE.to_string()]).await;
+    let provider = provider(address);
+    let _source =
+        codex_rust_rig_bridge::reasoning_source(&provider, RigProtocol::Anthropic, "review-model")
+            .expect("source identity");
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+
+    // Turn 1 captures the envelope (pair + cited text).
+    let mut request = support::request(vec![support::user()]);
+    support::set_tools(&mut request, json!([{"type":"web_search"}]));
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    let mut captured_envelope = None;
+    while let Some(event) = stream.next().await {
+        if let Ok(codex_api::ResponseEvent::OutputItemDone(item)) = event
+            && let ResponseItem::WebSearchCall { wire_blocks, .. } = item
+        {
+            captured_envelope = wire_blocks;
+        }
+    }
+    let envelope = captured_envelope.expect("search item emitted");
+
+    // Turn 2 replays the REAL history shape: the saved assistant Message
+    // with the plain answer AND the search item with its envelope.
+    request.input = vec![
+        serde_json::from_value(support::user()).unwrap(),
+        serde_json::from_value(json!({
+            "type":"message","role":"assistant","content":[{"type":"output_text","text":"the single answer"}]
+        }))
+        .unwrap(),
+        serde_json::from_value(json!({
+            "type":"web_search_call","id":"srvu_once","status":"completed",
+            "action":{"type":"search","query":"once"},
+            "wire_blocks":envelope
+        }))
+        .unwrap(),
+    ];
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = stream.next().await {
+        event.unwrap();
+    }
+    let bodies = server.await.unwrap();
+    let messages = bodies[1]["messages"].as_array().expect("messages");
+    let assistant = messages
+        .iter()
+        .find(|message| message["role"] == "assistant")
+        .expect("assistant with replay");
+    assert_eq!(
+        assistant["content"],
+        json!([
+            {"type":"server_tool_use","id":"srvu_once","name":"web_search","input":{"query":"once"}},
+            {"type":"web_search_tool_result","tool_use_id":"srvu_once","content":[{"type":"web_search_result","url":"https://example.com","encrypted_content":"ENC_ONCE"}]},
+            {"type":"text","text":"the single answer","citations":[{"type":"search_result_location","cited_text":"finding","source":"https://example.com","title":"Example","search_result_index":0,"start_block_index":1,"end_block_index":2}]},
+        ]),
+        "the cited terminal state replaces the plain answer at its position"
+    );
+    assert_eq!(
+        assistant["content"]
+            .to_string()
+            .matches("the single answer")
+            .count(),
+        1,
+        "the answer must appear exactly once"
+    );
+}
+
+/// N3: in the production history order — client call, pending server call,
+/// client output, late completed item — the request prefix sent while the
+/// search was pending stays byte-identical after the result arrives; the
+/// late result joins only its own new response position.
+#[tokio::test]
+async fn mixed_turn_late_result_preserves_the_sent_request_prefix() {
+    let sse_pending = concat!(
+        "event: message_start\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"m1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":4,\"output_tokens\":0}}}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"server_tool_use\",\"id\":\"srvu_prefix\",\"name\":\"web_search\",\"input\":{}}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\\\"prefix\\\"}\"}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"tool_p\",\"name\":\"lookup\",\"input\":{}}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
+        "event: message_delta\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":6}}\n\n",
+        "event: message_stop\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    )
+    .to_string();
+    let sse_late_result = concat!(
+        "event: message_start\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"m2\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":4,\"output_tokens\":0}}}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"web_search_tool_result\",\"tool_use_id\":\"srvu_prefix\",\"content\":[{\"type\":\"web_search_result\",\"url\":\"https://example.com\",\"encrypted_content\":\"ENC_PREFIX\"}]}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "event: message_delta\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":2}}\n\n",
+        "event: message_stop\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    )
+    .to_string();
+    let (address, server) = support::sequence_server(vec![
+        sse_pending,
+        sse_late_result,
+        support::ANTHROPIC_SSE.to_string(),
+    ])
+    .await;
+    let provider = provider(address);
+    let source =
+        codex_rust_rig_bridge::reasoning_source(&provider, RigProtocol::Anthropic, "review-model")
+            .expect("source identity");
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let pending_call = json!([
+        {"type":"server_tool_use","id":"srvu_prefix","name":"web_search","input":{"query":"prefix"}}
+    ]);
+
+    // Request 1 emits the pending call in_progress (nothing asserted here
+    // beyond draining the stream).
+    let mut request = support::request(vec![support::user()]);
+    support::set_tools(
+        &mut request,
+        json!([{"type":"web_search"}, {"type":"function","name":"lookup"}]),
+    );
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = stream.next().await {
+        event.unwrap();
+    }
+
+    // Request 2 carries the REAL production order: client call, client
+    // output, then the pending server call. This is the prefix the model
+    // saw while the search was pending.
+    request.input = vec![
+        serde_json::from_value(support::user()).unwrap(),
+        serde_json::from_value(json!({
+            "type":"function_call","name":"lookup","call_id":"tool_p","arguments":"{}"
+        }))
+        .unwrap(),
+        serde_json::from_value(json!({
+            "type":"function_call_output","call_id":"tool_p","output":"client result"
+        }))
+        .unwrap(),
+        serde_json::from_value(json!({
+            "type":"web_search_call","id":"srvu_prefix","status":"in_progress",
+            "action":{"type":"search","query":"prefix"},
+            "wire_blocks":{"version":1,"source":source,"blocks":pending_call}
+        }))
+        .unwrap(),
+    ];
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    let mut completed_pair = None;
+    while let Some(event) = stream.next().await {
+        if let Ok(codex_api::ResponseEvent::OutputItemDone(item)) = event
+            && let ResponseItem::WebSearchCall {
+                wire_blocks,
+                status,
+                ..
+            } = item
+            && status.as_deref() == Some("completed")
+        {
+            completed_pair = wire_blocks;
+        }
+    }
+    let completed_pair = completed_pair.expect("the late result closes the pending call");
+
+    // Request 3: same history plus the appended completed item.
+    request.input.push(
+        serde_json::from_value(json!({
+            "type":"web_search_call","id":"srvu_prefix","status":"completed",
+            "action":{"type":"search","query":"prefix"},
+            "wire_blocks":completed_pair
+        }))
+        .unwrap(),
+    );
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = stream.next().await {
+        event.unwrap();
+    }
+    let bodies = server.await.unwrap();
+    let prefix = bodies[1]["messages"]
+        .as_array()
+        .expect("request 2 messages");
+    let after = bodies[2]["messages"]
+        .as_array()
+        .expect("request 3 messages");
+    // The late result joins the pending call's own response position: every
+    // message BEFORE that assistant stays byte-identical, and the assistant
+    // keeps its already-sent content as a prefix (use first, result after).
+    assert_eq!(
+        after.len(),
+        prefix.len(),
+        "the late result extends its assistant, not the message list"
+    );
+    assert_eq!(
+        after[..prefix.len() - 1],
+        prefix[..prefix.len() - 1],
+        "messages before the pending call's assistant stay byte-identical: {} vs {}",
+        serde_json::to_string(&after).unwrap(),
+        serde_json::to_string(prefix).unwrap(),
+    );
+    let pending_assistant = prefix
+        .last()
+        .expect("the pending call's assistant was already sent");
+    let extended_assistant = after
+        .last()
+        .expect("the same assistant carries the late result");
+    assert_eq!(
+        pending_assistant["role"],
+        json!("assistant"),
+        "the pending call projected into an assistant message"
+    );
+    let pending_content = pending_assistant["content"]
+        .as_array()
+        .expect("pending assistant content");
+    let extended_content = extended_assistant["content"]
+        .as_array()
+        .expect("extended assistant content");
+    assert!(
+        extended_content.starts_with(pending_content),
+        "the already-sent assistant content stays a stable prefix: {} then {}",
+        serde_json::to_string(pending_content).unwrap(),
+        serde_json::to_string(extended_content).unwrap(),
+    );
+    // The client call/output never left the projection.
+    let encoded = serde_json::to_string(&after).unwrap();
+    assert!(encoded.contains("\"tool_p\""), "{encoded}");
+    assert!(encoded.contains("client result"), "{encoded}");
+    // The use block stays in the pending assistant; the result joins that
+    // same response position after it.
+    let completed_assistant = after
+        .last()
+        .expect("the pending call's assistant carries the late result");
+    assert_eq!(completed_assistant["role"], json!("assistant"));
+    let completed_content = completed_assistant["content"].to_string();
+    assert!(
+        completed_content.contains("ENC_PREFIX"),
+        "{completed_content}"
+    );
+    let use_index = completed_content.find("server_tool_use").expect("use kept");
+    let result_index = completed_content
+        .find("ENC_PREFIX")
+        .expect("result present");
+    assert!(
+        use_index < result_index,
+        "the use stays at its position ahead of the late result"
     );
 }

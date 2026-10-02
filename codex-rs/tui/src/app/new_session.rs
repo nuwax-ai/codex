@@ -23,7 +23,7 @@ pub(crate) fn has_launch_setting(
                     ConfigLayerSource::User {
                         profile: Some(_),
                         ..
-                    }
+                    } | ConfigLayerSource::EnvSeed
                 )
             })
 }

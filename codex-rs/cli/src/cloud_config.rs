@@ -9,7 +9,7 @@ use codex_core::config::ConfigOverrides;
 use codex_core::config::LoaderOverrides;
 use codex_core::config::bootstrap_auth_config;
 use codex_core::config::find_codex_home;
-use codex_core::config::load_config_toml_with_layer_stack;
+use codex_core::config::load_config_toml_with_layer_stack_and_env_seed;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_cli::CliConfigOverrides;
 
@@ -36,11 +36,18 @@ pub(crate) async fn config_builder(
     let cli_overrides = config_overrides
         .parse_overrides()
         .map_err(anyhow::Error::msg)?;
-    config_builder_from_parsed_overrides(cli_overrides, loader_overrides, harness_overrides).await
+    config_builder_from_parsed_overrides(
+        cli_overrides,
+        /*env_seed_overrides*/ Vec::new(),
+        loader_overrides,
+        harness_overrides,
+    )
+    .await
 }
 
 pub(crate) async fn config_builder_from_parsed_overrides(
     cli_overrides: Vec<(String, toml::Value)>,
+    env_seed_overrides: Vec<(String, toml::Value)>,
     loader_overrides: LoaderOverrides,
     harness_overrides: ConfigOverrides,
 ) -> Result<ConfigBuilder> {
@@ -50,10 +57,11 @@ pub(crate) async fn config_builder_from_parsed_overrides(
         None => AbsolutePathBuf::current_dir(),
     }
     .context("failed to resolve current directory")?;
-    let bootstrap_config = load_config_toml_with_layer_stack(
+    let bootstrap_config = load_config_toml_with_layer_stack_and_env_seed(
         codex_home.as_path(),
         Some(&cwd),
         cli_overrides.clone(),
+        env_seed_overrides.clone(),
         ConfigLoadOptions {
             loader_overrides: loader_overrides.clone(),
             strict_config: false,
@@ -73,6 +81,7 @@ pub(crate) async fn config_builder_from_parsed_overrides(
     Ok(ConfigBuilder::default()
         .codex_home(codex_home.to_path_buf())
         .cli_overrides(cli_overrides)
+        .env_seed_overrides(env_seed_overrides)
         .loader_overrides(loader_overrides)
         .harness_overrides(harness_overrides)
         .cloud_config_bundle(cloud_config_bundle)

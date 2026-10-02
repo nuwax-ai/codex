@@ -17,8 +17,8 @@ pub(crate) const ENVELOPE_VERSION: u64 = 1;
 /// Hard cap per request: total replayed search pairs (one pair = one
 /// `server_tool_use` plus its matching result) across every assistant group.
 pub(crate) const MAX_REPLAY_PAIRS_PER_REQUEST: usize = 64;
-/// Hard cap per pair: serialized bytes of the pair's blocks. Bytes/4 is an
-/// approximation of tokens, not a precise token limit — the payload drops
+/// Serialized byte cap for one captured or loaded envelope, including its
+/// citations. This is a byte budget, not an exact token limit. Payloads drop
 /// whole, never truncated mid-ciphertext.
 pub(crate) const MAX_PAIR_BYTES: usize = 40_960;
 
@@ -67,11 +67,10 @@ pub(crate) fn parse_envelope(value: &Value) -> Option<Envelope> {
             .and_then(Value::as_str)
             .map(str::to_string),
         blocks: object.get("blocks")?.as_array()?.clone(),
-        cited_text: object
-            .get("cited_text")
-            .and_then(Value::as_array)
-            .map(|blocks| blocks.to_vec())
-            .unwrap_or_default(),
+        cited_text: match object.get("cited_text") {
+            Some(blocks) => blocks.as_array()?.clone(),
+            None => Vec::new(),
+        },
     })
 }
 
@@ -79,6 +78,38 @@ pub(crate) fn parse_envelope(value: &Value) -> Option<Envelope> {
 /// about to send this request.
 pub(crate) fn replayable(envelope: &Envelope, current_source: &str) -> bool {
     envelope.source.as_deref() == Some(current_source)
+}
+
+/// Gates imported history before deduplication or construction of Rig's raw
+/// content anchor. Malformed or foreign payloads cannot suppress valid items
+/// or make the SDK reject an otherwise usable conversation.
+pub(crate) fn validated_envelope(value: &Value, current_source: &str) -> Option<Envelope> {
+    let object = value.as_object()?;
+    if object.get("version").and_then(Value::as_u64) != Some(ENVELOPE_VERSION)
+        || serde_json::to_vec(value).map_or(true, |bytes| bytes.len() > MAX_PAIR_BYTES)
+    {
+        return None;
+    }
+    let envelope = parse_envelope(value)?;
+    if !replayable(&envelope, current_source) || !valid_cited_text(&envelope.cited_text) {
+        return None;
+    }
+    let blocks: Vec<Value> = pair_group_blocks(&envelope.blocks, /*position*/ 0)
+        .into_iter()
+        .flat_map(|(_, blocks)| blocks)
+        .collect();
+    if blocks.is_empty() || blocks.len() != envelope.blocks.len() {
+        return None;
+    }
+    Some(envelope)
+}
+
+fn valid_cited_text(blocks: &[Value]) -> bool {
+    blocks.iter().all(|block| {
+        block.get("type").and_then(Value::as_str) == Some("text")
+            && block.get("text").and_then(Value::as_str).is_some()
+            && block.get("citations").is_some_and(Value::is_array)
+    })
 }
 
 /// One assistant group scheduled for wire replay.
@@ -96,45 +127,116 @@ pub(crate) struct ReplayGroup {
 /// never captured (old rollouts, imports). See the module docs for the
 /// downgrade rules.
 pub(crate) fn sanitize_for_request(groups: Vec<ReplayGroup>) -> Vec<ReplayGroup> {
-    let indices: Vec<usize> = groups.iter().map(|group| group.index).collect();
-    let cited: Vec<Vec<Value>> = groups
-        .iter()
-        .map(|group| group.cited_text.clone())
-        .collect();
-    let mut flat: Vec<(usize, Vec<Value>)> = Vec::new();
+    // A completed envelope can project its call in an earlier assistant and
+    // its result in a later one. Budget the whole pair, then retain each block
+    // at its original group/block position. Imported result-only envelopes
+    // never reach this pass: validated_envelope requires their original call.
+    let mut pairs: Vec<Vec<(usize, usize)>> = Vec::new();
+    let mut calls = std::collections::HashMap::<String, usize>::new();
     for (position, group) in groups.iter().enumerate() {
-        flat.extend(pair_group_blocks(&group.blocks, position));
+        if !valid_cited_text(&group.cited_text) {
+            tracing::warn!("web-search replay carries malformed cited text; dropping its payload");
+            continue;
+        }
+        for (block_index, block) in group.blocks.iter().enumerate() {
+            match block.get("type").and_then(Value::as_str) {
+                Some("server_tool_use") => {
+                    if let Some(id) = valid_call_id(block)
+                        && let std::collections::hash_map::Entry::Vacant(entry) =
+                            calls.entry(id.to_string())
+                    {
+                        entry.insert(pairs.len());
+                        pairs.push(vec![(position, block_index)]);
+                    }
+                }
+                Some("web_search_tool_result" | "tool_result") => {
+                    if let Some(pair) = block
+                        .get("tool_use_id")
+                        .and_then(Value::as_str)
+                        .and_then(|id| calls.get(id))
+                        .map(|index| &mut pairs[*index])
+                        && pair.len() == 1
+                    {
+                        if valid_result(block) {
+                            pair.push((position, block_index));
+                        } else {
+                            pair.clear();
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
     }
-    if flat.len() > MAX_REPLAY_PAIRS_PER_REQUEST {
-        let dropped = flat.len() - MAX_REPLAY_PAIRS_PER_REQUEST;
+    pairs.retain(|pair| {
+        if pair.is_empty() {
+            return false;
+        }
+        let blocks: Vec<&Value> = pair
+            .iter()
+            .map(|(position, index)| &groups[*position].blocks[*index])
+            .collect();
+        let mut positions = std::collections::BTreeSet::new();
+        let cited_text: Vec<&Value> = pair
+            .iter()
+            .filter(|(position, _)| positions.insert(*position))
+            .flat_map(|(position, _)| &groups[*position].cited_text)
+            .collect();
+        serde_json::to_vec(&json!({"blocks": blocks, "cited_text": cited_text}))
+            .is_ok_and(|bytes| bytes.len() <= MAX_PAIR_BYTES)
+    });
+    if pairs.len() > MAX_REPLAY_PAIRS_PER_REQUEST {
+        let dropped = pairs.len() - MAX_REPLAY_PAIRS_PER_REQUEST;
         tracing::warn!(
             dropped,
             MAX_REPLAY_PAIRS_PER_REQUEST,
             "web-search replay pairs exceed the per-request cap; oldest dropped"
         );
-        flat.drain(..dropped);
+        pairs.drain(..dropped);
     }
+    let kept: std::collections::HashSet<(usize, usize)> = pairs.into_iter().flatten().collect();
     let mut result: Vec<ReplayGroup> = Vec::new();
-    let mut cited_by_index: std::collections::BTreeMap<usize, Vec<Value>> =
-        std::collections::BTreeMap::new();
-    for (position, blocks) in flat {
-        let index = indices[position];
-        for cited in &cited[position] {
-            cited_by_index.entry(index).or_default().push(cited.clone());
+    for (position, group) in groups.into_iter().enumerate() {
+        let blocks: Vec<Value> = group
+            .blocks
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, block)| kept.contains(&(position, index)).then_some(block))
+            .collect();
+        if blocks.is_empty() {
+            continue;
         }
-        match result.last_mut().filter(|last| last.index == index) {
-            Some(last) => last.blocks.extend(blocks),
+        match result.last_mut().filter(|last| last.index == group.index) {
+            Some(last) => {
+                last.blocks.extend(blocks);
+                last.cited_text.extend(group.cited_text);
+            }
             None => result.push(ReplayGroup {
-                index,
+                index: group.index,
                 blocks,
-                cited_text: Vec::new(),
+                cited_text: group.cited_text,
             }),
         }
     }
-    for group in &mut result {
-        group.cited_text = cited_by_index.remove(&group.index).unwrap_or_default();
-    }
     result
+}
+
+fn valid_call_id(block: &Value) -> Option<&str> {
+    let id = block.get("id")?.as_str()?;
+    let name = block.get("name")?.as_str()?;
+    (!id.is_empty() && !name.is_empty() && block.get("input").is_some_and(Value::is_object))
+        .then_some(id)
+}
+
+fn valid_result(block: &Value) -> bool {
+    let Some(content) = block.get("content") else {
+        return false;
+    };
+    match block.get("type").and_then(Value::as_str) {
+        Some("web_search_tool_result") => content.is_array() || content.is_object(),
+        Some("tool_result") => content.is_array() || content.is_string(),
+        _ => false,
+    }
 }
 
 /// Splits one group's blocks into per-pair block lists with the shape and
@@ -147,14 +249,16 @@ fn pair_group_blocks(blocks: &[Value], position: usize) -> Vec<(usize, Vec<Value
     for block in blocks {
         match block.get("type").and_then(Value::as_str) {
             Some("server_tool_use") => {
-                let id = block.get("id").and_then(Value::as_str).unwrap_or_default();
-                let name = block
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                if id.is_empty() || name.is_empty() {
+                let Some(id) = valid_call_id(block) else {
                     tracing::warn!(
-                        "web-search replay call without id or name; dropping its payload"
+                        "web-search replay call without id, name, or object input; dropping its payload"
+                    );
+                    continue;
+                };
+                if pairs.iter().any(|(existing_id, _)| existing_id == id) {
+                    tracing::warn!(
+                        id,
+                        "web-search replay repeats a call id inside one payload; dropping it"
                     );
                     continue;
                 }
@@ -186,6 +290,13 @@ fn pair_group_blocks(blocks: &[Value], position: usize) -> Vec<(usize, Vec<Value
     }
     let mut result = Vec::new();
     for (id, blocks) in pairs {
+        if blocks.len() > 2 || blocks.iter().skip(1).any(|block| !valid_result(block)) {
+            tracing::warn!(
+                id,
+                "web-search replay carries a malformed result; dropping its payload"
+            );
+            continue;
+        }
         match serde_json::to_string(&blocks) {
             Ok(serialized) if serialized.len() > MAX_PAIR_BYTES => tracing::warn!(
                 id,
@@ -202,8 +313,8 @@ fn pair_group_blocks(blocks: &[Value], position: usize) -> Vec<(usize, Vec<Value
     result
 }
 
-/// The paused attempt's recovered state: user-visible history items (events
-/// + persistence) plus the verbatim raw assistant content blocks for the
+/// The paused attempt's recovered state: history items for events and
+/// persistence plus the verbatim raw assistant content blocks for the
 /// continuation request.
 pub(crate) struct PauseCapture {
     pub(crate) items: Vec<codex_protocol::models::ResponseItem>,
@@ -214,6 +325,14 @@ pub(crate) struct PauseCapture {
     pub(crate) raw_content: Vec<Value>,
 }
 
+/// Raw responses generated during this turn. Convert only the original input
+/// prefix, then append each paused response without replacing older history.
+#[derive(Clone)]
+pub(crate) struct PauseReplay {
+    pub(crate) original_input_len: usize,
+    pub(crate) messages: Vec<Vec<Value>>,
+}
+
 /// Reassembles the assistant content blocks of one Anthropic SSE body in
 /// original index order. A block starts from its `content_block_start` JSON
 /// (preserving every field, known or not) and accumulates the four streamed
@@ -221,9 +340,9 @@ pub(crate) struct PauseCapture {
 /// `input_json_delta` → input (parsed), `thinking_delta` → thinking,
 /// `signature_delta` → signature. Blocks complete on their start frame
 /// (`redacted_thinking`, results) pass through untouched. Unknown delta
-/// kinds cannot be rebuilt faithfully and leave the block at its start-frame
-/// state with a warning — never fabricated.
-pub(crate) async fn raw_assistant_content(bytes: &[u8]) -> Vec<Value> {
+/// kinds, malformed input and incomplete captures fail before continuation;
+/// they cannot be replayed faithfully. Citation deltas accumulate by index.
+pub(crate) async fn raw_assistant_content(bytes: &[u8]) -> Result<Vec<Value>, codex_api::ApiError> {
     use eventsource_stream::Eventsource;
     use futures::StreamExt;
     let frames = futures::stream::iter(vec![Ok::<_, std::convert::Infallible>(
@@ -233,142 +352,134 @@ pub(crate) async fn raw_assistant_content(bytes: &[u8]) -> Vec<Value> {
     futures::pin_mut!(frames);
     #[derive(Default)]
     struct Open {
-        base: Option<Value>,
-        kind: Option<String>,
-        text: String,
+        base: Value,
         input_json: String,
-        thinking: String,
-        signature: String,
-        saw_delta: bool,
     }
     let mut open = std::collections::BTreeMap::<u64, Open>::new();
     let mut complete = std::collections::BTreeMap::<u64, Value>::new();
-    while let Some(Ok(frame)) = frames.next().await {
-        let Ok(event) = serde_json::from_str::<Value>(&frame.data) else {
-            continue;
+    let invalid = |reason: &str| {
+        codex_api::ApiError::Stream(format!(
+            "Cannot faithfully reconstruct paused Anthropic content: {reason}"
+        ))
+    };
+    let mut stopped = false;
+    while let Some(frame) = frames.next().await {
+        let frame = frame.map_err(|_| invalid("invalid SSE frame"))?;
+        let event: Value =
+            serde_json::from_str(&frame.data).map_err(|_| invalid("invalid frame JSON"))?;
+        let event_type = event.get("type").and_then(Value::as_str);
+        let index = if matches!(
+            event_type,
+            Some("content_block_start" | "content_block_delta" | "content_block_stop")
+        ) {
+            event
+                .get("index")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| invalid("content block has no index"))?
+        } else {
+            0
         };
-        let index = event
-            .get("index")
-            .and_then(Value::as_u64)
-            .unwrap_or_default();
-        match event.get("type").and_then(Value::as_str) {
+        match event_type {
             Some("content_block_start") => {
-                let Some(block) = event.get("content_block") else {
-                    continue;
-                };
-                let block_kind = event["content_block"]["type"].as_str();
-                let block = block.clone();
-                // Delta-streaming block kinds stay open until their stop
-                // frame so the four delta families reach their terminal
-                // state; complete-on-start kinds pass through untouched.
-                let streaming_kind = matches!(
-                    block_kind,
-                    Some("text") | Some("thinking") | Some("server_tool_use") | Some("tool_use")
-                );
-                if streaming_kind {
-                    let mut block = block;
-                    if let Some(object) = block.as_object_mut() {
-                        // Normalize only the fields this kind accumulates, so
-                        // verbatim blocks never gain fields they never had.
-                        let fields = match block_kind {
-                            Some("text") => &["text"][..],
-                            Some("thinking") => &["thinking", "signature"][..],
-                            _ => &[][..],
-                        };
-                        for field in fields {
-                            object
-                                .entry(field.to_string())
-                                .or_insert_with(|| Value::String(String::new()));
-                        }
-                    }
-                    let entry = open.entry(index).or_default();
-                    entry.base = Some(block);
-                    entry.kind = block_kind.map(str::to_string);
-                } else {
-                    complete.insert(index, block);
+                let block = event
+                    .get("content_block")
+                    .filter(|block| block.is_object())
+                    .ok_or_else(|| invalid("missing content block object"))?;
+                if open.contains_key(&index) || complete.contains_key(&index) {
+                    return Err(invalid("duplicate content block index"));
                 }
+                open.insert(
+                    index,
+                    Open {
+                        base: block.clone(),
+                        input_json: String::new(),
+                    },
+                );
             }
             Some("content_block_delta") => {
                 let delta = &event["delta"];
-                let Some(entry) = open.get_mut(&index) else {
-                    continue;
-                };
-                entry.saw_delta = true;
+                let entry = open
+                    .get_mut(&index)
+                    .ok_or_else(|| invalid("delta without an open block"))?;
                 match delta.get("type").and_then(Value::as_str) {
-                    Some("text_delta") => {
-                        if let Some(fragment) = delta.get("text").and_then(Value::as_str) {
-                            entry.text.push_str(fragment);
-                        }
-                    }
                     Some("input_json_delta") => {
-                        if let Some(fragment) = delta.get("partial_json").and_then(Value::as_str) {
-                            entry.input_json.push_str(fragment);
-                        }
+                        let fragment = delta
+                            .get("partial_json")
+                            .and_then(Value::as_str)
+                            .ok_or_else(|| invalid("input delta is not a string"))?;
+                        entry.input_json.push_str(fragment);
                     }
-                    Some("thinking_delta") => {
-                        if let Some(fragment) = delta.get("thinking").and_then(Value::as_str) {
-                            entry.thinking.push_str(fragment);
-                        }
+                    Some("citations_delta") => {
+                        let citation = delta
+                            .get("citation")
+                            .filter(|citation| citation.is_object())
+                            .ok_or_else(|| invalid("citation delta has no citation object"))?;
+                        let object = entry
+                            .base
+                            .as_object_mut()
+                            .ok_or_else(|| invalid("content block is not an object"))?;
+                        object
+                            .entry("citations")
+                            .or_insert_with(|| Value::Array(Vec::new()))
+                            .as_array_mut()
+                            .ok_or_else(|| invalid("citations is not an array"))?
+                            .push(citation.clone());
                     }
-                    Some("signature_delta") => {
-                        if let Some(fragment) = delta.get("signature").and_then(Value::as_str) {
-                            entry.signature.push_str(fragment);
-                        }
+                    Some(kind @ ("text_delta" | "thinking_delta" | "signature_delta")) => {
+                        let field = match kind {
+                            "text_delta" => "text",
+                            "thinking_delta" => "thinking",
+                            "signature_delta" => "signature",
+                            _ => return Err(invalid("unknown text delta kind")),
+                        };
+                        let fragment = delta
+                            .get(field)
+                            .and_then(Value::as_str)
+                            .ok_or_else(|| invalid("text delta is not a string"))?;
+                        let object = entry
+                            .base
+                            .as_object_mut()
+                            .ok_or_else(|| invalid("content block is not an object"))?;
+                        let value = object
+                            .entry(field)
+                            .or_insert_with(|| Value::String(String::new()));
+                        let Value::String(text) = value else {
+                            return Err(invalid("streamed field is not a string"));
+                        };
+                        text.push_str(fragment);
                     }
-                    other => {
-                        tracing::warn!(
-                            delta_type = ?other,
-                            "paused block carries an unknown delta kind; the block continues at its start-frame state"
-                        );
-                    }
+                    _ => return Err(invalid("unsupported content delta kind")),
                 }
             }
             Some("content_block_stop") => {
-                if let Some(mut entry) = open.remove(&index) {
-                    let Some(base) = entry.base.take() else {
-                        continue;
-                    };
-                    let Some(object) = base.as_object() else {
-                        complete.insert(index, base);
-                        continue;
-                    };
-                    let mut object = object.clone();
-                    // Apply only the accumulators this block kind streams;
-                    // a block that never streamed keeps its start-frame
-                    // fields (GLM inlines values).
-                    if entry.saw_delta {
-                        match entry.kind.as_deref() {
-                            Some("text") => {
-                                object.insert("text".into(), Value::String(entry.text.clone()));
-                            }
-                            Some("thinking") => {
-                                object.insert(
-                                    "thinking".into(),
-                                    Value::String(entry.thinking.clone()),
-                                );
-                                object.insert(
-                                    "signature".into(),
-                                    Value::String(entry.signature.clone()),
-                                );
-                            }
-                            Some("server_tool_use") | Some("tool_use") => {
-                                if !entry.input_json.is_empty()
-                                    && let Some(input) =
-                                        serde_json::from_str::<Value>(&entry.input_json).ok()
-                                {
-                                    object.insert("input".into(), input);
-                                }
-                            }
-                            _ => {}
-                        }
+                let mut entry = open
+                    .remove(&index)
+                    .ok_or_else(|| invalid("stop without an open block"))?;
+                if !entry.input_json.is_empty() {
+                    let input: Value = serde_json::from_str(&entry.input_json)
+                        .map_err(|_| invalid("invalid accumulated input JSON"))?;
+                    if !input.is_object() {
+                        return Err(invalid("tool input is not an object"));
                     }
-                    complete.insert(index, Value::Object(object));
+                    let object = entry
+                        .base
+                        .as_object_mut()
+                        .ok_or_else(|| invalid("content block is not an object"))?;
+                    object.insert("input".into(), input);
                 }
+                complete.insert(index, entry.base);
+            }
+            Some("message_stop") => {
+                stopped = true;
+                break;
             }
             _ => {}
         }
     }
-    complete.into_values().collect()
+    if !stopped || !open.is_empty() || complete.is_empty() {
+        return Err(invalid("incomplete or empty paused content capture"));
+    }
+    Ok(complete.into_values().collect())
 }
 
 #[cfg(test)]

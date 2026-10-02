@@ -1390,6 +1390,7 @@ mod tests {
             &app.config,
             &crate::AppServerTarget::Embedded,
             app.cli_kv_overrides.clone(),
+            app.env_seed_overrides.clone(),
             app.loader_overrides.clone(),
             /*state_db*/ None,
             app.environment_manager.clone(),

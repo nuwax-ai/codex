@@ -1,0 +1,96 @@
+# Fork-local offline PR verification (Cargo).
+#
+# Upstream's bazel.yml/rust-ci.yml were removed with the fork's Bazel
+# retirement; this workflow is the executable replacement for PR gating on
+# the Cargo workspace, including the fork-only bridge crates upstream never
+# built. Fork-only crates carry no BUILD.bazel by design (see
+# .github/workflows/README.md).
+#
+# Not yet dispatched from this fork — the workflow file is the deliverable;
+# running it requires push/CI authorization (registered in
+# my-docs/rig-stability-next/).
+
+name: Fork Cargo PR
+
+on:
+  push:
+    branches: [main, test]
+  pull_request:
+    branches: [main, test]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: "4"
+
+jobs:
+  test:
+    name: nextest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: codex-rs
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libcap-dev pkg-config
+
+      - name: Install test tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest,just
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy (fork surfaces)
+        run: cargo clippy -p codex-rust-rig-bridge -p codex-live-tests -p codex-config -p codex-utils-cli --all-targets --locked -- -D warnings
+
+      # The rig bridges are behind the rust-rig feature; the suite that
+      # exercises them needs it enabled for codex-core.
+      - name: Test (workspace)
+        run: just test --workspace --features codex-core/rust-rig --locked
+
+  test-windows:
+    name: nextest (windows)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: codex-rs
+
+      - name: Install test tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest,just
+
+      - name: Test (workspace)
+        run: just test --workspace --features codex-core/rust-rig --locked

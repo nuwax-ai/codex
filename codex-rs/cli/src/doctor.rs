@@ -401,8 +401,7 @@ async fn build_report(
     }));
     match &config_result {
         Ok(config) => {
-            let sources =
-                routing_sources(config, interactive, &root_config_overrides, &nuwax_input);
+            let sources = routing_sources(config, interactive, &root_config_overrides);
             // Other checks below do synchronous work inside join!. Keep the
             // probe deadlines independent of those checks' scheduler delays.
             let filesystem_paths_check = run_async_check(
@@ -633,37 +632,66 @@ async fn build_report(
     }
 }
 
-/// Field-level routing provenance for the model-routing check. Derived from
-/// the effective config plus the same CLI/env inputs the load path used —
-/// display only, never a second source of loading truth. The reserved
-/// provider id can only be selected through the environment group's seeds
-/// (the loader rejects any other shape), so the id itself identifies the
-/// group.
+/// Field-level routing provenance for the model-routing check, read from the
+/// loaded layer stack — display only, never a second source of loading
+/// truth. The environment group counts only when its seed layer actually
+/// contributed the selection; the reserved id alone does not establish
+/// provenance (and cannot load without the group).
 fn routing_sources(
     config: &Config,
     interactive: &TuiCli,
     config_overrides: &codex_utils_cli::CliConfigOverrides,
-    nuwax_input: &codex_utils_cli::NuwaxEnvInput,
 ) -> model_routing::ModelRoutingSources {
+    use codex_config::ConfigLayerSource;
     use model_routing::ModelSource;
     use model_routing::ProviderSource;
-    let (explicit_model, explicit_provider) = {
-        let overrides = config_overrides.parse_overrides().unwrap_or_default();
-        let explicit_model = overrides.iter().any(|(key, _)| key == "model");
-        // Selecting the reserved id through -c still adopts the group (the
-        // seed path treats it as a group activation), so it does not count
-        // as an unrelated explicit selection here.
-        let explicit_provider = interactive.oss
-            || overrides.iter().any(|(key, value)| {
-                key == "model_provider"
-                    && value.as_str() != Some(codex_utils_cli::NUWAX_ENV_PROVIDER_ID)
-            });
-        (explicit_model, explicit_provider)
-    };
+    let overrides = config_overrides.parse_overrides().unwrap_or_default();
+    let explicit_model = overrides.iter().any(|(key, _)| key == "model");
+    let explicit_provider = overrides
+        .iter()
+        .rev()
+        .find(|(key, _)| key == "model_provider")
+        .and_then(|(_, value)| value.as_str());
+    let typed_provider = interactive
+        .oss
+        .then_some(interactive.oss_provider.as_deref())
+        .flatten();
+    let env_seed = config
+        .config_layer_stack
+        .layers_low_to_high()
+        .find(|layer| matches!(layer.name, ConfigLayerSource::EnvSeed));
+    let env_group_selected = config.model_provider_id == codex_utils_cli::NUWAX_ENV_PROVIDER_ID
+        && env_seed.is_some_and(|layer| {
+            layer
+                .config
+                .get("model_providers")
+                .is_some_and(|providers| {
+                    providers
+                        .get(codex_utils_cli::NUWAX_ENV_PROVIDER_ID)
+                        .is_some()
+                })
+        });
+    let env_model_selected = env_seed.is_some_and(|layer| {
+        layer
+            .config
+            .get("model")
+            .and_then(toml::Value::as_str)
+            .is_some_and(|model| Some(model) == config.model.as_deref())
+    });
     model_routing::ModelRoutingSources {
         plain_oss: interactive.oss && interactive.oss_provider.is_none(),
-        provider: if config.model_provider_id == codex_utils_cli::NUWAX_ENV_PROVIDER_ID {
+        provider: if config
+            .config_layer_stack
+            .required_model_provider()
+            .is_some()
+        {
+            ProviderSource::ConfigLayers
+        } else if env_group_selected {
             ProviderSource::NuwaxEnvironmentGroup
+        } else if typed_provider == Some(config.model_provider_id.as_str()) {
+            ProviderSource::LocalProviderFlag
+        } else if explicit_provider == Some(config.model_provider_id.as_str()) {
+            ProviderSource::CliOverride
         } else {
             ProviderSource::ConfigLayers
         },
@@ -671,16 +699,7 @@ fn routing_sources(
             ModelSource::ModelFlag
         } else if explicit_model {
             ModelSource::CliOverride
-        } else if explicit_provider {
-            // An explicit provider selection makes the environment group
-            // irrelevant, so its model is never adopted.
-            ModelSource::ConfigLayers
-        } else if nuwax_input
-            .model
-            .as_deref()
-            .and_then(std::ffi::OsStr::to_str)
-            .is_some_and(|model| !model.trim().is_empty())
-        {
+        } else if env_model_selected {
             ModelSource::NuwaxModelEnvironment
         } else {
             ModelSource::ConfigLayers
@@ -705,9 +724,11 @@ async fn load_config(
         ..config_overrides_from_interactive(interactive, arg0_paths)
     };
 
-    let cli_overrides = model_cli_overrides(&root_config_overrides, interactive, nuwax_input)?;
+    let (cli_overrides, env_seed_overrides) =
+        model_cli_overrides(&root_config_overrides, interactive, nuwax_input)?;
     crate::cloud_config::config_builder_from_parsed_overrides(
         cli_overrides,
+        env_seed_overrides,
         LoaderOverrides::default(),
         overrides,
     )
@@ -721,9 +742,9 @@ fn model_cli_overrides(
     config: &CliConfigOverrides,
     interactive: &TuiCli,
     input: codex_utils_cli::NuwaxEnvInput,
-) -> anyhow::Result<Vec<(String, toml::Value)>> {
+) -> anyhow::Result<(Vec<(String, toml::Value)>, Vec<(String, toml::Value)>)> {
     let explicit = config.parse_overrides().map_err(anyhow::Error::msg)?;
-    let mut seeds = codex_utils_cli::nuwax_env_overrides(
+    let seeds = codex_utils_cli::nuwax_env_overrides(
         input,
         interactive.model.as_deref(),
         interactive
@@ -732,8 +753,7 @@ fn model_cli_overrides(
         &explicit,
     )
     .map_err(anyhow::Error::msg)?;
-    seeds.extend(explicit);
-    Ok(seeds)
+    Ok((explicit, seeds))
 }
 
 fn config_overrides_from_interactive(

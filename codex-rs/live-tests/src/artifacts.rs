@@ -7,12 +7,15 @@ use super::*;
 // Artifact persistence
 // ================================================================
 
-/// Records what code produced this run: git revision and dirty state, the
-/// resolved binary's path and SHA-256 (a runtime git rev plus mtime cannot
-/// prove which build produced the artifacts), and the vendor/scenario — so
-/// any artifact directory can be traced back to a build. Written into every
-/// binary-level run directory.
-pub(crate) fn write_manifest(dir: &Path, cfg: &LiveConfig, scenario: &str, bridge: Option<&str>) {
+/// Records the harness revision and resolved codex-exec's identity. Its hash
+/// identifies executable bytes; its source revision remains unknown without
+/// a receipt from codex-exec's own build.
+pub(crate) fn write_manifest(
+    dir: &Path,
+    cfg: &LiveConfig,
+    scenario: &str,
+    bridge: Option<&str>,
+) -> Result<()> {
     let root = repo_root();
     let git_output = |args: &[&str]| {
         root.as_ref()
@@ -24,6 +27,7 @@ pub(crate) fn write_manifest(dir: &Path, cfg: &LiveConfig, scenario: &str, bridg
                     .output()
                     .ok()
             })
+            .filter(|out| out.status.success())
             .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
     };
     let git_rev = git_output(&["rev-parse", "--short", "HEAD"]);
@@ -40,13 +44,12 @@ pub(crate) fn write_manifest(dir: &Path, cfg: &LiveConfig, scenario: &str, bridg
                 .map(|d| d.as_secs())
                 .unwrap_or_default()
         });
-    // Build receipt: source/target/profile captured at BUILD time (build.rs),
-    // compared against the runtime HEAD so a stale binary under a moved
-    // commit is visible instead of silently misattributed.
+    // This receipt belongs to the harness, which can launch an independently
+    // built (or stale) executable. Matching HEAD proves revision identity only.
     let build_git_sha = env!("LIVE_TESTS_BUILD_GIT_SHA");
-    let build_matches_runtime = git_rev
+    let build_matches_runtime = git_output(&["rev-parse", "HEAD"])
         .as_ref()
-        .map(|git_rev| build_git_sha.starts_with(git_rev.as_str()));
+        .map(|git_rev| build_git_sha == git_rev.as_str());
     let manifest = serde_json::json!({
         "timestamp": SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -58,21 +61,27 @@ pub(crate) fn write_manifest(dir: &Path, cfg: &LiveConfig, scenario: &str, bridg
         "binary_sha256": binary_sha256,
         "binary_mtime_unix": binary_mtime,
         "build": {
+            "scope": "HARNESS",
             "git_sha": build_git_sha,
             "target": env!("LIVE_TESTS_BUILD_TARGET"),
             "profile": env!("LIVE_TESTS_BUILD_PROFILE"),
             "matches_runtime_head": build_matches_runtime,
+        },
+        "exec_build": {
+            "status": "unknown",
+            "source_validated": false,
         },
         "vendor": cfg.vendor,
         "model": cfg.model,
         "scenario": scenario,
         "experimental_bridge": bridge,
     });
-    let _ = std::fs::write(dir.join("manifest.json"), manifest.to_string());
+    std::fs::write(dir.join("manifest.json"), manifest.to_string())?;
+    Ok(())
 }
 
-/// SHA-256 of the test binary, binding artifacts to an exact build (the
-/// equivalent of a build receipt without hooking cargo itself).
+/// SHA-256 of codex-exec, identifying its exact bytes without claiming which
+/// source tree or feature set produced it.
 fn binary_sha256(path: &Path) -> Option<String> {
     use sha2::Digest;
     let mut file = std::fs::File::open(path).ok()?;

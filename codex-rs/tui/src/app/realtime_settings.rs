@@ -65,10 +65,11 @@ impl App {
                 .add_error_message(format!("Failed to save audio setting: {error}"));
             return;
         }
-        match crate::legacy_core::config::load_config_toml_with_layer_stack(
+        match crate::legacy_core::config::load_config_toml_with_layer_stack_and_env_seed(
             self.local_settings.codex_home.as_path(),
             /*cwd*/ None,
             self.cli_kv_overrides.clone(),
+            self.env_seed_overrides.clone(),
             codex_config::ConfigLoadOptions {
                 loader_overrides: self.loader_overrides.clone(),
                 cloud_config_bundle: self.cloud_config_bundle.clone(),

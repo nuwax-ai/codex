@@ -71,7 +71,7 @@ use codex_core::config::ConfigOverrides;
 use codex_core::config::ConfigTomlLoadResult;
 use codex_core::config::bootstrap_auth_config;
 use codex_core::config::find_codex_home;
-use codex_core::config::load_config_toml_with_layer_stack;
+use codex_core::config::load_config_toml_with_layer_stack_and_env_seed;
 use codex_core::config::resolve_oss_provider;
 use codex_core::config::resolve_profile_v2_config_path;
 use codex_core::find_thread_meta_by_name_str;
@@ -332,7 +332,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
     };
 
     // Parse `-c` overrides from the CLI.
-    let mut cli_kv_overrides = match config_overrides.parse_overrides() {
+    let cli_kv_overrides = match config_overrides.parse_overrides() {
         Ok(v) => v,
         #[allow(clippy::print_stderr)]
         Err(e) => {
@@ -343,20 +343,22 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
     // Fork (nuwax-codex): seed the NUWAX_* environment startup group at env
     // precedence — below the typed `-m`/`--oss` selections, above config
     // files. An explicit `--oss` provider selection makes the group
-    // irrelevant (ignored and unvalidated).
-    match codex_utils_cli::nuwax_env_overrides(
+    // irrelevant (ignored and unvalidated). The seeds ride their own channel
+    // into config loading so the reserved-provider isolation can attribute
+    // every contribution; they never mix into the user `-c` pairs.
+    let nuwax_env_seeds = match codex_utils_cli::nuwax_env_overrides(
         codex_utils_cli::nuwax_env_from_process(),
         model_cli_arg.as_deref(),
         oss.then_some("oss").or(oss_provider.as_deref()),
         &cli_kv_overrides,
     ) {
-        Ok(seeds) => cli_kv_overrides.extend(seeds),
+        Ok(seeds) => seeds,
         #[allow(clippy::print_stderr)]
         Err(e) => {
             eprintln!("Error parsing NUWAX_* environment: {e}");
             std::process::exit(1);
         }
-    }
+    };
 
     let mut resolved_cwd = cwd.clone();
     let mut config_cwd = match resolved_cwd.as_deref() {
@@ -400,6 +402,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
             &codex_home,
             /*cwd*/ None,
             cli_kv_overrides.clone(),
+            nuwax_env_seeds.clone(),
             loader_overrides.clone(),
             strict_config,
             CloudConfigBundleLoader::default(),
@@ -414,6 +417,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
         let gate_config = ConfigBuilder::default()
             .codex_home(codex_home.to_path_buf())
             .cli_overrides(cli_kv_overrides.clone())
+            .env_seed_overrides(nuwax_env_seeds.clone())
             .loader_overrides(LoaderOverrides {
                 ignore_project_config: true,
                 ..loader_overrides.clone()
@@ -434,6 +438,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
                 &gate_config,
                 &arg0_paths,
                 &cli_kv_overrides,
+                &nuwax_env_seeds,
                 &loader_overrides,
                 worktree::ForkNetwork {
                     cloud_config_bundle: gate_cloud_config.clone(),
@@ -449,6 +454,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
         let source_config = ConfigBuilder::default()
             .codex_home(codex_home.to_path_buf())
             .cli_overrides(cli_kv_overrides.clone())
+            .env_seed_overrides(nuwax_env_seeds.clone())
             .loader_overrides(LoaderOverrides {
                 ignore_project_config: true,
                 ..loader_overrides.clone()
@@ -471,6 +477,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
             &codex_home,
             /*cwd*/ None,
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             LoaderOverrides::default(),
             strict_config,
             CloudConfigBundleLoader::default(),
@@ -499,6 +506,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
         &codex_home,
         Some(&config_cwd),
         cli_kv_overrides.clone(),
+        nuwax_env_seeds.clone(),
         loader_overrides.clone(),
         strict_config,
         CloudConfigBundleLoader::default(),
@@ -520,6 +528,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
         let source_config = ConfigBuilder::default()
             .codex_home(codex_home.to_path_buf())
             .cli_overrides(cli_kv_overrides.clone())
+            .env_seed_overrides(nuwax_env_seeds.clone())
             .loader_overrides(LoaderOverrides {
                 ignore_project_config: true,
                 ..loader_overrides.clone()
@@ -537,6 +546,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
         }
     }
     let run_cli_overrides = cli_kv_overrides.clone();
+    let run_env_seed_overrides = nuwax_env_seeds.clone();
     let run_loader_overrides = loader_overrides.clone();
     let run_cloud_config_bundle = cloud_config_bundle.clone();
 
@@ -550,6 +560,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
                 &codex_home,
                 Some(&config_cwd),
                 cli_kv_overrides.clone(),
+                nuwax_env_seeds.clone(),
                 loader_overrides.clone(),
                 strict_config,
                 cloud_config_bundle.clone(),
@@ -619,6 +630,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
         ConfigBuilder::default()
             .codex_home(codex_home.to_path_buf())
             .cli_overrides(cli_kv_overrides.clone())
+            .env_seed_overrides(nuwax_env_seeds.clone())
             .harness_overrides(overrides)
             .loader_overrides(loader_overrides.clone())
             .strict_config(strict_config)
@@ -730,6 +742,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
         arg0_paths,
         config: std::sync::Arc::new(config.clone()),
         cli_overrides: run_cli_overrides,
+        env_seed_overrides: run_env_seed_overrides,
         loader_overrides: run_loader_overrides,
         strict_config,
         cloud_config_bundle: run_cloud_config_bundle,
@@ -812,14 +825,16 @@ async fn load_bootstrap_config_or_exit(
     codex_home: &Path,
     cwd: Option<&AbsolutePathBuf>,
     cli_kv_overrides: Vec<(String, codex_config::TomlValue)>,
+    env_seed_overrides: Vec<(String, codex_config::TomlValue)>,
     loader_overrides: LoaderOverrides,
     strict_config: bool,
     cloud_config_bundle: CloudConfigBundleLoader,
 ) -> ConfigTomlLoadResult {
-    match load_config_toml_with_layer_stack(
+    match load_config_toml_with_layer_stack_and_env_seed(
         codex_home,
         cwd,
         cli_kv_overrides,
+        env_seed_overrides,
         ConfigLoadOptions {
             loader_overrides,
             strict_config,

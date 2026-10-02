@@ -30,7 +30,8 @@ pub fn codex_exec_binary() -> Result<PathBuf> {
     // graph and the binary graph alternate fingerprints, recompiling core
     // both ways), so freshness is the CALLER's contract: build codex-exec in
     // the same cargo invocation as the tests, or point CARGO_BIN_EXE_codex-exec
-    // at a known binary. The manifest records the binding for review.
+    // at a known binary. The manifest hashes the executable; its source
+    // revision remains unknown without an executable build receipt.
     let target = std::env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| root.join("codex-rs").join("target"));
@@ -165,7 +166,7 @@ pub async fn run_marker_turn(
         .join(format!("live-{}", cfg.vendor))
         .join(&marker);
     std::fs::create_dir_all(&artifacts_dir)?;
-    write_manifest(&artifacts_dir, cfg, protocol, bridge);
+    write_manifest(&artifacts_dir, cfg, protocol, bridge)?;
     prune_artifacts(artifacts_dir.parent().expect("vendor dir").to_path_buf());
 
     let last_message_path = home.path().join("last_message.txt");
@@ -291,7 +292,7 @@ pub async fn run_compact_turn(
         .join(format!("live-{}", cfg.vendor))
         .join(format!("compact-{marker}"));
     std::fs::create_dir_all(&artifacts_dir)?;
-    write_manifest(&artifacts_dir, cfg, protocol, bridge);
+    write_manifest(&artifacts_dir, cfg, protocol, bridge)?;
 
     let binary = codex_exec_binary()?;
     let first_prompt = format!("请记住暗号：{marker}。只回复OK。");
@@ -391,6 +392,10 @@ pub async fn run_compact_turn(
 /// persists its stdout/stderr artifacts (label-prefixed unless the label is
 /// empty, so failed runs stay inspectable), echoes the JSONL event stream,
 /// and returns the captured `(stdout, stderr)` for caller-specific checks.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The shared subprocess runner accepts explicit launch settings and artifact paths"
+)]
 async fn spawn_exec_turn(
     binary: &Path,
     home: &Path,
@@ -428,26 +433,18 @@ async fn spawn_exec_turn(
     // Pipe the streams through readers we own: on a timeout the buffered
     // output still lands in the artifact directory with the partial exit
     // status, instead of vanishing with the child.
-    let stdout_pipe = child.stdout.take();
-    let stderr_pipe = child.stderr.take();
-    let stdout_task = tokio::spawn(async move {
-        use tokio::io::AsyncReadExt;
-        let mut pipe = stdout_pipe;
-        let mut buffer = Vec::new();
-        if let Some(mut pipe) = pipe.take() {
-            let _ = pipe.read_to_end(&mut buffer).await;
-        }
-        buffer
-    });
-    let stderr_task = tokio::spawn(async move {
-        use tokio::io::AsyncReadExt;
-        let mut pipe = stderr_pipe;
-        let mut buffer = Vec::new();
-        if let Some(mut pipe) = pipe.take() {
-            let _ = pipe.read_to_end(&mut buffer).await;
-        }
-        buffer
-    });
+    let stdout_pipe = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow!("stdout pipe missing"))?;
+    let stderr_pipe = child
+        .stderr
+        .take()
+        .ok_or_else(|| anyhow!("stderr pipe missing"))?;
+    let (stop, stopped) = tokio::sync::watch::channel(false);
+    let drain_timeout = Duration::from_secs(5);
+    let stdout_task = tokio::spawn(capture_pipe(stdout_pipe, stopped.clone(), drain_timeout));
+    let stderr_task = tokio::spawn(capture_pipe(stderr_pipe, stopped, drain_timeout));
     let (status, timed_out) = match tokio::time::timeout(EXEC_RUN_TIMEOUT, child.wait()).await {
         Ok(status) => (Some(status?), /*timed_out*/ false),
         Err(_elapsed) => {
@@ -455,22 +452,34 @@ async fn spawn_exec_turn(
             (/*status*/ None, /*timed_out*/ true)
         }
     };
-    let stdout_bytes = stdout_task.await.unwrap_or_default();
-    let stderr_bytes = stderr_task.await.unwrap_or_default();
-    let stdout = String::from_utf8_lossy(&stdout_bytes).into_owned();
-    let stderr = String::from_utf8_lossy(&stderr_bytes).into_owned();
+    let _ = stop.send(true);
+    let stdout_capture = stdout_task
+        .await
+        .map_err(|error| anyhow!("stdout reader: {error}"))?;
+    let stderr_capture = stderr_task
+        .await
+        .map_err(|error| anyhow!("stderr reader: {error}"))?;
+    let stdout = String::from_utf8_lossy(&stdout_capture.bytes).into_owned();
+    let stderr = String::from_utf8_lossy(&stderr_capture.bytes).into_owned();
     std::fs::write(artifacts_dir.join(format!("{prefix}events.jsonl")), &stdout)?;
     std::fs::write(artifacts_dir.join(format!("{prefix}stderr.log")), &stderr)?;
-    std::fs::write(
-        artifacts_dir.join(format!("{prefix}exit.txt")),
-        match &status {
-            Some(status) => format!("{status}\n"),
-            None => format!("timeout after {EXEC_RUN_TIMEOUT:?}\n"),
-        },
-    )?;
+    let mut exit = match &status {
+        Some(status) => format!("{status}\n"),
+        None => format!("timeout after {EXEC_RUN_TIMEOUT:?}\n"),
+    };
+    for (stream, capture) in [("stdout", &stdout_capture), ("stderr", &stderr_capture)] {
+        if let Some(error) = &capture.error {
+            exit.push_str(&format!("{stream} capture incomplete: {error}\n"));
+        }
+    }
+    std::fs::write(artifacts_dir.join(format!("{prefix}exit.txt")), &exit)?;
     if timed_out {
         anyhow::bail!("[{protocol}] {label} did not finish within {EXEC_RUN_TIMEOUT:?}");
     }
+    anyhow::ensure!(
+        stdout_capture.error.is_none() && stderr_capture.error.is_none(),
+        "[{protocol}] {label} output capture incomplete: {exit}"
+    );
     println!("--- [{protocol}] {label} codex-exec JSONL events ---");
     for line in stdout.lines() {
         println!("[{protocol}] {line}");
@@ -486,12 +495,55 @@ async fn spawn_exec_turn(
     Ok((stdout, stderr))
 }
 
+struct PipeCapture {
+    bytes: Vec<u8>,
+    error: Option<String>,
+}
+
+/// After the child exits, descendants may still hold its pipes. Bound the
+/// remaining drain and retain every completed read, even when EOF never arrives.
+async fn capture_pipe(
+    mut pipe: impl tokio::io::AsyncRead + Unpin,
+    mut stopped: tokio::sync::watch::Receiver<bool>,
+    drain_timeout: Duration,
+) -> PipeCapture {
+    use tokio::io::AsyncReadExt;
+    let mut capture = PipeCapture {
+        bytes: Vec::new(),
+        error: None,
+    };
+    let mut chunk = [0u8; 8192];
+    let mut deadline = None;
+    loop {
+        tokio::select! {
+            result = pipe.read(&mut chunk) => match result {
+                Ok(0) => return capture,
+                Ok(read) => capture.bytes.extend_from_slice(&chunk[..read]),
+                Err(error) => {
+                    capture.error = Some(error.to_string());
+                    return capture;
+                }
+            },
+            _ = stopped.changed(), if deadline.is_none() => {
+                deadline = Some(tokio::time::Instant::now() + drain_timeout);
+            }
+            _ = async {
+                match deadline {
+                    Some(deadline) => tokio::time::sleep_until(deadline).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                capture.error = Some(format!("pipe did not close within {drain_timeout:?}"));
+                return capture;
+            }
+        }
+    }
+}
+
 /// Two-turn live web-search run on the Anthropic wire: the second turn's
-/// request replays turn 1's history WITHOUT the dropped `WebSearchCall`
-/// items (the pinned cross-turn behavior, see the bridge wire test
-/// `anthropic_replay_drops_web_search_call_history`). Completing turn 2
-/// against the real gateway proves the replay shape is accepted; this is
-/// the live baseline for the phase-3 faithful-replay enhancement.
+/// request replays turn 1's versioned, same-source search envelopes.
+/// Completing turn 2 against the real gateway verifies resumed history is
+/// accepted; retained rollouts supply inspectable envelope evidence.
 ///
 /// Both prompts explicitly demand a web search, so a passing run must show
 /// a NEW completed `web_search_call` rollout item per turn — a non-empty
@@ -522,7 +574,7 @@ pub async fn run_websearch_turns(
 
     // Unique per run (a fixed directory silently overwrote earlier evidence,
     // including the failure trail of a flaky retry) and manifest-bound so
-    // index-logs can attribute it to an exact build.
+    // index-logs can identify the harness and executable bytes separately.
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
@@ -536,44 +588,73 @@ pub async fn run_websearch_turns(
             std::process::id()
         ));
     std::fs::create_dir_all(&artifacts_dir)?;
-    write_manifest(&artifacts_dir, cfg, protocol, bridge);
+    write_manifest(&artifacts_dir, cfg, protocol, bridge)?;
     prune_artifacts(artifacts_dir.parent().expect("vendor dir").to_path_buf());
 
     let binary = codex_exec_binary()?;
-    let last1 = home.path().join("last_message_1.txt");
+    let outcome =
+        run_websearch_turns_inner(&binary, home.path(), cwd.path(), &artifacts_dir, protocol).await;
+    // D3/N6: a failing run still leaves its PARTIAL rollouts beside the
+    // stdout/stderr/exit artifacts — the failure scene must include what the
+    // run actually persisted, not only the success path's evidence.
+    let (answer1_chars, answer2_chars, searches) = match outcome {
+        Ok(summary) => summary,
+        Err(error) => {
+            if let Err(retain_error) =
+                retain_rollouts_best_effort(home.path(), &artifacts_dir.join("rollout"))
+            {
+                eprintln!("warn: {retain_error}");
+            }
+            return Err(error.context(format!("[{protocol}] web-search turns failed")));
+        }
+    };
+    println!(
+        "[{protocol}] OK websearch turns answer1_chars={} answer2_chars={} searches={}/{}",
+        answer1_chars, answer2_chars, searches.0, searches.1
+    );
+    Ok(())
+}
+
+type WebsearchTurnsSummary = (usize, usize, (usize, usize));
+
+async fn run_websearch_turns_inner(
+    binary: &Path,
+    home: &Path,
+    cwd: &Path,
+    artifacts_dir: &Path,
+    protocol: &str,
+) -> Result<WebsearchTurnsSummary> {
+    let last1 = home.join("last_message_1.txt");
     spawn_exec_turn(
-        &binary,
-        home.path(),
-        cwd.path(),
+        binary,
+        home,
+        cwd,
         &[],
         "用 web 搜索今天北京的天气，然后用一句话总结。",
         &last1,
-        &artifacts_dir,
+        artifacts_dir,
         "turn1",
         protocol,
     )
     .await?;
     let answer1 = std::fs::read_to_string(&last1).unwrap_or_default();
-    anyhow::ensure!(
-        !answer1.trim().is_empty(),
-        "[{protocol}] turn 1 produced no answer"
-    );
-    let searches_after_turn1 = completed_web_search_calls(home.path());
+    anyhow::ensure!(!answer1.trim().is_empty(), "turn 1 produced no answer");
+    let searches_after_turn1 = completed_web_search_calls(home);
     anyhow::ensure!(
         searches_after_turn1 >= 1,
-        "[{protocol}] turn 1 answered without any completed web_search_call in the rollout — \
+        "turn 1 answered without any completed web_search_call in the rollout — \
          a non-empty answer is not evidence that the hosted search ran"
     );
 
-    let last2 = home.path().join("last_message_2.txt");
+    let last2 = home.join("last_message_2.txt");
     spawn_exec_turn(
-        &binary,
-        home.path(),
-        cwd.path(),
+        binary,
+        home,
+        cwd,
         &["resume", "--last"],
         "再用 web 搜索今天上海的天气，然后用一句话总结。",
         &last2,
-        &artifacts_dir,
+        artifacts_dir,
         "turn2",
         protocol,
     )
@@ -581,13 +662,12 @@ pub async fn run_websearch_turns(
     let answer2 = std::fs::read_to_string(&last2).unwrap_or_default();
     anyhow::ensure!(
         !answer2.trim().is_empty(),
-        "[{protocol}] turn 2 (replayed history without web_search items) produced no answer — \
-         gateway may be rejecting the dropped-history replay"
+        "turn 2 produced no answer — gateway may be rejecting resumed search history"
     );
-    let searches_after_turn2 = completed_web_search_calls(home.path());
+    let searches_after_turn2 = completed_web_search_calls(home);
     anyhow::ensure!(
         searches_after_turn2 > searches_after_turn1,
-        "[{protocol}] turn 2 added no completed web_search_call \
+        "turn 2 added no completed web_search_call \
          ({searches_after_turn2} total after {searches_after_turn1} from turn 1) — \
          the second search must actually execute, not just answer"
     );
@@ -595,32 +675,94 @@ pub async fn run_websearch_turns(
     // their replay envelopes) are the evidence the next turn's request was
     // built from — the outbound body itself is not observable against a real
     // gateway without a MITM proxy (registered boundary).
-    let rollout_dir = artifacts_dir.join("rollout");
-    std::fs::create_dir_all(&rollout_dir)?;
-    for path in session_rollouts(home.path()) {
-        let name = path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned());
-        if let Some(name) = name {
-            let _ = std::fs::copy(&path, rollout_dir.join(name));
-        }
-    }
-    let persisted_envelopes = session_rollouts(home.path())
-        .iter()
-        .filter_map(|path| std::fs::read_to_string(path).ok())
-        .any(|contents| contents.contains("\"wire_blocks\"") && contents.contains("\"version\""));
+    let retained_pairs = retain_search_rollouts(home, &artifacts_dir.join("rollout"))?;
     anyhow::ensure!(
-        persisted_envelopes,
-        "[{protocol}] no persisted search replay envelope found in the retained rollout"
+        retained_pairs >= 2,
+        "both search turns must retain completed call/result envelopes"
     );
-    println!(
-        "[{protocol}] OK websearch turns answer1_chars={} answer2_chars={} searches={}/{}",
+    Ok((
         answer1.chars().count(),
         answer2.chars().count(),
-        searches_after_turn1,
-        searches_after_turn2
-    );
+        (searches_after_turn1, searches_after_turn2),
+    ))
+}
+
+/// Best-effort partial-rollout retention for failure scenes; parse errors in
+/// truncated files are tolerated (whatever copies through is kept).
+fn retain_rollouts_best_effort(home: &Path, rollout_dir: &Path) -> Result<()> {
+    std::fs::create_dir_all(rollout_dir)?;
+    for path in session_rollouts(home) {
+        let name = path
+            .file_name()
+            .ok_or_else(|| anyhow!("rollout filename missing"))?;
+        match std::fs::copy(&path, rollout_dir.join(name)) {
+            Ok(_) => {}
+            Err(error) => eprintln!("warn: retain rollout {}: {error}", path.display()),
+        }
+    }
     Ok(())
+}
+
+fn retain_search_rollouts(home: &Path, rollout_dir: &Path) -> Result<usize> {
+    std::fs::create_dir_all(rollout_dir)?;
+    let mut retained_envelopes = 0;
+    for path in session_rollouts(home) {
+        let name = path
+            .file_name()
+            .ok_or_else(|| anyhow!("rollout filename missing"))?;
+        let retained = rollout_dir.join(name);
+        std::fs::copy(&path, &retained)
+            .map_err(|error| anyhow!("retain rollout {}: {error}", path.display()))?;
+        let contents = std::fs::read_to_string(&retained)?;
+        for (index, line) in contents.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let record: Value = serde_json::from_str(line)
+                .map_err(|error| anyhow!("{} line {}: {error}", retained.display(), index + 1))?;
+            if record["type"].as_str() != Some("response_item")
+                || record["payload"]["type"].as_str() != Some("web_search_call")
+                || record["payload"]["status"].as_str() != Some("completed")
+                || record["payload"]["wire_blocks"].is_null()
+            {
+                continue;
+            }
+            let envelope = &record["payload"]["wire_blocks"];
+            anyhow::ensure!(
+                envelope["version"].as_u64() == Some(1)
+                    && envelope["source"]
+                        .as_str()
+                        .is_some_and(|source| !source.trim().is_empty())
+                    && envelope["blocks"].is_array(),
+                "{} line {}: invalid search replay envelope",
+                retained.display(),
+                index + 1
+            );
+            let blocks = envelope["blocks"]
+                .as_array()
+                .ok_or_else(|| anyhow!("missing search blocks"))?;
+            let call_id = blocks
+                .iter()
+                .find(|block| block["type"] == "server_tool_use")
+                .and_then(|block| block["id"].as_str())
+                .filter(|id| !id.is_empty());
+            anyhow::ensure!(
+                call_id.is_some_and(|id| blocks.iter().any(|block| matches!(
+                    block["type"].as_str(),
+                    Some("web_search_tool_result" | "tool_result")
+                ) && block["tool_use_id"]
+                    .as_str()
+                    == Some(id))),
+                "retained completed search envelope has no matching call/result pair"
+            );
+            retained_envelopes += 1;
+        }
+    }
+    anyhow::ensure!(
+        retained_envelopes > 0,
+        "no persisted search replay envelope found in the retained rollout"
+    );
+    Ok(retained_envelopes)
 }
 
 /// Completed `web_search_call` items across every rollout under the codex

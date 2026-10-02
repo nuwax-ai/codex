@@ -95,7 +95,7 @@ pub async fn stream_via_rig_with_recording(
         idle_timeout,
         recorder,
         /*pause_depth*/ 0,
-        /*pause_raw_content*/ None,
+        /*pause_replay*/ None,
     )
     .await
 }
@@ -118,7 +118,7 @@ fn stream_via_rig_attempt(
     idle_timeout: Duration,
     recorder: RigEventRecorder,
     pause_depth: u32,
-    pause_raw_content: Option<Vec<serde_json::Value>>,
+    pause_replay: Option<crate::hosted_replay::PauseReplay>,
 ) -> impl Future<Output = Result<(ResponseStream, RigEventRecorder), ApiError>> + Send {
     async move {
         if protocol == RigProtocol::Responses {
@@ -130,6 +130,19 @@ fn stream_via_rig_attempt(
         // An opted-out replay payload is unused: drop it from the conversion
         // copy before SDK validation, including unknown legacy wire shapes.
         let mut conversion_request = std::borrow::Cow::Borrowed(request);
+        if let Some(replay) = &pause_replay {
+            for message in &replay.messages {
+                let bytes = serde_json::to_vec(message)
+                    .map_err(|_| ApiError::Stream("Paused content is not serializable".into()))?;
+                if bytes.len() > crate::hosted_replay::MAX_PAIR_BYTES {
+                    return Err(ApiError::Stream("Paused content exceeds the raw replay byte budget; cannot truncate signed content".into()));
+                }
+            }
+            conversion_request
+                .to_mut()
+                .input
+                .truncate(replay.original_input_len);
+        }
         if protocol == RigProtocol::Anthropic && api_provider.hosted_results_replay == Some(false) {
             for item in &mut conversion_request.to_mut().input {
                 if let codex_protocol::models::ResponseItem::WebSearchCall { wire_blocks, .. } =
@@ -172,6 +185,7 @@ fn stream_via_rig_attempt(
         } else {
             Vec::new()
         };
+
         // rig never exposes Anthropic server-tool blocks on its public streaming
         // surface; the transport tees the wire bytes and the pump re-reads them
         // at terminal time. The tee also feeds the pause_turn continuation
@@ -215,9 +229,11 @@ fn stream_via_rig_attempt(
             protocol,
             responses_sse_recorder: None,
             anthropic_sse_tee: anthropic_sse_tee.clone(),
-            // Official pause recipe: verbatim replacement of the trailing
-            // assistant's content on the continuation request.
-            anthropic_pause_raw_content: pause_raw_content,
+            // Official pause recipe: append each complete paused response to
+            // the original request, preserving its raw assistant content.
+            anthropic_pause_raw_content: pause_replay
+                .as_ref()
+                .map(|replay| replay.messages.clone()),
             tool_strict: tool_meta.strict,
             tool_result_errors: tool_meta.result_errors,
             disable_anthropic_thinking: protocol == RigProtocol::Anthropic
@@ -239,6 +255,26 @@ fn stream_via_rig_attempt(
             chat_drop_orphan_tool_choice: protocol == RigProtocol::Chat
                 && completion_request.tools.is_empty(),
         };
+        // Reconcile late results only with calls actually projected on this
+        // attempt, including raw pause messages; never arbitrary stored IDs.
+        let replayed_search_calls = http
+            .anthropic_websearch_replay
+            .iter()
+            .flat_map(|group| group.blocks.iter())
+            .chain(http.anthropic_pause_raw_content.iter().flatten().flatten())
+            .filter(|block| block["type"] == "server_tool_use")
+            .count();
+        if replayed_search_calls > crate::hosted_replay::MAX_REPLAY_PAIRS_PER_REQUEST {
+            return Err(ApiError::Stream(
+                "Paused replay exceeds the per-request search-call budget".into(),
+            ));
+        }
+        let pending_replay_calls = pending_calls_from_wire(
+            http.anthropic_websearch_replay
+                .iter()
+                .flat_map(|group| group.blocks.iter())
+                .chain(http.anthropic_pause_raw_content.iter().flatten().flatten()),
+        );
 
         let model = request.model.clone();
         tracing::info!(
@@ -304,7 +340,6 @@ fn stream_via_rig_attempt(
             Arc::new(std::sync::Mutex::new(None));
         let pump_paused_capture = paused_capture.clone();
         let pump_source = source.clone();
-        let pump_request = request.clone();
         let pump_tx = tx.clone();
         let pump_task = tokio::spawn(async move {
             let tx = pump_tx;
@@ -414,11 +449,49 @@ fn stream_via_rig_attempt(
                             if let Some(tee) = &pump_sse_tee
                                 && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
                             {
-                                capture = crate::hosted_tools::assistant_continuation_items(
+                                capture = match crate::hosted_tools::assistant_continuation_items(
                                     &sse_bytes,
                                     &pump_source,
                                 )
-                                .await;
+                                .await
+                                {
+                                    Ok(capture) => capture,
+                                    Err(error) => {
+                                        let _ = tx.send(Err(error)).await;
+                                        return;
+                                    }
+                                };
+                                let mut paired = crate::hosted_tools::pair_web_search_blocks(
+                                    crate::hosted_tools::web_search_blocks_from_anthropic_sse(
+                                        &sse_bytes,
+                                    )
+                                    .await,
+                                );
+                                // The capture already assigned citations to
+                                // its first current-response search pair.
+                                if !paired.pairs.is_empty() {
+                                    paired.cited_text.clear();
+                                }
+                                for result in paired.unmatched_results {
+                                    if let Some(id) = result
+                                        .get("tool_use_id")
+                                        .and_then(serde_json::Value::as_str)
+                                        && let Some(call) = pending_replay_calls.get(id)
+                                    {
+                                        for event in crate::hosted_tools::web_search_call_events(
+                                            crate::hosted_tools::PairedWebSearchBlocks {
+                                                call: call.clone(),
+                                                result: Some(result),
+                                            },
+                                            &pump_source,
+                                            std::mem::take(&mut paired.cited_text),
+                                        ) {
+                                            if let ResponseEvent::OutputItemDone(item) = event {
+                                                capture.items.push(item);
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             let items = capture.items.clone();
                             // The user-visible events carry the recovered pairs
@@ -500,9 +573,7 @@ fn stream_via_rig_attempt(
                                     );
                                     continue;
                                 };
-                                let Some(call) =
-                                    pending_call_from_history(&pump_request.input, &id)
-                                else {
+                                let Some(call) = pending_replay_calls.get(&id).cloned() else {
                                     tracing::warn!(
                                         id,
                                         "web-search result matches no pending call; dropping it"
@@ -515,7 +586,7 @@ fn stream_via_rig_attempt(
                                         result: Some(result),
                                     },
                                     &pump_source,
-                                    Vec::new(),
+                                    std::mem::take(&mut cited_text),
                                 ));
                             }
                             if !injected.is_empty() {
@@ -581,14 +652,20 @@ fn stream_via_rig_attempt(
                 }
                 let capture = paused_capture.lock().ok().and_then(|mut slot| slot.take());
                 if let Some(capture) = capture {
-                    // The official recipe resends the paused assistant
-                    // message UNCHANGED: the raw content blocks ride the
-                    // request as a verbatim replacement for the trailing
-                    // assistant the items synthesize — or, for a pause with
-                    // no convertible items (thinking-only), as a whole
-                    // appended assistant message at the transport.
+                    // The official recipe resends paused assistant responses
+                    // unchanged, after the original input, at the transport.
+                    // Synthetic items are retained for events, not converted
+                    // a second time.
+                    let mut replay = pause_replay.unwrap_or(crate::hosted_replay::PauseReplay {
+                        original_input_len: continuation_request.input.len(),
+                        messages: Vec::new(),
+                    });
+                    replay.messages.push(capture.raw_content);
                     continuation_request.input.extend(capture.items);
-                    let continued = stream_via_rig_attempt(
+                    let continued = tokio::select! {
+                        biased;
+                        _ = chainer_tx.closed() => return,
+                        result = stream_via_rig_attempt(
                         &continuation_request,
                         &provider,
                         &auth,
@@ -597,17 +674,24 @@ fn stream_via_rig_attempt(
                         idle,
                         /*recorder*/ None,
                         pause_depth + 1,
-                        Some(capture.raw_content),
+                        Some(replay),
                     )
-                    .await;
+                    => result,
+                    };
                     match continued {
-                        Ok((mut stream, _)) => {
-                            while let Some(event) = stream.next().await {
-                                if chainer_tx.send(event).await.is_err() {
-                                    return;
-                                }
+                        Ok((mut stream, _)) => loop {
+                            let event = tokio::select! {
+                                biased;
+                                _ = chainer_tx.closed() => return,
+                                event = stream.next() => event,
+                            };
+                            let Some(event) = event else {
+                                return;
+                            };
+                            if chainer_tx.send(event).await.is_err() {
+                                return;
                             }
-                        }
+                        },
                         Err(error) => {
                             let _ = chainer_tx.send(Err(error)).await;
                         }
@@ -669,40 +753,33 @@ fn map_completion_error(e: rig_core::completion::request::CompletionError) -> Ap
 /// search in the request history, so a late result can close it. Returns
 /// None when the id is unknown or already completed — a completed pair must
 /// not be closed twice.
-fn pending_call_from_history(
-    input: &[codex_protocol::models::ResponseItem],
-    id: &str,
-) -> Option<serde_json::Value> {
-    let envelopes: Vec<_> = input
-        .iter()
-        .filter_map(|item| match item {
-            codex_protocol::models::ResponseItem::WebSearchCall { wire_blocks, .. } => {
-                wire_blocks.as_ref()
+fn pending_calls_from_wire<'a>(
+    blocks: impl Iterator<Item = &'a serde_json::Value>,
+) -> std::collections::HashMap<String, serde_json::Value> {
+    let mut pending = std::collections::HashMap::new();
+    for block in blocks {
+        match block.get("type").and_then(serde_json::Value::as_str) {
+            Some("server_tool_use") => {
+                if block
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(crate::hosted_tools::is_web_search_server_use)
+                    && let Some(id) = block.get("id").and_then(serde_json::Value::as_str)
+                {
+                    pending.insert(id.to_string(), block.clone());
+                }
             }
-            _ => None,
-        })
-        .filter_map(crate::hosted_replay::parse_envelope)
-        .collect();
-    let has_result = |blocks: &[serde_json::Value]| {
-        blocks.iter().any(|block| {
-            matches!(
-                block.get("type").and_then(serde_json::Value::as_str),
-                Some("web_search_tool_result") | Some("tool_result")
-            ) && block.get("tool_use_id").and_then(serde_json::Value::as_str) == Some(id)
-        })
-    };
-    if envelopes
-        .iter()
-        .any(|envelope| has_result(&envelope.blocks))
-    {
-        return None;
+            Some("web_search_tool_result" | "tool_result") => {
+                if let Some(id) = block.get("tool_use_id").and_then(serde_json::Value::as_str) {
+                    pending.remove(id);
+                }
+            }
+            _ => {}
+        }
     }
-    envelopes
-        .iter()
-        .flat_map(|envelope| envelope.blocks.iter())
-        .find(|block| {
-            block.get("type").and_then(serde_json::Value::as_str) == Some("server_tool_use")
-                && block.get("id").and_then(serde_json::Value::as_str) == Some(id)
-        })
-        .cloned()
+    pending
 }
+
+#[cfg(test)]
+#[path = "stream_replay_tests.rs"]
+mod replay_tests;

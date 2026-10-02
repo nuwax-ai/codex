@@ -179,6 +179,7 @@ async fn startup_reloads_the_callers_selected_project() -> anyhow::Result<()> {
     let manager = ConfigManager::new(
         home,
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         loader_overrides,
         /*strict_config*/ true,
         CloudConfigBundleLoader::default(),

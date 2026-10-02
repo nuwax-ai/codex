@@ -141,6 +141,9 @@ pub struct InProcessStartArgs {
     pub config: Arc<Config>,
     /// CLI config overrides that are already parsed into TOML values.
     pub cli_overrides: Vec<(String, TomlValue)>,
+    /// Fork (nuwax-codex): NUWAX_* environment seed overrides carried as
+    /// their own provenance channel into config loading.
+    pub env_seed_overrides: Vec<(String, TomlValue)>,
     /// Loader override knobs used by config API paths.
     pub loader_overrides: LoaderOverrides,
     /// Whether config API paths should reject unknown config fields.
@@ -428,6 +431,7 @@ async fn start_uninitialized(mut args: InProcessStartArgs) -> IoResult<InProcess
     let config_manager = ConfigManager::new(
         args.config.codex_home.to_path_buf(),
         args.cli_overrides,
+        args.env_seed_overrides,
         args.loader_overrides,
         args.strict_config,
         args.cloud_config_bundle,
@@ -866,6 +870,7 @@ mod tests {
             arg0_paths: Arg0DispatchPaths::default(),
             config,
             cli_overrides: Vec::new(),
+            env_seed_overrides: Vec::new(),
             loader_overrides: LoaderOverrides::default(),
             strict_config: false,
             cloud_config_bundle: CloudConfigBundleLoader::default(),

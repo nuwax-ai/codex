@@ -35,7 +35,8 @@ pub(super) fn resume_model_settings_for_overrides(
     let has_layer_override = config.config_layer_stack.layers_high_to_low().any(|layer| {
         matches!(
             &layer.name,
-            ConfigLayerSource::SessionFlags
+            ConfigLayerSource::EnvSeed
+                | ConfigLayerSource::SessionFlags
                 | ConfigLayerSource::User {
                     profile: Some(_),
                     ..
@@ -53,6 +54,10 @@ pub(super) fn resume_model_settings_for_overrides(
         crate::app_server_session::ResumeModelSettings::RestoreFromThread
     }
 }
+
+#[cfg(test)]
+#[path = "config_persistence_tests.rs"]
+mod env_seed_tests;
 
 pub(super) fn has_explicit_resume_permission_override(
     config: &Config,
@@ -102,6 +107,7 @@ impl App {
         let builder = ConfigBuilder::default()
             .codex_home(self.config.codex_home.to_path_buf())
             .cli_overrides(self.cli_kv_overrides.clone())
+            .env_seed_overrides(self.env_seed_overrides.clone())
             .harness_overrides(overrides)
             .loader_overrides(self.loader_overrides.clone())
             .cloud_config_bundle(self.cloud_config_bundle.clone());
@@ -126,6 +132,7 @@ impl App {
         let builder = ConfigBuilder::default()
             .codex_home(self.config.codex_home.to_path_buf())
             .cli_overrides(self.cli_kv_overrides.clone())
+            .env_seed_overrides(self.env_seed_overrides.clone())
             .harness_overrides(overrides)
             .loader_overrides(self.loader_overrides.clone())
             .cloud_config_bundle(self.cloud_config_bundle.clone());

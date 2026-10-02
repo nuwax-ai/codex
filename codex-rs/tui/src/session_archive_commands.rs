@@ -396,6 +396,7 @@ pub(super) async fn start_app_server_for_session_command(
         arg0_paths,
         config,
         cli_kv_overrides,
+        /*env_seed_overrides*/ Vec::new(),
         loader_overrides,
         strict_config,
         cloud_config_bundle,

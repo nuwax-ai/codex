@@ -181,7 +181,7 @@
           "type": "object"
         },
         {
-          "description": "Session-layer overrides supplied via `-c`/`--config`.",
+          "description": "Session-layer overrides supplied via `-c`/`--config` or launch environment settings.",
           "properties": {
             "type": {
               "enum": [

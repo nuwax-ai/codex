@@ -32,6 +32,7 @@ async fn selected_profile_controls_submit_before_the_first_frame() -> anyhow::Re
                 ..LoaderOverrides::without_managed_config_for_tests()
             },
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             /*config_cwd*/ None,
         )
         .await?;
@@ -84,6 +85,7 @@ async fn first_frame_respects_screen_and_status_line_overrides() -> anyhow::Resu
                 ..LoaderOverrides::without_managed_config_for_tests()
             },
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             /*config_cwd*/ None,
         )
         .await?;

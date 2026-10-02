@@ -304,3 +304,61 @@ fn unpaired_call_emits_in_progress_with_use_block_only() {
         })
     );
 }
+
+#[test]
+fn raw_search_capture_preserves_unknown_call_start_fields() {
+    let call = json!({"type":"server_tool_use", "id":"s1", "name":"web_search", "input":{}, "vendor_nonce":"opaque"});
+    let frames = vec![
+        json!({"type":"content_block_start", "index":0, "content_block":call}),
+        json!({"type":"content_block_delta", "index":0, "delta":{"type":"input_json_delta", "partial_json":"{\"query\":\"q\"}"}}),
+        json!({"type":"content_block_stop", "index":0}),
+    ];
+    let bytes: String = frames
+        .into_iter()
+        .map(|frame| format!("data: {frame}\n\n"))
+        .collect();
+    let capture =
+        futures::executor::block_on(web_search_blocks_from_anthropic_sse(bytes.as_bytes()));
+    assert_eq!(
+        capture.uses,
+        vec![
+            json!({"type":"server_tool_use", "id":"s1", "name":"web_search", "input":{"query":"q"}, "vendor_nonce":"opaque"})
+        ]
+    );
+}
+
+#[test]
+fn captured_search_citations_share_the_envelope_byte_budget() {
+    let events = web_search_call_events(
+        PairedWebSearchBlocks {
+            call: json!({"type":"server_tool_use", "id":"s1", "name":"web_search", "input":{}}),
+            result: Some(
+                json!({"type":"web_search_tool_result", "tool_use_id":"s1", "content":[]}),
+            ),
+        },
+        "source",
+        vec![
+            json!({"type":"text", "text":"x".repeat(crate::hosted_replay::MAX_PAIR_BYTES), "citations":[]}),
+        ],
+    );
+    let done = events
+        .into_iter()
+        .find_map(|event| match event {
+            codex_api::ResponseEvent::OutputItemDone(item) => Some(item),
+            _ => None,
+        })
+        .expect("completed search");
+    assert_eq!(
+        done,
+        codex_protocol::models::ResponseItem::WebSearchCall {
+            id: Some(codex_protocol::ResponseItemId::from_server("s1".into())),
+            status: Some("completed".into()),
+            action: Some(codex_protocol::models::WebSearchAction::Search {
+                query: None,
+                queries: None
+            }),
+            wire_blocks: None,
+            internal_chat_message_metadata_passthrough: None,
+        }
+    );
+}

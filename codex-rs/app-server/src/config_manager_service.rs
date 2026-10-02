@@ -394,6 +394,21 @@ impl ConfigManager {
                 )
             })?;
         let effective = updated_layers.effective_config();
+        let selected_provider = updated_layers
+            .required_model_provider()
+            .or_else(|| effective.get("model_provider").and_then(TomlValue::as_str))
+            .unwrap_or("openai");
+        // Validate the edited stack so deletion can repair an existing foreign contribution.
+        codex_config::env_group_isolation::validate_env_group_isolation(
+            &updated_layers,
+            selected_provider,
+        )
+        .map_err(|err| {
+            ConfigManagerError::write(
+                ConfigWriteErrorCode::ConfigValidationError,
+                format!("Invalid configuration: {err}"),
+            )
+        })?;
         validate_config(&effective)
             .and_then(|()| {
                 credential_provider_edits.validate_remapping(
@@ -803,6 +818,7 @@ fn override_message(layer: &ConfigLayerSource) -> String {
             "Overridden by project config: {}/{CONFIG_TOML_FILE}",
             dot_codex_folder.display(),
         ),
+        ConfigLayerSource::EnvSeed => "NUWAX_* environment group".to_string(),
         ConfigLayerSource::SessionFlags => "Overridden by session flags".to_string(),
         ConfigLayerSource::User { file, .. } => {
             format!("Overridden by user config: {}", file.display())
@@ -910,3 +926,7 @@ fn find_effective_layer(
 #[cfg(test)]
 #[path = "config_manager_service_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "config_manager_env_seed_api_tests.rs"]
+mod env_seed_api_tests;

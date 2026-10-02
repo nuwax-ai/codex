@@ -199,8 +199,9 @@ pub(crate) fn web_search_action(input: &Value) -> WebSearchAction {
 #[derive(Default)]
 struct OpenServerToolUse {
     index: u64,
-    id: String,
     name: String,
+    /// Verbatim start block, retaining vendor fields outside typed Rig data.
+    base: Value,
     /// Input inlined on `content_block_start` (GLM's shape).
     initial_input: Value,
     /// Input accumulated from `input_json_delta` frames (Anthropic's shape).
@@ -208,14 +209,15 @@ struct OpenServerToolUse {
 }
 
 impl OpenServerToolUse {
-    fn finish(self) -> Value {
+    fn finish(mut self) -> Value {
         let input = serde_json::from_str::<Value>(&self.input_json)
             .ok()
             .filter(|input| !input.is_null())
             .unwrap_or(self.initial_input);
-        // `type` is required for replay: the wire block must parse as a
-        // server_tool_use union member on follow-up requests.
-        json!({"type": "server_tool_use", "id": self.id, "name": self.name, "input": input})
+        if let Some(object) = self.base.as_object_mut() {
+            object.insert("input".into(), input);
+        }
+        self.base
     }
 }
 
@@ -234,9 +236,9 @@ impl OpenServerToolUse {
 pub(crate) async fn web_search_blocks_from_anthropic_sse(bytes: &[u8]) -> WebSearchWireCapture {
     let mut capture = WebSearchWireCapture::default();
     let mut open: Option<OpenServerToolUse> = None;
-    // A cited text block: the start frame carries the citations, deltas
-    // stream the text; captured finished at its stop frame.
-    let mut open_cited: Option<(Value, String)> = None;
+    // Citations can arrive on start or in citations_delta frames. Keep every
+    // text block by index until its own stop, including inline initial text.
+    let mut open_cited = std::collections::BTreeMap::<u64, Value>::new();
     let frames = futures::stream::iter(vec![Ok::<_, std::convert::Infallible>(
         bytes::Bytes::copy_from_slice(bytes),
     )])
@@ -253,8 +255,8 @@ pub(crate) async fn web_search_blocks_from_anthropic_sse(bytes: &[u8]) -> WebSea
                     Some("server_tool_use") => {
                         open = Some(OpenServerToolUse {
                             index: event.get("index").and_then(Value::as_u64).unwrap_or(0),
-                            id: string_field(block, "id"),
                             name: string_field(block, "name"),
+                            base: block.clone(),
                             initial_input: block.get("input").cloned().unwrap_or(json!({})),
                             input_json: String::new(),
                         });
@@ -268,16 +270,10 @@ pub(crate) async fn web_search_blocks_from_anthropic_sse(bytes: &[u8]) -> WebSea
                         // reference a server call id are search results.
                         capture.results.push(block.clone());
                     }
-                    Some("text")
-                        if block.get("citations").is_some_and(|value| !value.is_null()) =>
-                    {
-                        let mut block = block.clone();
-                        if let Some(object) = block.as_object_mut() {
-                            object
-                                .entry("text".to_string())
-                                .or_insert_with(|| Value::String(String::new()));
+                    Some("text") => {
+                        if let Some(index) = event.get("index").and_then(Value::as_u64) {
+                            open_cited.insert(index, block.clone());
                         }
-                        open_cited = Some((block, String::new()));
                     }
                     _ => {}
                 }
@@ -295,26 +291,53 @@ pub(crate) async fn web_search_blocks_from_anthropic_sse(bytes: &[u8]) -> WebSea
                     open.input_json.push_str(fragment);
                 }
             }
-            Some("content_block_delta")
-                if event["delta"].get("type").and_then(Value::as_str) == Some("text_delta")
-                    && open_cited.is_some() =>
-            {
-                if let Some(fragment) = event["delta"].get("text").and_then(Value::as_str)
-                    && let Some((_, text)) = open_cited.as_mut()
+            Some("content_block_delta") => {
+                if let Some(index) = event.get("index").and_then(Value::as_u64)
+                    && let Some(block) = open_cited.get_mut(&index)
+                    && let Some(object) = block.as_object_mut()
                 {
-                    text.push_str(fragment);
+                    match event["delta"].get("type").and_then(Value::as_str) {
+                        Some("text_delta") => {
+                            if let Some(fragment) =
+                                event["delta"].get("text").and_then(Value::as_str)
+                            {
+                                let value = object
+                                    .entry("text")
+                                    .or_insert_with(|| Value::String(String::new()));
+                                if let Value::String(text) = value {
+                                    text.push_str(fragment);
+                                }
+                            }
+                        }
+                        Some("citations_delta") => {
+                            if let Some(citation) = event["delta"].get("citation") {
+                                let value = object
+                                    .entry("citations")
+                                    .or_insert_with(|| Value::Array(Vec::new()));
+                                if let Value::Array(citations) = value {
+                                    citations.push(citation.clone());
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
                 }
             }
             Some("content_block_stop") => {
-                if let Some(open) = open.take()
+                let index = event.get("index").and_then(Value::as_u64);
+                if open.as_ref().is_some_and(|open| Some(open.index) == index)
+                    && let Some(open) = open.take()
                     && is_web_search_server_use(&open.name)
                 {
                     capture.uses.push(open.finish());
                 }
-                if let Some((mut block, text)) = open_cited.take()
-                    && let Some(object) = block.as_object_mut()
+                if let Some(index) = index
+                    && let Some(block) = open_cited.remove(&index)
+                    && block
+                        .get("citations")
+                        .and_then(Value::as_array)
+                        .is_some_and(|citations| !citations.is_empty())
                 {
-                    object.insert("text".into(), Value::String(text));
                     capture.cited_text.push(block);
                 }
             }
@@ -404,24 +427,24 @@ pub(crate) fn web_search_call_events(
     } else {
         "in_progress"
     };
-    // Event-side first defense: a pair larger than ~10K tokens (bytes/4)
-    // loses its replay payload (the call itself still completes) — never
-    // truncated mid-ciphertext. The request-side sanitize pass re-checks
-    // every payload, whatever produced it.
+    // Bound the full envelope, including cited text, before persisting it.
+    // This byte cap is not an exact token bound. The call still completes
+    // when its replay payload is dropped whole.
     let blocks = match &result {
         Some(result) => vec![call, result.clone()],
         None => vec![call],
     };
-    let wire_blocks = if serde_json::to_string(&blocks).map_or(true, |serialized| {
+    let payload = crate::hosted_replay::envelope(source, blocks, cited_text);
+    let wire_blocks = if serde_json::to_string(&payload).map_or(true, |serialized| {
         serialized.len() > crate::hosted_replay::MAX_PAIR_BYTES
     }) {
         tracing::warn!(
             max_pair_bytes = crate::hosted_replay::MAX_PAIR_BYTES,
-            "web-search result pair exceeds the replay size cap; dropping its replay payload"
+            "web-search replay envelope exceeds the byte cap; dropping its payload"
         );
         None
     } else {
-        Some(crate::hosted_replay::envelope(source, blocks, cited_text))
+        Some(payload)
     };
     let make = |status: Option<String>, wire_blocks: Option<Value>| ResponseItem::WebSearchCall {
         id: Some(ResponseItemId::from_server(id.clone())),
@@ -453,7 +476,7 @@ fn string_field(block: &Value, key: &str) -> String {
 pub(crate) async fn assistant_continuation_items(
     bytes: &[u8],
     source: &str,
-) -> crate::hosted_replay::PauseCapture {
+) -> Result<crate::hosted_replay::PauseCapture, ApiError> {
     let capture = web_search_blocks_from_anthropic_sse(bytes).await;
     let paired = pair_web_search_blocks(capture);
     let pairs = paired.pairs;
@@ -479,10 +502,10 @@ pub(crate) async fn assistant_continuation_items(
             }
         }
     }
-    crate::hosted_replay::PauseCapture {
+    Ok(crate::hosted_replay::PauseCapture {
         items,
-        raw_content: crate::hosted_replay::raw_assistant_content(bytes).await,
-    }
+        raw_content: crate::hosted_replay::raw_assistant_content(bytes).await?,
+    })
 }
 
 /// Concatenates the text deltas of plain text blocks (in stream order) into
@@ -526,3 +549,7 @@ async fn assembled_text(bytes: &[u8]) -> String {
 #[cfg(test)]
 #[path = "hosted_tools_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "hosted_capture_tests.rs"]
+mod capture_tests;

@@ -680,6 +680,7 @@ async fn command_center_new_preserves_only_selected_server_profiles() -> Result<
         codex_arg0::Arg0DispatchPaths::default(),
         server_config,
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         LoaderOverrides::default(),
         /*strict_config*/ false,
         CloudConfigBundleLoader::default(),

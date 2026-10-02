@@ -28,6 +28,7 @@ async fn experimental_features_use_selected_server_profile_and_preserve_task_set
         Default::default(),
         config.clone(),
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         loader,
         /*strict_config*/ false,
         Default::default(),

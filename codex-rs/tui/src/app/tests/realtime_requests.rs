@@ -2031,6 +2031,7 @@ async fn overridden_voice_save_keeps_effective_voice() -> Result<()> {
             codex_arg0::Arg0DispatchPaths::default(),
             app.config.clone(),
             overrides,
+            /*env_seed_overrides*/ Vec::new(),
             codex_config::LoaderOverrides::without_managed_config_for_tests(),
             /*strict_config*/ false,
             codex_config::CloudConfigBundleLoader::default(),

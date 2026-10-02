@@ -15,6 +15,8 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ProviderSource {
     NuwaxEnvironmentGroup,
+    LocalProviderFlag,
+    CliOverride,
     ConfigLayers,
 }
 
@@ -63,7 +65,9 @@ pub(super) async fn check(
             ProviderSource::NuwaxEnvironmentGroup => {
                 "NUWAX_* environment group (temporary, per-run credentials)"
             }
-            ProviderSource::ConfigLayers => "config file / default",
+            ProviderSource::LocalProviderFlag => "--local-provider flag",
+            ProviderSource::CliOverride => "-c model_provider override",
+            ProviderSource::ConfigLayers => "config layers / requirements / default",
         }
     ));
     details.push(format!("wire api: {}", provider.wire_api));
@@ -80,6 +84,7 @@ pub(super) async fn check(
         "endpoint (redacted): {}",
         redacted_endpoint(provider.base_url.as_deref())
     ));
+    details.push(format!("endpoint source: {}", endpoint_source(config)));
     if let Some(experimental) = provider.experimental_bridge {
         details.push(format!("experimental bridge override: {experimental:?}"));
     }
@@ -194,3 +199,31 @@ fn redacted_endpoint(base_url: Option<&str>) -> String {
 #[cfg(test)]
 #[path = "model_routing_tests.rs"]
 mod tests;
+
+/// Which config layer supplied the effective provider's base_url, so a
+/// report can tell an environment-group endpoint from durable
+/// configuration. Requirements define providers outside the layer stack, so
+/// they are reported by name when they supply the selected provider's endpoint.
+fn endpoint_source(config: &Config) -> String {
+    if config.model_provider.base_url.is_none() {
+        return "no base_url override (built-in provider)".to_string();
+    }
+    if config
+        .config_layer_stack
+        .requirements_toml()
+        .model_providers
+        .as_ref()
+        .and_then(|providers| providers.get(&config.model_provider_id))
+        .and_then(|provider| provider.base_url.as_ref())
+        .is_some()
+    {
+        return "managed requirements".to_string();
+    }
+    let path = format!("model_providers.{}.base_url", config.model_provider_id);
+    config
+        .config_layer_stack
+        .origins()
+        .get(&path)
+        .map(|metadata| codex_config::format_config_layer_source(&metadata.name, "config.toml"))
+        .unwrap_or_else(|| "no base_url override (built-in provider)".to_string())
+}

@@ -147,6 +147,7 @@ pub async fn load_config_layers_state(
     codex_home: &Path,
     cwd: Option<AbsolutePathBuf>,
     cli_overrides: &[(String, TomlValue)],
+    env_seed_overrides: &[(String, TomlValue)],
     options: impl Into<ConfigLoadOptions>,
     thread_config_loader: &dyn ThreadConfigLoader,
 ) -> io::Result<ConfigLayerStack> {
@@ -265,6 +266,26 @@ pub async fn load_config_layers_state(
             base_dir,
         )?)
     };
+    // Fork (nuwax-codex): the NUWAX_* environment seeds ride their OWN layer
+    // directly below the CLI layer, keeping their provenance separable from
+    // every user-supplied contribution (explicit `-c`, thread config). The
+    // reserved-provider isolation validation depends on this distinction.
+    let env_seed_layer = if env_seed_overrides.is_empty() {
+        None
+    } else {
+        let env_seed_layer = build_cli_overrides_layer(env_seed_overrides);
+        let base_dir = cwd
+            .as_ref()
+            .map(AbsolutePathBuf::as_path)
+            .unwrap_or(codex_home);
+        if strict_config {
+            validate_cli_overrides_strictly(&env_seed_layer, base_dir)?;
+        }
+        Some(resolve_relative_paths_in_config_toml(
+            env_seed_layer,
+            base_dir,
+        )?)
+    };
 
     // Include an entry for the "system" config folder, loading its config.toml,
     // if it exists.
@@ -345,6 +366,9 @@ pub async fn load_config_layers_state(
         if let Some(cli_overrides_layer) = cli_overrides_layer.as_ref() {
             merge_toml_values(&mut merged_so_far, cli_overrides_layer);
         }
+        if let Some(env_seed_layer) = env_seed_layer.as_ref() {
+            merge_toml_values(&mut merged_so_far, env_seed_layer);
+        }
         let trusted_broker_config = credential_broker_trusted_config(
             &merged_so_far,
             &thread_config_layers,
@@ -416,6 +440,14 @@ pub async fn load_config_layers_state(
     }
 
     // Add a layer for runtime overrides from the CLI or UI, if any exist.
+    // The environment seed layer sits directly below it, matching its
+    // documented precedence (explicit `-c` outranks the environment group).
+    if let Some(env_seed_layer) = env_seed_layer {
+        layers.push(ConfigLayerEntry::new(
+            ConfigLayerSource::EnvSeed,
+            env_seed_layer,
+        ));
+    }
     if let Some(cli_overrides_layer) = cli_overrides_layer {
         layers.push(ConfigLayerEntry::new(
             ConfigLayerSource::SessionFlags,

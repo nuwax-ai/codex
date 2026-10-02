@@ -143,3 +143,112 @@ fn sanitize_drops_malformed_calls_and_dangling_results() {
     );
     let _ = dangling;
 }
+
+#[test]
+fn sanitize_copies_citations_once_for_a_group_with_multiple_pairs() {
+    let cited_text = vec![json!({"type":"text", "text":"answer", "citations":[]})];
+    let blocks = vec![call("s1"), result("s1"), call("s2"), result("s2")];
+    let group = ReplayGroup {
+        index: 0,
+        blocks,
+        cited_text,
+    };
+    assert_eq!(sanitize_for_request(vec![group.clone()]), vec![group]);
+}
+
+#[test]
+fn loaded_envelope_gate_rejects_malformed_and_oversized_cited_blocks() {
+    for cited in [
+        json!({"type":"tool_use", "id":"injected", "name":"lookup", "input":{}, "text":"x", "citations":[]}),
+        json!({"type":"text", "text":false, "citations":[]}),
+        json!({"type":"text", "text":"x", "citations":{}}),
+        json!({"type":"text", "text":"x".repeat(MAX_PAIR_BYTES), "citations":[]}),
+    ] {
+        let payload = envelope("source", vec![call("s1"), result("s1")], vec![cited]);
+        assert!(
+            validated_envelope(&payload, "source").is_none(),
+            "{payload}"
+        );
+    }
+    let invalid_result =
+        json!({"type":"web_search_tool_result", "tool_use_id":"s1", "content":true});
+    let payload = envelope("source", vec![call("s1"), invalid_result], Vec::new());
+    assert!(validated_envelope(&payload, "source").is_none());
+    assert!(
+        validated_envelope(
+            &envelope("source", vec![result("s1")], Vec::new()),
+            "source"
+        )
+        .is_none()
+    );
+    for blocks in [
+        vec![call("s1"), call("s1"), result("s1")],
+        vec![call("s1"), result("s1"), result("s1")],
+    ] {
+        assert!(validated_envelope(&envelope("source", blocks, Vec::new()), "source").is_none());
+    }
+}
+
+#[test]
+fn sanitize_keeps_split_pairs_at_their_original_positions_and_drops_duplicates() {
+    let groups = vec![
+        ReplayGroup {
+            index: 0,
+            blocks: vec![call("s1"), call("s2")],
+            cited_text: Vec::new(),
+        },
+        ReplayGroup {
+            index: 1,
+            blocks: vec![result("s2"), result("s1")],
+            cited_text: Vec::new(),
+        },
+        ReplayGroup {
+            index: 2,
+            blocks: vec![call("s1"), result("s1"), result("missing")],
+            cited_text: Vec::new(),
+        },
+    ];
+    assert_eq!(sanitize_for_request(groups.clone()), groups[..2]);
+    // Validation checks pair integrity without regrouping interleaved raw blocks.
+    let blocks = vec![call("s1"), call("s2"), result("s2"), result("s1")];
+    assert_eq!(
+        validated_envelope(&envelope("source", blocks.clone(), Vec::new()), "source")
+            .expect("valid interleaving")
+            .blocks,
+        blocks
+    );
+}
+
+#[test]
+fn sanitize_budgets_split_pairs_together_with_the_late_citations() {
+    let mut groups = Vec::new();
+    for index in 0..=MAX_REPLAY_PAIRS_PER_REQUEST {
+        let id = format!("s{index}");
+        groups.push(ReplayGroup {
+            index,
+            blocks: vec![call(&id)],
+            cited_text: Vec::new(),
+        });
+        groups.push(ReplayGroup {
+            index: index + 100,
+            blocks: vec![result(&id)],
+            cited_text: Vec::new(),
+        });
+    }
+    assert_eq!(sanitize_for_request(groups.clone()), groups[2..]);
+    let oversized = vec![
+        ReplayGroup {
+            index: 0,
+            blocks: vec![call("big")],
+            cited_text: Vec::new(),
+        },
+        ReplayGroup {
+            index: 1,
+            blocks: vec![result("big")],
+            cited_text: vec![json!({
+                "type":"text", "text":"x".repeat(MAX_PAIR_BYTES), "citations":[]
+            })],
+        },
+    ];
+    assert_eq!(sanitize_for_request(oversized), Vec::<ReplayGroup>::new());
+}

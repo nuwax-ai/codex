@@ -14,6 +14,7 @@ impl App {
         let picker_config = self.config.clone();
         let picker_target = self.app_server_target.clone();
         let picker_cli_kv_overrides = self.cli_kv_overrides.clone();
+        let picker_env_seed_overrides = self.env_seed_overrides.clone();
         let picker_loader_overrides = self.loader_overrides.clone();
         let picker_state_db = self.state_db.clone();
         let picker_environment_manager = Arc::clone(&self.environment_manager);
@@ -22,6 +23,7 @@ impl App {
                 &picker_config,
                 &picker_target,
                 picker_cli_kv_overrides,
+                picker_env_seed_overrides,
                 picker_loader_overrides,
                 picker_state_db,
                 picker_environment_manager,

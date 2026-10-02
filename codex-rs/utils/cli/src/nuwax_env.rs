@@ -137,7 +137,13 @@ pub fn nuwax_env_overrides(
         ));
     }
     require_non_blank(api_key, API_KEY_ENV)?;
-    if has_existing(&format!("model_providers.{NUWAX_ENV_PROVIDER_ID}")) {
+    let reserved_provider = format!("model_providers.{NUWAX_ENV_PROVIDER_ID}");
+    let reserved_subkey_prefix = format!("{reserved_provider}.");
+    if existing.iter().any(|(key, value)| {
+        key == &reserved_provider
+            || key.starts_with(&reserved_subkey_prefix)
+            || (key == "model_providers" && value.get(NUWAX_ENV_PROVIDER_ID).is_some())
+    }) {
         return Err(format!(
             "model_providers.{NUWAX_ENV_PROVIDER_ID} is a reserved id for the NUWAX \
              environment provider; remove the configured provider or unset the \

@@ -1213,6 +1213,7 @@ async fn start_resource_in_process_client(
         arg0_paths: Arg0DispatchPaths::default(),
         config: Arc::new(config),
         cli_overrides,
+        env_seed_overrides: Vec::new(),
         loader_overrides,
         strict_config: false,
         cloud_config_bundle: CloudConfigBundleLoader::default(),

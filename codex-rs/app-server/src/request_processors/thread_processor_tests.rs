@@ -621,6 +621,7 @@ mod thread_processor_behavior_tests {
         let config_manager = ConfigManager::new(
             temp_dir.path().to_path_buf(),
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             LoaderOverrides::default(),
             /*strict_config*/ false,
             CloudConfigBundleLoader::default(),

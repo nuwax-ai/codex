@@ -249,13 +249,25 @@ async fn responses_preserve_header_and_sse_metadata_events() {
 
 #[tokio::test]
 async fn responses_time_out_when_server_never_sends_headers() {
+    // Client initialization is outside the HTTP header deadline under test.
+    // Warm the shared client before putting a guard around the stalled request.
+    support::capture(
+        &support::request(vec![support::user()]),
+        RigProtocol::Responses,
+    )
+    .await;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind loopback");
     let provider = provider(listener.local_addr().expect("address"));
     let (release, hold_connection) = tokio::sync::oneshot::channel();
     let server = tokio::spawn(async move {
-        let (socket, _) = listener.accept().await.expect("accept");
+        let mut hold_connection = hold_connection;
+        let accepted = tokio::select! {
+            result = listener.accept() => result,
+            _ = &mut hold_connection => return,
+        };
+        let (socket, _) = accepted.expect("accept");
         // A header timeout can cancel the upload before the body is complete.
         // Hold the accepted connection without assuming a complete request.
         hold_connection.await.expect("release stalled server");

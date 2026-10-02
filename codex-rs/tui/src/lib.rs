@@ -9,7 +9,7 @@ use crate::legacy_core::config::ConfigBuilder;
 use crate::legacy_core::config::ConfigOverrides;
 use crate::legacy_core::config::ConfigTomlLoadResult;
 use crate::legacy_core::config::bootstrap_auth_config;
-use crate::legacy_core::config::load_config_toml_with_layer_stack;
+use crate::legacy_core::config::load_config_toml_with_layer_stack_and_env_seed;
 #[cfg(test)]
 use crate::legacy_core::config::resolve_bootstrap_http_client_factory;
 use crate::legacy_core::config::resolve_oss_provider;
@@ -285,6 +285,7 @@ async fn start_embedded_app_server(
     arg0_paths: Arg0DispatchPaths,
     config: Config,
     cli_kv_overrides: Vec<(String, toml::Value)>,
+    env_seed_overrides: Vec<(String, toml::Value)>,
     loader_overrides: LoaderOverrides,
     strict_config: bool,
     cloud_config_bundle: CloudConfigBundleLoader,
@@ -299,6 +300,7 @@ async fn start_embedded_app_server(
         arg0_paths,
         config,
         cli_kv_overrides,
+        env_seed_overrides,
         loader_overrides,
         strict_config,
         cloud_config_bundle,
@@ -553,6 +555,7 @@ async fn start_app_server(
     arg0_paths: Arg0DispatchPaths,
     config: Config,
     cli_kv_overrides: Vec<(String, toml::Value)>,
+    env_seed_overrides: Vec<(String, toml::Value)>,
     loader_overrides: LoaderOverrides,
     strict_config: bool,
     cloud_config_bundle: CloudConfigBundleLoader,
@@ -596,6 +599,7 @@ async fn start_app_server(
         arg0_paths,
         config,
         cli_kv_overrides,
+        env_seed_overrides,
         loader_overrides,
         strict_config,
         cloud_config_bundle,
@@ -613,6 +617,7 @@ pub(crate) async fn start_app_server_for_picker(
     config: &Config,
     target: &AppServerTarget,
     cli_kv_overrides: Vec<(String, toml::Value)>,
+    env_seed_overrides: Vec<(String, toml::Value)>,
     loader_overrides: LoaderOverrides,
     state_db: Option<StateDbHandle>,
     environment_manager: Arc<EnvironmentManager>,
@@ -626,6 +631,7 @@ pub(crate) async fn start_app_server_for_picker(
         Arg0DispatchPaths::default(),
         config.clone(),
         cli_kv_overrides,
+        env_seed_overrides,
         loader_overrides,
         /*strict_config*/ false,
         CloudConfigBundleLoader::default(),
@@ -653,6 +659,7 @@ pub(crate) async fn start_embedded_app_server_for_picker(
         Arg0DispatchPaths::default(),
         config.clone(),
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         LoaderOverrides::without_managed_config_for_tests(),
         /*strict_config*/ false,
         CloudConfigBundleLoader::default(),
@@ -674,6 +681,7 @@ async fn start_embedded_app_server_with<F, Fut>(
     arg0_paths: Arg0DispatchPaths,
     config: Config,
     cli_kv_overrides: Vec<(String, toml::Value)>,
+    env_seed_overrides: Vec<(String, toml::Value)>,
     loader_overrides: LoaderOverrides,
     strict_config: bool,
     cloud_config_bundle: CloudConfigBundleLoader,
@@ -702,6 +710,7 @@ where
         arg0_paths,
         config: Arc::new(config),
         cli_overrides: cli_kv_overrides,
+        env_seed_overrides,
         loader_overrides,
         strict_config,
         cloud_config_bundle,
@@ -1135,6 +1144,7 @@ async fn run_ratatui_app(
     manually_selected_oss_provider: Option<String>,
     overrides: ConfigOverrides,
     cli_kv_overrides: Vec<(String, toml::Value)>,
+    env_seed_overrides: Vec<(String, toml::Value)>,
     mut cloud_config_bundle: CloudConfigBundleLoader,
     feedback: codex_feedback::CodexFeedback,
     log_db: Option<log_db::LogDbLayer>,
@@ -1199,6 +1209,7 @@ async fn run_ratatui_app(
                 arg0_paths.clone(),
                 initial_config.clone(),
                 cli_kv_overrides.clone(),
+                env_seed_overrides.clone(),
                 loader_overrides.clone(),
                 strict_config,
                 cloud_config_bundle.clone(),
@@ -1371,6 +1382,7 @@ async fn run_ratatui_app(
                     {
                         load_config_or_exit_with_fallback_cwd(
                             cli_kv_overrides.clone(),
+                            env_seed_overrides.clone(),
                             overrides.clone(),
                             loader_overrides.clone(),
                             cloud_config_bundle.clone(),
@@ -1714,6 +1726,7 @@ async fn run_ratatui_app(
                     &mut tui,
                     load_config_or_exit_with_fallback_cwd(
                         cli_kv_overrides.clone(),
+                        env_seed_overrides.clone(),
                         overrides.clone(),
                         loader_overrides.clone(),
                         cloud_config_bundle.clone(),
@@ -1730,6 +1743,7 @@ async fn run_ratatui_app(
                     &mut tui,
                     load_config_or_exit(
                         cli_kv_overrides.clone(),
+                        env_seed_overrides.clone(),
                         overrides.clone(),
                         loader_overrides.clone(),
                         cloud_config_bundle.clone(),
@@ -1770,6 +1784,7 @@ async fn run_ratatui_app(
                     arg0_paths.clone(),
                     config.clone(),
                     cli_kv_overrides.clone(),
+                    env_seed_overrides.clone(),
                     loader_overrides.clone(),
                     strict_config,
                     cloud_config_bundle.clone(),
@@ -1840,6 +1855,7 @@ async fn run_ratatui_app(
             let previous_provider = config.model_provider_id.clone();
             config = load_config_or_exit_with_fallback_cwd(
                 cli_kv_overrides.clone(),
+                env_seed_overrides.clone(),
                 overrides.clone(),
                 loader_overrides.clone(),
                 cloud_config_bundle.clone(),
@@ -1860,6 +1876,7 @@ async fn run_ratatui_app(
                     arg0_paths.clone(),
                     config.clone(),
                     cli_kv_overrides.clone(),
+                    env_seed_overrides.clone(),
                     loader_overrides.clone(),
                     strict_config,
                     cloud_config_bundle.clone(),
@@ -1892,6 +1909,7 @@ async fn run_ratatui_app(
             if !uses_remote_workspace {
                 config = load_config_or_exit_with_fallback_cwd(
                     cli_kv_overrides.clone(),
+                    env_seed_overrides.clone(),
                     overrides.clone(),
                     loader_overrides.clone(),
                     cloud_config_bundle.clone(),
@@ -2037,6 +2055,7 @@ async fn run_ratatui_app(
         config,
         current_cwd.to_path_buf(),
         cli_kv_overrides.clone(),
+        env_seed_overrides.clone(),
         overrides.clone(),
         loader_overrides.clone(),
         cloud_config_bundle,
@@ -2154,6 +2173,7 @@ async fn get_login_status(
 
 async fn load_config_or_exit(
     cli_kv_overrides: Vec<(String, toml::Value)>,
+    env_seed_overrides: Vec<(String, toml::Value)>,
     overrides: ConfigOverrides,
     loader_overrides: LoaderOverrides,
     cloud_config_bundle: CloudConfigBundleLoader,
@@ -2161,6 +2181,7 @@ async fn load_config_or_exit(
 ) -> Config {
     load_config_or_exit_with_fallback_cwd(
         cli_kv_overrides,
+        env_seed_overrides,
         overrides,
         loader_overrides,
         cloud_config_bundle,
@@ -2174,6 +2195,7 @@ async fn load_config_or_exit(
 #[allow(clippy::too_many_arguments)]
 async fn load_config_or_exit_with_fallback_cwd(
     cli_kv_overrides: Vec<(String, toml::Value)>,
+    env_seed_overrides: Vec<(String, toml::Value)>,
     overrides: ConfigOverrides,
     loader_overrides: LoaderOverrides,
     cloud_config_bundle: CloudConfigBundleLoader,
@@ -2184,6 +2206,7 @@ async fn load_config_or_exit_with_fallback_cwd(
     #[allow(clippy::print_stderr)]
     match load_config_with_worktree_source_policy(
         cli_kv_overrides,
+        env_seed_overrides,
         overrides,
         loader_overrides,
         cloud_config_bundle,
@@ -2208,6 +2231,7 @@ async fn load_config_or_exit_with_fallback_cwd(
 #[allow(clippy::too_many_arguments)]
 async fn load_config_with_worktree_source_policy(
     cli_kv_overrides: Vec<(String, toml::Value)>,
+    env_seed_overrides: Vec<(String, toml::Value)>,
     overrides: ConfigOverrides,
     loader_overrides: LoaderOverrides,
     cloud_config_bundle: CloudConfigBundleLoader,
@@ -2217,6 +2241,7 @@ async fn load_config_with_worktree_source_policy(
 ) -> std::io::Result<Config> {
     let config = ConfigBuilder::default()
         .cli_overrides(cli_kv_overrides.clone())
+        .env_seed_overrides(env_seed_overrides.clone())
         .harness_overrides(overrides.clone())
         .loader_overrides(loader_overrides.clone())
         .strict_config(strict_config)
@@ -2229,6 +2254,7 @@ async fn load_config_with_worktree_source_policy(
         worktree
             .check_source_policy(
                 &cli_kv_overrides,
+                &env_seed_overrides,
                 &overrides,
                 &loader_overrides,
                 &cloud_config_bundle,
@@ -2244,14 +2270,16 @@ async fn load_bootstrap_config_or_exit(
     codex_home: &Path,
     cwd: Option<&AbsolutePathBuf>,
     cli_kv_overrides: Vec<(String, codex_config::TomlValue)>,
+    env_seed_overrides: Vec<(String, codex_config::TomlValue)>,
     loader_overrides: LoaderOverrides,
     strict_config: bool,
     cloud_config_bundle: CloudConfigBundleLoader,
 ) -> ConfigTomlLoadResult {
-    match load_config_toml_with_layer_stack(
+    match load_config_toml_with_layer_stack_and_env_seed(
         codex_home,
         cwd,
         cli_kv_overrides,
+        env_seed_overrides,
         codex_config::ConfigLoadOptions {
             loader_overrides,
             strict_config,
@@ -2593,10 +2621,11 @@ requires_openai_auth = {requires_openai_auth}
             let prepared_environment_manager =
                 EnvironmentManager::prepare_from_codex_home(codex_home.path()).await?;
             let loader_overrides = LoaderOverrides::without_managed_config_for_tests();
-            let bootstrap_config = load_config_toml_with_layer_stack(
+            let bootstrap_config = load_config_toml_with_layer_stack_and_env_seed(
                 codex_home.path(),
                 /*cwd*/ None,
                 Vec::new(),
+                /*env_seed_overrides*/ Vec::new(),
                 codex_config::ConfigLoadOptions {
                     loader_overrides: loader_overrides.clone(),
                     ..Default::default()
@@ -2660,6 +2689,7 @@ requires_openai_auth = {requires_openai_auth}
             Arg0DispatchPaths::default(),
             config,
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             LoaderOverrides::default(),
             /*strict_config*/ false,
             CloudConfigBundleLoader::default(),
@@ -2767,6 +2797,7 @@ requires_openai_auth = {requires_openai_auth}
                 &final_config,
                 &AppServerTarget::Embedded,
                 Vec::new(),
+                /*env_seed_overrides*/ Vec::new(),
                 LoaderOverrides::without_managed_config_for_tests(),
                 state_db,
                 Arc::new(EnvironmentManager::default_for_tests()),
@@ -3812,6 +3843,7 @@ requires_openai_auth = {requires_openai_auth}
             Arg0DispatchPaths::default(),
             config,
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             LoaderOverrides::default(),
             /*strict_config*/ false,
             CloudConfigBundleLoader::default(),

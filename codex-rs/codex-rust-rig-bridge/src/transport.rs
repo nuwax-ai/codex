@@ -58,10 +58,9 @@ pub(crate) struct RigHttpClient {
     /// recover server-tool blocks rig never exposes on its public streaming
     /// surface. `None` in production for the other protocols.
     pub(crate) anthropic_sse_tee: Option<Arc<Mutex<Vec<u8>>>>,
-    /// Pause continuation (official recipe): the paused assistant message's
-    /// reassembled raw content blocks replace the content of the FINAL
-    /// assistant message wholesale, instead of replay groups appending.
-    pub(crate) anthropic_pause_raw_content: Option<Vec<serde_json::Value>>,
+    /// Raw pause responses append to the original request prefix in attempt
+    /// order; earlier assistant content is never replaced.
+    pub(crate) anthropic_pause_raw_content: Option<Vec<Vec<serde_json::Value>>>,
 }
 
 impl std::fmt::Debug for RigHttpClient {
@@ -124,8 +123,8 @@ impl RigHttpClient {
 struct ChatFamilyRewrite<'a> {
     protocol: crate::RigProtocol,
     websearch_replay: &'a [crate::hosted_replay::ReplayGroup],
-    /// Verbatim content replacement for the final assistant message.
-    anthropic_pause_raw_content: Option<&'a [serde_json::Value]>,
+    /// Complete paused assistant responses appended after the original input.
+    anthropic_pause_raw_content: Option<&'a [Vec<serde_json::Value>]>,
     disable_anthropic_parallel: bool,
     disable_anthropic_thinking: bool,
     tool_strict: &'a std::collections::HashMap<String, bool>,
@@ -284,26 +283,7 @@ impl ChatFamilyRewrite<'_> {
             // into the content array of the assistant message each pair
             // followed in history. The index counts assistant-role messages,
             // matching how history conversion numbered them.
-            let pause_replacement = self.anthropic_pause_raw_content;
-            if !self.websearch_replay.is_empty() || pause_replacement.is_some() {
-                let assistant_total = messages
-                    .iter()
-                    .filter(|message| message["role"] == "assistant")
-                    .count();
-                // The continuation items append last, so the paused
-                // assistant is the final one; its raw content replaces the
-                // whole array (the groups it produced are inside the raw
-                // blocks — splice must not duplicate them).
-                let replaced_index = pause_replacement.and_then(|_| assistant_total.checked_sub(1));
-                if let (Some(raw), None) = (pause_replacement, replaced_index) {
-                    // No assistant at all follows the user history (a
-                    // thinking-only pause converts to no items); the paused
-                    // assistant enters the wire whole, at the end.
-                    messages.push(serde_json::json!({
-                        "role": "assistant",
-                        "content": raw,
-                    }));
-                }
+            if !self.websearch_replay.is_empty() {
                 let mut assistant_seen = 0usize;
                 let mut pending: Vec<&crate::hosted_replay::ReplayGroup> =
                     self.websearch_replay.iter().collect();
@@ -314,15 +294,6 @@ impl ChatFamilyRewrite<'_> {
                     }
                     let current = assistant_seen;
                     assistant_seen += 1;
-                    if replaced_index == Some(current)
-                        && let Some(raw) = pause_replacement
-                    {
-                        pending.retain(|group| group.index != current);
-                        if let Some(content) = message.get_mut("content") {
-                            *content = serde_json::Value::Array(raw.to_vec());
-                        }
-                        continue;
-                    }
                     let groups: Vec<&crate::hosted_replay::ReplayGroup> = pending
                         .iter()
                         .filter(|group| group.index == current)
@@ -344,9 +315,67 @@ impl ChatFamilyRewrite<'_> {
                     };
                     for group in groups {
                         content.extend(group.blocks.iter().cloned());
-                        // Cited text blocks follow their pair inside the
-                        // same assistant group.
-                        content.extend(group.cited_text.iter().cloned());
+                        // A cited block whose text matches the assistant's
+                        // plain projection REPLACES it: the answer appears
+                        // once, and the cited terminal state takes the
+                        // position the streamed block order gave it (after
+                        // its pair). Unmatched cited blocks append as-is.
+                        for cited in &group.cited_text {
+                            // Plain-text overlap identifies the projection of
+                            // the SAME streamed answer; the cited terminal
+                            // state replaces it so the answer appears once.
+                            // The saved Message merges consecutive text
+                            // blocks, so the cited answer may share a plain
+                            // block with neighbouring text: split that block
+                            // at the matched span. The replacement lands
+                            // after the pair's blocks, matching the streamed
+                            // order the model originally saw.
+                            let cited_text = cited.get("text").and_then(serde_json::Value::as_str);
+                            let mut matched_plain: Option<String> = None;
+                            content.retain(|block| {
+                                let plain = block["type"] == "text"
+                                    && block.get("citations").map(serde_json::Value::is_array)
+                                        != Some(true);
+                                if !plain || matched_plain.is_some() {
+                                    return true;
+                                }
+                                let block_text =
+                                    block.get("text").and_then(serde_json::Value::as_str);
+                                let matches = cited_text.is_some_and(|cited| {
+                                    !cited.is_empty()
+                                        && block_text.is_some_and(|text| text.contains(cited))
+                                });
+                                if matches {
+                                    matched_plain = block_text.map(str::to_string);
+                                }
+                                !matches
+                            });
+                            match (cited_text, matched_plain) {
+                                (Some(cited_text), Some(plain_text))
+                                    if !cited_text.is_empty()
+                                        && plain_text.contains(cited_text) =>
+                                {
+                                    let Some(at) = plain_text.find(cited_text) else {
+                                        content.push(cited.clone());
+                                        continue;
+                                    };
+                                    let head = plain_text[..at].to_string();
+                                    let tail = plain_text[at + cited_text.len()..].to_string();
+                                    if !head.is_empty() {
+                                        content.push(serde_json::json!({
+                                            "type": "text", "text": head,
+                                        }));
+                                    }
+                                    content.push(cited.clone());
+                                    if !tail.is_empty() {
+                                        content.push(serde_json::json!({
+                                            "type": "text", "text": tail,
+                                        }));
+                                    }
+                                }
+                                _ => content.push(cited.clone()),
+                            }
+                        }
                     }
                 }
                 if !pending.is_empty() {
@@ -360,6 +389,13 @@ impl ChatFamilyRewrite<'_> {
                 message["role"] != "assistant"
                     || !message["content"].as_array().is_some_and(Vec::is_empty)
             });
+            if let Some(paused_messages) = self.anthropic_pause_raw_content {
+                messages.extend(paused_messages.iter().map(|content| {
+                    serde_json::json!({
+                        "role": "assistant", "content": content,
+                    })
+                }));
+            }
         }
     }
 }

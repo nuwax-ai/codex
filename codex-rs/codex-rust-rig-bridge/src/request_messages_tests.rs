@@ -112,6 +112,49 @@ fn hosted_replay_after_tool_result_does_not_attach_to_the_tool_call_turn() {
 }
 
 #[test]
+fn late_result_only_projection_uses_the_validated_original_call_as_its_sdk_anchor() {
+    let call = json!({"type":"server_tool_use", "id":"late", "name":"web_search", "input":{}, "vendor":"preserve"});
+    let result = json!({"type":"tool_result", "tool_use_id":"late", "content":"GLM result", "vendor":"preserve"});
+    let items = serde_json::from_value::<Vec<ResponseItem>>(json!([
+        {"type":"web_search_call", "wire_blocks":envelope(json!([call]))},
+        {"type":"message", "role":"user", "content":[{"type":"input_text", "text":"next"}]},
+        {"type":"web_search_call", "wire_blocks":envelope(json!([call, result]))},
+    ]))
+    .expect("history");
+    let mut replay = Vec::new();
+    let messages = convert_response_items(&items, RigProtocol::Anthropic, "source", &mut replay)
+        .expect("convert late result");
+    assert_eq!(
+        replay,
+        vec![
+            crate::hosted_replay::ReplayGroup {
+                index: 0,
+                blocks: vec![call.clone()],
+                cited_text: Vec::new()
+            },
+            crate::hosted_replay::ReplayGroup {
+                index: 1,
+                blocks: vec![result],
+                cited_text: Vec::new()
+            },
+        ]
+    );
+    let Some(Message::Assistant { content, .. }) = messages.last() else {
+        panic!("late assistant")
+    };
+    let AssistantContent::Text(anchor) = &content[0] else {
+        panic!("raw call anchor")
+    };
+    assert_eq!(
+        anchor
+            .additional_params
+            .as_ref()
+            .and_then(|params| params.get("anthropic_content")),
+        Some(&call)
+    );
+}
+
+#[test]
 fn legacy_and_foreign_payloads_do_not_replay_and_create_no_assistant() {
     for (label, payload) in [
         (
@@ -127,6 +170,24 @@ fn legacy_and_foreign_payloads_do_not_replay_and_create_no_assistant() {
             ]}),
         ),
         ("unrecognized shape", json!({"unexpected": true})),
+        (
+            "malformed call input",
+            envelope(json!([
+                {"type":"server_tool_use", "id":"x", "name":"web_search", "input":[]}
+            ])),
+        ),
+        (
+            "missing call name",
+            envelope(json!([
+                {"type":"server_tool_use", "id":"x", "input":{}}
+            ])),
+        ),
+        (
+            "oversized loaded call",
+            envelope(json!([
+                {"type":"server_tool_use", "id":"x", "name":"web_search", "input":{"query":"x".repeat(crate::hosted_replay::MAX_PAIR_BYTES)}}
+            ])),
+        ),
     ] {
         let items = serde_json::from_value::<Vec<ResponseItem>>(json!([
             {"type":"message", "role":"user", "content":[{"type":"input_text", "text":"q"}]},

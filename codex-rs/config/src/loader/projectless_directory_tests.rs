@@ -41,6 +41,7 @@ impl Fixture {
             self.home.as_path(),
             Some(self.cwd.clone()),
             &[],
+            /*env_seed_overrides*/ &[],
             self.overrides.clone(),
             &NoopThreadConfigLoader,
         )
@@ -93,6 +94,7 @@ async fn skipped_discovery_does_not_claim_projectless() -> anyhow::Result<()> {
             fixture.home.as_path(),
             cwd,
             &[],
+            /*env_seed_overrides*/ &[],
             LoaderOverrides {
                 ignore_project_config,
                 ..fixture.overrides.clone()

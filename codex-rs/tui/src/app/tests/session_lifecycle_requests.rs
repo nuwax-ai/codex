@@ -270,6 +270,7 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
         codex_arg0::Arg0DispatchPaths::default(),
         config.clone(),
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         loader_overrides,
         /*strict_config*/ false,
         codex_config::CloudConfigBundleLoader::default(),

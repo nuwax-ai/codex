@@ -318,6 +318,7 @@ async fn malformed_system_defaults_do_not_block_existing_thread_turn() -> Result
         arg0_paths: Arg0DispatchPaths::default(),
         config,
         cli_overrides: Vec::new(),
+        env_seed_overrides: Vec::new(),
         loader_overrides: overrides,
         strict_config: false,
         cloud_config_bundle: CloudConfigBundleLoader::default(),

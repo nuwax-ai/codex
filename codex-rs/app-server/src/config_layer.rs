@@ -25,6 +25,8 @@ pub(crate) fn config_layer_source_to_api(source: ConfigLayerSource) -> ApiConfig
         ConfigLayerSource::Project { dot_codex_folder } => {
             ApiConfigLayerSource::Project { dot_codex_folder }
         }
+        // Preserve the internal provenance without introducing a new stable wire variant.
+        ConfigLayerSource::EnvSeed => ApiConfigLayerSource::SessionFlags,
         ConfigLayerSource::SessionFlags => ApiConfigLayerSource::SessionFlags,
         ConfigLayerSource::LegacyManagedConfigTomlFromFile { file } => {
             ApiConfigLayerSource::LegacyManagedConfigTomlFromFile { file }

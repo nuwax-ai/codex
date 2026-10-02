@@ -1,5 +1,8 @@
 # R2+R3 Tasks：hosted 搜索历史保真与暂停续接（任务文档）
 
+后续状态（2026-10-02）：初版已完成的实现记录保留；独立复查发现的引用/混合轮前缀、
+generic provenance 和整体预算缺口及本轮修复见 `codex-review-2026-10-02.md`。
+
 对应 Spec：`r2-r3-hosted-fidelity-spec.md`；Plan：`r2-r3-hosted-fidelity-plan.md`。
 每批独立可构建、附精确命令与证据；完成打勾并链接证据。
 

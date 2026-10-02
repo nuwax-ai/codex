@@ -274,23 +274,42 @@ fn non_unicode_values_fail_with_variable_names() {
 
 #[test]
 fn reserved_provider_id_conflict_is_a_hard_error() {
-    let existing = vec![(
-        "model_providers.nuwax_env".to_string(),
-        Value::String("must be a table in reality".into()),
-    )];
-    let error = nuwax_env_overrides(
-        input(
-            Some("m1"),
-            Some("https://gw.example"),
-            Some("chat"),
-            Some("k"),
-        ),
-        /*cli_model*/ None,
-        /*cli_provider*/ None,
-        &existing,
-    )
-    .expect_err("reserved id collision must fail");
-    assert!(error.contains("reserved"), "{error}");
+    for existing in [
+        vec![(
+            "model_providers.nuwax_env".into(),
+            Value::Table(Default::default()),
+        )],
+        vec![(
+            "model_providers.nuwax_env.env_key".into(),
+            Value::String("OLD_KEY".into()),
+        )],
+        vec![(
+            "model_providers.nuwax_env.base_url".into(),
+            Value::String("https://old.example".into()),
+        )],
+        vec![(
+            "model_providers".into(),
+            Value::Table(
+                [("nuwax_env".into(), Value::Table(Default::default()))]
+                    .into_iter()
+                    .collect(),
+            ),
+        )],
+    ] {
+        let error = nuwax_env_overrides(
+            input(
+                Some("m1"),
+                Some("https://gw.example"),
+                Some("chat"),
+                Some("k"),
+            ),
+            /*cli_model*/ None,
+            /*cli_provider*/ None,
+            &existing,
+        )
+        .expect_err("reserved id collision must fail");
+        assert!(error.contains("reserved"), "{error}");
+    }
 }
 
 #[test]

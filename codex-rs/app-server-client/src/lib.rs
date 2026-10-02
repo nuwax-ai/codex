@@ -200,6 +200,10 @@ pub struct InProcessClientStartArgs {
     pub config: Arc<Config>,
     /// CLI config overrides that are already parsed into TOML values.
     pub cli_overrides: Vec<(String, TomlValue)>,
+    /// Fork (nuwax-codex): NUWAX_* environment seed overrides, kept apart
+    /// from user CLI pairs so the reserved-provider isolation can attribute
+    /// every contribution to the embedded app-server's config loads.
+    pub env_seed_overrides: Vec<(String, TomlValue)>,
     /// Loader override knobs used by config API paths.
     pub loader_overrides: LoaderOverrides,
     /// Whether config API paths should reject unknown config fields.
@@ -268,6 +272,7 @@ impl InProcessClientStartArgs {
             arg0_paths: self.arg0_paths,
             config: self.config,
             cli_overrides: self.cli_overrides,
+            env_seed_overrides: self.env_seed_overrides,
             loader_overrides: self.loader_overrides,
             strict_config: self.strict_config,
             cloud_config_bundle: self.cloud_config_bundle,
@@ -879,6 +884,7 @@ mod tests {
             arg0_paths: Arg0DispatchPaths::default(),
             config,
             cli_overrides: Vec::new(),
+            env_seed_overrides: Vec::new(),
             loader_overrides: LoaderOverrides::default(),
             strict_config: false,
             cloud_config_bundle: CloudConfigBundleLoader::default(),
@@ -2095,6 +2101,7 @@ mod tests {
             arg0_paths: Arg0DispatchPaths::default(),
             config: config.clone(),
             cli_overrides: Vec::new(),
+            env_seed_overrides: Vec::new(),
             loader_overrides: LoaderOverrides::default(),
             strict_config: false,
             cloud_config_bundle: CloudConfigBundleLoader::default(),

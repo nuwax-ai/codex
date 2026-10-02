@@ -13,7 +13,8 @@ pub(crate) fn explicit_provider(config: &Config) -> Option<String> {
         .filter(|layer| {
             matches!(
                 layer.name,
-                ConfigLayerSource::SessionFlags
+                ConfigLayerSource::EnvSeed
+                    | ConfigLayerSource::SessionFlags
                     | ConfigLayerSource::User {
                         profile: Some(_),
                         ..

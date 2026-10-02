@@ -30,6 +30,7 @@ pub(crate) async fn make_test_app() -> App {
         config,
         state_db: None,
         cli_kv_overrides: Vec::new(),
+        env_seed_overrides: Vec::new(),
         harness_overrides: ConfigOverrides::default(),
         loader_overrides: LoaderOverrides::without_managed_config_for_tests(),
         cloud_config_bundle: CloudConfigBundleLoader::default(),

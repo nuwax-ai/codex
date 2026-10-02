@@ -85,6 +85,7 @@ mod model_provider_capabilities_read;
 #[path = "model_provider_enforcement_tests.rs"]
 mod model_provider_enforcement;
 mod multi_agent_v2_developer_instructions;
+mod nuwax_isolation;
 mod otel;
 mod output_schema;
 mod permission_profile_list;

@@ -129,6 +129,7 @@ async fn model_default_saves_report_server_outcomes_and_target_server_profile() 
             codex_arg0::Arg0DispatchPaths::default(),
             config,
             overrides,
+            /*env_seed_overrides*/ Vec::new(),
             loader_overrides,
             /*strict_config*/ false,
             codex_config::CloudConfigBundleLoader::default(),

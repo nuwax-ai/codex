@@ -103,6 +103,7 @@ async fn refreshed_bundle_rechecks_source_during_config_reload() -> anyhow::Resu
     };
     crate::load_config_with_worktree_source_policy(
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         overrides.clone(),
         loader_overrides.clone(),
         CloudConfigBundleLoader::default(),
@@ -120,6 +121,7 @@ async fn refreshed_bundle_rechecks_source_during_config_reload() -> anyhow::Resu
         );
     let err = crate::load_config_with_worktree_source_policy(
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         overrides,
         loader_overrides,
         refreshed,

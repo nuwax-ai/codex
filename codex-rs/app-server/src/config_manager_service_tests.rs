@@ -1457,6 +1457,7 @@ async fn thread_refresh_resolves_preserved_layers_before_materialization() -> Re
     let service = ConfigManager::new(
         tmp.path().to_path_buf(),
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         loader_overrides,
         /*strict_config*/ true,
         CloudConfigBundleLoader::default(),
@@ -2764,6 +2765,7 @@ async fn permission_config_reload_merges_session_layers() -> Result<()> {
     let service = ConfigManager::new(
         tmp.path().to_path_buf(),
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         LoaderOverrides::without_managed_config_for_tests(),
         /*strict_config*/ false,
         CloudConfigBundleLoader::default(),

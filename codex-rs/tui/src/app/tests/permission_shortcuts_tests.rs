@@ -28,6 +28,7 @@ async fn permission_shortcut_rejections_leave_state_unchanged() -> Result<()> {
             Arg0DispatchPaths::default(),
             app.config.clone(),
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             LoaderOverrides::without_managed_config_for_tests(),
             /*strict_config*/ false,
             CloudConfigBundleLoader::default(),

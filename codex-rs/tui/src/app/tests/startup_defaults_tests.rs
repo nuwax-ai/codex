@@ -18,6 +18,7 @@ async fn run_startup_for_test(
         config.clone(),
         config.cwd.to_path_buf(),
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         ConfigOverrides::default(),
         LoaderOverrides::default(),
         CloudConfigBundleLoader::default(),

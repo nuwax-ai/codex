@@ -142,6 +142,7 @@ impl Harness {
         let config_manager = ConfigManager::new(
             home.path().into(),
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             LoaderOverrides::default(),
             /*strict_config*/ false,
             CloudConfigBundleLoader::default(),

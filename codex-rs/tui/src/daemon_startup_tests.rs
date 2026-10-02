@@ -332,6 +332,7 @@ async fn daemon_startup_falls_back_only_for_implicit_endpoints() -> color_eyre::
             Arg0DispatchPaths::default(),
             config,
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             LoaderOverrides::default(),
             /*strict_config*/ false,
             CloudConfigBundleLoader::default(),
@@ -387,6 +388,7 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
             daemon_startup::exclusion(
                 &cli,
                 &[],
+                &[],
                 &LoaderOverrides::default(),
                 /*workload_identity_selected*/ false,
                 /*exec_server_url*/ None,
@@ -401,6 +403,7 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
     assert_eq!(
         daemon_startup::exclusion(
             &nuwax_cli,
+            &[],
             &[(
                 "model_providers.nuwax_env".to_string(),
                 toml::Value::String("seeded".into())
@@ -418,6 +421,7 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
     assert_eq!(
         daemon_startup::exclusion(
             &npm_cli,
+            &[],
             &[],
             &LoaderOverrides::default(),
             /*workload_identity_selected*/ false,
@@ -460,6 +464,7 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
             daemon_startup::exclusion(
                 &cli,
                 kv,
+                &[],
                 &loader,
                 workload,
                 executor,
@@ -474,6 +479,7 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
         daemon_startup::exclusion(
             &cli,
             &overrides,
+            &[],
             &LoaderOverrides::default(),
             /*workload_identity_selected*/ false,
             /*exec_server_url*/ None,

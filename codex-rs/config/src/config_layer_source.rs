@@ -19,6 +19,13 @@ pub enum ConfigLayerSource {
     },
     /// Configuration loaded from a project's `.codex` directory.
     Project { dot_codex_folder: AbsolutePathBuf },
+    /// Fork (nuwax-codex): overrides seeded by the `NUWAX_*` process
+    /// environment group. Its provenance is what isolates the reserved
+    /// `nuwax_env` provider: only this layer may define the provider's
+    /// table, so same-named keys from any other layer are attributable and
+    /// rejected. Sits below `SessionFlags` so explicit `-c` overrides still
+    /// outrank the environment group.
+    EnvSeed,
     /// Overrides supplied for the current session.
     SessionFlags,
     /// Legacy managed configuration loaded from a file.
@@ -44,6 +51,7 @@ impl ConfigLayerSource {
                 }
             }
             ConfigLayerSource::Project { .. } => 25,
+            ConfigLayerSource::EnvSeed => 27,
             ConfigLayerSource::SessionFlags => 30,
             ConfigLayerSource::LegacyManagedConfigTomlFromFile { .. } => 40,
             ConfigLayerSource::LegacyManagedConfigTomlFromMdm => 50,
@@ -98,6 +106,7 @@ pub fn format_config_layer_source(source: &ConfigLayerSource, config_toml_file: 
                 dot_codex_folder.as_path().display()
             )
         }
+        ConfigLayerSource::EnvSeed => "NUWAX_* environment group".to_string(),
         ConfigLayerSource::SessionFlags => "session-flags".to_string(),
         ConfigLayerSource::LegacyManagedConfigTomlFromFile { file } => {
             format!("legacy managed_config.toml ({})", file.as_path().display())

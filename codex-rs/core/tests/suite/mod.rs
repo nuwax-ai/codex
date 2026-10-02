@@ -189,6 +189,7 @@ mod resume;
 mod resume_warning;
 mod retry_after;
 mod review;
+mod rig_anthropic_hosted_tools;
 mod rig_responses_bridge;
 mod rmcp_client;
 mod rollout_budget;

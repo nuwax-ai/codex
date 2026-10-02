@@ -44,6 +44,10 @@ pub(crate) struct ModelProviderRequirementsChanged;
 pub(crate) struct ConfigManager {
     codex_home: PathBuf,
     cli_overrides: Arc<RwLock<Vec<(String, TomlValue)>>>,
+    /// Fork (nuwax-codex): the `NUWAX_*` environment seeds, held apart from
+    /// user CLI/request overrides so reserved-provider isolation can attribute
+    /// every contribution.
+    env_seed_overrides: Vec<(String, TomlValue)>,
     runtime_feature_enablement: Arc<RwLock<BTreeMap<String, bool>>>,
     loader_overrides: LoaderOverrides,
     strict_config: bool,
@@ -73,6 +77,7 @@ impl ConfigManager {
     pub(crate) fn new(
         codex_home: PathBuf,
         cli_overrides: Vec<(String, TomlValue)>,
+        env_seed_overrides: Vec<(String, TomlValue)>,
         loader_overrides: LoaderOverrides,
         strict_config: bool,
         cloud_config_bundle: CloudConfigBundleLoader,
@@ -83,6 +88,7 @@ impl ConfigManager {
         Self {
             codex_home,
             cli_overrides: Arc::new(RwLock::new(cli_overrides)),
+            env_seed_overrides,
             runtime_feature_enablement: Arc::new(RwLock::new(BTreeMap::new())),
             loader_overrides,
             strict_config,
@@ -346,6 +352,7 @@ impl ConfigManager {
         let mut config = ConfigBuilder::default()
             .codex_home(self.codex_home.clone())
             .cli_overrides(self.current_cli_overrides())
+            .env_seed_overrides(self.env_seed_overrides.clone())
             .loader_overrides(loader_overrides)
             .fallback_cwd(Some(self.codex_home.clone()))
             .cloud_config_bundle(CloudConfigBundleLoader::default())
@@ -455,6 +462,7 @@ impl ConfigManager {
         let result = codex_core::config::ConfigBuilder::default()
             .codex_home(self.codex_home.clone())
             .cli_overrides(merged_cli_overrides)
+            .env_seed_overrides(self.env_seed_overrides.clone())
             .loader_overrides(self.loader_overrides.clone())
             .strict_config(self.strict_config)
             .harness_overrides(typesafe_overrides)
@@ -488,6 +496,7 @@ impl ConfigManager {
             &self.codex_home,
             cwd,
             &self.current_cli_overrides(),
+            &self.env_seed_overrides,
             codex_config::ConfigLoadOptions {
                 loader_overrides: self.loader_overrides.clone(),
                 strict_config: self.strict_config,
@@ -544,6 +553,7 @@ impl ConfigManager {
         Self::new(
             codex_home,
             cli_overrides,
+            /*env_seed_overrides*/ Vec::new(),
             loader_overrides,
             /*strict_config*/ false,
             cloud_config_bundle,
@@ -570,6 +580,10 @@ mod application_network_tests;
 #[cfg(test)]
 #[path = "config_manager_provider_tests.rs"]
 mod provider_tests;
+
+#[cfg(test)]
+#[path = "config_manager_startup_tests.rs"]
+mod startup_tests;
 
 pub(crate) fn protected_feature_keys(config_layer_stack: &ConfigLayerStack) -> BTreeSet<String> {
     let mut protected_features = config_layer_stack

@@ -25,6 +25,7 @@ impl ManagedTuiWorktree {
     pub(crate) async fn check_source_policy(
         &self,
         cli_overrides: &[(String, toml::Value)],
+        env_seed_overrides: &[(String, toml::Value)],
         overrides: &ConfigOverrides,
         loader_overrides: &LoaderOverrides,
         bundle: &CloudConfigBundleLoader,
@@ -34,6 +35,7 @@ impl ManagedTuiWorktree {
         source_overrides.cwd = Some(self.checkout.source_cwd.clone());
         let source = ConfigBuilder::default()
             .cli_overrides(cli_overrides.to_vec())
+            .env_seed_overrides(env_seed_overrides.to_vec())
             .harness_overrides(source_overrides)
             .loader_overrides(LoaderOverrides {
                 ignore_project_config: true,
@@ -121,6 +123,7 @@ pub(super) async fn prepare(
     mut source: Config,
     overrides: &mut ConfigOverrides,
     cli_overrides: Vec<(String, toml::Value)>,
+    env_seed_overrides: Vec<(String, toml::Value)>,
     loader_overrides: LoaderOverrides,
     strict_config: bool,
     target: &AppServerTarget,
@@ -153,6 +156,7 @@ pub(super) async fn prepare(
             arg0_paths.clone(),
             lookup_config,
             cli_overrides.clone(),
+            env_seed_overrides.clone(),
             loader_overrides.clone(),
             strict_config,
             source_bundle.clone(),
@@ -187,6 +191,7 @@ pub(super) async fn prepare(
                 &source.codex_home,
                 Some(&cwd),
                 cli_overrides.clone(),
+                env_seed_overrides.clone(),
                 loader_overrides.clone(),
                 strict_config,
                 CloudConfigBundleLoader::default(),
@@ -202,6 +207,7 @@ pub(super) async fn prepare(
             overrides.cwd = Some(cwd.into_path_buf());
             source = load_config_or_exit(
                 cli_overrides.clone(),
+                env_seed_overrides.clone(),
                 overrides.clone(),
                 loader_overrides.clone(),
                 source_bundle,
@@ -230,6 +236,7 @@ pub(super) async fn prepare(
         &source.codex_home,
         /*cwd*/ None,
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         LoaderOverrides::default(),
         strict_config,
         CloudConfigBundleLoader::default(),
@@ -258,10 +265,11 @@ pub(super) async fn prepare(
         recovery,
     };
     let destination = AbsolutePathBuf::from_absolute_path(managed.checkout.cwd.clone())?;
-    let bootstrap = load_config_toml_with_layer_stack(
+    let bootstrap = load_config_toml_with_layer_stack_and_env_seed(
         &source.codex_home,
         Some(&destination),
         cli_overrides.clone(),
+        env_seed_overrides.clone(),
         codex_config::ConfigLoadOptions {
             loader_overrides: loader_overrides.clone(),
             strict_config,
@@ -279,6 +287,7 @@ pub(super) async fn prepare(
     managed
         .check_source_policy(
             &cli_overrides,
+            &env_seed_overrides,
             overrides,
             &loader_overrides,
             &bundle,
@@ -288,6 +297,7 @@ pub(super) async fn prepare(
     overrides.cwd = Some(managed.checkout.cwd.clone());
     let config = ConfigBuilder::default()
         .cli_overrides(cli_overrides)
+        .env_seed_overrides(env_seed_overrides)
         .harness_overrides(overrides.clone())
         .loader_overrides(loader_overrides)
         .cloud_config_bundle(bundle.clone())

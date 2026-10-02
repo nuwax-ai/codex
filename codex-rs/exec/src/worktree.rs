@@ -13,6 +13,7 @@ pub(super) async fn fork_source(
     config: &Config,
     arg0_paths: &Arg0DispatchPaths,
     cli_overrides: &[(String, codex_config::TomlValue)],
+    env_seed_overrides: &[(String, codex_config::TomlValue)],
     loader_overrides: &LoaderOverrides,
     network: ForkNetwork,
     strict_config: bool,
@@ -31,6 +32,7 @@ pub(super) async fn fork_source(
         arg0_paths: arg0_paths.clone(),
         config: std::sync::Arc::new(config.clone()),
         cli_overrides: cli_overrides.to_vec(),
+        env_seed_overrides: env_seed_overrides.to_vec(),
         loader_overrides: LoaderOverrides {
             ignore_project_config: true,
             ..loader_overrides.clone()

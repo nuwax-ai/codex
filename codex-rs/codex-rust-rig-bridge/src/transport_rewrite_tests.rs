@@ -199,13 +199,14 @@ async fn wire_tee_caps_its_buffer_and_passes_every_chunk_through() {
 }
 
 #[test]
-fn pause_raw_content_replaces_final_assistant_or_appends_one() {
+fn pause_raw_content_appends_without_rewriting_earlier_assistants() {
     let strict = HashMap::new();
     let errors = HashMap::new();
-    let raw = vec![json!({"type":"thinking","thinking":"t","signature":"s"})];
+    let raw = vec![vec![
+        json!({"type":"thinking","thinking":"t","signature":"s"}),
+    ]];
 
-    // With a trailing assistant, its content is replaced wholesale and its
-    // replay groups are not duplicated.
+    // Preserve earlier assistant content and append the raw paused response.
     let mut with_assistant = json!({"messages": [
         {"role":"user","content":[{"type":"text","text":"q"}]},
         {"role":"assistant","content":[{"type":"text","text":"partial"}]},
@@ -222,9 +223,13 @@ fn pause_raw_content_replaces_final_assistant_or_appends_one() {
     }
     .apply(&mut with_assistant);
     assert_eq!(
-        with_assistant["messages"][1]["content"],
-        serde_json::Value::Array(raw.clone()),
-        "the trailing assistant's content is replaced verbatim, groups skipped"
+        with_assistant["messages"],
+        json!([
+            {"role":"user","content":[{"type":"text","text":"q"}]},
+            {"role":"assistant","content":[{"type":"text","text":"partial"}]},
+            {"role":"assistant","content":raw[0]},
+        ]),
+        "paused output appends to existing history"
     );
 
     // Without any assistant (thinking-only pause), the assistant enters the
@@ -243,7 +248,7 @@ fn pause_raw_content_replaces_final_assistant_or_appends_one() {
         without_assistant["messages"],
         json!([
             {"role":"user","content":[{"type":"text","text":"q"}]},
-            {"role":"assistant","content":raw},
+            {"role":"assistant","content":raw[0]},
         ])
     );
 }

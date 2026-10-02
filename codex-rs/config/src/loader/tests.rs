@@ -297,6 +297,7 @@ async fn managed_browser_import_denial_survives_user_and_session_config() {
             "in_app_browser.allow_external_browser_settings_import".to_string(),
             TomlValue::Boolean(true),
         )],
+        /*env_seed_overrides*/ &[],
         ConfigLoadOptions {
             loader_overrides,
             strict_config: false,
@@ -469,6 +470,7 @@ model_provider = "system-provider"
             "model".to_string(),
             TomlValue::String("session-model".to_string()),
         )],
+        /*env_seed_overrides*/ &[],
         overrides,
         &crate::NoopThreadConfigLoader,
     )
@@ -530,6 +532,7 @@ chatgpt_base_url = "https://managed.example/backend-api/"
         tmp.path(),
         /*cwd*/ None,
         &[],
+        /*env_seed_overrides*/ &[],
         overrides,
         &crate::NoopThreadConfigLoader,
     )
@@ -568,6 +571,7 @@ async fn missing_packaged_defaults_file_returns_an_error() {
         tmp.path(),
         /*cwd*/ None,
         &[],
+        /*env_seed_overrides*/ &[],
         overrides,
         &crate::NoopThreadConfigLoader,
     )
@@ -612,7 +616,9 @@ sandbox_mode = "danger-full-access"
         &codex_home,
         /*cwd*/ None,
         &[],
+        /*env_seed_overrides*/ &[],
         overrides,
+        /*env_seed_overrides*/ &[],
         &crate::NoopThreadConfigLoader,
     )
     .await
@@ -690,6 +696,7 @@ model = "gpt-work"
         tmp.path(),
         /*cwd*/ None,
         &[],
+        /*env_seed_overrides*/ &[],
         overrides,
         &crate::NoopThreadConfigLoader,
     )
@@ -748,6 +755,7 @@ model = "gpt-main"
         tmp.path(),
         /*cwd*/ None,
         &[],
+        /*env_seed_overrides*/ &[],
         overrides,
         &crate::NoopThreadConfigLoader,
     )
@@ -804,6 +812,7 @@ model = "gpt-dev"
         tmp.path(),
         /*cwd*/ None,
         &[],
+        /*env_seed_overrides*/ &[],
         overrides,
         &crate::NoopThreadConfigLoader,
     )
@@ -1101,6 +1110,7 @@ async fn runtime_override_carries_auto_compact_ratio_into_merged_config() {
                 TomlValue::Float(0.2),
             ),
         ],
+        /*env_seed_overrides*/ &[],
         ConfigLoadOptions {
             loader_overrides: LoaderOverrides::without_managed_config_for_tests(),
             strict_config: false,

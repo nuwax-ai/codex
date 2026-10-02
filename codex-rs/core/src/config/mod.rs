@@ -1444,6 +1444,7 @@ impl AuthManagerConfig for Config {
 pub struct ConfigBuilder {
     codex_home: Option<PathBuf>,
     cli_overrides: Option<Vec<(String, TomlValue)>>,
+    env_seed_overrides: Option<Vec<(String, TomlValue)>>,
     harness_overrides: Option<ConfigOverrides>,
     loader_overrides: Option<LoaderOverrides>,
     strict_config: bool,
@@ -1460,6 +1461,14 @@ impl ConfigBuilder {
 
     pub fn cli_overrides(mut self, cli_overrides: Vec<(String, TomlValue)>) -> Self {
         self.cli_overrides = Some(cli_overrides);
+        self
+    }
+
+    /// Fork (nuwax-codex): the `NUWAX_*` environment group's seed overrides,
+    /// kept out of the CLI overrides so their provenance survives into the
+    /// layer stack (reserved-provider isolation depends on it).
+    pub fn env_seed_overrides(mut self, env_seed_overrides: Vec<(String, TomlValue)>) -> Self {
+        self.env_seed_overrides = Some(env_seed_overrides);
         self
     }
 
@@ -1505,6 +1514,7 @@ impl ConfigBuilder {
         let Self {
             codex_home,
             cli_overrides,
+            env_seed_overrides,
             harness_overrides,
             loader_overrides,
             strict_config,
@@ -1517,6 +1527,7 @@ impl ConfigBuilder {
             None => find_codex_home()?,
         };
         let cli_overrides = cli_overrides.unwrap_or_default();
+        let env_seed_overrides = env_seed_overrides.unwrap_or_default();
         let mut harness_overrides = harness_overrides.unwrap_or_default();
         let loader_overrides = loader_overrides.unwrap_or_default();
         let cwd_override = harness_overrides.cwd.as_deref().or(fallback_cwd.as_deref());
@@ -1530,6 +1541,7 @@ impl ConfigBuilder {
             &codex_home,
             Some(cwd),
             &cli_overrides,
+            &env_seed_overrides,
             ConfigLoadOptions {
                 loader_overrides,
                 strict_config,
@@ -1558,10 +1570,6 @@ impl ConfigBuilder {
 }
 
 async fn config_toml_from_layers(layers: &ConfigLayerStack) -> std::io::Result<ConfigToml> {
-    // Fork (nuwax-codex): the NUWAX_* temporary provider must stay owned by
-    // its environment seeds; foreign fields merged in from any config layer
-    // fail the load before a request can carry them.
-    codex_config::env_group_isolation::validate_env_group_isolation(layers)?;
     // The loader resolves paths relative to each layer's file before deserialization.
     match layers.effective_config().try_into() {
         Ok(config_toml) => Ok(config_toml),
@@ -2118,11 +2126,32 @@ pub async fn load_config_toml_with_layer_stack(
     cli_overrides: Vec<(String, TomlValue)>,
     options: impl Into<ConfigLoadOptions>,
 ) -> std::io::Result<ConfigTomlLoadResult> {
+    load_config_toml_with_layer_stack_and_env_seed(
+        codex_home,
+        cwd,
+        cli_overrides,
+        Vec::new(),
+        options,
+    )
+    .await
+}
+
+/// Fork (nuwax-codex): [`load_config_toml_with_layer_stack`] with the
+/// `NUWAX_*` environment seed overrides carried as their own provenance
+/// channel (same semantics as [`ConfigBuilder::env_seed_overrides`]).
+pub async fn load_config_toml_with_layer_stack_and_env_seed(
+    codex_home: &Path,
+    cwd: Option<&AbsolutePathBuf>,
+    cli_overrides: Vec<(String, TomlValue)>,
+    env_seed_overrides: Vec<(String, TomlValue)>,
+    options: impl Into<ConfigLoadOptions>,
+) -> std::io::Result<ConfigTomlLoadResult> {
     let config_layer_stack = load_config_layers_state(
         LOCAL_FS.as_ref(),
         codex_home,
         cwd.cloned(),
         &cli_overrides,
+        &env_seed_overrides,
         options,
         &codex_config::NoopThreadConfigLoader,
     )
@@ -2323,6 +2352,7 @@ pub async fn load_global_mcp_servers(
         codex_home,
         cwd,
         &cli_overrides,
+        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -2546,7 +2576,10 @@ fn thread_store_config(thread_store: Option<ThreadStoreToml>) -> ThreadStoreConf
 }
 
 fn is_session_layer(source: &ConfigLayerSource) -> bool {
-    matches!(source, ConfigLayerSource::SessionFlags)
+    matches!(
+        source,
+        ConfigLayerSource::SessionFlags | ConfigLayerSource::EnvSeed
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3839,14 +3872,19 @@ impl Config {
             .clone()
             .filter(|value| !value.is_empty());
 
-        let model_providers =
-            merge_configured_model_providers(built_in_model_providers(openai_base_url), cfg.model_providers)
-                .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message))?;
-
         let model_provider_id = config_layer_stack.required_model_provider().map(str::to_string)
             .or(model_provider)
             .or(cfg.model_provider)
             .unwrap_or_else(|| "openai".to_string());
+        // Initial loads and refreshes share the final provider selection:
+        // requirements outrank typed overrides, which outrank config layers.
+        codex_config::env_group_isolation::validate_env_group_isolation(
+            &config_layer_stack,
+            &model_provider_id,
+        )?;
+        let model_providers =
+            merge_configured_model_providers(built_in_model_providers(openai_base_url), cfg.model_providers)
+                .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message))?;
         let model_provider = model_providers
             .get(&model_provider_id)
             .ok_or_else(|| {

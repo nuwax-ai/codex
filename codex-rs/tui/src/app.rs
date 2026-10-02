@@ -537,6 +537,9 @@ pub(crate) struct App {
     runtime_working_directory_override: Option<PathBuf>,
     pub(crate) state_db: Option<StateDbHandle>,
     cli_kv_overrides: Vec<(String, TomlValue)>,
+    /// Fork (nuwax-codex): NUWAX_* environment seeds, kept beside the user
+    /// `-c` pairs so runtime config rebuilds preserve the env provider.
+    env_seed_overrides: Vec<(String, TomlValue)>,
     harness_overrides: ConfigOverrides,
     loader_overrides: LoaderOverrides,
     cloud_config_bundle: CloudConfigBundleLoader,

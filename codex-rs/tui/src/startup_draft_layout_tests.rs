@@ -105,6 +105,7 @@ async fn configured_welcome_opt_out_disables_blossom_and_clicks() -> anyhow::Res
                 ..LoaderOverrides::without_managed_config_for_tests()
             },
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             /*config_cwd*/ None,
         )
         .await?;

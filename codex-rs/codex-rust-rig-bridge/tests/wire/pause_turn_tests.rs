@@ -17,7 +17,7 @@ use std::time::Duration;
 
 /// One paused attempt (text + a completed search pair, ending on
 /// stop_reason pause_turn), then a final attempt.
-fn paused_sse() -> String {
+pub(super) fn paused_sse() -> String {
     let frames: Vec<serde_json::Value> = vec![
         json!({"type":"message_start","message":{"id":"msg-p1","type":"message","role":"assistant","content":[],"model":"m","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":4,"output_tokens":0}}}),
         json!({"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"srvu_p1","name":"web_search","input":{}}}),
@@ -228,7 +228,8 @@ async fn paused_turn_continuation_content_is_verbatim() {
     let first = &bodies[0];
     let second = &bodies[1];
     // Tools array rides the continuation unchanged (official recipe).
-    assert_eq!(second["body"]["tools"], first["body"]["tools"]);
+    assert!(first["tools"].is_array());
+    assert_eq!(second["tools"], first["tools"]);
     let messages = second["messages"]
         .as_array()
         .expect("continuation messages");
@@ -273,10 +274,20 @@ async fn thinking_only_pause_continues_verbatim() {
             )
         })
         .collect::<String>();
-    let (address, server) =
-        support::sequence_server(vec![paused, support::ANTHROPIC_SSE.to_string()]).await;
+    let (address, server) = support::sequence_server(vec![
+        paused.clone(),
+        paused
+            .replace("only thinking", "next thinking")
+            .replace("SIG_T", "SIG_NEXT"),
+        support::ANTHROPIC_SSE.to_string(),
+    ])
+    .await;
     let provider = provider(address);
-    let request = support::request(vec![support::user()]);
+    let request = support::request(vec![
+        support::user(),
+        json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"previous answer"}]}),
+        support::user(),
+    ]);
     let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
     let mut stream = stream_via_rig(
         &request,
@@ -292,7 +303,271 @@ async fn thinking_only_pause_continues_verbatim() {
         event.unwrap();
     }
     let bodies = server.await.unwrap();
-    let _messages = bodies[1]["messages"]
-        .as_array()
-        .expect("continuation messages");
+    let user = json!({"role":"user","content":[{"type":"text","text":"hello"}]});
+    let previous = json!({"role":"assistant","content":[{"type":"text","text":"previous answer"}]});
+    let first_pause = json!({"role":"assistant","content":[{"type":"thinking","thinking":"only thinking","signature":"SIG_T"}]});
+    let next_pause = json!({"role":"assistant","content":[{"type":"thinking","thinking":"next thinking","signature":"SIG_NEXT"}]});
+    assert_eq!(
+        bodies[1]["messages"],
+        json!([user, previous, user, first_pause])
+    );
+    assert_eq!(
+        bodies[2]["messages"],
+        json!([user, previous, user, first_pause, next_pause])
+    );
+}
+
+#[tokio::test]
+async fn paused_content_budget_fails_before_another_http_request() {
+    use tokio::io::AsyncWriteExt;
+    for oversized_calls in [false, true] {
+        let payload = if oversized_calls {
+            let extra = (3..67).map(|index| format!(
+                "event: content_block_start\ndata: {{\"type\":\"content_block_start\",\"index\":{index},\"content_block\":{{\"type\":\"server_tool_use\",\"id\":\"extra-{index}\",\"name\":\"web_search\",\"input\":{{}}}}}}\n\nevent: content_block_stop\ndata: {{\"type\":\"content_block_stop\",\"index\":{index}}}\n\n"
+            )).collect::<String>();
+            paused_sse().replace(
+                "event: message_delta\n",
+                &format!("{extra}event: message_delta\n"),
+            )
+        } else {
+            paused_sse().replace("partial so far", &"x".repeat(41_000))
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            support::read_request(&mut socket).await;
+            socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}", payload.len()).as_bytes()).await.unwrap();
+            drop(socket);
+            tokio::time::timeout(Duration::from_secs(1), listener.accept())
+                .await
+                .is_err()
+        });
+        let provider = provider(address);
+        let mut request = support::request(vec![support::user()]);
+        support::set_tools(&mut request, json!([{"type":"web_search"}]));
+        let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+        let mut stream = stream_via_rig(
+            &request,
+            &provider,
+            &auth,
+            http::HeaderMap::new(),
+            RigProtocol::Anthropic,
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+        let mut error = None;
+        while let Some(event) = stream.next().await {
+            match event {
+                Err(failure) => {
+                    error = Some(failure);
+                    break;
+                }
+                Ok(ResponseEvent::Completed { .. }) => panic!("over-budget pause cannot complete"),
+                Ok(_) => {}
+            }
+        }
+        assert!(
+            error
+                .expect("budget failure")
+                .to_string()
+                .contains("budget")
+        );
+        assert!(
+            server.await.unwrap(),
+            "no over-budget continuation may be sent"
+        );
+    }
+}
+
+#[tokio::test]
+async fn pending_search_closes_when_the_result_arrives_on_another_pause() {
+    let without_index = |excluded| {
+        paused_sse()
+            .split("\n\n")
+            .filter(|frame| {
+                frame
+                    .lines()
+                    .find_map(|line| line.strip_prefix("data: "))
+                    .and_then(|data| serde_json::from_str::<serde_json::Value>(data).ok())
+                    .is_none_or(|event| event["index"].as_u64() != Some(excluded))
+            })
+            .map(|frame| format!("{frame}\n\n"))
+            .collect::<String>()
+    };
+    let (address, server) = support::sequence_server(vec![
+        without_index(1),
+        without_index(0),
+        support::ANTHROPIC_SSE.into(),
+    ])
+    .await;
+    let provider = provider(address);
+    let mut request = support::request(vec![support::user()]);
+    support::set_tools(&mut request, json!([{"type":"web_search"}]));
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    let mut statuses = Vec::new();
+    while let Some(event) = stream.next().await {
+        if let ResponseEvent::OutputItemDone(
+            codex_protocol::models::ResponseItem::WebSearchCall { status, .. },
+        ) = event.unwrap()
+        {
+            statuses.push(status);
+        }
+    }
+    assert_eq!(
+        statuses,
+        vec![Some("in_progress".into()), Some("completed".into())]
+    );
+    assert_eq!(server.await.unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn paused_current_and_late_search_results_have_one_citation_owner() {
+    let first = paused_sse()
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .map(|data| serde_json::from_str::<serde_json::Value>(data).unwrap())
+        .filter(|frame| frame["index"].as_u64() != Some(1))
+        .map(|frame| {
+            format!(
+                "event: {}\ndata: {frame}\n\n",
+                frame["type"].as_str().unwrap()
+            )
+        })
+        .collect();
+    let mut second_frames = paused_rich_sse()
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .map(|data| serde_json::from_str::<serde_json::Value>(data).unwrap())
+        .collect::<Vec<_>>();
+    let terminal = second_frames
+        .iter()
+        .position(|frame| frame["type"] == "message_delta")
+        .unwrap();
+    second_frames.splice(terminal..terminal, [
+        json!({"type":"content_block_start","index":4,"content_block":{"type":"web_search_tool_result","tool_use_id":"srvu_p1","content":[{"type":"web_search_result","url":"https://example.com/late","encrypted_content":"ENC_LATE"}]}}),
+        json!({"type":"content_block_stop","index":4}),
+    ]);
+    let second = second_frames
+        .into_iter()
+        .map(|frame| {
+            format!(
+                "event: {}\ndata: {frame}\n\n",
+                frame["type"].as_str().unwrap()
+            )
+        })
+        .collect();
+    let (address, server) =
+        support::sequence_server(vec![first, second, support::ANTHROPIC_SSE.into()]).await;
+    let provider = provider(address);
+    let mut request = support::request(vec![support::user()]);
+    support::set_tools(&mut request, json!([{"type":"web_search"}]));
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    let mut searches = Vec::new();
+    while let Some(event) = stream.next().await {
+        if let ResponseEvent::OutputItemDone(
+            codex_protocol::models::ResponseItem::WebSearchCall {
+                status,
+                wire_blocks,
+                ..
+            },
+        ) = event.unwrap()
+        {
+            let payload = wire_blocks.unwrap();
+            searches.push(json!({"call_id":payload["blocks"][0]["id"], "status":status, "cited_text":payload["cited_text"]}));
+        }
+    }
+    assert_eq!(server.await.unwrap().len(), 3);
+    assert_eq!(
+        searches,
+        vec![
+            json!({"call_id":"srvu_p1","status":"in_progress","cited_text":null}),
+            json!({"call_id":"srvu_r","status":"completed","cited_text":[{"type":"text","text":"answer with a citation","citations":[{"type":"search_result_location","cited_text":"finding","source":"https://example.com","title":"Example","search_result_index":0,"start_block_index":2,"end_block_index":3}]}]}),
+            json!({"call_id":"srvu_p1","status":"completed","cited_text":null}),
+        ]
+    );
+}
+
+/// C3/N5: a paused turn's usage is the FINAL request's Completed counters —
+/// the context the last request actually consumed — never a sum across the
+/// continuation attempts.
+#[tokio::test]
+async fn paused_turn_usage_reports_the_final_request_counters() {
+    let sse_pause = concat!(
+        "event: message_start\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg-u1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":40,\"output_tokens\":0}}}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"paused usage\"}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "event: message_delta\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"pause_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":7}}\n\n",
+        "event: message_stop\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    )
+    .to_string();
+    // The continuation's Completed frame is the only usage the turn reports.
+    let sse_final = concat!(
+        "event: message_start\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg-u2\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":120,\"output_tokens\":0}}}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"done\"}}\n\n",
+        "event: content_block_stop\n",
+        "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+        "event: message_delta\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":5}}\n\n",
+        "event: message_stop\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    )
+    .to_string();
+    let (address, server) = support::sequence_server(vec![sse_pause, sse_final]).await;
+    let provider = provider(address);
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let request = support::request(vec![support::user()]);
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    let mut final_usage = None;
+    while let Some(event) = stream.next().await {
+        if let codex_api::ResponseEvent::Completed { token_usage, .. } = event.unwrap() {
+            final_usage = token_usage;
+        }
+    }
+    server.await.unwrap();
+    let usage = final_usage.expect("the turn completes with usage");
+    // NOT 40+120=160: the final request's context occupancy is what counts.
+    assert_eq!(usage.input_tokens, 120, "{usage:?}");
+    assert_eq!(usage.output_tokens, 5, "{usage:?}");
 }

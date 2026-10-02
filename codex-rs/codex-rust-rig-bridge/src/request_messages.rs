@@ -47,41 +47,50 @@ pub(crate) fn convert_response_items(
 
     // R3: a mixed server/client turn closes its pending search with a NEW
     // appended completed item; the earlier in_progress item (and any later
-    // duplicate) for the same server call must not replay twice. First
-    // completed occurrence wins; projection-level only, history untouched.
-    let mut first_completed_search: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
-    let mut duplicate_search: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for item in items {
-        let ResponseItem::WebSearchCall { wire_blocks, .. } = item else {
-            continue;
-        };
-        let Some(blocks) = wire_blocks
-            .as_ref()
-            .and_then(crate::hosted_replay::parse_envelope)
-            .map(|envelope| envelope.blocks)
-        else {
-            continue;
-        };
-        let has_result = blocks.iter().any(|block| {
-            matches!(
-                block.get("type").and_then(Value::as_str),
-                Some("web_search_tool_result") | Some("tool_result")
-            ) && block.get("tool_use_id").and_then(Value::as_str).is_some()
-        });
-        let Some(id) = blocks
+    // duplicate) for the same server call must not replay twice. Select the
+    // first valid completed ITEM, not an ID set that also removes the winner.
+    let mut replay_envelopes: Vec<_> = items
+        .iter()
+        .map(|item| match (protocol, item) {
+            (
+                RigProtocol::Anthropic,
+                ResponseItem::WebSearchCall {
+                    wire_blocks: Some(payload),
+                    ..
+                },
+            ) => crate::hosted_replay::validated_envelope(payload, source),
+            _ => None,
+        })
+        .collect();
+    let mut first_completed_search = std::collections::HashMap::<String, usize>::new();
+    for (index, envelope) in replay_envelopes.iter().enumerate() {
+        let Some(envelope) = envelope else { continue };
+        for call in envelope
+            .blocks
             .iter()
-            .find(|block| block.get("type").and_then(Value::as_str) == Some("server_tool_use"))
-            .and_then(|block| block.get("id").and_then(Value::as_str))
-        else {
-            continue;
-        };
-        if has_result && !first_completed_search.insert(id.to_string()) {
-            duplicate_search.insert(id.to_string());
+            .filter(|block| block["type"] == "server_tool_use")
+        {
+            let Some(id) = call.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            if envelope
+                .blocks
+                .iter()
+                .any(|block| block.get("tool_use_id").and_then(Value::as_str) == Some(id))
+            {
+                first_completed_search
+                    .entry(id.to_string())
+                    .or_insert(index);
+            }
         }
     }
+    // Calls whose server_tool_use block is already projected at its ORIGINAL
+    // history position (a superseded in_progress item): the winning completed
+    // item then contributes only its result block at the new response
+    // position, so the request prefix never moves a call.
+    let mut projected_calls = std::collections::HashSet::<String>::new();
 
-    for item in items {
+    for (item_index, item) in items.iter().enumerate() {
         match item {
             ResponseItem::FunctionCall { call_id, .. }
             | ResponseItem::CustomToolCall { call_id, .. }
@@ -160,52 +169,58 @@ pub(crate) fn convert_response_items(
                     }
                 }
             }
-            ResponseItem::WebSearchCall { wire_blocks, .. } => {
+            ResponseItem::WebSearchCall { .. } => {
                 // Fork (nuwax-codex): persisted raw wire pairs replay into
                 // the assistant message they followed — Anthropic wire only,
                 // and only when the payload was captured by the same source
                 // identity sending this request (legacy bare arrays and
                 // cross-endpoint ciphertext are conservatively dropped).
-                // The earlier in_progress item of a closed mixed turn (and any
-                // duplicate completed item) must not replay alongside the winning
-                // completed pair.
-                let superseded_search = wire_blocks
-                    .as_ref()
-                    .and_then(crate::hosted_replay::parse_envelope)
-                    .and_then(|envelope| {
-                        envelope
+                match replay_envelopes[item_index].take() {
+                    Some(mut envelope) => {
+                        // Result-only projections still need a block Rig can
+                        // serialize. Keep the original validated call for the
+                        // SDK anchor; transport removes it before raw replay.
+                        let anchor = envelope
                             .blocks
                             .iter()
-                            .find(|block| {
-                                block.get("type").and_then(Value::as_str) == Some("server_tool_use")
-                            })
-                            .and_then(|block| block.get("id").and_then(Value::as_str))
-                            .map(|id| {
-                                let completed_here = envelope.blocks.iter().any(|block| {
-                                    matches!(
-                                        block.get("type").and_then(Value::as_str),
-                                        Some("web_search_tool_result") | Some("tool_result")
-                                    ) && block.get("tool_use_id").and_then(Value::as_str).is_some()
-                                });
-                                duplicate_search.contains(id)
-                                    || (!completed_here && first_completed_search.contains(id))
-                            })
-                    })
-                    .unwrap_or(false);
-                match (protocol, wire_blocks) {
-                    (RigProtocol::Anthropic, Some(payload)) if !superseded_search => {
-                        let Some(envelope) = crate::hosted_replay::parse_envelope(payload) else {
-                            tracing::warn!(
-                                "persisted web-search payload has an unrecognized shape; dropping it"
-                            );
-                            continue;
-                        };
-                        if !crate::hosted_replay::replayable(&envelope, source) {
-                            tracing::warn!(
-                                "persisted web-search payload is from another source; dropping it"
-                            );
-                            continue;
-                        }
+                            .find(|block| block["type"] == "server_tool_use")
+                            .cloned();
+                        envelope
+                            .blocks
+                            .retain(|block| match block["type"].as_str() {
+                                Some("server_tool_use") => {
+                                    // The use stays at its original position —
+                                    // including superseded pending items — so the
+                                    // request prefix is stable; a winning item
+                                    // contributes its call only when no earlier
+                                    // item already projected it.
+                                    let keep =
+                                        block.get("id").and_then(Value::as_str).is_some_and(|id| {
+                                            !projected_calls.contains(id)
+                                                && first_completed_search
+                                                    .get(id)
+                                                    .is_none_or(|winner| *winner >= item_index)
+                                        });
+                                    if keep
+                                        && let Some(id) = block.get("id").and_then(Value::as_str)
+                                    {
+                                        projected_calls.insert(id.to_string());
+                                    }
+                                    keep
+                                }
+                                Some("web_search_tool_result" | "tool_result") => {
+                                    // Results replay only from the winning item.
+                                    block
+                                        .get("tool_use_id")
+                                        .and_then(Value::as_str)
+                                        .is_some_and(|id| {
+                                            first_completed_search
+                                                .get(id)
+                                                .is_some_and(|winner| *winner == item_index)
+                                        })
+                                }
+                                _ => true,
+                            });
                         let blocks = envelope.blocks;
                         let cited_text = envelope.cited_text;
                         if blocks.is_empty() {
@@ -215,22 +230,18 @@ pub(crate) fn convert_response_items(
                             continue;
                         }
                         if !matches!(messages.last(), Some(Message::Assistant { .. })) {
-                            let call = blocks
-                                .iter()
-                                .find(|block| block["type"] == "server_tool_use")
-                                .ok_or_else(|| codex_api::ApiError::InvalidRequest {
-                                    message: "Search-only replay requires a server_tool_use block"
-                                        .into(),
-                                })?;
+                            let Some(anchor) = anchor else {
+                                continue;
+                            };
                             messages.push(Message::Assistant {
                                 id: None,
                                 // Rig rejects empty assistant messages before HTTP injection.
-                                // Carry a genuine raw call through its supported raw-content
-                                // channel; transport replaces this anchor with the full pair.
+                                // Carry a genuine raw block through its supported raw-content
+                                // channel; transport replaces this anchor with the payload.
                                 content: vec![AssistantContent::Text(rig_core::completion::message::Text {
                                     text: String::new(),
                                     additional_params: rig_core::completion::message::AdditionalParams::from_entries([
-                                        ("anthropic_content", call.clone()),
+                                        ("anthropic_content", anchor),
                                     ]),
                                 })],
                             });
@@ -249,14 +260,9 @@ pub(crate) fn convert_response_items(
                             }),
                         }
                     }
-                    (RigProtocol::Anthropic, None) => {
+                    None => {
                         tracing::debug!(
-                            "legacy web-search call without wire blocks; replay drops it"
-                        );
-                    }
-                    _ => {
-                        tracing::debug!(
-                            "web-search history is not replayable on the Chat wire; dropping"
+                            "web-search history lacks a valid same-source replay payload; dropping"
                         );
                     }
                 }

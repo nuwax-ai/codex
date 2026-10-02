@@ -516,7 +516,7 @@ pub async fn run_main_with_transport_options(
 
     // Parse CLI overrides once and derive the base Config eagerly so later
     // components do not need to work with raw TOML values.
-    let mut cli_kv_overrides = cli_config_overrides.parse_overrides().map_err(|e| {
+    let cli_kv_overrides = cli_config_overrides.parse_overrides().map_err(|e| {
         std::io::Error::new(
             ErrorKind::InvalidInput,
             format!("error parsing -c overrides: {e}"),
@@ -524,21 +524,23 @@ pub async fn run_main_with_transport_options(
     })?;
     // Fork (nuwax-codex): the standalone app-server resolves the NUWAX_*
     // startup group from ITS OWN process environment; per-thread model
-    // settings from clients keep their existing priority on top.
-    match codex_utils_cli::nuwax_env_overrides(
+    // settings from clients keep their existing priority on top. The seeds
+    // ride their own provenance channel — mixing them into the CLI overrides
+    // would let any client-supplied same-named key hide among them.
+    let nuwax_env_seeds = match codex_utils_cli::nuwax_env_overrides(
         codex_utils_cli::nuwax_env_from_process(),
         /*cli_model*/ None,
         /*cli_provider*/ None,
         &cli_kv_overrides,
     ) {
-        Ok(seeds) => cli_kv_overrides.extend(seeds),
+        Ok(seeds) => seeds,
         Err(e) => {
             return Err(std::io::Error::new(
                 ErrorKind::InvalidInput,
                 format!("error parsing NUWAX_* environment: {e}"),
             ));
         }
-    }
+    };
     let codex_home = find_codex_home()?;
     let local_runtime_paths = ExecServerRuntimeOptions::from_optional_paths(
         arg0_paths.codex_self_exe.clone(),
@@ -548,6 +550,7 @@ pub async fn run_main_with_transport_options(
     let config_manager = ConfigManager::new(
         codex_home.to_path_buf(),
         cli_kv_overrides.clone(),
+        nuwax_env_seeds,
         loader_overrides,
         strict_config,
         Default::default(),

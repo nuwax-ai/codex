@@ -245,3 +245,40 @@ http_headers = { x-old-gateway = "stale-credential" }
     );
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nuwax_env_cli_provider_subkeys_and_parent_tables_fail_before_requests() -> Result<()> {
+    for override_key in [
+        "model_providers.nuwax_env.env_key=\"OLD_AUTH_KEY\"",
+        "model_providers.nuwax_env.base_url=\"https://old.example/v1\"",
+        "model_providers={nuwax_env={name=\"stale definition\"}}",
+    ] {
+        let test = test_codex_exec();
+        let server = start_mock_server().await;
+        let output = test
+            .cmd()
+            .arg("--skip-git-repo-check")
+            .arg("-c")
+            .arg(override_key)
+            .arg("hello")
+            .env("NUWAX_BASE_URL", format!("{}/v1", server.uri()))
+            .env("NUWAX_WIRE_API", "responses")
+            .env("NUWAX_API_KEY", "nuwax-test-key")
+            .env("NUWAX_MODEL", "nuwax-test-model")
+            .output()?;
+        assert!(!output.status.success());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("nuwax_env") && stderr.contains("reserved"),
+            "{stderr}"
+        );
+        assert!(
+            server
+                .received_requests()
+                .await
+                .expect("received requests")
+                .is_empty()
+        );
+    }
+    Ok(())
+}

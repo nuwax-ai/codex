@@ -91,3 +91,49 @@ async fn dropping_the_stream_cancels_the_in_flight_request() {
         "no continuation or retry request may follow a cancel"
     );
 }
+
+#[tokio::test]
+async fn dropping_parent_stream_cancels_continuation_waiting_for_headers() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (started, ready) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut first, _) = listener.accept().await.expect("initial request");
+        support::read_request(&mut first).await;
+        let payload = super::pause_turn_tests::paused_sse();
+        first.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}", payload.len()).as_bytes()).await.expect("paused response");
+        drop(first);
+        let (mut second, _) = listener.accept().await.expect("continuation request");
+        support::read_request(&mut second).await;
+        started.send(()).expect("continuation accepted");
+        let mut byte = [0];
+        tokio::time::timeout(Duration::from_secs(3), second.read(&mut byte)).await
+    });
+    let provider = provider(address);
+    let mut request = support::request(vec![support::user()]);
+    support::set_tools(&mut request, serde_json::json!([{"type":"web_search"}]));
+    let auth: codex_api::SharedAuthProvider = Arc::new(support::DummyAuth);
+    let stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(30),
+    )
+    .await
+    .expect("initial stream");
+    tokio::time::timeout(Duration::from_secs(15), ready)
+        .await
+        .expect("continuation setup starts")
+        .expect("server alive");
+    drop(stream);
+    let closed = server
+        .await
+        .expect("server task")
+        .expect("cancel must beat idle timeout");
+    assert!(
+        matches!(closed, Ok(0) | Err(_)),
+        "continuation socket must close"
+    );
+}
