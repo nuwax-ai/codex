@@ -4,9 +4,10 @@
 //! config that writes into the reserved provider's table — same-named legal
 //! keys included — without a single model request leaving the process.
 //!
-//! In-process (not child-process) because this environment cannot complete
-//! the standalone app-server's startup network dependencies; the JSON-RPC
-//! surface under test is identical.
+//! In-process form for fast, parallel zero-request assertions; the
+//! child-process positive control and reject parity live in
+//! `nuwax_positive.rs` (child startup is unblocked there via the daemon's
+//! remote-control disable marker).
 
 use anyhow::Result;
 use codex_app_server::in_process;
@@ -53,6 +54,7 @@ fn env_group_seeds(server_uri: &str) -> Vec<(String, toml::Value)> {
             base_url: Some(server_uri.into()),
             wire_api: Some("responses".into()),
             api_key: Some("nuwax-test-key".into()),
+            ..Default::default()
         },
         /*cli_model*/ None,
         /*cli_provider*/ None,
@@ -156,8 +158,10 @@ async fn thread_start_config_cannot_override_the_environment_provider() -> Resul
         // Foreign keys are equally rejected.
         json!({"model_providers": {"nuwax_env": {"http_headers": {"x-old": "1"}}}}),
     ] {
-        let mut params = ThreadStartParams::default();
-        params.config = config_override(config);
+        let params = ThreadStartParams {
+            config: config_override(config),
+            ..Default::default()
+        };
         expect_reserved_error(
             &client,
             ClientRequest::ThreadStart {

@@ -4,7 +4,7 @@ use codex_config::CloudConfigBundleLoader;
 use codex_config::ConfigLayerStack;
 use codex_config::LoaderOverrides;
 use codex_config::ThreadConfigLoader;
-use codex_config::loader::load_config_layers_state;
+use codex_config::loader::load_config_layers_state_with_env_seed;
 use codex_config::loader::load_managed_requirements_state;
 use codex_core::config::Config;
 use codex_core::config::ConfigBuilder;
@@ -76,8 +76,7 @@ struct ApplicationPolicySnapshot {
 impl ConfigManager {
     pub(crate) fn new(
         codex_home: PathBuf,
-        cli_overrides: Vec<(String, TomlValue)>,
-        env_seed_overrides: Vec<(String, TomlValue)>,
+        launch_overrides: codex_config::LaunchOverrides,
         loader_overrides: LoaderOverrides,
         strict_config: bool,
         cloud_config_bundle: CloudConfigBundleLoader,
@@ -85,6 +84,10 @@ impl ConfigManager {
         thread_config_loader: Arc<dyn ThreadConfigLoader>,
     ) -> Self {
         let network_policy = codex_http_client::NetworkPolicyController::default();
+        let codex_config::LaunchOverrides {
+            cli_overrides,
+            env_seed_overrides,
+        } = launch_overrides;
         Self {
             codex_home,
             cli_overrides: Arc::new(RwLock::new(cli_overrides)),
@@ -491,7 +494,7 @@ impl ConfigManager {
         cwd: Option<AbsolutePathBuf>,
     ) -> std::io::Result<ConfigLayerStack> {
         let policy_load = self.refresh_application_network_policy().await?;
-        let result = load_config_layers_state(
+        let result = load_config_layers_state_with_env_seed(
             LOCAL_FS.as_ref(),
             &self.codex_home,
             cwd,
@@ -552,8 +555,7 @@ impl ConfigManager {
     ) -> Self {
         Self::new(
             codex_home,
-            cli_overrides,
-            /*env_seed_overrides*/ Vec::new(),
+            codex_config::LaunchOverrides::from_cli(cli_overrides),
             loader_overrides,
             /*strict_config*/ false,
             cloud_config_bundle,

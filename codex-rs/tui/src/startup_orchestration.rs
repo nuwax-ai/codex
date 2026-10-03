@@ -132,6 +132,7 @@ pub(super) async fn run_main_inner(
             /*can_reuse_implicit_local_daemon*/ false,
             workload_identity_selected,
             std::env::var_os(codex_exec_server::CODEX_EXEC_SERVER_URL_ENV_VAR).as_deref(),
+            &nuwax_env_seeds,
         )?;
         let validation_environment_manager =
             if should_load_configured_environments(&loader_overrides, &validation_target) {
@@ -246,6 +247,7 @@ pub(super) async fn run_main_inner(
         reuse_implicit_local_daemon,
         workload_identity_selected,
         std::env::var_os(codex_exec_server::CODEX_EXEC_SERVER_URL_ENV_VAR).as_deref(),
+        &nuwax_env_seeds,
     )?;
     let prepared_environment_manager =
         if should_load_configured_environments(&launch_loader_overrides, &presentation_target) {
@@ -340,6 +342,7 @@ pub(super) async fn run_main_inner(
         reuse_implicit_local_daemon,
         workload_identity_selected,
         std::env::var_os(codex_exec_server::CODEX_EXEC_SERVER_URL_ENV_VAR).as_deref(),
+        &nuwax_env_seeds,
     )?;
     let remote_cwd_override = cli
         .cwd

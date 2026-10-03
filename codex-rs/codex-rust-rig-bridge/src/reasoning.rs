@@ -135,8 +135,10 @@ pub(crate) fn replay_reasoning(
             }
         };
     }
-    // Legacy bridge histories duplicated plain text into both fields. Accept
-    // only that exact shape; opaque OpenAI encrypted reasoning is never echoed.
+    // Chat accepts visible reasoning_content without a signature. The Core
+    // source projection may deliberately remove opaque bytes while retaining
+    // that text; losing it breaks providers that require reasoning on tool
+    // continuations. Anthropic still requires its original signed envelope.
     let text: String = content
         .iter()
         .flatten()
@@ -146,12 +148,27 @@ pub(crate) fn replay_reasoning(
             }
         })
         .collect();
+    let projected_plaintext = encrypted_content.is_none();
+    if projected_plaintext && text.len() > crate::hosted_replay::MAX_PAIR_BYTES {
+        tracing::warn!("Dropping projected plaintext reasoning above the replay byte budget");
+        return Vec::new();
+    }
     if protocol == crate::RigProtocol::Chat
         && !text.is_empty()
-        && encrypted_content.as_deref() == Some(text.as_str())
+        && (projected_plaintext || encrypted_content.as_deref() == Some(text.as_str()))
     {
+        if projected_plaintext && text.len() >= 1_000 {
+            tracing::warn!(
+                bytes = text.len(),
+                "P0 manual review: projected reasoning can exceed 1k tokens"
+            );
+        }
         vec![Reasoning::new(&text)]
     } else {
         Vec::new()
     }
 }
+
+#[cfg(test)]
+#[path = "reasoning_projection_tests.rs"]
+mod projection_tests;

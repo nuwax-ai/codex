@@ -476,7 +476,6 @@ pub(crate) async fn load_plugins_config(codex_home: &Path, cwd: &Path) -> Plugin
         codex_home.as_path(),
         Some(cwd),
         &[],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::without_managed_config_for_tests(),
         &NoopThreadConfigLoader,
     )

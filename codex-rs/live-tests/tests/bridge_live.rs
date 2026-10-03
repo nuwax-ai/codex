@@ -790,6 +790,7 @@ fn base_request(cfg: &LiveConfig, instructions: &str, prompt: &str) -> Responses
         tools: None,
         tool_choice: "auto".into(),
         parallel_tool_calls: true,
+        max_output_tokens: None,
         reasoning: None,
         store: false,
         stream: true,

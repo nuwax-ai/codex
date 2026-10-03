@@ -34,7 +34,7 @@ fn bridged_responses_provider(server: &MockServer) -> ModelProviderInfo {
         // No experimental_bridge: the fork default routes through rig, which
         // now speaks the SAME Responses wire instead of converting to Chat.
         experimental_bridge: None,
-        provider_id: None,
+        provider_id: Some("rig-responses".into()),
         auth: None,
         gateway_oauth: None,
         aws: None,
@@ -82,8 +82,12 @@ async fn responses_bridge_preserves_lite_request_contract() -> Result<()> {
             ]),
         )
         .await;
-        let provider = bridged_responses_provider(&server);
+        let mut provider = bridged_responses_provider(&server);
+        provider.max_output_tokens = Some(4096);
         let test = test_codex()
+            .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+                /*auth*/ None,
+            ))
             .with_model_info_override("rig-lite-test-model", move |model| {
                 model.use_responses_lite = use_responses_lite;
             })
@@ -102,6 +106,7 @@ async fn responses_bridge_preserves_lite_request_contract() -> Result<()> {
             use_responses_lite.then(|| "true".to_string()),
         );
         let body = request.body_json();
+        assert_eq!(body["max_output_tokens"], json!(4096));
         let additional_tools = request.inputs_of_type("additional_tools");
         if use_responses_lite {
             assert!(body.get("tools").is_none());
@@ -131,8 +136,9 @@ async fn responses_bridge_resumes_history_without_backfilling_provenance() -> Re
     skip_if_no_network!(Ok(()));
 
     let server = MockServer::start().await;
-    let reasoning =
+    let mut reasoning =
         responses::ev_reasoning_item("rs_original", &["saved summary"], &["saved thought"]);
+    reasoning["item"]["encrypted_content"] = "opaque-original".into();
     let assistant = responses::ev_assistant_message("msg_original", "first answer");
     // Versioned same-source envelope (R2): persisted verbatim through the
     // rollout and cleared from the Responses request copy below.
@@ -174,6 +180,9 @@ async fn responses_bridge_resumes_history_without_backfilling_provenance() -> Re
     .await;
     let provider = bridged_responses_provider(&server);
     let initial = test_codex()
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
         .with_model_info_override("rig-original-model", |model| {
             model.use_responses_lite = false;
             model.tool_mode = None;
@@ -189,6 +198,14 @@ async fn responses_bridge_resumes_history_without_backfilling_provenance() -> Re
 
     let requests = initial_mock.requests();
     assert_eq!(requests.len(), 2);
+    assert_eq!(
+        requests[1]
+            .input()
+            .iter()
+            .find(|item| item["id"] == "rs_original")
+            .context("same-source reasoning continuation")?["encrypted_content"],
+        "opaque-original"
+    );
     assert!(
         requests
             .iter()
@@ -232,6 +249,11 @@ async fn responses_bridge_resumes_history_without_backfilling_provenance() -> Re
         bridge: Some("rig".into()),
         provider: Some("rig-responses".into()),
         model: Some("rig-original-model".into()),
+        endpoint_identity: codex_api::model_endpoint_identity(
+            &bridged_responses_provider(&server).to_api_provider(None)?,
+        ),
+        auth_domain: Some("anonymous".into()),
+        auth_domain_kind: Some("anonymous".into()),
     };
     for id in ["rs_original", "msg_original", "search_saved"] {
         let item = original_items
@@ -277,8 +299,12 @@ async fn responses_bridge_resumes_history_without_backfilling_provenance() -> Re
     .await;
     let mut provider = bridged_responses_provider(&server);
     provider.name = "rig-responses-resumed".into();
+    provider.provider_id = Some("rig-responses-resumed".into());
     let original_cwd = initial.config.cwd.clone();
     let mut resume_builder = test_codex()
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
         .with_model_info_override("rig-resumed-model", |model| {
             model.use_responses_lite = false;
             model.tool_mode = None;
@@ -310,7 +336,9 @@ async fn responses_bridge_resumes_history_without_backfilling_provenance() -> Re
             .collect::<Vec<_>>(),
         tool_pair,
     );
-    for expected in [&reasoning["item"], &assistant["item"]] {
+    let mut projected_reasoning = reasoning["item"].clone();
+    projected_reasoning["encrypted_content"] = Value::Null;
+    for expected in [&projected_reasoning, &assistant["item"]] {
         assert_eq!(
             input.iter().find(|item| item["id"] == expected["id"]),
             Some(expected)
@@ -431,6 +459,9 @@ async fn bridge_chat_compact_recovers_from_context_window_rejection() -> Result<
         ..bridged_responses_provider(&server)
     };
     let test = test_codex()
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
         .with_config(move |config| {
             config.model_provider = provider;
             config.model_auto_compact_token_limit = Some(200_000);
@@ -508,4 +539,185 @@ impl wiremock::Match for ChatRequestLog {
             .push(request.clone());
         true
     }
+}
+
+/// Core binds an API-key reasoning envelope to its actual immutable credential
+/// instance and sends its visible reasoning on the real tool continuation.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn chat_credential_instance_preserves_reasoning_content_on_tool_continuation() -> Result<()> {
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use wiremock::matchers::method;
+    use wiremock::matchers::path;
+
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    let arguments = json!({"plan":[{"step":"retain reasoning", "status":"completed"}]}).to_string();
+    let frames = [
+        vec![
+            json!({"id":"chatcmpl-tool", "object":"chat.completion.chunk", "created":1, "model":"deepseek-test", "choices":[{"index":0, "delta":{"role":"assistant", "reasoning_content":"visible planning thought"}, "finish_reason":null}]}),
+            json!({"id":"chatcmpl-tool", "object":"chat.completion.chunk", "created":1, "model":"deepseek-test", "choices":[{"index":0, "delta":{"tool_calls":[{"index":0, "id":"call_plan", "type":"function", "function":{"name":"update_plan", "arguments":arguments}}]}, "finish_reason":null}]}),
+            json!({"id":"chatcmpl-tool", "object":"chat.completion.chunk", "created":1, "model":"deepseek-test", "choices":[{"index":0, "delta":{}, "finish_reason":"tool_calls"}], "usage":{"prompt_tokens":4, "completion_tokens":2, "total_tokens":6}}),
+        ],
+        vec![
+            json!({"id":"chatcmpl-final", "object":"chat.completion.chunk", "created":1, "model":"deepseek-test", "choices":[{"index":0, "delta":{"role":"assistant", "content":"done"}, "finish_reason":null}]}),
+            json!({"id":"chatcmpl-final", "object":"chat.completion.chunk", "created":1, "model":"deepseek-test", "choices":[{"index":0, "delta":{}, "finish_reason":"stop"}], "usage":{"prompt_tokens":5, "completion_tokens":1, "total_tokens":6}}),
+        ],
+    ];
+    let requests = Arc::new(Mutex::new(Vec::<wiremock::Request>::new()));
+    for frames in frames {
+        let body = frames
+            .into_iter()
+            .map(|frame| format!("data: {frame}\n\n"))
+            .collect::<String>()
+            + "data: [DONE]\n\n";
+        let captured = Arc::clone(&requests);
+        wiremock::Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(move |request: &wiremock::Request| {
+                captured
+                    .lock()
+                    .expect("request capture")
+                    .push(request.clone());
+                true
+            })
+            .respond_with(responses::sse_response(body))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+    }
+    let provider = ModelProviderInfo {
+        name: "DeepSeek test".into(),
+        provider_id: Some("deepseek-selector-test".into()),
+        wire_api: WireApi::Chat,
+        requires_openai_auth: true,
+        // PATH is an existing non-secret configuration selector. No key value
+        // enters provenance and this test never mutates the process environment.
+        env_http_headers: Some([("x-test-selector".into(), "PATH".into())].into()),
+        ..bridged_responses_provider(&server)
+    };
+    let test = test_codex()
+        .with_auth(codex_login::CodexAuth::from_api_key("dummy"))
+        .with_model_info_override("deepseek-test", |model| {
+            model.use_responses_lite = false;
+            model.tool_mode = None;
+        })
+        .with_config(move |config| {
+            config.model_provider = provider;
+            config.update_plan_enabled = true;
+        })
+        .build_with_auto_env(&server)
+        .await?;
+    test.submit_text_turn("update the plan").await?;
+    let rollout = test
+        .codex
+        .rollout_path()
+        .context("Chat projection rollout")?;
+    test.codex.shutdown_and_wait().await?;
+    let requests = requests.lock().expect("request capture").clone();
+    assert_eq!(requests.len(), 2);
+    let continuation: Value = serde_json::from_slice(&requests[1].body)?;
+    let messages = continuation["messages"]
+        .as_array()
+        .context("Chat messages")?;
+    let tool_loop: Vec<_> = messages
+        .iter()
+        .filter(|message| {
+            message["tool_call_id"] == "call_plan"
+                || message["tool_calls"]
+                    .as_array()
+                    .is_some_and(|calls| calls.iter().any(|call| call["id"] == "call_plan"))
+        })
+        .cloned()
+        .collect();
+    assert_eq!(
+        tool_loop,
+        vec![
+            json!({"role":"assistant", "reasoning_content":"visible planning thought", "tool_calls":[
+                {"id":"call_plan", "type":"function", "function":{"name":"update_plan", "arguments":arguments}}
+            ]}),
+            json!({"role":"tool", "tool_call_id":"call_plan", "content":"Plan updated"}),
+        ]
+    );
+    assert_eq!(
+        requests[1]
+            .headers
+            .get("authorization")
+            .context("actual API-key header")?,
+        "Bearer dummy"
+    );
+    let saved = persisted_response_items(&std::fs::read_to_string(rollout)?)?;
+    let reasoning = saved
+        .iter()
+        .find(|item| {
+            matches!(
+                &item.item,
+                codex_protocol::models::ResponseItem::Reasoning {
+                    encrypted_content: Some(_),
+                    ..
+                }
+            )
+        })
+        .context("stored original reasoning envelope")?;
+    let provenance = reasoning
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.model_output_provenance.as_ref())
+        .context("captured selector source")?;
+    assert_eq!(
+        (
+            provenance.wire_protocol.as_str(),
+            provenance.provider.as_deref(),
+            provenance.auth_domain_kind.as_deref()
+        ),
+        (
+            "chat",
+            Some("deepseek-selector-test"),
+            Some("credentialInstance")
+        )
+    );
+    assert!(provenance.auth_domain.as_ref().is_some_and(|domain| {
+        domain.starts_with("credential-instance-v1:") && !domain.contains("dummy")
+    }));
+    Ok(())
+}
+
+/// A generation budget failure must not enter Core's transport retry loop.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn responses_bridge_output_cap_exhaustion_does_not_resample() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    // Repeat the failure so an accidental retry cannot be hidden by a mock 404.
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/v1/responses"))
+        .respond_with(responses::sse_response(responses::sse(vec![
+        responses::ev_response_created("limited"),
+        json!({"type":"response.incomplete","response":{"id":"limited","incomplete_details":{"reason":"max_output_tokens"}}}),
+    ]))).mount(&server).await;
+    let mut provider = bridged_responses_provider(&server);
+    provider.max_output_tokens = Some(64);
+    provider.request_max_retries = Some(3);
+    provider.stream_max_retries = Some(3);
+    let test = test_codex()
+        .with_config(move |config| config.model_provider = provider)
+        .build_with_auto_env(&server)
+        .await?;
+    test.submit_text_turn("exercise output cap").await?;
+    let requests = server
+        .received_requests()
+        .await
+        .context("recorded requests")?;
+    let requests: Vec<_> = requests
+        .iter()
+        .filter(|request| request.url.path() == "/v1/responses" && request.method == "POST")
+        .collect();
+    assert_eq!(
+        requests.len(),
+        1,
+        "the same exhausted cap cannot be automatically retried"
+    );
+    let body: Value = serde_json::from_slice(&requests[0].body)?;
+    assert_eq!(body["max_output_tokens"], json!(64));
+    test.codex.shutdown_and_wait().await?;
+    Ok(())
 }

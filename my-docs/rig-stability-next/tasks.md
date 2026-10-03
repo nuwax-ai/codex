@@ -95,3 +95,19 @@
 - [ ] scoped `just fix -p <crate>`
 - [ ] `just fmt`
 - [ ] verification.md 更新（源码身份/dirty、命令、退出码、计数、工件）
+
+## 第三轮（2026-10-03，检查点 20898140f 之后）
+
+- [x] N2 身份与位置根治（R07：envelope v2 + transport_identity + 回归矩阵；
+      两个保留 Core 回归转绿）→ 细节见 n2-n3-projection-{spec,plan,tasks}.md
+- [x] 配置通道 5 条 lint（LaunchOverrides 命名通道 + 测试整理）
+- [x] N1 子进程正向控制（remote-control 解锁 + nuwax_positive）+ R06 loader wrapper
+- [x] N4 端点/模型/协议 provenance 矩阵测试（授权域缺口登记）
+- [x] N6 D1 exec 自身构建收据（含 live 工件 validated 闭环）
+- [x] N6 D2 最终 HTTP 脱敏 recorder（bridge_live 路径 + wire 测试）
+- [x] N6 失败工件覆盖 marker/compact（共享 retain_rollouts_on_failure）
+- [x] live 最小验证（glm/mimo anthropic marker PASS，源验证；GLM websearch
+      turn2 失败登记开放调查）
+- [ ] 下轮首要：GLM websearch turn2 请求字节定位（接 D2 到 binary 路径）；
+      N4 授权域并入 source；N5 core 级聚合超限 + 全轮累计计量事件；
+      C1/N4 generic provenance 消费深化

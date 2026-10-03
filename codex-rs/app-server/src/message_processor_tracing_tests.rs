@@ -245,8 +245,7 @@ pub(super) async fn build_test_processor(
     let (outgoing_tx, outgoing_rx) = mpsc::channel(16);
     let config_manager = ConfigManager::new(
         config.codex_home.to_path_buf(),
-        Vec::new(),
-        /*env_seed_overrides*/ Vec::new(),
+        codex_config::LaunchOverrides::default(),
         LoaderOverrides::with_managed_config_path_for_tests(
             config.codex_home.join("managed_config.toml").to_path_buf(),
         ),

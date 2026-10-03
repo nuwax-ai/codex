@@ -19,6 +19,8 @@ pub(crate) fn convert_response_items(
     // How many assistant rig messages have been emitted so far; persisted
     // web-search pairs attach to the message their call followed (count-1).
     let mut assistant_messages = 0usize;
+    let mut owned_segments =
+        std::collections::HashMap::<usize, Vec<crate::hosted_replay::SegmentSite>>::new();
 
     // rig's ToolResult requires the executed tool's *name*, which codex only
     // carries on the FunctionCall item — index call_id → name up front.
@@ -62,6 +64,22 @@ pub(crate) fn convert_response_items(
             _ => None,
         })
         .collect();
+    let mut response_coverage =
+        std::collections::HashMap::<String, std::collections::HashMap<u64, Value>>::new();
+    let mut corrupt_responses = std::collections::HashSet::new();
+    for envelope in replay_envelopes.iter().flatten() {
+        if let (Some(response), Some(indices)) = (&envelope.response_id, &envelope.block_indices) {
+            let coverage = response_coverage.entry(response.clone()).or_default();
+            for (index, block) in indices.iter().zip(&envelope.blocks) {
+                if *index != crate::hosted_replay::UNKNOWN_WIRE_INDEX
+                    && let Some(previous) = coverage.insert(*index, block.clone())
+                    && previous != *block
+                {
+                    corrupt_responses.insert(response.clone());
+                }
+            }
+        }
+    }
     let mut first_completed_search = std::collections::HashMap::<String, usize>::new();
     for (index, envelope) in replay_envelopes.iter().enumerate() {
         let Some(envelope) = envelope else { continue };
@@ -91,6 +109,10 @@ pub(crate) fn convert_response_items(
     let mut projected_calls = std::collections::HashSet::<String>::new();
 
     for (item_index, item) in items.iter().enumerate() {
+        let before = match messages.last() {
+            Some(Message::Assistant { content, .. }) => serialized_assistant_len(content),
+            _ => 0,
+        };
         match item {
             ResponseItem::FunctionCall { call_id, .. }
             | ResponseItem::CustomToolCall { call_id, .. }
@@ -176,7 +198,7 @@ pub(crate) fn convert_response_items(
                 // identity sending this request (legacy bare arrays and
                 // cross-endpoint ciphertext are conservatively dropped).
                 match replay_envelopes[item_index].take() {
-                    Some(mut envelope) => {
+                    Some(envelope) => {
                         // Result-only projections still need a block Rig can
                         // serialize. Keep the original validated call for the
                         // SDK anchor; transport removes it before raw replay.
@@ -185,9 +207,9 @@ pub(crate) fn convert_response_items(
                             .iter()
                             .find(|block| block["type"] == "server_tool_use")
                             .cloned();
-                        envelope
-                            .blocks
-                            .retain(|block| match block["type"].as_str() {
+                        let mut kept: Vec<(Value, usize)> = Vec::new();
+                        for (position, block) in envelope.blocks.into_iter().enumerate() {
+                            let keep = match block["type"].as_str() {
                                 Some("server_tool_use") => {
                                     // The use stays at its original position —
                                     // including superseded pending items — so the
@@ -220,24 +242,22 @@ pub(crate) fn convert_response_items(
                                         })
                                 }
                                 _ => true,
-                            });
-                        let blocks = envelope.blocks;
-                        let cited_text = envelope.cited_text;
-                        if blocks.is_empty() {
-                            tracing::warn!(
-                                "persisted web-search pair carries no blocks; dropping it"
-                            );
+                            };
+                            if keep {
+                                kept.push((block, position));
+                            }
+                        }
+                        if kept.is_empty() && envelope.layout.is_none() {
                             continue;
                         }
                         if !matches!(messages.last(), Some(Message::Assistant { .. })) {
-                            let Some(anchor) = anchor else {
+                            let Some(anchor) = anchor.filter(|_| !kept.is_empty()) else {
                                 continue;
                             };
                             messages.push(Message::Assistant {
                                 id: None,
-                                // Rig rejects empty assistant messages before HTTP injection.
-                                // Carry a genuine raw block through its supported raw-content
-                                // channel; transport replaces this anchor with the payload.
+                                // This SDK anchor is removed before replay and does not
+                                // contribute to segment offsets or response boundaries.
                                 content: vec![AssistantContent::Text(rig_core::completion::message::Text {
                                     text: String::new(),
                                     additional_params: rig_core::completion::message::AdditionalParams::from_entries([
@@ -248,17 +268,94 @@ pub(crate) fn convert_response_items(
                             assistant_messages += 1;
                         }
                         let target = assistant_messages - 1;
-                        match websearch_replay.last_mut() {
-                            Some(group) if group.index == target => {
-                                group.blocks.extend(blocks);
-                                group.cited_text.extend(cited_text);
-                            }
-                            _ => websearch_replay.push(crate::hosted_replay::ReplayGroup {
+                        if websearch_replay
+                            .last()
+                            .is_none_or(|group| group.index != target)
+                        {
+                            websearch_replay.push(crate::hosted_replay::ReplayGroup {
                                 index: target,
-                                blocks,
-                                cited_text,
-                            }),
+                                blocks: Vec::new(),
+                                block_sites: None,
+                                layouts: Vec::new(),
+                                responses: Vec::new(),
+                                cited_text: Vec::new(),
+                            });
                         }
+                        let Some(group) = websearch_replay.last_mut() else {
+                            continue;
+                        };
+                        let ordinal = match envelope.response_id {
+                            Some(response) => {
+                                if group.block_sites.is_none() {
+                                    group.block_sites = Some(vec![
+                                        crate::hosted_replay::BlockSite {
+                                            layout: u32::MAX,
+                                            wire: crate::hosted_replay::UNKNOWN_WIRE_INDEX,
+                                        };
+                                        group.blocks.len()
+                                    ]);
+                                }
+                                let ordinal = match group
+                                    .responses
+                                    .iter()
+                                    .position(|site| site.id == response)
+                                {
+                                    Some(ordinal) => ordinal,
+                                    None => {
+                                        let ordinal = group.responses.len();
+                                        group.responses.push(crate::hosted_replay::ResponseSite {
+                                            id: response,
+                                            anchor: before,
+                                            segments: Vec::new(),
+                                        });
+                                        group.layouts.push(Vec::new());
+                                        ordinal
+                                    }
+                                };
+                                if let Some(layout) = envelope.layout {
+                                    if group.layouts[ordinal].is_empty() {
+                                        group.layouts[ordinal] = layout;
+                                    } else if group.layouts[ordinal] != layout {
+                                        // Conflicting full carriers for one response cannot
+                                        // establish ownership. Pairs remain response-scoped.
+                                        corrupt_responses
+                                            .insert(group.responses[ordinal].id.clone());
+                                        group.layouts[ordinal].clear();
+                                    }
+                                }
+                                u32::try_from(ordinal).unwrap_or(u32::MAX)
+                            }
+                            None => {
+                                // Old envelopes have only their explicit history
+                                // boundary; it cannot own any text or citations.
+                                if group.block_sites.is_none() {
+                                    group.block_sites = Some(Vec::new());
+                                }
+                                let ordinal = group.responses.len();
+                                group.responses.push(crate::hosted_replay::ResponseSite {
+                                    id: format!("legacyhistory{item_index}"),
+                                    anchor: before,
+                                    segments: Vec::new(),
+                                });
+                                group.layouts.push(Vec::new());
+                                u32::try_from(ordinal).unwrap_or(u32::MAX)
+                            }
+                        };
+                        for (block, position) in kept {
+                            if let Some(sites) = &mut group.block_sites {
+                                sites.push(crate::hosted_replay::BlockSite {
+                                    layout: ordinal,
+                                    wire: envelope
+                                        .block_indices
+                                        .as_ref()
+                                        .and_then(|indices| indices.get(position))
+                                        .copied()
+                                        .unwrap_or(crate::hosted_replay::UNKNOWN_WIRE_INDEX),
+                                });
+                            }
+                            group.blocks.push(block);
+                        }
+                        group.cited_text.extend(envelope.cited_text);
                     }
                     None => {
                         tracing::debug!(
@@ -417,9 +514,77 @@ pub(crate) fn convert_response_items(
                 tracing::warn!("Skipping unknown ResponseItem::Other in request conversion");
             }
         }
+        let id = match item {
+            ResponseItem::Message { id, role, .. } if role == "assistant" => id.as_ref(),
+            ResponseItem::Reasoning { id, .. }
+            | ResponseItem::FunctionCall { id, .. }
+            | ResponseItem::CustomToolCall { id, .. } => id.as_ref(),
+            _ => None,
+        };
+        if let Some(id) =
+            id.filter(|id| crate::hosted_replay::segment_response(id.as_str()).is_some())
+            && let Some(Message::Assistant { content, .. }) = messages.last()
+        {
+            let after = serialized_assistant_len(content);
+            if after > before {
+                owned_segments
+                    .entry(assistant_messages - 1)
+                    .or_default()
+                    .push(crate::hosted_replay::SegmentSite {
+                        id: id.to_string(),
+                        start: before,
+                        len: after - before,
+                    });
+            }
+        }
     }
-
+    for group in websearch_replay {
+        for (ordinal, response) in group.responses.iter_mut().enumerate() {
+            let coverage: std::collections::HashSet<_> = response_coverage
+                .get(&response.id)
+                .into_iter()
+                .flat_map(std::collections::HashMap::keys)
+                .copied()
+                .collect();
+            let referenced: std::collections::HashSet<_> = group.layouts[ordinal]
+                .iter()
+                .filter(|entry| entry["kind"] == "pair")
+                .filter_map(|entry| entry.get("index").and_then(Value::as_u64))
+                .collect();
+            if corrupt_responses.contains(&response.id)
+                || (!group.layouts[ordinal].is_empty() && referenced != coverage)
+            {
+                group.layouts[ordinal].clear();
+            }
+            response.segments = owned_segments
+                .get(&group.index)
+                .into_iter()
+                .flatten()
+                .filter(|site| {
+                    crate::hosted_replay::segment_response(&site.id) == Some(response.id.as_str())
+                })
+                .cloned()
+                .collect();
+            if let Some(first) = response.segments.first() {
+                response.anchor = first.start;
+            }
+        }
+    }
     Ok(messages)
+}
+
+/// Exact block cardinality of pinned Rig 0.42's Anthropic serializer. Raw
+/// server-tool anchors are stripped by transport before these offsets are used.
+fn serialized_assistant_len(content: &[AssistantContent]) -> usize {
+    content
+        .iter()
+        .map(|part| match part {
+            AssistantContent::Text(text) => usize::from(!text.text.is_empty()),
+            AssistantContent::Reasoning(reasoning) => reasoning.content.len(),
+            AssistantContent::ToolCall(_) => 1,
+            AssistantContent::Image(_) => 0,
+        })
+        .sum()
 }
 
 #[cfg(test)]

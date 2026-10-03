@@ -85,3 +85,6 @@ uuid = { workspace = true }
 walkdir = { workspace = true }
 wiremock = { workspace = true }
 zstd = { workspace = true }
+
+[build-dependencies]
+sha2 = { workspace = true }

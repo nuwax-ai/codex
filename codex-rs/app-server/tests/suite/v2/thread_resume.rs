@@ -5785,6 +5785,106 @@ async fn thread_resume_replays_pending_file_change_request_approval() -> Result<
 }
 
 #[tokio::test]
+async fn thread_resume_config_provider_override_preserves_current_model_selection() -> Result<()> {
+    let saved_server = create_mock_responses_server_repeating_assistant("Saved").await;
+    let selected_server = create_mock_responses_server_repeating_assistant("Selected").await;
+    let codex_home = TempDir::new()?;
+    let selected_base_url = format!("{}/v1", selected_server.uri());
+    mock_responses_config(&saved_server.uri())
+        .with_model("gpt-5.2-codex")
+        .with_extra_config(&format!(
+            r#"[model_providers.resume_provider]
+name = "Resume provider"
+base_url = "{selected_base_url}"
+wire_api = "responses"
+request_max_retries = 0
+stream_max_retries = 0"#
+        ))
+        .write(codex_home.path())?;
+
+    // The fixture explicitly starts gpt-5.4, unlike the current launch default.
+    let RestartedThreadFixture {
+        mut mcp,
+        thread_id,
+        rollout_file_path,
+        ..
+    } = start_materialized_thread_and_restart(codex_home.path(), "saved selection").await?;
+    let expected_thread_id = ThreadId::from_string(&thread_id)?;
+    let (items, _, _) = RolloutRecorder::load_rollout_items(&rollout_file_path).await?;
+    let saved_model = items.iter().rev().find_map(|item| match item {
+        RolloutItem::TurnContext(context) => Some(context.model.as_str()),
+        _ => None,
+    });
+    let saved_provider = items.iter().find_map(|item| match item {
+        RolloutItem::SessionMeta(meta) if meta.meta.id == expected_thread_id => {
+            meta.meta.model_provider.as_deref()
+        }
+        _ => None,
+    });
+    assert_eq!(
+        (saved_model, saved_provider),
+        (Some("gpt-5.4"), Some("mock_provider"))
+    );
+
+    let resume_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id,
+            config: Some(
+                [("model_provider".to_string(), json!("resume_provider"))]
+                    .into_iter()
+                    .collect(),
+            ),
+            ..Default::default()
+        })
+        .await?;
+    let resumed: ThreadResumeResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
+    assert_eq!(
+        (
+            resumed.model.as_str(),
+            resumed.model_provider.as_str(),
+            resumed.thread.model_provider.as_str(),
+        ),
+        ("gpt-5.2-codex", "resume_provider", "resume_provider")
+    );
+
+    let turn_id = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: resumed.thread.id,
+            input: vec![UserInput::Text {
+                text: "use the resumed selection".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })
+        .await?;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(turn_id)),
+    )
+    .await??;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("turn/completed"),
+    )
+    .await??;
+    let requests = selected_server
+        .received_requests()
+        .await
+        .unwrap_or_default();
+    let response_models = requests
+        .iter()
+        .filter(|request| request.url.path().ends_with("/responses"))
+        .map(|request| serde_json::from_slice::<serde_json::Value>(&request.body))
+        .collect::<serde_json::Result<Vec<_>>>()?
+        .into_iter()
+        .map(|body| body["model"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(response_models, vec![json!("gpt-5.2-codex")]);
+    Ok(())
+}
+
+#[tokio::test]
 async fn thread_resume_with_overrides_preserves_recency_and_checkpoints_model() -> Result<()> {
     let server = create_mock_responses_server_repeating_assistant("Done").await;
     let codex_home = TempDir::new()?;

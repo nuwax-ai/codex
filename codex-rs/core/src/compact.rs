@@ -272,15 +272,21 @@ async fn run_compact_task_inner_impl(
     let mut client_session = sess.services.model_client.new_session();
     let compaction_response = loop {
         // Clone is required because of the loop
-        let mut turn_input = history
+        let annotated_input = history
             .clone()
-            .for_prompt(&turn_context.model_info().input_modalities);
+            .for_prompt_annotated(&turn_context.model_info().input_modalities);
+        let input_provenance = crate::model_output_projection::sources_for_input(&annotated_input);
+        let mut turn_input = annotated_input
+            .into_iter()
+            .map(codex_history::ResponseItemEnvelope::into_item)
+            .collect::<Vec<_>>();
         sess.services
             .executed_tool_calls
             .attach_to_compaction_prompt(&mut turn_input);
         let turn_input_len = turn_input.len();
         let prompt = Prompt {
             input: turn_input,
+            input_provenance,
             base_instructions: sess.get_prompt_base_instructions().await,
             cyber_access_program: turn_context.cyber_access_program,
             ..Default::default()

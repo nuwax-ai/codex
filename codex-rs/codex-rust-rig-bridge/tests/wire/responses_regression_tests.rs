@@ -91,6 +91,7 @@ async fn responses_preserve_raw_tool_schema_bytes_with_and_without_projection() 
             serde_json::value::RawValue::from_string(tools.to_string()).expect("raw tool schema"),
         );
         request.tools = Some(raw.into());
+        request.max_output_tokens = Some(4096);
         let original = serde_json::to_vec(&request).expect("original request");
         let mut projected = request.clone();
         if encrypted_content.starts_with(codex_rust_rig_bridge::REPLAY_PREFIX)
@@ -319,7 +320,7 @@ async fn responses_terminal_failures_reject_later_completion() {
             }
             "response.incomplete" => {
                 assert!(
-                    matches!(errors.as_slice(), [ApiError::Stream(message)] if message == "Incomplete response returned, reason: max_output_tokens")
+                    matches!(errors.as_slice(), [ApiError::InvalidRequest { message }] if message.contains("max_output_tokens"))
                 );
             }
             "error" => assert_eq!(

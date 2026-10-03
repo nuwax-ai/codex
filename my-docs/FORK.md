@@ -175,12 +175,13 @@ code-mode-host、rg）。fork 的 npm 包只发单二进制 → 自启必失败
 `CODEX_AUTO_COMPACT_TOKEN_LIMIT`、`CODEX_AUTO_COMPACT_RATIO`。
 
 **provider 级输出预算**（2026-10-01 起）：`model_providers.*.max_output_tokens`
-（正整数）→ 桥线 `max_tokens`（Anthropic 必填字段由此覆盖默认 16384；Chat 可选）；
-Responses 直传按原文发送不受影响。远程 thread config 尚无此字段线格式（转 None）。
+（正整数）→ 桥线输出 cap（Anthropic `max_tokens` 覆盖默认 16384；Chat 可选，
+Rig 对部分 OpenAI reasoning 模型转换为 `max_completion_tokens`）；
+Responses typed HTTP/WS 请求采用 `max_output_tokens`，未配置时省略字段。远程 thread config 尚无此字段线格式（转 None）。
 
 **桥性能/安全项**（2026-10-01 起）：
-- 连接复用：同静态头的请求共享 reqwest 连接池（按 protocol+头指纹进程级缓存，
-  免每轮 TLS 握手；鉴权头始终按轮注入，custom CA 路径仍逐轮构建）。
+- 连接复用：每个 protocol 最多一个不保存请求头的 reqwest 连接池（进程内共三个，
+  请求头和鉴权按轮注入；custom CA 路径仍逐轮构建）。
 - tee 有界：Anthropic wire tee 与 cassette 录制缓冲上限 8 MiB，溢出停采并告警
   （流本身不受影响；块恢复只解析完整帧，截断尾不产生半块）；未声明 hosted 工具
   时 tee 整体跳过。
@@ -193,6 +194,9 @@ Responses 直传按原文发送不受影响。远程 thread config 尚无此字�
 config 文件；显式选其他 provider 时整组忽略。CLI/TUI/exec/standalone
 app-server 同语义接线；组激活时共享 daemon 被排除（每进程凭据），doctor
 `--json` 新增 `config.model_routing` 检查。部分设置/非法值 fail-fast 报变量名。
+2026-10-03 增加 `NUWAX_MAX_OUTPUT_TOKENS`，三协议均可用；Responses 使用
+`max_output_tokens`。多进程应分别设置独立 `CODEX_HOME`；参数表、启动示例、远程与会话
+边界见 [容器多进程审查](container-multiprocess-env-review-2026-10-03.md)。
 （ACP-TS 侧另有 `CODEX_BASE_URL`/`CODEX_API_PROTOCOL`/`CODEX_WIRE_API`/
 `INITIAL_AGENT_MODE` 等，见该仓库。）
 
@@ -216,10 +220,10 @@ app-server 同语义接线；组激活时共享 daemon 被排除（每进程凭�
 
 | 局限 | 坐标/依据 | 状态 |
 |---|---|---|
-| Chat/Anthropic 输出预算可通过 provider.max_output_tokens 配置；Anthropic 未配置时仍默认 16384，Responses passthrough 暂不采用该字段 | `codex-rust-rig-bridge/src/stream.rs`、`client.rs` | chat-family 已实现；Responses 预算语义待统一 |
+| Chat/Anthropic 输出预算可通过 provider.max_output_tokens 配置；Anthropic 未配置时仍默认 16384，Responses typed HTTP/WS、Rig passthrough 与预算已采用该字段 | `codex-rust-rig-bridge/src/stream.rs`、`client.rs` | 三协议已接线；验收见 `provider-request-controls-2026-10-03/tasks.md` |
 | 无 Anthropic prompt caching（`cache_control`） | 桥内零出现（grep 实证） | backlog |
 | 普通 TLS 客户端复用且请求头按轮注入；自定义 CA 仍专用构建 | `codex-rust-rig-bridge/src/client.rs`、`transport.rs` | 已修复全局缓存按每轮 header 永久增长的问题；取消和长会话验收待做 |
-| 搜索原始结果初版已持久化和回放，来源隔离、恢复侧硬上限、混合轮跨响应配对仍缺失 | `protocol/src/models.rs`、`request_messages.rs`、`hosted_tools.rs` | 后续任务见 `codex-review-2026-10-01.md` R2/R3 |
+| 搜索原始结果的来源身份、恢复上限、混合轮跨响应配对已加入当前工作树；厂商级全场景验收仍未完成 | `hosted_replay.rs`、`hosted_replay_budget.rs`、`model_output_projection.rs` | 定向与真实请求的范围见 `rig-stability-next/direct-development-2026-10-03-targeted-validation.md` |
 | 病态网关"HTTP 200 + 非 SSE JSON 错误体"两线均 EOF 丢体 | `sse.rs` EOF 路径；三家目标厂商 live 未见此行为 | 已知边界（可选加固：EOF 时附 body 摘要） |
 | 测试序列化兜底 `unwrap_or_default()` 仅在工具 schema >128 层嵌套时可达（静默零工具） | `request_tools.rs:41-47`（serde_json 递归深度限制，实测无现实 schema 可触发） | P3 nit（debug_assert） |
 

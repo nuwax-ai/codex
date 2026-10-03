@@ -32,7 +32,8 @@ pub fn cassette_mode() -> CassetteMode {
 
 /// One recorded bridge-boundary turn: the input request and returned event
 /// stream, serialized under `LIVE_FIXTURE_DIR` (default: `tests/fixtures`).
-/// Fixtures contain prompts and model text only — never credentials.
+/// Fixtures contain potentially sensitive prompts, tool output and model text.
+/// Authentication headers are excluded; keep captures in a private local directory.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct TurnFixture {
     pub vendor: String,
@@ -97,6 +98,18 @@ pub fn save_rig_event_fixture(
 fn rig_event_fixture_path(vendor: &str, tag: &str) -> Option<PathBuf> {
     let root = fixture_root()?;
     Some(root.join(vendor).join(format!("rig-events-{tag}.json")))
+}
+
+/// Saves all HTTP attempts. Raw bodies preserve serialization, and may contain
+/// sensitive prompts and tool output. URL credentials and headers are excluded.
+pub fn save_final_request_fixture(
+    vendor: &str,
+    tag: &str,
+    captured: &codex_rust_rig_bridge::FinalRequestCapture,
+) -> Result<()> {
+    let root = fixture_root().ok_or_else(|| anyhow!("Cannot locate fixtures"))?;
+    let path = root.join(vendor).join(format!("final-request-{tag}.json"));
+    write_fixture(&path, captured)
 }
 
 /// Path of a recorded raw Responses SSE body (wire bytes, plain text).

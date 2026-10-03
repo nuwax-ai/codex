@@ -1,6 +1,7 @@
 //! Table tests for hosted tool translation.
 
 use super::PairedWebSearchBlocks;
+use super::WireIndexed;
 use super::anthropic_server_tool;
 use super::is_web_search_server_use;
 use super::pair_web_search_blocks;
@@ -241,10 +242,13 @@ fn official_result_blocks_pair_by_id() {
     let events = web_search_call_events(
         PairedWebSearchBlocks {
             call: pairs[0].call.clone(),
+            call_index: pairs[0].call_index,
             result: pairs[0].result.clone(),
+            result_index: pairs[0].result_index,
         },
         "test-source",
-        Vec::new(),
+        "response",
+        None,
     );
     let done = events
         .iter()
@@ -258,8 +262,10 @@ fn official_result_blocks_pair_by_id() {
     assert_eq!(
         encoded["wire_blocks"],
         json!({
-            "version": 1,
+            "version": 3,
+            "response_id": "response",
             "source": "test-source",
+            "block_indices": [0, 1],
             "blocks": [
                 {"type": "server_tool_use", "id": "srvu_1", "name": "web_search",
                  "input": {"query": "q1"}},
@@ -280,10 +286,13 @@ fn unpaired_call_emits_in_progress_with_use_block_only() {
         PairedWebSearchBlocks {
             call: json!({"type": "server_tool_use", "id": "srvu_2", "name": "web_search",
                          "input": {"query": "mixed turn query"}}),
+            call_index: 0,
             result: None,
+            result_index: None,
         },
         "test-source",
-        Vec::new(),
+        "response",
+        None,
     );
     let done = events
         .iter()
@@ -297,8 +306,10 @@ fn unpaired_call_emits_in_progress_with_use_block_only() {
     assert_eq!(
         encoded["wire_blocks"],
         json!({
-            "version": 1,
+            "version": 3,
+            "response_id": "response",
             "source": "test-source",
+            "block_indices": [0],
             "blocks": [{"type": "server_tool_use", "id": "srvu_2", "name": "web_search",
                         "input": {"query": "mixed turn query"}}],
         })
@@ -321,25 +332,34 @@ fn raw_search_capture_preserves_unknown_call_start_fields() {
         futures::executor::block_on(web_search_blocks_from_anthropic_sse(bytes.as_bytes()));
     assert_eq!(
         capture.uses,
-        vec![
-            json!({"type":"server_tool_use", "id":"s1", "name":"web_search", "input":{"query":"q"}, "vendor_nonce":"opaque"})
-        ]
+        vec![WireIndexed {
+            index: 0,
+            block: json!({"type":"server_tool_use", "id":"s1", "name":"web_search", "input":{"query":"q"}, "vendor_nonce":"opaque"})
+        }]
     );
 }
 
 #[test]
 fn captured_search_citations_share_the_envelope_byte_budget() {
+    let layout = vec![json!({
+        "kind": "cited",
+        "index": 2,
+        "block": {"type": "text",
+                  "text": "x".repeat(crate::hosted_replay::MAX_PAIR_BYTES),
+                  "citations": []},
+    })];
     let events = web_search_call_events(
         PairedWebSearchBlocks {
             call: json!({"type":"server_tool_use", "id":"s1", "name":"web_search", "input":{}}),
+            call_index: 0,
             result: Some(
                 json!({"type":"web_search_tool_result", "tool_use_id":"s1", "content":[]}),
             ),
+            result_index: Some(1),
         },
         "source",
-        vec![
-            json!({"type":"text", "text":"x".repeat(crate::hosted_replay::MAX_PAIR_BYTES), "citations":[]}),
-        ],
+        "response",
+        Some(&layout),
     );
     let done = events
         .into_iter()
@@ -357,7 +377,16 @@ fn captured_search_citations_share_the_envelope_byte_budget() {
                 query: None,
                 queries: None
             }),
-            wire_blocks: None,
+            wire_blocks: Some(crate::hosted_replay::envelope(
+                "source",
+                vec![
+                    json!({"type":"server_tool_use", "id":"s1", "name":"web_search", "input":{}}),
+                    json!({"type":"web_search_tool_result", "tool_use_id":"s1", "content":[]})
+                ],
+                vec![0, 1],
+                "response",
+                None
+            )),
             internal_chat_message_metadata_passthrough: None,
         }
     );

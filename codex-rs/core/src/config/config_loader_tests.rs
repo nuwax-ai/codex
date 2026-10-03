@@ -180,7 +180,6 @@ invalid = ["#;
         tmp.path(),
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -209,7 +208,6 @@ invalid = ["#,
         tmp.path(),
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides {
             ignore_user_config: true,
             ..Default::default()
@@ -262,7 +260,6 @@ invalid = ["#,
             "model".to_string(),
             TomlValue::String("from-session".to_string()),
         )],
-        /*env_seed_overrides*/ &[],
         ConfigLoadOptions {
             loader_overrides: LoaderOverrides {
                 ignore_project_config: true,
@@ -303,7 +300,6 @@ async fn ignore_rules_marks_config_stack_for_exec_policy_rule_skip() -> std::io:
         tmp.path(),
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides {
             ignore_user_and_project_exec_policy_rules: true,
             ..Default::default()
@@ -332,7 +328,6 @@ invalid = ["#;
         tmp.path(),
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         overrides,
         &codex_config::NoopThreadConfigLoader,
     )
@@ -384,7 +379,6 @@ async fn top_level_allow_managed_hooks_only_in_user_config_does_not_enable_requi
         tmp.path(),
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -419,7 +413,6 @@ command = "python3 /tmp/user-hook.py"
         tmp.path(),
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -890,7 +883,6 @@ extra = true
         tmp.path(),
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         overrides,
         &codex_config::NoopThreadConfigLoader,
     )
@@ -926,7 +918,6 @@ async fn managed_goal_token_budget_overrides_user_config() -> anyhow::Result<()>
         tmp.path(),
         Some(AbsolutePathBuf::try_from(tmp.path())?),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::with_managed_config_path_for_tests(managed_path),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -955,7 +946,6 @@ async fn returns_packaged_defaults_when_other_layers_are_missing() {
         tmp.path(),
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         overrides,
         &codex_config::NoopThreadConfigLoader,
     )
@@ -1020,7 +1010,6 @@ approval_policy = "on-request"
         tmp.path(),
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         overrides,
         &codex_config::NoopThreadConfigLoader,
     )
@@ -1083,7 +1072,6 @@ async fn includes_thread_config_layers_in_stack() -> anyhow::Result<()> {
         tmp.path(),
         Some(cwd),
         &[("features.plugins".to_string(), TomlValue::Boolean(true))],
-        /*env_seed_overrides*/ &[],
         overrides,
         &StaticThreadConfigLoader::new(vec![ThreadConfigSource::Session(SessionThreadConfig {
             features: BTreeMap::from([("plugins".to_string(), false)]),
@@ -1165,7 +1153,6 @@ flag = false
         tmp.path(),
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         overrides,
         &codex_config::NoopThreadConfigLoader,
     )
@@ -1268,7 +1255,6 @@ allowed_sandbox_modes = ["read-only"]
         tmp.path(),
         Some(AbsolutePathBuf::try_from(tmp.path())?),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         loader_overrides,
         &codex_config::NoopThreadConfigLoader,
     )
@@ -1327,7 +1313,6 @@ model_catalog_json = "models.json"
         &codex_home,
         Some(AbsolutePathBuf::try_from(tmp.path())?),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         loader_overrides,
         &codex_config::NoopThreadConfigLoader,
     )
@@ -1381,7 +1366,6 @@ allowed_approval_policies = ["never"]
         tmp.path(),
         Some(AbsolutePathBuf::try_from(tmp.path())?),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         loader_overrides,
         &codex_config::NoopThreadConfigLoader,
     )
@@ -1545,7 +1529,6 @@ allowed_approval_policies = ["on-request"]
         tmp.path(),
         Some(AbsolutePathBuf::try_from(tmp.path())?),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         ConfigLoadOptions {
             loader_overrides,
             cloud_config_bundle: CloudConfigBundleFixture::loader_with_enterprise_requirement(
@@ -1785,7 +1768,6 @@ async fn load_config_layers_includes_cloud_config_bundle() -> anyhow::Result<()>
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         ConfigLoadOptions {
             loader_overrides: LoaderOverrides::without_managed_config_for_tests(),
             cloud_config_bundle,
@@ -2702,7 +2684,6 @@ review_model = "system-review"
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         ConfigLoadOptions {
             loader_overrides: overrides,
             cloud_config_bundle: CloudConfigBundleFixture::loader_with_enterprise_config(
@@ -2843,7 +2824,6 @@ statusMessage = "checking"
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         ConfigLoadOptions {
             cloud_config_bundle,
             ..Default::default()
@@ -2885,7 +2865,6 @@ deny_read = ["secrets/**"]
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         ConfigLoadOptions {
             loader_overrides: LoaderOverrides::without_managed_config_for_tests(),
             cloud_config_bundle,
@@ -2955,7 +2934,6 @@ async fn strict_config_rejects_unknown_cloud_config_key() {
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         ConfigLoadOptions {
             loader_overrides: LoaderOverrides::without_managed_config_for_tests(),
             strict_config: true,
@@ -2996,7 +2974,6 @@ async fn load_config_layers_applies_matching_remote_sandbox_config() -> anyhow::
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         ConfigLoadOptions {
             cloud_config_bundle,
             ..Default::default()
@@ -3035,7 +3012,6 @@ async fn load_config_layers_fails_when_cloud_config_bundle_loader_fails() -> any
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         ConfigLoadOptions {
             cloud_config_bundle: CloudConfigBundleLoader::new(async {
                 Err(CloudConfigBundleLoadError::new(
@@ -3094,7 +3070,6 @@ async fn project_layers_prefer_closest_cwd() -> std::io::Result<()> {
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -3176,7 +3151,6 @@ async fn linked_worktree_project_layers_keep_worktree_config_but_use_root_repo_h
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -3262,7 +3236,6 @@ async fn forged_linked_worktree_does_not_inherit_repo_trust() -> std::io::Result
         &codex_home,
         Some(AbsolutePathBuf::from_absolute_path(&attacker_root)?),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -3307,7 +3280,6 @@ async fn malformed_untrusted_linked_worktree_does_not_read_root_hooks() -> std::
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -3358,7 +3330,6 @@ async fn linked_worktree_project_layers_use_root_repo_hooks_without_worktree_con
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -3428,7 +3399,6 @@ async fn nested_project_root_markers_do_not_redirect_regular_repo_hooks() -> std
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -3615,7 +3585,6 @@ async fn project_layer_is_added_when_dot_codex_exists_without_config_toml() -> s
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -3655,7 +3624,6 @@ async fn codex_home_is_not_loaded_as_project_layer_from_home_dir() -> std::io::R
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -3718,7 +3686,6 @@ async fn codex_home_within_project_tree_is_not_double_loaded() -> std::io::Resul
         &project_dot_codex,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -3790,7 +3757,6 @@ profile = "ignored"
         &codex_home_untrusted,
         Some(cwd.clone()),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::without_managed_config_for_tests(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -3833,7 +3799,6 @@ profile = "ignored"
         &codex_home_unknown,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::without_managed_config_for_tests(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -3932,7 +3897,6 @@ wire_api = "responses"
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::with_managed_config_path_for_tests(managed_config_path),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -4045,7 +4009,6 @@ async fn project_trust_does_not_match_configured_alias_for_canonical_cwd() -> st
         &codex_home,
         Some(AbsolutePathBuf::from_absolute_path(&project_root)?),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -4207,7 +4170,6 @@ async fn invalid_project_config_ignored_when_untrusted_or_unknown() -> std::io::
             &codex_home,
             Some(cwd.clone()),
             &[] as &[(String, TomlValue)],
-            /*env_seed_overrides*/ &[],
             LoaderOverrides::default(),
             &codex_config::NoopThreadConfigLoader,
         )
@@ -4272,7 +4234,6 @@ async fn project_layer_without_config_toml_is_disabled_when_untrusted_or_unknown
             &codex_home,
             Some(cwd.clone()),
             &[] as &[(String, TomlValue)],
-            /*env_seed_overrides*/ &[],
             LoaderOverrides::default(),
             &codex_config::NoopThreadConfigLoader,
         )
@@ -4329,7 +4290,6 @@ async fn cli_overrides_with_relative_paths_do_not_break_trust_check() -> std::io
         &codex_home,
         Some(cwd),
         &cli_overrides,
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )
@@ -4375,7 +4335,6 @@ async fn project_root_markers_supports_alternate_markers() -> std::io::Result<()
         &codex_home,
         Some(cwd),
         &[] as &[(String, TomlValue)],
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )

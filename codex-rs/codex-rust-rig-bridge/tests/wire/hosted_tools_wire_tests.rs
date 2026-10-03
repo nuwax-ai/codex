@@ -317,6 +317,19 @@ async fn anthropic_server_tool_use_maps_to_a_web_search_call_item() {
     let source =
         codex_rust_rig_bridge::reasoning_source(&provider, RigProtocol::Anthropic, "review-model")
             .expect("source identity");
+    let message_id = done_items
+        .iter()
+        .find_map(|item| match item {
+            ResponseItem::Message { id: Some(id), .. } => Some(id.as_str()),
+            _ => None,
+        })
+        .expect("persisted text owner");
+    let response_id = message_id
+        .strip_prefix("rigseg_")
+        .unwrap()
+        .rsplit_once('_')
+        .unwrap()
+        .0;
     assert_eq!(
         serde_json::to_value(web_search_calls[0]).unwrap(),
         json!({
@@ -326,13 +339,21 @@ async fn anthropic_server_tool_use_maps_to_a_web_search_call_item() {
             "action":{"type":"search","query":"上海天气"},
             // D1+R2: the raw wire pair rides the item inside the versioned
             // same-source envelope — GLM's non-standard assistant-side
-            // tool_result included, verbatim.
+            // tool_result included, verbatim — plus the v2 block identity
+            // (indices + layout) replay rebuilds positions from.
             "wire_blocks":{
-                "version":1,
+                "version":3,
+                "response_id":response_id,
                 "source":source,
+                "block_indices":[0,1],
                 "blocks":[
                     {"type":"server_tool_use","id":"srvu_glm","name":"web_search_prime","input":{"search_query":"上海天气","location":"cn"}},
                     {"type":"tool_result","tool_use_id":"srvu_glm","content":"[{'text': [{'title': 'weather', 'link': 'https://example.com'}]}]"},
+                ],
+                "layout":[
+                    {"kind":"pair","index":0},
+                    {"kind":"pair","index":1},
+                    {"kind":"text","index":2,"owner":message_id,"block":{"type":"text","text":"上海今天多云。"}},
                 ],
             },
         })
@@ -621,7 +642,7 @@ async fn anthropic_replay_drops_web_search_call_history() {
     assert!(encoded.contains("next question"));
 }
 
-enum SearchReplay {
+pub(super) enum SearchReplay {
     Enabled,
     Disabled,
 }
@@ -633,7 +654,7 @@ fn search_pair(id: &str) -> Value {
     ])
 }
 
-async fn capture_search_replay(raw_items: Vec<Value>, replay: SearchReplay) -> Value {
+pub(super) async fn capture_search_replay(raw_items: Vec<Value>, replay: SearchReplay) -> Value {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mut provider = provider(listener.local_addr().unwrap());
     provider.hosted_results_replay = match replay {
@@ -853,39 +874,73 @@ async fn anthropic_malformed_loaded_search_payloads_drop_before_sdk_conversion()
 async fn anthropic_late_search_results_preserve_response_positions_and_raw_fields() {
     for result_type in ["web_search_tool_result", "tool_result"] {
         for plain_message in [false, true] {
-            let mut pair = search_pair("late");
-            pair[1]["type"] = json!(result_type);
-            if result_type == "tool_result" {
-                pair[1]["content"] =
-                    json!("[{'text': [{'title': 'GLM result', 'link': 'https://example.com'}]}]");
+            for identity in [false, true] {
+                let mut pair = search_pair("late");
+                pair[1]["type"] = json!(result_type);
+                if result_type == "tool_result" {
+                    pair[1]["content"] = json!(
+                        "[{'text': [{'title': 'GLM result', 'link': 'https://example.com'}]}]"
+                    );
+                }
+                pair[1]["vendor_result"] =
+                    json!({"opaque":"terminal", "number":9007199254740993u64});
+                let cited = json!({"type":"text", "text":"late answer", "citations":[], "vendor_cite":"preserve"});
+                let mut items = vec![
+                    support::user(),
+                    json!({"type":"function_call", "name":"lookup", "call_id":"client", "arguments":"{}"}),
+                    json!({"type":"web_search_call", "wire_blocks":[pair[0].clone()]}),
+                    json!({"type":"function_call_output", "call_id":"client", "output":"client result"}),
+                ];
+                if plain_message {
+                    items.push(json!({"type":"message", "id":"rigseg_late_0", "role":"assistant", "content":[{"type":"output_text", "text":"late answer"}]}));
+                }
+                // v2 payloads carry block identity: the result streamed at
+                // wire index 0 of the late response (the cloned call is
+                // foreign), and the cited block at index 1, raw fields and
+                // all. v1 payloads carry only the pair plus unattributable
+                // cited text.
+                let winner = if identity {
+                    json!({
+                        "version":3, "source":"test-current", "response_id":"late",
+                        "blocks":pair,
+                        "block_indices":[u64::MAX, 0],
+                        "layout":[
+                            {"kind":"pair","index":0},
+                            {"kind":"cited","index":1,"owner":"rigseg_late_0","block":cited},
+                        ],
+                    })
+                } else {
+                    json!({"version":1, "source":"test-current", "blocks":pair, "cited_text":[cited.clone()]})
+                };
+                items.extend([
+                    json!({"type":"web_search_call", "wire_blocks":winner}),
+                    support::user(),
+                ]);
+                let late_content = if identity && plain_message {
+                    // Identity rebuild: the result at its response position
+                    // and the raw cited block replacing (or supplying) the
+                    // merged text — vendor fields verbatim either way.
+                    vec![pair[1].clone(), cited]
+                } else if plain_message {
+                    // No identity: the plain text stays untouched and the
+                    // unattributable cited text is not injected.
+                    vec![json!({"type":"text","text":"late answer"}), pair[1].clone()]
+                } else {
+                    vec![pair[1].clone()]
+                };
+                let user = json!({"role":"user", "content":[{"type":"text", "text":"hello"}]});
+                assert_eq!(
+                    capture_search_replay(items, SearchReplay::Enabled).await,
+                    json!([
+                        user.clone(),
+                        {"role":"assistant", "content":[{"type":"tool_use", "id":"client", "name":"lookup", "input":{}}, pair[0].clone()]},
+                        {"role":"user", "content":[{"type":"tool_result", "tool_use_id":"client", "content":[{"type":"text", "text":"client result"}]}]},
+                        {"role":"assistant", "content":late_content},
+                        user,
+                    ]),
+                    "{result_type}, plain_message={plain_message}, identity={identity}"
+                );
             }
-            pair[1]["vendor_result"] = json!({"opaque":"terminal", "number":9007199254740993u64});
-            let cited = json!({"type":"text", "text":"late answer", "citations":[], "vendor_cite":"preserve"});
-            let mut items = vec![
-                support::user(),
-                json!({"type":"function_call", "name":"lookup", "call_id":"client", "arguments":"{}"}),
-                json!({"type":"web_search_call", "wire_blocks":[pair[0].clone()]}),
-                json!({"type":"function_call_output", "call_id":"client", "output":"client result"}),
-            ];
-            if plain_message {
-                items.push(json!({"type":"message", "role":"assistant", "content":[{"type":"output_text", "text":"late answer"}]}));
-            }
-            items.extend([
-                json!({"type":"web_search_call", "wire_blocks":{"version":1, "source":"test-current", "blocks":pair, "cited_text":[cited.clone()]}}),
-                support::user(),
-            ]);
-            let user = json!({"role":"user", "content":[{"type":"text", "text":"hello"}]});
-            assert_eq!(
-                capture_search_replay(items, SearchReplay::Enabled).await,
-                json!([
-                    user,
-                    {"role":"assistant", "content":[{"type":"tool_use", "id":"client", "name":"lookup", "input":{}}, pair[0].clone()]},
-                    {"role":"user", "content":[{"type":"tool_result", "tool_use_id":"client", "content":[{"type":"text", "text":"client result"}]}]},
-                    {"role":"assistant", "content":[pair[1].clone(), cited]},
-                    user,
-                ]),
-                "{result_type}, plain_message={plain_message}"
-            );
         }
     }
 }
@@ -1196,28 +1251,48 @@ async fn cited_text_blocks_persist_and_replay_after_their_pair() {
     .await
     .unwrap();
     let mut captured_envelope = None;
+    let mut captured_message = None;
     while let Some(event) = stream.next().await {
-        if let Ok(codex_api::ResponseEvent::OutputItemDone(item)) = event
-            && let ResponseItem::WebSearchCall { wire_blocks, .. } = item
-        {
-            captured_envelope = wire_blocks;
+        match event.unwrap() {
+            ResponseEvent::OutputItemDone(item @ ResponseItem::Message { .. }) => {
+                captured_message = Some(item)
+            }
+            ResponseEvent::OutputItemDone(ResponseItem::WebSearchCall { wire_blocks, .. }) => {
+                captured_envelope = wire_blocks
+            }
+            _ => {}
         }
     }
     let envelope = captured_envelope.expect("search item emitted");
+    let captured_message = captured_message.expect("saved message");
+    let owner = match &captured_message {
+        ResponseItem::Message { id: Some(id), .. } => id.as_str(),
+        _ => panic!("message id"),
+    };
     assert_eq!(envelope["source"], json!(source));
     assert_eq!(
-        envelope["cited_text"],
-        json!([{
-            "type":"text",
-            "text":"answer citing the result",
-            "citations":[{"type":"search_result_location","cited_text":"finding","source":"https://example.com","title":"Example","search_result_index":0,"start_block_index":1,"end_block_index":2}]
-        }]),
-        "the cited text block persists with its terminal text and citations"
+        envelope["block_indices"],
+        json!([0, 1]),
+        "the pair blocks carry their wire indices"
+    );
+    assert_eq!(
+        envelope["layout"],
+        json!([
+            {"kind":"pair","index":0},
+            {"kind":"pair","index":1},
+            {"kind":"cited","index":2,"owner":owner,"block":{
+                "type":"text",
+                "text":"answer citing the result",
+                "citations":[{"type":"search_result_location","cited_text":"finding","source":"https://example.com","title":"Example","search_result_index":0,"start_block_index":1,"end_block_index":2}]
+            }},
+        ]),
+        "the cited text block persists verbatim in the identity layout"
     );
 
     // Turn 2: the cited block replays after the pair, inside the assistant.
     request.input = vec![
         serde_json::from_value(support::user()).unwrap(),
+        captured_message.clone(),
         serde_json::from_value(json!({
             "type":"web_search_call","id":"srvu_cited","status":"completed",
             "action":{"type":"search","query":"cited"},
@@ -1307,23 +1382,26 @@ async fn cited_text_replaces_the_plain_answer_projection_in_place() {
     .await
     .unwrap();
     let mut captured_envelope = None;
+    let mut captured_message = None;
     while let Some(event) = stream.next().await {
-        if let Ok(codex_api::ResponseEvent::OutputItemDone(item)) = event
-            && let ResponseItem::WebSearchCall { wire_blocks, .. } = item
-        {
-            captured_envelope = wire_blocks;
+        match event.unwrap() {
+            ResponseEvent::OutputItemDone(item @ ResponseItem::Message { .. }) => {
+                captured_message = Some(item)
+            }
+            ResponseEvent::OutputItemDone(ResponseItem::WebSearchCall { wire_blocks, .. }) => {
+                captured_envelope = wire_blocks
+            }
+            _ => {}
         }
     }
     let envelope = captured_envelope.expect("search item emitted");
+    let captured_message = captured_message.expect("saved message");
 
     // Turn 2 replays the REAL history shape: the saved assistant Message
     // with the plain answer AND the search item with its envelope.
     request.input = vec![
         serde_json::from_value(support::user()).unwrap(),
-        serde_json::from_value(json!({
-            "type":"message","role":"assistant","content":[{"type":"output_text","text":"the single answer"}]
-        }))
-        .unwrap(),
+        captured_message,
         serde_json::from_value(json!({
             "type":"web_search_call","id":"srvu_once","status":"completed",
             "action":{"type":"search","query":"once"},

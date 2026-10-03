@@ -181,6 +181,7 @@ async fn environment_provider_is_explicit_in_remote_start_fork_resume_and_histor
             base_url: Some("https://gateway.example/v1".into()),
             wire_api: Some("chat".into()),
             api_key: Some("test-key".into()),
+            ..Default::default()
         },
         /*cli_model*/ None,
         /*cli_provider*/ None,

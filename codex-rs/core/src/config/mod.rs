@@ -34,6 +34,7 @@ use codex_config::config_toml::RealtimeConfig;
 use codex_config::config_toml::ThreadStoreToml;
 use codex_config::config_toml::validate_model_providers;
 use codex_config::loader::load_config_layers_state;
+use codex_config::loader::load_config_layers_state_with_env_seed;
 use codex_config::loader::project_trust_key;
 use codex_config::permissions_toml::PermissionProfileToml;
 use codex_config::permissions_toml::PermissionsToml;
@@ -1536,7 +1537,7 @@ impl ConfigBuilder {
             None => AbsolutePathBuf::current_dir()?,
         };
         harness_overrides.cwd = Some(cwd.to_path_buf());
-        let config_layer_stack = load_config_layers_state(
+        let config_layer_stack = load_config_layers_state_with_env_seed(
             LOCAL_FS.as_ref(),
             &codex_home,
             Some(cwd),
@@ -2146,7 +2147,7 @@ pub async fn load_config_toml_with_layer_stack_and_env_seed(
     env_seed_overrides: Vec<(String, TomlValue)>,
     options: impl Into<ConfigLoadOptions>,
 ) -> std::io::Result<ConfigTomlLoadResult> {
-    let config_layer_stack = load_config_layers_state(
+    let config_layer_stack = load_config_layers_state_with_env_seed(
         LOCAL_FS.as_ref(),
         codex_home,
         cwd.cloned(),
@@ -2352,7 +2353,6 @@ pub async fn load_global_mcp_servers(
         codex_home,
         cwd,
         &cli_overrides,
-        /*env_seed_overrides*/ &[],
         LoaderOverrides::default(),
         &codex_config::NoopThreadConfigLoader,
     )

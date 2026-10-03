@@ -26,6 +26,14 @@ struct TopCli {
 }
 
 fn main() -> anyhow::Result<()> {
+    // Machine-readable self-description for build verification (D1/N6):
+    // prints the compile-time receipt and exits before any agent logic.
+    let mut args = std::env::args_os().skip(1);
+    if args.next().as_deref() == Some(std::ffi::OsStr::new("--build-receipt")) {
+        anyhow::ensure!(args.next().is_none(), "--build-receipt must be used alone");
+        println!("{}", codex_exec::build_receipt::value());
+        return Ok(());
+    }
     arg0_dispatch_or_else(|arg0_paths: Arg0DispatchPaths| async move {
         let top_cli = TopCli::parse();
         // Merge root-level overrides into inner CLI struct so downstream logic remains unchanged.

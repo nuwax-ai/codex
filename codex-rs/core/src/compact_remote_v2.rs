@@ -298,6 +298,7 @@ async fn run_remote_compact_task_inner_impl(
         prompt_input,
         prompt_input_metadata,
         compaction_output,
+        compaction_provenance,
         compaction_response_id,
         token_usage,
         owned_client_session: _owned_client_session,
@@ -309,7 +310,7 @@ async fn run_remote_compact_task_inner_impl(
         analytics_details.cached_input_tokens = Some(token_usage.cached_input_tokens);
         analytics_details.cache_write_input_tokens = Some(token_usage.cache_write_input_tokens);
     }
-    let (compacted_history, retained_images) = build_v2_compacted_history(
+    let (mut compacted_history, retained_images) = build_v2_compacted_history(
         prompt_input,
         prompt_input_metadata,
         compaction_output,
@@ -320,6 +321,12 @@ async fn run_remote_compact_task_inner_impl(
             RetainedImageBudget::Disabled
         },
     );
+    if let Some(output) = compacted_history.last_mut() {
+        output
+            .metadata
+            .get_or_insert_default()
+            .model_output_provenance = compaction_provenance;
+    }
     analytics_details.retained_image_count = Some(retained_images);
     let (new_window_number, new_window_ids) = sess.advance_auto_compact_window().await;
     let (initial_context, world_state_baseline) =

@@ -34,6 +34,14 @@ pub trait AuthProvider: Send + Sync {
     /// used by telemetry and non-HTTP request paths.
     fn add_auth_headers(&self, headers: &mut HeaderMap);
 
+    /// Returns an owned credential-header snapshot only when this provider's
+    /// subsequent add/resolve/apply operations use exactly these credentials
+    /// and cannot switch owners. Dynamic refreshers and signers must return None.
+    /// This snapshot stays private in memory; callers must never log or serialize it.
+    fn immutable_credential_headers(&self) -> Option<HeaderMap> {
+        None
+    }
+
     /// Returns any auth headers that are available without request body access.
     fn to_auth_headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();

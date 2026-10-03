@@ -3213,3 +3213,13 @@ fn consolidation_walker_replaces_agent_message_cells() {
         "second cell should be AgentMarkdownCell"
     );
 }
+
+#[test]
+fn output_token_limit_error_snapshot() {
+    let error = codex_protocol::error::CodexErr::InvalidRequest(
+        "Output token limit reached; increase max_output_tokens before retrying".to_string(),
+    );
+    let cell = new_error_event(error.to_string());
+    let rendered = render_lines(&cell.display_lines(/*width*/ 80)).join("\n");
+    insta::assert_snapshot!(rendered);
+}

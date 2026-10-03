@@ -178,8 +178,7 @@ async fn startup_reloads_the_callers_selected_project() -> anyhow::Result<()> {
     assert_eq!(config.model.as_deref(), Some("selected-model"));
     let manager = ConfigManager::new(
         home,
-        Vec::new(),
-        /*env_seed_overrides*/ Vec::new(),
+        codex_config::LaunchOverrides::default(),
         loader_overrides,
         /*strict_config*/ true,
         CloudConfigBundleLoader::default(),

@@ -2,6 +2,32 @@ use super::*;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
+fn legacy_group(
+    index: usize,
+    blocks: Vec<Value>,
+    item_index: usize,
+    anchor: usize,
+) -> crate::hosted_replay::ReplayGroup {
+    crate::hosted_replay::ReplayGroup {
+        index,
+        block_sites: Some(vec![
+            crate::hosted_replay::BlockSite {
+                layout: 0,
+                wire: crate::hosted_replay::UNKNOWN_WIRE_INDEX
+            };
+            blocks.len()
+        ]),
+        blocks,
+        layouts: vec![Vec::new()],
+        responses: vec![crate::hosted_replay::ResponseSite {
+            id: format!("legacyhistory{item_index}"),
+            anchor,
+            segments: Vec::new(),
+        }],
+        cited_text: Vec::new(),
+    }
+}
+
 fn envelope(payload: serde_json::Value) -> serde_json::Value {
     // Same-source v1 envelope for these conversion tests; the gate itself is
     // covered by hosted_replay_tests.
@@ -55,11 +81,12 @@ fn hosted_replay_tracks_each_assistant_across_user_turns() {
             );
             assert_eq!(
                 replay,
-                vec![crate::hosted_replay::ReplayGroup {
-                    index: 1,
-                    blocks: expected_blocks.clone(),
-                    cited_text: Vec::new(),
-                }]
+                vec![legacy_group(
+                    1,
+                    expected_blocks.clone(),
+                    items.len() - 1,
+                    usize::from(second.is_some())
+                )]
             );
             assert!(matches!(messages.last(), Some(Message::Assistant { .. })));
         }
@@ -86,14 +113,7 @@ fn hosted_replay_after_tool_result_does_not_attach_to_the_tool_call_turn() {
     let messages = convert_response_items(&items, RigProtocol::Anthropic, "source", &mut replay)
         .expect("convert history");
     assert_eq!(messages.len(), 3);
-    assert_eq!(
-        replay,
-        vec![crate::hosted_replay::ReplayGroup {
-            index: 1,
-            blocks: expected_blocks.clone(),
-            cited_text: Vec::new(),
-        }]
-    );
+    assert_eq!(replay, vec![legacy_group(1, expected_blocks.clone(), 2, 0)]);
     let Some(Message::Assistant { content, .. }) = messages.last() else {
         panic!("search assistant");
     };
@@ -127,16 +147,8 @@ fn late_result_only_projection_uses_the_validated_original_call_as_its_sdk_ancho
     assert_eq!(
         replay,
         vec![
-            crate::hosted_replay::ReplayGroup {
-                index: 0,
-                blocks: vec![call.clone()],
-                cited_text: Vec::new()
-            },
-            crate::hosted_replay::ReplayGroup {
-                index: 1,
-                blocks: vec![result],
-                cited_text: Vec::new()
-            },
+            legacy_group(0, vec![call.clone()], 0, 0),
+            legacy_group(1, vec![result], 2, 0),
         ]
     );
     let Some(Message::Assistant { content, .. }) = messages.last() else {

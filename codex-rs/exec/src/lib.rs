@@ -437,8 +437,10 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
                 args,
                 &gate_config,
                 &arg0_paths,
-                &cli_kv_overrides,
-                &nuwax_env_seeds,
+                &codex_config::LaunchOverrides {
+                    cli_overrides: cli_kv_overrides.clone(),
+                    env_seed_overrides: nuwax_env_seeds.clone(),
+                },
                 &loader_overrides,
                 worktree::ForkNetwork {
                     cloud_config_bundle: gate_cloud_config.clone(),
@@ -2376,6 +2378,9 @@ fn build_review_request(args: &ReviewArgs) -> anyhow::Result<ReviewRequest> {
         user_facing_hint: None,
     })
 }
+
+/// Executable source content and package configuration receipt.
+pub mod build_receipt;
 
 #[cfg(test)]
 #[path = "lib_tests.rs"]

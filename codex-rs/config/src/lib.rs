@@ -235,3 +235,24 @@ pub use thread_config::ThreadConfigLoaderFuture;
 pub use thread_config::ThreadConfigSource;
 pub use thread_config::UserThreadConfig;
 pub use toml::Value as TomlValue;
+
+/// The launch configuration channel: user CLI key/value overrides and the
+/// separately-threaded `NUWAX_*` environment-group seeds. The two lists
+/// land in different config layers (`SessionFlags` vs `EnvSeed`) and must
+/// never be merged into a single override list; `LoaderOverrides`, which
+/// gates project discovery, stays a separate concern.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LaunchOverrides {
+    pub cli_overrides: Vec<(String, TomlValue)>,
+    pub env_seed_overrides: Vec<(String, TomlValue)>,
+}
+
+impl LaunchOverrides {
+    /// The channel with only user CLI overrides (no environment seeds).
+    pub fn from_cli(cli_overrides: Vec<(String, TomlValue)>) -> Self {
+        Self {
+            cli_overrides,
+            env_seed_overrides: Vec::new(),
+        }
+    }
+}

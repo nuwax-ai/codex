@@ -133,7 +133,7 @@ pub struct CodexHarnessMetadata {
 }
 
 /// Where a model output came from: the wire actually spoken, the bridge that
-/// spoke it, and the provider/model identity. No credentials, no endpoints.
+/// spoke it, and the provider/model identity. No credentials or raw endpoints.
 /// Used by cross-protocol resume to project history onto the target wire
 /// without guessing from IDs.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
@@ -151,6 +151,16 @@ pub struct ModelOutputProvenance {
     /// Model slug of the producing request, when recorded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Credential-free normalized endpoint identity, including non-secret routing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint_identity: Option<String>,
+    /// Non-secret credential selector or account identity. Never a key or key hash.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_domain: Option<String>,
+    /// Evidence level: `account`, `credentialInstance`, `selector`, or `anonymous`. Selector equality
+    /// does not prove account equality after credentials change behind that selector.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_domain_kind: Option<String>,
 }
 
 fn deserialize_mcp_attribution_checkpoint<'de, D>(

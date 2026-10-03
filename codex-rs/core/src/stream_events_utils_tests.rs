@@ -306,6 +306,7 @@ fn output_context(session: Arc<Session>, turn_context: Arc<TurnContext>) -> Hand
         turn_store: Arc::new(ExtensionData::new(turn_context.sub_id.clone())),
         tool_runtime,
         cancellation_token: CancellationToken::new(),
+        model_output_provenance: None,
     }
 }
 

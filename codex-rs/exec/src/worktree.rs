@@ -12,8 +12,7 @@ pub(super) async fn fork_source(
     args: &mut crate::cli::ForkArgs,
     config: &Config,
     arg0_paths: &Arg0DispatchPaths,
-    cli_overrides: &[(String, codex_config::TomlValue)],
-    env_seed_overrides: &[(String, codex_config::TomlValue)],
+    launch_overrides: &codex_config::LaunchOverrides,
     loader_overrides: &LoaderOverrides,
     network: ForkNetwork,
     strict_config: bool,
@@ -31,8 +30,8 @@ pub(super) async fn fork_source(
     let client = InProcessAppServerClient::start(InProcessClientStartArgs {
         arg0_paths: arg0_paths.clone(),
         config: std::sync::Arc::new(config.clone()),
-        cli_overrides: cli_overrides.to_vec(),
-        env_seed_overrides: env_seed_overrides.to_vec(),
+        cli_overrides: launch_overrides.cli_overrides.clone(),
+        env_seed_overrides: launch_overrides.env_seed_overrides.clone(),
         loader_overrides: LoaderOverrides {
             ignore_project_config: true,
             ..loader_overrides.clone()

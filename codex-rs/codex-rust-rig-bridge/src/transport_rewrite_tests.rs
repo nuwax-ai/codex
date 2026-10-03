@@ -218,6 +218,9 @@ fn pause_raw_content_appends_without_rewriting_earlier_assistants() {
             index: 1,
             blocks: vec![json!({"type":"server_tool_use","id":"x","name":"web_search","input":{}})],
             cited_text: Vec::new(),
+            block_sites: None,
+            layouts: Vec::new(),
+            responses: Vec::new(),
         }],
         ..rewrite(RigProtocol::Anthropic, &strict, &errors, &[], None)
     }

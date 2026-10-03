@@ -192,6 +192,12 @@ where
     })
 }
 
+/// Embedding SPI for the fork's in-process app-server. Source-compatibility
+/// note (R06): this struct grows fields across fork releases and does NOT
+/// promise struct-literal compatibility for external embedders — the
+/// supported external entry is [`super::InProcessStartArgs`] via
+/// `codex_app_server::in_process::start`; the config layering SPI keeps its
+/// pre-EnvSeed entry (`load_config_layers_state`).
 #[derive(Clone)]
 pub struct InProcessClientStartArgs {
     /// Resolved argv0 dispatch paths used by command execution internals.

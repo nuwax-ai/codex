@@ -1025,7 +1025,18 @@ fn app_server_target_for_launch(
     can_reuse_implicit_local_daemon: bool,
     workload_identity_selected: bool,
     exec_server_url: Option<&std::ffi::OsStr>,
+    env_seed_overrides: &[(String, toml::Value)],
 ) -> std::io::Result<AppServerTarget> {
+    if explicit_remote_endpoint.is_some()
+        && env_seed_overrides
+            .iter()
+            .any(|(key, _)| key == "model_providers.nuwax_env")
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "NUWAX environment provider must be configured on the remote app-server host; unset the local NUWAX provider group or omit --remote",
+        ));
+    }
     if workload_identity_selected {
         if explicit_remote_endpoint.is_some() {
             return Err(std::io::Error::new(
@@ -2359,6 +2370,10 @@ mod daemon_telemetry;
 mod daemon_startup_tests;
 
 #[cfg(test)]
+#[path = "app_server_target_tests.rs"]
+mod app_server_target_tests;
+
+#[cfg(test)]
 pub(crate) mod tests {
     use super::*;
     use crate::legacy_core::config::ConfigBuilder;
@@ -3107,6 +3122,7 @@ requires_openai_auth = {requires_openai_auth}
             /*can_reuse_implicit_local_daemon*/ true,
             /*workload_identity_selected*/ false,
             /*exec_server_url*/ None,
+            /*env_seed_overrides*/ &[],
         )?;
 
         assert_eq!(
@@ -3132,6 +3148,7 @@ requires_openai_auth = {requires_openai_auth}
                     /*can_reuse_implicit_local_daemon*/ true,
                     /*workload_identity_selected*/ false,
                     Some(std::ffi::OsStr::new(executor)),
+                    /*env_seed_overrides*/ &[],
                 )?,
                 AppServerTarget::Embedded,
             );
@@ -3150,6 +3167,7 @@ requires_openai_auth = {requires_openai_auth}
             /*can_reuse_implicit_local_daemon*/ false,
             /*workload_identity_selected*/ false,
             Some(std::ffi::OsStr::new("none")),
+            /*env_seed_overrides*/ &[],
         )?;
 
         assert_eq!(
@@ -3173,6 +3191,7 @@ requires_openai_auth = {requires_openai_auth}
             /*can_reuse_implicit_local_daemon*/ false,
             /*workload_identity_selected*/ false,
             /*exec_server_url*/ None,
+            /*env_seed_overrides*/ &[],
         )?;
 
         assert_eq!(target, AppServerTarget::Embedded);
@@ -3189,6 +3208,7 @@ requires_openai_auth = {requires_openai_auth}
                 /*can_reuse_implicit_local_daemon*/ true,
                 /*workload_identity_selected*/ true,
                 /*exec_server_url*/ None,
+                /*env_seed_overrides*/ &[],
             )?,
             AppServerTarget::Embedded
         );
@@ -3202,6 +3222,7 @@ requires_openai_auth = {requires_openai_auth}
             /*can_reuse_implicit_local_daemon*/ false,
             /*workload_identity_selected*/ true,
             /*exec_server_url*/ None,
+            /*env_seed_overrides*/ &[],
         )
         .expect_err("remote hosts must own workload identity");
         assert_eq!(

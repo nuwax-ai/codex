@@ -14,8 +14,6 @@ use codex_api::ResponseEvent;
 use codex_protocol::ResponseItemId;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::models::WebSearchAction;
-use eventsource_stream::Eventsource;
-use futures::StreamExt;
 use serde_json::Value;
 use serde_json::json;
 
@@ -195,226 +193,140 @@ pub(crate) fn web_search_action(input: &Value) -> WebSearchAction {
     }
 }
 
-/// One `server_tool_use` block being assembled from its wire frames.
-#[derive(Default)]
-struct OpenServerToolUse {
-    index: u64,
-    name: String,
-    /// Verbatim start block, retaining vendor fields outside typed Rig data.
-    base: Value,
-    /// Input inlined on `content_block_start` (GLM's shape).
-    initial_input: Value,
-    /// Input accumulated from `input_json_delta` frames (Anthropic's shape).
-    input_json: String,
-}
-
-impl OpenServerToolUse {
-    fn finish(mut self) -> Value {
-        let input = serde_json::from_str::<Value>(&self.input_json)
-            .ok()
-            .filter(|input| !input.is_null())
-            .unwrap_or(self.initial_input);
-        if let Some(object) = self.base.as_object_mut() {
-            object.insert("input".into(), input);
-        }
-        self.base
-    }
-}
-
-/// Raw web-search blocks recovered from one Anthropic SSE body: the
-/// `server_tool_use` calls (streamed) and their result blocks — the official
-/// `web_search_tool_result` (arrives complete in one frame) and GLM's
-/// non-standard assistant-side `tool_result`.
-///
-/// rig 0.42 models `server_tool_use` internally but never exposes it on its
-/// public streaming surface (frame data is deliberately internal), so the
-/// bridge tees the raw wire bytes at the transport and re-reads the blocks
-/// from them. SSE framing goes through `eventsource-stream`, the same decoder
-/// codex-api uses, so CRLF/multi-line data handling matches the spec instead
-/// of hand-rolled splitting. Malformed frames are skipped: the semantic
-/// stream has already validated the response by the time this runs.
-pub(crate) async fn web_search_blocks_from_anthropic_sse(bytes: &[u8]) -> WebSearchWireCapture {
-    let mut capture = WebSearchWireCapture::default();
-    let mut open: Option<OpenServerToolUse> = None;
-    // Citations can arrive on start or in citations_delta frames. Keep every
-    // text block by index until its own stop, including inline initial text.
-    let mut open_cited = std::collections::BTreeMap::<u64, Value>::new();
-    let frames = futures::stream::iter(vec![Ok::<_, std::convert::Infallible>(
-        bytes::Bytes::copy_from_slice(bytes),
-    )])
-    .eventsource();
-    futures::pin_mut!(frames);
-    while let Some(Ok(frame)) = frames.next().await {
-        let Ok(event) = serde_json::from_str::<Value>(&frame.data) else {
-            continue;
-        };
-        match event.get("type").and_then(Value::as_str) {
-            Some("content_block_start") => {
-                let block = &event["content_block"];
-                match block.get("type").and_then(Value::as_str) {
-                    Some("server_tool_use") => {
-                        open = Some(OpenServerToolUse {
-                            index: event.get("index").and_then(Value::as_u64).unwrap_or(0),
-                            name: string_field(block, "name"),
-                            base: block.clone(),
-                            initial_input: block.get("input").cloned().unwrap_or(json!({})),
-                            input_json: String::new(),
-                        });
-                    }
-                    // Both result shapes arrive complete on the start frame;
-                    // a stray stop/delta for them needs no assembly.
-                    Some("web_search_tool_result") => capture.results.push(block.clone()),
-                    Some("tool_result") if block.get("tool_use_id").is_some() => {
-                        // GLM's gateway reports search results as an
-                        // assistant-side tool_result block; only blocks that
-                        // reference a server call id are search results.
-                        capture.results.push(block.clone());
-                    }
-                    Some("text") => {
-                        if let Some(index) = event.get("index").and_then(Value::as_u64) {
-                            open_cited.insert(index, block.clone());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Some("content_block_delta")
-                if event["delta"].get("type").and_then(Value::as_str)
-                    == Some("input_json_delta")
-                    && open.as_ref().is_some_and(|open| {
-                        event.get("index").and_then(Value::as_u64) == Some(open.index)
-                    }) =>
-            {
-                if let Some(fragment) = event["delta"].get("partial_json").and_then(Value::as_str)
-                    && let Some(open) = open.as_mut()
-                {
-                    open.input_json.push_str(fragment);
-                }
-            }
-            Some("content_block_delta") => {
-                if let Some(index) = event.get("index").and_then(Value::as_u64)
-                    && let Some(block) = open_cited.get_mut(&index)
-                    && let Some(object) = block.as_object_mut()
-                {
-                    match event["delta"].get("type").and_then(Value::as_str) {
-                        Some("text_delta") => {
-                            if let Some(fragment) =
-                                event["delta"].get("text").and_then(Value::as_str)
-                            {
-                                let value = object
-                                    .entry("text")
-                                    .or_insert_with(|| Value::String(String::new()));
-                                if let Value::String(text) = value {
-                                    text.push_str(fragment);
-                                }
-                            }
-                        }
-                        Some("citations_delta") => {
-                            if let Some(citation) = event["delta"].get("citation") {
-                                let value = object
-                                    .entry("citations")
-                                    .or_insert_with(|| Value::Array(Vec::new()));
-                                if let Value::Array(citations) = value {
-                                    citations.push(citation.clone());
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            Some("content_block_stop") => {
-                let index = event.get("index").and_then(Value::as_u64);
-                if open.as_ref().is_some_and(|open| Some(open.index) == index)
-                    && let Some(open) = open.take()
-                    && is_web_search_server_use(&open.name)
-                {
-                    capture.uses.push(open.finish());
-                }
-                if let Some(index) = index
-                    && let Some(block) = open_cited.remove(&index)
-                    && block
-                        .get("citations")
-                        .and_then(Value::as_array)
-                        .is_some_and(|citations| !citations.is_empty())
-                {
-                    capture.cited_text.push(block);
-                }
-            }
-            _ => {}
-        }
-    }
-    capture
-}
-
-/// Everything the tee recovered for one turn's web-search activity.
-#[derive(Default)]
-pub(crate) struct WebSearchWireCapture {
-    /// `server_tool_use` blocks (web-search family only).
-    pub(crate) uses: Vec<Value>,
-    /// Result blocks: official `web_search_tool_result` or GLM's
-    /// assistant-side `tool_result`, matched by id below.
-    pub(crate) results: Vec<Value>,
-    /// Finished text blocks that carried search citations, in stream order.
-    pub(crate) cited_text: Vec<Value>,
-}
+pub(crate) use crate::hosted_tools_capture::WebSearchWireCapture;
+pub(crate) use crate::hosted_tools_capture::WireIndexed;
+pub(crate) use crate::hosted_tools_capture::web_search_blocks_from_anthropic_sse;
 
 /// One use/result pair in original call order. A missing result means the
 /// call is still pending (mixed server/client turn: the server tool runs
 /// after the client tool results return).
 pub(crate) struct PairedWebSearchBlocks {
     pub(crate) call: Value,
+    /// Wire index of the call block; [`UNKNOWN_WIRE_INDEX`] for a foreign
+    /// call clone (late result closing a call captured by an earlier
+    /// response).
+    pub(crate) call_index: u64,
     pub(crate) result: Option<Value>,
+    /// Wire index of the result block in its own response.
+    pub(crate) result_index: Option<u64>,
 }
 
 /// Pairs uses with their results by id. Returns the pairs plus every result
 /// that matched no call in THIS response — a mixed server/client turn
 /// delivers those in a follow-up response, where the pump re-associates them
-/// with the pending call persisted in the request history.
+/// with the pending call persisted in the request history — and every
+/// finished text block for the identity layout.
 pub(crate) struct PairedWebSearch {
     pub(crate) pairs: Vec<PairedWebSearchBlocks>,
-    pub(crate) unmatched_results: Vec<Value>,
-    pub(crate) cited_text: Vec<Value>,
+    pub(crate) unmatched_results: Vec<WireIndexed>,
 }
 
 pub(crate) fn pair_web_search_blocks(capture: WebSearchWireCapture) -> PairedWebSearch {
     let WebSearchWireCapture {
         uses,
         results,
-        cited_text,
+        text_blocks: _,
     } = capture;
     let mut remaining_results = results;
     let pairs = uses
         .into_iter()
-        .map(|call| {
+        .map(|WireIndexed { index, block: call }| {
             let id = call.get("id").and_then(Value::as_str).map(str::to_string);
             let position = id.as_deref().and_then(|id| {
-                remaining_results.iter().position(|result| {
-                    result.get("tool_use_id").and_then(Value::as_str) == Some(id)
-                })
+                remaining_results
+                    .iter()
+                    .position(|WireIndexed { block, .. }| {
+                        block.get("tool_use_id").and_then(Value::as_str) == Some(id)
+                    })
             });
-            let result = position.map(|position| remaining_results.remove(position));
-            PairedWebSearchBlocks { call, result }
+            let (result, result_index) =
+                match position.map(|position| remaining_results.swap_remove(position)) {
+                    Some(WireIndexed {
+                        index: result_index,
+                        block,
+                    }) => (Some(block), Some(result_index)),
+                    None => (None, None),
+                };
+            PairedWebSearchBlocks {
+                call,
+                call_index: index,
+                result,
+                result_index,
+            }
         })
         .collect();
     PairedWebSearch {
         pairs,
         unmatched_results: remaining_results,
-        cited_text,
     }
+}
+
+/// Maps complete wire blocks to the stable segments the stream actually emitted.
+/// Category/position selects a named owner only at capture; replay never searches
+/// for text. A mismatch drops this layout while retaining response-scoped pairs.
+pub(crate) fn response_layout(
+    blocks: &[(u64, Value)],
+    segments: &[crate::hosted_replay::CapturedSegment],
+) -> Option<Vec<Value>> {
+    use crate::hosted_replay::SegmentKind;
+    let mut entries = Vec::new();
+    let mut cursor = 0usize;
+    let mut active: Option<(SegmentKind, usize, u64)> = None;
+    for (index, block) in blocks {
+        let kind = match block.get("type").and_then(Value::as_str) {
+            Some("server_tool_use" | "web_search_tool_result" | "tool_result") => {
+                entries.push(json!({"kind":"pair","index":index}));
+                continue;
+            }
+            Some("text") if block["text"].as_str() == Some("") => continue,
+            Some("text") => SegmentKind::Text,
+            Some("thinking" | "redacted_thinking") => SegmentKind::Reasoning,
+            Some("tool_use") => SegmentKind::Tool,
+            _ => return None,
+        };
+        if kind == SegmentKind::Tool || active.as_ref().is_none_or(|(last, _, _)| *last != kind) {
+            let segment = segments.get(cursor)?;
+            if segment.kind != kind {
+                return None;
+            }
+            active = Some((kind, cursor, 0));
+            cursor += 1;
+        }
+        let (_, position, part) = active.as_mut()?;
+        let owner = &segments[*position].id;
+        if kind == SegmentKind::Text {
+            let cited = block
+                .get("citations")
+                .and_then(Value::as_array)
+                .is_some_and(|citations| !citations.is_empty());
+            entries.push(json!({"kind":if cited {"cited"} else {"text"},
+                "index":index,"owner":owner,"block":block}));
+        } else {
+            entries.push(json!({"kind":"segment","index":index,"owner":owner,"part":part}));
+            *part += 1;
+        }
+    }
+    (cursor == segments.len()).then_some(entries)
 }
 
 /// Emits a completed web-search call item for one recovered pair, carrying
 /// the raw blocks in the versioned replay envelope for faithful same-source
 /// replay. `in_progress` marks a pending call whose result has not arrived
 /// (mixed server/client turn); its result block arrives in a follow-up
-/// response.
+/// response. `layout` is the response's identity layout and rides the FIRST
+/// pair envelope of the response; siblings resolve against it.
 pub(crate) fn web_search_call_events(
     pair: PairedWebSearchBlocks,
     source: &str,
-    cited_text: Vec<Value>,
+    response_id: &str,
+    layout: Option<&[Value]>,
 ) -> Vec<ResponseEvent> {
-    let PairedWebSearchBlocks { call, result } = pair;
+    let PairedWebSearchBlocks {
+        call,
+        call_index,
+        result,
+        result_index,
+    } = pair;
     let id = call
         .get("id")
         .and_then(Value::as_str)
@@ -427,14 +339,29 @@ pub(crate) fn web_search_call_events(
     } else {
         "in_progress"
     };
-    // Bound the full envelope, including cited text, before persisting it.
-    // This byte cap is not an exact token bound. The call still completes
-    // when its replay payload is dropped whole.
-    let blocks = match &result {
-        Some(result) => vec![call, result.clone()],
-        None => vec![call],
-    };
-    let payload = crate::hosted_replay::envelope(source, blocks, cited_text);
+    // Bound the full envelope, including the identity layout, before
+    // persisting it. This byte cap is not an exact token bound. The call
+    // still completes when its replay payload is dropped whole.
+    let mut block_indices = vec![call_index];
+    let mut blocks = vec![call];
+    if let Some(result) = result {
+        block_indices.push(result_index.unwrap_or(crate::hosted_replay::UNKNOWN_WIRE_INDEX));
+        blocks.push(result);
+    }
+    let mut payload =
+        crate::hosted_replay::envelope(source, blocks, block_indices, response_id, layout);
+    if layout.is_some()
+        && serde_json::to_vec(&payload).map_or(true, |bytes| {
+            bytes.len() > crate::hosted_replay::MAX_PAIR_BYTES
+        })
+        && let Some(object) = payload.as_object_mut()
+    {
+        // A large carrier cannot erase a valid sibling or change its response.
+        object.remove("layout");
+        tracing::warn!(
+            "hosted response layout exceeds its cap; retaining response-scoped pair only"
+        );
+    }
     let wire_blocks = if serde_json::to_string(&payload).map_or(true, |serialized| {
         serialized.len() > crate::hosted_replay::MAX_PAIR_BYTES
     }) {
@@ -459,91 +386,50 @@ pub(crate) fn web_search_call_events(
     ]
 }
 
-fn string_field(block: &Value, key: &str) -> String {
-    block
-        .get(key)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
-}
-
-/// Builds the state that continues a PAUSED Anthropic turn. The
-/// user-visible items keep today's shape (one text message plus search
-/// calls reusing the D2 replay channel); the continuation REQUEST instead
-/// re-sends the paused assistant message's raw content blocks verbatim
-/// (thinking/signatures, citations, interleaving included) per the
-/// official recipe.
-pub(crate) async fn assistant_continuation_items(
+/// Recovers pairs and the response layout once for both paused and final attempts.
+/// Late results carry only a foreign call clone; request dedupe keeps that call
+/// at its original response and replays the new result at this response's boundary.
+pub(crate) async fn captured_search_events(
     bytes: &[u8],
     source: &str,
-) -> Result<crate::hosted_replay::PauseCapture, ApiError> {
-    let capture = web_search_blocks_from_anthropic_sse(bytes).await;
-    let paired = pair_web_search_blocks(capture);
-    let pairs = paired.pairs;
-    let mut cited_text = paired.cited_text;
-    let mut items = Vec::new();
-    let text = assembled_text(bytes).await;
-    if !text.is_empty() {
-        items.push(ResponseItem::Message {
-            id: None,
-            role: "assistant".into(),
-            content: vec![codex_protocol::models::ContentItem::OutputText { text }],
-            phase: None,
-            internal_chat_message_metadata_passthrough: None,
-        });
+    response_id: &str,
+    pending_calls: &std::collections::HashMap<String, Value>,
+    layout: Option<&[Value]>,
+) -> Vec<ResponseEvent> {
+    let paired = pair_web_search_blocks(web_search_blocks_from_anthropic_sse(bytes).await);
+    let mut first = true;
+    let mut events = Vec::new();
+    for pair in paired.pairs {
+        let carrier = first.then_some(layout).flatten();
+        first = false;
+        events.extend(web_search_call_events(pair, source, response_id, carrier));
     }
-    for pair in pairs {
-        // Reuse the event builder (envelope + size cap included), then keep
-        // the item; citations ride the first pair's envelope.
-        let cited = std::mem::take(&mut cited_text);
-        for event in web_search_call_events(pair, source, cited) {
-            if let ResponseEvent::OutputItemDone(item) = event {
-                items.push(item);
-            }
-        }
+    for result in paired.unmatched_results {
+        let Some(id) = result.block.get("tool_use_id").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(call) = pending_calls.get(id).cloned() else {
+            tracing::warn!(
+                id,
+                "web-search result matches no pending projected call; dropping it"
+            );
+            continue;
+        };
+        let carrier = first.then_some(layout).flatten();
+        first = false;
+        events.extend(web_search_call_events(
+            PairedWebSearchBlocks {
+                call,
+                call_index: crate::hosted_replay::UNKNOWN_WIRE_INDEX,
+                result: Some(result.block),
+                result_index: Some(result.index),
+            },
+            source,
+            response_id,
+            carrier,
+        ));
     }
-    Ok(crate::hosted_replay::PauseCapture {
-        items,
-        raw_content: crate::hosted_replay::raw_assistant_content(bytes).await?,
-    })
-}
-
-/// Concatenates the text deltas of plain text blocks (in stream order) into
-/// one string. The continuation history approximates the original
-/// text/pair interleaving (documented limitation: text first, pairs after).
-async fn assembled_text(bytes: &[u8]) -> String {
-    let frames = futures::stream::iter(vec![Ok::<_, std::convert::Infallible>(
-        bytes::Bytes::copy_from_slice(bytes),
-    )])
-    .eventsource();
-    (async {
-        let mut open_text = false;
-        let mut text = String::new();
-        let mut frames = frames;
-        while let Some(Ok(frame)) = frames.next().await {
-            let Ok(event) = serde_json::from_str::<Value>(&frame.data) else {
-                continue;
-            };
-            match event.get("type").and_then(Value::as_str) {
-                Some("content_block_start")
-                    if event["content_block"]["type"].as_str() == Some("text") =>
-                {
-                    open_text = true;
-                }
-                Some("content_block_delta")
-                    if open_text && event["delta"]["type"].as_str() == Some("text_delta") =>
-                {
-                    if let Some(fragment) = event["delta"].get("text").and_then(Value::as_str) {
-                        text.push_str(fragment);
-                    }
-                }
-                Some("content_block_stop") => open_text = false,
-                _ => {}
-            }
-        }
-        text
-    })
-    .await
+    events
 }
 
 #[cfg(test)]

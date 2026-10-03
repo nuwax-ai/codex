@@ -263,10 +263,65 @@ fn interleaved_parallel_calls_commit_in_first_seen_order_with_matching_ids_and_i
         7,
         "two contiguous Added/Delta/Done groups and Completed"
     );
-    assert!(
-        matches!(done.as_slice(), [ResponseItem::FunctionCall { id: Some(id), call_id, arguments, .. }, ResponseItem::CustomToolCall { id: Some(custom_id), call_id: custom_call_id, input, .. }]
-        if id.as_str() == "t1" && call_id == "wire-t1" && arguments == "{\"key\": 1}"
-            && custom_id.as_str() == "t2" && custom_call_id == "wire-t2" && input == "raw input")
+    let function_id = format!("rigseg_{}_0", state.response_id());
+    let custom_id = format!("rigseg_{}_1", state.response_id());
+    let function_done = ResponseItem::FunctionCall {
+        id: Some(codex_protocol::ResponseItemId::from_server(
+            function_id.clone(),
+        )),
+        name: "lookup".into(),
+        namespace: None,
+        arguments: "{\"key\": 1}".into(),
+        encrypted_function_args: None,
+        call_id: "wire-t1".into(),
+        internal_chat_message_metadata_passthrough: None,
+    };
+    let custom_done = ResponseItem::CustomToolCall {
+        id: Some(codex_protocol::ResponseItemId::from_server(
+            custom_id.clone(),
+        )),
+        status: None,
+        name: "custom".into(),
+        namespace: None,
+        input: "raw input".into(),
+        call_id: "wire-t2".into(),
+        internal_chat_message_metadata_passthrough: None,
+    };
+    assert_eq!(done, vec![function_done.clone(), custom_done.clone()]);
+    let mut function_added = function_done.clone();
+    if let ResponseItem::FunctionCall { arguments, .. } = &mut function_added {
+        arguments.clear();
+    }
+    let mut custom_added = custom_done.clone();
+    if let ResponseItem::CustomToolCall { input, .. } = &mut custom_added {
+        input.clear();
+    }
+    let expected_events = vec![
+        ResponseEvent::OutputItemAdded(function_added),
+        ResponseEvent::ToolCallInputDelta {
+            item_id: function_id,
+            call_id: Some("wire-t1".into()),
+            delta: "{\"key\": 1}".into(),
+        },
+        ResponseEvent::OutputItemDone(function_done),
+        ResponseEvent::OutputItemAdded(custom_added),
+        ResponseEvent::ToolCallInputDelta {
+            item_id: custom_id,
+            call_id: Some("wire-t2".into()),
+            delta: "raw input".into(),
+        },
+        ResponseEvent::OutputItemDone(custom_done),
+        ResponseEvent::Completed {
+            response_id: String::new(),
+            token_usage: None,
+            usage_metadata: None,
+            end_turn: Some(false),
+        },
+    ];
+    assert_eq!(
+        serde_json::to_value(&events).expect("observed lifecycle"),
+        serde_json::to_value(&expected_events).expect("expected lifecycle"),
+        "first-seen order, Added/Delta/Done identities, provider call IDs and raw inputs all survive",
     );
 }
 

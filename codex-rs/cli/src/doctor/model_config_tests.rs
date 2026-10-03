@@ -14,7 +14,7 @@ async fn doctor_resolves_environment_provider_and_reports_scope_aware_compact_li
     let interactive = TuiCli::parse_from(["codex"]);
     for (scope, threshold) in [("total", 90000), ("body_after_prefix", 120000)] {
         let home = tempfile::tempdir().expect("temporary Codex home");
-        let (explicit_overrides, seeds) = model_cli_overrides(
+        let launch_overrides = model_cli_overrides(
             &CliConfigOverrides {
                 raw_overrides: vec![
                     "model_context_window=100000".into(),
@@ -29,6 +29,7 @@ async fn doctor_resolves_environment_provider_and_reports_scope_aware_compact_li
                 base_url: Some("https://gateway.example:8443/v1?token=secret".into()),
                 wire_api: Some("chat".into()),
                 api_key: Some("private-key".into()),
+                ..Default::default()
             },
         )
         .expect("doctor model overrides");
@@ -51,8 +52,8 @@ async fn doctor_resolves_environment_provider_and_reports_scope_aware_compact_li
         );
         let config = ConfigBuilder::default()
             .codex_home(home.path().to_path_buf())
-            .cli_overrides(explicit_overrides)
-            .env_seed_overrides(seeds)
+            .cli_overrides(launch_overrides.cli_overrides)
+            .env_seed_overrides(launch_overrides.env_seed_overrides)
             .build()
             .await
             .expect("doctor effective config");
@@ -101,6 +102,7 @@ fn doctor_oss_without_a_provider_ignores_full_and_malformed_environment_groups()
             base_url: Some("https://gateway.example".into()),
             wire_api: Some("chat".into()),
             api_key: Some("private-key".into()),
+            ..Default::default()
         },
         NuwaxEnvInput {
             model: Some(" ".into()),
@@ -110,7 +112,10 @@ fn doctor_oss_without_a_provider_ignores_full_and_malformed_environment_groups()
     ] {
         assert_eq!(
             model_cli_overrides(&config, &interactive, input).expect("OSS ignores unused env"),
-            (expected.clone(), Vec::new())
+            codex_config::LaunchOverrides {
+                cli_overrides: expected.clone(),
+                env_seed_overrides: Vec::new(),
+            }
         );
     }
 }
@@ -146,9 +151,12 @@ async fn doctor_sources_use_the_final_provider_override_and_adopted_model_seed()
             base_url: Some("https://gateway.example/v1".into()),
             wire_api: Some("chat".into()),
             api_key: Some("private-key".into()),
+            ..Default::default()
         };
-        let (explicit_pairs, seeds) =
-            model_cli_overrides(&explicit, &interactive, input.clone()).expect("seeds");
+        let codex_config::LaunchOverrides {
+            cli_overrides: explicit_pairs,
+            env_seed_overrides: seeds,
+        } = model_cli_overrides(&explicit, &interactive, input.clone()).expect("seeds");
         let config = ConfigBuilder::default()
             .codex_home(home.path().to_path_buf())
             .cli_overrides(explicit_pairs)

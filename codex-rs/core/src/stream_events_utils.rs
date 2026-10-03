@@ -80,12 +80,14 @@ pub(crate) async fn record_completed_response_item(
     sess: &Session,
     step_context: &StepContext,
     item: &ResponseItem,
+    provenance: Option<&codex_history::ModelOutputProvenance>,
 ) {
     record_completed_response_item_with_finalized_facts(
         sess,
         step_context,
         item,
         /*finalized_facts*/ None,
+        provenance,
     )
     .await;
 }
@@ -95,12 +97,14 @@ pub(crate) async fn record_completed_response_item_with_finalized_facts(
     step_context: &StepContext,
     item: &ResponseItem,
     finalized_facts: Option<&FinalizedTurnItemFacts>,
+    provenance: Option<&codex_history::ModelOutputProvenance>,
 ) {
     let turn_context = &step_context.turn;
     sess.record_model_generated_items(
         turn_context,
         &step_context.settings.model_info,
         std::slice::from_ref(item),
+        provenance,
     )
     .await;
     if turn_context.config.otel.agent_response_logging_enabled() {
@@ -232,6 +236,7 @@ pub(crate) struct HandleOutputCtx {
     pub turn_store: Arc<ExtensionData>,
     pub tool_runtime: ToolCallRuntime,
     pub cancellation_token: CancellationToken,
+    pub model_output_provenance: Option<codex_history::ModelOutputProvenance>,
 }
 
 pub(crate) async fn apply_turn_item_contributors(
@@ -343,8 +348,13 @@ pub(crate) async fn handle_output_item_done(
                 call.tool_name,
             );
 
-            record_completed_response_item(ctx.sess.as_ref(), ctx.step_context.as_ref(), &item)
-                .await;
+            record_completed_response_item(
+                ctx.sess.as_ref(),
+                ctx.step_context.as_ref(),
+                &item,
+                ctx.model_output_provenance.as_ref(),
+            )
+            .await;
 
             let cancellation_token = ctx.cancellation_token.child_token();
             let tool_future: InFlightFuture<'static> = Box::pin(
@@ -391,6 +401,7 @@ pub(crate) async fn handle_output_item_done(
                 ctx.step_context.as_ref(),
                 &item,
                 finalized_facts.as_ref(),
+                ctx.model_output_provenance.as_ref(),
             )
             .await;
 
@@ -409,8 +420,13 @@ pub(crate) async fn handle_output_item_done(
                     ..Default::default()
                 },
             };
-            record_completed_response_item(ctx.sess.as_ref(), ctx.step_context.as_ref(), &item)
-                .await;
+            record_completed_response_item(
+                ctx.sess.as_ref(),
+                ctx.step_context.as_ref(),
+                &item,
+                ctx.model_output_provenance.as_ref(),
+            )
+            .await;
             if let Some(response_item) = response_input_to_response_item(&response) {
                 ctx.sess
                     .record_conversation_items(

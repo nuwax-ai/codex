@@ -249,3 +249,38 @@ fn requirements_defining_the_reserved_table_fail() {
             .contains("managed requirements")
     );
 }
+
+#[test]
+fn environment_output_cap_is_legal_but_foreign_layers_cannot_override_or_add_it() {
+    let capped = format!("{GROUP_SEEDS}\nmax_output_tokens = 2048\n");
+    let seed = env_seed_layer(&capped);
+    assert!(validate_env_group_isolation(&stack(vec![seed]), NUWAX_ENV_PROVIDER_ID).is_ok());
+    for layers in [
+        vec![
+            user_layer("[model_providers.nuwax_env]\nmax_output_tokens = 1024"),
+            env_seed_layer(&capped),
+        ],
+        vec![
+            env_seed_layer(&capped),
+            session_layer("[model_providers.nuwax_env]\nmax_output_tokens = 1024"),
+        ],
+    ] {
+        let error = validate_env_group_isolation(&stack(layers), NUWAX_ENV_PROVIDER_ID)
+            .expect_err("a valid key name still cannot acquire foreign provenance");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("max_output_tokens"));
+        assert!(
+            !error.to_string().contains("1024"),
+            "only field names belong in diagnostics"
+        );
+    }
+    let error = validate_env_group_isolation(
+        &stack(vec![
+            env_seed_layer(GROUP_SEEDS),
+            session_layer("[model_providers.nuwax_env]\nmax_output_tokens = 1024"),
+        ]),
+        NUWAX_ENV_PROVIDER_ID,
+    )
+    .expect_err("absence of an environment cap does not allow a foreign layer to add it");
+    assert!(error.to_string().contains("max_output_tokens"));
+}

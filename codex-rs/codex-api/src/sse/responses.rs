@@ -453,6 +453,15 @@ pub fn process_responses_event(
                 if reason == "content_filter" {
                     return Err(ResponsesEventError::Api(ApiError::ContentFilter));
                 }
+                if reason == "max_output_tokens" {
+                    // A caller-selected generation budget is exhausted; retrying
+                    // the same budget is not recovery from a transport failure.
+                    return Err(ResponsesEventError::Api(ApiError::InvalidRequest {
+                        message:
+                            "Output token limit reached; increase max_output_tokens before retrying"
+                                .to_string(),
+                    }));
+                }
                 if reason != "interrupted" {
                     let message = format!("Incomplete response returned, reason: {reason}");
                     return Err(ResponsesEventError::Api(ApiError::Stream(message)));
@@ -679,7 +688,10 @@ async fn process_sse_with_treatment(
             Err(error) => {
                 let error = error.into_api_error();
                 if policy == ResponseStreamPolicy::Strict
-                    || matches!(error, ApiError::FlexUnavailable)
+                    || matches!(
+                        error,
+                        ApiError::FlexUnavailable | ApiError::InvalidRequest { .. }
+                    )
                 {
                     let _ = tx_event.send(Err(error)).await;
                     return;
@@ -1104,6 +1116,64 @@ mod tests {
                 }
                 _ => panic!("unexpected events for {code}: {events:?}"),
             }
+        }
+    }
+
+    #[tokio::test]
+    async fn output_token_limit_is_terminal_without_a_sampling_retry() {
+        let frame = b"data: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"limited\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}}\n\n";
+        let events = collect_events(&[frame]).await;
+        let error = events
+            .into_iter()
+            .find_map(Result::err)
+            .expect("output limit failure");
+        let error = crate::api_bridge::map_api_error(error);
+        assert!(matches!(
+            error.details(),
+            codex_protocol::error::CodexErrorDetails::InvalidRequest(_)
+        ));
+        assert_eq!(error.retry_delay(/*retry_count*/ 1), None);
+    }
+
+    #[tokio::test]
+    async fn native_output_cap_failure_cannot_be_overwritten_by_later_stream_state() {
+        let failure = format!(
+            "data: {}\n\n",
+            json!({"type":"response.incomplete","response":{"id":"limited","incomplete_details":{"reason":"max_output_tokens"}}})
+        );
+        let tails: Vec<codex_http_client::ByteStream> = vec![
+            Box::pin(stream::pending()),
+            Box::pin(stream::once(async {
+                Err(TransportError::Network("late disconnect".into()))
+            })),
+            Box::pin(stream::once(async {
+                Ok(Bytes::from_static(b"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"limited\"}}\n\n"))
+            })),
+        ];
+        for tail in tails {
+            let body = stream::once({
+                let failure = failure.clone();
+                async move { Ok(Bytes::from(failure)) }
+            })
+            .chain(tail);
+            let (tx, mut rx) = mpsc::channel(16);
+            tokio::spawn(process_sse(
+                Box::pin(body),
+                tx,
+                Duration::from_millis(100),
+                /*telemetry*/ None,
+            ));
+            let event = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+                .await
+                .expect("terminal error")
+                .expect("error event");
+            assert!(
+                matches!(event, Err(ApiError::InvalidRequest { message }) if message.contains("max_output_tokens"))
+            );
+            assert!(
+                rx.recv().await.is_none(),
+                "a later completed event cannot replace a terminal budget failure"
+            );
         }
     }
 

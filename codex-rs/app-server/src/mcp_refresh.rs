@@ -518,8 +518,7 @@ enabled = false
         });
         let config_manager = ConfigManager::new(
             temp_dir.path().to_path_buf(),
-            Vec::new(),
-            /*env_seed_overrides*/ Vec::new(),
+            codex_config::LaunchOverrides::from_cli(Vec::new()),
             LoaderOverrides::without_managed_config_for_tests(),
             /*strict_config*/ false,
             CloudConfigBundleLoader::default(),

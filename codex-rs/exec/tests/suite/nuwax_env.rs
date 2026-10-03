@@ -9,6 +9,7 @@
 use anyhow::Result;
 use core_test_support::responses::start_mock_server;
 use core_test_support::test_codex_exec::test_codex_exec;
+use pretty_assertions::assert_eq;
 use std::sync::Arc;
 use std::sync::Mutex;
 use wiremock::Mock;
@@ -67,8 +68,17 @@ impl RequestLog {
     }
 }
 
-async fn run_nuwax_env_turn(wire_api: &str, expected_path: &str, sse_body: &str) -> Result<()> {
+async fn run_nuwax_env_turn(
+    wire_api: &str,
+    expected_path: &str,
+    sse_body: &str,
+    model: &str,
+    api_key: &str,
+) -> Result<()> {
     let test = test_codex_exec();
+    let config_path = test.home_path().join("config.toml");
+    let original_config = "# NUWAX environment settings must remain ephemeral.\n";
+    std::fs::write(&config_path, original_config)?;
     let server = start_mock_server().await;
     let repo_root = codex_utils_cargo_bin::repo_root()?;
     let log = RequestLog::default();
@@ -78,23 +88,41 @@ async fn run_nuwax_env_turn(wire_api: &str, expected_path: &str, sse_body: &str)
         .respond_with(
             ResponseTemplate::new(200)
                 .insert_header("content-type", "text/event-stream")
-                .set_body_raw(sse_body.to_string(), "text/event-stream"),
+                .set_body_raw(
+                    sse_body.replace("nuwax-test-model", model),
+                    "text/event-stream",
+                ),
         )
         .up_to_n_times(1)
         .mount(&server)
         .await;
 
-    test.cmd()
+    let mut command = test.cmd();
+    for variable in [
+        "NUWAX_BASE_URL",
+        "NUWAX_WIRE_API",
+        "NUWAX_API_KEY",
+        "NUWAX_MODEL",
+        "NUWAX_MAX_OUTPUT_TOKENS",
+    ] {
+        command.env_remove(variable);
+    }
+    command
         .arg("--skip-git-repo-check")
         .arg("-C")
         .arg(&repo_root)
         .arg("reply with ok")
         .env("NUWAX_BASE_URL", format!("{}/v1", server.uri()))
         .env("NUWAX_WIRE_API", wire_api)
-        .env("NUWAX_API_KEY", "nuwax-test-key")
-        .env("NUWAX_MODEL", "nuwax-test-model")
-        .assert()
-        .success();
+        .env("NUWAX_API_KEY", api_key)
+        .env("NUWAX_MODEL", model);
+    command.env("NUWAX_MAX_OUTPUT_TOKENS", "2048");
+    let output = tokio::task::spawn_blocking(move || command.output()).await??;
+    assert!(
+        output.status.success(),
+        "wire {wire_api} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let request = log.single();
     assert_eq!(request.url.path(), expected_path, "wire {wire_api}");
@@ -114,29 +142,85 @@ async fn run_nuwax_env_turn(wire_api: &str, expected_path: &str, sse_body: &str)
             .map(str::to_string)
     };
     let expected_credential = if wire_api == "anthropic" {
-        "nuwax-test-key".to_string()
+        api_key.to_string()
     } else {
-        "Bearer nuwax-test-key".to_string()
+        format!("Bearer {api_key}")
     };
     assert_eq!(credential, Some(expected_credential), "wire {wire_api}");
     let body: serde_json::Value = serde_json::from_slice(&request.body).expect("request body json");
-    assert_eq!(body["model"], "nuwax-test-model", "wire {wire_api}");
+    assert_eq!(body["model"], model, "wire {wire_api}");
+    let output_cap_field = if wire_api == "responses" {
+        "max_output_tokens"
+    } else {
+        "max_tokens"
+    };
+    assert_eq!(body[output_cap_field], 2048, "wire {wire_api}");
+    assert_eq!(
+        std::fs::read_to_string(&config_path)?,
+        original_config,
+        "wire {wire_api} must not persist its temporary provider or credential"
+    );
     Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn nuwax_env_chat_wire_reaches_the_chat_endpoint() -> Result<()> {
-    run_nuwax_env_turn("chat", "/v1/chat/completions", CHAT_SSE).await
+    run_nuwax_env_turn(
+        "chat",
+        "/v1/chat/completions",
+        CHAT_SSE,
+        "nuwax-test-model",
+        "nuwax-test-key",
+    )
+    .await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn nuwax_env_anthropic_wire_reaches_the_messages_endpoint() -> Result<()> {
-    run_nuwax_env_turn("anthropic", "/v1/messages", ANTHROPIC_SSE).await
+    run_nuwax_env_turn(
+        "anthropic",
+        "/v1/messages",
+        ANTHROPIC_SSE,
+        "nuwax-test-model",
+        "nuwax-test-key",
+    )
+    .await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn nuwax_env_responses_wire_reaches_the_responses_endpoint() -> Result<()> {
-    run_nuwax_env_turn("responses", "/v1/responses", RESPONSES_SSE).await
+    run_nuwax_env_turn(
+        "responses",
+        "/v1/responses",
+        RESPONSES_SSE,
+        "nuwax-test-model",
+        "nuwax-test-key",
+    )
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nuwax_env_parallel_exec_processes_keep_independent_provider_settings() -> Result<()> {
+    // Both helpers yield while their independently configured child commands run.
+    let (chat, anthropic) = tokio::join!(
+        run_nuwax_env_turn(
+            "chat",
+            "/v1/chat/completions",
+            CHAT_SSE,
+            "nuwax-parallel-chat-model",
+            "nuwax-parallel-chat-key",
+        ),
+        run_nuwax_env_turn(
+            "anthropic",
+            "/v1/messages",
+            ANTHROPIC_SSE,
+            "nuwax-parallel-anthropic-model",
+            "nuwax-parallel-anthropic-key",
+        ),
+    );
+    chat?;
+    anthropic?;
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -163,6 +247,8 @@ async fn nuwax_env_partial_group_fails_fast_without_a_request() -> anyhow::Resul
         .arg("-C")
         .arg(&repo_root)
         .arg("hello")
+        .env_remove("NUWAX_MAX_OUTPUT_TOKENS")
+        .env_remove("NUWAX_WIRE_API")
         .env("NUWAX_BASE_URL", format!("{}/v1", server.uri()))
         .env("NUWAX_API_KEY", "nuwax-test-key")
         .env("NUWAX_MODEL", "nuwax-test-model")
@@ -219,6 +305,7 @@ http_headers = { x-old-gateway = "stale-credential" }
         .arg("-C")
         .arg(&repo_root)
         .arg("hello")
+        .env_remove("NUWAX_MAX_OUTPUT_TOKENS")
         .env("NUWAX_BASE_URL", format!("{}/v1", server.uri()))
         .env("NUWAX_WIRE_API", "responses")
         .env("NUWAX_API_KEY", "nuwax-test-key")
@@ -261,6 +348,7 @@ async fn nuwax_env_cli_provider_subkeys_and_parent_tables_fail_before_requests()
             .arg("-c")
             .arg(override_key)
             .arg("hello")
+            .env_remove("NUWAX_MAX_OUTPUT_TOKENS")
             .env("NUWAX_BASE_URL", format!("{}/v1", server.uri()))
             .env("NUWAX_WIRE_API", "responses")
             .env("NUWAX_API_KEY", "nuwax-test-key")

@@ -430,8 +430,10 @@ async fn run_outbound_router(
 async fn start_uninitialized(mut args: InProcessStartArgs) -> IoResult<InProcessClientHandle> {
     let config_manager = ConfigManager::new(
         args.config.codex_home.to_path_buf(),
-        args.cli_overrides,
-        args.env_seed_overrides,
+        codex_config::LaunchOverrides {
+            cli_overrides: args.cli_overrides,
+            env_seed_overrides: args.env_seed_overrides,
+        },
         args.loader_overrides,
         args.strict_config,
         args.cloud_config_bundle,

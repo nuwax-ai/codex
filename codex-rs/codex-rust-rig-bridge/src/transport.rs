@@ -17,8 +17,11 @@ use std::sync::Mutex;
 #[derive(Clone, Default)]
 pub(crate) struct RigHttpClient {
     pub(crate) inner: reqwest_rig::Client,
+    pub(crate) retry: Option<codex_api::RetryConfig>,
     /// Per-attempt headers; never retained in the shared connection pool.
     pub(crate) request_headers: http::HeaderMap,
+    /// Actual per-attempt primary headers; absence removes SDK-synthesized auth.
+    pub(crate) wire_auth: Option<crate::wire_auth::WireAuth>,
     pub(crate) query: Vec<(String, String)>,
     pub(crate) disable_anthropic_parallel: bool,
     pub(crate) tool_strict: std::collections::HashMap<String, bool>,
@@ -54,6 +57,10 @@ pub(crate) struct RigHttpClient {
     /// Responses passthrough only: tee the raw wire SSE bytes for cassette
     /// recording. `None` in production.
     pub(crate) responses_sse_recorder: Option<Arc<Mutex<Vec<u8>>>>,
+    pub(crate) wire_budget: crate::wire_budget::WireBudget,
+    /// Explicit diagnostic capture, default None. Authentication headers are
+    /// excluded and URL credentials masked; bodies may contain sensitive data.
+    pub(crate) final_request_recorder: crate::request_capture::FinalRequestRecorder,
     /// Anthropic wire only: tee the raw wire SSE bytes so the stream pump can
     /// recover server-tool blocks rig never exposes on its public streaming
     /// surface. `None` in production for the other protocols.
@@ -85,6 +92,24 @@ impl RigHttpClient {
             request
                 .headers_mut()
                 .insert(http::header::AUTHORIZATION, value.clone());
+        }
+        if let Some(auth) = &self.wire_auth {
+            for name in [
+                http::header::AUTHORIZATION,
+                http::HeaderName::from_static("x-api-key"),
+            ] {
+                if name == "x-api-key" && self.protocol != crate::RigProtocol::Anthropic {
+                    continue;
+                }
+                match auth.headers.get(&name) {
+                    Some(value) => {
+                        request.headers_mut().insert(name, value.clone());
+                    }
+                    None => {
+                        request.headers_mut().remove(name);
+                    }
+                }
+            }
         }
         if !self.query.is_empty() {
             let mut url = reqwest_rig::Url::parse(&request.uri().to_string())
@@ -278,11 +303,14 @@ impl ChatFamilyRewrite<'_> {
                     }
                 }
             }
-            // Fork (nuwax-codex): splice persisted web-search wire pairs
-            // (server_tool_use + result, verbatim incl. encrypted content)
-            // into the content array of the assistant message each pair
-            // followed in history. The index counts assistant-role messages,
-            // matching how history conversion numbered them.
+            // Fork (nuwax-codex): splice persisted web-search wire blocks
+            // (verbatim incl. encrypted content) into the content array of
+            // the assistant message each group followed in history. The
+            // index counts assistant-role messages, matching how history
+            // conversion numbered them. v2 groups rebuild their response's
+            // text/pair order from the captured identity layout; v1 groups
+            // splice pair blocks in order and drop their citations (no
+            // identity, no honest attribution).
             if !self.websearch_replay.is_empty() {
                 let mut assistant_seen = 0usize;
                 let mut pending: Vec<&crate::hosted_replay::ReplayGroup> =
@@ -314,67 +342,17 @@ impl ChatFamilyRewrite<'_> {
                         continue;
                     };
                     for group in groups {
-                        content.extend(group.blocks.iter().cloned());
-                        // A cited block whose text matches the assistant's
-                        // plain projection REPLACES it: the answer appears
-                        // once, and the cited terminal state takes the
-                        // position the streamed block order gave it (after
-                        // its pair). Unmatched cited blocks append as-is.
-                        for cited in &group.cited_text {
-                            // Plain-text overlap identifies the projection of
-                            // the SAME streamed answer; the cited terminal
-                            // state replaces it so the answer appears once.
-                            // The saved Message merges consecutive text
-                            // blocks, so the cited answer may share a plain
-                            // block with neighbouring text: split that block
-                            // at the matched span. The replacement lands
-                            // after the pair's blocks, matching the streamed
-                            // order the model originally saw.
-                            let cited_text = cited.get("text").and_then(serde_json::Value::as_str);
-                            let mut matched_plain: Option<String> = None;
-                            content.retain(|block| {
-                                let plain = block["type"] == "text"
-                                    && block.get("citations").map(serde_json::Value::is_array)
-                                        != Some(true);
-                                if !plain || matched_plain.is_some() {
-                                    return true;
-                                }
-                                let block_text =
-                                    block.get("text").and_then(serde_json::Value::as_str);
-                                let matches = cited_text.is_some_and(|cited| {
-                                    !cited.is_empty()
-                                        && block_text.is_some_and(|text| text.contains(cited))
-                                });
-                                if matches {
-                                    matched_plain = block_text.map(str::to_string);
-                                }
-                                !matches
-                            });
-                            match (cited_text, matched_plain) {
-                                (Some(cited_text), Some(plain_text))
-                                    if !cited_text.is_empty()
-                                        && plain_text.contains(cited_text) =>
-                                {
-                                    let Some(at) = plain_text.find(cited_text) else {
-                                        content.push(cited.clone());
-                                        continue;
-                                    };
-                                    let head = plain_text[..at].to_string();
-                                    let tail = plain_text[at + cited_text.len()..].to_string();
-                                    if !head.is_empty() {
-                                        content.push(serde_json::json!({
-                                            "type": "text", "text": head,
-                                        }));
-                                    }
-                                    content.push(cited.clone());
-                                    if !tail.is_empty() {
-                                        content.push(serde_json::json!({
-                                            "type": "text", "text": tail,
-                                        }));
-                                    }
-                                }
-                                _ => content.push(cited.clone()),
+                        if group.has_identity() {
+                            crate::transport_identity::splice_identity(content, group);
+                        } else {
+                            if !group.cited_text.is_empty() {
+                                tracing::warn!(
+                                    cited = group.cited_text.len(),
+                                    "v1 web-search replay carries citations without block \
+                                     identity; replaying pairs only, not injecting citations"
+                                );
                             }
+                            content.extend(group.blocks.iter().cloned());
                         }
                     }
                 }
@@ -461,9 +439,15 @@ impl HttpClientExt for RigHttpClient {
                     .into();
                 request.headers_mut().remove(http::header::CONTENT_LENGTH);
             }
-            let response = HttpClientExt::send_streaming(&self.inner, request)
-                .await
-                .map_err(sanitize_error)?;
+            self.wire_budget.check(request.body().len())?;
+            let response = crate::request_retry::send_streaming(
+                &self.inner,
+                request,
+                self.retry.as_ref(),
+                &self.final_request_recorder,
+            )
+            .await
+            .map_err(sanitize_error)?;
             // Compatible gateways may expose only a trace/log correlation ID.
             // Keep canonical request IDs first; this never replaces the model's
             // response ID carried in the SSE body.

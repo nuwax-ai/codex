@@ -37,7 +37,7 @@
 #![allow(clippy::expect_used)]
 #![allow(clippy::unwrap_used)]
 
-mod artifacts;
+pub(crate) mod artifacts;
 mod assertions;
 mod binary_turns;
 mod bridge_turns;
@@ -55,6 +55,7 @@ pub use cassette::load_fixture;
 pub use cassette::load_responses_sse_fixture;
 pub use cassette::load_rig_event_fixture;
 use cassette::record_turn;
+pub use cassette::save_final_request_fixture;
 pub use cassette::save_responses_sse_fixture;
 pub use cassette::save_rig_event_fixture;
 pub use cassette::store_fixture;

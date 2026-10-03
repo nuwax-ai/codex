@@ -35,12 +35,10 @@ async fn citation_deltas_preserve_inline_text_and_thinking_signatures() {
             json!({"type":"thinking","thinking":"inline thought","signature":"firstsecond"})
         ]
     );
-    assert_eq!(
-        web_search_blocks_from_anthropic_sse(&bytes)
-            .await
-            .cited_text,
-        vec![text]
-    );
+    let capture = web_search_blocks_from_anthropic_sse(&bytes).await;
+    assert_eq!(capture.text_blocks.len(), 1);
+    assert_eq!(capture.text_blocks[0].index, 0);
+    assert_eq!(capture.text_blocks[0].block, text);
 }
 
 #[tokio::test]

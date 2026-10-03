@@ -23,6 +23,8 @@ use tokio_util::sync::CancellationToken;
 pub struct Prompt {
     /// Conversation context input items.
     pub input: Vec<ResponseItem>,
+    /// History annotations keyed by item identity, retained until actual request setup.
+    pub(crate) input_provenance: crate::model_output_projection::InputProvenance,
 
     /// Tools available to the model, including additional tools sourced from
     /// external MCP servers.
@@ -46,6 +48,7 @@ impl Default for Prompt {
     fn default() -> Self {
         Self {
             input: Vec::new(),
+            input_provenance: Default::default(),
             tools: Arc::default(),
             parallel_tool_calls: false,
             base_instructions: BaseInstructions::default(),

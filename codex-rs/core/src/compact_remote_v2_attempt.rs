@@ -25,6 +25,7 @@ pub(super) struct RemoteCompactV2Attempt {
     pub(super) prompt_input: Vec<ResponseItem>,
     pub(super) prompt_input_metadata: Vec<Option<CodexHarnessMetadata>>,
     pub(super) compaction_output: ResponseItem,
+    pub(super) compaction_provenance: Option<codex_history::ModelOutputProvenance>,
     pub(super) compaction_response_id: String,
     pub(super) token_usage: Option<TokenUsage>,
     /// Keeps a session created for standalone compaction alive through lifecycle completion.
@@ -71,8 +72,9 @@ pub(super) async fn run_remote_compact_v2_attempt(
     let trace_input_history = compaction_trace
         .is_enabled()
         .then(|| history.raw_items().cloned().collect());
-    let (mut input, prompt_input_metadata): (Vec<_>, Vec<_>) = history
-        .for_prompt_annotated(&turn_context.model_info().input_modalities)
+    let annotated_input = history.for_prompt_annotated(&turn_context.model_info().input_modalities);
+    let input_provenance = crate::model_output_projection::sources_for_input(&annotated_input);
+    let (mut input, prompt_input_metadata): (Vec<_>, Vec<_>) = annotated_input
         .into_iter()
         .map(|envelope| (envelope.item, envelope.metadata))
         .unzip();
@@ -83,6 +85,7 @@ pub(super) async fn run_remote_compact_v2_attempt(
     input.push(ResponseItem::CompactionTrigger {});
     let prompt = Prompt {
         input,
+        input_provenance,
         tools: tool_router.model_visible_specs(),
         parallel_tool_calls: true,
         base_instructions,
@@ -124,6 +127,7 @@ pub(super) async fn run_remote_compact_v2_attempt(
         response_id,
         token_usage,
     } = compaction_output_result?;
+    let compaction_provenance = client_session.output_provenance().cloned();
     let mut prompt_input = prompt.input;
     prompt_input.pop();
     Ok(RemoteCompactV2Attempt {
@@ -132,6 +136,7 @@ pub(super) async fn run_remote_compact_v2_attempt(
         prompt_input,
         prompt_input_metadata,
         compaction_output,
+        compaction_provenance,
         compaction_response_id: response_id,
         token_usage,
         owned_client_session,

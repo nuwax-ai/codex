@@ -43,7 +43,7 @@ fn anthropic_provider(base_url: &str) -> ModelProviderInfo {
         env_key_instructions: None,
         experimental_bearer_token: None,
         experimental_bridge: None,
-        provider_id: None,
+        provider_id: Some("anthropic-hosted-test".into()),
         auth: None,
         gateway_oauth: None,
         aws: None,
@@ -80,10 +80,27 @@ impl Respond for AnthropicResponder {
     }
 }
 
+impl AnthropicSequence {
+    fn record(&self, body: Value) {
+        self.requests
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(body);
+    }
+
+    /// Every captured request body, in arrival order.
+    fn captured(&self) -> Vec<Value> {
+        self.requests
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
 impl Respond for AnthropicSequence {
     fn respond(&self, request: &wiremock::Request) -> ResponseTemplate {
         if let Ok(body) = serde_json::from_slice::<Value>(&request.body) {
-            self.requests.lock().unwrap().push(body);
+            self.record(body);
         }
         let call = self.num_calls.fetch_add(1, Ordering::SeqCst);
         ResponseTemplate::new(200)
@@ -315,6 +332,9 @@ async fn anthropic_mixed_turn_core_loop_preserves_request_prefix() -> Result<()>
         mount_anthropic_sequence(&server, vec![sse_turn1, sse_turn1_late, sse_final]).await;
     let provider = anthropic_provider(&server.uri());
     let test = test_codex()
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
         .with_config(move |config| {
             config.model_provider = provider;
         })
@@ -323,7 +343,7 @@ async fn anthropic_mixed_turn_core_loop_preserves_request_prefix() -> Result<()>
     test.submit_text_turn("start the mixed turn").await?;
     test.submit_text_turn("continue").await?;
 
-    let bodies = responder.requests.lock().unwrap().clone();
+    let bodies = responder.captured();
     assert_eq!(bodies.len(), 3, "three model requests across the loop");
     // bodies[0] is the turn's initial request; the tool output follow-up
     // (still carrying the PENDING search) is bodies[1], and the completed
@@ -399,6 +419,9 @@ async fn anthropic_cited_answer_appears_once_with_citations() -> Result<()> {
     let responder = mount_anthropic_sequence(&server, vec![sse_search, sse_final]).await;
     let provider = anthropic_provider(&server.uri());
     let test = test_codex()
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
         .with_config(move |config| {
             config.model_provider = provider;
         })
@@ -407,7 +430,7 @@ async fn anthropic_cited_answer_appears_once_with_citations() -> Result<()> {
     test.submit_text_turn("search and answer").await?;
     test.submit_text_turn("again").await?;
 
-    let bodies = responder.requests.lock().unwrap().clone();
+    let bodies = responder.captured();
     assert_eq!(bodies.len(), 2);
     let mut content = search_replay_blocks("srvu_cited", "core-cited", "ENC_CORE_CIT");
     content.push(cited_replay_block("the cited core answer"));
@@ -453,6 +476,9 @@ async fn anthropic_cited_replay_preserves_intro_search_answer_tail_order() -> Re
     let responder = mount_anthropic_sequence(&server, vec![first, follow_up]).await;
     let provider = anthropic_provider(&server.uri());
     let test = test_codex()
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
         .with_config(move |config| {
             config.model_provider = provider;
         })
@@ -461,7 +487,7 @@ async fn anthropic_cited_replay_preserves_intro_search_answer_tail_order() -> Re
     test.submit_text_turn("search and answer").await?;
     test.submit_text_turn("again").await?;
 
-    let bodies = responder.requests.lock().unwrap().clone();
+    let bodies = responder.captured();
     assert_eq!(bodies.len(), 2);
     let mut content = vec![json!({"type":"text","text":"plain intro"})];
     content.extend(search_replay_blocks(
@@ -513,6 +539,9 @@ async fn anthropic_cited_replay_keeps_repeated_text_citation_owner() -> Result<(
     let responder = mount_anthropic_sequence(&server, vec![first, follow_up]).await;
     let provider = anthropic_provider(&server.uri());
     let test = test_codex()
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
         .with_config(move |config| {
             config.model_provider = provider;
         })
@@ -521,7 +550,7 @@ async fn anthropic_cited_replay_keeps_repeated_text_citation_owner() -> Result<(
     test.submit_text_turn("search and answer").await?;
     test.submit_text_turn("again").await?;
 
-    let bodies = responder.requests.lock().unwrap().clone();
+    let bodies = responder.captured();
     assert_eq!(bodies.len(), 2);
     let mut content = vec![json!({"type":"text","text":"Uncited shared phrase intro. "})];
     content.extend(search_replay_blocks(
@@ -571,6 +600,9 @@ async fn anthropic_resume_replays_the_same_projection() -> Result<()> {
 
     let provider = anthropic_provider(&server.uri());
     let initial = test_codex()
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
         .with_config({
             let provider = provider.clone();
             move |config| {
@@ -590,6 +622,9 @@ async fn anthropic_resume_replays_the_same_projection() -> Result<()> {
 
     let original_cwd = initial.config.cwd.clone();
     let resumed = test_codex()
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
         .with_config(move |config| {
             config.model_provider = provider;
             config.cwd = original_cwd;
@@ -599,7 +634,7 @@ async fn anthropic_resume_replays_the_same_projection() -> Result<()> {
     resumed.submit_text_turn("after resume").await?;
     resumed.codex.shutdown_and_wait().await?;
 
-    let bodies = responder.requests.lock().unwrap().clone();
+    let bodies = responder.captured();
     assert_eq!(bodies.len(), 3);
     let resumed_messages = bodies[2]["messages"].as_array().unwrap().clone();
     assert!(
@@ -691,6 +726,9 @@ async fn anthropic_interrupt_before_headers_closes_socket_and_allows_follow_up()
     let server = MockServer::start().await;
     let provider = anthropic_provider(&format!("http://{address}"));
     let test = test_codex()
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
         .with_config(move |config| {
             config.model_provider = provider;
         })
@@ -785,6 +823,9 @@ async fn anthropic_interrupt_during_tool_runs_it_once() -> Result<()> {
     let responder = mount_anthropic_sequence(&server, vec![first, follow_up]).await;
     let provider = anthropic_provider(&server.uri());
     let test = test_codex()
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
         .with_config(move |config| {
             config.model_provider = provider;
         })
@@ -817,7 +858,7 @@ async fn anthropic_interrupt_during_tool_runs_it_once() -> Result<()> {
         )
     })
     .await;
-    let captured_requests = responder.requests.lock().unwrap().clone();
+    let captured_requests = responder.captured();
     let tool_outputs: Vec<_> = captured_requests
         .iter()
         .flat_map(|request| request["messages"].as_array().into_iter().flatten())
@@ -870,7 +911,7 @@ async fn anthropic_interrupt_during_tool_runs_it_once() -> Result<()> {
     assert_eq!(completed.error, None, "tool-abort follow-up must succeed");
     assert_eq!(completed.last_agent_message.as_deref(), Some("resumed"));
 
-    let requests = responder.requests.lock().unwrap().clone();
+    let requests = responder.captured();
     assert_eq!(requests.len(), 2, "no extra model requests after abort");
     let encoded = serde_json::to_string(&requests[1]).unwrap();
     assert!(encoded.contains("toolu_sleep"), "{encoded}");
@@ -882,3 +923,9 @@ async fn anthropic_interrupt_during_tool_runs_it_once() -> Result<()> {
     test.codex.shutdown_and_wait().await?;
     Ok(())
 }
+
+#[path = "rig_anthropic_identity_tests.rs"]
+mod identity_tests;
+
+#[path = "rig_anthropic_credential_instance_tests.rs"]
+mod credential_instance_tests;

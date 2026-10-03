@@ -17,6 +17,7 @@ doctest = false
 
 [dev-dependencies]
 paste = "1"
+pretty_assertions = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }

@@ -336,9 +336,6 @@ async fn responses_client_sends_extra_headers() -> Result<()> {
 
 #[tokio::test]
 async fn responses_client_stream_request_preserves_item_ids() -> Result<()> {
-    let state = RecordingState::default();
-    let transport = RecordingTransport::new(state.clone());
-    let client = ResponsesClient::new(transport, provider("openai"), Arc::new(NoAuth));
     let request = ResponsesApiRequest {
         model: "gpt-test".into(),
         instructions: "Say hi".into(),
@@ -352,6 +349,7 @@ async fn responses_client_stream_request_preserves_item_ids() -> Result<()> {
         tools: Some(empty_tools().into()),
         tool_choice: "auto".into(),
         parallel_tool_calls: false,
+        max_output_tokens: None,
         reasoning: None,
         store: false,
         stream: true,
@@ -363,25 +361,37 @@ async fn responses_client_stream_request_preserves_item_ids() -> Result<()> {
         client_metadata: None,
         access_programs: None,
     };
-    let expected = serde_json::to_value(&request)?;
+    for (provider_cap, request_cap) in [(None, None), (Some(8192), None), (Some(8192), Some(4096))]
+    {
+        let state = RecordingState::default();
+        let transport = RecordingTransport::new(state.clone());
+        let mut provider = provider("openai");
+        provider.max_output_tokens = provider_cap;
+        let client = ResponsesClient::new(transport, provider, Arc::new(NoAuth));
+        let mut request = request.clone();
+        request.max_output_tokens = request_cap;
+        let mut expected_request = request.clone();
+        expected_request.max_output_tokens = request_cap.or(provider_cap);
+        let expected = serde_json::to_value(&expected_request)?;
 
-    let _stream = client
-        .stream_request(request, ResponsesOptions::default())
-        .await?;
+        let _stream = client
+            .stream_request(request, ResponsesOptions::default())
+            .await?;
 
-    let requests = state.take_stream_requests();
-    assert_eq!(requests.len(), 1);
-    let prepared = requests[0]
-        .prepare_body_for_send()
-        .expect("body should prepare");
-    let body: serde_json::Value =
-        serde_json::from_slice(prepared.body.as_deref().expect("body should be JSON"))?;
-    assert_eq!(body, expected);
-    assert_eq!(body["input"][0]["id"], "msg_1");
-    assert_eq!(
-        prepared.headers.get(http::header::CONTENT_TYPE),
-        Some(&HeaderValue::from_static("application/json"))
-    );
+        let requests = state.take_stream_requests();
+        assert_eq!(requests.len(), 1);
+        let prepared = requests[0]
+            .prepare_body_for_send()
+            .expect("body should prepare");
+        let body: serde_json::Value =
+            serde_json::from_slice(prepared.body.as_deref().expect("body should be JSON"))?;
+        assert_eq!(body, expected);
+        assert_eq!(body["input"][0]["id"], "msg_1");
+        assert_eq!(
+            prepared.headers.get(http::header::CONTENT_TYPE),
+            Some(&HeaderValue::from_static("application/json"))
+        );
+    }
     Ok(())
 }
 
@@ -440,6 +450,7 @@ async fn streaming_client_retries_on_transport_error() -> Result<()> {
         tools: Some(empty_tools().into()),
         tool_choice: "auto".into(),
         parallel_tool_calls: false,
+        max_output_tokens: None,
         reasoning: None,
         store: false,
         stream: true,
@@ -561,6 +572,7 @@ async fn azure_store_sends_ids_and_headers() -> Result<()> {
         tools: Some(empty_tools().into()),
         tool_choice: "auto".into(),
         parallel_tool_calls: false,
+        max_output_tokens: None,
         reasoning: None,
         store: true,
         stream: true,

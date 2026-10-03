@@ -141,8 +141,36 @@ async fn first_layer_config_error_from_entries(layers: &[ConfigLayerEntry]) -> O
 /// associated with it such that `cwd` should be `Some(...)`. Only for
 /// thread-agnostic config loading (e.g., for the app server's `/config`
 /// endpoint) should `cwd` be `None`.
-#[allow(clippy::too_many_arguments)]
+///
+/// This entry retains the CLI-only signature for existing callers. Callers
+/// that adopt `NUWAX_*` environment seeds use
+/// [`load_config_layers_state_with_env_seed`] with a separate seed channel.
 pub async fn load_config_layers_state(
+    fs: &dyn ExecutorFileSystem,
+    codex_home: &Path,
+    cwd: Option<AbsolutePathBuf>,
+    cli_overrides: &[(String, TomlValue)],
+    options: impl Into<ConfigLoadOptions>,
+    thread_config_loader: &dyn ThreadConfigLoader,
+) -> io::Result<ConfigLayerStack> {
+    load_config_layers_state_with_env_seed(
+        fs,
+        codex_home,
+        cwd,
+        cli_overrides,
+        /*env_seed_overrides*/ &[],
+        options,
+        thread_config_loader,
+    )
+    .await
+}
+
+/// Explicit CLI-only alias of [`load_config_layers_state`].
+pub use load_config_layers_state as load_config_layers_state_with_cli;
+
+/// Loads configuration with environment seeds attributed separately from CLI overrides.
+#[allow(clippy::too_many_arguments)]
+pub async fn load_config_layers_state_with_env_seed(
     fs: &dyn ExecutorFileSystem,
     codex_home: &Path,
     cwd: Option<AbsolutePathBuf>,

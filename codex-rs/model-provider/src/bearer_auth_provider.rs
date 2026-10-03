@@ -10,6 +10,10 @@ pub struct BearerAuthProvider {
     pub is_fedramp_account: bool,
 }
 
+#[cfg(test)]
+#[path = "bearer_auth_provider_snapshot_tests.rs"]
+mod snapshot_tests;
+
 impl BearerAuthProvider {
     pub fn new(token: String) -> Self {
         Self {
@@ -29,6 +33,30 @@ impl BearerAuthProvider {
 }
 
 impl AuthProvider for BearerAuthProvider {
+    fn immutable_credential_headers(&self) -> Option<HeaderMap> {
+        let mut headers = HeaderMap::new();
+        if let Some(token) = &self.token {
+            let mut value = HeaderValue::from_str(&format!("Bearer {token}")).ok()?;
+            value.set_sensitive(true);
+            headers.insert(http::header::AUTHORIZATION, value);
+        }
+        if let Some(account) = &self.account_id {
+            headers.insert("ChatGPT-Account-ID", HeaderValue::from_str(account).ok()?);
+        }
+        if self.is_fedramp_account {
+            headers.insert("X-OpenAI-Fedramp", HeaderValue::from_static("true"));
+        }
+        Some(headers)
+    }
+
+    fn resolve_auth_headers(&self) -> codex_api::AuthHeadersFuture<'_> {
+        Box::pin(async move {
+            self.immutable_credential_headers().ok_or_else(|| {
+                codex_api::AuthError::Build("invalid bearer authentication header".into())
+            })
+        })
+    }
+
     fn add_auth_headers(&self, headers: &mut HeaderMap) {
         if let Some(token) = self.token.as_ref()
             && let Ok(header) = HeaderValue::from_str(&format!("Bearer {token}"))

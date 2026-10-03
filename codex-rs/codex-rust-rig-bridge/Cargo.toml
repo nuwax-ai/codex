@@ -9,6 +9,7 @@ license.workspace = true
 # my-docs/rig-bridge-implementation-plan.md before upgrading.
 rig-core = "=0.42.0"
 codex-api = { workspace = true }
+codex-client = { workspace = true }
 codex-protocol = { workspace = true }
 codex-tools = { workspace = true }
 futures = { workspace = true }
@@ -32,4 +33,6 @@ reqwest-rig = { package = "reqwest", version = "0.13", default-features = false 
 workspace = true
 
 [dev-dependencies]
+h2 = "0.4"
 pretty_assertions = { workspace = true }
+tempfile = { workspace = true }

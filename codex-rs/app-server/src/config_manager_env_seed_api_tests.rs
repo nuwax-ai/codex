@@ -23,21 +23,23 @@ fn seeded_manager(
 ) -> Result<ConfigManager> {
     Ok(ConfigManager::new(
         home.to_path_buf(),
-        cli_overrides,
-        vec![
-            (
-                "model_providers.nuwax_env".to_string(),
-                toml::from_str(ENV_PROVIDER)?,
-            ),
-            (
-                "model_provider".to_string(),
-                TomlValue::String("nuwax_env".to_string()),
-            ),
-            (
-                "model".to_string(),
-                TomlValue::String("environment-model".to_string()),
-            ),
-        ],
+        codex_config::LaunchOverrides {
+            cli_overrides,
+            env_seed_overrides: vec![
+                (
+                    "model_providers.nuwax_env".to_string(),
+                    toml::from_str(ENV_PROVIDER)?,
+                ),
+                (
+                    "model_provider".to_string(),
+                    TomlValue::String("nuwax_env".to_string()),
+                ),
+                (
+                    "model".to_string(),
+                    TomlValue::String("environment-model".to_string()),
+                ),
+            ],
+        },
         LoaderOverrides::without_managed_config_for_tests(),
         /*strict_config*/ false,
         cloud_config_bundle,

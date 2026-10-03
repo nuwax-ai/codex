@@ -297,7 +297,6 @@ async fn managed_browser_import_denial_survives_user_and_session_config() {
             "in_app_browser.allow_external_browser_settings_import".to_string(),
             TomlValue::Boolean(true),
         )],
-        /*env_seed_overrides*/ &[],
         ConfigLoadOptions {
             loader_overrides,
             strict_config: false,
@@ -432,6 +431,49 @@ impl ExecutorFileSystem for TestFileSystem {
 }
 
 #[tokio::test]
+async fn source_compatible_loader_uses_six_arguments_and_merges_cli_overrides() -> io::Result<()> {
+    let tmp = tempdir()?;
+    let packaged_defaults_path =
+        AbsolutePathBuf::resolve_path_against_base("packaged-defaults.toml", tmp.path());
+    std::fs::write(packaged_defaults_path.as_path(), "")?;
+    std::fs::write(
+        tmp.path().join(CONFIG_TOML_FILE),
+        "model = 'user-model'\nmodel_context_window = 120000\n",
+    )?;
+    let overrides = LoaderOverrides {
+        packaged_defaults_path: Some(packaged_defaults_path),
+        system_config_path: Some(tmp.path().join("system.toml")),
+        system_requirements_path: Some(tmp.path().join("requirements.toml")),
+        managed_config_path: Some(tmp.path().join("managed_config.toml")),
+        ..LoaderOverrides::without_managed_config_for_tests()
+    };
+
+    // Use the original public symbol with exactly the six pre-EnvSeed arguments.
+    let stack = crate::loader::load_config_layers_state(
+        &TestFileSystem,
+        tmp.path(),
+        /*cwd*/ None,
+        &[(
+            "model".to_string(),
+            TomlValue::String("cli-model".to_string()),
+        )],
+        overrides,
+        &crate::NoopThreadConfigLoader,
+    )
+    .await?;
+
+    assert_eq!(
+        stack.effective_config(),
+        toml::toml! {
+            model = "cli-model"
+            model_context_window = 120000
+        }
+        .into()
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn packaged_defaults_have_lower_precedence_than_existing_config_layers() {
     let tmp = tempdir().expect("tempdir");
     let packaged_defaults_path =
@@ -470,7 +512,6 @@ model_provider = "system-provider"
             "model".to_string(),
             TomlValue::String("session-model".to_string()),
         )],
-        /*env_seed_overrides*/ &[],
         overrides,
         &crate::NoopThreadConfigLoader,
     )
@@ -532,7 +573,6 @@ chatgpt_base_url = "https://managed.example/backend-api/"
         tmp.path(),
         /*cwd*/ None,
         &[],
-        /*env_seed_overrides*/ &[],
         overrides,
         &crate::NoopThreadConfigLoader,
     )
@@ -571,7 +611,6 @@ async fn missing_packaged_defaults_file_returns_an_error() {
         tmp.path(),
         /*cwd*/ None,
         &[],
-        /*env_seed_overrides*/ &[],
         overrides,
         &crate::NoopThreadConfigLoader,
     )
@@ -616,9 +655,7 @@ sandbox_mode = "danger-full-access"
         &codex_home,
         /*cwd*/ None,
         &[],
-        /*env_seed_overrides*/ &[],
         overrides,
-        /*env_seed_overrides*/ &[],
         &crate::NoopThreadConfigLoader,
     )
     .await
@@ -696,7 +733,6 @@ model = "gpt-work"
         tmp.path(),
         /*cwd*/ None,
         &[],
-        /*env_seed_overrides*/ &[],
         overrides,
         &crate::NoopThreadConfigLoader,
     )
@@ -755,7 +791,6 @@ model = "gpt-main"
         tmp.path(),
         /*cwd*/ None,
         &[],
-        /*env_seed_overrides*/ &[],
         overrides,
         &crate::NoopThreadConfigLoader,
     )
@@ -812,7 +847,6 @@ model = "gpt-dev"
         tmp.path(),
         /*cwd*/ None,
         &[],
-        /*env_seed_overrides*/ &[],
         overrides,
         &crate::NoopThreadConfigLoader,
     )
@@ -1110,7 +1144,6 @@ async fn runtime_override_carries_auto_compact_ratio_into_merged_config() {
                 TomlValue::Float(0.2),
             ),
         ],
-        /*env_seed_overrides*/ &[],
         ConfigLoadOptions {
             loader_overrides: LoaderOverrides::without_managed_config_for_tests(),
             strict_config: false,

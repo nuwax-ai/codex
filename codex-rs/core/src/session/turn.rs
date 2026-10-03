@@ -1,3 +1,4 @@
+use codex_history::ResponseItemEnvelope;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::marker::PhantomData;
@@ -513,10 +514,10 @@ pub(crate) async fn run_turn(
                 .await;
 
             // Construct the input that we will send to the model.
-            let sampling_request_input: Vec<ResponseItem> = async {
+            let sampling_request_input: Vec<ResponseItemEnvelope> = async {
                 sess.clone_history()
                     .await
-                    .for_prompt(&step_context.settings.model_info.input_modalities)
+                    .for_prompt_annotated(&step_context.settings.model_info.input_modalities)
             }
             .instrument(trace_span!("run_turn.prepare_sampling_request_input"))
             .await;
@@ -1594,6 +1595,7 @@ pub(crate) fn build_prompt(
     let turn_context = &step_context.turn;
     Prompt {
         input,
+        input_provenance: Default::default(),
         tools: step_context.tool_router.model_visible_specs(),
         parallel_tool_calls: true,
         base_instructions,
@@ -1621,7 +1623,7 @@ async fn run_sampling_request(
     turn_store: Arc<codex_extension_api::ExtensionData>,
     turn_diff_tracker: SharedTurnDiffTracker,
     client_session: &mut ModelClientSession,
-    input: Vec<ResponseItem>,
+    input: Vec<ResponseItemEnvelope>,
     cancellation_token: CancellationToken,
 ) -> CodexResult<(SamplingRequestResult, Vec<ResponseItem>)> {
     let turn_context = Arc::clone(&step_context.turn);
@@ -1658,9 +1660,13 @@ async fn run_sampling_request(
         } else {
             sess.clone_history()
                 .await
-                .for_prompt(&step_context.settings.model_info.input_modalities)
+                .for_prompt_annotated(&step_context.settings.model_info.input_modalities)
         };
-        let mut prompt_input = prompt_input;
+        let input_provenance = crate::model_output_projection::sources_for_input(&prompt_input);
+        let mut prompt_input = prompt_input
+            .into_iter()
+            .map(ResponseItemEnvelope::into_item)
+            .collect::<Vec<_>>();
         sess.services
             .executed_tool_calls
             .attach_to_prompt(&mut prompt_input, &mut executed_tool_calls_by_output);
@@ -1669,6 +1675,7 @@ async fn run_sampling_request(
             step_context.as_ref(),
             base_instructions.clone(),
         );
+        prompt.input_provenance = input_provenance;
         let responses_metadata = sess
             .responses_metadata(step_context.as_ref(), CodexResponsesRequestKind::Turn)
             .await;
@@ -2415,6 +2422,7 @@ async fn emit_turn_item_in_plan_mode(
 }
 
 /// Handle a completed assistant response item in plan mode, returning true if handled.
+#[allow(clippy::too_many_arguments)]
 async fn handle_assistant_item_done_in_plan_mode(
     sess: &Session,
     step_context: &StepContext,
@@ -2423,6 +2431,7 @@ async fn handle_assistant_item_done_in_plan_mode(
     state: &mut PlanModeStreamState,
     previously_active_item: Option<&TurnItem>,
     last_agent_message: &mut Option<String>,
+    model_output_provenance: Option<&codex_history::ModelOutputProvenance>,
 ) -> bool {
     let turn_context = &step_context.turn;
     if let ResponseItem::Message { role, .. } = item
@@ -2458,6 +2467,7 @@ async fn handle_assistant_item_done_in_plan_mode(
             step_context,
             item,
             finalized_facts.as_ref(),
+            model_output_provenance,
         )
         .await;
         if let Some(agent_message) = final_last_agent_message {
@@ -2583,6 +2593,7 @@ async fn try_run_sampling_request(
         .instrument(trace_span!("stream_request"))
         .or_cancel(&cancellation_token)
         .await??;
+    let model_output_provenance = client_session.output_provenance().cloned();
     if cancellation_token.is_cancelled() {
         return Err(CodexErr::TurnAborted);
     }
@@ -2739,6 +2750,7 @@ async fn try_run_sampling_request(
                         state,
                         previously_streamed_item.as_ref(),
                         &mut last_agent_message,
+                        model_output_provenance.as_ref(),
                     )
                     .await
                 {
@@ -2751,6 +2763,7 @@ async fn try_run_sampling_request(
                     turn_store: Arc::clone(&turn_store),
                     tool_runtime: tool_runtime.clone(),
                     cancellation_token: cancellation_token.child_token(),
+                    model_output_provenance: model_output_provenance.clone(),
                 };
 
                 let preempt_for_mailbox_mail = match &item {

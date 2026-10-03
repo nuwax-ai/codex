@@ -11,6 +11,7 @@ use codex_rust_rig_bridge::RigProtocol;
 use codex_rust_rig_bridge::stream_via_rig;
 use futures::StreamExt;
 use pretty_assertions::assert_eq;
+use serde_json::Value;
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
@@ -381,19 +382,49 @@ async fn paused_content_budget_fails_before_another_http_request() {
     }
 }
 
+/// Splitting one captured fixture into independent responses restarts only
+/// each event's outer content-block index. Citation indices and vendor data
+/// inside content blocks retain the exact values the producer sent.
+fn renumber_response_events(mut frames: Vec<Value>) -> Vec<Value> {
+    let indices: std::collections::BTreeSet<u64> = frames
+        .iter()
+        .filter(|frame| frame["type"] == "content_block_start")
+        .filter_map(|frame| frame["index"].as_u64())
+        .collect();
+    let remap: std::collections::BTreeMap<u64, usize> = indices
+        .into_iter()
+        .enumerate()
+        .map(|(ordinal, index)| (index, ordinal))
+        .collect();
+    for frame in &mut frames {
+        if let Some(original) = frame["index"].as_u64() {
+            frame["index"] = json!(
+                remap
+                    .get(&original)
+                    .expect("start frame for every remaining block")
+            );
+        }
+    }
+    frames
+}
+
 #[tokio::test]
 async fn pending_search_closes_when_the_result_arrives_on_another_pause() {
     let without_index = |excluded| {
-        paused_sse()
-            .split("\n\n")
-            .filter(|frame| {
-                frame
-                    .lines()
-                    .find_map(|line| line.strip_prefix("data: "))
-                    .and_then(|data| serde_json::from_str::<serde_json::Value>(data).ok())
-                    .is_none_or(|event| event["index"].as_u64() != Some(excluded))
+        let frames = paused_sse()
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .map(|data| serde_json::from_str::<Value>(data).expect("fixture frame"))
+            .filter(|frame| frame["index"].as_u64() != Some(excluded))
+            .collect();
+        renumber_response_events(frames)
+            .into_iter()
+            .map(|frame| {
+                format!(
+                    "event: {}\ndata: {frame}\n\n",
+                    frame["type"].as_str().expect("event type")
+                )
             })
-            .map(|frame| format!("{frame}\n\n"))
             .collect::<String>()
     };
     let (address, server) = support::sequence_server(vec![
@@ -429,20 +460,46 @@ async fn pending_search_closes_when_the_result_arrives_on_another_pause() {
         statuses,
         vec![Some("in_progress".into()), Some("completed".into())]
     );
-    assert_eq!(server.await.unwrap().len(), 3);
+    let bodies = server.await.unwrap();
+    assert_eq!(bodies.len(), 3);
+    let mut expected = bodies[0]["messages"]
+        .as_array()
+        .expect("original messages")
+        .clone();
+    expected.push(json!({"role":"assistant","content":[
+        {"type":"server_tool_use","id":"srvu_p1","name":"web_search","input":{"query":"pause q"}},
+        {"type":"text","text":"partial so far"},
+    ]}));
+    assert_eq!(
+        bodies[1]["messages"],
+        json!(expected),
+        "pending call stays in its first paused response"
+    );
+    expected.push(json!({"role":"assistant","content":[
+        {"type":"web_search_tool_result","tool_use_id":"srvu_p1","content":[{"type":"web_search_result","url":"https://example.com","encrypted_content":"ENC_P1"}]},
+        {"type":"text","text":"partial so far"},
+    ]}));
+    assert_eq!(
+        bodies[2]["messages"],
+        json!(expected),
+        "late result belongs only to the second response; the entire prefix stays intact"
+    );
 }
 
 #[tokio::test]
 async fn paused_current_and_late_search_results_have_one_citation_owner() {
-    let first = paused_sse()
+    let first_frames = paused_sse()
         .lines()
         .filter_map(|line| line.strip_prefix("data: "))
-        .map(|data| serde_json::from_str::<serde_json::Value>(data).unwrap())
+        .map(|data| serde_json::from_str::<Value>(data).expect("fixture frame"))
         .filter(|frame| frame["index"].as_u64() != Some(1))
+        .collect();
+    let first = renumber_response_events(first_frames)
+        .into_iter()
         .map(|frame| {
             format!(
                 "event: {}\ndata: {frame}\n\n",
-                frame["type"].as_str().unwrap()
+                frame["type"].as_str().expect("event type")
             )
         })
         .collect();
@@ -495,15 +552,47 @@ async fn paused_current_and_late_search_results_have_one_citation_owner() {
         ) = event.unwrap()
         {
             let payload = wire_blocks.unwrap();
-            searches.push(json!({"call_id":payload["blocks"][0]["id"], "status":status, "cited_text":payload["cited_text"]}));
+            // v3: cited blocks belong to this response's named text segment.
+            let cited = match payload["layout"].as_array() {
+                Some(layout) => Value::Array(
+                    layout
+                        .iter()
+                        .filter(|entry| entry["kind"] == "cited")
+                        .map(|entry| entry["block"].clone())
+                        .collect(),
+                ),
+                None => Value::Null,
+            };
+            searches.push(
+                json!({"call_id":payload["blocks"][0]["id"], "status":status, "cited_text":cited}),
+            );
         }
     }
-    assert_eq!(server.await.unwrap().len(), 3);
+    let bodies = server.await.unwrap();
+    assert_eq!(bodies.len(), 3);
+    let prefix = bodies[1]["messages"]
+        .as_array()
+        .expect("first pause messages");
+    let mut expected = prefix.clone();
+    expected.push(json!({"role":"assistant","content":[
+        {"type":"thinking","thinking":"deliberate thought","signature":"SIG_BYTES"},
+        {"type":"server_tool_use","id":"srvu_r","name":"web_search","input":{"query":"rich pause"}},
+        {"type":"web_search_tool_result","tool_use_id":"srvu_r","content":[{"type":"web_search_result","url":"https://example.com","encrypted_content":"ENC_RICH"}]},
+        {"type":"text","text":"answer with a citation","citations":[{"type":"search_result_location","cited_text":"finding","source":"https://example.com","title":"Example","search_result_index":0,"start_block_index":2,"end_block_index":3}]},
+        {"type":"web_search_tool_result","tool_use_id":"srvu_p1","content":[{"type":"web_search_result","url":"https://example.com/late","encrypted_content":"ENC_LATE"}]},
+    ]}));
+    assert_eq!(
+        bodies[2]["messages"],
+        json!(expected),
+        "current pair, signed reasoning, citation and late result keep their raw response order and original prefix"
+    );
     assert_eq!(
         searches,
         vec![
-            json!({"call_id":"srvu_p1","status":"in_progress","cited_text":null}),
+            json!({"call_id":"srvu_p1","status":"in_progress","cited_text":[]}),
             json!({"call_id":"srvu_r","status":"completed","cited_text":[{"type":"text","text":"answer with a citation","citations":[{"type":"search_result_location","cited_text":"finding","source":"https://example.com","title":"Example","search_result_index":0,"start_block_index":2,"end_block_index":3}]}]}),
+            // The late-result envelope is a layout sibling: its pair entry
+            // lives in the same response's layout (srvu_r's envelope).
             json!({"call_id":"srvu_p1","status":"completed","cited_text":null}),
         ]
     );

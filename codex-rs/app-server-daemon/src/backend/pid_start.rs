@@ -104,6 +104,7 @@ impl PidBackend {
             .env_remove("NUWAX_BASE_URL")
             .env_remove("NUWAX_WIRE_API")
             .env_remove("NUWAX_API_KEY")
+            .env_remove("NUWAX_MAX_OUTPUT_TOKENS")
             .args(self.command_args().iter().map(std::borrow::Cow::as_ref))
             .stdin(Stdio::null())
             .stdout(Stdio::null())

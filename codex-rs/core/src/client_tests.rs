@@ -919,6 +919,20 @@ fn websocket_incremental_reuse_tracks_raw_result_metadata() -> anyhow::Result<()
             include_internal,
         )?;
 
+        if scenario == "unchanged_result" {
+            let mut changed_cap = current.clone();
+            changed_cap.max_output_tokens = Some(4096);
+            assert!(!super::responses_request_properties_match(
+                &previous,
+                &changed_cap
+            ));
+            let mut matched_cap = previous.clone();
+            matched_cap.max_output_tokens = Some(4096);
+            assert!(super::responses_request_properties_match(
+                &matched_cap,
+                &changed_cap
+            ));
+        }
         let mut session = client.new_session();
         session.websocket_session.last_request = Some(previous);
         let (sender, receiver) = tokio::sync::oneshot::channel();

@@ -161,6 +161,13 @@ max-threads = 1
 [test-groups.live-step]
 max-threads = 1
 
+# Each binary compaction/search scene runs two subprocess turns. Their inner
+# deadlines are 300s each, with bounded pipe draining and receipt verification
+# outside those deadlines. Let the scene persist its own timeout evidence.
+[[profile.default.overrides]]
+filter = 'package(codex-live-tests) and binary(exec_live) and test(/^(mimo|glm|step)_(compact_.*|websearch_.*)$/)'
+slow-timeout = { period = "90s", terminate-after = 8 }
+
 [[profile.default.overrides]]
 filter = 'package(codex-live-tests) and test(~mimo)'
 test-group = "live-mimo"

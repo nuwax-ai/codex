@@ -1,0 +1,5 @@
+---
+source: tui/src/app_server_target_tests.rs
+expression: error.to_string()
+---
+NUWAX environment provider must be configured on the remote app-server host; unset the local NUWAX provider group or omit --remote

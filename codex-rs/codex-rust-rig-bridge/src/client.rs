@@ -50,27 +50,6 @@ pub(crate) fn bearer_token(headers: &HeaderMap) -> Option<&str> {
         .map(|(_, token)| token)
 }
 
-/// Only actual bearer tokens are API keys. Basic/Token gateway credentials
-/// remain Authorization headers and must never be embedded in a new scheme.
-fn api_key_from_headers(headers: &HeaderMap, protocol: RigProtocol) -> String {
-    if protocol == RigProtocol::Anthropic
-        && let Some(key) = headers
-            .get("x-api-key")
-            .and_then(|value| value.to_str().ok())
-    {
-        return key.to_string();
-    }
-    bearer_token(headers)
-        .map(str::to_string)
-        .or_else(|| {
-            headers
-                .get("api-key")
-                .and_then(|v| v.to_str().ok())
-                .map(str::to_string)
-        })
-        .unwrap_or_default()
-}
-
 /// Preserves the effective request headers except the primary auth header
 /// rebuilt by Rig. In Anthropic mode, a bearer token is translated to x-api-key;
 /// an explicitly configured x-api-key may coexist with gateway Authorization.
@@ -95,6 +74,12 @@ pub(crate) fn request_headers(headers: &HeaderMap, protocol: RigProtocol) -> Hea
     merged
 }
 
+// One policy owner: protocol-level resends inside reqwest would bypass the
+// provider budget and final-request recorder, even with zero configured retries.
+fn http_client_builder() -> reqwest13::ClientBuilder {
+    reqwest13::Client::builder().retry(reqwest13::retry::never())
+}
+
 pub(crate) fn http_client(protocol: RigProtocol) -> Result<reqwest13::Client, codex_api::ApiError> {
     // Headers belong to the request decorator, including gateway credentials
     // and per-turn trace IDs. Keeping them in client defaults would create a
@@ -107,7 +92,7 @@ pub(crate) fn http_client(protocol: RigProtocol) -> Result<reqwest13::Client, co
             }
         })?;
     let build = || {
-        let mut builder = reqwest13::Client::builder();
+        let mut builder = http_client_builder();
         if let Some(config) = custom_ca.as_ref() {
             builder = builder.tls_backend_preconfigured((**config).clone());
         }
@@ -135,7 +120,7 @@ fn pooled_http_client(
     if let Some(client) = cache.get(&protocol) {
         return Ok(std::sync::Arc::clone(client));
     }
-    let client = std::sync::Arc::new(reqwest13::Client::builder().build().map_err(|error| {
+    let client = std::sync::Arc::new(http_client_builder().build().map_err(|error| {
         codex_api::ApiError::Transport(codex_api::TransportError::Network(format!(
             "rig http client build failed: {error}"
         )))
@@ -186,31 +171,59 @@ pub(crate) fn endpoint(
     Ok((url.to_string().trim_end_matches('/').to_string(), query))
 }
 
+/// Compatibility entry point for callers without authentication-domain evidence.
 pub fn reasoning_source(
     provider: &Provider,
     protocol: RigProtocol,
     model: &str,
 ) -> Result<String, codex_api::ApiError> {
+    reasoning_source_with_auth_domain(provider, protocol, model, Some("legacy-unscoped"))
+}
+
+/// Binds opaque replay to a non-secret account or configuration selector.
+/// Missing evidence gets a request-local nonce, so it can never authorize replay
+/// captured by another request. The legacy wrapper explicitly opts into its old scope.
+pub fn reasoning_source_with_auth_domain(
+    provider: &Provider,
+    protocol: RigProtocol,
+    model: &str,
+    auth_domain: Option<&str>,
+) -> Result<String, codex_api::ApiError> {
     use sha2::Digest;
-    use sha2::Sha256;
-    let (base_url, query) = endpoint(&provider.base_url, provider)?;
-    // Include routing query values without persisting credentials or tenant IDs.
-    let encoded = serde_json::to_vec(&(base_url, query, model)).map_err(|error| {
+    let endpoint = codex_api::model_endpoint_identity(provider);
+    let auth_domain = auth_domain.filter(|_| endpoint.is_some());
+    static UNKNOWN_DOMAIN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let unbound;
+    let auth_domain = match auth_domain {
+        Some(domain) => domain,
+        None => {
+            let nonce = UNKNOWN_DOMAIN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |duration| duration.as_nanos());
+            unbound = format!("unbound:{}:{timestamp}:{nonce}", std::process::id());
+            &unbound
+        }
+    };
+    let endpoint = endpoint.unwrap_or_else(|| "unbound-endpoint".into());
+    let encoded = serde_json::to_vec(&(endpoint, model, auth_domain)).map_err(|error| {
         codex_api::ApiError::InvalidRequest {
             message: format!("Invalid reasoning source: {error}"),
         }
     })?;
-    Ok(format!("{protocol:?}:{:x}", Sha256::digest(encoded)))
+    Ok(format!("{protocol:?}:{:x}", sha2::Sha256::digest(encoded)))
 }
 
 pub(crate) fn build_chat_model(
     model_name: &str,
     base_url: &str,
     headers: &HeaderMap,
-    http: crate::transport::RigHttpClient,
+    mut http: crate::transport::RigHttpClient,
 ) -> Result<RigChatModel, codex_api::ApiError> {
+    let (api_key, wire_auth) = crate::wire_auth::resolved_sdk_auth(headers, RigProtocol::Chat)?;
+    http.wire_auth = Some(wire_auth);
     let client = rig_core::providers::openai::CompletionsClient::builder()
-        .api_key(api_key_from_headers(headers, RigProtocol::Chat))
+        .api_key(api_key)
         .base_url(base_url)
         .http_client(http)
         .build()
@@ -226,11 +239,14 @@ pub(crate) fn build_chat_model(
 pub(crate) fn build_responses_client(
     base_url: &str,
     headers: &HeaderMap,
-    http: crate::transport::RigHttpClient,
+    mut http: crate::transport::RigHttpClient,
 ) -> Result<rig_core::providers::openai::Client<crate::transport::RigHttpClient>, codex_api::ApiError>
 {
+    let (api_key, wire_auth) =
+        crate::wire_auth::resolved_sdk_auth(headers, RigProtocol::Responses)?;
+    http.wire_auth = Some(wire_auth);
     rig_core::providers::openai::Client::builder()
-        .api_key(api_key_from_headers(headers, RigProtocol::Responses))
+        .api_key(api_key)
         .base_url(base_url)
         .http_client(http)
         .build()
@@ -241,10 +257,13 @@ pub(crate) fn build_anthropic_model(
     model_name: &str,
     base_url: &str,
     headers: &HeaderMap,
-    http: crate::transport::RigHttpClient,
+    mut http: crate::transport::RigHttpClient,
 ) -> Result<RigAnthropicModel, codex_api::ApiError> {
+    let (api_key, wire_auth) =
+        crate::wire_auth::resolved_sdk_auth(headers, RigProtocol::Anthropic)?;
+    http.wire_auth = Some(wire_auth);
     let mut builder = rig_core::providers::anthropic::Client::builder()
-        .api_key(api_key_from_headers(headers, RigProtocol::Anthropic))
+        .api_key(api_key)
         .base_url(base_url)
         .http_client(http);
     if let Some(version) = headers.get("anthropic-version") {
@@ -268,3 +287,7 @@ fn map_client_error(e: rig_core::http_client::Error) -> codex_api::ApiError {
 #[cfg(test)]
 #[path = "client_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "client_retry_tests.rs"]
+mod client_retry_tests;

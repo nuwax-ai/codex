@@ -4,8 +4,9 @@
 //! `NUWAX_MODEL`) start a session against a temporary custom provider for
 //! this one process, without touching config files. The group is parsed and
 //! validated ONCE per process into seed overrides for the existing `-c`
-//! pipeline — no parallel provider storage. Credentials are only ever
-//! referenced (`env_key = "NUWAX_API_KEY"`); the raw key never enters a
+//! pipeline — no parallel provider storage.
+//! `NUWAX_MAX_OUTPUT_TOKENS` optionally caps generated output on all three protocols. Credentials
+//! are referenced (`env_key = "NUWAX_API_KEY"`); the raw key never enters a
 //! config value, rollout, or diagnostic.
 //!
 //! Precedence falls out of the existing layers: an explicit typed CLI model
@@ -31,6 +32,7 @@ const MODEL_ENV: &str = "NUWAX_MODEL";
 const BASE_URL_ENV: &str = "NUWAX_BASE_URL";
 const WIRE_API_ENV: &str = "NUWAX_WIRE_API";
 const API_KEY_ENV: &str = "NUWAX_API_KEY";
+const MAX_OUTPUT_TOKENS_ENV: &str = "NUWAX_MAX_OUTPUT_TOKENS";
 
 /// The raw environment inputs, owned so the production reader can move the
 /// `var_os` values. Non-Unicode values surface as a diagnosable error
@@ -42,6 +44,7 @@ pub struct NuwaxEnvInput {
     pub base_url: Option<OsString>,
     pub wire_api: Option<OsString>,
     pub api_key: Option<OsString>,
+    pub max_output_tokens: Option<OsString>,
 }
 
 /// Reads the group from the real process environment exactly once per call
@@ -53,6 +56,7 @@ pub fn from_process() -> NuwaxEnvInput {
         base_url: std::env::var_os(BASE_URL_ENV),
         wire_api: std::env::var_os(WIRE_API_ENV),
         api_key: std::env::var_os(API_KEY_ENV),
+        max_output_tokens: std::env::var_os(MAX_OUTPUT_TOKENS_ENV),
     }
 }
 
@@ -105,6 +109,12 @@ pub fn nuwax_env_overrides(
     let group_set = [base_url, wire_api, api_key];
     let set_count = group_set.iter().filter(|value| value.is_some()).count();
     if set_count == 0 {
+        if input.max_output_tokens.is_some() {
+            return Err(format!(
+                "{MAX_OUTPUT_TOKENS_ENV} requires the complete NUWAX temporary provider group; \
+                 set NUWAX_BASE_URL, NUWAX_WIRE_API and NUWAX_API_KEY together"
+            ));
+        }
         // Group inactive: NUWAX_MODEL may still select an existing
         // provider's model, at env precedence (below explicit -c and the
         // typed CLI flag).
@@ -137,6 +147,25 @@ pub fn nuwax_env_overrides(
         ));
     }
     require_non_blank(api_key, API_KEY_ENV)?;
+    let max_output_tokens = match unicode(
+        input.max_output_tokens.as_deref(),
+        MAX_OUTPUT_TOKENS_ENV,
+    )? {
+        Some(raw) => {
+            let raw = require_non_blank(Some(raw), MAX_OUTPUT_TOKENS_ENV)?;
+            let invalid = || {
+                format!(
+                    "Invalid {MAX_OUTPUT_TOKENS_ENV}: expected a positive integer token count within the i64 range"
+                )
+            };
+            let parsed: i64 = raw.parse().map_err(|_| invalid())?;
+            if parsed <= 0 {
+                return Err(invalid());
+            }
+            Some(parsed)
+        }
+        None => None,
+    };
     let reserved_provider = format!("model_providers.{NUWAX_ENV_PROVIDER_ID}");
     let reserved_subkey_prefix = format!("{reserved_provider}.");
     if existing.iter().any(|(key, value)| {
@@ -164,6 +193,12 @@ pub fn nuwax_env_overrides(
     // fast on) a missing env var at auth time; the key itself is never
     // copied into configuration.
     provider.insert("env_key".into(), Value::String(API_KEY_ENV.into()));
+    if let Some(max_output_tokens) = max_output_tokens {
+        provider.insert(
+            "max_output_tokens".into(),
+            Value::Integer(max_output_tokens),
+        );
+    }
     seeds.push((
         format!("model_providers.{NUWAX_ENV_PROVIDER_ID}"),
         Value::Table(provider),

@@ -1,234 +1,276 @@
-//! Versioned replay carrier for hosted (server-side) search results, plus
-//! the request-side hard caps and source gate every path shares (fresh
-//! capture, resume, fork, import, provider switch).
-//!
-//! The phase-D format was a bare block array with no origin. That cannot be
-//! replayed safely across endpoints — the payloads are vendor ciphertext —
-//! so capture now writes a versioned envelope carrying the same
-//! credential-free source identity `client::reasoning_source` computes.
-//! Replay requires an exact source match; legacy arrays and mismatched or
-//! unknown sources are conservatively downgraded (pair not replayed, call
-//! item kept), never guessed at and never truncated.
+//! Source-gated, bounded hosted-search replay. v3 records response ownership and
+//! stable segment IDs; v1/v2 replay pairs only and never attribute citations.
 
 use serde_json::Value;
 use serde_json::json;
+use std::collections::HashSet;
 
-pub(crate) const ENVELOPE_VERSION: u64 = 1;
-/// Hard cap per request: total replayed search pairs (one pair = one
-/// `server_tool_use` plus its matching result) across every assistant group.
+pub(crate) const ENVELOPE_VERSION: u64 = 3;
+pub(crate) const UNKNOWN_WIRE_INDEX: u64 = u64::MAX;
 pub(crate) const MAX_REPLAY_PAIRS_PER_REQUEST: usize = 64;
-/// Serialized byte cap for one captured or loaded envelope, including its
-/// citations. This is a byte budget, not an exact token limit. Payloads drop
-/// whole, never truncated mid-ciphertext.
-pub(crate) const MAX_PAIR_BYTES: usize = 40_960;
+/// Conservative serialized-byte fallback with framing reserve. This is not a
+/// tokenizer-exact guarantee for an unknown provider; ciphertext is never cut.
+pub(crate) const MAX_PAIR_BYTES: usize = 9_800;
+pub(crate) const MAX_LAYOUTS_PER_REQUEST: usize = 64;
+pub(crate) const MAX_LAYOUT_BYTES_PER_REQUEST: usize = 65_536;
 
-/// The parsed replay payload persisted on `WebSearchCall.wire_blocks`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SegmentKind {
+    Text,
+    Reasoning,
+    Tool,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CapturedSegment {
+    pub(crate) id: String,
+    pub(crate) kind: SegmentKind,
+}
+
+pub(crate) fn segment_id(response: &str, ordinal: usize) -> String {
+    format!("rigseg_{response}_{ordinal}")
+}
+
+/// The ID itself persists ownership through rollout serialization, resume and
+/// fork without extending the shared Responses passthrough metadata contract.
+pub(crate) fn segment_response(id: &str) -> Option<&str> {
+    let rest = id.strip_prefix("rigseg_")?;
+    let (response, ordinal) = rest.rsplit_once('_')?;
+    (valid_response_id(response) && ordinal.parse::<usize>().is_ok()).then_some(response)
+}
+
+fn valid_response_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 128 && id.bytes().all(|byte| byte.is_ascii_alphanumeric())
+}
+
 pub(crate) struct Envelope {
-    /// Credential-free source identity at capture time. `None` for legacy
-    /// bare arrays — those never replay.
     pub(crate) source: Option<String>,
     pub(crate) blocks: Vec<Value>,
-    /// Finished text blocks that carried search citations, in stream order;
-    /// replayed after the pair blocks inside the same assistant group.
+    pub(crate) response_id: Option<String>,
+    pub(crate) block_indices: Option<Vec<u64>>,
+    pub(crate) layout: Option<Vec<Value>>,
     pub(crate) cited_text: Vec<Value>,
 }
 
-/// Builds the envelope written at capture time.
-pub(crate) fn envelope(source: &str, blocks: Vec<Value>, cited_text: Vec<Value>) -> Value {
-    // `cited_text` rides the envelope only when present; empty stays absent
-    // so payloads without citations keep their minimal shape.
-    let mut value = json!({"version": ENVELOPE_VERSION, "source": source, "blocks": blocks});
-    if !cited_text.is_empty()
+/// Every sibling carries the response ID even when the full layout was dropped.
+pub(crate) fn envelope(
+    source: &str,
+    blocks: Vec<Value>,
+    block_indices: Vec<u64>,
+    response_id: &str,
+    layout: Option<&[Value]>,
+) -> Value {
+    let mut value = json!({"version":ENVELOPE_VERSION,"source":source,
+        "response_id":response_id,"blocks":blocks,"block_indices":block_indices});
+    if let Some(layout) = layout
+        && !layout.is_empty()
         && let Some(object) = value.as_object_mut()
     {
-        object.insert("cited_text".into(), Value::Array(cited_text));
+        object.insert("layout".into(), Value::Array(layout.to_vec()));
     }
     value
 }
 
-/// Parses a persisted payload. `None` for shapes this bridge cannot
-/// interpret (nulls, unknown versions, missing blocks).
 pub(crate) fn parse_envelope(value: &Value) -> Option<Envelope> {
     if let Some(blocks) = value.as_array() {
-        // Legacy phase-D payload: a bare block array with no origin.
         return Some(Envelope {
             source: None,
             blocks: blocks.clone(),
+            response_id: None,
+            block_indices: None,
+            layout: None,
             cited_text: Vec::new(),
         });
     }
     let object = value.as_object()?;
-    if object.get("version").and_then(Value::as_u64) != Some(ENVELOPE_VERSION) {
+    let version = object.get("version")?.as_u64()?;
+    if !matches!(version, 1 | 2 | ENVELOPE_VERSION) {
         return None;
     }
+    let blocks = object.get("blocks")?.as_array()?.clone();
+    // Old layouts have no response/segment ownership. Their text is never
+    // promoted to v3, even if an imported envelope happens to add an ID.
+    let (response_id, block_indices, layout) = if version == ENVELOPE_VERSION {
+        let response = object.get("response_id")?.as_str()?;
+        if !valid_response_id(response) {
+            return None;
+        }
+        let indices: Option<Vec<u64>> = object
+            .get("block_indices")?
+            .as_array()?
+            .iter()
+            .map(Value::as_u64)
+            .collect();
+        let indices = indices?;
+        if indices.len() != blocks.len() {
+            return None;
+        }
+        let mut seen = HashSet::new();
+        let mut previous = None;
+        for index in indices
+            .iter()
+            .copied()
+            .filter(|index| *index != UNKNOWN_WIRE_INDEX)
+        {
+            if !seen.insert(index) || previous.is_some_and(|previous| previous >= index) {
+                return None;
+            }
+            previous = Some(index);
+        }
+        let layout = match object.get("layout") {
+            Some(layout) => Some(layout.as_array()?.clone()),
+            None => None,
+        };
+        (Some(response.to_string()), Some(indices), layout)
+    } else {
+        (None, None, None)
+    };
+    let cited_text = if version < ENVELOPE_VERSION {
+        match object.get("cited_text") {
+            Some(blocks) => blocks.as_array()?.clone(),
+            None => Vec::new(),
+        }
+    } else {
+        Vec::new()
+    };
     Some(Envelope {
         source: object
             .get("source")
             .and_then(Value::as_str)
             .map(str::to_string),
-        blocks: object.get("blocks")?.as_array()?.clone(),
-        cited_text: match object.get("cited_text") {
-            Some(blocks) => blocks.as_array()?.clone(),
-            None => Vec::new(),
-        },
+        blocks,
+        response_id,
+        block_indices,
+        layout,
+        cited_text,
     })
 }
 
-/// True when the payload was captured by the same source identity that is
-/// about to send this request.
 pub(crate) fn replayable(envelope: &Envelope, current_source: &str) -> bool {
     envelope.source.as_deref() == Some(current_source)
 }
 
-/// Gates imported history before deduplication or construction of Rig's raw
-/// content anchor. Malformed or foreign payloads cannot suppress valid items
-/// or make the SDK reject an otherwise usable conversation.
 pub(crate) fn validated_envelope(value: &Value, current_source: &str) -> Option<Envelope> {
-    let object = value.as_object()?;
-    if object.get("version").and_then(Value::as_u64) != Some(ENVELOPE_VERSION)
+    if !value.is_object()
         || serde_json::to_vec(value).map_or(true, |bytes| bytes.len() > MAX_PAIR_BYTES)
     {
         return None;
     }
     let envelope = parse_envelope(value)?;
-    if !replayable(&envelope, current_source) || !valid_cited_text(&envelope.cited_text) {
+    if !replayable(&envelope, current_source)
+        || !valid_cited_text(&envelope.cited_text)
+        || envelope.layout.as_ref().is_some_and(|layout| {
+            !valid_layout(layout, envelope.response_id.as_deref().unwrap_or_default())
+        })
+        || !valid_pair_blocks(&envelope.blocks)
+    {
         return None;
     }
-    let blocks: Vec<Value> = pair_group_blocks(&envelope.blocks, /*position*/ 0)
-        .into_iter()
-        .flat_map(|(_, blocks)| blocks)
-        .collect();
-    if blocks.is_empty() || blocks.len() != envelope.blocks.len() {
-        return None;
+    if let Some(indices) = &envelope.block_indices {
+        for (block, index) in envelope.blocks.iter().zip(indices) {
+            if *index == UNKNOWN_WIRE_INDEX && block["type"] != "server_tool_use" {
+                return None;
+            }
+        }
     }
     Some(envelope)
 }
 
 fn valid_cited_text(blocks: &[Value]) -> bool {
     blocks.iter().all(|block| {
-        block.get("type").and_then(Value::as_str) == Some("text")
-            && block.get("text").and_then(Value::as_str).is_some()
-            && block.get("citations").is_some_and(Value::is_array)
+        block["type"] == "text" && block["text"].is_string() && block["citations"].is_array()
     })
 }
 
-/// One assistant group scheduled for wire replay.
+pub(crate) fn valid_layout(layout: &[Value], response: &str) -> bool {
+    let mut previous = None;
+    let mut segment_parts = std::collections::HashMap::<&str, u64>::new();
+    layout.iter().all(|entry| {
+        let Some(index) = entry.get("index").and_then(Value::as_u64) else {
+            return false;
+        };
+        if index == UNKNOWN_WIRE_INDEX || previous.is_some_and(|previous| previous >= index) {
+            return false;
+        }
+        previous = Some(index);
+        match entry.get("kind").and_then(Value::as_str) {
+            Some("pair") => true,
+            Some(kind @ ("text" | "cited" | "segment")) => {
+                let Some(owner) = entry.get("owner").and_then(Value::as_str) else {
+                    return false;
+                };
+                if segment_response(owner) != Some(response) {
+                    return false;
+                }
+                if kind == "segment" {
+                    let Some(part) = entry.get("part").and_then(Value::as_u64) else {
+                        return false;
+                    };
+                    let expected = segment_parts.entry(owner).or_default();
+                    if part != *expected {
+                        return false;
+                    }
+                    *expected += 1;
+                    true
+                } else {
+                    entry["block"]["type"] == "text"
+                        && entry["block"]["text"].is_string()
+                        && (kind != "cited" || entry["block"]["citations"].is_array())
+                }
+            }
+            _ => false,
+        }
+    })
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct BlockSite {
+    pub(crate) layout: u32,
+    pub(crate) wire: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct SegmentSite {
+    pub(crate) id: String,
+    /// Offset/length of this named item's actual serialized assistant blocks.
+    pub(crate) start: usize,
+    pub(crate) len: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ResponseSite {
+    pub(crate) id: String,
+    /// Explicit insertion boundary for a response with no surviving segments.
+    pub(crate) anchor: usize,
+    pub(crate) segments: Vec<SegmentSite>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ReplayGroup {
-    /// Index of the assistant message the pairs followed in history.
     pub(crate) index: usize,
     pub(crate) blocks: Vec<Value>,
-    /// Cited text blocks replayed after the pair blocks in this group.
+    pub(crate) block_sites: Option<Vec<BlockSite>>,
+    /// Aligned with responses. An empty layout means pair-only at that response.
+    pub(crate) layouts: Vec<Vec<Value>>,
+    pub(crate) responses: Vec<ResponseSite>,
     pub(crate) cited_text: Vec<Value>,
 }
 
-/// Applies the request-side hard caps and shape checks to the collected
-/// replay groups — the authoritative pass, covering payloads this process
-/// never captured (old rollouts, imports). See the module docs for the
-/// downgrade rules.
-pub(crate) fn sanitize_for_request(groups: Vec<ReplayGroup>) -> Vec<ReplayGroup> {
-    // A completed envelope can project its call in an earlier assistant and
-    // its result in a later one. Budget the whole pair, then retain each block
-    // at its original group/block position. Imported result-only envelopes
-    // never reach this pass: validated_envelope requires their original call.
-    let mut pairs: Vec<Vec<(usize, usize)>> = Vec::new();
-    let mut calls = std::collections::HashMap::<String, usize>::new();
-    for (position, group) in groups.iter().enumerate() {
-        if !valid_cited_text(&group.cited_text) {
-            tracing::warn!("web-search replay carries malformed cited text; dropping its payload");
-            continue;
-        }
-        for (block_index, block) in group.blocks.iter().enumerate() {
-            match block.get("type").and_then(Value::as_str) {
-                Some("server_tool_use") => {
-                    if let Some(id) = valid_call_id(block)
-                        && let std::collections::hash_map::Entry::Vacant(entry) =
-                            calls.entry(id.to_string())
-                    {
-                        entry.insert(pairs.len());
-                        pairs.push(vec![(position, block_index)]);
-                    }
-                }
-                Some("web_search_tool_result" | "tool_result") => {
-                    if let Some(pair) = block
-                        .get("tool_use_id")
-                        .and_then(Value::as_str)
-                        .and_then(|id| calls.get(id))
-                        .map(|index| &mut pairs[*index])
-                        && pair.len() == 1
-                    {
-                        if valid_result(block) {
-                            pair.push((position, block_index));
-                        } else {
-                            pair.clear();
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
+impl ReplayGroup {
+    pub(crate) fn has_identity(&self) -> bool {
+        self.block_sites.is_some() && !self.responses.is_empty()
     }
-    pairs.retain(|pair| {
-        if pair.is_empty() {
-            return false;
-        }
-        let blocks: Vec<&Value> = pair
-            .iter()
-            .map(|(position, index)| &groups[*position].blocks[*index])
-            .collect();
-        let mut positions = std::collections::BTreeSet::new();
-        let cited_text: Vec<&Value> = pair
-            .iter()
-            .filter(|(position, _)| positions.insert(*position))
-            .flat_map(|(position, _)| &groups[*position].cited_text)
-            .collect();
-        serde_json::to_vec(&json!({"blocks": blocks, "cited_text": cited_text}))
-            .is_ok_and(|bytes| bytes.len() <= MAX_PAIR_BYTES)
-    });
-    if pairs.len() > MAX_REPLAY_PAIRS_PER_REQUEST {
-        let dropped = pairs.len() - MAX_REPLAY_PAIRS_PER_REQUEST;
-        tracing::warn!(
-            dropped,
-            MAX_REPLAY_PAIRS_PER_REQUEST,
-            "web-search replay pairs exceed the per-request cap; oldest dropped"
-        );
-        pairs.drain(..dropped);
-    }
-    let kept: std::collections::HashSet<(usize, usize)> = pairs.into_iter().flatten().collect();
-    let mut result: Vec<ReplayGroup> = Vec::new();
-    for (position, group) in groups.into_iter().enumerate() {
-        let blocks: Vec<Value> = group
-            .blocks
-            .into_iter()
-            .enumerate()
-            .filter_map(|(index, block)| kept.contains(&(position, index)).then_some(block))
-            .collect();
-        if blocks.is_empty() {
-            continue;
-        }
-        match result.last_mut().filter(|last| last.index == group.index) {
-            Some(last) => {
-                last.blocks.extend(blocks);
-                last.cited_text.extend(group.cited_text);
-            }
-            None => result.push(ReplayGroup {
-                index: group.index,
-                blocks,
-                cited_text: group.cited_text,
-            }),
-        }
-    }
-    result
 }
 
-fn valid_call_id(block: &Value) -> Option<&str> {
+pub(crate) use crate::hosted_replay_budget::sanitize_for_request;
+
+pub(crate) fn valid_call_id(block: &Value) -> Option<&str> {
     let id = block.get("id")?.as_str()?;
     let name = block.get("name")?.as_str()?;
     (!id.is_empty() && !name.is_empty() && block.get("input").is_some_and(Value::is_object))
         .then_some(id)
 }
-
-fn valid_result(block: &Value) -> bool {
+pub(crate) fn valid_result(block: &Value) -> bool {
     let Some(content) = block.get("content") else {
         return false;
     };
@@ -238,79 +280,35 @@ fn valid_result(block: &Value) -> bool {
         _ => false,
     }
 }
-
-/// Splits one group's blocks into per-pair block lists with the shape and
-/// size checks: a pair is a `server_tool_use` plus its matching result
-/// block; calls without an id or name drop their payload; results whose
-/// `tool_use_id` matches no call in the group drop; oversized pairs drop
-/// whole. Returns `(source-group position, pair blocks)` in order.
-fn pair_group_blocks(blocks: &[Value], position: usize) -> Vec<(usize, Vec<Value>)> {
-    let mut pairs: Vec<(String, Vec<Value>)> = Vec::new();
+fn valid_pair_blocks(blocks: &[Value]) -> bool {
+    let mut calls = std::collections::HashMap::<&str, bool>::new();
     for block in blocks {
         match block.get("type").and_then(Value::as_str) {
             Some("server_tool_use") => {
                 let Some(id) = valid_call_id(block) else {
-                    tracing::warn!(
-                        "web-search replay call without id, name, or object input; dropping its payload"
-                    );
-                    continue;
+                    return false;
                 };
-                if pairs.iter().any(|(existing_id, _)| existing_id == id) {
-                    tracing::warn!(
-                        id,
-                        "web-search replay repeats a call id inside one payload; dropping it"
-                    );
-                    continue;
+                if calls.insert(id, false).is_some() {
+                    return false;
                 }
-                pairs.push((id.to_string(), vec![block.clone()]));
             }
-            Some("web_search_tool_result") | Some("tool_result") => {
-                let tool_use_id = block
+            Some("web_search_tool_result" | "tool_result") => {
+                let Some(result) = block
                     .get("tool_use_id")
                     .and_then(Value::as_str)
-                    .unwrap_or_default();
-                match pairs
-                    .iter_mut()
-                    .rev()
-                    .find(|(id, _)| id == tool_use_id && !tool_use_id.is_empty())
-                {
-                    Some((_, blocks)) => blocks.push(block.clone()),
-                    None => tracing::warn!(
-                        "web-search replay result without a matching call; dropping it"
-                    ),
+                    .and_then(|id| calls.get_mut(id))
+                else {
+                    return false;
+                };
+                if *result || !valid_result(block) {
+                    return false;
                 }
+                *result = true;
             }
-            other => {
-                tracing::warn!(
-                    block_type = ?other,
-                    "web-search replay group carries an unrecognized block; dropping it"
-                );
-            }
+            _ => return false,
         }
     }
-    let mut result = Vec::new();
-    for (id, blocks) in pairs {
-        if blocks.len() > 2 || blocks.iter().skip(1).any(|block| !valid_result(block)) {
-            tracing::warn!(
-                id,
-                "web-search replay carries a malformed result; dropping its payload"
-            );
-            continue;
-        }
-        match serde_json::to_string(&blocks) {
-            Ok(serialized) if serialized.len() > MAX_PAIR_BYTES => tracing::warn!(
-                id,
-                MAX_PAIR_BYTES,
-                "web-search replay pair exceeds the size cap; dropping its payload"
-            ),
-            Ok(_) => result.push((position, blocks)),
-            Err(error) => tracing::warn!(
-                error = %error,
-                "web-search replay pair is not serializable; dropping its payload"
-            ),
-        }
-    }
-    result
+    !calls.is_empty()
 }
 
 /// The paused attempt's recovered state: history items for events and
@@ -333,154 +331,9 @@ pub(crate) struct PauseReplay {
     pub(crate) messages: Vec<Vec<Value>>,
 }
 
-/// Reassembles the assistant content blocks of one Anthropic SSE body in
-/// original index order. A block starts from its `content_block_start` JSON
-/// (preserving every field, known or not) and accumulates the four streamed
-/// delta kinds to their terminal state: `text_delta` → text,
-/// `input_json_delta` → input (parsed), `thinking_delta` → thinking,
-/// `signature_delta` → signature. Blocks complete on their start frame
-/// (`redacted_thinking`, results) pass through untouched. Unknown delta
-/// kinds, malformed input and incomplete captures fail before continuation;
-/// they cannot be replayed faithfully. Citation deltas accumulate by index.
-pub(crate) async fn raw_assistant_content(bytes: &[u8]) -> Result<Vec<Value>, codex_api::ApiError> {
-    use eventsource_stream::Eventsource;
-    use futures::StreamExt;
-    let frames = futures::stream::iter(vec![Ok::<_, std::convert::Infallible>(
-        bytes::Bytes::copy_from_slice(bytes),
-    )])
-    .eventsource();
-    futures::pin_mut!(frames);
-    #[derive(Default)]
-    struct Open {
-        base: Value,
-        input_json: String,
-    }
-    let mut open = std::collections::BTreeMap::<u64, Open>::new();
-    let mut complete = std::collections::BTreeMap::<u64, Value>::new();
-    let invalid = |reason: &str| {
-        codex_api::ApiError::Stream(format!(
-            "Cannot faithfully reconstruct paused Anthropic content: {reason}"
-        ))
-    };
-    let mut stopped = false;
-    while let Some(frame) = frames.next().await {
-        let frame = frame.map_err(|_| invalid("invalid SSE frame"))?;
-        let event: Value =
-            serde_json::from_str(&frame.data).map_err(|_| invalid("invalid frame JSON"))?;
-        let event_type = event.get("type").and_then(Value::as_str);
-        let index = if matches!(
-            event_type,
-            Some("content_block_start" | "content_block_delta" | "content_block_stop")
-        ) {
-            event
-                .get("index")
-                .and_then(Value::as_u64)
-                .ok_or_else(|| invalid("content block has no index"))?
-        } else {
-            0
-        };
-        match event_type {
-            Some("content_block_start") => {
-                let block = event
-                    .get("content_block")
-                    .filter(|block| block.is_object())
-                    .ok_or_else(|| invalid("missing content block object"))?;
-                if open.contains_key(&index) || complete.contains_key(&index) {
-                    return Err(invalid("duplicate content block index"));
-                }
-                open.insert(
-                    index,
-                    Open {
-                        base: block.clone(),
-                        input_json: String::new(),
-                    },
-                );
-            }
-            Some("content_block_delta") => {
-                let delta = &event["delta"];
-                let entry = open
-                    .get_mut(&index)
-                    .ok_or_else(|| invalid("delta without an open block"))?;
-                match delta.get("type").and_then(Value::as_str) {
-                    Some("input_json_delta") => {
-                        let fragment = delta
-                            .get("partial_json")
-                            .and_then(Value::as_str)
-                            .ok_or_else(|| invalid("input delta is not a string"))?;
-                        entry.input_json.push_str(fragment);
-                    }
-                    Some("citations_delta") => {
-                        let citation = delta
-                            .get("citation")
-                            .filter(|citation| citation.is_object())
-                            .ok_or_else(|| invalid("citation delta has no citation object"))?;
-                        let object = entry
-                            .base
-                            .as_object_mut()
-                            .ok_or_else(|| invalid("content block is not an object"))?;
-                        object
-                            .entry("citations")
-                            .or_insert_with(|| Value::Array(Vec::new()))
-                            .as_array_mut()
-                            .ok_or_else(|| invalid("citations is not an array"))?
-                            .push(citation.clone());
-                    }
-                    Some(kind @ ("text_delta" | "thinking_delta" | "signature_delta")) => {
-                        let field = match kind {
-                            "text_delta" => "text",
-                            "thinking_delta" => "thinking",
-                            "signature_delta" => "signature",
-                            _ => return Err(invalid("unknown text delta kind")),
-                        };
-                        let fragment = delta
-                            .get(field)
-                            .and_then(Value::as_str)
-                            .ok_or_else(|| invalid("text delta is not a string"))?;
-                        let object = entry
-                            .base
-                            .as_object_mut()
-                            .ok_or_else(|| invalid("content block is not an object"))?;
-                        let value = object
-                            .entry(field)
-                            .or_insert_with(|| Value::String(String::new()));
-                        let Value::String(text) = value else {
-                            return Err(invalid("streamed field is not a string"));
-                        };
-                        text.push_str(fragment);
-                    }
-                    _ => return Err(invalid("unsupported content delta kind")),
-                }
-            }
-            Some("content_block_stop") => {
-                let mut entry = open
-                    .remove(&index)
-                    .ok_or_else(|| invalid("stop without an open block"))?;
-                if !entry.input_json.is_empty() {
-                    let input: Value = serde_json::from_str(&entry.input_json)
-                        .map_err(|_| invalid("invalid accumulated input JSON"))?;
-                    if !input.is_object() {
-                        return Err(invalid("tool input is not an object"));
-                    }
-                    let object = entry
-                        .base
-                        .as_object_mut()
-                        .ok_or_else(|| invalid("content block is not an object"))?;
-                    object.insert("input".into(), input);
-                }
-                complete.insert(index, entry.base);
-            }
-            Some("message_stop") => {
-                stopped = true;
-                break;
-            }
-            _ => {}
-        }
-    }
-    if !stopped || !open.is_empty() || complete.is_empty() {
-        return Err(invalid("incomplete or empty paused content capture"));
-    }
-    Ok(complete.into_values().collect())
-}
+#[cfg(test)]
+pub(crate) use crate::hosted_capture::raw_assistant_content;
+pub(crate) use crate::hosted_capture::raw_indexed_assistant_content;
 
 #[cfg(test)]
 #[path = "hosted_replay_tests.rs"]

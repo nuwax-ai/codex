@@ -17,6 +17,7 @@ fn input(
         base_url: owned(base_url),
         wire_api: owned(wire_api),
         api_key: owned(api_key),
+        ..Default::default()
     }
 }
 
@@ -262,6 +263,7 @@ fn non_unicode_values_fail_with_variable_names() {
                 base_url: Some(bad),
                 wire_api: Some(OsString::from("chat")),
                 api_key: Some(OsString::from("k")),
+                ..Default::default()
             },
             /*cli_model*/ None,
             /*cli_provider*/ None,
@@ -410,4 +412,179 @@ fn repeated_provider_overrides_adopt_only_the_final_selection() {
             expected_keys
         );
     }
+}
+
+#[test]
+fn optional_output_cap_is_a_numeric_seed_for_chat_and_anthropic() {
+    for wire in ["chat", "anthropic", "responses"] {
+        for cap in [1, 4096, i64::MAX] {
+            let mut environment = input(
+                Some("m1"),
+                Some("https://gw.example"),
+                Some(wire),
+                Some("private-key"),
+            );
+            environment.max_output_tokens = Some(format!(" {cap} ").into());
+            let actual = nuwax_env_overrides(
+                environment,
+                /*cli_model*/ None,
+                /*cli_provider*/ None,
+                &[],
+            )
+            .expect("supported output cap");
+            let mut expected = provider_seeds(wire);
+            expected[0]
+                .1
+                .as_table_mut()
+                .expect("provider seed")
+                .insert("max_output_tokens".into(), Value::Integer(cap));
+            assert_eq!(actual, expected);
+            assert!(
+                !format!("{actual:?}").contains("private-key"),
+                "credentials remain an environment reference"
+            );
+        }
+    }
+}
+
+#[test]
+fn adopted_output_cap_rejects_blank_nonpositive_nonnumeric_and_out_of_range_values() {
+    for raw in [
+        "",
+        " ",
+        "0",
+        "-1",
+        "1.5",
+        "not-a-number",
+        "9223372036854775808",
+    ] {
+        let mut environment = input(
+            Some("m1"),
+            Some("https://gw.example"),
+            Some("chat"),
+            Some("private-key"),
+        );
+        environment.max_output_tokens = Some(raw.into());
+        let error = nuwax_env_overrides(
+            environment,
+            /*cli_model*/ None,
+            /*cli_provider*/ None,
+            &[],
+        )
+        .expect_err("invalid output cap must fail fast");
+        assert!(error.contains("NUWAX_MAX_OUTPUT_TOKENS"), "{error}");
+        assert!(
+            !error.contains("private-key"),
+            "errors never carry credentials"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn adopted_output_cap_rejects_non_unicode() {
+    use std::os::unix::ffi::OsStringExt;
+    let mut environment = input(
+        Some("m1"),
+        Some("https://gw.example"),
+        Some("anthropic"),
+        Some("private-key"),
+    );
+    environment.max_output_tokens = Some(OsString::from_vec(vec![0xff]));
+    let error = nuwax_env_overrides(
+        environment,
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &[],
+    )
+    .expect_err("non-Unicode output cap");
+    assert_eq!(
+        error,
+        "Invalid NUWAX_MAX_OUTPUT_TOKENS: expected Unicode text"
+    );
+}
+
+#[test]
+fn standalone_output_cap_requires_the_complete_group_but_unselected_groups_are_ignored() {
+    let environment = NuwaxEnvInput {
+        max_output_tokens: Some("2048".into()),
+        ..Default::default()
+    };
+    let error = nuwax_env_overrides(
+        environment.clone(),
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &[],
+    )
+    .expect_err("standalone cap has no provider owner");
+    for variable in [
+        "NUWAX_MAX_OUTPUT_TOKENS",
+        "NUWAX_BASE_URL",
+        "NUWAX_WIRE_API",
+        "NUWAX_API_KEY",
+    ] {
+        assert!(error.contains(variable), "{error}");
+    }
+    assert_eq!(
+        nuwax_env_overrides(
+            environment.clone(),
+            /*cli_model*/ None,
+            /*cli_provider*/ Some("other-provider"),
+            &[]
+        )
+        .expect("explicit provider wins"),
+        Vec::new()
+    );
+    assert_eq!(
+        nuwax_env_overrides(
+            environment,
+            /*cli_model*/ None,
+            /*cli_provider*/ None,
+            &[(
+                "model_provider".into(),
+                Value::String("other-provider".into())
+            )]
+        )
+        .expect("explicit -c provider wins"),
+        Vec::new()
+    );
+    let mut unused = input(
+        Some("m1"),
+        Some("invalid-url"),
+        Some("responses"),
+        Some("private-key"),
+    );
+    unused.max_output_tokens = Some("invalid-cap".into());
+    assert_eq!(
+        nuwax_env_overrides(
+            unused,
+            /*cli_model*/ None,
+            /*cli_provider*/ Some("other-provider"),
+            &[]
+        )
+        .expect("unused invalid options ignored"),
+        Vec::new()
+    );
+}
+
+#[test]
+fn cli_cannot_supply_the_reserved_output_cap_field() {
+    let mut environment = input(
+        Some("m1"),
+        Some("https://gw.example"),
+        Some("chat"),
+        Some("private-key"),
+    );
+    environment.max_output_tokens = Some("4096".into());
+    let error = nuwax_env_overrides(
+        environment,
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &[(
+            "model_providers.nuwax_env.max_output_tokens".into(),
+            Value::Integer(2048),
+        )],
+    )
+    .expect_err("provider fields remain exclusive to the seed layer");
+    assert!(error.contains("reserved"), "{error}");
 }

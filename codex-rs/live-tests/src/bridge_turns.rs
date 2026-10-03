@@ -199,15 +199,22 @@ pub async fn run_responses_turn_rig(
     } else {
         None
     };
+    let final_recorder = (cassette_mode() == CassetteMode::Record).then(|| {
+        Arc::new(std::sync::Mutex::new(
+            codex_rust_rig_bridge::FinalRequestCapture::default(),
+        ))
+    });
     let stream = timeout(
         TURN_TIMEOUT,
-        codex_rust_rig_bridge::stream_responses_via_rig_with_sse_recording(
+        codex_rust_rig_bridge::stream_responses_via_rig_with_capture(
             request,
             &provider,
             &shared_auth(&cfg.api_key),
             HeaderMap::new(),
             provider.stream_idle_timeout,
             recorder.clone(),
+            None,
+            final_recorder.clone(),
         ),
     )
     .await
@@ -215,6 +222,14 @@ pub async fn run_responses_turn_rig(
     .expect("responses stream_via_rig succeeded");
     let events = drain_stream(stream, &cfg.vendor, tag).await;
     record_turn(cfg, Bridge::Rig, tag, request, &events).expect("record Rig responses turn");
+    if let Some(recorder) = final_recorder {
+        save_final_request_fixture(
+            &cfg.vendor,
+            tag,
+            &recorder.lock().expect("final capture lock"),
+        )
+        .expect("record Responses request");
+    }
     if let Some(recorder) = recorder {
         let bytes = recorder.lock().expect("SSE recorder lock").clone();
         let sse = String::from_utf8(bytes)
@@ -268,22 +283,25 @@ pub async fn run_turn_rig(
     }
 
     let provider = vendor_provider(&cfg.vendor, base_url);
-    let recorder: codex_rust_rig_bridge::RigEventRecorder =
-        if cassette_mode() == CassetteMode::Record {
-            Some(Arc::new(std::sync::Mutex::new(Vec::new())))
-        } else {
-            None
-        };
-    let (stream, recorder): (ResponseStream, codex_rust_rig_bridge::RigEventRecorder) = timeout(
+    let recording = cassette_mode() == CassetteMode::Record;
+    let mut recorders = codex_rust_rig_bridge::RigTurnRecorders {
+        events: recording.then(|| Arc::new(std::sync::Mutex::new(Vec::new()))),
+        final_request: recording.then(|| {
+            Arc::new(std::sync::Mutex::new(
+                codex_rust_rig_bridge::FinalRequestCapture::default(),
+            ))
+        }),
+    };
+    let (stream, returned) = timeout(
         TURN_TIMEOUT,
-        codex_rust_rig_bridge::stream_via_rig_with_recording(
+        codex_rust_rig_bridge::stream_via_rig_with_recorders(
             request,
             &provider,
             &shared_auth(&cfg.api_key),
             HeaderMap::new(),
             protocol,
             provider.stream_idle_timeout,
-            recorder,
+            std::mem::take(&mut recorders),
         ),
     )
     .await
@@ -291,12 +309,17 @@ pub async fn run_turn_rig(
     .expect("stream_via_rig succeeded");
     let events = drain_stream(stream, &cfg.vendor, tag).await;
     record_turn(cfg, Bridge::Rig, tag, request, &events).expect("record Rig turn");
-    // Save the rig-event fixture alongside the event-level one.
-    if let Some(rec) = recorder {
+    // Save the rig-event fixture and the sanitized final request alongside
+    // the event-level one (D2: the wire shape the vendor actually received).
+    if let Some(rec) = returned.events {
         let rig_events = rec.lock().expect("Rig recorder lock");
         let custom_tools = codex_rust_rig_bridge::extract_custom_tool_names(request);
         save_rig_event_fixture(&cfg.vendor, tag, &rig_events, &custom_tools)
             .expect("record Rig events");
+    }
+    if let Some(captured) = returned.final_request {
+        let captured = captured.lock().expect("final-request lock").clone();
+        save_final_request_fixture(&cfg.vendor, tag, &captured).expect("record final request");
     }
     events
 }

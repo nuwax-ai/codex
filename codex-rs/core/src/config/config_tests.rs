@@ -6827,7 +6827,6 @@ async fn managed_config_overrides_oauth_store_mode() -> anyhow::Result<()> {
         codex_home.path(),
         Some(cwd),
         &Vec::new(),
-        /*env_seed_overrides*/ &[],
         overrides,
         &codex_config::NoopThreadConfigLoader,
     )
@@ -6970,7 +6969,6 @@ async fn managed_config_wins_over_cli_overrides() -> anyhow::Result<()> {
         codex_home.path(),
         Some(cwd),
         &[("model".to_string(), TomlValue::String("cli".to_string()))],
-        /*env_seed_overrides*/ &[],
         overrides,
         &codex_config::NoopThreadConfigLoader,
     )

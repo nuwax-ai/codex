@@ -78,6 +78,7 @@ async fn plan_mode_uses_contributed_turn_item_for_last_agent_message() {
         &mut state,
         /*previously_active_item*/ None,
         &mut last_agent_message,
+        /*model_output_provenance*/ None,
     )
     .await;
 

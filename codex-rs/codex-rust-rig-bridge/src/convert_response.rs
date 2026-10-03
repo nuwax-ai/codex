@@ -18,6 +18,9 @@ enum DeferredOutput {
 
 pub(crate) struct PendingRigMessage {
     tools: crate::response_tools::PendingTools,
+    response_id: String,
+    segments: Vec<crate::hosted_replay::CapturedSegment>,
+    tool_segment_ids: std::collections::HashMap<String, String>,
     text_buffer: String,
     text_item_id: Option<String>,
     reasoning: crate::reasoning::ReasoningState,
@@ -51,6 +54,9 @@ impl PendingRigMessage {
     ) -> Self {
         Self {
             tools: crate::response_tools::PendingTools::new(custom_tools),
+            response_id: unique_suffix(),
+            segments: Vec::new(),
+            tool_segment_ids: std::collections::HashMap::new(),
             text_buffer: String::new(),
             text_item_id: None,
             reasoning: Default::default(),
@@ -63,6 +69,22 @@ impl PendingRigMessage {
             suffix: Vec::new(),
         }
     }
+    pub(crate) fn response_id(&self) -> &str {
+        &self.response_id
+    }
+    pub(crate) fn segments(&self) -> &[crate::hosted_replay::CapturedSegment] {
+        &self.segments
+    }
+
+    fn new_segment(&mut self, kind: crate::hosted_replay::SegmentKind) -> String {
+        let id = crate::hosted_replay::segment_id(&self.response_id, self.segments.len());
+        self.segments.push(crate::hosted_replay::CapturedSegment {
+            id: id.clone(),
+            kind,
+        });
+        id
+    }
+
     pub(crate) fn completed_emitted(&self) -> bool {
         self.completed
     }
@@ -79,7 +101,7 @@ impl PendingRigMessage {
         }
         self.active_reasoning_ids.insert(id.to_string());
         if self.reasoning_item_id.is_none() {
-            let id = format!("rsn_{}", unique_suffix());
+            let id = self.new_segment(crate::hosted_replay::SegmentKind::Reasoning);
             self.reasoning_item_id = Some(id.clone());
             events.push(ResponseEvent::OutputItemAdded(ResponseItem::Reasoning {
                 id: Some(ResponseItemId::from_server(id)),
@@ -98,6 +120,8 @@ impl PendingRigMessage {
         self.suffix
             .extend(events.drain(..).map(Box::new).map(DeferredOutput::Event));
         if self.tool_positions.insert(id.to_string()) {
+            let segment_id = self.new_segment(crate::hosted_replay::SegmentKind::Tool);
+            self.tool_segment_ids.insert(id.to_string(), segment_id);
             self.suffix.push(DeferredOutput::Tool(id.to_string()));
         }
     }
@@ -115,7 +139,7 @@ pub(crate) fn rig_event_to_response_events(
         StreamedAssistantContent::Text(text) => {
             finish_reasoning(pending, &mut events);
             if pending.text_item_id.is_none() {
-                let id = format!("txt_{}", unique_suffix());
+                let id = pending.new_segment(crate::hosted_replay::SegmentKind::Text);
                 pending.text_item_id = Some(id.clone());
                 events.push(ResponseEvent::OutputItemAdded(ResponseItem::Message {
                     id: Some(ResponseItemId::from_server(id)),
@@ -272,7 +296,27 @@ fn finish_pending_output(pending: &mut PendingRigMessage) -> Result<Vec<Response
             match item {
                 DeferredOutput::Event(event) => events.push(*event),
                 DeferredOutput::Tool(id) => {
-                    if let Some(call) = tool_events.remove(&id) {
+                    if let Some(mut call) = tool_events.remove(&id) {
+                        if let Some(segment_id) = pending.tool_segment_ids.get(&id) {
+                            for event in &mut call {
+                                match event {
+                                    ResponseEvent::OutputItemAdded(
+                                        ResponseItem::FunctionCall { id, .. }
+                                        | ResponseItem::CustomToolCall { id, .. },
+                                    )
+                                    | ResponseEvent::OutputItemDone(
+                                        ResponseItem::FunctionCall { id, .. }
+                                        | ResponseItem::CustomToolCall { id, .. },
+                                    ) => {
+                                        *id = Some(ResponseItemId::from_server(segment_id.clone()));
+                                    }
+                                    ResponseEvent::ToolCallInputDelta { item_id, .. } => {
+                                        *item_id = segment_id.clone();
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
                         events.extend(call);
                     }
                 }

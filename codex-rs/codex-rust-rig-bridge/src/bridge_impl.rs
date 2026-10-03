@@ -33,27 +33,48 @@ impl ModelBridge for RigModelBridge {
         auth: &'a SharedAuthProvider,
         options: ModelBridgeOptions,
     ) -> Pin<Box<dyn Future<Output = Result<ResponseStream, ApiError>> + Send + 'a>> {
+        let recorder = match crate::request_capture::from_env() {
+            Ok(recorder) => recorder,
+            Err(error) => return Box::pin(std::future::ready(Err(error))),
+        };
+        let context = crate::wire_budget::RigCallContext {
+            auth_domain: options.auth_domain,
+            auth_domain_kind: options.auth_domain_kind,
+            context_window_tokens: options.context_window_tokens,
+        };
         let protocol = match options.protocol {
             ModelWireProtocol::Responses => {
-                return Box::pin(crate::responses::stream_responses_via_rig(
+                return Box::pin(crate::responses::stream_responses_via_rig_with_context(
                     request,
                     provider,
                     auth,
                     options.extra_headers,
                     options.idle_timeout,
+                    None,
                     options.turn_state,
+                    recorder,
+                    context,
                 ));
             }
             ModelWireProtocol::Anthropic => RigProtocol::Anthropic,
             ModelWireProtocol::ChatCompletions => RigProtocol::Chat,
         };
-        Box::pin(crate::stream_via_rig(
-            request,
-            provider,
-            auth,
-            options.extra_headers,
-            protocol,
-            options.idle_timeout,
-        ))
+        Box::pin(async move {
+            crate::stream::stream_via_rig_with_context(
+                request,
+                provider,
+                auth,
+                options.extra_headers,
+                protocol,
+                options.idle_timeout,
+                crate::RigTurnRecorders {
+                    events: None,
+                    final_request: recorder,
+                },
+                context,
+            )
+            .await
+            .map(|(stream, _)| stream)
+        })
     }
 }

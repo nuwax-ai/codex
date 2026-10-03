@@ -304,6 +304,7 @@ pub struct ModelClientSession {
     /// appends, or continuation requests), and must not send it between different turns.
     /// An auth ownership change clears it so the new owner gets fresh routing state.
     turn_state: Arc<OnceLock<String>>,
+    output_provenance: Option<codex_history::ModelOutputProvenance>,
 }
 
 #[derive(Debug, Clone)]
@@ -346,6 +347,7 @@ fn responses_request_properties_match(
         input: _,
         tools: previous_tools,
         tool_choice: previous_tool_choice,
+        max_output_tokens: previous_max_output_tokens,
         parallel_tool_calls: previous_parallel_tool_calls,
         reasoning: previous_reasoning,
         store: previous_store,
@@ -364,6 +366,7 @@ fn responses_request_properties_match(
         input: _,
         tools: current_tools,
         tool_choice: current_tool_choice,
+        max_output_tokens: current_max_output_tokens,
         parallel_tool_calls: current_parallel_tool_calls,
         reasoning: current_reasoning,
         store: current_store,
@@ -382,6 +385,7 @@ fn responses_request_properties_match(
         && previous_tools == current_tools
         && previous_tool_choice == current_tool_choice
         && previous_parallel_tool_calls == current_parallel_tool_calls
+        && previous_max_output_tokens == current_max_output_tokens
         && previous_reasoning == current_reasoning
         && previous_store == current_store
         && previous_stream == current_stream
@@ -618,6 +622,7 @@ impl ModelClient {
             client: self.clone(),
             websocket_session,
             turn_state: Arc::new(OnceLock::new()),
+            output_provenance: None,
         }
     }
 
@@ -1038,6 +1043,7 @@ impl ModelClient {
             tools,
             tool_choice: "auto".to_string(),
             parallel_tool_calls: prompt.parallel_tool_calls && !model_info.use_responses_lite,
+            max_output_tokens: self.state.provider.info().max_output_tokens,
             reasoning: Some(reasoning),
             store: false,
             stream: true,
@@ -1386,6 +1392,10 @@ impl Drop for ModelClientSession {
 }
 
 impl ModelClientSession {
+    pub(crate) fn output_provenance(&self) -> Option<&codex_history::ModelOutputProvenance> {
+        self.output_provenance.as_ref()
+    }
+
     #[allow(clippy::too_many_arguments)]
     /// Builds shared Responses API transport options and request-body options.
     ///
@@ -1690,7 +1700,7 @@ impl ModelClientSession {
         )
     )]
     async fn stream_model_bridge(
-        &self,
+        &mut self,
         prompt: &Prompt,
         model_info: &ModelInfo,
         session_telemetry: &SessionTelemetry,
@@ -1714,6 +1724,27 @@ impl ModelClientSession {
                 .client
                 .current_client_setup(ClientRouting::ConfiguredProvider)
                 .await?;
+            let producing_source = crate::model_output_projection::request_source(
+                self.client.state.provider.info(),
+                &client_setup.api_provider,
+                client_setup.auth.as_ref(),
+                &model_info.slug,
+                client_setup.api_auth.as_ref(),
+                client_setup.agent_identity_telemetry.as_ref(),
+            )
+            .map_err(|error| {
+                self.client
+                    .state
+                    .provider
+                    .map_api_error(ApiError::Transport(error.into()))
+            })?;
+            let mut projected_prompt = prompt.clone();
+            crate::model_output_projection::project_input(
+                &mut projected_prompt.input,
+                &prompt.input_provenance,
+                &producing_source,
+            );
+            let prompt = &projected_prompt;
             // Reflect the real wire in telemetry: a responses-wire provider
             // bridged through rig hits /responses, not chat/completions.
             let endpoint = match self.client.state.provider.info().wire_api {
@@ -1769,11 +1800,20 @@ impl ModelClientSession {
             let wire_api = self.client.state.provider.info().wire_api;
             let bridge = self.client.state.provider.info().experimental_bridge;
 
-            let stream_result =
-                dispatch_model_bridge(&request, &client_setup, options, bridge, wire_api).await;
+            let stream_result = dispatch_model_bridge(
+                &request,
+                &client_setup,
+                options,
+                bridge,
+                wire_api,
+                model_info,
+                &producing_source,
+            )
+            .await;
 
             match stream_result {
                 Ok(stream) => {
+                    self.output_provenance = Some(producing_source);
                     let (stream, _) = map_response_stream(
                         stream,
                         session_telemetry.clone(),
@@ -1840,7 +1880,7 @@ impl ModelClientSession {
         )
     )]
     async fn stream_responses_api(
-        &self,
+        &mut self,
         prompt: &Prompt,
         model_info: &ModelInfo,
         session_telemetry: &SessionTelemetry,
@@ -1861,6 +1901,27 @@ impl ModelClientSession {
                 .client
                 .current_client_setup(ClientRouting::Workspace)
                 .await?;
+            let producing_source = crate::model_output_projection::request_source(
+                self.client.state.provider.info(),
+                &client_setup.api_provider,
+                client_setup.auth.as_ref(),
+                &model_info.slug,
+                client_setup.api_auth.as_ref(),
+                client_setup.agent_identity_telemetry.as_ref(),
+            )
+            .map_err(|error| {
+                self.client
+                    .state
+                    .provider
+                    .map_api_error(ApiError::Transport(error.into()))
+            })?;
+            let mut projected_prompt = prompt.clone();
+            crate::model_output_projection::project_input(
+                &mut projected_prompt.input,
+                &prompt.input_provenance,
+                &producing_source,
+            );
+            let prompt = &projected_prompt;
             let include_internal = self
                 .client
                 .state
@@ -1963,6 +2024,7 @@ impl ModelClientSession {
 
             match stream_result {
                 Ok(stream) => {
+                    self.output_provenance = Some(producing_source);
                     let (stream, _) = map_response_stream(
                         stream,
                         request_session_telemetry,
@@ -2057,6 +2119,27 @@ impl ModelClientSession {
                 .client
                 .current_client_setup(ClientRouting::Workspace)
                 .await?;
+            let producing_source = crate::model_output_projection::request_source(
+                self.client.state.provider.info(),
+                &client_setup.api_provider,
+                client_setup.auth.as_ref(),
+                &model_info.slug,
+                client_setup.api_auth.as_ref(),
+                client_setup.agent_identity_telemetry.as_ref(),
+            )
+            .map_err(|error| {
+                self.client
+                    .state
+                    .provider
+                    .map_api_error(ApiError::Transport(error.into()))
+            })?;
+            let mut projected_prompt = prompt.clone();
+            crate::model_output_projection::project_input(
+                &mut projected_prompt.input,
+                &prompt.input_provenance,
+                &producing_source,
+            );
+            let prompt = &projected_prompt;
             let include_internal = self
                 .client
                 .state
@@ -2293,6 +2376,7 @@ impl ModelClientSession {
                 );
                 err
             })?;
+            self.output_provenance = Some(producing_source);
             let (stream, last_request_rx) = map_response_stream(
                 stream_result,
                 request_session_telemetry,
@@ -3217,6 +3301,8 @@ async fn dispatch_model_bridge(
     options: ApiResponsesOptions,
     bridge: Option<codex_model_provider_info::ChatBridge>,
     wire: WireApi,
+    model_info: &ModelInfo,
+    source: &codex_history::ModelOutputProvenance,
 ) -> std::result::Result<codex_api::ResponseStream, codex_api::ApiError> {
     use codex_model_provider_info::ChatBridge;
 
@@ -3271,6 +3357,9 @@ async fn dispatch_model_bridge(
                 protocol,
                 idle_timeout: client_setup.api_provider.stream_idle_timeout,
                 turn_state: options.turn_state,
+                auth_domain: source.auth_domain.clone(),
+                auth_domain_kind: source.auth_domain_kind.clone(),
+                context_window_tokens: model_info.usable_context_window(),
             },
         )
         .await

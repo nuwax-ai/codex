@@ -99,6 +99,15 @@ struct CombinedAuth {
 }
 
 impl AuthProvider for CombinedAuth {
+    fn immutable_credential_headers(&self) -> Option<HeaderMap> {
+        let mut headers = self.primary.immutable_credential_headers()?;
+        if headers.contains_key(&self.name) {
+            return None;
+        }
+        headers.insert(self.name.clone(), self.value.clone());
+        Some(headers)
+    }
+
     fn add_auth_headers(&self, headers: &mut HeaderMap) {
         self.primary.add_auth_headers(headers);
         headers

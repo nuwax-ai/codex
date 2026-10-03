@@ -118,6 +118,14 @@ struct HeaderAuthProvider {
 }
 
 impl AuthProvider for HeaderAuthProvider {
+    fn immutable_credential_headers(&self) -> Option<HeaderMap> {
+        let mut headers = self.auth.headers().clone();
+        for value in headers.values_mut() {
+            value.set_sensitive(true);
+        }
+        Some(headers)
+    }
+
     fn add_auth_headers(&self, headers: &mut HeaderMap) {
         headers.extend(self.auth.headers().clone());
     }
@@ -174,6 +182,10 @@ impl AuthProvider for AuthManagerAuthProvider {
 struct UnauthenticatedAuthProvider;
 
 impl AuthProvider for UnauthenticatedAuthProvider {
+    fn immutable_credential_headers(&self) -> Option<HeaderMap> {
+        Some(HeaderMap::new())
+    }
+
     fn add_auth_headers(&self, _headers: &mut HeaderMap) {}
 }
 

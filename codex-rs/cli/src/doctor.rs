@@ -724,11 +724,9 @@ async fn load_config(
         ..config_overrides_from_interactive(interactive, arg0_paths)
     };
 
-    let (cli_overrides, env_seed_overrides) =
-        model_cli_overrides(&root_config_overrides, interactive, nuwax_input)?;
+    let launch_overrides = model_cli_overrides(&root_config_overrides, interactive, nuwax_input)?;
     crate::cloud_config::config_builder_from_parsed_overrides(
-        cli_overrides,
-        env_seed_overrides,
+        launch_overrides,
         LoaderOverrides::default(),
         overrides,
     )
@@ -742,7 +740,7 @@ fn model_cli_overrides(
     config: &CliConfigOverrides,
     interactive: &TuiCli,
     input: codex_utils_cli::NuwaxEnvInput,
-) -> anyhow::Result<(Vec<(String, toml::Value)>, Vec<(String, toml::Value)>)> {
+) -> anyhow::Result<codex_config::LaunchOverrides> {
     let explicit = config.parse_overrides().map_err(anyhow::Error::msg)?;
     let seeds = codex_utils_cli::nuwax_env_overrides(
         input,
@@ -753,7 +751,10 @@ fn model_cli_overrides(
         &explicit,
     )
     .map_err(anyhow::Error::msg)?;
-    Ok((explicit, seeds))
+    Ok(codex_config::LaunchOverrides {
+        cli_overrides: explicit,
+        env_seed_overrides: seeds,
+    })
 }
 
 fn config_overrides_from_interactive(

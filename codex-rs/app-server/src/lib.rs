@@ -549,8 +549,10 @@ pub async fn run_main_with_transport_options(
     let ignore_user_config = loader_overrides.ignore_user_config;
     let config_manager = ConfigManager::new(
         codex_home.to_path_buf(),
-        cli_kv_overrides.clone(),
-        nuwax_env_seeds,
+        codex_config::LaunchOverrides {
+            cli_overrides: cli_kv_overrides.clone(),
+            env_seed_overrides: nuwax_env_seeds,
+        },
         loader_overrides,
         strict_config,
         Default::default(),

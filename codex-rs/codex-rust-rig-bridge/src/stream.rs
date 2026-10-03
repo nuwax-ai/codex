@@ -28,6 +28,16 @@ use crate::convert_response::rig_event_to_response_events;
 pub type RigEventRecorder =
     Option<Arc<std::sync::Mutex<Vec<rig_core::streaming::StreamedAssistantContent>>>>;
 
+pub use crate::request_capture::FinalRequestRecorder;
+
+/// The recorders a test run may attach to one stream (D2). Event-level and
+/// wire-level capture travel together so a single call site owns both.
+#[derive(Clone, Default)]
+pub struct RigTurnRecorders {
+    pub events: RigEventRecorder,
+    pub final_request: FinalRequestRecorder,
+}
+
 const RESPONSE_STREAM_CHANNEL_CAPACITY: usize = 256;
 
 /// Shared by the entry guard and the exhaustive dispatch match below: the
@@ -86,6 +96,77 @@ pub async fn stream_via_rig_with_recording(
     idle_timeout: Duration,
     recorder: RigEventRecorder,
 ) -> Result<(ResponseStream, RigEventRecorder), ApiError> {
+    let (stream, recorders) = stream_via_rig_with_recorders(
+        request,
+        api_provider,
+        api_auth,
+        extra_headers,
+        protocol,
+        idle_timeout,
+        RigTurnRecorders {
+            events: recorder,
+            final_request: None,
+        },
+    )
+    .await?;
+    Ok((stream, recorders.events))
+}
+
+/// [`stream_via_rig_with_recording`] with the D2 final-request capture
+/// attached alongside the event recorder.
+pub async fn stream_via_rig_with_recorders(
+    request: &ResponsesApiRequest,
+    api_provider: &Provider,
+    api_auth: &SharedAuthProvider,
+    extra_headers: HeaderMap,
+    protocol: RigProtocol,
+    idle_timeout: Duration,
+    recorders: RigTurnRecorders,
+) -> Result<(ResponseStream, RigTurnRecorders), ApiError> {
+    stream_via_rig_with_context(
+        request,
+        api_provider,
+        api_auth,
+        extra_headers,
+        protocol,
+        idle_timeout,
+        recorders,
+        crate::wire_budget::RigCallContext::default(),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn stream_via_rig_with_context(
+    request: &ResponsesApiRequest,
+    api_provider: &Provider,
+    api_auth: &SharedAuthProvider,
+    extra_headers: HeaderMap,
+    protocol: RigProtocol,
+    idle_timeout: Duration,
+    recorders: RigTurnRecorders,
+    context: crate::wire_budget::RigCallContext,
+) -> Result<(ResponseStream, RigTurnRecorders), ApiError> {
+    if protocol == RigProtocol::Responses {
+        if recorders.events.is_some() {
+            return Err(ApiError::InvalidRequest {
+                message: RECORDER_REJECTS_RESPONSES_MSG.into(),
+            });
+        }
+        let stream = crate::responses::stream_responses_via_rig_with_context(
+            request,
+            api_provider,
+            api_auth,
+            extra_headers,
+            idle_timeout,
+            None,
+            None,
+            recorders.final_request.clone(),
+            context,
+        )
+        .await?;
+        return Ok((stream, recorders));
+    }
     stream_via_rig_attempt(
         request,
         api_provider,
@@ -93,9 +174,10 @@ pub async fn stream_via_rig_with_recording(
         extra_headers,
         protocol,
         idle_timeout,
-        recorder,
+        recorders,
         /*pause_depth*/ 0,
         /*pause_replay*/ None,
+        context,
     )
     .await
 }
@@ -116,17 +198,33 @@ fn stream_via_rig_attempt(
     extra_headers: HeaderMap,
     protocol: RigProtocol,
     idle_timeout: Duration,
-    recorder: RigEventRecorder,
+    recorders: RigTurnRecorders,
     pause_depth: u32,
     pause_replay: Option<crate::hosted_replay::PauseReplay>,
-) -> impl Future<Output = Result<(ResponseStream, RigEventRecorder), ApiError>> + Send {
+    context: crate::wire_budget::RigCallContext,
+) -> impl Future<Output = Result<(ResponseStream, RigTurnRecorders), ApiError>> + Send {
     async move {
         if protocol == RigProtocol::Responses {
             return Err(ApiError::InvalidRequest {
                 message: RECORDER_REJECTS_RESPONSES_MSG.into(),
             });
         }
-        let source = crate::client::reasoning_source(api_provider, protocol, &request.model)?;
+        let auth_identity = match (&context.auth_domain_kind, &context.auth_domain) {
+            (Some(kind), Some(domain)) => {
+                Some(serde_json::to_string(&(kind, domain)).map_err(|_| {
+                    ApiError::InvalidRequest {
+                        message: "cannot encode model authorization identity".into(),
+                    }
+                })?)
+            }
+            (_, domain) => domain.clone(),
+        };
+        let source = crate::client::reasoning_source_with_auth_domain(
+            api_provider,
+            protocol,
+            &request.model,
+            auth_identity.as_deref(),
+        )?;
         // An opted-out replay payload is unused: drop it from the conversion
         // copy before SDK validation, including unknown legacy wire shapes.
         let mut conversion_request = std::borrow::Cow::Borrowed(request);
@@ -158,7 +256,9 @@ fn stream_via_rig_attempt(
         // bridge's default cap (Anthropic requires max_tokens on the wire; Chat
         // accepts it optionally). The Responses passthrough is verbatim and
         // never reaches here.
-        if let Some(max_output_tokens) = api_provider.max_output_tokens {
+        if let Some(max_output_tokens) =
+            request.max_output_tokens.or(api_provider.max_output_tokens)
+        {
             completion_request.max_tokens = Some(max_output_tokens);
         }
         let (base_url, query) = crate::client::endpoint(&api_provider.base_url, api_provider)?;
@@ -207,8 +307,10 @@ fn stream_via_rig_attempt(
             RigProtocol::Chat | RigProtocol::Responses => None,
         };
         let http = crate::transport::RigHttpClient {
+            retry: Some(api_provider.retry.clone()),
             inner: crate::client::http_client(protocol)?,
             request_headers: crate::client::request_headers(&headers, protocol),
+            wire_auth: None,
             // Persisted web-search pairs replay unless the provider opts out.
             anthropic_websearch_replay: if protocol == RigProtocol::Anthropic
                 && api_provider.hosted_results_replay != Some(false)
@@ -228,6 +330,11 @@ fn stream_via_rig_attempt(
                 .cloned(),
             protocol,
             responses_sse_recorder: None,
+            final_request_recorder: recorders.final_request.clone(),
+            wire_budget: crate::wire_budget::WireBudget {
+                context_window_tokens: context.context_window_tokens,
+                output_tokens: completion_request.max_tokens,
+            },
             anthropic_sse_tee: anthropic_sse_tee.clone(),
             // Official pause recipe: append each complete paused response to
             // the original request, preserving its raw assistant content.
@@ -332,7 +439,7 @@ fn stream_via_rig_attempt(
         let (tx, rx) = mpsc::channel(RESPONSE_STREAM_CHANNEL_CAPACITY);
 
         let custom_tool_names = std::sync::Arc::new(tool_meta.custom_names);
-        let pump_recorder = recorder.clone();
+        let pump_recorder = recorders.events.clone();
         let pump_sse_tee = anthropic_sse_tee;
         // Filled by the pump when the attempt ends PAUSED; the chainer below
         // turns it into a bridge-internal continuation attempt.
@@ -443,76 +550,48 @@ fn stream_via_rig_attempt(
                                 }
                             };
                             let mut capture = crate::hosted_replay::PauseCapture {
-                                items: Vec::new(),
+                                items: events
+                                    .iter()
+                                    .filter_map(|event| match event {
+                                        ResponseEvent::OutputItemDone(item) => Some(item.clone()),
+                                        _ => None,
+                                    })
+                                    .collect(),
                                 raw_content: Vec::new(),
                             };
                             if let Some(tee) = &pump_sse_tee
                                 && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
                             {
-                                capture = match crate::hosted_tools::assistant_continuation_items(
+                                let raw = match crate::hosted_replay::raw_indexed_assistant_content(
                                     &sse_bytes,
-                                    &pump_source,
                                 )
                                 .await
                                 {
-                                    Ok(capture) => capture,
+                                    Ok(raw) => raw,
                                     Err(error) => {
                                         let _ = tx.send(Err(error)).await;
                                         return;
                                     }
                                 };
-                                let mut paired = crate::hosted_tools::pair_web_search_blocks(
-                                    crate::hosted_tools::web_search_blocks_from_anthropic_sse(
-                                        &sse_bytes,
-                                    )
-                                    .await,
-                                );
-                                // The capture already assigned citations to
-                                // its first current-response search pair.
-                                if !paired.pairs.is_empty() {
-                                    paired.cited_text.clear();
-                                }
-                                for result in paired.unmatched_results {
-                                    if let Some(id) = result
-                                        .get("tool_use_id")
-                                        .and_then(serde_json::Value::as_str)
-                                        && let Some(call) = pending_replay_calls.get(id)
-                                    {
-                                        for event in crate::hosted_tools::web_search_call_events(
-                                            crate::hosted_tools::PairedWebSearchBlocks {
-                                                call: call.clone(),
-                                                result: Some(result),
-                                            },
-                                            &pump_source,
-                                            std::mem::take(&mut paired.cited_text),
-                                        ) {
-                                            if let ResponseEvent::OutputItemDone(item) = event {
-                                                capture.items.push(item);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            let items = capture.items.clone();
-                            // The user-visible events carry the recovered pairs
-                            // too (same recovery as a completed turn): an Added
-                            // without status, then the item itself as Done.
-                            for item in &items {
-                                if let codex_protocol::models::ResponseItem::WebSearchCall {
-                                    ..
-                                } = item
-                                {
-                                    let mut added = item.clone();
-                                    if let codex_protocol::models::ResponseItem::WebSearchCall {
-                                        status,
-                                        ..
-                                    } = &mut added
-                                    {
-                                        *status = None;
-                                    }
-                                    events.push(ResponseEvent::OutputItemAdded(added));
-                                    events.push(ResponseEvent::OutputItemDone(item.clone()));
-                                }
+                                let layout =
+                                    crate::hosted_tools::response_layout(&raw, pending.segments());
+                                let injected = crate::hosted_tools::captured_search_events(
+                                    &sse_bytes,
+                                    &pump_source,
+                                    pending.response_id(),
+                                    &pending_replay_calls,
+                                    layout.as_deref(),
+                                )
+                                .await;
+                                capture.items.extend(injected.iter().filter_map(
+                                    |event| match event {
+                                        ResponseEvent::OutputItemDone(item) => Some(item.clone()),
+                                        _ => None,
+                                    },
+                                ));
+                                capture.raw_content =
+                                    raw.into_iter().map(|(_, block)| block).collect();
+                                events.extend(injected);
                             }
                             if let Ok(mut slot) = pump_paused_capture.lock() {
                                 *slot = Some(capture);
@@ -541,54 +620,27 @@ fn stream_via_rig_attempt(
                             && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
                             && !events.is_empty()
                         {
-                            let capture =
-                                crate::hosted_tools::web_search_blocks_from_anthropic_sse(
-                                    &sse_bytes,
-                                )
-                                .await;
-                            let mut paired = crate::hosted_tools::pair_web_search_blocks(capture);
-                            let mut injected = Vec::new();
-                            let mut cited_text = std::mem::take(&mut paired.cited_text);
-                            for pair in paired.pairs {
-                                let cited = std::mem::take(&mut cited_text);
-                                injected.extend(crate::hosted_tools::web_search_call_events(
-                                    pair,
-                                    &pump_source,
-                                    cited,
-                                ));
-                            }
-                            // A result with no call in THIS response closes a
-                            // mixed server/client turn: re-associate it with
-                            // the pending call persisted in the request
-                            // history and emit a NEW completed item (the old
-                            // in_progress item stays untouched, append-only).
-                            for result in paired.unmatched_results {
-                                let id = result
-                                    .get("tool_use_id")
-                                    .and_then(serde_json::Value::as_str)
-                                    .map(str::to_string);
-                                let Some(id) = id.filter(|id| !id.is_empty()) else {
-                                    tracing::warn!(
-                                        "web-search result without tool_use_id; dropping it"
-                                    );
-                                    continue;
-                                };
-                                let Some(call) = pending_replay_calls.get(&id).cloned() else {
-                                    tracing::warn!(
-                                        id,
-                                        "web-search result matches no pending call; dropping it"
-                                    );
-                                    continue;
-                                };
-                                injected.extend(crate::hosted_tools::web_search_call_events(
-                                    crate::hosted_tools::PairedWebSearchBlocks {
-                                        call,
-                                        result: Some(result),
-                                    },
-                                    &pump_source,
-                                    std::mem::take(&mut cited_text),
-                                ));
-                            }
+                            let layout = match crate::hosted_replay::raw_indexed_assistant_content(
+                                &sse_bytes,
+                            )
+                            .await
+                            {
+                                Ok(raw) => {
+                                    crate::hosted_tools::response_layout(&raw, pending.segments())
+                                }
+                                Err(error) => {
+                                    tracing::warn!(%error, "hosted layout capture failed; replaying response-scoped pairs only");
+                                    None
+                                }
+                            };
+                            let injected = crate::hosted_tools::captured_search_events(
+                                &sse_bytes,
+                                &pump_source,
+                                pending.response_id(),
+                                &pending_replay_calls,
+                                layout.as_deref(),
+                            )
+                            .await;
                             if !injected.is_empty() {
                                 let terminal = events.split_off(events.len() - 1);
                                 events.extend(injected);
@@ -644,6 +696,7 @@ fn stream_via_rig_attempt(
             let auth = api_auth.clone();
             let headers = chainer_headers;
             let idle = idle_timeout;
+            let continuation_recorders = recorders.clone();
             tokio::spawn(async move {
                 let _ = pump_task.await;
                 // A cancelled turn must not spawn a continuation attempt.
@@ -672,9 +725,10 @@ fn stream_via_rig_attempt(
                         headers,
                         RigProtocol::Anthropic,
                         idle,
-                        /*recorder*/ None,
+                        continuation_recorders,
                         pause_depth + 1,
                         Some(replay),
+                        context,
                     )
                     => result,
                     };
@@ -708,7 +762,7 @@ fn stream_via_rig_attempt(
                 // drops the stream, matching native's plain SSE spawns.
                 interrupt: None,
             },
-            recorder,
+            recorders,
         ))
     }
 }
@@ -718,6 +772,11 @@ fn stream_via_rig_attempt(
 /// triggers.
 fn map_completion_error(e: rig_core::completion::request::CompletionError) -> ApiError {
     use rig_core::completion::request::CompletionError;
+    if let Some(error) =
+        crate::wire_budget::api_error(&e).or_else(|| crate::request_capture::api_error(&e))
+    {
+        return error;
+    }
     // Both variants can carry an HTTP status; the Provider variant is what
     // non-2xx provider responses actually arrive as (rig defers them into
     // the stream), so both must map to Http{status} for codex-core's

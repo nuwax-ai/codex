@@ -55,6 +55,13 @@ pub struct ModelBridgeOptions {
     pub protocol: ModelWireProtocol,
     pub idle_timeout: Duration,
     pub turn_state: Option<Arc<OnceLock<String>>>,
+    /// Non-secret request authentication selector/account identity; never key material.
+    pub auth_domain: Option<String>,
+    /// `account`, `credentialInstance`, `selector`, or `anonymous`;
+    /// a selector does not prove key rotation safety.
+    pub auth_domain_kind: Option<String>,
+    /// Usable model context window for conservative transport budgeting.
+    pub context_window_tokens: Option<i64>,
 }
 
 /// A model bridge: sends a Codex `ResponsesApiRequest` on the given wire and

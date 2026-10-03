@@ -285,6 +285,9 @@ pub struct ResponsesApiRequest {
     pub tools: Option<ResponsesApiTools>,
     pub tool_choice: String,
     pub parallel_tool_calls: bool,
+    /// Total generated-token cap, including reasoning tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u64>,
     pub reasoning: Option<Reasoning>,
     pub store: bool,
     pub stream: bool,
@@ -313,6 +316,7 @@ impl<'a> From<&'a ResponsesApiRequest> for ResponseCreateWsRequest<'a> {
             tools: request.tools.as_ref().map(ResponsesApiTools::as_raw_value),
             tool_choice: &request.tool_choice,
             parallel_tool_calls: request.parallel_tool_calls,
+            max_output_tokens: request.max_output_tokens,
             reasoning: request.reasoning.as_ref(),
             store: request.store,
             stream: request.stream,
@@ -340,6 +344,9 @@ pub struct ResponseCreateWsRequest<'a> {
     pub tools: Option<&'a RawValue>,
     pub tool_choice: &'a str,
     pub parallel_tool_calls: bool,
+    /// Total generated-token cap, including reasoning tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u64>,
     pub reasoning: Option<&'a Reasoning>,
     pub store: bool,
     pub stream: bool,

@@ -31,12 +31,16 @@ pub use crate::auth::AuthProviderFuture;
 pub use crate::auth::SharedAuthProvider;
 pub use crate::auth::auth_header_telemetry;
 mod bridge;
+mod credential_instance;
+mod model_source;
 pub use crate::sse::ResponsesStreamEvent;
 pub use crate::sse::process_responses_event;
 pub use crate::sse::spawn_strict_response_stream;
 pub use bridge::ModelBridge;
 pub use bridge::ModelBridgeOptions;
 pub use bridge::ModelWireProtocol;
+pub use credential_instance::credential_instance_identity;
+pub use model_source::model_endpoint_identity;
 
 pub use crate::common::AccessPrograms;
 pub use crate::common::MemorySummarizeInput;

@@ -616,6 +616,12 @@ ignored = [
 # use CARGO_PROFILE_DEV_DEBUG=full (or CARGO_PROFILE_TEST_DEBUG=full) for locals.
 debug = "line-tables-only"
 
+# Source receipts hash the entire debug executable before and after each live
+# turn. The software SHA-256 backend on aarch64 is otherwise prohibitively slow
+# at opt-level 0; keep full-file verification with an optimized digest backend.
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.dev-small]
 inherits = "dev"
 opt-level = 0

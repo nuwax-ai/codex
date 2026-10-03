@@ -45,6 +45,8 @@ pub(crate) async fn stream_responses_via_rig(
         idle_timeout,
         None,
         turn_state,
+        None,
+        crate::wire_budget::RigCallContext::default(),
     )
     .await
 }
@@ -67,10 +69,65 @@ pub async fn stream_responses_via_rig_with_sse_recording(
         idle_timeout,
         recorder,
         /*turn_state*/ None,
+        None,
+        crate::wire_budget::RigCallContext::default(),
     )
     .await
 }
 
+/// Records each final HTTP request in addition to raw Responses events.
+#[allow(clippy::too_many_arguments)]
+pub async fn stream_responses_via_rig_with_capture(
+    request: &ResponsesApiRequest,
+    api_provider: &Provider,
+    api_auth: &SharedAuthProvider,
+    extra_headers: HeaderMap,
+    idle_timeout: Duration,
+    sse_recorder: RigSseRecorder,
+    turn_state: Option<Arc<OnceLock<String>>>,
+    final_request_recorder: crate::FinalRequestRecorder,
+) -> Result<ResponseStream, ApiError> {
+    stream_responses_via_rig_with_context(
+        request,
+        api_provider,
+        api_auth,
+        extra_headers,
+        idle_timeout,
+        sse_recorder,
+        turn_state,
+        final_request_recorder,
+        crate::wire_budget::RigCallContext::default(),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn stream_responses_via_rig_with_context(
+    request: &ResponsesApiRequest,
+    api_provider: &Provider,
+    api_auth: &SharedAuthProvider,
+    extra_headers: HeaderMap,
+    idle_timeout: Duration,
+    sse_recorder: RigSseRecorder,
+    turn_state: Option<Arc<OnceLock<String>>>,
+    final_request_recorder: crate::FinalRequestRecorder,
+    context: crate::wire_budget::RigCallContext,
+) -> Result<ResponseStream, ApiError> {
+    stream_responses_via_rig_inner(
+        request,
+        api_provider,
+        api_auth,
+        extra_headers,
+        idle_timeout,
+        sse_recorder,
+        turn_state,
+        final_request_recorder,
+        context,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn stream_responses_via_rig_inner(
     request: &ResponsesApiRequest,
     api_provider: &Provider,
@@ -79,6 +136,8 @@ async fn stream_responses_via_rig_inner(
     idle_timeout: Duration,
     sse_recorder: RigSseRecorder,
     turn_state: Option<Arc<OnceLock<String>>>,
+    final_request_recorder: crate::FinalRequestRecorder,
+    context: crate::wire_budget::RigCallContext,
 ) -> Result<ResponseStream, ApiError> {
     let (base_url, query) = crate::client::endpoint(&api_provider.base_url, api_provider)?;
     let mut headers = api_provider.headers.clone();
@@ -93,8 +152,10 @@ async fn stream_responses_via_rig_inner(
     );
     let request_id = Arc::new(std::sync::Mutex::new(None));
     let http = crate::transport::RigHttpClient {
+        retry: Some(api_provider.retry.clone()),
         inner: crate::client::http_client(crate::RigProtocol::Responses)?,
         request_headers: crate::client::request_headers(&headers, crate::RigProtocol::Responses),
+        wire_auth: None,
         anthropic_pause_raw_content: None,
         query,
         request_id: request_id.clone(),
@@ -115,6 +176,11 @@ async fn stream_responses_via_rig_inner(
         tool_result_errors: Default::default(),
         anthropic_server_tools: Vec::new(),
         anthropic_usage: Arc::new(std::sync::Mutex::new(Default::default())),
+        final_request_recorder,
+        wire_budget: crate::wire_budget::WireBudget {
+            context_window_tokens: context.context_window_tokens,
+            output_tokens: request.max_output_tokens.or(api_provider.max_output_tokens),
+        },
         responses_sse_recorder: sse_recorder,
         anthropic_sse_tee: None,
     };
@@ -128,6 +194,7 @@ async fn stream_responses_via_rig_inner(
     // original byte-for-byte serialization semantics; the Arc<RawValue>
     // tools field clones without copying.
     let mut wire_request = request.clone();
+    wire_request.max_output_tokens = request.max_output_tokens.or(api_provider.max_output_tokens);
     let projected = project_cross_protocol_history(&mut wire_request.input);
 
     let model = request.model.clone();
@@ -167,8 +234,9 @@ async fn stream_responses_via_rig_inner(
                 .remove(http::header::AUTHORIZATION);
         }
     }
-    // No retry here on purpose: codex-core's stream retry budget owns
-    // reattempts; layering another loop would multiply them.
+    // The decorator owns provider-configured HTTP retries. This existing
+    // handshake deadline also bounds Retry-After waits; Core independently
+    // owns subsequent sampling retries after a failed stream.
     let response = tokio::time::timeout(
         idle_timeout,
         HttpClientExt::send_streaming(&client, stream_request),
@@ -234,6 +302,11 @@ fn project_cross_protocol_history(input: &mut [codex_protocol::models::ResponseI
 /// headers, and body; preserving them keeps codex-core's 401-recovery loop
 /// and Retry-After handling working.
 fn map_http_error(error: rig_core::http_client::Error) -> ApiError {
+    if let Some(error) =
+        crate::wire_budget::api_error(&error).or_else(|| crate::request_capture::api_error(&error))
+    {
+        return error;
+    }
     if let rig_core::http_client::Error::InvalidStatusCodeWithDetails {
         status,
         body,
