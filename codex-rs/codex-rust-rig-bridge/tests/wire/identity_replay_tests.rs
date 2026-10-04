@@ -283,6 +283,71 @@ async fn corrupt_layout_coverage_keeps_each_pair_once_without_citation_attributi
 }
 
 #[tokio::test]
+async fn late_foreign_calls_survive_replay_when_the_original_envelope_is_missing() {
+    for original_survives in [false, true] {
+        for layout_survives in [false, true] {
+            let original = original_survives.then(|| {
+                carrier(
+                    "early",
+                    vec![call("foreign")],
+                    vec![0],
+                    /*layout*/ None,
+                )
+            });
+            let late_layout = layout_survives.then(|| {
+                vec![
+                    json!({"kind":"text","index":0,"owner":"rigseg_late_0","block":text("intro")}),
+                    json!({"kind":"pair","index":1}),
+                ]
+            });
+            let late = carrier(
+                "late",
+                vec![call("foreign"), result("foreign")],
+                vec![u64::MAX, 1],
+                late_layout,
+            );
+            // Keep the earlier visible history even when its pending call's
+            // replay envelope was lost. The late response carries a clone,
+            // which must be accepted once only if the original is unavailable.
+            let messages = capture_search_replay(
+                vec![
+                    support::user(),
+                    message("early", "before"),
+                    json!({"type":"web_search_call","status":"in_progress","wire_blocks":original}),
+                    support::user(),
+                    message("late", "intro"),
+                    json!({"type":"web_search_call","status":"completed","wire_blocks":late}),
+                    support::user(),
+                ],
+                SearchReplay::Enabled,
+            )
+            .await;
+            let mut early_content = vec![text("before")];
+            if original_survives {
+                early_content.push(call("foreign"));
+            }
+            let late_content = match (original_survives, layout_survives) {
+                (false, true) => vec![call("foreign"), text("intro"), result("foreign")],
+                (false, false) => vec![text("intro"), call("foreign"), result("foreign")],
+                (true, false) | (true, true) => vec![text("intro"), result("foreign")],
+            };
+            let user = json!({"role":"user","content":[text("hello")]});
+            assert_eq!(
+                messages,
+                json!([
+                    user.clone(),
+                    {"role":"assistant","content":early_content},
+                    user.clone(),
+                    {"role":"assistant","content":late_content},
+                    user,
+                ]),
+                "original_survives={original_survives}, layout_survives={layout_survives}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn deduped_layout_carriers_cannot_inject_unbounded_text_or_citations() {
     let mut items = vec![support::user()];
     for n in 0..100 {

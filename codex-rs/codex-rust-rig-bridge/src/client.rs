@@ -171,18 +171,22 @@ pub(crate) fn endpoint(
     Ok((url.to_string().trim_end_matches('/').to_string(), query))
 }
 
-/// Compatibility entry point for callers without authentication-domain evidence.
+/// Compatibility entry point for callers without authentication-domain
+/// evidence. It deliberately binds to a per-call unbound identity: without
+/// domain evidence it can never prove two requests share credentials, so it
+/// must not authorize replay captured by any other call. Callers that own
+/// real evidence pass it via [`reasoning_source_with_auth_domain`].
 pub fn reasoning_source(
     provider: &Provider,
     protocol: RigProtocol,
     model: &str,
 ) -> Result<String, codex_api::ApiError> {
-    reasoning_source_with_auth_domain(provider, protocol, model, Some("legacy-unscoped"))
+    reasoning_source_with_auth_domain(provider, protocol, model, /*auth_domain*/ None)
 }
 
 /// Binds opaque replay to a non-secret account or configuration selector.
 /// Missing evidence gets a request-local nonce, so it can never authorize replay
-/// captured by another request. The legacy wrapper explicitly opts into its old scope.
+/// captured by another request.
 pub fn reasoning_source_with_auth_domain(
     provider: &Provider,
     protocol: RigProtocol,

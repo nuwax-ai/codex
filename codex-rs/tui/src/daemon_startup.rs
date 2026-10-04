@@ -44,10 +44,7 @@ pub(super) fn exclusion(
         Some("npm single-binary install (nuwax-codex)")
     } else if cli.no_daemon {
         Some("--no-daemon")
-    } else if env_seed_overrides
-        .iter()
-        .any(|(key, _)| key == "model_providers.nuwax_env")
-    {
+    } else if nuwax_env_provider_seed_active(env_seed_overrides) {
         // Fork (nuwax-codex): the NUWAX_* startup group references
         // per-process credentials (`env_key = NUWAX_API_KEY`); a shared
         // daemon must not bake one client's environment into its defaults.

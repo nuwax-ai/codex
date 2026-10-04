@@ -19,6 +19,7 @@
 ## 预算与证据边界
 
 - 单个 hosted envelope/layout 9,800 serialized bytes；独立最多 64 layouts、64 KiB layout contribution，调用对另有条数限制。超限 whole drop，签名/密文不得截断。
+- pause 原始续接使用独立预算：每条序列化 assistant message 最多 40,960 bytes，最多 4 次内部 continuation；这是恢复既有上限，不随持久化 envelope/layout 上限收紧。超限明确失败，签名内容不得截断。40,960/4=10,240 只是字节估算，不能证明未知 tokenizer 下满足 10K-token 单项要求；本项保留为 **P0 人工上下文预算复审项**，后续须单独设计 token-aware 限制及其行为兼容策略。
 - 最终发送前检查整个请求（含工具、replay、pause）的 32 MiB 硬边界；已知 usable context window 时使用仓库现有 bytes/4 估算并预留请求输出预算。未知厂商 tokenizer 时不宣称精确 token 上限；图片、JSON 开销会影响估算。
 - 新的模型可见 raw fragments 可超过 1K tokens，按 AGENTS 记为 **P0 人工上下文复审项**。局部字节上限不等于所有模型真实 tokenizer 验收。
 - 请求捕获：2 MiB/body、64 attempts、16 MiB aggregate。捕获是显式诊断开关 `CODEX_RIG_REQUEST_CAPTURE_FILE`，新文件 Unix 0600，写入失败或超限明确失败。记录发送前的最终 attempt 不等于厂商已经收到。

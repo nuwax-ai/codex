@@ -234,6 +234,8 @@ async fn run_binary_scene(
             artifacts: &artifacts_dir,
             protocol,
             marker: &marker,
+            expected_model: &cfg.model,
+            expected_url_prefix: base_url,
         },
         scenario,
     )
@@ -255,5 +257,5 @@ pub(crate) fn retain_rollouts_on_failure<T>(
 }
 
 #[cfg(test)]
-#[path = "binary_turns_tests.rs"]
+#[path = "binary_turns_tests/mod.rs"]
 mod tests;

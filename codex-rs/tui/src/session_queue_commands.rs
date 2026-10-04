@@ -24,6 +24,55 @@ const JSONRPC_INVALID_REQUEST: i64 = -32600;
 const JSONRPC_METHOD_NOT_FOUND: i64 = -32601;
 const THREAD_QUEUE_ADD_METHOD: &str = "thread/queue/add";
 
+/// Where a queued message will execute. The owner server must be able to
+/// resolve the thread's provider when the turn eventually runs.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QueueOwner {
+    SharedDaemon,
+    Embedded,
+    Remote,
+}
+
+/// Reads the thread's persisted provider from its rollout metadata. `None`
+/// (missing/compressed/unparsable rollout) skips the preflight honestly.
+async fn rollout_model_provider(codex_home: &Path, thread_id: &ThreadId) -> Option<String> {
+    let path = codex_rollout::find_thread_path_by_id_str(
+        codex_home,
+        &thread_id.to_string(),
+        /*state_db_ctx*/ None,
+    )
+    .await
+    .ok()??;
+    let contents = tokio::fs::read_to_string(&path).await.ok()?;
+    let first_line = contents.lines().next()?;
+    match codex_rollout::parse_rollout_line(first_line).ok()?.item {
+        codex_history::RolloutItem::SessionMeta(meta) => meta.meta.model_provider,
+        _ => None,
+    }
+}
+
+/// Enqueue success does not mean the model turn can run: a temporary
+/// per-process provider cannot be resolved by a shared owner server.
+pub(crate) async fn ensure_owner_can_resolve_thread_provider(
+    codex_home: &Path,
+    thread_id: &ThreadId,
+    owner: QueueOwner,
+) -> Result<()> {
+    if owner != QueueOwner::SharedDaemon {
+        return Ok(());
+    }
+    if rollout_model_provider(codex_home, thread_id)
+        .await
+        .as_deref()
+        == Some(codex_protocol::config_types::NUWAX_ENV_PROVIDER_ID)
+    {
+        return Err(eyre!(
+            "thread {thread_id} uses the temporary NUWAX environment provider, which the shared app-server daemon cannot resolve (its credentials are per-process). Queue this message from a client whose environment created the session, or configure a named provider the daemon can load."
+        ));
+    }
+    Ok(())
+}
+
 pub async fn run_session_queue_command(
     target: String,
     message: String,
@@ -36,8 +85,12 @@ pub async fn run_session_queue_command(
     }
     let codex_home = find_codex_home().wrap_err("failed to find Codex home")?;
     let explicit_remote = options.explicit_remote_endpoint.is_some();
-    let mut app_server =
-        start_app_server_for_session_command(options, codex_home.to_path_buf()).await?;
+    let mut app_server = start_app_server_for_session_command(
+        options,
+        codex_home.to_path_buf(),
+        crate::session_startup_policy::SessionCommandPurpose::Queue,
+    )
+    .await?;
     if !explicit_remote
         && app_server.uses_embedded_app_server()
         && super::maybe_probe_default_daemon_socket(codex_home.as_path())
@@ -49,6 +102,13 @@ pub async fn run_session_queue_command(
         ));
     }
     let implicit_local_daemon = !explicit_remote && !app_server.uses_embedded_app_server();
+    let owner = if explicit_remote {
+        QueueOwner::Remote
+    } else if app_server.uses_embedded_app_server() {
+        QueueOwner::Embedded
+    } else {
+        QueueOwner::SharedDaemon
+    };
     let client_message_id = Uuid::now_v7().to_string();
 
     let (thread_id, response) = match run_session_queue_action_with_app_server(
@@ -57,6 +117,7 @@ pub async fn run_session_queue_command(
         &target,
         &message,
         &client_message_id,
+        owner,
     )
     .await
     {
@@ -87,6 +148,7 @@ pub(super) async fn run_session_queue_action_with_app_server(
     target: &str,
     message: &str,
     client_message_id: &str,
+    owner: QueueOwner,
 ) -> Result<(ThreadId, ThreadQueueAddResponse)> {
     let thread_id = if let Ok(thread_id) = ThreadId::from_string(target) {
         thread_id
@@ -101,13 +163,16 @@ pub(super) async fn run_session_queue_action_with_app_server(
                 // An empty filter includes Atlas/ChatGPT sessions.
                 Vec::new(),
             ],
-            /*model_provider*/ None,
+            // Queue resolves the target across providers; enqueueing goes
+            // through the owner server either way.
+            super::named_session_lookup::ProviderFilter::All,
         )
         .await?
         .ok_or_else(|| eyre!("No active session found matching '{target}'."))?;
         ThreadId::from_string(&thread.id)
             .wrap_err_with(|| format!("app server returned invalid session id `{}`", thread.id))?
     };
+    ensure_owner_can_resolve_thread_provider(codex_home, &thread_id, owner).await?;
     let request_id = app_server.next_request_id();
     let response = app_server
         .request_handle()

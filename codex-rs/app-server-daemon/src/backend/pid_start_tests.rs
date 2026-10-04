@@ -23,6 +23,9 @@ fn detached_children_do_not_capture_client_model_seeds() {
         .env("NUWAX_WIRE_API", "chat")
         .env("NUWAX_API_KEY", "client-secret")
         .env("NUWAX_MAX_OUTPUT_TOKENS", "2048")
+        .env("NUWAX_REQUEST_MAX_RETRIES", "1")
+        .env("NUWAX_STREAM_MAX_RETRIES", "2")
+        .env("NUWAX_STREAM_IDLE_TIMEOUT_MS", "120000")
         .env("CODEX_TEST_DAEMON_EFFORT_COMPLETE", &completed)
         .output()
         .expect("run isolated launcher");
@@ -51,6 +54,9 @@ async fn launch_with_client_model_seeds() {
         "NUWAX_WIRE_API",
         "NUWAX_API_KEY",
         "NUWAX_MAX_OUTPUT_TOKENS",
+        "NUWAX_REQUEST_MAX_RETRIES",
+        "NUWAX_STREAM_MAX_RETRIES",
+        "NUWAX_STREAM_IDLE_TIMEOUT_MS",
     ] {
         assert!(
             std::env::var_os(name).is_some_and(|value| !value.is_empty()),
@@ -62,7 +68,7 @@ async fn launch_with_client_model_seeds() {
         let binary = temp.path().join("codex-shim");
         std::fs::write(
             &binary,
-            b"#!/bin/sh\ncase \"$*\" in *--help*) exit 0 ;; esac\nprintf '%s\\n' \"${CODEX_MODEL_REASONING_EFFORT-unset}\" \"${CODEX_MODEL_CONTEXT_WINDOW-unset}\" \"${CODEX_AUTO_COMPACT_TOKEN_LIMIT-unset}\" \"${CODEX_AUTO_COMPACT_RATIO-unset}\" \"${NUWAX_MODEL-unset}\" \"${NUWAX_BASE_URL-unset}\" \"${NUWAX_WIRE_API-unset}\" \"${NUWAX_API_KEY-unset}\" \"${NUWAX_MAX_OUTPUT_TOKENS-unset}\" > \"$0.env\"\nexec sleep 30\n",
+            b"#!/bin/sh\ncase \"$*\" in *--help*) exit 0 ;; esac\nprintf '%s\\n' \"${CODEX_MODEL_REASONING_EFFORT-unset}\" \"${CODEX_MODEL_CONTEXT_WINDOW-unset}\" \"${CODEX_AUTO_COMPACT_TOKEN_LIMIT-unset}\" \"${CODEX_AUTO_COMPACT_RATIO-unset}\" \"${NUWAX_MODEL-unset}\" \"${NUWAX_BASE_URL-unset}\" \"${NUWAX_WIRE_API-unset}\" \"${NUWAX_API_KEY-unset}\" \"${NUWAX_MAX_OUTPUT_TOKENS-unset}\" \"${NUWAX_REQUEST_MAX_RETRIES-unset}\" \"${NUWAX_STREAM_MAX_RETRIES-unset}\" \"${NUWAX_STREAM_IDLE_TIMEOUT_MS-unset}\" > \"$0.env\"\nexec sleep 30\n",
         )
         .expect("write shim");
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(/*mode*/ 0o755))
@@ -81,7 +87,7 @@ async fn launch_with_client_model_seeds() {
         let observed = tokio::time::timeout(Duration::from_secs(/*secs*/ 3), async {
             loop {
                 match fs::read_to_string(binary.with_extension("env")).await {
-                    Ok(value) if value.lines().count() == 9 => break Ok(value),
+                    Ok(value) if value.lines().count() == 12 => break Ok(value),
                     Ok(_) => {}
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                     Err(error) => break Err(error),
@@ -96,7 +102,7 @@ async fn launch_with_client_model_seeds() {
             .expect("read child environment");
         assert_eq!(
             observed.lines().collect::<Vec<_>>(),
-            ["unset"; 9],
+            ["unset"; 12],
             "{kind} must not inherit any client model seed"
         );
     }
@@ -136,6 +142,9 @@ fn two_clients_with_different_temporary_credentials_do_not_leak_into_daemon_chil
             .env("NUWAX_WIRE_API", "chat")
             .env("NUWAX_API_KEY", secret)
             .env("NUWAX_MAX_OUTPUT_TOKENS", "2048")
+            .env("NUWAX_REQUEST_MAX_RETRIES", "1")
+            .env("NUWAX_STREAM_MAX_RETRIES", "2")
+            .env("NUWAX_STREAM_IDLE_TIMEOUT_MS", "120000")
             .env("CODEX_TEST_DAEMON_EFFORT_COMPLETE", &completed)
             .output()
             .expect("run isolated launcher");

@@ -254,9 +254,20 @@ fn handle_stream_final(
         Some(FinishReason::Other(reason)) if reason == "model_context_window_exceeded" => {
             return Err(ApiError::ContextWindowExceeded);
         }
-        Some(
-            reason @ (FinishReason::Length | FinishReason::ContentFilter | FinishReason::Other(_)),
-        ) => {
+        // Same terminal-budget semantics as the native Responses decoder:
+        // exhausting the caller-selected output cap is a configuration
+        // condition, not a transport failure — retrying the same budget is
+        // another paid sample, so the error is non-retryable and names the
+        // fix. Partial output already streamed stays visible.
+        Some(FinishReason::Length) => {
+            return Err(ApiError::InvalidRequest {
+                message: "Output token limit reached; increase max_tokens before retrying"
+                    .to_string(),
+            });
+        }
+        // The native Responses decoder classifies content_filter distinctly.
+        Some(FinishReason::ContentFilter) => return Err(ApiError::ContentFilter),
+        Some(reason @ FinishReason::Other(_)) => {
             return Err(ApiError::Stream(format!(
                 "Incomplete Rig response, reason: {reason:?}"
             )));

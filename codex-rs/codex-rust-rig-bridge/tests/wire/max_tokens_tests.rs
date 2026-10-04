@@ -94,3 +94,129 @@ async fn request_output_budget_overrides_provider_on_every_protocol() {
         assert_eq!(wire["body"][field], json!(2048));
     }
 }
+
+#[tokio::test]
+async fn chat_length_truncation_completes_once_with_partial_output_and_usage() {
+    // finish_reason=length is the Chat wire's output-cap terminal state: the
+    // turn completes normally with the partial text and usage counters, one
+    // request, no resampling and no stream error.
+    let payload =
+        support::CHAT_SSE.replace("\"finish_reason\":\"stop\"", "\"finish_reason\":\"length\"");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        // Serve up to two requests; the cap-exhausted turn must need exactly one.
+        let mut bodies = Vec::new();
+        for _ in 0..2 {
+            let Ok(Ok((mut socket, _))) =
+                tokio::time::timeout(Duration::from_secs(2), listener.accept()).await
+            else {
+                break;
+            };
+            let request = support::read_request(&mut socket).await;
+            bodies.push(request["body"].clone());
+            use tokio::io::AsyncWriteExt;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+                payload.len()
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+        }
+        bodies
+    });
+    let provider = provider(address);
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut stream = stream_via_rig(
+        &support::request(vec![support::user()]),
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Chat,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    let mut texts = Vec::new();
+    let mut terminal = None;
+    while let Some(event) = stream.next().await {
+        match event {
+            Ok(codex_api::ResponseEvent::OutputTextDelta(text)) => texts.push(text),
+            Ok(_) => {}
+            Err(error) => terminal = Some(error),
+        }
+    }
+    let bodies = server.await.unwrap();
+    // Output exhaustion is a terminal budget condition: one request, the
+    // already-streamed partial text stays visible, and the terminal error is
+    // the non-retryable "increase the cap" InvalidRequest (core's
+    // retry_delay is None, so the same budget is never resampled).
+    let error = terminal.expect("terminal budget error");
+    assert!(matches!(
+        &error,
+        codex_api::ApiError::InvalidRequest { message }
+            if message.contains("Output token limit reached")
+    ));
+    assert_eq!(bodies.len(), 1);
+    assert_eq!(texts.concat(), "ok");
+}
+
+#[tokio::test]
+async fn anthropic_max_tokens_stop_completes_once_with_partial_output_and_usage() {
+    // stop_reason=max_tokens is the Anthropic wire's output-cap terminal
+    // state: same completion semantics as the Chat line above.
+    let payload = support::ANTHROPIC_SSE.replace(
+        "\"stop_reason\":\"end_turn\"",
+        "\"stop_reason\":\"max_tokens\"",
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let mut bodies = Vec::new();
+        for _ in 0..2 {
+            let Ok(Ok((mut socket, _))) =
+                tokio::time::timeout(Duration::from_secs(2), listener.accept()).await
+            else {
+                break;
+            };
+            let request = support::read_request(&mut socket).await;
+            bodies.push(request["body"].clone());
+            use tokio::io::AsyncWriteExt;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+                payload.len()
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+        }
+        bodies
+    });
+    let provider = provider(address);
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut stream = stream_via_rig(
+        &support::request(vec![support::user()]),
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    let mut texts = Vec::new();
+    let mut terminal = None;
+    while let Some(event) = stream.next().await {
+        match event {
+            Ok(codex_api::ResponseEvent::OutputTextDelta(text)) => texts.push(text),
+            Ok(_) => {}
+            Err(error) => terminal = Some(error),
+        }
+    }
+    let bodies = server.await.unwrap();
+    let error = terminal.expect("terminal budget error");
+    assert!(matches!(
+        &error,
+        codex_api::ApiError::InvalidRequest { message }
+            if message.contains("Output token limit reached")
+    ));
+    assert_eq!(bodies.len(), 1);
+    assert_eq!(texts.concat(), "ok");
+}

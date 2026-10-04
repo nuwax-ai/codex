@@ -11,7 +11,7 @@ mod cancellation_tests;
 mod error_tests;
 #[path = "wire/history_tests.rs"]
 mod history_tests;
-#[path = "wire/hosted_tools_wire_tests.rs"]
+#[path = "wire/hosted_tools/mod.rs"]
 mod hosted_tools_wire_tests;
 #[path = "wire/identity_replay_tests.rs"]
 mod identity_replay_tests;

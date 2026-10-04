@@ -12,6 +12,10 @@ pub(super) struct Scene<'a> {
     pub(super) artifacts: &'a Path,
     pub(super) protocol: &'a str,
     pub(super) marker: &'a str,
+    /// The wire facts every captured attempt must carry: the model and the
+    /// final URL prefix of the provider this scene was configured against.
+    pub(super) expected_model: &'a str,
+    pub(super) expected_url_prefix: &'a str,
 }
 
 pub(super) enum BinaryScenario<'a> {
@@ -46,7 +50,33 @@ pub(super) async fn run(
                 .iter()
                 .all(|line| serde_json::from_str::<Value>(line).is_ok())
             {
-                ("available", lines.len())
+                let attempts: Vec<Value> = lines
+                    .iter()
+                    .map(|line| serde_json::from_str(line).expect("validated JSON"))
+                    .collect();
+                // Wire-level evidence: each recorded final attempt must hit
+                // the configured provider with the configured model. This is
+                // the pre-send capture, not proof of server receipt.
+                let wire = attempts.iter().try_for_each(|attempt| {
+                    let url = attempt["url"].as_str().unwrap_or_default();
+                    anyhow::ensure!(
+                        url.starts_with(scene.expected_url_prefix),
+                        "captured URL {url} does not match the configured provider"
+                    );
+                    anyhow::ensure!(
+                        attempt["body"]["model"].as_str() == Some(scene.expected_model),
+                        "captured model {:?} does not match the configured model",
+                        attempt["body"]["model"]
+                    );
+                    Ok(())
+                });
+                match wire {
+                    Ok(()) => ("available", attempts.len()),
+                    Err(error) => {
+                        capture_error = Some(error.context("wire field assertion failed"));
+                        ("field_mismatch", attempts.len())
+                    }
+                }
             } else {
                 capture_error = Some(anyhow!("request capture contains malformed JSON"));
                 ("malformed", lines.len())
@@ -59,7 +89,9 @@ pub(super) async fn run(
         }
     };
     let evidence = serde_json::json!({ "read_status": status, "http_attempts": attempts,
-        "wire_asserted": false, "path": "requests.jsonl" });
+        "wire_asserted": status == "available",
+        "asserted_fields": ["url_prefix", "body.model"],
+        "path": "requests.jsonl" });
     let persist = (|| -> Result<()> {
         std::fs::write(
             scene.artifacts.join("request-capture-evidence.json"),

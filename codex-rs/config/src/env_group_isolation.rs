@@ -20,12 +20,15 @@ use toml::Value as TomlValue;
 
 /// The only keys the environment group itself seeds; a defensive backstop on
 /// the merged table — the authoritative check is per-layer provenance.
-const ENV_GROUP_SEED_KEYS: [&str; 5] = [
+const ENV_GROUP_SEED_KEYS: [&str; 8] = [
     "name",
     "base_url",
     "wire_api",
     "env_key",
     "max_output_tokens",
+    "request_max_retries",
+    "stream_max_retries",
+    "stream_idle_timeout_ms",
 ];
 
 /// Validates the reserved provider's origin using the caller's final

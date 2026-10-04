@@ -33,6 +33,9 @@ const BASE_URL_ENV: &str = "NUWAX_BASE_URL";
 const WIRE_API_ENV: &str = "NUWAX_WIRE_API";
 const API_KEY_ENV: &str = "NUWAX_API_KEY";
 const MAX_OUTPUT_TOKENS_ENV: &str = "NUWAX_MAX_OUTPUT_TOKENS";
+const REQUEST_MAX_RETRIES_ENV: &str = "NUWAX_REQUEST_MAX_RETRIES";
+const STREAM_MAX_RETRIES_ENV: &str = "NUWAX_STREAM_MAX_RETRIES";
+const STREAM_IDLE_TIMEOUT_MS_ENV: &str = "NUWAX_STREAM_IDLE_TIMEOUT_MS";
 
 /// The raw environment inputs, owned so the production reader can move the
 /// `var_os` values. Non-Unicode values surface as a diagnosable error
@@ -45,6 +48,9 @@ pub struct NuwaxEnvInput {
     pub wire_api: Option<OsString>,
     pub api_key: Option<OsString>,
     pub max_output_tokens: Option<OsString>,
+    pub request_max_retries: Option<OsString>,
+    pub stream_max_retries: Option<OsString>,
+    pub stream_idle_timeout_ms: Option<OsString>,
 }
 
 /// Reads the group from the real process environment exactly once per call
@@ -57,6 +63,9 @@ pub fn from_process() -> NuwaxEnvInput {
         wire_api: std::env::var_os(WIRE_API_ENV),
         api_key: std::env::var_os(API_KEY_ENV),
         max_output_tokens: std::env::var_os(MAX_OUTPUT_TOKENS_ENV),
+        request_max_retries: std::env::var_os(REQUEST_MAX_RETRIES_ENV),
+        stream_max_retries: std::env::var_os(STREAM_MAX_RETRIES_ENV),
+        stream_idle_timeout_ms: std::env::var_os(STREAM_IDLE_TIMEOUT_MS_ENV),
     }
 }
 
@@ -109,10 +118,32 @@ pub fn nuwax_env_overrides(
     let group_set = [base_url, wire_api, api_key];
     let set_count = group_set.iter().filter(|value| value.is_some()).count();
     if set_count == 0 {
-        if input.max_output_tokens.is_some() {
+        let orphaned = [
+            input
+                .max_output_tokens
+                .is_some()
+                .then_some(MAX_OUTPUT_TOKENS_ENV),
+            input
+                .request_max_retries
+                .is_some()
+                .then_some(REQUEST_MAX_RETRIES_ENV),
+            input
+                .stream_max_retries
+                .is_some()
+                .then_some(STREAM_MAX_RETRIES_ENV),
+            input
+                .stream_idle_timeout_ms
+                .is_some()
+                .then_some(STREAM_IDLE_TIMEOUT_MS_ENV),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+        if !orphaned.is_empty() {
             return Err(format!(
-                "{MAX_OUTPUT_TOKENS_ENV} requires the complete NUWAX temporary provider group; \
-                 set NUWAX_BASE_URL, NUWAX_WIRE_API and NUWAX_API_KEY together"
+                "{} requires the complete NUWAX temporary provider group; \
+                 set NUWAX_BASE_URL, NUWAX_WIRE_API and NUWAX_API_KEY together",
+                orphaned.join(", ")
             ));
         }
         // Group inactive: NUWAX_MODEL may still select an existing
@@ -166,6 +197,16 @@ pub fn nuwax_env_overrides(
         }
         None => None,
     };
+    let request_max_retries = parse_retry_count(
+        input.request_max_retries.as_deref(),
+        REQUEST_MAX_RETRIES_ENV,
+    )?;
+    let stream_max_retries =
+        parse_retry_count(input.stream_max_retries.as_deref(), STREAM_MAX_RETRIES_ENV)?;
+    let stream_idle_timeout_ms = parse_idle_timeout(
+        input.stream_idle_timeout_ms.as_deref(),
+        STREAM_IDLE_TIMEOUT_MS_ENV,
+    )?;
     let reserved_provider = format!("model_providers.{NUWAX_ENV_PROVIDER_ID}");
     let reserved_subkey_prefix = format!("{reserved_provider}.");
     if existing.iter().any(|(key, value)| {
@@ -197,6 +238,24 @@ pub fn nuwax_env_overrides(
         provider.insert(
             "max_output_tokens".into(),
             Value::Integer(max_output_tokens),
+        );
+    }
+    if let Some(request_max_retries) = request_max_retries {
+        provider.insert(
+            "request_max_retries".into(),
+            Value::Integer(request_max_retries),
+        );
+    }
+    if let Some(stream_max_retries) = stream_max_retries {
+        provider.insert(
+            "stream_max_retries".into(),
+            Value::Integer(stream_max_retries),
+        );
+    }
+    if let Some(stream_idle_timeout_ms) = stream_idle_timeout_ms {
+        provider.insert(
+            "stream_idle_timeout_ms".into(),
+            Value::Integer(stream_idle_timeout_ms),
         );
     }
     seeds.push((
@@ -242,6 +301,41 @@ fn unicode<'a>(value: Option<&'a std::ffi::OsStr>, name: &str) -> Result<Option<
                 .ok_or_else(|| format!("Invalid {name}: expected Unicode text"))
         })
         .transpose()
+}
+
+/// Retry counts: non-negative integers where zero (send exactly once) is a
+/// legal, meaningful configuration. Errors name the variable, never the value.
+fn parse_retry_count(value: Option<&std::ffi::OsStr>, name: &str) -> Result<Option<i64>, String> {
+    let Some(raw) = unicode(value, name)? else {
+        return Ok(None);
+    };
+    let raw = require_non_blank(Some(raw), name)?;
+    let parsed: i64 = raw.parse().map_err(|_| {
+        format!("Invalid {name}: expected a retry count of 0 or more within the i64 range")
+    })?;
+    if parsed < 0 {
+        return Err(format!(
+            "Invalid {name}: expected a retry count of 0 or more within the i64 range"
+        ));
+    }
+    Ok(Some(parsed))
+}
+
+/// Idle timeout: a positive millisecond count.
+fn parse_idle_timeout(value: Option<&std::ffi::OsStr>, name: &str) -> Result<Option<i64>, String> {
+    let Some(raw) = unicode(value, name)? else {
+        return Ok(None);
+    };
+    let raw = require_non_blank(Some(raw), name)?;
+    let parsed: i64 = raw.parse().map_err(|_| {
+        format!("Invalid {name}: expected a positive millisecond count within the i64 range")
+    })?;
+    if parsed <= 0 {
+        return Err(format!(
+            "Invalid {name}: expected a positive millisecond count within the i64 range"
+        ));
+    }
+    Ok(Some(parsed))
 }
 
 /// Blank values are indistinguishable from unset intent; reject them loudly.

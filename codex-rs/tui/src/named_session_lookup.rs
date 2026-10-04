@@ -19,6 +19,19 @@ pub(super) enum SessionCollection {
     Archived,
 }
 
+/// How a lookup constrains the provider dimension of `thread/list`.
+pub(super) enum ProviderFilter<'a> {
+    /// Every provider's sessions match: administrative lookups must not
+    /// depend on the invoking client's current model provider. Sent as an
+    /// explicit empty list so the server skips its default-provider filter.
+    All,
+    /// Let the server apply its current default provider filter (the resume
+    /// picker behavior when no provider context is available).
+    ServerDefault,
+    /// Constrain matches to one provider id.
+    Only(&'a str),
+}
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AmbiguousSessionName {
     #[error(
@@ -51,7 +64,7 @@ pub(super) async fn lookup(
     name: &str,
     collections: &[SessionCollection],
     source_kind_filters: &[Vec<ThreadSourceKind>],
-    model_provider: Option<&str>,
+    provider_filter: ProviderFilter<'_>,
 ) -> Result<Option<Thread>> {
     if name.trim().is_empty() {
         return Ok(None);
@@ -74,7 +87,11 @@ pub(super) async fn lookup(
                         limit: Some(100),
                         sort_key: Some(sort_key),
                         sort_direction: None,
-                        model_providers: model_provider.map(|provider| vec![provider.to_string()]),
+                        model_providers: match &provider_filter {
+                            ProviderFilter::All => Some(Vec::new()),
+                            ProviderFilter::ServerDefault => None,
+                            ProviderFilter::Only(provider) => Some(vec![provider.to_string()]),
+                        },
                         source_kinds: Some(source_kinds.clone()),
                         archived: Some(matches!(collection, SessionCollection::Archived)),
                         section_id: None,

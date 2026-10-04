@@ -1724,27 +1724,6 @@ impl ModelClientSession {
                 .client
                 .current_client_setup(ClientRouting::ConfiguredProvider)
                 .await?;
-            let producing_source = crate::model_output_projection::request_source(
-                self.client.state.provider.info(),
-                &client_setup.api_provider,
-                client_setup.auth.as_ref(),
-                &model_info.slug,
-                client_setup.api_auth.as_ref(),
-                client_setup.agent_identity_telemetry.as_ref(),
-            )
-            .map_err(|error| {
-                self.client
-                    .state
-                    .provider
-                    .map_api_error(ApiError::Transport(error.into()))
-            })?;
-            let mut projected_prompt = prompt.clone();
-            crate::model_output_projection::project_input(
-                &mut projected_prompt.input,
-                &prompt.input_provenance,
-                &producing_source,
-            );
-            let prompt = &projected_prompt;
             // Reflect the real wire in telemetry: a responses-wire provider
             // bridged through rig hits /responses, not chat/completions.
             let endpoint = match self.client.state.provider.info().wire_api {
@@ -1771,6 +1750,28 @@ impl ModelClientSession {
             let mut options = self
                 .build_responses_options(responses_metadata, compression, use_responses_lite)
                 .await;
+            let producing_source = crate::model_output_projection::request_source(
+                self.client.state.provider.info(),
+                &client_setup.api_provider,
+                client_setup.auth.as_ref(),
+                &model_info.slug,
+                client_setup.api_auth.as_ref(),
+                client_setup.agent_identity_telemetry.as_ref(),
+                &options.extra_headers,
+            )
+            .map_err(|error| {
+                self.client
+                    .state
+                    .provider
+                    .map_api_error(ApiError::Transport(error.into()))
+            })?;
+            let mut projected_prompt = prompt.clone();
+            crate::model_output_projection::project_input(
+                &mut projected_prompt.input,
+                &prompt.input_provenance,
+                &producing_source,
+            );
+            let prompt = &projected_prompt;
 
             let include_internal = self
                 .client
@@ -1901,27 +1902,6 @@ impl ModelClientSession {
                 .client
                 .current_client_setup(ClientRouting::Workspace)
                 .await?;
-            let producing_source = crate::model_output_projection::request_source(
-                self.client.state.provider.info(),
-                &client_setup.api_provider,
-                client_setup.auth.as_ref(),
-                &model_info.slug,
-                client_setup.api_auth.as_ref(),
-                client_setup.agent_identity_telemetry.as_ref(),
-            )
-            .map_err(|error| {
-                self.client
-                    .state
-                    .provider
-                    .map_api_error(ApiError::Transport(error.into()))
-            })?;
-            let mut projected_prompt = prompt.clone();
-            crate::model_output_projection::project_input(
-                &mut projected_prompt.input,
-                &prompt.input_provenance,
-                &producing_source,
-            );
-            let prompt = &projected_prompt;
             let include_internal = self
                 .client
                 .state
@@ -1956,6 +1936,31 @@ impl ModelClientSession {
                     model_info.use_responses_lite,
                 )
                 .await;
+            // The producing source must see every header this request will
+            // actually carry; guardian/routing headers joined options above.
+            options.extra_headers.extend(responses_headers.clone());
+            let producing_source = crate::model_output_projection::request_source(
+                self.client.state.provider.info(),
+                &client_setup.api_provider,
+                client_setup.auth.as_ref(),
+                &model_info.slug,
+                client_setup.api_auth.as_ref(),
+                client_setup.agent_identity_telemetry.as_ref(),
+                &options.extra_headers,
+            )
+            .map_err(|error| {
+                self.client
+                    .state
+                    .provider
+                    .map_api_error(ApiError::Transport(error.into()))
+            })?;
+            let mut projected_prompt = prompt.clone();
+            crate::model_output_projection::project_input(
+                &mut projected_prompt.input,
+                &prompt.input_provenance,
+                &producing_source,
+            );
+            let prompt = &projected_prompt;
 
             let mut request = self.client.build_responses_request(
                 prompt,
@@ -1997,7 +2002,7 @@ impl ModelClientSession {
             }
             let request_session_telemetry =
                 session_telemetry_for_request(session_telemetry, &request);
-            options.extra_headers.extend(responses_headers);
+            // responses_headers already joined options before request_source.
             let interceptors = crate::model_request::prepare(
                 &self.client.request_contributors,
                 &self.client.state.thread_id.to_string(),
@@ -2119,6 +2124,17 @@ impl ModelClientSession {
                 .client
                 .current_client_setup(ClientRouting::Workspace)
                 .await?;
+            let include_internal = self
+                .client
+                .state
+                .provider
+                .include_internal_metadata(&client_setup.api_provider);
+            let responses_headers = self
+                .client
+                .responses_headers(client_setup.auth.as_ref(), &model_info.slug);
+            // Websocket sideband auth headers mirror the auth snapshot that
+            // request_source compares privately; responses_headers carry the
+            // per-request metadata worth scoping.
             let producing_source = crate::model_output_projection::request_source(
                 self.client.state.provider.info(),
                 &client_setup.api_provider,
@@ -2126,6 +2142,7 @@ impl ModelClientSession {
                 &model_info.slug,
                 client_setup.api_auth.as_ref(),
                 client_setup.agent_identity_telemetry.as_ref(),
+                &responses_headers,
             )
             .map_err(|error| {
                 self.client
@@ -2140,14 +2157,6 @@ impl ModelClientSession {
                 &producing_source,
             );
             let prompt = &projected_prompt;
-            let include_internal = self
-                .client
-                .state
-                .provider
-                .include_internal_metadata(&client_setup.api_provider);
-            let responses_headers = self
-                .client
-                .responses_headers(client_setup.auth.as_ref(), &model_info.slug);
             tracing::Span::current().record("api.path", "/responses");
             let request_auth_context = AuthRequestTelemetryContext::new(
                 client_setup.auth.as_ref().map(CodexAuth::auth_mode),

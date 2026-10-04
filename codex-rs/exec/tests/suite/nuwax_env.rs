@@ -53,6 +53,10 @@ impl wiremock::Match for RequestLog {
 }
 
 impl RequestLog {
+    fn all(&self) -> Vec<wiremock::Request> {
+        self.0.lock().unwrap().clone()
+    }
+
     fn single(&self) -> wiremock::Request {
         let requests = self.0.lock().unwrap();
         assert_eq!(
@@ -366,6 +370,85 @@ async fn nuwax_env_cli_provider_subkeys_and_parent_tables_fail_before_requests()
                 .await
                 .expect("received requests")
                 .is_empty()
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nuwax_env_request_retries_reach_the_chat_wire() -> Result<()> {
+    // The environment retry controls must drive the real HTTP attempt count
+    // through the whole binary: one 503, then SSE. With one configured
+    // retry the wire sees exactly two POSTs; with zero it sees one and the
+    // turn fails.
+    // Core sampling retries (stream_max_retries) would mask the handshake
+    // layer, so the test pins them to zero: only the provider HTTP retry
+    // budget may resend. Default request retries (4) and an explicit 1 both
+    // recover on the second attempt; an explicit 0 sends exactly once and
+    // the turn fails without any resample.
+    for (retries, expected_requests, expect_success) in
+        [(Some("1"), 2, true), (Some("0"), 1, false), (None, 2, true)]
+    {
+        let test = test_codex_exec();
+        let server = start_mock_server().await;
+        let log = RequestLog::default();
+        // First reply: 503 (retryable). Following replies: valid SSE.
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(log.clone())
+            .respond_with(ResponseTemplate::new(503).set_body_string("overloaded"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(log.clone())
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(CHAT_SSE.to_string(), "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+        let repo_root = codex_utils_cargo_bin::repo_root()?;
+        let mut command = test.cmd();
+        for variable in [
+            "NUWAX_BASE_URL",
+            "NUWAX_WIRE_API",
+            "NUWAX_API_KEY",
+            "NUWAX_MODEL",
+            "NUWAX_REQUEST_MAX_RETRIES",
+            "NUWAX_MAX_OUTPUT_TOKENS",
+        ] {
+            command.env_remove(variable);
+        }
+        command
+            .arg("--skip-git-repo-check")
+            .arg("-C")
+            .arg(&repo_root)
+            .arg("reply with ok")
+            .env("NUWAX_BASE_URL", format!("{}/v1", server.uri()))
+            .env("NUWAX_WIRE_API", "chat")
+            .env("NUWAX_API_KEY", "nuwax-retry-key")
+            .env("NUWAX_MODEL", "nuwax-test-model");
+        if let Some(retries) = retries {
+            command.env("NUWAX_REQUEST_MAX_RETRIES", retries);
+        }
+        command.env("NUWAX_STREAM_MAX_RETRIES", "0");
+        let output = tokio::task::spawn_blocking(move || command.output()).await??;
+        assert_eq!(
+            output.status.success(),
+            expect_success,
+            "retries={retries:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let requests = log.all();
+        assert_eq!(
+            requests.len(),
+            expected_requests,
+            "retries={retries:?}: paths {:?}",
+            requests
+                .iter()
+                .map(|request| request.url.path().to_string())
+                .collect::<Vec<_>>()
         );
     }
     Ok(())

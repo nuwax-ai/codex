@@ -195,7 +195,11 @@ config 文件；显式选其他 provider 时整组忽略。CLI/TUI/exec/standalo
 app-server 同语义接线；组激活时共享 daemon 被排除（每进程凭据），doctor
 `--json` 新增 `config.model_routing` 检查。部分设置/非法值 fail-fast 报变量名。
 2026-10-03 增加 `NUWAX_MAX_OUTPUT_TOKENS`，三协议均可用；Responses 使用
-`max_output_tokens`。多进程应分别设置独立 `CODEX_HOME`；参数表、启动示例、远程与会话
+`max_output_tokens`。2026-10-04 增加 `NUWAX_REQUEST_MAX_RETRIES`（0=只发一次）、
+`NUWAX_STREAM_MAX_RETRIES`、`NUWAX_STREAM_IDLE_TIMEOUT_MS`（毫秒）：与组同激活、
+同优先级（typed CLI > 显式 `-c` > env），孤立设置 fail-fast，daemon 子进程启动时
+剥离。握手重试与 Core 采样重试分开计数，无单一总预算。
+多进程应分别设置独立 `CODEX_HOME`；参数表、启动示例、远程与会话
 边界见 [容器多进程审查](container-multiprocess-env-review-2026-10-03.md)。
 （ACP-TS 侧另有 `CODEX_BASE_URL`/`CODEX_API_PROTOCOL`/`CODEX_WIRE_API`/
 `INITIAL_AGENT_MODE` 等，见该仓库。）

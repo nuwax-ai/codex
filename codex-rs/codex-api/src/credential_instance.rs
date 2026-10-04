@@ -5,7 +5,6 @@ use crate::AuthError;
 use crate::Provider;
 use http::HeaderMap;
 use rand::TryRngCore;
-use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -16,7 +15,10 @@ const MAX_ENTRY_BYTES: usize = 16 * 1024;
 struct Entry {
     headers: HeaderMap,
     base_url: String,
-    query: Option<HashMap<String, String>>,
+    /// Exact wire query: URL-embedded pairs in URL order, then sorted config
+    /// pairs — the same shape the transport sends. Order and duplicates are
+    /// preserved so two different query strings never compare equal.
+    query: Vec<(String, String)>,
     id: String,
 }
 
@@ -39,27 +41,18 @@ impl InstanceCache {
                     .saturating_add(name.as_str().len())
                     .saturating_add(value.as_bytes().len())
             });
-        let bytes = provider.query_params.as_ref().map_or(bytes, |query| {
-            query.iter().fold(bytes, |total, (name, value)| {
-                total.saturating_add(name.len()).saturating_add(value.len())
-            })
+        let query = provider_wire_query(provider);
+        let bytes = query.iter().fold(bytes, |total, (name, value)| {
+            total.saturating_add(name.len()).saturating_add(value.len())
         });
-        if bytes > MAX_ENTRY_BYTES
-            || headers.len() > 128
-            || provider
-                .query_params
-                .as_ref()
-                .is_some_and(|query| query.len() > 128)
-        {
+        if bytes > MAX_ENTRY_BYTES || headers.len() > 128 || query.len() > 128 {
             tracing::warn!(
                 "Credential snapshot exceeds identity budget; opaque replay is unvalidated"
             );
             return Ok(None);
         }
         if let Some(entry) = self.entries.iter().find(|entry| {
-            entry.headers == headers
-                && entry.base_url == provider.base_url
-                && entry.query == provider.query_params
+            entry.headers == headers && entry.base_url == provider.base_url && entry.query == query
         }) {
             return Ok(Some(entry.id.clone()));
         }
@@ -81,16 +74,34 @@ impl InstanceCache {
         self.entries.push_back(Entry {
             headers: compact_headers,
             base_url: provider.base_url.clone(),
-            query: provider.query_params.as_ref().map(|query| {
-                query
-                    .iter()
-                    .map(|(name, value)| (name.clone(), value.clone()))
-                    .collect()
-            }),
+            query,
             id: id.clone(),
         });
         Ok(Some(id))
     }
+}
+
+/// The exact query pairs the wire transport sends for this provider:
+/// URL-embedded pairs in URL order, then sorted configured pairs. No value
+/// is ever hashed, serialized, or logged; this lives only in the private
+/// bounded cache.
+fn provider_wire_query(provider: &Provider) -> Vec<(String, String)> {
+    let mut query: Vec<(String, String)> = url::Url::parse(&provider.base_url)
+        .map(|url| {
+            url.query_pairs()
+                .map(|(name, value)| (name.into_owned(), value.into_owned()))
+                .collect()
+        })
+        .unwrap_or_default();
+    if let Some(params) = &provider.query_params {
+        let mut configured: Vec<(String, String)> = params
+            .iter()
+            .map(|(name, value)| (name.clone(), value.clone()))
+            .collect();
+        configured.sort();
+        query.extend(configured);
+    }
+    query
 }
 
 /// Compares immutable actual headers plus the complete private URI/query.

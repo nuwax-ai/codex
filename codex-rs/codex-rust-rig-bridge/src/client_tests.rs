@@ -38,13 +38,20 @@ fn legacy_protocol_detection_uses_only_the_url_path() {
 }
 
 #[test]
-fn reasoning_source_includes_query_routing_without_persisting_credentials() {
+fn reasoning_source_partitions_by_query_shape_never_by_values() {
+    // endpoint-v2: the persisted source identity carries the origin/path and
+    // the sorted query NAMES. Value differences — routing or credential,
+    // recognized or not — never enter the digest; their isolation lives in
+    // the private credential-instance scope.
     let a = provider("https://host.test/v1?tenant=A&tenant=B");
     let b = provider("https://host.test/v1?tenant=B&tenant=A");
-    let a_key = reasoning_source(&a, RigProtocol::Anthropic, "model").unwrap();
-    assert_ne!(
+    let a_key =
+        reasoning_source_with_auth_domain(&a, RigProtocol::Anthropic, "model", Some("env:KEY_A"))
+            .unwrap();
+    assert_eq!(
         a_key,
-        reasoning_source(&b, RigProtocol::Anthropic, "model").unwrap()
+        reasoning_source_with_auth_domain(&b, RigProtocol::Anthropic, "model", Some("env:KEY_A"))
+            .unwrap()
     );
     let mut keyed = a;
     keyed.query_params = Some(
@@ -52,10 +59,14 @@ fn reasoning_source_includes_query_routing_without_persisting_credentials() {
             .into_iter()
             .collect(),
     );
-    let key = reasoning_source(&keyed, RigProtocol::Anthropic, "model").unwrap();
-    assert_eq!(key, a_key);
-    // Credentials never enter source identity, including as a hash. An auth
-    // selector/account domain must separately partition authenticated replay.
+    let key = reasoning_source_with_auth_domain(
+        &keyed,
+        RigProtocol::Anthropic,
+        "model",
+        Some("env:KEY_A"),
+    )
+    .unwrap();
+    assert_ne!(key, a_key, "a new query NAME still partitions the source");
     keyed
         .query_params
         .as_mut()
@@ -63,13 +74,16 @@ fn reasoning_source_includes_query_routing_without_persisting_credentials() {
         .insert("token".into(), "rotated-secret".into());
     assert_eq!(
         key,
-        reasoning_source(&keyed, RigProtocol::Anthropic, "model").unwrap()
+        reasoning_source_with_auth_domain(
+            &keyed,
+            RigProtocol::Anthropic,
+            "model",
+            Some("env:KEY_A")
+        )
+        .unwrap(),
+        "credential value rotation leaves the persisted source unchanged"
     );
     assert!(!key.contains("secret-should-not-persist"));
-    assert_eq!(
-        key,
-        reasoning_source(&keyed, RigProtocol::Anthropic, "model").unwrap()
-    );
 }
 
 /// N4: the provenance identity participates in replay decisions per
@@ -83,7 +97,13 @@ fn provenance_identity_partitions_replay_by_endpoint_model_and_protocol() {
     use crate::hosted_replay::replayable;
 
     let capture = provider("https://capture.test/v1");
-    let captured_source = reasoning_source(&capture, RigProtocol::Anthropic, "model-a").unwrap();
+    let captured_source = reasoning_source_with_auth_domain(
+        &capture,
+        RigProtocol::Anthropic,
+        "model-a",
+        Some("legacy-unscoped"),
+    )
+    .unwrap();
     let payload = envelope(
         &captured_source,
         vec![serde_json::json!({
@@ -97,31 +117,45 @@ fn provenance_identity_partitions_replay_by_endpoint_model_and_protocol() {
     let parsed = parse_envelope(&payload).unwrap();
 
     // The identical identity replays.
-    let same = reasoning_source(
+    let same = reasoning_source_with_auth_domain(
         &provider("https://capture.test/v1"),
         RigProtocol::Anthropic,
         "model-a",
+        Some("legacy-unscoped"),
     )
     .unwrap();
     assert!(replayable(&parsed, &same));
 
     // Model switch on the same gateway: not replayable.
-    let other_model = reasoning_source(&capture, RigProtocol::Anthropic, "model-b").unwrap();
+    let other_model = reasoning_source_with_auth_domain(
+        &capture,
+        RigProtocol::Anthropic,
+        "model-b",
+        Some("legacy-unscoped"),
+    )
+    .unwrap();
     assert_ne!(same, other_model);
     assert!(!replayable(&parsed, &other_model));
 
     // Endpoint switch with the same model: not replayable.
-    let other_endpoint = reasoning_source(
+    let other_endpoint = reasoning_source_with_auth_domain(
         &provider("https://other.test/v1"),
         RigProtocol::Anthropic,
         "model-a",
+        Some("legacy-unscoped"),
     )
     .unwrap();
     assert_ne!(same, other_endpoint);
     assert!(!replayable(&parsed, &other_endpoint));
 
     // Protocol switch over the same endpoint+model: not replayable.
-    let other_protocol = reasoning_source(&capture, RigProtocol::Chat, "model-a").unwrap();
+    let other_protocol = reasoning_source_with_auth_domain(
+        &capture,
+        RigProtocol::Chat,
+        "model-a",
+        Some("legacy-unscoped"),
+    )
+    .unwrap();
     assert_ne!(same, other_protocol);
     assert!(!replayable(&parsed, &other_protocol));
 }
@@ -178,7 +212,13 @@ fn provenance_auth_domains_partition_replay_without_hashing_keys() {
         Some("env:KEY_B"),
     )
     .unwrap();
-    let unknown = reasoning_source(&provider, RigProtocol::Anthropic, "model").unwrap();
+    let unknown = reasoning_source_with_auth_domain(
+        &provider,
+        RigProtocol::Anthropic,
+        "model",
+        Some("legacy-unscoped"),
+    )
+    .unwrap();
     assert_ne!(original, other);
     assert_ne!(original, unknown);
     assert_eq!(
@@ -202,8 +242,20 @@ fn missing_actual_auth_domain_cannot_authorize_another_request_replay() {
         .unwrap();
     assert_ne!(a, b);
     assert_eq!(
-        reasoning_source(&provider, RigProtocol::Anthropic, "model").unwrap(),
-        reasoning_source(&provider, RigProtocol::Anthropic, "model").unwrap()
+        reasoning_source_with_auth_domain(
+            &provider,
+            RigProtocol::Anthropic,
+            "model",
+            Some("legacy-unscoped")
+        )
+        .unwrap(),
+        reasoning_source_with_auth_domain(
+            &provider,
+            RigProtocol::Anthropic,
+            "model",
+            Some("legacy-unscoped")
+        )
+        .unwrap()
     );
 }
 

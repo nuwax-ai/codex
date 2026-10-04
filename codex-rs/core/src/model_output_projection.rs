@@ -15,9 +15,16 @@ pub(crate) fn request_source(
     model: &str,
     api_auth: &dyn codex_api::AuthProvider,
     agent_identity: Option<&codex_api::AgentIdentityTelemetry>,
+    extra_headers: &http::HeaderMap,
 ) -> Result<ModelOutputProvenance, codex_api::AuthError> {
-    let (auth_domain, auth_domain_kind) =
-        auth_domain(info, provider, auth, api_auth, agent_identity)?;
+    let (auth_domain, auth_domain_kind) = auth_domain(
+        info,
+        provider,
+        auth,
+        api_auth,
+        agent_identity,
+        extra_headers,
+    )?;
     Ok(ModelOutputProvenance {
         wire_protocol: info.wire_api.to_string(),
         bridge: info.uses_model_bridge().then(|| {
@@ -41,32 +48,28 @@ fn auth_domain(
     auth: Option<&CodexAuth>,
     api_auth: &dyn codex_api::AuthProvider,
     agent_identity: Option<&codex_api::AgentIdentityTelemetry>,
+    extra_headers: &http::HeaderMap,
 ) -> Result<(Option<String>, Option<String>), codex_api::AuthError> {
     let snapshot = api_auth.immutable_credential_headers();
-    let query_auth = provider
-        .query_params
-        .as_ref()
-        .is_some_and(|query| query.keys().any(|name| auth_header(name)))
-        || url::Url::parse(&provider.base_url).ok().is_some_and(|url| {
-            !url.username().is_empty()
-                || url.password().is_some()
-                || url.query_pairs().any(|(name, _)| auth_header(&name))
-        });
-    let provider_auth = provider.headers.keys().any(|name| {
-        !matches!(
-            name.as_str(),
-            "anthropic-version"
-                | "anthropic-beta"
-                | "accept"
-                | "content-type"
-                | "user-agent"
-                | "version"
-                | "openai-beta"
-                | "originator"
-                | "x-originator"
-        )
-    });
-    let selected_override = query_auth
+    // Every query value — recognized or not — is private scope; the persisted
+    // endpoint identity never contains values, so isolation happens here.
+    let query_scoped = codex_api::provider_carries_private_query(provider);
+    let provider_auth = provider
+        .headers
+        .keys()
+        .any(|name| !codex_api::is_benign_request_header(name.as_str()));
+    // Extra headers join the private scope unless the shared policy marks
+    // them static telemetry: a future credential-carrying extra header must
+    // rotate the identity, while per-attempt trace metadata must not.
+    let mut scoped_extra_headers = http::HeaderMap::new();
+    for (name, value) in extra_headers {
+        if !codex_api::is_benign_request_header(name.as_str()) {
+            scoped_extra_headers.append(name.clone(), value.clone());
+        }
+    }
+    let selected_override = query_scoped
+        || provider_auth
+        || !scoped_extra_headers.is_empty()
         || provider_auth
         || info.env_key.is_some()
         || info.experimental_bearer_token.is_some()
@@ -104,11 +107,14 @@ fn auth_domain(
         ));
     }
     if let Some(headers) = snapshot {
-        if headers.is_empty() && !query_auth && !provider_auth && !selected_override {
+        if headers.is_empty() && !query_scoped && !provider_auth && !selected_override {
             return Ok((Some("anonymous".into()), Some("anonymous".into())));
         }
-        if !headers.is_empty() || query_auth || provider_auth {
+        if !headers.is_empty() || query_scoped || provider_auth {
+            // Mirror the wire's override order: provider headers, then
+            // credential-scoped extra headers, then the auth snapshot.
             let mut actual_headers = provider.headers.clone();
+            actual_headers.extend(scoped_extra_headers);
             actual_headers.extend(headers);
             return Ok(
                 match codex_api::credential_instance_identity(provider, actual_headers)? {
@@ -142,32 +148,6 @@ fn auth_domain(
         Some(format!("selector-v1:{selector}")),
         Some("selector".into()),
     ))
-}
-
-fn auth_header(name: &str) -> bool {
-    let name = name.to_ascii_lowercase().replace('-', "_");
-    matches!(
-        name.as_str(),
-        "authorization"
-            | "cookie"
-            | "x_api_key"
-            | "api_key"
-            | "apikey"
-            | "key"
-            | "token"
-            | "auth"
-            | "password"
-            | "secret"
-            | "signature"
-            | "credential"
-            | "credentials"
-    ) || name.ends_with("_key")
-        || name.ends_with("_credential")
-        || name.ends_with("_credentials")
-        || name.ends_with("_token")
-        || name.ends_with("_secret")
-        || name.ends_with("_password")
-        || name.ends_with("_signature")
 }
 
 pub(crate) type InputProvenance =

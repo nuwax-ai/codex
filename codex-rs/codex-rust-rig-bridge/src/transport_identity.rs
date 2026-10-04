@@ -118,6 +118,19 @@ fn rebuild_response(
         expected_start = site.start.checked_add(site.len)?;
     }
     let sites = group.block_sites.as_ref()?;
+    // Foreign call clones carry no wire index of this response, so the layout
+    // cannot address them — but they were accepted, and each late result must
+    // keep its matching server_tool_use in the same assistant message. Emit
+    // them ahead of the response's own blocks instead of dropping them.
+    let mut rebuild = Vec::new();
+    for (position, site) in sites.iter().enumerate() {
+        if site.wire == UNKNOWN_WIRE_INDEX
+            && usize::try_from(site.layout).ok() == Some(ordinal)
+            && let Some(block) = group.blocks.get(position)
+        {
+            rebuild.push(block.clone());
+        }
+    }
     let mut pair_positions = HashMap::new();
     for (position, site) in sites.iter().enumerate() {
         if usize::try_from(site.layout).ok() == Some(ordinal)
@@ -131,7 +144,6 @@ fn rebuild_response(
     let mut seen_owners = Vec::new();
     let mut text = HashMap::<&str, String>::new();
     let mut parts = HashMap::<&str, Vec<usize>>::new();
-    let mut rebuild = Vec::new();
     for entry in layout {
         match entry.get("kind").and_then(Value::as_str) {
             Some("pair") => {

@@ -660,3 +660,54 @@ async fn paused_turn_usage_reports_the_final_request_counters() {
     assert_eq!(usage.input_tokens, 120, "{usage:?}");
     assert_eq!(usage.output_tokens, 5, "{usage:?}");
 }
+
+#[tokio::test]
+async fn paused_content_between_envelope_and_pause_budgets_still_continues() {
+    // Regression: the pause-continuation hard-fail budget is independent of
+    // the persisted-envelope budget (9,800). Content between the two must
+    // keep continuing verbatim, as it did before the envelope budget split.
+    let long_text = "y".repeat(20_000);
+    let (address, server) = support::sequence_server(vec![
+        paused_sse().replace("partial so far", &long_text),
+        support::ANTHROPIC_SSE.to_string(),
+    ])
+    .await;
+    let provider = provider(address);
+    let mut request = support::request(vec![support::user()]);
+    support::set_tools(&mut request, json!([{"type":"web_search"}]));
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    let mut completed = 0;
+    while let Some(event) = stream.next().await {
+        if matches!(event.unwrap(), ResponseEvent::Completed { .. }) {
+            completed += 1;
+        }
+    }
+    let bodies = server.await.unwrap();
+    assert_eq!((completed, bodies.len()), (1, 2));
+    let messages = bodies[1]["messages"].as_array().expect("messages");
+    let last_assistant = messages
+        .iter()
+        .rev()
+        .find(|message| message["role"] == "assistant")
+        .expect("paused assistant message");
+    let text = last_assistant["content"]
+        .as_array()
+        .expect("content blocks")
+        .iter()
+        .filter(|block| block["type"] == "text")
+        .map(|block| block["text"].as_str().unwrap_or_default())
+        .max_by_key(|text| text.len())
+        .expect("paused text block");
+    assert_eq!(text.len(), 20_000);
+    assert!(text.chars().all(|character| character == 'y'));
+}

@@ -106,3 +106,29 @@ fn app_server_target_for_launch_allows_remote_when_nuwax_group_is_inactive()
     }
     Ok(())
 }
+
+#[test]
+fn nuwax_env_provider_seed_active_detects_the_seed_group_regardless_of_site()
+-> color_eyre::Result<()> {
+    let seeds = nuwax_env_overrides(
+        NuwaxEnvInput {
+            model: Some("client-model".into()),
+            base_url: Some("https://client.example/v1".into()),
+            wire_api: Some("chat".into()),
+            api_key: Some("client-secret".into()),
+            ..Default::default()
+        },
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &[],
+    )
+    .expect("valid temporary provider");
+    assert!(super::nuwax_env_provider_seed_active(&seeds));
+    let unrelated = vec![(
+        "model".to_string(),
+        toml::Value::String("client-model".into()),
+    )];
+    assert!(!super::nuwax_env_provider_seed_active(&unrelated));
+    assert!(!super::nuwax_env_provider_seed_active(&[]));
+    Ok(())
+}

@@ -224,3 +224,29 @@ fn missing_named_owner_never_injects_text_and_edited_owned_text_stays_whole() {
         assert_eq!(content, vec![text("edited"), call("s"), result("s")]);
     }
 }
+
+#[test]
+fn successful_rebuild_keeps_unindexed_foreign_call_clones_with_their_result() {
+    // A late response completes a search whose original call envelope was
+    // dropped (for example over the envelope cap), so history carries a
+    // foreign call clone with no wire index beside the new result. A
+    // successful layout rebuild must keep both blocks: the replayed result
+    // may never lose its matching server_tool_use.
+    let mut content = vec![text("intro")];
+    let response = ResponseSite {
+        id: "late".into(),
+        anchor: 0,
+        segments: vec![segment("late", 0, 0)],
+    };
+    let g = group(
+        vec![call("foreign"), result("foreign")],
+        vec![(0, UNKNOWN_WIRE_INDEX), (0, 2)],
+        vec![response],
+        vec![vec![raw(1, &owner("late", 0), text("intro")), pair(2)]],
+    );
+    splice_identity(&mut content, &g);
+    assert_eq!(
+        content,
+        vec![call("foreign"), text("intro"), result("foreign")]
+    );
+}

@@ -129,3 +129,51 @@ fn process_registry_returns_only_random_non_secret_identity() {
     assert!(!a.contains("hidden-secret"));
     assert!(a.starts_with("credential-instance-v1:"));
 }
+
+#[test]
+fn wire_query_comparison_keeps_exact_url_pairs_and_sorted_config_pairs() {
+    let mut provider = provider();
+    provider.base_url = "https://model.test/v1?z=1&a=2&z=3".into();
+    provider.query_params = Some(
+        [
+            ("tenant".into(), "route".into()),
+            ("beta".into(), "on".into()),
+        ]
+        .into(),
+    );
+    let mut cache = InstanceCache::default();
+    let first = cache
+        .identify(&provider, headers("Bearer same"), || Ok("first".into()))
+        .unwrap();
+    // Same wire query under a fresh cache entry: identical pairs, identical
+    // identity — URL order preserved, config pairs sorted.
+    assert_eq!(
+        cache
+            .identify(&provider, headers("Bearer same"), || panic!("cache hit"))
+            .unwrap(),
+        first
+    );
+    // Value rotation in the URL-embedded part rotates the identity.
+    provider.base_url = "https://model.test/v1?z=1&a=2&z=4".into();
+    assert_eq!(
+        cache
+            .identify(&provider, headers("Bearer same"), || Ok("rotated".into()))
+            .unwrap(),
+        Some("rotated".into())
+    );
+    // Config value rotation rotates it too.
+    provider.base_url = "https://model.test/v1?z=1&a=2&z=4".into();
+    provider.query_params = Some(
+        [
+            ("tenant".into(), "other-route".into()),
+            ("beta".into(), "on".into()),
+        ]
+        .into(),
+    );
+    assert_eq!(
+        cache
+            .identify(&provider, headers("Bearer same"), || Ok("config".into()))
+            .unwrap(),
+        Some("config".into())
+    );
+}

@@ -41,6 +41,30 @@ fn provider_seeds(wire_api: &str) -> Vec<(String, Value)> {
     ]
 }
 
+fn full_group_input() -> NuwaxEnvInput {
+    input(
+        Some("m1"),
+        Some("https://gw.example"),
+        Some("chat"),
+        Some("k"),
+    )
+}
+
+fn seed_provider_table(seeds: &[(String, Value)]) -> toml::Table {
+    seeds
+        .iter()
+        .find(|(key, _)| key == "model_providers.nuwax_env")
+        .and_then(|(_, value)| value.as_table())
+        .expect("provider seed table")
+        .clone()
+}
+
+#[cfg(unix)]
+fn non_unicode() -> OsString {
+    use std::os::unix::ffi::OsStringExt;
+    OsString::from_vec(vec![0xff, 0xfe])
+}
+
 #[test]
 fn full_group_seeds_the_temporary_provider_for_each_wire() {
     for wire_api in ["responses", "chat", "anthropic"] {
@@ -587,4 +611,101 @@ fn cli_cannot_supply_the_reserved_output_cap_field() {
     )
     .expect_err("provider fields remain exclusive to the seed layer");
     assert!(error.contains("reserved"), "{error}");
+}
+
+#[test]
+fn request_controls_seed_the_temporary_provider_table() {
+    let input = full_group_input();
+    let seeds = nuwax_env_overrides(
+        NuwaxEnvInput {
+            request_max_retries: Some("1".into()),
+            stream_max_retries: Some("2".into()),
+            stream_idle_timeout_ms: Some("120000".into()),
+            ..input
+        },
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &[],
+    )
+    .expect("valid controls");
+    let provider = seed_provider_table(&seeds);
+    assert_eq!(
+        provider.get("request_max_retries"),
+        Some(&toml::Value::Integer(1))
+    );
+    assert_eq!(
+        provider.get("stream_max_retries"),
+        Some(&toml::Value::Integer(2))
+    );
+    assert_eq!(
+        provider.get("stream_idle_timeout_ms"),
+        Some(&toml::Value::Integer(120_000))
+    );
+
+    // Zero retries is a legal, meaningful configuration (send exactly once).
+    let zero = nuwax_env_overrides(
+        NuwaxEnvInput {
+            request_max_retries: Some("0".into()),
+            ..full_group_input()
+        },
+        None,
+        None,
+        &[],
+    )
+    .expect("zero retries is legal");
+    assert_eq!(
+        seed_provider_table(&zero).get("request_max_retries"),
+        Some(&toml::Value::Integer(0))
+    );
+}
+
+#[test]
+fn invalid_request_controls_fail_fast_naming_the_variable() {
+    for (field, value, name) in [
+        (1, "-1", "NUWAX_REQUEST_MAX_RETRIES"),
+        (1, "not-a-number", "NUWAX_REQUEST_MAX_RETRIES"),
+        (2, "-3", "NUWAX_STREAM_MAX_RETRIES"),
+        (3, "0", "NUWAX_STREAM_IDLE_TIMEOUT_MS"),
+        (3, "-100", "NUWAX_STREAM_IDLE_TIMEOUT_MS"),
+        (3, "abc", "NUWAX_STREAM_IDLE_TIMEOUT_MS"),
+    ] {
+        let mut input = full_group_input();
+        let os_value: std::ffi::OsString = value.into();
+        match field {
+            1 => input.request_max_retries = Some(os_value),
+            2 => input.stream_max_retries = Some(os_value),
+            _ => input.stream_idle_timeout_ms = Some(os_value),
+        }
+        let error = nuwax_env_overrides(input, None, None, &[])
+            .expect_err("invalid control must fail the group");
+        assert!(error.contains(name), "{value}: {error}");
+        assert!(!error.contains(value) || value == "0", "{value}: {error}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn non_unicode_request_control_names_the_variable() {
+    let mut input = full_group_input();
+    input.request_max_retries = Some(non_unicode());
+    let error = nuwax_env_overrides(input, None, None, &[]).expect_err("non-unicode control");
+    assert!(error.contains("NUWAX_REQUEST_MAX_RETRIES"), "{error}");
+}
+
+#[test]
+fn orphaned_request_controls_require_the_complete_group() {
+    let error = nuwax_env_overrides(
+        NuwaxEnvInput {
+            request_max_retries: Some("1".into()),
+            stream_idle_timeout_ms: Some("1000".into()),
+            ..Default::default()
+        },
+        None,
+        None,
+        &[],
+    )
+    .expect_err("orphaned controls fail fast");
+    assert!(error.contains("NUWAX_REQUEST_MAX_RETRIES"), "{error}");
+    assert!(error.contains("NUWAX_STREAM_IDLE_TIMEOUT_MS"), "{error}");
+    assert!(error.contains("NUWAX_BASE_URL"), "{error}");
 }

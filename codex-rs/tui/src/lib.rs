@@ -196,6 +196,7 @@ mod session_log;
 mod session_queue_commands;
 mod session_resume;
 mod session_start;
+mod session_startup_policy;
 mod session_state;
 mod shortcut_help;
 mod skills_helpers;
@@ -819,13 +820,17 @@ async fn lookup_session_target_with_app_server(
     }
 
     let model_provider = app_server.history_model_provider(config).await?;
+    let provider_filter = match model_provider.as_deref() {
+        Some(provider) => named_session_lookup::ProviderFilter::Only(provider),
+        None => named_session_lookup::ProviderFilter::ServerDefault,
+    };
     Ok(named_session_lookup::lookup(
         app_server,
         config.codex_home.as_path(),
         id_or_name,
         &[named_session_lookup::SessionCollection::Active],
         &[resume_source_kinds(/*include_non_interactive*/ false)],
-        model_provider.as_deref(),
+        provider_filter,
     )
     .await?
     .and_then(session_target_from_app_server_thread))
@@ -1019,6 +1024,17 @@ fn latest_session_cwd_filter<'a>(
     }
 }
 
+/// True when launch seeds activate the reserved NUWAX environment provider.
+/// Built from the shared protocol constant so the reserved id cannot drift
+/// between the remote-launch guard and the daemon exclusion.
+pub(crate) fn nuwax_env_provider_seed_active(env_seed_overrides: &[(String, toml::Value)]) -> bool {
+    let reserved = format!(
+        "model_providers.{}",
+        codex_protocol::config_types::NUWAX_ENV_PROVIDER_ID
+    );
+    env_seed_overrides.iter().any(|(key, _)| *key == reserved)
+}
+
 fn app_server_target_for_launch(
     explicit_remote_endpoint: Option<RemoteAppServerEndpoint>,
     default_daemon_socket: Option<AbsolutePathBuf>,
@@ -1027,11 +1043,7 @@ fn app_server_target_for_launch(
     exec_server_url: Option<&std::ffi::OsStr>,
     env_seed_overrides: &[(String, toml::Value)],
 ) -> std::io::Result<AppServerTarget> {
-    if explicit_remote_endpoint.is_some()
-        && env_seed_overrides
-            .iter()
-            .any(|(key, _)| key == "model_providers.nuwax_env")
-    {
+    if explicit_remote_endpoint.is_some() && nuwax_env_provider_seed_active(env_seed_overrides) {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "NUWAX environment provider must be configured on the remote app-server host; unset the local NUWAX provider group or omit --remote",

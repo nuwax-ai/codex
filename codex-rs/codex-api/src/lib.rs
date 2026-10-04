@@ -40,7 +40,9 @@ pub use bridge::ModelBridge;
 pub use bridge::ModelBridgeOptions;
 pub use bridge::ModelWireProtocol;
 pub use credential_instance::credential_instance_identity;
+pub use model_source::is_benign_request_header;
 pub use model_source::model_endpoint_identity;
+pub use model_source::provider_carries_private_query;
 
 pub use crate::common::AccessPrograms;
 pub use crate::common::MemorySummarizeInput;

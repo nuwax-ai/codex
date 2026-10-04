@@ -85,8 +85,12 @@ pub async fn run_session_archive_command(
     options: SessionArchiveCommandOptions,
 ) -> Result<String> {
     let codex_home = find_codex_home().wrap_err("failed to find Codex home")?;
-    let mut app_server =
-        start_app_server_for_session_command(options, codex_home.to_path_buf()).await?;
+    let mut app_server = start_app_server_for_session_command(
+        options,
+        codex_home.to_path_buf(),
+        crate::session_startup_policy::SessionCommandPurpose::Administrative,
+    )
+    .await?;
     run_session_archive_action_with_app_server(
         &mut app_server,
         codex_home.as_path(),
@@ -173,7 +177,9 @@ async fn resolve_session_target(
         &[super::resume_source_kinds(
             /*include_non_interactive*/ false,
         )],
-        /*model_provider*/ None,
+        // Administrative actions manage the session regardless of which
+        // provider served it: search every provider and reject ambiguity.
+        super::named_session_lookup::ProviderFilter::All,
     )
     .await?
     {
@@ -225,6 +231,7 @@ fn confirm_session_delete(target: &ResolvedSessionTarget) -> Result<bool> {
 pub(super) async fn start_app_server_for_session_command(
     options: SessionArchiveCommandOptions,
     codex_home: PathBuf,
+    purpose: crate::session_startup_policy::SessionCommandPurpose,
 ) -> Result<AppServerSession> {
     let SessionArchiveCommandOptions {
         cli,
@@ -241,6 +248,13 @@ pub(super) async fn start_app_server_for_session_command(
     let cli_kv_overrides = overrides_cli
         .parse_overrides()
         .map_err(|err| eyre!("failed to parse -c overrides: {err}"))?;
+    let launch_overrides =
+        crate::session_startup_policy::resolve_session_launch_overrides(&cli, cli_kv_overrides)
+            .map_err(|error| eyre!("Error parsing NUWAX_* environment: {error}"))?;
+    let codex_config::LaunchOverrides {
+        cli_overrides: cli_kv_overrides,
+        env_seed_overrides,
+    } = launch_overrides;
     let mut launch_loader_overrides = loader_overrides.clone();
     if let Some(profile_v2) = cli.config_profile_v2.as_ref() {
         launch_loader_overrides.user_config_path = Some(resolve_profile_v2_config_path(
@@ -251,6 +265,15 @@ pub(super) async fn start_app_server_for_session_command(
     }
 
     if let Some(endpoint) = explicit_remote_endpoint {
+        // Same fail-fast as the interactive launch (app_server_target_for_
+        // launch): the remote host owns provider credentials and endpoints,
+        // so an active local NUWAX environment group is a misconfiguration
+        // here too. This branch returns before that guard would run.
+        if crate::nuwax_env_provider_seed_active(&env_seed_overrides) {
+            return Err(eyre!(
+                "NUWAX environment provider must be configured on the remote app-server host; unset the local NUWAX provider group or omit --remote"
+            ));
+        }
         // Validate config before connecting, but leave authentication and execution
         // to the selected server even when this caller has workload identity set.
         launch_loader_overrides.ignore_login_requirements = true;
@@ -270,15 +293,38 @@ pub(super) async fn start_app_server_for_session_command(
     }
 
     let workload_identity_selected = codex_login::is_workload_identity_selected();
-    let reuse_implicit_local_daemon = !cli.no_daemon
-        && !workload_identity_selected
-        && super::daemon_startup::config_exclusion(
-            &cli_kv_overrides,
-            &launch_loader_overrides,
-            strict_config,
-            cli.bypass_hook_trust,
-        )
-        .is_none();
+    let reuse_implicit_local_daemon = match purpose {
+        // Administrative actions never write turns: use the interactive
+        // startup's seed-aware exclusion so an active NUWAX group runs
+        // embedded with this process's environment instead of attaching a
+        // daemon that cannot resolve the temporary provider.
+        crate::session_startup_policy::SessionCommandPurpose::Administrative => {
+            super::daemon_startup::exclusion(
+                &cli,
+                &cli_kv_overrides,
+                &env_seed_overrides,
+                &launch_loader_overrides,
+                workload_identity_selected,
+                std::env::var_os(codex_exec_server::CODEX_EXEC_SERVER_URL_ENV_VAR).as_deref(),
+                &codex_install_context::InstallContext::current().method,
+            )
+            .is_none()
+        }
+        // Queue must reach the thread's owner server: prefer the shared
+        // daemon exactly as before, and the caller's no-second-writer guard
+        // rejects an embedded writer beside a running daemon.
+        crate::session_startup_policy::SessionCommandPurpose::Queue => {
+            !cli.no_daemon
+                && !workload_identity_selected
+                && super::daemon_startup::config_exclusion(
+                    &cli_kv_overrides,
+                    &launch_loader_overrides,
+                    strict_config,
+                    cli.bypass_hook_trust,
+                )
+                .is_none()
+        }
+    };
     let default_daemon = if explicit_remote_endpoint.is_none() && reuse_implicit_local_daemon {
         super::maybe_probe_default_daemon_socket(codex_home.as_path()).await
     } else {
@@ -290,7 +336,7 @@ pub(super) async fn start_app_server_for_session_command(
         reuse_implicit_local_daemon,
         workload_identity_selected,
         std::env::var_os(codex_exec_server::CODEX_EXEC_SERVER_URL_ENV_VAR).as_deref(),
-        /*env_seed_overrides*/ &[],
+        &env_seed_overrides,
     )?;
     let remote_cwd_override = cli
         .cwd
@@ -359,6 +405,7 @@ pub(super) async fn start_app_server_for_session_command(
     let cwd = cli.cwd.clone();
     let config = ConfigBuilder::default()
         .cli_overrides(cli_kv_overrides.clone())
+        .env_seed_overrides(env_seed_overrides.clone())
         .harness_overrides(ConfigOverrides {
             model,
             cwd: if app_server_target.uses_remote_workspace() {
@@ -397,7 +444,7 @@ pub(super) async fn start_app_server_for_session_command(
         arg0_paths,
         config,
         cli_kv_overrides,
-        /*env_seed_overrides*/ Vec::new(),
+        env_seed_overrides,
         loader_overrides,
         strict_config,
         cloud_config_bundle,

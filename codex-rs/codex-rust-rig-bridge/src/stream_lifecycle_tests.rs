@@ -371,10 +371,18 @@ fn unsuccessful_terminals_never_publish_buffered_tools() {
         );
         let error = rig_event_to_response_events(terminal(reason.clone()), &mut state)
             .expect_err("unsuccessful terminal");
-        if reason == FinishReason::Other("model_context_window_exceeded".into()) {
-            assert!(matches!(error, ApiError::ContextWindowExceeded));
-        } else {
-            assert!(matches!(error, ApiError::Stream(_)));
+        match reason {
+            FinishReason::Other(ref inner) if inner == "model_context_window_exceeded" => {
+                assert!(matches!(error, ApiError::ContextWindowExceeded));
+            }
+            // Exhausting the caller-selected output cap matches the native
+            // Responses decoder: a non-retryable budget configuration error.
+            FinishReason::Length => assert!(matches!(
+                error,
+                ApiError::InvalidRequest { ref message } if message.contains("Output token limit reached")
+            )),
+            FinishReason::ContentFilter => assert!(matches!(error, ApiError::ContentFilter)),
+            _ => assert!(matches!(error, ApiError::Stream(_))),
         }
         assert!(!state.completed_emitted());
     }

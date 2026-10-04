@@ -54,6 +54,7 @@ fn source() -> ModelOutputProvenance {
         "model-a",
         &StaticEmpty,
         None,
+        &http::HeaderMap::new(),
     )
     .unwrap()
 }
@@ -63,14 +64,32 @@ fn signed_query_is_an_actual_credential_instance_not_anonymous_routing() {
     let info = provider();
     let mut api = info.to_api_provider(None).expect("provider");
     api.query_params = Some([("X-Amz-Signature".into(), "first-private-signature".into())].into());
-    let first = request_source(&info, &api, None, "model-a", &StaticEmpty, None).expect("source");
+    let first = request_source(
+        &info,
+        &api,
+        None,
+        "model-a",
+        &StaticEmpty,
+        None,
+        &http::HeaderMap::new(),
+    )
+    .expect("source");
     assert_eq!(
         first.auth_domain_kind.as_deref(),
         Some("credentialInstance")
     );
     api.query_params =
         Some([("X-Amz-Signature".into(), "rotated-private-signature".into())].into());
-    let second = request_source(&info, &api, None, "model-a", &StaticEmpty, None).expect("source");
+    let second = request_source(
+        &info,
+        &api,
+        None,
+        "model-a",
+        &StaticEmpty,
+        None,
+        &http::HeaderMap::new(),
+    )
+    .expect("source");
     assert_eq!(first.endpoint_identity, second.endpoint_identity);
     assert_ne!(first.auth_domain, second.auth_domain);
 }
@@ -199,6 +218,7 @@ fn actual_credential_snapshot_overrides_selector_and_ignores_ambient_account() {
         "model",
         &first,
         None,
+        &http::HeaderMap::new(),
     )
     .unwrap();
     assert_eq!(a.auth_domain_kind.as_deref(), Some("credentialInstance"));
@@ -211,7 +231,8 @@ fn actual_credential_snapshot_overrides_selector_and_ignores_ambient_account() {
             None,
             "model",
             &first,
-            None
+            None,
+            &http::HeaderMap::new(),
         )
         .unwrap(),
         a
@@ -226,6 +247,7 @@ fn actual_credential_snapshot_overrides_selector_and_ignores_ambient_account() {
         "model",
         &second,
         None,
+        &http::HeaderMap::new(),
     )
     .unwrap();
     assert_ne!(a.auth_domain, b.auth_domain);
@@ -237,6 +259,7 @@ fn actual_credential_snapshot_overrides_selector_and_ignores_ambient_account() {
         "model",
         &DynamicBearer,
         None,
+        &http::HeaderMap::new(),
     )
     .unwrap();
     assert_eq!(dynamic.auth_domain_kind.as_deref(), Some("selector"));
@@ -249,6 +272,7 @@ fn actual_credential_snapshot_overrides_selector_and_ignores_ambient_account() {
         "model",
         &StaticEmpty,
         None,
+        &http::HeaderMap::new(),
     )
     .unwrap();
     assert_eq!(
@@ -265,6 +289,7 @@ fn actual_credential_snapshot_overrides_selector_and_ignores_ambient_account() {
         "model",
         &DynamicBearer,
         None,
+        &http::HeaderMap::new(),
     )
     .unwrap();
     assert_eq!(
@@ -287,6 +312,7 @@ fn same_selector_changed_actual_credentials_drop_old_opaque_but_keep_visible_his
             token: "Bearer old",
         },
         None,
+        &http::HeaderMap::new(),
     )
     .unwrap();
     let new = request_source(
@@ -298,6 +324,7 @@ fn same_selector_changed_actual_credentials_drop_old_opaque_but_keep_visible_his
             token: "Bearer new",
         },
         None,
+        &http::HeaderMap::new(),
     )
     .unwrap();
     let input = fixture_items();
@@ -422,7 +449,16 @@ fn selected_account_identity_partitions_users_workspaces_and_external_routing() 
         .insert("version", http::HeaderValue::from_static("test-version"));
     let captured = |api: &codex_api::Provider, auth: &CodexAuth| {
         let actual = codex_model_provider::auth_provider_from_auth(auth);
-        request_source(&info, api, Some(auth), "model", actual.as_ref(), None).unwrap()
+        request_source(
+            &info,
+            api,
+            Some(auth),
+            "model",
+            actual.as_ref(),
+            None,
+            &http::HeaderMap::new(),
+        )
+        .unwrap()
     };
     let original = captured(&api, &auth("user-a", "workspace-a", "old"));
     assert_eq!(original.auth_domain_kind.as_deref(), Some("account"));
@@ -463,5 +499,115 @@ fn selected_account_identity_partitions_users_workspaces_and_external_routing() 
     assert_ne!(
         first.auth_domain,
         captured(&routed, &auth("user-a", "workspace-a", "old")).auth_domain
+    );
+}
+
+#[test]
+fn unrecognized_query_names_are_private_scope_not_account_or_anonymous() {
+    let info = provider();
+    let mut api = info.to_api_provider(None).unwrap();
+    api.base_url = "https://endpoint.test/v1?sessionkey=first-secret".into();
+    let scoped = request_source(
+        &info,
+        &api,
+        None,
+        "model-a",
+        &StaticEmpty,
+        None,
+        &http::HeaderMap::new(),
+    )
+    .unwrap();
+    assert_eq!(
+        scoped.auth_domain_kind.as_deref(),
+        Some("credentialInstance")
+    );
+
+    let ambient = CodexAuth::create_dummy_chatgpt_auth_for_testing();
+    let account_attempt = request_source(
+        &info,
+        &api,
+        Some(&ambient),
+        "model-a",
+        &StaticEmpty,
+        None,
+        &http::HeaderMap::new(),
+    )
+    .unwrap();
+    assert_ne!(account_attempt.auth_domain_kind.as_deref(), Some("account"));
+
+    let mut rotated = api;
+    rotated.base_url = "https://endpoint.test/v1?sessionkey=rotated-secret".into();
+    let rotated_source = request_source(
+        &info,
+        &rotated,
+        None,
+        "model-a",
+        &StaticEmpty,
+        None,
+        &http::HeaderMap::new(),
+    )
+    .unwrap();
+    assert_eq!(scoped.endpoint_identity, rotated_source.endpoint_identity);
+    assert_ne!(scoped.auth_domain, rotated_source.auth_domain);
+    assert!(
+        scoped
+            .auth_domain
+            .as_ref()
+            .is_none_or(|domain| !domain.contains("secret"))
+    );
+}
+
+#[test]
+fn benign_extra_headers_do_not_rotate_identity_but_credential_headers_do() {
+    let info = provider();
+    let api = info.to_api_provider(None).unwrap();
+    let bearer = StaticBearer {
+        token: "Bearer stable",
+    };
+    let bare = request_source(
+        &info,
+        &api,
+        None,
+        "model",
+        &bearer,
+        None,
+        &http::HeaderMap::new(),
+    )
+    .unwrap();
+    assert_eq!(bare.auth_domain_kind.as_deref(), Some("credentialInstance"));
+
+    let mut telemetry = http::HeaderMap::new();
+    telemetry.insert(
+        "x-codex-inference-call-id",
+        http::HeaderValue::from_static("attempt-1"),
+    );
+    telemetry.insert("originator", http::HeaderValue::from_static("codex_vscode"));
+    let with_telemetry =
+        request_source(&info, &api, None, "model", &bearer, None, &telemetry).unwrap();
+    assert_eq!(with_telemetry.auth_domain, bare.auth_domain);
+
+    let mut vendor_first = http::HeaderMap::new();
+    vendor_first.insert(
+        "x-vendor-session",
+        http::HeaderValue::from_static("session-first"),
+    );
+    let mut vendor_second = http::HeaderMap::new();
+    vendor_second.insert(
+        "x-vendor-session",
+        http::HeaderValue::from_static("session-second"),
+    );
+    let first = request_source(&info, &api, None, "model", &bearer, None, &vendor_first).unwrap();
+    let second = request_source(&info, &api, None, "model", &bearer, None, &vendor_second).unwrap();
+    assert_eq!(
+        first.auth_domain_kind.as_deref(),
+        Some("credentialInstance")
+    );
+    assert_ne!(first.auth_domain, second.auth_domain);
+    assert_ne!(first.auth_domain, bare.auth_domain);
+    assert!(
+        first
+            .auth_domain
+            .as_ref()
+            .is_none_or(|domain| !domain.contains("session"))
     );
 }

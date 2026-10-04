@@ -6442,3 +6442,97 @@ async fn setup_rollout_fixture(codex_home: &Path, server_uri: &str) -> Result<Ro
         rollout_file_path,
     })
 }
+
+#[tokio::test]
+async fn thread_resume_same_provider_echo_uses_current_default_model() -> Result<()> {
+    // An explicit `config.model_provider` — even echoing the persisted
+    // provider — is an explicit routing override on the fresh-load path: the
+    // current default model of that provider applies, and the wire request
+    // carries it. Without any override the persisted model is restored.
+    // (On a thread already loaded in the server, a later echo resume keeps
+    // the in-memory model; that loaded-thread divergence is registered as a
+    // behavior boundary, not pinned here.)
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let codex_home = TempDir::new()?;
+    mock_responses_config(&server.uri())
+        .with_model("gpt-5.2-codex")
+        .write(codex_home.path())?;
+
+    // Control fixture: bare resume restores the persisted model.
+    let RestartedThreadFixture {
+        mut mcp, thread_id, ..
+    } = start_materialized_thread_and_restart(codex_home.path(), "echo control").await?;
+    let bare_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id,
+            ..Default::default()
+        })
+        .await?;
+    let bare: ThreadResumeResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(bare_id)).await??;
+    assert_eq!(
+        (bare.model.as_str(), bare.model_provider.as_str()),
+        ("gpt-5.4", "mock_provider")
+    );
+
+    // Echo fixture: same persisted provider, explicit override → current
+    // default model, asserted against the real HTTP body.
+    let RestartedThreadFixture {
+        mut mcp, thread_id, ..
+    } = start_materialized_thread_and_restart(codex_home.path(), "echo selection").await?;
+    let resume_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id,
+            config: Some(
+                [("model_provider".to_string(), json!("mock_provider"))]
+                    .into_iter()
+                    .collect(),
+            ),
+            ..Default::default()
+        })
+        .await?;
+    let echoed: ThreadResumeResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
+    assert_eq!(
+        (echoed.model.as_str(), echoed.model_provider.as_str()),
+        ("gpt-5.2-codex", "mock_provider")
+    );
+
+    let turn_id = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: echoed.thread.id,
+            input: vec![UserInput::Text {
+                text: "use the echoed selection".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })
+        .await?;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(turn_id)),
+    )
+    .await??;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("turn/completed"),
+    )
+    .await??;
+    let requests = server.received_requests().await.unwrap_or_default();
+    let wire_models = requests
+        .iter()
+        .filter(|request| request.url.path().ends_with("/responses"))
+        .map(|request| serde_json::from_slice::<serde_json::Value>(&request.body))
+        .collect::<serde_json::Result<Vec<_>>>()?
+        .into_iter()
+        .map(|body| body["model"].clone())
+        .collect::<Vec<_>>();
+    // Wire history: the two fixture-materialization turns ran on the
+    // persisted gpt-5.4; only the turn after the echo override carries the
+    // current default.
+    assert_eq!(
+        wire_models,
+        vec![json!("gpt-5.4"), json!("gpt-5.4"), json!("gpt-5.2-codex")]
+    );
+    Ok(())
+}

@@ -21,6 +21,9 @@
 | `NUWAX_WIRE_API` | `responses` / `chat` / `anthropic` | 显式选择实际协议；Responses 通过 Rig 的 Responses 路径，当前已非 Responses→Chat |
 | `NUWAX_API_KEY` | 临时 provider 凭据 | 配置只存 `env_key="NUWAX_API_KEY"` 引用；三个基础组变量必须齐设 |
 | `NUWAX_MODEL` | 模型名称 | 激活 provider 时须设置，或显式传 `-m` / `-c model`；单独设置只改既有 provider 的模型 |
+| `NUWAX_REQUEST_MAX_RETRIES` | HTTP 握手层重试次数（0 合法=只发一次）；2026-10-04 起与组同消费、孤立设置 fail-fast | 与 provider 的 `request_max_retries` 同义；只作用于建流前握手（含 429/5xx/传输错误，遵守 Retry-After）；建流成功后的流内失败由 `NUWAX_STREAM_MAX_RETRIES`（Core 采样重试）负责，两者分开计数，无单一总预算 |
+| `NUWAX_STREAM_MAX_RETRIES` | Core 流采样重试次数上限 | 对应 provider `stream_max_retries`；与握手重试分别计数 |
+| `NUWAX_STREAM_IDLE_TIMEOUT_MS` | 流空闲超时（正整数毫秒） | 对应 provider `stream_idle_timeout_ms`；同时限定握手与 Retry-After 等待 |
 | `NUWAX_MAX_OUTPUT_TOKENS` | **三协议支持**，实际生成 token cap | Anthropic 为 `max_tokens`；Chat 通常为 `max_tokens`，Rig 对部分 OpenAI reasoning 模型转换为 `max_completion_tokens`。正整数、i64 范围；须激活完整组；Responses 为 `max_output_tokens`，包含 reasoning tokens |
 | `CODEX_MODEL_REASONING_EFFORT` | 本地 reasoning effort 配置 | 接受 `none/minimal/low/medium/high/xhigh/max/ultra/persistent`；协议映射、模型支持可能有压缩或省略，解析接受不代表厂商支持所有等级 |
 | `CODEX_MODEL_CONTEXT_WINDOW` | 本地模型上下文预算 | 正整数；可能受 model catalog 上限约束；不会扩展厂商实际窗口，也不是输出 token 上限 |

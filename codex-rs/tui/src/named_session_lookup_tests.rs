@@ -54,7 +54,7 @@ async fn lookup_name(
     name: &str,
     collections: &[SessionCollection],
     mode: ThreadParamsMode,
-    model_provider: Option<&str>,
+    provider_filter: super::ProviderFilter<'_>,
 ) -> color_eyre::Result<Option<codex_app_server_protocol::Thread>> {
     let mut app_server = AppServerSession::new(
         codex_app_server_client::AppServerClient::InProcess(
@@ -68,7 +68,7 @@ async fn lookup_name(
         name,
         collections,
         &[resume_source_kinds(/*include_non_interactive*/ false)],
-        model_provider,
+        provider_filter,
     )
     .await?;
     app_server.shutdown().await?;
@@ -229,7 +229,7 @@ async fn resolves_name_and_preview_from_server_list() -> color_eyre::Result<()> 
         "saved-session",
         &[SessionCollection::Active],
         ThreadParamsMode::Embedded,
-        Some(&config.model_provider_id),
+        super::ProviderFilter::Only(&config.model_provider_id),
     )
     .await?;
     let preview = lookup_name(
@@ -237,7 +237,7 @@ async fn resolves_name_and_preview_from_server_list() -> color_eyre::Result<()> 
         "preview text",
         &[SessionCollection::Active],
         ThreadParamsMode::Embedded,
-        Some(&config.model_provider_id),
+        super::ProviderFilter::Only(&config.model_provider_id),
     )
     .await?;
     let switched_provider = lookup_name(
@@ -245,7 +245,7 @@ async fn resolves_name_and_preview_from_server_list() -> color_eyre::Result<()> 
         "saved-session",
         &[SessionCollection::Active],
         ThreadParamsMode::Embedded,
-        Some(&other_config.model_provider_id),
+        super::ProviderFilter::Only(&other_config.model_provider_id),
     )
     .await?;
     let remote = lookup_name(
@@ -253,7 +253,7 @@ async fn resolves_name_and_preview_from_server_list() -> color_eyre::Result<()> 
         "saved-session",
         &[SessionCollection::Active],
         ThreadParamsMode::Remote,
-        /*model_provider*/ None,
+        super::ProviderFilter::ServerDefault,
     )
     .await?;
     assert_eq!(
@@ -315,7 +315,7 @@ async fn rejects_duplicate_labels_across_server_pages() -> color_eyre::Result<()
         "same-label",
         &[SessionCollection::Active],
         &[resume_source_kinds(/*include_non_interactive*/ false)],
-        Some(&config.model_provider_id),
+        super::ProviderFilter::Only(&config.model_provider_id),
     )
     .await
     .expect_err("duplicate labels should require an ID");
@@ -325,7 +325,7 @@ async fn rejects_duplicate_labels_across_server_pages() -> color_eyre::Result<()
         "other-1",
         &[SessionCollection::Active],
         &[resume_source_kinds(/*include_non_interactive*/ false)],
-        Some(&config.model_provider_id),
+        super::ProviderFilter::Only(&config.model_provider_id),
     )
     .await
     .expect_err("paginated listings cannot prove uniqueness on older servers");
@@ -410,7 +410,7 @@ async fn skips_stale_listed_thread_before_valid_label() -> color_eyre::Result<()
         "same-label",
         &[SessionCollection::Active],
         ThreadParamsMode::Embedded,
-        Some(&config.model_provider_id),
+        super::ProviderFilter::Only(&config.model_provider_id),
     )
     .await?;
     assert_eq!(found.map(|thread| thread.id), Some(valid_id.to_string()));
@@ -507,11 +507,93 @@ async fn uses_listed_thread_when_older_server_cannot_read_it() -> color_eyre::Re
             "saved-session",
             &[SessionCollection::Active],
             &[resume_source_kinds(/*include_non_interactive*/ false)],
-            /*model_provider*/ None,
+            super::ProviderFilter::ServerDefault,
         )
         .await?;
         assert_eq!(found, Some(listed.clone()));
         server.await?;
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn administrative_all_provider_filter_finds_foreign_sessions_and_rejects_ambiguity()
+-> color_eyre::Result<()> {
+    let temp_dir = TempDir::new()?;
+    let config = build_config(&temp_dir).await?;
+    let runtime = state_runtime(&config).await?;
+    let mut foreign_config = config.clone();
+    foreign_config.model_provider_id = "queue-owner-provider".to_string();
+
+    // One uniquely named session under a provider that is NOT the invoking
+    // client's current provider.
+    let foreign_id = ThreadId::new();
+    let foreign_path = write_rollout(
+        &foreign_config,
+        foreign_id,
+        "2025-02-05T10:00:00Z",
+        "foreign unique",
+        SessionSource::Cli,
+        ThreadHistoryMode::Legacy,
+    )?;
+    upsert_thread(
+        &runtime,
+        thread_metadata(&foreign_config, foreign_id, foreign_path, "foreign unique"),
+    )
+    .await?;
+
+    // Administrative scope resolves it across providers, while the server's
+    // default filter (current provider only) hides it.
+    let found = lookup_name(
+        &config,
+        "foreign unique",
+        &[SessionCollection::Active],
+        ThreadParamsMode::Embedded,
+        super::ProviderFilter::All,
+    )
+    .await?
+    .expect("cross-provider administrative lookup");
+    assert_eq!(found.id, foreign_id.to_string());
+    let default_scope = lookup_name(
+        &config,
+        "foreign unique",
+        &[SessionCollection::Active],
+        ThreadParamsMode::Embedded,
+        super::ProviderFilter::ServerDefault,
+    )
+    .await?;
+    assert!(
+        default_scope.is_none(),
+        "server default filter is provider-scoped"
+    );
+
+    // The same label under two distinct providers is ambiguous in the
+    // administrative scope and must be rejected, never auto-picked.
+    let local_id = ThreadId::new();
+    let local_path = write_rollout(
+        &config,
+        local_id,
+        "2025-02-06T10:00:00Z",
+        "foreign unique",
+        SessionSource::Cli,
+        ThreadHistoryMode::Legacy,
+    )?;
+    upsert_thread(
+        &runtime,
+        thread_metadata(&config, local_id, local_path, "foreign unique"),
+    )
+    .await?;
+    let ambiguous = lookup_name(
+        &config,
+        "foreign unique",
+        &[SessionCollection::Active],
+        ThreadParamsMode::Embedded,
+        super::ProviderFilter::All,
+    )
+    .await;
+    assert!(
+        ambiguous.is_err(),
+        "cross-provider duplicate labels are rejected"
+    );
     Ok(())
 }
