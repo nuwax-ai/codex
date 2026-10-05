@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
+use app_test_support::MockResponsesConfig;
 use app_test_support::TestAppServer;
 use app_test_support::create_fake_rollout;
 use codex_app_server::app_server_control_socket_path;
@@ -34,6 +35,8 @@ use codex_app_server_protocol::ThreadResumeResponse;
 use codex_app_server_protocol::TurnStartParams;
 use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::UserInput;
+use codex_core::find_archived_thread_path_by_id_str;
+use codex_core::find_thread_path_by_id_str;
 use codex_protocol::config_types::NUWAX_ENV_PROVIDER_ID;
 use codex_protocol::shell_environment::OPENAI_FEDERATION_RULE_ID_ENV_VAR;
 use codex_protocol::shell_environment::OPENAI_IDENTITY_TOKEN_FILE_ENV_VAR;
@@ -443,6 +446,276 @@ async fn queue_enqueued_while_the_owner_turn_runs_dispatches_after_without_a_sec
     assert_eq!(
         std::fs::read(codex_home.path().join("config.toml"))?,
         config_before
+    );
+    app.shutdown().await?;
+    Ok(())
+}
+
+/// In the npm_nuwax single-binary installation environment, with no daemon
+/// running, a cold enqueue and an administrative archive must both succeed
+/// through the embedded server, execute nothing, and leave no control socket.
+/// Queue still prefers an existing owner independently of installation;
+/// this cell checks cold behavior and the persisted queue/archive results.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn npm_install_method_keeps_cold_queue_and_archive_on_the_embedded_server() -> Result<()> {
+    let codex_home = socket_test_home()?;
+    let codex = codex_utils_cargo_bin::cargo_bin("codex")?;
+    let (address, captured, _release) = gated_owner_model_server().await?;
+    MockResponsesConfig::new(&format!("http://{address}"))
+        .with_root_config("features.plugins = false\nanalytics.enabled = false")
+        .write(codex_home.path())?;
+    let config_before = std::fs::read(codex_home.path().join("config.toml"))?;
+    let queue_thread = create_fake_rollout(
+        codex_home.path(),
+        "2025-03-08T02-00-00",
+        "2025-03-08T02:00:00Z",
+        "npm cold enqueue session",
+        Some("mock_provider"),
+        /*git_info*/ None,
+    )?;
+    let archive_thread = create_fake_rollout(
+        codex_home.path(),
+        "2025-03-08T02-30-00",
+        "2025-03-08T02:30:00Z",
+        "npm archive session",
+        Some("mock_provider"),
+        /*git_info*/ None,
+    )?;
+
+    async fn run_cli(
+        codex: &std::path::Path,
+        home: &std::path::Path,
+        args: &[&str],
+    ) -> Result<std::process::Output> {
+        let mut command = tokio::process::Command::new(codex);
+        for (variable, _) in cleaned_environment() {
+            command.env_remove(variable);
+        }
+        Ok(timeout(
+            Duration::from_secs(/*secs*/ 60),
+            command
+                .env("CODEX_HOME", home)
+                .env("CODEX_INSTALL_SOURCE", "npm_nuwax")
+                .current_dir(home)
+                .kill_on_drop(true)
+                .args(args)
+                .output(),
+        )
+        .await??)
+    }
+
+    let enqueue = run_cli(
+        &codex,
+        codex_home.path(),
+        &[
+            "queue",
+            "--thread",
+            queue_thread.as_str(),
+            "--message",
+            "npm embedded submission",
+        ],
+    )
+    .await?;
+    assert!(
+        enqueue.status.success(),
+        "the npm_nuwax install method must accept a cold enqueue embedded: {}",
+        String::from_utf8_lossy(&enqueue.stderr)
+    );
+    let archive = run_cli(
+        &codex,
+        codex_home.path(),
+        &["archive", archive_thread.as_str()],
+    )
+    .await?;
+    assert!(
+        archive.status.success(),
+        "the npm_nuwax install method must archive through the embedded server: {}",
+        String::from_utf8_lossy(&archive.stderr)
+    );
+    assert!(
+        find_thread_path_by_id_str(
+            codex_home.path(),
+            &archive_thread,
+            /*state_db_ctx*/ None
+        )
+        .await?
+        .is_none(),
+        "archive must remove the active rollout"
+    );
+    assert!(
+        find_archived_thread_path_by_id_str(
+            codex_home.path(),
+            &archive_thread,
+            /*state_db_ctx*/ None
+        )
+        .await?
+        .is_some(),
+        "archive must persist the archived rollout"
+    );
+    // Both CLI processes have exited. A new server must read the submission
+    // from durable storage, without loading the thread or executing it.
+    let mut verifier = TestAppServer::builder()
+        .with_program(&codex)
+        .with_codex_home(codex_home.path())
+        .with_plugin_startup_tasks()
+        .without_managed_config()
+        .with_args(&["app-server"])
+        .with_env_overrides(&cleaned_environment())
+        .build_initialized()
+        .await?;
+    let queue: ThreadQueueListResponse = verifier
+        .request(|request_id| ClientRequest::ThreadQueueList {
+            request_id,
+            params: ThreadQueueListParams {
+                thread_id: queue_thread,
+                cursor: None,
+                limit: None,
+            },
+        })
+        .await?;
+    assert_eq!(
+        queue
+            .data
+            .into_iter()
+            .map(|item| item.input)
+            .collect::<Vec<_>>(),
+        vec![vec![UserInput::Text {
+            text: "npm embedded submission".to_string(),
+            text_elements: Vec::new(),
+        }]],
+        "cold queue must retain the exact submission after CLI exit"
+    );
+    timeout(
+        Duration::from_secs(/*secs*/ 30),
+        verifier.shutdown_gracefully(),
+    )
+    .await??;
+    assert!(
+        snapshot_requests(&captured)?.is_empty(),
+        "no model request may happen: {address} saw none"
+    );
+    let leftover_socket = app_server_control_socket_path(codex_home.path())?;
+    anyhow::ensure!(
+        !leftover_socket.as_path().try_exists()?,
+        "embedded writers must not leave a control socket behind"
+    );
+    assert_eq!(
+        std::fs::read(codex_home.path().join("config.toml"))?,
+        config_before
+    );
+    Ok(())
+}
+
+/// With NO owner running anywhere, a cold enqueue is still a durable
+/// submission: the CLI accepts it (the embedded writer persists it), nothing
+/// executes, and a later env-holding owner on the default socket loads the
+/// thread and drains the queue through its own environment.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn queue_without_a_running_owner_persists_and_a_later_owner_drains_it() -> Result<()> {
+    let codex_home = socket_test_home()?;
+    let codex = codex_utils_cargo_bin::cargo_bin("codex")?;
+    let (address, captured, release) = gated_owner_model_server().await?;
+    std::fs::write(
+        codex_home.path().join("config.toml"),
+        "features.plugins = false\nanalytics.enabled = false\n",
+    )?;
+    let config_before = std::fs::read(codex_home.path().join("config.toml"))?;
+    let thread_id = create_fake_rollout(
+        codex_home.path(),
+        "2025-03-07T03-00-00",
+        "2025-03-07T03:00:00Z",
+        "cold enqueue session",
+        Some(NUWAX_ENV_PROVIDER_ID),
+        /*git_info*/ None,
+    )?;
+
+    // No owner exists yet: the cold enqueue must still succeed as a
+    // submission and must not execute anything.
+    let output = enqueue_from_envless_client(
+        &codex,
+        codex_home.path(),
+        thread_id.as_str(),
+        "cold submission without an owner",
+    )
+    .await?;
+    assert!(
+        output.status.success(),
+        "a cold enqueue is a submission and must be accepted: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8(output.stdout)?.contains(&format!("for thread {thread_id}.")));
+    assert!(
+        snapshot_requests(&captured)?.is_empty(),
+        "no model request may happen without an owner environment"
+    );
+    let leftover_socket = app_server_control_socket_path(codex_home.path())?;
+    anyhow::ensure!(
+        !leftover_socket.as_path().try_exists()?,
+        "the in-process embedded writer must not leave a control socket behind"
+    );
+    // The drained turn's model request is the gateway's first request; open
+    // its gate so the later owner's dispatch completes normally.
+    release.send(true).ok();
+
+    // The env-holding owner appears later and drains the persisted queue.
+    let base_url = format!("http://{address}/v1");
+    let _server = TestAppServer::builder()
+        .with_program(&codex)
+        .with_codex_home(codex_home.path())
+        .with_plugin_startup_tasks()
+        .without_managed_config()
+        .with_args(&["app-server", "--listen", "unix://"])
+        .with_env_overrides(&cleaned_environment())
+        .with_env_overrides(&[
+            ("NUWAX_BASE_URL", Some(base_url.as_str())),
+            ("NUWAX_WIRE_API", Some("responses")),
+            ("NUWAX_API_KEY", Some("owner-env-key")),
+            ("NUWAX_MODEL", Some("nuwax-owner-model")),
+            (
+                "CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED",
+                Some("1"),
+            ),
+        ])
+        .build()
+        .await?;
+    let socket_path = wait_for_socket(codex_home.path()).await?;
+    let mut app = connect_owner(&socket_path).await?;
+    let _: ThreadResumeResponse = timeout(
+        Duration::from_secs(/*secs*/ 30),
+        app.request_typed(ClientRequest::ThreadResume {
+            request_id: RequestId::Integer(1),
+            params: ThreadResumeParams {
+                thread_id: thread_id.clone(),
+                ..Default::default()
+            },
+        }),
+    )
+    .await??;
+    let completed = timeout(Duration::from_secs(/*secs*/ 30), async {
+        while let Some(event) = app.next_event().await {
+            if let AppServerEvent::ServerNotification(notification) = event
+                && let ServerNotification::TurnCompleted(completed) = *notification
+            {
+                return Ok::<_, anyhow::Error>(completed);
+            }
+        }
+        anyhow::bail!("owner disconnected before the drained turn completed")
+    })
+    .await??;
+    assert_eq!(completed.turn.status, TurnStatus::Completed);
+
+    let requests = snapshot_requests(&captured)?;
+    assert_eq!(requests.len(), 1, "exactly one drained execution request");
+    assert_eq!(requests[0].body["model"], Value::from("nuwax-owner-model"));
+    assert_eq!(requests[0].authorization, "Bearer owner-env-key");
+    assert_eq!(requests[0].turn_trigger, Some("queue".to_string()));
+    assert_eq!(drain_queue(&mut app, &thread_id).await?, 0);
+    assert_eq!(
+        std::fs::read(codex_home.path().join("config.toml"))?,
+        config_before,
+        "the cold submission must not rewrite config.toml"
     );
     app.shutdown().await?;
     Ok(())
