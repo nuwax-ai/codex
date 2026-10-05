@@ -11,6 +11,7 @@ mod ephemeral;
 mod hooks;
 mod mcp_required_exit;
 mod nuwax_env;
+mod nuwax_env_controls;
 mod originator;
 mod output_schema;
 mod prompt_stdin;
