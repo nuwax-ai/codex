@@ -3,7 +3,9 @@
 use super::*;
 use anyhow::Context;
 use runner::ExecRunner;
+use runner::TurnOutcomeExpectation;
 use runner::execute;
+use runner::execute_expecting;
 
 pub(super) struct Scene<'a> {
     pub(super) prepared: &'a PreparedExec,
@@ -25,6 +27,7 @@ pub(super) enum BinaryScenario<'a> {
     Marker { expect_bridge_log: Option<&'a str> },
     Compact,
     WebSearch,
+    CapExhausted,
 }
 
 pub(super) async fn run(
@@ -32,12 +35,14 @@ pub(super) async fn run(
     scene: &Scene<'_>,
     scenario: BinaryScenario<'_>,
 ) -> Result<()> {
+    let cap_exhaustion = matches!(scenario, BinaryScenario::CapExhausted);
     let outcome = match scenario {
         BinaryScenario::Marker { expect_bridge_log } => {
             marker(runner, scene, expect_bridge_log).await
         }
         BinaryScenario::Compact => compact(runner, scene).await,
         BinaryScenario::WebSearch => websearch(runner, scene).await,
+        BinaryScenario::CapExhausted => cap_exhausted(runner, scene).await,
     };
     // Capture presence is recorded separately from wire assertions. Native
     // transports and injected runners can legitimately produce no Rig trace.
@@ -139,6 +144,11 @@ pub(super) async fn run(
         )?;
         Ok(())
     })();
+    if cap_exhaustion && capture_error.is_none() && attempts != 1 {
+        capture_error = Some(anyhow!(
+            "an exhausted cap must issue exactly one HTTP attempt without resampling; captured {attempts}"
+        ));
+    }
     let capture_outcome = match capture_error {
         Some(error) => Err(error),
         None => persist,
@@ -151,6 +161,10 @@ pub(super) async fn run(
         (Err(error), Ok(())) => Err(error),
         (Ok(()), result) => result,
     };
+    if cap_exhaustion && outcome.is_ok() {
+        rollouts::retain_best_effort(scene.home, &scene.artifacts.join("rollout"))
+            .context("retain capped-out turn rollout")?;
+    }
     retain_rollouts_on_failure(scene.home, &scene.artifacts.join("rollout"), outcome)
 }
 
@@ -199,6 +213,59 @@ async fn marker(
         scene.protocol,
         scene.marker,
         final_message.chars().count()
+    );
+    Ok(())
+}
+
+/// Live cap EXHAUSTION (D5): an output budget small enough that the REAL
+/// vendor truncates the turn (Chat `finish_reason=length`). The shared
+/// capture validation asserts the tiny cap on the wire per attempt; here the
+/// process must fail through the product's cap terminal — partial streaming
+/// may exist, but no successful turn completes.
+async fn cap_exhausted(runner: &impl ExecRunner, scene: &Scene<'_>) -> Result<()> {
+    let prompt = "请直接输出一段至少两百字的故事，主题是远航的灯塔，不要任何解释。";
+    let last = scene.home.join("last_message.txt");
+    let (_, stderr) = execute_expecting(
+        runner,
+        scene,
+        &[],
+        prompt,
+        &last,
+        "",
+        TurnOutcomeExpectation::Failure,
+    )
+    .await?;
+    let needle = "Output token limit reached";
+    anyhow::ensure!(
+        stderr.contains(needle),
+        "an exhausted cap must surface the product's cap terminal on stderr: {stderr}"
+    );
+    let stdout = std::fs::read_to_string(scene.artifacts.join("events.jsonl"))
+        .context("read capped-out turn events as UTF-8")?;
+    let events: Vec<Value> = stdout
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| !line.trim().is_empty())
+        .map(|(index, line)| {
+            serde_json::from_str::<Value>(line)
+                .with_context(|| format!("parse capped-out turn event on line {}", index + 1))
+        })
+        .collect::<Result<_>>()?;
+    anyhow::ensure!(
+        events.iter().any(|event| event["type"] == "turn.failed"
+            && event["error"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains(needle))),
+        "a capped-out turn must fail with the cap terminal event: {stdout}"
+    );
+    anyhow::ensure!(
+        !events.iter().any(|event| event["type"] == "turn.completed"),
+        "a capped-out turn must not report a completed turn: {stdout}"
+    );
+    println!(
+        "[{}] OK cap-exhausted stderr_names_terminal=true final_message_absent={}",
+        scene.protocol,
+        !last.exists()
     );
     Ok(())
 }

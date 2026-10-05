@@ -134,6 +134,16 @@ impl ExecRunner for ProcessRunner {
     }
 }
 
+/// Whether a non-zero codex-exec exit completes or fails the turn helper.
+pub(super) enum TurnOutcomeExpectation {
+    /// The turn completes and codex-exec exits 0.
+    Success,
+    /// The turn terminates with an error the scenario pins afterwards (an
+    /// exhausted output cap): the non-zero exit plus the retained
+    /// stderr/events artifacts are the expected evidence, not a failure.
+    Failure,
+}
+
 /// Checks the prepared executable immediately around the injected execution
 /// boundary. Persistence failures cannot replace a launch/exit/capture failure.
 pub(super) async fn execute(
@@ -143,6 +153,27 @@ pub(super) async fn execute(
     prompt: &str,
     last_message: &Path,
     label: &str,
+) -> Result<(String, String)> {
+    execute_expecting(
+        runner,
+        scene,
+        args,
+        prompt,
+        last_message,
+        label,
+        TurnOutcomeExpectation::Success,
+    )
+    .await
+}
+
+pub(super) async fn execute_expecting(
+    runner: &impl ExecRunner,
+    scene: &scenarios::Scene<'_>,
+    args: &[&str],
+    prompt: &str,
+    last_message: &Path,
+    label: &str,
+    expectation: TurnOutcomeExpectation,
 ) -> Result<(String, String)> {
     scene.prepared.verify_unchanged()?;
     let request_capture = scene.artifacts.join("requests.jsonl");
@@ -194,10 +225,22 @@ pub(super) async fn execute(
         Completion::Exited {
             success: false,
             description,
-        } => Err(anyhow!(
-            "[{}] {label} exited with {description}",
-            scene.protocol
-        )),
+        } => match expectation {
+            TurnOutcomeExpectation::Success => Err(anyhow!(
+                "[{}] {label} exited with {description}",
+                scene.protocol
+            )),
+            TurnOutcomeExpectation::Failure => {
+                if capture.stdout.error.is_some() || capture.stderr.error.is_some() {
+                    Err(anyhow!(
+                        "[{}] {label} output capture incomplete: {exit}",
+                        scene.protocol
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+        },
         Completion::TimedOut => Err(anyhow!(
             "[{}] {label} did not finish within {EXEC_RUN_TIMEOUT:?}",
             scene.protocol
@@ -210,7 +253,12 @@ pub(super) async fn execute(
             scene.protocol
         )),
         Completion::Exited { success: true, .. } => {
-            if capture.stdout.error.is_some() || capture.stderr.error.is_some() {
+            if matches!(expectation, TurnOutcomeExpectation::Failure) {
+                Err(anyhow!(
+                    "[{}] {label} completed successfully, but the scenario expected a terminal failure",
+                    scene.protocol
+                ))
+            } else if capture.stdout.error.is_some() || capture.stderr.error.is_some() {
                 Err(anyhow!(
                     "[{}] {label} output capture incomplete: {exit}",
                     scene.protocol

@@ -252,6 +252,43 @@ async fn compact_responses_rig_scenario(cfg: &codex_live_tests::LiveConfig) -> a
     .await
 }
 
+/// D5 evidence, counted separately from the capped scenarios above: a cap
+/// small enough that the REAL vendor truncates the turn. The wire carries the
+/// tiny budget (asserted per attempt) and the process must fail through the
+/// product's cap terminal rather than completing the turn.
+async fn chat_rig_cap_exhausted_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    codex_live_tests::run_cap_exhausted_turn(
+        "chat-rig-cap-exhausted",
+        cfg,
+        &cfg.base_url,
+        "chat",
+        Some("rig"),
+        /*output_cap*/ 32,
+    )
+    .await
+}
+
+/// D5 evidence on the Anthropic wire, counted with the Chat exhaustion
+/// above: a tiny required `max_tokens` makes the REAL vendor stop with
+/// `stop_reason=max_tokens`; the wire cap is asserted per attempt and the
+/// process must fail through the product's cap terminal.
+async fn anthropic_rig_cap_exhausted_scenario(
+    cfg: &codex_live_tests::LiveConfig,
+) -> anyhow::Result<()> {
+    let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(cfg) else {
+        return Ok(());
+    };
+    codex_live_tests::run_cap_exhausted_turn(
+        "anthropic-rig-cap-exhausted",
+        cfg,
+        &anthropic_url,
+        "anthropic",
+        Some("rig"),
+        /*output_cap*/ 32,
+    )
+    .await
+}
+
 exec_matrix!(chat_genai, ["mimo", "glm", "step"]);
 exec_matrix!(chat_rig, ["mimo", "glm", "step"]);
 exec_matrix!(chat_default, ["mimo", "glm", "step"]);
@@ -261,6 +298,8 @@ exec_matrix!(anthropic_genai, ["mimo", "glm", "step"]);
 exec_matrix!(anthropic_rig, ["mimo", "glm", "step"]);
 exec_matrix!(chat_rig_capped, ["mimo", "glm"]);
 exec_matrix!(anthropic_rig_capped, ["mimo", "glm"]);
+exec_matrix!(chat_rig_cap_exhausted, ["mimo", "glm"]);
+exec_matrix!(anthropic_rig_cap_exhausted, ["mimo", "glm"]);
 /// Cross-turn web_search on the Anthropic wire: turn 2 replays turn 1's
 /// history with the WebSearchCall items dropped (pinned behavior); the live
 /// gateway accepting both turns is the baseline for the phase-3 replay.

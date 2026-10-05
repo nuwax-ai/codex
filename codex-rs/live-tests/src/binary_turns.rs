@@ -189,6 +189,33 @@ pub async fn run_capped_marker_turn(
     .await
 }
 
+/// Live cap EXHAUSTION: an output budget small enough that the real vendor
+/// truncates the turn; the wire cap is asserted per captured attempt and the
+/// process must fail through the product's cap terminal instead of
+/// completing. Counted separately from cap-on-wire (`run_capped_marker_turn`)
+/// and plain marker evidence.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_cap_exhausted_turn(
+    protocol: &str,
+    cfg: &LiveConfig,
+    base_url: &str,
+    wire_api: &str,
+    bridge: Option<&str>,
+    output_cap: u64,
+) -> Result<()> {
+    run_binary_scene(
+        protocol,
+        cfg,
+        base_url,
+        wire_api,
+        bridge,
+        "",
+        Some(output_cap),
+        BinaryScenario::CapExhausted,
+    )
+    .await
+}
+
 /// Teaches a unique passphrase and checks recall after a persisted compaction.
 pub async fn run_compact_turn(
     protocol: &str,
