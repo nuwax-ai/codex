@@ -1,6 +1,6 @@
-# 执行任务（未开始）
+# 执行任务（实施与复查记录）
 
-这些是后续开发任务，不是本轮已验证结果。详细行为见 spec.md，技术路径见 plan.md。
+详细行为见 spec.md，技术路径见 plan.md。Claude 实施轮证据保留在下方；Codex 对提交 `11f86b03e` 的复查修复及剩余验收以 `my-docs/codex-11f86b03e-review-2026-10-04.md` 为准。
 
 ## A：身份加固
 
@@ -13,24 +13,24 @@
 ## B：session 命令
 
 - [x] B1 名字跨 provider 查找及歧义/分页回归。
-- [x] B2 queue owner/writer 策略，loaded/unloaded、UUID/名字、daemon/embedded 矩阵。
-- [x] B3 行政命令 seeds 和 install-method 一致性，明确远端责任边界。
+- [ ] B2 部分验收，完整 owner/writer 矩阵仍未完成（2026-10-05 Claude 验收轮补齐）：真实 `codex` CLI × 默认 socket daemon——env-holding standalone owner 以自身环境执行排队轮（wire 断言 model/Bearer/turn_trigger=queue，config.toml 字节不变）；enqueue-as-submission（owner 缺环境时 enqueue 成功、resume 拒绝、submission 留队、零模型请求）；跨 provider 同名歧义拒绝并列出两个 thread ID；既有 retarget/UUID/名字回归全绿。派发机制钉死：冷线程入队后由 resume 触发派发（queue 服务在 idle 时 drain）。
+- [ ] B3 部分验收（新增坏值/失活仅 archive；四命令、install-method/实际行政启动矩阵仍未完成）（2026-10-05）：active/incomplete 组 fail-fast（既有）+ 新增 corrupted 值组（命名变量、不回显值、连接前拒绝）与 inactive 组（无 NUWAX 环境时确实抵达远端连接）；显式 CLI `-c model_provider` 覆盖时整组忽略（含非法控制值）。install-method/daemon 存在性分支由 daemon_startup.rs 既有矩阵与 tui 策略单测覆盖；`codex archive` 纳入 daemon_startup 命令表未做（登记为剩余项）。
 - [x] B4 同 provider echo resume 与无 override 对照，真实 HTTP model 断言。
 
 ## C：容器环境变量
 
 - [x] C1 三个可选 retry/idle 变量的规范、解析、优先级和 daemon 子进程剥离。
-- [x] C2 HTTP attempt/capture、Core retry、取消、idle timeout 和并发进程的公共路径测试。
+- [ ] C2 部分验收（idle/取消 fixture 已修；SSE-wait 取消、Windows 原生取消、并行 idle 实效仍未完成）（2026-10-05，exec/tests/suite/nuwax_env_controls.rs 9 用例全绿）：三协议握手 retries 1/0/default 实际 attempt 数（Anthropic+Responses 补齐，矩阵并发执行）；STREAM 预算独立验证（截断流 resample 1/2/6 次 POST）；短 idle（1500ms）真实触发且 <25s 有界失败；Retry-After 等待期 SIGINT 后零后续 attempt；并行双进程独立 home/模型/凭据/协议/retry/idle 无串用；负数/非数字/i64 溢出/空白/零 timeout/非 Unicode/孤立控制项全部 fail-fast 命名变量不回显值。
 - [x] C3 说明文档列清变量名/单位/0 的含义/覆盖关系，无密钥示例。
 
 ## D：证据与门禁
 
 - [x] D1 Core rust-rig 的本地验证示例与实际匹配数断言；核对并保留已开启 feature 的 fork CI，不把 0 匹配算通过。
-- [x] D2 live 最终 capture 真正断言 path/model/cap；鉴权保留离线 wire 证据。
-- [x] D3 三协议输出触顶 mock，usage/partial output/终止/重采样次数明确。
-- [ ] D4 冷启动 timeout 低负载复验；原始失败单独保留，不放宽 deadline。（本轮 load≈28 复验仍失败，真低载窗口未出现，保持未完成）
-- [ ] D5 独立登记未执行矩阵：workspace、Bazel build、Linux/Windows、远程 CI、Step、加密引用、跨进程回放、实际 live cap 触顶。
-- [ ] D6 pause P0 人工预算复审：提出 token-aware 和兼容方案，未经产品裁决不改既有 cap。
+- [x] D2 完成（2026-10-05）：typed `CapExpectation`（Explicit/AnthropicDefault/Absent）× 协议字段（max_tokens/max_completion_tokens/max_output_tokens，Chat 双拼写恰一）；asserted_fields 如实列出 cap 字段；base 已含 `/v1` 与不含两种 path 形态都归一。离线负控全绿。live 新证据：重建 codex-exec（Chat source 97720d19…/binary c17787a4… 与 Anthropic source b3cd797e…/binary c52d6d7c… 两份历史工作树）后 MiMo/GLM × chat/anthropic capped 4/4 PASS——真实厂商 wire 断言 max_tokens=512。原两轮 7/7 不再作为当前验收依据。
+- [x] D3 完成（2026-10-05，core/tests/suite/rig_output_cap.rs 7 用例全绿）：Core 公共路径（test_codex 全采样环、request/stream retries 均为 2）下 Chat/Anthropic/Responses 三协议 cap 终止——恰好 1 POST 证明零重采样；partial deltas 保留、零成功 Completed、截断工具不执行、wire cap 值断言（Chat 双拼写）。负控：迟到 finish_reason=stop 帧不再覆盖 length 终止（本轮修复的真实缺陷：sse.rs 首终止优先+丢弃后续终止帧）；Anthropic/Chat 在缺 message_stop/[DONE] 时按截断类可重试（3 attempts 钉契约，与既有 finish_reason_alone_cannot_hide_truncation 契约一致——曾尝试 EOF 合成终局，因与该契约冲突而回退）；length 后停流走 idle 预算有界失败。usage/Done 缺失维持既有行为（不合成成功 Completed），行为边界在验收报告中说明。
+- [ ] D4 保持未完成：2026-10-05 负载 20–65 振荡，无低载窗口。同根源的 app-server 子进程 10s initialize deadline 类在本机持续可见（历史冷启动失败保留；warm/running 用例另有请求计数和延迟 fixture 逻辑错误，已由 Codex 修复，不能仅归因签名/负载）。不放宽 deadline。
+- [ ] D5 未执行矩阵登记（2026-10-05 更新）：完整 workspace、Bazel build、Linux/Windows、远程 CI、Step 场景、加密引用、跨进程 opaque 回放未执行；实际 live cap **触顶**（真实厂商返回 length/max_tokens 终止）未做——本轮 capped live 是"cap 上线"而非"cap 触顶"证据。
+- [ ] D6 设计交付（2026-10-05）：`d6-pause-budget-token-aware-spec.md` + `d6-pause-budget-token-aware-plan.md`——PauseBudgetEstimator/LegacyBytes vs TokenAware、KeepWhole→DropOpaque→DropAll 整体保留策略（签名永不部分保留）、rollout 决策元数据与零迁移兼容、受控 tokenizer boundary 测试计划。未经产品裁决不改既有 40,960 bytes cap、不截断签名；P0 人工复审保持开启。
 
 
 ## 本轮证据（2026-10-04，Claude 实施轮）
@@ -78,3 +78,10 @@
 ## 完成边界
 
 小批相关测试通过后 scoped just fix、just fmt、diff-check；fmt 后不再重跑测试。只有本批行为及其回归确实完成才勾选。不要自动 commit/push/发布，不清理 SQLite/tmp/.env.local，不盲跑付费矩阵。
+
+## 2026-10-05 Codex 复查补充
+
+- 当前完整结果及跨电脑入口：my-docs/codex-review-push-2026-10-05.md、my-docs/other-computer-handoff-2026-10-05.md。
+- controls 新文件原为 8 个测试，9/9 计数含原 nuwax_env.rs 的 Chat retry 用例；新增 remote 文件是 4 个测试，报告表旧数 6 不准确。
+- 604 历史最终批未执行 nuwax_session_remote；capped live4 来自两份源码，合 8 次捕获。源码/收据/原始失败以可提交脱敏摘要为据。
+- D6 已修订：禁止以 bytes/4 或分位数系数关闭 P0，也不能将现行超限 fail-fast 改成未经裁决的 DropOpaque/DropAll。

@@ -1,0 +1,248 @@
+{
+  "format": "codex-sanitized-historical-live-cap-evidence",
+  "version": 1,
+  "scope": "Historical binary marker scenes; cap configuration reached captured wire. No cap exhaustion claim. Captures are pre-send observations, not server receipt acknowledgements.",
+  "passing_cases": {
+    "selected": 4,
+    "executed": 4,
+    "passed": 4,
+    "failed": 0,
+    "captured_attempts": 8,
+    "source_revision_count": 2
+  },
+  "earlier_field_mismatch_cases": {
+    "selected": 2,
+    "executed": 2,
+    "passed": 0,
+    "failed": 2,
+    "captured_attempts": 4
+  },
+  "provenance_limitations": [
+    "Build receipts are self-reported and not authenticated.",
+    "Dependency feature graph is unknown.",
+    "Artifact directories are relative to the historical workspace and ignored by Git.",
+    "The four passing scenes span two source fingerprints; they do not establish one final-tree four-case run."
+  ],
+  "scenes": [
+    {
+      "classification": "passing",
+      "vendor": "mimo",
+      "protocol": "chat",
+      "artifact_relative_dir": "logs/live-mimo/mimo-chat-rig-capped-1791179864564651000-45081",
+      "selected": 1,
+      "executed": 1,
+      "pass": true,
+      "error_evidence": null,
+      "capture_count": 2,
+      "asserted_fields": [
+        "url.scheme",
+        "url.authority",
+        "url.path",
+        "body.model",
+        "body.max_tokens"
+      ],
+      "cap_fields": [
+        {
+          "field": "max_tokens",
+          "value": 512
+        },
+        {
+          "field": "max_tokens",
+          "value": 512
+        }
+      ],
+      "source_sha256": "97720d1917675272620c48c1c040ceaf94fbf988a250b9cf24a7c59326ff41af",
+      "binary_sha256": "c17787a4e6743c62af34a82e7b9eb8b8b82d27b2e2ebeee91766e184d50bf8f6",
+      "git_sha": "11f86b03e6a2a5302c490134226c4b5e60fb1a73",
+      "git_status": "dirty",
+      "receipt_status": "source_and_package_validated",
+      "source_validated": true,
+      "package_configuration_validated": true,
+      "capture_status": "available",
+      "wire_asserted": true
+    },
+    {
+      "classification": "passing",
+      "vendor": "glm",
+      "protocol": "chat",
+      "artifact_relative_dir": "logs/live-glm/glm-chat-rig-capped-1791179865163276000-45190",
+      "selected": 1,
+      "executed": 1,
+      "pass": true,
+      "error_evidence": null,
+      "capture_count": 2,
+      "asserted_fields": [
+        "url.scheme",
+        "url.authority",
+        "url.path",
+        "body.model",
+        "body.max_tokens"
+      ],
+      "cap_fields": [
+        {
+          "field": "max_tokens",
+          "value": 512
+        },
+        {
+          "field": "max_tokens",
+          "value": 512
+        }
+      ],
+      "source_sha256": "97720d1917675272620c48c1c040ceaf94fbf988a250b9cf24a7c59326ff41af",
+      "binary_sha256": "c17787a4e6743c62af34a82e7b9eb8b8b82d27b2e2ebeee91766e184d50bf8f6",
+      "git_sha": "11f86b03e6a2a5302c490134226c4b5e60fb1a73",
+      "git_status": "dirty",
+      "receipt_status": "source_and_package_validated",
+      "source_validated": true,
+      "package_configuration_validated": true,
+      "capture_status": "available",
+      "wire_asserted": true
+    },
+    {
+      "classification": "passing",
+      "vendor": "mimo",
+      "protocol": "anthropic",
+      "artifact_relative_dir": "logs/live-mimo/mimo-anthropic-rig-capped-1791180106837758000-78489",
+      "selected": 1,
+      "executed": 1,
+      "pass": true,
+      "error_evidence": null,
+      "capture_count": 2,
+      "asserted_fields": [
+        "url.scheme",
+        "url.authority",
+        "url.path",
+        "body.model",
+        "body.max_tokens"
+      ],
+      "cap_fields": [
+        {
+          "field": "max_tokens",
+          "value": 512
+        },
+        {
+          "field": "max_tokens",
+          "value": 512
+        }
+      ],
+      "source_sha256": "b3cd797eafa0e99bdcc25512de10de83e88bab6c182960a57bd9500105dfc817",
+      "binary_sha256": "c52d6d7c654e8e32e2b7be6a3e6fbb22ade7ac65de6e99529c84458dfd5d6fbc",
+      "git_sha": "11f86b03e6a2a5302c490134226c4b5e60fb1a73",
+      "git_status": "dirty",
+      "receipt_status": "source_and_package_validated",
+      "source_validated": true,
+      "package_configuration_validated": true,
+      "capture_status": "available",
+      "wire_asserted": true
+    },
+    {
+      "classification": "passing",
+      "vendor": "glm",
+      "protocol": "anthropic",
+      "artifact_relative_dir": "logs/live-glm/glm-anthropic-rig-capped-1791180106837638000-78488",
+      "selected": 1,
+      "executed": 1,
+      "pass": true,
+      "error_evidence": null,
+      "capture_count": 2,
+      "asserted_fields": [
+        "url.scheme",
+        "url.authority",
+        "url.path",
+        "body.model",
+        "body.max_tokens"
+      ],
+      "cap_fields": [
+        {
+          "field": "max_tokens",
+          "value": 512
+        },
+        {
+          "field": "max_tokens",
+          "value": 512
+        }
+      ],
+      "source_sha256": "b3cd797eafa0e99bdcc25512de10de83e88bab6c182960a57bd9500105dfc817",
+      "binary_sha256": "c52d6d7c654e8e32e2b7be6a3e6fbb22ade7ac65de6e99529c84458dfd5d6fbc",
+      "git_sha": "11f86b03e6a2a5302c490134226c4b5e60fb1a73",
+      "git_status": "dirty",
+      "receipt_status": "source_and_package_validated",
+      "source_validated": true,
+      "package_configuration_validated": true,
+      "capture_status": "available",
+      "wire_asserted": true
+    },
+    {
+      "classification": "earlier_field_mismatch",
+      "vendor": "mimo",
+      "protocol": "anthropic",
+      "artifact_relative_dir": "logs/live-mimo/mimo-anthropic-rig-capped-1791179833706249000-40279",
+      "selected": 1,
+      "executed": 1,
+      "pass": false,
+      "error_evidence": {
+        "read_status": "field_mismatch",
+        "wire_asserted": false,
+        "classification": "captured_protocol_path_did_not_match_pre_fix_validator",
+        "binary_exit_success": true
+      },
+      "capture_count": 2,
+      "asserted_fields": [],
+      "cap_fields": [
+        {
+          "field": "max_tokens",
+          "value": 512
+        },
+        {
+          "field": "max_tokens",
+          "value": 512
+        }
+      ],
+      "source_sha256": "97720d1917675272620c48c1c040ceaf94fbf988a250b9cf24a7c59326ff41af",
+      "binary_sha256": "c17787a4e6743c62af34a82e7b9eb8b8b82d27b2e2ebeee91766e184d50bf8f6",
+      "git_sha": "11f86b03e6a2a5302c490134226c4b5e60fb1a73",
+      "git_status": "dirty",
+      "receipt_status": "source_and_package_validated",
+      "source_validated": true,
+      "package_configuration_validated": true,
+      "capture_status": "field_mismatch",
+      "wire_asserted": false
+    },
+    {
+      "classification": "earlier_field_mismatch",
+      "vendor": "glm",
+      "protocol": "anthropic",
+      "artifact_relative_dir": "logs/live-glm/glm-anthropic-rig-capped-1791179833695847000-40278",
+      "selected": 1,
+      "executed": 1,
+      "pass": false,
+      "error_evidence": {
+        "read_status": "field_mismatch",
+        "wire_asserted": false,
+        "classification": "captured_protocol_path_did_not_match_pre_fix_validator",
+        "binary_exit_success": true
+      },
+      "capture_count": 2,
+      "asserted_fields": [],
+      "cap_fields": [
+        {
+          "field": "max_tokens",
+          "value": 512
+        },
+        {
+          "field": "max_tokens",
+          "value": 512
+        }
+      ],
+      "source_sha256": "97720d1917675272620c48c1c040ceaf94fbf988a250b9cf24a7c59326ff41af",
+      "binary_sha256": "c17787a4e6743c62af34a82e7b9eb8b8b82d27b2e2ebeee91766e184d50bf8f6",
+      "git_sha": "11f86b03e6a2a5302c490134226c4b5e60fb1a73",
+      "git_status": "dirty",
+      "receipt_status": "source_and_package_validated",
+      "source_validated": true,
+      "package_configuration_validated": true,
+      "capture_status": "field_mismatch",
+      "wire_asserted": false
+    }
+  ]
+}

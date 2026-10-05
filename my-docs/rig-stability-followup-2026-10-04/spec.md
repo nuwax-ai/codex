@@ -16,7 +16,7 @@
 - queue 写入必须经过会话的 owner server；有运行中 daemon 时禁止另起 embedded writer。环境变量不得让另一个客户端凭据成为 daemon 默认配置。
 - 活跃本地 NUWAX 组与显式 remote 保持现有 fail-fast；远端模型配置和凭据由远端进程持有。UUID queue 只提交消息，不隐式切换模型。
 - 本地命令处理完整/失活/损坏环境组的规则应一致；必须先确定 queue 的 owner 再决定 seeds/daemon 策略，不能仅替换 exclusion。
-- 显式 config.model_provider 的 resume 表示选当前配置模型（即使 provider 与磁盘相同）；无显式路由则保留旧模型。补同 provider echo 的兼容测试。
+- cold resume 的显式 config.model_provider 表示选当前配置模型（即使 provider 与磁盘相同）；无显式路由则保留旧模型。已有加载/订阅/运行中 thread 的覆盖按 live owner 的兼容规则处理，不保证与 cold 路径相同；补 warm/subscribed 对照再决定统一策略。
 
 ## S3：容器进程级请求控制
 
