@@ -83,6 +83,17 @@ pub(crate) struct FakeRunner {
     binaries: Mutex<Vec<PathBuf>>,
 }
 
+impl FakeRunner {
+    pub(crate) fn new(kind: Kind) -> Self {
+        Self {
+            kind,
+            fault: None,
+            turns: AtomicUsize::new(0),
+            binaries: Mutex::new(Vec::new()),
+        }
+    }
+}
+
 impl ExecRunner for FakeRunner {
     async fn run(&self, turn: &ExecTurn<'_>) -> Result<ExecCapture> {
         let ordinal = self.turns.fetch_add(1, Ordering::SeqCst) + 1;
@@ -216,12 +227,8 @@ impl Fixture {
     }
 
     pub(crate) async fn run(&self, kind: Kind, fault: Option<(usize, Fault)>) -> Result<()> {
-        let runner = FakeRunner {
-            kind,
-            fault,
-            turns: AtomicUsize::new(0),
-            binaries: Mutex::new(Vec::new()),
-        };
+        let mut runner = FakeRunner::new(kind);
+        runner.fault = fault;
         let outcome = scenarios::run(
             &runner,
             &Scene {
@@ -233,6 +240,9 @@ impl Fixture {
                 marker: MARKER,
                 expected_model: "test-model",
                 expected_url_prefix: "https://unit.test/v1",
+                wire: codex_rust_rig_bridge::RigProtocol::Responses,
+                capture_requirement: capture_validation::CaptureRequirement::Optional,
+                expected_cap: capture_validation::CapExpectation::Absent,
             },
             match kind {
                 Kind::Marker => BinaryScenario::Marker {

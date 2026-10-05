@@ -7,6 +7,7 @@ use runner::ProcessRunner;
 use scenarios::BinaryScenario;
 use scenarios::Scene;
 
+mod capture_validation;
 mod rollouts;
 mod runner;
 mod scenarios;
@@ -107,9 +108,13 @@ pub fn write_config_toml(
     wire_api: &str,
     bridge: Option<&str>,
     extra: &str,
+    provider_cap: Option<u64>,
 ) -> std::io::Result<()> {
     let bridge_line = bridge
         .map(|b| format!("experimental_bridge = \"{b}\"\n"))
+        .unwrap_or_default();
+    let cap_line = provider_cap
+        .map(|cap| format!("max_output_tokens = {cap}\n"))
         .unwrap_or_default();
     let toml = format!(
         r#"model = "{model}"
@@ -121,13 +126,14 @@ sandbox_mode = "danger-full-access"
 name = "{vendor}"
 base_url = "{base_url}"
 wire_api = "{wire_api}"
-{bridge_line}experimental_bearer_token = "{api_key}"
+{bridge_line}{cap_line}experimental_bearer_token = "{api_key}"
 "#,
         model = cfg.model,
         vendor = cfg.vendor,
         base_url = base_url,
         wire_api = wire_api,
         bridge_line = bridge_line,
+        cap_line = cap_line,
         api_key = cfg.api_key,
     );
     std::fs::write(home.join("config.toml"), toml)
@@ -151,6 +157,33 @@ pub async fn run_marker_turn(
         wire_api,
         bridge,
         extra_config,
+        /*output_cap*/ None,
+        BinaryScenario::Marker { expect_bridge_log },
+    )
+    .await
+}
+
+/// Marker turn with an EXPLICIT provider output budget: the wire must carry
+/// the cap in the protocol's field (Chat may spell it `max_tokens` or
+/// `max_completion_tokens`), asserted per captured attempt.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_capped_marker_turn(
+    protocol: &str,
+    cfg: &LiveConfig,
+    base_url: &str,
+    wire_api: &str,
+    bridge: Option<&str>,
+    output_cap: u64,
+    expect_bridge_log: Option<&str>,
+) -> Result<()> {
+    run_binary_scene(
+        protocol,
+        cfg,
+        base_url,
+        wire_api,
+        bridge,
+        "",
+        Some(output_cap),
         BinaryScenario::Marker { expect_bridge_log },
     )
     .await
@@ -172,6 +205,7 @@ pub async fn run_compact_turn(
         wire_api,
         bridge,
         &format!("{extra_config}model_auto_compact_token_limit = 200\n"),
+        /*output_cap*/ None,
         BinaryScenario::Compact,
     )
     .await
@@ -191,6 +225,7 @@ pub async fn run_websearch_turns(
         "anthropic",
         bridge,
         "web_search = \"live\"\n",
+        /*output_cap*/ None,
         BinaryScenario::WebSearch,
     )
     .await
@@ -204,6 +239,7 @@ async fn run_binary_scene(
     wire_api: &str,
     bridge: Option<&str>,
     extra_config: &str,
+    output_cap: Option<u64>,
     scenario: BinaryScenario<'_>,
 ) -> Result<()> {
     anyhow::ensure!(
@@ -212,7 +248,15 @@ async fn run_binary_scene(
     );
     let home = tempfile::TempDir::new()?;
     let cwd = tempfile::TempDir::new()?;
-    write_config_toml(home.path(), cfg, base_url, wire_api, bridge, extra_config)?;
+    write_config_toml(
+        home.path(),
+        cfg,
+        base_url,
+        wire_api,
+        bridge,
+        extra_config,
+        output_cap,
+    )?;
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let marker = format!("{}-{protocol}-{nonce}-{}", cfg.vendor, std::process::id());
     let artifacts_dir = repo_root()
@@ -236,6 +280,22 @@ async fn run_binary_scene(
             marker: &marker,
             expected_model: &cfg.model,
             expected_url_prefix: base_url,
+            wire: match wire_api {
+                "responses" => codex_rust_rig_bridge::RigProtocol::Responses,
+                "chat" => codex_rust_rig_bridge::RigProtocol::Chat,
+                "anthropic" => codex_rust_rig_bridge::RigProtocol::Anthropic,
+                _ => anyhow::bail!("unsupported live scene wire API"),
+            },
+            capture_requirement: match bridge {
+                Some("native" | "genai") => capture_validation::CaptureRequirement::Optional,
+                None if cfg.vendor == "openai" => capture_validation::CaptureRequirement::Optional,
+                _ => capture_validation::CaptureRequirement::Required,
+            },
+            expected_cap: match (wire_api, output_cap) {
+                (_, Some(cap)) => capture_validation::CapExpectation::Explicit(cap),
+                ("anthropic", None) => capture_validation::CapExpectation::AnthropicDefault,
+                (_, None) => capture_validation::CapExpectation::Absent,
+            },
         },
         scenario,
     )

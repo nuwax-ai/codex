@@ -16,6 +16,7 @@
 //! Adding a vendor: add it to the `exec_matrix!` lists below + set its
 //! `LIVE_<NAME>_*` variables in `.env.local`.
 
+use codex_live_tests::run_capped_marker_turn;
 use codex_live_tests::run_marker_turn;
 use codex_live_tests::vendor;
 
@@ -155,6 +156,40 @@ async fn anthropic_rig_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::R
     .await
 }
 
+/// D2 evidence: an EXPLICIT provider output budget must reach the wire in
+/// the protocol's cap field (Chat: `max_tokens` or `max_completion_tokens`),
+/// asserted for every captured attempt.
+async fn chat_rig_capped_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    run_capped_marker_turn(
+        "chat-rig-capped",
+        cfg,
+        &cfg.base_url,
+        "chat",
+        Some("rig"),
+        /*output_cap*/ 512,
+        Some("via rig"),
+    )
+    .await
+}
+
+/// D2 evidence on the Anthropic wire: `max_tokens` is required there, so the
+/// explicit budget is asserted directly against the captured field.
+async fn anthropic_rig_capped_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(cfg) else {
+        return Ok(());
+    };
+    run_capped_marker_turn(
+        "anthropic-rig-capped",
+        cfg,
+        &anthropic_url,
+        "anthropic",
+        Some("rig"),
+        /*output_cap*/ 512,
+        Some("via rig"),
+    )
+    .await
+}
+
 /// The fork default: without `experimental_bridge`, chat providers must be
 /// served by the rig bridge (asserted via the dispatch log on stderr).
 async fn chat_default_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
@@ -224,6 +259,8 @@ exec_matrix!(responses_rig_default, ["mimo", "glm", "step"]);
 exec_matrix!(responses_native, ["mimo", "glm", "step"]);
 exec_matrix!(anthropic_genai, ["mimo", "glm", "step"]);
 exec_matrix!(anthropic_rig, ["mimo", "glm", "step"]);
+exec_matrix!(chat_rig_capped, ["mimo", "glm"]);
+exec_matrix!(anthropic_rig_capped, ["mimo", "glm"]);
 /// Cross-turn web_search on the Anthropic wire: turn 2 replays turn 1's
 /// history with the WebSearchCall items dropped (pinned behavior); the live
 /// gateway accepting both turns is the baseline for the phase-3 replay.

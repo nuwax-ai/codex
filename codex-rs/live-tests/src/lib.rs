@@ -73,6 +73,7 @@ pub use assertions::event_kind;
 pub use assertions::reasoning_len;
 pub use assertions::text_len;
 pub use binary_turns::codex_exec_binary;
+pub use binary_turns::run_capped_marker_turn;
 pub use binary_turns::run_compact_turn;
 pub use binary_turns::run_marker_turn;
 pub use binary_turns::run_websearch_turns;

@@ -16,6 +16,9 @@ pub(super) struct Scene<'a> {
     /// final URL prefix of the provider this scene was configured against.
     pub(super) expected_model: &'a str,
     pub(super) expected_url_prefix: &'a str,
+    pub(super) wire: codex_rust_rig_bridge::RigProtocol,
+    pub(super) capture_requirement: super::capture_validation::CaptureRequirement,
+    pub(super) expected_cap: super::capture_validation::CapExpectation,
 }
 
 pub(super) enum BinaryScenario<'a> {
@@ -40,57 +43,94 @@ pub(super) async fn run(
     // transports and injected runners can legitimately produce no Rig trace.
     let capture_file = scene.artifacts.join("requests.jsonl");
     let mut capture_error = None;
-    let (status, attempts) = match std::fs::read_to_string(&capture_file) {
+    let (status, attempts, asserted_fields_raw) = match std::fs::read_to_string(&capture_file) {
         Ok(contents) => {
             let lines: Vec<_> = contents
                 .lines()
                 .filter(|line| !line.trim().is_empty())
                 .collect();
-            if lines
+            let parsed = lines
                 .iter()
-                .all(|line| serde_json::from_str::<Value>(line).is_ok())
-            {
-                let attempts: Vec<Value> = lines
-                    .iter()
-                    .map(|line| serde_json::from_str(line).expect("validated JSON"))
-                    .collect();
+                .map(|line| serde_json::from_str::<Value>(line))
+                .collect::<std::result::Result<Vec<_>, _>>();
+            if lines.is_empty() {
+                capture_error = Some(anyhow!("request capture has no HTTP attempts"));
+                ("empty", 0, Vec::new())
+            } else if let Ok(attempts) = parsed {
                 // Wire-level evidence: each recorded final attempt must hit
                 // the configured provider with the configured model. This is
                 // the pre-send capture, not proof of server receipt.
-                let wire = attempts.iter().try_for_each(|attempt| {
-                    let url = attempt["url"].as_str().unwrap_or_default();
-                    anyhow::ensure!(
-                        url.starts_with(scene.expected_url_prefix),
-                        "captured URL {url} does not match the configured provider"
+                let mut asserted_fields: Vec<&'static str> = Vec::new();
+                let mut wire: anyhow::Result<()> = Ok(());
+                for attempt in &attempts {
+                    let attempt_wire = super::capture_validation::validate_attempt(
+                        attempt,
+                        scene.expected_url_prefix,
+                        scene.wire,
+                        scene.expected_model,
+                    )
+                    .and(
+                        super::capture_validation::validate_cap(
+                            attempt,
+                            scene.wire,
+                            scene.expected_cap,
+                        )
+                        .map_err(|error| anyhow::anyhow!("output cap: {error:#}")),
                     );
-                    anyhow::ensure!(
-                        attempt["body"]["model"].as_str() == Some(scene.expected_model),
-                        "captured model {:?} does not match the configured model",
-                        attempt["body"]["model"]
-                    );
-                    Ok(())
-                });
+                    match attempt_wire {
+                        Ok(cap_field) => asserted_fields.push(cap_field),
+                        Err(error) => {
+                            wire = Err(error);
+                            break;
+                        }
+                    }
+                }
                 match wire {
-                    Ok(()) => ("available", attempts.len()),
+                    Ok(()) => {
+                        asserted_fields.dedup();
+                        ("available", attempts.len(), asserted_fields)
+                    }
                     Err(error) => {
                         capture_error = Some(error.context("wire field assertion failed"));
-                        ("field_mismatch", attempts.len())
+                        ("field_mismatch", attempts.len(), Vec::new())
                     }
                 }
             } else {
                 capture_error = Some(anyhow!("request capture contains malformed JSON"));
-                ("malformed", lines.len())
+                ("malformed", lines.len(), Vec::new())
             }
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => ("absent", 0),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            if matches!(
+                scene.capture_requirement,
+                super::capture_validation::CaptureRequirement::Required
+            ) {
+                capture_error = Some(anyhow!("required Rig request capture is absent"));
+            }
+            ("absent", 0, Vec::new())
+        }
         Err(error) => {
             capture_error = Some(anyhow!(error).context("read executable request capture"));
-            ("read_error", 0)
+            ("read_error", 0, Vec::new())
         }
     };
+    let mut asserted_fields: Vec<String> = asserted_fields_raw
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    if status != "available" {
+        asserted_fields.clear();
+    } else {
+        let mut base = ["url.scheme", "url.authority", "url.path", "body.model"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        base.append(&mut asserted_fields);
+        asserted_fields = base;
+    }
     let evidence = serde_json::json!({ "read_status": status, "http_attempts": attempts,
         "wire_asserted": status == "available",
-        "asserted_fields": ["url_prefix", "body.model"],
+        "asserted_fields": asserted_fields,
         "path": "requests.jsonl" });
     let persist = (|| -> Result<()> {
         std::fs::write(

@@ -224,6 +224,9 @@ exit {exit_code}
                 marker: MARKER,
                 expected_model: "test-model",
                 expected_url_prefix: "https://unit.test/v1",
+                wire: codex_rust_rig_bridge::RigProtocol::Responses,
+                capture_requirement: capture_validation::CaptureRequirement::Optional,
+                expected_cap: capture_validation::CapExpectation::Absent,
             },
             BinaryScenario::Marker {
                 expect_bridge_log: Some("dispatch-log"),

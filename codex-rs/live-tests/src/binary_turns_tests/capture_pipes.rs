@@ -47,14 +47,14 @@ async fn request_capture_presence_and_failures_are_recorded_without_masking_scen
         read_status(&fixture),
         serde_json::json!({
             "read_status":"absent","http_attempts":0,"wire_asserted":false,
-            "asserted_fields":["url_prefix","body.model"],
+            "asserted_fields":[],
             "path":"requests.jsonl",
         })
     );
     let fixture = Fixture::new();
     std::fs::write(
         fixture.artifacts.path().join("requests.jsonl"),
-        "{\"method\":\"POST\",\"url\":\"https://unit.test/v1/messages\",\"body_raw\":\"{}\",\"body\":{\"model\":\"test-model\"}}\n",
+        "{\"method\":\"POST\",\"url\":\"https://unit.test/v1/responses\",\"body_raw\":\"{\\\"model\\\":\\\"test-model\\\"}\",\"body\":{\"model\":\"test-model\"}}\n",
     )
     .expect("trace");
     fixture
@@ -65,7 +65,7 @@ async fn request_capture_presence_and_failures_are_recorded_without_masking_scen
         read_status(&fixture),
         serde_json::json!({
             "read_status":"available","http_attempts":1,"wire_asserted":true,
-            "asserted_fields":["url_prefix","body.model"],
+            "asserted_fields":["url.scheme","url.authority","url.path","body.model","body.max_output_tokens_absent"],
             "path":"requests.jsonl",
         })
     );
@@ -257,6 +257,9 @@ async fn real_process_output_overflow_stops_the_child_before_its_wait_deadline_a
                 marker: MARKER,
                 expected_model: "test-model",
                 expected_url_prefix: "https://unit.test/v1",
+                wire: codex_rust_rig_bridge::RigProtocol::Responses,
+                capture_requirement: capture_validation::CaptureRequirement::Optional,
+                expected_cap: capture_validation::CapExpectation::Absent,
             },
             BinaryScenario::Marker {
                 expect_bridge_log: None,
@@ -350,6 +353,9 @@ async fn known_nonzero_child_exit_remains_primary_over_later_pipe_drain_failure(
             marker: MARKER,
             expected_model: "test-model",
             expected_url_prefix: "https://unit.test/v1",
+            wire: codex_rust_rig_bridge::RigProtocol::Responses,
+            capture_requirement: capture_validation::CaptureRequirement::Optional,
+            expected_cap: capture_validation::CapExpectation::Absent,
         },
         BinaryScenario::Marker {
             expect_bridge_log: None,
