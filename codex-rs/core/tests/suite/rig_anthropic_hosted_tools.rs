@@ -23,27 +23,16 @@ use support::*;
 use anyhow::Context;
 use anyhow::Result;
 use codex_model_provider_info::ModelProviderInfo;
-use codex_model_provider_info::WireApi;
 use core_test_support::skip_if_no_network;
 use core_test_support::test_codex::test_codex;
 use pretty_assertions::assert_eq;
-use serde_json::Value;
 use serde_json::json;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
-use tokio::net::TcpStream;
 use tokio::sync::oneshot;
-use wiremock::Mock;
 use wiremock::MockServer;
-use wiremock::Respond;
-use wiremock::ResponseTemplate;
-use wiremock::matchers::method;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn anthropic_mixed_turn_core_loop_preserves_request_prefix() -> Result<()> {

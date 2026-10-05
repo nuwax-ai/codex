@@ -12,16 +12,13 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use wiremock::Mock;
 use wiremock::MockServer;
 use wiremock::Respond;
 use wiremock::ResponseTemplate;
 use wiremock::matchers::method;
-use wiremock::matchers::path;
 
 pub(super) fn anthropic_provider(base_url: &str) -> ModelProviderInfo {
     ModelProviderInfo {

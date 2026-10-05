@@ -53,7 +53,7 @@ pub fn provider_carries_private_query(provider: &Provider) -> bool {
 /// These are static protocol labels or per-attempt telemetry metadata; their
 /// variation must not rotate a credential identity. Any other header name —
 /// including future gateway auth headers — is treated as credential-carrying
-/// and compared privately.
+/// and compared privately. A familiar prefix cannot prove a header is telemetry.
 pub fn is_benign_request_header(name: &str) -> bool {
     let name = name.to_ascii_lowercase();
     matches!(
@@ -69,13 +69,25 @@ pub fn is_benign_request_header(name: &str) -> bool {
             | "x-originator"
             | "x-openai-subagent"
             | "x-openai-memgen-request"
+            | "x-openai-internal-codex-responses-lite"
             | "x-oai-attestation"
+            | "x-codex-beta-features"
+            | "x-codex-installation-id"
+            | "x-codex-parent-thread-id"
+            | "x-codex-window-id"
+            | "x-codex-turn-metadata"
+            | "x-codex-turn-state"
+            | "x-codex-routing-hint"
+            | "x-codex-inference-call-id"
             | "traceparent"
             | "tracestate"
             | "b3"
-    ) || name.starts_with("x-b3-")
-        || name.starts_with("x-codex-")
-        || name.starts_with("x-openai-internal-")
+            | "x-b3-traceid"
+            | "x-b3-spanid"
+            | "x-b3-parentspanid"
+            | "x-b3-sampled"
+            | "x-b3-flags"
+    )
 }
 
 #[cfg(test)]

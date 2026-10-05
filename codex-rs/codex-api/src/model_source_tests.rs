@@ -181,6 +181,9 @@ fn benign_header_policy_covers_static_telemetry_only() {
         "sessionkey",
         "x-vendor-session",
         "proxy-authorization",
+        "x-codex-api-key",
+        "x-openai-internal-auth",
+        "x-b3-token",
     ] {
         assert!(!is_benign_request_header(name), "{name}");
     }

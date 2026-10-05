@@ -70,7 +70,6 @@ fn auth_domain(
     let selected_override = query_scoped
         || provider_auth
         || !scoped_extra_headers.is_empty()
-        || provider_auth
         || info.env_key.is_some()
         || info.experimental_bearer_token.is_some()
         || info.auth.is_some()
@@ -110,7 +109,8 @@ fn auth_domain(
         if headers.is_empty() && !query_scoped && !provider_auth && !selected_override {
             return Ok((Some("anonymous".into()), Some("anonymous".into())));
         }
-        if !headers.is_empty() || query_scoped || provider_auth {
+        if !headers.is_empty() || query_scoped || provider_auth || !scoped_extra_headers.is_empty()
+        {
             // Mirror the wire's override order: provider headers, then
             // credential-scoped extra headers, then the auth snapshot.
             let mut actual_headers = provider.headers.clone();

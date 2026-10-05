@@ -611,3 +611,73 @@ fn benign_extra_headers_do_not_rotate_identity_but_credential_headers_do() {
             .is_none_or(|domain| !domain.contains("session"))
     );
 }
+
+#[test]
+fn header_only_credentials_preserve_same_scope_and_drop_opaque_after_rotation() {
+    let info = provider();
+    let api = info.to_api_provider(None).unwrap();
+    for name in [
+        "x-vendor-session",
+        "x-codex-api-key",
+        "x-openai-internal-auth",
+        "x-b3-token",
+    ] {
+        for in_provider in [false, true] {
+            let capture = |secret: &'static str| {
+                let mut api = api.clone();
+                let mut extra_headers = http::HeaderMap::new();
+                let headers = if in_provider {
+                    &mut api.headers
+                } else {
+                    &mut extra_headers
+                };
+                headers.insert(name, http::HeaderValue::from_static(secret));
+                request_source(
+                    &info,
+                    &api,
+                    /*auth*/ None,
+                    "model-a",
+                    &StaticEmpty,
+                    /*agent_identity*/ None,
+                    &extra_headers,
+                )
+                .unwrap()
+            };
+            let first = capture("first-private-key");
+            let same = capture("first-private-key");
+            let rotated = capture("rotated-private-key");
+            assert_eq!(
+                first.auth_domain_kind.as_deref(),
+                Some("credentialInstance")
+            );
+            assert_eq!(same, first, "{name}, in_provider={in_provider}");
+            assert_ne!(rotated.auth_domain, first.auth_domain);
+
+            let items = fixture_items();
+            let saved = annotated(&items, &first);
+            let saved_before = saved.clone();
+            let sources = sources_for_input(&saved);
+            let mut projected = items.clone();
+            project_input(&mut projected, &sources, &same);
+            assert_eq!(projected, items, "stable {name}, in_provider={in_provider}");
+
+            let mut expected = items;
+            if let ResponseItem::Reasoning {
+                encrypted_content, ..
+            } = &mut expected[0]
+            {
+                *encrypted_content = None;
+            }
+            expected.remove(1);
+            if let ResponseItem::WebSearchCall { wire_blocks, .. } = &mut expected[1] {
+                *wire_blocks = None;
+            }
+            project_input(&mut projected, &sources, &rotated);
+            assert_eq!(
+                projected, expected,
+                "rotated {name}, in_provider={in_provider}"
+            );
+            assert_eq!(saved, saved_before);
+        }
+    }
+}
