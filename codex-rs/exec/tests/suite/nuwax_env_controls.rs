@@ -231,6 +231,410 @@ async fn nuwax_env_stream_retries_resample_truncated_chat_streams() -> Result<()
     Ok(())
 }
 
+/// A short `NUWAX_STREAM_IDLE_TIMEOUT_MS` must actually fire: a server that
+/// sends one delta and then stalls gets exactly one POST, the turn fails,
+/// and no resample follows (stream budget 0).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nuwax_env_idle_timeout_closes_a_stalled_stream() -> Result<()> {
+    use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let address = listener.local_addr()?;
+    let gateway_deadline = tokio::time::Instant::now() + Duration::from_secs(25);
+    let gateway = tokio::spawn(async move {
+        tokio::time::timeout_at(gateway_deadline, async move {
+        let (mut socket, _) = listener.accept().await.expect("gateway connection");
+        let mut data = Vec::new();
+        let header_end = loop {
+            let mut chunk = [0u8; 4096];
+            let read = socket.read(&mut chunk).await.expect("read request");
+            anyhow::ensure!(read != 0, "client closed before sending the request");
+            data.extend_from_slice(&chunk[..read]);
+            if let Some(index) = data.windows(4).position(|window| window == b"\r\n\r\n") {
+                break index + 4;
+            }
+        };
+        let headers = std::str::from_utf8(&data[..header_end]).expect("request headers");
+        let length = headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then_some(value.trim())
+            })
+            .expect("content-length")
+            .parse::<usize>()
+            .expect("parse content-length");
+        assert!(headers.starts_with("POST /v1/chat/completions HTTP/1.1\r\n"));
+        while data.len() < header_end + length {
+            let mut chunk = [0u8; 4096];
+            let read = socket.read(&mut chunk).await.expect("read request body");
+            anyhow::ensure!(read != 0, "client closed mid-request");
+            data.extend_from_slice(&chunk[..read]);
+        }
+        let body: serde_json::Value =
+            serde_json::from_slice(&data[header_end..header_end + length])?;
+        assert_eq!(body["model"], serde_json::json!("nuwax-controls-model"));
+        // Send a valid HTTP response with an open-ended SSE body. Measure
+        // from these bytes, excluding the child process's startup time.
+        let first_frame_at = std::time::Instant::now();
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n")
+            .await?;
+        socket
+            .write_all(CHAT_TRUNCATED_SSE.as_bytes())
+            .await?;
+        socket.flush().await?;
+        let mut chunk = [0u8; 256];
+        tokio::select! {
+            biased;
+            extra = listener.accept() => {
+                extra?;
+                anyhow::bail!("a stalled stream must send exactly one POST");
+            }
+            read = socket.read(&mut chunk) => {
+                anyhow::ensure!(read? == 0,
+                    "unexpected additional request bytes on the stalled connection");
+            }
+        }
+        Ok::<_, anyhow::Error>(first_frame_at.elapsed())
+        })
+        .await?
+    });
+    let base_url = format!("http://{address}");
+    let test = test_codex_exec();
+    let mut command = nuwax_command(
+        &test,
+        &base_url,
+        "chat",
+        "nuwax-idle-key",
+        "nuwax-controls-model",
+    );
+    command
+        .env("NUWAX_REQUEST_MAX_RETRIES", "0")
+        .env("NUWAX_STREAM_MAX_RETRIES", "0")
+        .env("NUWAX_STREAM_IDLE_TIMEOUT_MS", "1500")
+        .timeout(Duration::from_secs(25));
+    let started = std::time::Instant::now();
+    let output = tokio::task::spawn_blocking(move || command.output()).await??;
+    let elapsed = started.elapsed();
+    let stalled_for = gateway.await??;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "a stalled stream must fail the turn: {stderr}"
+    );
+    assert!(
+        stderr.contains("request timed out"),
+        "the stalled stream must fail because its idle budget expired: {stderr}"
+    );
+    assert!(
+        stalled_for >= Duration::from_millis(1500),
+        "the idle budget must elapse after the first SSE frame (took {stalled_for:?})"
+    );
+    assert!(
+        elapsed < Duration::from_secs(25),
+        "the idle budget must not wait for the default 300s (took {elapsed:?})"
+    );
+    Ok(())
+}
+
+/// Interrupting the process during the Retry-After backoff closes the
+/// in-flight request lifecycle: no further handshake attempt is made after
+/// the child exits. Windows Ctrl-C cancellation needs a native console
+/// fixture and remains unexecuted by this Unix signal test.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nuwax_env_interrupt_during_retry_backoff_stops_further_attempts() -> Result<()> {
+    use anyhow::Context;
+    use tokio::io::AsyncBufReadExt;
+    use tokio::io::AsyncReadExt;
+
+    let test = test_codex_exec();
+    let server = start_mock_server().await;
+    let log = RequestLog::default();
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(log.clone())
+        .respond_with(
+            ResponseTemplate::new(503)
+                .insert_header("retry-after", "30")
+                .set_body_string("overloaded"),
+        )
+        .mount(&server)
+        .await;
+    let repo_root = codex_utils_cargo_bin::repo_root()?;
+    let mut command = tokio::process::Command::new(
+        codex_utils_cargo_bin::cargo_bin("codex-exec").expect("codex-exec binary"),
+    );
+    for variable in [
+        "NUWAX_BASE_URL",
+        "NUWAX_WIRE_API",
+        "NUWAX_API_KEY",
+        "NUWAX_MODEL",
+        "NUWAX_MAX_OUTPUT_TOKENS",
+        "NUWAX_REQUEST_MAX_RETRIES",
+        "NUWAX_STREAM_MAX_RETRIES",
+        "NUWAX_STREAM_IDLE_TIMEOUT_MS",
+    ] {
+        command.env_remove(variable);
+    }
+    command
+        .current_dir(test.cwd_path())
+        .env("CODEX_HOME", test.home_path())
+        .env("CODEX_SQLITE_HOME", test.home_path())
+        .env("CODEX_API_KEY", "dummy")
+        .env("RUST_LOG", "error,codex_otel.trace_safe=trace")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .arg("--skip-git-repo-check")
+        .args(["--color", "never"])
+        .arg("-C")
+        .arg(&repo_root)
+        .arg("reply with ok")
+        .env("NUWAX_BASE_URL", format!("{}/v1", server.uri()))
+        .env("NUWAX_WIRE_API", "chat")
+        .env("NUWAX_API_KEY", "nuwax-cancel-key")
+        .env("NUWAX_MODEL", "nuwax-controls-model")
+        .env("NUWAX_REQUEST_MAX_RETRIES", "2")
+        .env("NUWAX_STREAM_MAX_RETRIES", "0");
+    let mut child = command.spawn()?;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    let stderr = child.stderr.take().context("child stderr must be piped")?;
+    let mut stderr = tokio::io::BufReader::new(stderr).take(/*limit*/ 64 * 1024);
+    let mut stderr_log = String::new();
+    tokio::time::timeout_at(deadline, async {
+        loop {
+            let mut line = String::new();
+            anyhow::ensure!(
+                stderr.read_line(&mut line).await? != 0,
+                "child stderr ended before an HTTP retry was scheduled"
+            );
+            stderr_log.push_str(&line);
+            // record_retry! runs after the 503 and Retry-After headers have
+            // been processed, immediately before the backoff sleep.
+            if line.contains("event.name=\"codex.retry\"")
+                && line.contains("retry.attempt=1 ")
+                && line.contains("retry.layer=\"http\"")
+                && line.contains("retry.operation=\"request\"")
+            {
+                let delay = line
+                    .split_once("retry.delay_ms=")
+                    .context("retry trace must contain its delay")?
+                    .1
+                    .split_whitespace()
+                    .next()
+                    .context("retry trace delay must have a value")?
+                    .parse::<u64>()?;
+                anyhow::ensure!(
+                    (25_000..=30_000).contains(&delay),
+                    "the observed retry must honor Retry-After:30, got {delay}ms"
+                );
+                break;
+            }
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await
+    .context("HTTP retry was not scheduled within the process budget")??;
+    assert_eq!(
+        log.count(),
+        1,
+        "interrupt must occur before the next attempt"
+    );
+    let pid = child.id().context("child exited before the interrupt")?;
+    let signal_status = tokio::time::timeout_at(
+        deadline,
+        tokio::process::Command::new("kill")
+            .args(["-INT", &pid.to_string()])
+            .kill_on_drop(true)
+            .status(),
+    )
+    .await
+    .context("sending SIGINT exceeded the process budget")??;
+    anyhow::ensure!(
+        signal_status.success(),
+        "SIGINT command failed: {signal_status}"
+    );
+    let (exited, _) = tokio::time::timeout_at(deadline, async {
+        tokio::try_join!(child.wait(), stderr.read_to_string(&mut stderr_log))
+    })
+    .await
+    .context("the interrupted exec must exit within the process budget")??;
+    assert_eq!(
+        exited.code(),
+        Some(1),
+        "exec must handle turn interruption and exit normally: {stderr_log}"
+    );
+    // Keep observing the mock after the confirmed graceful process exit.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert_eq!(
+        log.count(),
+        1,
+        "no further attempt after the interrupt: paths {:?}",
+        log.paths()
+    );
+    Ok(())
+}
+
+/// Concurrent exec processes on one host: independent CODEX_HOME, distinct
+/// models, credentials, protocols AND retry controls; the server-side capture
+/// proves no cross-use, and neither config.toml is rewritten.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nuwax_env_parallel_processes_apply_distinct_retry_and_idle_controls() -> Result<()> {
+    let server = start_mock_server().await;
+    let chat_log = RequestLog::default();
+    let anthropic_log = RequestLog::default();
+    // Chat child: one 503, then success — needs REQUEST=1 to recover.
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(chat_log.clone())
+        .respond_with(ResponseTemplate::new(503).set_body_string("overloaded"))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(chat_log.clone())
+        .respond_with(
+            ResponseTemplate::new(200).set_body_raw(CHAT_SSE.to_string(), "text/event-stream"),
+        )
+        .mount(&server)
+        .await;
+    // Anthropic child: direct success with a long idle budget.
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .and(anthropic_log.clone())
+        .respond_with(
+            ResponseTemplate::new(200).set_body_raw(ANTHROPIC_SSE.to_string(), "text/event-stream"),
+        )
+        .mount(&server)
+        .await;
+
+    let chat_uri = server.uri();
+    let chat_task = tokio::task::spawn_blocking(move || {
+        let test = test_codex_exec();
+        let config_path = test.home_path().join("config.toml");
+        let original_config = b"# Chat child configuration must stay unchanged.\n".to_vec();
+        std::fs::write(&config_path, &original_config).expect("write chat config");
+        let mut command = nuwax_command(
+            &test,
+            &chat_uri,
+            "chat",
+            "nuwax-parallel-chat-key",
+            "nuwax-parallel-chat-model",
+        );
+        command
+            .env("NUWAX_REQUEST_MAX_RETRIES", "1")
+            .env("NUWAX_STREAM_MAX_RETRIES", "0")
+            .env("NUWAX_STREAM_IDLE_TIMEOUT_MS", "30000");
+        let output = command.output().expect("chat child");
+        let final_config = std::fs::read(&config_path).expect("read chat config after execution");
+        (output, original_config, final_config)
+    });
+    let anthropic_uri = server.uri();
+    let anthropic_task = tokio::task::spawn_blocking(move || {
+        let test = test_codex_exec();
+        let config_path = test.home_path().join("config.toml");
+        let original_config = b"# Anthropic child configuration must stay unchanged.\n".to_vec();
+        std::fs::write(&config_path, &original_config).expect("write anthropic config");
+        let mut command = nuwax_command(
+            &test,
+            &anthropic_uri,
+            "anthropic",
+            "nuwax-parallel-anthropic-key",
+            "nuwax-parallel-anthropic-model",
+        );
+        command
+            .env("NUWAX_REQUEST_MAX_RETRIES", "0")
+            .env("NUWAX_STREAM_MAX_RETRIES", "0")
+            .env("NUWAX_STREAM_IDLE_TIMEOUT_MS", "60000");
+        let output = command.output().expect("anthropic child");
+        let final_config =
+            std::fs::read(&config_path).expect("read anthropic config after execution");
+        (output, original_config, final_config)
+    });
+    let (chat, anthropic) = tokio::join!(chat_task, anthropic_task);
+    let (chat_output, chat_config_before, chat_config_after) = chat?;
+    let (anthropic_output, anthropic_config_before, anthropic_config_after) = anthropic?;
+    assert!(
+        chat_output.status.success(),
+        "chat child: {}",
+        String::from_utf8_lossy(&chat_output.stderr)
+    );
+    assert!(
+        anthropic_output.status.success(),
+        "anthropic child: {}",
+        String::from_utf8_lossy(&anthropic_output.stderr)
+    );
+    assert_eq!(chat_log.count(), 2, "chat child used its own retry budget");
+    assert_eq!(
+        anthropic_log.count(),
+        1,
+        "anthropic child sent exactly once"
+    );
+    let chat_bodies = chat_log.bodies();
+    let anthropic_bodies = anthropic_log.bodies();
+    assert!(
+        chat_bodies
+            .iter()
+            .all(|body| body["model"] == serde_json::json!("nuwax-parallel-chat-model"))
+    );
+    assert!(
+        anthropic_bodies
+            .iter()
+            .all(|body| body["model"] == serde_json::json!("nuwax-parallel-anthropic-model"))
+    );
+    let chat_credential = extract_credential(&chat_log);
+    let anthropic_credential = extract_x_api_key(&anthropic_log);
+    assert_eq!(chat_credential, vec!["Bearer nuwax-parallel-chat-key"; 2]);
+    assert_eq!(
+        anthropic_credential,
+        vec!["nuwax-parallel-anthropic-key"; 1]
+    );
+    assert_eq!(
+        (chat_config_after, anthropic_config_after),
+        (chat_config_before, anthropic_config_before),
+        "both children must preserve config.toml bytes after executing with their own controls"
+    );
+    Ok(())
+}
+
+fn extract_credential(log: &RequestLog) -> Vec<String> {
+    log.0
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|request| {
+            request
+                .headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect()
+}
+
+fn extract_x_api_key(log: &RequestLog) -> Vec<String> {
+    log.0
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|request| {
+            request
+                .headers
+                .get("x-api-key")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect()
+}
+
 /// Fail-fast parsing through the real binary: every invalid control value
 /// exits non-zero, names the variable, never echoes the value, and sends no
 /// request. Covers negative, non-numeric, overflow, blank, zero-timeout,
