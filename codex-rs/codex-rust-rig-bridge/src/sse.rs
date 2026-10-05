@@ -12,8 +12,14 @@ pub(crate) fn with_terminal_check(
     usage: std::sync::Arc<std::sync::Mutex<crate::usage::AnthropicUsage>>,
 ) -> BoxedStream {
     Box::pin(futures::stream::unfold(
-        (Box::pin(body.eventsource()), false, None::<String>, usage),
-        move |(mut frames, done, mut pending_terminal, usage)| async move {
+        (
+            Box::pin(body.eventsource()),
+            false,
+            None::<String>,
+            usage,
+            false,
+        ),
+        move |(mut frames, done, mut pending_terminal, usage, mut chat_terminal_seen)| async move {
             if done {
                 return None;
             }
@@ -21,12 +27,12 @@ pub(crate) fn with_terminal_check(
                 let event = match frames.next().await {
                     Some(Ok(event)) => event,
                     Some(Err(eventsource_stream::EventStreamError::Transport(error))) => {
-                        return Some((Err(error), (frames, true, None, usage)));
+                        return Some((Err(error), (frames, true, None, usage, false)));
                     }
                     Some(Err(error)) => {
                         return Some((
                             Err(Error::Instance(Box::new(error))),
-                            (frames, true, None, usage),
+                            (frames, true, None, usage, false),
                         ));
                     }
                     None => {
@@ -36,7 +42,7 @@ pub(crate) fn with_terminal_check(
                         );
                         return Some((
                             Err(Error::Instance(Box::new(error))),
-                            (frames, true, None, usage),
+                            (frames, true, None, usage, false),
                         ));
                     }
                 };
@@ -50,14 +56,51 @@ pub(crate) fn with_terminal_check(
                 }
                 encoded.push('\n');
                 let done = match protocol {
-                    RigProtocol::Chat => event.data == "[DONE]",
+                    RigProtocol::Chat => {
+                        if event.data == "[DONE]" {
+                            true
+                        } else {
+                            // Match Rig's primary-choice selection and its
+                            // empty-string-as-absent finish_reason policy.
+                            // Unknown/corrupt frames still reach Rig's own
+                            // classifier instead of becoming a fake terminal.
+                            let value = serde_json::from_str::<serde_json::Value>(&event.data).ok();
+                            let primary = value
+                                .as_ref()
+                                .and_then(|value| value["choices"].as_array())
+                                .and_then(|choices| {
+                                    choices.iter().find(|choice| {
+                                        choice["index"].is_null()
+                                            || choice["index"].as_u64() == Some(0)
+                                    })
+                                });
+                            // First terminal wins for all subsequent primary
+                            // content, including deltas without a finish reason.
+                            // Usage-only frames (choices=[]) still reach Rig,
+                            // and EOF still fails unless [DONE] arrives.
+                            if chat_terminal_seen && primary.is_some() {
+                                tracing::warn!(
+                                    "dropping a late Chat primary-choice chunk after the first terminal"
+                                );
+                                continue;
+                            }
+                            if primary.is_some_and(|choice| {
+                                choice["finish_reason"]
+                                    .as_str()
+                                    .is_some_and(|reason| !reason.is_empty())
+                            }) {
+                                chat_terminal_seen = true;
+                            }
+                            false
+                        }
+                    }
                     RigProtocol::Anthropic => {
                         let value: serde_json::Value = match serde_json::from_str(&event.data) {
                             Ok(value) => value,
                             Err(error) => {
                                 return Some((
                                     Err(Error::Instance(Box::new(error))),
-                                    (frames, true, None, usage),
+                                    (frames, true, None, usage, false),
                                 ));
                             }
                         };
@@ -67,7 +110,7 @@ pub(crate) fn with_terminal_check(
                                 std::io::Error::other("Anthropic usage state is unavailable");
                             return Some((
                                 Err(Error::Instance(Box::new(error))),
-                                (frames, true, None, usage),
+                                (frames, true, None, usage, false),
                             ));
                         }
                         match value["type"].as_str() {
@@ -77,7 +120,7 @@ pub(crate) fn with_terminal_check(
                                         std::io::Error::other("duplicate Anthropic terminal delta");
                                     return Some((
                                         Err(Error::Instance(Box::new(error))),
-                                        (frames, true, None, usage),
+                                        (frames, true, None, usage, false),
                                     ));
                                 }
                                 // Rig 0.42 emits Final on this delta, before
@@ -104,13 +147,13 @@ pub(crate) fn with_terminal_check(
                         );
                         return Some((
                             Err(Error::Instance(Box::new(error))),
-                            (frames, true, None, usage),
+                            (frames, true, None, usage, false),
                         ));
                     }
                 };
                 return Some((
                     Ok(Bytes::from(encoded)),
-                    (frames, done, pending_terminal, usage),
+                    (frames, done, pending_terminal, usage, chat_terminal_seen),
                 ));
             }
         },

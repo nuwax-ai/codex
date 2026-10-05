@@ -96,10 +96,9 @@ async fn request_output_budget_overrides_provider_on_every_protocol() {
 }
 
 #[tokio::test]
-async fn chat_length_truncation_completes_once_with_partial_output_and_usage() {
-    // finish_reason=length is the Chat wire's output-cap terminal state: the
-    // turn completes normally with the partial text and usage counters, one
-    // request, no resampling and no stream error.
+async fn chat_length_returns_terminal_output_cap_error_with_partial_text() {
+    // A cap terminal keeps emitted deltas but does not synthesize a successful
+    // Completed/usage event. Core resampling is verified at a different layer.
     let payload =
         support::CHAT_SSE.replace("\"finish_reason\":\"stop\"", "\"finish_reason\":\"length\"");
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -126,8 +125,10 @@ async fn chat_length_truncation_completes_once_with_partial_output_and_usage() {
     });
     let provider = provider(address);
     let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut request = support::request(vec![support::user()]);
+    request.max_output_tokens = Some(64);
     let mut stream = stream_via_rig(
-        &support::request(vec![support::user()]),
+        &request,
         &provider,
         &auth,
         http::HeaderMap::new(),
@@ -138,11 +139,19 @@ async fn chat_length_truncation_completes_once_with_partial_output_and_usage() {
     .unwrap();
     let mut texts = Vec::new();
     let mut terminal = None;
+    let mut completed = 0;
+    let mut done = 0;
+    let mut errors = 0;
     while let Some(event) = stream.next().await {
         match event {
             Ok(codex_api::ResponseEvent::OutputTextDelta(text)) => texts.push(text),
+            Ok(codex_api::ResponseEvent::Completed { .. }) => completed += 1,
+            Ok(codex_api::ResponseEvent::OutputItemDone(_)) => done += 1,
             Ok(_) => {}
-            Err(error) => terminal = Some(error),
+            Err(error) => {
+                errors += 1;
+                terminal = Some(error);
+            }
         }
     }
     let bodies = server.await.unwrap();
@@ -156,14 +165,22 @@ async fn chat_length_truncation_completes_once_with_partial_output_and_usage() {
         codex_api::ApiError::InvalidRequest { message }
             if message.contains("Output token limit reached")
     ));
-    assert_eq!(bodies.len(), 1);
-    assert_eq!(texts.concat(), "ok");
+    assert_eq!(
+        (
+            bodies.len(),
+            texts.concat(),
+            completed,
+            done,
+            errors,
+            bodies[0]["max_tokens"].clone()
+        ),
+        (1, "ok".to_string(), 0, 0, 1, json!(64))
+    );
 }
 
 #[tokio::test]
-async fn anthropic_max_tokens_stop_completes_once_with_partial_output_and_usage() {
-    // stop_reason=max_tokens is the Anthropic wire's output-cap terminal
-    // state: same completion semantics as the Chat line above.
+async fn anthropic_max_tokens_returns_terminal_output_cap_error_with_partial_text() {
+    // Same partial-text and non-successful terminal policy as Chat.
     let payload = support::ANTHROPIC_SSE.replace(
         "\"stop_reason\":\"end_turn\"",
         "\"stop_reason\":\"max_tokens\"",
@@ -191,8 +208,10 @@ async fn anthropic_max_tokens_stop_completes_once_with_partial_output_and_usage(
     });
     let provider = provider(address);
     let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut request = support::request(vec![support::user()]);
+    request.max_output_tokens = Some(64);
     let mut stream = stream_via_rig(
-        &support::request(vec![support::user()]),
+        &request,
         &provider,
         &auth,
         http::HeaderMap::new(),
@@ -203,11 +222,19 @@ async fn anthropic_max_tokens_stop_completes_once_with_partial_output_and_usage(
     .unwrap();
     let mut texts = Vec::new();
     let mut terminal = None;
+    let mut completed = 0;
+    let mut done = 0;
+    let mut errors = 0;
     while let Some(event) = stream.next().await {
         match event {
             Ok(codex_api::ResponseEvent::OutputTextDelta(text)) => texts.push(text),
+            Ok(codex_api::ResponseEvent::Completed { .. }) => completed += 1,
+            Ok(codex_api::ResponseEvent::OutputItemDone(_)) => done += 1,
             Ok(_) => {}
-            Err(error) => terminal = Some(error),
+            Err(error) => {
+                errors += 1;
+                terminal = Some(error);
+            }
         }
     }
     let bodies = server.await.unwrap();
@@ -217,6 +244,15 @@ async fn anthropic_max_tokens_stop_completes_once_with_partial_output_and_usage(
         codex_api::ApiError::InvalidRequest { message }
             if message.contains("Output token limit reached")
     ));
-    assert_eq!(bodies.len(), 1);
-    assert_eq!(texts.concat(), "ok");
+    assert_eq!(
+        (
+            bodies.len(),
+            texts.concat(),
+            completed,
+            done,
+            errors,
+            bodies[0]["max_tokens"].clone()
+        ),
+        (1, "ok".to_string(), 0, 0, 1, json!(64))
+    );
 }
