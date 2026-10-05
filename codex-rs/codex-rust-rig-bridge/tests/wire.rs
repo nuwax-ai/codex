@@ -27,6 +27,8 @@ mod request_retry_tests;
 mod responses_regression_tests;
 #[path = "wire/responses_wire_tests.rs"]
 mod responses_wire_tests;
+#[path = "wire/scope_replay_tests.rs"]
+mod scope_replay_tests;
 mod support;
 #[path = "wire/terminal_tests.rs"]
 mod terminal_tests;

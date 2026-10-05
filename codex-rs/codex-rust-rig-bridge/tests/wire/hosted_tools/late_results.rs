@@ -122,13 +122,7 @@ async fn mixed_turn_result_arriving_in_the_next_response_closes_the_pending_call
     ])
     .await;
     let provider = provider(address);
-    let source = codex_rust_rig_bridge::reasoning_source_with_auth_domain(
-        &provider,
-        RigProtocol::Anthropic,
-        "review-model",
-        Some("legacy-unscoped"),
-    )
-    .expect("source identity");
+    let source = support::source_for_dummy_auth(&provider, RigProtocol::Anthropic);
     let pending_call = json!([
         {"type":"server_tool_use","id":"srvu_mixed","name":"web_search","input":{"query":"mixed"}}
     ]);
@@ -288,13 +282,7 @@ async fn cited_text_blocks_persist_and_replay_after_their_pair() {
     let (address, server) =
         support::sequence_server(vec![cited_sse, support::ANTHROPIC_SSE.to_string()]).await;
     let provider = provider(address);
-    let source = codex_rust_rig_bridge::reasoning_source_with_auth_domain(
-        &provider,
-        RigProtocol::Anthropic,
-        "review-model",
-        Some("legacy-unscoped"),
-    )
-    .expect("source identity");
+    let source = support::source_for_dummy_auth(&provider, RigProtocol::Anthropic);
     let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
 
     // Turn 1: the emitted search item carries the cited text in its envelope.
@@ -423,13 +411,7 @@ async fn cited_text_replaces_the_plain_answer_projection_in_place() {
     let (address, server) =
         support::sequence_server(vec![cited_sse, support::ANTHROPIC_SSE.to_string()]).await;
     let provider = provider(address);
-    let _source = codex_rust_rig_bridge::reasoning_source_with_auth_domain(
-        &provider,
-        RigProtocol::Anthropic,
-        "review-model",
-        Some("legacy-unscoped"),
-    )
-    .expect("source identity");
+    let _source = support::source_for_dummy_auth(&provider, RigProtocol::Anthropic);
     let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
 
     // Turn 1 captures the envelope (pair + cited text).
@@ -556,13 +538,7 @@ async fn mixed_turn_late_result_preserves_the_sent_request_prefix() {
     ])
     .await;
     let provider = provider(address);
-    let source = codex_rust_rig_bridge::reasoning_source_with_auth_domain(
-        &provider,
-        RigProtocol::Anthropic,
-        "review-model",
-        Some("legacy-unscoped"),
-    )
-    .expect("source identity");
+    let source = support::source_for_dummy_auth(&provider, RigProtocol::Anthropic);
     let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
     let pending_call = json!([
         {"type":"server_tool_use","id":"srvu_prefix","name":"web_search","input":{"query":"prefix"}}

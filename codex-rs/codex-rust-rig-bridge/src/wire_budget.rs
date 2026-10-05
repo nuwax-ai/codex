@@ -3,23 +3,11 @@
 
 const MAX_WIRE_BYTES: usize = 32 * 1024 * 1024;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct RigCallContext {
     pub(crate) auth_domain: Option<String>,
     pub(crate) auth_domain_kind: Option<String>,
     pub(crate) context_window_tokens: Option<i64>,
-}
-
-// Compatibility for free-function callers predating auth-domain metadata.
-// The ModelBridge entry supplies its actual domain, including None/unknown.
-impl Default for RigCallContext {
-    fn default() -> Self {
-        Self {
-            auth_domain: Some("legacy-unscoped".into()),
-            auth_domain_kind: None,
-            context_window_tokens: None,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]

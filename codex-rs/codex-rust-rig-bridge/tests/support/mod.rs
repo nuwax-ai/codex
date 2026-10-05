@@ -50,12 +50,40 @@ pub fn set_tools(request: &mut ResponsesApiRequest, tools: Value) {
 
 pub struct DummyAuth;
 impl AuthProvider for DummyAuth {
+    fn immutable_credential_headers(&self) -> Option<http::HeaderMap> {
+        Some(self.to_auth_headers())
+    }
+
     fn add_auth_headers(&self, headers: &mut http::HeaderMap) {
         let mut value = http::HeaderValue::from_static("Bearer local-test-dummy");
         value.set_sensitive(true);
         headers.insert(http::header::AUTHORIZATION, value.clone());
         headers.insert("x-gateway-auth", value);
     }
+}
+
+/// Binds synthetic replay fixtures to the immutable credentials actually sent
+/// by DummyAuth. Captured-event tests retain the source their real turn emitted.
+pub fn source_for_dummy_auth(provider: &Provider, protocol: RigProtocol) -> String {
+    let mut actual_headers = provider.headers.clone();
+    actual_headers.extend(DummyAuth.immutable_credential_headers().unwrap());
+    let mut scoped_headers = http::HeaderMap::new();
+    for (name, value) in &actual_headers {
+        if !codex_api::is_benign_request_header(name.as_str()) {
+            scoped_headers.append(name.clone(), value.clone());
+        }
+    }
+    let domain = codex_api::credential_instance_identity(provider, scoped_headers)
+        .unwrap()
+        .expect("bounded immutable test credentials");
+    let auth_identity = serde_json::to_string(&("credentialInstance", domain)).unwrap();
+    codex_rust_rig_bridge::reasoning_source_with_auth_domain(
+        provider,
+        protocol,
+        "review-model",
+        Some(&auth_identity),
+    )
+    .expect("source identity")
 }
 
 pub const IMAGE: &str = "data:image/png;base64,aGVsbG8=";

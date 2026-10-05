@@ -50,7 +50,7 @@ fn layout(response: &str, value: &str) -> Vec<Value> {
     ]
 }
 
-fn response(id: &str, blocks: Vec<Value>, stop: &str) -> String {
+pub(super) fn response(id: &str, blocks: Vec<Value>, stop: &str) -> String {
     let mut frames = vec![
         json!({"type":"message_start","message":{"id":id,"type":"message","role":"assistant","content":[],"model":"review-model","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"output_tokens":0}}}),
     ];

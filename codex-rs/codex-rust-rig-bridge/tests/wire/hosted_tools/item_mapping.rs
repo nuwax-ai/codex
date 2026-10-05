@@ -39,13 +39,7 @@ async fn anthropic_server_tool_use_maps_to_a_web_search_call_item() {
         .filter(|item| matches!(item, ResponseItem::WebSearchCall { .. }))
         .collect();
     assert_eq!(web_search_calls.len(), 1, "items: {done_items:?}");
-    let source = codex_rust_rig_bridge::reasoning_source_with_auth_domain(
-        &provider,
-        RigProtocol::Anthropic,
-        "review-model",
-        Some("legacy-unscoped"),
-    )
-    .expect("source identity");
+    let source = support::source_for_dummy_auth(&provider, RigProtocol::Anthropic);
     let message_id = done_items
         .iter()
         .find_map(|item| match item {

@@ -15,13 +15,7 @@ async fn anthropic_replay_restores_persisted_web_search_blocks() {
     // The persisted payload is the versioned envelope captured by the SAME
     // source identity this request will use (computed through the bridge's
     // own identity function), so the replay gate accepts it.
-    let source = codex_rust_rig_bridge::reasoning_source_with_auth_domain(
-        &provider,
-        RigProtocol::Anthropic,
-        "review-model",
-        Some("legacy-unscoped"),
-    )
-    .expect("source identity");
+    let source = support::source_for_dummy_auth(&provider, RigProtocol::Anthropic);
     let request = support::request(vec![
         support::user(),
         serde_json::json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"prior answer"}]}),

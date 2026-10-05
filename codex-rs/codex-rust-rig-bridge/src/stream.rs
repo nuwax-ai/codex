@@ -127,6 +127,40 @@ pub async fn stream_via_rig_with_recorders(
     idle_timeout: Duration,
     recorders: RigTurnRecorders,
 ) -> Result<(ResponseStream, RigTurnRecorders), ApiError> {
+    // Public callers do not supply ownership metadata. Only an immutable
+    // snapshot can prove their actual request credentials without resolving
+    // refreshable auth a second time. Keep one unbound scope across this
+    // logical call's pause continuations when that proof is unavailable.
+    let mut context = crate::wire_budget::RigCallContext::default();
+    if let Some(snapshot) = api_auth.immutable_credential_headers() {
+        let mut actual_headers = api_provider.headers.clone();
+        actual_headers.extend(extra_headers.clone());
+        actual_headers.extend(snapshot);
+        let mut scoped_headers = HeaderMap::new();
+        for (name, value) in &actual_headers {
+            if !codex_api::is_benign_request_header(name.as_str()) {
+                scoped_headers.append(name.clone(), value.clone());
+            }
+        }
+        if scoped_headers.is_empty() && !codex_api::provider_carries_private_query(api_provider) {
+            context.auth_domain = Some("anonymous".into());
+            context.auth_domain_kind = Some("anonymous".into());
+        } else if let Some(identity) =
+            codex_api::credential_instance_identity(api_provider, scoped_headers)
+                .map_err(|error| ApiError::Transport(error.into()))?
+        {
+            context.auth_domain = Some(identity);
+            context.auth_domain_kind = Some("credentialInstance".into());
+        }
+    }
+    if context.auth_domain.is_none() {
+        context.auth_domain = Some(format!(
+            "unbound:{}:{}",
+            std::process::id(),
+            crate::convert_response::unique_suffix()
+        ));
+        context.auth_domain_kind = Some("unbound".into());
+    }
     stream_via_rig_with_context(
         request,
         api_provider,
@@ -135,7 +169,7 @@ pub async fn stream_via_rig_with_recorders(
         protocol,
         idle_timeout,
         recorders,
-        crate::wire_budget::RigCallContext::default(),
+        context,
     )
     .await
 }

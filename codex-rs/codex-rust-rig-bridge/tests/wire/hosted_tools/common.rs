@@ -72,13 +72,7 @@ pub(crate) async fn capture_search_replay(raw_items: Vec<Value>, replay: SearchR
     // Fixtures write bare block arrays; wrap them into the versioned
     // envelope of the SAME source identity this request will use, exactly
     // like a captured turn would carry them.
-    let source = codex_rust_rig_bridge::reasoning_source_with_auth_domain(
-        &provider,
-        RigProtocol::Anthropic,
-        "review-model",
-        Some("legacy-unscoped"),
-    )
-    .expect("source identity");
+    let source = support::source_for_dummy_auth(&provider, RigProtocol::Anthropic);
     let items = raw_items
         .into_iter()
         .map(|mut item| {
