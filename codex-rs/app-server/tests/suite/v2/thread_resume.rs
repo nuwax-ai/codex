@@ -6443,6 +6443,226 @@ async fn setup_rollout_fixture(codex_home: &Path, server_uri: &str) -> Result<Ro
     })
 }
 
+async fn captured_models(server: &MockServer) -> Result<Vec<serde_json::Value>> {
+    // wiremock records requests asynchronously; poll briefly so a
+    // just-completed turn's request is never raced by the assertion.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let count = server.received_requests().await.unwrap_or_default().len();
+        if count >= 2 || std::time::Instant::now() > deadline {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    Ok(server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .iter()
+        .filter(|request| request.url.path().ends_with("/responses"))
+        .map(|request| serde_json::from_slice::<serde_json::Value>(&request.body))
+        .collect::<serde_json::Result<Vec<_>>>()?
+        .into_iter()
+        .map(|body| body["model"].clone())
+        .collect())
+}
+
+/// Warm-path divergence of the echo override: on a thread this connection
+/// already loaded (and therefore subscribes to), and on a thread with a turn
+/// in flight, the override is IGNORED to preserve rejoin semantics — the
+/// response and the real HTTP body keep the model the live thread is using.
+/// The cold path applies the override (previous test); unifying the two is a
+/// product decision registered in the follow-up spec, not changed here.
+#[tokio::test]
+async fn thread_resume_echo_override_is_ignored_on_loaded_and_running_threads() -> Result<()> {
+    // LOADED: bare resume loads the thread (restoring gpt-5.4) and subscribes
+    // this connection; the subsequent echo resume must not re-route it.
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let codex_home = TempDir::new()?;
+    mock_responses_config(&server.uri())
+        .with_model("gpt-5.2-codex")
+        .write(codex_home.path())?;
+    let RestartedThreadFixture {
+        mut mcp, thread_id, ..
+    } = start_materialized_thread_and_restart(codex_home.path(), "loaded echo").await?;
+    let bare_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id: thread_id.clone(),
+            ..Default::default()
+        })
+        .await?;
+    let bare: ThreadResumeResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(bare_id)).await??;
+    assert_eq!(
+        (bare.model.as_str(), bare.model_provider.as_str()),
+        ("gpt-5.4", "mock_provider")
+    );
+    let echo_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id: thread_id.clone(),
+            config: Some(
+                [("model_provider".to_string(), json!("mock_provider"))]
+                    .into_iter()
+                    .collect(),
+            ),
+            ..Default::default()
+        })
+        .await?;
+    let echoed: ThreadResumeResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(echo_id)).await??;
+    assert_eq!(
+        (echoed.model.as_str(), echoed.model_provider.as_str()),
+        ("gpt-5.4", "mock_provider"),
+        "a loaded, subscribed thread must not re-route on an echo override"
+    );
+    let turn_id = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: echoed.thread.id,
+            input: vec![UserInput::Text {
+                text: "stay on the loaded model".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })
+        .await?;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(turn_id)),
+    )
+    .await??;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("turn/completed"),
+    )
+    .await??;
+    let wire_models = captured_models(&server).await?;
+    assert_eq!(
+        wire_models,
+        vec![json!("gpt-5.4"), json!("gpt-5.4")],
+        "one materialization turn and the post-echo turn stay on gpt-5.4"
+    );
+
+    // Gate the second response until resume assertions finish. A timed delay
+    // cannot prove the turn remains running on a busy host.
+    let (release_running_turn, running_turn_gate) = oneshot::channel();
+    let (delayed, _completions) = start_streaming_sse_server(vec![
+        ungated_goal_response(create_final_assistant_message_sse_response("materialize")?),
+        vec![
+            StreamingSseChunk {
+                gate: None,
+                body: responses::sse(vec![
+                    responses::ev_response_created("echo-running"),
+                    responses::ev_message_item_added("echo-message", ""),
+                ]),
+            },
+            StreamingSseChunk {
+                gate: Some(running_turn_gate),
+                body: responses::sse(vec![
+                    responses::ev_assistant_message("echo-message", "Done"),
+                    responses::ev_completed("echo-running"),
+                ]),
+            },
+        ],
+    ])
+    .await;
+    let running_home = TempDir::new()?;
+    mock_responses_config(delayed.uri())
+        .with_model("gpt-5.2-codex")
+        .write(running_home.path())?;
+    let RestartedThreadFixture {
+        mut mcp, thread_id, ..
+    } = start_materialized_thread_and_restart(running_home.path(), "running echo").await?;
+    let load_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id: thread_id.clone(),
+            ..Default::default()
+        })
+        .await?;
+    let loaded: ThreadResumeResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(load_id)).await??;
+    assert_eq!(
+        (loaded.model.as_str(), loaded.model_provider.as_str()),
+        ("gpt-5.4", "mock_provider")
+    );
+    let running_turn_id = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: loaded.thread.id,
+            input: vec![UserInput::Text {
+                text: "run slowly".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })
+        .await?;
+    let started_response = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(running_turn_id)),
+    )
+    .await??;
+    let started: TurnStartResponse = to_response(started_response)?;
+    timeout(DEFAULT_READ_TIMEOUT, async {
+        loop {
+            let item: ItemStartedNotification = mcp.read_notification("item/started").await?;
+            if item.turn_id == started.turn.id
+                && matches!(item.item, ThreadItem::AgentMessage { .. })
+            {
+                return Ok::<(), anyhow::Error>(());
+            }
+        }
+    })
+    .await??;
+    assert_eq!(delayed.requests().await.len(), 2);
+    let running_echo_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id: thread_id.clone(),
+            config: Some(
+                [("model_provider".to_string(), json!("mock_provider"))]
+                    .into_iter()
+                    .collect(),
+            ),
+            ..Default::default()
+        })
+        .await?;
+    let running_echo: ThreadResumeResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(running_echo_id)).await??;
+    assert_eq!(
+        (
+            running_echo.model.as_str(),
+            running_echo.model_provider.as_str()
+        ),
+        ("gpt-5.4", "mock_provider"),
+        "a thread with a turn in flight must not re-route on an echo override"
+    );
+    assert!(matches!(
+        running_echo.thread.status,
+        ThreadStatus::Active { .. }
+    ));
+    release_running_turn
+        .send(())
+        .map_err(|_| anyhow::anyhow!("running response gate closed"))?;
+    timeout(
+        std::time::Duration::from_secs(30),
+        mcp.read_stream_until_notification_message("turn/completed"),
+    )
+    .await??;
+    let running_wire_models = delayed
+        .requests()
+        .await
+        .into_iter()
+        .map(|body| serde_json::from_slice::<serde_json::Value>(&body))
+        .collect::<serde_json::Result<Vec<_>>>()?
+        .into_iter()
+        .map(|body| body["model"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        running_wire_models,
+        vec![json!("gpt-5.4"), json!("gpt-5.4")],
+        "the in-flight turn keeps the loaded model end to end"
+    );
+    delayed.shutdown().await;
+    Ok(())
+}
+
 #[tokio::test]
 async fn thread_resume_same_provider_echo_uses_current_default_model() -> Result<()> {
     // An explicit `config.model_provider` — even echoing the persisted
