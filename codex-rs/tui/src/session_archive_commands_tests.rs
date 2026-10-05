@@ -402,7 +402,6 @@ async fn trusts_sqlite_name_over_legacy_index_for_delete() -> color_eyre::Result
         "old-session",
         "do the thing",
         "stable-client-message-id",
-        crate::session_queue_commands::QueueOwner::Embedded,
     )
     .await
     .expect_err("stale legacy names must not select renamed threads");
@@ -471,7 +470,6 @@ async fn queues_non_interactive_and_custom_sessions_by_server_label() -> color_e
         "saved-session",
         "do the thing",
         "stable-client-message-id",
-        crate::session_queue_commands::QueueOwner::Embedded,
     )
     .await?;
     let queued = runtime
@@ -517,7 +515,6 @@ async fn queues_non_interactive_and_custom_sessions_by_server_label() -> color_e
         "atlas-session",
         "do the thing",
         "custom-client-message-id",
-        crate::session_queue_commands::QueueOwner::Embedded,
     )
     .await?;
     assert_eq!(resolved_custom_thread_id, custom_thread_id);
@@ -532,7 +529,6 @@ async fn queues_non_interactive_and_custom_sessions_by_server_label() -> color_e
         "saved-session",
         "do the thing",
         "duplicate-client-message-id",
-        crate::session_queue_commands::QueueOwner::Embedded,
     )
     .await
     .expect_err("different sources with the same label need a thread ID");
@@ -543,56 +539,5 @@ async fn queues_non_interactive_and_custom_sessions_by_server_label() -> color_e
             "Multiple sessions match 'saved-session' (including {thread_id} and {custom_thread_id}); use a session UUID to disambiguate."
         )
     );
-    Ok(())
-}
-
-#[tokio::test]
-async fn queue_owner_preflight_rejects_temporary_provider_on_shared_daemon()
--> color_eyre::Result<()> {
-    use crate::session_queue_commands::QueueOwner;
-    use crate::session_queue_commands::ensure_owner_can_resolve_thread_provider;
-
-    let temp_dir = TempDir::new()?;
-    let mut config = build_config(&temp_dir).await?;
-    config.model_provider_id = codex_protocol::config_types::NUWAX_ENV_PROVIDER_ID.to_string();
-    let thread_id = ThreadId::new();
-    write_rollout(
-        &config,
-        thread_id,
-        /*archived*/ false,
-        "2025-02-01T10:00:00Z",
-        "queued turn",
-        SessionSource::Cli,
-    )?;
-    let home = config.codex_home.clone();
-
-    // The shared daemon had the NUWAX environment scrubbed at startup: it
-    // cannot resolve the thread's per-process provider when the turn runs,
-    // so enqueueing must fail explicitly instead of deferring the failure.
-    let error =
-        ensure_owner_can_resolve_thread_provider(&home, &thread_id, QueueOwner::SharedDaemon)
-            .await
-            .expect_err("temporary provider on shared daemon must be rejected");
-    assert!(error.to_string().contains("NUWAX"), "{error}");
-    assert!(error.to_string().contains("daemon"), "{error}");
-
-    // Embedded owners resolve through their own environment seeds.
-    ensure_owner_can_resolve_thread_provider(&home, &thread_id, QueueOwner::Embedded).await?;
-    // Remote owners hold their own configuration.
-    ensure_owner_can_resolve_thread_provider(&home, &thread_id, QueueOwner::Remote).await?;
-
-    // Persistent named providers are never blocked by the preflight.
-    config.model_provider_id = "stable-provider".to_string();
-    let named_thread = ThreadId::new();
-    write_rollout(
-        &config,
-        named_thread,
-        /*archived*/ false,
-        "2025-02-01T10:00:00Z",
-        "queued turn",
-        SessionSource::Cli,
-    )?;
-    ensure_owner_can_resolve_thread_provider(&home, &named_thread, QueueOwner::SharedDaemon)
-        .await?;
     Ok(())
 }

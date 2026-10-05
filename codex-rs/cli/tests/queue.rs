@@ -478,6 +478,235 @@ fn remote_session_commands_validate_config() -> Result<()> {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn queue_uses_default_socket_owner_after_provider_retarget() -> Result<()> {
+    use std::time::Duration;
+
+    use app_test_support::MockResponsesConfig;
+    use app_test_support::TestAppServer;
+    use app_test_support::create_fake_rollout;
+    use app_test_support::create_final_assistant_message_sse_response;
+    use app_test_support::create_mock_responses_server_sequence_unchecked;
+    use app_test_support::rollout_path;
+    use codex_app_server_client::AppServerEvent;
+    use codex_app_server_client::DEFAULT_IN_PROCESS_CHANNEL_CAPACITY;
+    use codex_app_server_client::RemoteAppServerClient;
+    use codex_app_server_client::RemoteAppServerConnectArgs;
+    use codex_app_server_client::RemoteAppServerEndpoint;
+    use codex_app_server_protocol::ClientRequest;
+    use codex_app_server_protocol::RequestId;
+    use codex_app_server_protocol::ServerNotification;
+    use codex_app_server_protocol::ThreadQueueListParams;
+    use codex_app_server_protocol::ThreadQueueListResponse;
+    use codex_app_server_protocol::ThreadResumeParams;
+    use codex_app_server_protocol::ThreadResumeResponse;
+    use codex_app_server_protocol::ThreadSetNameParams;
+    use codex_app_server_protocol::ThreadSetNameResponse;
+    use codex_app_server_protocol::TurnStatus;
+    use codex_protocol::config_types::NUWAX_ENV_PROVIDER_ID;
+    use codex_protocol::shell_environment::OPENAI_FEDERATION_RULE_ID_ENV_VAR;
+    use codex_protocol::shell_environment::OPENAI_IDENTITY_TOKEN_FILE_ENV_VAR;
+    use tokio::time::timeout;
+
+    let codex_home = socket_test_home()?;
+    let codex = codex_utils_cargo_bin::cargo_bin("codex")?;
+    let model = create_mock_responses_server_sequence_unchecked(vec![
+        create_final_assistant_message_sse_response("queued by UUID")?,
+        create_final_assistant_message_sse_response("queued by name")?,
+    ])
+    .await;
+    MockResponsesConfig::new(&model.uri())
+        .with_model("gpt-5.2-codex")
+        .with_root_config("features.plugins = false\nanalytics.enabled = false")
+        .with_provider_config("env_key = \"CODEX_QUEUE_OWNER_API_KEY\"")
+        .write(codex_home.path())?;
+    let config_before = std::fs::read(codex_home.path().join("config.toml"))?;
+    let timestamp = "2025-02-01T10-00-00";
+    let thread_id = create_fake_rollout(
+        codex_home.path(),
+        timestamp,
+        "2025-02-01T10:00:00Z",
+        "original NUWAX session",
+        Some(NUWAX_ENV_PROVIDER_ID),
+        /*git_info*/ None,
+    )?;
+    let original_path = rollout_path(codex_home.path(), timestamp, &thread_id);
+    let client_environment = [
+        ("CODEX_SQLITE_HOME", None),
+        ("NUWAX_MODEL", None),
+        ("NUWAX_BASE_URL", None),
+        ("NUWAX_WIRE_API", None),
+        ("NUWAX_API_KEY", None),
+        ("NUWAX_MAX_OUTPUT_TOKENS", None),
+        ("NUWAX_REQUEST_MAX_RETRIES", None),
+        ("NUWAX_STREAM_MAX_RETRIES", None),
+        ("NUWAX_STREAM_IDLE_TIMEOUT_MS", None),
+        ("OPENAI_API_KEY", None),
+        ("CODEX_API_KEY", None),
+        ("CODEX_ACCESS_TOKEN", None),
+        (OPENAI_FEDERATION_RULE_ID_ENV_VAR, None),
+        (OPENAI_IDENTITY_TOKEN_FILE_ENV_VAR, None),
+    ];
+    let _server = TestAppServer::builder()
+        .with_program(&codex)
+        .with_codex_home(codex_home.path())
+        .with_plugin_startup_tasks()
+        .without_managed_config()
+        .with_args(&["app-server", "--listen", "unix://"])
+        .with_env_overrides(&client_environment)
+        .with_env_overrides(&[
+            // Disable unrelated network discovery only in this owner process.
+            (
+                "CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED",
+                Some("1"),
+            ),
+            ("CODEX_QUEUE_OWNER_API_KEY", Some("server-only-owner-key")),
+        ])
+        .build()
+        .await?;
+    let socket_path = codex_app_server::app_server_control_socket_path(codex_home.path())?;
+    timeout(Duration::from_secs(/*secs*/ 30), async {
+        while !socket_path.as_path().try_exists()? {
+            tokio::time::sleep(Duration::from_millis(/*millis*/ 10)).await;
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+    let mut app = RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
+        endpoint: RemoteAppServerEndpoint::UnixSocket { socket_path },
+        client_name: "queue-owner-e2e-test".to_string(),
+        client_version: "0.1.0".to_string(),
+        experimental_api: true,
+        mcp_server_openai_form_elicitation: false,
+        opt_out_notification_methods: Vec::new(),
+        channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
+    })
+    .await?;
+    // Retarget through the public API. The owner can execute the thread using
+    // its named provider even though the append-only creation metadata is NUWAX.
+    let resumed: ThreadResumeResponse = app
+        .request_typed(ClientRequest::ThreadResume {
+            request_id: RequestId::Integer(1),
+            params: ThreadResumeParams {
+                thread_id: thread_id.clone(),
+                model: Some("gpt-5.2-codex".to_string()),
+                model_provider: Some("mock_provider".to_string()),
+                cwd: Some(codex_home.path().display().to_string()),
+                ..Default::default()
+            },
+        })
+        .await?;
+    assert_eq!(
+        (resumed.model.as_str(), resumed.model_provider.as_str()),
+        ("gpt-5.2-codex", "mock_provider")
+    );
+    let name = "retargeted-owner-session";
+    let _: ThreadSetNameResponse = app
+        .request_typed(ClientRequest::ThreadSetName {
+            request_id: RequestId::Integer(2),
+            params: ThreadSetNameParams {
+                thread_id: thread_id.clone(),
+                name: name.to_string(),
+            },
+        })
+        .await?;
+
+    for (target, message) in [
+        (thread_id.as_str(), "enqueue by UUID through the owner"),
+        (name, "enqueue by name through the owner"),
+    ] {
+        let mut command = tokio::process::Command::new(&codex);
+        for (variable, _) in client_environment {
+            command.env_remove(variable);
+        }
+        let output = timeout(
+            Duration::from_secs(/*secs*/ 30),
+            command
+                .env("CODEX_HOME", codex_home.path())
+                .env_remove("CODEX_QUEUE_OWNER_API_KEY")
+                .current_dir(codex_home.path())
+                .kill_on_drop(true)
+                .args(["queue", "--thread", target, "--message", message])
+                .output(),
+        )
+        .await??;
+        assert!(
+            output.status.success(),
+            "{target}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8(output.stdout)?.contains(&format!("for thread {thread_id}.")));
+        let completed = timeout(Duration::from_secs(/*secs*/ 30), async {
+            while let Some(event) = app.next_event().await {
+                if let AppServerEvent::ServerNotification(notification) = event
+                    && let ServerNotification::TurnCompleted(completed) = *notification
+                {
+                    return Ok::<_, anyhow::Error>(completed);
+                }
+            }
+            anyhow::bail!("owner disconnected before the queued turn completed")
+        })
+        .await??;
+        assert_eq!(completed.thread_id, thread_id);
+        assert_eq!(completed.turn.status, TurnStatus::Completed);
+    }
+
+    let queue: ThreadQueueListResponse = app
+        .request_typed(ClientRequest::ThreadQueueList {
+            request_id: RequestId::Integer(3),
+            params: ThreadQueueListParams {
+                thread_id: thread_id.clone(),
+                cursor: None,
+                limit: None,
+            },
+        })
+        .await?;
+    assert!(queue.data.is_empty());
+    let requests = model
+        .received_requests()
+        .await
+        .context("owner model request capture unavailable")?;
+    assert_eq!(requests.len(), 2);
+    for (request, message) in requests.iter().zip([
+        "enqueue by UUID through the owner",
+        "enqueue by name through the owner",
+    ]) {
+        let body = request.body_json::<Value>()?;
+        let metadata: Value =
+            serde_json::from_str(request.headers["x-codex-turn-metadata"].to_str()?)?;
+        assert_eq!(
+            (
+                request.url.path(),
+                body["model"].as_str(),
+                request.headers["authorization"].to_str()?,
+                metadata["turn_trigger"].as_str(),
+            ),
+            (
+                "/v1/responses",
+                Some("gpt-5.2-codex"),
+                "Bearer server-only-owner-key",
+                Some("queue"),
+            )
+        );
+        assert!(body["input"].to_string().contains(message));
+    }
+    assert_eq!(
+        codex_rollout::read_session_meta_line(&original_path)
+            .await?
+            .meta
+            .model_provider
+            .as_deref(),
+        Some(NUWAX_ENV_PROVIDER_ID)
+    );
+    assert_eq!(
+        std::fs::read(codex_home.path().join("config.toml"))?,
+        config_before
+    );
+    app.shutdown().await?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn queue_rejects_local_daemon_that_does_not_support_queueing() -> Result<()> {
     let codex_home = socket_test_home()?;
     let socket_path = codex_app_server::app_server_control_socket_path(codex_home.path())?;
