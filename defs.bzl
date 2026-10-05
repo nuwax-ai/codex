@@ -1,5 +1,5 @@
 load("@crates//:data.bzl", "DEP_DATA")
-load("@crates//:defs.bzl", "all_crate_deps")
+load("@crates//:defs.bzl", "all_crate_deps", _crate_aliases = "aliases")
 load("@rules_rust//cargo/private:cargo_build_script_wrapper.bzl", "cargo_build_script")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_proc_macro", "rust_test")
 load("//bazel/rules/testing:foreign_platform_binary.bzl", "foreign_platform_binary")
@@ -192,6 +192,7 @@ def codex_rust_crate(
         proc_macro = False,
         build_script_enabled = True,
         build_script_data = [],
+        build_script_srcs_extra = [],
         compile_data = [],
         binary_compile_data_extra = {},
         lib_data_extra = [],
@@ -236,6 +237,8 @@ def codex_rust_crate(
             You probably don't want this, it's only here for a single caller.
         proc_macro: Whether this crate builds a proc-macro library.
         build_script_data: Data files exposed to the build script at runtime.
+        build_script_srcs_extra: Extra Rust sources the build script compiles
+            (e.g. a `#[path]`-included module shared with the library).
         compile_data: Non-Rust compile-time data for the library target.
         binary_compile_data_extra: Mapping from binary names to extra non-Rust
             compile-time data for those binary targets.
@@ -310,6 +313,18 @@ def codex_rust_crate(
 
     package_data = DEP_DATA.get(native.package_name())
     crate_version = package_data["version"]
+
+    # Cargo dependency renames (e.g. reqwest 0.13 as `reqwest_rig`) need the
+    # generated label→crate-name map on every consuming rustc invocation.
+    # First-party renames are redundant here (their targets already declare
+    # the matching crate_name) and the generated map also mixes in non-normal
+    # dependency kinds, so unfiltered entries would add phantom edges — keep
+    # only renamed registry crates.
+    crate_aliases = {
+        label: crate_name
+        for label, crate_name in _crate_aliases().items()
+        if label.startswith("@crates//:")
+    }
     binaries = package_data["binaries"]
 
     lib_srcs = crate_srcs if crate_srcs != None else native.glob(["src/**/*.rs"], exclude = binaries.values(), allow_empty = True)
@@ -319,7 +334,8 @@ def codex_rust_crate(
     if build_script_enabled and native.glob(["build.rs"], allow_empty = True):
         cargo_build_script(
             name = name + "-build-script",
-            srcs = ["build.rs"],
+            srcs = ["build.rs"] + build_script_srcs_extra,
+            crate_root = "build.rs",
             deps = all_crate_deps(build = True),
             data = build_script_data,
             version = crate_version,
@@ -330,6 +346,7 @@ def codex_rust_crate(
     if lib_srcs:
         lib_rule = rust_proc_macro if proc_macro else rust_library
         lib_rule(
+            aliases = crate_aliases,
             name = name,
             crate_name = crate_name,
             crate_features = crate_features,
@@ -353,6 +370,7 @@ def codex_rust_crate(
         # expects to run from its own runfiles cwd, while workspace_root_test
         # deliberately changes cwd so Insta sees Cargo-like snapshot paths.
         rust_test(
+            aliases = crate_aliases,
             name = unit_test_binary,
             crate = name,
             crate_features = crate_features,
@@ -407,6 +425,7 @@ def codex_rust_crate(
         cargo_env_runfiles[":" + binary] = "CARGO_BIN_EXE_" + binary
         cargo_env["CARGO_BIN_EXE_" + binary] = "$(rlocationpath :%s)" % binary
         rust_binary(
+            aliases = crate_aliases,
             name = binary,
             crate_name = binary.replace("-", "_"),
             crate_root = main,
@@ -437,6 +456,7 @@ def codex_rust_crate(
         # Keep the Rust test manual so the repo-root wrapper owns filtering and
         # sharding while Clippy can still discover the underlying test crate.
         rust_test(
+            aliases = crate_aliases,
             name = binary_unit_test_binary,
             crate = ":" + binary,
             crate_features = crate_features,
@@ -563,6 +583,7 @@ def codex_rust_crate(
             # test target. The wrapper below owns cwd setup, runfile env
             # materialization, sharding, and flaky retry behavior.
             rust_test(
+                aliases = crate_aliases,
                 name = integration_test_binary,
                 crate_name = test_crate_name,
                 crate_root = test,
@@ -604,6 +625,7 @@ def codex_rust_crate(
             # use rlocation paths directly because the test starts under
             # Bazel's normal test environment.
             rust_test(
+                aliases = crate_aliases,
                 name = test_name,
                 crate_name = test_crate_name,
                 crate_root = test,
@@ -680,6 +702,7 @@ def codex_rust_crate(
             windows_cross_test_kwargs["flaky"] = True
 
         rust_test(
+            aliases = crate_aliases,
             name = windows_cross_test_binary,
             crate_name = test_crate_name,
             crate_root = test,

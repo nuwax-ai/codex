@@ -1,0 +1,6 @@
+load("//:defs.bzl", "codex_rust_crate")
+
+codex_rust_crate(
+    name = "codex-rust-genai-bridge",
+    crate_name = "codex_rust_genai_bridge",
+)

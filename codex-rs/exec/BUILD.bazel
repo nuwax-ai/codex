@@ -3,6 +3,9 @@ load("//:defs.bzl", "codex_rust_crate")
 codex_rust_crate(
     name = "exec",
     build_script_data = ["src/build_source_identity.rs"],
+    # build.rs `#[path]`-includes this library module; it must compile with
+    # the build script, not merely ship as runfiles.
+    build_script_srcs_extra = ["src/build_source_identity.rs"],
     crate_name = "codex_exec",
     test_shard_counts = {
         "exec-all-test": 8,
