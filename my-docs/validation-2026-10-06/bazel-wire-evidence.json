@@ -1,0 +1,51 @@
+{
+  "binary": "/Users/soddy/Library/Caches/bazel/_bazel_soddy/0821eca3c77fd15cf3c4df911f4d636b/execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/codex-rs/exec/codex-exec",
+  "sha256": "b49fd7adc199743bee5975ad87231210e929b70087d273c678da927f62c7184a",
+  "results": [
+    {
+      "wire": "chat",
+      "exit_code": 0,
+      "requests": [
+        {
+          "path": "/v1/chat/completions",
+          "model": "local-mock-model",
+          "cap": 2048,
+          "auth_matches": true
+        }
+      ],
+      "turn_completed": 1,
+      "turn_failed": 0
+    },
+    {
+      "wire": "anthropic",
+      "exit_code": 0,
+      "requests": [
+        {
+          "path": "/v1/messages",
+          "model": "local-mock-model",
+          "cap": 2048,
+          "auth_matches": true
+        }
+      ],
+      "turn_completed": 1,
+      "turn_failed": 0
+    },
+    {
+      "wire": "responses",
+      "exit_code": 0,
+      "requests": [
+        {
+          "path": "/v1/responses",
+          "model": "local-mock-model",
+          "cap": 2048,
+          "auth_matches": true
+        }
+      ],
+      "turn_completed": 1,
+      "turn_failed": 0
+    }
+  ],
+  "selected": 3,
+  "executed": 3,
+  "passed": 3
+}

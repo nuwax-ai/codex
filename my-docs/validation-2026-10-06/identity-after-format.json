@@ -1,0 +1,33 @@
+{
+  "code_commit": "c8b8b60567858f50d3c68ded4772c81561308f0d",
+  "phase": "after final fix/fmt, before documentation commit; tests were not repeated",
+  "source_files_sha256": {
+    "codex-rs/app-server-protocol/schema/precomputed/app-server-exports-stable.json.zst": "fabfa39bdfc5653bb7c6dda557d430f6a3ea34f619d165779a6f85cfb1fd3897",
+    "codex-rs/app-server/tests/suite/v2/thread_resume.rs": "a93016e41953d812cbadfd3823034a15ec3273c59f44f8058fb9180ea37c5865",
+    "codex-rs/cli/tests/nuwax_session_remote.rs": "a4ff7e4c26e751705f62c968b1a2f11d03d8391af2bbd4025fe59c662de2d6df",
+    "codex-rs/cli/tests/queue_owner_dispatch.rs": "42df0fcf459474c1a6e465fc83faf333d988ca4c782bdef9de00c307d2822df4",
+    "codex-rs/cli/tests/queue_owner_matrix.rs": "d2e52060c5cb6299562fd004a33546234636e3f35ef3dc1819b5eadce8cc4315",
+    "codex-rs/codex-rust-genai-bridge/BUILD.bazel": "0a5b2c13adfe7de43bf5faf49de919d3cece4594064788a02a1ee812fef9daa3",
+    "codex-rs/codex-rust-rig-bridge/BUILD.bazel": "25488d925920497becb48fdf6ea8dc712b86b7cbc9c9a90d25c380365ebc84df",
+    "codex-rs/core/BUILD.bazel": "c7b74b736bd62f2285d3a16184cda3517834f6b76862a5cb71400461adcce8a5",
+    "codex-rs/exec/BUILD.bazel": "3fa65b501f4367ab633d4073fdc615076117cc0802c7c58f6db0cb4a39a9d509",
+    "codex-rs/exec/tests/suite/mod.rs": "1f2ff95464c4bc30b3ecf6967175ad98426b8aa13be5758c891c4401fa39442d",
+    "codex-rs/exec/tests/suite/nuwax_env_stream_wait.rs": "0cc2434491f73fc819953b24b958a311cdaef8882a99b5c8ccf9c1a5f8186103",
+    "codex-rs/live-tests/src/binary_turns.rs": "75677eedfb550fe0c198e835c4e0e0b37ad1a654ca7c9578b4d24063c6ae6018",
+    "codex-rs/live-tests/src/binary_turns/runner.rs": "afabc282034fa32f1ab5a26be4708984dbeca83c98c73d046eb0f4d7298a923d",
+    "codex-rs/live-tests/src/binary_turns/scenarios.rs": "0ec105ded9d614deaf9693c51af98a6d4fd8ac15c992989a9624cd9dfdb590c7",
+    "codex-rs/live-tests/src/binary_turns_tests/cap_exhaustion.rs": "0e43ba6bfd65b8dd903f7b854bc378ed42d74e5210f2f794ea8c9af8c63fb2e6",
+    "codex-rs/live-tests/src/binary_turns_tests/mod.rs": "ac21f6a2af8059a51e3e7dba4c52ad260846392105c20718100713055012d6ff",
+    "codex-rs/live-tests/src/lib.rs": "154801fec7e5fefd0f52445289473f1f4ddbff4d4b406dce6cf2430f01d4dfd0",
+    "codex-rs/live-tests/tests/exec_live.rs": "2f73ad646fca7cd046a3910207760b0868220161dc35c0f18122b5b770fd9668",
+    "defs.bzl": "155ddedcfbdc8e5af5d5de07a59298de25feb37fe8bbd978331fb434a699a3ab"
+  },
+  "changed_by_final_formatting": [
+    "codex-rs/cli/tests/queue_owner_dispatch.rs",
+    "codex-rs/core/BUILD.bazel",
+    "codex-rs/exec/tests/suite/nuwax_env_stream_wait.rs",
+    "codex-rs/live-tests/src/binary_turns_tests/cap_exhaustion.rs",
+    "codex-rs/live-tests/src/binary_turns_tests/mod.rs"
+  ],
+  "formatting_only_reviewed": true
+}
