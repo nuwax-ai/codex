@@ -72,6 +72,8 @@ use codex_app_server_protocol::ThreadStatusChangedNotification;
 use codex_app_server_protocol::ThreadTurnsListParams;
 use codex_app_server_protocol::ThreadTurnsListResponse;
 use codex_app_server_protocol::ThreadUnsubscribeParams;
+use codex_app_server_protocol::ThreadUnsubscribeResponse;
+use codex_app_server_protocol::ThreadUnsubscribeStatus;
 use codex_app_server_protocol::TurnEnvironmentParams;
 use codex_app_server_protocol::TurnItemsView;
 use codex_app_server_protocol::TurnStartParams;
@@ -6660,6 +6662,276 @@ async fn thread_resume_echo_override_is_ignored_on_loaded_and_running_threads() 
         "the in-flight turn keeps the loaded model end to end"
     );
     delayed.shutdown().await;
+    Ok(())
+}
+
+/// Warm/subscribed contrast on a SECOND connection: client A loads and
+/// subscribes the thread; client B — a different connection to the same
+/// server — sends the same-provider echo resume. The live-owner rule must
+/// hold across connections: the loaded thread keeps its in-memory model
+/// instead of re-routing to the current default, and the wire stays on the
+/// materialized model end to end. (Same-connection coverage lives above;
+/// cold fresh-load semantics live in the test below.)
+#[tokio::test]
+async fn thread_resume_echo_override_is_ignored_when_another_connection_subscribes() -> Result<()> {
+    use super::connection_handling_websocket::connect_websocket;
+    use super::connection_handling_websocket::read_response_and_notification_for_method;
+    use super::connection_handling_websocket::read_response_for_id;
+    use super::connection_handling_websocket::send_initialize_request;
+    use super::connection_handling_websocket::send_request;
+    use super::connection_handling_websocket::spawn_websocket_server;
+
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let codex_home = TempDir::new()?;
+    mock_responses_config(&server.uri())
+        .with_model("gpt-5.2-codex")
+        .write(codex_home.path())?;
+    let (_process, bind_addr) = spawn_websocket_server(codex_home.path()).await?;
+
+    // Client A materializes the thread on gpt-5.4 and stays subscribed.
+    let mut client_a = connect_websocket(bind_addr).await?;
+    send_initialize_request(&mut client_a, /*id*/ 1, "echo-subscriber-a").await?;
+    timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_a, 1)).await??;
+    send_request(
+        &mut client_a,
+        "thread/start",
+        2,
+        Some(serde_json::to_value(ThreadStartParams {
+            model: Some("gpt-5.4".to_string()),
+            ..Default::default()
+        })?),
+    )
+    .await?;
+    let start_response =
+        timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_a, 2)).await??;
+    let ThreadStartResponse { thread, .. } = serde_json::from_value(start_response.result)?;
+    send_request(
+        &mut client_a,
+        "turn/start",
+        3,
+        Some(serde_json::to_value(TurnStartParams {
+            thread_id: thread.id.clone(),
+            input: vec![UserInput::Text {
+                text: "materialize".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })?),
+    )
+    .await?;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        read_response_and_notification_for_method(&mut client_a, 3, "turn/completed"),
+    )
+    .await??;
+
+    // Client B resumes the already-loaded thread with an echo override.
+    let mut client_b = connect_websocket(bind_addr).await?;
+    send_initialize_request(&mut client_b, /*id*/ 1, "echo-subscriber-b").await?;
+    timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_b, 1)).await??;
+    send_request(
+        &mut client_b,
+        "thread/resume",
+        2,
+        Some(serde_json::to_value(ThreadResumeParams {
+            thread_id: thread.id.clone(),
+            config: Some(
+                [("model_provider".to_string(), json!("mock_provider"))]
+                    .into_iter()
+                    .collect(),
+            ),
+            ..Default::default()
+        })?),
+    )
+    .await?;
+    let resume_response =
+        timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_b, 2)).await??;
+    let echoed: ThreadResumeResponse = serde_json::from_value(resume_response.result)?;
+    assert_eq!(
+        (echoed.model.as_str(), echoed.model_provider.as_str()),
+        ("gpt-5.4", "mock_provider"),
+        "a thread loaded and subscribed by another connection must not re-route on an echo override"
+    );
+
+    send_request(
+        &mut client_b,
+        "turn/start",
+        3,
+        Some(serde_json::to_value(TurnStartParams {
+            thread_id: echoed.thread.id,
+            input: vec![UserInput::Text {
+                text: "stay on the loaded model".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })?),
+    )
+    .await?;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        read_response_and_notification_for_method(&mut client_b, 3, "turn/completed"),
+    )
+    .await??;
+    let wire_models = captured_models(&server).await?;
+    assert_eq!(
+        wire_models,
+        vec![json!("gpt-5.4"), json!("gpt-5.4")],
+        "materialization and the post-echo turn stay on gpt-5.4 across both connections"
+    );
+    Ok(())
+}
+
+/// An idle loaded thread without subscribers is a replaceable cache entry:
+/// an echo override shuts down the old runtime before the fresh-load path
+/// selects the current default model. Confirm the unsubscribe through its
+/// public RPC response and require loaded-list membership so a cold resume
+/// cannot accidentally satisfy this contrast with the subscribed cases.
+#[tokio::test]
+async fn thread_resume_echo_override_applies_to_an_unsubscribed_loaded_thread() -> Result<()> {
+    use super::connection_handling_websocket::connect_websocket;
+    use super::connection_handling_websocket::read_response_and_notification_for_method;
+    use super::connection_handling_websocket::read_response_for_id;
+    use super::connection_handling_websocket::send_initialize_request;
+    use super::connection_handling_websocket::send_request;
+    use super::connection_handling_websocket::spawn_websocket_server;
+
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let codex_home = TempDir::new()?;
+    mock_responses_config(&server.uri())
+        .with_model("gpt-5.2-codex")
+        .write(codex_home.path())?;
+    let (_process, bind_addr) = spawn_websocket_server(codex_home.path()).await?;
+
+    // Client A materializes the thread on gpt-5.4, then explicitly removes
+    // the last subscription before disconnecting.
+    let mut client_a = connect_websocket(bind_addr).await?;
+    send_initialize_request(&mut client_a, /*id*/ 1, "unsubscribed-a").await?;
+    timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_a, 1)).await??;
+    send_request(
+        &mut client_a,
+        "thread/start",
+        2,
+        Some(serde_json::to_value(ThreadStartParams {
+            model: Some("gpt-5.4".to_string()),
+            ..Default::default()
+        })?),
+    )
+    .await?;
+    let start_response =
+        timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_a, 2)).await??;
+    let ThreadStartResponse { thread, .. } = serde_json::from_value(start_response.result)?;
+    send_request(
+        &mut client_a,
+        "turn/start",
+        3,
+        Some(serde_json::to_value(TurnStartParams {
+            thread_id: thread.id.clone(),
+            input: vec![UserInput::Text {
+                text: "materialize".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })?),
+    )
+    .await?;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        read_response_and_notification_for_method(&mut client_a, 3, "turn/completed"),
+    )
+    .await??;
+    send_request(
+        &mut client_a,
+        "thread/unsubscribe",
+        4,
+        Some(serde_json::to_value(ThreadUnsubscribeParams {
+            thread_id: thread.id.clone(),
+        })?),
+    )
+    .await?;
+    let unsubscribe_response =
+        timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_a, 4)).await??;
+    let unsubscribe: ThreadUnsubscribeResponse =
+        serde_json::from_value(unsubscribe_response.result)?;
+    assert_eq!(
+        unsubscribe,
+        ThreadUnsubscribeResponse {
+            status: ThreadUnsubscribeStatus::Unsubscribed,
+        }
+    );
+    drop(client_a);
+
+    // Client B must observe the old runtime still loaded before echo-resume.
+    let mut client_b = connect_websocket(bind_addr).await?;
+    send_initialize_request(&mut client_b, /*id*/ 1, "unsubscribed-b").await?;
+    timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_b, 1)).await??;
+    send_request(
+        &mut client_b,
+        "thread/loaded/list",
+        2,
+        Some(serde_json::to_value(ThreadLoadedListParams::default())?),
+    )
+    .await?;
+    let loaded_response =
+        timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_b, 2)).await??;
+    let loaded: ThreadLoadedListResponse = serde_json::from_value(loaded_response.result)?;
+    assert_eq!(
+        loaded,
+        ThreadLoadedListResponse {
+            data: vec![thread.id.clone()],
+            next_cursor: None,
+        },
+        "the no-subscriber contrast must exercise a loaded runtime, not a cold resume"
+    );
+
+    send_request(
+        &mut client_b,
+        "thread/resume",
+        3,
+        Some(serde_json::to_value(ThreadResumeParams {
+            thread_id: thread.id.clone(),
+            config: Some(
+                [("model_provider".to_string(), json!("mock_provider"))]
+                    .into_iter()
+                    .collect(),
+            ),
+            ..Default::default()
+        })?),
+    )
+    .await?;
+    let resume_response =
+        timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_b, 3)).await??;
+    let echoed: ThreadResumeResponse = serde_json::from_value(resume_response.result)?;
+    assert_eq!(
+        echoed.model.as_str(),
+        "gpt-5.2-codex",
+        "without a subscriber the echo override applies through the fresh-load path"
+    );
+
+    send_request(
+        &mut client_b,
+        "turn/start",
+        4,
+        Some(serde_json::to_value(TurnStartParams {
+            thread_id: echoed.thread.id,
+            input: vec![UserInput::Text {
+                text: "match the reported model".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })?),
+    )
+    .await?;
+    timeout(
+        DEFAULT_READ_TIMEOUT,
+        read_response_and_notification_for_method(&mut client_b, 4, "turn/completed"),
+    )
+    .await??;
+    let wire_models = captured_models(&server).await?;
+    assert_eq!(
+        wire_models,
+        vec![json!("gpt-5.4"), json!("gpt-5.2-codex")],
+        "materialization ran on gpt-5.4; the unsubscribed echo rerouted and the wire matches the reported model"
+    );
     Ok(())
 }
 
