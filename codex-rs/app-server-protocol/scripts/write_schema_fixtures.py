@@ -61,6 +61,12 @@ def main() -> None:
         and schema_root.resolve() == repository_schema_root.resolve()
     ):
         sdk_root = workspace_root.parent / "sdk" / "python"
+        # Supported codegen runtime: Python 3.13. The locked
+        # datamodel-code-generator 0.31.2 rejects 3.14, and uv otherwise
+        # picks the system default interpreter; pin the SDK generation to
+        # 3.13 unless the caller already chose one (uv auto-installs it).
+        sdk_env = os.environ.copy()
+        sdk_env.setdefault("UV_PYTHON", "3.13")
         subprocess.run(
             [
                 "uv",
@@ -77,6 +83,7 @@ def main() -> None:
                 str(schema_root / "json"),
             ],
             cwd=workspace_root,
+            env=sdk_env,
             check=True,
         )
 
