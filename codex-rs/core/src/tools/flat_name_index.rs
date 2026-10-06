@@ -42,23 +42,31 @@ impl FlatNameIndex {
         }
     }
 
-    /// Records a tool under its flattened name. Only namespaced tools are
-    /// indexed; plain tools are a no-op so they can never be shadowed.
+    /// Records a tool under its flattened name. Only NON-DEFAULT namespaced
+    /// tools are indexed. The registry normalizes registration through
+    /// `with_default_namespace`, so a plain tool arrives as a default-
+    /// namespace tool whose flattened name is the bare tool name — indexing
+    /// it would make the flat fallback shadow-match that name from ANY
+    /// namespace (the exact default-namespace lookup already finds those
+    /// tools, so the fallback must skip them).
     pub(crate) fn insert(&mut self, tool_name: &ToolName) {
-        if tool_name.namespace.is_some() {
-            let flat = code_mode_name_for_tool_name(tool_name);
-            self.flat_by_name
-                .entry(flat)
-                .or_insert_with(|| tool_name.clone());
+        if tool_name.is_default_namespace() {
+            return;
         }
+        let flat = code_mode_name_for_tool_name(tool_name);
+        self.flat_by_name
+            .entry(flat)
+            .or_insert_with(|| tool_name.clone());
     }
 
-    /// Drops the flat-name entry for a tool. No-op for plain tools.
+    /// Drops the flat-name entry for a tool. No-op for default-namespace and
+    /// plain tools.
     pub(crate) fn remove(&mut self, tool_name: &ToolName) {
-        if tool_name.namespace.is_some() {
-            let flat = code_mode_name_for_tool_name(tool_name);
-            self.flat_by_name.remove(&flat);
+        if tool_name.is_default_namespace() {
+            return;
         }
+        let flat = code_mode_name_for_tool_name(tool_name);
+        self.flat_by_name.remove(&flat);
     }
 
     /// Resolves a flat name (as returned by a Chat-Completions model, with
