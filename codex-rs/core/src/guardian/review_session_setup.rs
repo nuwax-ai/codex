@@ -11,7 +11,7 @@ pub struct PreparedGuardianContext {
     config: Config,
     context_policy: ReviewContextPolicy,
     key: GuardianReviewSessionReuseKey,
-    parent_compaction: Option<ResponseItem>,
+    parent_compaction: Option<codex_history::ResponseItemEnvelope>,
     pub history_reset: CancellationToken,
 }
 
@@ -88,9 +88,12 @@ impl PreparedGuardianContext {
             pending_node_repl_evidence_admission: None,
         };
         let initial_history = history.map(|history| history.initial_history).or_else(|| {
-            self.parent_compaction
-                .clone()
-                .map(|item| InitialHistory::Forked(vec![RolloutItem::ResponseItem(item.into())]))
+            self.parent_compaction.clone().map(|envelope| {
+                // Seed the whole envelope: the item plus its parent-history
+                // metadata (model_output_provenance) so same-scope requests
+                // can replay the encrypted checkpoint.
+                InitialHistory::Forked(vec![RolloutItem::ResponseItem(envelope)])
+            })
         });
         let mut config = self.config.clone();
         config.model_provider.supports_websockets &= self

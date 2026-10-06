@@ -19,6 +19,130 @@ use codex_protocol::protocol::TurnAbortedEvent;
 use codex_protocol::protocol::TurnCompleteEvent;
 use pretty_assertions::assert_eq;
 
+#[derive(Clone, Copy)]
+enum CheckpointProvenance {
+    Recorded,
+    Unknown,
+}
+
+#[test_case::test_case(CheckpointProvenance::Recorded; "recorded source replays")]
+#[test_case::test_case(CheckpointProvenance::Unknown; "unknown source degrades after completed request")]
+#[tokio::test]
+async fn guardian_checkpoint_replay_requires_its_own_request_source(
+    source: CheckpointProvenance,
+) -> anyhow::Result<()> {
+    core_test_support::skip_if_no_network!(Ok(()));
+    use core_test_support::responses;
+
+    let server = responses::start_mock_server().await;
+    let compaction = serde_json::json!({
+        "type": "compaction", "id": "cmp_provenance", "encrypted_content": "opaque checkpoint"
+    });
+    let requests = responses::mount_sse_sequence(
+        &server,
+        vec![
+            responses::sse(vec![
+                serde_json::json!({"type": "response.output_item.done", "item": compaction}),
+                responses::ev_completed("compacted"),
+            ]),
+            responses::sse(vec![
+                responses::ev_assistant_message("assessment", r#"{"outcome":"deny"}"#),
+                responses::ev_completed("reviewed"),
+            ]),
+        ],
+    )
+    .await;
+    let (parent, turn, _events) =
+        crate::session::tests::make_session_and_context_with_auth_and_config_and_rx(
+            codex_login::CodexAuth::from_api_key("Test API Key"),
+            Vec::new(),
+            |config| {
+                config.model_provider.base_url = Some(format!("{}/v1", server.uri()));
+                config.features.disable(Feature::TokenBudget).unwrap();
+                config
+                    .features
+                    .enable(Feature::GuardianReuseParentCompaction)
+                    .unwrap();
+            },
+        )
+        .await;
+    crate::compact_remote_v2::run_remote_compact_task(Arc::clone(&parent), Arc::clone(&turn))
+        .await?;
+    let history = parent.clone_history().await;
+    let mut checkpoint = history.annotated_items().last().unwrap().clone();
+    let metadata = checkpoint.metadata.as_mut().unwrap();
+    assert!(metadata.model_output_provenance.is_some());
+    match source {
+        CheckpointProvenance::Recorded => {}
+        CheckpointProvenance::Unknown => metadata.model_output_provenance = None,
+    }
+    let expected_provenance = metadata.model_output_provenance.clone();
+    let (window_number, window_ids) = parent.advance_auto_compact_window().await;
+    parent
+        .replace_compacted_history(
+            vec![checkpoint],
+            /*reference_context_item*/ None,
+            /*world_state_baseline*/ None,
+            crate::compact::CompactedHistoryMetadata {
+                input_goal_ids: Default::default(),
+                message: String::new(),
+                window_number,
+                window_ids,
+                compaction_response_id: None,
+                compaction_model_hash: turn.model_info().comp_hash.clone(),
+                reviewer_compaction_hash: None,
+            },
+        )
+        .await;
+    let history = parent.clone_history().await;
+    let checkpoint = history.annotated_items().last().unwrap();
+    assert_eq!(
+        checkpoint
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.model_output_provenance.as_ref()),
+        expected_provenance.as_ref(),
+        "history replacement cannot infer an unknown source from the previous request"
+    );
+    let mut params = test_review_params().await;
+    params.parent_history = history.clone();
+    params.parent_session = Arc::clone(&parent);
+    params.parent_context = GuardianReviewContext::from(Arc::clone(&turn));
+    params.review_model.model = turn.model_info().slug.clone();
+    params.spawn_config = build_guardian_review_session_config(
+        crate::guardian::test_host::build_reviewer_config(turn.config.as_ref())?,
+        /*live_network_config*/ None,
+        &params.review_model.model,
+        params.review_model.reasoning_effort.clone(),
+        params.reasoning_summary,
+        params.personality,
+        ResolvedModelMessages::bundled(),
+    )?;
+    let prepared = setup::prepare_review(params).await?;
+    let (options, _) = prepared.setup().thread_options(/*snapshot*/ None).await;
+    assert_eq!(
+        serde_json::to_value(options.initial_history)?,
+        serde_json::to_value(InitialHistory::Forked(vec![RolloutItem::ResponseItem(
+            checkpoint.clone(),
+        )]))?,
+        "Guardian startup must preserve the entire checkpoint envelope"
+    );
+    let manager = parent.guardian_review_session().unwrap();
+    let result = manager.review(prepared).await;
+    assert!(matches!(
+        result.0,
+        GuardianReviewSessionOutcome::Completed(Ok(_))
+    ));
+    let requests = requests.requests();
+    assert_eq!(requests.len(), 2);
+    let expected = match source {
+        CheckpointProvenance::Recorded => vec![compaction],
+        CheckpointProvenance::Unknown => Vec::new(),
+    };
+    assert_eq!(requests[1].inputs_of_type("compaction"), expected);
+    Ok(())
+}
+
 #[tokio::test]
 async fn run_review_preserves_evidence_during_parent_compaction() {
     const EVIDENCE: &str = "The inspected repository is public.";
@@ -461,20 +585,30 @@ async fn encrypted_parent_compaction_requires_original_item_id(mode: GuardianCon
         encrypted_content: "encrypted guardian parent summary".to_string(),
         internal_chat_message_metadata_passthrough: None,
     };
+    let metadata = CodexHarnessMetadata {
+        compaction_model_hash: Some("compatible".to_owned()),
+        model_output_provenance: Some(codex_history::ModelOutputProvenance {
+            wire_protocol: "responses".to_owned(),
+            provider: Some("checkpoint-provider".to_owned()),
+            model: Some("checkpoint-model".to_owned()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
 
     let mut history = ContextManager::new();
     history.replace_annotated(vec![ResponseItemEnvelope {
         item: item.clone(),
-        metadata: Some(CodexHarnessMetadata {
-            compaction_model_hash: Some("compatible".to_owned()),
-            ..Default::default()
-        }),
+        metadata: Some(metadata.clone()),
     }]);
     assert_eq!(
         policy
             .parent_compaction(&history)
             .expect("valid checkpoint"),
-        Some(item)
+        Some(ResponseItemEnvelope {
+            item,
+            metadata: Some(metadata),
+        })
     );
     // The latest unusable checkpoint must not fall back to the older valid one.
     let mut items = history.annotated_items().to_vec();

@@ -31,7 +31,8 @@ fn latest_checkpoint_keeps_its_own_producer_even_when_unusable() {
             checkpoint,
             CompactionCheckpoint {
                 item: &latest,
-                model_hash: None
+                model_hash: None,
+                metadata: None,
             },
         );
         assert_eq!(checkpoint.is_usable(), usable);
@@ -39,6 +40,14 @@ fn latest_checkpoint_keeps_its_own_producer_even_when_unusable() {
     }
     let items = [older];
     let checkpoint = CompactionCheckpoint::latest(&items).expect("older checkpoint");
+    assert_eq!(
+        checkpoint,
+        CompactionCheckpoint {
+            item: &items[0].item,
+            model_hash: Some("producer"),
+            metadata: items[0].metadata.as_ref(),
+        },
+    );
     assert!(checkpoint.is_usable());
     assert!(checkpoint.is_compatible_with(Some("producer")));
     assert!(!checkpoint.is_compatible_with(Some("different")));

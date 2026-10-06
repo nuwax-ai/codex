@@ -2807,11 +2807,16 @@ async fn guardian_reuses_prompt_cache_key_and_appends_prior_reviews() -> anyhow:
     let third_input = third_body["input"]
         .as_array()
         .expect("guardian review should include input items");
-    assert!(third_input.iter().any(|item| {
-        item["type"] == "compaction"
-            && item["id"] == "cmp_guardian_parent_summary"
-            && item["encrypted_content"] == "encrypted guardian parent summary"
-    }));
+    // An injected checkpoint without its producing request's provenance must
+    // degrade. The retained transcript is asserted below using its exact text.
+    assert_eq!(
+        third_input
+            .iter()
+            .filter(|item| item["type"] == "compaction")
+            .cloned()
+            .collect::<Vec<_>>(),
+        Vec::<serde_json::Value>::new(),
+    );
     assert_eq!(
         first_body["prompt_cache_key"],
         second_body["prompt_cache_key"]

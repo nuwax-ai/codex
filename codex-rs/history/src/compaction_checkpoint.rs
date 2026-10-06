@@ -9,18 +9,24 @@ use crate::ResponseItemEnvelope;
 pub struct CompactionCheckpoint<'a> {
     pub item: &'a ResponseItem,
     pub model_hash: Option<&'a str>,
+    /// Harness metadata of the checkpoint's persisted envelope, when the
+    /// checkpoint came from history. Carries the producing request's
+    /// `model_output_provenance`, which replayed checkpoints must keep.
+    pub metadata: Option<&'a crate::CodexHarnessMetadata>,
 }
 
 impl<'a> CompactionCheckpoint<'a> {
     pub fn latest(items: &'a [ResponseItemEnvelope]) -> Option<Self> {
         items.iter().rev().find_map(|envelope| {
-            Self::from_item(
+            let mut checkpoint = Self::from_item(
                 &envelope.item,
                 envelope
                     .metadata
                     .as_ref()
                     .and_then(|metadata| metadata.compaction_model_hash.as_deref()),
-            )
+            )?;
+            checkpoint.metadata = envelope.metadata.as_ref();
+            Some(checkpoint)
         })
     }
 
@@ -30,7 +36,11 @@ impl<'a> CompactionCheckpoint<'a> {
             item,
             ResponseItem::Compaction { .. } | ResponseItem::ContextCompaction { .. }
         )
-        .then_some(Self { item, model_hash })
+        .then_some(Self {
+            item,
+            model_hash,
+            metadata: None,
+        })
     }
 
     pub fn is_usable(self) -> bool {
