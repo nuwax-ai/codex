@@ -3,8 +3,9 @@
 # Upstream's bazel.yml/rust-ci.yml were removed with the fork's Bazel
 # retirement; this workflow is the executable replacement for PR gating on
 # the Cargo workspace, including the fork-only bridge crates upstream never
-# built. Fork-only crates carry no BUILD.bazel by design (see
-# .github/workflows/README.md).
+# built. The bridge crates themselves regained BUILD.bazel wiring (see
+# scripts/bazel_bridge_gate.sh): the bazel-bridge-gate job below keeps the
+# Bazel-built public path on all three model wires under regression.
 #
 # Not yet dispatched from this fork — the workflow file is the deliverable;
 # running it requires push/CI authorization (registered in
@@ -69,7 +70,31 @@ jobs:
       # The rig bridges are behind the rust-rig feature; the suite that
       # exercises them needs it enabled for codex-core.
       - name: Test (workspace)
-        run: just test --workspace --features codex-core/rust-rig --locked
+        run: just test --workspace --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
+
+  bazel-bridge-gate:
+    name: bazel bridge gate (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: bazel-contrib/setup-bazelisk@v3
+
+      - name: Gate and profiling helper regressions
+        run: |
+          python3 -m unittest discover -s scripts -p '*gate_tests.py' -v
+          python3 -m unittest discover -s scripts -p 'd4_stage_profiling_tests.py' -v
+
+      # Runs the REAL nuwax_env three-wire matrix against Bazel-built
+      # binaries (path/credential/model/cap/single-POST/config-bytes) and the
+      # bridges-out negative control (refusal before any network request).
+      - name: Bridge gate
+        run: ./scripts/bazel_bridge_gate.sh
 
   test-windows:
     name: nextest (windows)
@@ -93,4 +118,4 @@ jobs:
           tool: cargo-nextest,just
 
       - name: Test (workspace)
-        run: just test --workspace --features codex-core/rust-rig --locked
+        run: just test --workspace --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0

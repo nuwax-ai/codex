@@ -4,10 +4,15 @@ codex_rust_crate(
     name = "core",
     compile_data = glob(["assets/**"]),
     # Match the bridges enabled by the CLI, exec, and app-server Cargo edges.
-    crate_features = [
-        "rust-genai",
-        "rust-rig",
-    ],
+    # //:enable_model_bridges=false compiles them out for the bridge gate's
+    # negative control (third-party requests must fail before any network).
+    crate_features = select({
+        "//:model_bridges_enabled": [
+            "rust-genai",
+            "rust-rig",
+        ],
+        "//conditions:default": [],
+    }),
     crate_name = "codex_core",
     crate_srcs = glob(["src/**/*.rs"]) + [
         "//codex-rs/ext/guardian-v2:src/sync_reviewer/reviewer_config.rs",

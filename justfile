@@ -50,6 +50,13 @@ app-server-test-client *args:
 fmt:
     @{{ python }} ../scripts/format.py
 
+# Fork gate: Bazel-built binaries must serve the three third-party model wires,
+# and a bridges-out build must fail before any network request.
+# See scripts/bazel_bridge_gate.sh (requires bazelisk on PATH).
+[no-cd]
+bazel-bridge-gate:
+    @bash "{{ justfile_directory() }}/scripts/bazel_bridge_gate.sh"
+
 # Check formatting without modifying files.
 fmt-check:
     @{{ python }} ../scripts/format.py --check

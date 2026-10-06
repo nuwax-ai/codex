@@ -8,6 +8,23 @@ bool_flag(
     visibility = ["//visibility:public"],
 )
 
+# Gates the rig/genai model bridges in codex-core's compiled feature set.
+# Public binaries must keep this ON: turning it off makes third-party model
+# requests fail before any network traffic, which the bridge gate's negative
+# control asserts.
+bool_flag(
+    name = "enable_model_bridges",
+    build_setting_default = True,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "model_bridges_enabled",
+    flag_values = {
+        ":enable_model_bridges": "True",
+    },
+)
+
 xcode_config(name = "disable_xcode")
 
 # We mark the local platform as glibc-compatible so that rust can grab a toolchain for us.
