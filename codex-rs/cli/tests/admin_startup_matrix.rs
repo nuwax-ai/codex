@@ -21,9 +21,11 @@ use codex_app_server_client::RemoteAppServerClient;
 use codex_app_server_client::RemoteAppServerConnectArgs;
 use codex_app_server_client::RemoteAppServerEndpoint;
 use codex_app_server_protocol::ClientRequest;
+use codex_app_server_protocol::QueuedSubmission;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ThreadQueueListParams;
 use codex_app_server_protocol::ThreadQueueListResponse;
+use codex_app_server_protocol::UserInput;
 use codex_protocol::config_types::NUWAX_ENV_PROVIDER_ID;
 use codex_protocol::shell_environment::OPENAI_FEDERATION_RULE_ID_ENV_VAR;
 use codex_protocol::shell_environment::OPENAI_IDENTITY_TOKEN_FILE_ENV_VAR;
@@ -375,5 +377,221 @@ async fn admin_commands_cover_install_method_and_daemon_presence_matrix() -> Res
             app.shutdown().await?;
         }
     }
+    Ok(())
+}
+
+/// A corrupted local group names the variable and leaves the rollout untouched;
+/// an explicit `-c model_provider` mask makes the same command succeed.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_corrupted_group_fails_fast_unless_explicitly_masked() -> Result<()> {
+    let cli = AdminCli::new()?;
+    let thread_id = create_fake_rollout(
+        cli.home.path(),
+        "2025-04-02T02-00-00",
+        "2025-04-02T02:00:00Z",
+        "corrupted admin session",
+        Some(NUWAX_ENV_PROVIDER_ID),
+        /*git_info*/ None,
+    )?;
+    let corrupted = [
+        ("NUWAX_BASE_URL", "https://client.example/v1"),
+        ("NUWAX_WIRE_API", "carrier-pigeon"),
+        ("NUWAX_API_KEY", "corrupted-key"),
+        ("NUWAX_MODEL", "m"),
+    ];
+    let original_path =
+        find_rollout_file(cli.home.path(), &thread_id).context("original rollout")?;
+    let original_bytes = std::fs::read(&original_path)?;
+    let output = cli.run(&["archive", &thread_id], &corrupted, None).await?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "corrupted group must fail: {stderr}"
+    );
+    assert!(
+        stderr.contains("NUWAX_WIRE_API"),
+        "must name the variable: {stderr}"
+    );
+    assert!(
+        !stderr.contains("corrupted-key"),
+        "must not echo values: {stderr}"
+    );
+    assert_eq!(
+        find_rollout_file(cli.home.path(), &thread_id),
+        Some(original_path.clone()),
+        "the failed command must not move the rollout"
+    );
+    assert_eq!(std::fs::read(&original_path)?, original_bytes);
+    assert_eq!(
+        find_rollout_file(&cli.home.path().join("archived_sessions"), &thread_id),
+        None,
+        "the failed command must not leave an archived copy"
+    );
+    cli.assert_config_unchanged()?;
+
+    // The explicit provider mask makes the whole group irrelevant.
+    let output = cli
+        .run(
+            &["-c", "model_provider=openai", "archive", &thread_id],
+            &corrupted,
+            None,
+        )
+        .await?;
+    assert!(
+        output.status.success(),
+        "explicit provider mask must ignore the corrupted group: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        find_rollout_file(cli.home.path(), &thread_id)
+            .is_some_and(|p| p.components().any(|c| c.as_os_str() == "archived_sessions")),
+        "masked archive must still archive"
+    );
+    cli.assert_config_unchanged()?;
+    Ok(())
+}
+
+/// An administrative label shared by two threads across providers is
+/// ambiguous: archive must refuse and list both candidate thread IDs.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_archive_by_name_rejects_cross_provider_ambiguity() -> Result<()> {
+    let cli = AdminCli::new()?;
+    let shared = "shared-admin-name";
+    let first = create_fake_rollout(
+        cli.home.path(),
+        "2025-04-03T03-00-00",
+        "2025-04-03T03:00:00Z",
+        shared,
+        Some(NUWAX_ENV_PROVIDER_ID),
+        /*git_info*/ None,
+    )?;
+    let second = create_fake_rollout(
+        cli.home.path(),
+        "2025-04-03T03-30-00",
+        "2025-04-03T03:30:00Z",
+        shared,
+        /*provider*/ None,
+        /*git_info*/ None,
+    )?;
+    let original_paths = [
+        find_rollout_file(cli.home.path(), &first).context("first original rollout")?,
+        find_rollout_file(cli.home.path(), &second).context("second original rollout")?,
+    ];
+    let original_bytes = [
+        std::fs::read(&original_paths[0])?,
+        std::fs::read(&original_paths[1])?,
+    ];
+    let output = cli.run(&["archive", shared], &[], None).await?;
+    assert!(!output.status.success(), "ambiguous label must be refused");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("ambig") || stderr.contains("multiple"),
+        "the error must describe the ambiguity: {stderr}"
+    );
+    assert!(
+        stderr.contains(first.as_str()) && stderr.contains(second.as_str()),
+        "both candidate ids must be listed: {stderr}"
+    );
+    assert_eq!(
+        [
+            find_rollout_file(cli.home.path(), &first),
+            find_rollout_file(cli.home.path(), &second),
+        ],
+        original_paths.clone().map(Some),
+        "an ambiguous command must not move either rollout"
+    );
+    assert_eq!(
+        [
+            std::fs::read(&original_paths[0])?,
+            std::fs::read(&original_paths[1])?,
+        ],
+        original_bytes,
+        "an ambiguous command must not rewrite either rollout"
+    );
+    assert_eq!(
+        [
+            find_rollout_file(&cli.home.path().join("archived_sessions"), &first),
+            find_rollout_file(&cli.home.path().join("archived_sessions"), &second),
+        ],
+        [None, None],
+        "an ambiguous command must not leave archived copies"
+    );
+    cli.assert_config_unchanged()?;
+    Ok(())
+}
+
+/// The live owner receives exactly the submission reported by the CLI.
+/// Writer lifecycle exclusivity needs separate lock/registration evidence.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn queue_against_a_live_owner_reports_the_received_submission() -> Result<()> {
+    let cli = AdminCli::new()?;
+    let thread_id = create_fake_rollout(
+        cli.home.path(),
+        "2025-04-04T04-00-00",
+        "2025-04-04T04:00:00Z",
+        "owner queue session",
+        Some(NUWAX_ENV_PROVIDER_ID),
+        /*git_info*/ None,
+    )?;
+    let (_daemon, socket) = cli.spawn_envless_daemon().await?;
+    let app = connect_owner(&socket).await?;
+    let output = cli
+        .run(
+            &[
+                "queue",
+                "--thread",
+                &thread_id,
+                "--message",
+                "deliver this to the owner",
+            ],
+            &[],
+            None,
+        )
+        .await?;
+    assert!(
+        output.status.success(),
+        "enqueue must be accepted: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout)?;
+    let submission_id = stdout
+        .trim()
+        .strip_prefix("Queued message ")
+        .and_then(|line| line.strip_suffix(&format!(" for thread {thread_id}.")))
+        .context("CLI must report the queued submission and thread IDs")?;
+    let queue: ThreadQueueListResponse = app
+        .request_typed(ClientRequest::ThreadQueueList {
+            request_id: RequestId::Integer(11),
+            params: ThreadQueueListParams {
+                thread_id: thread_id.clone(),
+                cursor: None,
+                limit: None,
+            },
+        })
+        .await?;
+    let [submission] = queue.data.as_slice() else {
+        anyhow::bail!("owner must have exactly one queued submission: {queue:?}");
+    };
+    assert!(!submission.client_user_message_id.is_empty());
+    assert_eq!(
+        queue,
+        ThreadQueueListResponse {
+            data: vec![QueuedSubmission {
+                id: submission_id.to_string(),
+                input: vec![UserInput::Text {
+                    text: "deliver this to the owner".to_string(),
+                    text_elements: Vec::new(),
+                }],
+                client_user_message_id: submission.client_user_message_id.clone(),
+            }],
+            next_cursor: None,
+        },
+        "the owner must report the exact CLI submission and message"
+    );
+    cli.assert_config_unchanged()?;
+    app.shutdown().await?;
     Ok(())
 }
