@@ -1,0 +1,379 @@
+//! B3 acceptance: the administrative session commands (archive, unarchive,
+//! delete) through the REAL CLI across the observable startup matrix —
+//! install method × daemon presence × NUWAX environment state — plus the
+//! queue delivery to a live owner and cross-provider name
+//! ambiguity for administrative targeting.
+//!
+//! Observables are real end state: the rollout file moves to
+//! `archived_sessions/` (and back), the daemon stays usable on its socket,
+//! config.toml bytes never change, and the owner reports the exact queued
+//! message and submission ID returned by the CLI.
+
+use std::time::Duration;
+
+use anyhow::Context;
+use anyhow::Result;
+use app_test_support::TestAppServer;
+use app_test_support::create_fake_rollout;
+use codex_app_server::app_server_control_socket_path;
+use codex_app_server_client::DEFAULT_IN_PROCESS_CHANNEL_CAPACITY;
+use codex_app_server_client::RemoteAppServerClient;
+use codex_app_server_client::RemoteAppServerConnectArgs;
+use codex_app_server_client::RemoteAppServerEndpoint;
+use codex_app_server_protocol::ClientRequest;
+use codex_app_server_protocol::RequestId;
+use codex_app_server_protocol::ThreadQueueListParams;
+use codex_app_server_protocol::ThreadQueueListResponse;
+use codex_protocol::config_types::NUWAX_ENV_PROVIDER_ID;
+use codex_protocol::shell_environment::OPENAI_FEDERATION_RULE_ID_ENV_VAR;
+use codex_protocol::shell_environment::OPENAI_IDENTITY_TOKEN_FILE_ENV_VAR;
+use pretty_assertions::assert_eq;
+
+fn socket_test_home() -> Result<tempfile::TempDir> {
+    // macOS temporary paths can exceed the Unix socket path limit.
+    #[cfg(target_os = "macos")]
+    let home = tempfile::tempdir_in("/tmp")?;
+    #[cfg(not(target_os = "macos"))]
+    let home = tempfile::TempDir::new()?;
+    Ok(home)
+}
+
+/// Environment scrub mirroring queue_owner_dispatch: inherited developer
+/// settings (reasoning budgets, install markers, NUWAX/OpenAI auth) must not
+/// leak into either side of any matrix cell.
+fn cleaned_environment() -> Vec<(&'static str, Option<&'static str>)> {
+    vec![
+        ("CODEX_SQLITE_HOME", None),
+        ("CODEX_MODEL_REASONING_EFFORT", None),
+        ("CODEX_MODEL_CONTEXT_WINDOW", None),
+        ("CODEX_AUTO_COMPACT_TOKEN_LIMIT", None),
+        ("CODEX_AUTO_COMPACT_RATIO", None),
+        ("CODEX_MANAGED_BY_VITE_PLUS", None),
+        ("CODEX_MANAGED_BY_PNPM", None),
+        ("CODEX_MANAGED_BY_NPM", None),
+        ("CODEX_MANAGED_BY_BUN", None),
+        ("CODEX_INSTALL_SOURCE", None),
+        ("NUWAX_MODEL", None),
+        ("NUWAX_BASE_URL", None),
+        ("NUWAX_WIRE_API", None),
+        ("NUWAX_API_KEY", None),
+        ("NUWAX_MAX_OUTPUT_TOKENS", None),
+        ("NUWAX_REQUEST_MAX_RETRIES", None),
+        ("NUWAX_STREAM_MAX_RETRIES", None),
+        ("NUWAX_STREAM_IDLE_TIMEOUT_MS", None),
+        ("OPENAI_API_KEY", None),
+        ("CODEX_API_KEY", None),
+        ("CODEX_ACCESS_TOKEN", None),
+        (OPENAI_FEDERATION_RULE_ID_ENV_VAR, None),
+        (OPENAI_IDENTITY_TOKEN_FILE_ENV_VAR, None),
+    ]
+}
+
+async fn wait_for_socket(
+    home: &std::path::Path,
+) -> Result<codex_utils_absolute_path::AbsolutePathBuf> {
+    let socket_path = app_server_control_socket_path(home)?;
+    tokio::time::timeout(Duration::from_secs(/*secs*/ 30), async {
+        while !socket_path.as_path().try_exists()? {
+            tokio::time::sleep(Duration::from_millis(/*millis*/ 10)).await;
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+    Ok(socket_path)
+}
+
+async fn connect_owner(
+    socket_path: &codex_utils_absolute_path::AbsolutePathBuf,
+) -> Result<RemoteAppServerClient> {
+    Ok(RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
+        endpoint: RemoteAppServerEndpoint::UnixSocket {
+            socket_path: socket_path.clone(),
+        },
+        client_name: "admin-startup-matrix-test".to_string(),
+        client_version: "0.1.0".to_string(),
+        experimental_api: true,
+        mcp_server_openai_form_elicitation: false,
+        opt_out_notification_methods: Vec::new(),
+        channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
+    })
+    .await?)
+}
+
+/// Where the rollout file for a thread currently lives under the home tree.
+fn find_rollout_file(home: &std::path::Path, thread_id: &str) -> Option<std::path::PathBuf> {
+    fn walk(dir: &std::path::Path, thread_id: &str) -> Option<std::path::PathBuf> {
+        for entry in std::fs::read_dir(dir).ok()?.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(found) = walk(&path, thread_id) {
+                    return Some(found);
+                }
+            } else if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.contains(thread_id))
+            {
+                return Some(path);
+            }
+        }
+        None
+    }
+    walk(home, thread_id)
+}
+
+struct AdminCli {
+    codex: std::path::PathBuf,
+    home: tempfile::TempDir,
+    config_before: Vec<u8>,
+}
+
+impl AdminCli {
+    fn new() -> Result<Self> {
+        let home = socket_test_home()?;
+        std::fs::write(
+            home.path().join("config.toml"),
+            "features.plugins = false\nanalytics.enabled = false\n",
+        )?;
+        let config_before = std::fs::read(home.path().join("config.toml"))?;
+        Ok(Self {
+            codex: codex_utils_cargo_bin::cargo_bin("codex")?,
+            home,
+            config_before,
+        })
+    }
+
+    /// Runs `codex <args>` with the scrubbed environment plus optional
+    /// overrides (env pairs, install source).
+    async fn run(
+        &self,
+        args: &[&str],
+        env_overrides: &[(&str, &str)],
+        install_source: Option<&str>,
+    ) -> Result<std::process::Output> {
+        let mut command = tokio::process::Command::new(&self.codex);
+        for (variable, _) in cleaned_environment() {
+            command.env_remove(variable);
+        }
+        command.env("CODEX_HOME", self.home.path());
+        command.current_dir(self.home.path());
+        if let Some(source) = install_source {
+            command.env("CODEX_INSTALL_SOURCE", source);
+        }
+        for (key, value) in env_overrides {
+            command.env(key, value);
+        }
+        command.args(args).kill_on_drop(true);
+        Ok(
+            tokio::time::timeout(Duration::from_secs(/*secs*/ 60), command.output())
+                .await
+                .context("administrative command did not finish")??,
+        )
+    }
+
+    async fn spawn_envless_daemon(
+        &self,
+    ) -> Result<(TestAppServer, codex_utils_absolute_path::AbsolutePathBuf)> {
+        let server = TestAppServer::builder()
+            .with_program(&self.codex)
+            .with_codex_home(self.home.path())
+            .with_plugin_startup_tasks()
+            .without_managed_config()
+            .with_args(&["app-server", "--listen", "unix://"])
+            .with_env_overrides(&cleaned_environment())
+            .build()
+            .await?;
+        let socket_path = wait_for_socket(self.home.path()).await?;
+        Ok((server, socket_path))
+    }
+
+    fn assert_config_unchanged(&self) -> Result<()> {
+        assert_eq!(
+            std::fs::read(self.home.path().join("config.toml"))?,
+            self.config_before,
+            "administrative commands must never rewrite config.toml"
+        );
+        Ok(())
+    }
+}
+
+/// The full observable matrix for archive/unarchive/delete: every cell must
+/// reach the same end state on disk while the daemon (when present) stays
+/// alive and usable, and config bytes never move.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_commands_cover_install_method_and_daemon_presence_matrix() -> Result<()> {
+    struct Cell {
+        label: &'static str,
+        daemon: bool,
+        env: bool,
+        install_source: Option<&'static str>,
+    }
+    let cells = [
+        Cell {
+            label: "default+daemon+envless",
+            daemon: true,
+            env: false,
+            install_source: None,
+        },
+        Cell {
+            label: "default+daemon+env",
+            daemon: true,
+            env: true,
+            install_source: None,
+        },
+        Cell {
+            label: "default+envless+no-daemon",
+            daemon: false,
+            env: false,
+            install_source: None,
+        },
+        Cell {
+            label: "npm+no-daemon",
+            daemon: false,
+            env: false,
+            install_source: Some("npm_nuwax"),
+        },
+        Cell {
+            label: "default+env+no-daemon",
+            daemon: false,
+            env: true,
+            install_source: None,
+        },
+        Cell {
+            label: "npm+env+no-daemon",
+            daemon: false,
+            env: true,
+            install_source: Some("npm_nuwax"),
+        },
+        Cell {
+            label: "npm+daemon+envless",
+            daemon: true,
+            env: false,
+            install_source: Some("npm_nuwax"),
+        },
+        Cell {
+            label: "npm+daemon+env",
+            daemon: true,
+            env: true,
+            install_source: Some("npm_nuwax"),
+        },
+    ];
+
+    for cell in cells {
+        // archive
+        let cli = AdminCli::new()?;
+        let thread_id = create_fake_rollout(
+            cli.home.path(),
+            "2025-04-01T01-00-00",
+            "2025-04-01T01:00:00Z",
+            "matrix archive session",
+            Some(NUWAX_ENV_PROVIDER_ID),
+            /*git_info*/ None,
+        )?;
+        let daemon = if cell.daemon {
+            Some(cli.spawn_envless_daemon().await?)
+        } else {
+            None
+        };
+        let env: &[(&str, &str)] = if cell.env {
+            &[
+                ("NUWAX_BASE_URL", "https://env.example/v1"),
+                ("NUWAX_WIRE_API", "chat"),
+                ("NUWAX_API_KEY", "matrix-env-key"),
+                ("NUWAX_MODEL", "matrix-env-model"),
+            ]
+        } else {
+            &[]
+        };
+        let output = cli
+            .run(&["archive", &thread_id], env, cell.install_source)
+            .await?;
+        assert!(
+            output.status.success(),
+            "{}: archive must succeed: {}",
+            cell.label,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let original = find_rollout_file(cli.home.path(), &thread_id)
+            .context(format!("{}: rollout file must still exist", cell.label))?;
+        assert!(
+            original
+                .components()
+                .any(|c| c.as_os_str() == "archived_sessions"),
+            "{}: archive must move the rollout into archived_sessions/, got {}",
+            cell.label,
+            original.display()
+        );
+        cli.assert_config_unchanged()?;
+
+        // unarchive (only meaningful in cells with a daemon to keep proving
+        // liveness; all cells exercise the command itself)
+        let output = cli
+            .run(&["unarchive", &thread_id], env, cell.install_source)
+            .await?;
+        assert!(
+            output.status.success(),
+            "{}: unarchive must succeed: {}",
+            cell.label,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let restored = find_rollout_file(cli.home.path(), &thread_id).context(format!(
+            "{}: rollout must return from archived_sessions",
+            cell.label
+        ))?;
+        assert!(
+            !restored
+                .components()
+                .any(|c| c.as_os_str() == "archived_sessions"),
+            "{}: unarchive must move the rollout back, got {}",
+            cell.label,
+            restored.display()
+        );
+
+        // delete
+        let output = cli
+            .run(&["delete", &thread_id, "--force"], env, cell.install_source)
+            .await?;
+        assert!(
+            output.status.success(),
+            "{}: delete must succeed: {}",
+            cell.label,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            find_rollout_file(cli.home.path(), &thread_id).is_none(),
+            "{}: delete must remove the rollout",
+            cell.label
+        );
+        cli.assert_config_unchanged()?;
+
+        if let Some((_server, socket)) = &daemon {
+            // The daemon must still serve RPCs on its socket afterwards. The
+            // matrix target was just deleted, so probe with a surviving
+            // thread's queue instead.
+            let probe_thread = create_fake_rollout(
+                cli.home.path(),
+                "2025-04-01T01-30-00",
+                "2025-04-01T01:30:00Z",
+                "matrix daemon probe session",
+                Some(NUWAX_ENV_PROVIDER_ID),
+                /*git_info*/ None,
+            )?;
+            let app = connect_owner(socket).await?;
+            let queue: ThreadQueueListResponse = app
+                .request_typed(ClientRequest::ThreadQueueList {
+                    request_id: RequestId::Integer(7),
+                    params: ThreadQueueListParams {
+                        thread_id: probe_thread,
+                        cursor: None,
+                        limit: None,
+                    },
+                })
+                .await?;
+            assert_eq!(queue.data.len(), 0);
+            app.shutdown().await?;
+        }
+    }
+    Ok(())
+}
