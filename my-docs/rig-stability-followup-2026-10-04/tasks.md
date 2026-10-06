@@ -14,6 +14,8 @@
 
 - [x] B1 名字跨 provider 查找及歧义/分页回归。
 - [ ] B2 部分验收（2026-10-05 新机第二轮；2026-10-06 加固证据，进程级 writer/完整行政矩阵仍开放）：异环境 active client enqueue 由 owner 自身环境执行（客户端侧 mock 零请求、config 不变）；daemon 在默认 socket 时非白名单 override 的 embedded 回落被 second-writer 守卫真实拒绝（队列 0、零请求）；owner 首个模型请求被网关真实门控在途时 enqueue 成功、放门后同一 writer 派发（恰 2 请求、owner 凭据、turn_trigger=queue）；无 owner 冷入队由 embedded writer 持久化（不留 socket、不执行、不改 config），后继持环境 owner resume 派发。剩余边界：embedded/daemon 并存场景的进程级 writer 计数（现以"客户端 mock 零请求 + 全部请求同凭据"为观察面）。
+- [ ] B3 新行政验收（Codex 第二轮）：archive/unarchive/delete 的 install-method×daemon×env 八组合已补代码；失败不改路径/字节/config、显式屏蔽、同名歧义与 owner 接收 queue 的精确 ID/内容验证。pgrep 不能证明 writer 生命周期唯一，该项继续开放；实际执行数见当前独立报告。
+- [ ] 跨进程 opaque 部分验收（2026-10-06）：exec/tests/suite/nuwax_cross_process_scope.rs——双进程+复制 rollout+query/凭据轮换；实证 credential-instance 为进程内随机身份（跨进程同 key 按设计降级，可见历史保留、rollout 只追加）。
 - [ ] B3 部分验收（2026-10-05 新机补齐：四命令 corrupted/inactive 已完成，queue/archive/unarchive/delete 循环、坏值具名不回显、inactive 确实抵达远端连接，见 other-computer-validation-results.md 批次 2；install-method/实际行政启动矩阵仍未完成）：active/incomplete 组 fail-fast（既有）+ 新增 corrupted 值组（命名变量、不回显值、连接前拒绝）与 inactive 组（无 NUWAX 环境时确实抵达远端连接）；显式 CLI `-c model_provider` 覆盖时整组忽略（含非法控制值）。install-method/daemon 存在性分支由 daemon_startup.rs 既有矩阵与 tui 策略单测覆盖；`codex archive` 纳入 daemon_startup 命令表未做（登记为剩余项）。
 - [x] B4 同 provider echo resume 与无 override 对照，真实 HTTP model 断言。
 
@@ -29,6 +31,8 @@
 - [x] D2 完成（2026-10-05）：typed `CapExpectation`（Explicit/AnthropicDefault/Absent）× 协议字段（max_tokens/max_completion_tokens/max_output_tokens，Chat 双拼写恰一）；asserted_fields 如实列出 cap 字段；base 已含 `/v1` 与不含两种 path 形态都归一。离线负控全绿。live 新证据：重建 codex-exec（Chat source 97720d19…/binary c17787a4… 与 Anthropic source b3cd797e…/binary c52d6d7c… 两份历史工作树）后 MiMo/GLM × chat/anthropic capped 4/4 PASS——真实厂商 wire 断言 max_tokens=512。原两轮 7/7 不再作为当前验收依据。
 - [x] D3 完成（2026-10-05，core/tests/suite/rig_output_cap.rs 7 用例全绿）：Core 公共路径（test_codex 全采样环、request/stream retries 均为 2）下 Chat/Anthropic/Responses 三协议 cap 终止——恰好 1 POST 证明零重采样；partial deltas 保留、零成功 Completed、截断工具不执行、wire cap 值断言（Chat 双拼写）。负控：迟到 finish_reason=stop 帧不再覆盖 length 终止（本轮修复的真实缺陷：sse.rs 首终止优先+丢弃后续终止帧）；Anthropic/Chat 在缺 message_stop/[DONE] 时按截断类可重试（3 attempts 钉契约，与既有 finish_reason_alone_cannot_hide_truncation 契约一致——曾尝试 EOF 合成终局，因与该契约冲突而回退）；length 后停流走 idle 预算有界失败。usage/Done 缺失维持既有行为（不合成成功 Completed），行为边界在验收报告中说明。
 - [ ] D4 部分验收：2026-10-05 新机低载冷/热对照历史 6/6 通过；高载 spawn-to-ready、dyld/签名成本及各 RPC 阶段 profiling 未完成。不得把全部 initialize 失败归因负载，不扩大 deadline。2026-10-06 loaded 无订阅用 unsubscribe ACK + loaded/list 断言证明前置状态。
+- [x] Bazel 桥长期门禁（2026-10-06 Claude 轮）：`//:enable_model_bridges` flag + core crate_features select + scripts/bazel_bridge_gate.sh（nuwax_env 三线 19/19 真实执行 + 关桥负控零连接，本机 exit 0）+ just bazel-bridge-gate + fork-cargo-pr.yml job（review diff，未 dispatch）。383 例历史失败仅部分抽样/归因；单跑通过和环境相关性不能代表全部关闭——详见 other-computer-validation-results.md 2026-10-06 节。
+- [ ] 本地 compact “加密摘要漏戳”归因已撤销；只生成可见 summary。未知 checkpoint 的 client-wide 来源猜测回填已删除，guardian 原 envelope 来源传递及正/负回放测试保留。deferred_executor 有既有 flake 证据，但负载因果和配对 A/B 尚未完成。
 - [ ] D5 当前边界（2026-10-06 校正）：Chat/Anthropic live 触顶、Step 双协议有 2026-10-05 历史证据；workspace 历史 21,561 run / 21,178 pass / 270 fail / 113 timeout，383 例未全部定性。Bazel 已安装，2026-10-06 独立复审补齐 Core bridge feature（此前 build 通过但第三方请求失败），实际三协议 mock 复验单列。Responses live 触顶、Linux/Windows、加密引用、跨进程 opaque 和远程 CI 尚未完成；不自动厂商调用或 CI dispatch。
 - [ ] D6 仅设计、未实施、P0 人工复审开放：以修订后的 d6-pause-budget-token-aware-spec.md / plan.md 为准，LegacyBytes 或完整实际载荷/framing 的 ExactTokens/ProvenUpperBound，KeepWholeOrFail。禁止 bytes/4、经验分位数充当证明；未经产品裁决不启用 token 硬限，不改 40,960-byte fail-fast、不删块或截断签名、不改写旧 rollout。
 
@@ -91,3 +95,7 @@
 ## 2026-10-06 独立复审与后续任务
 
 用户本轮已授权修复与阶段 commit，不授权 push/发布。新增确认证据及完整命令见 other-computer-validation-results.md 的 2026-10-06 节；后续开发按 ../claude-code-followup-2026-10-06.md 执行。不得将历史测试数、live 收据或 Bazel build 成功替代当前代码的公共请求路径验收。
+
+## 2026-10-06 Codex 第二轮复审
+
+当前基线8017fb76c，阶段保存与实测见 other-computer-validation-results.md 新增第二轮节。后续按 ../claude-code-followup-2026-10-06-round2.md；新增 cap Spec/Plan 与 D6 均未实施，不能勾选产品能力。

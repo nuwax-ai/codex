@@ -1,0 +1,14 @@
+{
+  "gate": "just bazel-bridge-gate",
+  "platform": "macOS aarch64",
+  "executed": 19,
+  "passed": 19,
+  "three_required_wire_tests_passed": true,
+  "bridges_off": {
+    "exit": "nonzero",
+    "missing_bridge_named": true,
+    "connections": 0
+  },
+  "public_binaries_restored_to_bridges_on": true,
+  "real_vendor_requests": 0
+}

@@ -1,0 +1,76 @@
+{
+  "head": "8017fb76c55b00a023101803d1e7b3f79ce5a10d",
+  "phase": "tested source before final fix/fmt",
+  "source_files_sha256": {
+    ".github/workflows/fork-cargo-pr.yml": "3e3cf6c284ca0334eb210c5ebbedc25202e8f1533834c483a295ac5c0a3ed068",
+    "BUILD.bazel": "4d92c0b79470eb704c5674ea618d8eae2221f17f666412f6e0a6fe693bf200b3",
+    "codex-rs/app-server-protocol/scripts/write_schema_fixtures.py": "82033fbef364bd4d808054b55f930bc14df2532806dce55afd39f0189d2e66b0",
+    "codex-rs/cli/tests/admin_startup_matrix.rs": "a393fed6fd82d616a8f4b6db478248ed4cc8ed7fb927e7ef1085b70949c49757",
+    "codex-rs/core/BUILD.bazel": "7092c2e0a8cfdfc788b8a6bf402a07e99914d8dc717ffc8d7207e45b29a1cdf2",
+    "codex-rs/core/src/client.rs": "09339418ee6e9f2b78c314d8c658740cc44f33502e000b457007f0296c9e079c",
+    "codex-rs/core/src/guardian/review_session_context.rs": "06479ac481298bbaddb3449e19e59bb31c0e4c7b414b9101274a9ba2a7be35e3",
+    "codex-rs/core/src/guardian/review_session_setup.rs": "d9ceb7ebb93d813621e45899940ba427db487fa9b80b1ee89d8a8cb4aa59ff1c",
+    "codex-rs/core/src/guardian/review_session_tests.rs": "168ad4752037d8165ade09941962ee70b5ab943011619372d45fe4023a562950",
+    "codex-rs/core/src/guardian/tests.rs": "8a07e77f74fa5fd03c6b0e160f9f982c3a82316ea1bb1e7f59d5b690e12fa6b3",
+    "codex-rs/core/src/tools/flat_name_index.rs": "f2cd9c55235b16c58ac33113e4754e48357ef949ca6c669e2d8f1a1a954fd2da",
+    "codex-rs/core/tests/suite/scenarios.rs": "4c28a021427fc56cae02015d5377eeb4290022623ac7294cbc50231c54fa0fc9",
+    "codex-rs/core/tests/suite/snapshots/all__suite__scenarios__guardian_checkpoint_migration.snap": "72cb40e2fd84e2368438636f2f8a2cd5727100b3884997f888354674cd114203",
+    "codex-rs/exec/tests/suite/mod.rs": "06d9259f082837611b94ab4165bdf1746d71addc92b6f80a26d06830ea3edbe1",
+    "codex-rs/exec/tests/suite/nuwax_cross_process_scope.rs": "00180b3cead7b7549baf10c23e4c804eca944f599e75ec043650bd91f006ce0b",
+    "codex-rs/ext/skills/src/host_roots.rs": "e6cfdfd0df0785319bd373f64ae1a611cabbb8480a4dcdbcb60a1a8d49b35f5b",
+    "codex-rs/ext/skills/src/host_service.rs": "bcf27b7e36f4e5fd7afcf042e41500090c0ef6615843853a73a6976be751b753",
+    "codex-rs/ext/skills/src/host_service_tests.rs": "a199eb991157b1fcadedbe67f8a630585ea63eb7ebc5a307c15414c8d72b481a",
+    "codex-rs/history/src/compaction_checkpoint.rs": "79954a909ad8e10709ad9cadd8a99f8839079faf30629e240e302f0a310c954f",
+    "codex-rs/history/src/compaction_checkpoint_tests.rs": "d753227504e3265afe3219b5ac09b5a9c8486f47d94ab53bd49131ad84d6ad55",
+    "justfile": "7b33599cc59516420397b6416e30db83373cdbc56aae432b6896603dc8166fee",
+    "scripts/bazel_bridge_gate.sh": "a1cfddf44ed3bbf42aacba03a60f9526899570aede02d8a229daf25634d69cb2",
+    "scripts/bazel_bridge_gate_negative.py": "af75507456a0bc0a52e6c253db3f25a5e9458847487dc153aba9a8b14f8d27b2",
+    "scripts/bridge_gate_tests.py": "65fa08ddcef63c3c7e7fb51c4aefd34a632dd9c4b992daa6bf05d8e942b24e75",
+    "scripts/d4_stage_profiling.py": "d287edae929805d62002e89b91f9e92c234f1ffe27945c3cf2a84896212b28e5",
+    "scripts/d4_stage_profiling_tests.py": "e50e583d5ed0a0492c794eae6fe5fedf18aa6aa07733c3cbfc050226134beca3"
+  },
+  "binaries": {
+    "/Volumes/soddygo/git-workspace/codex-targets/validation-20261005/debug/codex": {
+      "sha256": "a7ceeb9e4327166a3d9da677d8425932035af8ab513cc1f8d622ec9b4da890cd",
+      "bytes": 669621528
+    },
+    "/Volumes/soddygo/git-workspace/codex-targets/validation-20261005/debug/codex-exec": {
+      "sha256": "32fd7ac801d6eefe0b9a784813805fd4d6844dfbd077ec09cb787f1f073fca9e",
+      "bytes": 508212648
+    },
+    "/Volumes/soddygo/git-workspace/codex-targets/validation-20261005/debug/codex-app-server": {
+      "sha256": "94a3dc9d93f58d62a12a267d1f79f3f709bcf0a91394e60a0c75691c060df52e",
+      "bytes": 524540848
+    },
+    "/Users/soddy/Library/Caches/bazel/_bazel_soddy/0821eca3c77fd15cf3c4df911f4d636b/execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/codex-rs/exec/codex-exec": {
+      "sha256": "df881ba795c571d21e1d0040bb534db1daa6e87f5c91e11e895e87f3d9e18800",
+      "bytes": 467809088
+    },
+    "/Users/soddy/Library/Caches/bazel/_bazel_soddy/0821eca3c77fd15cf3c4df911f4d636b/execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/codex-rs/cli/codex": {
+      "sha256": "c619bfb5ab4aa765d2d3e38bc66f4750fb0572d32025cacee8386aaeebeaf731",
+      "bytes": 617234624
+    }
+  },
+  "tracked_pending_snapshot_sha256": "992354db8722f2e7e18c006d1e1e6ef097699437f26974db96b279f4ccbbadf1",
+  "log_sha256": {
+    "bazel-gate-final.log": "0874d903823256fe492f11f52317947b1d004bad6319fc3abc92817cf0169dd7",
+    "bazel-gate.log": "11dd6b39d6615776f32e418efc04f32a35546abf3d98cc663c5e57bd687314af",
+    "profiling-final.log": "656d7dcf4cef3518582bb117935577ac8aa9c9a350ba66e6bbc74552b8f8fbe4",
+    "profiling-real-binary-rerun.log": "b773d6772ccb80d1cbb094a3931a7d1bf5984da0bf36299fa651f18f567e7dc3",
+    "profiling-real-binary.log": "13397d4c4343ff7ebb48ed7b7d4e8a19b785345f127882ae91856dc40279a1ee",
+    "python-gate.log": "d2d66287bbe419c8a400bc2a78219d3f2bede4c0c9fff6700e42a092e944b8bd",
+    "python-profiling.log": "dd86e8f406b987686b029d54ac2c8689974c657223e647da1fc4b9642fe70783",
+    "rust-regression.log": "7db180e9dcd93447c997d7bdddcb225c10f86ef7502ead6add7a3dd646ea6798",
+    "skills-rerun.log": "bda7f89e4f14b975df8a5a953754ab832ef06e5d86008a89646a466d3bc05407"
+  },
+  "tests": {
+    "first": 1200,
+    "rerun": 177,
+    "overlap": 177,
+    "distinct": 1200,
+    "final_pass": 1200,
+    "remaining_fail": [],
+    "python_helper_tests": 8,
+    "bazel_tests": 19
+  }
+}

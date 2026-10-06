@@ -1,0 +1,42 @@
+{
+  "base_head": "8017fb76c55b00a023101803d1e7b3f79ce5a10d",
+  "phase": "after final fix/fmt; no tests repeated",
+  "source_files_sha256": {
+    ".github/workflows/fork-cargo-pr.yml": "3e3cf6c284ca0334eb210c5ebbedc25202e8f1533834c483a295ac5c0a3ed068",
+    "BUILD.bazel": "4d92c0b79470eb704c5674ea618d8eae2221f17f666412f6e0a6fe693bf200b3",
+    "codex-rs/app-server-protocol/scripts/write_schema_fixtures.py": "82033fbef364bd4d808054b55f930bc14df2532806dce55afd39f0189d2e66b0",
+    "codex-rs/cli/tests/admin_startup_matrix.rs": "b76677ba9d9fcfea8f65b8d6450dd1420c34848d1acde673cddd9cd0e5e9c63d",
+    "codex-rs/core/BUILD.bazel": "7092c2e0a8cfdfc788b8a6bf402a07e99914d8dc717ffc8d7207e45b29a1cdf2",
+    "codex-rs/core/src/client.rs": "09339418ee6e9f2b78c314d8c658740cc44f33502e000b457007f0296c9e079c",
+    "codex-rs/core/src/guardian/review_session_context.rs": "06479ac481298bbaddb3449e19e59bb31c0e4c7b414b9101274a9ba2a7be35e3",
+    "codex-rs/core/src/guardian/review_session_setup.rs": "d9ceb7ebb93d813621e45899940ba427db487fa9b80b1ee89d8a8cb4aa59ff1c",
+    "codex-rs/core/src/guardian/review_session_tests.rs": "168ad4752037d8165ade09941962ee70b5ab943011619372d45fe4023a562950",
+    "codex-rs/core/src/guardian/tests.rs": "8a07e77f74fa5fd03c6b0e160f9f982c3a82316ea1bb1e7f59d5b690e12fa6b3",
+    "codex-rs/core/src/tools/flat_name_index.rs": "f2cd9c55235b16c58ac33113e4754e48357ef949ca6c669e2d8f1a1a954fd2da",
+    "codex-rs/core/tests/suite/scenarios.rs": "4c28a021427fc56cae02015d5377eeb4290022623ac7294cbc50231c54fa0fc9",
+    "codex-rs/core/tests/suite/snapshots/all__suite__scenarios__guardian_checkpoint_migration.snap": "72cb40e2fd84e2368438636f2f8a2cd5727100b3884997f888354674cd114203",
+    "codex-rs/exec/tests/suite/mod.rs": "06d9259f082837611b94ab4165bdf1746d71addc92b6f80a26d06830ea3edbe1",
+    "codex-rs/exec/tests/suite/nuwax_cross_process_scope.rs": "b28e0bdb1a399f01eed4960deb47586a67610c5c7343dfa4efd6bfa852ee44da",
+    "codex-rs/ext/skills/src/host_roots.rs": "e6cfdfd0df0785319bd373f64ae1a611cabbb8480a4dcdbcb60a1a8d49b35f5b",
+    "codex-rs/ext/skills/src/host_service.rs": "bcf27b7e36f4e5fd7afcf042e41500090c0ef6615843853a73a6976be751b753",
+    "codex-rs/ext/skills/src/host_service_tests.rs": "a484c61db589f72cba86e87cb1796a07ef54dd51cfec09392750549c442cfed8",
+    "codex-rs/history/src/compaction_checkpoint.rs": "79954a909ad8e10709ad9cadd8a99f8839079faf30629e240e302f0a310c954f",
+    "codex-rs/history/src/compaction_checkpoint_tests.rs": "d753227504e3265afe3219b5ac09b5a9c8486f47d94ab53bd49131ad84d6ad55",
+    "justfile": "7b33599cc59516420397b6416e30db83373cdbc56aae432b6896603dc8166fee",
+    "scripts/bazel_bridge_gate.sh": "a1cfddf44ed3bbf42aacba03a60f9526899570aede02d8a229daf25634d69cb2",
+    "scripts/bazel_bridge_gate_negative.py": "af75507456a0bc0a52e6c253db3f25a5e9458847487dc153aba9a8b14f8d27b2",
+    "scripts/bridge_gate_tests.py": "f7c443df5f73e7820ac59019a2c8dc5afdb147f95898497d6307cd87c60276ee",
+    "scripts/d4_stage_profiling.py": "4919b43538e421d0e4152ebcdc1e96a661ad3b1dd827a7904677f23a70428fbf",
+    "scripts/d4_stage_profiling_tests.py": "7d495a877f5d7fb85906de73b83f41c5e4722a7c1e415c7e7a8bc165a23af85a"
+  },
+  "changed_since_tested_tree": [
+    "codex-rs/cli/tests/admin_startup_matrix.rs",
+    "codex-rs/exec/tests/suite/nuwax_cross_process_scope.rs",
+    "codex-rs/ext/skills/src/host_service_tests.rs",
+    "scripts/bridge_gate_tests.py",
+    "scripts/d4_stage_profiling.py",
+    "scripts/d4_stage_profiling_tests.py"
+  ],
+  "changes_reviewed": "expect diagnostic for one fixture unwrap plus deterministic formatting",
+  "saved_code_commit": "90877f99dc04a2a7d24ac3916392d6e1a17b0f99"
+}

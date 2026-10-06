@@ -1,0 +1,21 @@
+[
+  {
+    "event": "start",
+    "binary": "/Volumes/soddygo/git-workspace/codex-targets/validation-20261005/debug/codex-app-server",
+    "load_before": 4.5361328125
+  },
+  {
+    "event": "sample",
+    "index": 0,
+    "spawn_call_s": 0.001706416999695648,
+    "first_stderr_s": 0.3217825419997098,
+    "bind_report_s": null,
+    "bind_phase": "not_applicable_stdio",
+    "initialize_roundtrip_s": 0.3771549170005528,
+    "total_s": 0.3968987090001974
+  },
+  {
+    "event": "end",
+    "load_after": 4.5361328125
+  }
+]

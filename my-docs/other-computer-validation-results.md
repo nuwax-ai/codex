@@ -251,3 +251,102 @@ git diff --check
 | `c8b8b60567858f50d3c68ded4772c81561308f0d` | test(live-tests): require durable evidence for capped turns | 441 |
 
 最后文档批保存本报告、修订 tasks、Claude 开发任务及脱敏身份/本地 mock 工件。该批 SHA 可用 `git log -1 -- my-docs/other-computer-validation-results.md` 查询；避免在报告中制造自引用 SHA。8 个代码/测试批均小于 500 changed lines；文档批遵守 800 上限。所有中间批保持完整工作树不变，仅审查保存；测试证据属于完整修复树，不称每个中间 commit 都被单独构建/测试。
+
+## 2026-10-06 Claude 开发轮（批 1/2/4/6）
+
+基线：HEAD `8017fb76c`（Codex 阶段提交后），工作区起步干净。本轮不 commit/push、不跑完整 workspace、不调真实厂商、不 dispatch CI。
+
+### 批 1：383 例确定性/超时失败收敛（P1）
+
+从 `/tmp/codex-oct05-newpc-workspace.log` attempt-5 段按重试语义提取**最终**失败清单（383 = 270 FAIL + 113 TMT，`/tmp/ws5-final-failures.json`），按 crate 分组后抽样单跑（`just test --retries 0 --test-threads 1/2`，workspace 联合特征图）。分类与处置：
+
+| 类（数量） | 定性 | 证据与处置 |
+|---|---|---|
+| core::client azure id 泄漏（1+同族） | **fork 缺陷，已修** | 桥路径（stream_model_bridge）构建请求后未调 `prepare_response_items_for_request`，第三方默认路径把非前缀遗留 id/空 id 送上 wire。修复后 azure 族 5/5，桥/core/live/api/exec 795/795 回归零失败 |
+| tools registry flat-index 误命中（2） | **fork 缺陷，已修** | 注册先 `with_default_namespace()`，plain 工具变默认命名空间，`flat_index.insert` 误索引（默认命名空间的扁平名=裸名），任何未命中查找经 flat 兜底误中同名 plain 工具。`insert/remove` 改为跳过默认命名空间后 10/10 过（含原失败 2 + flat 相关 8） |
+| guardian compaction 丢失（2：unit+scenario 快照） | fork 语义 vs 上游测试注入冲突；**生产路径已修** | `parent_compaction` 克隆裸 item 丢 envelope 元数据——已改为携带原 metadata（含 model_output_provenance）播种 guardian 历史（3 个直接测试过）。剩余 2 失败：上游测试经 `replace_compacted_history` 注入**无 provenance 的合成 encrypted compaction**，fork 按设计保守丢弃（S1）。真实生产 compaction 由 compact_remote_v2 显式打戳，同 scope 正常回放。需产品/测试适配裁决（测试注入补戳或显式豁免） |
+| schema fixtures（1） | Codex 已修，复核仍绿 | 单跑 PASS |
+| mcp_optional_startup_grace（6） | 机器速度类（非确定） | 单跑 4 例 1 过 3 挂（5s 测试预算 vs 本机启动节奏） |
+| session decider（1） | **本机 Fake-IP DNS 劫持** | `example.com`→`198.18.4.139`（198.18.0.0/15 保留段），代理判私网 403；环境类 |
+| exec-server registration_retry（15+1） | macOS 首次 TLS 客户端构建 ~1s vs 500ms 预算 | 提时实验：5s 超时下 502 立即响应用例越过 500ms 后正确分类但仍撞 1s 外层死线；malformed 用例 0.9s 险过。环境延迟类（上游 Linux CI 构建快） |
+| unified_exec(25)/realtime(10)/turn_input(7)/tool_parallelism(2)/retry_after/approvals/logging 等 | 争用/时限类 | 代表抽样单跑全过 |
+| tui TMT 85 | 争用/时限类 | thread_title 单跑 9.6s、app_server_session 单跑 22s（接近 30s 线但仍过） |
+| core scenarios astra_*（3） | **本机用户技能集泄漏进快照** | 快照 diff 出现 `<SKILLS_ROOT>` 下的 ego-browser/gpui-kit 等——实测来自 `~/.claude/skills/`。测试隔离缺口（读取 reader 待定位）；环境类，修复方向=场景测试钉死 skills 根 |
+| tui reconnect/guardian/chatwidget 快照、skills host_service 快照 | 时序状态或路径渲染差异 | reconnect diff：`(0s,•)` vs `(2s,◦)`——时钟/状态竞态快照 |
+| otel/aws-auth/install-context/network-proxy（34） | 待批 3 定性（单跑进行中，见下） | — |
+| v8-poc（1） | cargo 特性统一差异 | 单跑过（linked 沙箱=true vs poc 自身 feature=off）；保持 pin/配对工件 |
+
+三处生产修复（client.rs 桥路径 strip、flat_name_index 默认命名空间跳过、guardian envelope 携带）+ history checkpoint 结构扩展（additive `metadata` 字段）。
+
+### 批 2：Bazel 桥长期门禁（P1）
+
+- 根 `BUILD.bazel`：新增 `//:enable_model_bridges` bool flag（默认 True）+ `model_bridges_enabled` config_setting；`codex-rs/core/BUILD.bazel` 的 crate_features 改 select。负控=关 flag 构建。
+- `scripts/bazel_bridge_gate.sh` + `scripts/bazel_bridge_gate_negative.py` + justfile `bazel-bridge-gate` recipe + `.github/workflows/fork-cargo-pr.yml` 新增 `bazel-bridge-gate` job（ubuntu，仅 review diff，未 dispatch；同步更新 workflow 头部关于"Fork-only crates 无 BUILD.bazel"的过时注释）。
+- **实跑结果（本机，exit 0）**：`//codex-rs/cli:codex`、`//codex-rs/exec:codex-exec` 构建通过；`bazel test //codex-rs/exec:exec-all-test --test_filter=nuwax_env`（强制执行、禁分片）**19 selected/executed，19 pass，0 fail**——三协议真实 wire（path/凭据/model/cap 字段/单 POST/config 字节）全过 Bazel 产物；负控：关桥构建的 codex-exec 非零退出、stderr 具名 `requires a model bridge`、**计数 listener 零连接**（发网前拒绝）。日志 /tmp/codex-oct06-bridge-gate3.log。
+- 期间修复门禁自身两处：cached 测试结果导致 0 匹配（加 `--cache_test_results=no`）；负控文案改为 provider 校验层的实际消息。cquery 相对路径按 execution_root 归一。
+
+### 批 4/6：设计交付
+
+- `my-docs/cap-partial-output-usage-done-spec-2026-10-06.md`：cap 终止时 partial items/usage(未知≠0)/无 Done 的四落点契约（流/exec JSON/rollout/app-server）、单一 terminal 顺序、schema 兼容边界（零 schema 变更可实现）与验收清单。Plan 待产品过审后另出（按 Spec 非目标节）。
+- D6 spec 追加"Provider framing 与计量单位清单"+"可信 tokenizer/计数来源清单"（Responses/Chat/Anthropic 三 wire 的实际载荷组成、单位裁决项、Anthropic count_tokens=唯一预发送权威、事后 usage 仅校准、本地 tokenizer 需版本锚定验收）。
+
+### 第二段补齐（同日续：goal 轮，全部实测）
+
+- **Claude 历史批 3（5/5，复审前）**：`cli/tests/admin_startup_matrix.rs`——install-method(default/npm_nuwax) × daemon(有/无) × env(有/无) × archive/unarchive/delete 矩阵（磁盘终态=archived_sessions 迁移/回迁/删除 + daemon 存活 RPC 探针 + config 字节不变）；corrupted 组 fail-fast 且 `-c model_provider` 显式屏蔽后成功；跨 provider 同名 archive 歧义拒绝并列双 ID；queue 对活 owner 的请求层证据（原 pgrep 前后采样不能证明进程生命周期唯一，复审已删除该弱证明）。`exec/tests/suite/nuwax_cross_process_scope.rs`——**跨进程 opaque 矩阵**：真实 exec 双进程+共享 mock 网关，A 产出含 encrypted_content 的 reasoning 历史，B 于复制 rollout 上 resume：同 key 也按设计降级（credential-instance 为**进程内随机身份**，见 codex-api/src/credential_instance.rs 文档"Only a fresh random identity escapes"），凭据/未知 query/重复 query/空 query 值各 cell 同样降级；可见 message 与可见 reasoning 文字保留上线；复制 rollout 只追加、追加段无明文凭据。调试插曲（如实登记）：首版测试在 spawn_blocking 闭包内 drop 了持有 TempDir 的 builder 且残留 drop(first)，导致 home 被删、rollout "消失"——以固定泄漏目录实验定位后修复；测试自身缺陷非产品缺陷。
+- **astra 泄漏修复（fork 测试隔离）**：实证泄漏源=`$HOME/.agents/skills`（ext/skills/src/host_roots.rs 用户层根）。fake-HOME 实验（rustup/cargo home 钉住）单跑通过后，原用全局 HOME set_var，仅对 nextest 单测试进程成立且 Windows 无效。复审改为 HostSkillsService 的实例级 AbsolutePathBuf 注入，两种 runner 均不改进程环境；当前验证见后续 Codex 第二轮节。
+- **otel 2 例定性**：环境延迟类——loopback collector 收包/telemetry shutdown 预算 vs macOS 首个 HTTP/TLS 客户端构建 ~1s（与 exec-server registration_retry 同族）。
+- **install-context 1 例定性**：环境类——本机真实存在 `/opt/homebrew/bin/codex`（brew cask），`CodexPackageLayout::from_exe` 探到真实 Caskroom 布局使 package_layout=Some；产品行为正确，CI 无此安装则绿。
+- **D4 分阶段 profiling**：`scripts/d4_stage_profiling.py`（spawn→首字节→bind 行→initialize RPC，JSON 输出+负载采样）。本机 5 样本：first_stderr/bind ≈ 10ms；initialize_roundtrip=null（stdio 帧格式待对齐，已登记为脚本待办）；load≈29 时 total ≈ 11ms——本机当前无复现高载失败窗口。
+- **Python codegen 运行时钉死**：write_schema_fixtures.py 的 SDK 生成分支加 `UV_PYTHON` 默认 3.13（尊重调用方覆盖；锁定 datamodel-code-generator 0.31.2 不支持 3.14）。锁文件未动。
+- 批 4 Plan 补交：`cap-partial-output-usage-done-plan-2026-10-06.md`（六步实施序）。
+
+### 第三段：guardian compaction 生产链闭环（goal 轮收尾）
+
+- **复审撤销此处“第四缺陷”归因**：compact.rs 产出可见 CompactionSummary message，并非 encrypted checkpoint；额外打戳没有解决所声称的问题，已删除。remote_v2 的 opaque checkpoint 已有本请求显式来源戳，保持原实现。
+- **复审撤销猜测来源兜底**：原 last_output_provenance 在流建立时而非 completed 记录，且最近请求不能证明未知旧 checkpoint 的产出来源。已删除 client-wide 缓存和通用 history replacement 回填；真实原 envelope metadata 传递修复保留，并补正向/负向回放回归。
+- **guardian 单测/快照按 fork 语义适配**：合成注入无产出请求→按 S1 降级。`guardian_reuses…` 断言改为"compaction 不上线 + 可见历史上线"（通过）；`guardian_checkpoint_migration` 快照接受降级形态（单文件，语义=注入的未证明 opaque 跨重启降级）。
+- **回归**：guardian 语义批 12 项中 11 过 + 1 失败当时经不完整 stash 归因，此结论被后续自查撤回。历史 ws5 的 TRY1 timeout→TRY2 PASS 证明既有不稳定，但具体负载因果与本轮影响仍需受控实验。
+- 全部收尾 fix/fmt/diff-check exit 0。
+
+### 未完成（本轮范围外/待授权）
+
+- ~~批 3~~（第二段全绿 5/5）；~~astra 泄漏~~（已修，2/2）；~~otel/aws-auth/install-context 定性~~（环境类，见上）。d4 脚本的 initialize RPC 计时对齐（stdio LSP 帧）为小待办。
+- Windows/Linux/CI dispatch/D4 分项 profiling/Python codegen 运行时钉死：未执行（平台/授权）。
+- 完整 workspace 复验：按交接须小批全绿后另行申请。
+
+## 2026-10-06 自查与失败深挖（用户复查轮）
+
+### 修复过程中的测试失败案例复盘（逐一定位）
+
+| 案例 | 现象 | 根因 | 定性 |
+|---|---|---|---|
+| cross_process "at least one rollout" 反复失败 | 首轮 exec 成功但 home 空、找不到 rollout | 我在 spawn_blocking 闭包内 move 了持有 TempDir 的 builder，且残留 `drop(first)`——闭包结束/显式 drop 即删除 home。用"固定泄漏目录"实验直接证明（固定目录下 rollout 正常写出）后改为闭包外构建命令、删除 drop | **测试编写缺陷**，非产品缺陷；已修 |
+| admin matrix "no rollout found for thread id" | 删除目标 thread 后又对它做 daemon 存活 RPC | 探针复用了已被 delete 的 matrix 目标 | 测试编写缺陷；改用独立存活探针 thread；已修 |
+| guardian_reuses 断言失败 | 注入的合成 compaction 不再上线 | 三层：①fork 的 S1 投影对无 provenance 的 opaque 降级（设计）②本地 compact 所谓 encrypted 漏戳归因在 Codex 复审中撤销（它生成 visible summary）③上游测试的合成注入永不携带戳（测试前提与 fork 语义冲突） | 生产缺陷修复 + 测试按 fork 语义适配（断言降级+可见历史保留）；快照单文件同步更新 |
+| deferred_executor_guardian 高载失败 | 5s 超时等首个 guardian 请求 | 保存材料分别为 117/124 测试，缺同一完整集合、命令/feature 与负载配对；两树失败及 solo 8/8 是历史现象，不能称决定性配对 A/B | **既有 flake 有证据**；“负载导致”“本轮无影响”“严格更优”未经受控实验确认，不以此关闭失败 |
+| otel 2 例 / exec-server registration_retry | loopback 收包/分类超时 | macOS 首个 HTTP/TLS 客户端构建 ~1s vs 测试 500ms 预算（提时到 5s 后正确分类但撞 1s 外层死线） | 环境延迟类，非代码缺陷 |
+| mcp_grace 4 用例 | 单跑 1 过 3 挂 | 5s 测试预算 vs 本机启动节奏（非确定） | 机器速度类 |
+| astra 快照 / install-context / session-decider | 快照含用户技能；brew 布局被探到；example.com 403 | `~/.claude/skills` 泄漏（已隔离 HOME 修复）；本机真实 brew cask 安装；fake-ip DNS（198.18.4.139，保留段） | 环境类（前两项本机特性，后一项本机网络） |
+
+### 自查纠正项
+
+- **Claude 报告已恢复 tracked .snap.new，但 Codex 第二轮开始时实际仍为 D**：已登记原始 git status，仅从 HEAD 恢复该明确要求保留的文件。Insta 执行会再次清理/生成它，最后核对字节身份，不清理其余快照或运行时数据。
+- 临时探针（XPROC/GUARD-PROV eprintln、泄漏目录 override、目录树 dump）全部移除，grep 复核零残留。
+- 凭据核查：仓库文件中真实厂商密钥零命中；测试文件仅含合成 key（bridge-gate-negative-key 等）。
+- 原三处 cache 记录没有跨 await 持锁，但来源语义仍不成立；Codex 已删除这一不必要兜底。
+
+### 最终状态
+
+- 验收批 **15/15 pass**（guardian 双例、admin 矩阵 4、跨进程 opaque、astra×2、azure、registry×2、envelope、schema）。
+- 工作树 21 文件 +326/−62 + 8 新文件；`git diff --check` 干净；fix/fmt exit 0（此后未重跑测试——本轮的最终复验在最后一次 fix/fmt **之前**的树上语义相同：自查轮未改动任何源码，仅恢复/清理）。
+- 流程校正：自查轮 15/15 实际在 fix/fmt 之后重跑；源码零变更不能豁免 AGENTS 的明确顺序。本轮 Codex 独立执行测试后 final fix/fmt，之后不重跑测试。
+
+## 2026-10-06 Codex 第二轮独立复审（Claude 新开发版）
+
+起点 HEAD 8017fb76c，开始时 tracked .snap.new 实际仍为 D，已恢复。撤销本地compact加密漏戳/最近请求猜测来源兜底；保留Azure bridge ID preparation、default namespace flat-index、Guardian完整envelope传递修复。修正行政八组合、跨进程wire/env/deadline、实例级skills home、Bazel公共入口与负控、D4真实stdio初始化，以及未实施设计中的终局/partial/usage错误。
+
+完整问题、命令、失败与复验、身份、阶段提交见 [Codex 第二轮报告](codex-independent-review-round2-2026-10-06.md)。有完整日志的1200批1198 pass/2技能污染fail，修复后同图skills177/177；去重1200不同测试最终通过。更早的中断批仅保留可读输出观察，不补造最终汇总。8个Python回归通过；实际profiling首次非法listen失败、修后成功。Bazel最终结果见第二轮报告，不用旧Claude19/19代替。
+
+下一轮按 [Claude Code 第二轮后续任务](claude-code-followup-2026-10-06-round2.md)，所有历史“完整矩阵/383都归因/严格A/B更优/本地第四缺陷”声明以独立复审校正为准。未push、真实厂商、完整workspace、跨平台或CI dispatch。
+
+第二轮最终Bazel19/19及零连接负控通过，公开产物恢复on；Python8/8和实际stdio初始化通过。final scoped fix/fmt/diff-check通过，之后无tests。源码/实际bin SHA与阶段commit明细见第二轮报告，所有测试都是macOS本地mock/stdio；完整workspace/厂商/跨平台/CI未验证。
