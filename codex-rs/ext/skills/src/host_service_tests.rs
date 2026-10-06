@@ -181,6 +181,94 @@ async fn skills_for_config_with_stack(
 }
 
 #[tokio::test]
+async fn explicit_user_home_is_service_local_and_invalidates_cached_skills() {
+    let codex_home = tempfile::tempdir().expect("codex home");
+    let cwd = tempfile::tempdir().expect("cwd");
+    let first_home = tempfile::tempdir().expect("first user home");
+    let second_home = tempfile::tempdir().expect("second user home");
+    for (home, name) in [
+        (&first_home, "first-home-skill"),
+        (&second_home, "second-home-skill"),
+    ] {
+        let skill_dir = home.path().join(".agents/skills/sample");
+        fs::create_dir_all(&skill_dir).expect("user skill directory");
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            format!("---\nname: {name}\ndescription: isolated user skill\n---\n"),
+        )
+        .expect("user skill");
+    }
+    let input = HostSkillsLoadInput::new(
+        cwd.path().abs(),
+        Vec::new(),
+        config_stack(&codex_home, "[skills.bundled]\nenabled = false\n"),
+    );
+    let first = HostSkillsService::new(
+        codex_home.path().abs(),
+        /*bundled_skills_enabled*/ false,
+    );
+    let second = HostSkillsService::new(
+        codex_home.path().abs(),
+        /*bundled_skills_enabled*/ false,
+    );
+    first.set_user_home(first_home.path().abs());
+    second.set_user_home(second_home.path().abs());
+    let (first_snapshot, second_snapshot) = tokio::join!(
+        first.snapshot_for_config(&input, Some(Arc::clone(&LOCAL_FS))),
+        second.snapshot_for_config(&input, Some(Arc::clone(&LOCAL_FS))),
+    );
+    assert_eq!(
+        first_snapshot
+            .outcome()
+            .skills
+            .iter()
+            .map(|skill| skill.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["first-home-skill"],
+    );
+    assert_eq!(
+        second_snapshot
+            .outcome()
+            .skills
+            .iter()
+            .map(|skill| skill.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["second-home-skill"],
+    );
+    let cached_cwd = first
+        .for_request()
+        .snapshot_for_cwd(
+            &input,
+            /*force_reload*/ false,
+            Some(Arc::clone(&LOCAL_FS)),
+        )
+        .await;
+    assert_eq!(cached_cwd.outcome().skills, first_snapshot.outcome().skills);
+
+    first.set_user_home(second_home.path().abs());
+    let refreshed_config = first
+        .snapshot_for_config(&input, Some(Arc::clone(&LOCAL_FS)))
+        .await;
+    let refreshed_cwd = first
+        .for_request()
+        .snapshot_for_cwd(
+            &input,
+            /*force_reload*/ false,
+            Some(Arc::clone(&LOCAL_FS)),
+        )
+        .await;
+    assert_eq!(
+        refreshed_config.outcome().skills,
+        second_snapshot.outcome().skills
+    );
+    assert_eq!(
+        refreshed_cwd.outcome().skills,
+        second_snapshot.outcome().skills
+    );
+    assert_eq!(first_snapshot.outcome().skills, cached_cwd.outcome().skills);
+}
+
+#[tokio::test]
 async fn skills_for_config_reuses_cache_for_same_effective_config() {
     let codex_home = tempfile::tempdir().expect("tempdir");
     let cwd = tempfile::tempdir().expect("tempdir");
@@ -347,6 +435,7 @@ async fn snapshot_for_config_merges_extension_host_and_legacy_plugin_roots() {
         codex_home.path().abs(),
         /*bundled_skills_enabled*/ false,
     );
+    skills_service.set_user_home(codex_home.path().abs());
 
     let snapshot = skills_service
         .snapshot_for_config(&input, Some(Arc::clone(&LOCAL_FS)))
@@ -391,6 +480,7 @@ async fn snapshot_for_config_preserves_host_precedence_for_symlinked_plugin_root
         codex_home.path().abs(),
         /*bundled_skills_enabled*/ false,
     );
+    skills_service.set_user_home(codex_home.path().abs());
 
     let outcome = skills_for_config_with_stack(
         &skills_service,

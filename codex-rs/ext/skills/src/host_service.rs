@@ -31,7 +31,7 @@ use codex_skills::install_system_skills;
 
 use crate::HostSkillsSnapshot;
 use crate::SkillLoadOutcome;
-use crate::host_roots::resolve_skill_roots;
+use crate::host_roots::resolve_skill_roots_with_home_dir;
 use crate::loader::HostSkillRoot;
 use crate::loader::HostSkillRootSnapshot;
 use crate::loader::MAX_CONCURRENT_ROOT_SCANS;
@@ -82,6 +82,7 @@ impl HostSkillsLoadInput {
 /// Source-specific model exposure remains the responsibility of the skills extension.
 pub struct HostSkillsService {
     codex_home: AbsolutePathBuf,
+    user_home: RwLock<Option<AbsolutePathBuf>>,
     restriction_product: Option<Product>,
     extra_roots: RwLock<Vec<AbsolutePathBuf>>,
     cache_by_cwd: RwLock<HashMap<AbsolutePathBuf, HostSkillsSnapshot>>,
@@ -129,6 +130,10 @@ impl HostSkillsService {
     ) -> Self {
         let service = Self {
             codex_home,
+            user_home: RwLock::new(
+                dirs::home_dir()
+                    .and_then(|path| AbsolutePathBuf::from_absolute_path_checked(path).ok()),
+            ),
             restriction_product,
             extra_roots: RwLock::new(Vec::new()),
             cache_by_cwd: RwLock::new(HashMap::new()),
@@ -159,6 +164,16 @@ impl HostSkillsService {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             *roots = extra_roots;
         }
+        self.clear_cache();
+    }
+
+    /// Sets the host user directory for this service's user-scope skill discovery.
+    /// Cached snapshots are invalidated; other services and the process environment are unchanged.
+    pub fn set_user_home(&self, user_home: AbsolutePathBuf) {
+        *self
+            .user_home
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(user_home);
         self.clear_cache();
     }
 
@@ -223,10 +238,16 @@ impl HostSkillsService {
         if bundled_skills_enabled {
             self.ensure_system_skills_installed();
         }
-        let mut roots = resolve_skill_roots(
+        let user_home = self
+            .user_home
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        let mut roots = resolve_skill_roots_with_home_dir(
             fs,
             &input.config_layer_stack,
             &input.cwd,
+            user_home.as_ref(),
             input.effective_skill_roots.clone(),
             self.extra_roots(),
         )
@@ -257,10 +278,16 @@ impl HostSkillsService {
             return snapshot;
         }
 
-        let mut roots = resolve_skill_roots(
+        let user_home = self
+            .user_home
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        let mut roots = resolve_skill_roots_with_home_dir(
             fs.clone(),
             &input.config_layer_stack,
             &input.cwd,
+            user_home.as_ref(),
             input.effective_skill_roots.clone(),
             self.extra_roots(),
         )

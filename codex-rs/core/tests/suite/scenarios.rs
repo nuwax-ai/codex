@@ -56,6 +56,7 @@ use codex_skills_extension::SkillProviders;
 use codex_skills_extension::SkillsExtensionConfig;
 use codex_skills_extension::install;
 use codex_skills_extension::install_with_providers;
+use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
 use core_test_support::context_snapshot;
 use core_test_support::context_snapshot::ContextSnapshotOptions;
@@ -562,6 +563,8 @@ async fn astra_switches_environments_for_the_rest_of_the_active_turn() -> Result
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn astra_kickoff_with_skills_plugins_and_remote_compaction() -> Result<()> {
     skip_if_no_network!(Ok(()));
+    let isolated_home = TempDir::new()?;
+    let skill_user_home = AbsolutePathBuf::from_absolute_path(isolated_home.path())?;
 
     let server = start_mock_server().await;
     let home = Arc::new(TempDir::new()?);
@@ -597,6 +600,10 @@ async fn astra_kickoff_with_skills_plugins_and_remote_compaction() -> Result<()>
     let mut builder = test_codex()
         .with_model("gpt-6-astra")
         .with_home(home)
+        .with_thread_manager(move |manager| {
+            manager.skills_service().set_user_home(skill_user_home);
+            manager
+        })
         .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
         .with_extensions(skills_extensions())
         .with_workspace_setup(|cwd, fs| async move {
@@ -1366,6 +1373,8 @@ async fn code_mode_catalog_messages() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn astra_refreshes_plugin_tools_and_skills_in_an_existing_thread() -> Result<()> {
     skip_if_no_network!(Ok(()));
+    let isolated_home = TempDir::new()?;
+    let skill_user_home = AbsolutePathBuf::from_absolute_path(isolated_home.path())?;
     core_test_support::skip_if_remote!(Ok(()), "plugin and MCP fixtures use host-local paths");
 
     let server = start_mock_server().await;
@@ -1422,6 +1431,10 @@ async fn astra_refreshes_plugin_tools_and_skills_in_an_existing_thread() -> Resu
     let mut builder = test_codex()
         .with_model("gpt-6-astra")
         .with_home(Arc::clone(&home))
+        .with_thread_manager(move |manager| {
+            manager.skills_service().set_user_home(skill_user_home);
+            manager
+        })
         .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
         .with_extensions(skills_extensions())
         .with_config(configure_scenario_catalog);
