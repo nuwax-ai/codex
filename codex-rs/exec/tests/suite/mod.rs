@@ -10,6 +10,7 @@ mod completion_backfill;
 mod ephemeral;
 mod hooks;
 mod mcp_required_exit;
+mod nuwax_cross_process_scope;
 mod nuwax_env;
 mod nuwax_env_controls;
 mod nuwax_env_stream_wait;
