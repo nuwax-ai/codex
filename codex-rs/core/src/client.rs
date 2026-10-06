@@ -1787,6 +1787,11 @@ impl ModelClientSession {
                 responses_metadata,
                 include_internal,
             )?;
+            // Match the native Responses transport: outbound items never
+            // carry legacy non-prefixed ids, so the bridge wire is identical
+            // to what stream_responses_api would have sent for them.
+            self.client
+                .prepare_response_items_for_request(&mut request.input);
             let interceptors = crate::model_request::prepare(
                 &self.client.request_contributors,
                 &self.client.state.thread_id.to_string(),
