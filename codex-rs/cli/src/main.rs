@@ -2958,6 +2958,55 @@ mod tests {
         )
     }
 
+    /// The archive-family subcommands reach the administrative daemon policy
+    /// through the same merged `TuiCli`; this mirrors the production dispatch
+    /// in `main` (Delete flattens its `SessionArchiveCommand`).
+    fn finalize_archive_family_from_args(args: &[&str]) -> TuiCli {
+        let cli = MultitoolCli::try_parse_from(args).expect("parse");
+        let MultitoolCli {
+            interactive,
+            config_overrides: root_overrides,
+            subcommand,
+            feature_toggles: _,
+            remote: _,
+        } = cli;
+        let archive_cli = match subcommand.expect("archive-family subcommand") {
+            Subcommand::Archive(SessionArchiveCommand {
+                config_overrides, ..
+            })
+            | Subcommand::Unarchive(SessionArchiveCommand {
+                config_overrides, ..
+            }) => config_overrides,
+            Subcommand::Delete(DeleteCommand { session, .. }) => session.config_overrides,
+            _ => unreachable!("non-archive subcommand"),
+        };
+        finalize_session_archive_interactive(interactive, root_overrides, archive_cli)
+    }
+
+    #[test]
+    fn archive_family_flags_reach_daemon_policy_fields() {
+        let plain = finalize_archive_family_from_args(&["codex", "archive", "old-session"]);
+        assert!(!plain.no_daemon);
+        assert!(!plain.strict_config);
+        assert!(plain.shared.config_profile_v2.is_none());
+        assert!(!plain.shared.oss);
+
+        let no_daemon =
+            finalize_archive_family_from_args(&["codex", "--no-daemon", "archive", "old-session"]);
+        assert!(no_daemon.no_daemon);
+
+        let strict =
+            finalize_archive_family_from_args(&["codex", "unarchive", "--strict-config", "x"]);
+        assert!(strict.strict_config);
+
+        let profile =
+            finalize_archive_family_from_args(&["codex", "delete", "--profile", "work", "x"]);
+        assert!(profile.shared.config_profile_v2.is_some());
+
+        let oss = finalize_archive_family_from_args(&["codex", "archive", "--oss", "old-session"]);
+        assert!(oss.shared.oss);
+    }
+
     fn profile_v2_for_args(args: &[&str]) -> anyhow::Result<Option<String>> {
         let cli = MultitoolCli::try_parse_from(args).expect("parse");
         let Some(subcommand) = cli.subcommand.as_ref() else {
