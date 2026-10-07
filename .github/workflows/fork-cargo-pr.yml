@@ -88,7 +88,8 @@ jobs:
       - name: Gate and profiling helper regressions
         run: |
           python3 -m unittest discover -s scripts -p '*gate_tests.py' -v
-          python3 -m unittest discover -s scripts -p 'd4_stage_profiling_tests.py' -v
+          python3 -m unittest discover -s scripts -p 'd4*tests.py' -v
+          python3 -m unittest discover -s scripts -p 'nextest_log_summary_tests.py' -v
 
       # Runs the REAL nuwax_env three-wire matrix against Bazel-built
       # binaries (path/credential/model/cap/single-POST/config-bytes) and the

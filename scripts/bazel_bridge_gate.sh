@@ -36,10 +36,12 @@ bazelisk build --jobs="$JOBS" --//:enable_model_bridges=true //codex-rs/cli:code
 
 echo "== [bridge gate] nuwax_env wire matrix under Bazel =="
 LOG="$(mktemp -t codex-bazel-bridge-gate.XXXXXX)"
+CORE_LOG="$(mktemp -t codex-core-bridge-gate.XXXXXX)"
 NEGATIVE_BUILD_STARTED=0
 restore_public_binaries() {
     local gate_exit_status=$?
     rm -f "$LOG"
+    rm -f "$CORE_LOG"
     if [ "$NEGATIVE_BUILD_STARTED" -eq 1 ]; then
         # The negative build changes bazel-bin symlinks too. Leave the public
         # binaries with bridges enabled, including when the negative check fails.
@@ -78,6 +80,17 @@ for WIRE_TEST in \
         exit 1
     fi
 done
+
+echo "== [bridge gate] Core source replay matrix (features must reach tests) =="
+bazelisk test --jobs="$JOBS" --test_sharding_strategy=disabled \
+    --test_filter=source_rotation_tests --test_output=streamed --cache_test_results=no \
+    --//:enable_model_bridges=true //codex-rs/core:core-all-test | tee "$CORE_LOG"
+CORE_PASSED="$(sed -n 's/.*test result: ok\. \([0-9][0-9]*\) passed.*/\1/p' "$CORE_LOG" | tail -n1 || true)"
+if [ "${CORE_PASSED:-0}" -lt 2 ] || grep -q 'Skipping test because' "$CORE_LOG"; then
+    echo "bridge gate: Core replay matrix did not actually execute both tests" >&2
+    exit 1
+fi
+echo "[bridge gate] Core source matrix executed: ${CORE_PASSED}"
 
 echo "== [bridge gate] negative control: bridges compiled out =="
 NEGATIVE_BUILD_STARTED=1
