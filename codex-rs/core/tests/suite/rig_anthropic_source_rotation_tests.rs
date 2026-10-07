@@ -326,6 +326,87 @@ async fn run_rotation_cell(rotation: Rotation, replay: Replay, label: &str) -> R
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anthropic_source_rotation_preserves_or_degrades_opaque_per_dimension() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let cells = [
+        ("identical source", Rotation::Identical, Replay::Preserve),
+        (
+            "identical URL query",
+            Rotation::UrlQuery {
+                before: "sessionkey=private-one",
+                after: "sessionkey=private-one",
+            },
+            Replay::Preserve,
+        ),
+        (
+            "unknown URL query value",
+            Rotation::UrlQuery {
+                before: "sessionkey=private-one",
+                after: "sessionkey=private-two",
+            },
+            Replay::Degrade,
+        ),
+        (
+            "duplicate URL query value",
+            Rotation::UrlQuery {
+                before: "a=private-one&a=private-two",
+                after: "a=private-one&a=private-three",
+            },
+            Replay::Degrade,
+        ),
+        (
+            "duplicate URL query order",
+            Rotation::UrlQuery {
+                before: "a=private-one&a=private-two",
+                after: "a=private-two&a=private-one",
+            },
+            Replay::Degrade,
+        ),
+        (
+            "empty URL query value",
+            Rotation::UrlQuery {
+                before: "q=private-one",
+                after: "q=",
+            },
+            Replay::Degrade,
+        ),
+        (
+            "identical configured query",
+            Rotation::QueryParams {
+                before: "private-one",
+                after: "private-one",
+            },
+            Replay::Preserve,
+        ),
+        (
+            "configured query value",
+            Rotation::QueryParams {
+                before: "private-one",
+                after: "private-two",
+            },
+            Replay::Degrade,
+        ),
+        (
+            "empty configured query value",
+            Rotation::QueryParams {
+                before: "private-one",
+                after: "",
+            },
+            Replay::Degrade,
+        ),
+        (
+            "HTTP header value",
+            Rotation::HeaderValue("value-b"),
+            Replay::Degrade,
+        ),
+    ];
+    for (label, rotation, replay) in cells {
+        run_rotation_cell(rotation, replay, label).await?;
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn anthropic_endpoint_rotation_degrades_opaque_and_keeps_visible() -> Result<()> {
     skip_if_no_network!(Ok(()));
     let producing_server = MockServer::start().await;
