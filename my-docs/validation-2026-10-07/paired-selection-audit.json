@@ -1,0 +1,208 @@
+{
+  "logs": [
+    {
+      "schema_version": 1,
+      "complete_unambiguous": true,
+      "counts": {
+        "executions": 79,
+        "distinct_tests": 79,
+        "non_pass_executions": 47,
+        "non_pass_distinct_tests": 47,
+        "non_pass_unique_names": 47,
+        "statuses": {
+          "FAIL": 44,
+          "PASS": 32,
+          "TIMEOUT": 3
+        },
+        "repeated_result_lines": 47
+      },
+      "runs": [
+        {
+          "run_id": "ca48731e-4386-43ee-91a5-690c74beff32",
+          "expected_run_counts": [
+            79
+          ],
+          "observed_slots": 79,
+          "counted_executions": 79,
+          "statuses": {
+            "FAIL": 44,
+            "PASS": 32,
+            "TIMEOUT": 3
+          }
+        }
+      ],
+      "issues": [],
+      "changed_status_cases": [],
+      "source": {
+        "name": "ab2-baseline-79.log",
+        "sha256": "f64c7e3fcdc17d67c32650ea4f06fb66c8ce0e4ce6d479c5c70540a0eb0ba37b"
+      },
+      "non_pass_results_count": 47,
+      "non_pass_results_sha256": "418ae9241d06a69e8a6a10f619c5b824cb41e5fca827b623d594c5dc71c231be"
+    },
+    {
+      "schema_version": 1,
+      "complete_unambiguous": true,
+      "counts": {
+        "executions": 32,
+        "distinct_tests": 32,
+        "non_pass_executions": 15,
+        "non_pass_distinct_tests": 15,
+        "non_pass_unique_names": 15,
+        "statuses": {
+          "FAIL": 15,
+          "PASS": 17
+        },
+        "repeated_result_lines": 15
+      },
+      "runs": [
+        {
+          "run_id": "1ff4a7a5-1a29-4586-bb27-47f29ca803c4",
+          "expected_run_counts": [
+            32
+          ],
+          "observed_slots": 32,
+          "counted_executions": 32,
+          "statuses": {
+            "FAIL": 15,
+            "PASS": 17
+          }
+        }
+      ],
+      "issues": [],
+      "changed_status_cases": [],
+      "source": {
+        "name": "curr-only-32-rerun.log",
+        "sha256": "a4abf7e1b69f0d006530f059bfcf5743725692c677bba1d553cc04838581b9aa"
+      },
+      "non_pass_results_count": 15,
+      "non_pass_results_sha256": "480be6f763f57c888c4636e95fba0b919ce6c248e5c21ea9ec9ab0b1b16bd837"
+    },
+    {
+      "schema_version": 1,
+      "complete_unambiguous": true,
+      "counts": {
+        "executions": 17,
+        "distinct_tests": 17,
+        "non_pass_executions": 13,
+        "non_pass_distinct_tests": 13,
+        "non_pass_unique_names": 13,
+        "statuses": {
+          "FAIL": 13,
+          "PASS": 4
+        },
+        "repeated_result_lines": 13
+      },
+      "runs": [
+        {
+          "run_id": "82a153f0-ebdc-4ab1-887b-fd8e4287e7a1",
+          "expected_run_counts": [
+            17
+          ],
+          "observed_slots": 17,
+          "counted_executions": 17,
+          "statuses": {
+            "FAIL": 13,
+            "PASS": 4
+          }
+        }
+      ],
+      "issues": [],
+      "changed_status_cases": [],
+      "source": {
+        "name": "ab2-current-15.log",
+        "sha256": "20dd0c51a8885e139951bd96880f29c9fe9cef326540a5a6a3afb1206aa39728"
+      },
+      "non_pass_results_count": 13,
+      "non_pass_results_sha256": "81418769f40409e6e98b00292ef115801a1b3aa837ac2643c11a101a7275b4c3"
+    },
+    {
+      "schema_version": 1,
+      "complete_unambiguous": true,
+      "counts": {
+        "executions": 15,
+        "distinct_tests": 15,
+        "non_pass_executions": 12,
+        "non_pass_distinct_tests": 12,
+        "non_pass_unique_names": 12,
+        "statuses": {
+          "FAIL": 12,
+          "PASS": 3
+        },
+        "repeated_result_lines": 12
+      },
+      "runs": [
+        {
+          "run_id": "5325c1e5-c1c7-4cd1-af13-ff3bfcebdaaa",
+          "expected_run_counts": [
+            13
+          ],
+          "observed_slots": 13,
+          "counted_executions": 13,
+          "statuses": {
+            "FAIL": 12,
+            "PASS": 1
+          }
+        },
+        {
+          "run_id": "0728c91d-d1fb-4ab0-b115-a0a1564173c3",
+          "expected_run_counts": [
+            2
+          ],
+          "observed_slots": 2,
+          "counted_executions": 2,
+          "statuses": {
+            "PASS": 2
+          }
+        }
+      ],
+      "issues": [],
+      "changed_status_cases": [],
+      "source": {
+        "name": "final-paired.log",
+        "sha256": "ae8f3d5ef843ddaab740ceb7c16c2d8589935609f50f53df808c5e20d1a644cc"
+      },
+      "non_pass_results_count": 12,
+      "non_pass_results_sha256": "a1b4fb5f85e9d8face86844c450c7ef91c633ddef2218459d4db08e722060107"
+    },
+    {
+      "schema_version": 1,
+      "complete_unambiguous": true,
+      "counts": {
+        "executions": 13,
+        "distinct_tests": 13,
+        "non_pass_executions": 12,
+        "non_pass_distinct_tests": 12,
+        "non_pass_unique_names": 12,
+        "statuses": {
+          "FAIL": 12,
+          "PASS": 1
+        },
+        "repeated_result_lines": 12
+      },
+      "runs": [
+        {
+          "run_id": "a36ec4de-0214-4a38-83fb-7ffaffbe3c82",
+          "expected_run_counts": [
+            13
+          ],
+          "observed_slots": 13,
+          "counted_executions": 13,
+          "statuses": {
+            "FAIL": 12,
+            "PASS": 1
+          }
+        }
+      ],
+      "issues": [],
+      "changed_status_cases": [],
+      "source": {
+        "name": "curr13-samewindow.log",
+        "sha256": "fe36e11ee77f2c31b52ea4e658c5bbdf046258682f0794484fcb31bf894d84d4"
+      },
+      "non_pass_results_count": 12,
+      "non_pass_results_sha256": "09d765d4609fd1b4534a5d81b946afb8a37ebde29acc7f2a3dcfa41899436008"
+    }
+  ],
+  "detail_evidence": "Full result identities are retained in ignored logs/nextest-round3-*.json; this commit preserves input SHA/counts, conflicts and the omitted SIGABRT."
+}

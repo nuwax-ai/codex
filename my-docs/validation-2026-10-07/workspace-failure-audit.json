@@ -1,0 +1,330 @@
+{
+  "logs": [
+    {
+      "schema_version": 1,
+      "complete_unambiguous": true,
+      "counts": {
+        "executions": 21576,
+        "distinct_tests": 21576,
+        "non_pass_executions": 3064,
+        "non_pass_distinct_tests": 3064,
+        "non_pass_unique_names": 3063,
+        "statuses": {
+          "FAIL": 2059,
+          "PASS": 18512,
+          "SIGABRT": 1,
+          "TIMEOUT": 1004
+        },
+        "repeated_result_lines": 3064
+      },
+      "runs": [
+        {
+          "run_id": "7ef3e579-0f6b-414d-b476-53a57b2baa87",
+          "expected_run_counts": [
+            21576
+          ],
+          "observed_slots": 21576,
+          "counted_executions": 21576,
+          "statuses": {
+            "FAIL": 2059,
+            "PASS": 18512,
+            "SIGABRT": 1,
+            "TIMEOUT": 1004
+          }
+        }
+      ],
+      "issues": [],
+      "changed_status_cases": [],
+      "source": {
+        "name": "ws-20261006-round3.log",
+        "sha256": "e86d3443191b30ffbc5d935e5463684d90c8e6a1f99dda2e8d55b0d3d4bafbb1"
+      },
+      "non_pass_results_count": 3064,
+      "non_pass_results_sha256": "53d01c8bbf03db2f2aa77d4a102036ec913a98a09be7a69298a5511c0d200b18"
+    },
+    {
+      "schema_version": 1,
+      "complete_unambiguous": true,
+      "counts": {
+        "executions": 3064,
+        "distinct_tests": 3064,
+        "non_pass_executions": 2493,
+        "non_pass_distinct_tests": 2493,
+        "non_pass_unique_names": 2492,
+        "statuses": {
+          "FAIL": 2051,
+          "PASS": 571,
+          "TIMEOUT": 442
+        },
+        "repeated_result_lines": 2493
+      },
+      "runs": [
+        {
+          "run_id": "95610ac8-7ba5-4203-9984-202d0ee1dcf8",
+          "expected_run_counts": [
+            400
+          ],
+          "observed_slots": 400,
+          "counted_executions": 400,
+          "statuses": {
+            "FAIL": 1,
+            "PASS": 194,
+            "TIMEOUT": 205
+          }
+        },
+        {
+          "run_id": "9f2d0b0c-8080-4c35-b230-06edd165887d",
+          "expected_run_counts": [
+            401
+          ],
+          "observed_slots": 401,
+          "counted_executions": 401,
+          "statuses": {
+            "FAIL": 30,
+            "PASS": 194,
+            "TIMEOUT": 177
+          }
+        },
+        {
+          "run_id": "b12985df-a32f-4371-bb27-a6cc9c38a54d",
+          "expected_run_counts": [
+            401
+          ],
+          "observed_slots": 401,
+          "counted_executions": 401,
+          "statuses": {
+            "FAIL": 364,
+            "PASS": 12,
+            "TIMEOUT": 25
+          }
+        },
+        {
+          "run_id": "589d0ceb-40f1-457a-85ce-28f65042e6a0",
+          "expected_run_counts": [
+            400
+          ],
+          "observed_slots": 400,
+          "counted_executions": 400,
+          "statuses": {
+            "FAIL": 345,
+            "PASS": 50,
+            "TIMEOUT": 5
+          }
+        },
+        {
+          "run_id": "7be44e3f-7a10-4c6b-bb27-c558c358505e",
+          "expected_run_counts": [
+            400
+          ],
+          "observed_slots": 400,
+          "counted_executions": 400,
+          "statuses": {
+            "FAIL": 396,
+            "PASS": 1,
+            "TIMEOUT": 3
+          }
+        },
+        {
+          "run_id": "4793578e-5739-49dd-97f8-13dc9ae2da5a",
+          "expected_run_counts": [
+            400
+          ],
+          "observed_slots": 400,
+          "counted_executions": 400,
+          "statuses": {
+            "FAIL": 382,
+            "PASS": 11,
+            "TIMEOUT": 7
+          }
+        },
+        {
+          "run_id": "0f4d1535-7866-4ca0-8b5a-dfd72bb10911",
+          "expected_run_counts": [
+            400
+          ],
+          "observed_slots": 400,
+          "counted_executions": 400,
+          "statuses": {
+            "FAIL": 393,
+            "PASS": 4,
+            "TIMEOUT": 3
+          }
+        },
+        {
+          "run_id": "d3871d95-2403-4d6d-8a9d-8274a075e563",
+          "expected_run_counts": [
+            262
+          ],
+          "observed_slots": 262,
+          "counted_executions": 262,
+          "statuses": {
+            "FAIL": 140,
+            "PASS": 105,
+            "TIMEOUT": 17
+          }
+        }
+      ],
+      "issues": [],
+      "changed_status_cases": [],
+      "source": {
+        "name": "ws3-rerun-positional.log",
+        "sha256": "e12ef8edc098c90d512a6ea79057c31d84d99ddbfb455a472e40c06bd7d45eed"
+      },
+      "non_pass_results_count": 2493,
+      "non_pass_results_sha256": "351c5c9b20c2b74fb1b0f324f4bebb378695bb033d8047e3fcd55810525d5036"
+    },
+    {
+      "schema_version": 1,
+      "complete_unambiguous": true,
+      "counts": {
+        "executions": 2493,
+        "distinct_tests": 2493,
+        "non_pass_executions": 328,
+        "non_pass_distinct_tests": 328,
+        "non_pass_unique_names": 328,
+        "statuses": {
+          "FAIL": 272,
+          "PASS": 2165,
+          "TIMEOUT": 56
+        },
+        "repeated_result_lines": 328
+      },
+      "runs": [
+        {
+          "run_id": "99a4400b-9439-4314-9d36-f7676056a7be",
+          "expected_run_counts": [
+            400
+          ],
+          "observed_slots": 400,
+          "counted_executions": 400,
+          "statuses": {
+            "FAIL": 5,
+            "PASS": 357,
+            "TIMEOUT": 38
+          }
+        },
+        {
+          "run_id": "ad9cb7ea-7d1b-498b-9378-9cc76bb5b936",
+          "expected_run_counts": [
+            401
+          ],
+          "observed_slots": 401,
+          "counted_executions": 401,
+          "statuses": {
+            "FAIL": 104,
+            "PASS": 287,
+            "TIMEOUT": 10
+          }
+        },
+        {
+          "run_id": "b0ebbe3a-ccee-47b9-8a2d-b943412ce916",
+          "expected_run_counts": [
+            400
+          ],
+          "observed_slots": 400,
+          "counted_executions": 400,
+          "statuses": {
+            "FAIL": 3,
+            "PASS": 397
+          }
+        },
+        {
+          "run_id": "adb47d97-434e-4023-b8d1-efa09e1908f7",
+          "expected_run_counts": [
+            400
+          ],
+          "observed_slots": 400,
+          "counted_executions": 400,
+          "statuses": {
+            "FAIL": 18,
+            "PASS": 382
+          }
+        },
+        {
+          "run_id": "47efb459-db1a-47b9-9be9-98efd4326a55",
+          "expected_run_counts": [
+            400
+          ],
+          "observed_slots": 400,
+          "counted_executions": 400,
+          "statuses": {
+            "FAIL": 22,
+            "PASS": 378
+          }
+        },
+        {
+          "run_id": "c6a94587-0d50-4670-8316-3f24ee66693c",
+          "expected_run_counts": [
+            400
+          ],
+          "observed_slots": 400,
+          "counted_executions": 400,
+          "statuses": {
+            "FAIL": 77,
+            "PASS": 319,
+            "TIMEOUT": 4
+          }
+        },
+        {
+          "run_id": "7ca72a22-e853-4f7c-8680-ecfe68a9f2f7",
+          "expected_run_counts": [
+            92
+          ],
+          "observed_slots": 92,
+          "counted_executions": 92,
+          "statuses": {
+            "FAIL": 43,
+            "PASS": 45,
+            "TIMEOUT": 4
+          }
+        }
+      ],
+      "issues": [],
+      "changed_status_cases": [],
+      "source": {
+        "name": "ws3-rerun-t2.log",
+        "sha256": "15d07524e7d57405222c69ceaa47d0ae8a9013b34e2145ceed88f2a65a939153"
+      },
+      "non_pass_results_count": 328,
+      "non_pass_results_sha256": "7e68bad0fcd87a193375b817061b8fd24548991d4bc4ea993b7977a2b23f9d00"
+    }
+  ],
+  "failure_classification": {
+    "initial_failure_distinct_tests": 3064,
+    "stages": [
+      {
+        "source": {
+          "name": "ws3-rerun-positional.log",
+          "sha256": "e12ef8edc098c90d512a6ea79057c31d84d99ddbfb455a472e40c06bd7d45eed"
+        },
+        "recovered_distinct_tests": 570,
+        "remaining_distinct_tests": 2494,
+        "extra_tests_outside_initial_failures": [
+          {
+            "binary": "codex-tui",
+            "name": "chatwidget::tests::permissions::permissions_selection_hides_auto_review_when_feature_disabled_even_if_auto_review_is_active"
+          }
+        ],
+        "mixed_outcome_tests": []
+      },
+      {
+        "source": {
+          "name": "ws3-rerun-t2.log",
+          "sha256": "15d07524e7d57405222c69ceaa47d0ae8a9013b34e2145ceed88f2a65a939153"
+        },
+        "recovered_distinct_tests": 2165,
+        "remaining_distinct_tests": 329,
+        "extra_tests_outside_initial_failures": [],
+        "mixed_outcome_tests": []
+      }
+    ],
+    "remaining_with_rerun_result": 328,
+    "never_rerun": [
+      {
+        "binary": "codex-core",
+        "name": "guardian::tests::guardian_ephemeral_retry_preserves_parallel_trunk_and_fork_history"
+      }
+    ]
+  },
+  "detail_evidence": "Full result identities are retained in ignored logs/nextest-round3-*.json; this commit preserves input SHA/counts, conflicts and the omitted SIGABRT."
+}

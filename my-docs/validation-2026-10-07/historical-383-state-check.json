@@ -1,0 +1,13 @@
+{
+  "historical_rows": 383,
+  "historical_statuses": {
+    "t2_still_failed": 249,
+    "initial_passed": 34,
+    "r1_passed": 11,
+    "t2_passed": 89
+  },
+  "historical_attribution_still_unknown": 201,
+  "last_paired_failure_sets_equal": true,
+  "last_paired_failed_identities": 12,
+  "scope": "Result metadata only; no root-cause or whole-workspace regression conclusion."
+}
