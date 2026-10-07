@@ -662,3 +662,6 @@ mod identity_tests;
 
 #[path = "rig_anthropic_credential_instance_tests.rs"]
 mod credential_instance_tests;
+
+#[path = "rig_anthropic_source_rotation_tests.rs"]
+mod source_rotation_tests;
