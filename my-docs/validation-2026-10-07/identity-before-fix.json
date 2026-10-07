@@ -1,0 +1,46 @@
+{
+  "head": "47dabce9b3ffde8beb60d9ce30fe99e1a7080bfc",
+  "phase": "tested before final lint/fmt",
+  "code_sha256": {
+    ".github/workflows/fork-cargo-pr.yml": "eec3824da5223b0bbe4f5dda9d647a3e1aca4488b8c883616c612d39a3b8ad8b",
+    "codex-rs/cli/src/main.rs": "5e51acfef22c32161d20d71bbe321316a01949cc34d4c72a81a8ea3421957fdc",
+    "codex-rs/cli/tests/queue_writer_lifecycle.rs": "e84ec71fd481cf56b18ede84b601f9c6c68827979855041f6801e1ab7dbd46a5",
+    "codex-rs/core/tests/suite/rig_anthropic_hosted_tools.rs": "837051f82abba3fa7f8474aa3df85e584230a807d7c4f18fc41f3f8b23bd1ef4",
+    "codex-rs/core/tests/suite/rig_anthropic_source_rotation_tests.rs": "420a3bc6e58d0ffc2cbe5f66809ed37aa223768d2761d5ef6d818d9341d416e7",
+    "defs.bzl": "da73ca6c59f0c7d0c656ffe06e7fe28d81ffa46edd8edf5b208f409b3146d1db",
+    "scripts/bazel_bridge_gate.sh": "0237b994db5072baa69f4260a2f2a7ad3e6171a424f093a7797395eb42428584",
+    "scripts/d4_stage_profiling.py": "a986af4ff61aa18f1e6e2d7eb30426142626ceec49b774f24800de8c21b2432d",
+    "scripts/d4_stage_profiling_tests.py": "a49139bf2528f2e449e799caba00a81c57d70f7989f5feb51644c567f5f9de19",
+    "scripts/d4_websocket.py": "49af3c381088a80170691695c641ea06caf62ab748031d9320d2812feb6af2fc",
+    "scripts/d4_websocket_tests.py": "7d074419b8bd80de0ef6be44e276e02d4bfa5493db1403fdbcb954d30c4b0992",
+    "scripts/nextest_log_summary.py": "f86e4166a356fc14b933da0d4642827170d1c9e21df1a54844a64deb589d8684",
+    "scripts/nextest_log_summary_tests.py": "ac9b28fa1de7db9f8f8a60d2a8cd4883f107899bdf39864e231ef07dd4ebf160"
+  },
+  "binaries": {
+    "/Volumes/soddygo/git-workspace/codex-targets/validation-20261005/debug/codex": {
+      "sha256": "7ba1324d63f43c2d75d98c7ff73885c04b164727053d84dad048cff8c290935a",
+      "bytes": 669553880
+    },
+    "/Volumes/soddygo/git-workspace/codex-targets/validation-20261005/debug/codex-app-server": {
+      "sha256": "f8eb7613429cf55abd7efd15a8528173465de5e80c7f569e6a790cd56eb6dddf",
+      "bytes": 524330384
+    },
+    "/Users/soddy/Library/Caches/bazel/_bazel_soddy/0821eca3c77fd15cf3c4df911f4d636b/execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/codex-rs/core/core-all-test-bin": {
+      "sha256": "b7b5c1ac79b14bdff615e71e07b32ce133c852cf26eabdf35d553f8265393b71",
+      "bytes": 485304656
+    }
+  },
+  "results": {
+    "cargo_public_cli_and_abort_pass": 4,
+    "cargo_bridge_skip_guard": 2,
+    "bazel_source_tests_pass": 2,
+    "bazel_source_cells": 11,
+    "bazel_skills_canary_pass": 177,
+    "python_d4_pass": 22,
+    "python_outcome_parser_pass": 8,
+    "actual_local_transport_handshakes_pass": 3,
+    "bridge_gate_exec_pass": 19,
+    "bridge_gate_core_pass": 2,
+    "real_vendor_requests": 0
+  }
+}

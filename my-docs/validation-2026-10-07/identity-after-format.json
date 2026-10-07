@@ -1,0 +1,29 @@
+{
+  "base_head": "47dabce9b3ffde8beb60d9ce30fe99e1a7080bfc",
+  "phase": "after final lint/fmt; tests not repeated",
+  "code_sha256": {
+    ".github/workflows/fork-cargo-pr.yml": "eec3824da5223b0bbe4f5dda9d647a3e1aca4488b8c883616c612d39a3b8ad8b",
+    "codex-rs/cli/src/main.rs": "5e51acfef22c32161d20d71bbe321316a01949cc34d4c72a81a8ea3421957fdc",
+    "codex-rs/cli/tests/queue_writer_lifecycle.rs": "2ce8b6490e2f38ee2efa160747a194da085d07c893302afa7dc7f49cd637c5f2",
+    "codex-rs/core/tests/suite/rig_anthropic_hosted_tools.rs": "837051f82abba3fa7f8474aa3df85e584230a807d7c4f18fc41f3f8b23bd1ef4",
+    "codex-rs/core/tests/suite/rig_anthropic_source_rotation_tests.rs": "364f49ebf4680bc9ce83aa8303d515d188d10556fb23352ddc750f6c02f73812",
+    "defs.bzl": "da73ca6c59f0c7d0c656ffe06e7fe28d81ffa46edd8edf5b208f409b3146d1db",
+    "scripts/bazel_bridge_gate.sh": "0237b994db5072baa69f4260a2f2a7ad3e6171a424f093a7797395eb42428584",
+    "scripts/d4_stage_profiling.py": "d7e325d448312377a996ac145d3808edcf7143fa6ca12b3a2bb3b28ef545f303",
+    "scripts/d4_stage_profiling_tests.py": "a49139bf2528f2e449e799caba00a81c57d70f7989f5feb51644c567f5f9de19",
+    "scripts/d4_websocket.py": "9e435d40f3f7a748188dde794aa37d969f8ce4e9f463ab03087b0b3d5e741e0a",
+    "scripts/d4_websocket_tests.py": "65529b5c49d851f5f4890496bd6090f10b6f21642f2864f8e087b8af19dd4357",
+    "scripts/nextest_log_summary.py": "7cf1d5d8a7a785f5036ac26bdf04b528bec3e16d18be97e6892f77f5c3247918",
+    "scripts/nextest_log_summary_tests.py": "138c0a2760fa7e3afa3c713f204140b11e96d3a025c607ea0282ce6235a40bb6"
+  },
+  "changed_by_final_formatting": [
+    "codex-rs/cli/tests/queue_writer_lifecycle.rs",
+    "codex-rs/core/tests/suite/rig_anthropic_source_rotation_tests.rs",
+    "scripts/d4_stage_profiling.py",
+    "scripts/d4_websocket.py",
+    "scripts/d4_websocket_tests.py",
+    "scripts/nextest_log_summary.py",
+    "scripts/nextest_log_summary_tests.py"
+  ],
+  "saved_code_commit": "d84faf2ecdbb0c88260138fd035ae0e38e930e5c"
+}
