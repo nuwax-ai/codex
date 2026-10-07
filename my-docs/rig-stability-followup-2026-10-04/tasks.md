@@ -33,7 +33,11 @@
 - [ ] D4 部分验收：2026-10-05 新机低载冷/热对照历史 6/6 通过；高载 spawn-to-ready、dyld/签名成本及各 RPC 阶段 profiling 未完成。不得把全部 initialize 失败归因负载，不扩大 deadline。2026-10-06 loaded 无订阅用 unsubscribe ACK + loaded/list 断言证明前置状态。
 - [x] Bazel 桥长期门禁（2026-10-06 Claude 轮）：`//:enable_model_bridges` flag + core crate_features select + scripts/bazel_bridge_gate.sh（nuwax_env 三线 19/19 真实执行 + 关桥负控零连接，本机 exit 0）+ just bazel-bridge-gate + fork-cargo-pr.yml job（review diff，未 dispatch）。383 例历史失败仅部分抽样/归因；单跑通过和环境相关性不能代表全部关闭——详见 other-computer-validation-results.md 2026-10-06 节。
 - [ ] 本地 compact “加密摘要漏戳”归因已撤销；只生成可见 summary。未知 checkpoint 的 client-wide 来源猜测回填已删除，guardian 原 envelope 来源传递及正/负回放测试保留。deferred_executor 有既有 flake 证据，但负载因果和配对 A/B 尚未完成。
-- [ ] D5 当前边界（2026-10-06 校正）：Chat/Anthropic live 触顶、Step 双协议有 2026-10-05 历史证据；workspace 历史 21,561 run / 21,178 pass / 270 fail / 113 timeout，383 例未全部定性。Bazel 已安装，2026-10-06 独立复审补齐 Core bridge feature（此前 build 通过但第三方请求失败），实际三协议 mock 复验单列。Responses live 触顶、Linux/Windows、加密引用、跨进程 opaque 和远程 CI 尚未完成；不自动厂商调用或 CI dispatch。
+- [x] 配对 A/B 执行与状态登记（2026-10-06 第三轮）：基线 worktree 8017fb76c vs 当前树，同 119 集三轮失败集合一致，20 项附环境证据（fake-ip DNS 18+decider、brew cask 1）；当时通过的用例部分在后续 workspace 复跑再次失败，保留波动及窗口边界。撤回 TLS 首建与无 IMDS 两个不当归因。此项仅完成限定集合配对，不代表全部失败根因关闭。
+- [x] 同进程独立旋转矩阵（2026-10-06 第三轮）：identical/same-query 正例+query×3/header/endpoint 独立负例（credential 由既有测试覆盖），全绿；Anthropic thinking 降级整块不回线为既有设计（replay_reasoning 需原签名 envelope）。
+- [x] writer 生命周期契约+回归（2026-10-06 第三轮）：观测契约（writer=thread 排他文件锁持有者、50ms 探针、per-home 隔离、不可证明项如实登记）+ queue_writer_lifecycle 回归（enqueue 全程探针、退出后锁空闲、goal/set 真实持锁释放）。
+- [ ] cap Step0 决策提案已交付（cap-partial-usage-step0-decisions-2026-10-06.md，D1-D5），过审前不实施。
+- [ ] D5 当前边界（2026-10-07 独立复算纠正）：完整 workspace 已执行（retries=0/排除 live：21,576 run=18,512 pass/2,060 fail/1,004 timeout/68 skip；fail 含 SIGABRT 1）。原 3,062 名分类记录漏 SIGABRT 且合并跨 binary 同名，按完整身份应为 **3,064 失败 → 恢复 570 → 再恢复 2,165 → 本次仍败 328 + 未复跑 SIGABRT 1**。历史 383 状态逐项复验一致（本次仍败249/首试通过34/两级复跑通过100），其中 **201 项仍未归因、20 项附环境证据、28 项先前 A/B 通过后再次失败**，根因与门禁保持开放。所选79项未发现持续树差异，不能代表全套零回归或证明负载因果。工具 scripts/nextest_log_summary.py、脱敏聚合 logs/nextest-round3-{audit,paired-audit}.json 与报告纠正节可复核。Responses live 触顶、Linux/Windows、加密引用、跨进程 opaque、远程 CI 仍开放；Bazel skills177/177含投毒HOME复跑为macOS证据，行政archive新增单测为限定字段传递证据，D4测量与归因另由独立复审判断。
 - [ ] D6 仅设计、未实施、P0 人工复审开放：以修订后的 d6-pause-budget-token-aware-spec.md / plan.md 为准，LegacyBytes 或完整实际载荷/framing 的 ExactTokens/ProvenUpperBound，KeepWholeOrFail。禁止 bytes/4、经验分位数充当证明；未经产品裁决不启用 token 硬限，不改 40,960-byte fail-fast、不删块或截断签名、不改写旧 rollout。
 
 
@@ -99,3 +103,7 @@
 ## 2026-10-06 Codex 第二轮复审
 
 当前基线8017fb76c，阶段保存与实测见 other-computer-validation-results.md 新增第二轮节。后续按 ../claude-code-followup-2026-10-06-round2.md；新增 cap Spec/Plan 与 D6 均未实施，不能勾选产品能力。
+
+## 2026-10-07 完成路线
+
+以最新独立复审和 claude-code-completion-plan-2026-10-07.md为准：2个实质功能（cap、D6）与6个验收/稳定性包。writer loaded-owner正校准已补、Anthropic11场景实际wire仍待本轮执行；旧HOME canary根错误已纠正，D4采样不等于真实warm/根因闭合。未批准cap方案、P0 token证明、201根因、平台/厂商/CI均不勾选。

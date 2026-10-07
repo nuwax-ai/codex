@@ -350,3 +350,148 @@ git diff --check
 下一轮按 [Claude Code 第二轮后续任务](claude-code-followup-2026-10-06-round2.md)，所有历史“完整矩阵/383都归因/严格A/B更优/本地第四缺陷”声明以独立复审校正为准。未push、真实厂商、完整workspace、跨平台或CI dispatch。
 
 第二轮最终Bazel19/19及零连接负控通过，公开产物恢复on；Python8/8和实际stdio初始化通过。final scoped fix/fmt/diff-check通过，之后无tests。源码/实际bin SHA与阶段commit明细见第二轮报告，所有测试都是macOS本地mock/stdio；完整workspace/厂商/跨平台/CI未验证。
+
+## 2026-10-06 Claude 第三轮（round2 followup：配对 A/B、独立旋转、writer 契约、Step0 提案）
+
+基线：HEAD `47dabce9b`（Codex 二轮收尾），工作树起步干净。本轮未 commit/push、未完整 workspace、未厂商调用、未 CI dispatch。
+
+### 批 1：383 历史失败逐项归因 + 真正配对 A/B（P1）
+
+- **配对 A/B**：独立 worktree checkout 基线 `8017fb76c`（codex-tmp/ab-baseline，未触碰工作树）vs 当前树，同 119 测试集（六优先类全集）、同参数（--offline --locked --retries 0 --test-threads 1、--features codex-core/rust-rig、同 6 包、同环境、独立 target）。顺序 BASE→BASE→CURR（首轮 CURR 因我新测试文件两处类型错误编译失败，修复后补跑；两次 BASE 之间负载 7.2–10.9 交错）。
+- **结果：三轮失败集合逐名对比零差异**（BASE r1/r2 与 CURR r3 各 99 pass / 20 fail，comm 为空）→ 20 项失败全部为既有问题，无回归。
+- **20 项逐类**：network-proxy 18 + decider 1 = fake-ip DNS 直接证据（api.github.com→198.18.1.89、example.com→198.18.4.139 实测；policy.rs:518 自断言 198.18.0.1 非公网）；install-context 1 = 本机真实 brew cask（/opt/homebrew/bin/codex→Caskroom/0.160.0 实测符号链接）。
+- **flaky 类当前不可复现**（两树三轮全 PASS）：mcp_grace×4（0.18-0.36s）、deferred guardian（0.26s）、exec-server registration/direct/noise/oauth_http 全部、otel×6（~3.0s）、aws-auth imds。**撤回**此前"macOS TLS 首建 ~1s"与"无 IMDS 环境"两个不当归因（配对数据否定）。历史高载关联只登记时序、不写因果。
+- 其余 ~300 项（tui/app-server guardian_v2/realtime/unified_exec 等）保持**未归因**（本轮未获完整 workspace 授权）。
+- 交付：`my-docs/validation-2026-10-06-round2/historical-failure-attribution.md`（逐类表+证据链+纪律说明）。
+
+### 批 2：opaque 独立旋转分支 + writer 生命周期（P1）
+
+- **同进程 Core 公共路径旋转矩阵**（新文件 `core/tests/suite/rig_anthropic_source_rotation_tests.rs`，挂 rig_anthropic_hosted_tools）：单 producer 会话产出带签名 thinking 的历史；同进程第二会话 resume 同一 rollout、**每次只旋转一维**。cells：identical 正例（opaque 保留）、same-query 正例（query 存在是 scope 化而非禁止——同 query 保留）、未知 query 名/重复 query/空 query 值三个独立负例、http header 值旋转负例；credential 旋转由既有 credential_instance 测试覆盖不重复。endpoint 旋转单列（换网关、同凭据）：签名降级+可见 text 保留+rollout 只追加。全部断言真实 wire（含 model/query/header）、可见保留、旧 rollout 字节不改写。**测试开发中修正一处自身断言错误**：Anthropic 降级后 thinking 块整体不回线（replay_reasoning 明确要求原签名 envelope），可见性断言改用普通 text 消息——这是产品既有设计而非缺陷。
+- **writer 生命周期观测契约 + 最小回归**（`my-docs/queue-writer-lifecycle-contract-2026-10-06.md` + `cli/tests/queue_writer_lifecycle.rs`）：契约定义 writer=持有 thread 排他文件锁的进程、四类可观测事件、50ms 探针粒度、per-home 隔离（与被否决的 pgrep 相反）、以及契约不能证明的（flock 无持有者 PID；"任何时刻绝无"需内核级观测，本契约给组合证据）。回归：活 owner 下真实 CLI enqueue 全程探针轮询、客户端退出后锁空闲（无泄漏第二 writer）、owner 经 thread/goal/set（thread_goal_user_context 持锁路径）完成真实写入后释放、enqueue 仍在 owner 队列。
+- 行政八组合缺口清单（按交接要求列出、不折算 cell 数）：queue 的 install-method×daemon×运行态组合、brew/vite-plus/pnpm/bun 其余 install source、完整 corrupted/incomplete×四命令（当前 corrupted 仅 archive+显式屏蔽已测）均未覆盖，留后续批。
+
+### 批 3：cap 第 0 步兼容决策提案（P1，未实施）
+
+`my-docs/cap-partial-usage-step0-decisions-2026-10-06.md`：D1 rollout Partial 表示（建议新 TurnItem 变体、legacy 不落、上限沿用碎片硬上限）；D2 bridge 失败前提取终止帧 usage→CapExhausted{usage:Option}（未知=None 非 0）；D3 exec TurnFailedEvent 可选 usage/partial_items 字段（旧消费者忽略）；D4 app-server 在 turn/completed(failed) payload 加可选 usage、不改 ThreadUsage 必填数字本体；D5 partial 不升级为成功结果。明确不做清单与过审后 1→6 步顺序。**未过审不实现**。
+
+### 批 4/5（P2/P0）
+
+- D4 脚本现状（Codex 已修 stdio 初始化计时）确认；websocket/daemon bind 阶段扩展与冷/热对比**未做**（另立项，避免本轮膨胀）。
+- Bazel gate 复核：83be3c3e4 保留具名三 wire + 非零数 + backlog 清空负控；本机仅 macOS 边界维持。
+- D6：候选清单全部 Unverified 状态维持，未实施 token-aware，P0 开放。
+
+### 本轮测试证据
+
+| 批 | 命令（同前缀 just，隔离 target codex-targets/ab-current） | 结果 | 日志 |
+|---|---|---|---|
+| 配对 A/B | 见上文六包 119 集 ×3 轮 | 三轮失败集合零差异（99/20） | codex-tmp/ab-paired/ |
+| 旋转矩阵 | `-E 'test(anthropic_source_rotation) | test(anthropic_endpoint_rotation_degrades)' -p codex-core --features codex-core/rust-rig --retries 0` | 2/2 pass（7 cells+endpoint） | codex-tmp/batch2-run2/3.log |
+| writer 生命周期 | `-E 'binary(queue_writer_lifecycle)' -p codex-cli --retries 0` | 1/1 pass | 同上 |
+| 完整 fork 图（首轮） | Codex 二轮同图 + 3 新测试 | 1203 run / 1144 pass / 59 fail——59 全部为新隔离 target 缺辅助二进制（codex-code-mode-host 需 V8 pair env；test_stdio_server/test_streamable_http_server）的基础设施错误，非产品失败 | codex-tmp/final-graph.log |
+| 辅助二进制补建 | `cargo build -p codex-code-mode-host --bin codex-code-mode-host`、`cargo build -p codex-rmcp-client --bin test_stdio_server --bin test_streamable_http_server`（--offline --locked，V8 pair env） | exit 0 | — |
+| 完整图复跑+定向 | 同图重跑 1172 pass/31 fail（仍缺 rmcp helper）；随后对 31 失败的超集定向复跑 | **55/55 pass，0 fail**——含 astra_refreshes（其首轮 wiremock 期望失败亦随 helper 就绪消失） | codex-tmp/final-graph2.log、graph3-targeted.log |
+
+失败与复验（全部保留首轮记录）：①旋转测试首轮 visible 断言错误——Anthropic 降级后 thinking 整块不回线是 replay_reasoning 的既有设计（"Anthropic still requires its original signed envelope"），改用普通 text 消息断言；②writer 测试首轮锁目录不存在（probe 自建目录后过）；③A/B 首轮 CURR 编译失败（HashMap/RedactedString 两类型错）；④完整图两轮 59→31 失败均为新隔离 target 缺辅助二进制的基础设施错误（按交接规则补建后不算产品失败），补建后定向复跑 55/55。去重口径：完整图 1203 中 1172 首轮直接通过 + 31 经补建复验通过；另有定向 55 与图内 31 为同一集合的超集复跑，不重复计数。
+
+## 2026-10-06 用户复查轮：代码自查与交接完成度盘点
+
+### 代码自查发现并已修复的问题
+
+1. **writer 测试探针样本无断言（死代码）**：原 `let _ = samples;` 收集后丢弃。修复为两条实义断言：探针必须至少采样一次；客户端 enqueue 全程**无任何进程持有 thread writer 锁**（含客户端自身）——这正是"短暂第二 writer 检测"的可观测实现。
+2. **旋转测试缺 wire model 断言**：补 `captured.len()==2` 与 produce/resume 请求 model 相等断言；endpoint 测试补"恰一请求到达新网关"。
+3. prober 任务类型标注、死变量 `seen`/`#[allow(unreachable_code)]` 移除、`use std::fs::File` 未用导入清理、`ThreadId::from_string().unwrap().to_string()` 无谓往返简化。
+4. 修复后 3/3 全绿（review-fix-run2.log）；随后 scoped fix（1 处机械 lint 修正）+fmt+diff-check exit 0，fix 后仅做编译校验（0 error）未重跑测试，clippy 修正为机器适用级、语义中性。
+5. tracked `.snap.new` 在测试运行后再次被清理命令波及（D）——已从 HEAD 恢复并确认字节完整。
+
+### 交接批 1 缺口补齐
+
+- 新增 **383 项逐项标注文件**（historical-failures-per-item-labels.md）：fork 缺陷 3、fork 语义 2、fixture 1、已确认环境 22、flaky 32、**未归因 323**（本轮未复验，需完整 workspace 授权）。此前只有类级表，不满足"把每项标成"的字面要求。
+
+### 交接完成度诚实盘点（未完成项明示）
+
+| 交接项 | 状态 | 未完成原因/边界 |
+|---|---|---|
+| 批1 逐项归因+配对A/B | **完成**（含本轮逐项文件） | 323 项未归因——完整 workspace 未授权 |
+| 批2 独立旋转+writer 契约 | **完成**（旋转 8 cells+模型断言、契约+回归） | 行政 queue install-method×运行态、其余 install source、完整 corrupted/incomplete 矩阵未覆盖（已列清单） |
+| 批3 cap Step0 | **提案已交付**，实施被 Spec 前置门控（"未过审不实现"） | D1-D5 需产品过审 |
+| 批4 D4 daemon/websocket bind 阶段 | **未做**（stdio 阶段已由 Codex 修） | 需新 bind 报告+RPC 阶段+冷/热对比；本轮显式延期避免膨胀 |
+| 批4 skills home Bazel 并行场景 | **未跑** | 需 bazel test 下运行场景测试（仅 macOS 本机证明 cargo 路径） |
+| 批4 Windows 原生 Ctrl-C | **未做** | 平台不可执行（macOS）；Unix kill 测试已有，不能替代（交接明示） |
+| 批5 D6 | **状态维持**（全 Unverified、P0 开放） | 按设计不实施 |
+| 完整 workspace 复验 | **未申请** | 按交接需小批全绿后另行申请授权 |
+
+## 2026-10-06 用户推动轮：skills Bazel、D4 websocket、完整 workspace
+
+用户授权完整 workspace 测试并要求继续未完成项。本轮已落地：
+
+### 批4 skills home Bazel 并行场景（macOS 侧关闭）
+
+- 命令：`bazelisk --output_user_root=/Volumes/soddygo/git-workspace/codex-targets/bazel-root test //codex-rs/ext/skills:skills-unit-tests //codex-rs/ext/skills:skills-skills_extension-test //codex-rs/ext/skills:skills-executor_file_system_authority-test --test_output=errors`
+- 首轮：3/3 目标 PASSED（真实编译 4,272 actions：2,702 disk-cache 命中 + 新编译 crate/test bins；darwin-sandbox 执行）。**逐二进制计数：unit 146 + skills_extension 21 + executor_file_system_authority 10 = 177/177**——与 Codex 复验口径同集合；同进程并行线程 + 三目标 Bazel 级并行均真实发生（skills_extension 0.9s、unit 0.4s、executor 0.2s 交叠执行）。日志 codex-tmp/bazel-skills-20261006.log。
+- **历史HOME复跑（投毒路径需校正）**：`--test_env=HOME=/Volumes/soddygo/git-workspace/codex-tmp/canary-home`（预置 `.claude/skills/canary-leak-probe` 与 `.codex/skills/canary-leak-probe` 两处 canary 技能）+ `--cache_test_results=no --runs_per_test=3`：3/3 目标 × 3 次重复全过——canary没有放在实际用户根`.agents/skills`，因此不能由这批证明实际root无泄漏。2026-10-07 Codex补该真实根canary，三目标177个用例通过，见新独立审查。
+- 边界：Windows 平台仍开放（OrbStack Docker 仅 Linux 容器，不能提供 Windows 内核；Windows 容器需 Windows 宿主）。
+
+### 批4 D4 websocket/daemon bind 阶段（历史采样；根因与真实warm路径未闭合）
+
+- `scripts/d4_stage_profiling.py` 扩展为三模式：stdio（原样保留，4 项既有单测不动）/ **websocket**（banner 即 bind 报告：stderr `listening on: ws://host:port`，绑定后立即打印、port 0 上报实际端口；随后 TCP connect、`/readyz` HTTP 往返、ws upgrade、initialize 全阶段计时）/ **unix_socket**（控制套接字 rendezvous 路径出现 = bind 证据；UDS connect、ws-over-UDS upgrade、initialize 计时；readyz 明确 `not_applicable`）。纯函数（ANSI 剥离、banner 解析、RFC6455 客户端帧编解码、握手构造）+ `WebSocketClient`（stdlib 实现，无 Origin 头、应答 ping、掩码正确）。单测 4→14（scripts 下 `python3 -m unittest d4_stage_profiling_tests`，14/14 OK，2026-10-06）。
+- **高载实测**（workspace 套件并发执行中，load≈21.8–22.0，binary=当前树 validation-20261005/debug/codex-app-server，2026-10-06 22:19 构建）：
+  - websocket 4 样本：bind_report 0.314–0.482s；tcp_connect 0.4–1.7ms；readyz 2.0–7.1ms；ws_upgrade 1.0–5.5ms；initialize 7.2–75.6ms（首样本 75.6ms 为进程首执行冷效应，后续 7–11ms）；total 0.34–0.50s。
+  - unix_socket 4 样本：bind（socket 文件出现）0.095–0.118s；UDS connect 0.04–0.15ms；ws_upgrade 0.66–0.96ms；initialize 6.5–11.0ms；total 0.10–0.13s。
+  - 原始 JSONL：codex-tmp/d4-websocket-highload-20261006.jsonl、d4-unix-highload-20261006.jsonl。
+  - **初步结论**：load≈22 下两传输的 bind+initialize 全链路 <0.5s，bind 阶段不是历史 10.6s initialize 超时的稳定负载解释；UDS bind 较 ws banner 快约 3–4×（ws 路径含 axum router/policy 构建后的 banner）。低载（load 7.5）采样已于 10-07 补做，采样覆盖不同load窗口，但每个样本都新spawn+新home，不是loaded-runtime warm对照；根因未闭合。
+
+### 行政命令 daemon 策略：`codex archive` 家族纳入
+
+- cli/src/main.rs 单测新增 `archive_family_flags_reach_daemon_policy_fields`：经生产同构的 `finalize_session_archive_interactive` 合并路径，验证 archive/unarchive/delete 子命令旗标（`--no-daemon` 根级、`--strict-config`/`--profile`/`--oss` 子命令级）确实到达 daemon 排除策略读取的 TuiCli 字段（字段→排除理由映射已由 tui 侧 `daemon_eligibility_preserves_launch_options_and_explains_exclusions` 钉住）。**待 workspace 套件结束后 scoped 运行验证**（避免并发负载污染归因口径）。
+
+### 完整 workspace 复验（用户授权，2026-10-07 完成）
+
+- 命令：`CARGO_TARGET_DIR=validation-20261005（暖缓存复用）+ RUSTY_V8 配对工件 + just test -E 'not binary(exec_live) & not binary(bridge_live)' --offline --locked --retries 0`（按交接：显式排除 live、关闭自动 retries；日志 codex-tmp/ws-20261006-round3.log，22:18–02:28，HEAD 47dabce9b + 本轮工作树）。
+- **结果：21,576 run → 18,512 pass / 2,060 fail + 1,004 timeout / 68 skip（14,819s）**。这是 nextest Summary 口径；2,060 fail 包含 SIGABRT 1 项（逐行状态为 FAIL 2,059 + SIGABRT 1）。初次提取登记为 3,062 唯一名，但遗漏 SIGABRT，且把跨 binary 同名测试合并；完整身份复算见下方纠正节。历史记录为重试后的最终失败，本轮为 retries=0 首试，口径不同；套件窗口有外部负载观察，尚不能据此证明失败因果。期间 tracked `.snap.new` 再次被套件波及删除，已从 HEAD 恢复；本轮新增 8 个未跟踪 `.snap.new` 为"Working (Ns…)"类带流逝秒数的时序渲染分歧，按 10-05 先例删除。
+- **与历史 383 预对比**：349 个本轮首试仍败；**34 个在本轮即通过**——其中含已修复项（schema_fixtures=9069fb90c、azure_responses=5e0753ebd、astra 技能隔离=1cc543c1d、host_service 快照、guardian prompt-cache 等），与修复史吻合，作为 flaky/修复证据记入逐项标注。
+
+#### 空闲分类复跑与并发度发现（2026-10-07 03:00–05:00）
+
+- 第一轮复跑（8 块×~400 名，位置参数过滤，默认并发≈18 路，机器空闲）：原名称口径 **570 恢复 / 2,492 仍败**，实际执行 3,064 次。独立复算为目标失败集合中 570 恢复、2,493 完整身份仍败，另有 1 个初始 PASS 测试被子串匹配；原登记“过匹配 +2”混入跨 binary 同名身份，真正额外匹配为 1。chunk 汇总见 ws3-rerun-positional.log。
+- 仍败样本实证：`abort_lifecycle…shutdown` 单跑 **3.1s PASS**（probe-single.log，Nextest run ID d99d7d4b）。这证明该次单跑可通过；与多路并发下的事件期限失败存在关联，不能独自排除环境问题、证明并发挤兑因果或说明历史 383 的所有失败为何发生。用户自己的 ChatGPT 桌面 app-server 守护（21:20 起）与套件共存，登记为观察，不作致因或非致因裁决。
+- **方法论坑位登记（可复用）**：① 276KB 巨型 `-E` 名单正则使 nextest/miette 渲染 panic（"Formatting argument out of range"）；② 40KB 分块正则被 filter-expr 解析器拒绝（"expected end of expression"）；③ 正确做法=位置参数子串过滤分块。④ `-p` 单包与工作区联合特性图不同，会触发整链重建——分类复跑必须工作区整图跑。
+- 第二轮分类复跑（`--test-threads 2`，2,492 名，7 块顺序，05:01–08:31，ws3-rerun-t2.log）：原按名称登记 **2,164 恢复 / 328 仍败**；按 `(binary, test_name)` 实际为 2,165 恢复 / 328 仍败、2,493 次执行，多出的 1 是跨 binary 同名身份，不是额外过匹配。这里的“仍败”是本次条件下的观测，不代表确定性根因。
+
+#### 三级复跑结果与 383 状态登记（2026-10-07 08:30；独立复算纠正）
+
+原三级名称统计为 **3,062 → 恢复 570 → 再恢复 2,164 → 仍败 328**（570+2,164+328=3,062）。该数字保留为历史提取记录，不能宣称涵盖全部失败：它遗漏 SIGABRT，也合并了两个 binary 的同名测试。按完整身份的纠正统计是 **3,064 → 恢复 570 → 再恢复 2,165 → 本次仍败 328 + 未复跑 SIGABRT 1**（570+2,165+328+1=3,064）；首试唯一名称为 3,063。`ws3-deterministic-328.txt` 的文件名不构成确定性或根因证明。
+
+**历史 383 复验状态分布**（完整身份逐项与日志核对一致；状态登记完成，根因及门禁未收口）：
+
+- 本次 threads=2 仍败 **249**：归因栏中 **201 项仍未归因、20 项已有环境证据、28 项保留先前三轮 A/B 通过的 flaky 证据**。这 28 项本轮再次失败，应保留结果波动，不称“当前不可复现”。201 项逐项根因与回归归属继续开放。
+- **34 全套首试通过**（含已修复项）、**11 首次分类复跑通过、89 threads=2 复跑通过**。后两组共 100 项证明不同运行条件下结果变化；时间与并发度同时变化，不能据此单独裁决负载因果。
+
+**328 中 79 项不在历史 383**（历史开重试可能被救回）：按配对纪律在基线 8017fb76c 重建 worktree（codex-targets/ab2-baseline）同条件复跑（t2/r0/同图/V8 工件）：
+- **47 项基线同败** → 这次配对未观察到持续树差异；是否曾被历史重试救回需各项历史日志，不能由此推定。
+- 32 项基线通过 → 当前树二跑：17 项通过（观察到结果波动）+ **15 项二连败**。
+- 15 项在**干净 47dabce9b worktree**（ab2-current，无未跟踪文件）复跑：13 项仍败、2 项转过。
+  - **13 项补配对**：初次基线跑通过，后来 **基线树 12/13 败（final-paired.log）与当前树 12/13 败（curr13-samewindow.log）** 的完整失败身份集合相同，主要 deadline 签名也一致。该证据撤回“持续基线过/当前败”的判断，但不能证明负载根因或排除失败概率差异。跨 30–60 分钟比较需谨慎；先前 BASE→BASE→CURR 记录属于顺序运行，不称交替配对。
+  - 2 项（remote_sandboxed…arg0、shell_snapshot…blocked_descriptor）工作树复验通过（wt2-exit=0）→ 归入 flaky。
+  - **有限结论：所选 79 项未发现持续树差异**（47 两树同败 + 32 项在后续复跑或补配对中结果波动）。328 是本次分类复跑仍败集合（249 历史项 + 79 非历史项），不是已证明的确定性缺陷数。未配对 SIGABRT、201 历史未归因项及全套门禁继续开放，不称全套零回归。
+
+#### 可复核离线纠正证据
+
+工具 `scripts/nextest_log_summary.py` 按 `(run_id, ordinal)` 去除 nextest Summary 后的重复结果行，以 `(binary, test_name)` 区分测试身份；捕获全部数值序号终态（包括 SIGABRT），同一序号冲突会明示并排除，缺行/重复身份/不支持的 retry 行不会报告完整。它只输出结果元数据、聚合数字和源文件 SHA-256，不复制 stdout/stderr 请求诊断。
+
+- `/Volumes/soddygo/git-workspace/fork-nuwax-codex/logs/nextest-round3-audit.json`：完整首试、两级复跑；首试 FAIL 2,059 / SIGABRT 1 / TIMEOUT 1,004，3064 条末尾重复结果去重，完整序号 1–21,576。
+- `/Volumes/soddygo/git-workspace/fork-nuwax-codex/logs/nextest-round3-paired-audit.json`：79/32/干净树复跑/最终配对元数据。干净树“15 项”过滤实际执行 17 项（4 pass / 13 fail），保留真实执行数。
+- `/Volumes/soddygo/git-workspace/fork-nuwax-codex/logs/nextest-round3-classification-check.json`：383 行完整身份与三级结果复核，249/34/11/89 一致；201 未归因标签、最终两树相同12项失败集合再次核对。此文件只保存聚合结果，不是新的测试执行。
+- 漏项 `codex-core guardian::tests::guardian_ephemeral_retry_preserves_parallel_trunk_and_fork_history`：原始日志 `ws-20261006-round3.log:9158` 为 SIGABRT，stderr 为 stack overflow。它不在 ws3 复跑名单中，单列开放，由独立复审统一验证；`abort_lifecycle…shutdown` 是另一个测试，不能替代此项。
+- 复算命令：`python3 scripts/nextest_log_summary.py --classify /Volumes/soddygo/git-workspace/codex-tmp/ws-20261006-round3.log /Volumes/soddygo/git-workspace/codex-tmp/ws3-rerun-positional.log /Volumes/soddygo/git-workspace/codex-tmp/ws3-rerun-t2.log --output logs/nextest-round3-audit.json`。自有 Python 单测 `cd scripts` 后 `python3 -m unittest nextest_log_summary_tests`：8/8 pass（含零结果拒绝）；未由此运行任何 Rust 测试。
+
+### 收尾证据（2026-10-07 09:00–09:40）
+
+- **D4 历史低/高load新进程样本（不是loaded warm矩阵）**（d4-websocket/unix-{high,low}load-*.jsonl）：websocket bind 低载(load 7.5) 0.053–0.242s（首样本含冷效应）vs 高载(load 22) 0.314–0.482s；unix bind 低载 0.063–0.068s vs 高载 0.095–0.118s。initialize 低载 7–10ms/高载 7–76ms。两传输全链路在两种负载下均 <0.5s——bind/RPC 阶段不是历史 10.6s initialize 超时的稳定负载解释（这些样本不能证明历史超时根因，也不能将负载窗口当根因）。
+- **新 cli 单测 green**：`archive_family_flags_reach_daemon_policy_fields` PASS（0.016s，V8 工件注入后）；scoped `just fix -p codex-cli --offline --locked` exit 0、`just fmt` exit 0、`git diff --check` 干净；fmt 后 d4 单测 14/14 OK。
+- **本轮新增测试在主套件内的表现**：queue_writer_lifecycle PASS（0.895s）；source_rotation×2 首试失败（39s deadline 类）后在 threads=2 分类中通过（4.8/5.6s）。这是不同运行条件下的结果变化，不能单凭通过排除产品问题；测试验收强度由独立复审另行核对。
+- 工件与 worktree：基线/当前复验 worktree 保留于 codex-targets/{ab2-baseline@8017fb76c, ab2-current@47dabce9b} 供 Codex 复核；全部日志/名单在 codex-tmp/ws3-*、ab2-*、curr13-*、final-paired.log。未 commit/push（未授权）。
+
+
+## 2026-10-07 Codex独立复审
+
+本轮实际问题、直接修复及完整命令见 codex-independent-review-2026-10-07.md。SIGABRT遗漏与(binary,name)口径已校正；201未归因仍开放。完整剩余改造按 claude-code-completion-plan-2026-10-07.md 的2个实质功能包+6个验收/稳定性包推进，不能把复验状态/局部A/B同败当生产门禁完成。

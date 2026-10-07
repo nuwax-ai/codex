@@ -1,0 +1,394 @@
+# 历史失败清单逐项标注（383 项；2026-10-07 全套复验更新）
+
+来源：historical-workspace-failures.md。标注依据见 historical-failure-attribution.md（配对 A/B 与直接环境证据）；
+复验列依据 2026-10-06/07 完整 workspace 复验（retries=0 首试 3,062 失败 → 空闲 18 路复跑 → threads=2 复跑三级分类，证据链见 other-computer-validation-results.md）。
+
+**10-07 复验状态：本次 t2 仍败 249｜全套首试通过 34｜首次分类复跑通过 11｜threads=2 复跑通过 89**
+
+独立复算确认这四组逐项与完整 `(binary, test_name)` 日志身份一致。249 项中 **201 项仍未归因、20 项已有环境证据、28 项保留先前三轮 A/B 通过的 flaky 证据**；状态复验不等于根因关闭。通过/失败随运行条件变化不能独自证明负载因果。全套分类另漏 1 项 SIGABRT（stack overflow），不在这份历史 383 清单内；完整失败状态、去重纠正及开放边界见 historical-failure-attribution.md 与报告纠正节。
+
+| # | 测试 | 历史 | 归因 | 10-07 复验 |
+|---|---|---|---|---|
+| 1 | `codex-app-server in_process::tests::in_process_start_uses_requested_session_source_for_thread_start` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 2 | `codex-app-server request_processors::thread_processor::thread_processor_tests::thread_processor_behavior_tests::derive_config_from_params_uses_session_thread_config_model_provider` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 3 | `codex-app-server-protocol schema_fixtures_tests::stable_precomputed_exports_match_schema_fixtures` | FAIL | fixture 漂移（已修 9069fb90c：重生成 schema exports） | 2026-10-07 全套重载首试即过 |
+| 4 | `codex-app-server::all suite::logging::app_server_emits_structured_tool_call_timing_event` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 5 | `codex-app-server::all suite::logging::credentials_stay_out_of_persisted_and_feedback_logs` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 6 | `codex-app-server::all suite::strict_config::ignored_config_fields_emit_startup_and_project_warnings` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 7 | `codex-app-server::all suite::v2::account::external_auth_refreshes_on_unauthorized::discovery` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 8 | `codex-app-server::all suite::v2::account_system_proxy::browser_login_bootstraps_through_system_proxy` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 9 | `codex-app-server::all suite::v2::application_network::explicit_reloads_apply_local_edits_and_cancel_active_responses` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 10 | `codex-app-server::all suite::v2::attestation::attestation_generate_round_trip_adds_header_to_responses_websocket_handshake::ephemeral` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 11 | `codex-app-server::all suite::v2::attestation::attestation_generate_round_trip_adds_header_to_responses_websocket_handshake::persistent` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 12 | `codex-app-server::all suite::v2::client_metadata::turn_start_forwards_client_metadata_to_responses_websocket_request_body_v2` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 13 | `codex-app-server::all suite::v2::compaction::auto_compaction_emits_started_and_completed_items::streamed_remote` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 14 | `codex-app-server::all suite::v2::compaction::compaction_error_window_reaches_analytics::other_error` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 15 | `codex-app-server::all suite::v2::compaction::compaction_error_window_reaches_analytics::remote_weekly` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 16 | `codex-app-server::all suite::v2::guardian_v2::action_budget::oversized_async_action_requires_sync_review_and_later_scores_recover` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 17 | `codex-app-server::all suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::legacy_all_tools_still_scores_wrappers` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 18 | `codex-app-server::all suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::legacy_cua_only_still_ignores_wrappers` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 19 | `codex-app-server::all suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::model_policy_scores_cua_and_preserves_its_cache_across_cells` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 20 | `codex-app-server::all suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::required_legacy_cua_only_still_ignores_wrappers` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 21 | `codex-app-server::all suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::required_model_preserves_cua_cache_across_cells` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 22 | `codex-app-server::all suite::v2::guardian_v2::first_cua_review_does_not_wait_for_initial_score::browser_reset_before_execution` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 23 | `codex-app-server::all suite::v2::guardian_v2::first_cua_review_does_not_wait_for_initial_score::browser_setup_before_execution` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 24 | `codex-app-server::all suite::v2::guardian_v2::first_cua_review_does_not_wait_for_initial_score::browser_startup` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 25 | `codex-app-server::all suite::v2::guardian_v2::first_cua_review_does_not_wait_for_initial_score::computer_use_reset_before_execution` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 26 | `codex-app-server::all suite::v2::guardian_v2::first_cua_review_does_not_wait_for_initial_score::computer_use_setup_before_execution` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 27 | `codex-app-server::all suite::v2::guardian_v2::first_cua_review_does_not_wait_for_initial_score::computer_use_startup` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 28 | `codex-app-server::all suite::v2::guardian_v2::forked_thread_ignores_persisted_guardian_score` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 29 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_computer_use_only_scopes_classification_and_fast_reviews::high_risk_browser_receives_full_review` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 30 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_computer_use_only_scopes_classification_and_fast_reviews::low_risk_browser_skips_full_review` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 31 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_computer_use_only_scopes_classification_and_fast_reviews::low_risk_computer_use_skips_full_review` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 32 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_discards_sync_reviews_after_authorization_changes::root_user_restriction` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 33 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_discards_sync_reviews_after_authorization_changes::worker_root_restriction` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 34 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_discards_sync_reviews_after_user_input_answer::approved_evidence` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 35 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_discards_sync_reviews_after_user_input_answer::denied_evidence` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 36 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_high_risk_actions_require_full_reviews::approved_evidence` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 37 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_high_risk_actions_require_full_reviews::denied_evidence` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 38 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_high_risk_actions_require_full_reviews::failed_review_without_evidence` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 39 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_high_risk_actions_require_full_reviews::forged_tool_output` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 40 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_inherits_root_user_skills_for_delegated_workers` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 41 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_low_risk_actions_skip_subsequent_reviews` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 42 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_low_scores_require_current_authorization::empty_answer_preserves_cache` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 43 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_low_scores_require_current_authorization::late_score_after_root_revocation` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 44 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_low_scores_require_current_authorization::new_user_turn` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 45 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_low_scores_require_current_authorization::user_input_answer` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 46 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_low_scores_require_current_authorization::worker_root_answer` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 47 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_low_scores_require_current_authorization::worker_root_restriction` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 48 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_propagates_root_user_input_to_worker_reviews::blocked_root_answer_reaches_worker` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 49 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_propagates_root_user_input_to_worker_reviews::root_answer_reaches_worker` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 50 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_propagates_root_user_input_to_worker_reviews::root_answer_survives_parent_compaction` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 51 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_required_model_bypasses_scoring_and_runs_full_reviews` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 52 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_required_model_cannot_reuse_a_cached_score_for_skipped_exec` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 53 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_required_model_computer_use_preserves_strict_approval::browser_classifier_failure` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 54 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_required_model_computer_use_preserves_strict_approval::browser_high_risk` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 55 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_required_model_computer_use_preserves_strict_approval::browser_low_risk` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 56 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_required_model_computer_use_preserves_strict_approval::browser_low_risk_sensitive_action_false` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 57 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_required_model_computer_use_preserves_strict_approval::browser_low_risk_sensitive_action_true` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 58 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_required_model_computer_use_preserves_strict_approval::computer_use_classifier_failure` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 59 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_required_model_computer_use_preserves_strict_approval::computer_use_high_risk` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 60 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_required_model_computer_use_preserves_strict_approval::computer_use_low_risk` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 61 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_required_model_computer_use_preserves_strict_approval::computer_use_low_risk_sensitive_action_false` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 62 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_required_model_computer_use_preserves_strict_approval::computer_use_low_risk_sensitive_action_true` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 63 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_threshold_score_requires_full_reviews` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 64 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_trusts_invoked_user_skills_but_rejects_repository_forgery` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 65 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_validates_user_input_before_history_truncation::blocking_hook_cannot_erase_answer` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 66 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_validates_user_input_before_history_truncation::empty_answer_retains_reviews` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 67 | `codex-app-server::all suite::v2::guardian_v2::guardian_v2_validates_user_input_before_history_truncation::hook_feedback_cannot_hide_answer` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 68 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::compatible_checkpoint` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 69 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::different_sync_hash_preserves_retained_evidence` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 70 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::disabled_luna_reuse_requires_sync` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 71 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::empty_checkpoint_fails_closed` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 72 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::empty_luna_compatibility` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 73 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::empty_producer_preserves_retained_evidence` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 74 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::empty_sync_hash_preserves_retained_evidence` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 75 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::incompatible_checkpoint` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 76 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::incomplete_answers_reject_fresh_low_score` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 77 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::independent_transcript_ignores_incompatible_checkpoints` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 78 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::independent_transcript_overrides_luna_checkpoint_reuse` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 79 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::instruction_budget_preserves_fresh_low_score` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 80 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::source_call_evicted` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 81 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::unknown_luna_compatibility` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 82 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::unknown_producer_preserves_retained_evidence` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 83 | `codex-app-server::all suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume::unknown_sync_hash_preserves_retained_evidence` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 84 | `codex-app-server::all suite::v2::guardian_v2::model_tests::computer_use_scoring_follows_model_review_requirement::browser` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 85 | `codex-app-server::all suite::v2::guardian_v2::model_tests::computer_use_scoring_follows_model_review_requirement::computer_use` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 86 | `codex-app-server::all suite::v2::guardian_v2::policy::model_guardian_policy_controls_cua::full_access_never_scores` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 87 | `codex-app-server::all suite::v2::guardian_v2::policy::model_guardian_policy_controls_cua::full_access_skips_sensitive_action_reviews` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 88 | `codex-app-server::all suite::v2::guardian_v2::policy::model_guardian_policy_controls_cua::legacy_adaptive_config` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 89 | `codex-app-server::all suite::v2::guardian_v2::policy::model_guardian_policy_controls_cua::legacy_synchronous_config` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 90 | `codex-app-server::all suite::v2::guardian_v2::policy::model_guardian_policy_controls_cua::model_disables_async_despite_legacy_flag` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 91 | `codex-app-server::all suite::v2::guardian_v2::policy::model_guardian_policy_controls_cua::model_disables_ordinary_cua_review` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 92 | `codex-app-server::all suite::v2::guardian_v2::policy::model_guardian_policy_controls_cua::model_enables_async_without_legacy_flag` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 93 | `codex-app-server::all suite::v2::guardian_v2::policy::model_guardian_policy_controls_cua::sensitive_elicitation_cannot_use_initial_cua_allowance` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 94 | `codex-app-server::all suite::v2::guardian_v2::policy::model_guardian_policy_controls_cua::user_mode_never_scores` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 95 | `codex-app-server::all suite::v2::guardian_v2::resumed_thread_does_not_wait_for_guardian_websocket_warmup` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 96 | `codex-app-server::all suite::v2::guardian_v2::resumed_thread_ignores_persisted_guardian_score` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 97 | `codex-app-server::all suite::v2::guardian_v2::sync_sessions::circuit_break_action_preserves_warning_and_reports_error_in_live_and_saved_turns` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 98 | `codex-app-server::all suite::v2::guardian_v2::sync_sessions::inline_review_delegate_runs_strict_guardian_assessment` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 99 | `codex-app-server::all suite::v2::guardian_v2::sync_sessions::managed_reviewer_refreshes_global_instructions_before_reuse` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 100 | `codex-app-server::all suite::v2::guardian_v2::sync_sessions::managed_reviewers_reuse_fork_and_resume_after_parent_shutdown::cancelled_concurrent_reviews` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 101 | `codex-app-server::all suite::v2::guardian_v2::sync_sessions::managed_reviewers_reuse_fork_and_resume_after_parent_shutdown::completed_reviews` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 102 | `codex-app-server::all suite::v2::guardian_v2::user_approval_skips_async_guardian_without_changing_other_modes` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 103 | `codex-app-server::all suite::v2::history_notes_extension::app_server_uses_configured_notes_backend_for_context_window_hints::bridge_hint` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 104 | `codex-app-server::all suite::v2::history_notes_extension::app_server_uses_configured_notes_backend_for_context_window_hints::native_failure_does_not_use_bridge` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 105 | `codex-app-server::all suite::v2::history_notes_extension::app_server_uses_configured_notes_backend_for_context_window_hints::native_hint` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 106 | `codex-app-server::all suite::v2::history_notes_extension::app_server_uses_configured_notes_backend_for_context_window_hints::native_hint_without_experimental_capability` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 107 | `codex-app-server::all suite::v2::history_notes_extension::app_server_uses_configured_notes_backend_for_context_window_hints::no_notes` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 108 | `codex-app-server::all suite::v2::history_notes_extension::history_notes_and_async_message_emit_control_tool_analytics` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 109 | `codex-app-server::all suite::v2::model_list_requirements_tests::model_list_blocks_noncompliant_cached_provider_until_requirements_allow_it::definition_changes` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 110 | `codex-app-server::all suite::v2::model_list_requirements_tests::model_list_blocks_noncompliant_cached_provider_until_requirements_allow_it::selection_changes` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 111 | `codex-app-server::all suite::v2::model_provider_enforcement::provider_requirement_changes_reject_inputs_to_existing_threads::definition_changes` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 112 | `codex-app-server::all suite::v2::model_provider_enforcement::provider_requirement_changes_reject_inputs_to_existing_threads::selection_changes` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 113 | `codex-app-server::all suite::v2::multi_agent_v2_developer_instructions::cold_resume_preserves_effective_developer_instructions_for_worker::inherits_parent_developer_instructions_without_an_override` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 114 | `codex-app-server::all suite::v2::multi_agent_v2_developer_instructions::cold_resume_preserves_effective_developer_instructions_for_worker::reapplies_an_implicitly_selected_configured_default_role` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 115 | `codex-app-server::all suite::v2::multi_agent_v2_developer_instructions::cold_resume_preserves_effective_developer_instructions_for_worker::reapplies_configured_subagent_developer_instructions` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 116 | `codex-app-server::all suite::v2::multi_agent_v2_developer_instructions::cold_resume_preserves_effective_developer_instructions_for_worker::reapplies_updated_configured_role_settings_and_restores_paginated_usage` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 117 | `codex-app-server::all suite::v2::multi_agent_v2_developer_instructions::compacted_full_history_fork_replaces_parent_developer_instructions` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 118 | `codex-app-server::all suite::v2::remote_control::stdio_eof_releases_thread_writer_with_pending_remote_control_enable` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 空闲 18 路复跑恢复 |
+| 119 | `codex-app-server::all suite::v2::remote_thread_store::thread_delete_with_non_local_thread_store_does_not_create_local_persistence` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 空闲 18 路复跑恢复 |
+| 120 | `codex-app-server::all suite::v2::remote_thread_store::thread_start_defaults_to_legacy_without_history_list_support` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 121 | `codex-app-server::all suite::v2::request_permissions::code_mode_uses_permissions_approved_in_the_same_cell::session` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 空闲 18 路复跑恢复 |
+| 122 | `codex-app-server::all suite::v2::request_permissions::code_mode_uses_permissions_approved_in_the_same_cell::strict_review` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 123 | `codex-app-server::all suite::v2::request_permissions::code_mode_uses_permissions_approved_in_the_same_cell::turn` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 124 | `codex-app-server::all suite::v2::request_permissions::request_permissions_round_trip` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 空闲 18 路复跑恢复 |
+| 125 | `codex-app-server::all suite::v2::request_user_input::request_user_input_default_mode_forwards_non_blocking` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 空闲 18 路复跑恢复 |
+| 126 | `codex-app-server::all suite::v2::request_user_input::request_user_input_round_trip` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 127 | `codex-app-server::all suite::v2::residency::managed_residency_overrides_provider_headers::http` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 空闲 18 路复跑恢复 |
+| 128 | `codex-app-server::all suite::v2::residency::managed_residency_overrides_provider_headers::websocket` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 129 | `codex-app-server::all suite::v2::review::review_start_with_detached_delivery_returns_new_thread_id` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 130 | `codex-app-server::all suite::v2::thread_read::thread_read_preserves_file_id_from_completed_turn` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 空闲 18 路复跑恢复 |
+| 131 | `codex-app-server::all suite::v2::turn_start::turn_start_emits_thread_scoped_warning_notification_for_trimmed_skills` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 132 | `codex-app-server::all suite::v2::turn_start::turn_start_sends_originator_header::none_test_originator_expects` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 133 | `codex-app-server::all suite::v2::web_search::standalone_web_search_round_trips_output` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 134 | `codex-app-server::all suite::v2::web_search::standalone_web_search_round_trips_output_for_custom_provider` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 135 | `codex-aws-auth network_policy_tests::real_imds_credentials_stop_after_policy_revocation` | FAIL | flaky：历史失败，配对A/B两树三轮 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 136 | `codex-core guardian::tests::guardian_reuses_prompt_cache_key_and_appends_prior_reviews` | FAIL | fork 语义（guardian envelope 传递已修 e9996566b；合成注入无 provenance 按设计降级） | 2026-10-07 全套重载首试即过 |
+| 137 | `codex-core session::tests::managed_network_proxy_decider_survives_full_access_start` | FAIL | 已确认环境：本机 fake-ip DNS（example.com→198.18.4.139 实测） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 138 | `codex-core tools::registry::tests::handler_normalizes_only_the_default_namespace` | FAIL | fork 缺陷（已修 5d6003b35：默认命名空间不入 flat fallback） | 2026-10-07 全套重载首试即过 |
+| 139 | `codex-core tools::registry::tests::readiness_selects_exact_tool_with_registry_owned_exposure` | FAIL | fork 缺陷（已修 5d6003b35：默认命名空间不入 flat fallback） | 2026-10-07 全套重载首试即过 |
+| 140 | `codex-core::all suite::approvals::spawned_subagent_execpolicy_amendment_propagates_to_parent_session` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 141 | `codex-core::all suite::client::azure_responses_request_does_not_store_and_preserves_prefixed_item_ids` | FAIL | fork 缺陷（已修 5e0753ebd：桥路径补 outbound ID preparation） | 2026-10-07 全套重载首试即过 |
+| 142 | `codex-core::all suite::mcp_optional_startup_grace::optional_mcp_startup_grace_controls_initial_turn_tool_catalog::custom_grace_admits_a_ready_server` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 143 | `codex-core::all suite::mcp_optional_startup_grace::optional_mcp_startup_grace_controls_initial_turn_tool_catalog::custom_grace_omits_a_pending_server` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 144 | `codex-core::all suite::mcp_optional_startup_grace::optional_mcp_startup_grace_controls_initial_turn_tool_catalog::zero_grace_respects_server_startup_timeout` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 145 | `codex-core::all suite::mcp_optional_startup_grace::optional_mcp_startup_grace_controls_initial_turn_tool_catalog::zero_grace_waits_for_server_startup` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 146 | `codex-core::all suite::mcp_optional_startup_grace::running_thread_uses_refreshed_optional_mcp_startup_grace::mcp_configuration_refresh` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 147 | `codex-core::all suite::mcp_optional_startup_grace::running_thread_uses_refreshed_optional_mcp_startup_grace::runtime_configuration_refresh` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 148 | `codex-core::all suite::mcp_startup_refresh_http_proxy::skill_mcp_dependency_oauth_uses_configured_http_client` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 149 | `codex-core::all suite::realtime_conversation::conversation_disables_realtime_startup_context_with_empty_override` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 150 | `codex-core::all suite::realtime_conversation::conversation_second_start_replaces_runtime` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 151 | `codex-core::all suite::realtime_conversation::conversation_transport_close_tail_flush_is_opt_in` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 152 | `codex-core::all suite::realtime_conversation::conversation_uses_configured_realtime_voice` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 153 | `codex-core::all suite::realtime_conversation::conversation_uses_default_realtime_backend_prompt` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 154 | `codex-core::all suite::realtime_conversation::conversation_uses_empty_instructions_for_null_or_empty_prompt` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 155 | `codex-core::all suite::realtime_conversation::conversation_uses_experimental_realtime_ws_backend_prompt_override` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 156 | `codex-core::all suite::realtime_conversation::conversation_uses_experimental_realtime_ws_base_url_override` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 157 | `codex-core::all suite::realtime_conversation::conversation_uses_experimental_realtime_ws_startup_context_override` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 158 | `codex-core::all suite::realtime_conversation::conversation_uses_explicit_start_voice` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 159 | `codex-core::all suite::remote_env::ready_before_selection_resolves_resumed_thread_capability_root_after_wait::preserves_persisted_root_when_executor_reports_none` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 160 | `codex-core::all suite::remote_env::ready_before_selection_resolves_resumed_thread_capability_root_after_wait::uses_refreshed_executor_root` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 161 | `codex-core::all suite::retry_after::connection_failures_increment_retry_telemetry_without_consuming_retry_budget` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 162 | `codex-core::all suite::scenarios::astra_kickoff_with_skills_plugins_and_remote_compaction` | FAIL | 已确认环境：用户技能泄漏（已修 1cc543c1d：HostSkillsService 实例级隔离） | 2026-10-07 全套重载首试即过 |
+| 163 | `codex-core::all suite::scenarios::astra_refreshes_plugin_tools_and_skills_in_an_existing_thread` | FAIL | 已确认环境：用户技能泄漏（已修 1cc543c1d：HostSkillsService 实例级隔离） | 2026-10-07 全套重载首试即过 |
+| 164 | `codex-core::all suite::scenarios::guardian_checkpoint_migration_request_history` | FAIL | fork 语义（guardian envelope 传递已修 e9996566b；合成注入无 provenance 按设计降级） | 2026-10-07 全套重载首试即过 |
+| 165 | `codex-core::all suite::tool_parallelism::mixed_parallel_tools_run_in_parallel` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 166 | `codex-core::all suite::tool_parallelism::shell_tools_run_in_parallel` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 167 | `codex-core::all suite::turn_input_submission::daemon_recovery_includes_local_environment_that_finished_starting` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 168 | `codex-core::all suite::turn_input_submission::sampling_is_ready_for_daemon_recovery::automatic` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 169 | `codex-core::all suite::turn_input_submission::sampling_is_ready_for_daemon_recovery::remote_stays_idle` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 170 | `codex-core::all suite::turn_input_submission::sampling_is_ready_for_daemon_recovery::user` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 171 | `codex-core::all suite::turn_input_submission::start_or_steer_turn_requires_matching_active_output_schema` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 172 | `codex-core::all suite::turn_input_submission::turn_input_submission_applies_thread_settings_only_after_accepted_input` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 173 | `codex-core::all suite::turn_input_submission::turn_input_submission_reports_started_and_steered_for_concurrent_submissions` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 174 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::codex_path_is_exported_before_nested_command` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 175 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::codex_path_is_not_exported_by_default` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 176 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::complete_event_stream` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 177 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::device_only_linux_deny_read_rejects_unchanged_writable_root_metadata` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 178 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::direct_sandbox_denial` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 179 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::disabled_codex_path_preserves_original_login_command` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 180 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::disabled_managed_network_omits_executor_proxy_launch` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 181 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::explicit_path_override_preserves_original_login_command` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 182 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::foreign_windows_direct_patch_denial_approval_retries_unsandboxed` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 183 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::foreign_windows_direct_patch_denial_requests_approval` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 184 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::foreign_windows_direct_patch_is_sandboxed` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 185 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::foreign_windows_full_disk_intercepted_patch_succeeds` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 186 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::foreign_windows_intercepted_patch_is_sandboxed` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 187 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::foreign_windows_unsandboxed_intercepted_patch_succeeds` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 188 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::foreign_windows_workspace_sandbox` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 189 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::legacy_exit_metadata` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 190 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::linux_deny_read_allows_approved_escalation` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 191 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::old_linux_deny_read_keeps_root_deny_unchanged` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 192 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::old_linux_deny_read_rejects_approved_escalation` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 193 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::old_windows_deny_read_allows_approved_escalation` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 194 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::old_windows_deny_read_keeps_unmaterializable_policy_unchanged` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 195 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::remote_windows_dangerous_command_rejection_is_bounded` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 196 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::truncated_event_replay` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 197 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::unusable_codex_path_preserves_requested_login_shell` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 198 | `codex-core::all suite::unified_exec_process_events::exec_command_consumes_pushed_remote_process_events::windows_elevated_powershell_disables_profile` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 199 | `codex-exec-server discover_v2::capability_manager::capability_watchers::tests::watch_events_invalidate_discovery_and_no_subscription_disables_caching` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 200 | `codex-exec-server discover_v2::capability_manager::tests::discovery_responses_are_cached_by_sandbox_context` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 201 | `codex-exec-server remote::direct::tests::direct_registration_handles_policy_outages_and_permanent_failures` | TMT | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 202 | `codex-exec-server remote::direct::tests::direct_websocket_reuses_registration_and_stops_on_permanent_errors` | TMT | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 203 | `codex-exec-server remote::noise_tests::reconnect_reuses_registration_until_url_is_rejected` | TMT | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 204 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::confirmed_conflict_backoff_is_cancellable` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 205 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::conflict_code_not_received` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 206 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::delayed_error_details` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 207 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::delayed_forbidden_details` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 208 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::delayed_unauthorized_details` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 209 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::different_error_code` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 210 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::environment_deleted_stalled_body` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 211 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::forbidden_stalled_body` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 212 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::gateway_error` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 213 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::malformed_success` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 214 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::malformed_unavailable` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 215 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::missing_conflict_code` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 216 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::request_timeout` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 217 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::too_many_requests` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 218 | `codex-exec-server remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::unauthorized_stalled_body` | FAIL | flaky：历史高载失败，配对A/B两树三轮全 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 219 | `codex-exec-server server::processor::tests::startup_prewarms_without_a_client_connection` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 220 | `codex-exec-server::accepted_websocket accepted_websocket_interoperates_and_recovers_with_real_direct_executor::policy_unavailable` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 221 | `codex-exec-server::accepted_websocket accepted_websocket_interoperates_and_recovers_with_real_direct_executor::transport_disconnect` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 222 | `codex-exec-server::relay failed_noise_environment_recovers_and_reconnects_after_ready_report` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 223 | `codex-exec-server::relay registration_retry::registration_retries_preserve_noise_identity_and_initialized_session` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 224 | `codex-exec-server::relay registration_retry::shutdown_interrupts_in_flight_registration` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 225 | `codex-exec-server::relay remote_environment_routes_encrypted_exec_server_rpc` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 226 | `codex-exec::all suite::resume::exec_resume_last_respects_cwd_filter_and_all_flag` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 空闲 18 路复跑恢复 |
+| 227 | `codex-exec::all suite::resume::exec_resume_last_skips_mismatched_state_db_candidate` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 空闲 18 路复跑恢复 |
+| 228 | `codex-exec::all suite::resume::exec_resume_last_trusts_usable_state_db_candidate` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 空闲 18 路复跑恢复 |
+| 229 | `codex-exec::all suite::worktree::worktree_start_and_fork_use_host_pool_and_preserve_legacy_resume` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 空闲 18 路复跑恢复 |
+| 230 | `codex-http-client route_aware_client_pool::policy_tests::managed_redirect_failure_is_tracked_before_proxy_retry` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 231 | `codex-http-client route_aware_client_pool::tests::direct_and_routed_clients_build_equivalent_requests` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 232 | `codex-http-client route_aware_client_pool::tests::legacy_custom_ca_fallback_is_limited_to_reqwest_default` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 233 | `codex-http-client route_aware_client_pool::tests::request_failures_classify_real_untrusted_certificate_handshakes` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 234 | `codex-http-client route_aware_client_pool::tests::streams_request_bodies_without_exposing_reqwest_body` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 235 | `codex-http-client route_aware_client_pool::tls_fallback_tests::default_pool_does_not_retry_a_native_tls_protocol_failure` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 236 | `codex-http-client route_aware_client_pool::tls_fallback_tests::does_not_retry_a_non_replayable_streaming_request` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 237 | `codex-http-client route_aware_client_pool::tls_fallback_tests::retries_a_native_tls_failure_after_another_request_caches_rustls` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 238 | `codex-http-client route_aware_client_pool::tls_fallback_tests::retries_a_native_tls_protocol_failure_once_with_rustls` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 239 | `codex-http-client route_aware_client_pool::tls_fallback_tests::retries_a_tls_protocol_failure_when_request_url_contains_certificate_markers` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 240 | `codex-install-context tests::brew_is_detected_on_macos_prefixes` | FAIL | 已确认环境：本机真实 brew cask（/opt/homebrew/bin/codex→Caskroom/0.160.0） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 241 | `codex-network-proxy http_proxy::tests::http_connect_accept_blocks_hooked_host_in_full_mode_without_mitm_state` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 242 | `codex-network-proxy http_proxy::tests::http_connect_accept_blocks_in_limited_mode` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 243 | `codex-network-proxy http_proxy::tests::http_connect_accept_defers_brokered_host_mitm_until_protocol_detection` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 244 | `codex-network-proxy http_proxy::tests::http_connect_accept_passes_environment_id_to_decider` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 245 | `codex-network-proxy mitm::tests::mitm_policy_allows_matching_hooked_write_in_full_mode` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 246 | `codex-network-proxy mitm::tests::mitm_policy_blocks_disallowed_method_and_records_telemetry` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 247 | `codex-network-proxy mitm::tests::mitm_policy_blocks_encoded_path_traversal_for_repository_allowlist` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 248 | `codex-network-proxy mitm::tests::mitm_policy_blocks_hook_miss_for_hooked_host_and_records_telemetry_in_full_mode` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 249 | `codex-network-proxy mitm::tests::mitm_policy_blocks_matching_hooked_write_in_limited_mode` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 250 | `codex-network-proxy network_policy::tests::evaluate_host_policy_emits_domain_event_for_decider_allow_override` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 251 | `codex-network-proxy network_policy::tests::evaluate_host_policy_emits_domain_event_for_decider_ask` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 252 | `codex-network-proxy network_policy::tests::evaluate_host_policy_emits_execution_id_for_baseline_allow` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 253 | `codex-network-proxy network_policy::tests::policy_audit_observer_receives_domain_and_non_domain_decisions` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 254 | `codex-network-proxy runtime::tests::add_allowed_domain_removes_matching_deny_entry` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 255 | `codex-network-proxy runtime::tests::host_blocked_global_wildcard_allowlist_allows_public_hosts_except_denylist` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 256 | `codex-network-proxy runtime::tests::host_blocked_requires_allowlist_match` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 257 | `codex-network-proxy runtime::tests::host_blocked_subdomain_wildcards_exclude_apex` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 258 | `codex-network-proxy socks5::tests::handle_socks5_tcp_blocks_hooked_non_https_host_in_full_mode` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 259 | `codex-network-proxy socks5::tests::handle_socks5_tcp_blocks_limited_mode_without_mitm_state` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 260 | `codex-network-proxy socks5::tests::handle_socks5_tcp_detects_tls_for_brokered_nonstandard_port_in_full_mode` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 261 | `codex-network-proxy socks5::tests::handle_socks5_tcp_uses_mitm_for_hooked_host_in_full_mode` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 262 | `codex-network-proxy socks5::tests::handle_socks5_tcp_uses_mitm_in_limited_mode` | FAIL | 已确认环境：本机 fake-ip DNS（api.github.com→198.18.1.89 实测；198.18/15 判私网，policy.rs:518） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 263 | `codex-otel::tests suite::otlp_http_loopback::otlp_http_exporter_sends_logs_to_collector` | FAIL | flaky：历史高载失败，配对A/B两树三轮 6/6 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 264 | `codex-otel::tests suite::otlp_http_loopback::otlp_http_exporter_sends_metrics_to_collector` | FAIL | flaky：历史高载失败，配对A/B两树三轮 6/6 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 265 | `codex-otel::tests suite::otlp_http_loopback::otlp_http_exporter_sends_traces_to_collector` | FAIL | flaky：历史高载失败，配对A/B两树三轮 6/6 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 266 | `codex-otel::tests suite::otlp_http_loopback::otlp_http_exporter_sends_traces_to_collector_in_current_thread_tokio_runtime` | FAIL | flaky：历史高载失败，配对A/B两树三轮 6/6 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 267 | `codex-otel::tests suite::otlp_http_loopback::otlp_http_exporter_sends_traces_to_collector_with_bounded_shutdown_in_tokio_runtime` | FAIL | flaky：历史高载失败，配对A/B两树三轮 6/6 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 268 | `codex-otel::tests suite::otlp_http_loopback::otlp_http_exporter_times_out_when_collector_stalls_during_bounded_shutdown` | FAIL | flaky：历史高载失败，配对A/B两树三轮 6/6 PASS | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 269 | `codex-rmcp-client oauth_http_client::security_tests::oauth_metadata_fallback_does_not_retry_other_requests_or_statuses` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 270 | `codex-rmcp-client::mcp_2026_discovery modern_discovery_retries_transient_service_unavailable` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 271 | `codex-rmcp-client::mcp_2026_discovery modern_http_rejects_oversized_discovery_and_tool_json_responses` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 272 | `codex-rmcp-client::mcp_2026_oauth_discovery legacy_oauth_discovery_follows_same_origin_metadata_redirects` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 273 | `codex-rmcp-client::mcp_2026_oauth_discovery legacy_oauth_discovery_rejects_an_explicit_mismatched_issuer` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 274 | `codex-rmcp-client::mcp_2026_oauth_discovery legacy_oauth_discovery_rejects_authorization_metadata_redirect_cycles` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 275 | `codex-rmcp-client::mcp_2026_oauth_discovery legacy_oauth_discovery_rejects_cross_origin_authorization_metadata_redirects` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 276 | `codex-rmcp-client::mcp_2026_oauth_discovery legacy_oauth_discovery_rejects_cross_origin_resource_metadata_redirects` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 277 | `codex-rmcp-client::mcp_2026_oauth_discovery oauth_discovery_does_not_invent_support_for_an_unauthenticated_legacy_server` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 278 | `codex-rmcp-client::mcp_2026_oauth_discovery oauth_discovery_uses_get_first_without_starting_a_legacy_mcp_session` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 279 | `codex-rmcp-client::mcp_2026_sse_discovery modern_sse_discovery_accepts_metadata_namespaced_server_identity` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 280 | `codex-rmcp-client::mcp_2026_sse_discovery modern_sse_discovery_falls_back_for_correlated_method_not_found` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 281 | `codex-rmcp-client::mcp_2026_sse_discovery modern_sse_discovery_rejects_uncorrelated_method_not_found` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 282 | `codex-rmcp-client::streamable_http_recovery streamable_http_initialize_retries_json_rpc_transient_status` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 283 | `codex-skills-extension host_service::tests::snapshot_for_config_merges_extension_host_and_legacy_plugin_roots` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 284 | `codex-skills-extension host_service::tests::snapshot_for_config_preserves_host_precedence_for_symlinked_plugin_root` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 285 | `codex-tui app::agents_overview::tests::actions::hidden_task_stays_hidden_through_activity_and_seed_until_explicit_resume` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 286 | `codex-tui app::agents_overview::tests::actions::lifecycle_removes_background_and_current_tasks_without_losing_the_dashboard` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 287 | `codex-tui app::agents_overview::tests::actions::rejected_delete_preserves_a_live_attachment_and_draft` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 288 | `codex-tui app::agents_overview::tests::command_center_attach_conflict_opens_read_only_and_retries` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 289 | `codex-tui app::agents_overview::tests::command_center_handles_resume_failure_and_success` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 290 | `codex-tui app::agents_overview::tests::overview_cold_resume_honors_working_directory_selection` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 291 | `codex-tui app::agents_overview::tests::overview_fork_keeps_idle_source_input_queued` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 292 | `codex-tui app::agents_overview::tests::restored_server_permission_profile_survives_cd_without_turn_override` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 293 | `codex-tui app::agents_overview::tests::root_switch_loads_local_preferences_from_disk` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 294 | `codex-tui app::agents_overview::tests::root_switch_preserves_idle_root_with_running_subagent` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 295 | `codex-tui app::agents_overview::tests::root_switch_preserves_vim_line_yank` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 296 | `codex-tui app::agents_overview::tests::shared_overview_seeds_once_and_retains_locally_resumed_history` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 297 | `codex-tui app::tests::active_reconnect::reconnect_exhaustion_and_unknown_initial_thread_stay_offline` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 298 | `codex-tui app::tests::backend_banner_fallback_tests::backend_banner_fallback_updates_task_settings_and_keeps_notice` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 299 | `codex-tui app::tests::background_task_defaults_tests::command_center_new_checkout_and_worktree_preserve_source_and_default_branch` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 300 | `codex-tui app::tests::background_task_defaults_tests::command_center_new_keeps_startup_draft_visible_through_handoff` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 301 | `codex-tui app::tests::background_task_defaults_tests::command_center_new_preserves_explicit_choices_and_managed_defaults` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 302 | `codex-tui app::tests::background_task_defaults_tests::command_center_new_preserves_only_selected_server_profiles` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 303 | `codex-tui app::tests::background_task_defaults_tests::command_center_new_reads_server_defaults_for_actual_destination` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 304 | `codex-tui app::tests::background_task_defaults_tests::command_center_new_restores_blank_drafts_and_builtin_permissions` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 305 | `codex-tui app::tests::background_task_defaults_tests::review_regression_agents_overview_creation_is_fresh_but_returning_is_not` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 306 | `codex-tui app::tests::browsing_pagination_tests::browsing_loads_before_the_oldest_prompt_after_a_partial_answer` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 307 | `codex-tui app::tests::disconnect::lost_mutation_reply_preserves_work_without_resubmitting` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 308 | `codex-tui app::tests::external_writer_fork_tests::external_writer_fork_opens_editable_thread_without_taking_source_lease` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 309 | `codex-tui app::tests::fresh_sparkle_tests::astra_picker_confirms_the_model_at_application_after_an_automatic_update` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 310 | `codex-tui app::tests::history_hydration_tests::history_hydration_archived_retry_uses_first_attempt_runtime_settings` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 311 | `codex-tui app::tests::luna_reserve_recovery_tests::luna_reserve_entry_dispatches_an_already_queued_turn_with_accepted_settings` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 312 | `codex-tui app::tests::luna_reserve_recovery_tests::luna_reserve_recovery_does_not_override_manual_choice_or_account_change` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 313 | `codex-tui app::tests::luna_reserve_recovery_tests::luna_reserve_recovery_restores_task_and_pending_turn_after_fresh_backend_read` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 314 | `codex-tui app::tests::misalignment_policy::misalignment_continuation_requires_current_review_and_submits_once` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 315 | `codex-tui app::tests::model_defaults::session_model_selection_preserves_defaults_and_updates_active_thread` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 316 | `codex-tui app::tests::pagination_completion_tests::beginning_navigation_holds_the_view_until_the_last_page_arrives` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 317 | `codex-tui app::tests::permission_selection_tests::accepted_permissions_survive_directory_change_before_notification` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 318 | `codex-tui app::tests::projectless_tests::projectless_permissions_survive_session_transitions_without_trust` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 319 | `codex-tui app::tests::realtime_start::lifecycle_actions_stop_parked_voice_before_removing_owner` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 320 | `codex-tui app::tests::session_lifecycle_requests::agents_overview_seeds_loaded_threads_when_recent_listing_is_unavailable` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 321 | `codex-tui app::tests::session_lifecycle_requests::archive_current_thread_returns_shared_servers_to_agents` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 322 | `codex-tui app::tests::session_lifecycle_requests::changing_directory_preserves_project_trust_permissions_history_and_hooks` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 323 | `codex-tui app::tests::session_lifecycle_requests::command_center_read_only_open_requests_and_failure_preservation` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 324 | `codex-tui app::tests::session_lifecycle_requests::delete_current_thread_navigates_only_after_success` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 325 | `codex-tui app::tests::session_lifecycle_requests::external_transport_registers_dynamic_tools_and_finds_task_mentions` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 326 | `codex-tui app::tests::session_lifecycle_requests::local_daemon_registers_approval_gated_mcp_tools_for_both_start_paths` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 327 | `codex-tui app::tests::session_lifecycle_requests::local_mcp_respects_configured_servers_and_managed_requirements` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 328 | `codex-tui app::tests::session_lifecycle_requests::managed_worktree_transitions_bind_owner_and_preserve_only_fork_history` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 329 | `codex-tui app::tests::session_lifecycle_requests::new_session_tests::replacement_preserves_remote_launch_paths_and_older_servers` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 330 | `codex-tui app::tests::session_lifecycle_requests::new_session_tests::replacement_uses_server_defaults_and_preserves_explicit_launch_settings` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 331 | `codex-tui app::tests::session_lifecycle_requests::startup_defaults_tests::fresh_startup_falls_back_only_for_unsupported_config_read` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 332 | `codex-tui app::tests::session_lifecycle_requests::startup_defaults_tests::fresh_startup_reads_destination_and_cleared_model_uses_catalog` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 333 | `codex-tui app::tests::session_lifecycle_requests::startup_defaults_tests::fresh_startup_uses_server_defaults_with_explicit_and_managed_precedence` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 334 | `codex-tui app::tests::session_lifecycle_requests::startup_defaults_tests::startup_reads_server_defaults_before_starting_thread` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 335 | `codex-tui app::tests::session_lifecycle_requests::transcript_alt_beginning_loads_every_older_history_page` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 336 | `codex-tui app::tests::session_lifecycle_requests::underfilled_scrollback_fetches_older_pages_without_opening_the_transcript` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 337 | `codex-tui app::tests::set_thread_goal_draft_materializes_long_objective_and_confirms_before_paste` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 338 | `codex-tui app::tests::startup::owned_subagent_approval_before_thread_started_is_preserved` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 339 | `codex-tui app::tests::turn_submission::misalignment_policy_blocks_queued_turns_and_goal_resumption` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 340 | `codex-tui app::tests::unavailable_commands::unavailable_thread_new_and_clear_start_a_writable_session` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 341 | `codex-tui app::tests::update_memory_settings_updates_current_thread_memory_mode` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 342 | `codex-tui app::tests::user_verification_routes::side_toggle_surfaces_pending_verification_from_an_inactive_thread` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 343 | `codex-tui app::thread_title::tests::automatic_thread_title_generates_without_a_provisional_name` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 344 | `codex-tui app::thread_title::tests::automatic_thread_title_respects_origin_metadata_after_switching` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 345 | `codex-tui app::thread_title::tests::canceled_thread_title_ignores_late_start_and_completion` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 346 | `codex-tui app::thread_title::tests::manual_rename_cancels_running_thread_title` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 347 | `codex-tui app::thread_title::tests::overview_rename_cancels_running_thread_title` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 348 | `codex-tui app::thread_title::tests::slash_rename_generates_editable_title_through_embedded_app_server` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 349 | `codex-tui app::thread_title::tests::thread_title_progress_clears_failed_requests_and_follows_thread_switches` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 350 | `codex-tui app_server_session::prompt_history_tests::lifecycle_metadata_uses_local_prompt_history` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 351 | `codex-tui app_server_session::provider_selection_tests::environment_provider_is_explicit_in_remote_start_fork_resume_and_history` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 352 | `codex-tui app_server_session::provider_selection_tests::starts_and_forks_use_server_provider_unless_explicitly_selected` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 353 | `codex-tui app_server_session::reasoning_defaults_tests::reasoning_defaults_reach_responses` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 354 | `codex-tui app_server_session::rollout_history::tests::cached_legacy_resume_revalidates_history_across_migration_settings` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 355 | `codex-tui app_server_session::rollout_history::tests::legacy_resume_preserves_history_mode_after_picker_server_replacement` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 356 | `codex-tui app_server_session::rollout_history::tests::remote_resume_restores_saved_server_profile_without_permission_overrides` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 357 | `codex-tui app_server_session::rollout_history::tests::rollout_maintenance_contention_disables_cached_legacy_resume_shortcut` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 358 | `codex-tui app_server_session::rollout_history::tests::stale_legacy_history_mode_is_revalidated_before_resume` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 359 | `codex-tui app_server_session::tests::connected_thread_start_preserves_flex_without_catalog_support` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 360 | `codex-tui app_server_session::tests::ephemeral_paginated_fork_skips_unsupported_history_hydration` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 361 | `codex-tui app_server_session::tests::persisted_resume_does_not_forward_implicit_service_tier` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 362 | `codex-tui app_server_session::tests::shared_thread_start_preserves_explicit_session_overrides` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 363 | `codex-tui app_server_session::tests::side_fork_excludes_turns_without_clearing_regular_ephemeral_fork` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 364 | `codex-tui app_server_session::tests::side_fork_skips_parent_title_lookup_but_normal_ephemeral_fork_keeps_it` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 365 | `codex-tui app_server_session::tests::side_fork_uses_one_request_for_long_paginated_history` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 366 | `codex-tui app_server_session::workspace_roots_tests::remote_workspace_roots_survive_start_turn_resume_and_fork` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 367 | `codex-tui chatwidget::tests::guardian::app_server_guardian_review_denied_renders_denied_request_snapshot` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 368 | `codex-tui chatwidget::tests::guardian::app_server_guardian_review_timed_out_renders_timed_out_request_snapshot` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 369 | `codex-tui chatwidget::tests::guardian::guardian_approved_request_permissions_clears_status_without_history` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 370 | `codex-tui chatwidget::tests::guardian::guardian_denied_exec_renders_warning_and_denied_request` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 371 | `codex-tui chatwidget::tests::guardian::guardian_timed_out_exec_renders_warning_and_timed_out_request` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 372 | `codex-tui chatwidget::tests::status_and_layout::running_hook_does_not_displace_active_exec_cell` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 373 | `codex-tui config_update::tests::remote_project_trust_guards_thread_start_and_preserves_repository_decisions` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 374 | `codex-tui dynamic_tools::tests::oversized_read_preserves_answer_in_next_model_request` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 375 | `codex-tui dynamic_tools::tests::task_creation_and_followup_start_background_turns` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 376 | `codex-tui dynamic_tools::tests::task_management_tools_use_existing_app_server_operations` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 377 | `codex-tui dynamic_tools::tests::wait_threads_preserves_snapshots_and_rejects_self_wait` | TMT | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 threads=2 复跑通过（根因待定位） |
+| 378 | `codex-tui resume_picker::transcript_preview::tests::transcript_preview_preserves_legacy_and_paginated_output` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 379 | `codex-tui session_start::tests::archived_session_requires_confirmation_before_resume_or_fork` | TMT | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
+| 380 | `codex-tui::all suite::focus_palette::default_owned_screen_entry_paints_before_sync_ends_and_exit_clears_inline_draft` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 381 | `codex-tui::all suite::focus_palette::tui_mode_picker::tui_mode_picker_applies_only_after_restart` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 382 | `codex-tui::all suite::provider_defaults::history_lookup_uses_server_provider_with_local_and_embedded_servers` | FAIL | 结果波动（负载/并发关联待定位，未证明因果） | 2026-10-07 全套重载首试即过 |
+| 383 | `codex-v8-poc tests::sandbox_feature_matches_linked_v8` | FAIL | 未归因（本次 t2 仍败；根因与回归归属开放） | 2026-10-07 本次复跑仍败（threads=2/retries0） |
