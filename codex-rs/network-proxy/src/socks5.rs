@@ -911,7 +911,10 @@ mod tests {
         let reloader = Arc::new(StaticReloader {
             state: state.clone(),
         });
-        Arc::new(NetworkProxyState::with_reloader(state, reloader))
+        Arc::new(
+            NetworkProxyState::with_reloader(state, reloader)
+                .with_host_lookup_fixture(crate::runtime::public_dns_lookup_fixture()),
+        )
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -689,6 +689,7 @@ mod tests {
             metadata,
             crate::LocalBindingPolicy::DefaultFalse,
         )
+        .with_host_lookup_fixture(crate::runtime::public_dns_lookup_fixture())
     }
 
     fn is_rfc3339_utc_millis(timestamp: &str) -> bool {

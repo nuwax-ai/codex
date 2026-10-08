@@ -8,6 +8,10 @@ use rama_core::error::BoxError;
 use rama_core::error::ErrorExt as _;
 use rama_core::error::OpaqueError;
 use rama_core::extensions::ExtensionsMut;
+#[cfg(target_os = "macos")]
+use rama_dns::DnsResolver;
+#[cfg(target_os = "macos")]
+use rama_net::address::Domain;
 use rama_net::address::Host;
 use rama_net::address::HostWithPort;
 use rama_net::address::ProxyAddress;
@@ -17,6 +21,12 @@ use rama_tcp::TcpStream;
 use rama_tcp::client::TcpStreamConnector;
 use rama_tcp::client::service::TcpConnector;
 use std::io;
+#[cfg(target_os = "macos")]
+use std::net::IpAddr;
+#[cfg(target_os = "macos")]
+use std::net::Ipv4Addr;
+#[cfg(target_os = "macos")]
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -31,6 +41,69 @@ impl TargetCheckedTcpConnector {
     }
 }
 
+/// DNS resolver for the target-checked connector: consults the controlled
+/// test fixture when one is installed, otherwise the native system resolver.
+#[cfg(target_os = "macos")]
+#[derive(Clone)]
+pub(crate) struct StateDnsResolver {
+    fixture: Option<crate::runtime::HostLookupFixture>,
+}
+
+#[cfg(target_os = "macos")]
+impl StateDnsResolver {
+    pub(crate) fn new(fixture: Option<crate::runtime::HostLookupFixture>) -> Self {
+        Self { fixture }
+    }
+
+    /// Loopback names always use the native resolver: connector-level IPv4 and
+    /// IPv6 localhost tests must observe both real address families.
+    fn fixture_for_host(&self, host: &str) -> Option<&crate::runtime::HostLookupFixture> {
+        let host = crate::policy::normalize_host(host);
+        if host == "localhost" || host.ends_with(".localhost") {
+            None
+        } else {
+            self.fixture.as_ref()
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl DnsResolver for StateDnsResolver {
+    type Error = std::io::Error;
+
+    async fn ipv4_lookup(&self, domain: Domain) -> std::io::Result<Vec<Ipv4Addr>> {
+        if let Some(fixture) = self.fixture_for_host(domain.as_str()) {
+            let addrs = fixture(domain.as_str().to_owned(), /*port*/ 0).await?;
+            return Ok(addrs
+                .into_iter()
+                .filter_map(|addr| match addr.ip() {
+                    IpAddr::V4(ip) => Some(ip),
+                    IpAddr::V6(_) => None,
+                })
+                .collect());
+        }
+        SystemDnsResolver.ipv4_lookup(domain).await
+    }
+
+    async fn ipv6_lookup(&self, domain: Domain) -> std::io::Result<Vec<Ipv6Addr>> {
+        if let Some(fixture) = self.fixture_for_host(domain.as_str()) {
+            let addrs = fixture(domain.as_str().to_owned(), /*port*/ 0).await?;
+            return Ok(addrs
+                .into_iter()
+                .filter_map(|addr| match addr.ip() {
+                    IpAddr::V4(_) => None,
+                    IpAddr::V6(ip) => Some(ip),
+                })
+                .collect());
+        }
+        SystemDnsResolver.ipv6_lookup(domain).await
+    }
+
+    async fn txt_lookup(&self, domain: Domain) -> std::io::Result<Vec<Vec<u8>>> {
+        SystemDnsResolver.txt_lookup(domain).await
+    }
+}
+
 impl<Input> Service<Input> for TargetCheckedTcpConnector
 where
     Input: TryRefIntoTransportContext + Send + ExtensionsMut + 'static,
@@ -42,7 +115,9 @@ where
     async fn serve(&self, input: Input) -> Result<Self::Output, Self::Error> {
         let connector = TcpConnector::new();
         #[cfg(target_os = "macos")]
-        let connector = connector.with_dns(SystemDnsResolver);
+        let connector = connector.with_dns(StateDnsResolver::new(
+            self.state.host_lookup_fixture.clone(),
+        ));
 
         if input.extensions().get::<ProxyAddress>().is_some() {
             return connector.serve(input).await;

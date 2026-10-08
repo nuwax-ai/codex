@@ -273,7 +273,25 @@ pub struct NetworkProxyState {
     execution_attributions: Arc<Mutex<HashMap<String, ExecutionAttribution>>>,
     environment_id: Option<Arc<str>>,
     execution_id: Option<Arc<str>>,
+    /// Controlled-fixture DNS override for the local/private hostname check.
+    /// Production leaves this unset and resolves through the system resolver;
+    /// tests pin hostnames to fixed addresses so allowlist decisions do not
+    /// depend on the host machine's resolver (e.g., fake-IP VPN/proxy DNS).
+    pub(crate) host_lookup_fixture: Option<HostLookupFixture>,
 }
+
+/// Resolves one hostname for the pre-connect local/private IP check.
+pub(crate) type HostLookupFixture = Arc<
+    dyn Fn(
+            String,
+            u16,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = std::io::Result<Vec<std::net::SocketAddr>>> + Send,
+            >,
+        > + Send
+        + Sync,
+>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HostMitmRequirement {
@@ -312,6 +330,7 @@ impl Clone for NetworkProxyState {
             execution_attributions: self.execution_attributions.clone(),
             environment_id: self.environment_id.clone(),
             execution_id: self.execution_id.clone(),
+            host_lookup_fixture: self.host_lookup_fixture.clone(),
         }
     }
 }
@@ -415,7 +434,17 @@ impl NetworkProxyState {
             execution_attributions: Arc::new(Mutex::new(HashMap::new())),
             environment_id: None,
             execution_id: None,
+            host_lookup_fixture: None,
         }
+    }
+
+    /// Installs a controlled-fixture resolver for the hostname classification
+    /// used by [`Self::host_blocked`]. Only tests use this; assertions about
+    /// literal IP classification and DNS-failure blocking are unaffected.
+    #[cfg(test)]
+    pub(crate) fn with_host_lookup_fixture(mut self, fixture: HostLookupFixture) -> Self {
+        self.host_lookup_fixture = Some(fixture);
+        self
     }
 
     pub(crate) fn register_execution(
@@ -760,18 +789,30 @@ impl NetworkProxyState {
                 if !is_explicit_local_allowlisted(&allowed_domains, &host) {
                     return Ok(HostBlockDecision::Blocked(HostBlockReason::NotAllowedLocal));
                 }
-            } else if host_resolves_to_non_public_ip(
-                host_str,
-                port,
-                DNS_LOOKUP_TIMEOUT,
-                |host, port| async move {
-                    lookup_host((host.as_str(), port))
-                        .await
-                        .map(Iterator::collect)
-                },
-            )
-            .await
-            {
+            } else if match self.host_lookup_fixture.clone() {
+                Some(fixture) => {
+                    host_resolves_to_non_public_ip(
+                        host_str,
+                        port,
+                        DNS_LOOKUP_TIMEOUT,
+                        move |host, port| fixture(host, port),
+                    )
+                    .await
+                }
+                None => {
+                    host_resolves_to_non_public_ip(
+                        host_str,
+                        port,
+                        DNS_LOOKUP_TIMEOUT,
+                        |host, port| async move {
+                            lookup_host((host.as_str(), port))
+                                .await
+                                .map(Iterator::collect)
+                        },
+                    )
+                    .await
+                }
+            } {
                 return Ok(HostBlockDecision::Blocked(HostBlockReason::NotAllowedLocal));
             }
         }
@@ -1270,7 +1311,43 @@ pub(crate) fn network_proxy_state_for_policy(
     };
 
     NetworkProxyState::with_reloader(state, Arc::new(NoopReloader))
+        .with_host_lookup_fixture(public_dns_lookup_fixture())
 }
+
+/// Controlled fixture resolution shared by proxy tests: the reserved `.invalid`
+/// TLD stays unresolvable (DNS-failure blocking tests rely on it). Localhost
+/// names retain native resolution; other hostnames map to a fixed public IPv4
+/// address and no IPv6 addresses, independently of the host machine's resolver.
+#[cfg(test)]
+pub(crate) fn public_dns_lookup_fixture() -> HostLookupFixture {
+    Arc::new(|host, port| {
+        Box::pin(async move {
+            let normalized_host = normalize_host(&host);
+            if normalized_host.ends_with(".invalid") {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "fixture nxdomain",
+                ))
+            } else if normalized_host == "localhost" || normalized_host.ends_with(".localhost") {
+                // Loopback names keep native resolution so connector-level
+                // IPv4/IPv6 localhost tests and local TLS upstreams observe
+                // the real stack behavior.
+                tokio::net::lookup_host((host.as_str(), port))
+                    .await
+                    .map(Iterator::collect)
+            } else {
+                Ok(vec![std::net::SocketAddr::from((
+                    std::net::IpAddr::V4(std::net::Ipv4Addr::new(93, 184, 216, 34)),
+                    port,
+                ))])
+            }
+        })
+    })
+}
+
+#[cfg(test)]
+#[path = "resolver_tests.rs"]
+mod resolver_tests;
 
 #[cfg(test)]
 struct NoopReloader;
