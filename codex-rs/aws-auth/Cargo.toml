@@ -28,6 +28,7 @@ url = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+native-tls = "0.2"
 pretty_assertions = { workspace = true }
 rcgen = { workspace = true }
 rustls = { workspace = true }

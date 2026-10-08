@@ -13,6 +13,8 @@ use tokio::time::timeout;
 
 #[tokio::test]
 async fn real_imds_credentials_stop_after_policy_revocation() -> Result<(), Box<dyn Error>> {
+    #[cfg(target_os = "macos")]
+    warm_secure_transport_once();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let controller = codex_http_client::NetworkPolicyController::default();
     let policy = controller.policy();
@@ -466,4 +468,58 @@ fn sdk_profile_probe() -> Result<(), Box<dyn Error>> {
         }
         Ok::<_, Box<dyn Error>>(())
     })
+}
+
+/// The revocation test uses a warm platform TLS stack while its SDK client and
+/// application pool remain cold. This setup uses a separate local connector
+/// before the five-second policy budget; cold SDK startup remains a separate
+/// behavior that this test does not validate.
+#[cfg(target_os = "macos")]
+fn warm_secure_transport_once() {
+    use std::net::TcpListener as StdListener;
+    use std::time::Duration;
+    use std::time::Instant;
+    static WARMUP: std::sync::Once = std::sync::Once::new();
+    WARMUP.call_once(|| {
+        let connector = native_tls::TlsConnector::new().expect("warmup connector");
+        let listener = StdListener::bind("127.0.0.1:0").expect("bind warmup listener");
+        let address = listener.local_addr().expect("warmup address");
+        listener
+            .set_nonblocking(true)
+            .expect("nonblocking warmup listener");
+        let server = std::thread::spawn(move || -> std::io::Result<()> {
+            let deadline = Instant::now() + Duration::from_secs(/*secs*/ 5);
+            loop {
+                match listener.accept() {
+                    Ok((stream, _)) => {
+                        drop(stream);
+                        return Ok(());
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        if Instant::now() >= deadline {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::TimedOut,
+                                "warmup listener did not receive a connection",
+                            ));
+                        }
+                        std::thread::sleep(Duration::from_millis(/*millis*/ 10));
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+        });
+        let warmup = (|| -> std::io::Result<()> {
+            let io_timeout = Duration::from_secs(/*secs*/ 2);
+            let stream = std::net::TcpStream::connect_timeout(&address, io_timeout)?;
+            stream.set_read_timeout(Some(io_timeout))?;
+            stream.set_write_timeout(Some(io_timeout))?;
+            // Context creation pays Security's one-time initialization without
+            // sharing this connection or TLS connector with the SDK client.
+            drop(connector.connect("localhost", stream));
+            Ok(())
+        })();
+        let accepted = server.join().expect("warmup server should not panic");
+        warmup.expect("warmup socket setup should succeed");
+        accepted.expect("warmup server should accept the local connection");
+    });
 }

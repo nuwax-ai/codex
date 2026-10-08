@@ -340,6 +340,8 @@ async fn does_not_retry_a_non_replayable_streaming_request() {
 }
 
 fn spawn_successful_tls_fallback_server() -> io::Result<SuccessfulTlsFallbackServer> {
+    #[cfg(target_os = "macos")]
+    warm_secure_transport_once();
     codex_utils_rustls_provider::ensure_rustls_crypto_provider();
     let CertifiedKey { cert, signing_key } =
         generate_simple_self_signed(vec!["127.0.0.1".to_string()]).map_err(io::Error::other)?;
@@ -471,9 +473,63 @@ fn spawn_successful_tls_fallback_server() -> io::Result<SuccessfulTlsFallbackSer
     ))
 }
 
+/// These fallback tests exercise a warm platform TLS stack. Initialize Secure
+/// Transport once before starting the fixture's five-second budget, using a
+/// separate connector and socket so the application pool stays cold. This does
+/// not assert that a cold production request meets its timeout.
+#[cfg(target_os = "macos")]
+fn warm_secure_transport_once() {
+    use std::net::TcpListener as StdListener;
+    static WARMUP: std::sync::Once = std::sync::Once::new();
+    WARMUP.call_once(|| {
+        let connector = native_tls::TlsConnector::new().expect("warmup connector");
+        let listener = StdListener::bind("127.0.0.1:0").expect("bind warmup listener");
+        let address = listener.local_addr().expect("warmup address");
+        listener
+            .set_nonblocking(true)
+            .expect("nonblocking warmup listener");
+        let server = thread::spawn(move || -> io::Result<()> {
+            let deadline = Instant::now() + Duration::from_secs(/*secs*/ 5);
+            loop {
+                match listener.accept() {
+                    Ok((stream, _)) => {
+                        drop(stream);
+                        return Ok(());
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                        if Instant::now() >= deadline {
+                            return Err(io::Error::new(
+                                io::ErrorKind::TimedOut,
+                                "warmup listener did not receive a connection",
+                            ));
+                        }
+                        thread::sleep(Duration::from_millis(/*millis*/ 10));
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+        });
+        let warmup = (|| -> io::Result<()> {
+            let io_timeout = Duration::from_secs(/*secs*/ 2);
+            let stream = std::net::TcpStream::connect_timeout(&address, io_timeout)?;
+            stream.set_read_timeout(Some(io_timeout))?;
+            stream.set_write_timeout(Some(io_timeout))?;
+            // A closed peer suffices to create the platform TLS context. Socket
+            // I/O is bounded; the one-time Security initialization runs here.
+            drop(connector.connect("localhost", stream));
+            Ok(())
+        })();
+        let accepted = server.join().expect("warmup server should not panic");
+        warmup.expect("warmup socket setup should succeed");
+        accepted.expect("warmup server should accept the local connection");
+    });
+}
+
 fn spawn_protocol_version_rejection_server(
     maximum_attempts: usize,
 ) -> io::Result<(String, mpsc::Receiver<io::Result<usize>>, mpsc::Sender<()>)> {
+    #[cfg(target_os = "macos")]
+    warm_secure_transport_once();
     let listener = TcpListener::bind(("127.0.0.1", 0))?;
     let address = listener.local_addr()?;
     listener.set_nonblocking(true)?;
