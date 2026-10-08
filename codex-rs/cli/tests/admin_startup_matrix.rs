@@ -380,6 +380,245 @@ async fn admin_commands_cover_install_method_and_daemon_presence_matrix() -> Res
     Ok(())
 }
 
+/// Package-4 slice: `--strict-config` and `--profile` must reach the REAL
+/// config loader behind administrative commands, not only the TuiCli merge.
+/// Strict-config turns an unrecognized config field into a hard failure with
+/// the rollout untouched; profile selection layers the selected profile over
+/// config.toml (an unknown provider fails, a valid profile archives normally).
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_cli_flags_reach_real_config_loading() -> Result<()> {
+    let cli = AdminCli::new()?;
+    std::fs::write(
+        cli.home.path().join("config.toml"),
+        "features.plugins = false\nanalytics.enabled = false\nnot_a_real_setting = true\n",
+    )?;
+    let config_with_unknown_field = std::fs::read(cli.home.path().join("config.toml"))?;
+    let thread_id = create_fake_rollout(
+        cli.home.path(),
+        "2025-04-02T02-00-00",
+        "2025-04-02T02:00:00Z",
+        "flags strict session",
+        Some(NUWAX_ENV_PROVIDER_ID),
+        /*git_info*/ None,
+    )?;
+
+    // --strict-config: an unrecognized config field is fatal and the rollout
+    // must not move.
+    let output = cli
+        .run(&["archive", &thread_id, "--strict-config"], &[], None)
+        .await?;
+    assert!(
+        !output.status.success(),
+        "strict-config must fail on an unrecognized config field: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let unchanged = find_rollout_file(cli.home.path(), &thread_id)
+        .context("strict-config failure must leave the rollout in place")?;
+    assert!(
+        !unchanged
+            .components()
+            .any(|c| c.as_os_str() == "archived_sessions"),
+        "strict-config failure must not archive"
+    );
+    assert_eq!(
+        std::fs::read(cli.home.path().join("config.toml"))?,
+        config_with_unknown_field,
+        "strict-config failure must not rewrite config.toml"
+    );
+
+    // Without the flag the unknown field is ignored and the command archives.
+    let output = cli.run(&["archive", &thread_id], &[], None).await?;
+    assert!(
+        output.status.success(),
+        "fallback archive must succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let archived = find_rollout_file(cli.home.path(), &thread_id)
+        .context("fallback archive must keep the rollout")?;
+    assert!(
+        archived
+            .components()
+            .any(|c| c.as_os_str() == "archived_sessions"),
+        "fallback archive must move the rollout"
+    );
+    let output = cli.run(&["unarchive", &thread_id], &[], None).await?;
+    assert!(
+        output.status.success(),
+        "restore for profile cells must succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    std::fs::write(cli.home.path().join("config.toml"), &cli.config_before)?;
+    let restored = find_rollout_file(cli.home.path(), &thread_id)
+        .context("restored rollout for profile cells")?;
+
+    // --profile uses the profile-v2 file mechanism (`<name>.config.toml` in
+    // CODEX_HOME): a profile whose provider does not exist must fail the
+    // command (the profile layer reached the loader), and a valid profile
+    // archives normally through the same flag path.
+    std::fs::write(
+        cli.home.path().join("admin.config.toml"),
+        "model_provider = \"no-such-provider\"\n",
+    )?;
+    let output = cli
+        .run(
+            &[
+                "archive",
+                &thread_id,
+                "--strict-config",
+                "--profile",
+                "admin",
+            ],
+            &[],
+            None,
+        )
+        .await?;
+    assert!(
+        !output.status.success(),
+        "the selected profile's unknown provider must fail the load"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("Model provider `no-such-provider` not found"),
+        "the failure must come from the selected profile: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        find_rollout_file(cli.home.path(), &thread_id),
+        Some(restored),
+        "profile load failure must leave the rollout at its original path"
+    );
+    std::fs::write(
+        cli.home.path().join("ok.config.toml"),
+        "approval_policy = \"never\"\n",
+    )?;
+    let output = cli
+        .run(&["archive", &thread_id, "--profile", "ok"], &[], None)
+        .await?;
+    assert!(
+        output.status.success(),
+        "a valid profile must archive normally: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        find_rollout_file(cli.home.path(), &thread_id).is_some_and(|path| {
+            path.components()
+                .any(|c| c.as_os_str() == "archived_sessions")
+        }),
+        "profile-selected archive must move the rollout"
+    );
+    cli.assert_config_unchanged()?;
+    Ok(())
+}
+
+/// Package-4 slice: `--oss` routes provider selection for administrative
+/// commands. Implicit selection reads `oss_provider` from config.toml;
+/// `--local-provider` overrides it, and an unknown explicit provider is a
+/// hard load failure that leaves the rollout untouched.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_cli_oss_flag_routes_provider_selection() -> Result<()> {
+    let cli = AdminCli::new()?;
+    std::fs::write(
+        cli.home.path().join("config.toml"),
+        "features.plugins = false\nanalytics.enabled = false\noss_provider = \"no-such-implicit-provider\"\n[model_providers.oss-custom]\nname = \"OSS custom\"\nbase_url = \"http://127.0.0.1:9/v1\"\nwire_api = \"responses\"\n",
+    )?;
+    let config_before = std::fs::read(cli.home.path().join("config.toml"))?;
+    let thread_id = create_fake_rollout(
+        cli.home.path(),
+        "2025-04-03T03-00-00",
+        "2025-04-03T03:00:00Z",
+        "oss flag session",
+        Some(NUWAX_ENV_PROVIDER_ID),
+        /*git_info*/ None,
+    )?;
+    let original =
+        find_rollout_file(cli.home.path(), &thread_id).context("original rollout for OSS cells")?;
+
+    // An invalid config default proves that --oss reaches provider selection.
+    let output = cli
+        .run(&["archive", &thread_id, "--oss"], &[], None)
+        .await?;
+    assert!(
+        !output.status.success(),
+        "--oss with an unknown oss_provider must fail: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("Model provider `no-such-implicit-provider` not found"),
+        "--oss must fail because of its config default: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        find_rollout_file(cli.home.path(), &thread_id),
+        Some(original.clone()),
+        "implicit provider failure must leave the rollout at its original path"
+    );
+
+    // An unknown explicit provider is a hard failure and must not move the
+    // rollout; the configured provider through the same flag path succeeds.
+    let output = cli
+        .run(
+            &[
+                "archive",
+                &thread_id,
+                "--oss",
+                "--local-provider",
+                "no-such-provider",
+            ],
+            &[],
+            None,
+        )
+        .await?;
+    assert!(
+        !output.status.success(),
+        "an unknown --local-provider must fail the load"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("Model provider `no-such-provider` not found"),
+        "the explicit provider must override the invalid config default: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        find_rollout_file(cli.home.path(), &thread_id),
+        Some(original),
+        "unknown provider failure must leave the rollout at its original path"
+    );
+    let output = cli
+        .run(
+            &[
+                "archive",
+                &thread_id,
+                "--oss",
+                "--local-provider",
+                "oss-custom",
+            ],
+            &[],
+            None,
+        )
+        .await?;
+    assert!(
+        output.status.success(),
+        "the configured provider via --local-provider must archive: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        find_rollout_file(cli.home.path(), &thread_id).is_some_and(|path| {
+            path.components()
+                .any(|c| c.as_os_str() == "archived_sessions")
+        }),
+        "--local-provider archive must move the rollout"
+    );
+    assert_eq!(
+        std::fs::read(cli.home.path().join("config.toml"))?,
+        config_before,
+        "OSS flag selection must not rewrite config.toml"
+    );
+    Ok(())
+}
+
 /// A corrupted local group names the variable and leaves the rollout untouched;
 /// an explicit `-c model_provider` mask makes the same command succeed.
 #[cfg(unix)]
