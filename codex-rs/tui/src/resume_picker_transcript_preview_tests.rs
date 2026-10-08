@@ -326,7 +326,7 @@ async fn transcript_preview_for_history_mode(
     let codex_home = tempdir().expect("tempdir");
     MockResponsesConfig::new(&server.uri())
         .with_root_config("compact_prompt = \"compact\"\nmodel_auto_compact_token_limit = 100000")
-        .with_provider_config("supports_websockets = false\nexperimental_bridge = \"native\"")
+        .with_provider_config("supports_websockets = false")
         .write(codex_home.path())
         .expect("write mock config");
     let config = ConfigBuilder::default()

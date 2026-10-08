@@ -192,6 +192,10 @@ model_provider = "mock_provider"
 name = "Mock ChatGPT provider for test"
 base_url = "{server_uri}/v1"
 wire_api = "responses"
+# Same native-transport pin as MockResponsesConfig: the fork's default
+# bridging policy would skip the native Responses WebSocket handshake these
+# round-trip assertions observe.
+experimental_bridge = "native"
 request_max_retries = 0
 stream_max_retries = 0
 requires_openai_auth = true

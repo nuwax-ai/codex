@@ -91,7 +91,6 @@ async fn delegated_core_events_keep_private_output_hidden_and_deliver_final_spee
     let (mut app, mut app_events, mut ops) = make_test_app_with_channels().await;
     let codex_home = tempfile::tempdir()?;
     MockResponsesConfig::new(&model_server.uri())
-        .with_provider_config("experimental_bridge = \"native\"")
         .with_root_config(&format!(
             "experimental_realtime_ws_base_url = {:?}\nexperimental_realtime_webrtc_call_base_url = {:?}",
             realtime_server.uri(),

@@ -145,6 +145,11 @@ model_provider = "{provider_id}"
 name = "{provider_name}"
 base_url = "{provider_base_url}"
 wire_api = "responses"
+# The fork's default policy bridges every non-first-party provider, which
+# disables native-Responses-only paths (Guardian V2 background scoring,
+# Responses WebSocket transports). These fixtures serve a native Responses
+# wire, so pin the native transport the way upstream tests assume.
+experimental_bridge = "native"
 request_max_retries = 0
 stream_max_retries = 0
 {provider_config}

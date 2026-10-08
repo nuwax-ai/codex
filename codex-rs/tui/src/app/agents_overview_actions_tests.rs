@@ -443,7 +443,6 @@ async fn lifecycle_removes_background_and_current_tasks_without_losing_the_dashb
             .with_model("gpt-5.2")
             .with_model_provider("lifecycle-test")
             .with_provider_name("Lifecycle test")
-            .with_provider_config("experimental_bridge = \"native\"")
             .write(app.config.codex_home.as_path())?;
         let mut app_server =
             Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await?;
