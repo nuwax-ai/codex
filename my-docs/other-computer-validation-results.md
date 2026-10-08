@@ -495,3 +495,23 @@ git diff --check
 ## 2026-10-07 Codex独立复审
 
 本轮实际问题、直接修复及完整命令见 codex-independent-review-2026-10-07.md。SIGABRT遗漏与(binary,name)口径已校正；201未归因仍开放。完整剩余改造按 claude-code-completion-plan-2026-10-07.md 的2个实质功能包+6个验收/稳定性包推进，不能把复验状态/局部A/B同败当生产门禁完成。
+
+## 2026-10-07 晚间轮：包 3 根因突破 + 包 1 提案（入口指引）
+
+按 claude-code-completion-plan-2026-10-07.md 八包工作令推进（本节为索引，证据见新文档）：
+
+- **包 3 归因进展**：249 仍败项分为 13 签名组；13/13 失败代表在独立 t1 窗口再次失败，但不能据此排除环境与时序因素。**R1 根因：fork 默认桥接策略把测试 mock provider 判为 bridged，Guardian V2 评分/native Responses WebSocket 被门控禁用**。fixture 显式 `experimental_bridge="native"` 恢复上游测试前提；初批 8 PASS 含 5 个恢复项和 3 个金丝雀，后续恢复按逐项标注计账。新增 R1b（checkpoint/二次采样，13 项）、R4（组织要求漂移误报）。SIGABRT 在模块并发窗口四次复现（8MiB/16MiB），支持栈溢出事实，尚不证明无界递归。详见 `validation-2026-10-07/pkg3-failure-signatures-worklist.md`。
+- **包 1 提案**：cap partial/usage 具体可裁决实施提案（真实插入点 diff、CapExhausted/CapPartialEvent/ThreadTokenUsage 完整性形状、有界策略数值表、7 个决策点）→ `cap-partial-usage-implementation-proposal-2026-10-07.md`，过审后按批实施。
+- 未做/未动：cap/D6 实施（等裁决）、完整 workspace 复跑（等小批绿后申请）、R2/R7/R9/R10 修复、R1b/R4 深查、Linux/OrbStack 执行（平台已确认在位）、厂商矩阵与 CI（需授权）。未 commit/push。
+
+## 2026-10-08 凌晨轮：R10/R6 收口、包 4 oss 格（入口指引）
+
+- **R10 暖态切片通过，冷态归因开放**：原日志实际 9 项，8 PASS（TLS×7 + aws-auth real_imds）/1 Core telemetry FAIL。TLS 抓栈不能证明纯 HTTP 的 AWS IMDS 冷态根因；预热改变测试前提，不能当生产冷启动验收。
+- **R6 产品补丁与限定切片通过**：观察到 FSEvents unwatch 在 async 线程阻塞后移专职线程；agents_overview 名称切片 71/71（模块内 63、模块外 8）、lifecycle TIMEOUT→PASS。Codex 复审进一步分离 desired/active、失败重试、合并通知，并覆盖安装窗口；具体行为与新机结果见 10-08 独立报告。附 R1 fixture 的 TUI 重复键修复。
+- **包 4**：--oss 真实路由格 PASS（oss_provider 隐式/--local-provider 正负格）。
+- R9 收窄至 sqlx establish（与 R6 不同源，开放）；R7 开放。
+- 详见 `validation-2026-10-07/pkg3-failure-signatures-worklist.md`。未 commit/push。
+
+## 2026-10-08 Codex 独立复审
+
+本轮修复、实际执行数、首轮失败、源码/二进制身份及提交记录见 `codex-independent-review-2026-10-08.md`。历史恢复标签 124 = 原 249 项新增恢复 115 + 此前已通过 9；原集合仍开放 134。新的本地切片不能替代完整 workspace、跨平台、真实厂商或 CI 验收。另机继续开发使用 `other-computer-development-prompt-2026-10-08.md`。

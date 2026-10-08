@@ -107,3 +107,44 @@
 ## 2026-10-07 完成路线
 
 以最新独立复审和 claude-code-completion-plan-2026-10-07.md为准：2个实质功能（cap、D6）与6个验收/稳定性包。writer loaded-owner正校准已补、Anthropic11场景实际wire仍待本轮执行；旧HOME canary根错误已纠正，D4采样不等于真实warm/根因闭合。未批准cap方案、P0 token证明、201根因、平台/厂商/CI均不勾选。
+
+## 2026-10-07 晚间轮（包3/包1推进）
+
+- 包3进展：249 仍败项签名分组完成（13 组，`my-docs/validation-2026-10-07/pkg3-failure-signatures-worklist.md`）；13/13 失败代表在独立 t1 窗口再次失败，不能据此排除时序/负载因素。R1 机制证据：fork 默认桥接策略把测试 mock provider 判为 bridged → Guardian V2 评分/native Responses WebSocket 被禁用（uses_model_bridge → async_scorer/extension.rs:89 警告）。fixture 钉 `experimental_bridge="native"`（app-server/tests/common/config.rs + attestation.rs raw 配置）后，app-server 切片 101 项累计 **79 恢复/22 开放**（77+attestation×2）；3 金丝雀再次通过。初始验证的 8 PASS = 5 个失败代表恢复 + 3 金丝雀，不是 8 个新增恢复。SIGABRT 项当窗单跑 2/2 PASS，后续模块并发仍失败（见工作清单）。标注文件 77 行恢复+13 行 R1b 开放说明，不能混计。工具/日志：兄弟 codex-tmp/pkg3/。
+- 包1：cap partial/usage 具体实施提案交付（`my-docs/cap-partial-usage-implementation-proposal-2026-10-07.md`：真实插入点 diff、CapExhausted 载体、CapPartialEvent/item、ContextualUserFragment 注入、有界策略数值表、D1-a..D4-b 七个决策点），等裁决后按批实施。
+- 包6平台确认：OrbStack 在位（orb/orbctl 可用），Linux 侧本地执行可排。
+
+## 2026-10-07 深夜续轮（用户指令"继续开发"）
+
+- **R4 已修（产品代码）**：fork 扩展字段 `provider_id`（load 时填充、参与派生相等）在 `check_thread_model_provider` 的 requirements raw 对比路径未填充 → 组织要求未变也误判 definition_changed、-32600 误拒（上游 #45517 前提破坏）。修复=检查侧非 Bedrock 分支按同键补填。验证：4 集成（enforcement×2+model_list×2）+5 单测+2 相关套件全绿（pkg3/final2/r4-*.log）。app-server 切片累计 **83/101 转绿**。
+- **R1b 深挖收窄未收口**：机制链全映射（select_parent_compaction→复核线程 InitialHistory 种子→池路由两分支）；实测 checkpoint item 在 sync review input 完全缺失；两候选（父历史无 item/复用路径无种子）待诊断输出定案。**新发现：修复后该家族双态**——首跑 5.1s 快败断言、后续 3/3 挂起于 index==0 且 Luna 请求数 0（Luna websocket 采样不稳，独立嫌疑）。测试诊断增强已留在 guardian_v2_history_tests.rs。
+- **R6 排除桥接家族**：TUI agents_overview 等在 280843aae 已钉 native 仍独立 60s 超时 → 根因独立。
+- R2/R7/R9/R10、SIGABRT 栈溢出机制定位、包 4/5/6/8 当窗未动，待下批。
+
+## 2026-10-07 深夜续轮二（用户指令"全部开发完"）
+
+- **R2 已修（22 项）**：fake-ip DNS 依赖注入——策略层 `NetworkProxyState.host_lookup_fixture` + 连接层 `StateDnsResolver`（macOS connector）；`.invalid` 保 NXDOMAIN、`localhost` 保原生双栈、其余主机名固定公网映射；三处测试构建点注入。network-proxy 全 crate 复验 313/314→修复 v6 委托后待 final3 确认；22 行标注已更新。core decider 1 项跨 crate 注入需另设计（开放）。
+- **R7 收敛未修**：分段计时+mock 探针证明卡点在 `RouteAwareClientPool` 发送路径（对本地零延迟 mock 间歇 >1s/挂起，connect_timeout 与外层期限放宽到 5s 时 14/16 转绿；不可放宽=削弱断言）。另发现 stalled-body 401/403/404 不从状态行分类（503 正常）。bail 诊断增强已留（`{error:?}`）。
+- **R1b 两种失败形态已观察，根因未定**：快败态为 checkpoint 断言（父历史无 item/复用路径无种子两候选）；挂起态的测试诊断停在等待答题后第二次 Luna 采样，sample 捕获子进程 stdin read。该栈可由测试未关 stdin 解释，不能单独定位采样机制或排除 shutdown 问题。临时探针已清。
+- **包 4 首切片完成**：`admin_cli_flags_reach_real_config_loading`（PASS）——strict-config 决定格+回退格、profile-v2 文件机制负/正格；实证语义：主配置 `[profiles]` 表=加载失败、未知 provider 恒硬错误。剩余 --oss 格、组状态格、owner crash/restart。
+- R9/R10 未动（R10 疑与 R7 同根：codex-http-client 首请求/TLS 初始化）。
+
+## 2026-10-08 凌晨轮（用户指令"R9/R10/R6 + 包 4 剩余格"）
+
+- **R10 暖态目标切片通过，冷态归因开放**：三段计时 execute=8.33s、sample 捕获 `SSLCreateContext`/dispatch_once 栈，支持 TLS 冷态初始化慢路径候选，不能把 execute 全耗时定为平台初始化。测试前本地 native-tls 握手预热与服务器 EOF/read-timeout 处理变更后，`r10-verify4.log` 实际 **9 项=8 PASS（TLS×7+aws-auth×1）+1 core retry telemetry FAIL**，整批不全绿；原 249 中相应 5 个历史项获暖态恢复标签。AWS IMDS 为纯 HTTP，冷态失败根因尚未证实，不能声明生产无缺陷。aws-auth 增 native-tls dev-dep/Cargo.lock；按规则仍需复核 Bazel 锁文件是否需更新。仅 `TlsConnector::new()` 的第一版预热未改善结果。
+- **R6 产品补丁与限定切片已验证，语义复审开放**：sample 观察 file-watcher 在 async 线程同步调用 macOS FSEvents `unwatch` 并阻塞，60s 窗口超时；未证明无限阻塞。当前补丁将 `RecommendedWatcher` 移专职线程、async 侧提交命令。验证：file-watcher 22/22、TUI lifecycle TIMEOUT→PASS 19s、**agents_overview 名称过滤切片 71/71**（849.7s：63 项在 `app::agents_overview::tests`，8 项在模块外）；不是模块全集或 TUI 全 crate 门禁。需复审异步 watch 生效、失败簿记、后端积压/阻塞后可用性。R1 fixture 模板行与 TUI 三处显式 experimental_bridge 的重复键已清（realtime_handoff 修复后 PASS）。
+- **包 4 --oss 格完成**：`admin_cli_oss_flag_routes_provider_selection`（PASS）——隐式 oss_provider 选择、--local-provider 未知 provider 硬失败/已配置 provider 成功三格。包 4 剩余：组状态格（active/incomplete）、owner crash/restart/队列持久化。
+- **R9 卡点候选未修**：sample 捕获 sqlx SQLite `ConnectionWorker::establish` 的 async pending/worker flume recv；R6 补丁后复测仍败 10.463s。sqlx 唤醒/通道语义是候选，尚未定位确切等待原语，也未证明与 R6 不同根因。
+- R7（route-aware 纯 HTTP 间歇慢）未动，与 R9 可能同域待查。
+
+## 2026-10-08 独立复审口径纠正
+
+- historical 恢复标签 **124 行 = 原 249 项新增恢复 115 + 此前已通过的 9 项再次通过**；原 249 项仍开放 **134**。124 的分组为 R1 79 + R4 4 + R2 22 + R10 5 + R6 14；R1b 13 项虽带说明仍失败，不能计恢复。R10 标签仅表示预热后的暖态观察。
+- SIGABRT 的已证事实为单跑 2/2 PASS、guardian 模块 8 并发下四次 SIGABRT（默认 8MiB 三次、16MiB 一次）。无界递归、任意栈预算均耗尽、任何全套必败均未证实；保留实际失败与根因候选，完整 workspace 门禁仍开放。
+
+## 2026-10-08 Codex 独立复审追记
+
+- R4内建bridge-only归一化/retained endpoint公共3例通过，最终provider enforcement 7/7；R2两族fixture与cfg补齐，network-proxy319/319（macOS）；Linux/Windows实际执行仍待补。
+- R6修订为desired/active分离、一个wake、失败重试、独立readiness和changes-only订阅；watcher30/30正常Bazel通过，public fs strict真实通知证据见独立报告。后端永久卡住及平台/cancellation资源验收仍开放。
+- R10正常Bazel TLS7/7+AWS1/1；Cargo同暖态8项4PASS/3FAIL/1TIMEOUT。环境差异和冷态根因仍开放，不能按旧暖态标签关闭生产门禁。
+- 本轮所有问题/首败/复验/身份、用户授权的阶段commit与push记录：`../codex-independent-review-2026-10-08.md`；另一台电脑工作令：`../other-computer-development-prompt-2026-10-08.md`。此前“不得自动commit/push”指旧轮范围，本轮用户明确授权commit/push；没有授权发布。
