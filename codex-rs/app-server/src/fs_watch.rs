@@ -1,3 +1,4 @@
+use crate::error_code::internal_error;
 use crate::error_code::invalid_request;
 use crate::outgoing_message::ConnectionId;
 use crate::outgoing_message::OutgoingMessageSender;
@@ -83,13 +84,26 @@ impl FsWatchManager {
             connection_id,
             watch_id: watch_id.clone(),
         };
+        // Reject existing IDs before waiting on any platform operation. The
+        // entry check below still resolves concurrent registrations.
+        if self.state.lock().await.entries.contains_key(&watch_key) {
+            return Err(invalid_request(format!(
+                "watchId already exists: {watch_id}"
+            )));
+        }
         let outgoing = self.outgoing.clone();
-        let (subscriber, rx) = self.file_watcher.add_subscriber();
+        let (subscriber, rx) = self.file_watcher.add_change_subscriber();
         let watch_root = params.path.clone();
         let registration = subscriber.register_paths(vec![WatchPath {
             path: params.path.to_path_buf(),
             recursive: false,
         }]);
+        registration.ready().await.map_err(|error| {
+            internal_error(format!(
+                "failed to watch {}: {error}",
+                watch_root.as_path().display()
+            ))
+        })?;
         let (terminate_tx, terminate_rx) = oneshot::channel();
 
         match self.state.lock().await.entries.entry(watch_key) {

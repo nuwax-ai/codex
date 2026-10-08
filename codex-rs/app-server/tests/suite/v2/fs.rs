@@ -681,6 +681,71 @@ async fn fs_copy_rejects_standalone_fifo_source() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fs_watch_readiness_does_not_emit_changes_and_later_child_change_is_required() -> Result<()>
+{
+    let codex_home = TempDir::new()?;
+    let root = codex_home.path().join("watched");
+    std::fs::create_dir(&root)?;
+    let child = root.join("observed.txt");
+    std::fs::write(&child, "initial")?;
+    let mut mcp = initialized_mcp(&codex_home).await?;
+    let watch_id = "watch-ready".to_string();
+    let id = mcp
+        .send_fs_watch_request(codex_app_server_protocol::FsWatchParams {
+            watch_id: watch_id.clone(),
+            path: absolute_path(root.clone()),
+        })
+        .await?;
+    let response: FsWatchResponse = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(id)).await??;
+    assert_eq!(
+        response,
+        FsWatchResponse {
+            path: absolute_path(root)
+        }
+    );
+    assert!(
+        timeout(
+            Duration::from_millis(/*millis*/ 400),
+            mcp.read_stream_until_notification_message("fs/changed"),
+        )
+        .await
+        .is_err(),
+        "backend readiness must not be reported as a filesystem change"
+    );
+
+    std::fs::write(&child, "changed after response")?;
+    let changed = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_notification_message("fs/changed"),
+    )
+    .await??;
+    assert_eq!(
+        fs_changed_notification(changed)?,
+        FsChangedNotification {
+            watch_id: watch_id.clone(),
+            changed_paths: vec![absolute_path(child.clone())],
+        }
+    );
+
+    let id = mcp
+        .send_fs_unwatch_request(FsUnwatchParams { watch_id })
+        .await?;
+    let _: codex_app_server_protocol::FsUnwatchResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(id)).await??;
+    std::fs::write(&child, "changed after unwatch")?;
+    assert!(
+        timeout(
+            Duration::from_millis(/*millis*/ 400),
+            mcp.read_stream_until_notification_message("fs/changed"),
+        )
+        .await
+        .is_err(),
+        "unwatch response must stop later change notifications"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fs_watch_directory_reports_changed_child_paths_and_unwatch_stops_notifications()
 -> Result<()> {
     let codex_home = TempDir::new()?;

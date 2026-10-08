@@ -277,7 +277,7 @@ fn recursive_registration_downgrades_to_non_recursive_after_drop() {
         let inner = watcher.inner.as_ref().expect("watcher inner");
         let inner = inner.lock().expect("inner lock");
         assert_eq!(
-            inner.watched_paths.get(&root),
+            inner.backend.desired.lock().unwrap().get(&root),
             Some(&RecursiveMode::Recursive)
         );
     }
@@ -288,7 +288,7 @@ fn recursive_registration_downgrades_to_non_recursive_after_drop() {
         let inner = watcher.inner.as_ref().expect("watcher inner");
         let inner = inner.lock().expect("inner lock");
         assert_eq!(
-            inner.watched_paths.get(&root),
+            inner.backend.desired.lock().unwrap().get(&root),
             Some(&RecursiveMode::NonRecursive)
         );
     }
@@ -297,7 +297,7 @@ fn recursive_registration_downgrades_to_non_recursive_after_drop() {
 }
 
 #[test]
-fn unregister_holds_state_lock_until_unwatch_finishes() {
+fn unregister_holds_state_lock_until_desired_update_is_submitted() {
     let temp_dir = tempfile::tempdir().expect("temp dir");
     let root = temp_dir.path().join("watched-dir");
     std::fs::create_dir(&root).expect("create root");
@@ -340,7 +340,7 @@ fn unregister_holds_state_lock_until_unwatch_finishes() {
     let inner = watcher.inner.as_ref().expect("watcher inner");
     let inner = inner.lock().expect("inner lock");
     assert_eq!(
-        inner.watched_paths.get(&root),
+        inner.backend.desired.lock().unwrap().get(&root),
         Some(&RecursiveMode::NonRecursive)
     );
     drop(inner);
@@ -556,19 +556,19 @@ async fn spawn_event_loop_filters_non_mutating_events() {
     watcher.spawn_event_loop_for_test(raw_rx);
 
     raw_tx
-        .send(Ok(notify_event(
+        .send(RawEvent::Filesystem(Ok(notify_event(
             EventKind::Access(AccessKind::Open(AccessMode::Any)),
             vec![path("/tmp/skills/SKILL.md")],
-        )))
+        ))))
         .expect("send access event");
     let blocked = timeout(TEST_THROTTLE_INTERVAL, rx.recv()).await;
     assert_eq!(blocked.is_err(), true);
 
     raw_tx
-        .send(Ok(notify_event(
+        .send(RawEvent::Filesystem(Ok(notify_event(
             EventKind::Create(CreateKind::File),
             vec![path("/tmp/skills/SKILL.md")],
-        )))
+        ))))
         .expect("send create event");
     let event = timeout(Duration::from_secs(1), rx.recv())
         .await
