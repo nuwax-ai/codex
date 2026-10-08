@@ -1,6 +1,10 @@
 //! Watches subscribed files or directories and routes coarse-grained change
 //! notifications to the subscribers that own matching watched paths.
 
+mod registration;
+
+pub use registration::WatchRegistration;
+
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::Path;
@@ -339,31 +343,6 @@ impl FileWatcherSubscriber {
 impl Drop for FileWatcherSubscriber {
     fn drop(&mut self) {
         self.file_watcher.remove_subscriber(self.id);
-    }
-}
-
-/// RAII guard for a set of active path registrations.
-pub struct WatchRegistration {
-    file_watcher: std::sync::Weak<FileWatcher>,
-    subscriber_id: SubscriberId,
-    watched_paths: Vec<SubscriberWatchKey>,
-}
-
-impl Default for WatchRegistration {
-    fn default() -> Self {
-        Self {
-            file_watcher: std::sync::Weak::new(),
-            subscriber_id: 0,
-            watched_paths: Vec::new(),
-        }
-    }
-}
-
-impl Drop for WatchRegistration {
-    fn drop(&mut self) {
-        if let Some(file_watcher) = self.file_watcher.upgrade() {
-            file_watcher.unregister_paths(self.subscriber_id, &self.watched_paths);
-        }
     }
 }
 
