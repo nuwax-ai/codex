@@ -310,7 +310,33 @@ impl ConfigManager {
                 .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message))?
                 .remove(&current.model_provider_id)
             }
-            Some(provider) => Some(provider),
+            Some(provider)
+                if provider.is_builtin_bridge_override()
+                    && built_in_model_providers(/*openai_base_url*/ None)
+                        .contains_key(&current.model_provider_id) =>
+            {
+                // Bridge-only requirements change the transport on the retained
+                // built-in definition. Reuse the load-time merge without
+                // reloading its endpoint or environment-derived defaults.
+                merge_configured_model_providers(
+                    HashMap::from([(
+                        current.model_provider_id.clone(),
+                        current.model_provider.clone(),
+                    )]),
+                    HashMap::from([(current.model_provider_id.clone(), provider)]),
+                )
+                .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message))?
+                .remove(&current.model_provider_id)
+            }
+            Some(mut provider) => {
+                // `provider_id` is a load-time fork extension: the merged
+                // provider the thread runs with carries it, while the raw
+                // requirements state does not. Fill it from the same key the
+                // merge uses so the definition comparison below cannot report
+                // a spurious drift from this field alone.
+                provider.provider_id = Some(current.model_provider_id.clone());
+                Some(provider)
+            }
             None => None,
         };
         let definition_changed = required_provider

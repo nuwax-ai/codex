@@ -298,6 +298,112 @@ async fn local_config_changes_do_not_block_existing_threads() -> Result<()> {
     Ok(())
 }
 
+#[test_case("openai", "rig", "native"; "openai")]
+#[test_case("ollama", "native", "rig"; "ollama")]
+#[test_case("lmstudio", "native", "rig"; "lmstudio")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn builtin_bridge_requirements_keep_retained_routes_and_reject_transport_changes(
+    provider_id: &str,
+    bridge: &str,
+    changed_bridge: &str,
+) -> Result<()> {
+    let provider = MockServer::start().await;
+    let other = MockServer::start().await;
+    let home = TempDir::new()?;
+    let catalog = codex_models_manager::bundled_models_response()?;
+    let catalog_path = home.path().join("models.json");
+    std::fs::write(&catalog_path, serde_json::to_vec(&catalog)?)?;
+    let catalog_path = serde_json::to_string(&catalog_path)?;
+    let model = &catalog.models[0].slug;
+    let base_url = format!("{}/v1", provider.uri());
+    let config = format!(
+        r#"
+model = "{model}"
+model_provider = "{provider_id}"
+model_catalog_json = {catalog_path}
+openai_base_url = "{base_url}"
+approval_policy = "never"
+sandbox_mode = "read-only"
+"#,
+    );
+    std::fs::write(home.path().join("config.toml"), &config)?;
+    let requirements = format!(
+        "model_provider = '{provider_id}'\n[model_providers.{provider_id}]\nexperimental_bridge = '{bridge}'\n"
+    );
+    let requirements_path = home.path().join("requirements.toml");
+    std::fs::write(&requirements_path, &requirements)?;
+    // A CLI provider selection masks any inherited NUWAX group. OSS
+    // endpoints come from this child's environment; OpenAI uses its file.
+    let provider_override = format!("model_provider='{provider_id}'");
+    let mut server = TestAppServer::builder()
+        .with_codex_home(home.path())
+        .with_args(&["-c", &provider_override])
+        .with_env_overrides(&[
+            ("OPENAI_API_KEY", Some("builtin-test-key")),
+            ("CODEX_OSS_BASE_URL", Some(&base_url)),
+        ])
+        .build_initialized()
+        .await?;
+    let started = server.start_thread(ThreadStartParams::default()).await?;
+    assert_eq!(started.model_provider, provider_id);
+    let requests = responses::mount_sse_sequence(
+        &provider,
+        vec![
+            responses::sse(vec![responses::ev_completed("first")]),
+            responses::sse(vec![responses::ev_completed("second")]),
+        ],
+    )
+    .await;
+    for local_config in [&config, &config.replace(&provider.uri(), &other.uri())] {
+        std::fs::write(home.path().join("config.toml"), local_config)?;
+        let id = server
+            .send_turn_start_request(TurnStartParams {
+                thread_id: started.thread.id.clone(),
+                input: vec![UserInput::Text {
+                    text: "Continue on the retained route.".into(),
+                    text_elements: Vec::new(),
+                }],
+                ..Default::default()
+            })
+            .await?;
+        let _: TurnStartResponse = server.read_response(id).await?;
+        server
+            .read_stream_until_notification_message("turn/completed")
+            .await?;
+    }
+    std::fs::write(
+        requirements_path,
+        requirements.replace(bridge, changed_bridge),
+    )?;
+    let id = server
+        .send_raw_request(
+            "turn/start",
+            Some(json!({
+                "threadId": started.thread.id,
+                "input": [{"type": "text", "text": "Blocked after policy change."}],
+            })),
+        )
+        .await?;
+    let error = server
+        .read_stream_until_error_message(RequestId::Integer(id))
+        .await?;
+    assert_eq!(error.error, JSONRPCErrorError {
+        code: -32600,
+        message: "failed to load configuration: Your organization's required model provider settings changed. Restart Codex to apply them; this request was not sent".to_string(),
+        data: None,
+    });
+    assert_eq!(requests.requests().len(), 2);
+    assert!(
+        other
+            .received_requests()
+            .await
+            .expect("request recording")
+            .is_empty(),
+        "local config changes must not redirect the retained thread"
+    );
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn malformed_system_defaults_do_not_block_existing_thread_turn() -> Result<()> {
     let provider = MockServer::start().await;
