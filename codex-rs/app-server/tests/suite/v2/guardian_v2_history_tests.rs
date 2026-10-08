@@ -532,7 +532,25 @@ async fn guardians_retain_evidence_after_compaction_and_resume(
             let review = &reviews[index];
             let sync_input = review["input"].as_array().expect("request input array");
             let async_input = request["input"].as_array().expect("request input array");
-            assert_eq!(sync_input.contains(&checkpoint), index > 0 && !independent);
+            let parent_input_types = parent
+                .last()
+                .map(|parent| {
+                    parent["input"]
+                        .as_array()
+                        .map(|input| {
+                            input
+                                .iter()
+                                .map(|item| item["type"].to_string())
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+            assert_eq!(
+                sync_input.contains(&checkpoint),
+                index > 0 && !independent,
+                "sync review checkpoint mismatch; parent_input_types={parent_input_types:?}; input={sync_input:?}"
+            );
             assert_eq!(
                 async_input.contains(&checkpoint),
                 index > 0 && compatible && !independent

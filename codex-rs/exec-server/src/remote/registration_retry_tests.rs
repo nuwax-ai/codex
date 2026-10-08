@@ -172,7 +172,7 @@ async fn registration_requires_a_confirmed_conflict_before_replay(
                 assert_eq!(message, "registration unavailable");
             }
         }
-        _ => anyhow::bail!("unexpected registration failure kind"),
+        _ => anyhow::bail!("unexpected registration failure kind: {error:?}"),
     }
     Ok(())
 }
