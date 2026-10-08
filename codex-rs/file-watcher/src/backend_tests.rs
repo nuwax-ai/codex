@@ -1,6 +1,84 @@
 use super::*;
 use pretty_assertions::assert_eq;
 
+#[tokio::test(flavor = "current_thread")]
+async fn registration_readiness_follows_a_missing_target_from_ancestor_to_file() {
+    struct MigratingBackend {
+        entered: mpsc::SyncSender<()>,
+        release: mpsc::Receiver<()>,
+        installed: mpsc::SyncSender<PathBuf>,
+        blocked_once: bool,
+    }
+
+    impl WatchBackend for MigratingBackend {
+        fn watch(&mut self, path: &Path, _mode: RecursiveMode) -> notify::Result<()> {
+            if !self.blocked_once {
+                self.blocked_once = true;
+                self.entered.send(()).unwrap();
+                self.release.recv().unwrap();
+            } else {
+                self.installed.send(path.to_path_buf()).unwrap();
+            }
+            Ok(())
+        }
+
+        fn unwatch(&mut self, _path: &Path) -> notify::Result<()> {
+            Ok(())
+        }
+    }
+
+    let temp = tempfile::tempdir().expect("fixture directory");
+    let target = temp.path().join("initially-missing.txt");
+    let (entered, entered_rx) = mpsc::sync_channel(1);
+    let (release, release_rx) = mpsc::sync_channel(1);
+    let (installed, installed_rx) = mpsc::sync_channel(1);
+    let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel();
+    let backend = BackendController::spawn(
+        MigratingBackend {
+            entered,
+            release: release_rx,
+            installed,
+            blocked_once: false,
+        },
+        move |path| {
+            let _ = raw_tx.send(crate::RawEvent::Ready(path.to_path_buf()));
+        },
+    )
+    .expect("backend thread");
+    let watcher = Arc::new(crate::FileWatcher {
+        inner: Some(Arc::new(Mutex::new(crate::FileWatcherInner { backend }))),
+        state: Arc::new(std::sync::RwLock::new(crate::WatchState::default())),
+    });
+    watcher.spawn_event_loop_for_test(raw_rx);
+    let (subscriber, _receiver) = watcher.add_subscriber();
+    let registration = Arc::new(subscriber.register_paths(vec![crate::WatchPath {
+        path: target.clone(),
+        recursive: false,
+    }]));
+    entered_rx
+        .recv_timeout(Duration::from_secs(/*secs*/ 2))
+        .expect("ancestor installation is blocked");
+    let pending_registration = Arc::clone(&registration);
+    let pending = tokio::spawn(async move { pending_registration.ready().await });
+    tokio::task::yield_now().await;
+    assert!(!pending.is_finished());
+
+    std::fs::write(&target, "created during installation").expect("create target");
+    watcher.send_paths_for_test(vec![target.clone()]).await;
+    release.send(()).expect("release ancestor installation");
+    tokio::time::timeout(Duration::from_secs(/*secs*/ 2), pending)
+        .await
+        .expect("readiness follows the current actual path")
+        .expect("readiness task")
+        .expect("target installation succeeds");
+    assert_eq!(
+        installed_rx
+            .recv_timeout(Duration::from_secs(/*secs*/ 2))
+            .expect("file is installed after ancestor migration"),
+        target
+    );
+}
+
 #[derive(Debug, PartialEq)]
 enum Call {
     Watch(PathBuf, RecursiveMode),
