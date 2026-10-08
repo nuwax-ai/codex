@@ -1,0 +1,329 @@
+{
+  "before_fix": {
+    "baseline": "79bbe0e3fe61e5b03356f4b16d3498ca3b111b9a",
+    "head_at_capture": "79bbe0e3fe61e5b03356f4b16d3498ca3b111b9a",
+    "phase": "before-fix",
+    "platform": "macOS aarch64",
+    "source": {
+      "codex-rs/Cargo.lock": {
+        "sha256": "b4ded035d53ce71ade347f01c7bca0c533e8378f4d239eb202c1beccc244c97e",
+        "bytes": 413607
+      },
+      "codex-rs/app-server/src/config_manager.rs": {
+        "sha256": "48a8015b32efcc1a44ff525d1f83588e5ececa9142a60341519ab2234ec09f32",
+        "bytes": 25134
+      },
+      "codex-rs/app-server/src/fs_watch.rs": {
+        "sha256": "1d1dbe0abc558e99906873cdbf70c55a4526eb3188aaeec5efccaf6ef114a7e7",
+        "bytes": 13403
+      },
+      "codex-rs/app-server/tests/common/config.rs": {
+        "sha256": "0d4be93e1d5625d915bf8ba80438d2cae876094d03d70937129623fb3d47e00d",
+        "bytes": 6214
+      },
+      "codex-rs/app-server/tests/suite/v2/attestation.rs": {
+        "sha256": "f78748901e44c8451dd56fe594648a55a04d0d4439ad94c583a2fd849d83bb13",
+        "bytes": 7608
+      },
+      "codex-rs/app-server/tests/suite/v2/fs.rs": {
+        "sha256": "641e0dc3843d9c20fcf5f61935bca044b48b10f16dba56e48ba28cb90af75226",
+        "bytes": 30174
+      },
+      "codex-rs/app-server/tests/suite/v2/guardian_v2_history_tests.rs": {
+        "sha256": "f1932fc6793e7fda1bbffc10e12d500668df8891ace62e9401fe07c2072981b3",
+        "bytes": 34842
+      },
+      "codex-rs/app-server/tests/suite/v2/model_provider_enforcement_tests.rs": {
+        "sha256": "2fdf7b894d94db8ce674a49b0d7e6929d3a2dbcd087369b32518a670d1d1b3bb",
+        "bytes": 18804
+      },
+      "codex-rs/aws-auth/Cargo.toml": {
+        "sha256": "22b3e6a97c05e58a327298469122972998a025eaa9bb19daaa920a334824c134",
+        "bytes": 1040
+      },
+      "codex-rs/aws-auth/src/network_policy_tests.rs": {
+        "sha256": "03abaa178d59a4ff8c806f133f7df62c3d36b5e01c0289897908deee64884f63",
+        "bytes": 21968
+      },
+      "codex-rs/cli/src/main.rs": {
+        "sha256": "aa39d326beca8080c3d0176207dc02fc15d855295087186b70a2c9085faf20f1",
+        "bytes": 179231
+      },
+      "codex-rs/cli/tests/admin_startup_matrix.rs": {
+        "sha256": "e6e3fbc4b127e905a27ded2036f2757d70aeb77519bc4c9092647d7d7475a591",
+        "bytes": 29626
+      },
+      "codex-rs/exec-server/src/remote/registration_retry_tests.rs": {
+        "sha256": "ce6eae1d366c3d1e79041b2945b32d390c6f0f6b60d43fbd5858b205d590fa12",
+        "bytes": 7871
+      },
+      "codex-rs/file-watcher/src/backend.rs": {
+        "sha256": "9e5163fa6389ecd49d5d44ba7cb03d16d3fa88077b2263f0c140a490a833c171",
+        "bytes": 8727
+      },
+      "codex-rs/file-watcher/src/backend_tests.rs": {
+        "sha256": "065e69e52eb3ae47dfd68ad8b98f6ab291ae2ef5a0dc1f479f1cf0a43578634c",
+        "bytes": 8824
+      },
+      "codex-rs/file-watcher/src/file_watcher_tests.rs": {
+        "sha256": "b24a598e1221858c56745afcfaee94a244f8195a21336a3d650e9bc837292686",
+        "bytes": 25262
+      },
+      "codex-rs/file-watcher/src/lib.rs": {
+        "sha256": "1961eed4a7b400802c516f3a23e28825490bfaef428cff472dfa23a1157fcec5",
+        "bytes": 30919
+      },
+      "codex-rs/file-watcher/src/registration.rs": {
+        "sha256": "48f1aea93c16c359174030362225756dfb1fd971f89cd2a5743fc4811ffb1429",
+        "bytes": 3445
+      },
+      "codex-rs/http-client/src/route_aware_tls_fallback_tests.rs": {
+        "sha256": "6c1ad0fe4076dd381099804a39f23af6de60ae654496fd27a0d3214821379a00",
+        "bytes": 22629
+      },
+      "codex-rs/network-proxy/src/connect_policy.rs": {
+        "sha256": "2215cb1c4ef422af59b8637a953547c2f564060bd5c32bff982d8fde7bc78c9b",
+        "bytes": 11067
+      },
+      "codex-rs/network-proxy/src/network_policy.rs": {
+        "sha256": "c4ccf5f75017e4365575c8afb2e6493cab0af5db66bd98e69fa0a2e869adee08",
+        "bytes": 39963
+      },
+      "codex-rs/network-proxy/src/resolver_tests.rs": {
+        "sha256": "ea73bd6d02b862670c11096e1bce7845af2bc4f734d149330f1459a8e6adee49",
+        "bytes": 5572
+      },
+      "codex-rs/network-proxy/src/runtime.rs": {
+        "sha256": "f8ac2d2c68ba0d837803ad3b7ba304cca923fbc18aa722cdd539ff5a3dcb7026",
+        "bytes": 87010
+      },
+      "codex-rs/network-proxy/src/socks5.rs": {
+        "sha256": "eb55f2d876772657a23178b9f458c5f437d2a5adc4e845e96baf96f6f2adf4d0",
+        "bytes": 44672
+      },
+      "codex-rs/tui/src/app/agents_overview_actions_tests.rs": {
+        "sha256": "b92837200e5602cee669a2625c0334f5b3cd7e9e88707b047255db37918fa11f",
+        "bytes": 31852
+      },
+      "codex-rs/tui/src/app/tests/realtime_handoff_e2e.rs": {
+        "sha256": "207db2a3d964e24ae0aec8d35714dd9494d885921be53defe4a26930338d8724",
+        "bytes": 13263
+      },
+      "codex-rs/tui/src/resume_picker_transcript_preview_tests.rs": {
+        "sha256": "c4ed6aa60ff99344ad045388e997262e247123487018900d08d86108723540f7",
+        "bytes": 17311
+      }
+    },
+    "binaries": {
+      "/Volumes/soddygo/git-workspace/codex-targets/validation-20261005/debug/codex": {
+        "sha256": "3e5deff59863f5eb948e417fca9117c73f0a7aa649621ee6330216deae516ce9",
+        "bytes": 669398776
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/app-server/codex-app-server": {
+        "sha256": "61fc3d657cc27aa747735436cc9bc00d45531bb9958d205874dc8d41ae869bdd",
+        "bytes": 483481296
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/app-server/app-server-all-test-bin": {
+        "sha256": "c1d88f7bd6aeff73e6ba75c2ec45c04a1c7dd1717fc8f97484f260d17f3817cc",
+        "bytes": 594219040
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/file-watcher/file-watcher-unit-tests-bin": {
+        "sha256": "229db7f0de54d6f006224bd82ca3e72d5918b764dc671b61834b38191979e62c",
+        "bytes": 5030016
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/http-client/http-client-unit-tests-bin": {
+        "sha256": "0e5385c59046fe05142cbe39ef688803164d7a4dbaade67d80907b48c91c0f00",
+        "bytes": 31278832
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/aws-auth/aws-auth-unit-tests-bin": {
+        "sha256": "9dd12b70468d5b1c27d180d6cf634e8e8545052919acac909b2f4a2e4cdec891",
+        "bytes": 38293664
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/core/core-all-test-bin": {
+        "sha256": "9bc265f5c4197ac937fe65fe3533001c90e9444d2ef5271610a200dbbc7040ef",
+        "bytes": 485503536
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/cli/codex": {
+        "sha256": "7d868f0d8471c9c08e7fcc67ccb0b796cbfb77f549bf76317565434624680bc6",
+        "bytes": 617594624
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/exec/codex-exec": {
+        "sha256": "d7845b27ae3ae934e8f2143f3929f582badbd2b05851783e44c5fd2cfbbaef74",
+        "bytes": 468127072
+      }
+    },
+    "not_found_binary_paths": [],
+    "note": "Independent local mock receipts; no vendor request. After-format identity is source-only comparison, not a rebuild or byte-identical final binary claim."
+  },
+  "after_format": {
+    "baseline": "79bbe0e3fe61e5b03356f4b16d3498ca3b111b9a",
+    "head_at_capture": "79bbe0e3fe61e5b03356f4b16d3498ca3b111b9a",
+    "phase": "after-format",
+    "platform": "macOS aarch64",
+    "source": {
+      "codex-rs/Cargo.lock": {
+        "sha256": "b4ded035d53ce71ade347f01c7bca0c533e8378f4d239eb202c1beccc244c97e",
+        "bytes": 413607
+      },
+      "codex-rs/app-server/src/config_manager.rs": {
+        "sha256": "48a8015b32efcc1a44ff525d1f83588e5ececa9142a60341519ab2234ec09f32",
+        "bytes": 25134
+      },
+      "codex-rs/app-server/src/fs_watch.rs": {
+        "sha256": "9507825b6c9110ce0c1973188ca1138deaaec43971c265f4ac715f4a8cfb3e8e",
+        "bytes": 13403
+      },
+      "codex-rs/app-server/tests/common/config.rs": {
+        "sha256": "0d4be93e1d5625d915bf8ba80438d2cae876094d03d70937129623fb3d47e00d",
+        "bytes": 6214
+      },
+      "codex-rs/app-server/tests/suite/v2/attestation.rs": {
+        "sha256": "f78748901e44c8451dd56fe594648a55a04d0d4439ad94c583a2fd849d83bb13",
+        "bytes": 7608
+      },
+      "codex-rs/app-server/tests/suite/v2/fs.rs": {
+        "sha256": "9292d9b9b4ad3670596cace2c2cb3256bf6b497a36ec8052129fbf8dd7621ce6",
+        "bytes": 30234
+      },
+      "codex-rs/app-server/tests/suite/v2/guardian_v2_history_tests.rs": {
+        "sha256": "f1932fc6793e7fda1bbffc10e12d500668df8891ace62e9401fe07c2072981b3",
+        "bytes": 34842
+      },
+      "codex-rs/app-server/tests/suite/v2/model_provider_enforcement_tests.rs": {
+        "sha256": "8156e84625491b9b8472030a1193550756386b53c26f286447aaab61a0122018",
+        "bytes": 18856
+      },
+      "codex-rs/aws-auth/Cargo.toml": {
+        "sha256": "22b3e6a97c05e58a327298469122972998a025eaa9bb19daaa920a334824c134",
+        "bytes": 1040
+      },
+      "codex-rs/aws-auth/src/network_policy_tests.rs": {
+        "sha256": "9f1e6aa40a2f2ca93598637a82746b2b891315c1b3de60c330da7f0197fd9280",
+        "bytes": 21994
+      },
+      "codex-rs/cli/src/main.rs": {
+        "sha256": "aa39d326beca8080c3d0176207dc02fc15d855295087186b70a2c9085faf20f1",
+        "bytes": 179231
+      },
+      "codex-rs/cli/tests/admin_startup_matrix.rs": {
+        "sha256": "0ddd6f5d06fd984bd69a886b1755cc6af758054438d67fa3524d4229cd10cb16",
+        "bytes": 29625
+      },
+      "codex-rs/exec-server/src/remote/registration_retry_tests.rs": {
+        "sha256": "ce6eae1d366c3d1e79041b2945b32d390c6f0f6b60d43fbd5858b205d590fa12",
+        "bytes": 7871
+      },
+      "codex-rs/file-watcher/src/backend.rs": {
+        "sha256": "ff4150ba32b36f54ec0f1e1a71e41635ca39ad11794fc2cb2d865a6192d2f0a8",
+        "bytes": 9236
+      },
+      "codex-rs/file-watcher/src/backend_tests.rs": {
+        "sha256": "7505b176357f50814d12ee00b64e90ebfa6a4644dc8e9614a8179c96c3c82e5a",
+        "bytes": 9654
+      },
+      "codex-rs/file-watcher/src/file_watcher_tests.rs": {
+        "sha256": "59edd7f98f8aadc17a8ffe02470ce52ed2073249e5a151e90ccc14e482585595",
+        "bytes": 25469
+      },
+      "codex-rs/file-watcher/src/lib.rs": {
+        "sha256": "ce8c6f919110645d6d20ec4de498a04044845f0cb2cb27517194e3611c6dbafa",
+        "bytes": 30911
+      },
+      "codex-rs/file-watcher/src/registration.rs": {
+        "sha256": "85fda83f8a6e256f06e201461523aa2f982745fbb6e54eb7d3f5ac713a0c006b",
+        "bytes": 3444
+      },
+      "codex-rs/http-client/src/route_aware_tls_fallback_tests.rs": {
+        "sha256": "765931e9d94a3b0cd207ea53743903469eb6fcc9574a58d9e4ff21c2f3dfc871",
+        "bytes": 22655
+      },
+      "codex-rs/network-proxy/src/connect_policy.rs": {
+        "sha256": "2215cb1c4ef422af59b8637a953547c2f564060bd5c32bff982d8fde7bc78c9b",
+        "bytes": 11067
+      },
+      "codex-rs/network-proxy/src/network_policy.rs": {
+        "sha256": "c4ccf5f75017e4365575c8afb2e6493cab0af5db66bd98e69fa0a2e869adee08",
+        "bytes": 39963
+      },
+      "codex-rs/network-proxy/src/resolver_tests.rs": {
+        "sha256": "cc0b2f9687c4a3b0e0520e27a20543f220106317b96e46f224d7e9457207a979",
+        "bytes": 5763
+      },
+      "codex-rs/network-proxy/src/runtime.rs": {
+        "sha256": "f8ac2d2c68ba0d837803ad3b7ba304cca923fbc18aa722cdd539ff5a3dcb7026",
+        "bytes": 87010
+      },
+      "codex-rs/network-proxy/src/socks5.rs": {
+        "sha256": "eb55f2d876772657a23178b9f458c5f437d2a5adc4e845e96baf96f6f2adf4d0",
+        "bytes": 44672
+      },
+      "codex-rs/tui/src/app/agents_overview_actions_tests.rs": {
+        "sha256": "b92837200e5602cee669a2625c0334f5b3cd7e9e88707b047255db37918fa11f",
+        "bytes": 31852
+      },
+      "codex-rs/tui/src/app/tests/realtime_handoff_e2e.rs": {
+        "sha256": "207db2a3d964e24ae0aec8d35714dd9494d885921be53defe4a26930338d8724",
+        "bytes": 13263
+      },
+      "codex-rs/tui/src/resume_picker_transcript_preview_tests.rs": {
+        "sha256": "c4ed6aa60ff99344ad045388e997262e247123487018900d08d86108723540f7",
+        "bytes": 17311
+      }
+    },
+    "binaries": {
+      "/Volumes/soddygo/git-workspace/codex-targets/validation-20261005/debug/codex": {
+        "sha256": "3e5deff59863f5eb948e417fca9117c73f0a7aa649621ee6330216deae516ce9",
+        "bytes": 669398776
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/app-server/codex-app-server": {
+        "sha256": "61fc3d657cc27aa747735436cc9bc00d45531bb9958d205874dc8d41ae869bdd",
+        "bytes": 483481296
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/app-server/app-server-all-test-bin": {
+        "sha256": "c1d88f7bd6aeff73e6ba75c2ec45c04a1c7dd1717fc8f97484f260d17f3817cc",
+        "bytes": 594219040
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/file-watcher/file-watcher-unit-tests-bin": {
+        "sha256": "229db7f0de54d6f006224bd82ca3e72d5918b764dc671b61834b38191979e62c",
+        "bytes": 5030016
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/http-client/http-client-unit-tests-bin": {
+        "sha256": "0e5385c59046fe05142cbe39ef688803164d7a4dbaade67d80907b48c91c0f00",
+        "bytes": 31278832
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/aws-auth/aws-auth-unit-tests-bin": {
+        "sha256": "9dd12b70468d5b1c27d180d6cf634e8e8545052919acac909b2f4a2e4cdec891",
+        "bytes": 38293664
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/core/core-all-test-bin": {
+        "sha256": "9bc265f5c4197ac937fe65fe3533001c90e9444d2ef5271610a200dbbc7040ef",
+        "bytes": 485503536
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/cli/codex": {
+        "sha256": "7d868f0d8471c9c08e7fcc67ccb0b796cbfb77f549bf76317565434624680bc6",
+        "bytes": 617594624
+      },
+      "/Volumes/soddygo/git-workspace/fork-nuwax-codex/bazel-bin/codex-rs/exec/codex-exec": {
+        "sha256": "d7845b27ae3ae934e8f2143f3929f582badbd2b05851783e44c5fd2cfbbaef74",
+        "bytes": 468127072
+      }
+    },
+    "not_found_binary_paths": [],
+    "note": "Independent local mock receipts; no vendor request. After-format identity is source-only comparison, not a rebuild or byte-identical final binary claim."
+  },
+  "changed_sources_after_tests": [
+    "codex-rs/app-server/src/fs_watch.rs",
+    "codex-rs/app-server/tests/suite/v2/fs.rs",
+    "codex-rs/app-server/tests/suite/v2/model_provider_enforcement_tests.rs",
+    "codex-rs/aws-auth/src/network_policy_tests.rs",
+    "codex-rs/cli/tests/admin_startup_matrix.rs",
+    "codex-rs/file-watcher/src/backend.rs",
+    "codex-rs/file-watcher/src/backend_tests.rs",
+    "codex-rs/file-watcher/src/file_watcher_tests.rs",
+    "codex-rs/file-watcher/src/lib.rs",
+    "codex-rs/file-watcher/src/registration.rs",
+    "codex-rs/http-client/src/route_aware_tls_fallback_tests.rs",
+    "codex-rs/network-proxy/src/resolver_tests.rs"
+  ],
+  "tests_after_fix_or_format": false
+}

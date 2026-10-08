@@ -1,0 +1,262 @@
+{
+  "logs": [
+    {
+      "schema_version": 1,
+      "complete_unambiguous": true,
+      "counts": {
+        "executions": 369,
+        "distinct_tests": 369,
+        "non_pass_executions": 20,
+        "non_pass_distinct_tests": 20,
+        "non_pass_unique_names": 20,
+        "statuses": {
+          "FAIL": 20,
+          "PASS": 349
+        },
+        "repeated_result_lines": 20
+      },
+      "runs": [
+        {
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "expected_run_counts": [
+            369
+          ],
+          "observed_slots": 369,
+          "counted_executions": 369,
+          "statuses": {
+            "FAIL": 20,
+            "PASS": 349
+          }
+        }
+      ],
+      "issues": [],
+      "changed_status_cases": [],
+      "source": {
+        "name": "rust-scoped-rerun.log",
+        "sha256": "638415fcc32e66f2ed32939bc574c49ebf134bb17ea53fbcc69350750e2da6b3"
+      },
+      "non_pass_results": [
+        {
+          "status": "FAIL",
+          "elapsed": "0.177s",
+          "ordinal": 3,
+          "total": 369,
+          "binary": "codex-cli::admin_startup_matrix",
+          "name": "admin_cli_flags_reach_real_config_loading",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 124,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "0.031s",
+          "ordinal": 4,
+          "total": 369,
+          "binary": "codex-cli::admin_startup_matrix",
+          "name": "admin_cli_oss_flag_routes_provider_selection",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 144,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "5.776s",
+          "ordinal": 9,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::confirmed_conflict_backoff_is_cancellable",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 216,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "5.854s",
+          "ordinal": 10,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::conflict_code_not_received",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 232,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "5.814s",
+          "ordinal": 11,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::delayed_error_details",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 248,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "5.763s",
+          "ordinal": 12,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::delayed_forbidden_details",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 264,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "5.810s",
+          "ordinal": 13,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::delayed_unauthorized_details",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 280,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "5.952s",
+          "ordinal": 14,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::different_error_code",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 296,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "6.130s",
+          "ordinal": 15,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::environment_deleted_stalled_body",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 312,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "6.187s",
+          "ordinal": 16,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::forbidden_stalled_body",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 328,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "6.061s",
+          "ordinal": 17,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::gateway_error",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 344,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "5.964s",
+          "ordinal": 18,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::malformed_success",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 360,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "5.882s",
+          "ordinal": 19,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::malformed_unavailable",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 376,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "5.786s",
+          "ordinal": 20,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::missing_conflict_code",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 392,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "5.820s",
+          "ordinal": 21,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::request_timeout",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 408,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "5.791s",
+          "ordinal": 22,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::too_many_requests",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 424,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "5.756s",
+          "ordinal": 23,
+          "total": 369,
+          "binary": "codex-exec-server",
+          "name": "remote::registration_retry::tests::registration_requires_a_confirmed_conflict_before_replay::unauthorized_stalled_body",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 440,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "30.042s",
+          "ordinal": 24,
+          "total": 369,
+          "binary": "codex-exec-server::relay",
+          "name": "registration_retry::registration_retries_preserve_noise_identity_and_initialized_session",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 457,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "30.022s",
+          "ordinal": 25,
+          "total": 369,
+          "binary": "codex-exec-server::relay",
+          "name": "registration_retry::shutdown_interrupts_in_flight_registration",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 477,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "5.013s",
+          "ordinal": 35,
+          "total": 369,
+          "binary": "codex-file-watcher",
+          "name": "tests::live_registration_invalidates_setup_window_and_delivers_later_changes",
+          "run_id": "fe58437b-1937-4960-a7df-2bbbbe1fabce",
+          "source_line": 574,
+          "repeated_line_count": 1
+        }
+      ]
+    }
+  ]
+}

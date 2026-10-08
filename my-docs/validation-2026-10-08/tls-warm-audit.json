@@ -1,0 +1,88 @@
+{
+  "logs": [
+    {
+      "schema_version": 1,
+      "complete_unambiguous": true,
+      "counts": {
+        "executions": 8,
+        "distinct_tests": 8,
+        "non_pass_executions": 4,
+        "non_pass_distinct_tests": 4,
+        "non_pass_unique_names": 4,
+        "statuses": {
+          "FAIL": 3,
+          "PASS": 4,
+          "TIMEOUT": 1
+        },
+        "repeated_result_lines": 4
+      },
+      "runs": [
+        {
+          "run_id": "a70a8a8b-897a-4f53-808c-c7fc179ac6b5",
+          "expected_run_counts": [
+            8
+          ],
+          "observed_slots": 8,
+          "counted_executions": 8,
+          "statuses": {
+            "FAIL": 3,
+            "PASS": 4,
+            "TIMEOUT": 1
+          }
+        }
+      ],
+      "issues": [],
+      "changed_status_cases": [],
+      "source": {
+        "name": "tls-warm.log",
+        "sha256": "1edc2ec158f3375e58b256b21d129dbad510f8a16184ff85be581e71f058b83c"
+      },
+      "non_pass_results": [
+        {
+          "status": "TIMEOUT",
+          "elapsed": "60.007s",
+          "ordinal": 5,
+          "total": 8,
+          "binary": "codex-http-client",
+          "name": "route_aware_client_pool::tls_fallback_tests::retries_a_native_tls_failure_after_another_request_caches_rustls",
+          "run_id": "a70a8a8b-897a-4f53-808c-c7fc179ac6b5",
+          "source_line": 97,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "57.032s",
+          "ordinal": 6,
+          "total": 8,
+          "binary": "codex-http-client",
+          "name": "route_aware_client_pool::tls_fallback_tests::retries_a_native_tls_protocol_failure_once_with_rustls",
+          "run_id": "a70a8a8b-897a-4f53-808c-c7fc179ac6b5",
+          "source_line": 105,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "31.085s",
+          "ordinal": 7,
+          "total": 8,
+          "binary": "codex-http-client",
+          "name": "route_aware_client_pool::tls_fallback_tests::retries_a_tls_protocol_failure_when_request_url_contains_certificate_markers",
+          "run_id": "a70a8a8b-897a-4f53-808c-c7fc179ac6b5",
+          "source_line": 131,
+          "repeated_line_count": 1
+        },
+        {
+          "status": "FAIL",
+          "elapsed": "43.719s",
+          "ordinal": 8,
+          "total": 8,
+          "binary": "codex-http-client",
+          "name": "route_aware_client_pool::tls_fallback_tests::successful_rustls_fallback_replays_the_request_and_reuses_the_destination",
+          "run_id": "a70a8a8b-897a-4f53-808c-c7fc179ac6b5",
+          "source_line": 157,
+          "repeated_line_count": 1
+        }
+      ]
+    }
+  ]
+}

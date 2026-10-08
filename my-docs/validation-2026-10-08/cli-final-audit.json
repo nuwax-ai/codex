@@ -1,0 +1,39 @@
+{
+  "logs": [
+    {
+      "schema_version": 1,
+      "complete_unambiguous": true,
+      "counts": {
+        "executions": 6,
+        "distinct_tests": 6,
+        "non_pass_executions": 0,
+        "non_pass_distinct_tests": 0,
+        "non_pass_unique_names": 0,
+        "statuses": {
+          "PASS": 6
+        },
+        "repeated_result_lines": 0
+      },
+      "runs": [
+        {
+          "run_id": "9a60193a-771d-4945-86da-5db2c2eb9b14",
+          "expected_run_counts": [
+            6
+          ],
+          "observed_slots": 6,
+          "counted_executions": 6,
+          "statuses": {
+            "PASS": 6
+          }
+        }
+      ],
+      "issues": [],
+      "changed_status_cases": [],
+      "source": {
+        "name": "cli-final.log",
+        "sha256": "5af6cec64ff4b2f6ec20059632f348602ccfd9648463d72a7d73a4ddac976c97"
+      },
+      "non_pass_results": []
+    }
+  ]
+}
