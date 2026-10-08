@@ -1,6 +1,7 @@
 //! Watches subscribed files or directories and routes coarse-grained change
 //! notifications to the subscribers that own matching watched paths.
 
+mod backend;
 mod registration;
 
 pub use registration::WatchRegistration;
