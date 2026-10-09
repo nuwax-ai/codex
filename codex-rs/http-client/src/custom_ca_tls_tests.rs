@@ -3,10 +3,9 @@
 use super::CODEX_CA_CERT_ENV;
 use super::ConfiguredCaBundle;
 use super::EnvSource;
-use super::NATIVE_ROOTS_CACHE_TTL;
-use super::build_rustls_client_config;
 use super::build_rustls_client_config_with_native_roots;
-use super::with_native_roots_cache;
+use crate::native_roots_cache::NativeRootsCache;
+use crate::native_roots_cache::NATIVE_ROOTS_CACHE_TTL;
 use pretty_assertions::assert_eq;
 use rcgen::BasicConstraints;
 use rcgen::CertificateParams;
@@ -16,16 +15,18 @@ use rcgen::KeyPair;
 use rustls_pki_types::CertificateDer;
 use rustls_pki_types::pem::PemObject;
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
 #[test]
 fn custom_intermediate_trust_preserves_hostname_validation() {
-    // The in-memory handshake helper does not touch the native-roots cache,
-    // but the bundle build underneath loads platform roots; serialize against
-    // the cache-semantics tests that swap fixture stores in.
+    // The handshake anchors on the configured bundle alone, so the platform
+    // roots are irrelevant here: a private cache with an empty stub loader
+    // keeps this test hermetic instead of walking the real keychain.
     let mut params = CertificateParams::default();
     params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
     let root = CertifiedIssuer::self_signed(params.clone(), KeyPair::generate().unwrap()).unwrap();
@@ -39,13 +40,20 @@ fn custom_intermediate_trust_preserves_hostname_validation() {
     let temp = tempfile::TempDir::new().unwrap();
     let path = temp.path().join("intermediate.pem");
     std::fs::write(&path, intermediate.pem()).unwrap();
-    let config = with_native_roots_cache(|| {
-        build_rustls_client_config(Some(&ConfiguredCaBundle {
+    let hermetic = HermeticCache::new();
+    let config = build_rustls_client_config_with_native_roots(
+        &MapEnv {
+            values: HashMap::new(),
+        },
+        || rustls_native_certs::CertificateResult::default(),
+        hermetic.now(),
+        Some(&ConfiguredCaBundle {
             source_env: CODEX_CA_CERT_ENV,
             path,
-        }))
-        .unwrap()
-    });
+        }),
+        &hermetic.cache,
+    )
+    .unwrap();
     let server = Arc::new(
         rustls::ServerConfig::builder()
             .with_no_client_auth()
@@ -63,7 +71,7 @@ fn custom_intermediate_trust_preserves_hostname_validation() {
             error,
             rustls::Error::InvalidCertificate(
                 rustls::CertificateError::NotValidForName
-                    | rustls::CertificateError::NotValidForNameContext { .. }
+                | rustls::CertificateError::NotValidForNameContext { .. }
             )
         ),
         "{error:?}"
@@ -71,12 +79,37 @@ fn custom_intermediate_trust_preserves_hostname_validation() {
 }
 
 struct MapEnv {
-    values: HashMap<String, String>,
+    values: HashMap<String, OsString>,
 }
 
 impl EnvSource for MapEnv {
-    fn var(&self, key: &str) -> Option<String> {
+    fn var_os(&self, key: &str) -> Option<OsString> {
         self.values.get(key).cloned()
+    }
+}
+
+/// A private cache plus a shared mutable clock, so each test owns its
+/// fixture store lifetime instead of mutating process-global state.
+struct HermeticCache {
+    cache: NativeRootsCache,
+    clock: Arc<Mutex<Instant>>,
+}
+
+impl HermeticCache {
+    fn new() -> Self {
+        Self {
+            cache: NativeRootsCache::new(),
+            clock: Arc::new(Mutex::new(Instant::now())),
+        }
+    }
+
+    fn advance(&self, duration: Duration) {
+        *self.clock.lock().unwrap() += duration;
+    }
+
+    fn now(&self) -> impl Fn() -> Instant + use<> {
+        let clock = Arc::clone(&self.clock);
+        move || *clock.lock().unwrap()
     }
 }
 
@@ -144,109 +177,109 @@ fn pem_loader(path: &Path) -> impl FnOnce() -> rustls_native_certs::CertificateR
 #[test]
 fn native_roots_refresh_replaces_trust_for_new_connectors_in_the_same_process() {
     codex_utils_rustls_provider::ensure_rustls_crypto_provider();
-    with_native_roots_cache(|| {
-        let chain_a = trust_chain("refresh-roots-a");
-        let chain_b = trust_chain("refresh-roots-b");
-        let temp = tempfile::TempDir::new().unwrap();
-        let path = temp.path().join("roots.pem");
-        std::fs::write(&path, chain_a.issuer_pem).unwrap();
-        let env = MapEnv {
-            values: HashMap::from([(
-                "SSL_CERT_FILE".to_string(),
-                path.to_string_lossy().into_owned(),
-            )]),
-        };
-        let now = Instant::now();
+    let hermetic = HermeticCache::new();
+    let chain_a = trust_chain("refresh-roots-a");
+    let chain_b = trust_chain("refresh-roots-b");
+    let temp = tempfile::TempDir::new().unwrap();
+    let path = temp.path().join("roots.pem");
+    std::fs::write(&path, chain_a.issuer_pem).unwrap();
+    let env = MapEnv {
+        values: HashMap::from([(
+            "SSL_CERT_FILE".to_string(),
+            OsString::from(path.clone()),
+        )]),
+    };
 
-        let before = build_rustls_client_config_with_native_roots(
-            &env,
-            pem_loader(&path),
-            now,
-            /*bundle*/ None,
-        )
-        .unwrap();
-        assert_eq!(
-            handshake(before.clone(), chain_a.server.clone(), "localhost"),
-            Ok(())
-        );
-        assert!(handshake(before, chain_b.server.clone(), "localhost").is_err());
+    let before = build_rustls_client_config_with_native_roots(
+        &env,
+        pem_loader(&path),
+        hermetic.now(),
+        /*bundle*/ None,
+        &hermetic.cache,
+    )
+    .unwrap();
+    assert_eq!(
+        handshake(before.clone(), chain_a.server.clone(), "localhost"),
+        Ok(())
+    );
+    assert!(handshake(before, chain_b.server.clone(), "localhost").is_err());
 
-        std::fs::write(&path, chain_b.issuer_pem).unwrap();
-        let after = build_rustls_client_config_with_native_roots(
-            &env,
-            pem_loader(&path),
-            now + NATIVE_ROOTS_CACHE_TTL + Duration::from_secs(/*secs*/ 1),
-            /*bundle*/ None,
-        )
-        .unwrap();
-        assert_eq!(
-            handshake(after.clone(), chain_b.server, "localhost"),
-            Ok(())
-        );
-        let error = handshake(after, chain_a.server, "localhost").unwrap_err();
-        assert!(
-            matches!(error, rustls::Error::InvalidCertificate(_)),
-            "the replaced root must no longer anchor new connectors: {error:?}"
-        );
-    });
+    std::fs::write(&path, chain_b.issuer_pem).unwrap();
+    hermetic.advance(NATIVE_ROOTS_CACHE_TTL + Duration::from_secs(/*secs*/ 1));
+    let after = build_rustls_client_config_with_native_roots(
+        &env,
+        pem_loader(&path),
+        hermetic.now(),
+        /*bundle*/ None,
+        &hermetic.cache,
+    )
+    .unwrap();
+    assert_eq!(
+        handshake(after.clone(), chain_b.server, "localhost"),
+        Ok(())
+    );
+    let error = handshake(after, chain_a.server, "localhost").unwrap_err();
+    assert!(
+        matches!(error, rustls::Error::InvalidCertificate(_)),
+        "the replaced root must no longer anchor new connectors: {error:?}"
+    );
 }
 
-/// On Unix the loader itself honors `SSL_CERT_FILE`, so pointing the
+/// The loader honors `SSL_CERT_FILE` on every platform, so pointing the
 /// environment at a different bundle must invalidate the cache immediately,
 /// without waiting for the TTL.
-#[cfg(unix)]
 #[test]
 fn native_roots_source_environment_change_invalidates_without_waiting_for_the_ttl() {
     codex_utils_rustls_provider::ensure_rustls_crypto_provider();
-    with_native_roots_cache(|| {
-        let chain_a = trust_chain("refresh-roots-a");
-        let chain_b = trust_chain("refresh-roots-b");
-        let temp = tempfile::TempDir::new().unwrap();
-        let path_a = temp.path().join("roots-a.pem");
-        let path_b = temp.path().join("roots-b.pem");
-        std::fs::write(&path_a, chain_a.issuer_pem).unwrap();
-        std::fs::write(&path_b, chain_b.issuer_pem).unwrap();
-        let env_a = MapEnv {
-            values: HashMap::from([(
-                "SSL_CERT_FILE".to_string(),
-                path_a.to_string_lossy().into_owned(),
-            )]),
-        };
-        let env_b = MapEnv {
-            values: HashMap::from([(
-                "SSL_CERT_FILE".to_string(),
-                path_b.to_string_lossy().into_owned(),
-            )]),
-        };
-        let now = Instant::now();
+    let hermetic = HermeticCache::new();
+    let chain_a = trust_chain("refresh-roots-a");
+    let chain_b = trust_chain("refresh-roots-b");
+    let temp = tempfile::TempDir::new().unwrap();
+    let path_a = temp.path().join("roots-a.pem");
+    let path_b = temp.path().join("roots-b.pem");
+    std::fs::write(&path_a, chain_a.issuer_pem).unwrap();
+    std::fs::write(&path_b, chain_b.issuer_pem).unwrap();
+    let env_a = MapEnv {
+        values: HashMap::from([(
+            "SSL_CERT_FILE".to_string(),
+            OsString::from(path_a.clone()),
+        )]),
+    };
+    let env_b = MapEnv {
+        values: HashMap::from([(
+            "SSL_CERT_FILE".to_string(),
+            OsString::from(path_b.clone()),
+        )]),
+    };
 
-        let from_a = build_rustls_client_config_with_native_roots(
-            &env_a,
-            pem_loader(&path_a),
-            now,
-            /*bundle*/ None,
-        )
-        .unwrap();
-        assert_eq!(
-            handshake(from_a, chain_a.server.clone(), "localhost"),
-            Ok(())
-        );
-        let from_b = build_rustls_client_config_with_native_roots(
-            &env_b,
-            pem_loader(&path_b),
-            now,
-            /*bundle*/ None,
-        )
-        .unwrap();
-        assert_eq!(
-            handshake(from_b.clone(), chain_b.server, "localhost"),
-            Ok(())
-        );
-        assert!(
-            handshake(from_b, chain_a.server, "localhost").is_err(),
-            "switching SSL_CERT_FILE must not keep trusting the previous source"
-        );
-    });
+    let from_a = build_rustls_client_config_with_native_roots(
+        &env_a,
+        pem_loader(&path_a),
+        hermetic.now(),
+        /*bundle*/ None,
+        &hermetic.cache,
+    )
+    .unwrap();
+    assert_eq!(
+        handshake(from_a, chain_a.server.clone(), "localhost"),
+        Ok(())
+    );
+    let from_b = build_rustls_client_config_with_native_roots(
+        &env_b,
+        pem_loader(&path_b),
+        hermetic.now(),
+        /*bundle*/ None,
+        &hermetic.cache,
+    )
+    .unwrap();
+    assert_eq!(
+        handshake(from_b.clone(), chain_b.server, "localhost"),
+        Ok(())
+    );
+    assert!(
+        handshake(from_b, chain_a.server, "localhost").is_err(),
+        "switching SSL_CERT_FILE must not keep trusting the previous source"
+    );
 }
 
 /// A configured custom bundle extends only the connectors that asked for it;
@@ -254,58 +287,57 @@ fn native_roots_source_environment_change_invalidates_without_waiting_for_the_tt
 #[test]
 fn custom_bundle_certs_do_not_leak_into_the_cached_native_roots() {
     codex_utils_rustls_provider::ensure_rustls_crypto_provider();
-    with_native_roots_cache(|| {
-        let native = trust_chain("native-platform-root");
-        let extra = trust_chain("extra-bundle-root");
-        let temp = tempfile::TempDir::new().unwrap();
-        let bundle_path = temp.path().join("bundle.pem");
-        std::fs::write(&bundle_path, extra.issuer_pem).unwrap();
-        let loader = || {
-            {
-                // CertificateResult is non-exhaustive, so build it from Default.
-                let mut result = rustls_native_certs::CertificateResult::default();
-                result.certs = vec![native.issuer_der.clone()];
-                result
-            }
-        };
-        let now = Instant::now();
+    let hermetic = HermeticCache::new();
+    let native = trust_chain("native-platform-root");
+    let extra = trust_chain("extra-bundle-root");
+    let temp = tempfile::TempDir::new().unwrap();
+    let bundle_path = temp.path().join("bundle.pem");
+    std::fs::write(&bundle_path, extra.issuer_pem).unwrap();
+    let loader = || {
+        {
+            // CertificateResult is non-exhaustive, so build it from Default.
+            let mut result = rustls_native_certs::CertificateResult::default();
+            result.certs = vec![native.issuer_der.clone()];
+            result
+        }
+    };
+    let env = MapEnv {
+        values: HashMap::new(),
+    };
 
-        let with_bundle = build_rustls_client_config_with_native_roots(
-            &MapEnv {
-                values: HashMap::new(),
-            },
-            loader,
-            now,
-            Some(&ConfiguredCaBundle {
-                source_env: CODEX_CA_CERT_ENV,
-                path: bundle_path,
-            }),
-        )
-        .unwrap();
-        assert_eq!(
-            handshake(with_bundle, extra.server.clone(), "localhost"),
-            Ok(()),
-            "the configured bundle must extend this connector's trust"
-        );
+    let with_bundle = build_rustls_client_config_with_native_roots(
+        &env,
+        loader,
+        hermetic.now(),
+        Some(&ConfiguredCaBundle {
+            source_env: CODEX_CA_CERT_ENV,
+            path: bundle_path,
+        }),
+        &hermetic.cache,
+    )
+    .unwrap();
+    assert_eq!(
+        handshake(with_bundle, extra.server.clone(), "localhost"),
+        Ok(()),
+        "the configured bundle must extend this connector's trust"
+    );
 
-        let without_bundle = build_rustls_client_config_with_native_roots(
-            &MapEnv {
-                values: HashMap::new(),
-            },
-            loader,
-            now,
-            /*bundle*/ None,
-        )
-        .unwrap();
-        assert_eq!(
-            handshake(without_bundle.clone(), native.server, "localhost"),
-            Ok(())
-        );
-        assert!(
-            handshake(without_bundle, extra.server, "localhost").is_err(),
-            "bundle certificates must not pollute the cached platform roots"
-        );
-    });
+    let without_bundle = build_rustls_client_config_with_native_roots(
+        &env,
+        loader,
+        hermetic.now(),
+        /*bundle*/ None,
+        &hermetic.cache,
+    )
+    .unwrap();
+    assert_eq!(
+        handshake(without_bundle.clone(), native.server, "localhost"),
+        Ok(())
+    );
+    assert!(
+        handshake(without_bundle, extra.server, "localhost").is_err(),
+        "bundle certificates must not pollute the cached platform roots"
+    );
 }
 
 fn handshake(

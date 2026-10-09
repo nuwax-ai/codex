@@ -48,6 +48,12 @@ max-threads = 4
 # can exceed initialization deadlines on developer machines.
 max-threads = 4
 
+[test-groups.http_client_default_pool_local]
+# Same mechanism as rig_bridge_wire_local: default client construction reads
+# macOS system proxy settings synchronously, so heavy local parallelism can
+# overrun the pool tests' short fixture deadlines.
+max-threads = 4
+
 [test-groups.core_apply_patch_cli_integration]
 max-threads = 1
 
@@ -93,6 +99,14 @@ test-group = 'app_server_integration_local'
 [[profile.local.overrides]]
 filter = 'package(codex-rust-rig-bridge) & binary(wire)'
 test-group = 'rig_bridge_wire_local'
+
+[[profile.local.overrides]]
+# Route-aware pool tests and their subprocess children each construct fresh
+# default reqwest clients whose macOS system-proxy read stalls when many
+# platform setups run at once on loaded developer machines.
+filter = 'package(codex-http-client) & test(/^route_aware_client_pool/)'
+test-group = 'http_client_default_pool_local'
+
 
 [[profile.default.overrides]]
 # These tests exercise full Codex turns and apply_patch execution, and they are
