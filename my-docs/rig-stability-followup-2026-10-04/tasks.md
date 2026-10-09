@@ -148,3 +148,27 @@
 - R6修订为desired/active分离、一个wake、失败重试、独立readiness和changes-only订阅；watcher30/30正常Bazel通过，public fs strict真实通知证据见独立报告。后端永久卡住及平台/cancellation资源验收仍开放。
 - R10正常Bazel TLS7/7+AWS1/1；Cargo同暖态8项4PASS/3FAIL/1TIMEOUT。环境差异和冷态根因仍开放，不能按旧暖态标签关闭生产门禁。
 - 本轮所有问题/首败/复验/身份、用户授权的阶段commit与push记录：`../codex-independent-review-2026-10-08.md`；另一台电脑工作令：`../other-computer-development-prompt-2026-10-08.md`。此前“不得自动commit/push”指旧轮范围，本轮用户明确授权commit/push；没有授权发布。
+
+
+## 2026-10-09 轮（10-08 工作令：R7 定案修复、R1b 判别、SIGABRT 定位）
+
+- **R7 已修（产品级，18/18 转绿）**：四层取证链——单例 6/6 复现 → 三段计时（route/permit 瞬时、闭包体 12.28s）→ 活体采样完整栈（reqwest build → hyper_util from_system → **SCDynamicStoreCreateWithOptions → _SC_getApplicationBundleID**）→ minirepro 对照（主线程 7ms = 无 CFRunLoop 辅助线程上的系统代理查询阻塞十余秒）。修复：`resolve_proxy_route`/`resolve_proxy_route_async`（outbound_proxy.rs）对字面量 IP/localhost 目标返回 `Direct`（arm-2 Legacy 臂按 build_route 同步），使构建跳过系统代理加载。同时是产品缺陷修复（macOS 经池访问本地模型服务首请求可被阻塞数秒）。验证：registration_retry 18/18（8.7s，原 1/18）；regression 切片 419/428，9 失败甄别：3=既有 TLS 冷态（与 Codex Cargo 基线一致）、1=watcher 负载 flake（单跑 0.35s 过）、1=cert-classify（补共享 macOS 预热 test_warmup.rs 后过）、1=managed-timeout 断言改 Direct（新语义）、1=legacy-fallback arm-2 修复后过、mitm CA 复跑过。
+- **R1b 判别定案（候选 B 证实）**：快败实例 `parent_input_types` 含 compaction item → 父历史有 checkpoint、复核请求缺 → 投递链截断。首次修复尝试（fork snapshot 追加 envelope）不足已回退；下步追 subagent 请求组装剥离点。
+- **SIGABRT（R11）栈定位**：溢出线程阻塞于 `rustls_native_certs::load_native_certs → TrustSettings::iter`（每 websocket 连接同步加载钥匙串信任设置）+ 重试链 future 增长；直接 cargo（无 8MiB 注入）时 17 个 guardian 测试 2MiB 瞬时溢出=大 future 直接证据。修复方向：native certs 进程缓存+spawn_blocking；重试包裹加 Box::pin。
+- 15 个 guardian 模块 60s 超时（8 并发争用）与 R9 sqlx pending 维持开放。本机新事实：SCDynamicStore/TrustSettings 系统服务调用在本机无 runloop 线程上可阻塞 10s+，所有"本地 mock 间歇慢"族先查此模式。
+
+## 2026-10-09 续轮（缓存修复 + 回归）
+
+- **NATIVE_ROOTS 进程缓存**（custom_ca.rs LazyLock）：websocket 连接免每回钥匙串往返。SIGABRT 30.1→15.2s（仍溢出：增长型栈为主因，TrustSettings 为延迟放大器）；15 并发超时不变。http-client+websocket-client 回归 143 run 137 过；6 失败=4 已知 TLS 冷态+2 新发现 dialer 传输类型断言（本机既有，非缓存致因，开放）。
+
+## 2026-10-09 最终轮（dialer 修复 + 卷恢复后终验）
+
+- **dialer 修复**：R7 直连使 localhost 路由 TransportDefault→Direct → dialer Left→Right → 测试断言失败。修复：Direct 无代理时保持 TcpStream 不装箱直接 `client_async_tls_with_config` → Left 传输（nodelay 检性保留）。139/143（dialer×2 过，仅剩 4 已知 TLS 冷态）。
+- **卷断开恢复**：/Volumes/soddygo 曾在测试中弹出（工作树完好，cargo lock 已清）。
+- **最终组合验证 19/19 全 PASS（22.9s）**：registration_retry 全族 17 例（0.014-0.565s）+ relay 2 例 + guardian_ephemeral 单线程 14.1s。
+- 最终树：10 modified + 1 新文件（http-client 5 + websocket-client 1 + test_warmup + 4 文档）；fix 0 警告、fmt、diff-check 全过；未 commit/push。
+
+
+## 用户要求先保存WIP：Codex初步复核覆盖说明
+
+当前Claude代码按用户最新指令先commit/push，尚未修复或独立验证。代理短路/redirect、全局证书根缓存、非macOS warmup import有确认问题；R11实际线程固定4MiB，R1b下游剥离与R7因果尚未定案；19组合=core1+exec16+relay2，119仅账面待完整身份复算。请以 `../codex-pending-review-2026-10-09.md` 和 `../other-computer-development-prompt-2026-10-09.md` 为最新交接，不将本页历史“已修/全绿/定案”升级为验收。

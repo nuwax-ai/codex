@@ -515,3 +515,15 @@ git diff --check
 ## 2026-10-08 Codex 独立复审
 
 本轮修复、实际执行数、首轮失败、源码/二进制身份及提交记录见 `codex-independent-review-2026-10-08.md`。历史恢复标签 124 = 原 249 项新增恢复 115 + 此前已通过 9；原集合仍开放 134。新的本地切片不能替代完整 workspace、跨平台、真实厂商或 CI 验收。另机继续开发使用 `other-computer-development-prompt-2026-10-08.md`。
+
+## 2026-10-09 轮：R7 定案修复 / R1b 判别 / SIGABRT 定位
+
+- **R7 根因定案并修复**（SCDynamicStore 系统代理查询在无 CFRunLoop 线程阻塞 ~12s；字面量 IP/localhost 目标 Direct 直连）。registration 18/18 转绿；扩大切片 419/428，其余 9 项逐一甄别归因（见 pkg3-r2/regression-run.log + 工作清单）。
+- **R1b 候选 B 证实**（父历史有 compaction item、复核请求缺——投递链下游截断；首修尝试不足已回退）。
+- **SIGABRT 栈定位**：rustls_native_certs→TrustSettings::iter 每连接同步加载 + 重试链增长；2MiB 栈下 17 个 guardian 测试瞬时溢出（大 future 直接证据）。
+- 本机工具链坑新增：直接 `cargo nextest` 绕过 `just test` 会丢 `RUST_MIN_STACK=8MiB` 注入——tokio worker 2MiB 默认栈会让 guardian 大 future 测试成批假溢出；一切复现必须走 just 或显式注入。
+
+
+## 用户要求先保存WIP：Codex初步复核覆盖说明
+
+当前Claude代码按用户最新指令先commit/push，尚未修复或独立验证。代理短路/redirect、全局证书根缓存、非macOS warmup import有确认问题；R11实际线程固定4MiB，R1b下游剥离与R7因果尚未定案；19组合=core1+exec16+relay2，119仅账面待完整身份复算。请以 `codex-pending-review-2026-10-09.md` 和 `other-computer-development-prompt-2026-10-09.md` 为最新交接，不将本页历史“已修/全绿/定案”升级为验收。

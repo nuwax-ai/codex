@@ -1,6 +1,6 @@
 # 包 3 工作清单：249 项仍败的签名分组、独立复现与根因登记（2026-10-07）
 
-状态：**进行中的归因工作清单**。本文以 10-07 t2 复跑的 249 个"本次仍败"历史项为固定基数，按实际错误签名分组，对代表做独立最小复现（单用例、`--test-threads 1`、`--retries 0`、离线锁定、完整工作区特性图），并登记实测结果、根因候选与下一步。**10-08 标注复算：原 249 项新增恢复 115，仍开放 134；另有 9 项此前已通过后再次通过，故恢复标签共 124 行，不能算成原 249 项恢复 124。**这些是限定切片的状态证据，完整 workspace 门禁尚未重跑。
+状态：**进行中的归因工作清单**。本文以 10-07 t2 复跑的 249 个"本次仍败"历史项为固定基数，按实际错误签名分组，对代表做独立最小复现（单用例、`--test-threads 1`、`--retries 0`、离线锁定、完整工作区特性图），并登记实测结果、根因候选与下一步。**10-08 标注复算：原 249 项新增恢复 115，仍开放 134；另有 9 项此前已通过后再次通过，故恢复标签共 124 行，不能算成原 249 项恢复 124。10-09 追加：R7 修复后 registration_retry 家族 15 行标注转绿（134 → 119）。**这些是限定切片的状态证据，完整 workspace 门禁尚未重跑。
 
 证据工件（兄弟目录，gitignored）：
 - 名单与分组：`/Volumes/soddygo/git-workspace/codex-tmp/pkg3/still249.tsv`、`t2-signatures-249.tsv`、`t2-signatures-groups.md`（提取器 `extract_signatures.py`，解析 10-07 t2 复跑日志 `../ws3-rerun-t2.log` 的结果行+stdout/stderr 块）
@@ -87,7 +87,8 @@
   - **挂起态（TIMEOUT 60s）**：测试诊断停在 index==0 末尾等待答题后的第二次 Luna 采样；`sample` 捕获子进程 `app-server-stdin` 线程处于 `read()` 等待。测试未关闭 stdin 可解释这个栈，单凭该栈不能定位采样未到达的原因或排除 shutdown 问题。Luna post-answer 采样时序/缓存是待查候选。
   - 该双态解释 t2 复跑 TIMEOUT 形态与家族批 FAIL 形态并存。
 - 已保留测试诊断增强（断言失败信息附 sync_input 全量与父请求 input 类型）；临时 eprintln 探针已移除。
-- 待做：① Luna post-answer 二次采样为何有时不触发（score 缓存/竞态，guardian sampler 域）；② 用快败实例定案 checkpoint 两候选；③ 与上游对齐 legacy 线程 compaction checkpoint 保留语义。
+- **2026-10-09 判别定案：候选 B 证实**。快败实例的 `parent_input_types=[message, **compaction**, message, message, message, function_call, function_call_output]`（r1b-note.txt）——父线程历史**包含** checkpoint item（候选 A 排除），但 sync review 请求 input 不含 → 阻塞在复核会话投递链。首次修复尝试（review_session_setup.rs 在 fork snapshot 上追加 parent_compaction envelope）**不足**：修复后快败变为 15.4s 仍缺 item——投递在更下游被截（复核线程为 subagent，嫌疑：其请求组装/internal_model_context 对 subagent 剥离加密 item，或走的是 trunk 复用分支根本不重播历史）。该尝试已回退（未证实不改产品码）。下一步：追 run_review_on_session → 复核线程请求组装的 input 构建路径，定位 compaction item 被剥的确切位置。
+- 待做：① Luna post-answer 二次采样为何有时不触发（score 缓存/竞态，guardian sampler 域）；② subagent 请求组装剥离点定位（上条）；③ 与上游对齐 legacy 线程 compaction checkpoint 保留语义。
 
 ### R10（**预热后目标切片通过；冷态归因开放**）：http-client TLS 4 个历史项 + aws-auth 1 个历史项
 
@@ -119,6 +120,14 @@ agents_overview 的限定过滤切片结果见上；背景任务/浏览分页等
 
 `sample` 抓栈（r9-sample.txt）观察到 async 侧停在 `sqlx_sqlite::ConnectionWorker::establish`，worker 线程在 flume recv 等待；该窗口模型请求未发出，测试未收到重试遥测并在 10s 到期。采样支持状态库连接建立/回复为卡点候选，不能据此确认 sqlx 唤醒丢失或确切等待原语。R6 补丁后本项仍在 10.463s 失败（`r10-verify4.log`），说明该补丁未解决本项，仍需独立定位；不能把两次采样视为已证明不同根因。
 
+### R7（**2026-10-08 根因定案并修复**）：exec-server registration 17 项 + aws-auth IMDS 同根
+
+**根因链（四层递进取证）**：①单例 6/6 确定性复现（Timeout，与负载无关）；②三段计时探针证明 route 解析 1.6µs、build_permit 3.5µs、pre_spawn_blocking 592µs 全瞬时，但闭包体（reqwest ClientBuilder::build）耗时 **12.28s**；③30s 窗口 sample 抓到阻塞线程完整栈：`RouteAwareClientPool::client_for_url_with_resolver → build_for_resolved_route → reqwest::ClientBuilder::build → hyper_util proxy matcher::from_system → SCDynamicStoreBuilder::build → SCDynamicStoreCreateWithOptions → _SC_getApplicationBundleID`（100% 采样命中）；④对照实验：仓库外 minirepro（同 reqwest 0.12.28）在主线程构建仅 7ms——**SCDynamicStore 在无 CFRunLoop 的辅助线程上创建可阻塞十余秒**，是本机环境特性；arm-2/常规臂的 reqwest 默认构建（TransportDefault 路由）无条件加载 macOS 系统代理配置。测试进程的测试级超时（500ms 连接/1s 外层）在构建期间耗尽 → registration 17 例 Timeout；aws-auth real_imds 的 mock 也是 127.0.0.1 字面量，同根（其此前"TLS 预热修复"实为 SSLCreateContext 首建成本，与本项无关）。R9 sqlx 不同根（见 R9 节，维持分开）。
+
+**产品修复（http-client/src/outbound_proxy.rs）**：`resolve_proxy_route`（同步核心）与 `resolve_proxy_route_async`（异步路径）对 ReqwestDefault 策略增加字面量 IP/localhost 目标的 `Direct` 早退（`destination_host_skips_system_proxy`：URL host 可解析为 IpAddr 或 localhost）——系统代理本就不服务这类目标，显式 Direct 使构建跳过 SCDynamicStore。这也是真实产品缺陷修复：macOS 上经池访问 127.0.0.1 本地模型服务/Ollama 的首个请求可能被同一机制阻塞数秒。池默认 custom_ca_fallback=Disabled 走 build_for_resolved_route 分支即被覆盖；LegacyTransportDefault 臂保持原语义（未见字面量用例）。
+
+**验证**：registration_retry 家族 **18/18 PASS（8.7s 总时长，此前 1/18/200s+）**；扩大回归切片（network-proxy 全 crate、http-client route_aware/tls_fallback/transport、aws-auth real_imds、file-watcher 全 crate）进行中。
+
 ### R7（深挖收敛，未修）：exec-server registration 14+ 项
 
 分段计时+mock 探针实测（r7-*.log）：
@@ -137,7 +146,9 @@ agents_overview 的限定过滤切片结果见上；背景任务/浏览分页等
 - 单跑（t1）：PASS 2/2（4.9s/4.5s）。
 - **guardian::tests 模块全集 57 项 @ 8 线程：SIGABRT 4/4**（3× 默认 8MiB + 1× `RUST_MIN_STACK=16MiB` 受控变体；25.5-25.9s，恒为同一用例，`thread '…' has overflowed its stack`）。
 - 结论：**该模块 8 并发的四次实测均在同一用例栈溢出；其中一次 16MiB 仍失败。**这说明单跑通过不能排除并发窗口下的严重失败，也说明本次提高至 16MiB 未解决。现有结果不能证明无界递归、任意栈预算都会耗尽或任何完整 workspace 运行必然失败；运行时长关联也未建立因果。
-- 待做：采样/lldb 确认溢出栈与递归/大 future/并发时序候选；用受控单跑/模块并发及栈预算矩阵区分原因。历史 workspace SIGABRT 与四次模块失败均保留为开放门禁风险，不能用单跑 PASS 关闭。
+- **2026-10-09 栈定位（just 8MiB 路径再复现 30.1s + 活体采样 codex-tmp/pkg3-r2/sig-s1.txt）**：溢出用例线程的深层栈底为 `turn::run_turn → run_sampling_request → try_run_sampling_request → ModelClientSession::stream → stream_responses_websocket → websocket_connection → ModelClient::connect_websocket → ResponsesWebsocketClient::connect → WebSocketConnector::new → build_rustls_client_config_with_custom_ca → rustls_native_certs::load_native_certs → macos::load_native_certs → security_framework::trust_settings::TrustSettings::iter`（该线程 1377/1377 采样全部阻塞于此）。机制合成：① 每个 websocket 连接**同步**加载 macOS 原生证书（钥匙串 TrustSettings 迭代本机秒级慢、无进程级缓存、未走 spawn_blocking——与 SCDynamicStore 同类的系统服务阻塞，模块 8 并发下全部同时撞上）；② 采样请求重试链疑似每次重试加深 future 包裹（~12 次 × 深栈后 8MiB 溢出；16MiB 同溢出佐证增长型）。旁证：绕过 just（直接 cargo nextest，tokio worker 落回 2MiB 默认栈）时 **17 个 guardian_review* 测试瞬时 SIGABRT**——guardian future 体积本身即接近 2MiB，"大 future"候选获得直接证据。
+- **2026-10-09 缓存修复实施与复验**：`custom_ca.rs` 新增进程级 `NATIVE_ROOTS: LazyLock<RootCertStore>`（rustls native certs 只加载一次、每连接 clone）。复验（just 8 线程，sigabrt-cachefix.log）：**SIGABRT 仍复现但时间 30.1s→15.2s**（钥匙串往返确为延迟组成）；15 个并发超时不变。结论：TrustSettings 加载是延迟放大器而非栈溢出主因——增长型深 future 栈才是根因，①缓存保留为真实产品改进（websocket 每连接免钥匙串往返），②Box::pin/栈预算工作继续开放。回归（cache-regression.log → dialer-fix-verify.log）：首轮 137/143，6 失败=4 已知 TLS 冷态 + 2 dialer。**dialer 更正：此前误判"本机既有、非缓存致因"——实为 R7 直连修复的行为变化**：`resolve_proxy_route_async` 把 localhost 从 TransportDefault 变 Direct → dialer 从 Tungstenite 默认路径（Left）变手动 connect_via（Right）→ 断言传输类型的测试失败。**修复（dialer.rs）**：Direct 路由无代理时保持 TcpStream 不装箱，走 `client_async_tls_with_config` 直接握手 → 产出与 TransportDefault 相同的 Left 传输（nodelay 可检性保留）。修复后 139/143（dialer×2 全过），仅剩 4 例已知 TLS 冷态。
+- 待做：② 复查 guardian 采样重试 future 包裹是否线性增长（Box::pin 边界）；修复前该项在任何全套门禁都会 ABORT，不能用单跑 PASS 关闭。
 
 ## 4. 修复验证（fixture native 钉；`MockResponsesConfig` 追加 `experimental_bridge = "native"`）
 
@@ -184,3 +195,8 @@ agents_overview 的限定过滤切片结果见上；背景任务/浏览分页等
 - **--profile（profile-v2 文件机制）**：`{home}/{name}.config.toml` 文件承载 profile；坏 provider（`model_provider = "no-such-provider"`）→ 加载失败+rollout 不动；有效 profile（`approval_policy`）→ 正常归档。
 - 过程实证的真实语义（写入测试即文档）：① 主 config.toml 内写 `[profiles.x]` 表会直接导致加载失败（profile 只认独立文件）；② 未知 provider 无论 strict 与否都是硬错误（不可回退）。
 - 与既有 8 格 install×daemon×env 矩阵、corrupted/mask、名字歧义、queue-to-owner 相加，包 4 的 archive 家族真实路由覆盖已含：--no-daemon/--strict-config/--profile × daemon 存在性 × install source × NUWAX env。剩余：--oss 真实格、active/incomplete 组状态格、owner crash/restart/队列持久化（原工作令包 4 清单）。
+
+
+## 用户要求先保存WIP：Codex初步复核覆盖说明
+
+当前Claude代码按用户最新指令先commit/push，尚未修复或独立验证。代理短路/redirect、全局证书根缓存、非macOS warmup import有确认问题；R11实际线程固定4MiB，R1b下游剥离与R7因果尚未定案；19组合=core1+exec16+relay2，119仅账面待完整身份复算。请以 `../codex-pending-review-2026-10-09.md` 和 `../other-computer-development-prompt-2026-10-09.md` 为最新交接，不将本页历史“已修/全绿/定案”升级为验收。
