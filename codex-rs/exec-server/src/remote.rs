@@ -90,12 +90,21 @@ impl std::fmt::Debug for EnvironmentRegistryClient {
 impl EnvironmentRegistryClient {
     #[cfg(test)]
     fn new(base_url: String, auth_provider: SharedAuthProvider) -> Result<Self, ExecServerError> {
-        Self::new_with_telemetry(
+        // Hermetic test fixture: these clients only ever talk to loopback mock
+        // registries, so route them explicitly direct instead of leaving the
+        // transport to consult system proxy configuration (on macOS the
+        // SCDynamicStore lookup can stall helper threads for seconds, which
+        // blows these tests' sub-second budgets under parallel load).
+        let mut client = Self::new_with_telemetry(
             base_url,
             auth_provider,
             ExecServerTelemetry::default(),
             HttpClientFactory::new(codex_http_client::OutboundProxyPolicy::ReqwestDefault),
-        )
+        )?;
+        client.http = client
+            .http
+            .with_legacy_direct_proxy_and_custom_ca_fallback();
+        Ok(client)
     }
 
     fn new_with_telemetry(
