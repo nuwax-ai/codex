@@ -33,7 +33,8 @@ use system_configuration::core_foundation::url::CFURL;
 use system_configuration::core_foundation::url::CFURLCreateWithString;
 use system_configuration::core_foundation::url::CFURLGetTypeID;
 use system_configuration::core_foundation::url::CFURLRef;
-use system_configuration::dynamic_store::SCDynamicStoreBuilder;
+
+mod system_settings_store;
 
 const PAC_EXECUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -94,7 +95,7 @@ pub(super) fn resolve(request_url: &str, origin: &RequestOrigin) -> SystemProxyD
         };
     };
 
-    let Some(proxies) = copy_proxies_for_url(&target_url, &settings) else {
+    let Some(proxies) = copy_proxies_for_url(&target_url, settings.proxies()) else {
         return SystemProxyDecision::Unavailable {
             failure: RouteFailureClass::ProxyResolutionUnavailable,
         };
@@ -110,7 +111,7 @@ pub(super) fn configuration(request_url: &str) -> MacosSystemProxyConfiguration 
     let Some(settings) = system_proxy_settings() else {
         return MacosSystemProxyConfiguration::Unavailable;
     };
-    let Some(proxies) = copy_proxies_for_url(&target_url, &settings) else {
+    let Some(proxies) = copy_proxies_for_url(&target_url, settings.proxies()) else {
         return MacosSystemProxyConfiguration::Unavailable;
     };
 
@@ -136,9 +137,8 @@ pub(super) fn configuration(request_url: &str) -> MacosSystemProxyConfiguration 
         .unwrap_or(MacosSystemProxyConfiguration::Unavailable)
 }
 
-fn system_proxy_settings() -> Option<CFDictionary<CFString, CFType>> {
-    let store = SCDynamicStoreBuilder::new("Codex").build()?;
-    store.get_proxies()
+fn system_proxy_settings() -> Option<std::sync::Arc<system_settings_store::SettingsSnapshot>> {
+    system_settings_store::system_settings_snapshot()
 }
 
 fn copy_proxies_for_url(
