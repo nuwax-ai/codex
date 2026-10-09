@@ -88,7 +88,7 @@
 | e9996566b（保留 producer 元数据）修复后仍缺 item | 修复前：种子 envelope 无 metadata → `sources.get(id)=None` ≠ `Some(target)` → 丢弃；修复后：`Some(父prov)` ≠ `Some(复核prov)` → 丢弃。**两种情况都在同一点被剥**，只是失败原因从"缺元数据"变成"元数据不匹配"。这精确解释 worklist 的"首次修复不足、投递在更下游被截" |
 | 已回退的"fork snapshot 追加 envelope"尝试同样无效 | 该修复只覆盖 busy-fork 分支的种子；种子进入历史后同样在步骤 17 被剥 |
 
-补充一个使不等**更加必然**的细节：复核请求带 `x-codex-guardian: reviewer` 头（`sync_reviewer/mod.rs:98-104` 注入 `CodexResponsesHeaders`；native 路径在 `client.rs:1946` 把它并入 `options.extra_headers` 后才计算 `request_source`）。`x-codex-guardian` 不在 benign 头白名单（`codex-rs/codex-api/src/model_source.rs:57-91`）→ 复核请求的 `auth_domain` 走 credentialInstance 分支（`model_output_projection.rs:108-125`），而父压缩请求走 account 分支（95-107 行）。即 **model 与 auth_domain 两个字段都不同**——即便只放宽 model 比较也修不好（见 §4）。
+补充一个使不等**更加必然**的细节：复核请求带 `x-codex-guardian: reviewer` 头（`sync_reviewer/mod.rs:98-104` 注入 `CodexResponsesHeaders`；native 路径在 `client.rs:1946` 把它并入 `options.extra_headers` 后才计算 `request_source`）。`x-codex-guardian` 不在 benign 头白名单（`codex-rs/codex-api/src/model_source.rs:57-91`）→ 复核请求的 `auth_domain` 走 credentialInstance 分支（`model_output_projection.rs:108-125`），父压缩请求仅在有匹配账户凭据时走 account 分支（95-107 行）；其他来源还可能为 anonymous/credentialInstance/缺证来源。本案需要分别核对 **model 与 auth_domain 的实际差异**——即便只放宽 model 比较也修不好（见 §4）。
 
 ---
 
@@ -106,10 +106,10 @@
 
 推荐方案（改动面最小、语义显式）：
 
-1. 在 guardian 种子处（`review_session_setup.rs:90-97`，或 `review_session_context.rs:80-83` 构造 envelope 时）给 envelope metadata 打一个显式标记（例如 `CodexHarnessMetadata` 增加 `guardian_replay: bool` 或复用/新增一个专门字段），表示"此 checkpoint 被授权在复核请求中重放"。
-2. `sources_for_input`（`model_output_projection.rs:156-175`）读到该标记时，把该 id 映射为一个"任意 scope 可重放"的哨兵值（而非 provenance 本身）。
-3. `project_input` 的 `ResponseItem::Compaction`/`ContextCompaction` 臂（217-230 行）识别该哨兵 → 保留 item。**Reasoning 的 encrypted_content 臂不动**（模型 scoped，维持现状）。
-4. 回归面：`model_output_projection_tests.rs` 补"guardian 哨兵保留、普通跨模型 resume 仍丢弃"两例；app-server `guardian_v2_history_tests.rs` 13 项应转绿。
+1. 在可信运行时为本次 guardian 请求创建有限 replay grant，绑定确切 checkpoint 身份、producer 来源、目标 reviewer 的 endpoint/auth/wire/模型变化范围以及会话/请求生命周期；不得从可编辑的持久 envelope bool 自行授予权限。
+2. sources_for_input 保留普通 provenance；grant 经可信调用链传给投影，仅对绑定的 checkpoint 和目标请求生效。禁止“任意 scope 可重放”哨兵；普通 resume、未知来源、跨 endpoint/凭据/wire 仍按原隔离规则处理。
+3. project_input 的 Compaction/ContextCompaction 分支仅在完整 grant 校验通过时保留。Reasoning 的 encrypted_content 规则不放松；不能将 guardian header 加入全局 benign 白名单来绕过认证域变化。
+4. 回归须覆盖实际 guardian 阳性与普通 resume/endpoint/auth/wire/未知来源阴性，关联同一 history/checkpoint/attempt 并断言最终 wire；13 个历史身份逐个复验，不能预先宣布转绿。方案尚未实施，完整约束见 ../rig-production-completion-2026-10-10/plan.md。
 
 不推荐的替代（列出以备评审）：
 - 全局把 Compaction 的比较降为"provider+endpoint+auth 忽略 model"：**不够**——`x-codex-guardian` 头使 auth_domain 也不同（§2），还得再把该头加入 benign 白名单，改动面反而更大且弱化了凭证隔离设计。
@@ -133,7 +133,7 @@
 - 唯一入口：`ext/guardian-v2/src/async_scorer/extension.rs:172-175` `on_tool_start` → `score_tool`（`observation.rs:39-364`），由 core 在**工具开始执行时**派发：MCP 工具 `core/src/tools/handlers/mcp.rs:221`、内建工具 `core/src/tools/registry.rs:681`（`notify_tool_start`，`core/src/tools/lifecycle.rs:21-60`）——都在**审批通过之后**。
 - 测试中的两次采样：Luna #0 = `request_user_input` 调用执行时的分类；Luna #1（"post-answer"）= 答案落盘后 `inspect-1` 开始执行时的分类（此时 retained context 已含 VerifiedAnswer → transcript 渲染出 `>>> TRUSTED USER ANSWERS START`）。
 
-**因此二次采样不触发的充要条件是"答案之后没有被打分工具开始执行"**。可造成该状态的代码路径：
+**on_tool_start 是该采样路径的触发入口，不是请求必发的充分条件。** 答案后没有相应工具开始可解释无采样；工具已开始后也可能早退。实际 TIMEOUT/竞态仍待受控时序验证，候选路径如下：
 
 1. 审批链把工具拒掉（不执行 → 无 tool start）：
    - `ext/guardian-v2/src/async_scorer/approval.rs:129-255` `cached_evidence`：缓存放行（232-241 行）→ 执行；`MissingScore`/`StaleScore`（lag > `max_tool_call_lag`，218-227 行）/`ElevatedRisk`（243-245 行）/`AuthorizationChanged`（233-238 行）→ 转同步复核（122 行）；**同步复核 deny 或失败 → 工具不执行**。

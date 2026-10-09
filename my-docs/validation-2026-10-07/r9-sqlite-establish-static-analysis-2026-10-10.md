@@ -54,7 +54,7 @@
 
 ## 2. 失败测试的完整链路与各步阻塞点
 
-失败代表:`connection_failures_increment_retry_telemetry_without_consuming_retry_budget`(`core/tests/suite/retry_after.rs:1663-1732`),`#[tokio::test(flavor = "current_thread")]`——**单线程运行时,所有任务共用一条线程;任何同步阻塞都会饿死全部任务**。家族其余 5 项同文件同构(http/sse/websocket/compact_v2 各形态)。
+失败代表:`connection_failures_increment_retry_telemetry_without_consuming_retry_budget`(`core/tests/suite/retry_after.rs:1663-1732`),`#[tokio::test(flavor = "current_thread")]`——**单线程运行时,所有任务共用一条线程;任何同步阻塞都会饿死全部任务**。这里仅分析 Core 历史 #161；旧 R9 六项实际为 OTLP #263–268，另有 rmcp #270/#282。这些身份不属于本文件同构家族，必须分别复现，不能共享本节归因。
 
 时序链(箭头后是阻塞点):
 

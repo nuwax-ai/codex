@@ -29,7 +29,7 @@
 ### 1.2 本文静态推导(候选,未动态验证)
 
 - C1:五层重试循环均为替换型,重试不累积 future 嵌套(§2.2)。
-- C2:F5 的 17 个测试瞬时 SIGABRT 说明**单次 poll 的栈足迹在 debug 构建下已 > 2MiB**,这是"固定深链很大"的直接证据,与增长型假说无关(§4.3)。
+- C2:F5 的17个测试瞬时SIGABRT证明该执行条件存在栈敏感性，但未区分 future 构造/移动、状态体积与 poll 栈；没有直接测出单次 poll >2MiB。固定深链仍为待实验候选（§4.3）。
 - C3:F2 的 16MiB 变体不构成增长型证据(§4.2)。
 - C4:并发才溢出、单跑通过的差异,静态上不能由 future 嵌套解释;剩余候选是"负载下才走到更深的叶子路径/更多次重试把最深处组合点撞出来"或尚未定位的向量(§6.4 开放问题)。
 
@@ -138,7 +138,7 @@ Rust 语义:loop 体内 `.await` 的 future 是该次迭代的临时值;状态�
 
 ### 3.2 结论
 
-review 侧(guardian 等待/仲裁/重试包装)因大量 `Box::pin` + 通道化(`submit_turn`/`next_event`),**poll 纵深被压得很浅**;真正的高纵深未装箱段只有一条:**`run_sampling_request` 的 attempt 建立(`client_session.stream(...)` 调用链)直到同步证书加载**。它与 F3 的采样栈底逐层吻合,不是巧合——这就是该线程唯一能一次下降 ~2MiB+ 的路径。
+review 侧存在大量 Box::pin 与任务/通道边界；run_sampling_request 到同步证书加载是采样观察到的深调用候选。静态调用图不能证明它是唯一大栈路径，也未测出约2MiB下降；需分别量构造/移动、future尺寸、poll栈及真正溢出位置。
 
 guardian 专属的额外注意点:`try_run_sampling_request` 对 guardian 会话还会先走 `prepare_guardian_prompt`(turn.rs:1682–1690),在进入深链之前再叠加一段未装箱 await;但它在深链**上方**,只加常数层。
 
@@ -160,7 +160,7 @@ guardian 专属的额外注意点:`try_run_sampling_request` 对 guardian 会话
 
 ### 4.3 F5 的正确解读
 
-17 个 `guardian_review*` 普通测试(本文件内 `#[tokio::test]` 共 37 处)在无 `RUST_MIN_STACK` 时由 libtest 以默认线程栈 spawn,`#[tokio::test]` 的 current_thread runtime 在该线程上 `block_on`。瞬时 SIGABRT ⇒ **单次 poll(即 §2.1 链条的某次完整下降,debug 构建)栈足迹 > 2MiB**。这给固定深链的下界,与重试次数无关(瞬时死亡意味着首次/早期 poll 即溢出)。
+17个guardian_review普通测试在未设RUST_MIN_STACK的默认测试线程中观察到瞬时SIGABRT，可登记该窗口栈敏感。即使早期发生，也不能据此判定溢出只在poll而非future构造/移动，更不能把2MiB作为单次poll的实测下界；正常4MiB显式线程与逐attempt实验仍需执行。
 
 ---
 

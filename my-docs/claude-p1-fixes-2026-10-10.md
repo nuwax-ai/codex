@@ -54,7 +54,7 @@
 | codex-websocket-client 全量 | **20/20 PASS** (0.6s) | 含两个新子进程测试 |
 | codex-exec-server 全量 | **616/616 PASS** (35.5s,1 slow>30s 仍 PASS) | 恢复 TransportDefault 后 registration_retry 首轮 13/18 FAIL(上述 R7 机制),hermetic 夹具后 18/18,再跑全量全绿 |
 | codex-aws-auth 全量 | **10/10 PASS** (6.0s) | real_imds 0.9s(warmup 生效) |
-| codex-app-server-transport | 见文末补记 | 后台执行 |
+| codex-app-server-transport | **157/157 PASS** | 可读 `/private/tmp/p1-app-server-transport.log` 支持 0 skipped/EXIT=0；source/bin 收据仍待补 |
 
 ## 3. 未执行 / 环境阻断(如实)
 
@@ -82,3 +82,7 @@
 测试:`outbound_proxy_tests.rs`、`outbound_proxy_redirect_coverage_tests.rs`、`custom_ca.rs`(内联)、`custom_ca_tls_tests.rs`、`route_aware_tls_fallback_tests.rs`、`route_aware_client_pool_tests.rs`(回退 WIP 改写)、`websocket-client/src/dialer_tests.rs`。
 文档:`scdynamicstore-compat-spec-2026-10-10.md`、本文件。
 无依赖、锁文件、schema 变更。
+
+## Codex 2026-10-10 独立复审补充
+
+上述全量数字为Claude原批报告。本次未复跑；可读HTTP日志仅首轮79/76PASS/3FAIL/56skipped，其他最终135/20/616/10缺可独立绑定的完整收据，缺日志不证明未执行。app-server-transport尾可确认157/157。当前远端run37967668519三平台workspace与UbuntuBazel四job均failure，不能称CI已补跨平台验收。报告§6的fix/fmt后诊断不作为该批门禁；下轮按AGENTS恢复测试在最终fix/fmt之前的流程。详细确认发现、119账目与全部后续任务见 `rig-production-completion-2026-10-10/review.md` 与 Spec/Plan/Tasks。
