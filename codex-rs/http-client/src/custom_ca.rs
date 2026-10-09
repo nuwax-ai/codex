@@ -46,7 +46,9 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::LazyLock;
+use std::sync::Mutex;
+use std::time::Duration;
+use std::time::Instant;
 
 use codex_utils_rustls_provider::ensure_rustls_crypto_provider;
 use rustls::ClientConfig;
@@ -240,56 +242,184 @@ fn build_rustls_client_config_with_env(
     build_rustls_client_config(bundle.as_ref())
 }
 
-/// Platform root certificates, loaded once per process.
+/// How long a fully successful platform-root load stays valid for new connectors.
+const NATIVE_ROOTS_CACHE_TTL: Duration = Duration::from_secs(60);
+/// How long a partially failed load (some errors, some certificates) stays valid.
+///
+/// A partial load is the platform's current answer, but the failure means it may
+/// also be incomplete, so it refreshes sooner than a clean load.
+const NATIVE_ROOTS_PARTIAL_FAILURE_TTL: Duration = Duration::from_secs(5);
+
+/// Platform root certificates with a source-keyed, bounded-staleness cache.
 ///
 /// Loading macOS trust settings (`rustls_native_certs` iterates the keychain
 /// `TrustSettings`) can take seconds on some hosts, and the load is identical
-/// for every caller. Caching the parsed store keeps websocket connectors from
-/// paying that keychain round-trip on every connection.
-static NATIVE_ROOTS: LazyLock<RootCertStore> = LazyLock::new(|| {
-    let mut root_store = RootCertStore::empty();
-    let rustls_native_certs::CertificateResult { certs, errors, .. } =
-        rustls_native_certs::load_native_certs();
+/// for every caller, so finished loads are shared. Unlike a process-wide
+/// snapshot, the cache is keyed by the environment sources the loader reads
+/// (on Unix, `SSL_CERT_FILE`/`SSL_CERT_DIR`) and expires, so connectors built
+/// later observe revoked roots or replaced files; loads that produce no
+/// certificates are never cached, and partially failed loads are retried on
+/// the short TTL. This bounds staleness and amortizes the load; it does not
+/// remove the underlying synchronous system call, which the first load per
+/// source still pays on the calling thread.
+static NATIVE_ROOTS_CACHE: Mutex<Option<CachedNativeRoots>> = Mutex::new(None);
+
+struct CachedNativeRoots {
+    source_key: String,
+    expires_at: Instant,
+    roots: Arc<RootCertStore>,
+}
+
+/// Serializes tests that observe or mutate the global [`NATIVE_ROOTS_CACHE`].
+#[cfg(test)]
+static NATIVE_ROOTS_CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// Runs one hermetic observation against the global cache, restoring the
+/// previous entry afterwards so concurrent tests never inherit fixture roots.
+#[cfg(test)]
+fn with_native_roots_cache<T>(observed: impl FnOnce() -> T) -> T {
+    let _guard = NATIVE_ROOTS_CACHE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|error| panic!("test lock should not be poisoned: {error}"));
+    let previous = NATIVE_ROOTS_CACHE
+        .lock()
+        .unwrap_or_else(|error| panic!("cache lock should not be poisoned: {error}"))
+        .take();
+    let outcome = observed();
+    let mut cache = NATIVE_ROOTS_CACHE
+        .lock()
+        .unwrap_or_else(|error| panic!("cache lock should not be poisoned: {error}"));
+    *cache = previous;
+    outcome
+}
+
+/// The environment identity of the platform-root source for one load.
+///
+/// On Unix the loader honors `SSL_CERT_FILE`/`SSL_CERT_DIR` (via
+/// `openssl-probe`), so a value change must invalidate immediately. The macOS
+/// keychain and Windows system stores cannot be redirected through those
+/// variables, so there the source is the platform identity and only TTL
+/// expiry picks up trust-setting changes.
+fn native_root_source_key(env_source: &dyn EnvSource) -> String {
+    #[cfg(unix)]
+    {
+        let cert_file = env_source.var("SSL_CERT_FILE").unwrap_or_default();
+        let cert_dir = env_source.var("SSL_CERT_DIR").unwrap_or_default();
+        format!("unix\u{1}{cert_file}\u{1}{cert_dir}")
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = env_source;
+        "platform".to_string()
+    }
+}
+
+/// Loads the platform roots through the bounded-staleness cache.
+///
+/// The loader runs while the cache lock is held, so concurrent callers are
+/// single-flight: one system load, everyone shares its result.
+fn cached_native_roots(
+    env_source: &dyn EnvSource,
+    load_native_roots: impl FnOnce() -> rustls_native_certs::CertificateResult,
+    now: Instant,
+) -> Arc<RootCertStore> {
+    let source_key = native_root_source_key(env_source);
+    let mut cache = NATIVE_ROOTS_CACHE
+        .lock()
+        .unwrap_or_else(|error| panic!("native roots cache lock should not be poisoned: {error}"));
+    if let Some(cached) = cache.as_ref()
+        && cached.source_key == source_key
+        && cached.expires_at > now
+    {
+        return Arc::clone(&cached.roots);
+    }
+
+    let rustls_native_certs::CertificateResult { certs, errors, .. } = load_native_roots();
     if !errors.is_empty() {
         warn!(
             native_root_error_count = errors.len(),
             "encountered errors while loading native root certificates"
         );
     }
-    let _ = root_store.add_parsable_certificates(certs);
-    root_store
-});
+    let mut root_store = RootCertStore::empty();
+    let (added, ignored) = root_store.add_parsable_certificates(certs);
+    if ignored > 0 {
+        warn!(
+            ignored_certificate_count = ignored,
+            "native root certificates could not be parsed and were skipped"
+        );
+    }
+    if added == 0 {
+        // Cache nothing: an empty store must fail closed for this connector
+        // while the next connector retries the load, so a transient keychain
+        // or bundle failure recovers instead of poisoning the process.
+        warn!("native root load produced no certificates; retrying on the next connector");
+        return Arc::new(root_store);
+    }
+    let ttl = if errors.is_empty() {
+        NATIVE_ROOTS_CACHE_TTL
+    } else {
+        NATIVE_ROOTS_PARTIAL_FAILURE_TTL
+    };
+    let roots = Arc::new(root_store);
+    *cache = Some(CachedNativeRoots {
+        source_key,
+        expires_at: now + ttl,
+        roots: Arc::clone(&roots),
+    });
+    roots
+}
 
 fn build_rustls_client_config(
+    bundle: Option<&ConfiguredCaBundle>,
+) -> Result<Arc<ClientConfig>, BuildCustomCaTransportError> {
+    build_rustls_client_config_with_native_roots(
+        &ProcessEnv,
+        rustls_native_certs::load_native_certs,
+        Instant::now(),
+        bundle,
+    )
+}
+
+/// Builds a rustls client config from cached platform roots, injecting the
+/// environment source, root loader, and cache clock for hermetic tests.
+fn build_rustls_client_config_with_native_roots(
+    env_source: &dyn EnvSource,
+    load_native_roots: impl FnOnce() -> rustls_native_certs::CertificateResult,
+    now: Instant,
     bundle: Option<&ConfiguredCaBundle>,
 ) -> Result<Arc<ClientConfig>, BuildCustomCaTransportError> {
     ensure_rustls_crypto_provider();
 
     // Start from the platform roots so websocket callers keep the same baseline trust behavior
     // they would get from tungstenite's default rustls connector, then layer in the Codex custom
-    // CA bundle on top when configured.
-    let mut root_store = NATIVE_ROOTS.clone();
-
-    if let Some(bundle) = bundle {
-        let certificates = bundle.load_certificates()?;
-        for (idx, cert) in certificates.into_iter().enumerate() {
-            if let Err(source) = root_store.add(cert) {
-                warn!(
-                    source_env = bundle.source_env,
-                    ca_path = %bundle.path.display(),
-                    certificate_index = idx + 1,
-                    error = %source,
-                    "failed to register CA certificate in rustls root store"
-                );
-                return Err(BuildCustomCaTransportError::RegisterRustlsCertificate {
-                    source_env: bundle.source_env,
-                    path: bundle.path.clone(),
-                    certificate_index: idx + 1,
-                    source,
-                });
+    // CA bundle on top when configured. The bundle extends a private clone, never the cache.
+    let native_roots = cached_native_roots(env_source, load_native_roots, now);
+    let root_store = match bundle {
+        None => native_roots,
+        Some(bundle) => {
+            let mut root_store = native_roots.as_ref().clone();
+            let certificates = bundle.load_certificates()?;
+            for (idx, cert) in certificates.into_iter().enumerate() {
+                if let Err(source) = root_store.add(cert) {
+                    warn!(
+                        source_env = bundle.source_env,
+                        ca_path = %bundle.path.display(),
+                        certificate_index = idx + 1,
+                        error = %source,
+                        "failed to register CA certificate in rustls root store"
+                    );
+                    return Err(BuildCustomCaTransportError::RegisterRustlsCertificate {
+                        source_env: bundle.source_env,
+                        path: bundle.path.clone(),
+                        certificate_index: idx + 1,
+                        source,
+                    });
+                }
             }
+            Arc::new(root_store)
         }
-    }
+    };
 
     Ok(Arc::new(
         ClientConfig::builder()
@@ -728,14 +858,22 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::time::Duration;
+    use std::time::Instant;
 
     use pretty_assertions::assert_eq;
+    use rustls_pki_types::CertificateDer;
     use tempfile::TempDir;
 
     use super::BuildCustomCaTransportError;
     use super::CODEX_CA_CERT_ENV;
     use super::EnvSource;
+    use super::NATIVE_ROOTS_CACHE_TTL;
+    use super::NATIVE_ROOTS_PARTIAL_FAILURE_TTL;
     use super::SSL_CERT_FILE_ENV;
+    use super::cached_native_roots;
     use super::maybe_build_rustls_client_config_with_env;
 
     const TEST_CERT: &str = include_str!("../tests/fixtures/test-ca.pem");
@@ -828,6 +966,188 @@ mod tests {
             error,
             BuildCustomCaTransportError::InvalidCaFile { .. }
         ));
+    }
+
+    fn fixture_native_root() -> CertificateDer<'static> {
+        let cert = rcgen::generate_simple_self_signed(vec!["cache-fixture-root.test".to_string()])
+            .expect("fixture root")
+            .cert;
+        cert.der().clone()
+    }
+
+    fn fixture_load(certs: Vec<CertificateDer<'static>>) -> rustls_native_certs::CertificateResult {
+        // CertificateResult is non-exhaustive, so build it from Default.
+        let mut result = rustls_native_certs::CertificateResult::default();
+        result.certs = certs;
+        result
+    }
+
+    #[test]
+    fn native_roots_cache_reuses_within_ttl_and_reloads_after_expiry() {
+        super::with_native_roots_cache(|| {
+            let env = map_env(&[]);
+            let loads = Arc::new(Mutex::new(0_usize));
+            let counter = Arc::clone(&loads);
+            let loader = move || {
+                *counter.lock().unwrap() += 1;
+                fixture_load(vec![fixture_native_root()])
+            };
+            let now = Instant::now();
+
+            let first = cached_native_roots(&env, &loader, now);
+            let second = cached_native_roots(&env, &loader, now);
+            assert!(
+                Arc::ptr_eq(&first, &second),
+                "within TTL the store is shared"
+            );
+            assert_eq!(*loads.lock().unwrap(), 1);
+
+            let third = cached_native_roots(
+                &env,
+                &loader,
+                now + NATIVE_ROOTS_CACHE_TTL + Duration::from_secs(/*secs*/ 1),
+            );
+            assert!(
+                !Arc::ptr_eq(&first, &third),
+                "expiry must reload the platform"
+            );
+            assert_eq!(*loads.lock().unwrap(), 2);
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn native_roots_cache_reloads_when_the_source_environment_changes() {
+        super::with_native_roots_cache(|| {
+            let env_a = map_env(&[("SSL_CERT_FILE", "/tmp/roots-a.pem")]);
+            let env_b = map_env(&[("SSL_CERT_FILE", "/tmp/roots-b.pem")]);
+            let loads = Arc::new(Mutex::new(0_usize));
+            let counter = Arc::clone(&loads);
+            let loader = move || {
+                *counter.lock().unwrap() += 1;
+                fixture_load(vec![fixture_native_root()])
+            };
+            let now = Instant::now();
+
+            let _ = cached_native_roots(&env_a, &loader, now);
+            let _ = cached_native_roots(&env_b, &loader, now);
+            assert_eq!(
+                *loads.lock().unwrap(),
+                2,
+                "a different SSL_CERT_FILE must invalidate immediately"
+            );
+        });
+    }
+
+    #[test]
+    fn native_roots_cache_never_caches_an_empty_load() {
+        super::with_native_roots_cache(|| {
+            let env = map_env(&[]);
+            let loads = Arc::new(Mutex::new(0_usize));
+            let counter = Arc::clone(&loads);
+            let loader = move || {
+                let load = *counter.lock().unwrap();
+                *counter.lock().unwrap() += 1;
+                if load == 0 {
+                    rustls_native_certs::CertificateResult::default()
+                } else {
+                    fixture_load(vec![fixture_native_root()])
+                }
+            };
+            let now = Instant::now();
+
+            let first = cached_native_roots(&env, &loader, now);
+            assert!(
+                first.is_empty(),
+                "a failed load must fail closed for this connector"
+            );
+            let second = cached_native_roots(&env, &loader, now);
+            assert_eq!(second.len(), 1, "the next connector must retry the load");
+            assert_eq!(*loads.lock().unwrap(), 2);
+        });
+    }
+
+    #[test]
+    fn native_roots_cache_uses_the_short_ttl_for_partial_failures() {
+        super::with_native_roots_cache(|| {
+            let env = map_env(&[]);
+            let loads = Arc::new(Mutex::new(0_usize));
+            let counter = Arc::clone(&loads);
+            let loader = move || {
+                *counter.lock().unwrap() += 1;
+                {
+                    // CertificateResult is non-exhaustive, so build it from Default.
+                    let mut result = rustls_native_certs::CertificateResult::default();
+                    result.certs = vec![fixture_native_root()];
+                    result.errors = vec![rustls_native_certs::Error {
+                        context: "test partial failure",
+                        kind: rustls_native_certs::ErrorKind::Io {
+                            inner: std::io::Error::other("injected"),
+                            path: PathBuf::from("/tmp/missing-root"),
+                        },
+                    }];
+                    result
+                }
+            };
+            let now = Instant::now();
+
+            let first = cached_native_roots(&env, &loader, now);
+            let second = cached_native_roots(&env, &loader, now);
+            assert!(
+                Arc::ptr_eq(&first, &second),
+                "partial results are shared briefly"
+            );
+            assert_eq!(*loads.lock().unwrap(), 1);
+            let _ = cached_native_roots(
+                &env,
+                &loader,
+                now + NATIVE_ROOTS_PARTIAL_FAILURE_TTL + Duration::from_secs(/*secs*/ 1),
+            );
+            assert_eq!(
+                *loads.lock().unwrap(),
+                2,
+                "partial failures must refresh on the short TTL"
+            );
+        });
+    }
+
+    #[test]
+    fn native_roots_cache_is_single_flight_across_threads() {
+        super::with_native_roots_cache(|| {
+            let env = map_env(&[]);
+            let loads = Arc::new(Mutex::new(0_usize));
+            let barrier = Arc::new(std::sync::Barrier::new(2));
+            let mut threads = Vec::new();
+            for _ in 0..2 {
+                let env_map = MapEnv {
+                    values: env.values.clone(),
+                };
+                let loads = Arc::clone(&loads);
+                let barrier = Arc::clone(&barrier);
+                threads.push(std::thread::spawn(move || {
+                    barrier.wait();
+                    cached_native_roots(
+                        &env_map,
+                        move || {
+                            std::thread::sleep(Duration::from_millis(/*millis*/ 50));
+                            *loads.lock().unwrap() += 1;
+                            fixture_load(vec![fixture_native_root()])
+                        },
+                        Instant::now(),
+                    )
+                }));
+            }
+            let stores: Vec<_> = threads
+                .into_iter()
+                .map(|thread| thread.join().expect("cache thread should not panic"))
+                .collect();
+            assert!(Arc::ptr_eq(&stores[0], &stores[1]));
+            assert_eq!(
+                *loads.lock().unwrap(),
+                1,
+                "concurrent callers must share one system load"
+            );
+        });
     }
 }
 
