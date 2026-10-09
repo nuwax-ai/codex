@@ -129,8 +129,17 @@ pub(crate) async fn connect(
             let stream: Box<dyn AsyncIo> = if proxy.tls {
                 let proxy_tls_config = match &tls_config {
                     Some(tls_config) => Arc::clone(tls_config),
-                    None => build_rustls_client_config_with_custom_ca()
-                        .map_err(|error| WebSocketError::Io(error.into()))?,
+                    None => {
+                        // Building the proxy TLS configuration loads platform
+                        // roots synchronously (on macOS, a keychain round
+                        // trip), so keep that work off the Tokio worker. The
+                        // underlying system call still blocks a blocking-pool
+                        // thread for its duration; this only moves it.
+                        tokio::task::spawn_blocking(build_rustls_client_config_with_custom_ca)
+                            .await
+                            .map_err(|error| WebSocketError::Io(io::Error::other(error)))?
+                            .map_err(|error| WebSocketError::Io(error.into()))?
+                    }
                 };
                 let server_name = ServerName::try_from(proxy.config.host.clone())
                     .map_err(|_| WebSocketError::Tls(TlsError::InvalidDnsName))?;
