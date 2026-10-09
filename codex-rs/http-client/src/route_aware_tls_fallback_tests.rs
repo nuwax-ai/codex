@@ -26,6 +26,10 @@ use super::SelectedTlsBackend;
 use crate::client::RequestLogging;
 use crate::client::TransportClient;
 use crate::tls_backend_fallback::should_retry_with_rustls;
+// The warmup helper only exists on macOS; guard the import so Linux and
+// Windows test builds resolve.
+#[cfg(target_os = "macos")]
+use super::test_warmup::warm_secure_transport_once;
 
 const PROTOCOL_VERSION_TLS_ALERT: &[u8] = &[21, 3, 3, 0, 2, 2, 70];
 
@@ -472,8 +476,6 @@ fn spawn_successful_tls_fallback_server() -> io::Result<SuccessfulTlsFallbackSer
         requests_rx,
     ))
 }
-
-use super::test_warmup::warm_secure_transport_once;
 
 fn spawn_protocol_version_rejection_server(
     maximum_attempts: usize,
