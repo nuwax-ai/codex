@@ -41,19 +41,54 @@ pub(crate) async fn connect(
     tcp_nodelay: TcpNodelay,
     loopback_direct: bool,
 ) -> Result<(ConnectionInner, Response), WebSocketError> {
+    connect_with_route(request, config, tls_config, proxy_route, tcp_nodelay, loopback_direct)
+        .await
+        .map_err(redact_invalid_proxy_config)
+}
+
+/// Keeps the `Url(InvalidProxyConfig)` category while replacing whatever the
+/// locked proxy parser copied into it.
+///
+/// Tungstenite's environment parser embeds the raw offending value —
+/// including proxy userinfo — in this variant when percent-decoding is
+/// truncated or produces non-UTF-8 bytes, so the payload must never reach
+/// Display, Debug, or logs on any dial path.
+fn redact_invalid_proxy_config(error: WebSocketError) -> WebSocketError {
+    match error {
+        WebSocketError::Url(UrlError::InvalidProxyConfig(_)) => invalid_proxy_config(),
+        error => error,
+    }
+}
+
+async fn connect_with_route(
+    request: Request,
+    config: WebSocketConfig,
+    tls_config: Option<Arc<ClientConfig>>,
+    proxy_route: OutboundProxyRoute,
+    tcp_nodelay: TcpNodelay,
+    loopback_direct: bool,
+) -> Result<(ConnectionInner, Response), WebSocketError> {
     let disable_nagle = tcp_nodelay == TcpNodelay::Enabled;
     let proxy_url = match proxy_route {
         OutboundProxyRoute::TransportDefault => {
             // The workspace enables tokio-tungstenite's `proxy` feature, so its default dialer
             // resolves HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, and NO_PROXY before opening the socket.
-            let (stream, response) = connect_async_tls_with_config(
-                request,
-                Some(config),
-                disable_nagle,
-                tls_config.map(Connector::Rustls),
-            )
-            .await?;
-            return Ok((ConnectionInner::Left(stream), response));
+            // That resolver rejects https:// proxy URLs with UnsupportedProxyScheme before any
+            // connection attempt, so when the environment selects one, hand the selection to the
+            // shared TLS-to-proxy path below instead of failing the dial.
+            match tungstenite_env_https_proxy(&request) {
+                Some(proxy_url) => Some(proxy_url),
+                None => {
+                    let (stream, response) = connect_async_tls_with_config(
+                        request,
+                        Some(config),
+                        disable_nagle,
+                        tls_config.map(Connector::Rustls),
+                    )
+                    .await?;
+                    return Ok((ConnectionInner::Left(stream), response));
+                }
+            }
         }
         OutboundProxyRoute::Direct => {
             // Connect straight to the destination without consulting any proxy
@@ -169,6 +204,42 @@ pub(crate) async fn connect(
 struct ProxyEndpoint {
     config: ProxyConfig,
     tls: bool,
+}
+
+/// Returns the proxy URL the environment selects for `request` when that URL
+/// uses the https scheme, or `None` for every other outcome.
+///
+/// The SDK's own resolver is consulted first: an `Ok` result means its default
+/// dialer will handle the dial natively (direct, HTTP CONNECT, or SOCKS), and
+/// only its `UnsupportedProxyScheme` rejection can indicate an https
+/// selection. The environment is then re-read using the resolver's documented
+/// per-scheme order to recover the rejected URL. NO_PROXY already ran inside
+/// the resolver, so a bypassed destination never reaches the recovery read.
+fn tungstenite_env_https_proxy(request: &Request) -> Option<String> {
+    if !matches!(
+        ProxyConfig::from_env(request.uri()),
+        Err(WebSocketError::Url(UrlError::UnsupportedProxyScheme))
+    ) {
+        return None;
+    }
+    let selected = if matches!(request.uri().scheme_str(), Some("wss")) {
+        env_proxy_first(&["HTTPS_PROXY", "https_proxy"])
+            .or_else(|| env_proxy_first(&["HTTP_PROXY", "http_proxy"]))
+    } else {
+        env_proxy_first(&["HTTP_PROXY", "http_proxy"])
+    }
+    .or_else(|| env_proxy_first(&["ALL_PROXY", "all_proxy"]));
+    let url = selected?;
+    let scheme = url::Url::parse(&url).ok()?.scheme().to_ascii_lowercase();
+    (scheme == "https").then_some(url)
+}
+
+/// Returns the first set, non-empty variable among `keys`, matching the SDK
+/// resolver's `get_env_first` semantics.
+fn env_proxy_first(keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| std::env::var(key).ok())
+        .filter(|value| !value.is_empty())
 }
 
 impl ProxyEndpoint {

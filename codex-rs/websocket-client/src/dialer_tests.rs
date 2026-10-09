@@ -385,6 +385,9 @@ async fn environment_proxy_literal_ip_subprocess_probe() {
     };
     // Drive the connector-level path: the factory resolves the route for the
     // literal-IP destination and the transport must honor HTTP_PROXY.
+    // Tungstenite's default TLS connector has no implicit crypto provider, so
+    // install the process default before wss dials reach it.
+    ensure_rustls_crypto_provider();
     let factory = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault);
     let connector =
         WebSocketConnector::new_with_tls_mode(&factory, WebSocketTlsMode::TungsteniteDefault)
@@ -821,4 +824,382 @@ fn test_connection(inner: ConnectionInner) -> WebSocketConnection {
         .acquire(&url::Url::parse("wss://localhost/").unwrap())
         .unwrap();
     WebSocketConnection::new(inner, lease)
+}
+
+/// One CA trusted for both the TLS proxy and the TLS target, plus its PEM for
+/// child processes (`SSL_CERT_FILE` feeds both the dialer's proxy-TLS build
+/// and tungstenite's native-roots default connector).
+fn test_tls_acceptor_and_pem() -> (TlsAcceptor, String) {
+    ensure_rustls_crypto_provider();
+    let CertifiedKey { cert, signing_key } =
+        generate_simple_self_signed(vec!["localhost".to_string()])
+            .expect("test certificate should generate");
+    let certificate = cert.der().clone();
+    let private_key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(signing_key.serialize_der()));
+    let server_config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(vec![certificate], private_key)
+        .expect("test server config should build");
+    (TlsAcceptor::from(Arc::new(server_config)), cert.pem())
+}
+
+/// Drives the connector-level default (ReqwestDefault) path in a subprocess
+/// and asserts the environment proxy actually tunnels the websocket: the
+/// proxy observes one CONNECT for the real target before the echo round-trip.
+async fn assert_env_proxy_tunnel_subprocess(
+    target_tls: bool,
+    proxy_tls: bool,
+    env_var: &str,
+    target_host: &str,
+) {
+    // One CA backs every TLS party in the case (target, proxy, or both) so a
+    // single SSL_CERT_FILE in the child trusts the whole chain.
+    let (shared_acceptor, shared_ca_pem) = test_tls_acceptor_and_pem();
+    let target_acceptor = target_tls.then(|| shared_acceptor.clone());
+    let proxy_acceptor = proxy_tls.then_some(shared_acceptor);
+    let ca_pem = (target_tls || proxy_tls).then_some(shared_ca_pem);
+    let (target_addr, target_task) = start_echo_websocket_server(target_acceptor).await;
+    let proxy_listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("proxy listener should bind");
+    let proxy_addr = proxy_listener
+        .local_addr()
+        .expect("proxy listener should have an address");
+    let proxy_task = tokio::spawn(async move {
+        let (client, _) = proxy_listener.accept().await.expect("proxy should accept");
+        let mut client: Box<dyn AsyncIo> = match proxy_acceptor {
+            Some(acceptor) => Box::new(
+                acceptor
+                    .accept(client)
+                    .await
+                    .expect("proxy TLS handshake should succeed"),
+            ),
+            None => Box::new(client),
+        };
+        let mut request = Vec::new();
+        let mut byte = [0_u8; 1];
+        while !request.ends_with(b"\r\n\r\n") {
+            client
+                .read_exact(&mut byte)
+                .await
+                .expect("proxy should read CONNECT request");
+            request.push(byte[0]);
+        }
+        let mut target = tokio::net::TcpStream::connect(target_addr)
+            .await
+            .expect("proxy should connect to target");
+        client
+            .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+            .await
+            .expect("proxy should acknowledge CONNECT");
+        let _ = tokio::io::copy_bidirectional(&mut client, &mut target).await;
+        String::from_utf8(request).expect("CONNECT request should be UTF-8")
+    });
+    let target_scheme = if target_tls { "wss" } else { "ws" };
+    let proxy_scheme = if proxy_tls { "https" } else { "http" };
+    let target_url = format!("{target_scheme}://{target_host}:{}/v1/responses", target_addr.port());
+    let proxy_url = format!("{proxy_scheme}://localhost:{}", proxy_addr.port());
+    let env_var = env_var.to_string();
+    let executable = std::env::current_exe().expect("test executable should be available");
+    let output = tokio::task::spawn_blocking(move || {
+        let mut command = Command::new(executable);
+        command.args([
+            "--exact",
+            "dialer::tests::environment_proxy_literal_ip_subprocess_probe",
+            "--nocapture",
+        ]);
+        for key in [
+            "HTTP_PROXY",
+            "http_proxy",
+            "HTTPS_PROXY",
+            "https_proxy",
+            "ALL_PROXY",
+            "all_proxy",
+            "NO_PROXY",
+            "no_proxy",
+            "CODEX_CA_CERTIFICATE",
+            "SSL_CERT_FILE",
+            "SSL_CERT_DIR",
+        ] {
+            command.env_remove(key);
+        }
+        command.env(&env_var, &proxy_url);
+        command.env("CODEX_WEBSOCKET_ENV_PROXY_PROBE_URL", &target_url);
+        if let Some(ca_pem) = ca_pem.as_ref() {
+            let ca_path = std::env::temp_dir().join(format!(
+                "codex-ws-env-proxy-ca-{}.pem",
+                proxy_addr.port()
+            ));
+            std::fs::write(&ca_path, ca_pem).expect("CA bundle should be written");
+            command.env("SSL_CERT_FILE", &ca_path);
+        }
+        command
+            .output()
+            .expect("WebSocket environment-proxy subprocess should run")
+    })
+    .await
+    .expect("WebSocket environment-proxy subprocess should join");
+    assert!(
+        output.status.success(),
+        "WebSocket environment-proxy subprocess failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    target_task.await.expect("target task should finish");
+    let request = proxy_task.await.expect("proxy task should finish");
+    let expected_request_line = format!("CONNECT {target_host}:{} HTTP/1.1", target_addr.port());
+    assert_eq!(
+        request.lines().next(),
+        Some(expected_request_line.as_str()),
+        "the environment proxy must tunnel exactly one CONNECT for the real target"
+    );
+}
+
+#[tokio::test]
+async fn default_environment_https_proxy_dials_through_tls_to_proxy() {
+    // wss destination + HTTPS_PROXY=https://... — the SDK's own resolver
+    // rejects this scheme, so the dial must fall through to TLS-to-proxy.
+    assert_env_proxy_tunnel_subprocess(
+        /*target_tls*/ true,
+        /*proxy_tls*/ true,
+        "HTTPS_PROXY",
+        "localhost",
+    )
+    .await;
+    // A plain ws destination still tunnels when ALL_PROXY selects https.
+    assert_env_proxy_tunnel_subprocess(
+        /*target_tls*/ false,
+        /*proxy_tls*/ true,
+        "ALL_PROXY",
+        "127.0.0.1",
+    )
+    .await;
+    // wss through a plain http environment proxy stays on the SDK's native
+    // CONNECT path (no TLS to the proxy itself).
+    assert_env_proxy_tunnel_subprocess(
+        /*target_tls*/ true,
+        /*proxy_tls*/ false,
+        "HTTP_PROXY",
+        "localhost",
+    )
+    .await;
+}
+
+/// Minimal SOCKS5 mock: method negotiation (no auth), one CONNECT request,
+/// then a bidirectional tunnel. Asserts the relayed address type and bytes.
+async fn assert_socks5_env_proxy_tunnel_subprocess() {
+    let (target_addr, target_task) = start_echo_websocket_server(/*acceptor*/ None).await;
+    let proxy_listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("socks5 listener should bind");
+    let proxy_addr = proxy_listener
+        .local_addr()
+        .expect("socks5 listener should have an address");
+    let proxy_task = tokio::spawn(async move {
+        let (mut client, _) = proxy_listener.accept().await.expect("socks5 should accept");
+        let mut greeting = [0_u8; 2];
+        client.read_exact(&mut greeting).await.expect("greeting");
+        assert_eq!(greeting[0], 0x05, "SOCKS5 version");
+        let mut methods = vec![0_u8; greeting[1] as usize];
+        client
+            .read_exact(&mut methods)
+            .await
+            .expect("supported methods");
+        client
+            .write_all(&[0x05, 0x00])
+            .await
+            .expect("no-auth method selection");
+        let mut header = [0_u8; 4];
+        client
+            .read_exact(&mut header)
+            .await
+            .expect("connect request header");
+        assert_eq!(&header[..3], &[0x05, 0x01, 0x00], "connect command");
+        let target_octets = match header[3] {
+            0x01 => {
+                let mut octets = [0_u8; 4];
+                client
+                    .read_exact(&mut octets)
+                    .await
+                    .expect("IPv4 address");
+                octets.to_vec()
+            }
+            address_type => panic!("unexpected SOCKS5 address type {address_type}"),
+        };
+        let mut port = [0_u8; 2];
+        client.read_exact(&mut port).await.expect("target port");
+        client
+            .write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+            .await
+            .expect("connect success reply");
+        let mut target = tokio::net::TcpStream::connect(target_addr)
+            .await
+            .expect("socks5 should connect to target");
+        let _ = tokio::io::copy_bidirectional(&mut client, &mut target).await;
+        (target_octets, u16::from_be_bytes(port))
+    });
+    let target_url = format!("ws://127.0.0.1:{}/v1/responses", target_addr.port());
+    let proxy_url = format!("socks5://localhost:{}", proxy_addr.port());
+    let executable = std::env::current_exe().expect("test executable should be available");
+    let output = tokio::task::spawn_blocking(move || {
+        let mut command = Command::new(executable);
+        command.args([
+            "--exact",
+            "dialer::tests::environment_proxy_literal_ip_subprocess_probe",
+            "--nocapture",
+        ]);
+        for key in [
+            "HTTP_PROXY",
+            "http_proxy",
+            "HTTPS_PROXY",
+            "https_proxy",
+            "ALL_PROXY",
+            "all_proxy",
+            "NO_PROXY",
+            "no_proxy",
+        ] {
+            command.env_remove(key);
+        }
+        command
+            .env("ALL_PROXY", &proxy_url)
+            .env("CODEX_WEBSOCKET_ENV_PROXY_PROBE_URL", &target_url)
+            .output()
+            .expect("WebSocket socks5 subprocess should run")
+    })
+    .await
+    .expect("WebSocket socks5 subprocess should join");
+    assert!(
+        output.status.success(),
+        "WebSocket socks5 subprocess failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    target_task.await.expect("target task should finish");
+    let (octets, port) = proxy_task.await.expect("socks5 task should finish");
+    assert_eq!(
+        (octets.as_slice(), port),
+        (
+            [127, 0, 0, 1].as_slice(),
+            target_addr.port()
+        ),
+        "the SOCKS5 proxy must relay the real literal-IP target"
+    );
+}
+
+#[tokio::test]
+async fn socks5_environment_proxy_tunnels_plain_websocket() {
+    assert_socks5_env_proxy_tunnel_subprocess().await;
+}
+
+#[tokio::test]
+async fn environment_proxy_redaction_probe() {
+    let Ok(url) = std::env::var("CODEX_WEBSOCKET_REDACTION_PROBE_URL") else {
+        return;
+    };
+    let factory = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault);
+    let connector =
+        WebSocketConnector::new_with_tls_mode(&factory, WebSocketTlsMode::TungsteniteDefault)
+            .expect("connector should build without a custom CA");
+    let request = url
+        .into_client_request()
+        .expect("websocket request should build");
+    let error = connector
+        .connect(request, WebSocketConfig::default())
+        .await
+        .expect_err("the malformed proxy credentials must fail the dial");
+    eprintln!("redaction probe display: {error}");
+    eprintln!("redaction probe debug: {error:?}");
+    assert!(
+        matches!(
+            &error,
+            tokio_tungstenite::tungstenite::Error::Url(
+                tokio_tungstenite::tungstenite::error::UrlError::InvalidProxyConfig(_)
+            )
+        ),
+        "the failure category must stay InvalidProxyConfig, got {error:?}"
+    );
+}
+
+/// Subprocess boundary: whatever the locked parser embedded in
+/// InvalidProxyConfig (truncated percent-escapes, non-UTF-8 decodes) must not
+/// surface in Display, Debug, or test output, while the dial still fails.
+#[tokio::test]
+async fn invalid_proxy_credentials_never_reach_error_surfaces() {
+    for password in ["trunc%", "%ff%fe"] {
+        let executable = std::env::current_exe().expect("test executable should be available");
+        let proxy_url = format!("http://user:{password}@127.0.0.1:1");
+        let url = "ws://127.0.0.1:1/v1/responses";
+        let password = password.to_string();
+        let output = tokio::task::spawn_blocking(move || {
+            let mut command = Command::new(executable);
+            command.args([
+                "--exact",
+                "dialer::tests::environment_proxy_redaction_probe",
+                "--nocapture",
+            ]);
+            for key in [
+                "HTTP_PROXY",
+                "http_proxy",
+                "HTTPS_PROXY",
+                "https_proxy",
+                "ALL_PROXY",
+                "all_proxy",
+                "NO_PROXY",
+                "no_proxy",
+            ] {
+                command.env_remove(key);
+            }
+            command
+                .env("HTTP_PROXY", &proxy_url)
+                .env("CODEX_WEBSOCKET_REDACTION_PROBE_URL", url)
+                .output()
+                .expect("WebSocket redaction subprocess should run")
+        })
+        .await
+        .expect("WebSocket redaction subprocess should join");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "redaction subprocess failed for {password}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        );
+        for output in [&stdout, &stderr] {
+            assert!(
+                !output.contains(password.as_str()),
+                "raw proxy credentials leaked into subprocess output:\n{output}"
+            );
+            assert!(
+                !output.contains("user:"),
+                "proxy userinfo leaked into subprocess output:\n{output}"
+            );
+        }
+        assert!(
+            stderr.contains("<redacted>"),
+            "the redacted placeholder should describe the failure:\n{stderr}"
+        );
+    }
+
+    // The explicit-URL parse path already redacts its own payload.
+    let error = ProxyEndpoint::parse("http://user:trunc%@proxy.example:1")
+        .expect_err("truncated proxy credentials should fail to parse");
+    let rendered = format!("{error}");
+    assert!(
+        !rendered.contains("trunc%"),
+        "explicit parse leaked credentials: {rendered}"
+    );
+    assert!(rendered.contains("<redacted>"));
+
+    // The shared boundary keeps the category and passes other errors through.
+    let leak = WebSocketError::Url(UrlError::InvalidProxyConfig("user:leak%".to_string()));
+    assert!(matches!(
+        &redact_invalid_proxy_config(leak),
+        WebSocketError::Url(UrlError::InvalidProxyConfig(payload)) if payload == "<redacted>"
+    ));
+    let io_failure = WebSocketError::Io(std::io::Error::other("unrelated"));
+    assert!(matches!(
+        redact_invalid_proxy_config(io_failure),
+        WebSocketError::Io(_)
+    ));
 }
