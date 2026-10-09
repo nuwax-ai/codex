@@ -46,6 +46,7 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 use codex_utils_rustls_provider::ensure_rustls_crypto_provider;
 use rustls::ClientConfig;
@@ -239,14 +240,13 @@ fn build_rustls_client_config_with_env(
     build_rustls_client_config(bundle.as_ref())
 }
 
-fn build_rustls_client_config(
-    bundle: Option<&ConfiguredCaBundle>,
-) -> Result<Arc<ClientConfig>, BuildCustomCaTransportError> {
-    ensure_rustls_crypto_provider();
-
-    // Start from the platform roots so websocket callers keep the same baseline trust behavior
-    // they would get from tungstenite's default rustls connector, then layer in the Codex custom
-    // CA bundle on top when configured.
+/// Platform root certificates, loaded once per process.
+///
+/// Loading macOS trust settings (`rustls_native_certs` iterates the keychain
+/// `TrustSettings`) can take seconds on some hosts, and the load is identical
+/// for every caller. Caching the parsed store keeps websocket connectors from
+/// paying that keychain round-trip on every connection.
+static NATIVE_ROOTS: LazyLock<RootCertStore> = LazyLock::new(|| {
     let mut root_store = RootCertStore::empty();
     let rustls_native_certs::CertificateResult { certs, errors, .. } =
         rustls_native_certs::load_native_certs();
@@ -257,6 +257,18 @@ fn build_rustls_client_config(
         );
     }
     let _ = root_store.add_parsable_certificates(certs);
+    root_store
+});
+
+fn build_rustls_client_config(
+    bundle: Option<&ConfiguredCaBundle>,
+) -> Result<Arc<ClientConfig>, BuildCustomCaTransportError> {
+    ensure_rustls_crypto_provider();
+
+    // Start from the platform roots so websocket callers keep the same baseline trust behavior
+    // they would get from tungstenite's default rustls connector, then layer in the Codex custom
+    // CA bundle on top when configured.
+    let mut root_store = NATIVE_ROOTS.clone();
 
     if let Some(bundle) = bundle {
         let certificates = bundle.load_certificates()?;

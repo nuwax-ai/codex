@@ -513,10 +513,17 @@ impl RouteAwareClientPool {
                     Ok(client_builder.build_with_custom_ca_fallback(ProxyRouting::Direct))
                 }
                 (OutboundProxyPolicy::ReqwestDefault, CustomCaFallback::LegacyTransportDefault) => {
-                    Ok(
-                        client_builder
-                            .build_with_custom_ca_fallback(ProxyRouting::TransportDefault),
-                    )
+                    // The resolved route already encodes whether a proxy may
+                    // serve this destination; a Direct route (literal-IP and
+                    // localhost destinations) builds with proxies disabled so
+                    // reqwest never loads the system proxy configuration.
+                    let proxy_routing = match build_route {
+                        OutboundProxyRoute::Direct => ProxyRouting::Direct,
+                        OutboundProxyRoute::Proxy { .. } | OutboundProxyRoute::TransportDefault => {
+                            ProxyRouting::TransportDefault
+                        }
+                    };
+                    Ok(client_builder.build_with_custom_ca_fallback(proxy_routing))
                 }
                 (OutboundProxyPolicy::ReqwestDefault, CustomCaFallback::Disabled)
                 | (OutboundProxyPolicy::RespectSystemProxy, CustomCaFallback::Disabled)
@@ -566,6 +573,10 @@ impl RouteAwareClientPool {
             .map_err(Into::into)
     }
 }
+
+#[cfg(test)]
+#[path = "test_warmup.rs"]
+pub(crate) mod test_warmup;
 
 #[cfg(test)]
 #[path = "route_aware_client_pool_tests.rs"]

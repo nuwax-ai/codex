@@ -55,7 +55,29 @@ pub(crate) async fn connect(
             .await?;
             return Ok((ConnectionInner::Left(stream), response));
         }
-        OutboundProxyRoute::Direct => None,
+        OutboundProxyRoute::Direct => {
+            // Connect straight to the destination without consulting any proxy
+            // settings. Keeping the TcpStream unboxed preserves the Left
+            // transport variant (and its nodelay introspection) that direct
+            // connections through TransportDefault also produce.
+            let host = websocket_host(&request)?;
+            let port = websocket_port(&request)?;
+            let address = host_port(host, port);
+            let stream = if loopback_direct {
+                connect_loopback_tcp(address, tcp_nodelay).await
+            } else {
+                connect_tcp(address, tcp_nodelay).await
+            }
+            .map_err(WebSocketError::Io)?;
+            let (stream, response) = client_async_tls_with_config(
+                request,
+                stream,
+                Some(config),
+                tls_config.map(Connector::Rustls),
+            )
+            .await?;
+            return Ok((ConnectionInner::Left(stream), response));
+        }
         OutboundProxyRoute::Proxy {
             url,
             no_proxy: None,

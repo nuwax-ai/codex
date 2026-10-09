@@ -284,6 +284,12 @@ impl HttpClientFactory {
             self.outbound_proxy_policy,
             OutboundProxyPolicy::ReqwestDefault
         ) {
+            // Literal-IP and localhost destinations never use a system proxy;
+            // resolving them direct also keeps client builds from loading the
+            // macOS system proxy configuration (SCDynamicStore).
+            if destination_host_skips_system_proxy(&request_url) {
+                return Ok(OutboundProxyRoute::Direct);
+            }
             return Ok(OutboundProxyRoute::TransportDefault);
         }
 
@@ -345,6 +351,14 @@ fn resolve_proxy_route(
     resolve_system_proxy: impl FnOnce(&str, &RequestOrigin) -> SystemProxyDecision,
 ) -> OutboundProxyRoute {
     if matches!(outbound_proxy_policy, OutboundProxyPolicy::ReqwestDefault) {
+        // System proxies never serve literal-IP or localhost destinations, and
+        // leaving reqwest's defaults in place makes its client build load the
+        // macOS system proxy configuration (SCDynamicStore), which can stall
+        // for seconds on hosts where that lookup is slow. Route these
+        // destinations explicitly direct so proxies are never consulted.
+        if destination_host_skips_system_proxy(request_url) {
+            return OutboundProxyRoute::Direct;
+        }
         return OutboundProxyRoute::TransportDefault;
     }
 
@@ -359,6 +373,15 @@ fn resolve_proxy_route(
         env_proxy_kind,
         resolve_system_proxy(&request_url, &origin),
     )
+}
+
+fn destination_host_skips_system_proxy(request_url: &str) -> bool {
+    reqwest::Url::parse(request_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .is_some_and(|host| {
+            host.parse::<std::net::IpAddr>().is_ok() || host.eq_ignore_ascii_case("localhost")
+        })
 }
 
 fn route_from_system_decision(

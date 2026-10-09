@@ -176,6 +176,8 @@ async fn direct_and_routed_clients_build_equivalent_requests() {
 
 #[tokio::test]
 async fn request_failures_classify_real_untrusted_certificate_handshakes() {
+    #[cfg(target_os = "macos")]
+    super::test_warmup::warm_secure_transport_once();
     codex_utils_rustls_provider::ensure_rustls_crypto_provider();
     let certificate = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
         .expect("self-signed certificate should generate");
@@ -758,16 +760,17 @@ fn managed_request_timeout_covers_queued_transport_construction() {
             tokio::time::timeout(Duration::from_secs(/*secs*/ 5), pool.client_build.lock())
                 .await
                 .unwrap();
+        // The listener address is a literal IP, which resolves Direct (system
+        // proxies never serve literal-IP destinations); the queued build must
+        // land in the cache under that route.
         assert!(
             pool.clients
                 .lock()
                 .unwrap()
-                .contains_key(&OutboundProxyRoute::TransportDefault)
+                .contains_key(&OutboundProxyRoute::Direct)
         );
         let (_, _, backend) = pool
-            .client_for_url_with_resolver(&url, |_| async {
-                Ok(OutboundProxyRoute::TransportDefault)
-            })
+            .client_for_url_with_resolver(&url, |_| async { Ok(OutboundProxyRoute::Direct) })
             .now_or_never()
             .unwrap()
             .unwrap();
