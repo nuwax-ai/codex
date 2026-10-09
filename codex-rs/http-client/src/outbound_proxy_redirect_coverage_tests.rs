@@ -336,6 +336,97 @@ async fn route_aware_pool_sanitizes_redirected_failure_logs() {
     }
 }
 
+#[tokio::test]
+async fn transport_default_literal_ip_and_redirect_hops_follow_environment_proxies() {
+    const SUBPROCESS_ENV_VAR: &str = "CODEX_HTTP_CLIENT_ENV_PROXY_REDIRECT_TEST";
+    if std::env::var_os(SUBPROCESS_ENV_VAR).is_none() {
+        // Bazel runs unit tests in one process and reqwest reads proxy
+        // variables when the client is built, so drive the production default
+        // pool from a subprocess with an isolated proxy environment.
+        let test_module = module_path!()
+            .split_once("::")
+            .expect("test module should include the crate name")
+            .1;
+        let test_name = format!(
+            "{test_module}::transport_default_literal_ip_and_redirect_hops_follow_environment_proxies"
+        );
+        // A guaranteed-closed origin port: routing the literal-IP origin
+        // directly (the bypass this test pins out) must fail to connect.
+        let closed_listener =
+            std::net::TcpListener::bind(("127.0.0.1", 0)).expect("closed port should bind");
+        let closed_port = closed_listener
+            .local_addr()
+            .expect("closed port should have an address")
+            .port();
+        drop(closed_listener);
+        let (proxy_addr, proxy_thread) = spawn_http_listener(vec![
+            "HTTP/1.1 302 Found\r\nLocation: http://env-proxy-redirect-hop.test/final\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string(),
+            "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".to_string(),
+        ]);
+        let start_url = format!("http://127.0.0.1:{closed_port}/start");
+        let proxy_url = format!("http://{proxy_addr}");
+        let output = std::process::Command::new(
+            std::env::current_exe().expect("test executable should be available"),
+        )
+        .args(["--exact", &test_name, "--nocapture"])
+        .env(SUBPROCESS_ENV_VAR, "1")
+        .env("CODEX_HTTP_CLIENT_ENV_PROXY_START_URL", &start_url)
+        .env_remove("HTTP_PROXY")
+        .env_remove("http_proxy")
+        .env_remove("HTTPS_PROXY")
+        .env_remove("https_proxy")
+        .env_remove("ALL_PROXY")
+        .env_remove("all_proxy")
+        .env_remove("NO_PROXY")
+        .env_remove("no_proxy")
+        .env("HTTP_PROXY", &proxy_url)
+        .output()
+        .expect("environment-proxy subprocess should run");
+        assert!(
+            output.status.success(),
+            "environment-proxy subprocess failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+        let requests = proxy_thread
+            .join()
+            .unwrap_or_else(|_| panic!("proxy thread should finish"));
+        assert_eq!(
+            requests
+                .iter()
+                .map(|request| request.lines().next().unwrap_or_default().to_string())
+                .collect::<Vec<_>>(),
+            vec![
+                format!("GET {start_url} HTTP/1.1"),
+                "GET http://env-proxy-redirect-hop.test/final HTTP/1.1".to_string(),
+            ],
+            "the literal-IP origin and every redirect hop must go through the environment proxy"
+        );
+        return;
+    }
+
+    let start_url = std::env::var("CODEX_HTTP_CLIENT_ENV_PROXY_START_URL")
+        .expect("parent test should provide the start URL");
+    let pool = crate::RouteAwareClientPool::new(
+        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+        ClientRouteClass::Api,
+    );
+    let response =
+        tokio::time::timeout(Duration::from_secs(/*secs*/ 5), pool.get(&start_url).send())
+            .await
+            .expect("subprocess request should finish")
+            .expect("request should follow the redirect through the environment proxy");
+    let final_url = response.url().to_string();
+    let body = response
+        .text()
+        .await
+        .expect("final response body should be readable");
+    assert_eq!(
+        (final_url.as_str(), body.as_str()),
+        ("http://env-proxy-redirect-hop.test/final", "ok")
+    );
+}
+
 fn credential_headers(request: &str) -> (bool, bool, bool) {
     let names = request
         .lines()

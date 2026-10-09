@@ -178,14 +178,47 @@ fn reqwest_default_route_preserves_transport_proxy_behavior() {
     let env = MapEnv {
         values: HashMap::new(),
     };
-    let route = resolve_proxy_route(
-        &env,
+    for request_url in [
         "wss://api.openai.com/v1/responses",
-        OutboundProxyPolicy::ReqwestDefault,
-        |_, _| panic!("default policy should not resolve system proxy settings"),
-    );
+        "http://192.0.2.10/v1/chat",
+        "https://[2001:db8::1]/v1/chat",
+        "http://127.0.0.1:8080/callback",
+        "http://localhost:3000/callback",
+        "http://LOCALHOST:3000/callback",
+        "http://localhost.:3000/callback",
+        "https://api.openai.com/v1/responses",
+    ] {
+        let route = resolve_proxy_route(
+            &env,
+            request_url,
+            OutboundProxyPolicy::ReqwestDefault,
+            |_, _| panic!("default policy should not resolve system proxy settings"),
+        );
 
-    assert_eq!(route, OutboundProxyRoute::TransportDefault);
+        assert_eq!(
+            route,
+            OutboundProxyRoute::TransportDefault,
+            "literal-IP and localhost destinations must keep the transport's own \
+             system/env/explicit/NO_PROXY priority: {request_url}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn reqwest_default_async_route_preserves_transport_proxy_behavior() {
+    let factory = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault);
+    for request_url in [
+        "http://192.0.2.10/v1/chat",
+        "https://[2001:db8::1]/v1/chat",
+        "http://127.0.0.1:8080/callback",
+        "http://localhost:3000/callback",
+    ] {
+        let route = factory
+            .resolve_proxy_route_async(request_url.to_string())
+            .await
+            .expect("default policy resolution cannot fail");
+        assert_eq!(route, OutboundProxyRoute::TransportDefault);
+    }
 }
 
 #[cfg(target_os = "macos")]

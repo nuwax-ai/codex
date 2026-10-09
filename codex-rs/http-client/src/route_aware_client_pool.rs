@@ -513,10 +513,11 @@ impl RouteAwareClientPool {
                     Ok(client_builder.build_with_custom_ca_fallback(ProxyRouting::Direct))
                 }
                 (OutboundProxyPolicy::ReqwestDefault, CustomCaFallback::LegacyTransportDefault) => {
-                    // The resolved route already encodes whether a proxy may
-                    // serve this destination; a Direct route (literal-IP and
-                    // localhost destinations) builds with proxies disabled so
-                    // reqwest never loads the system proxy configuration.
+                    // The resolved route encodes the caller's decision. Under
+                    // ReqwestDefault the factory only resolves TransportDefault,
+                    // so a Direct route here comes from a caller that explicitly
+                    // injected one (for example a hermetic test); TransportDefault
+                    // keeps reqwest's own system/env/explicit proxy priority.
                     let proxy_routing = match build_route {
                         OutboundProxyRoute::Direct => ProxyRouting::Direct,
                         OutboundProxyRoute::Proxy { .. } | OutboundProxyRoute::TransportDefault => {

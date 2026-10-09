@@ -760,17 +760,19 @@ fn managed_request_timeout_covers_queued_transport_construction() {
             tokio::time::timeout(Duration::from_secs(/*secs*/ 5), pool.client_build.lock())
                 .await
                 .unwrap();
-        // The listener address is a literal IP, which resolves Direct (system
-        // proxies never serve literal-IP destinations); the queued build must
-        // land in the cache under that route.
+        // The literal-IP listener URL resolves TransportDefault under
+        // ReqwestDefault; the queued build must land in the cache under that
+        // route.
         assert!(
             pool.clients
                 .lock()
                 .unwrap()
-                .contains_key(&OutboundProxyRoute::Direct)
+                .contains_key(&OutboundProxyRoute::TransportDefault)
         );
         let (_, _, backend) = pool
-            .client_for_url_with_resolver(&url, |_| async { Ok(OutboundProxyRoute::Direct) })
+            .client_for_url_with_resolver(&url, |_| async {
+                Ok(OutboundProxyRoute::TransportDefault)
+            })
             .now_or_never()
             .unwrap()
             .unwrap();
