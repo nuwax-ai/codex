@@ -97,3 +97,9 @@ __pycache__/
 
 # Live-test artifacts (codex-live-tests crate)
 /logs/
+# Local Codex runtime artifacts
+/codex-rs/tmp/
+*.sqlite
+*.sqlite-shm
+*.sqlite-journal
+*.sqlite-wal
