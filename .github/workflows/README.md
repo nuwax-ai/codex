@@ -11,8 +11,13 @@
 - `fork-cargo-pr.yml` — fork-local offline Cargo PR gate (nextest on
   ubuntu/macos/windows incl. the fork-only bridge crates via
   `--features codex-core/rust-rig`; fmt + clippy on the fork surfaces).
-  Newly added; no dispatch from this fork has happened yet — running it
-  requires push/CI authorization (registered in `my-docs/rig-stability-next/`).
+  The macOS lane installs gstreamer 1.28 (brew) so `codex-voice-host` builds
+  and unit-tests there; the ubuntu and windows lanes exclude that crate
+  because their system package sources cannot provide the pinned gstreamer
+  v1_28 API surface (ubuntu apt ships 1.24; the Windows installer route is
+  not wired up). Newly added; no dispatch from this fork has happened yet —
+  running it requires push/CI authorization (registered in
+  `my-docs/rig-stability-next/`).
 - `live-tests.yml` — manually dispatched real-vendor verification for the
   rig bridges (L1 bridge turns and L2 binary turns). Vendor credentials
   come from repository secrets / `.env.local`; vendors without hosted-search

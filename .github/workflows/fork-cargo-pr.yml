@@ -35,7 +35,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            # voice-host pins the gstreamer v1_28 API surface. Ubuntu's apt
+            # only ships gstreamer 1.24, so that lane cannot provision the
+            # pinned version and excludes the crate; the macOS lane below
+            # installs gstreamer 1.28 via brew and covers its build and unit
+            # tests.
+            voice_host: exclude
+          - os: macos-latest
+            voice_host: include
     defaults:
       run:
         working-directory: codex-rs
@@ -56,6 +65,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes libcap-dev pkg-config
 
+      - name: macOS build dependencies
+        if: runner.os == 'macOS'
+        run: brew install pkgconf gstreamer gst-plugins-base
+
       - name: Install test tools
         uses: taiki-e/install-action@v2
         with:
@@ -70,7 +83,13 @@ jobs:
       # The rig bridges are behind the rust-rig feature; the suite that
       # exercises them needs it enabled for codex-core.
       - name: Test (workspace)
-        run: just test --workspace --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
+        shell: bash
+        run: |
+          if [[ "${{ matrix.voice_host }}" == "exclude" ]]; then
+            just test --workspace --exclude codex-voice-host --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
+          else
+            just test --workspace --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
+          fi
 
   bazel-bridge-gate:
     name: bazel bridge gate (ubuntu)
@@ -83,7 +102,10 @@ jobs:
         with:
           python-version: "3.13"
 
-      - uses: bazel-contrib/setup-bazelisk@v3
+      # bazel-contrib/setup-bazelisk does not exist (the workflow's original
+      # reference failed with a missing-repository error); the maintained
+      # action lives under the bazelbuild organization.
+      - uses: bazelbuild/setup-bazelisk@v3.0.0
 
       - name: Gate and profiling helper regressions
         run: |
@@ -118,5 +140,10 @@ jobs:
         with:
           tool: cargo-nextest,just
 
+      # voice-host's pinned gstreamer v1_28 API surface needs the 500MB
+      # gstreamer Windows installer plus pkg-config wiring, which this lane
+      # does not provision; the macOS lane covers that crate's build and unit
+      # tests.
       - name: Test (workspace)
-        run: just test --workspace --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
+        shell: bash
+        run: just test --workspace --exclude codex-voice-host --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
