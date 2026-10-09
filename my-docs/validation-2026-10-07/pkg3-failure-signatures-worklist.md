@@ -200,3 +200,20 @@ agents_overview 的限定过滤切片结果见上；背景任务/浏览分页等
 ## 用户要求先保存WIP：Codex初步复核覆盖说明
 
 当前Claude代码按用户最新指令先commit/push，尚未修复或独立验证。代理短路/redirect、全局证书根缓存、非macOS warmup import有确认问题；R11实际线程固定4MiB，R1b下游剥离与R7因果尚未定案；19组合=core1+exec16+relay2，119仅账面待完整身份复算。请以 `../codex-pending-review-2026-10-09.md` 和 `../other-computer-development-prompt-2026-10-09.md` 为最新交接，不将本页历史“已修/全绿/定案”升级为验收。
+
+## 2026-10-10 批：P1 阻塞项已修（新机实际执行）
+
+本节由新机 Claude 批次登记，详细证据见 `../claude-p1-fixes-2026-10-10.md`：
+
+- **R7 短路已撤**：`destination_host_skips_system_proxy`（上文 R7 节的"产品修复"）经 codex-pending-review-2026-10-09.md 第 2 项判定为 P1 代理契约缺陷（Direct 清空 env/系统/显式代理并随重定向扩散），已删除并恢复 `ReqwestDefault → TransportDefault`。R7 节的"18/18 验证"相应失效；registration_retry 在本机 18 并发下复现 13/18 FAIL（单跑过），按评审处方改为 `#[cfg(test)]` hermetic 直连夹具后 **18/18 PASS（6.2s）**，exec-server 全量 **616/616**。
+- **R11 的证书缓存重设计**：上文 R11 节的 `NATIVE_ROOTS LazyLock`（永久快照）替换为源键+TTL+失败不缓存设计（60s/5s 双 TTL、零证书不缓存、bundle 不污染），含同进程 A→B 真握手回归。R11 的 SIGABRT 主因（深 future 栈）**未修**，静态分析见 `r11-future-depth-static-analysis-2026-10-10.md`。
+- **测试影响**：本机 `just test --retries 0`：http-client **135/135**、websocket-client **20/20**、exec-server **616/616**、aws-auth **10/10**、app-server-transport **157/157**（load 27–31 窗口）。Linux musl 交叉编译被 openssl-sys 阻断（无 musl OpenSSL/工具链），登记未执行。
+- **SCDynamicStore 跟进设计**：`../scdynamicstore-compat-spec-2026-10-10.md`（专职 CFRunLoop 线程方案，未实施）。
+- 冷态 TLS 4 项维持 R10 开放（旧机日志不在本机，本轮窗口未复现失败≠关闭）。
+
+## 2026-10-10 批：四项并行调查结论（只读分析，修复均未实施）
+
+- **R1b 剥离点已定位**（`r1b-delivery-strip-point-analysis-2026-10-10.md`）：非种子/池路由/guardian 侧,而是 fork 自有的 `core/src/model_output_projection.rs:217-222`——`project_input` 的 Compaction 臂在 provenance 不匹配时整项移除;guardian 复核请求的 `request_source`（`codex-auto-review` + guardian 头改变 auth 域,不在 `model_source.rs:57-91` 良性白名单）与父压缩请求 provenance 在 model 与 auth_domain 双重不等,**必然失败**。种子→重播→请求 input 全链无丢失,交叉验证（父保留/Luna async 保留/sync 只剩注入 message）全吻合;首次修复（快照追加 envelope）前后都在同一点被剥。R1b 13 项判定为 fork 对 guardian 场景的回归（origin/main 无该投影文件）。最小修复候选：种子 envelope 打显式重放授权标记,`sources_for_input` 映射哨兵,投影 Compaction 臂识别哨兵保留（仅放宽 model 比较不够）。待做①答案：post-answer 二次采样唯一触发是 `on_tool_start`,答题后无被打分工具执行则永不触发（`classification.rs:315-319` Superseded 与 `score.rs:101-142` 为竞态点）。
+- **R11"增长型"被静态证伪**（`r11-future-depth-static-analysis-2026-10-10.md`）：全路径 5 层重试循环均为替换型（loop 体内创建/销毁内层 future,跨迭代只存活堆数据）,无 await 点把前次 attempt 包进当前 future;"16MiB 仍溢出"不构成增长证据（溢出线程是测试自建 4MiB,RUST_MIN_STACK 不作用）。深度大头是单次 poll 固定纵深,最深未装箱链含 `WebSocketConnector::new` 同步证书构建（websocket-client/lib.rs:97,未走 spawn_blocking——与 10-10 批 dialer.rs:138 修复同类）。Box::pin 削体积不削深度;给出 4 个装箱候选 + 1 个减深度候选 + 逐 attempt SP-delta 实验设计（用现成 retries 计数,不动断言/预算）。
+- **R9 前提修正 + 新强候选 C1**（`r9-sqlite-establish-static-analysis-2026-10-10.md`）：retry 遥测是纯 tracing event（`codex-client/src/retry.rs:63-82`）,不写 SQLite;采样的 establish 属状态持久化车道（卡在首个模型请求之前）。sqlx 0.9 握手用 futures_channel oneshot（非 flume）,flume recv 是空闲态→唤醒丢失候选源码级排除;池配置排除池满。**C1**：默认策略下模型传输在运行时线程同步急切构建 reqwest 客户端（`core/src/client.rs:1241→1919`）,reqwest 每次构建新建 `Matcher::from_system()` 无缓存 → SCDynamicStore 阻塞冻结 current_thread 运行时 → 10.463s 失败与"模型请求未发出"逐字吻合;R7 直连早退对该路径本就不生效（不经路由解析）,故与"已带 R7 修复仍失败"兼容。预测当前树单跑仍 ~10.4s 失败——**本机 10-10 诊断单跑实测 PASS 31.832s(slow)**,预测在本窗口不成立,但 31.8s 的总时长与负载相关的慢成分兼容,C1 维持强候选未定案。三层复现方案与 5 点分段计时（T3=client 构建）已设计。
+- **历史 119 账目在标注文件层复算吻合**（`historical-119-ledger-recheck-2026-10-10.md`）：249→124→119 三途径同值;final19=core1+exec16+relay2 本地旁证支持、日志级不可复算（需旧机 still249.tsv 与四日志）。新登记 3 处口径疑点:D2（relay #224 若计入 final 则应为 118）、D3（R7"17 项"仅 15 行标绿,差 2 疑为 direct_registration_*）、四口径数字（17/15/18/16）未对表。
