@@ -72,10 +72,11 @@
 - 复验脚本 `/tmp/t13/run.sh` 顺序执行 9 组；本机同期其他用户负载 15→92，负载敏感族的结论按窗口如实标注。
 - **已闭合身份**：R1b 13（批 F）；install-context 1（16/16，宿主机 brew-cask 符号链接导致断言机器相关，fixture 修复后过，机制与历史失败吻合）；v8-poc 1（6/6）；http-client 6（本会话安静窗口 141/141、148/148 两次以上全量）。
 - **otel 6：当前树仍失败**（非本会话回归；历史 #263-268）：export 请求 1s 内未达回环 collector。T08 分段计时（collector bind/readiness→connect→export→flush/shutdown）待做；R7 同型阻塞为候选。
-- **R11 决定性证据（T10 DoD 证据侧基本满足）**：
-  - 默认 2MiB 线程栈：core::all 30 个历史身份中 50/51 选集 **SIGABRT（栈溢出）**；guardian-v2 语料需 RUST_MIN_STACK≥16MiB；`browser_login_bootstraps_through_system_proxy` 在 tokio worker 溢出（crash report 定位 `Session::new` 单 poll 帧，仅 48 帧深）。
-  - RUST_MIN_STACK=8388608：0 abort；同批 50 个转为 ~17s 普通失败（2s 握手等待超时，负载 70-90 窗口）——即 8MiB 消除溢出后，剩余为负载敏感时序。
-  - 待做：定位并最小化超大 poll 帧（Box::pin/任务边界单变量实验，见 plan §2.4 R11）；core/tui 身份需安静窗口复验。
+- **R11 定性修正（2026-10-10 下午补测，T10 证据侧完成）**：
+  - 精确阈值：`conversation_uses_default_realtime_backend_prompt` 单测 2.5MiB 失败 / 3MiB 通过（最深连续 poll 区约 2.1–3MiB）。
+  - **非回归**：pre-merge 基线（a1d519778，09-30）在 2MiB 下同样 SIGABRT——`TestCodex→start_thread→Session::new` 链的 >2MiB 是长期潜伏条件，10-01 合并未引入。crash 栈：`Session::new::{{closure}}` 巨型 poll（同符号双物理帧）+ ~15 层 builder poll 帧；tui 栈顶另有 serde_core toml 反序列化大帧。
+  - **仓库标准工具链未被阻断**：`just test`（RUST_MIN_STACK=8MiB）下 core 选集 0 abort；codex-guardian-v2 全量 94/98（0 abort）——4 失败中 1 例为 V8 归档离线不可得（既有），3 例 connection_pool cooldown 为负载敏感（隔离复验 3/3 PASS，本日 load≈24）。此前"需 ≥16MiB"的记录系直接 cargo 调用缺 env 所致，已修正。
+  - 处置：T10 的"最小修复"降级为加固项（缩小 Session::new 连续 poll 区至默认栈内），不作为历史身份的绿灯门槛；core/tui 身份复验在 ≤8MiB+安静窗口执行。
 - **residency::websocket：当前树仍失败**：rig responses client "builder error"（构建失败），独立线索待查（T07-2/T08 关联）。
 - rmcp 2 / exec-server 9：极端负载窗口（62-92）整包大量超时失败，无法作证；批 D 安静窗口 exec-server 616/616 的既有收据仍在。均标记 UNVERIFIED-LOAD，需安静窗口隔离复验。
 - tui 45：套件在跑（5642 项，负载下预计 >1h），本批先登记为待安静窗口。
