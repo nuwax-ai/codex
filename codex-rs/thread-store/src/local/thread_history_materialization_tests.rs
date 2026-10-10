@@ -2307,6 +2307,82 @@ async fn blank_and_rejected_rollout_lines_advance_projection() {
 }
 
 #[tokio::test]
+async fn cap_partial_event_lines_project_cleanly() {
+    // A rollout written with CapPartialDiagnostics enabled contains
+    // EventMsg::CapPartial lines. This reader knows the variant: the line
+    // decodes, projects to no thread item, and leaves no pending work.
+    let cap_partial = || {
+        RolloutItem::EventMsg(EventMsg::CapPartial(
+            codex_protocol::protocol::CapPartialEvent {
+                turn_id: "turn-1".to_string(),
+                response_key: "sampling:turn-1:0".to_string(),
+                reported_usage: None,
+                fragments: vec![codex_protocol::protocol::CapPartialFragment {
+                    fragment_key: "item-1".to_string(),
+                    kind: codex_protocol::protocol::CapPartialFragmentKind::AssistantText,
+                    item_id: Some("item-1".to_string()),
+                    text: "partial".to_string(),
+                    truncated: false,
+                }],
+                budget: codex_protocol::protocol::CapPartialBudget {
+                    fragment_count: 1,
+                    total_bytes: 7,
+                    enforced_caps: Vec::new(),
+                    token_evidence: codex_protocol::protocol::TokenBudgetEvidence::Unverified,
+                },
+            },
+        ))
+    };
+    let home = TempDir::new().expect("temp dir");
+    let store = projection_store(home.path()).await;
+    let thread_id = ThreadId::default();
+    create_paginated_thread(&store, thread_id).await;
+    store
+        .persist_thread(thread_id, PersistContext::Standard)
+        .await
+        .expect("persist session metadata");
+
+    let pool = codex_state::open_thread_history_db(&codex_state::SqliteConfig::new_for_testing(
+        home.path().abs(),
+    ))
+    .await
+    .expect("open thread history db");
+    let rollout_path = store
+        .live_rollout_path(thread_id)
+        .await
+        .expect("rollout path");
+    append_suffix(
+        rollout_path.as_path(),
+        &format!(
+            "{}\n{}\n{}\n",
+            rollout_line(Some(1), turn_started("turn-1")),
+            rollout_line(Some(2), cap_partial()),
+            rollout_line(Some(3), turn_started("turn-2")),
+        ),
+    );
+
+    super::materialize_to_sqlite(&store, thread_id, rollout_path.as_path())
+        .await
+        .expect("materialize a rollout containing cap_partial lines");
+
+    let rollout_len = i64::try_from(fs::metadata(rollout_path).expect("rollout metadata").len())
+        .expect("rollout length");
+    // Every line decoded and consumed: the offset reaches the rollout end
+    // and the next ordinal is 4 (SessionMeta 0, then 1..3), with nothing
+    // left pending as unknown or malformed.
+    assert_eq!(projection_state(&pool, thread_id).await, (rollout_len, 4));
+    let turn_count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM thread_turns WHERE thread_id = ?")
+            .bind(thread_id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("count projected turns");
+    assert_eq!(
+        turn_count, 2,
+        "both turns project; the partial adds no turn"
+    );
+}
+
 async fn unknown_rollout_lines_leave_ordinals_pending_for_valid_retries() {
     let unknown_line = |ordinal| {
         format!(

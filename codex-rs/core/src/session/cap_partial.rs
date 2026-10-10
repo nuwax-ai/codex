@@ -205,9 +205,10 @@ impl CapPartialCapture {
     /// already closed: the diagnostics must show which budget dropped it.
     fn record_observed_after_close(&mut self, key: &str) {
         if (!self.positions.contains_key(key) || key.is_empty())
-            && let Some(reason) = self.closed {
-                self.record_once(reason);
-            }
+            && let Some(reason) = self.closed
+        {
+            self.record_once(reason);
+        }
     }
 
     fn record_once(&mut self, kind: CapBudgetKind) {

@@ -532,7 +532,7 @@ async fn cap_partial_emits_persists_and_the_rollout_resumes(
     let home = test.home.clone();
     test.codex.shutdown_and_wait().await?;
     let resumed = test_codex()
-        .resume(&server, home, rollout_path.clone())
+        .resume(&server, home.clone(), rollout_path.clone())
         .await?;
     let outcome = run_turn_until_complete(&resumed, "follow up after resume").await?;
     assert!(
@@ -545,6 +545,31 @@ async fn cap_partial_emits_persists_and_the_rollout_resumes(
         outcome.cap_partials.is_empty(),
         "a normal completion emits no partial"
     );
+
+    // Crash tolerance: a writer killed mid-line leaves a truncated tail.
+    // Append one, then resume a SECOND time from the same rollout — the
+    // reader must tolerate the partial line and serve another turn.
+    resumed.codex.shutdown_and_wait().await?;
+    {
+        use std::io::Write as _;
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&rollout_path)
+            .expect("open rollout for crash tail");
+        file.write_all(b"{\"timestamp\":\"2026-10-11T00:00:00.000Z\",\"ordi")
+            .expect("append truncated crash line");
+        file.flush().expect("flush crash tail");
+    }
+    let twice_resumed = test_codex()
+        .resume(&server, home, rollout_path.clone())
+        .await?;
+    let outcome = run_turn_until_complete(&twice_resumed, "second resume").await?;
+    assert!(
+        outcome.turn_error.is_none(),
+        "the twice-resumed turn completes: {:?}",
+        outcome.turn_error
+    );
+    assert_eq!(outcome.agent_deltas, "recovered");
     Ok(())
 }
 
