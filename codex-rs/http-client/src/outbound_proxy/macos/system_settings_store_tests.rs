@@ -3,8 +3,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering as AtomicOrdering;
-use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
+use std::sync::mpsc::channel;
 use std::thread;
 use std::time::Duration;
 
@@ -49,13 +49,19 @@ fn test_tunings() -> LoaderTunings {
 fn counting_reader(
     reads: Arc<AtomicUsize>,
     delay: Duration,
-) -> (impl FnMut() -> Option<ProxiesDictionary> + Send + 'static, Receiver<()>) {
+) -> (
+    impl FnMut() -> Option<ProxiesDictionary> + Send + 'static,
+    Receiver<()>,
+) {
     let (seen, seen_rx) = channel();
     let reader = move || {
         reads.fetch_add(1, AtomicOrdering::SeqCst);
         let _ = seen.send(());
         thread::sleep(delay);
-        Some(fixture_dictionary(&format!("read-{}", reads.load(AtomicOrdering::SeqCst))))
+        Some(fixture_dictionary(&format!(
+            "read-{}",
+            reads.load(AtomicOrdering::SeqCst)
+        )))
     };
     (reader, seen_rx)
 }

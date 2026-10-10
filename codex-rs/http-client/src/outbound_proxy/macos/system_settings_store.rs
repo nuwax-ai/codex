@@ -95,7 +95,9 @@ impl Default for LoaderTunings {
 /// The shared production loader for macOS system proxy settings.
 pub(super) fn system_settings_snapshot() -> Option<Arc<SettingsSnapshot>> {
     static PRODUCTION: OnceLock<SystemSettingsLoader> = OnceLock::new();
-    PRODUCTION.get_or_init(SystemSettingsLoader::production).snapshot()
+    PRODUCTION
+        .get_or_init(SystemSettingsLoader::production)
+        .snapshot()
 }
 
 /// An owned, immutable copy of the dynamic-store proxies dictionary.
@@ -224,14 +226,12 @@ impl SystemSettingsLoader {
                 // snapshot still answers; otherwise the read is unavailable.
                 return match &*state {
                     LoadState::Fresh(snapshot)
-                        if snapshot.loaded_at + self.inner.tunings.stale_grace
-                            > Instant::now() =>
+                        if snapshot.loaded_at + self.inner.tunings.stale_grace > Instant::now() =>
                     {
                         Some(Arc::clone(snapshot))
                     }
                     LoadState::Loading(Some(previous))
-                        if previous.loaded_at + self.inner.tunings.stale_grace
-                            > Instant::now() =>
+                        if previous.loaded_at + self.inner.tunings.stale_grace > Instant::now() =>
                     {
                         Some(Arc::clone(previous))
                     }
@@ -337,10 +337,9 @@ impl SystemSettingsLoader {
 
 fn production_reader() -> impl FnMut() -> Option<ProxiesDictionary> + Send + 'static {
     move || {
-        let store = system_configuration::dynamic_store::SCDynamicStoreBuilder::new(
-            "CodexProxySettings",
-        )
-        .build()?;
+        let store =
+            system_configuration::dynamic_store::SCDynamicStoreBuilder::new("CodexProxySettings")
+                .build()?;
         store.get_proxies()
     }
 }

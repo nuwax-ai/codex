@@ -5,6 +5,7 @@ name = "codex-http-client"
 version.workspace = true
 
 [dependencies]
+base64 = { workspace = true }
 bytes = { workspace = true }
 codex-utils-rustls-provider = { workspace = true }
 futures = { workspace = true }

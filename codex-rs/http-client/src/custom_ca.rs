@@ -50,9 +50,9 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::native_roots_cache::NativeRootsCache;
-use crate::native_roots_cache::SSL_CERT_DIR_ENV;
 use crate::native_roots_cache::NativeRootsSourceKey;
 use crate::native_roots_cache::PRODUCTION_NATIVE_ROOTS_CACHE;
+use crate::native_roots_cache::SSL_CERT_DIR_ENV;
 use codex_utils_rustls_provider::ensure_rustls_crypto_provider;
 use rustls::ClientConfig;
 use rustls_pki_types::CertificateDer;
@@ -857,7 +857,6 @@ mod tests {
             BuildCustomCaTransportError::InvalidCaFile { .. }
         ));
     }
-
 }
 
 #[cfg(test)]

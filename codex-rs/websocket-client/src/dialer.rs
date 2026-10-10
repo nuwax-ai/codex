@@ -41,9 +41,16 @@ pub(crate) async fn connect(
     tcp_nodelay: TcpNodelay,
     loopback_direct: bool,
 ) -> Result<(ConnectionInner, Response), WebSocketError> {
-    connect_with_route(request, config, tls_config, proxy_route, tcp_nodelay, loopback_direct)
-        .await
-        .map_err(redact_invalid_proxy_config)
+    connect_with_route(
+        request,
+        config,
+        tls_config,
+        proxy_route,
+        tcp_nodelay,
+        loopback_direct,
+    )
+    .await
+    .map_err(redact_invalid_proxy_config)
 }
 
 /// Keeps the `Url(InvalidProxyConfig)` category while replacing whatever the

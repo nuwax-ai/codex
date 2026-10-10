@@ -8,10 +8,10 @@ use std::time::Duration;
 use pretty_assertions::assert_eq;
 use rustls_pki_types::CertificateDer;
 
-use super::NativeRootsCache;
-use super::NativeRootsSourceKey;
 use super::NATIVE_ROOTS_CACHE_TTL;
 use super::NATIVE_ROOTS_PARTIAL_FAILURE_TTL;
+use super::NativeRootsCache;
+use super::NativeRootsSourceKey;
 
 /// A controllable clock so cache validity can be exercised without real waits.
 #[derive(Clone)]
@@ -96,8 +96,16 @@ fn reuses_within_ttl_and_reloads_after_expiry() {
     let clock = TestClock::new();
     let loads = CountingLoads::new();
 
-    let first = cache.load(platform_key(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
-    let second = cache.load(platform_key(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let first = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
+    let second = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert!(
         Arc::ptr_eq(&first, &second),
         "within TTL the store is shared"
@@ -105,7 +113,11 @@ fn reuses_within_ttl_and_reloads_after_expiry() {
     assert_eq!(loads.count(), 1);
 
     clock.advance(NATIVE_ROOTS_CACHE_TTL + Duration::from_secs(/*secs*/ 1));
-    let third = cache.load(platform_key(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let third = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert!(
         !Arc::ptr_eq(&first, &third),
         "expiry must reload the platform"
@@ -128,13 +140,14 @@ fn reloads_when_the_source_key_changes() {
         NativeRootsSourceKey::from_env_values(Some(OsString::new()), /*cert_dir*/ None),
         dir_key("/tmp/roots-dir-a"),
         dir_key("/tmp/roots-dir-b"),
-        NativeRootsSourceKey::from_env_values(
-            /*cert_file*/ None,
-            Some(OsString::new()),
-        ),
+        NativeRootsSourceKey::from_env_values(/*cert_file*/ None, Some(OsString::new())),
     ];
     for key in &keys {
-        let _ = cache.load(key.clone(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+        let _ = cache.load(
+            key.clone(),
+            loads.loader(|| fixture_load(vec![fixture_native_root()])),
+            || clock.now(),
+        );
     }
     assert_eq!(
         loads.count(),
@@ -154,13 +167,23 @@ fn structured_keys_do_not_collide_across_field_values() {
         Some(OsString::from("a\u{1}b")),
         /*cert_dir*/ None,
     );
-    let split = NativeRootsSourceKey::from_env_values(
-        Some(OsString::from("a")),
-        Some(OsString::from("b")),
+    let split =
+        NativeRootsSourceKey::from_env_values(Some(OsString::from("a")), Some(OsString::from("b")));
+    let _ = cache.load(
+        joined,
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
     );
-    let _ = cache.load(joined, loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
-    let _ = cache.load(split, loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
-    assert_eq!(loads.count(), 2, "distinct structured keys must not collide");
+    let _ = cache.load(
+        split,
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
+    assert_eq!(
+        loads.count(),
+        2,
+        "distinct structured keys must not collide"
+    );
 }
 
 #[cfg(unix)]
@@ -178,15 +201,31 @@ fn non_unicode_source_keys_keep_their_identity() {
         Some(OsString::from_vec(b"/tmp/roots/\xfe".to_vec())),
         /*cert_dir*/ None,
     );
-    let _ = cache.load(first.clone(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
-    let _ = cache.load(first, loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let _ = cache.load(
+        first.clone(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
+    let _ = cache.load(
+        first,
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert_eq!(
         loads.count(),
         1,
         "the same non-UTF-8 bytes are the same source"
     );
-    let _ = cache.load(second, loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
-    assert_eq!(loads.count(), 2, "different non-UTF-8 values are different sources");
+    let _ = cache.load(
+        second,
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
+    assert_eq!(
+        loads.count(),
+        2,
+        "different non-UTF-8 values are different sources"
+    );
 }
 
 #[cfg(windows)]
@@ -204,15 +243,31 @@ fn non_unicode_source_keys_keep_their_identity() {
         Some(OsString::from_wide(&[0x0052, 0x006F, 0xDFFF, 0x0054])),
         /*cert_dir*/ None,
     );
-    let _ = cache.load(first.clone(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
-    let _ = cache.load(first, loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let _ = cache.load(
+        first.clone(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
+    let _ = cache.load(
+        first,
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert_eq!(
         loads.count(),
         1,
         "the same non-UTF-16 bytes are the same source"
     );
-    let _ = cache.load(second, loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
-    assert_eq!(loads.count(), 2, "different non-UTF-8 values are different sources");
+    let _ = cache.load(
+        second,
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
+    assert_eq!(
+        loads.count(),
+        2,
+        "different non-UTF-8 values are different sources"
+    );
 }
 
 #[test]
@@ -221,12 +276,20 @@ fn never_caches_an_empty_load() {
     let clock = TestClock::new();
     let loads = CountingLoads::new();
 
-    let first = cache.load(platform_key(), loads.loader(rustls_native_certs::CertificateResult::default), || clock.now());
+    let first = cache.load(
+        platform_key(),
+        loads.loader(rustls_native_certs::CertificateResult::default),
+        || clock.now(),
+    );
     assert!(
         first.is_empty(),
         "a failed load must fail closed for this connector"
     );
-    let second = cache.load(platform_key(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let second = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert_eq!(second.len(), 1, "the next connector must retry the load");
     assert_eq!(loads.count(), 2);
 }
@@ -251,14 +314,22 @@ fn uses_the_short_ttl_for_partial_failures() {
     };
 
     let first = cache.load(platform_key(), loads.loader(make_partial), || clock.now());
-    let second = cache.load(platform_key(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let second = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert!(
         Arc::ptr_eq(&first, &second),
         "partial results are shared briefly"
     );
     assert_eq!(loads.count(), 1);
     clock.advance(NATIVE_ROOTS_PARTIAL_FAILURE_TTL + Duration::from_secs(/*secs*/ 1));
-    let _ = cache.load(platform_key(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let _ = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert_eq!(
         loads.count(),
         2,
@@ -284,7 +355,11 @@ fn uses_the_short_ttl_when_platform_certs_are_rejected() {
     };
 
     let first = cache.load(platform_key(), loads.loader(make_rejected), || clock.now());
-    let second = cache.load(platform_key(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let second = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert!(
         Arc::ptr_eq(&first, &second),
         "rejected-cert loads are shared briefly"
@@ -296,7 +371,11 @@ fn uses_the_short_ttl_when_platform_certs_are_rejected() {
         "only the parseable platform certificate is trusted"
     );
     clock.advance(NATIVE_ROOTS_PARTIAL_FAILURE_TTL + Duration::from_secs(/*secs*/ 1));
-    let _ = cache.load(platform_key(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let _ = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert_eq!(
         loads.count(),
         2,
@@ -354,7 +433,11 @@ fn computes_expiry_after_the_load_completes() {
     };
 
     let first = cache.load(platform_key(), loader, || clock.now());
-    let second = cache.load(platform_key(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let second = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert!(
         Arc::ptr_eq(&first, &second),
         "an entry completed after a slow load is still fresh at load-completion time"
@@ -362,7 +445,11 @@ fn computes_expiry_after_the_load_completes() {
     assert_eq!(loads.count(), 0);
 
     clock.advance(Duration::from_secs(/*secs*/ 1));
-    let _ = cache.load(platform_key(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let _ = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert_eq!(
         loads.count(),
         0,
@@ -370,7 +457,11 @@ fn computes_expiry_after_the_load_completes() {
     );
 
     clock.advance(NATIVE_ROOTS_CACHE_TTL + Duration::from_secs(/*secs*/ 1));
-    let _ = cache.load(platform_key(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let _ = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert_eq!(
         loads.count(),
         1,
@@ -386,7 +477,11 @@ fn a_poisoned_cache_lock_clears_and_reloads() {
     let clock = TestClock::new();
     let loads = CountingLoads::new();
 
-    let _ = cache.load(platform_key(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let _ = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert_eq!(loads.count(), 1);
 
     // Expire the primed entry so the panicking loader actually runs and
@@ -402,7 +497,11 @@ fn a_poisoned_cache_lock_clears_and_reloads() {
     );
     assert_eq!(loads.count(), 2);
 
-    let recovered = cache.load(platform_key(), loads.loader(|| fixture_load(vec![fixture_native_root()])), || clock.now());
+    let recovered = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
     assert_eq!(
         (recovered.len(), loads.count()),
         (1, 3),
@@ -435,9 +534,7 @@ fn lock_wait_does_not_extend_entry_validity() {
     let thread_a = std::thread::spawn(move || {
         let loader = move || {
             parked_tx.send(()).expect("park signal");
-            released_rx
-                .recv()
-                .expect("release signal");
+            released_rx.recv().expect("release signal");
             fixture_load(vec![fixture_native_root()])
         };
         cache_a.load(file_key("/tmp/other-source.pem"), loader, || clock_a.now())
@@ -449,7 +546,11 @@ fn lock_wait_does_not_extend_entry_validity() {
     let cache_b = Arc::clone(&cache);
     let clock_b = Arc::clone(&clock);
     let thread_b = std::thread::spawn(move || {
-        cache_b.load(platform_key(), || fixture_load(vec![fixture_native_root()]), || clock_b.now())
+        cache_b.load(
+            platform_key(),
+            || fixture_load(vec![fixture_native_root()]),
+            || clock_b.now(),
+        )
     });
 
     clock.advance(NATIVE_ROOTS_CACHE_TTL + Duration::from_secs(/*secs*/ 1));

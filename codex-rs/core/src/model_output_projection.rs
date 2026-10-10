@@ -242,13 +242,16 @@ pub(crate) fn project_input(
         // stays under the strict comparison.
         let compaction_compatible = target_scope_known
             && item.id().is_some_and(|id| {
-                sources.get(id).and_then(Option::as_ref).is_some_and(|source| {
-                    source.wire_protocol == target.wire_protocol
-                        && source.bridge == target.bridge
-                        && source.provider == target.provider
-                        && source.endpoint_identity == target.endpoint_identity
-                        && source.auth_domain_kind == target.auth_domain_kind
-                })
+                sources
+                    .get(id)
+                    .and_then(Option::as_ref)
+                    .is_some_and(|source| {
+                        source.wire_protocol == target.wire_protocol
+                            && source.bridge == target.bridge
+                            && source.provider == target.provider
+                            && source.endpoint_identity == target.endpoint_identity
+                            && source.auth_domain_kind == target.auth_domain_kind
+                    })
             });
         let trusted_scope_kind = matches!(
             target.auth_domain_kind.as_deref(),

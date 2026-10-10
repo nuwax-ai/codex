@@ -4,8 +4,8 @@ use super::CODEX_CA_CERT_ENV;
 use super::ConfiguredCaBundle;
 use super::EnvSource;
 use super::build_rustls_client_config_with_native_roots;
-use crate::native_roots_cache::NativeRootsCache;
 use crate::native_roots_cache::NATIVE_ROOTS_CACHE_TTL;
+use crate::native_roots_cache::NativeRootsCache;
 use pretty_assertions::assert_eq;
 use rcgen::BasicConstraints;
 use rcgen::CertificateParams;
@@ -71,7 +71,7 @@ fn custom_intermediate_trust_preserves_hostname_validation() {
             error,
             rustls::Error::InvalidCertificate(
                 rustls::CertificateError::NotValidForName
-                | rustls::CertificateError::NotValidForNameContext { .. }
+                    | rustls::CertificateError::NotValidForNameContext { .. }
             )
         ),
         "{error:?}"
@@ -184,10 +184,7 @@ fn native_roots_refresh_replaces_trust_for_new_connectors_in_the_same_process() 
     let path = temp.path().join("roots.pem");
     std::fs::write(&path, chain_a.issuer_pem).unwrap();
     let env = MapEnv {
-        values: HashMap::from([(
-            "SSL_CERT_FILE".to_string(),
-            OsString::from(path.clone()),
-        )]),
+        values: HashMap::from([("SSL_CERT_FILE".to_string(), OsString::from(path.clone()))]),
     };
 
     let before = build_rustls_client_config_with_native_roots(
@@ -240,16 +237,10 @@ fn native_roots_source_environment_change_invalidates_without_waiting_for_the_tt
     std::fs::write(&path_a, chain_a.issuer_pem).unwrap();
     std::fs::write(&path_b, chain_b.issuer_pem).unwrap();
     let env_a = MapEnv {
-        values: HashMap::from([(
-            "SSL_CERT_FILE".to_string(),
-            OsString::from(path_a.clone()),
-        )]),
+        values: HashMap::from([("SSL_CERT_FILE".to_string(), OsString::from(path_a.clone()))]),
     };
     let env_b = MapEnv {
-        values: HashMap::from([(
-            "SSL_CERT_FILE".to_string(),
-            OsString::from(path_b.clone()),
-        )]),
+        values: HashMap::from([("SSL_CERT_FILE".to_string(), OsString::from(path_b.clone()))]),
     };
 
     let from_a = build_rustls_client_config_with_native_roots(

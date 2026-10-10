@@ -744,11 +744,11 @@ fn otlp_http_exporter_times_out_when_collector_stalls_during_bounded_shutdown() 
     let (result, elapsed) = runtime.block_on(async move {
         let otel = OtelProvider::try_new(&OtelSettings {
             // Loopback collectors must not pay reqwest's built-in system-proxy
-        // read (it stalls off the main thread when several provider builds
-        // contend); the RespectSystemProxy resolver reads settings on the
-        // dedicated run-loop thread and answers this endpoint directly on
-        // hosts without a proxy for it.
-        http_client_factory: HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
+            // read (it stalls off the main thread when several provider builds
+            // contend); the RespectSystemProxy resolver reads settings on the
+            // dedicated run-loop thread and answers this endpoint directly on
+            // hosts without a proxy for it.
+            http_client_factory: HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
             environment: "test".to_string(),
             service_name: "codex-cli".to_string(),
             service_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -849,11 +849,13 @@ fn otlp_http_exporter_sends_traces_to_collector_in_current_thread_tokio_runtime(
         let result = runtime.block_on(async move {
             let otel = OtelProvider::try_new(&OtelSettings {
                 // Loopback collectors must not pay reqwest's built-in system-proxy
-        // read (it stalls off the main thread when several provider builds
-        // contend); the RespectSystemProxy resolver reads settings on the
-        // dedicated run-loop thread and answers this endpoint directly on
-        // hosts without a proxy for it.
-        http_client_factory: HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
+                // read (it stalls off the main thread when several provider builds
+                // contend); the RespectSystemProxy resolver reads settings on the
+                // dedicated run-loop thread and answers this endpoint directly on
+                // hosts without a proxy for it.
+                http_client_factory: HttpClientFactory::new(
+                    OutboundProxyPolicy::RespectSystemProxy,
+                ),
                 environment: "test".to_string(),
                 service_name: "codex-cli".to_string(),
                 service_version: env!("CARGO_PKG_VERSION").to_string(),

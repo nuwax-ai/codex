@@ -32,6 +32,7 @@ const SYSTEM_PROXY_CACHE_MAX_ENTRIES: usize = 256;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 static ASYNC_SYSTEM_PROXY_RESOLUTION_PERMIT: Semaphore = Semaphore::const_new(1);
 
+mod default_proxy_matcher;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "windows")]

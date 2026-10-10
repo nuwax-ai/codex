@@ -3694,6 +3694,7 @@ dependencies = [
 name = "codex-http-client"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "bytes",
  "codex-utils-cargo-bin",
  "codex-utils-rustls-provider",

@@ -63,7 +63,6 @@ impl OpaqueReplayGrant {
             reviewer_model: reviewer_model.to_string(),
         })
     }
-
 }
 
 /// Validates the grant against the live request and returns the projection-

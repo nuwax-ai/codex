@@ -897,7 +897,10 @@ async fn assert_env_proxy_tunnel_subprocess(
     });
     let target_scheme = if target_tls { "wss" } else { "ws" };
     let proxy_scheme = if proxy_tls { "https" } else { "http" };
-    let target_url = format!("{target_scheme}://{target_host}:{}/v1/responses", target_addr.port());
+    let target_url = format!(
+        "{target_scheme}://{target_host}:{}/v1/responses",
+        target_addr.port()
+    );
     let proxy_url = format!("{proxy_scheme}://localhost:{}", proxy_addr.port());
     let env_var = env_var.to_string();
     let executable = std::env::current_exe().expect("test executable should be available");
@@ -926,10 +929,8 @@ async fn assert_env_proxy_tunnel_subprocess(
         command.env(&env_var, &proxy_url);
         command.env("CODEX_WEBSOCKET_ENV_PROXY_PROBE_URL", &target_url);
         if let Some(ca_pem) = ca_pem.as_ref() {
-            let ca_path = std::env::temp_dir().join(format!(
-                "codex-ws-env-proxy-ca-{}.pem",
-                proxy_addr.port()
-            ));
+            let ca_path = std::env::temp_dir()
+                .join(format!("codex-ws-env-proxy-ca-{}.pem", proxy_addr.port()));
             std::fs::write(&ca_path, ca_pem).expect("CA bundle should be written");
             command.env("SSL_CERT_FILE", &ca_path);
         }
@@ -1019,10 +1020,7 @@ async fn assert_socks5_env_proxy_tunnel_subprocess() {
         let target_octets = match header[3] {
             0x01 => {
                 let mut octets = [0_u8; 4];
-                client
-                    .read_exact(&mut octets)
-                    .await
-                    .expect("IPv4 address");
+                client.read_exact(&mut octets).await.expect("IPv4 address");
                 octets.to_vec()
             }
             address_type => panic!("unexpected SOCKS5 address type {address_type}"),
@@ -1080,10 +1078,7 @@ async fn assert_socks5_env_proxy_tunnel_subprocess() {
     let (octets, port) = proxy_task.await.expect("socks5 task should finish");
     assert_eq!(
         (octets.as_slice(), port),
-        (
-            [127, 0, 0, 1].as_slice(),
-            target_addr.port()
-        ),
+        ([127, 0, 0, 1].as_slice(), target_addr.port()),
         "the SOCKS5 proxy must relay the real literal-IP target"
     );
 }

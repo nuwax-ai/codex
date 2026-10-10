@@ -236,7 +236,8 @@ pub(crate) fn spawn_pump(
                             &event,
                             rig_core::streaming::StreamedAssistantContent::Final(_)
                         )
-                        && let Ok(report) = anthropic_usage.lock().map(|usage| usage.snapshot_report())
+                        && let Ok(report) =
+                            anthropic_usage.lock().map(|usage| usage.snapshot_report())
                     {
                         pending.wire_reported_usage = report;
                     }

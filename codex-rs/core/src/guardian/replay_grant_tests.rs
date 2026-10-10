@@ -20,17 +20,11 @@ fn provenance(model: &str, auth_domain: &str) -> ModelOutputProvenance {
 }
 
 fn grant(checkpoint: &str, producer_model: &str, reviewer_model: &str) -> OpaqueReplayGrant {
-    OpaqueReplayGrant::for_checkpoint(
-        &envelope(checkpoint, producer_model),
-        reviewer_model,
-    )
-    .expect("checkpoint with id and provenance should produce a grant")
+    OpaqueReplayGrant::for_checkpoint(&envelope(checkpoint, producer_model), reviewer_model)
+        .expect("checkpoint with id and provenance should produce a grant")
 }
 
-fn envelope(
-    checkpoint: &str,
-    producer_model: &str,
-) -> codex_history::ResponseItemEnvelope {
+fn envelope(checkpoint: &str, producer_model: &str) -> codex_history::ResponseItemEnvelope {
     codex_history::ResponseItemEnvelope {
         item: serde_json::from_value(serde_json::json!({
             "type": "compaction",
@@ -48,10 +42,10 @@ fn envelope(
 /// A review request: the reviewer model under the guardian header (whose
 /// auth-domain shift the grant exists to tolerate), and the same request with
 /// the header stripped (its basis).
-fn review_request(producer: &ModelOutputProvenance, reviewer_model: &str) -> (
-    ModelOutputProvenance,
-    ModelOutputProvenance,
-) {
+fn review_request(
+    producer: &ModelOutputProvenance,
+    reviewer_model: &str,
+) -> (ModelOutputProvenance, ModelOutputProvenance) {
     let mut target = producer.clone();
     target.model = Some(reviewer_model.to_string());
     target.auth_domain = Some("credential-instance:shifted-by-header".to_string());
@@ -91,7 +85,12 @@ fn grant_requires_item_identity_and_captured_provenance() {
         .is_none(),
         "an envelope without captured provenance cannot be granted"
     );
-    assert!(grant("item_1", "gpt-5.2-codex", model).producer.model.is_some());
+    assert!(
+        grant("item_1", "gpt-5.2-codex", model)
+            .producer
+            .model
+            .is_some()
+    );
 }
 
 #[test]
@@ -113,9 +112,8 @@ fn authorized_review_request_replays_exactly_the_bound_checkpoint() {
         }))
         .unwrap(),
     ];
-    let sources = crate::model_output_projection::sources_for_input(&[
-        envelope("item_1", "gpt-5.2-codex"),
-    ]);
+    let sources =
+        crate::model_output_projection::sources_for_input(&[envelope("item_1", "gpt-5.2-codex")]);
     let saved = input.clone();
     crate::model_output_projection::project_input(
         &mut input,
@@ -123,7 +121,10 @@ fn authorized_review_request_replays_exactly_the_bound_checkpoint() {
         &target,
         Some(&authorization),
     );
-    assert_eq!(input, saved, "the granted checkpoint must survive projection");
+    assert_eq!(
+        input, saved,
+        "the granted checkpoint must survive projection"
+    );
 }
 
 #[test]
@@ -136,9 +137,8 @@ fn a_different_checkpoint_under_the_same_grant_is_still_dropped() {
 
     // A different checkpoint (or one whose captured provenance was replaced)
     // is not the grant's subject and keeps the isolation.
-    let sources = crate::model_output_projection::sources_for_input(&[
-        envelope("item_2", "gpt-5.2-codex"),
-    ]);
+    let sources =
+        crate::model_output_projection::sources_for_input(&[envelope("item_2", "gpt-5.2-codex")]);
     let item: codex_protocol::models::ResponseItem = serde_json::from_value(
         serde_json::json!({"type": "compaction", "id": "item_2", "encrypted_content": "x"}),
     )

@@ -103,12 +103,9 @@ impl PreparedGuardianContext {
         // session config assembly, so it is the reviewer model this thread
         // will actually run (including the catalog-missing parent fallback).
         let replay_grant = self.parent_compaction.as_ref().and_then(|envelope| {
-            self.config
-                .model
-                .as_deref()
-                .and_then(|reviewer_model| {
-                    crate::guardian::OpaqueReplayGrant::for_checkpoint(envelope, reviewer_model)
-                })
+            self.config.model.as_deref().and_then(|reviewer_model| {
+                crate::guardian::OpaqueReplayGrant::for_checkpoint(envelope, reviewer_model)
+            })
         });
         let mut config = self.config.clone();
         config.model_provider.supports_websockets &= self

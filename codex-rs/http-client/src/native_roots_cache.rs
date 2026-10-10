@@ -78,7 +78,10 @@ pub(crate) struct NativeRootsSourceKey {
 impl NativeRootsSourceKey {
     /// Builds the key from the raw environment values the loader will read.
     pub(crate) fn from_env_values(cert_file: Option<OsString>, cert_dir: Option<OsString>) -> Self {
-        Self { cert_file, cert_dir }
+        Self {
+            cert_file,
+            cert_dir,
+        }
     }
 }
 
