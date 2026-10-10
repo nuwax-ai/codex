@@ -161,6 +161,19 @@ T02 首次获得真实运行证据，四轮递进修复：
 4. **Run 4**（`831346f11` 修 ollama match）：三车道唯一剩余编译错误=ollama client 的 ResolvedDefault 非穷尽（本地作用域运行从未编译该 crate——CI 全工作区编译的价值实证）。
 - **T02 DoD 达成**：四 job 均实际进入相应 build/test；剩余失败从"基础设施"降级为"真实测试失败"（大概率=已定性的并发固有边界族），待 run 4 结果确认。
 
+
+### 批 S — CI 修复闭环与剩余失败的终局定性（run 38065399719，HEAD `bac940d34`）
+
+- 本轮三个真实产品/流程修复（均已在 CI 前序运行中定位并各自验证）：
+  1. `23d8d3e6f` **TLS 分类**：io::Error::source() 跳过 payload 本体导致 Linux 路径 TLS 错误不可见——提取 `chain_carries_tls_error` 显式下钻 get_ref() + 回归向量（Linux 残差 6 项的根因）。
+  2. `e02dc3771` **schema fixture**：RolloutLine 差异非平台性，是批 Q 的 CapPartial 类型未再生成预计算导出（本地作用域跑漏该 crate）；`just write-app-server-schema` 再生成后 314/314。
+  3. `eaecf3805` **bubblewrap + 超时**：ubuntu 装 bubblewrap、车道超时 90→150 分钟。
+- **run 38065399719 终局**（bubblewrap 已装、TLS 已修、fixture 已再生）：bazel gate **连续第三次全绿**；三 nextest 车道全部完成完整工作区测试（ubuntu 21.5k 项 406 失败 / macOS 217 / windows 175）。剩余失败**终局定性**：
+  - **ubuntu 389/406 = Linux 沙箱族**：bubblewrap 已在 PATH，但 `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`——GitHub 托管 runner 禁止嵌套网络命名空间配置（无 NET_ADMIN）。**这不是可装的依赖缺口，是 runner 能力边界**：需要自托管/特权 runner（T32 的正式 Linux 验证环境），或上游测试基建按能力检测降级。按禁令不加 skip 求绿。
+  - **macOS 217 ≈ 并发固有边界族**：本地同套件 5633/5642（安静窗口）；2-vCPU CI runner 上亚秒断言窗全灭——与本地已定性的"串行绿/并发败"完全同类。
+  - windows 175 同类叠加 Windows 特有 junction/沙箱项。
+- **T02 最终状态**：DoD（四 job 实际进入相应 build/test）**达成且稳定**；CI 失败已从"工作流坏"降级为"真实测试结果"，其中大头可归因到已登记的 runner 能力/并发边界。下一步绿化需要环境决策（自托管 runner），不是更多 workflow 补丁。
+
 ## 40 项状态（更新）
 
 | 项 | 状态 | 证据/边界 |
