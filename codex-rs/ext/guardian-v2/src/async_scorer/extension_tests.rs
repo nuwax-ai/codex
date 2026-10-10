@@ -3616,3 +3616,6 @@ async fn cached_score_publication_rejects_delayed_results_without_changing_cover
 
 #[path = "extension_bridge_tests.rs"]
 mod bridge_tests;
+
+#[path = "post_answer_finality_tests.rs"]
+mod post_answer_finality;
