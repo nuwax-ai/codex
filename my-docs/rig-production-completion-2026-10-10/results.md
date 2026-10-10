@@ -133,12 +133,16 @@
 |---|---|---|
 | T03/T04/T05/T06 | 完成 | 批 A/B |
 | T02 | 部分（配置完成） | 远端 dispatch 待授权 |
-| T07 | 阶段 1 完成 | matcher+双轨+接管开放（阶段 2 需 ipnet 直依 + bazel lock 同步） |
+| T07 | **实现完成（opt-in）** | 阶段1 loader（批D）+ 阶段2 matcher（批K）+ 阶段3 ResolvedDefault opt-in + 双轨 wire 等价（批N）；**默认迁移留待裁决**；CFRunLoop 因果实验开放 |
 | T11 | **完成** | 13 身份 16/16；grant+scope 级 Compaction 契约 |
 | T12 | **完成（测试覆盖）** | 6 新用例 + 矩阵；未发现终局性产品缺陷 |
 | T16 | D2 段完成 | 三线提取+迁移；V-D2-1/reducer/key 开放 |
-| T10 | 新证据登记 | Session::new 单 poll 帧溢出（guardian-v2 二进制，HEAD 复现） |
-| 其余 | 开放 | 按序推进 |
+| T15 | 决策完成 | cap-decisions-2026-10-10.md 七项全裁决 |
+| T10/R11 | **定性完成** | 长期潜伏（pre-merge 既有）、阈值 2.5/3MiB、8MiB 全消 abort；加固（缩 Session::new 帧）开放非阻断 |
+| T08 OTLP 线 | **归因完成** | 并发 provider 构建停顿 vs 3s collector 预算；夹具已切 RespectSystemProxy（pair 修复）；批 flush 并发边界开放 |
+| T13/T01 | **账本完成** | 119 身份全入账：PASS 99 / BOUNDARY 23 / FAIL 0（批 L-N）；旧机工件联结仍缺（需旧机导出） |
+| T14 | 部分 | 批 I 复验覆盖 proxy/TLS/WS/exec-registry/Core/Rig 主面；正式 DoD 快照未单独出 |
+| T17–T20/T21–T23/T24–T31/T32–T35/T36–T37/T38–T40 | 开放 | 按序推进 |
 
 ## 40 项状态（滚动更新）
 
