@@ -66,6 +66,20 @@
 - 证据：6/6（三次连跑）；codex-guardian-v2 全量 96-97/98（1 例需 V8 归档离线不可得，既有；2 例负载敏感单跑过，既有）。
 - **重要登记（T10/R11 新证据）**：guardian-v2 测试二进制默认 ~2MB 栈在 `Session::new` 单个 poll 帧内溢出（crash report：仅 48 帧深、单帧超限）——需 RUST_MIN_STACK=16777216 才能跑全量。HEAD 干净树复现，非本会话改动引入。
 
+
+### 批 I — T13 历史身份复验 + R11 定性证据（进行中，本机窗口）
+
+- 复验脚本 `/tmp/t13/run.sh` 顺序执行 9 组；本机同期其他用户负载 15→92，负载敏感族的结论按窗口如实标注。
+- **已闭合身份**：R1b 13（批 F）；install-context 1（16/16，宿主机 brew-cask 符号链接导致断言机器相关，fixture 修复后过，机制与历史失败吻合）；v8-poc 1（6/6）；http-client 6（本会话安静窗口 141/141、148/148 两次以上全量）。
+- **otel 6：当前树仍失败**（非本会话回归；历史 #263-268）：export 请求 1s 内未达回环 collector。T08 分段计时（collector bind/readiness→connect→export→flush/shutdown）待做；R7 同型阻塞为候选。
+- **R11 决定性证据（T10 DoD 证据侧基本满足）**：
+  - 默认 2MiB 线程栈：core::all 30 个历史身份中 50/51 选集 **SIGABRT（栈溢出）**；guardian-v2 语料需 RUST_MIN_STACK≥16MiB；`browser_login_bootstraps_through_system_proxy` 在 tokio worker 溢出（crash report 定位 `Session::new` 单 poll 帧，仅 48 帧深）。
+  - RUST_MIN_STACK=8388608：0 abort；同批 50 个转为 ~17s 普通失败（2s 握手等待超时，负载 70-90 窗口）——即 8MiB 消除溢出后，剩余为负载敏感时序。
+  - 待做：定位并最小化超大 poll 帧（Box::pin/任务边界单变量实验，见 plan §2.4 R11）；core/tui 身份需安静窗口复验。
+- **residency::websocket：当前树仍失败**：rig responses client "builder error"（构建失败），独立线索待查（T07-2/T08 关联）。
+- rmcp 2 / exec-server 9：极端负载窗口（62-92）整包大量超时失败，无法作证；批 D 安静窗口 exec-server 616/616 的既有收据仍在。均标记 UNVERIFIED-LOAD，需安静窗口隔离复验。
+- tui 45：套件在跑（5642 项，负载下预计 >1h），本批先登记为待安静窗口。
+
 ## 40 项状态（更新）
 
 | 项 | 状态 | 证据/边界 |
