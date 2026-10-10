@@ -95,13 +95,28 @@ impl PreparedGuardianContext {
                 InitialHistory::Forked(vec![RolloutItem::ResponseItem(envelope)])
             })
         });
+        // The runtime moment the seed envelope is chosen is also the only
+        // moment a replay grant may be issued: bind this exact checkpoint,
+        // its captured producer provenance, and the configured reviewer
+        // model. The grant rides spawn-time thread data, never rollouts.
+        // `spawn_config.model` is pinned to `review_model.model` by the
+        // session config assembly, so it is the reviewer model this thread
+        // will actually run (including the catalog-missing parent fallback).
+        let replay_grant = self.parent_compaction.as_ref().and_then(|envelope| {
+            self.config
+                .model
+                .as_deref()
+                .and_then(|reviewer_model| {
+                    crate::guardian::OpaqueReplayGrant::for_checkpoint(envelope, reviewer_model)
+                })
+        });
         let mut config = self.config.clone();
         config.model_provider.supports_websockets &= self
             .parent
             .services
             .model_client
             .responses_websocket_enabled();
-        let options = crate::StartThreadOptions {
+        let mut options = crate::StartThreadOptions {
             history_mode: Some(codex_protocol::protocol::ThreadHistoryMode::Paginated),
             internal_parent: Some(crate::thread_manager::InternalSessionParent {
                 thread_id: self.parent.thread_id(),
@@ -125,6 +140,9 @@ impl PreparedGuardianContext {
             client_mcp_extensions: self.parent.services.client_mcp_extensions.clone(),
             ..crate::StartThreadOptions::new(config)
         };
+        if let Some(grant) = replay_grant {
+            options.thread_extension_init.insert(grant);
+        }
         (options, state)
     }
 

@@ -1680,6 +1680,36 @@ impl ModelClientSession {
         }
     }
 
+    /// Validates the prompt's guardian replay grant against this live request.
+    ///
+    /// The request's provenance is recomputed with only the fixed guardian
+    /// reviewer header stripped; the grant survives only if that basis still
+    /// reproduces the checkpoint producer's full provider, endpoint, wire,
+    /// and credential scope, and the request uses the approved reviewer model.
+    fn opaque_replay_authorization(
+        &self,
+        prompt: &crate::client_common::Prompt,
+        producing_source: &codex_history::ModelOutputProvenance,
+        extra_headers: &http::HeaderMap,
+        client_setup: &CurrentClientSetup,
+        model_info: &ModelInfo,
+    ) -> Option<crate::model_output_projection::OpaqueReplayAuthorization> {
+        let grant = prompt.opaque_replay_grant.as_ref()?;
+        let mut stripped = extra_headers.clone();
+        stripped.remove(crate::guardian::GUARDIAN_REVIEWER_HEADER);
+        let basis = crate::model_output_projection::request_source(
+            self.client.state.provider.info(),
+            &client_setup.api_provider,
+            client_setup.auth.as_ref(),
+            &model_info.slug,
+            client_setup.api_auth.as_ref(),
+            client_setup.agent_identity_telemetry.as_ref(),
+            &stripped,
+        )
+        .ok()?;
+        crate::guardian::authorize_opaque_replay(grant, producing_source, &basis)
+    }
+
     /// Streams a turn through the model bridge selected by the provider
     /// (fork extension). The bridge speaks the provider's explicit wire:
     /// Responses (same-protocol passthrough on rig), Chat Completions, or
@@ -1765,11 +1795,19 @@ impl ModelClientSession {
                     .provider
                     .map_api_error(ApiError::Transport(error.into()))
             })?;
+            let replay_authorization = self.opaque_replay_authorization(
+                prompt,
+                &producing_source,
+                &options.extra_headers,
+                &client_setup,
+                model_info,
+            );
             let mut projected_prompt = prompt.clone();
             crate::model_output_projection::project_input(
                 &mut projected_prompt.input,
                 &prompt.input_provenance,
                 &producing_source,
+                replay_authorization.as_ref(),
             );
             let prompt = &projected_prompt;
 
@@ -1959,11 +1997,19 @@ impl ModelClientSession {
                     .provider
                     .map_api_error(ApiError::Transport(error.into()))
             })?;
+            let replay_authorization = self.opaque_replay_authorization(
+                prompt,
+                &producing_source,
+                &options.extra_headers,
+                &client_setup,
+                model_info,
+            );
             let mut projected_prompt = prompt.clone();
             crate::model_output_projection::project_input(
                 &mut projected_prompt.input,
                 &prompt.input_provenance,
                 &producing_source,
+                replay_authorization.as_ref(),
             );
             let prompt = &projected_prompt;
 
@@ -2155,11 +2201,19 @@ impl ModelClientSession {
                     .provider
                     .map_api_error(ApiError::Transport(error.into()))
             })?;
+            let replay_authorization = self.opaque_replay_authorization(
+                prompt,
+                &producing_source,
+                &responses_headers,
+                &client_setup,
+                model_info,
+            );
             let mut projected_prompt = prompt.clone();
             crate::model_output_projection::project_input(
                 &mut projected_prompt.input,
                 &prompt.input_provenance,
                 &producing_source,
+                replay_authorization.as_ref(),
             );
             let prompt = &projected_prompt;
             tracing::Span::current().record("api.path", "/responses");

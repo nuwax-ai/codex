@@ -75,6 +75,16 @@ pub(crate) async fn prepare_prompt(
         .saturating_sub(INPUT_TOKEN_MARGIN);
     let history = session.clone_history().await;
     let history_version = history.history_version();
+    // The spawn-time replay grant (if this reviewer thread was seeded with a
+    // parent checkpoint) travels with the prompt to request projection.
+    if let Some(grant) = session
+        .services
+        .thread_extension_data
+        .get::<crate::guardian::OpaqueReplayGrant>()
+    {
+        prompt.opaque_replay_grant = Some((*grant).clone());
+    }
+
     let retained = step.turn.extension_data.get::<RetainedReviewContext>();
     let mut restored = Vec::new();
     if let Some(retained) = retained

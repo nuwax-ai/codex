@@ -86,6 +86,7 @@ pub(super) async fn run_remote_compact_v2_attempt(
     let prompt = Prompt {
         input,
         input_provenance,
+        opaque_replay_grant: None,
         tools: tool_router.model_visible_specs(),
         parallel_tool_calls: true,
         base_instructions,

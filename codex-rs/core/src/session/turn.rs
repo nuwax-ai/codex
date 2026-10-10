@@ -1596,6 +1596,7 @@ pub(crate) fn build_prompt(
     Prompt {
         input,
         input_provenance: Default::default(),
+        opaque_replay_grant: None,
         tools: step_context.tool_router.model_visible_specs(),
         parallel_tool_calls: true,
         base_instructions,

@@ -126,7 +126,7 @@ fn matching_sources_preserve_opaque_and_never_mutate_saved_envelopes() {
     let saved = annotated(&items, &source());
     let before = saved.clone();
     let mut projected = items.clone();
-    project_input(&mut projected, &sources_for_input(&saved), &source());
+    project_input(&mut projected, &sources_for_input(&saved), &source(), None);
     assert_eq!(projected, items);
     assert_eq!(saved, before);
 }
@@ -164,13 +164,29 @@ fn every_source_boundary_and_legacy_unknown_drops_only_opaque_payloads() {
         }
         targets.push(target);
     }
-    for target in targets {
+    for (dimension, target) in [
+        "wire", "bridge", "provider", "model", "endpoint", "domain", "proof", "unknown",
+    ]
+    .into_iter()
+    .zip(targets)
+    {
         let mut projected = items.clone();
-        project_input(&mut projected, &sources_for_input(&saved), &target);
-        assert_eq!(projected, expected);
+        project_input(&mut projected, &sources_for_input(&saved), &target, None);
+        if matches!(dimension, "model" | "domain") {
+            // Compaction checkpoints are backend-validated opaque state, so a
+            // model change inside the same provider/endpoint scope keeps the
+            // checkpoint, and the per-process credential-instance id is not
+            // comparable across restarts; the evidence KIND and every scope
+            // dimension still gate it. Model-bound opaque payloads drop.
+            let mut scoped_expected = expected.clone();
+            scoped_expected.insert(1, items[1].clone());
+            assert_eq!(projected, scoped_expected, "dimension {dimension}");
+        } else {
+            assert_eq!(projected, expected, "dimension {dimension}");
+        }
     }
     let mut legacy = items;
-    project_input(&mut legacy, &InputProvenance::new(), &source());
+    project_input(&mut legacy, &InputProvenance::new(), &source(), None);
     assert_eq!(legacy, expected);
     assert_eq!(saved, annotated(&fixture_items(), &source()));
 }
@@ -192,7 +208,7 @@ fn item_identity_survives_prompt_insertions_and_duplicate_sources_fail_closed() 
     let sources = sources_for_input(&saved);
     let mut projected = items.clone();
     projected.insert(0, serde_json::from_value(json!({"type":"message", "role":"developer", "content":[{"type":"input_text","text":"new instruction"}]})).unwrap());
-    project_input(&mut projected, &sources, &source());
+    project_input(&mut projected, &sources, &source(), None);
     let mut expected = items;
     if let ResponseItem::Reasoning {
         encrypted_content, ..
@@ -330,10 +346,10 @@ fn same_selector_changed_actual_credentials_drop_old_opaque_but_keep_visible_his
     let input = fixture_items();
     let saved = annotated(&input, &old);
     let mut same = input.clone();
-    project_input(&mut same, &sources_for_input(&saved), &old);
+    project_input(&mut same, &sources_for_input(&saved), &old, None);
     assert_eq!(same, input);
     let mut rotated = input.clone();
-    project_input(&mut rotated, &sources_for_input(&saved), &new);
+    project_input(&mut rotated, &sources_for_input(&saved), &new, None);
     let mut expected = input;
     if let ResponseItem::Reasoning {
         encrypted_content, ..
@@ -341,8 +357,10 @@ fn same_selector_changed_actual_credentials_drop_old_opaque_but_keep_visible_his
     {
         *encrypted_content = None;
     }
-    expected.remove(1);
-    if let ResponseItem::WebSearchCall { wire_blocks, .. } = &mut expected[1] {
+    // Kind-level compaction isolation: the checkpoint survives a rotation
+    // within the same selector kind (same provider/endpoint); see the
+    // header-rotation test for the full rationale.
+    if let ResponseItem::WebSearchCall { wire_blocks, .. } = &mut expected[2] {
         *wire_blocks = None;
     }
     assert_eq!(rotated, expected);
@@ -356,7 +374,7 @@ fn unchanged_auth_selector_without_account_proof_still_drops_opaque() {
     let items = fixture_items();
     let saved = annotated(&items, &selector);
     let mut projected = items.clone();
-    project_input(&mut projected, &sources_for_input(&saved), &selector);
+    project_input(&mut projected, &sources_for_input(&saved), &selector, None);
     let mut expected = items;
     if let ResponseItem::Reasoning {
         encrypted_content, ..
@@ -379,7 +397,7 @@ fn unchanged_auth_selector_without_account_proof_still_drops_opaque() {
     }
     let saved = annotated(&plain, &selector);
     let expected_search = plain[2].clone();
-    project_input(&mut plain, &sources_for_input(&saved), &selector);
+    project_input(&mut plain, &sources_for_input(&saved), &selector, None);
     assert_eq!(plain[1], expected_search);
 }
 
@@ -408,7 +426,7 @@ fn selector_v3_citation_ciphertext_drops_while_visible_message_survives() {
         let saved = annotated(&input, &selector);
         let before = saved.clone();
         let mut projected = input.clone();
-        project_input(&mut projected, &sources_for_input(&saved), &selector);
+        project_input(&mut projected, &sources_for_input(&saved), &selector, None);
         let mut expected = input.clone();
         if let ResponseItem::WebSearchCall { wire_blocks, .. } = &mut expected[0] {
             *wire_blocks = None;
@@ -423,6 +441,7 @@ fn selector_v3_citation_ciphertext_drops_while_visible_message_survives() {
             &mut projected,
             &sources_for_input(&annotated(&input, &account)),
             &account,
+            None,
         );
         assert_eq!(projected, input, "account-bound {field}");
     }
@@ -658,7 +677,7 @@ fn header_only_credentials_preserve_same_scope_and_drop_opaque_after_rotation() 
             let saved_before = saved.clone();
             let sources = sources_for_input(&saved);
             let mut projected = items.clone();
-            project_input(&mut projected, &sources, &same);
+            project_input(&mut projected, &sources, &same, None);
             assert_eq!(projected, items, "stable {name}, in_provider={in_provider}");
 
             let mut expected = items;
@@ -668,11 +687,17 @@ fn header_only_credentials_preserve_same_scope_and_drop_opaque_after_rotation() 
             {
                 *encrypted_content = None;
             }
-            expected.remove(1);
-            if let ResponseItem::WebSearchCall { wire_blocks, .. } = &mut expected[1] {
+            // Credential rotation inside the same provider/endpoint/kind no
+            // longer drops the backend-validated compaction checkpoint: the
+            // persisted provenance deliberately carries only a random
+            // per-process instance id, so a rotated credential cannot be
+            // distinguished from a same-credential restart, and the fork's
+            // resume contract requires the restart case to replay. Reasoning
+            // ciphertext and hosted-search blocks still drop.
+            if let ResponseItem::WebSearchCall { wire_blocks, .. } = &mut expected[2] {
                 *wire_blocks = None;
             }
-            project_input(&mut projected, &sources, &rotated);
+            project_input(&mut projected, &sources, &rotated, None);
             assert_eq!(
                 projected, expected,
                 "rotated {name}, in_provider={in_provider}"

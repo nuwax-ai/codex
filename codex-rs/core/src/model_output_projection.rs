@@ -174,15 +174,52 @@ pub(crate) fn sources_for_input(input: &[ResponseItemEnvelope]) -> InputProvenan
     sources
 }
 
+/// A trusted-runtime authorization to replay exactly one opaque checkpoint
+/// item carrying exactly its captured producer provenance.
+///
+/// The guardian review runtime constructs this after validating the live
+/// request against its [`crate::guardian::OpaqueReplayGrant`]; the projection
+/// itself only re-checks item identity and producer provenance.
+#[derive(Debug, Clone)]
+pub(crate) struct OpaqueReplayAuthorization {
+    checkpoint_id: codex_protocol::ResponseItemId,
+    producer: ModelOutputProvenance,
+}
+
+impl OpaqueReplayAuthorization {
+    pub(crate) fn new(
+        checkpoint_id: codex_protocol::ResponseItemId,
+        producer: ModelOutputProvenance,
+    ) -> Self {
+        Self {
+            checkpoint_id,
+            producer,
+        }
+    }
+
+    /// True when `item` is the bound checkpoint and still carries the exact
+    /// producer provenance captured when the grant was issued.
+    fn preserves(&self, item: &ResponseItem, sources: &InputProvenance) -> bool {
+        let Some(id) = item.id() else { return false };
+        id == &self.checkpoint_id && sources.get(id) == Some(&Some(self.producer.clone()))
+    }
+}
+
 /// Removes only incompatible opaque payloads from the outbound copy. Visible
 /// reasoning and normal message/tool items survive; stored envelopes never mutate.
+/// An [`OpaqueReplayAuthorization`] preserves exactly its bound checkpoint.
 pub(crate) fn project_input(
     input: &mut Vec<ResponseItem>,
     sources: &InputProvenance,
     target: &ModelOutputProvenance,
+    replay: Option<&OpaqueReplayAuthorization>,
 ) {
     let target_known = target.provider.is_some()
         && target.model.is_some()
+        && target.endpoint_identity.is_some()
+        && target.auth_domain.is_some()
+        && target.auth_domain_kind.is_some();
+    let target_scope_known = target.provider.is_some()
         && target.endpoint_identity.is_some()
         && target.auth_domain.is_some()
         && target.auth_domain_kind.is_some();
@@ -194,11 +231,31 @@ pub(crate) fn project_input(
                 .and_then(|id| sources.get(id))
                 .and_then(Option::as_ref)
                 == Some(target);
-        let opaque_compatible = compatible
-            && matches!(
-                target.auth_domain_kind.as_deref(),
-                Some("account" | "anonymous" | "credentialInstance")
-            );
+        // Compaction checkpoints are backend-validated opaque state, not
+        // model-bound ciphertext: replaying them to the same provider,
+        // endpoint, wire, and bridge — under a different model of that scope
+        // (a model-switch resume) or after a process restart — is legal and
+        // the backend rejects a payload it cannot decrypt. Credential-
+        // instance domain strings are minted randomly per process, so they
+        // are not comparable across that boundary; the evidence KIND must
+        // still match. Everything else — reasoning, web-search blocks —
+        // stays under the strict comparison.
+        let compaction_compatible = target_scope_known
+            && item.id().is_some_and(|id| {
+                sources.get(id).and_then(Option::as_ref).is_some_and(|source| {
+                    source.wire_protocol == target.wire_protocol
+                        && source.bridge == target.bridge
+                        && source.provider == target.provider
+                        && source.endpoint_identity == target.endpoint_identity
+                        && source.auth_domain_kind == target.auth_domain_kind
+                })
+            });
+        let trusted_scope_kind = matches!(
+            target.auth_domain_kind.as_deref(),
+            Some("account" | "anonymous" | "credentialInstance")
+        );
+        let opaque_compatible = compatible && trusted_scope_kind;
+        let compaction_replayable = compaction_compatible && trusted_scope_kind;
         match item {
             ResponseItem::Reasoning {
                 encrypted_content,
@@ -215,10 +272,12 @@ pub(crate) fn project_input(
                 !summary.is_empty() || content.as_ref().is_some_and(|content| !content.is_empty())
             }
             ResponseItem::Compaction { .. } => {
-                if !opaque_compatible {
+                let replayed =
+                    replay.is_some_and(|authorization| authorization.preserves(item, sources));
+                if !(opaque_compatible || compaction_replayable || replayed) {
                     dropped += 1;
                 }
-                opaque_compatible
+                opaque_compatible || compaction_replayable || replayed
             }
             ResponseItem::ContextCompaction {
                 encrypted_content, ..
