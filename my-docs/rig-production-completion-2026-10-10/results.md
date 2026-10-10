@@ -99,6 +99,15 @@
 - 证据：matcher 15/15；合并作用域 39/39（--retries 0）；全包除已知负载边界族外绿（load≈12 隔离全过）。
 - **阶段3（接管）开放**：设计=macOS 手动项提取（loader CFDictionary → ManualSystemProxies）+ `resolve_proxy_route(ReqwestDefault)` 改走 matcher（Direct=no_proxy 客户端 / Proxy=显式代理 URL 含 userinfo 交给 reqwest 解析）+ 逐 hop 由既有 route-aware 重定向保证 + **双轨对照先行**（真实参考 client × env 矩阵）——按 plan 要求双轨证据先于接管落地。
 
+
+### 批 L — run3 收尾：tui 45 身份全闭 + spinner 帧修复（HEAD `94ab4f533`）
+
+- **tui 全量（安静窗口，8MiB，44 分钟）5633/5642**；9 失败中 8 个为历史身份、1 个非历史（provider_defaults，不在 119）。
+- 8 个失败身份根因一致：**快照钉死 working spinner 的墙钟帧**（elapsed "Ns" 与交替字形 •/◦）；修复=在 chatwidget/app 快照边界把帧规范化为首帧（与既有 completion-footer 时长规范化同一模式），多数字秒用行宽保持填充；**零 accepted 快照改动**（所有既有快照本就钉首帧）。顺序复验 8/8、零 pending；并发跑快照内容仍一致（差异仅元数据行），预算类失败不变。
+- **tui 45 个历史身份全部入账**：37 个 run3 全量通过 + 8 个修复后通过（`current-test-ledger.tsv` 现 88 行）。
+- core 51 选集在 load≈8 仍 45 败：定性为**并发预算边界**（非负载、非栈）——shell/realtime 家族 solo/pair 全过、并发即越 1.6s/2s 内部预算（如 parallel-tools 的 1.6s 并行时长预算在任意双进程并发下即越界 1.73s）。在共享机器上不可并发验证绿；按"单过/并发越预算"边界如实登记，未放宽任何预算。
+- run3 期间确认：`history_lookup_uses_server_provider...`（非历史身份）在安静窗口也失败——不属 119，另记待查。
+
 ## 40 项状态（更新）
 
 | 项 | 状态 | 证据/边界 |
