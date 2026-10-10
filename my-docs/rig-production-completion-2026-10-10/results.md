@@ -127,6 +127,14 @@
 - 119 账本终态更新：**PASS 99 / BOUNDARY 23 / FAIL 0**。
 - 非历史项：tui provider_defaults.history_lookup 失败系跨二进制依赖（需 target/debug/codex，单包运行无该二进制）——环境性，非缺陷。
 
+
+### 批 O — T17 核心落地：per-response usage ledger（HEAD `69c0ea00e`）
+
+- `SessionState.response_token_usage: HashMap<response_key, TokenUsage>`；`record_token_usage` 改替换语义——同 key 重报（pause 续接/重复 Completed/resume 后重放）在 turn/thread 小计中以新快照换旧快照，不再双计；无 key 报告保持累加（文档注明）；跨 turn 重报净额入当前 turn、线程总额取替换值；减法下限 0。
+- resume/fork 从持久化 TokenUsageRecord 重建 ledger（同 key 后写胜出）；compacted checkpoint 只带最新记录，祖先 response 不入账（边界注明）。此为 cap 决策 D4 的 host-key reducer 核心；CapExhausted 侧接入在后续批。
+- 证据：4 ledger 单测 + 恢复总额回归 6/6；39 项 usage/token 家族 -j2 全绿（宽并发失败均为已登记的机器竞争预算类，隔离过）。
+- T17 剩余：host response_key 与 provider id 分离的稳定化（当前用 provider response_id 作 key，决策文档的 response_key 管道在 T18）。
+
 ## 40 项状态（更新）
 
 | 项 | 状态 | 证据/边界 |
