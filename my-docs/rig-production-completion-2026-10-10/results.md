@@ -135,6 +135,15 @@
 - 证据：4 ledger 单测 + 恢复总额回归 6/6；39 项 usage/token 家族 -j2 全绿（宽并发失败均为已登记的机器竞争预算类，隔离过）。
 - T17 剩余：host response_key 与 provider id 分离的稳定化（当前用 provider response_id 作 key，决策文档的 response_key 管道在 T18）。
 
+
+### 批 P — T18 第一段落：durable cap partial（HEAD `d51d5ef4d`）
+
+- **bridge**：Length 终止先 flush pending partial（`cap_flush_partial_and_error`），pump 在返回类型化错误**之前**逐条投递 flush 出的 item 事件——partial 落为普通历史项（可见、可 resume、就是模型真实流出的文本，绝不合成成功）；flush 失败仅记日志并仍按 cap 错误关闭。
+- **协议+核心**：`CapPartialEvent`（fragment: assistant_text/reasoning/tool_arguments[仅诊断不执行]；单片段 16KiB UTF-8 边界保前缀；turn 64KiB/32 片段封顶；budget 块记录触发项与 `Unverified` token 证据——无 tokenizer 证明时仅字节界诊断，不入模型上下文，D1-c 门保持）。事件恰在失败终局前发一次；rollout policy 两种 history mode 均持久化（EventMsg 通道）；rollout-trace 类型登记。
+- **测试契约更新**：core cap 套件改为"flushed final AgentMessage 必须恰为 partial 文本"（防合成成功的旧断言改为防不一致）；bridge 终止向量要求唯一 partial Done 先于错误且零 Completed。
+- 证据：rig-bridge 252/252（--retries 0）；core cap 集成 7/7 + cap_partial 单测 7/7；chat terminal 向量 5/5。
+- **T18 剩余**：host response_key 与 provider id 分离；CapExhausted.reported_usage 打通 CodexErr 映射进 ledger（当前 InvalidRequest(String) 丢弃 usage）；v2/app-server 读侧投影与 TurnItem 变体；旧读端 V-D1-1 实测。
+
 ## 40 项状态（更新）
 
 | 项 | 状态 | 证据/边界 |
