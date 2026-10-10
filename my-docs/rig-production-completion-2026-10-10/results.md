@@ -81,6 +81,15 @@
 - rmcp 2 / exec-server 9：极端负载窗口（62-92）整包大量超时失败，无法作证；批 D 安静窗口 exec-server 616/616 的既有收据仍在。均标记 UNVERIFIED-LOAD，需安静窗口隔离复验。
 - tui 45：套件在跑（5642 项，负载下预计 >1h），本批先登记为待安静窗口。
 
+
+### 批 J — R11 修正 + T08 OTLP 归因 + run2 身份复验（2026-10-10 下午，HEAD 起于 f32db9fb0）
+
+- **R11 修正（推翻批 I 的两个误判）**：单测栈阈值 2.5MiB 败/3MiB 过；**pre-merge（a1d519778，09-30）2MiB 下同样 SIGABRT → 长期潜伏条件，非合并回归**；`just test`（8MiB）下 core 选集 0 abort、guardian-v2 全量 94/98（0 abort；4 失败=1 例 V8 离线既有 + 3 例 cooldown 负载敏感，隔离 3/3 过）。"需 16MiB"系直跑 cargo 缺 env 假象。T10 最小修复降级为加固项。
+- **T08 OTLP 线归因**：非 collector 机制——loopback 夹具的 ReqwestDefault 客户端内建系统代理读取在并发 provider 构建下停顿（solo 过、任意 pair 双败 12.5s）。夹具改 RespectSystemProxy（经专职 run-loop 线程读取，Direct 路由 no_proxy 客户端）后 pair 3.0s 双过；≥7 路并发仍越 3s collector 预算（opentelemetry 批 flush 边界类）。提交见 otel 测试变更。
+- **run2 身份复验（8MiB，load≈24）**：rmcp 2 → **PASS 关闭**；app-server browser_login/review_start/external_auth → **PASS 关闭**（browser_login 此前 abort 即 2MB 栈假象）；exec-server 9 身份 8 过（watch_events 隔离过=FSEvents 并发边界）+1 边界；core realtime 家族仍受 2s 握手预算 vs load 24 限制（其中一个身份 3MiB 单跑过）——待安静窗口。
+- **residency::websocket 定性为真实开放缺陷**：仅 WS 变体（http 变体同配置过）；rig WS 请求带 managed residency 覆盖头时 reqwest13 在 request-builder 阶段拒绝（`Error::Instance("builder error")`，非法头注入）。链路在 WS 侧 header 注入路径，待专项。
+- tui 45：仍待安静窗口（昨日全量跑被会话中断；产生的未跟踪 .snap.new 留待人工审阅，未批量接受）。
+
 ## 40 项状态（更新）
 
 | 项 | 状态 | 证据/边界 |
