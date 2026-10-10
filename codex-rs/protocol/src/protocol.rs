@@ -1421,6 +1421,11 @@ pub enum EventMsg {
     /// Optional means unknown — UIs should not display when `None`.
     TokenCount(TokenCountEvent),
 
+    /// Bounded partial transcript of a turn that exhausted the output cap,
+    /// emitted immediately before the failure terminal; persisted in both
+    /// history modes as diagnostic evidence.
+    CapPartial(CapPartialEvent),
+
     /// Agent text output message
     AgentMessage(AgentMessageEvent),
 
@@ -2368,6 +2373,83 @@ pub struct TokenUsageRecord {
     pub usage: TokenUsage,
     pub turn_token_usage: TokenUsage,
     pub thread_token_usage: TokenUsage,
+}
+
+/// Bounded visible partial transcript of a turn that exhausted the output
+/// cap, emitted once immediately before the failure terminal and persisted
+/// in both history modes. Diagnostic evidence only: fragments never become
+/// executable tool calls, synthesized completions, or model instructions.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub struct CapPartialEvent {
+    pub turn_id: String,
+    /// Host sampling-attempt key the cap terminated; provider response ids
+    /// are advisory only.
+    pub response_key: String,
+    /// Provider-reported terminal-frame usage, presence-preserving; absent
+    /// when the terminal carried no usable report.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reported_usage: Option<ReportedResponseUsage>,
+    pub fragments: Vec<CapPartialFragment>,
+    pub budget: CapPartialBudget,
+}
+
+/// One bounded fragment of the partial transcript.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub struct CapPartialFragment {
+    /// Stable within the response; a fragment replayed on resume replaces
+    /// its earlier copy instead of duplicating.
+    pub fragment_key: String,
+    pub kind: CapPartialFragmentKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_id: Option<String>,
+    /// Prefix of the fragment's full render, cut at a UTF-8 boundary when
+    /// the fragment budget was exceeded.
+    pub text: String,
+    /// Whether `text` is a budget-driven prefix of a longer render.
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub enum CapPartialFragmentKind {
+    AssistantText,
+    Reasoning,
+    /// Tool arguments recorded as non-executable diagnostic text only.
+    ToolArguments,
+}
+
+/// The budget boundaries the partial capture enforced, recorded so consumers
+/// can distinguish "the turn produced this much" from "the capture stopped
+/// here".
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub struct CapPartialBudget {
+    pub fragment_count: u32,
+    pub total_bytes: u64,
+    /// Which caps stopped further capture.
+    pub enforced_caps: Vec<CapBudgetKind>,
+    /// Token-limit evidence level; without a verified tokenizer the capture
+    /// is byte-bounded only and must not be treated as a token guarantee.
+    pub token_evidence: TokenBudgetEvidence,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub enum CapBudgetKind {
+    FragmentBytes,
+    TurnBytes,
+    TurnFragments,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub enum TokenBudgetEvidence {
+    /// No tokenizer proof: byte/count bounds only.
+    Unverified,
+}
+
+impl TokenBudgetEvidence {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Unverified => "unverified",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]

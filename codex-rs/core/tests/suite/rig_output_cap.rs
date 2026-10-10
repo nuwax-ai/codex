@@ -148,10 +148,17 @@ fn assert_cap_terminal(outcome: &TurnOutcome, expected_posts: usize, partial_tex
         "exactly one terminal error event: {:?}",
         outcome.errors
     );
-    assert!(
-        outcome.final_agent_message.is_none(),
-        "a capped turn must not also publish a successful final AgentMessage"
-    );
+    // The cap terminal now flushes the already-streamed partial as a durable
+    // history item, so a final AgentMessage may exist — but it must be
+    // exactly the partial text (never a synthesized success), and the turn
+    // still fails closed above.
+    match outcome.final_agent_message.as_deref() {
+        Some(message) => assert_eq!(
+            message, partial_text,
+            "a capped turn's final AgentMessage must be the flushed partial, not a success"
+        ),
+        None => {}
+    }
     assert_eq!(
         outcome.agent_deltas, partial_text,
         "partial output streamed before the cap stays visible"

@@ -244,6 +244,16 @@ pub(crate) fn spawn_pump(
                     let mut events = match rig_event_to_response_events(event, &mut pending) {
                         Ok(events) => events,
                         Err(error) => {
+                            // An output-cap terminal flushes the already-streamed
+                            // partial first: deliver those events so the partial
+                            // transcript becomes durable history, then fail closed.
+                            if !pending.cap_flushed_events.is_empty() {
+                                for flushed in std::mem::take(&mut pending.cap_flushed_events) {
+                                    if tx.send(Ok(flushed)).await.is_err() {
+                                        return;
+                                    }
+                                }
+                            }
                             let _ = tx.send(Err(error)).await;
                             return;
                         }

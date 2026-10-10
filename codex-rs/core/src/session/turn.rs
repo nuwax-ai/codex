@@ -2119,6 +2119,7 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<RealtimeEventTex
         }
         EventMsg::Error(_)
         | EventMsg::Warning(_)
+        | EventMsg::CapPartial(_)
         | EventMsg::AuthRecoveryStarted(_)
         | EventMsg::AuthRecoveryCompleted(_)
         | EventMsg::GuardianWarning(_)

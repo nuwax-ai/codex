@@ -616,6 +616,31 @@ impl Session {
         }
     }
 
+    /// Builds the bounded partial-transcript record when a turn failed by
+    /// exhausting the output cap, from the turn's trailing assistant items.
+    async fn build_cap_partial_for_failed_turn(
+        &self,
+        turn_context: &TurnContext,
+        details: &codex_protocol::error::CodexErrorDetails,
+    ) -> Option<codex_protocol::protocol::CapPartialEvent> {
+        if !matches!(
+            details,
+            codex_protocol::error::CodexErrorDetails::InvalidRequest(message)
+                if message.contains("Output token limit reached")
+        ) {
+            return None;
+        }
+        let history = self.clone_history().await;
+        let streamed = crate::session::trailing_turn_items(history.annotated_items());
+        crate::session::build_cap_partial(
+            &turn_context.sub_id,
+            // The provider response key arrives with the error-mapping
+            // extension; until then the turn id is the stable host key.
+            &turn_context.sub_id,
+            streamed,
+        )
+    }
+
     pub async fn on_task_finished(
         self: &Arc<Self>,
         turn_context: Arc<TurnContext>,
@@ -628,6 +653,13 @@ impl Session {
             }
             Err(err) => {
                 warn!(%err, "session task returned an unexpected error");
+                if let Some(cap_partial) = self
+                    .build_cap_partial_for_failed_turn(turn_context.as_ref(), err.details())
+                    .await
+                {
+                    self.send_event(turn_context.as_ref(), EventMsg::CapPartial(cap_partial))
+                        .await;
+                }
                 self.emit_turn_error_lifecycle(
                     turn_context.as_ref(),
                     err.to_codex_protocol_error(),

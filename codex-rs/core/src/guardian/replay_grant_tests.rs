@@ -5,7 +5,6 @@ use pretty_assertions::assert_eq;
 
 use super::OpaqueReplayGrant;
 use super::authorize_opaque_replay;
-use crate::model_output_projection::OpaqueReplayAuthorization;
 
 fn provenance(model: &str, auth_domain: &str) -> ModelOutputProvenance {
     ModelOutputProvenance {

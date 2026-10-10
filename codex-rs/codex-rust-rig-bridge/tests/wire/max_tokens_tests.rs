@@ -170,11 +170,16 @@ async fn chat_length_returns_terminal_output_cap_error_with_partial_text() {
             bodies.len(),
             texts.concat(),
             completed,
-            done,
             errors,
             bodies[0]["max_tokens"].clone()
         ),
-        (1, "ok".to_string(), 0, 0, 1, json!(64))
+        (1, "ok".to_string(), 0, 1, json!(64))
+    );
+    // The flushed partial arrives as a durable item Done BEFORE the error,
+    // so the transcript the user already saw survives the cap terminal.
+    assert_eq!(
+        done, 1,
+        "the partial message must complete before the error"
     );
 }
 
@@ -249,10 +254,15 @@ async fn anthropic_max_tokens_returns_terminal_output_cap_error_with_partial_tex
             bodies.len(),
             texts.concat(),
             completed,
-            done,
             errors,
             bodies[0]["max_tokens"].clone()
         ),
-        (1, "ok".to_string(), 0, 0, 1, json!(64))
+        (1, "ok".to_string(), 0, 1, json!(64))
+    );
+    // The flushed partial arrives as a durable item Done BEFORE the error,
+    // so the transcript the user already saw survives the cap terminal.
+    assert_eq!(
+        done, 1,
+        "the partial message must complete before the error"
     );
 }

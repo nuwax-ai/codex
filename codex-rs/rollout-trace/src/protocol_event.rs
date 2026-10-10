@@ -430,7 +430,8 @@ pub(crate) fn tool_runtime_trace_event(event: &EventMsg) -> Option<ToolRuntimeTr
         | EventMsg::ReasoningContentDelta(_)
         | EventMsg::ReasoningRawContentDelta(_)
         | EventMsg::CollabResumeBegin(_)
-        | EventMsg::CollabResumeEnd(_) => None,
+        | EventMsg::CollabResumeEnd(_)
+        | EventMsg::CapPartial(_) => None,
     }
 }
 
@@ -442,6 +443,7 @@ pub(crate) fn wrapped_protocol_event_type(event: &EventMsg) -> Option<&'static s
         EventMsg::TurnAborted(_) => Some("turn_aborted"),
         EventMsg::ThreadRolledBack(_) => Some("thread_rolled_back"),
         EventMsg::Error(_) => Some("error"),
+        EventMsg::CapPartial(_) => Some("cap_partial"),
         EventMsg::Warning(_) => Some("warning"),
         EventMsg::ShutdownComplete => Some("shutdown_complete"),
         EventMsg::AuthRecoveryStarted(_)
