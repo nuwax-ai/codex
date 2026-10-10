@@ -102,21 +102,18 @@ pub(crate) fn manual_system_proxies()
         return crate::outbound_proxy::default_proxy_matcher::ManualSystemProxies::default();
     };
     crate::outbound_proxy::default_proxy_matcher::ManualSystemProxies {
-        #[cfg(target_os = "macos")]
         http: manual_entry(
             snapshot.proxies(),
             unsafe { system_configuration::sys::schema_definitions::kSCPropNetProxiesHTTPEnable },
             unsafe { system_configuration::sys::schema_definitions::kSCPropNetProxiesHTTPProxy },
             unsafe { system_configuration::sys::schema_definitions::kSCPropNetProxiesHTTPPort },
         ),
-        #[cfg(target_os = "macos")]
         https: manual_entry(
             snapshot.proxies(),
             unsafe { system_configuration::sys::schema_definitions::kSCPropNetProxiesHTTPSEnable },
             unsafe { system_configuration::sys::schema_definitions::kSCPropNetProxiesHTTPSProxy },
             unsafe { system_configuration::sys::schema_definitions::kSCPropNetProxiesHTTPSPort },
         ),
-        ..Default::default()
     }
 }
 
@@ -369,10 +366,12 @@ impl SystemSettingsLoader {
         let generation = self.inner.thread_generation.fetch_add(1, Ordering::SeqCst);
         **request = Some((sender, generation));
         let inner = Arc::clone(&self.inner);
-        std::thread::Builder::new()
+        if let Err(error) = std::thread::Builder::new()
             .name("codex-system-proxy-settings".to_string())
             .spawn(move || loader_thread(inner, receiver, generation))
-            .expect("system settings loader thread should spawn");
+        {
+            tracing::warn!(%error, "failed to spawn the system settings loader thread");
+        }
     }
 
     /// How many system reads this loader has performed (tests).

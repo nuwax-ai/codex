@@ -186,7 +186,7 @@ fn parse_proxy_uri(value: &str) -> Option<DefaultProxyIntercept> {
         let user = percent_decode_str(user);
         let pass = pass.map(percent_decode_str);
         if is_httpish {
-            basic_auth = Some(encode_basic_auth(&user, pass.as_deref()));
+            basic_auth = encode_basic_auth(&user, pass.as_deref());
         }
         host_port
     } else {
@@ -233,7 +233,7 @@ fn hex_digit(byte: u8) -> Option<u8> {
     }
 }
 
-fn encode_basic_auth(user: &str, pass: Option<&str>) -> HeaderValue {
+fn encode_basic_auth(user: &str, pass: Option<&str>) -> Option<HeaderValue> {
     let mut buf = b"Basic ".to_vec();
     {
         use std::io::Write;
@@ -243,9 +243,9 @@ fn encode_basic_auth(user: &str, pass: Option<&str>) -> HeaderValue {
             let _ = write!(encoder, "{password}");
         }
     }
-    let mut header = HeaderValue::from_bytes(&buf).expect("base64 is always valid HeaderValue");
+    let mut header = HeaderValue::from_bytes(&buf).ok()?;
     header.set_sensitive(true);
-    header
+    Some(header)
 }
 
 /// curl-style NO_PROXY list: `*` matches everything; IP addresses match
@@ -356,7 +356,7 @@ impl NoProxy {
 }
 
 fn parse_ip_rule(part: &str) -> Option<IpRule> {
-    if let Some(addr) = part.parse::<IpAddr>().ok() {
+    if let Ok(addr) = part.parse::<IpAddr>() {
         return Some(IpRule::Address(addr));
     }
     let (addr, prefix) = part.split_once('/')?;

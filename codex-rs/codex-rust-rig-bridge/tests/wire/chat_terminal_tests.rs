@@ -98,7 +98,7 @@ fn assert_cap_failure(events: &[Result<ResponseEvent, ApiError>]) {
         .expect("flushed partial Done");
     let error_index = events
         .iter()
-        .position(|event| event.is_err())
+        .position(std::result::Result::is_err)
         .expect("cap error");
     assert!(
         done_index < error_index,
