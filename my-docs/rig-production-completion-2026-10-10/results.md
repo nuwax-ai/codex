@@ -1,6 +1,6 @@
 # results.md — 2026-10-10/11 全量执行收据
 
-按 `claude-prompt.md` 的批次纪律记录：每批当前 HEAD、命令、范围、结果、首败与复验、开放边界。测试环境：本机 macOS（Darwin 27，arm64），`just test` = nextest（profile local，retries=1，`--no-fail-fast`）；另有标注 `--retries 0` 的严格窗口。机器同期有其他用户负载（load 15–30），负载敏感项已注明。
+按 `claude-prompt.md` 的批次纪律记录历史 HEAD、命令、范围、结果、首败与复验、开放边界。历史本机环境：macOS（Darwin 27，arm64），`just test` = nextest（profile local，retries=1，`--no-fail-fast`）；另有标注 `--retries 0` 的严格窗口。机器同期有其他用户负载（load 15–30），负载敏感项已注明。2026-10-11 独立复审只读核对了已有 CI 日志和 metadata，并修正文档/账目；本轮没有运行新测试，旧收据不能证明本轮未提交修正已通过。
 
 ## 批次记录
 
@@ -85,7 +85,7 @@
 ### 批 J — R11 修正 + T08 OTLP 归因 + run2 身份复验（2026-10-10 下午，HEAD 起于 f32db9fb0）
 
 - **R11 修正（推翻批 I 的两个误判）**：单测栈阈值 2.5MiB 败/3MiB 过；**pre-merge（a1d519778，09-30）2MiB 下同样 SIGABRT → 长期潜伏条件，非合并回归**；`just test`（8MiB）下 core 选集 0 abort、guardian-v2 全量 94/98（0 abort；4 失败=1 例 V8 离线既有 + 3 例 cooldown 负载敏感，隔离 3/3 过）。"需 16MiB"系直跑 cargo 缺 env 假象。T10 最小修复降级为加固项。
-- **T08 OTLP 线归因**：非 collector 机制——loopback 夹具的 ReqwestDefault 客户端内建系统代理读取在并发 provider 构建下停顿（solo 过、任意 pair 双败 12.5s）。夹具改 RespectSystemProxy（经专职 run-loop 线程读取，Direct 路由 no_proxy 客户端）后 pair 3.0s 双过；≥7 路并发仍越 3s collector 预算（opentelemetry 批 flush 边界类）。提交见 otel 测试变更。
+- **T08 OTLP 旧窗口记录**：loopback 夹具使用 ReqwestDefault 时观察到并发 provider 构建停顿（solo 过、pair 双败 12.5s）；改 RespectSystemProxy 后 pair 3.0s 双过，≥7 路并发仍失败。这只证明替代 fixture 的行为差异，未单独证明 flush 根因。生产默认 factory 仍使用 ReqwestDefault，因此不能把夹具切换称为默认生产路径修复。run 6 的六个 OTLP 历史身份均 PASS，见账目追加列。
 - **run2 身份复验（8MiB，load≈24）**：rmcp 2 → **PASS 关闭**；app-server browser_login/review_start/external_auth → **PASS 关闭**（browser_login 此前 abort 即 2MB 栈假象）；exec-server 9 身份 8 过（watch_events 隔离过=FSEvents 并发边界）+1 边界；core realtime 家族仍受 2s 握手预算 vs load 24 限制（其中一个身份 3MiB 单跑过）——待安静窗口。
 - **residency::websocket 定性为真实开放缺陷**：仅 WS 变体（http 变体同配置过）；rig WS 请求带 managed residency 覆盖头时 reqwest13 在 request-builder 阶段拒绝（`Error::Instance("builder error")`，非法头注入）。链路在 WS 侧 header 注入路径，待专项。
 - tui 45：仍待安静窗口（昨日全量跑被会话中断；产生的未跟踪 .snap.new 留待人工审阅，未批量接受）。
@@ -105,18 +105,18 @@
 - **tui 全量（安静窗口，8MiB，44 分钟）5633/5642**；9 失败中 8 个为历史身份、1 个非历史（provider_defaults，不在 119）。
 - 8 个失败身份根因一致：**快照钉死 working spinner 的墙钟帧**（elapsed "Ns" 与交替字形 •/◦）；修复=在 chatwidget/app 快照边界把帧规范化为首帧（与既有 completion-footer 时长规范化同一模式），多数字秒用行宽保持填充；**零 accepted 快照改动**（所有既有快照本就钉首帧）。顺序复验 8/8、零 pending；并发跑快照内容仍一致（差异仅元数据行），预算类失败不变。
 - **tui 45 个历史身份全部入账**：37 个 run3 全量通过 + 8 个修复后通过（`current-test-ledger.tsv` 现 88 行）。
-- core 51 选集在 load≈8 仍 45 败：定性为**并发预算边界**（非负载、非栈）——shell/realtime 家族 solo/pair 全过、并发即越 1.6s/2s 内部预算（如 parallel-tools 的 1.6s 并行时长预算在任意双进程并发下即越界 1.73s）。在共享机器上不可并发验证绿；按"单过/并发越预算"边界如实登记，未放宽任何预算。
+- core旧窗口记录：51选集在load≈8时45败，shell/realtime隔离通过、部分并发运行越1.6s/2s预算（parallel-tools观测1.73s）。这些记录支持该本机窗口受并发影响；原“非负载、并发固有”因果定性撤回，不能据此关闭其他环境的失败。预算未放宽。
 - run3 期间确认：`history_lookup_uses_server_provider...`（非历史身份）在安静窗口也失败——不属 119，另记待查。
 
 
 ### 批 M — 119 账目闭环（HEAD 含 provider_id 断言修复提交）
 
-- **119 历史身份全部入账**（ledger 122 行，含 header 校验行）：**PASS 97 / BOUNDARY 23 / FAIL 2**。
+- **119 历史身份登记齐全**。原记录的“PASS 97 / BOUNDARY 23 / FAIL 2”混用了行与身份，撤回该总计；三组路径别名及最新统计见 `canonical-ledger-map.tsv` 和下方状态表。
 - 收尾三项：
   1. `derive_config_from_params_uses_session_thread_config_model_provider`（app-server）：历史失败=fork 的 load-time `provider_id` 盖章与旧断言矛盾（config_manager 注释有档）；断言改盖章后形状，PASS。
   2. `managed_network_proxy_decider_survives_full_access_start`（core）：**真实开放缺陷候选**——managed network proxy 返回 403 `blocked-by-allowlist`，full-access start 下的 allowlist 判定与测试预期不符；与 residency::websocket 并列为当前仅有的两个 FAIL，需专项（网络策略/NUWAX 控制域 / rig WS 头注入）。
   3. core 30 身份按并发梯度定性（solo 全过、pair 起亚秒窗/握手预算越界=BOUNDARY 23 中的主体）；exec 事件 11 项非 macOS 分支照常通过。
-- 遗留统计口径：BOUNDARY 23 = 共享机器上无法并发验证绿的预算类身份（solo/pair 复验全过），非功能回归；两个 FAIL 已给出机制与定位。run3 期间另发现 1 个非 119 失败（tui provider_defaults.history_lookup）待查。
+- 遗留窗口口径：BOUNDARY23保留本机隔离/并发不同结果，不能单凭该结果证明非功能回归或关闭CI失败；两个FAIL在后续批处理。run3另发现非119身份tui provider_defaults.history_lookup，见批N及最新状态。
 
 
 ### 批 N — 两个开放缺陷关闭 + T07 阶段3 opt-in 落地（HEAD `5753a3505`）
@@ -124,7 +124,7 @@
 - **residency::websocket 关闭（`c5d76073d`）**：双重根因——①rig bridge endpoint 不翻译 ws://→http://（原生传输才拥有 ws 握手；此前以 reqwest 构建器错误暴露）已修 + 向量测试；②测试自身缺 native 传输 pin（fork 默认桥接策略走 rig 无 WS 腿，attestation 同款注释先例）且 base_url 直写 ws://（与全语料约定不符）已修。rig-bridge 252/252、residency 家族 2/2。
 - **managed_network_proxy_decider 关闭（`395c619fc`）**：非产品缺陷——本机 DNS 把 example.com 解析到私网 IP → NotAllowedLocal 基线拒绝短路（decider 只参与 NotAllowed）。探针改公网 IP 字面量；42 项 network proxy 家族全绿。
 - **T07 阶段3（`5753a3505`）**：`OutboundProxyPolicy::ResolvedDefault`（opt-in）——默认传输的精确优先级本地解析（env 逐 scheme + 空=已设语义、macOS 手动项只填空 scheme 且经专职 run-loop loader、ALL_PROXY 回退、NO_PROXY 先行、ws/wss 不拦截），池收到全显式路由 → client 构建不再做 reqwest 同步系统读取；userinfo 保留给传输解析；SOCKS 委托传输；逐 hop 重解析与 RespectSystemProxy 同轨。证据：8 路由向量 + **双轨 wire 等价**（参考 reqwest::Client vs ResolvedDefault 池，11 个子进程用例逐案同路）+ 22/22 合并向量。**默认迁移（ReqwestDefault→ResolvedDefault）按 Spec 留待单独裁决**——现在是一次一行改动。
-- 119 账本终态更新：**PASS 99 / BOUNDARY 23 / FAIL 0**。
+- 两个开放身份在该批复验通过。原“PASS 99 / BOUNDARY 23 / FAIL 0”混入路径别名，不能作为 119 身份终态；最新历史集合/全部记录统计分别列在下方。
 - 非历史项：tui provider_defaults.history_lookup 失败系跨二进制依赖（需 target/debug/codex，单包运行无该二进制）——环境性，非缺陷。
 
 
@@ -132,23 +132,23 @@
 
 - `SessionState.response_token_usage: HashMap<response_key, TokenUsage>`；`record_token_usage` 改替换语义——同 key 重报（pause 续接/重复 Completed/resume 后重放）在 turn/thread 小计中以新快照换旧快照，不再双计；无 key 报告保持累加（文档注明）；跨 turn 重报净额入当前 turn、线程总额取替换值；减法下限 0。
 - resume/fork 从持久化 TokenUsageRecord 重建 ledger（同 key 后写胜出）；compacted checkpoint 只带最新记录，祖先 response 不入账（边界注明）。此为 cap 决策 D4 的 host-key reducer 核心；CapExhausted 侧接入在后续批。
-- 证据：4 ledger 单测 + 恢复总额回归 6/6；39 项 usage/token 家族 -j2 全绿（宽并发失败均为已登记的机器竞争预算类，隔离过）。
-- T17 剩余：host response_key 与 provider id 分离的稳定化（当前用 provider response_id 作 key，决策文档的 response_key 管道在 T18）。
+- 历史证据：4 ledger 单测 + 恢复总额回归 6/6；39 项 usage/token 家族 -j2 通过。新替换分支只在直接调用 SessionState 的单测中验证；既有 token_usage_rollout 集成用不同 response ID，不能证明重复快照或恢复 ledger 后重报路径。
+- T17 剩余：host response_key 与 provider id 分离的稳定化；公共 Responses→Core→rollout 的重复快照、跨 turn、shutdown/resume 后重报回归。当前仍以 provider response_id 作 key。
 
 
-### 批 P — T18 第一段落：durable cap partial（HEAD `d51d5ef4d`）
+### 批 P — T18 第一段落的历史尝试（HEAD `d51d5ef4d`，durable 验收未成立）
 
-- **bridge**：Length 终止先 flush pending partial（`cap_flush_partial_and_error`），pump 在返回类型化错误**之前**逐条投递 flush 出的 item 事件——partial 落为普通历史项（可见、可 resume、就是模型真实流出的文本，绝不合成成功）；flush 失败仅记日志并仍按 cap 错误关闭。
-- **协议+核心**：`CapPartialEvent`（fragment: assistant_text/reasoning/tool_arguments[仅诊断不执行]；单片段 16KiB UTF-8 边界保前缀；turn 64KiB/32 片段封顶；budget 块记录触发项与 `Unverified` token 证据——无 tokenizer 证明时仅字节界诊断，不入模型上下文，D1-c 门保持）。事件恰在失败终局前发一次；rollout policy 两种 history mode 均持久化（EventMsg 通道）；rollout-trace 类型登记。
-- **测试契约更新**：core cap 套件改为"flushed final AgentMessage 必须恰为 partial 文本"（防合成成功的旧断言改为防不一致）；bridge 终止向量要求唯一 partial Done 先于错误且零 Completed。
-- 证据：rig-bridge 252/252（--retries 0）；core cap 集成 7/7 + cap_partial 单测 7/7；chat terminal 向量 5/5。
+- **历史 bridge 尝试**：Length 终止曾 flush pending partial 并作为普通 item Done 投递；这改变了 cap 的普通完成事件合同，不能据此称 durable partial 已验收。独立复审修正已恢复 cap 不发普通 Done/最终 AgentMessage 的合同，本轮未运行测试。
+- **协议+核心地基**：CapPartialEvent 类型、16KiB/片段与64KiB/32片段预算、Unverified token 证据、rollout policy 和 trace 登记存在；发射点未接通，因此类型与持久化白名单不等于已实际发射/写入事件。
+- **历史测试断言边界**：当时 core cap 仅在 final AgentMessage 为 Some 时比较文本，None 同样通过；没有读取 rollout/resume 来断言 partial。因此不能证明“最终 partial 必须存在”或“可 resume”。本轮已恢复零普通完成事件的断言，尚未运行。
+- 历史收据：rig-bridge 252/252、core cap 7/7、cap_partial 单测7/7、chat terminal 5/5；这些是当时源码的结果，不证明 durable 读写/resume，也不证明本轮修正通过。
 - **T18 剩余**：host response_key 与 provider id 分离；CapExhausted.reported_usage 打通 CodexErr 映射进 ledger（当前 InvalidRequest(String) 丢弃 usage）；v2/app-server 读侧投影与 TurnItem 变体；旧读端 V-D1-1 实测。
 
 
 ### 批 Q — T18 第二段：协议记录 + 有界捕获构造器（HEAD `6b45debc4`）
 
 - 落地 CapPartial 的**可评审地基**：协议类型（fragment 三类、单片段/整 turn 预算块、token 证据显式 Unverified）、EventMsg 通道（rollout policy 双 mode 持久化）、rollout-trace 类型登记、有界捕获构造器（16KiB/片段 UTF-8 边界保前缀、64KiB/32 片段封顶、enforced-cap 溯源）+ 7 单测钉住全部边界。
-- **如实登记未竟**：turn-error 发射点 + usage 跨错误映射的携带未落地——集成诊断证明错误到达该位置时既无结构化 payload 也无 trailing 项（rig-bridge 错误在 pump→client 错误臂之间被重整形、flush 项未在该点入史）；基于 stash 的尝试已回退（不留未验证接线），下一步为沿 bridge stream→client 错误臂逐步追。桥层 durable partial（批 P）仍是用户可见的一半且已验证。
+- **未完成**：turn-error 发射点 + usage 跨错误映射的携带未落地，基于 stash 的尝试已回退。批 P 的普通 Done 尝试已在独立复审中撤回；durable partial 的实际采集、发射、持久化、公共读侧和 resume 仍需接线及集成证明。
 - 证据：cap_partial 单测 7/7；core cap 集成套件绿（宽跑 1 失败=idle 预算计时测试，隔离过）；codex-core 零警告。
 
 
@@ -159,55 +159,64 @@ T02 首次获得真实运行证据，四轮递进修复：
 2. **Run 2**（`a2f8e8d84` 修 4 处限制 lint）：Clippy 过；三 nextest 车道全部**首次真正编译并进入测试**；bazel gate 挂在 doctor.rs 的 CapExhausted 非穷尽 match（Bazel 车道编译 cli，Cargo clippy 作用域不含）。
 3. **Run 3**（`22b91089a` 修 doctor + V8 门控）：**bazel bridge gate 首次全绿**；三 nextest 车道编译全工作区后在 Test 步失败——根因定位：**v8 150.4.0 的 `ptrcomp_sandbox` 预编译归档从未发布**（上游 2e32d9589 开启 sandbox 特性；本地能过仅因 build script 缓存）。V8 pin 按禁令不动；车道排除 code-mode-runtime/code-mode-host/v8-poc 并注明（与 voice-host 同款缺工件模式，配对工件流程已登记）。
 4. **Run 4**（`831346f11` 修 ollama match）：三车道唯一剩余编译错误=ollama client 的 ResolvedDefault 非穷尽（本地作用域运行从未编译该 crate——CI 全工作区编译的价值实证）。
-- **T02 DoD 达成**：四 job 均实际进入相应 build/test；剩余失败从"基础设施"降级为"真实测试失败"（大概率=已定性的并发固有边界族），待 run 4 结果确认。
+- **T02 启动/构建入口 DoD 达成**：四 job 均实际进入相应 build/test。剩余失败包含缺工件和真实测试结果，不能统一降级为已定性并发族；T38 完整门禁仍开放。
 
 
-### 批 S — CI 修复闭环与剩余失败的终局定性（run 38065399719，HEAD `bac940d34`）
+### 批 S — CI 已有结果核对（run 38065399719，测试 SHA `e02dc3771710c0a4e6fd8b3dd125715b08c39b55`）
 
 - 本轮三个真实产品/流程修复（均已在 CI 前序运行中定位并各自验证）：
   1. `23d8d3e6f` **TLS 分类**：io::Error::source() 跳过 payload 本体导致 Linux 路径 TLS 错误不可见——提取 `chain_carries_tls_error` 显式下钻 get_ref() + 回归向量（Linux 残差 6 项的根因）。
   2. `e02dc3771` **schema fixture**：RolloutLine 差异非平台性，是批 Q 的 CapPartial 类型未再生成预计算导出（本地作用域跑漏该 crate）；`just write-app-server-schema` 再生成后 314/314。
   3. `eaecf3805` **bubblewrap + 超时**：ubuntu 装 bubblewrap、车道超时 90→150 分钟。
-- **run 38065399719 终局**（bubblewrap 已装、TLS 已修、fixture 已再生）：bazel gate **连续第三次全绿**；三 nextest 车道全部完成完整工作区测试（ubuntu 21.5k 项 406 失败 / macOS 217 / windows 175）。剩余失败**终局定性**：
-  - **ubuntu 389/406 = Linux 沙箱族**：bubblewrap 已在 PATH，但 `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`——GitHub 托管 runner 禁止嵌套网络命名空间配置（无 NET_ADMIN）。**这不是可装的依赖缺口，是 runner 能力边界**：需要自托管/特权 runner（T32 的正式 Linux 验证环境），或上游测试基建按能力检测降级。按禁令不加 skip 求绿。
-  - **macOS 217 ≈ 并发固有边界族**：本地同套件 5633/5642（安静窗口）；2-vCPU CI runner 上亚秒断言窗全灭——与本地已定性的"串行绿/并发败"完全同类。
-  - windows 175 同类叠加 Windows 特有 junction/沙箱项。
-- **T02 最终状态**：DoD（四 job 实际进入相应 build/test）**达成且稳定**；CI 失败已从"工作流坏"降级为"真实测试结果"，其中大头可归因到已登记的 runner 能力/并发边界。下一步绿化需要环境决策（自托管 runner），不是更多 workflow 补丁。
+- 2026-10-11 只读核对该 run metadata：event=push，四 job 均进入各自 build/test；Bazel gate success，三个 nextest job failure。该 SHA 的结果不覆盖本轮未提交修正。
+- 三车道执行的是经 workflow 排除后的集合，均使用 nextest profile local、retries=0；不称完整未排除 workspace 通过。150分钟为 job 总预算，单测试 deadline 未随之修改。
 
-## 40 项状态（更新）
+| 平台 | run | PASS | Summary FAIL桶 | 其中 ABORT | 其中 FAIL+LEAK | TIMEOUT | SKIP |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Ubuntu | 21561 | 21151 | 408 | 1 SIGABRT | 0 | 2 | 47 |
+| macOS | 21514 | 21292 | 217 | 0 | 0 | 5 | 68 |
+| Windows | 20400 | 20205 | 176 | 1 ABORT | 1 | 19 | 138 |
+
+- Summary FAIL桶包含 ABORT/FAIL+LEAK，不能再与这些子类重复求和。`ci-run6-failure-ledger.tsv` 完整列出827个非PASS终态：Ubuntu407 FAIL+1 SIGABRT+2 TIMEOUT，macOS217 FAIL+5 TIMEOUT，Windows174 FAIL+1 FAIL+LEAK+1 ABORT+19 TIMEOUT。文件只保存平台、完整身份、状态和分类，不含stdout或凭据。
+- **撤回原终局分类**：明确缺 code-mode-host 的输出块至少 Ubuntu60/macOS60/Windows36；排除 host crate 未同步解决依赖它的 app-server/Core 测试。Ubuntu105个失败块明确出现 bwrap loopback RTM_NEWADDR EPERM；这证明该运行操作被拒绝，尚不能证明389项同因、缺NET_ADMIN是唯一原因或必须更换runner。其余保留unclassified，不能用预算/runner结论关闭。
+- **23个旧BOUNDARY身份均在该run macOS PASS**，已追加到current ledger；保留本机旧窗口，但撤回“macOS217失败就是这些边界族”的推断。
+- **CI栈失败另列**：Ubuntu SIGABRT与Windows ABORT均为 `codex-core guardian::tests::guardian_ephemeral_retry_preserves_parallel_trunk_and_fork_history`；Windows明确报告0xc00000fd stack overflow。此前8MiB下0 abort仅适用于旧macOS选集，不能外推跨平台公共路径已关闭。
+- 证据入口：`/tmp/run6logs/{1_nextest (ubuntu-latest),2_nextest (macos-latest),3_nextest (windows)}.txt` 的Summary分别在37460/32119/29317行；`gh run view 38065399719 --repo nuwax-ai/codex --json headSha,conclusion,event,jobs,url`。这些是已有工件/metadata，本轮未dispatch或重跑。
+- **T02仅启动/构建入口已验；T38未达成**。下一步需补工件、查Linux namespace能力与栈失败，并逐身份归因，不能凭当前红色车道宣布测试门禁或发布验收完成。
+
+## 独立复审后的账目口径（2026-10-11）
+
+- `current-test-ledger.tsv`保留126条旧窗口记录：98 PASS / 3 FIXED-linux / 23 BOUNDARY / 2 FAIL-linux。这是行数，包含3条路径别名和2条家族摘要，不能称126个完整身份。
+- `canonical-ledger-map.tsv`逐行映射：119 historical-identity、3 alias、2 summary-not-identity、2 new-identity。去掉别名/摘要后为121个完整canonical身份；家族摘要未展开，不推算其新增identity数量。
+- 119历史tuple均有登记，旧窗口状态为95 PASS / 1 FIXED-linux / 23 BOUNDARY；23 BOUNDARY另有该run macOS PASS列。原始窗口与CI结果分别保留，不能用一个合计覆盖全部平台/批次。TSV占位 `-` 表示该列未登记结果/身份，不表示SKIP或通过。
+- CI非PASS全表另见 `ci-run6-failure-ledger.tsv`。只有输出中明确出现原因的记录才归入explicit类别；unclassified不是已证明的runner或负载边界。
+
+## 40 项状态（以本表为准；历史收据不验收本轮修正）
 
 | 项 | 状态 | 证据/边界 |
 |---|---|---|
-| T03/T04/T05/T06 | 完成 | 批 A/B |
-| T02 | 部分（配置完成） | 远端 dispatch 待授权 |
-| T07 | **实现完成（opt-in）** | 阶段1 loader（批D）+ 阶段2 matcher（批K）+ 阶段3 ResolvedDefault opt-in + 双轨 wire 等价（批N）；**默认迁移留待裁决**；CFRunLoop 因果实验开放 |
-| T11 | **完成** | 13 身份 16/16；grant+scope 级 Compaction 契约 |
-| T12 | **完成（测试覆盖）** | 6 新用例 + 矩阵；未发现终局性产品缺陷 |
+| T01 | 部分 | 119历史tuple登记齐全，canonical/CI账目已修正；旧机原始工件联结仍缺 |
+| T02 | 启动/构建入口已验 | 四job进入build/test；三个nextest仍失败，完整门禁T38未达成 |
+| T03 | 部分（旧本机收据） | 批A键与TLS测试；Windows真实A→B仍缺，本轮修正未验 |
+| T04/T05/T06 | 旧作用域收据完成 | 批A/B；本轮修正未验，平台/公共路径边界另列 |
+| T07 | opt-in旧实现收据，完整DoD开放 | 批D/K/N；默认迁移未裁决、CFRunLoop因果与默认生产路径未关闭，本轮修正未验 |
+| T08 | 部分归因 | OTLP替代fixture pair通过不能证明默认生产根治；Core/rmcp三线仍须各自证据 |
+| T09 | 开放 | 冷首请求原deadline与分段证据未齐 |
+| T11 | 旧实现复验收据；本轮修正未验 | 旧13身份16/16不能验收独立复审后的授权/投影修改 |
+| T12 | 六个新增fixture收据完成 | 有请求/终局断言；不扩大为全部公共入口已验 |
 | T16 | D2 段完成 | 三线提取+迁移；V-D2-1/reducer/key 开放 |
 | T15 | 决策完成 | cap-decisions-2026-10-10.md 七项全裁决 |
-| T10/R11 | **定性完成** | 长期潜伏（pre-merge 既有）、阈值 2.5/3MiB、8MiB 全消 abort；加固（缩 Session::new 帧）开放非阻断 |
-| T08 OTLP 线 | **归因完成** | 并发 provider 构建停顿 vs 3s collector 预算；夹具已切 RespectSystemProxy（pair 修复）；批 flush 并发边界开放 |
-| T13/T01 | **账本完成** | 119 身份全入账：PASS 99 / BOUNDARY 23 / FAIL 0（批 L-N）；旧机工件联结仍缺（需旧机导出） |
+| T10/R11 | 旧macOS选集定性收据；CI栈失败开放 | pre-merge/阈值是历史本机证据；run6 Ubuntu/Windows有公共guardian测试abort，不能外推8MiB跨平台已关闭 |
+| T13 | 身份登记完成，验收开放 | 119历史tuple和23项CI PASS已登记；run6全部827个非PASS终态另列，仍有未归因项 |
 | T14 | 部分 | 批 I 复验覆盖 proxy/TLS/WS/exec-registry/Core/Rig 主面；正式 DoD 快照未单独出 |
-| T17–T20/T21–T23/T24–T31/T32–T35/T36–T37/T38–T40 | 开放 | 按序推进 |
+| T17 | reducer单测切片完成，公共集成开放 | host key/重复ID与恢复后重报仍需实际Responses→Core→rollout证明 |
+| T18 | 协议/预算地基，durable功能开放 | cap不发普通Done的合同已恢复但本轮未验；采集/发射/持久化/两次resume/旧reader未闭环 |
+| T19–T23/T24–T31/T32–T35/T36–T37 | 开放 | API/exec、D6、owner、来源/历史、原生/异OS、live按原序推进 |
+| T38 | 未达成 | 排除后的三平台nextest均红；缺host工件、sandbox、abort/timeout及未归因断言分别处理 |
+| T39/T40 | 开放 | 独立复审修正待验证；可发布工件/回滚和发布范围未验收 |
 
-## 40 项状态（滚动更新）
+## 已有失败与未验项
 
-| 项 | 状态 | 证据/边界 |
-|---|---|---|
-| T01 | 进行中 | 本文件即账目载体；119 TSV 逐身份复验在 T13 批推进；旧机 still249/signatures 工件不在本机（阻断：需要旧机工件导出） |
-| T02 | 部分完成 | 配置修复+本地验证；远端 dispatch 待授权 |
-| T03 | 完成（本机） | 批 A；Windows 真实环境另验 |
-| T04 | 完成 | 批 A |
-| T05 | 完成 | 批 B |
-| T06 | 完成 | 批 B |
-| T07 | 阶段 1 完成 | 批 D；阶段 2/3（matcher+双轨+接管）开放 |
-| T11 | 实现完成，复验中 | 批 E |
-| T02/T03/T04/T05/T06/T07-1/T11 以外 | 开放 | 按执行顺序推进中 |
-
-## 当前失败完整列表
-
-（按批次滚动登记；本页最新状态为准）
-
-- 负载窗口 `--retries 0` 下 `route_aware_client_pool` 4 子进程用例可瞬态失败（R7 机制，HEAD 同现；local profile 已缓解并在 T07 阶段 2/3 中根治）。
-- 其余：见各批"开放"行。
+- run6的827个非PASS终态见完整CI ledger；26 TIMEOUT、2 ABORT、1 FAIL+LEAK单列，不用Summary FAIL桶掩盖。
+- 旧本机route_aware_client_pool负载窗口失败记录保留；local group和ResolvedDefault opt-in不能证明仍使用ReqwestDefault的默认生产路径已根治。
+- T17/T18以及各批开放项继续保留。本轮文档/代码修正没有新测试收据，不声称当前树或CI通过。

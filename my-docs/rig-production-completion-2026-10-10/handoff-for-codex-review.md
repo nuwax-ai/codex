@@ -1,47 +1,59 @@
-# Codex 独立复审交接书（2026-10-10/11）
+# Codex 独立复审交接书（2026-10-10/11，账目修正版）
 
-本文件是给下一任审查者（Codex）的完整交接。审查对象：origin/test `877b02758..5637a6566`（53 个提交，已全部推送，工作区干净）。逐项证据在 `results.md`（批 A–S）与 `current-test-ledger.tsv`（126 行）。
+本次独立复审范围为 `303ad8960..070098774`，提交基线为 `070098774`。原交接使用的 `877b02758..5637a6566` 是较早范围。当前工作区有独立复审修正，不能沿用“工作区干净”或把旧收据当作修正后的验收。证据入口为 `results.md`（批A–S及修正状态表）和以下账目文件；本轮没有运行新测试或dispatch CI。
 
-## 审查范围与主张（按包）
+## 历史实现收据与未验边界
 
-### 包3 稳定性（已完成项）
+| 项 | 历史提交/收据 | 本次复审后的证据边界 |
+|---|---|---|
+| T03/T04 native-root键/缓存 | `489c43c85`；http-client本机作用域收据 | Windows真实A→B未完成；本轮修正未验 |
+| T05/T06 WS脱敏/HTTPS代理 | `f3f86e926`；24/24 | 需要保留上层错误出口与平台覆盖边界；本轮修正未验 |
+| T07 loader/matcher/ResolvedDefault | `0b2ecbbbc`/`5ac058769`/`5753a3505`；loader/向量/双轨收据 | opt-in存在，默认迁移未裁决；CFRunLoop因果及默认生产路径未关闭；本轮修正未验 |
+| T11 R1b | `9d307f72d`；旧13身份16/16 | 旧收据不能验收本轮授权/投影修正 |
+| T12 Luna终局 | `081b6b0b6`；六个新增fixture | 有请求/终局断言，不扩大为全部公共入口已验 |
+| T16 D2 | `5667058bc`；api/bridge历史收据 | Chat迟到usage、host key及错误侧usage闭环开放 |
+| T17 reducer | `69c0ea00e`；直接SessionState单测/既有usage家族 | 重复ID/跨turn/恢复ledger后重报缺公共Responses→Core→rollout集成证明 |
+| T18协议/预算地基 | `d51d5ef4d`/`6b45debc4`；旧cap/预算测试 | 旧cap断言允许final AgentMessage为None，未证明durable partial。普通Done尝试已在本轮撤回，零普通完成合同恢复但未测试；实际发射/持久化/读侧/resume仍开放 |
 
-| 主张 | 提交 | 声明的证据 | 建议复核点 |
-|---|---|---|---|
-| T03+T04 native-root 键/缓存 | `489c43c85` | 12 单测+3 真实握手，http-client 141/141×3 | 键语义 vs rustls-native-certs 0.8.3 `CertPaths::from_env`（var_os+split_paths）；测试实例隔离是否真不碰全局 |
-| T05+T06 WS 脱敏+env https 代理 | `f3f86e926` | 24/24；三协议 CONNECT 矩阵+SOCKS5+脱敏子进程 | 脱敏是否覆盖所有出口（重点：`responses_websocket.rs` 的错误路径）；`tungstenite_env_https_proxy` 的恢复顺序是否严格复刻 SDK `get_first_env` |
-| T07-1 专职线程 loader | `0b2ecbbbc` | 7/7 loader 单测 | unsafe Send/Sync 论证（CFDictionary 不可变拷贝）；毒化恢复策略是否会在用户进程 panic |
-| T07-2 matcher 向量 | `5ac058769` | 15 向量（对齐 hyper-util 自身测试） | 向量与 hyper-util 0.1.20 源码逐条对照（重点：空 scheme 变量=未设语义、CGI、NO_PROXY IP/CIDR） |
-| T07-3 ResolvedDefault opt-in | `23d8d3e6f` 前身 `5ac058769` | 8 路由向量+11 案例双轨 wire 等价 | 双轨的参考 client 是否真是未优化默认（reqwest::Client::builder().build()）；SOCKS 委托是否漏了 `socks4a`；**默认迁移未做（留裁决）** |
-| T11 R1b | `9d307f72d` | 13 身份 16/16 | Compaction scope 级契约放宽的安全性：Reasoning/WebSearch 仍严格？跨 kind 轮换仍拒？grant 是否真不落 rollout |
-| T12 Luna 终局 | `081b6b0b6` | 6 新用例+矩阵映射 | 矩阵映射表（agent 报告）与实际覆盖是否吻合 |
-| T16 D2 | `5667058bc` | api 214/214、bridge 618/618 | Chat 迟到 usage chunk（V-D2-1）仍未测；Anthropic 零值保留是否真在 wire 层验证 |
-| T17 ledger | `69c0ea00e` | 4 单测+39 家族 -j2 绿 | 替换语义的跨 turn 重放分支（net 进新 turn）是否符合 D4 决策文档 |
-| T18 两段 | `d51d5ef4d`/`6b45debc4` | bridge 252/252、cap 7/7、cap_partial 7/7 | **已登记未竟**：turn-error 发射点+usage 携带（stash 尝试已回退，原因写明）；集成测试里 CapPartial 事件断言已撤回（发射未落地）——不要把 CapPartial 类型的存在当成功能已完成 |
+OTLP fixture从ReqwestDefault换成RespectSystemProxy后的pair通过只证明替代策略。生产默认factory仍使用ReqwestDefault，不能称默认生产路径已根治。
 
-### CI / T02（完成：DoD 达成）
+## CI / T02 / T38
 
-- 修复链 `a2f8e8d84`→`eaecf3805`→`23d8d3e6f`→`e02dc3771`，6 轮真实运行（38045982072…38065399719）。
-- bazel gate 连续三次全绿；三 nextest 车道完整跑 21.5k 测试。
-- **剩余失败终局定性**（results.md 批 S）：ubuntu 389/406=GitHub runner 禁嵌套网络命名空间（`bwrap: loopback: RTM_NEWADDR EPERM`，装包解决不了，需自托管 runner=T32 环境）；macOS 217=并发固有边界（本地安静窗 5633/5642）。**未加 skip 求绿**。
+已有run **38065399719** 的测试SHA为 **`e02dc3771710c0a4e6fd8b3dd125715b08c39b55`**，event=push。四job都进入build/test，Bazel gate成功，三个nextest车道失败。T02只完成启动/构建入口验收；T38完整门禁未达成。
 
-## 已知边界（审查时不要误判为缺陷）
+三车道执行的是workflow排除后的集合，nextest实际使用profile local及retries=0；150分钟是job总预算，单测试deadline未随之扩大。
 
-1. 119 账本终态：PASS 98 / FIXED-linux 3 / BOUNDARY 23（串行绿/并发败，负载 7–9 复验仍 34 败，定性并发固有）/ FAIL-linux 2（V8 配对工件+慢机窗口）。0 个无解释失败。
-2. BOUNDARY 的 23 个身份不因"CI 上也失败"而改变定性——CI 2-vCPU 放大同机制。
-3. V8：pin 150.4.0 的 `ptrcomp_sandbox` 预编译归档从未发布（上游 2e32d9589 开 sandbox）；本地能构建纯靠 build script 缓存。车道已按缺工件模式排除 code-mode-runtime/host/v8-poc，V8 pin 按禁令未动。
-4. tui 45 身份的关闭依赖两件事：37 个 run3 全量 + 8 个 elapsed-frame 修复（`94ab4f533`，零 accepted 快照改动）。
-5. R11 栈溢出为 pre-merge 潜伏（非回归），`just test` 8MiB 下 0 abort；直跑 cargo 必带 `RUST_MIN_STACK=8388608`。
-6. 一个 pre-existing `.snap.new`（10-01 的 astra_kickoff_remote_compaction_windows）在 .gitignore 覆盖内，非本批产物。
+| 平台 | 执行 | PASS | Summary FAIL桶 | TIMEOUT | SKIP |
+|---|---:|---:|---:|---:|---:|
+| Ubuntu | 21561 | 21151 | 408 | 2 | 47 |
+| macOS | 21514 | 21292 | 217 | 5 | 68 |
+| Windows | 20400 | 20205 | 176 | 19 | 138 |
 
-## 验证环境声明
+Summary FAIL桶含Ubuntu的1个SIGABRT、Windows的1个ABORT和1个FAIL+LEAK。`ci-run6-failure-ledger.tsv`完整登记827个非PASS终态：Ubuntu410、macOS222、Windows195；不包含stdout或凭据。
 
-- 本机 macOS（arm64），同期其他用户负载 7–152 剧烈波动；所有"全绿"都注明了窗口与并发度，负载敏感失败均给出隔离复验。
-- 未做：push 以外的发布、live 付费请求、Windows/Linux 本地原生验证（CI 已代跑编译+测试）、旧机工件联结（需旧机导出）。
-- 本批所有 scoped 测试在最终 fix/fmt 之后未重跑（AGENTS 流程）；fmt/`git diff --check` 每批已过。
+原“Ubuntu389/406都是sandbox、macOS217都是并发固有边界、剩余失败已终局分类”结论撤回：
 
-## 建议的审查入口
+- 明确缺code-mode-host的输出块至少Ubuntu60/macOS60/Windows36。排除host crate后，依赖该二进制的app-server/Core测试仍被选择，不能归为并发失败。
+- Ubuntu105个失败块明确出现bwrap loopback RTM_NEWADDR EPERM。这证明该运行操作被拒绝；未证明389项同因、唯一原因是NET_ADMIN或必须换runner。其他身份保留unclassified。
+- ledger旧23个BOUNDARY身份在此run macOS全部PASS。旧本机窗口保留；不能用它们解释217个CI失败。
+- Ubuntu/Windows均有 `codex-core guardian::tests::guardian_ephemeral_retry_preserves_parallel_trunk_and_fork_history` abort；Windows明确是0xc00000fd stack overflow。旧macOS选集“8MiB下0 abort”不能外推跨平台已关闭。
 
-1. `git log --oneline 877b02758..5637a6566` 通读 53 个提交信息（每个含证据行）。
-2. results.md 批 A–S 与 ledger 逐条抽查 5–10 行对源码。
-3. 重点攻击面：`model_output_projection.rs` 的 scope 级 Compaction 契约（T11 核心语义变更）、`chain_carries_tls_error`（23d8d3e6f）、`default_proxy_matcher.rs` 与 hyper-util 的逐字段等价、CI workflow 的排除清单是否与注释理由一致。
+## 账目口径
+
+`current-test-ledger.tsv`保留126条记录及旧窗口状态：98 PASS / 3 FIXED-linux / 23 BOUNDARY / 2 FAIL-linux。**这是记录行数，不是126个实际身份。**
+
+`canonical-ledger-map.tsv`逐行标明119 historical-identity、3 alias、2 summary-not-identity、2 new-identity；去掉别名和摘要后有121个完整canonical身份。两个家族摘要未展开，不推算其新增身份数。
+
+119历史tuple登记齐全，其旧窗口状态为95 PASS / 1 FIXED-linux / 23 BOUNDARY。23项另有 `ci_run6_macos_state=PASS`，保留旧窗口且明确追加来源；不能将全部126行总计称为119历史终态。TSV占位 `-` 表示没有在该列登记结果/身份，不表示SKIP或通过。
+
+三组别名：review_start少 `suite::` 前缀、unavailable_commands旧嵌套路径、thread_title旧模块路径。它们通过map关联到实际身份，不再额外计数。TLS fallback五项和analytics两项的行仅是家族摘要。
+
+## 下一步及验证边界
+
+1. 补齐V8/host配对工件依赖，查明Linux namespace拒绝配置和跨平台stack overflow，再按CI完整身份逐项归因；未归因项保持开放。
+2. 补T17重复快照/恢复ledger和T18失败partial的公共读写/resume集成证明；不把普通Done或类型存在当作durable完成。
+3. 完成T07/T08默认生产路径、冷态/并发原预算验证，再推进原计划的D6、owner、来源/历史、原生/异OS、live和发布准备。
+
+本机为macOS arm64；Windows/Linux本地原生、旧机工件联结、live付费和发布验收仍缺。CI已经跑过编译/测试，但三车道均红，且不覆盖本轮未提交修正。
+
+只读证据：`gh run view 38065399719 --repo nuwax-ai/codex --json headSha,conclusion,event,jobs,url`；已有 `/tmp/run6logs/1_nextest (ubuntu-latest).txt`、`2_nextest (macos-latest).txt`、`3_nextest (windows).txt`。原始日志不进入仓库；仓库CI ledger只存身份/状态/类别。本轮没有新测试、dispatch、commit或发布。
