@@ -118,6 +118,15 @@
   3. core 30 身份按并发梯度定性（solo 全过、pair 起亚秒窗/握手预算越界=BOUNDARY 23 中的主体）；exec 事件 11 项非 macOS 分支照常通过。
 - 遗留统计口径：BOUNDARY 23 = 共享机器上无法并发验证绿的预算类身份（solo/pair 复验全过），非功能回归；两个 FAIL 已给出机制与定位。run3 期间另发现 1 个非 119 失败（tui provider_defaults.history_lookup）待查。
 
+
+### 批 N — 两个开放缺陷关闭 + T07 阶段3 opt-in 落地（HEAD `5753a3505`）
+
+- **residency::websocket 关闭（`c5d76073d`）**：双重根因——①rig bridge endpoint 不翻译 ws://→http://（原生传输才拥有 ws 握手；此前以 reqwest 构建器错误暴露）已修 + 向量测试；②测试自身缺 native 传输 pin（fork 默认桥接策略走 rig 无 WS 腿，attestation 同款注释先例）且 base_url 直写 ws://（与全语料约定不符）已修。rig-bridge 252/252、residency 家族 2/2。
+- **managed_network_proxy_decider 关闭（`395c619fc`）**：非产品缺陷——本机 DNS 把 example.com 解析到私网 IP → NotAllowedLocal 基线拒绝短路（decider 只参与 NotAllowed）。探针改公网 IP 字面量；42 项 network proxy 家族全绿。
+- **T07 阶段3（`5753a3505`）**：`OutboundProxyPolicy::ResolvedDefault`（opt-in）——默认传输的精确优先级本地解析（env 逐 scheme + 空=已设语义、macOS 手动项只填空 scheme 且经专职 run-loop loader、ALL_PROXY 回退、NO_PROXY 先行、ws/wss 不拦截），池收到全显式路由 → client 构建不再做 reqwest 同步系统读取；userinfo 保留给传输解析；SOCKS 委托传输；逐 hop 重解析与 RespectSystemProxy 同轨。证据：8 路由向量 + **双轨 wire 等价**（参考 reqwest::Client vs ResolvedDefault 池，11 个子进程用例逐案同路）+ 22/22 合并向量。**默认迁移（ReqwestDefault→ResolvedDefault）按 Spec 留待单独裁决**——现在是一次一行改动。
+- 119 账本终态更新：**PASS 99 / BOUNDARY 23 / FAIL 0**。
+- 非历史项：tui provider_defaults.history_lookup 失败系跨二进制依赖（需 target/debug/codex，单包运行无该二进制）——环境性，非缺陷。
+
 ## 40 项状态（更新）
 
 | 项 | 状态 | 证据/边界 |
