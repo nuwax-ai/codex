@@ -85,10 +85,16 @@ jobs:
       - name: Test (workspace)
         shell: bash
         run: |
+          # The pinned v8 150.4.0 enables the sandbox feature (upstream
+          # 2e32d9589) whose ptrcomp_sandbox prebuilt archives were never
+          # published for that release, so clean runners 404 during the
+          # build script. The V8 pin is deliberate and must not drift; the
+          # code-mode crates need the paired-artifact process instead, so
+          # they stay out of this lane until that lands.
           if [[ "${{ matrix.voice_host }}" == "exclude" ]]; then
-            just test --workspace --exclude codex-voice-host --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
+            just test --workspace --exclude codex-voice-host --exclude codex-code-mode-runtime --exclude codex-code-mode-host --exclude codex-v8-poc --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
           else
-            just test --workspace --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
+            just test --workspace --exclude codex-code-mode-runtime --exclude codex-code-mode-host --exclude codex-v8-poc --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
           fi
 
   bazel-bridge-gate:
@@ -143,7 +149,8 @@ jobs:
       # voice-host's pinned gstreamer v1_28 API surface needs the 500MB
       # gstreamer Windows installer plus pkg-config wiring, which this lane
       # does not provision; the macOS lane covers that crate's build and unit
-      # tests.
+      # tests. The v8 sandbox crates are excluded for the same missing-
+      # prebuilt-artifact reason as the other lanes.
       - name: Test (workspace)
         shell: bash
-        run: just test --workspace --exclude codex-voice-host --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
+        run: just test --workspace --exclude codex-voice-host --exclude codex-code-mode-runtime --exclude codex-code-mode-host --exclude codex-v8-poc --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0

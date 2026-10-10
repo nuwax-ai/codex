@@ -2564,7 +2564,8 @@ fn websocket_error_detail(err: &ApiError) -> String {
         | ApiError::BioPolicy { .. }
         | ApiError::MisalignmentPolicyViolation { .. }
         | ApiError::FlexUnavailable
-        | ApiError::ServerOverloaded { .. } => format!("handshake error: {err}"),
+        | ApiError::ServerOverloaded { .. }
+        | ApiError::CapExhausted { .. } => format!("handshake error: {err}"),
     }
 }
 
