@@ -144,6 +144,13 @@
 - 证据：rig-bridge 252/252（--retries 0）；core cap 集成 7/7 + cap_partial 单测 7/7；chat terminal 向量 5/5。
 - **T18 剩余**：host response_key 与 provider id 分离；CapExhausted.reported_usage 打通 CodexErr 映射进 ledger（当前 InvalidRequest(String) 丢弃 usage）；v2/app-server 读侧投影与 TurnItem 变体；旧读端 V-D1-1 实测。
 
+
+### 批 Q — T18 第二段：协议记录 + 有界捕获构造器（HEAD `6b45debc4`）
+
+- 落地 CapPartial 的**可评审地基**：协议类型（fragment 三类、单片段/整 turn 预算块、token 证据显式 Unverified）、EventMsg 通道（rollout policy 双 mode 持久化）、rollout-trace 类型登记、有界捕获构造器（16KiB/片段 UTF-8 边界保前缀、64KiB/32 片段封顶、enforced-cap 溯源）+ 7 单测钉住全部边界。
+- **如实登记未竟**：turn-error 发射点 + usage 跨错误映射的携带未落地——集成诊断证明错误到达该位置时既无结构化 payload 也无 trailing 项（rig-bridge 错误在 pump→client 错误臂之间被重整形、flush 项未在该点入史）；基于 stash 的尝试已回退（不留未验证接线），下一步为沿 bridge stream→client 错误臂逐步追。桥层 durable partial（批 P）仍是用户可见的一半且已验证。
+- 证据：cap_partial 单测 7/7；core cap 集成套件绿（宽跑 1 失败=idle 预算计时测试，隔离过）；codex-core 零警告。
+
 ## 40 项状态（更新）
 
 | 项 | 状态 | 证据/边界 |
