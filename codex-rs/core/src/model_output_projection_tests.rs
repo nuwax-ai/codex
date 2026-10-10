@@ -172,12 +172,9 @@ fn every_source_boundary_and_legacy_unknown_drops_only_opaque_payloads() {
     {
         let mut projected = items.clone();
         project_input(&mut projected, &sources_for_input(&saved), &target, None);
-        if matches!(dimension, "model" | "domain") {
-            // Compaction checkpoints are backend-validated opaque state, so a
-            // model change inside the same provider/endpoint scope keeps the
-            // checkpoint, and the per-process credential-instance id is not
-            // comparable across restarts; the evidence KIND and every scope
-            // dimension still gate it. Model-bound opaque payloads drop.
+        if dimension == "model" {
+            // A model switch preserves compaction only within the same
+            // actual credential scope. Model-bound opaque payloads drop.
             let mut scoped_expected = expected.clone();
             scoped_expected.insert(1, items[1].clone());
             assert_eq!(projected, scoped_expected, "dimension {dimension}");
@@ -357,10 +354,8 @@ fn same_selector_changed_actual_credentials_drop_old_opaque_but_keep_visible_his
     {
         *encrypted_content = None;
     }
-    // Kind-level compaction isolation: the checkpoint survives a rotation
-    // within the same selector kind (same provider/endpoint); see the
-    // header-rotation test for the full rationale.
-    if let ResponseItem::WebSearchCall { wire_blocks, .. } = &mut expected[2] {
+    expected.remove(1);
+    if let ResponseItem::WebSearchCall { wire_blocks, .. } = &mut expected[1] {
         *wire_blocks = None;
     }
     assert_eq!(rotated, expected);
@@ -687,14 +682,8 @@ fn header_only_credentials_preserve_same_scope_and_drop_opaque_after_rotation() 
             {
                 *encrypted_content = None;
             }
-            // Credential rotation inside the same provider/endpoint/kind no
-            // longer drops the backend-validated compaction checkpoint: the
-            // persisted provenance deliberately carries only a random
-            // per-process instance id, so a rotated credential cannot be
-            // distinguished from a same-credential restart, and the fork's
-            // resume contract requires the restart case to replay. Reasoning
-            // ciphertext and hosted-search blocks still drop.
-            if let ResponseItem::WebSearchCall { wire_blocks, .. } = &mut expected[2] {
+            expected.remove(1);
+            if let ResponseItem::WebSearchCall { wire_blocks, .. } = &mut expected[1] {
                 *wire_blocks = None;
             }
             project_input(&mut projected, &sources, &rotated, None);

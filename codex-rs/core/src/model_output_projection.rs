@@ -231,15 +231,11 @@ pub(crate) fn project_input(
                 .and_then(|id| sources.get(id))
                 .and_then(Option::as_ref)
                 == Some(target);
-        // Compaction checkpoints are backend-validated opaque state, not
-        // model-bound ciphertext: replaying them to the same provider,
-        // endpoint, wire, and bridge — under a different model of that scope
-        // (a model-switch resume) or after a process restart — is legal and
-        // the backend rejects a payload it cannot decrypt. Credential-
-        // instance domain strings are minted randomly per process, so they
-        // are not comparable across that boundary; the evidence KIND must
-        // still match. Everything else — reasoning, web-search blocks —
-        // stays under the strict comparison.
+        // A checkpoint may survive a model switch within its captured
+        // credential scope. A changed account, credential, or private routing
+        // header/query must still drop it. Random credential-instance ids
+        // conservatively stop replay after a restart when continuity cannot
+        // be proven. Reasoning and web-search blocks remain model-bound.
         let compaction_compatible = target_scope_known
             && item.id().is_some_and(|id| {
                 sources
@@ -250,6 +246,7 @@ pub(crate) fn project_input(
                             && source.bridge == target.bridge
                             && source.provider == target.provider
                             && source.endpoint_identity == target.endpoint_identity
+                            && source.auth_domain == target.auth_domain
                             && source.auth_domain_kind == target.auth_domain_kind
                     })
             });

@@ -77,21 +77,23 @@ pub(crate) fn authorize_opaque_replay(
     target: &ModelOutputProvenance,
     basis: &ModelOutputProvenance,
 ) -> Option<OpaqueReplayAuthorization> {
-    // Credential-instance identities are deliberately random per process
-    // ("eviction/restart conservatively yields a new identity"), and a
-    // reviewer thread can live in a different process than the parent
-    // compaction, so the minted `auth_domain` strings can never be compared
-    // across that boundary. Credential continuity is instead attested by the
-    // trusted runtime that issues the grant: it captures the producer from
-    // the parent session's own compaction and spawns the reviewer with the
-    // parent's auth manager. What the request-side check can and does prove
-    // is that the reviewer request rides the same provider, endpoint, wire,
-    // and bridge under the same evidence KIND, with only the approved
-    // reviewer-model substitution and the guardian header differing.
-    let scope_matches_producer = basis.wire_protocol == grant.producer.wire_protocol
+    // Sharing the parent's auth manager does not prove credential continuity:
+    // it can rotate after the checkpoint was produced. Validate the actual
+    // header-stripped request scope. A new random credential-instance identity
+    // after restart remains unknown continuity and fails closed.
+    let producer_scope_known = grant.producer.provider.is_some()
+        && grant.producer.endpoint_identity.is_some()
+        && grant.producer.auth_domain.is_some()
+        && matches!(
+            grant.producer.auth_domain_kind.as_deref(),
+            Some("account" | "anonymous" | "credentialInstance")
+        );
+    let scope_matches_producer = producer_scope_known
+        && basis.wire_protocol == grant.producer.wire_protocol
         && basis.bridge == grant.producer.bridge
         && basis.provider == grant.producer.provider
         && basis.endpoint_identity == grant.producer.endpoint_identity
+        && basis.auth_domain == grant.producer.auth_domain
         && basis.auth_domain_kind == grant.producer.auth_domain_kind;
     let target_differs_only_as_approved = target.model.as_deref()
         == Some(grant.reviewer_model.as_str())

@@ -164,8 +164,8 @@ fn edited_producer_metadata_does_not_satisfy_the_grant() {
 
     // The history now claims a different producer for the same id.
     let edited = envelope("item_1", "other-model");
-    let sources = crate::model_output_projection::sources_for_input(&[edited.clone()]);
-    let mut input = vec![edited.item.clone()];
+    let sources = crate::model_output_projection::sources_for_input(std::slice::from_ref(&edited));
+    let mut input = vec![edited.item];
     crate::model_output_projection::project_input(
         &mut input,
         &sources,
@@ -190,10 +190,21 @@ fn rotated_credentials_endpoints_wires_or_models_reject_the_grant() {
         "a model outside the grant's approval must not replay"
     );
 
-    // A different evidence KIND (e.g. an ambient account login instead of
-    // the captured credential instance) must not replay. The random
-    // per-process instance id itself is deliberately not comparable across
-    // processes, so only kind-level drift is checkable here.
+    // Rotating within the same evidence kind must also reject replay.
+    for kind in ["account", "credentialInstance"] {
+        let mut producer = producer.clone();
+        producer.auth_domain_kind = Some(kind.to_string());
+        let mut scoped_grant = grant.clone();
+        scoped_grant.producer = producer.clone();
+        let (target, mut basis) = review_request(&producer, "codex-auto-review");
+        basis.auth_domain = Some("different-credential".to_string());
+        assert!(
+            authorize_opaque_replay(&scoped_grant, &target, &basis).is_none(),
+            "a different actual {kind} scope must not replay"
+        );
+    }
+
+    // A different evidence kind must not replay either.
     let (target, mut basis) = review_request(&producer, "codex-auto-review");
     basis.auth_domain = Some("credential-instance-v2:ambient".to_string());
     basis.auth_domain_kind = Some("credentialInstance".to_string());
@@ -201,6 +212,24 @@ fn rotated_credentials_endpoints_wires_or_models_reject_the_grant() {
         authorize_opaque_replay(&grant, &target, &basis).is_none(),
         "a request under a different credential-evidence kind must not replay"
     );
+
+    // Unknown or selector-only provenance cannot grant opaque replay, even
+    // when the live basis has matching missing fields.
+    for dimension in ["provider", "endpoint", "domain", "proof"] {
+        let mut unproven_grant = grant.clone();
+        match dimension {
+            "provider" => unproven_grant.producer.provider = None,
+            "endpoint" => unproven_grant.producer.endpoint_identity = None,
+            "domain" => unproven_grant.producer.auth_domain = None,
+            "proof" => unproven_grant.producer.auth_domain_kind = Some("selector".to_string()),
+            _ => unreachable!(),
+        }
+        let (target, basis) = review_request(&unproven_grant.producer, "codex-auto-review");
+        assert!(
+            authorize_opaque_replay(&unproven_grant, &target, &basis).is_none(),
+            "unproven {dimension} must not authorize replay"
+        );
+    }
 
     // Endpoint drift.
     let (target, mut basis) = review_request(&producer, "codex-auto-review");

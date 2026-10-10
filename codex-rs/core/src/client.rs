@@ -1693,8 +1693,10 @@ impl ModelClientSession {
         extra_headers: &http::HeaderMap,
         client_setup: &CurrentClientSetup,
         model_info: &ModelInfo,
-    ) -> Option<crate::model_output_projection::OpaqueReplayAuthorization> {
-        let grant = prompt.opaque_replay_grant.as_ref()?;
+    ) -> Result<Option<crate::model_output_projection::OpaqueReplayAuthorization>> {
+        let Some(grant) = prompt.opaque_replay_grant.as_ref() else {
+            return Ok(None);
+        };
         let mut stripped = extra_headers.clone();
         stripped.remove(crate::guardian::GUARDIAN_REVIEWER_HEADER);
         let basis = crate::model_output_projection::request_source(
@@ -1706,8 +1708,16 @@ impl ModelClientSession {
             client_setup.agent_identity_telemetry.as_ref(),
             &stripped,
         )
-        .ok()?;
+        .map_err(|_| {
+            CodexErr::InvalidRequest(
+                "Cannot verify the guardian checkpoint request source".to_string(),
+            )
+        })?;
         crate::guardian::authorize_opaque_replay(grant, producing_source, &basis)
+            .map(Some)
+            .ok_or_else(|| CodexErr::InvalidRequest(
+                "Guardian checkpoint source could not be verified; refusing review without its required context".to_string(),
+            ))
     }
 
     /// Streams a turn through the model bridge selected by the provider
@@ -1801,7 +1811,7 @@ impl ModelClientSession {
                 &options.extra_headers,
                 &client_setup,
                 model_info,
-            );
+            )?;
             let mut projected_prompt = prompt.clone();
             crate::model_output_projection::project_input(
                 &mut projected_prompt.input,
@@ -2003,7 +2013,7 @@ impl ModelClientSession {
                 &options.extra_headers,
                 &client_setup,
                 model_info,
-            );
+            )?;
             let mut projected_prompt = prompt.clone();
             crate::model_output_projection::project_input(
                 &mut projected_prompt.input,
@@ -2207,7 +2217,7 @@ impl ModelClientSession {
                 &responses_headers,
                 &client_setup,
                 model_info,
-            );
+            )?;
             let mut projected_prompt = prompt.clone();
             crate::model_output_projection::project_input(
                 &mut projected_prompt.input,
