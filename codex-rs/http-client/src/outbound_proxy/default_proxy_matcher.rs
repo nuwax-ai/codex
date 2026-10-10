@@ -51,6 +51,8 @@ pub(crate) struct DefaultProxyIntercept {
     /// The proxy URL with its original userinfo intact, for transports that
     /// parse credentials out of the proxy URL itself.
     pub(crate) proxy_url: String,
+    /// URL normalization would change the reference matcher's credentials.
+    pub(crate) requires_transport_default: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -72,41 +74,19 @@ impl DefaultProxyMatcher {
     /// environment left empty — the locked resolver's precedence.
     #[allow(dead_code)] // Parity surface; the route resolver injects an EnvSource instead.
     pub(crate) fn from_env_and_manual(manual: ManualSystemProxies) -> Self {
-        let is_cgi = std::env::var_os("REQUEST_METHOD").is_some();
-        if is_cgi {
-            return Self::default();
-        }
-        let mut http = env_first(&["HTTP_PROXY", "http_proxy"]);
-        let mut https = env_first(&["HTTPS_PROXY", "https_proxy"]);
-        let all = env_first(&["ALL_PROXY", "all_proxy"]);
-        // The locked resolver gates manual fill on the string being EMPTY,
-        // so an explicitly empty scheme variable is treated as unset here.
-        if http.as_deref().unwrap_or("").is_empty() {
-            http = manual.http;
-        }
-        if https.as_deref().unwrap_or("").is_empty() {
-            https = manual.https;
-        }
-        let no = env_first(&["NO_PROXY", "no_proxy"]).unwrap_or_default();
-        let all_intercept = all.as_deref().and_then(parse_proxy_uri);
-        Self {
-            http: http
-                .as_deref()
-                .and_then(parse_proxy_uri)
-                .or(all_intercept.clone()),
-            https: https.as_deref().and_then(parse_proxy_uri).or(all_intercept),
-            no: NoProxy::from_string(&no),
-        }
+        Self::from_env_source_and_manual(&crate::outbound_proxy::ProcessEnv, manual)
     }
 
     /// Same precedence as [`Self::from_env_and_manual`] against an injected
-    /// environment source, for route resolution under test fixtures. CGI
-    /// status is process-wide and only meaningful for the real environment,
-    /// so it is not re-derived here.
+    /// environment source, including the raw-presence CGI guard used by the
+    /// production route resolver.
     pub(crate) fn from_env_source_and_manual(
         env: &dyn crate::outbound_proxy::EnvSource,
         manual: ManualSystemProxies,
     ) -> Self {
+        if env.is_set("REQUEST_METHOD") {
+            return Self::default();
+        }
         // First SET variable wins, empty values counting as set (the locked
         // resolver's get_first_env).
         let first = |keys: &[&str]| -> Option<String> { keys.iter().find_map(|key| env.var(key)) };
@@ -144,12 +124,6 @@ impl DefaultProxyMatcher {
     }
 }
 
-/// First set variable among `keys` (empty values count as set, matching the
-/// locked resolver's `get_first_env`).
-fn env_first(keys: &[&str]) -> Option<String> {
-    keys.iter().find_map(|key| std::env::var(key).ok())
-}
-
 /// Parses one proxy URL per the locked `parse_env_uri`: authority required,
 /// missing scheme means `http`, percent-decoded userinfo becomes basic auth
 /// on http(s) proxies, and unknown schemes yield no intercept.
@@ -176,6 +150,16 @@ fn parse_proxy_uri(value: &str) -> Option<DefaultProxyIntercept> {
     });
 
     let raw_authority = uri.authority()?;
+    // The reference splits userinfo at the first '@', while reqwest's
+    // explicit Proxy constructor uses Url (last '@', empty userinfo removed).
+    // Preserve transport discovery for those inputs instead of changing auth.
+    let requires_transport_default =
+        raw_authority
+            .as_str()
+            .split_once('@')
+            .is_some_and(|(userinfo, host_port)| {
+                userinfo.is_empty() || userinfo == ":" || host_port.contains('@')
+            });
     let mut basic_auth = None;
     let scheme_for_url = uri.scheme_str().unwrap_or("http").to_string();
     let authority = if let Some((userinfo, host_port)) = raw_authority.as_str().split_once('@') {
@@ -200,6 +184,7 @@ fn parse_proxy_uri(value: &str) -> Option<DefaultProxyIntercept> {
         uri,
         basic_auth,
         proxy_url,
+        requires_transport_default,
     })
 }
 

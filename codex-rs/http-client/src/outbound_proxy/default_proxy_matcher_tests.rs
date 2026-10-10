@@ -212,6 +212,39 @@ fn cgi_process_disables_every_proxy() {
     assert_eq!(intercepts, vec![None, None]);
 }
 
+#[cfg(unix)]
+#[test]
+fn non_unicode_cgi_variable_disables_the_production_matcher() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let output = Command::new(std::env::current_exe().expect("test executable"))
+        .args([
+            "--exact",
+            "outbound_proxy::default_proxy_matcher::tests::env_probe",
+            "--nocapture",
+            "--format=terse",
+        ])
+        .env_clear()
+        .env("CODEX_HTTP_CLIENT_MATCHER_ENV_PROBE", "1")
+        .env(
+            "CODEX_HTTP_CLIENT_MATCHER_PROBE_URLS",
+            "http://example.com\thttps://example.com",
+        )
+        .env("ALL_PROXY", "http://proxy.test:8080")
+        .env("REQUEST_METHOD", OsString::from_vec(vec![0xff]))
+        .output()
+        .expect("raw CGI subprocess should run");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("subprocess output should be Unicode");
+    let probe = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("probe:"))
+        .expect("probe output should be present");
+    let intercepts: Vec<Option<String>> = serde_json::from_str(probe).expect("valid probe output");
+    assert_eq!(intercepts, vec![None, None]);
+}
+
 #[test]
 fn no_proxy_bypasses_the_intercept() {
     let intercepts = run_env_case(

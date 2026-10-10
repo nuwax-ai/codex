@@ -165,10 +165,41 @@ fn resolved_default_preserves_proxy_userinfo_in_the_route() {
 }
 
 #[test]
-fn resolved_default_never_proxies_websocket_schemes() {
-    // The default matcher only intercepts http/https destinations.
-    assert_eq!(
-        route(&[("ALL_PROXY", "http://p3:3")], "wss://a.test/chat"),
-        OutboundProxyRoute::Direct
-    );
+fn resolved_default_delegates_websocket_proxy_discovery() {
+    for scheme in ["ws", "wss"] {
+        assert_eq!(
+            route(
+                &[("ALL_PROXY", "http://p3:3")],
+                &format!("{scheme}://a.test/chat")
+            ),
+            OutboundProxyRoute::TransportDefault
+        );
+    }
+}
+
+#[test]
+fn resolved_default_disables_environment_proxies_for_cgi() {
+    for request_method in ["", "GET"] {
+        assert_eq!(
+            route(
+                &[
+                    ("REQUEST_METHOD", request_method),
+                    ("HTTP_PROXY", "http://p1:1"),
+                    ("ALL_PROXY", "http://p3:3")
+                ],
+                "http://a.test/x"
+            ),
+            OutboundProxyRoute::Direct
+        );
+    }
+}
+
+#[test]
+fn resolved_default_delegates_userinfo_that_url_normalizes_differently() {
+    for proxy in ["http://u:p@ss@p1:1", "http://@p1:1", "http://:@p1:1"] {
+        assert_eq!(
+            route(&[("HTTP_PROXY", proxy)], "http://a.test/x"),
+            OutboundProxyRoute::TransportDefault
+        );
+    }
 }

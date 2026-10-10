@@ -18,6 +18,40 @@ use tracing_subscriber::layer::SubscriberExt;
 #[path = "outbound_proxy_redirect_coverage_tests.rs"]
 mod redirect_coverage_tests;
 
+#[tokio::test]
+async fn resolved_default_async_ignores_respect_system_proxy_cache() {
+    let request_url = "https://resolved-default-cache-isolation.test/request";
+    let factory = HttpClientFactory::new(OutboundProxyPolicy::ResolvedDefault);
+    let expected = factory.resolve_proxy_route(request_url);
+    let cached = if expected == OutboundProxyRoute::Direct {
+        SystemProxyDecision::Proxy {
+            url: "http://cached-system-proxy.test:8080".to_string(),
+        }
+    } else {
+        SystemProxyDecision::Direct
+    };
+    cache_system_proxy_decision(request_url, cached);
+    assert_eq!(
+        factory
+            .resolve_proxy_route_async(request_url.to_string())
+            .await
+            .expect("resolved default route should resolve"),
+        expected
+    );
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn resolved_default_on_windows_retains_transport_discovery() {
+    let factory = HttpClientFactory::new(OutboundProxyPolicy::ResolvedDefault);
+    for url in ["http://a.test/x", "https://a.test/x", "wss://a.test/chat"] {
+        assert_eq!(
+            factory.resolve_proxy_route(url),
+            OutboundProxyRoute::TransportDefault
+        );
+    }
+}
+
 struct MapEnv {
     values: HashMap<String, String>,
 }

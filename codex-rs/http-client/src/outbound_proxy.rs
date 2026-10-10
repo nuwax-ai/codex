@@ -32,7 +32,7 @@ const SYSTEM_PROXY_CACHE_MAX_ENTRIES: usize = 256;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 static ASYNC_SYSTEM_PROXY_RESOLUTION_PERMIT: Semaphore = Semaphore::const_new(1);
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "windows")))]
 #[path = "outbound_proxy/resolved_default_route_tests.rs"]
 mod resolved_default_route_tests;
 
@@ -41,7 +41,9 @@ mod resolved_default_route_tests;
 mod resolved_default_dual_track_tests;
 
 mod default_proxy_matcher;
+#[cfg(not(target_os = "windows"))]
 pub(crate) use default_proxy_matcher::DefaultProxyMatcher;
+#[cfg(not(target_os = "windows"))]
 pub(crate) use default_proxy_matcher::ManualSystemProxies;
 #[cfg(target_os = "macos")]
 mod macos;
@@ -144,9 +146,11 @@ pub enum OutboundProxyPolicy {
     /// Resolve the default transport's exact priority (environment first,
     /// manual system entries filling empty scheme slots, ALL_PROXY fallback,
     /// NO_PROXY exclusions) ourselves and hand the transport a fully explicit
-    /// route, so client construction never performs reqwest's synchronous
-    /// system-proxy read on the request path. SOCKS proxy URLs delegate to
-    /// the transport. Opt-in: the default migration is a separate
+    /// route, so client construction avoids reqwest's synchronous macOS
+    /// system-proxy read. Windows, WebSocket destinations, and SOCKS proxy
+    /// URLs retain transport discovery, as do credentials whose normalization
+    /// would change authentication; those paths are not optimized.
+    /// Opt-in: the default migration is a separate
     /// adjudication.
     ResolvedDefault,
 }
@@ -327,14 +331,16 @@ impl HttpClientFactory {
         &self,
         request_url: String,
     ) -> io::Result<OutboundProxyRoute> {
-        if matches!(
-            self.outbound_proxy_policy,
-            OutboundProxyPolicy::ReqwestDefault
-        ) {
+        if self.outbound_proxy_policy == OutboundProxyPolicy::ReqwestDefault
+            || (cfg!(target_os = "windows")
+                && self.outbound_proxy_policy == OutboundProxyPolicy::ResolvedDefault)
+        {
             return Ok(OutboundProxyRoute::TransportDefault);
         }
 
-        if let Some(route) = self.cached_proxy_route(&request_url) {
+        if self.outbound_proxy_policy == OutboundProxyPolicy::RespectSystemProxy
+            && let Some(route) = self.cached_proxy_route(&request_url)
+        {
             return Ok(route);
         }
 
@@ -401,6 +407,11 @@ fn resolve_proxy_route(
     }
 
     if matches!(outbound_proxy_policy, OutboundProxyPolicy::ResolvedDefault) {
+        // Windows' default transport also reads ProxyServer/ProxyOverride.
+        // Retain that implementation until the explicit resolver covers it.
+        #[cfg(target_os = "windows")]
+        return OutboundProxyRoute::TransportDefault;
+        #[cfg(not(target_os = "windows"))]
         return resolve_resolved_default_route(env, request_url);
     }
 
@@ -424,17 +435,27 @@ fn resolve_proxy_route(
 /// the dedicated run-loop loader on macOS), ALL_PROXY as the last fallback,
 /// NO_PROXY applied first. A mapped route means the pooled client is built
 /// with an explicit proxy or `no_proxy()`, so reqwest never runs its own
-/// synchronous system read. SOCKS proxy URLs delegate to the transport
-/// (this build has no reqwest socks support), as does an unparseable
-/// destination.
+/// synchronous system read. WebSocket destinations, SOCKS proxy URLs (this
+/// build has no reqwest socks support), and credentials that would change
+/// during URL normalization delegate to the transport, as does an unparseable
+/// destination. Windows retains transport discovery for every destination.
+#[cfg(not(target_os = "windows"))]
 fn resolve_resolved_default_route(env: &dyn EnvSource, request_url: &str) -> OutboundProxyRoute {
     let Ok(destination) = request_url.parse::<http::Uri>() else {
         return OutboundProxyRoute::TransportDefault;
     };
+    // WebSocket discovery has different scheme fallback and NO_PROXY rules.
+    // Preserve the SDK's own resolver instead of treating ws/wss as direct.
+    if matches!(destination.scheme_str(), Some("ws" | "wss")) {
+        return OutboundProxyRoute::TransportDefault;
+    }
     let matcher =
         DefaultProxyMatcher::from_env_source_and_manual(env, manual_system_proxies_for_platform());
     match matcher.intercept(&destination) {
         None => OutboundProxyRoute::Direct,
+        Some(intercept) if intercept.requires_transport_default => {
+            OutboundProxyRoute::TransportDefault
+        }
         Some(intercept) => match intercept.uri.scheme_str() {
             Some("http" | "https") => OutboundProxyRoute::Proxy {
                 // The proxy URL keeps its userinfo so the transport parses
@@ -453,7 +474,7 @@ fn manual_system_proxies_for_platform() -> ManualSystemProxies {
     macos::manual_system_proxies()
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn manual_system_proxies_for_platform() -> ManualSystemProxies {
     ManualSystemProxies::default()
 }
@@ -985,6 +1006,12 @@ fn proxy_url_from_hostport(proxy_scheme: &str, hostport: &str) -> ParsedProxyLis
 
 pub(crate) trait EnvSource {
     fn var(&self, key: &str) -> Option<String>;
+
+    /// Whether the variable is present. Unicode fixture sources use `var`;
+    /// process sources must also preserve empty and non-Unicode values.
+    fn is_set(&self, key: &str) -> bool {
+        self.var(key).is_some()
+    }
 }
 
 struct ProcessEnv;
@@ -992,6 +1019,10 @@ struct ProcessEnv;
 impl EnvSource for ProcessEnv {
     fn var(&self, key: &str) -> Option<String> {
         std::env::var(key).ok()
+    }
+
+    fn is_set(&self, key: &str) -> bool {
+        std::env::var_os(key).is_some()
     }
 }
 
