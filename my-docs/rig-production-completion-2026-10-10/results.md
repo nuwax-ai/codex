@@ -108,6 +108,16 @@
 - core 51 选集在 load≈8 仍 45 败：定性为**并发预算边界**（非负载、非栈）——shell/realtime 家族 solo/pair 全过、并发即越 1.6s/2s 内部预算（如 parallel-tools 的 1.6s 并行时长预算在任意双进程并发下即越界 1.73s）。在共享机器上不可并发验证绿；按"单过/并发越预算"边界如实登记，未放宽任何预算。
 - run3 期间确认：`history_lookup_uses_server_provider...`（非历史身份）在安静窗口也失败——不属 119，另记待查。
 
+
+### 批 M — 119 账目闭环（HEAD 含 provider_id 断言修复提交）
+
+- **119 历史身份全部入账**（ledger 122 行，含 header 校验行）：**PASS 97 / BOUNDARY 23 / FAIL 2**。
+- 收尾三项：
+  1. `derive_config_from_params_uses_session_thread_config_model_provider`（app-server）：历史失败=fork 的 load-time `provider_id` 盖章与旧断言矛盾（config_manager 注释有档）；断言改盖章后形状，PASS。
+  2. `managed_network_proxy_decider_survives_full_access_start`（core）：**真实开放缺陷候选**——managed network proxy 返回 403 `blocked-by-allowlist`，full-access start 下的 allowlist 判定与测试预期不符；与 residency::websocket 并列为当前仅有的两个 FAIL，需专项（网络策略/NUWAX 控制域 / rig WS 头注入）。
+  3. core 30 身份按并发梯度定性（solo 全过、pair 起亚秒窗/握手预算越界=BOUNDARY 23 中的主体）；exec 事件 11 项非 macOS 分支照常通过。
+- 遗留统计口径：BOUNDARY 23 = 共享机器上无法并发验证绿的预算类身份（solo/pair 复验全过），非功能回归；两个 FAIL 已给出机制与定位。run3 期间另发现 1 个非 119 失败（tui provider_defaults.history_lookup）待查。
+
 ## 40 项状态（更新）
 
 | 项 | 状态 | 证据/边界 |
