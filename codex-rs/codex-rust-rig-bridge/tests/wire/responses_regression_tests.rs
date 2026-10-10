@@ -320,7 +320,7 @@ async fn responses_terminal_failures_reject_later_completion() {
             }
             "response.incomplete" => {
                 assert!(
-                    matches!(errors.as_slice(), [ApiError::InvalidRequest { message }] if message.contains("max_output_tokens"))
+                    matches!(errors.as_slice(), [ApiError::CapExhausted { message, .. }] if message.contains("max_output_tokens"))
                 );
             }
             "error" => assert_eq!(

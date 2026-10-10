@@ -228,6 +228,18 @@ pub(crate) fn spawn_pump(
                         }
                         return;
                     }
+                    // Supply presence-true wire counters to the converter for
+                    // Anthropic terminals (rig's normalized usage cannot
+                    // distinguish unreported from zero).
+                    if protocol == RigProtocol::Anthropic
+                        && matches!(
+                            &event,
+                            rig_core::streaming::StreamedAssistantContent::Final(_)
+                        )
+                        && let Ok(report) = anthropic_usage.lock().map(|usage| usage.snapshot_report())
+                    {
+                        pending.wire_reported_usage = report;
+                    }
                     let mut events = match rig_event_to_response_events(event, &mut pending) {
                         Ok(events) => events,
                         Err(error) => {

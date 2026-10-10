@@ -36,6 +36,17 @@ pub enum ApiError {
     RateLimit(String),
     #[error("invalid request: {message}")]
     InvalidRequest { message: String },
+    /// The caller-selected output cap was exhausted. Non-retryable; the same
+    /// terminal-budget semantics the previous `InvalidRequest` message carried.
+    /// `reported_usage` preserves the counters the terminal frame actually
+    /// reported, with per-counter presence; `None` means no usable report
+    /// (absent, null, or unparseable usage).
+    #[error("{message}")]
+    CapExhausted {
+        message: String,
+        response_id: Option<String>,
+        reported_usage: Option<codex_protocol::protocol::ReportedResponseUsage>,
+    },
     #[error("invalid prompt: {message}")]
     InvalidPrompt { message: String },
     #[error("cyber policy: {message}")]

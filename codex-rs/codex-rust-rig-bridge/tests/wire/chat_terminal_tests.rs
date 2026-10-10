@@ -74,7 +74,7 @@ fn assert_cap_failure(events: &[Result<ResponseEvent, ApiError>]) {
     assert_eq!(errors.len(), 1, "{events:?}");
     assert!(matches!(
         errors[0],
-        ApiError::InvalidRequest { message } if message.contains("Output token limit reached")
+        ApiError::CapExhausted { message, .. } if message.contains("Output token limit reached")
     ));
     assert!(!events.iter().any(|event| matches!(
         event,

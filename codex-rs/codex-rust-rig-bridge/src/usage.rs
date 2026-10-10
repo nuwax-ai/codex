@@ -45,6 +45,25 @@ impl AnthropicUsage {
         }
     }
 
+    /// Snapshots the observed counters as a presence-preserving report.
+    ///
+    /// Returns `None` when nothing was observed. The Anthropic wire never
+    /// reports a total, so the report is at best `Incomplete`; explicit zeros
+    /// observed on the wire stay zeros here.
+    pub(crate) fn snapshot_report(
+        &self,
+    ) -> Option<codex_protocol::protocol::ReportedResponseUsage> {
+        let counts = codex_protocol::protocol::ReportedUsageCounters {
+            input_tokens: self.input.map(|value| value as i64),
+            cached_input_tokens: self.cached.map(|value| value as i64),
+            cache_write_input_tokens: self.cache_creation.map(|value| value as i64),
+            output_tokens: self.output.map(|value| value as i64),
+            reasoning_output_tokens: self.reasoning.map(|value| value as i64),
+            total_tokens: None,
+        };
+        codex_protocol::protocol::ReportedResponseUsage::from_counters(counts)
+    }
+
     pub(crate) fn apply(&self, usage: &mut Usage) {
         for (target, value) in [
             (&mut usage.input_tokens, self.input),

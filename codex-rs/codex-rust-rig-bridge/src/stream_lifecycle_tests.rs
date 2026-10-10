@@ -379,7 +379,7 @@ fn unsuccessful_terminals_never_publish_buffered_tools() {
             // Responses decoder: a non-retryable budget configuration error.
             FinishReason::Length => assert!(matches!(
                 error,
-                ApiError::InvalidRequest { ref message } if message.contains("Output token limit reached")
+                ApiError::CapExhausted { ref message, .. } if message.contains("Output token limit reached")
             )),
             FinishReason::ContentFilter => assert!(matches!(error, ApiError::ContentFilter)),
             _ => assert!(matches!(error, ApiError::Stream(_))),

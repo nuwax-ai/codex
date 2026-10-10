@@ -2259,6 +2259,104 @@ pub struct TokenUsage {
     pub codex_rollout_budget_units: Option<serde_json::Number>,
 }
 
+/// Provider-reported usage counters with per-counter presence preserved.
+///
+/// `None` means the counter was not reported (absent, null, or not reliably
+/// parseable); an explicit provider zero stays `Some(0)`. Counters are never
+/// backfilled from other counters.
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub struct ReportedUsageCounters {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null", optional)]
+    pub input_tokens: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null", optional)]
+    pub cached_input_tokens: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null", optional)]
+    pub cache_write_input_tokens: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null", optional)]
+    pub output_tokens: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null", optional)]
+    pub reasoning_output_tokens: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null", optional)]
+    pub total_tokens: Option<i64>,
+}
+
+/// How completely a usage report is known.
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub enum UsageCompleteness {
+    /// Every counter was reported.
+    Complete,
+    /// Some counters are known; others were not reported.
+    Incomplete,
+    /// Nothing about the report is known.
+    #[default]
+    Unknown,
+}
+
+/// A provider-reported usage payload, preserving counter presence and how
+/// completely the report is known.
+///
+/// `normalized` is present only when every counter was reported directly;
+/// a total derived by summing other counters is never placed here.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+pub struct ReportedResponseUsage {
+    pub counts: ReportedUsageCounters,
+    pub completeness: UsageCompleteness,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "TokenUsage | null", optional)]
+    pub normalized: Option<TokenUsage>,
+}
+
+impl ReportedUsageCounters {
+    /// Normalizes a fully reported counter set; `None` unless every counter
+    /// was reported directly.
+    pub fn normalize_if_complete(self) -> Option<TokenUsage> {
+        Some(TokenUsage {
+            input_tokens: self.input_tokens?,
+            cached_input_tokens: self.cached_input_tokens?,
+            cache_write_input_tokens: self.cache_write_input_tokens?,
+            output_tokens: self.output_tokens?,
+            reasoning_output_tokens: self.reasoning_output_tokens?,
+            total_tokens: self.total_tokens?,
+            codex_rollout_budget_units: None,
+        })
+    }
+}
+
+impl ReportedResponseUsage {
+    /// Builds a report from parsed counters, deriving completeness from
+    /// presence. Returns `None` when no counter was reported at all.
+    pub fn from_counters(counts: ReportedUsageCounters) -> Option<Self> {
+        let known = [
+            counts.input_tokens,
+            counts.cached_input_tokens,
+            counts.cache_write_input_tokens,
+            counts.output_tokens,
+            counts.reasoning_output_tokens,
+            counts.total_tokens,
+        ];
+        if known.iter().all(Option::is_none) {
+            return None;
+        }
+        let normalized = counts.normalize_if_complete();
+        let completeness = if normalized.is_some() {
+            UsageCompleteness::Complete
+        } else {
+            UsageCompleteness::Incomplete
+        };
+        Some(Self {
+            counts,
+            completeness,
+            normalized,
+        })
+    }
+}
+
 /// Best-effort Responses API usage observed for one completed response.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
 pub struct TokenUsageRecord {

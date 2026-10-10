@@ -35,6 +35,7 @@ pub fn map_api_error(err: ApiError) -> CodexErr {
         | ApiError::FlexUnavailable
         | ApiError::RateLimit(_)
         | ApiError::InvalidRequest { .. }
+        | ApiError::CapExhausted { .. }
         | ApiError::InvalidPrompt { .. }
         | ApiError::CyberPolicy { .. }
         | ApiError::BioPolicy { .. }
@@ -74,6 +75,9 @@ fn map_api_error_details(err: ApiError) -> CodexErr {
             })
         }
         ApiError::InvalidRequest { message } => CodexErr::InvalidRequest(message),
+        // Same non-retryable terminal-budget semantics the message carried as
+        // InvalidRequest; the message text is preserved verbatim downstream.
+        ApiError::CapExhausted { message, .. } => CodexErr::InvalidRequest(message),
         ApiError::InvalidPrompt { message } => {
             CodexErr::new(CodexErrorDetails::InvalidPrompt { message })
         }

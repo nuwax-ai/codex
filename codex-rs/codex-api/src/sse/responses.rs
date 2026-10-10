@@ -14,6 +14,8 @@ use codex_client::StreamResponse;
 use codex_protocol::ResponseUsageMetadata;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::ModelVerification;
+use codex_protocol::protocol::ReportedResponseUsage;
+use codex_protocol::protocol::ReportedUsageCounters;
 use codex_protocol::protocol::TokenUsage;
 use codex_protocol::protocol::TurnModerationMetadataEvent;
 use eventsource_stream::Eventsource;
@@ -166,6 +168,29 @@ impl From<ResponseCompletedUsage> for TokenUsage {
             codex_rollout_budget_units: val.codex_rollout_budget_units,
         }
     }
+}
+
+/// Parses a Responses terminal-frame `usage` object preserving per-counter
+/// presence: absent or null counters stay `None`, explicit zeros stay zero,
+/// and non-numeric values are treated as unreported. Returns `None` when no
+/// counter parses at all.
+fn parse_reported_response_usage(usage: &Value) -> Option<ReportedResponseUsage> {
+    let counter = |name: &str| usage.get(name).and_then(Value::as_i64);
+    let detailed = |container: &str, field: &str| {
+        usage
+            .get(container)
+            .and_then(|details| details.get(field))
+            .and_then(Value::as_i64)
+    };
+    let counts = ReportedUsageCounters {
+        input_tokens: counter("input_tokens"),
+        cached_input_tokens: detailed("input_tokens_details", "cached_tokens"),
+        cache_write_input_tokens: detailed("input_tokens_details", "cache_write_tokens"),
+        output_tokens: counter("output_tokens"),
+        reasoning_output_tokens: detailed("output_tokens_details", "reasoning_tokens"),
+        total_tokens: counter("total_tokens"),
+    };
+    ReportedResponseUsage::from_counters(counts)
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -456,10 +481,26 @@ pub fn process_responses_event(
                 if reason == "max_output_tokens" {
                     // A caller-selected generation budget is exhausted; retrying
                     // the same budget is not recovery from a transport failure.
-                    return Err(ResponsesEventError::Api(ApiError::InvalidRequest {
+                    // The terminal frame's usage survives on the typed error with
+                    // per-counter presence preserved.
+                    let response_id = event
+                        .response
+                        .as_ref()
+                        .and_then(|response| response.get("id"))
+                        .and_then(Value::as_str)
+                        .map(str::to_owned);
+                    let reported_usage = event
+                        .response
+                        .as_ref()
+                        .and_then(|response| response.get("usage"))
+                        .filter(|usage| !usage.is_null())
+                        .and_then(parse_reported_response_usage);
+                    return Err(ResponsesEventError::Api(ApiError::CapExhausted {
                         message:
                             "Output token limit reached; increase max_output_tokens before retrying"
                                 .to_string(),
+                        response_id,
+                        reported_usage,
                     }));
                 }
                 if reason != "interrupted" {
@@ -690,7 +731,9 @@ async fn process_sse_with_treatment(
                 if policy == ResponseStreamPolicy::Strict
                     || matches!(
                         error,
-                        ApiError::FlexUnavailable | ApiError::InvalidRequest { .. }
+                        ApiError::FlexUnavailable
+                            | ApiError::InvalidRequest { .. }
+                            | ApiError::CapExhausted { .. }
                     )
                 {
                     let _ = tx_event.send(Err(error)).await;
@@ -1168,7 +1211,10 @@ mod tests {
                 .expect("terminal error")
                 .expect("error event");
             assert!(
-                matches!(event, Err(ApiError::InvalidRequest { message }) if message.contains("max_output_tokens"))
+                matches!(&event, Err(ApiError::CapExhausted { message, response_id, reported_usage }) if message.contains("max_output_tokens")
+                    && response_id.as_deref() == Some("limited")
+                    && reported_usage.is_none()),
+                "unexpected terminal event: {event:?}"
             );
             assert!(
                 rx.recv().await.is_none(),

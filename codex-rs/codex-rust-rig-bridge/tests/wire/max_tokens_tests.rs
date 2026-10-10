@@ -157,12 +157,12 @@ async fn chat_length_returns_terminal_output_cap_error_with_partial_text() {
     let bodies = server.await.unwrap();
     // Output exhaustion is a terminal budget condition: one request, the
     // already-streamed partial text stays visible, and the terminal error is
-    // the non-retryable "increase the cap" InvalidRequest (core's
+    // the non-retryable "increase the cap" terminal-budget error (core's
     // retry_delay is None, so the same budget is never resampled).
     let error = terminal.expect("terminal budget error");
     assert!(matches!(
         &error,
-        codex_api::ApiError::InvalidRequest { message }
+        codex_api::ApiError::CapExhausted { message, .. }
             if message.contains("Output token limit reached")
     ));
     assert_eq!(
@@ -241,7 +241,7 @@ async fn anthropic_max_tokens_returns_terminal_output_cap_error_with_partial_tex
     let error = terminal.expect("terminal budget error");
     assert!(matches!(
         &error,
-        codex_api::ApiError::InvalidRequest { message }
+        codex_api::ApiError::CapExhausted { message, .. }
             if message.contains("Output token limit reached")
     ));
     assert_eq!(

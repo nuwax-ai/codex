@@ -1,6 +1,8 @@
 //! Rig stream events to the Codex item lifecycle.
 use codex_api::ApiError;
 use codex_api::ResponseEvent;
+use codex_protocol::protocol::ReportedResponseUsage;
+use codex_protocol::protocol::ReportedUsageCounters;
 use codex_protocol::ResponseItemId;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
@@ -19,6 +21,9 @@ enum DeferredOutput {
 pub(crate) struct PendingRigMessage {
     tools: crate::response_tools::PendingTools,
     response_id: String,
+    /// Presence-preserving usage observed on the raw wire for the response
+    /// being converted, supplied by the stream pump before the Final event.
+    pub(crate) wire_reported_usage: Option<codex_protocol::protocol::ReportedResponseUsage>,
     segments: Vec<crate::hosted_replay::CapturedSegment>,
     tool_segment_ids: std::collections::HashMap<String, String>,
     text_buffer: String,
@@ -54,6 +59,7 @@ impl PendingRigMessage {
     ) -> Self {
         Self {
             tools: crate::response_tools::PendingTools::new(custom_tools),
+            wire_reported_usage: None,
             response_id: unique_suffix(),
             segments: Vec::new(),
             tool_segment_ids: std::collections::HashMap::new(),
@@ -242,6 +248,26 @@ pub(crate) fn paused_final_events(
     Ok(events)
 }
 
+/// Maps rig's normalized usage to a presence-preserving report.
+///
+/// Rig reports plain integers, so an unreported counter is indistinguishable
+/// from zero: only nonzero counters are claimed, and the report is therefore
+/// at best `Incomplete`.
+fn rig_usage_report(usage: &rig_core::completion::Usage) -> Option<ReportedResponseUsage> {
+    let counts = ReportedUsageCounters {
+        input_tokens: (usage.input_tokens > 0).then_some(usage.input_tokens as i64),
+        cached_input_tokens: (usage.cached_input_tokens > 0)
+            .then_some(usage.cached_input_tokens as i64),
+        cache_write_input_tokens: (usage.cache_creation_input_tokens > 0)
+            .then_some(usage.cache_creation_input_tokens as i64),
+        output_tokens: (usage.output_tokens > 0).then_some(usage.output_tokens as i64),
+        reasoning_output_tokens: (usage.reasoning_tokens > 0)
+            .then_some(usage.reasoning_tokens as i64),
+        total_tokens: (usage.total_tokens > 0).then_some(usage.total_tokens as i64),
+    };
+    ReportedResponseUsage::from_counters(counts)
+}
+
 fn handle_stream_final(
     record: StreamFinal,
     pending: &mut PendingRigMessage,
@@ -260,9 +286,19 @@ fn handle_stream_final(
         // another paid sample, so the error is non-retryable and names the
         // fix. Partial output already streamed stays visible.
         Some(FinishReason::Length) => {
-            return Err(ApiError::InvalidRequest {
+            // The pump supplies presence-true wire counters when it has them
+            // (Anthropic); otherwise fall back to rig's normalized usage,
+            // where a zero cannot be distinguished from an unreported counter,
+            // so zeros stay unreported rather than being asserted as data.
+            let reported_usage = pending
+                .wire_reported_usage
+                .take()
+                .or_else(|| rig_usage_report(&record.usage));
+            return Err(ApiError::CapExhausted {
                 message: "Output token limit reached; increase max_tokens before retrying"
                     .to_string(),
+                response_id: record.response_id.or(record.message_id.clone()),
+                reported_usage,
             });
         }
         // The native Responses decoder classifies content_filter distinctly.

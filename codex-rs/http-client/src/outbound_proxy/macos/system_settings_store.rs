@@ -74,7 +74,7 @@ type SharedReader = Arc<Mutex<Box<dyn FnMut() -> Option<ProxiesDictionary> + Sen
 
 /// Timing knobs; production uses the documented defaults, tests tighten them.
 #[derive(Clone, Copy)]
-struct LoaderTunings {
+pub(super) struct LoaderTunings {
     ttl: Duration,
     failure_ttl: Duration,
     wait_budget: Duration,
