@@ -1,206 +1,267 @@
-//! Unit coverage for the bounded cap-partial capture.
+//! Unit coverage for the bounded streaming cap-partial capture.
 
 use super::*;
+use codex_protocol::ResponseItemId;
 
-fn envelope(item: ResponseItem) -> ResponseItemEnvelope {
-    ResponseItemEnvelope {
-        item,
-        metadata: None,
+fn finish(capture: CapPartialCapture) -> CapPartialEvent {
+    capture
+        .finish("turn-1", "sampling:turn-1:0", None)
+        .expect("captured fragments finish into an event")
+}
+
+#[test]
+fn deltas_accumulate_into_one_fragment_per_key() {
+    let mut capture = CapPartialCapture::default();
+    for delta in ["par", "tial ", "cap ", "answer"] {
+        capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-1", delta);
     }
-}
-
-fn assistant_message(id: &str, text: &str) -> ResponseItemEnvelope {
-    envelope(ResponseItem::Message {
-        id: Some(codex_protocol::ResponseItemId::from_server(id.to_string())),
-        role: "assistant".to_string(),
-        content: vec![codex_protocol::models::ContentItem::OutputText {
-            text: text.to_string(),
-        }],
-        phase: None,
-        internal_chat_message_metadata_passthrough: None,
-    })
-}
-
-fn user_message(text: &str) -> ResponseItemEnvelope {
-    envelope(ResponseItem::Message {
-        id: None,
-        role: "user".to_string(),
-        content: vec![codex_protocol::models::ContentItem::OutputText {
-            text: text.to_string(),
-        }],
-        phase: None,
-        internal_chat_message_metadata_passthrough: None,
-    })
-}
-
-#[test]
-fn captures_trailing_assistant_items_after_the_last_user_message() {
-    let items = vec![
-        user_message("earlier turn"),
-        assistant_message("a1", "first answer"),
-        user_message("this turn"),
-        assistant_message("b1", "partial answer"),
-        envelope(ResponseItem::Reasoning {
-            id: Some(codex_protocol::ResponseItemId::from_server(
-                "r1".to_string(),
-            )),
-            summary: vec![
-                codex_protocol::models::ReasoningItemReasoningSummary::SummaryText {
-                    text: "thinking prefix".to_string(),
-                },
-            ],
-            content: None,
-            encrypted_content: None,
-            internal_chat_message_metadata_passthrough: None,
-        }),
-    ];
-    let event = build_cap_partial("turn-1", "turn-1", &items).expect("partial should capture");
-    assert_eq!(event.turn_id, "turn-1");
-    assert_eq!(event.fragments.len(), 2);
+    capture.observe_delta(CapPartialFragmentKind::Reasoning, "reasoning-1", "thinking");
+    let event = finish(capture);
     assert_eq!(
-        event.fragments[0].kind,
-        CapPartialFragmentKind::AssistantText
+        event
+            .fragments
+            .iter()
+            .map(|fragment| (fragment.fragment_key.as_str(), fragment.text.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("item-1", "partial cap answer"),
+            ("reasoning-1", "thinking")
+        ]
     );
-    assert_eq!(event.fragments[0].text, "partial answer");
-    assert_eq!(event.fragments[1].kind, CapPartialFragmentKind::Reasoning);
-    assert_eq!(event.fragments[1].text, "thinking prefix");
+    assert_eq!(event.budget.total_bytes, 26);
     assert!(event.budget.enforced_caps.is_empty());
-    assert_eq!(event.budget.token_evidence.as_str(), "unverified");
+    assert_eq!(event.response_key, "sampling:turn-1:0");
+    assert_eq!(event.turn_id, "turn-1");
+    assert_eq!(event.reported_usage, None);
+    assert_eq!(event.budget.token_evidence, TokenBudgetEvidence::Unverified);
 }
 
 #[test]
-fn returns_none_when_nothing_assistant_preceded_the_cap() {
-    let items = vec![user_message("this turn")];
-    assert!(build_cap_partial("turn-1", "turn-1", &items).is_none());
+fn nothing_captured_finishes_none() {
+    let capture = CapPartialCapture::default();
+    assert!(capture.finish("t", "k", None).is_none());
 }
 
 #[test]
-fn truncates_fragment_prefixes_at_utf8_boundaries() {
-    // 3-byte CJK characters: cutting inside one would be invalid UTF-8.
-    let long_text = "字".repeat(10_000);
-    let items = vec![assistant_message("a1", &long_text)];
-    let event = build_cap_partial("turn-1", "turn-1", &items).expect("partial should capture");
+fn fragment_byte_ceiling_truncates_at_utf8_boundary_and_drops_excess() {
+    let mut capture = CapPartialCapture::default();
+    // ASCII filler then a 4-byte emoji: the cut lands inside the emoji and
+    // backs off to its start.
+    let mut first = "a".repeat(MAX_FRAGMENT_BYTES - 2);
+    first.push('😀');
+    first.push_str("tail");
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-1", &first);
+    let event = finish(capture);
     let fragment = &event.fragments[0];
     assert!(fragment.truncated);
-    assert!(fragment.text.len() <= 16 * 1024);
-    assert!(fragment.text.chars().all(|c| c == '字'));
-    assert!(
-        event
-            .budget
-            .enforced_caps
-            .contains(&CapBudgetKind::FragmentBytes)
-    );
-}
-
-#[test]
-fn stops_at_the_turn_byte_ceiling() {
-    // Four fragments of ~10 KiB each stay under per-fragment limits but
-    // together exceed the 64 KiB turn ceiling.
-    let text = "x".repeat(10 * 1024);
-    let items = vec![
-        assistant_message("a1", &text),
-        assistant_message("a2", &text),
-        assistant_message("a3", &text),
-        assistant_message("a4", &text),
-        assistant_message("a5", &text),
-        assistant_message("a6", &text),
-        assistant_message("a7", &text),
-    ];
-    let event = build_cap_partial("turn-1", "turn-1", &items).expect("partial should capture");
-    assert_eq!(event.budget.total_bytes, 64 * 1024);
     assert_eq!(
-        event.budget.total_bytes,
-        event
-            .fragments
-            .iter()
-            .map(|fragment| fragment.text.len() as u64)
-            .sum::<u64>()
+        fragment.text.len(),
+        MAX_FRAGMENT_BYTES - 2,
+        "cut back to the emoji's start"
     );
-    assert!(
-        event
-            .budget
-            .enforced_caps
-            .contains(&CapBudgetKind::TurnBytes)
+    assert!(fragment.text.ends_with('a'));
+    assert_eq!(
+        event.budget.enforced_caps,
+        vec![CapBudgetKind::FragmentBytes]
     );
-    // The seventh fragment arrives truncated at the remaining budget instead
-    // of being dropped wholesale (prefix-keep).
-    assert_eq!(event.fragments.len(), 7);
-    assert!(event.fragments.last().expect("final fragment").truncated);
+    assert_eq!(event.budget.total_bytes as usize, MAX_FRAGMENT_BYTES - 2);
+
+    // Excess bytes after the budget are dropped without growing memory:
+    // a later delta first fills the bytes left under the ceiling, then the
+    // rest is dropped and the fragment is marked truncated at the ceiling.
+    let mut capture = CapPartialCapture::default();
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-1", &first);
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-1", "late tail");
+    let event = finish(capture);
+    assert_eq!(event.fragments[0].text.len(), MAX_FRAGMENT_BYTES);
+    assert!(event.fragments[0].truncated);
+    // A further delta to the saturated fragment drops without growing.
+    let mut capture = CapPartialCapture::default();
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-1", &first);
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-1", "ab");
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-1", "more");
+    // A different fragment still captures while the full one drops.
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-2", "other");
+    let event = finish(capture);
+    assert_eq!(event.fragments[0].text.len(), MAX_FRAGMENT_BYTES);
+    assert!(event.fragments[0].truncated);
+    assert_eq!(event.fragments[1].text, "other");
 }
 
 #[test]
-fn stops_at_the_fragment_count_ceiling() {
-    let items: Vec<_> = (0..40)
-        .map(|index| assistant_message(&format!("a{index}"), "tiny"))
-        .collect();
-    let event = build_cap_partial("turn-1", "turn-1", &items).expect("partial should capture");
-    assert_eq!(event.fragments.len(), 32);
+fn turn_byte_ceiling_closes_the_capture() {
+    let mut capture = CapPartialCapture::default();
+    // Four fragments fill 64 KiB exactly; a fifth observes nothing.
+    let chunk = "x".repeat(MAX_FRAGMENT_BYTES);
+    for index in 0..4 {
+        capture.observe_delta(
+            CapPartialFragmentKind::AssistantText,
+            &format!("item-{index}"),
+            &chunk,
+        );
+    }
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-4", "overflow");
+    let event = finish(capture);
+    assert_eq!(event.fragments.len(), 4);
+    assert_eq!(event.budget.total_bytes as usize, MAX_TURN_BYTES);
     assert!(
-        event
-            .budget
-            .enforced_caps
-            .contains(&CapBudgetKind::TurnFragments)
+        !event.fragments.iter().any(|fragment| fragment.truncated),
+        "the four stored fragments are complete prefixes"
+    );
+    assert_eq!(
+        event.budget.enforced_caps,
+        vec![CapBudgetKind::TurnBytes],
+        "content observed past the ceiling records which budget dropped it"
+    );
+    // A partial fill that exceeds the ceiling truncates the last fragment.
+    let mut capture = CapPartialCapture::default();
+    for index in 0..3 {
+        capture.observe_delta(
+            CapPartialFragmentKind::AssistantText,
+            &format!("item-{index}"),
+            &chunk,
+        );
+    }
+    capture.observe_delta(
+        CapPartialFragmentKind::AssistantText,
+        "item-3",
+        &format!("{chunk}tail past the ceiling"),
+    );
+    let event = finish(capture);
+    assert_eq!(event.fragments.len(), 4);
+    assert_eq!(event.fragments[3].text.len(), MAX_FRAGMENT_BYTES);
+    assert!(event.fragments[3].truncated);
+    // Both budgets bound this cut: the fragment hit its ceiling and the
+    // turn closed at its limit.
+    assert_eq!(
+        event.budget.enforced_caps,
+        vec![CapBudgetKind::FragmentBytes, CapBudgetKind::TurnBytes]
     );
 }
 
 #[test]
-fn records_tool_arguments_as_non_executable_diagnostics() {
-    let items = vec![envelope(ResponseItem::FunctionCall {
-        id: None,
-        name: "write_file".to_string(),
-        namespace: None,
-        arguments: "{\"path\": \"/tmp/x\"}".to_string(),
-        encrypted_function_args: None,
-        call_id: "call-1".to_string(),
+fn fragment_count_ceiling_drops_further_fragments() {
+    let mut capture = CapPartialCapture::default();
+    for index in 0..MAX_FRAGMENTS {
+        capture.observe_delta(
+            CapPartialFragmentKind::AssistantText,
+            &format!("item-{index}"),
+            "x",
+        );
+    }
+    capture.observe_delta(
+        CapPartialFragmentKind::AssistantText,
+        "item-late",
+        "never stored",
+    );
+    let event = finish(capture);
+    assert_eq!(event.fragments.len(), MAX_FRAGMENTS);
+    assert_eq!(
+        event.budget.enforced_caps,
+        vec![CapBudgetKind::TurnFragments]
+    );
+    assert!(!event.fragments.iter().any(|f| f.text == "never stored"));
+}
+
+#[test]
+fn whole_items_without_deltas_capture_once_and_not_twice() {
+    let mut capture = CapPartialCapture::default();
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "msg-1", "streamed ");
+    // The same item completing must not append its full text again.
+    capture.observe_item_done(&ResponseItem::Message {
+        id: Some(ResponseItemId::from_server("msg-1".to_string())),
+        role: "assistant".to_string(),
+        content: vec![codex_protocol::models::ContentItem::OutputText {
+            text: "streamed fully".to_string(),
+        }],
+        phase: None,
         internal_chat_message_metadata_passthrough: None,
-    })];
-    let event = build_cap_partial("turn-1", "turn-1", &items).expect("partial should capture");
+    });
+    // An item that never streamed captures whole.
+    capture.observe_item_done(&ResponseItem::Message {
+        id: Some(ResponseItemId::from_server("msg-2".to_string())),
+        role: "assistant".to_string(),
+        content: vec![codex_protocol::models::ContentItem::OutputText {
+            text: "arrived whole".to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    });
+    // Non-assistant items are ignored.
+    capture.observe_item_done(&ResponseItem::Message {
+        id: Some(ResponseItemId::from_server("user-1".to_string())),
+        role: "user".to_string(),
+        content: vec![codex_protocol::models::ContentItem::OutputText {
+            text: "user text".to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    });
+    let event = finish(capture);
     assert_eq!(
-        event.fragments[0].kind,
-        CapPartialFragmentKind::ToolArguments
-    );
-    assert!(event.fragments[0].text.contains("write_file"));
-    assert!(event.fragments[0].text.contains("/tmp/x"));
-    assert_eq!(event.fragments[0].item_id.as_deref(), Some("call-1"));
-}
-
-#[test]
-fn trailing_items_span_back_to_the_last_user_message_only() {
-    let items = vec![
-        user_message("turn 1"),
-        assistant_message("a1", "old"),
-        user_message("turn 2"),
-        assistant_message("a2", "new"),
-    ];
-    let trailing = trailing_turn_items(&items);
-    assert_eq!(trailing.len(), 1);
-}
-
-#[test]
-fn equal_length_idless_fragments_keep_distinct_stable_keys() {
-    let items: Vec<_> = ["one", "two"]
-        .into_iter()
-        .map(|text| {
-            envelope(ResponseItem::Message {
-                id: None,
-                role: "assistant".to_string(),
-                content: vec![codex_protocol::models::ContentItem::OutputText {
-                    text: text.to_string(),
-                }],
-                phase: None,
-                internal_chat_message_metadata_passthrough: None,
-            })
-        })
-        .collect();
-    let captured = build_cap_partial("turn", "response", &items).expect("capture");
-    let again = build_cap_partial("turn", "response", &items).expect("recapture");
-    assert_eq!(captured, again);
-    assert_eq!(
-        captured
+        event
             .fragments
             .iter()
-            .map(|fragment| fragment.fragment_key.as_str())
+            .map(|fragment| (fragment.fragment_key.as_str(), fragment.text.as_str()))
             .collect::<Vec<_>>(),
-        vec!["idx-0", "idx-1"]
+        vec![("msg-1", "streamed "), ("msg-2", "arrived whole")]
+    );
+}
+
+#[test]
+fn tool_arguments_are_non_executable_diagnostics() {
+    let mut capture = CapPartialCapture::default();
+    capture.observe_delta(
+        CapPartialFragmentKind::ToolArguments,
+        "call-1",
+        "{\"command\":[\"ech",
+    );
+    capture.observe_item_done(&ResponseItem::CustomToolCall {
+        id: Some(ResponseItemId::from_server("fc-2".to_string())),
+        status: None,
+        call_id: "call-2".to_string(),
+        name: "shell".to_string(),
+        namespace: None,
+        input: "{\"command\":[\"echo\",\"hi\"]}".to_string(),
+        internal_chat_message_metadata_passthrough: None,
+    });
+    let event = finish(capture);
+    assert_eq!(
+        event
+            .fragments
+            .iter()
+            .map(|fragment| (fragment.kind, fragment.fragment_key.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            (CapPartialFragmentKind::ToolArguments, "call-1"),
+            (CapPartialFragmentKind::ToolArguments, "call-2"),
+        ]
+    );
+    assert_eq!(event.fragments[0].text, "{\"command\":[\"ech");
+    assert_eq!(
+        event.fragments[1].text,
+        "call shell: {\"command\":[\"echo\",\"hi\"]}"
+    );
+}
+
+#[test]
+fn idless_whole_items_get_distinct_keys() {
+    let mut capture = CapPartialCapture::default();
+    for text in ["first whole", "second whole"] {
+        capture.observe_item_done(&ResponseItem::Message {
+            id: None,
+            role: "assistant".to_string(),
+            content: vec![codex_protocol::models::ContentItem::OutputText {
+                text: text.to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        });
+    }
+    let event = finish(capture);
+    assert_eq!(event.fragments.len(), 2);
+    assert_ne!(
+        event.fragments[0].fragment_key,
+        event.fragments[1].fragment_key
     );
 }

@@ -97,6 +97,7 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::protocol::AgentMessageContentDeltaEvent;
 use codex_protocol::protocol::AgentReasoningSectionBreakEvent;
+use codex_protocol::protocol::CapPartialFragmentKind;
 use codex_protocol::protocol::CodexErrorInfo;
 use codex_protocol::protocol::ErrorEvent;
 use codex_protocol::protocol::EventMsg;
@@ -2606,6 +2607,10 @@ async fn try_run_sampling_request(
     let mut needs_follow_up = false;
     let mut last_agent_message: Option<String> = None;
     let mut active_item: Option<TurnItem> = None;
+    // Bounded capture of this sampling's streamed transcript, observed at the
+    // same stream events the loop renders; only read when the sampling
+    // exhausts its output cap (CapPartialDiagnostics).
+    let mut cap_capture = crate::session::cap_partial::CapPartialCapture::default();
     let mut active_tool_argument_diff_consumer: Option<(
         String,
         Box<dyn ToolArgumentDiffConsumer>,
@@ -2698,6 +2703,22 @@ async fn try_run_sampling_request(
                         reported_usage.as_ref(),
                     )
                     .await;
+                    if turn_context
+                        .config
+                        .features
+                        .enabled(codex_features::Feature::CapPartialDiagnostics)
+                        && let Some(event) = cap_capture.finish(
+                            &turn_context.sub_id,
+                            response_key,
+                            reported_usage.as_ref(),
+                        )
+                    {
+                        // One bounded diagnostic record, sent (and persisted
+                        // by the rollout policy in both history modes)
+                        // before the failure terminal below.
+                        sess.send_event(&turn_context, EventMsg::CapPartial(event))
+                            .await;
+                    }
                 }
                 break Err(err);
             }
@@ -2723,6 +2744,7 @@ async fn try_run_sampling_request(
             }
             ResponseEvent::OutputItemDone(mut item) => {
                 assign_missing_streamed_response_item_id(&mut item, active_item.as_ref());
+                cap_capture.observe_item_done(&item);
                 sess.reserve_assistant_message_order(&turn_context, &item)
                     .await;
                 if analytics_tool_call_ids.len() < MAX_ANALYTICS_TOOL_CALL_IDS_PER_RESPONSE {
@@ -3039,6 +3061,13 @@ async fn try_run_sampling_request(
                 });
             }
             ResponseEvent::OutputTextDelta(delta) => {
+                if let Some(active) = active_item.as_ref() {
+                    cap_capture.observe_delta(
+                        CapPartialFragmentKind::AssistantText,
+                        &active.id(),
+                        &delta,
+                    );
+                }
                 // In review child threads, suppress assistant text deltas; the
                 // UI will show a selection popup from the final ReviewOutput.
                 if let Some(active) = active_item.as_ref() {
@@ -3084,6 +3113,11 @@ async fn try_run_sampling_request(
                     Some(call_id) => call_id,
                     None => active_call_id.clone(),
                 };
+                cap_capture.observe_delta(
+                    CapPartialFragmentKind::ToolArguments,
+                    call_id.as_str(),
+                    &delta,
+                );
                 if let Some(event) = consumer.consume_diff(turn_context.as_ref(), call_id, &delta) {
                     sess.send_event(&turn_context, event).await;
                 }
@@ -3096,6 +3130,11 @@ async fn try_run_sampling_request(
                     continue;
                 }
                 if let Some(active) = active_item.as_ref() {
+                    cap_capture.observe_delta(
+                        CapPartialFragmentKind::Reasoning,
+                        &active.id(),
+                        &delta,
+                    );
                     if !active_item_is_streaming_to_client {
                         continue;
                     }
@@ -3141,6 +3180,11 @@ async fn try_run_sampling_request(
                 let Some(active) = active_item.as_ref() else {
                     continue;
                 };
+                // Sequential-cutoff summaries deliver their text here only;
+                // non-sequential modes already captured the deltas.
+                if active.id() == item_id {
+                    cap_capture.observe_whole(CapPartialFragmentKind::Reasoning, &item_id, &text);
+                }
                 if !active_item_is_streaming_to_client || active.id() != item_id {
                     continue;
                 }
@@ -3169,6 +3213,11 @@ async fn try_run_sampling_request(
                 content_index,
             } => {
                 if let Some(active) = active_item.as_ref() {
+                    cap_capture.observe_delta(
+                        CapPartialFragmentKind::Reasoning,
+                        &active.id(),
+                        &delta,
+                    );
                     if !active_item_is_streaming_to_client {
                         continue;
                     }

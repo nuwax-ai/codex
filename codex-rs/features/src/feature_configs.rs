@@ -447,6 +447,19 @@ impl FeatureConfig for CurrentTimeReminderConfigToml {
     }
 }
 
+/// Config for [`crate::Feature::CapPartialDiagnostics`].
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
+pub struct CapPartialDiagnosticsConfigToml {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+}
+
+impl FeatureConfig for CapPartialDiagnosticsConfigToml {
+    fn enabled(&self) -> Option<bool> {
+        self.enabled
+    }
+}
+
 /// How the sleep tool is selected when its feature gate is enabled.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]

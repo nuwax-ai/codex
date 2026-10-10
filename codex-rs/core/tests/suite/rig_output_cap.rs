@@ -83,6 +83,9 @@ struct TurnOutcome {
     completed_agent_items: usize,
     completed_responses: usize,
     completed_tool_items: Vec<String>,
+    cap_partials: Vec<codex_protocol::protocol::CapPartialEvent>,
+    /// Kinds of cap/error/complete events in arrival order.
+    terminal_order: Vec<&'static str>,
 }
 
 /// Runs one user turn to its TurnComplete, collecting everything needed to
@@ -106,7 +109,14 @@ async fn run_turn_until_complete(test: &TestCodex, prompt: &str) -> Result<TurnO
                 outcome.agent_deltas.push_str(&delta.delta);
             }
             EventMsg::AgentMessage(message) => outcome.final_agent_message = Some(message.message),
-            EventMsg::Error(error) => outcome.errors.push(error.message),
+            EventMsg::Error(error) => {
+                outcome.errors.push(error.message);
+                outcome.terminal_order.push("error");
+            }
+            EventMsg::CapPartial(event) => {
+                outcome.cap_partials.push(event);
+                outcome.terminal_order.push("cap_partial");
+            }
             EventMsg::ExecCommandBegin(_) => outcome.exec_begun += 1,
             EventMsg::RawResponseCompleted(_) => outcome.completed_responses += 1,
             EventMsg::ItemCompleted(item) => match item.item {
@@ -116,6 +126,7 @@ async fn run_turn_until_complete(test: &TestCodex, prompt: &str) -> Result<TurnO
             },
             EventMsg::TurnComplete(complete) => {
                 outcome.turn_error = complete.error.map(|error| error.message);
+                outcome.terminal_order.push("turn_complete");
                 return Ok(outcome);
             }
             _ => {}
@@ -228,6 +239,14 @@ async fn mount_capturing_response(
 }
 
 async fn cap_test_instance(base_url: &str, wire_api: WireApi) -> Result<(TestCodex, MockServer)> {
+    cap_test_instance_with(base_url, wire_api, /*cap_partial*/ false).await
+}
+
+async fn cap_test_instance_with(
+    base_url: &str,
+    wire_api: WireApi,
+    cap_partial: bool,
+) -> Result<(TestCodex, MockServer)> {
     let server = MockServer::start().await;
     let provider = output_cap_provider(base_url, wire_api);
     let test = test_codex()
@@ -236,6 +255,12 @@ async fn cap_test_instance(base_url: &str, wire_api: WireApi) -> Result<(TestCod
         ))
         .with_config(move |config| {
             config.model_provider = provider;
+            if cap_partial {
+                config
+                    .features
+                    .enable(codex_features::Feature::CapPartialDiagnostics)
+                    .expect("enable cap partial diagnostics");
+            }
         })
         .build_with_auto_env(&server)
         .await?;
@@ -325,6 +350,303 @@ async fn chat_output_cap_error_is_terminal_without_core_resampling() -> Result<(
     );
     assert_eq!(record.thread_token_usage.total_tokens, 68);
     Ok(())
+}
+
+/// With CapPartialDiagnostics OFF (the default), a capped turn must not
+/// emit the event or persist the rollout line: rollouts stay readable by
+/// readers that predate the `cap_partial` variant.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cap_partial_stays_absent_when_the_feature_is_off() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    let body = sse(&[
+        chat_chunk(
+            json!({"role": "assistant", "content": "partial cap answer"}),
+            None,
+        ),
+        chat_chunk(json!({}), Some("length")),
+    ]) + "data: [DONE]\n\n";
+    let log = mount_capturing_response(&server, "/v1/chat/completions", body).await?;
+    let (test, _env) = cap_test_instance(&server.uri(), WireApi::Chat).await?;
+    let outcome = run_turn_until_complete(&test, "cap without diagnostics").await?;
+    assert_cap_terminal(&outcome, log.posts(), "partial cap answer");
+    assert!(
+        outcome.cap_partials.is_empty(),
+        "the default configuration must not emit CapPartial events"
+    );
+    assert!(
+        rollout_lines(&test).is_empty(),
+        "no cap_partial line may be persisted by default"
+    );
+    Ok(())
+}
+
+/// With the feature ON, the capped sampling emits ONE bounded CapPartial
+/// before the failure terminal, persists it in the rollout with the same
+/// host sampling key as its usage record, and the rollout still resumes
+/// and serves a follow-up turn.
+// The default (omitted) mode is the store's paginated default; the legacy
+// case pins the same contract for legacy rollouts.
+#[test_case::test_case(None; "default")]
+#[test_case::test_case(Some(codex_protocol::protocol::ThreadHistoryMode::Legacy); "legacy")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cap_partial_emits_persists_and_the_rollout_resumes(
+    history_mode: Option<codex_protocol::protocol::ThreadHistoryMode>,
+) -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    let mut terminal = chat_chunk(json!({}), Some("length"));
+    terminal["usage"] = json!({"prompt_tokens": 6, "completion_tokens": 64, "total_tokens": 70});
+    let body = sse(&[
+        chat_chunk(
+            json!({"role": "assistant", "content": "partial cap answer"}),
+            None,
+        ),
+        chat_chunk(truncated_chat_tool_call(), None),
+        terminal,
+    ]) + "data: [DONE]\n\n";
+    let log = RequestLog::default();
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/v1/chat/completions"))
+        .and(log.clone())
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_raw(body, "text/event-stream"),
+        )
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    // The follow-up turn after resume gets a normal completion. The resumed
+    // instance runs the default Responses provider, so the recovery mock
+    // mounts on the Responses path.
+    let recovered = responses::sse(vec![
+        responses::ev_response_created("resp_recovered"),
+        responses::ev_message_item_added("msg_recovered", ""),
+        responses::ev_output_text_delta("recovered"),
+        responses::ev_completed("resp_recovered"),
+    ]);
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/v1/responses"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_raw(recovered, "text/event-stream"),
+        )
+        .mount(&server)
+        .await;
+
+    let provider_base = server.uri();
+    let provider = output_cap_provider(&provider_base, WireApi::Chat);
+    let mut builder = test_codex();
+    if let Some(history_mode) = history_mode {
+        builder = builder.with_history_mode(history_mode);
+    }
+    let test = builder
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
+        .with_config(move |config| {
+            config.model_provider = provider;
+            config
+                .features
+                .enable(codex_features::Feature::CapPartialDiagnostics)
+                .expect("enable cap partial diagnostics");
+        })
+        .build_with_auto_env(&server)
+        .await?;
+    let outcome = run_turn_until_complete(&test, "cap with diagnostics").await?;
+    assert_cap_terminal(&outcome, 1, "partial cap answer");
+
+    // Exactly one bounded diagnostic, ordered strictly before the terminal.
+    assert_eq!(outcome.cap_partials.len(), 1, "one CapPartial event");
+    let partial = &outcome.cap_partials[0];
+    let index_of = |kind: &str| {
+        outcome
+            .terminal_order
+            .iter()
+            .position(|entry| *entry == kind)
+    };
+    let (partial_at, error_at) = (
+        index_of("cap_partial").expect("cap partial ordered"),
+        index_of("error").expect("error ordered"),
+    );
+    assert!(partial_at < error_at, "diagnostic precedes the failure");
+    let assistant = partial
+        .fragments
+        .iter()
+        .find(|fragment| {
+            fragment.kind == codex_protocol::protocol::CapPartialFragmentKind::AssistantText
+        })
+        .expect("assistant text captured");
+    assert_eq!(assistant.text, "partial cap answer");
+    assert!(!assistant.truncated);
+    assert!(
+        !partial.fragments.iter().any(|fragment| {
+            fragment.kind == codex_protocol::protocol::CapPartialFragmentKind::ToolArguments
+        }),
+        "the rig bridge buffers tool-call events until completion; a cap never          delivers them to the turn loop's observation point"
+    );
+    assert_eq!(
+        partial.budget.token_evidence,
+        codex_protocol::protocol::TokenBudgetEvidence::Unverified
+    );
+    let reported = partial
+        .reported_usage
+        .as_ref()
+        .expect("terminal usage rides the partial");
+    assert_eq!(
+        (
+            reported.counts.input_tokens,
+            reported.counts.output_tokens,
+            reported.counts.total_tokens
+        ),
+        (Some(6), Some(64), Some(70))
+    );
+
+    // The persisted usage record and the persisted partial share the failed
+    // sampling's host key, and the partial line round-trips through the
+    // rollout decoder.
+    let usage_records = persisted_usage_records(&test);
+    let persisted = rollout_lines(&test);
+    assert_eq!(persisted.len(), 1, "exactly one persisted cap_partial line");
+    match &persisted[0] {
+        codex_history::RolloutItem::EventMsg(EventMsg::CapPartial(event)) => {
+            assert_eq!(event.response_key, partial.response_key);
+            let usage_key = usage_records
+                .first()
+                .and_then(|record| record.response_key.clone());
+            assert_eq!(
+                Some(&event.response_key),
+                usage_key.as_ref(),
+                "usage and partial identify the same sampling"
+            );
+            assert_eq!(event.fragments, partial.fragments);
+        }
+        other => panic!("expected a persisted CapPartial line, got {other:?}"),
+    }
+
+    // Resume reads the rollout with the cap_partial line and serves a
+    // follow-up turn normally.
+    let rollout_path = test.codex.rollout_path().expect("rollout path");
+    let home = test.home.clone();
+    test.codex.shutdown_and_wait().await?;
+    let resumed = test_codex()
+        .resume(&server, home, rollout_path.clone())
+        .await?;
+    let outcome = run_turn_until_complete(&resumed, "follow up after resume").await?;
+    assert!(
+        outcome.turn_error.is_none(),
+        "the follow-up turn completes: {:?}",
+        outcome.turn_error
+    );
+    assert_eq!(outcome.agent_deltas, "recovered");
+    assert!(
+        outcome.cap_partials.is_empty(),
+        "a normal completion emits no partial"
+    );
+    Ok(())
+}
+
+/// The native Responses wire completes items before the terminal, so a
+/// whole tool call that never executes (the cap forbids it) is still
+/// captured at the observation point as non-executable ToolArguments
+/// diagnostics.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn responses_cap_partial_captures_completed_tool_arguments_as_diagnostics() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    let body = responses::sse(vec![
+        responses::ev_response_created("resp_cap_diag"),
+        responses::ev_message_item_added("msg_diag", ""),
+        responses::ev_output_text_delta("partial with a tool"),
+        responses::ev_function_call("call_diag", "shell", "{\"command\":[\"echo\",\"hi\"]}"),
+        json!({
+            "type": "response.incomplete",
+            "response": {"id": "resp_cap_diag", "incomplete_details": {"reason": "max_output_tokens"}}
+        }),
+    ]);
+    let log = mount_capturing_response(&server, "/v1/responses", body).await?;
+    let (test, _env) = cap_test_instance_with(&server.uri(), WireApi::Responses, true).await?;
+    let outcome = run_turn_until_complete(&test, "cap after a whole tool call").await?;
+    assert_cap_terminal(&outcome, log.posts(), "partial with a tool");
+    assert_eq!(outcome.exec_begun, 0, "the completed tool never executes");
+    assert_eq!(outcome.cap_partials.len(), 1);
+    let partial = &outcome.cap_partials[0];
+    let tool = partial
+        .fragments
+        .iter()
+        .find(|fragment| {
+            fragment.kind == codex_protocol::protocol::CapPartialFragmentKind::ToolArguments
+        })
+        .expect("the whole tool call captured as diagnostics");
+    assert_eq!(tool.fragment_key, "call_diag");
+    assert_eq!(tool.text, "call shell: {\"command\":[\"echo\",\"hi\"]}");
+    assert!(
+        partial
+            .fragments
+            .iter()
+            .any(|fragment| fragment.text == "partial with a tool"),
+        "assistant text captured alongside"
+    );
+    Ok(())
+}
+
+/// The persisted `cap_partial` EventMsg line uses the `type` tag every
+/// EventMsg uses; a reader built before the variant cannot decode the line.
+/// Default-off emission (see cap_partial_stays_absent_when_the_feature_is_off)
+/// is what protects such readers; this test pins the wire shape itself.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cap_partial_rollout_line_has_the_eventmsg_wire_shape() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    let body = sse(&[
+        chat_chunk(
+            json!({"role": "assistant", "content": "partial cap answer"}),
+            None,
+        ),
+        chat_chunk(json!({}), Some("length")),
+    ]) + "data: [DONE]\n\n";
+    let log = mount_capturing_response(&server, "/v1/chat/completions", body).await?;
+    let (test, _env) = cap_test_instance_with(&server.uri(), WireApi::Chat, true).await?;
+    let outcome = run_turn_until_complete(&test, "wire shape").await?;
+    assert_cap_terminal(&outcome, log.posts(), "partial cap answer");
+    let path = test.codex.rollout_path().expect("rollout path");
+    let raw = std::fs::read_to_string(&path).expect("read rollout");
+    let line = raw
+        .lines()
+        .find(|line| line.contains("cap_partial"))
+        .expect("a cap_partial line")
+        .trim()
+        .to_string();
+    let value: Value = serde_json::from_str(&line).expect("line is JSON");
+    assert_eq!(value["type"], "event_msg", "rollout item tag");
+    assert_eq!(
+        value["payload"]["type"], "cap_partial",
+        "internal EventMsg tag"
+    );
+    // An EventMsg decoder that lacks the variant fails exactly here; the
+    // materialization path treats that as an unknown line and skips it.
+    let legacy_shape: Result<serde_json::Value, _> =
+        serde_json::from_str::<serde_json::Value>(&line.replace("cap_partial", "capPartialX"));
+    assert!(legacy_shape.is_ok(), "value-level parsing stays generic");
+    Ok(())
+}
+
+/// Reads the persisted CapPartial rollout items of a test instance.
+fn rollout_lines(test: &TestCodex) -> Vec<codex_history::RolloutItem> {
+    let path = test.codex.rollout_path().expect("rollout path");
+    std::fs::read_to_string(&path)
+        .expect("read rollout")
+        .lines()
+        .filter_map(|line| codex_rollout::parse_rollout_line(line).ok())
+        .filter_map(|line| match line.item {
+            codex_history::RolloutItem::EventMsg(EventMsg::CapPartial(event)) => Some(
+                codex_history::RolloutItem::EventMsg(EventMsg::CapPartial(event)),
+            ),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Reads the durable TokenUsageRecord lines of a test instance's rollout.

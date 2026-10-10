@@ -1,183 +1,311 @@
-//! Bounded capture of a turn's partial transcript at an output-cap failure.
+//! Bounded streaming capture of a sampling's partial transcript at an
+//! output-cap failure.
 //!
-//! The capture is wired for the follow-up turn-error emission site (T18
-//! continuation): the bridge already flushes the partial durably; the
-//! builders here shape that record and its budget evidence.
-//!
-//! A cap exhaustion fails the turn closed (never a synthesized Completed),
-//! but the transcript the model streamed before the cap is evidence the user
-//! already saw. This module snapshots the turn's streamed items into a
-//! bounded [`CapPartialEvent`] emitted once, immediately before the failure
-//! terminal, and persisted in both history modes.
+//! A cap exhaustion fails the sampling closed (never a synthesized
+//! Completed), but the text the model streamed before the cap is evidence
+//! the user already saw. This accumulator observes the SAME stream events
+//! the turn loop renders — deltas and whole completed items, at their
+//! observation point — and bounds its memory as it goes: bytes past a
+//! budget are dropped the moment the budget is hit, never
+//! collected-then-truncated from the ordinary history after the failure.
 //!
 //! Bounds follow the cap decisions (D1-c): 16 KiB per fragment, 64 KiB and
-//! 32 fragments per turn, prefix-keep at UTF-8 boundaries. Without a verified
-//! tokenizer the capture is byte/count-bounded only — `token_evidence`
-//! records `Unverified` and the fragments are diagnostics, never model
-//! instructions, executable tool calls, or synthesized completions.
+//! 32 fragments per sampling, prefix-keep at UTF-8 boundaries. The finished
+//! [`CapPartialEvent`] is diagnostic evidence only — fragments never become
+//! executable tool calls, synthesized completions, or model instructions,
+//! and without a verified tokenizer the recorded token evidence stays
+//! `Unverified`. Emission is gated on
+//! [`codex_features::Feature::CapPartialDiagnostics`].
 
-use std::time::Duration;
-
-use codex_history::ResponseItemEnvelope;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::CapBudgetKind;
 use codex_protocol::protocol::CapPartialBudget;
 use codex_protocol::protocol::CapPartialEvent;
 use codex_protocol::protocol::CapPartialFragment;
 use codex_protocol::protocol::CapPartialFragmentKind;
+use codex_protocol::protocol::ReportedResponseUsage;
 use codex_protocol::protocol::TokenBudgetEvidence;
+use std::collections::HashMap;
 
-#[allow(dead_code)] // Bound set pinned by tests until the emission site lands (T18 continuation).
 const MAX_FRAGMENT_BYTES: usize = 16 * 1024;
-#[allow(dead_code)]
 const MAX_TURN_BYTES: usize = 64 * 1024;
-#[allow(dead_code)]
 const MAX_FRAGMENTS: usize = 32;
 
-/// Builds the bounded partial record for `turn_id` from the turn's streamed
-/// items, or `None` when nothing assistant-produced preceded the cap.
-#[allow(dead_code)] // Wired at the turn-error emission site in the T18 continuation.
-pub(crate) fn build_cap_partial(
-    turn_id: &str,
-    response_key: &str,
-    items: &[ResponseItemEnvelope],
-) -> Option<CapPartialEvent> {
-    let streamed = trailing_turn_items(items);
-    let mut fragments = Vec::new();
-    let mut total_bytes: u64 = 0;
-    let mut enforced: Vec<CapBudgetKind> = Vec::new();
+/// Incremental bounded capture for one sampling attempt.
+///
+/// Fragments are keyed by their streaming identity (item id or tool call
+/// id) so a delta stream appends to one fragment, and an item that only
+/// arrives whole (no deltas) is captured once at `observe_item_done`. A
+/// fragment that hits its own byte budget stops storing but leaves the
+/// capture open for other fragments; the turn byte or fragment-count
+/// budgets close the capture entirely.
+#[derive(Default)]
+pub(crate) struct CapPartialCapture {
+    fragments: Vec<CapPartialFragment>,
+    positions: HashMap<String, usize>,
+    stored_bytes: Vec<usize>,
+    total_bytes: usize,
+    enforced: Vec<CapBudgetKind>,
+    /// Set once a turn-level budget is exhausted; every further observation
+    /// is dropped without storing. The reason stays attached so content
+    /// observed after the close still records which budget dropped it.
+    closed: Option<CapBudgetKind>,
+    /// Disambiguates whole items that arrive without any id.
+    done_without_id: usize,
+}
 
-    for envelope in streamed {
-        let item = &envelope.item;
-        let (kind, text, item_id) = match item {
-            ResponseItem::AgentMessage { id, content, .. } => (
-                CapPartialFragmentKind::AssistantText,
-                codex_protocol::models::plaintext_agent_message_content(content)
-                    .unwrap_or_default(),
-                id.as_deref().map(std::string::ToString::to_string),
-            ),
-            ResponseItem::Message {
-                role, id, content, ..
-            } if role == "assistant" => (
-                CapPartialFragmentKind::AssistantText,
-                content
-                    .iter()
-                    .filter_map(|part| match part {
-                        codex_protocol::models::ContentItem::OutputText { text } => {
-                            Some(text.as_str())
-                        }
-                        _ => None,
-                    })
-                    .collect::<String>(),
-                id.as_deref().map(std::string::ToString::to_string),
-            ),
-            ResponseItem::Reasoning {
-                summary,
-                content,
-                id,
-                ..
-            } => {
-                let text = summary
-                    .iter()
-                    .map(|part| match part {
-                        codex_protocol::models::ReasoningItemReasoningSummary::SummaryText {
-                            text,
-                        } => text.as_str(),
-                    })
-                    .chain(content.iter().flatten().filter_map(|part| match part {
-                        codex_protocol::models::ReasoningItemContent::ReasoningText { text } => {
-                            Some(text.as_str())
-                        }
-                        codex_protocol::models::ReasoningItemContent::Text { .. } => None,
-                    }))
-                    .collect::<String>();
-                (
-                    CapPartialFragmentKind::Reasoning,
-                    text,
-                    id.as_deref().map(std::string::ToString::to_string),
-                )
+impl CapPartialCapture {
+    /// Observes one streamed text delta attributed to `key` (item id or
+    /// tool call id). Bytes past the fragment or turn budgets are dropped
+    /// immediately.
+    pub(crate) fn observe_delta(&mut self, kind: CapPartialFragmentKind, key: &str, delta: &str) {
+        if delta.is_empty() {
+            return;
+        }
+        if self.closed.is_some() {
+            self.record_observed_after_close(key);
+            return;
+        }
+        let index = match self.position_for_new(kind, key) {
+            Some(index) => index,
+            None => return,
+        };
+        self.append_bounded(index, delta);
+    }
+
+    /// Observes one completed response item. Items already fed by deltas
+    /// (their key has a fragment) are not captured again; an item that only
+    /// arrives whole is captured as one bounded fragment. Non-assistant
+    /// items are ignored.
+    pub(crate) fn observe_item_done(&mut self, item: &ResponseItem) {
+        if self.closed.is_some() {
+            // The rendered key is not needed to record the drop.
+            if rendered_item(item).is_some() {
+                self.record_observed_after_close("");
             }
-            ResponseItem::FunctionCall {
-                call_id,
-                arguments,
-                name,
-                ..
-            } => (
-                CapPartialFragmentKind::ToolArguments,
-                format!("call {name}: {arguments}"),
-                Some(call_id.to_string()),
-            ),
-            _ => continue,
+            return;
+        }
+        let Some((kind, key, text)) = rendered_item(item) else {
+            return;
         };
-        if text.is_empty() {
-            continue;
-        }
-        if fragments.len() >= MAX_FRAGMENTS {
-            enforced.push(CapBudgetKind::TurnFragments);
-            break;
-        }
-        let (text, truncated) = match truncate_at_char_boundary(&text, MAX_FRAGMENT_BYTES) {
-            Some(prefix) => (prefix, true),
-            None => (text, false),
+        let key = if key.is_empty() {
+            self.done_without_id += 1;
+            format!("done-{}", self.done_without_id)
+        } else {
+            key
         };
-        if truncated {
-            enforced.push(CapBudgetKind::FragmentBytes);
+        self.observe_whole(kind, &key, &text);
+    }
+
+    /// Observes text that arrived whole (an item that never streamed, or a
+    /// summary delivered done-only). A key already fed by deltas is not
+    /// captured again.
+    pub(crate) fn observe_whole(&mut self, kind: CapPartialFragmentKind, key: &str, text: &str) {
+        if self.closed.is_some() {
+            self.record_observed_after_close(key);
+            return;
         }
-        if total_bytes + text.len() as u64 > MAX_TURN_BYTES as u64 {
-            let remaining = (MAX_TURN_BYTES as u64).saturating_sub(total_bytes) as usize;
-            let Some(prefix) = truncate_at_char_boundary(&text, remaining) else {
-                break;
+        if self.positions.contains_key(key) {
+            return;
+        }
+        let index = match self.position_for_new(kind, key) {
+            Some(index) => index,
+            None => return,
+        };
+        self.append_bounded(index, text);
+    }
+
+    /// Finishes the capture for a sampling that exhausted its cap, or
+    /// `None` when nothing assistant-produced preceded the cap.
+    pub(crate) fn finish(
+        self,
+        turn_id: &str,
+        response_key: &str,
+        reported_usage: Option<&ReportedResponseUsage>,
+    ) -> Option<CapPartialEvent> {
+        if self.fragments.is_empty() {
+            return None;
+        }
+        Some(CapPartialEvent {
+            turn_id: turn_id.to_string(),
+            response_key: response_key.to_string(),
+            reported_usage: reported_usage.cloned(),
+            budget: CapPartialBudget {
+                fragment_count: self.fragments.len() as u32,
+                total_bytes: self.total_bytes as u64,
+                enforced_caps: self.enforced,
+                token_evidence: TokenBudgetEvidence::Unverified,
+            },
+            fragments: self.fragments,
+        })
+    }
+
+    fn position_for_new(&mut self, kind: CapPartialFragmentKind, key: &str) -> Option<usize> {
+        if let Some(&index) = self.positions.get(key) {
+            return Some(index);
+        }
+        if self.fragments.len() >= MAX_FRAGMENTS {
+            self.record_once(CapBudgetKind::TurnFragments);
+            self.closed = Some(CapBudgetKind::TurnFragments);
+            return None;
+        }
+        let index = self.fragments.len();
+        self.fragments.push(CapPartialFragment {
+            fragment_key: key.to_string(),
+            kind,
+            item_id: item_id_for(kind, key),
+            text: String::new(),
+            truncated: false,
+        });
+        self.stored_bytes.push(0);
+        self.positions.insert(key.to_string(), index);
+        Some(index)
+    }
+
+    /// Appends `text` to fragment `index`, keeping at most the fragment and
+    /// turn byte budgets and dropping everything past them.
+    fn append_bounded(&mut self, index: usize, text: &str) {
+        if self.stored_bytes[index] >= MAX_FRAGMENT_BYTES {
+            // This fragment already hit its own budget: the delta is dropped
+            // and the fragment now provably holds a prefix.
+            self.fragments[index].truncated = true;
+            self.record_once(CapBudgetKind::FragmentBytes);
+            return;
+        }
+        let fragment_remaining = MAX_FRAGMENT_BYTES - self.stored_bytes[index];
+        let turn_remaining = MAX_TURN_BYTES.saturating_sub(self.total_bytes);
+        let binding = fragment_remaining.min(turn_remaining);
+        let stored = match prefix_at_char_boundary(text, binding) {
+            Some(prefix) => prefix,
+            None => text.to_string(),
+        };
+        let fits = stored.len() == text.len();
+        self.fragments[index].text.push_str(&stored);
+        self.stored_bytes[index] += stored.len();
+        self.total_bytes += stored.len();
+        if !fits {
+            self.fragments[index].truncated = true;
+            // The smaller remaining budget is the one the text exceeded.
+            let cap = if fragment_remaining <= turn_remaining {
+                CapBudgetKind::FragmentBytes
+            } else {
+                CapBudgetKind::TurnBytes
             };
-            enforced.push(CapBudgetKind::TurnBytes);
-            total_bytes += prefix.len() as u64;
-            fragments.push(fragment(
-                kind,
-                item_id,
-                prefix,
-                /*truncated*/ true,
-                fragments.len(),
-            ));
-            break;
+            self.record_once(cap);
         }
-        total_bytes += text.len() as u64;
-        fragments.push(fragment(kind, item_id, text, truncated, fragments.len()));
+        if self.total_bytes >= MAX_TURN_BYTES {
+            self.closed = Some(CapBudgetKind::TurnBytes);
+            // Closing on the turn budget is itself an enforced cap, even
+            // when no further content ever arrives to record the drop.
+            self.record_once(CapBudgetKind::TurnBytes);
+        }
     }
 
-    if fragments.is_empty() {
-        return None;
+    /// Records that assistant content was observed after the capture had
+    /// already closed: the diagnostics must show which budget dropped it.
+    fn record_observed_after_close(&mut self, key: &str) {
+        if (!self.positions.contains_key(key) || key.is_empty())
+            && let Some(reason) = self.closed {
+                self.record_once(reason);
+            }
     }
-    Some(CapPartialEvent {
-        turn_id: turn_id.to_string(),
-        response_key: response_key.to_string(),
-        reported_usage: None,
-        budget: CapPartialBudget {
-            fragment_count: fragments.len() as u32,
-            total_bytes,
-            enforced_caps: enforced,
-            token_evidence: TokenBudgetEvidence::Unverified,
-        },
-        fragments,
-    })
-}
 
-fn fragment(
-    kind: CapPartialFragmentKind,
-    item_id: Option<String>,
-    text: String,
-    truncated: bool,
-    index: usize,
-) -> CapPartialFragment {
-    CapPartialFragment {
-        fragment_key: item_id.clone().unwrap_or_else(|| format!("idx-{index}")),
-        kind,
-        item_id,
-        text,
-        truncated,
+    fn record_once(&mut self, kind: CapBudgetKind) {
+        if !self.enforced.contains(&kind) {
+            self.enforced.push(kind);
+        }
     }
 }
 
-/// Returns a prefix cut at a UTF-8 boundary when `text` exceeds `max_bytes`.
-fn truncate_at_char_boundary(text: &str, max_bytes: usize) -> Option<String> {
+/// The fragment key and bounded render for an item that arrives whole.
+/// `None` for non-assistant-produced items.
+fn rendered_item(item: &ResponseItem) -> Option<(CapPartialFragmentKind, String, String)> {
+    match item {
+        ResponseItem::AgentMessage { id, content, .. } => {
+            let text = codex_protocol::models::plaintext_agent_message_content(content)
+                .unwrap_or_default();
+            Some((
+                CapPartialFragmentKind::AssistantText,
+                id.as_ref().map(ToString::to_string).unwrap_or_default(),
+                text,
+            ))
+        }
+        ResponseItem::Message {
+            role, id, content, ..
+        } if role == "assistant" => {
+            let text = content
+                .iter()
+                .filter_map(|part| match part {
+                    codex_protocol::models::ContentItem::OutputText { text } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<String>();
+            Some((
+                CapPartialFragmentKind::AssistantText,
+                id.as_ref().map(ToString::to_string).unwrap_or_default(),
+                text,
+            ))
+        }
+        ResponseItem::Reasoning {
+            summary,
+            content,
+            id,
+            ..
+        } => {
+            let text = summary
+                .iter()
+                .map(|part| match part {
+                    codex_protocol::models::ReasoningItemReasoningSummary::SummaryText { text } => {
+                        text.as_str()
+                    }
+                })
+                .chain(content.iter().flatten().filter_map(|part| match part {
+                    codex_protocol::models::ReasoningItemContent::ReasoningText { text } => {
+                        Some(text.as_str())
+                    }
+                    codex_protocol::models::ReasoningItemContent::Text { .. } => None,
+                }))
+                .collect::<String>();
+            Some((
+                CapPartialFragmentKind::Reasoning,
+                id.as_ref().map(ToString::to_string).unwrap_or_default(),
+                text,
+            ))
+        }
+        ResponseItem::FunctionCall {
+            call_id,
+            arguments,
+            name,
+            ..
+        } => Some((
+            CapPartialFragmentKind::ToolArguments,
+            call_id.to_string(),
+            format!("call {name}: {arguments}"),
+        )),
+        ResponseItem::CustomToolCall {
+            call_id,
+            input,
+            name,
+            ..
+        } => Some((
+            CapPartialFragmentKind::ToolArguments,
+            call_id.to_string(),
+            format!("call {name}: {input}"),
+        )),
+        _ => None,
+    }
+}
+
+fn item_id_for(kind: CapPartialFragmentKind, key: &str) -> Option<String> {
+    match kind {
+        CapPartialFragmentKind::ToolArguments => Some(key.to_string()),
+        _ => (!key.is_empty()).then(|| key.to_string()),
+    }
+}
+
+/// Returns a prefix cut at a UTF-8 boundary when `text` exceeds `max_bytes`,
+/// or `None` when the whole text fits.
+fn prefix_at_char_boundary(text: &str, max_bytes: usize) -> Option<String> {
     if text.len() <= max_bytes {
         return None;
     }
@@ -187,31 +315,6 @@ fn truncate_at_char_boundary(text: &str, max_bytes: usize) -> Option<String> {
     }
     Some(text[..end].to_string())
 }
-
-/// The trailing assistant-produced items of a turn: everything after the
-/// last user-role item, which is the transcript the model streamed in the
-/// turn that just failed.
-#[allow(dead_code)]
-pub(crate) fn trailing_turn_items(items: &[ResponseItemEnvelope]) -> &[ResponseItemEnvelope] {
-    let start = items
-        .iter()
-        .rposition(|envelope| {
-            matches!(
-                &envelope.item,
-                ResponseItem::Message { role, .. } if role == "user"
-            )
-        })
-        .map(|position| position + 1)
-        .unwrap_or(0);
-    &items[start..]
-}
-
-#[allow(dead_code)]
-const _: () = {
-    // Bounds stay pinned by tests; this keeps Duration referenced if the
-    // module grows timing knobs.
-    let _ = Duration::ZERO;
-};
 
 #[cfg(test)]
 #[path = "cap_partial_tests.rs"]
