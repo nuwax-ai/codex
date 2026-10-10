@@ -151,6 +151,16 @@
 - **如实登记未竟**：turn-error 发射点 + usage 跨错误映射的携带未落地——集成诊断证明错误到达该位置时既无结构化 payload 也无 trailing 项（rig-bridge 错误在 pump→client 错误臂之间被重整形、flush 项未在该点入史）；基于 stash 的尝试已回退（不留未验证接线），下一步为沿 bridge stream→client 错误臂逐步追。桥层 durable partial（批 P）仍是用户可见的一半且已验证。
 - 证据：cap_partial 单测 7/7；core cap 集成套件绿（宽跑 1 失败=idle 预算计时测试，隔离过）；codex-core 零警告。
 
+
+### 批 R — CI 首轮实跑修复循环（HEAD `831346f11`，runs 38045982072/38047414958/38049532997/38053827346）
+
+T02 首次获得真实运行证据，四轮递进修复：
+1. **Run 1**：四 job 全部**越过 setup**（bazelbuild/setup-bazelisk@v3.0.0 + brew gstreamer 生效——上轮四 job 全死于 setup）；ubuntu/macos 挂在 Clippy（fork surfaces）。
+2. **Run 2**（`a2f8e8d84` 修 4 处限制 lint）：Clippy 过；三 nextest 车道全部**首次真正编译并进入测试**；bazel gate 挂在 doctor.rs 的 CapExhausted 非穷尽 match（Bazel 车道编译 cli，Cargo clippy 作用域不含）。
+3. **Run 3**（`22b91089a` 修 doctor + V8 门控）：**bazel bridge gate 首次全绿**；三 nextest 车道编译全工作区后在 Test 步失败——根因定位：**v8 150.4.0 的 `ptrcomp_sandbox` 预编译归档从未发布**（上游 2e32d9589 开启 sandbox 特性；本地能过仅因 build script 缓存）。V8 pin 按禁令不动；车道排除 code-mode-runtime/code-mode-host/v8-poc 并注明（与 voice-host 同款缺工件模式，配对工件流程已登记）。
+4. **Run 4**（`831346f11` 修 ollama match）：三车道唯一剩余编译错误=ollama client 的 ResolvedDefault 非穷尽（本地作用域运行从未编译该 crate——CI 全工作区编译的价值实证）。
+- **T02 DoD 达成**：四 job 均实际进入相应 build/test；剩余失败从"基础设施"降级为"真实测试失败"（大概率=已定性的并发固有边界族），待 run 4 结果确认。
+
 ## 40 项状态（更新）
 
 | 项 | 状态 | 证据/边界 |
