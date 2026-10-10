@@ -90,6 +90,15 @@
 - **residency::websocket 定性为真实开放缺陷**：仅 WS 变体（http 变体同配置过）；rig WS 请求带 managed residency 覆盖头时 reqwest13 在 request-builder 阶段拒绝（`Error::Instance("builder error")`，非法头注入）。链路在 WS 侧 header 注入路径，待专项。
 - tui 45：仍待安静窗口（昨日全量跑被会话中断；产生的未跟踪 .snap.new 留待人工审阅，未批量接受）。
 
+
+### 批 K — T07 阶段2：默认模式 matcher 核心（HEAD `5ac058769`）
+
+- 新 `outbound_proxy/default_proxy_matcher.rs`：平台中立的 `DefaultProxyMatcher`，逐字段复刻锁定 hyper-util 0.1.20 的默认解析语义（env 逐 scheme/ALL_PROXY 回退、空值按未设回退与手动填充、手动系统项只填空 scheme、CGI 全禁、NO_PROXY curl 语义含 *、IP 精确/CIDR（本地实现 CIDR，零新公开依赖）、点边界域名后缀、userinfo 百分号解码为 basic auth、socks4/4a/5/5h 可用、ws/wss 永不拦截）。
+- 15 个 parity 向量（含上游自身测试向量，含其空变量/缺 scheme 语义修正：空 scheme 变量如同未设——回退 ALL_PROXY 且允许手动填充；上游向量串以源码为准修正 bar.baz/bar.foo 转写）；env 敏感用例在净环境子进程执行。
+- base64 入 http-client 依赖（workspace 既有 0.22.1）；`just bazel-lock-update` 已跑（MODULE.bazel.lock 无变化，base64 已在闭包内）；全树归一到仓库 canonical nightly rustfmt（import 粒度）。
+- 证据：matcher 15/15；合并作用域 39/39（--retries 0）；全包除已知负载边界族外绿（load≈12 隔离全过）。
+- **阶段3（接管）开放**：设计=macOS 手动项提取（loader CFDictionary → ManualSystemProxies）+ `resolve_proxy_route(ReqwestDefault)` 改走 matcher（Direct=no_proxy 客户端 / Proxy=显式代理 URL 含 userinfo 交给 reqwest 解析）+ 逐 hop 由既有 route-aware 重定向保证 + **双轨对照先行**（真实参考 client × env 矩阵）——按 plan 要求双轨证据先于接管落地。
+
 ## 40 项状态（更新）
 
 | 项 | 状态 | 证据/边界 |
