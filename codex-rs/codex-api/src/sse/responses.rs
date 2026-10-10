@@ -1183,7 +1183,7 @@ mod tests {
         let error = crate::api_bridge::map_api_error(error);
         assert!(matches!(
             error.details(),
-            codex_protocol::error::CodexErrorDetails::InvalidRequest(_)
+            codex_protocol::error::CodexErrorDetails::CapExhausted { .. }
         ));
         assert_eq!(error.retry_delay(/*retry_count*/ 1), None);
     }

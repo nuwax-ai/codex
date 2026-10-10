@@ -75,9 +75,18 @@ fn map_api_error_details(err: ApiError) -> CodexErr {
             })
         }
         ApiError::InvalidRequest { message } => CodexErr::InvalidRequest(message),
-        // Same non-retryable terminal-budget semantics the message carried as
-        // InvalidRequest; the message text is preserved verbatim downstream.
-        ApiError::CapExhausted { message, .. } => CodexErr::InvalidRequest(message),
+        // Same non-retryable terminal-budget semantics and message text the
+        // InvalidRequest mapping carried; the structured payload survives so
+        // core can account the failed sampling's reported usage.
+        ApiError::CapExhausted {
+            message,
+            response_id,
+            reported_usage,
+        } => CodexErr::new(CodexErrorDetails::CapExhausted {
+            message,
+            response_id,
+            reported_usage,
+        }),
         ApiError::InvalidPrompt { message } => {
             CodexErr::new(CodexErrorDetails::InvalidPrompt { message })
         }

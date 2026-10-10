@@ -10,6 +10,7 @@ use crate::protocol::ErrorEvent;
 use crate::protocol::MisalignmentErrorDetails;
 use crate::protocol::RateLimitReachedType;
 use crate::protocol::RateLimitSnapshot;
+use crate::protocol::ReportedResponseUsage;
 use crate::protocol::TruncationPolicy;
 use chrono::DateTime;
 use chrono::Datelike;
@@ -132,6 +133,18 @@ pub enum CodexErrorDetails {
     /// Invalid request.
     #[error("{0}")]
     InvalidRequest(String),
+    /// The caller-selected output cap was exhausted mid-stream. Terminal and
+    /// non-retryable, with the same message text the `InvalidRequest` mapping
+    /// used to carry; the structured payload preserves the sampling's provider
+    /// response id and the counters the terminal frame actually reported so
+    /// core can account the failed sampling's usage. Absent usage means the
+    /// terminal carried no usable report.
+    #[error("{message}")]
+    CapExhausted {
+        message: String,
+        response_id: Option<String>,
+        reported_usage: Option<ReportedResponseUsage>,
+    },
     #[error("{message}")]
     InvalidPrompt { message: String },
     /// Multiple registered tools share the same effective name.
@@ -397,6 +410,7 @@ impl CodexErr {
             | CodexErrorDetails::QuotaExceeded
             | CodexErrorDetails::InvalidImageRequest()
             | CodexErrorDetails::InvalidRequest(_)
+            | CodexErrorDetails::CapExhausted { .. }
             | CodexErrorDetails::InvalidPrompt { .. }
             | CodexErrorDetails::ToolCollision(_)
             | CodexErrorDetails::RefreshTokenFailed(_)

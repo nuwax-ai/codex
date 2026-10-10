@@ -471,6 +471,86 @@ fn map_api_error_preserves_misalignment_details_from_wrapped_websocket_error() {
 }
 
 #[test]
+fn map_api_error_carries_cap_exhausted_usage_structured() {
+    let counts = codex_protocol::protocol::ReportedUsageCounters {
+        input_tokens: Some(4),
+        cached_input_tokens: Some(0),
+        cache_write_input_tokens: None,
+        output_tokens: Some(64),
+        reasoning_output_tokens: Some(0),
+        total_tokens: None,
+    };
+    let reported_usage = codex_protocol::protocol::ReportedResponseUsage::from_counters(counts)
+        .expect("a partially reported counter set is a usable incomplete report");
+    let err = map_api_error(ApiError::CapExhausted {
+        message: "Output token limit reached; increase max_tokens before retrying".to_string(),
+        response_id: Some("chatcmpl-cap".to_string()),
+        reported_usage: Some(reported_usage.clone()),
+    });
+
+    let CodexErrorDetails::CapExhausted {
+        message,
+        response_id,
+        reported_usage: mapped_usage,
+    } = err.details()
+    else {
+        panic!("expected CodexErrorDetails::CapExhausted, got {err:?}");
+    };
+    assert_eq!(
+        message, "Output token limit reached; increase max_tokens before retrying",
+        "the client-facing text stays exactly what InvalidRequest carried"
+    );
+    assert_eq!(err.to_string(), *message);
+    assert_eq!(response_id, &Some("chatcmpl-cap".to_string()));
+    assert_eq!(mapped_usage, &Some(reported_usage));
+    assert_eq!(
+        mapped_usage.as_ref().expect("usage preserved").completeness,
+        codex_protocol::protocol::UsageCompleteness::Incomplete
+    );
+    assert!(
+        mapped_usage
+            .as_ref()
+            .expect("usage preserved")
+            .normalized
+            .is_none(),
+        "an incomplete report must not claim a normalized complete snapshot"
+    );
+    assert_eq!(
+        err.retry_delay(/*retry_count*/ 1),
+        None,
+        "a budget terminal must stay non-retryable"
+    );
+    assert!(
+        matches!(err.to_codex_protocol_error(), CodexErrorInfo::Other),
+        "client-facing classification stays the InvalidRequest-era Other"
+    );
+}
+
+#[test]
+fn map_api_error_carries_cap_exhausted_without_any_usage() {
+    let err = map_api_error(ApiError::CapExhausted {
+        message: "Output token limit reached; increase max_tokens before retrying".to_string(),
+        response_id: None,
+        reported_usage: None,
+    });
+    let CodexErrorDetails::CapExhausted {
+        message,
+        response_id,
+        reported_usage,
+    } = err.details()
+    else {
+        panic!("expected CodexErrorDetails::CapExhausted, got {err:?}");
+    };
+    assert_eq!(
+        message,
+        "Output token limit reached; increase max_tokens before retrying"
+    );
+    assert_eq!(response_id, &None);
+    assert_eq!(reported_usage, &None);
+    assert_eq!(err.retry_delay(/*retry_count*/ 1), None);
+}
+
+#[test]
 fn map_api_error_keeps_other_400_errors_generic() {
     for code in ["invalid_request", "some_other_policy"] {
         let body = serde_json::json!({
