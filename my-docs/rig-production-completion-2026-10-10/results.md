@@ -42,6 +42,43 @@
 - 单测：replay_grant 6 项（绑定/异 checkpoint/篡改 producer/轮换矩阵）+ model_output_projection 既有 12 项全量改参复跑。
 - 待复验：13 个 app-server `guardians_retain_evidence_after_compaction_and_resume::*` 身份（rust-rig 全栈）——见下方执行记录。
 
+
+### 批 F — T11 R1b 有界重放授权（HEAD `9d307f72d`，含 D2 前置 `5667058bc`）
+
+- 实现见批 E 行 + 两处关键修正：
+  1. grant 的 reviewer 模型绑定改为 spawn config 钉住的 `review_model.model`（含目录缺失回落父模型），而非 provider 静态偏好值；
+  2. 诊断定位（pid 打点）证明测试三轮各跑在独立进程：credential-instance id 按进程随机铸造，跨进程不可比 → grant 的 basis 比较降为 kind+provider+endpoint+wire+bridge（凭据连续性由可信 spawn 继承父 auth_manager 作证，注释如实记录）；
+  3. Compaction 臂放宽为 scope 级（provider/endpoint/wire/bridge+evidence kind 相等即重放，模型与进程内实例 id 不再阻断）——依据：fork 自有验收语料（13 身份）要求跨模型 resume 与跨进程重启重放；Reasoning/WebSearch 保持严格比较；跨 kind 轮换仍丢弃。既有单测按新契约更新并注明理由（不含凭据哈希持久化——违反"仅随机身份可持久化"约束）。
+- **13 个 R1b 身份全绿**：`suite::v2::guardian_v2::history::guardians_retain_evidence_after_compaction_and_resume` 16/16（just test，rust-rig）。
+- 单测：core replay_grant+projection 17/17（--retries 0）。
+
+### 批 G — T16 D2 段：cap 终止帧 usage（HEAD `5667058bc`）
+
+- `ApiError::CapExhausted { message, response_id, reported_usage }` + 协议类型（ReportedUsageCounters/UsageCompleteness/ReportedResponseUsage，presence 保留、零与缺席区分、Complete 仅全字段直报）。
+- Responses 解码（SSE/WS 共用）终止帧 usage 解析；立即发出不缓冲（SSE 缓冲白名单同步迁移，HEAD 基线复核对拍）。rig bridge：Anthropic 走 wire 观测 presence（start/delta 累积、显式零保留）；rig 归一化 usage 无法区分零与缺席 → 回退报告只认非零、恒 Incomplete。
+- 消费方迁移：api_bridge / response-debug-context / guardian-v2 metrics+retry / 4 处测试 matcher；message 文本不变。
+- 证据：codex-api 214/214；protocol+rig-bridge 618/618（--retries 0，首败为最后一个未迁移 matcher，迁移后复验）。
+- 开放（T16 剩余）：Chat 终止后迟到 usage chunk 顺序（V-D2-1 wire 测试）；稳定 response_key reducer（T17）；Core 消费侧按 CapExhausted 的 turn usage 记录（T17/T18）。
+
+### 批 H — T12 Luna post-answer 终局测试（HEAD `081b6b0b6`）
+
+- 新 `post_answer_finality_tests.rs` 6 用例覆盖矩阵缺口（无 sampler 不发请求、checkpoint 不可用 fail-closed 转同步、传输重试耗尽有界 fail-closed、授权变更 Superseded 不发布且有终局、池压取消有终局）。
+- 证据：6/6（三次连跑）；codex-guardian-v2 全量 96-97/98（1 例需 V8 归档离线不可得，既有；2 例负载敏感单跑过，既有）。
+- **重要登记（T10/R11 新证据）**：guardian-v2 测试二进制默认 ~2MB 栈在 `Session::new` 单个 poll 帧内溢出（crash report：仅 48 帧深、单帧超限）——需 RUST_MIN_STACK=16777216 才能跑全量。HEAD 干净树复现，非本会话改动引入。
+
+## 40 项状态（更新）
+
+| 项 | 状态 | 证据/边界 |
+|---|---|---|
+| T03/T04/T05/T06 | 完成 | 批 A/B |
+| T02 | 部分（配置完成） | 远端 dispatch 待授权 |
+| T07 | 阶段 1 完成 | matcher+双轨+接管开放（阶段 2 需 ipnet 直依 + bazel lock 同步） |
+| T11 | **完成** | 13 身份 16/16；grant+scope 级 Compaction 契约 |
+| T12 | **完成（测试覆盖）** | 6 新用例 + 矩阵；未发现终局性产品缺陷 |
+| T16 | D2 段完成 | 三线提取+迁移；V-D2-1/reducer/key 开放 |
+| T10 | 新证据登记 | Session::new 单 poll 帧溢出（guardian-v2 二进制，HEAD 复现） |
+| 其余 | 开放 | 按序推进 |
+
 ## 40 项状态（滚动更新）
 
 | 项 | 状态 | 证据/边界 |
