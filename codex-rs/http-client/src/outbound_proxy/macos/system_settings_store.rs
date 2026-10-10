@@ -199,7 +199,7 @@ impl SystemSettingsLoader {
             .inner
             .state
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         loop {
             let now = Instant::now();
             match &*state {
@@ -217,7 +217,7 @@ impl SystemSettingsLoader {
                 .inner
                 .published
                 .wait_timeout(state, deadline.saturating_duration_since(now))
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             state = guard;
             if wait_result.timed_out() {
                 // The read is slower than the waiter budget. A bounded-stale
@@ -247,7 +247,7 @@ impl SystemSettingsLoader {
             .inner
             .request
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let previous = match std::mem::replace(&mut *state, LoadState::Empty) {
             LoadState::Fresh(previous) => Some(previous),
             LoadState::Loading(previous) => previous,
@@ -298,7 +298,7 @@ impl SystemSettingsLoader {
             .inner
             .request
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.spawn_thread_with_sender(&mut request);
     }
 
@@ -317,6 +317,7 @@ impl SystemSettingsLoader {
     }
 
     /// How many system reads this loader has performed (tests).
+    #[cfg(test)]
     pub(super) fn system_reads(&self) -> usize {
         self.inner.system_reads.load(Ordering::SeqCst)
     }
@@ -329,7 +330,7 @@ impl SystemSettingsLoader {
             .inner
             .request
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *request = None;
     }
 }
@@ -377,14 +378,14 @@ fn perform_read(inner: &LoaderInner) {
         let mut reader = inner
             .reader
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         reader()
     }))
     .unwrap_or_default();
     let mut state = inner
         .state
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     *state = match result {
         Some(proxies) => LoadState::Fresh(Arc::new(SettingsSnapshot {
             proxies,
@@ -409,7 +410,7 @@ impl Drop for AliveGuard {
             .inner
             .request
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if request
             .as_ref()
             .is_some_and(|(_, generation)| *generation == self.generation)
