@@ -571,7 +571,7 @@ mod tests {
         .await;
 
         match outbound_proxy_policy {
-            OutboundProxyPolicy::ReqwestDefault => {
+            OutboundProxyPolicy::ReqwestDefault | OutboundProxyPolicy::ResolvedDefault => {
                 result.expect("default-routed Ollama should fall back to system roots");
                 assert_eq!(
                     server
