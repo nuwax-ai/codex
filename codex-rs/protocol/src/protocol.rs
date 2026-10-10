@@ -2570,6 +2570,23 @@ impl TokenUsage {
         self.reasoning_output_tokens += other.reasoning_output_tokens;
         self.total_tokens += other.total_tokens;
     }
+
+    /// In-place element-wise difference of token counts, floored at zero.
+    ///
+    /// The usage ledger subtracts a superseded snapshot when a response
+    /// replaces its cumulative report; flooring keeps the totals from going
+    /// negative if a later snapshot reports smaller counters than the one it
+    /// replaces.
+    pub fn sub_assign_floor(&mut self, other: &TokenUsage) {
+        self.input_tokens = (self.input_tokens - other.input_tokens).max(0);
+        self.cached_input_tokens = (self.cached_input_tokens - other.cached_input_tokens).max(0);
+        self.cache_write_input_tokens =
+            (self.cache_write_input_tokens - other.cache_write_input_tokens).max(0);
+        self.output_tokens = (self.output_tokens - other.output_tokens).max(0);
+        self.reasoning_output_tokens =
+            (self.reasoning_output_tokens - other.reasoning_output_tokens).max(0);
+        self.total_tokens = (self.total_tokens - other.total_tokens).max(0);
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]

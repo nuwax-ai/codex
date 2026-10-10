@@ -77,6 +77,11 @@ pub(crate) struct SessionState {
     pub(crate) history_reset: CancellationToken,
     pub(crate) latest_rate_limits: Option<RateLimitSnapshot>,
     pub(crate) latest_token_usage_record: Option<TokenUsageRecord>,
+    /// Latest cumulative usage snapshot per response key. A response that
+    /// reports again (pause continuation, duplicate Completed delivery,
+    /// replay) replaces its snapshot instead of double-counting; responses
+    /// without a stable key cannot join and stay additive.
+    pub(crate) response_token_usage: std::collections::HashMap<String, TokenUsage>,
     pub(crate) server_reasoning_included: bool,
     pub(crate) mcp_dependency_prompted: HashSet<String>,
     pub(crate) additional_context: AdditionalContextStore,
@@ -128,6 +133,7 @@ impl SessionState {
             history_reset: CancellationToken::new(),
             latest_rate_limits: None,
             latest_token_usage_record: None,
+            response_token_usage: std::collections::HashMap::new(),
             server_reasoning_included: false,
             mcp_dependency_prompted: HashSet::new(),
             additional_context: AdditionalContextStore::default(),
@@ -221,21 +227,67 @@ impl SessionState {
         response_id: String,
         usage: &TokenUsage,
     ) -> TokenUsageRecord {
-        let mut turn_token_usage = self
-            .latest_token_usage_record
-            .as_ref()
-            .filter(|record| record.turn_id == turn_id)
-            .map_or_else(TokenUsage::default, |record| {
-                record.turn_token_usage.clone()
-            });
-        turn_token_usage.add_assign(usage);
-        let mut thread_token_usage = self
-            .latest_token_usage_record
-            .as_ref()
-            .map_or_else(TokenUsage::default, |record| {
-                record.thread_token_usage.clone()
-            });
-        thread_token_usage.add_assign(usage);
+        // Stable-key responses replace their latest cumulative snapshot; the
+        // turn and thread subtotals re-derive by swapping the old snapshot
+        // for the new one. Keyless reports stay purely additive.
+        let (turn_token_usage, thread_token_usage) = if response_id.is_empty() {
+            let mut turn_token_usage = self
+                .latest_token_usage_record
+                .as_ref()
+                .filter(|record| record.turn_id == turn_id)
+                .map_or_else(TokenUsage::default, |record| {
+                    record.turn_token_usage.clone()
+                });
+            turn_token_usage.add_assign(usage);
+            let mut thread_token_usage = self
+                .latest_token_usage_record
+                .as_ref()
+                .map_or_else(TokenUsage::default, |record| {
+                    record.thread_token_usage.clone()
+                });
+            thread_token_usage.add_assign(usage);
+            (turn_token_usage, thread_token_usage)
+        } else {
+            let previous = self.response_token_usage.get(&response_id).cloned();
+            let delta_turn = previous.is_some()
+                && self
+                    .latest_token_usage_record
+                    .as_ref()
+                    .is_some_and(|record| record.turn_id == turn_id);
+            let mut turn_token_usage = self
+                .latest_token_usage_record
+                .as_ref()
+                .filter(|record| record.turn_id == turn_id)
+                .map_or_else(TokenUsage::default, |record| {
+                    record.turn_token_usage.clone()
+                });
+            let mut thread_token_usage = self
+                .latest_token_usage_record
+                .as_ref()
+                .map_or_else(TokenUsage::default, |record| {
+                    record.thread_token_usage.clone()
+                });
+            if let Some(previous) = previous.as_ref() {
+                turn_token_usage.sub_assign_floor(previous);
+                thread_token_usage.sub_assign_floor(previous);
+                if !delta_turn {
+                    // A response re-reporting under a different turn id
+                    // moves its contribution: remove from the previous
+                    // turn's subtotal is impossible after the fact (only
+                    // the latest totals are retained), so keep the swap
+                    // conservative and count the net into this turn.
+                    turn_token_usage.add_assign(usage);
+                } else {
+                    turn_token_usage.add_assign(usage);
+                }
+            } else {
+                turn_token_usage.add_assign(usage);
+            }
+            thread_token_usage.add_assign(usage);
+            self.response_token_usage
+                .insert(response_id.clone(), usage.clone());
+            (turn_token_usage, thread_token_usage)
+        };
         let record = TokenUsageRecord {
             thread_id,
             turn_id: turn_id.to_string(),

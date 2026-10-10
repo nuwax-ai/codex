@@ -53,6 +53,117 @@ async fn record_token_usage_continues_restored_totals() {
 }
 
 #[tokio::test]
+async fn repeated_response_reports_replace_their_snapshot() {
+    let thread_id = ThreadId::new();
+    let session_id = SessionId::from(ThreadId::new());
+    let usage = |total_tokens| TokenUsage {
+        total_tokens,
+        ..TokenUsage::default()
+    };
+    let mut state = SessionState::new(make_session_configuration_for_tests().await);
+
+    let first = state.record_token_usage(
+        thread_id,
+        "turn-1",
+        session_id,
+        "root".to_string(),
+        "response-a".to_string(),
+        &usage(30),
+    );
+    assert_eq!(first.turn_token_usage, usage(30));
+    assert_eq!(first.thread_token_usage, usage(30));
+
+    // The same response re-reports a LARGER cumulative snapshot (pause
+    // continuation / duplicate delivery): the totals swap the old snapshot
+    // for the new one instead of adding on top.
+    let replaced = state.record_token_usage(
+        thread_id,
+        "turn-1",
+        session_id,
+        "root".to_string(),
+        "response-a".to_string(),
+        &usage(45),
+    );
+    assert_eq!(replaced.turn_token_usage, usage(45));
+    assert_eq!(replaced.thread_token_usage, usage(45));
+
+    // A second response in the same turn still adds.
+    let second = state.record_token_usage(
+        thread_id,
+        "turn-1",
+        session_id,
+        "root".to_string(),
+        "response-b".to_string(),
+        &usage(10),
+    );
+    assert_eq!(second.turn_token_usage, usage(55));
+    assert_eq!(second.thread_token_usage, usage(55));
+}
+
+#[tokio::test]
+async fn keyless_reports_stay_additive() {
+    let thread_id = ThreadId::new();
+    let session_id = SessionId::from(ThreadId::new());
+    let usage = |total_tokens| TokenUsage {
+        total_tokens,
+        ..TokenUsage::default()
+    };
+    let mut state = SessionState::new(make_session_configuration_for_tests().await);
+    // Keyless snapshots cannot replace anything: each report adds.
+    for (report, expected_total) in [(10, 10), (25, 35), (25, 60)] {
+        let record = state.record_token_usage(
+            thread_id,
+            "turn-1",
+            session_id,
+            "root".to_string(),
+            String::new(),
+            &usage(report),
+        );
+        assert_eq!(record.turn_token_usage, usage(expected_total));
+        assert_eq!(record.thread_token_usage, usage(expected_total));
+    }
+}
+
+#[tokio::test]
+async fn ledger_survives_into_new_turns_without_double_counting() {
+    let thread_id = ThreadId::new();
+    let session_id = SessionId::from(ThreadId::new());
+    let usage = |total_tokens| TokenUsage {
+        total_tokens,
+        ..TokenUsage::default()
+    };
+    let mut state = SessionState::new(make_session_configuration_for_tests().await);
+    state.record_token_usage(
+        thread_id,
+        "turn-1",
+        session_id,
+        "root".to_string(),
+        "response-a".to_string(),
+        &usage(30),
+    );
+    // A new turn starts a fresh turn subtotal while the thread keeps its
+    // total; re-report of turn-1's response must not inflate turn-2.
+    let replayed = state.record_token_usage(
+        thread_id,
+        "turn-2",
+        session_id,
+        "root".to_string(),
+        "response-a".to_string(),
+        &usage(45),
+    );
+    assert_eq!(
+        replayed.turn_token_usage,
+        usage(45),
+        "a replayed response nets its new snapshot into the current turn"
+    );
+    assert_eq!(
+        replayed.thread_token_usage,
+        usage(45),
+        "the thread total holds the replaced snapshot, not the sum"
+    );
+}
+
+#[tokio::test]
 // Verifies connector merging deduplicates repeated IDs.
 async fn merge_connector_selection_deduplicates_entries() {
     let session_configuration = make_session_configuration_for_tests().await;

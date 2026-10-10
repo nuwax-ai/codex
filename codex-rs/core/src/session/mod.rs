@@ -1604,8 +1604,13 @@ impl Session {
                     let mut state = self.state.lock().await;
                     state.set_token_info(Some(info));
                 }
-                self.state.lock().await.latest_token_usage_record =
-                    Self::last_token_usage_record_from_rollout(&rollout_items);
+                {
+                    let mut state = self.state.lock().await;
+                    state.latest_token_usage_record =
+                        Self::last_token_usage_record_from_rollout(&rollout_items);
+                    state.response_token_usage =
+                        Self::response_token_usage_ledger_from_rollout(&rollout_items);
+                }
 
                 // Checkpoint effective settings even when no turn follows the resume.
                 self.persist_rollout_items(&[RolloutItem::EventMsg(
@@ -1632,8 +1637,13 @@ impl Session {
                     let mut state = self.state.lock().await;
                     state.set_token_info(Some(info));
                 }
-                self.state.lock().await.latest_token_usage_record =
-                    Self::last_token_usage_record_from_rollout(&rollout_items);
+                {
+                    let mut state = self.state.lock().await;
+                    state.latest_token_usage_record =
+                        Self::last_token_usage_record_from_rollout(&rollout_items);
+                    state.response_token_usage =
+                        Self::response_token_usage_ledger_from_rollout(&rollout_items);
+                }
 
                 let thread_settings_applied =
                     RolloutItem::EventMsg(thread_settings::applied_event(self).await);
@@ -1836,6 +1846,36 @@ impl Session {
             }
         }
         None
+    }
+
+    /// Rebuilds the per-response usage ledger from persisted records so a
+    /// response that re-reports after resume still replaces its snapshot
+    /// instead of double-counting. Later records for the same response win,
+    /// mirroring the live replace semantics.
+    fn response_token_usage_ledger_from_rollout(
+        rollout_items: &[RolloutItem],
+    ) -> std::collections::HashMap<String, TokenUsage> {
+        let mut ledger = std::collections::HashMap::new();
+        let mut apply = |record: &TokenUsageRecord| {
+            if !record.response_id.is_empty() {
+                ledger.insert(record.response_id.clone(), record.usage.clone());
+            }
+        };
+        for item in rollout_items {
+            match item {
+                RolloutItem::TokenUsageRecord(record) => apply(record),
+                RolloutItem::Compacted(compacted) => {
+                    // The compacted checkpoint carries only the latest record;
+                    // ancestor responses behind the history base cannot be
+                    // attributed individually and stay un-ledgered.
+                    if let Some(record) = compacted.latest_token_usage_record.as_ref() {
+                        apply(record);
+                    }
+                }
+                _ => {}
+            }
+        }
+        ledger
     }
 
     async fn previous_turn_settings(&self) -> Option<PreviousTurnSettings> {
