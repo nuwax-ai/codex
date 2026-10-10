@@ -28,6 +28,20 @@
 - 集成：default OFF 无事件无 rollout 行；开启后 default/legacy 双 mode 写入、与 usage record 同 host key、rollout 行 event_msg/cap_partial 线形、resume 后续轮次正常完成；Responses 整工具诊断用例。单测 8/8（边界/UTF-8/丢弃后不增长/证据类）。
 - 规模登记：本批 +912/−336（含整文件重写 cap_partial.rs 与其测试），净增约 576，超过普通 800 行指导的边缘由测试重写占比解释；未再拆分以免留下无测试的中间态。
 
+### 批 FD — `9088aca8f`：读侧矩阵收口（第一批第 5 项剩余）
+
+- 双历史 mode 的 emits/persists/resume 用例扩展为两次连续 resume + 截断 crash 尾行（写者中途被杀的半行 JSON）：第二次 resume 仍能从同一 rollout 起动并正常完成后续轮次。
+- thread-store 物化测试：含 `EventMsg::CapPartial` 行的 rollout 干净物化（全部行解码消费、offset 到文件尾、双 turn 正常投影、partial 不产生任何 item）。
+- 边界登记：archive/delete 是文件搬移+元数据操作，不解析 rollout 行内容，由其通用套件覆盖；本 fork 无 thread-export RPC 可测。
+- 证据：materialization 家族 39/39；rig_output_cap 串行 21/21。
+
+### 批 FE — `e4797d0dc`：cap 采样花销进入共享账目与 v2 表面（第一批第 7 项主体）
+
+- cap 拦截点在 ledger 记账后运行与 Completed 相同的后记账（`update_token_usage_info`：context 总量、按模型统计、共享 rollout 预算、TokenCount 事件）；记账失败只记日志，cap 错误保持唯一终局。
+- 由此 v2 `thread/tokenUsage/updated` 在 cap 失败的 turn 上到达（notification 由既有 TokenCount 映射，无新增 wire 面）。core 原生 Responses 终局 fixture 补带 usage，钉住 SSE incomplete 帧计数同样以 host key 落账。
+- 新 v2 RPC 集成 `capped_sampling_reports_terminal_usage_over_v2`：cap 终局 → tokenUsage 通知（last 与 thread total 均含终局帧计数）、turn/completed 带错误、零 rawResponseItem/completed、无完成的 agentMessage item。
+- 证据：core rig_output_cap 13/13 串行（含原生 wire usage 断言）；app-server 28/28（turn_cap_usage、token_usage 家族、R1b guardians）threads 1；workspace check 干净。
+
 ### 本轮_receipt（串行 threads 1，offline --locked，retries 0）
 
 - 聚合 receipt（Codex 复审末批同一过滤器 + 新家族，fresh app-server helper binary 重建后）：**108/109**。唯一失败 `legacy_custom_ca_fallback_is_limited_to_reqwest_default` 为 `route_aware_client_pool` 子进程族（Codex 复审首批同样失败过、隔离即过的已知负载敏感族，批 A 登记 R7 机制：子进程默认 client 的 SCDynamicStore 读取 vs 2s fixture 预算）；本会话未改 http-client 产品代码；隔离复验 PASS。不以此标签关闭该族在 CI 的失败。
@@ -37,9 +51,9 @@
 
 | 项 | 本轮变化 | 证据 | 仍开放 |
 |---|---|---|---|
-| T16 | cap 终局 usage 经类型化错误进入 core 账本并持久化；Chat wire presence 观察补齐 | 批 FA/FB；585/585、256/256、集成双用例 | Chat 迟到 usage chunk 顺序（V-D2-1）；Anthropic start/delta 之外的 wire 家族细节见 T19 |
+| T16 | cap 终局 usage 经类型化错误进入 core 账本并持久化（Chat+Responses 双 wire）；共享账目与 v2 tokenUsage 表面接通（批 FE） | 批 FA/FB/FE；585/585、256/256、13/13、28/28 | Chat 迟到 usage chunk 顺序（V-D2-1）；WS 传输 cap fixture |
 | T17 | host sampling key 落地（mint/持久化/重建）；跨请求同 provider id 不别名有公共集成证明 | 批 FB；11/11 ledger+rollout 家族 | compaction 采样仍 legacy 键（None，行为不变）；app-server/读侧按 key 的展示 |
-| T18 | 观测点有界采集 + 门控发射 + 双 mode 持久化 + resume；D1-c 边界全钉 | 批 FC；21/21 cap 家族、双 mode resume 用例 | crash/export/archive/delete 矩阵、两次连续 resume、v2/RPC 读侧投影、模型可见注入（P0 门）、exec/SDK 串联 |
+| T18 | 观测点有界采集 + 门控发射 + 双 mode 持久化 + resume；D1-c 边界全钉；crash 尾行 + 两次 resume + 物化矩阵（批 FD）；cap usage 进 v2 表面（批 FE） | 批 FC/FD/FE；21/21、39/39、28/28 | 模型可见注入（P0 门）；exec API 线程专用串联用例；Responses WS 传输的 cap fixture；export 无 RPC 可测 |
 | T15 | 无变化（七项裁决仍为准） | — | — |
 | 其余 T01–T14、T19–T40 | 无变化 | 见 results.md 及 codex-review §3 | 按 codex-review §3 主线推进 |
 
@@ -50,4 +64,4 @@
 3. 第三批（CI/栈）：827 逐身份；V8 配对工件；bwrap 能力定位；Ubuntu SIGABRT/Windows 0xc00000fd 复现（显式 4MiB 线程）。
 4. 第四批：T21–T40 原范围。
 
-本轮无 push、无 tag、无发布；全部为本地提交（`46f2f87e3`、`243ddb5a1`、`78acb6df4`）。
+本轮无 push、无 tag、无发布；全部为本地提交（`46f2f87e3`、`243ddb5a1`、`78acb6df4`、`0ec9e1b04`(docs)、`9088aca8f`、`e4797d0dc`）。
