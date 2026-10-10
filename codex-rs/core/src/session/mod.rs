@@ -235,8 +235,6 @@ mod daemon_recovery;
 mod environment;
 mod extension_interruption;
 pub(crate) mod extension_metrics;
-pub(crate) use cap_partial::build_cap_partial;
-pub(crate) use cap_partial::trailing_turn_items;
 mod guardian_checkpoint;
 mod handlers;
 mod inject;

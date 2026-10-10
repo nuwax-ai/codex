@@ -94,6 +94,7 @@ async fn run_turn_until_complete(test: &TestCodex, prompt: &str) -> Result<TurnO
         }]))
         .await?;
     let mut outcome = TurnOutcome::default();
+    let mut event_index = 0_usize;
     loop {
         let event = tokio::time::timeout(Duration::from_secs(60), test.codex.next_event())
             .await
@@ -159,6 +160,7 @@ fn assert_cap_terminal(outcome: &TurnOutcome, expected_posts: usize, partial_tex
         ),
         None => {}
     }
+
     assert_eq!(
         outcome.agent_deltas, partial_text,
         "partial output streamed before the cap stays visible"

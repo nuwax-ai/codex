@@ -1,5 +1,9 @@
 //! Bounded capture of a turn's partial transcript at an output-cap failure.
 //!
+//! The capture is wired for the follow-up turn-error emission site (T18
+//! continuation): the bridge already flushes the partial durably; the
+//! builders here shape that record and its budget evidence.
+//!
 //! A cap exhaustion fails the turn closed (never a synthesized Completed),
 //! but the transcript the model streamed before the cap is evidence the user
 //! already saw. This module snapshots the turn's streamed items into a
@@ -23,12 +27,16 @@ use codex_protocol::protocol::CapPartialFragment;
 use codex_protocol::protocol::CapPartialFragmentKind;
 use codex_protocol::protocol::TokenBudgetEvidence;
 
+#[allow(dead_code)] // Bound set pinned by tests until the emission site lands (T18 continuation).
 const MAX_FRAGMENT_BYTES: usize = 16 * 1024;
+#[allow(dead_code)]
 const MAX_TURN_BYTES: usize = 64 * 1024;
+#[allow(dead_code)]
 const MAX_FRAGMENTS: usize = 32;
 
 /// Builds the bounded partial record for `turn_id` from the turn's streamed
 /// items, or `None` when nothing assistant-produced preceded the cap.
+#[allow(dead_code)] // Wired at the turn-error emission site in the T18 continuation.
 pub(crate) fn build_cap_partial(
     turn_id: &str,
     response_key: &str,
@@ -177,6 +185,7 @@ fn truncate_at_char_boundary(text: &str, max_bytes: usize) -> Option<String> {
 /// The trailing assistant-produced items of a turn: everything after the
 /// last user-role item, which is the transcript the model streamed in the
 /// turn that just failed.
+#[allow(dead_code)]
 pub(crate) fn trailing_turn_items(items: &[ResponseItemEnvelope]) -> &[ResponseItemEnvelope] {
     let start = items
         .iter()
