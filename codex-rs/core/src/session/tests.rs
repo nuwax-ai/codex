@@ -1288,9 +1288,13 @@ async fn managed_network_proxy_decider_survives_full_access_start() -> anyhow::R
         .expect("HTTP proxy URL")
         .parse::<std::net::SocketAddr>()?;
     let mut stream = tokio::net::TcpStream::connect(proxy_addr).await?;
+    // A public IP literal, not a hostname: ambient DNS on some networks
+    // resolves unknown hostnames to private IPs, which trips the local-only
+    // baseline deny (decider is never consulted for that reason) and makes
+    // the decider-survival assertion machine-dependent.
     stream
         .write_all(
-            b"GET http://example.com/ HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n",
+            b"GET http://93.184.216.34/ HTTP/1.1\r\nHost: 93.184.216.34\r\nConnection: close\r\n\r\n",
         )
         .await?;
     let mut buffer = [0_u8; 4096];
