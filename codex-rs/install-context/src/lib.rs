@@ -907,9 +907,13 @@ mod tests {
 
     #[test]
     fn brew_is_detected_on_macos_prefixes() {
+        // A path that only exercises the prefix rule: it must not resolve to
+        // a real installation on the host (a brew-cask symlink under
+        // /opt/homebrew/bin would add a package layout and make the result
+        // machine-dependent).
         let context = InstallContext::from_exe_with_codex_home(
             /*is_macos*/ true,
-            /*current_exe*/ Some(Path::new("/opt/homebrew/bin/codex")),
+            /*current_exe*/ Some(Path::new("/opt/homebrew/bin/codex-prefix-probe")),
             /*method_override*/ None,
             /*codex_home*/ None,
         );
