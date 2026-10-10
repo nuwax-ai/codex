@@ -22,6 +22,20 @@ fn provider(base_url: &str) -> Provider {
 }
 
 #[test]
+fn endpoint_translates_websocket_schemes_to_http() {
+    let provider = provider("http://unused.example");
+    let (ws, _) = crate::client::endpoint("ws://127.0.0.1:9000/v1", &provider)
+        .expect("ws base URL should translate");
+    assert_eq!(ws, "http://127.0.0.1:9000/v1");
+    let (wss, _) = crate::client::endpoint("wss://proxy.example/v1", &provider)
+        .expect("wss base URL should translate");
+    assert_eq!(wss, "https://proxy.example/v1");
+    let (http, _) = crate::client::endpoint("http://127.0.0.1:9000/v1", &provider)
+        .expect("http base URL stays untouched");
+    assert_eq!(http, "http://127.0.0.1:9000/v1");
+}
+
+#[test]
 fn legacy_protocol_detection_uses_only_the_url_path() {
     for (url, expected) in [
         ("https://api.example/anthropic/v1", RigProtocol::Anthropic),

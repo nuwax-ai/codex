@@ -46,6 +46,11 @@ shell_snapshot = false
 name = "OpenAI"
 base_url = "{model_base_url}/v1"
 wire_api = "responses"
+# Same native-transport pin as the attestation suite: the fork's default
+# bridging policy routes custom providers through the rig bridge, which
+# speaks HTTP and would skip the native Responses WebSocket handshake these
+# header assertions observe.
+experimental_bridge = "native"
 request_max_retries = 0
 stream_max_retries = 0
 requires_openai_auth = true
@@ -94,7 +99,10 @@ async fn managed_residency_overrides_provider_headers(transport: ModelTransport)
     .await;
     let model_base_url = match transport {
         ModelTransport::Http => http_server.uri(),
-        ModelTransport::Websocket => websocket_server.uri().to_string(),
+        // The provider base URL is an HTTP endpoint; the WebSocket transport
+        // derives its ws URL from it (every other websocket test converts the
+        // same way — see attestation/client_metadata).
+        ModelTransport::Websocket => websocket_server.uri().replacen("ws://", "http://", 1),
     };
 
     let codex_home = TempDir::new()?;

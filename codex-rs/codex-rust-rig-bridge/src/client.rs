@@ -166,6 +166,19 @@ pub(crate) fn endpoint(
         configured.sort();
         query.extend(configured);
     }
+    // A `ws://`/`wss://` base URL describes the WebSocket transport, not an
+    // HTTP endpoint; the bridge speaks HTTP(S) (the native transport owns the
+    // ws handshake). Translate instead of handing reqwest an unspeakable
+    // scheme, which would only surface as an opaque builder error later.
+    match url.scheme() {
+        "ws" => {
+            let _ = url.set_scheme("http");
+        }
+        "wss" => {
+            let _ = url.set_scheme("https");
+        }
+        _ => {}
+    }
     url.set_query(None);
     url.set_fragment(None);
     Ok((url.to_string().trim_end_matches('/').to_string(), query))
