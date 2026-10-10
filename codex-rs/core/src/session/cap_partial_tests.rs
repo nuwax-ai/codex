@@ -107,7 +107,15 @@ fn stops_at_the_turn_byte_ceiling() {
         assistant_message("a7", &text),
     ];
     let event = build_cap_partial("turn-1", "turn-1", &items).expect("partial should capture");
-    assert!(event.budget.total_bytes <= 64 * 1024);
+    assert_eq!(event.budget.total_bytes, 64 * 1024);
+    assert_eq!(
+        event.budget.total_bytes,
+        event
+            .fragments
+            .iter()
+            .map(|fragment| fragment.text.len() as u64)
+            .sum::<u64>()
+    );
     assert!(
         event
             .budget
@@ -166,4 +174,33 @@ fn trailing_items_span_back_to_the_last_user_message_only() {
     ];
     let trailing = trailing_turn_items(&items);
     assert_eq!(trailing.len(), 1);
+}
+
+#[test]
+fn equal_length_idless_fragments_keep_distinct_stable_keys() {
+    let items: Vec<_> = ["one", "two"]
+        .into_iter()
+        .map(|text| {
+            envelope(ResponseItem::Message {
+                id: None,
+                role: "assistant".to_string(),
+                content: vec![codex_protocol::models::ContentItem::OutputText {
+                    text: text.to_string(),
+                }],
+                phase: None,
+                internal_chat_message_metadata_passthrough: None,
+            })
+        })
+        .collect();
+    let captured = build_cap_partial("turn", "response", &items).expect("capture");
+    let again = build_cap_partial("turn", "response", &items).expect("recapture");
+    assert_eq!(captured, again);
+    assert_eq!(
+        captured
+            .fragments
+            .iter()
+            .map(|fragment| fragment.fragment_key.as_str())
+            .collect::<Vec<_>>(),
+        vec!["idx-0", "idx-1"]
+    );
 }

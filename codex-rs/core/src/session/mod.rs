@@ -1855,11 +1855,11 @@ impl Session {
     /// mirroring the live replace semantics.
     fn response_token_usage_ledger_from_rollout(
         rollout_items: &[RolloutItem],
-    ) -> std::collections::HashMap<String, TokenUsage> {
+    ) -> std::collections::HashMap<String, TokenUsageRecord> {
         let mut ledger = std::collections::HashMap::new();
         let mut apply = |record: &TokenUsageRecord| {
             if !record.response_id.is_empty() {
-                ledger.insert(record.response_id.clone(), record.usage.clone());
+                ledger.insert(record.response_id.clone(), record.clone());
             }
         };
         for item in rollout_items {

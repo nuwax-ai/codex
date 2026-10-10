@@ -141,6 +141,14 @@ async fn ledger_survives_into_new_turns_without_double_counting() {
         "response-a".to_string(),
         &usage(30),
     );
+    state.record_token_usage(
+        thread_id,
+        "turn-2",
+        session_id,
+        "root".to_string(),
+        "response-b".to_string(),
+        &usage(10),
+    );
     // A new turn starts a fresh turn subtotal while the thread keeps its
     // total; re-report of turn-1's response must not inflate turn-2.
     let replayed = state.record_token_usage(
@@ -153,13 +161,34 @@ async fn ledger_survives_into_new_turns_without_double_counting() {
     );
     assert_eq!(
         replayed.turn_token_usage,
-        usage(45),
-        "a replayed response nets its new snapshot into the current turn"
+        usage(55),
+        "moving a snapshot preserves other responses already in this turn"
     );
     assert_eq!(
         replayed.thread_token_usage,
-        usage(45),
-        "the thread total holds the replaced snapshot, not the sum"
+        usage(55),
+        "the thread total holds both latest snapshots"
+    );
+    let updated = state.record_token_usage(
+        thread_id,
+        "turn-2",
+        session_id,
+        "root".to_string(),
+        "response-a".to_string(),
+        &usage(50),
+    );
+    assert_eq!(
+        updated,
+        TokenUsageRecord {
+            thread_id,
+            turn_id: "turn-2".to_string(),
+            session_id,
+            root_turn_id: "root".to_string(),
+            response_id: "response-a".to_string(),
+            usage: usage(50),
+            turn_token_usage: usage(60),
+            thread_token_usage: usage(60),
+        }
     );
 }
 

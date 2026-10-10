@@ -54,7 +54,7 @@ pub(crate) fn build_cap_partial(
                 CapPartialFragmentKind::AssistantText,
                 codex_protocol::models::plaintext_agent_message_content(content)
                     .unwrap_or_default(),
-                id.as_deref().map(|id| id.to_string()),
+                id.as_deref().map(std::string::ToString::to_string),
             ),
             ResponseItem::Message {
                 role, id, content, ..
@@ -69,7 +69,7 @@ pub(crate) fn build_cap_partial(
                         _ => None,
                     })
                     .collect::<String>(),
-                id.as_deref().map(|id| id.to_string()),
+                id.as_deref().map(std::string::ToString::to_string),
             ),
             ResponseItem::Reasoning {
                 summary,
@@ -94,7 +94,7 @@ pub(crate) fn build_cap_partial(
                 (
                     CapPartialFragmentKind::Reasoning,
                     text,
-                    id.as_deref().map(|id| id.to_string()),
+                    id.as_deref().map(std::string::ToString::to_string),
                 )
             }
             ResponseItem::FunctionCall {
@@ -129,11 +129,18 @@ pub(crate) fn build_cap_partial(
                 break;
             };
             enforced.push(CapBudgetKind::TurnBytes);
-            fragments.push(fragment(kind, item_id, prefix, /*truncated*/ true));
+            total_bytes += prefix.len() as u64;
+            fragments.push(fragment(
+                kind,
+                item_id,
+                prefix,
+                /*truncated*/ true,
+                fragments.len(),
+            ));
             break;
         }
         total_bytes += text.len() as u64;
-        fragments.push(fragment(kind, item_id, text, truncated));
+        fragments.push(fragment(kind, item_id, text, truncated, fragments.len()));
     }
 
     if fragments.is_empty() {
@@ -158,11 +165,10 @@ fn fragment(
     item_id: Option<String>,
     text: String,
     truncated: bool,
+    index: usize,
 ) -> CapPartialFragment {
     CapPartialFragment {
-        fragment_key: item_id
-            .clone()
-            .unwrap_or_else(|| format!("idx-{}", text.len())),
+        fragment_key: item_id.clone().unwrap_or_else(|| format!("idx-{index}")),
         kind,
         item_id,
         text,

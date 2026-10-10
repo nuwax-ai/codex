@@ -81,7 +81,7 @@ pub(crate) struct SessionState {
     /// reports again (pause continuation, duplicate Completed delivery,
     /// replay) replaces its snapshot instead of double-counting; responses
     /// without a stable key cannot join and stay additive.
-    pub(crate) response_token_usage: std::collections::HashMap<String, TokenUsage>,
+    pub(crate) response_token_usage: std::collections::HashMap<String, TokenUsageRecord>,
     pub(crate) server_reasoning_included: bool,
     pub(crate) mcp_dependency_prompted: HashSet<String>,
     pub(crate) additional_context: AdditionalContextStore,
@@ -249,11 +249,6 @@ impl SessionState {
             (turn_token_usage, thread_token_usage)
         } else {
             let previous = self.response_token_usage.get(&response_id).cloned();
-            let delta_turn = previous.is_some()
-                && self
-                    .latest_token_usage_record
-                    .as_ref()
-                    .is_some_and(|record| record.turn_id == turn_id);
             let mut turn_token_usage = self
                 .latest_token_usage_record
                 .as_ref()
@@ -268,24 +263,16 @@ impl SessionState {
                     record.thread_token_usage.clone()
                 });
             if let Some(previous) = previous.as_ref() {
-                turn_token_usage.sub_assign_floor(previous);
-                thread_token_usage.sub_assign_floor(previous);
-                if !delta_turn {
-                    // A response re-reporting under a different turn id
-                    // moves its contribution: remove from the previous
-                    // turn's subtotal is impossible after the fact (only
-                    // the latest totals are retained), so keep the swap
-                    // conservative and count the net into this turn.
-                    turn_token_usage.add_assign(usage);
-                } else {
-                    turn_token_usage.add_assign(usage);
+                // Only replace a response's contribution in the turn that
+                // owns its previous snapshot. Moving an old response into
+                // this turn must not subtract another response's usage.
+                if previous.turn_id == turn_id {
+                    turn_token_usage.sub_assign_floor(&previous.usage);
                 }
-            } else {
-                turn_token_usage.add_assign(usage);
+                thread_token_usage.sub_assign_floor(&previous.usage);
             }
+            turn_token_usage.add_assign(usage);
             thread_token_usage.add_assign(usage);
-            self.response_token_usage
-                .insert(response_id.clone(), usage.clone());
             (turn_token_usage, thread_token_usage)
         };
         let record = TokenUsageRecord {
@@ -298,6 +285,10 @@ impl SessionState {
             turn_token_usage,
             thread_token_usage,
         };
+        if !record.response_id.is_empty() {
+            self.response_token_usage
+                .insert(record.response_id.clone(), record.clone());
+        }
         self.latest_token_usage_record = Some(record.clone());
         record
     }

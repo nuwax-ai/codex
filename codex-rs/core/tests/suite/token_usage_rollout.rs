@@ -114,3 +114,73 @@ async fn observed_response_usage_accumulates_per_turn_and_thread() -> Result<()>
 
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn repeated_response_snapshots_preserve_other_usage_after_resume() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = start_mock_server().await;
+    let plan_args = json!({"plan":[{"step":"keep sampling","status":"in_progress"}]}).to_string();
+    let mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("response-a"),
+                ev_assistant_message("a1", "first"),
+                ev_completed_with_tokens("response-a", /*total_tokens*/ 30),
+            ]),
+            sse(vec![
+                ev_response_created("response-b"),
+                ev_function_call("call-b", "update_plan", &plan_args),
+                ev_completed_with_tokens("response-b", /*total_tokens*/ 10),
+            ]),
+            sse(vec![
+                ev_response_created("response-a"),
+                ev_assistant_message("a2", "second"),
+                ev_completed_with_tokens("response-a", /*total_tokens*/ 45),
+            ]),
+            sse(vec![
+                ev_response_created("response-a"),
+                ev_function_call("call-c", "update_plan", &plan_args),
+                ev_completed_with_tokens("response-a", /*total_tokens*/ 50),
+            ]),
+            sse(vec![
+                ev_response_created("response-a"),
+                ev_assistant_message("a3", "third"),
+                ev_completed_with_tokens("response-a", /*total_tokens*/ 55),
+            ]),
+        ],
+    )
+    .await;
+    let test = test_codex().build_with_auto_env(&server).await?;
+    let rollout_path = test.codex.rollout_path().expect("rollout path");
+    let home = test.home.clone();
+    test.submit_turn("first").await?;
+    test.submit_turn("second").await?;
+    test.codex.shutdown_and_wait().await?;
+    let resumed = test_codex()
+        .resume(&server, home, rollout_path.clone())
+        .await?;
+    resumed.submit_turn("third").await?;
+    resumed.codex.shutdown_and_wait().await?;
+    let records = token_usage_records(&rollout_path);
+    assert_eq!(
+        records
+            .iter()
+            .map(|r| (
+                r.response_id.as_str(),
+                r.usage.total_tokens,
+                r.turn_token_usage.total_tokens,
+                r.thread_token_usage.total_tokens,
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            ("response-a", 30, 30, 30),
+            ("response-b", 10, 10, 40),
+            ("response-a", 45, 55, 55),
+            ("response-a", 50, 50, 60),
+            ("response-a", 55, 55, 65),
+        ]
+    );
+    assert_eq!(mock.requests().len(), 5);
+    Ok(())
+}
