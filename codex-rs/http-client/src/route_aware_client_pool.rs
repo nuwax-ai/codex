@@ -119,9 +119,7 @@ impl RouteAwareRequestError {
 
         let mut source: Option<&(dyn std::error::Error + 'static)> = Some(self);
         while let Some(error) = source {
-            if error.downcast_ref::<rustls::Error>().is_some()
-                || error.downcast_ref::<native_tls::Error>().is_some()
-            {
+            if crate::outbound_proxy::chain_carries_tls_error(error) {
                 return Some(RouteFailureClass::TlsError);
             }
             if error.to_string() == "tunnel error: proxy authorization required" {

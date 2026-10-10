@@ -89,6 +89,34 @@ pub enum RouteFailureClass {
     ResolverError,
 }
 
+/// Whether this error, or anything in its cause chain, is a rustls or
+/// native-tls error.
+///
+/// `std::io::Error::source()` returns the wrapped error's own source, not
+/// the wrapped error itself, so a TLS error carried as an
+/// `io::Error::new(kind, tls_error)` payload — how hyper surfaces TLS
+/// handshake failures through its connect stack on some platforms — is
+/// invisible to a plain `source()` walk. The io payloads are descended
+/// explicitly here.
+pub(crate) fn chain_carries_tls_error(start: &(dyn std::error::Error + 'static)) -> bool {
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(start);
+    while let Some(error) = source {
+        if error.downcast_ref::<rustls::Error>().is_some()
+            || error.downcast_ref::<native_tls::Error>().is_some()
+        {
+            return true;
+        }
+        if let Some(io_error) = error.downcast_ref::<std::io::Error>()
+            && let Some(payload) = io_error.get_ref()
+            && chain_carries_tls_error(payload)
+        {
+            return true;
+        }
+        source = error.source();
+    }
+    false
+}
+
 impl fmt::Display for RouteFailureClass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {

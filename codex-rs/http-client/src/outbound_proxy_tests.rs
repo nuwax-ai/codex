@@ -745,3 +745,23 @@ fn system_proxy_cache_key_preserves_url_specific_pac_decisions() {
     );
     assert!(!cache_key.contains(request_url));
 }
+
+#[test]
+fn tls_errors_wrapped_in_io_payloads_are_classified() {
+    // hyper surfaces TLS handshake failures on some platforms as
+    // io::Error::new(InvalidData, tls_error) payloads; io::Error::source()
+    // skips the payload itself, so a plain cause-chain walk misses the TLS
+    // error (observed failing the untrusted-certificate classification on
+    // Linux CI).
+    let rustls_inner = rustls::Error::InvalidCertificate(rustls::CertificateError::UnknownIssuer);
+    let io_wrapped = std::io::Error::new(std::io::ErrorKind::InvalidData, rustls_inner);
+    assert!(super::chain_carries_tls_error(&io_wrapped));
+
+    let nested = std::io::Error::other(io_wrapped);
+    assert!(super::chain_carries_tls_error(&nested));
+
+    let plain_io = std::io::Error::other("connection reset");
+    assert!(!super::chain_carries_tls_error(&plain_io));
+
+    let _ = std::error::Error::source(&plain_io);
+}
