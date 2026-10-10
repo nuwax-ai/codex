@@ -4768,16 +4768,17 @@ impl Session {
     /// the sampling's host key, and persist so resume rebuilds them. Absent
     /// counters count as zero here (the ledger has no presence); the
     /// presence-preserving report travels on the typed error and the cap
-    /// partial diagnostics.
+    /// partial diagnostics. Returns the normalized usage so the caller can
+    /// run the same post-accounting a Completed does.
     pub(crate) async fn record_cap_exhausted_usage(
         &self,
         turn_context: &TurnContext,
         response_key: &str,
         response_id: Option<&str>,
         reported: Option<&codex_protocol::protocol::ReportedResponseUsage>,
-    ) {
+    ) -> Option<TokenUsage> {
         let Some(reported) = reported else {
-            return;
+            return None;
         };
         let usage = TokenUsage {
             input_tokens: reported.counts.input_tokens.unwrap_or_default(),
@@ -4804,6 +4805,7 @@ impl Session {
         );
         self.persist_rollout_items(&[RolloutItem::TokenUsageRecord(record)])
             .await;
+        Some(usage)
     }
 
     pub(crate) async fn record_token_usage_info(

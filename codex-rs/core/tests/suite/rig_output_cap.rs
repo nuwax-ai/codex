@@ -769,7 +769,11 @@ async fn responses_output_cap_error_is_terminal_without_core_resampling() -> Res
         responses::ev_output_text_delta("partial cap answer"),
         json!({
             "type": "response.incomplete",
-            "response": {"id": "resp_cap", "incomplete_details": {"reason": "max_output_tokens"}}
+            "response": {
+                "id": "resp_cap",
+                "incomplete_details": {"reason": "max_output_tokens"},
+                "usage": {"input_tokens": 4, "output_tokens": 64, "total_tokens": 68}
+            }
         }),
     ]);
     let log = mount_capturing_response(&server, "/v1/responses", body).await?;
@@ -777,6 +781,25 @@ async fn responses_output_cap_error_is_terminal_without_core_resampling() -> Res
     let outcome = run_turn_until_complete(&test, "hit the responses cap").await?;
     assert_cap_terminal(&outcome, log.posts(), "partial cap answer");
     assert_eq!(log.first_body()["max_output_tokens"], json!(64));
+    // The native decoder's terminal-frame usage enters the same durable
+    // ledger the Chat wire uses.
+    let records = persisted_usage_records(&test);
+    assert_eq!(records.len(), 1, "the capped sampling accounts its usage");
+    assert!(
+        records[0]
+            .response_key
+            .as_deref()
+            .is_some_and(|key| key.starts_with("sampling:"))
+    );
+    assert_eq!(
+        (
+            records[0].usage.input_tokens,
+            records[0].usage.output_tokens,
+            records[0].usage.total_tokens
+        ),
+        (4, 64, 68),
+        "the native terminal frame's counters survive the error mapping"
+    );
     Ok(())
 }
 

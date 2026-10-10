@@ -2696,13 +2696,30 @@ async fn try_run_sampling_request(
                     ..
                 } = err.details()
                 {
-                    sess.record_cap_exhausted_usage(
-                        &turn_context,
-                        response_key,
-                        response_id.as_deref(),
-                        reported_usage.as_ref(),
-                    )
-                    .await;
+                    if let Some(usage) = sess
+                        .record_cap_exhausted_usage(
+                            &turn_context,
+                            response_key,
+                            response_id.as_deref(),
+                            reported_usage.as_ref(),
+                        )
+                        .await
+                    {
+                        // The spend is real: run the same post-accounting a
+                        // Completed does (context totals, per-model stats,
+                        // shared budget, TokenCount notification). The cap
+                        // error stays the turn's terminal even if accounting
+                        // fails here.
+                        if let Err(accounting_error) = sess
+                            .update_token_usage_info(&turn_context, Some(&usage))
+                            .await
+                        {
+                            warn!(
+                                error = %accounting_error,
+                                "failed to account a capped sampling's usage"
+                            );
+                        }
+                    }
                     if turn_context
                         .config
                         .features
