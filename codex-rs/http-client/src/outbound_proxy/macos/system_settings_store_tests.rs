@@ -28,7 +28,7 @@ fn fixture_dictionary(token: &str) -> ProxiesDictionary {
 fn token_of(snapshot: &super::SettingsSnapshot) -> String {
     let value = snapshot
         .proxies()
-        .find(&CFString::new("fixture-token"))
+        .find(CFString::new("fixture-token"))
         .expect("fixture key should exist");
     value
         .downcast::<CFString>()
@@ -70,7 +70,7 @@ fn counting_reader(
 fn production_snapshot_serves_the_real_system_settings() {
     let snapshot = system_settings_snapshot().expect("real system settings should load");
     assert!(
-        snapshot.proxies().len() > 0,
+        !snapshot.proxies().is_empty(),
         "the dynamic-store proxies dictionary always carries per-scheme entries"
     );
 }
@@ -103,6 +103,23 @@ fn concurrent_requests_share_one_system_read() {
             "concurrent callers must share one read's result"
         );
     }
+    assert_eq!(loader.system_reads(), 1);
+}
+
+#[test]
+fn idle_loader_waits_instead_of_spinning_an_empty_run_loop() {
+    let loader = SystemSettingsLoader::with_reader(|| Some(fixture_dictionary("idle")));
+    let _snapshot = loader.snapshot().expect("initial read should succeed");
+    let started = std::time::Instant::now();
+    let before = loader.inner.loop_iterations.load(AtomicOrdering::SeqCst);
+    thread::sleep(Duration::from_millis(200));
+    let after = loader.inner.loop_iterations.load(AtomicOrdering::SeqCst);
+    let iterations = after - before;
+    let maximum_iterations = started.elapsed().as_nanos() / super::RUNLOOP_SLICE.as_nanos() + 3;
+    assert!(
+        iterations as u128 <= maximum_iterations,
+        "an idle loader must block between polls, observed {iterations} iterations"
+    );
     assert_eq!(loader.system_reads(), 1);
 }
 

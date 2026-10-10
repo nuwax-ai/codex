@@ -45,7 +45,7 @@ fn custom_intermediate_trust_preserves_hostname_validation() {
         &MapEnv {
             values: HashMap::new(),
         },
-        || rustls_native_certs::CertificateResult::default(),
+        rustls_native_certs::CertificateResult::default,
         hermetic.now(),
         Some(&ConfiguredCaBundle {
             source_env: CODEX_CA_CERT_ENV,

@@ -507,6 +507,13 @@ fn a_poisoned_cache_lock_clears_and_reloads() {
         (1, 3),
         "after poison recovery the cache reloads instead of panicking"
     );
+    let reused = cache.load(
+        platform_key(),
+        loads.loader(|| fixture_load(vec![fixture_native_root()])),
+        || clock.now(),
+    );
+    assert!(Arc::ptr_eq(&recovered, &reused));
+    assert_eq!(loads.count(), 3, "recovery must clear poison for TTL reuse");
 }
 
 /// A caller that waits on the cache lock behind another load must judge

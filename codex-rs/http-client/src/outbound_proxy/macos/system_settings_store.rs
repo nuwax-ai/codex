@@ -50,6 +50,7 @@ use std::time::Instant;
 use system_configuration::core_foundation::base::CFType;
 use system_configuration::core_foundation::dictionary::CFDictionary;
 use system_configuration::core_foundation::runloop::CFRunLoop;
+use system_configuration::core_foundation::runloop::CFRunLoopRunResult;
 use system_configuration::core_foundation::runloop::kCFRunLoopDefaultMode;
 use system_configuration::core_foundation::string::CFString;
 
@@ -199,6 +200,8 @@ struct LoaderInner {
     thread_rebuilds: AtomicUsize,
     thread_generation: AtomicUsize,
     system_reads: AtomicUsize,
+    #[cfg(test)]
+    loop_iterations: AtomicUsize,
     reader: SharedReader,
     tunings: LoaderTunings,
 }
@@ -241,6 +244,8 @@ impl SystemSettingsLoader {
             thread_rebuilds: AtomicUsize::new(0),
             thread_generation: AtomicUsize::new(0),
             system_reads: AtomicUsize::new(0),
+            #[cfg(test)]
+            loop_iterations: AtomicUsize::new(0),
             reader: Arc::new(Mutex::new(Box::new(reader))),
         });
         let loader = Self {
@@ -337,7 +342,11 @@ impl SystemSettingsLoader {
             return;
         }
         tracing::warn!(rebuilds, "rebuilding the system settings loader thread");
-        self.spawn_thread_with_sender(request);
+        if let Err(error) = self.spawn_thread_with_sender(request) {
+            tracing::warn!(%error, "failed to spawn the system settings loader thread");
+            *state = LoadState::Failed(Instant::now() + self.inner.tunings.failure_ttl);
+            return;
+        }
         let previous = match std::mem::replace(&mut *state, LoadState::Empty) {
             LoadState::Fresh(previous) => Some(previous),
             LoadState::Loading(previous) => previous,
@@ -355,22 +364,28 @@ impl SystemSettingsLoader {
             .request
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        self.spawn_thread_with_sender(&mut request);
+        if let Err(error) = self.spawn_thread_with_sender(&mut request) {
+            tracing::warn!(%error, "failed to spawn the system settings loader thread");
+        }
     }
 
     fn spawn_thread_with_sender(
         &self,
         request: &mut MutexGuard<'_, Option<(SyncSender<()>, usize)>>,
-    ) {
+    ) -> std::io::Result<()> {
         let (sender, receiver) = sync_channel::<()>(/*bound*/ 1);
         let generation = self.inner.thread_generation.fetch_add(1, Ordering::SeqCst);
         **request = Some((sender, generation));
         let inner = Arc::clone(&self.inner);
-        if let Err(error) = std::thread::Builder::new()
+        match std::thread::Builder::new()
             .name("codex-system-proxy-settings".to_string())
             .spawn(move || loader_thread(inner, receiver, generation))
         {
-            tracing::warn!(%error, "failed to spawn the system settings loader thread");
+            Ok(_) => Ok(()),
+            Err(error) => {
+                **request = None;
+                Err(error)
+            }
         }
     }
 
@@ -411,15 +426,24 @@ fn loader_thread(inner: Arc<LoaderInner>, receiver: Receiver<()>, generation: us
         generation,
     };
     loop {
+        #[cfg(test)]
+        inner.loop_iterations.fetch_add(1, Ordering::SeqCst);
         // Service this thread's run loop in short slices so CoreFoundation
         // machinery on it sees a live loop, then poll for work; requests
         // wake within one slice.
-        CFRunLoop::run_in_mode(
+        let run_loop_result = CFRunLoop::run_in_mode(
             unsafe { kCFRunLoopDefaultMode },
             RUNLOOP_SLICE,
             /*return_after_source_handled*/ true,
         );
-        match receiver.recv_timeout(Duration::from_millis(0)) {
+        // An empty run loop exits immediately. Wait on the request channel
+        // in that case so an idle loader cannot consume a CPU core forever.
+        let poll_timeout = if run_loop_result == CFRunLoopRunResult::Finished {
+            RUNLOOP_SLICE
+        } else {
+            Duration::ZERO
+        };
+        match receiver.recv_timeout(poll_timeout) {
             Ok(()) => perform_read(&inner),
             Err(RecvTimeoutError::Timeout) => continue,
             Err(RecvTimeoutError::Disconnected) => return,

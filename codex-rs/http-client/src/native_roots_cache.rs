@@ -128,6 +128,7 @@ impl NativeRootsCache {
             warn!("native roots cache lock was poisoned; clearing the entry and reloading");
             let mut guard = poisoned.into_inner();
             *guard = None;
+            self.entry.clear_poison();
             guard
         });
         if let Some(cached) = cache.as_ref()
