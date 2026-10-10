@@ -30,6 +30,40 @@ mod browsing_pagination_tests;
 mod buffered_replay;
 #[path = "tests/connector_policy.rs"]
 mod connector_policy;
+#[cfg(test)]
+pub(super) fn canonicalize_elapsed_frames(text: impl Into<String>) -> String {
+    // Reconnect/working status lines tick their elapsed seconds with wall
+    // time; pin the first frame so snapshots do not depend on when the
+    // render happened (chatwidget tests normalize the same way).
+    static FRAMES: std::sync::LazyLock<[regex_lite::Regex; 2]> = std::sync::LazyLock::new(|| {
+        [
+                regex_lite::Regex::new(r"(?:\u{2022}|\u{25E6}) Working \(\d+s").unwrap(),
+                regex_lite::Regex::new(r"(?:\u{2022}|\u{25E6}) (Reconnecting to server\u{2026}|Reconnect failed \u{2014} check the endpoint, then relaunch) \(\d+s\)").unwrap(),
+            ]
+    });
+    let text = text.into();
+    let canonicalize = |line: &str| -> String {
+        let replaced = FRAMES[0]
+            .replace_all(line, "\u{2022} Working (0s")
+            .into_owned();
+        let replaced = FRAMES[1]
+            .replace_all(&replaced, |caps: &regex_lite::Captures| {
+                format!("\u{2022} {} (0s)", &caps[1])
+            })
+            .into_owned();
+        if replaced.len() == line.len() {
+            replaced
+        } else {
+            let padding = " ".repeat(line.len() - replaced.len());
+            format!("{replaced}{padding}")
+        }
+    };
+    text.split('\n')
+        .map(|line| canonicalize(line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[path = "tests/disconnect_tests.rs"]
 mod disconnect;
 #[path = "tests/external_writer_fork_tests.rs"]

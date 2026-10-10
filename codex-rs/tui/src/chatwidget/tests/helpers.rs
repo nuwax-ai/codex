@@ -48,6 +48,31 @@ pub(crate) fn normalize_snapshot_paths(text: impl Into<String>) -> String {
     }
     text = text.replace("/tmp/project\\", "/tmp/project/");
 
+    // The working spinner's glyph and elapsed seconds tick with wall time;
+    // canonicalize to the first frame so snapshots stay render-timing
+    // independent (same treatment as the completion-footer durations). The
+    // replacement is width-padded per line so multi-digit second counts do
+    // not shift the rendered right padding.
+    static WORKING_FRAME: std::sync::LazyLock<regex_lite::Regex> = std::sync::LazyLock::new(|| {
+        regex_lite::Regex::new(r"(?:\u{2022}|\u{25E6}) Working \(\d+s").unwrap()
+    });
+    let text = text
+        .split('\n')
+        .map(|line| {
+            let replaced = WORKING_FRAME
+                .replace_all(line, "\u{2022} Working (0s")
+                .into_owned();
+            if replaced.len() == line.len() {
+                replaced
+            } else {
+                let padding = " ".repeat(line.len() - replaced.len());
+                format!("{replaced}{padding}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut text = text;
+
     let platform_test_cwd = test_path_display("/tmp/project");
     if platform_test_cwd == "/tmp/project" {
         text

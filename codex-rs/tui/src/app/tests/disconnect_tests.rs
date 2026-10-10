@@ -113,7 +113,7 @@ async fn lost_mutation_reply_preserves_work_without_resubmitting() -> Result<()>
     );
     assert_snapshot!(
         "offline_draft",
-        format!(
+        super::canonicalize_elapsed_frames(format!(
             "{}\n{}",
             lines_to_single_string(
                 &app.transcript_cells
@@ -122,7 +122,7 @@ async fn lost_mutation_reply_preserves_work_without_resubmitting() -> Result<()>
                     .display_lines(/*width*/ 80)
             ),
             render_bottom_popup(&app.chat_widget, /*width*/ 80)
-        )
+        ))
     );
     let mut keymap = codex_config::types::TuiKeymap::default();
     keymap.chat.edit_queued_message = Some(codex_config::types::KeybindingsSpec::One(
