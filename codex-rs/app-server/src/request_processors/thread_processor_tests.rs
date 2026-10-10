@@ -656,7 +656,16 @@ mod thread_processor_behavior_tests {
             .await?;
 
         assert_eq!(config.model_provider_id, "session");
-        assert_eq!(config.model_provider, session_provider);
+        // Derivation stamps the load-time fork extension `provider_id` from
+        // the winning provider key (see config_manager), so the derived
+        // provider equals the fixture plus that field.
+        assert_eq!(
+            config.model_provider,
+            ModelProviderInfo {
+                provider_id: Some("session".to_string()),
+                ..session_provider
+            }
+        );
         assert!(!config.features.enabled(Feature::Plugins));
         assert!(config.bypass_hook_trust);
         Ok(())
