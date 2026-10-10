@@ -121,3 +121,8 @@ codex-core	session::tests::managed_network_proxy_decider_survives_full_access_st
 codex-app-server::all	suite::v2::review::review_start_with_detached_delivery_returns_new_thread_id	PASS	见 /tmp/last2.log / tui-quiet.log	2026-10-10 收尾	run2 通过（批 J）——补登（此前键名不匹配）
 codex-tui	app::tests::unavailable_commands::unavailable_thread_new_and_clear_start_a_writable_session	PASS	见 /tmp/last2.log / tui-quiet.log	2026-10-10 收尾	run3 全量通过
 codex-tui	app::thread_title::tests::automatic_thread_title_respects_origin_metadata_after_switching	PASS	见 /tmp/last2.log / tui-quiet.log	2026-10-10 收尾	run3 全量通过
+codex-http-client	route_aware_client_pool::tests::request_failures_classify_real_untrusted_certificate_handshakes	FAIL-linux	CI run 38053827346 ubuntu	2026-10-10 CI run4	错误链 InvalidCertificate(UnknownIssuer) 在 reqwest connect 包装下 failure_class 走不到 TlsError（macOS 过——默认后端不同）；待 Linux 侧分类修复
+codex-http-client	route_aware_client_pool::tls_fallback_tests::*（5 项）	FAIL-linux	CI run 38053827346 ubuntu	2026-10-10 CI run4	同源 TLS 后端/分类差异；bubblewrap 无关
+codex-app-server-protocol	schema_fixtures_tests::stable_precomputed_exports_match_schema_fixtures	FAIL-linux	CI run 38053827346 ubuntu	2026-10-10 CI run4	RolloutLine.json 预生成 fixture 平台相关（macOS 生成）；需平台参数化 fixture 或按平台生成
+codex-app-server	suite::v2::analytics::remote_unified_background_plugin_script_emits_measurements_after_turn_completion 等 2 项	FAIL-linux	CI run 38053827346 ubuntu	2026-10-10 CI run4	需 code-mode-host 二进制（本地同因：V8 配对工件缺失）
+codex-app-server-transport	transport::remote_control::tests::remote_control_waits_for_account_id_before_enrolling	FAIL-linux	CI run 38053827346 ubuntu	2026-10-10 CI run4	auth-change 唤醒在重试延迟内未发生（CI 慢机窗口）；负载边界候选，待 bubblewrap 修复后复验
