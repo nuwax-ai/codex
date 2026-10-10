@@ -76,33 +76,16 @@ fn assert_cap_failure(events: &[Result<ResponseEvent, ApiError>]) {
         errors[0],
         ApiError::CapExhausted { message, .. } if message.contains("Output token limit reached")
     ));
-    // No synthesized Completed may follow a cap, but the flushed partial's
-    // item Done (the transcript the model really streamed, made durable)
-    // must PRECEDE the error — exactly one such Done.
     assert!(
         !events
             .iter()
             .any(|event| matches!(event, Ok(ResponseEvent::Completed { .. })))
     );
-    assert_eq!(
-        events
-            .iter()
-            .filter(|event| matches!(event, Ok(ResponseEvent::OutputItemDone(_))))
-            .count(),
-        1,
-        "exactly the flushed partial item may complete: {events:?}"
-    );
-    let done_index = events
-        .iter()
-        .position(|event| matches!(event, Ok(ResponseEvent::OutputItemDone(_))))
-        .expect("flushed partial Done");
-    let error_index = events
-        .iter()
-        .position(std::result::Result::is_err)
-        .expect("cap error");
     assert!(
-        done_index < error_index,
-        "the partial must flush before the terminal error: {events:?}"
+        !events
+            .iter()
+            .any(|event| matches!(event, Ok(ResponseEvent::OutputItemDone(_)))),
+        "a cap must not promote pending content to completed items: {events:?}"
     );
 }
 

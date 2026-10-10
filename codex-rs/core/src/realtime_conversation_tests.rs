@@ -189,12 +189,13 @@ fn classifies_outbound_api_failures_as_transport_loss() {
             Some(Box::new(pending_outbound.clone())),
         );
         let RealtimeInputTaskExit::TransportLost {
-            err: ApiError::Stream(_),
+            err,
             pending_outbound: Some(actual_pending_outbound),
         } = exit
         else {
             panic!("outbound API failure should preserve pending output for reconnect");
         };
+        assert!(matches!(*err, ApiError::Stream(_)));
         assert_eq!(*actual_pending_outbound, pending_outbound);
     }
 

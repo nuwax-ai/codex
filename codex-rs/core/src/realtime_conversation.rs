@@ -1979,7 +1979,7 @@ fn spawn_realtime_input_task(
         let transcript_state = input.events.transcript_state();
         let exit = run_realtime_input_task(input, /*pending_outbound*/ None).await;
         if let RealtimeInputTaskExit::TransportLost { err, .. } = exit {
-            report_realtime_transport_loss(&events_tx, err).await;
+            report_realtime_transport_loss(&events_tx, *err).await;
         }
         let transcript_tail = transcript_state.take_transcript_tail().await;
         flush_realtime_transcript_tail(&transcript_tail_flush, &transcript_tail).await;
@@ -1989,7 +1989,7 @@ fn spawn_realtime_input_task(
 enum RealtimeInputTaskExit {
     Terminal,
     TransportLost {
-        err: ApiError,
+        err: Box<ApiError>,
         pending_outbound: Option<Box<RealtimePendingOutbound>>,
     },
 }
@@ -2076,7 +2076,7 @@ async fn run_realtime_input_task(
                     }
                     Ok(None) => Err(RealtimeInputTaskExit::Terminal),
                     Err(err) => Err(RealtimeInputTaskExit::TransportLost {
-                        err,
+                        err: Box::new(err),
                         pending_outbound: None,
                     }),
                 }
@@ -2141,7 +2141,7 @@ fn classify_realtime_input_error_with_pending(
 ) -> RealtimeInputTaskExit {
     match err.downcast::<ApiError>() {
         Ok(err) => RealtimeInputTaskExit::TransportLost {
-            err,
+            err: Box::new(err),
             pending_outbound,
         },
         Err(err) => {

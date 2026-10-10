@@ -175,12 +175,18 @@ impl From<ResponseCompletedUsage> for TokenUsage {
 /// and non-numeric values are treated as unreported. Returns `None` when no
 /// counter parses at all.
 fn parse_reported_response_usage(usage: &Value) -> Option<ReportedResponseUsage> {
-    let counter = |name: &str| usage.get(name).and_then(Value::as_i64);
+    let counter = |name: &str| {
+        usage
+            .get(name)
+            .and_then(Value::as_i64)
+            .filter(|value| *value >= 0)
+    };
     let detailed = |container: &str, field: &str| {
         usage
             .get(container)
             .and_then(|details| details.get(field))
             .and_then(Value::as_i64)
+            .filter(|value| *value >= 0)
     };
     let counts = ReportedUsageCounters {
         input_tokens: counter("input_tokens"),
@@ -192,6 +198,10 @@ fn parse_reported_response_usage(usage: &Value) -> Option<ReportedResponseUsage>
     };
     ReportedResponseUsage::from_counters(counts)
 }
+
+#[cfg(test)]
+#[path = "reported_usage_tests.rs"]
+mod reported_usage_tests;
 
 #[derive(Debug, Default, Deserialize)]
 struct ResponseCompletedInputTokensDetails {

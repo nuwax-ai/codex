@@ -21,9 +21,6 @@ enum DeferredOutput {
 pub(crate) struct PendingRigMessage {
     tools: crate::response_tools::PendingTools,
     response_id: String,
-    /// Partial-output events flushed at an output-cap terminal, delivered by
-    /// the pump before the typed error so the partial transcript survives.
-    pub(crate) cap_flushed_events: Vec<ResponseEvent>,
     /// Presence-preserving usage observed on the raw wire for the response
     /// being converted, supplied by the stream pump before the Final event.
     pub(crate) wire_reported_usage: Option<codex_protocol::protocol::ReportedResponseUsage>,
@@ -63,7 +60,6 @@ impl PendingRigMessage {
         Self {
             tools: crate::response_tools::PendingTools::new(custom_tools),
             wire_reported_usage: None,
-            cap_flushed_events: Vec::new(),
             response_id: unique_suffix(),
             segments: Vec::new(),
             tool_segment_ids: std::collections::HashMap::new(),
@@ -257,53 +253,17 @@ pub(crate) fn paused_final_events(
 /// Rig reports plain integers, so an unreported counter is indistinguishable
 /// from zero: only nonzero counters are claimed, and the report is therefore
 /// at best `Incomplete`.
-/// Flushes the pending partial transcript and builds the typed cap error.
-///
-/// The caller forwards the returned events before surfacing the error: the
-/// already-streamed partial output thereby lands as ordinary history items
-/// (durable, resume-visible) while the turn itself still fails closed.
-pub(crate) fn cap_flush_partial_and_error(
-    pending: &mut PendingRigMessage,
-    record: &rig_core::streaming::StreamFinal,
-) -> (Vec<ResponseEvent>, ApiError) {
-    // The pump supplies presence-true wire counters when it has them
-    // (Anthropic); otherwise fall back to rig's normalized usage, where a
-    // zero cannot be distinguished from an unreported counter, so zeros stay
-    // unreported rather than being asserted as data.
-    let reported_usage = pending
-        .wire_reported_usage
-        .take()
-        .or_else(|| rig_usage_report(&record.usage));
-    let error = ApiError::CapExhausted {
-        message: "Output token limit reached; increase max_tokens before retrying".to_string(),
-        response_id: record.response_id.clone().or(record.message_id.clone()),
-        reported_usage,
-    };
-    match finish_pending_output(pending) {
-        Ok(mut events) => {
-            if let Some(model) = record.model.clone() {
-                events.push(ResponseEvent::ServerModel(model));
-            }
-            (events, error)
-        }
-        Err(flush_error) => {
-            tracing::warn!(%flush_error, "failed to flush partial output at the cap terminal");
-            (Vec::new(), error)
-        }
-    }
-}
-
 fn rig_usage_report(usage: &rig_core::completion::Usage) -> Option<ReportedResponseUsage> {
+    let counter = |value: u64| (value > 0).then(|| i64::try_from(value).ok()).flatten();
     let counts = ReportedUsageCounters {
-        input_tokens: (usage.input_tokens > 0).then_some(usage.input_tokens as i64),
-        cached_input_tokens: (usage.cached_input_tokens > 0)
-            .then_some(usage.cached_input_tokens as i64),
-        cache_write_input_tokens: (usage.cache_creation_input_tokens > 0)
-            .then_some(usage.cache_creation_input_tokens as i64),
-        output_tokens: (usage.output_tokens > 0).then_some(usage.output_tokens as i64),
-        reasoning_output_tokens: (usage.reasoning_tokens > 0)
-            .then_some(usage.reasoning_tokens as i64),
-        total_tokens: (usage.total_tokens > 0).then_some(usage.total_tokens as i64),
+        input_tokens: counter(usage.input_tokens),
+        cached_input_tokens: counter(usage.cached_input_tokens),
+        cache_write_input_tokens: counter(usage.cache_creation_input_tokens),
+        output_tokens: counter(usage.output_tokens),
+        reasoning_output_tokens: counter(usage.reasoning_tokens),
+        // Rig may derive this value; raw wire presence is required before
+        // it can be claimed as a provider-reported total.
+        total_tokens: None,
     };
     ReportedResponseUsage::from_counters(counts)
 }
@@ -326,13 +286,19 @@ fn handle_stream_final(
         // another paid sample, so the error is non-retryable and names the
         // fix. Partial output already streamed stays visible.
         Some(FinishReason::Length) => {
-            // Keep the typed terminal contract, but flush the already-streamed
-            // partial first so it becomes durable history instead of dying
-            // with the stream (the pump sends the flushed events, then the
-            // error).
-            let (events, error) = cap_flush_partial_and_error(pending, &record);
-            pending.cap_flushed_events = events;
-            return Err(error);
+            // A cap cannot confirm pending tool calls or promote partial
+            // content into ordinary completed history. Already-delivered
+            // deltas stay visible; durable diagnostics require their own
+            // bounded, explicitly partial representation.
+            return Err(ApiError::CapExhausted {
+                message: "Output token limit reached; increase max_tokens before retrying"
+                    .to_string(),
+                response_id: record.response_id.or(record.message_id),
+                reported_usage: pending
+                    .wire_reported_usage
+                    .take()
+                    .or_else(|| rig_usage_report(&record.usage)),
+            });
         }
         // The native Responses decoder classifies content_filter distinctly.
         Some(FinishReason::ContentFilter) => return Err(ApiError::ContentFilter),

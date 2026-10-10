@@ -35,13 +35,11 @@ impl AnthropicUsage {
                 *counter = Some(value);
             }
         }
-        if let Some(details) = usage["output_tokens_details"].as_object() {
-            self.reasoning = Some(
-                details
-                    .get("thinking_tokens")
-                    .and_then(Value::as_u64)
-                    .unwrap_or_default(),
-            );
+        if let Some(value) = usage["output_tokens_details"]
+            .get("thinking_tokens")
+            .and_then(Value::as_u64)
+        {
+            self.reasoning = Some(value);
         }
     }
 
@@ -54,11 +52,13 @@ impl AnthropicUsage {
         &self,
     ) -> Option<codex_protocol::protocol::ReportedResponseUsage> {
         let counts = codex_protocol::protocol::ReportedUsageCounters {
-            input_tokens: self.input.map(|value| value as i64),
-            cached_input_tokens: self.cached.map(|value| value as i64),
-            cache_write_input_tokens: self.cache_creation.map(|value| value as i64),
-            output_tokens: self.output.map(|value| value as i64),
-            reasoning_output_tokens: self.reasoning.map(|value| value as i64),
+            input_tokens: self.input.and_then(|value| i64::try_from(value).ok()),
+            cached_input_tokens: self.cached.and_then(|value| i64::try_from(value).ok()),
+            cache_write_input_tokens: self
+                .cache_creation
+                .and_then(|value| i64::try_from(value).ok()),
+            output_tokens: self.output.and_then(|value| i64::try_from(value).ok()),
+            reasoning_output_tokens: self.reasoning.and_then(|value| i64::try_from(value).ok()),
             total_tokens: None,
         };
         codex_protocol::protocol::ReportedResponseUsage::from_counters(counts)
@@ -83,3 +83,7 @@ impl AnthropicUsage {
             .saturating_add(usage.output_tokens);
     }
 }
+
+#[cfg(test)]
+#[path = "usage_tests.rs"]
+mod tests;

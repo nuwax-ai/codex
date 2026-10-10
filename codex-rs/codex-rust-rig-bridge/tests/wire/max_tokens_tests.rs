@@ -175,12 +175,7 @@ async fn chat_length_returns_terminal_output_cap_error_with_partial_text() {
         ),
         (1, "ok".to_string(), 0, 1, json!(64))
     );
-    // The flushed partial arrives as a durable item Done BEFORE the error,
-    // so the transcript the user already saw survives the cap terminal.
-    assert_eq!(
-        done, 1,
-        "the partial message must complete before the error"
-    );
+    assert_eq!(done, 0, "partial output must not become completed history");
 }
 
 #[tokio::test]
@@ -259,10 +254,5 @@ async fn anthropic_max_tokens_returns_terminal_output_cap_error_with_partial_tex
         ),
         (1, "ok".to_string(), 0, 1, json!(64))
     );
-    // The flushed partial arrives as a durable item Done BEFORE the error,
-    // so the transcript the user already saw survives the cap terminal.
-    assert_eq!(
-        done, 1,
-        "the partial message must complete before the error"
-    );
+    assert_eq!(done, 0, "partial output must not become completed history");
 }

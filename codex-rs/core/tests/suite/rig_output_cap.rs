@@ -80,6 +80,8 @@ struct TurnOutcome {
     errors: Vec<String>,
     turn_error: Option<String>,
     exec_begun: usize,
+    completed_agent_items: usize,
+    completed_responses: usize,
     completed_tool_items: Vec<String>,
 }
 
@@ -94,7 +96,6 @@ async fn run_turn_until_complete(test: &TestCodex, prompt: &str) -> Result<TurnO
         }]))
         .await?;
     let mut outcome = TurnOutcome::default();
-    let mut event_index = 0_usize;
     loop {
         let event = tokio::time::timeout(Duration::from_secs(60), test.codex.next_event())
             .await
@@ -107,11 +108,12 @@ async fn run_turn_until_complete(test: &TestCodex, prompt: &str) -> Result<TurnO
             EventMsg::AgentMessage(message) => outcome.final_agent_message = Some(message.message),
             EventMsg::Error(error) => outcome.errors.push(error.message),
             EventMsg::ExecCommandBegin(_) => outcome.exec_begun += 1,
-            EventMsg::ItemCompleted(item) => {
-                if let TurnItem::DynamicToolCall(call) = item.item {
-                    outcome.completed_tool_items.push(call.tool);
-                }
-            }
+            EventMsg::RawResponseCompleted(_) => outcome.completed_responses += 1,
+            EventMsg::ItemCompleted(item) => match item.item {
+                TurnItem::AgentMessage(_) => outcome.completed_agent_items += 1,
+                TurnItem::DynamicToolCall(call) => outcome.completed_tool_items.push(call.tool),
+                _ => {}
+            },
             EventMsg::TurnComplete(complete) => {
                 outcome.turn_error = complete.error.map(|error| error.message);
                 return Ok(outcome);
@@ -149,17 +151,15 @@ fn assert_cap_terminal(outcome: &TurnOutcome, expected_posts: usize, partial_tex
         "exactly one terminal error event: {:?}",
         outcome.errors
     );
-    // The cap terminal now flushes the already-streamed partial as a durable
-    // history item, so a final AgentMessage may exist — but it must be
-    // exactly the partial text (never a synthesized success), and the turn
-    // still fails closed above.
-    match outcome.final_agent_message.as_deref() {
-        Some(message) => assert_eq!(
-            message, partial_text,
-            "a capped turn's final AgentMessage must be the flushed partial, not a success"
-        ),
-        None => {}
-    }
+    assert_eq!(
+        outcome.final_agent_message, None,
+        "partial output must not become an ordinary final AgentMessage"
+    );
+    assert_eq!(
+        (outcome.completed_agent_items, outcome.completed_responses),
+        (0, 0),
+        "a cap must not complete pending agent items or the response"
+    );
 
     assert_eq!(
         outcome.agent_deltas, partial_text,
@@ -306,11 +306,36 @@ async fn chat_output_cap_error_is_terminal_without_core_resampling() -> Result<(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn chat_cap_does_not_execute_a_tool_with_valid_json_arguments() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    let body = sse(&[
+        chat_chunk(
+            json!({"role": "assistant", "content": "partial cap answer"}),
+            None,
+        ),
+        chat_chunk(
+            json!({"tool_calls": [{
+                "index": 0, "id": "call_cap_valid", "type": "function",
+                "function": {"name": "shell", "arguments": "{\"command\":[\"echo\",\"hi\"]}"}
+            }]}),
+            None,
+        ),
+        chat_chunk(json!({}), Some("length")),
+    ]) + "data: [DONE]\n\n";
+    let log = mount_capturing_response(&server, "/v1/chat/completions", body).await?;
+    let (test, _env) = cap_test_instance(&server.uri(), WireApi::Chat).await?;
+    let outcome = run_turn_until_complete(&test, "cap after valid tool arguments").await?;
+    assert_cap_terminal(&outcome, log.posts(), "partial cap answer");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn anthropic_output_cap_error_is_terminal_without_core_resampling() -> Result<()> {
     skip_if_no_network!(Ok(()));
     let server = MockServer::start().await;
     let body = format!(
-        "{}{}{}{}{}{}{}",
+        "{}{}{}{}{}{}{}{}",
         anthropic_frame(
             "message_start",
             json!({"message": {"id": "msg_cap", "type": "message", "role": "assistant", "content": [], "model": "cap-test", "stop_reason": null, "usage": {"input_tokens": 4, "output_tokens": 0}}})
@@ -332,6 +357,9 @@ async fn anthropic_output_cap_error_is_terminal_without_core_resampling() -> Res
             "content_block_delta",
             json!({"index": 1, "delta": {"type": "input_json_delta", "partial_json": "{\"command\":[\"echo\",\"hi\"]}"}})
         ),
+        // Even a confirmed, valid tool block must not execute when the
+        // enclosing response exhausts its output cap.
+        anthropic_frame("content_block_stop", json!({"index": 1})),
         anthropic_frame(
             "message_delta",
             json!({"delta": {"stop_reason": "max_tokens", "stop_sequence": null}, "usage": {"output_tokens": 64}})

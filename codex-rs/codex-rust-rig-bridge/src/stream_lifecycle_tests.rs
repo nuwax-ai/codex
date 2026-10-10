@@ -389,6 +389,27 @@ fn unsuccessful_terminals_never_publish_buffered_tools() {
 }
 
 #[test]
+fn cap_usage_discards_counters_that_exceed_signed_range() {
+    let mut state = pending();
+    let mut usage = Usage::new();
+    usage.input_tokens = u64::MAX;
+    usage.total_tokens = 4;
+    let error = rig_event_to_response_events(
+        StreamedAssistantContent::Final(
+            StreamFinal::new("test", usage).with_finish_reason(FinishReason::Length),
+        ),
+        &mut state,
+    )
+    .expect_err("output cap");
+    let ApiError::CapExhausted { reported_usage, .. } = error else {
+        panic!("expected output cap");
+    };
+    // The input is invalid and the only remaining number is an SDK-derived
+    // total, so there is no evidence of any usable wire counter.
+    assert_eq!(reported_usage, None);
+}
+
+#[test]
 fn a_terminal_cannot_confirm_an_unfinished_call() {
     let mut state = pending();
     for event in [
@@ -429,4 +450,44 @@ fn a_late_signature_cannot_duplicate_or_rewrite_a_completed_reasoning_item() {
         matches!(error, ApiError::Stream(message) if message.contains("reasoning changed after"))
     );
     assert!(!state.completed_emitted());
+}
+
+#[test]
+fn cap_fallback_does_not_claim_derived_totals_or_complete_wire_presence() {
+    let mut state = pending();
+    let mut event = terminal(FinishReason::Length);
+    let StreamedAssistantContent::Final(record) = &mut event else {
+        panic!("terminal");
+    };
+    record.usage = rig_core::completion::Usage {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 18,
+        cached_input_tokens: 1,
+        cache_creation_input_tokens: 2,
+        reasoning_tokens: 3,
+        ..Default::default()
+    };
+    let error = rig_event_to_response_events(event, &mut state).expect_err("cap");
+    let ApiError::CapExhausted {
+        reported_usage: Some(report),
+        ..
+    } = error
+    else {
+        panic!("report");
+    };
+    assert_eq!(
+        report,
+        codex_protocol::protocol::ReportedResponseUsage::from_counters(
+            codex_protocol::protocol::ReportedUsageCounters {
+                input_tokens: Some(10),
+                output_tokens: Some(5),
+                total_tokens: None,
+                cached_input_tokens: Some(1),
+                cache_write_input_tokens: Some(2),
+                reasoning_output_tokens: Some(3),
+            }
+        )
+        .expect("incomplete report")
+    );
 }

@@ -145,11 +145,11 @@ pub(super) fn spawn_webrtc_sideband_input_task(
             }
             if event_parser != RealtimeEventParser::FramelessBidi
                 || matches!(
-                    &err,
+                    &*err,
                     ApiError::Transport(codex_client::TransportError::Policy(_))
                 )
             {
-                report_realtime_transport_loss(&events_tx, err).await;
+                report_realtime_transport_loss(&events_tx, *err).await;
                 break;
             }
             if connected_at.elapsed() >= STABLE_CONNECTION_DURATION {
