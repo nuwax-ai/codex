@@ -2010,6 +2010,7 @@ async fn spawn_agent_fork_sanitizes_inherited_compaction_metadata() {
         session_id: parent_thread.session.session_id(),
         root_turn_id: "parent-turn".to_string(),
         response_id: "parent-response".to_string(),
+        response_key: None,
         usage: parent_usage.clone(),
         turn_token_usage: parent_usage.clone(),
         thread_token_usage: parent_usage,
@@ -2071,6 +2072,7 @@ async fn spawn_agent_fork_sanitizes_inherited_compaction_metadata() {
         .session
         .record_observed_response_completed(
             turn_context.as_ref(),
+            /*response_key*/ None,
             "child-response",
             Some(&child_usage),
             /*usage_metadata*/ None,
@@ -2133,6 +2135,7 @@ async fn spawn_agent_fork_sanitizes_inherited_compaction_metadata() {
             session_id: child_thread.session.session_id(),
             root_turn_id: turn_context.sub_id.clone(),
             response_id: "child-response".to_string(),
+            response_key: None,
             usage: child_usage.clone(),
             turn_token_usage: child_usage.clone(),
             thread_token_usage: child_usage,

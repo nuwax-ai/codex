@@ -5,11 +5,38 @@ use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use rig_core::http_client::Error;
 use rig_core::http_client::sse::BoxedStream;
+use std::sync::Arc;
+use std::sync::Mutex;
+
+/// The per-protocol wire usage accumulator a terminal check feeds.
+pub(crate) enum WireUsageObserver {
+    Anthropic(Arc<Mutex<crate::usage::AnthropicUsage>>),
+    Chat(Arc<Mutex<crate::usage::ChatUsage>>),
+}
+
+impl WireUsageObserver {
+    /// Observes one decoded frame; `Err` when the shared state is poisoned.
+    fn observe(&self, value: &serde_json::Value) -> Result<(), ()> {
+        match self {
+            Self::Anthropic(usage) => usage
+                .lock()
+                .map(|mut usage| usage.observe(value))
+                .map(|_| ())
+                .map_err(|_| ()),
+            Self::Chat(usage) => usage
+                .lock()
+                .map(|mut usage| usage.observe(value))
+                .map(|_| ())
+                .map_err(|_| ()),
+        }
+        .map_err(|_| ())
+    }
+}
 
 pub(crate) fn with_terminal_check(
     body: BoxedStream,
     protocol: RigProtocol,
-    usage: std::sync::Arc<std::sync::Mutex<crate::usage::AnthropicUsage>>,
+    usage: WireUsageObserver,
 ) -> BoxedStream {
     Box::pin(futures::stream::unfold(
         (
@@ -65,6 +92,20 @@ pub(crate) fn with_terminal_check(
                             // Unknown/corrupt frames still reach Rig's own
                             // classifier instead of becoming a fake terminal.
                             let value = serde_json::from_str::<serde_json::Value>(&event.data).ok();
+                            // A Chat frame may carry a complete usage object
+                            // (the terminal chunk, or a trailing usage-only
+                            // chunk): retain its counters with wire presence.
+                            if let Some(value) = value.as_ref()
+                                && value["usage"].is_object()
+                                && usage.observe(value).is_err()
+                            {
+                                let error =
+                                    std::io::Error::other("Chat usage state is unavailable");
+                                return Some((
+                                    Err(Error::Instance(Box::new(error))),
+                                    (frames, true, None, usage, false),
+                                ));
+                            }
                             let primary = value
                                 .as_ref()
                                 .and_then(|value| value["choices"].as_array())
@@ -104,7 +145,7 @@ pub(crate) fn with_terminal_check(
                                 ));
                             }
                         };
-                        let observed = usage.lock().map(|mut usage| usage.observe(&value)).is_ok();
+                        let observed = usage.observe(&value).is_ok();
                         if !observed {
                             let error =
                                 std::io::Error::other("Anthropic usage state is unavailable");

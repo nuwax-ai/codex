@@ -45,6 +45,9 @@ pub(crate) struct PumpContext {
     /// Anthropic wire tee, present on every Anthropic attempt.
     pub(crate) sse_tee: Option<Arc<Mutex<Vec<u8>>>>,
     pub(crate) anthropic_usage: Arc<Mutex<crate::usage::AnthropicUsage>>,
+    /// Chat wire usage accumulator, shared with the transport (see
+    /// [`crate::usage::ChatUsage`]).
+    pub(crate) chat_usage: Arc<Mutex<crate::usage::ChatUsage>>,
     /// Filled with the paused attempt's captured raw content for the chainer.
     pub(crate) paused_capture: Arc<Mutex<Option<crate::hosted_replay::PauseCapture>>>,
     /// Call blocks of still-pending (result-less) searches persisted in the
@@ -70,6 +73,7 @@ pub(crate) fn spawn_pump(
         events_recorder,
         sse_tee,
         anthropic_usage,
+        chat_usage,
         paused_capture,
         replay_calls,
     } = context;
@@ -229,16 +233,25 @@ pub(crate) fn spawn_pump(
                         return;
                     }
                     // Supply presence-true wire counters to the converter for
-                    // Anthropic terminals (rig's normalized usage cannot
-                    // distinguish unreported from zero).
-                    if protocol == RigProtocol::Anthropic
-                        && matches!(
-                            &event,
-                            rig_core::streaming::StreamedAssistantContent::Final(_)
-                        )
-                        && let Ok(report) =
-                            anthropic_usage.lock().map(|usage| usage.snapshot_report())
-                    {
+                    // Anthropic and Chat terminals (rig's normalized usage
+                    // cannot distinguish unreported from zero).
+                    if matches!(
+                        &event,
+                        rig_core::streaming::StreamedAssistantContent::Final(_)
+                    ) {
+                        let report = match protocol {
+                            RigProtocol::Anthropic => anthropic_usage
+                                .lock()
+                                .map(|usage| usage.snapshot_report())
+                                .ok()
+                                .flatten(),
+                            RigProtocol::Chat => chat_usage
+                                .lock()
+                                .map(|usage| usage.snapshot_report())
+                                .ok()
+                                .flatten(),
+                            RigProtocol::Responses => None,
+                        };
                         pending.wire_reported_usage = report;
                     }
                     let mut events = match rig_event_to_response_events(event, &mut pending) {

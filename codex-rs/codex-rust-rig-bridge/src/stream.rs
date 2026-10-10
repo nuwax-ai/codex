@@ -313,6 +313,7 @@ fn stream_via_rig_attempt(
         let anthropic_usage = Arc::new(std::sync::Mutex::new(
             crate::usage::AnthropicUsage::default(),
         ));
+        let chat_usage = Arc::new(std::sync::Mutex::new(crate::usage::ChatUsage::default()));
         // Hosted (Responses) tools only exist on the Anthropic wire, where they
         // translate into server-tool entries; Chat drops them. Non-representable
         // search modes fail the request before anything is sent.
@@ -360,6 +361,7 @@ fn stream_via_rig_attempt(
                 && !request.parallel_tool_calls,
             request_id: request_id.clone(),
             anthropic_usage: anthropic_usage.clone(),
+            chat_usage: chat_usage.clone(),
             authorization_override: headers
                 .get(http::header::AUTHORIZATION)
                 .filter(|_| crate::client::bearer_token(&headers).is_none())
@@ -493,6 +495,7 @@ fn stream_via_rig_attempt(
                 events_recorder: recorders.events.clone(),
                 sse_tee: anthropic_sse_tee,
                 anthropic_usage,
+                chat_usage,
                 paused_capture: pump_paused_capture,
                 replay_calls: pending_replay_calls,
             },

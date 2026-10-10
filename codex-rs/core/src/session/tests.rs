@@ -3388,6 +3388,7 @@ fn latest_token_usage_record_stops_at_compaction_checkpoint() {
         session_id: SessionId::from(thread_id),
         root_turn_id: "turn-1".to_string(),
         response_id: "response-1".to_string(),
+        response_key: None,
         usage: TokenUsage::default(),
         turn_token_usage: TokenUsage::default(),
         thread_token_usage: TokenUsage::default(),
@@ -4007,6 +4008,7 @@ async fn start_new_context_window_persists_checkpoint_state() {
         session_id: SessionId::from(thread_id),
         root_turn_id: "turn-1".to_string(),
         response_id: "response-1".to_string(),
+        response_key: None,
         usage: TokenUsage::default(),
         turn_token_usage: TokenUsage::default(),
         thread_token_usage: TokenUsage::default(),
@@ -6959,6 +6961,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         fork_persistence: ForkPersistence::Copied,
         forked_from_ordinal_exclusive: None,
         next_internal_sub_id: AtomicU64::new(0),
+        sampling_key_sequence: AtomicU64::new(0),
     };
     let per_turn_config = session.build_per_turn_config(
         &session_configuration,
@@ -9238,6 +9241,7 @@ where
         fork_persistence: ForkPersistence::Copied,
         forked_from_ordinal_exclusive: None,
         next_internal_sub_id: AtomicU64::new(0),
+        sampling_key_sequence: AtomicU64::new(0),
     });
     let per_turn_config = session.build_per_turn_config(
         &session_configuration,

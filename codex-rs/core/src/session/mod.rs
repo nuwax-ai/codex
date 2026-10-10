@@ -1850,16 +1850,17 @@ impl Session {
     }
 
     /// Rebuilds the per-response usage ledger from persisted records so a
-    /// response that re-reports after resume still replaces its snapshot
-    /// instead of double-counting. Later records for the same response win,
-    /// mirroring the live replace semantics.
+    /// sampling that re-reports after resume still replaces its snapshot
+    /// instead of double-counting. Records join by their host sampling key
+    /// when present, else by provider response id; later records for the
+    /// same key win, mirroring the live replace semantics.
     fn response_token_usage_ledger_from_rollout(
         rollout_items: &[RolloutItem],
-    ) -> std::collections::HashMap<String, TokenUsageRecord> {
+    ) -> std::collections::HashMap<crate::state::ResponseLedgerKey, TokenUsageRecord> {
         let mut ledger = std::collections::HashMap::new();
         let mut apply = |record: &TokenUsageRecord| {
-            if !record.response_id.is_empty() {
-                ledger.insert(record.response_id.clone(), record.clone());
+            if let Some(key) = crate::state::ResponseLedgerKey::of(record) {
+                ledger.insert(key, record.clone());
             }
         };
         for item in rollout_items {
@@ -4729,6 +4730,7 @@ impl Session {
     pub(crate) async fn record_observed_response_completed(
         &self,
         turn_context: &TurnContext,
+        response_key: Option<&str>,
         response_id: &str,
         usage: Option<&TokenUsage>,
         usage_metadata: Option<&ResponseUsageMetadata>,
@@ -4753,8 +4755,52 @@ impl Session {
                 .turn_metadata_state
                 .root_turn_id()
                 .unwrap_or_else(|| turn_context.sub_id.clone()),
-            response_id.to_string(),
+            response_key,
+            response_id,
             usage,
+        );
+        self.persist_rollout_items(&[RolloutItem::TokenUsageRecord(record)])
+            .await;
+    }
+
+    /// Accounts a sampling that exhausted its output cap: the terminal frame's
+    /// reported counters enter the same ledger a Completed would have, under
+    /// the sampling's host key, and persist so resume rebuilds them. Absent
+    /// counters count as zero here (the ledger has no presence); the
+    /// presence-preserving report travels on the typed error and the cap
+    /// partial diagnostics.
+    pub(crate) async fn record_cap_exhausted_usage(
+        &self,
+        turn_context: &TurnContext,
+        response_key: &str,
+        response_id: Option<&str>,
+        reported: Option<&codex_protocol::protocol::ReportedResponseUsage>,
+    ) {
+        let Some(reported) = reported else {
+            return;
+        };
+        let usage = TokenUsage {
+            input_tokens: reported.counts.input_tokens.unwrap_or_default(),
+            cached_input_tokens: reported.counts.cached_input_tokens.unwrap_or_default(),
+            cache_write_input_tokens: reported.counts.cache_write_input_tokens.unwrap_or_default(),
+            output_tokens: reported.counts.output_tokens.unwrap_or_default(),
+            reasoning_output_tokens: reported.counts.reasoning_output_tokens.unwrap_or_default(),
+            // A total the provider did not report is left absent (zero), not
+            // derived by summing the known counters.
+            total_tokens: reported.counts.total_tokens.unwrap_or_default(),
+            codex_rollout_budget_units: None,
+        };
+        let record = self.state.lock().await.record_token_usage(
+            self.thread_id,
+            &turn_context.sub_id,
+            self.session_id(),
+            turn_context
+                .turn_metadata_state
+                .root_turn_id()
+                .unwrap_or_else(|| turn_context.sub_id.clone()),
+            Some(response_key),
+            response_id.unwrap_or_default(),
+            &usage,
         );
         self.persist_rollout_items(&[RolloutItem::TokenUsageRecord(record)])
             .await;

@@ -1689,6 +1689,7 @@ async fn run_sampling_request(
             )
             .await?;
         }
+        let response_key = sess.next_sampling_response_key(&turn_context.sub_id);
         let err = match try_run_sampling_request(
             tool_runtime.clone(),
             Arc::clone(&sess),
@@ -1698,6 +1699,7 @@ async fn run_sampling_request(
             &responses_metadata,
             Arc::clone(&turn_diff_tracker),
             &prompt,
+            &response_key,
             cancellation_token.child_token(),
         )
         .await
@@ -2543,6 +2545,7 @@ async fn try_run_sampling_request(
     responses_metadata: &CodexResponsesMetadata,
     turn_diff_tracker: SharedTurnDiffTracker,
     prompt: &Prompt,
+    response_key: &str,
     cancellation_token: CancellationToken,
 ) -> CodexResult<SamplingRequestResult> {
     let turn_context = Arc::clone(&step_context.turn);
@@ -2677,7 +2680,27 @@ async fn try_run_sampling_request(
 
         let event = match event {
             Some(Ok(event)) => event,
-            Some(Err(err)) => break Err(err),
+            Some(Err(err)) => {
+                // A budget terminal fails the sampling, not the transport:
+                // account its reported usage under this sampling's host key
+                // (same reducer as a Completed) before the error propagates.
+                // The error stays exactly-once and non-retryable downstream.
+                if let CodexErrorDetails::CapExhausted {
+                    response_id,
+                    reported_usage,
+                    ..
+                } = err.details()
+                {
+                    sess.record_cap_exhausted_usage(
+                        &turn_context,
+                        response_key,
+                        response_id.as_deref(),
+                        reported_usage.as_ref(),
+                    )
+                    .await;
+                }
+                break Err(err);
+            }
             None => {
                 break Err(CodexErr::Stream(
                     "stream closed before response.completed".into(),
@@ -2989,6 +3012,7 @@ async fn try_run_sampling_request(
                 .await;
                 sess.record_observed_response_completed(
                     &turn_context,
+                    Some(response_key),
                     &response_id,
                     token_usage.as_ref(),
                     usage_metadata.as_ref(),

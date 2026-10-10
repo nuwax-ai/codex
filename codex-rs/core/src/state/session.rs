@@ -65,6 +65,28 @@ impl ReasoningEffortPin {
     }
 }
 
+/// Ledger identity of one usage report. Samplings join by their minted host
+/// key; legacy reports without one join by provider response id. Keeping the
+/// two namespaces distinct means a provider id that collides with a minted
+/// key can never alias a different sampling's snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum ResponseLedgerKey {
+    Sampling(String),
+    ProviderResponseId(String),
+}
+
+impl ResponseLedgerKey {
+    /// The key a persisted record joins under: its host key when present,
+    /// else its provider response id when non-empty.
+    pub(crate) fn of(record: &TokenUsageRecord) -> Option<Self> {
+        match (&record.response_key, record.response_id.as_str()) {
+            (Some(key), _) => Some(Self::Sampling(key.clone())),
+            (None, id) if id.is_empty() => None,
+            (None, id) => Some(Self::ProviderResponseId(id.to_string())),
+        }
+    }
+}
+
 /// Persistent, session-scoped state previously stored directly on `Session`.
 pub(crate) struct SessionState {
     pub(crate) session_configuration: SessionConfiguration,
@@ -77,11 +99,13 @@ pub(crate) struct SessionState {
     pub(crate) history_reset: CancellationToken,
     pub(crate) latest_rate_limits: Option<RateLimitSnapshot>,
     pub(crate) latest_token_usage_record: Option<TokenUsageRecord>,
-    /// Latest cumulative usage snapshot per response key. A response that
-    /// reports again (pause continuation, duplicate Completed delivery,
-    /// replay) replaces its snapshot instead of double-counting; responses
-    /// without a stable key cannot join and stay additive.
-    pub(crate) response_token_usage: std::collections::HashMap<String, TokenUsageRecord>,
+    /// Latest cumulative usage snapshot per response key. A sampling that
+    /// reports again (duplicate Completed delivery, replay) replaces its
+    /// snapshot instead of double-counting. Samplings keyed by their
+    /// locally minted host key never alias across requests even when a
+    /// provider reuses a response id; legacy records without a host key
+    /// join by provider response id, and keyless reports stay additive.
+    pub(crate) response_token_usage: std::collections::HashMap<ResponseLedgerKey, TokenUsageRecord>,
     pub(crate) server_reasoning_included: bool,
     pub(crate) mcp_dependency_prompted: HashSet<String>,
     pub(crate) additional_context: AdditionalContextStore,
@@ -224,70 +248,62 @@ impl SessionState {
         turn_id: &str,
         session_id: SessionId,
         root_turn_id: String,
-        response_id: String,
+        response_key: Option<&str>,
+        response_id: &str,
         usage: &TokenUsage,
     ) -> TokenUsageRecord {
-        // Stable-key responses replace their latest cumulative snapshot; the
-        // turn and thread subtotals re-derive by swapping the old snapshot
-        // for the new one. Keyless reports stay purely additive.
-        let (turn_token_usage, thread_token_usage) = if response_id.is_empty() {
-            let mut turn_token_usage = self
-                .latest_token_usage_record
-                .as_ref()
-                .filter(|record| record.turn_id == turn_id)
-                .map_or_else(TokenUsage::default, |record| {
-                    record.turn_token_usage.clone()
-                });
-            turn_token_usage.add_assign(usage);
-            let mut thread_token_usage = self
-                .latest_token_usage_record
-                .as_ref()
-                .map_or_else(TokenUsage::default, |record| {
-                    record.thread_token_usage.clone()
-                });
-            thread_token_usage.add_assign(usage);
-            (turn_token_usage, thread_token_usage)
-        } else {
-            let previous = self.response_token_usage.get(&response_id).cloned();
-            let mut turn_token_usage = self
-                .latest_token_usage_record
-                .as_ref()
-                .filter(|record| record.turn_id == turn_id)
-                .map_or_else(TokenUsage::default, |record| {
-                    record.turn_token_usage.clone()
-                });
-            let mut thread_token_usage = self
-                .latest_token_usage_record
-                .as_ref()
-                .map_or_else(TokenUsage::default, |record| {
-                    record.thread_token_usage.clone()
-                });
-            if let Some(previous) = previous.as_ref() {
-                // Only replace a response's contribution in the turn that
-                // owns its previous snapshot. Moving an old response into
-                // this turn must not subtract another response's usage.
-                if previous.turn_id == turn_id {
-                    turn_token_usage.sub_assign_floor(&previous.usage);
-                }
-                thread_token_usage.sub_assign_floor(&previous.usage);
-            }
-            turn_token_usage.add_assign(usage);
-            thread_token_usage.add_assign(usage);
-            (turn_token_usage, thread_token_usage)
+        // Samplings join the ledger by their minted host key; legacy reports
+        // without one fall back to the provider response id, and keyless
+        // reports stay purely additive. A re-report replaces its snapshot,
+        // with the turn and thread subtotals re-derived by swapping the old
+        // snapshot for the new one.
+        let ledger_key = match (response_key, response_id.is_empty()) {
+            (Some(key), _) => Some(ResponseLedgerKey::Sampling(key.to_string())),
+            (None, false) => Some(ResponseLedgerKey::ProviderResponseId(
+                response_id.to_string(),
+            )),
+            (None, true) => None,
         };
+        let previous = ledger_key
+            .as_ref()
+            .and_then(|key| self.response_token_usage.get(key).cloned());
+        let mut turn_token_usage = self
+            .latest_token_usage_record
+            .as_ref()
+            .filter(|record| record.turn_id == turn_id)
+            .map_or_else(TokenUsage::default, |record| {
+                record.turn_token_usage.clone()
+            });
+        let mut thread_token_usage = self
+            .latest_token_usage_record
+            .as_ref()
+            .map_or_else(TokenUsage::default, |record| {
+                record.thread_token_usage.clone()
+            });
+        if let Some(previous) = previous.as_ref() {
+            // Only replace a sampling's contribution in the turn that owns
+            // its previous snapshot. Moving an old sampling into this turn
+            // must not subtract another sampling's usage.
+            if previous.turn_id == turn_id {
+                turn_token_usage.sub_assign_floor(&previous.usage);
+            }
+            thread_token_usage.sub_assign_floor(&previous.usage);
+        }
+        turn_token_usage.add_assign(usage);
+        thread_token_usage.add_assign(usage);
         let record = TokenUsageRecord {
             thread_id,
             turn_id: turn_id.to_string(),
             session_id,
             root_turn_id,
-            response_id,
+            response_id: response_id.to_string(),
+            response_key: response_key.map(str::to_string),
             usage: usage.clone(),
             turn_token_usage,
             thread_token_usage,
         };
-        if !record.response_id.is_empty() {
-            self.response_token_usage
-                .insert(record.response_id.clone(), record.clone());
+        if let Some(key) = ledger_key {
+            self.response_token_usage.insert(key, record.clone());
         }
         self.latest_token_usage_record = Some(record.clone());
         record

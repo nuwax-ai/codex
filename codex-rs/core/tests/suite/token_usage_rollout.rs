@@ -115,8 +115,13 @@ async fn observed_response_usage_accumulates_per_turn_and_thread() -> Result<()>
     Ok(())
 }
 
+/// Reusing one provider response id across DISTINCT wire requests must not
+/// alias their usage: every sampling joins the ledger by its own host key,
+/// live and after resume, so each report counts and nothing replaces another
+/// sampling's snapshot. (The replace-under-one-key contract lives in the
+/// SessionState unit tests.)
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn repeated_response_snapshots_preserve_other_usage_after_resume() -> Result<()> {
+async fn same_id_responses_across_distinct_samplings_count_separately_after_resume() -> Result<()> {
     skip_if_no_network!(Ok(()));
     let server = start_mock_server().await;
     let plan_args = json!({"plan":[{"step":"keep sampling","status":"in_progress"}]}).to_string();
@@ -176,10 +181,26 @@ async fn repeated_response_snapshots_preserve_other_usage_after_resume() -> Resu
         vec![
             ("response-a", 30, 30, 30),
             ("response-b", 10, 10, 40),
-            ("response-a", 45, 55, 55),
-            ("response-a", 50, 50, 60),
-            ("response-a", 55, 55, 65),
+            ("response-a", 45, 55, 85),
+            ("response-a", 50, 50, 135),
+            ("response-a", 55, 105, 190),
         ]
+    );
+    // Every turn sampling carries its own host key; provider ids alone never
+    // identify a sampling.
+    let keys: Vec<&str> = records
+        .iter()
+        .map(|record| record.response_key.as_deref().unwrap_or_default())
+        .collect();
+    assert!(
+        keys.iter()
+            .all(|key| key.starts_with("sampling:") && key.ends_with(|c: char| c.is_ascii_digit())),
+        "each sampling persists its host key: {keys:?}"
+    );
+    assert_eq!(
+        keys.iter().collect::<std::collections::HashSet<_>>().len(),
+        keys.len(),
+        "host keys are unique per sampling even for a repeated provider id"
     );
     assert_eq!(mock.requests().len(), 5);
     Ok(())

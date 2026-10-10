@@ -825,6 +825,7 @@ async fn drain_to_completed(
             }) => {
                 sess.record_observed_response_completed(
                     turn_context,
+                    /*response_key*/ None,
                     &response_id,
                     token_usage.as_ref(),
                     usage_metadata.as_ref(),

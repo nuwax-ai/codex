@@ -2370,6 +2370,14 @@ pub struct TokenUsageRecord {
     pub session_id: SessionId,
     pub root_turn_id: String,
     pub response_id: String,
+    /// Locally minted key identifying the sampling attempt this record
+    /// belongs to. Provider response ids are advisory only: two different
+    /// samplings may carry the same provider id, so replace semantics key on
+    /// this field whenever present. Records without it (legacy rollouts)
+    /// keep response-id-keyed behavior.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub response_key: Option<String>,
     pub usage: TokenUsage,
     pub turn_token_usage: TokenUsage,
     pub thread_token_usage: TokenUsage,

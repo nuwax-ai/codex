@@ -176,6 +176,7 @@ async fn stream_responses_via_rig_inner(
         tool_result_errors: Default::default(),
         anthropic_server_tools: Vec::new(),
         anthropic_usage: Arc::new(std::sync::Mutex::new(Default::default())),
+        chat_usage: Arc::new(std::sync::Mutex::new(Default::default())),
         final_request_recorder,
         wire_budget: crate::wire_budget::WireBudget {
             context_window_tokens: context.context_window_tokens,

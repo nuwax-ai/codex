@@ -54,6 +54,8 @@ pub(crate) struct RigHttpClient {
     pub(crate) authorization_override: Option<http::HeaderValue>,
     pub(crate) protocol: crate::RigProtocol,
     pub(crate) anthropic_usage: Arc<Mutex<crate::usage::AnthropicUsage>>,
+    /// Wire usage accumulator for Chat terminals (see [`crate::usage::ChatUsage`]).
+    pub(crate) chat_usage: Arc<Mutex<crate::usage::ChatUsage>>,
     /// Responses passthrough only: tee the raw wire SSE bytes for cassette
     /// recording. `None` in production.
     pub(crate) responses_sse_recorder: Option<Arc<Mutex<Vec<u8>>>>,
@@ -482,12 +484,12 @@ impl HttpClientExt for RigHttpClient {
                     crate::RigProtocol::Anthropic => crate::sse::with_terminal_check(
                         tee_wire_bytes(body, anthropic_sse_tee),
                         self.protocol,
-                        self.anthropic_usage.clone(),
+                        crate::sse::WireUsageObserver::Anthropic(self.anthropic_usage.clone()),
                     ),
                     protocol if check_terminal => crate::sse::with_terminal_check(
                         body,
                         protocol,
-                        self.anthropic_usage.clone(),
+                        crate::sse::WireUsageObserver::Chat(self.chat_usage.clone()),
                     ),
                     _ => body,
                 }

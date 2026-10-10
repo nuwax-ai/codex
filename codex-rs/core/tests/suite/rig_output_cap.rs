@@ -302,7 +302,43 @@ async fn chat_output_cap_error_is_terminal_without_core_resampling() -> Result<(
     let outcome = run_turn_until_complete(&test, "hit the chat cap").await?;
     assert_cap_terminal(&outcome, log.posts(), "partial cap answer");
     assert_chat_wire_cap(&log.first_body());
+
+    // The failed sampling's terminal-frame usage still enters the durable
+    // ledger, under its own host key.
+    let records = persisted_usage_records(&test);
+    assert_eq!(records.len(), 1, "one capped sampling, one usage record");
+    let record = &records[0];
+    let key = record
+        .response_key
+        .as_deref()
+        .expect("capped sampling carries its host key");
+    assert!(key.starts_with("sampling:"), "host key shape: {key}");
+    assert_eq!(record.response_id, "chatcmpl-cap");
+    assert_eq!(
+        (
+            record.usage.input_tokens,
+            record.usage.output_tokens,
+            record.usage.total_tokens
+        ),
+        (4, 64, 68),
+        "the terminal frame's reported counters survive the error mapping"
+    );
+    assert_eq!(record.thread_token_usage.total_tokens, 68);
     Ok(())
+}
+
+/// Reads the durable TokenUsageRecord lines of a test instance's rollout.
+fn persisted_usage_records(test: &TestCodex) -> Vec<codex_protocol::protocol::TokenUsageRecord> {
+    let path = test.codex.rollout_path().expect("rollout path");
+    std::fs::read_to_string(&path)
+        .expect("read rollout")
+        .lines()
+        .filter_map(|line| codex_rollout::parse_rollout_line(line).ok())
+        .filter_map(|line| match line.item {
+            codex_history::RolloutItem::TokenUsageRecord(record) => Some(record),
+            _ => None,
+        })
+        .collect()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

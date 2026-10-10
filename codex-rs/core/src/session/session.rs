@@ -97,6 +97,9 @@ pub(crate) struct Session {
     pub(super) fork_persistence: ForkPersistence,
     pub(super) forked_from_ordinal_exclusive: Option<u64>,
     pub(super) next_internal_sub_id: AtomicU64,
+    /// Monotonic source of host sampling keys; see
+    /// [`Session::next_sampling_response_key`].
+    pub(super) sampling_key_sequence: AtomicU64,
 }
 
 #[derive(Clone)]
@@ -655,6 +658,21 @@ impl Session {
     /// Returns the identity shared by the root thread and all descendant threads.
     pub(crate) fn session_id(&self) -> SessionId {
         self.services.agent_control.identity()
+    }
+
+    /// Mints the ledger host key for the next wire request of `turn_id`.
+    ///
+    /// One key identifies exactly one sampling attempt for the process
+    /// lifetime, so a follow-up step, a retry, or a transport fallback can
+    /// never reuse an earlier sampling's ledger entry even when the provider
+    /// echoes the same response id. Turn ids are minted fresh per turn, so a
+    /// resumed process cannot collide with keys rebuilt from persisted
+    /// records.
+    pub(crate) fn next_sampling_response_key(&self, turn_id: &str) -> String {
+        let sequence = self
+            .sampling_key_sequence
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        format!("sampling:{turn_id}:{sequence}")
     }
 
     pub(crate) async fn originator(&self) -> String {
@@ -1831,6 +1849,7 @@ impl Session {
                 fork_persistence,
                 forked_from_ordinal_exclusive,
                 next_internal_sub_id: AtomicU64::new(0),
+                sampling_key_sequence: AtomicU64::new(0),
             });
             if let Some(startup) = &startup {
                 let _ = startup.session.set(Arc::clone(&sess));
