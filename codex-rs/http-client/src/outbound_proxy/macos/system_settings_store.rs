@@ -92,6 +92,65 @@ impl Default for LoaderTunings {
     }
 }
 
+/// Extracts the manual HTTP/HTTPS proxy entries the default transport's
+/// matcher fills empty scheme slots with (the same `HTTPEnable`/`HTTPProxy`/
+/// `HTTPPort` reading the locked hyper-util performs), served from the
+/// dedicated run-loop loader.
+pub(crate) fn manual_system_proxies()
+-> crate::outbound_proxy::default_proxy_matcher::ManualSystemProxies {
+    let Some(snapshot) = system_settings_snapshot() else {
+        return crate::outbound_proxy::default_proxy_matcher::ManualSystemProxies::default();
+    };
+    crate::outbound_proxy::default_proxy_matcher::ManualSystemProxies {
+        #[cfg(target_os = "macos")]
+        http: manual_entry(
+            snapshot.proxies(),
+            unsafe { system_configuration::sys::schema_definitions::kSCPropNetProxiesHTTPEnable },
+            unsafe { system_configuration::sys::schema_definitions::kSCPropNetProxiesHTTPProxy },
+            unsafe { system_configuration::sys::schema_definitions::kSCPropNetProxiesHTTPPort },
+        ),
+        #[cfg(target_os = "macos")]
+        https: manual_entry(
+            snapshot.proxies(),
+            unsafe { system_configuration::sys::schema_definitions::kSCPropNetProxiesHTTPSEnable },
+            unsafe { system_configuration::sys::schema_definitions::kSCPropNetProxiesHTTPSProxy },
+            unsafe { system_configuration::sys::schema_definitions::kSCPropNetProxiesHTTPSPort },
+        ),
+        ..Default::default()
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn manual_entry(
+    proxies: &ProxiesDictionary,
+    enabled_key: system_configuration::core_foundation::string::CFStringRef,
+    host_key: system_configuration::core_foundation::string::CFStringRef,
+    port_key: system_configuration::core_foundation::string::CFStringRef,
+) -> Option<String> {
+    let enabled = proxies
+        .find(enabled_key)
+        .and_then(|flag| flag.downcast::<system_configuration::core_foundation::number::CFNumber>())
+        .and_then(|flag| flag.to_i32())
+        .unwrap_or(0)
+        == 1;
+    if !enabled {
+        return None;
+    }
+    let host = proxies
+        .find(host_key)
+        .and_then(|host| host.downcast::<CFString>())
+        .map(|host| host.to_string());
+    let port = proxies
+        .find(port_key)
+        .and_then(|port| port.downcast::<system_configuration::core_foundation::number::CFNumber>())
+        .and_then(|port| port.to_i32());
+    match (host, port) {
+        (Some(host), Some(port)) => Some(format!("{host}:{port}")),
+        (Some(host), None) => Some(host),
+        (None, _) => None,
+    }
+}
+
 /// The shared production loader for macOS system proxy settings.
 pub(super) fn system_settings_snapshot() -> Option<Arc<SettingsSnapshot>> {
     static PRODUCTION: OnceLock<SystemSettingsLoader> = OnceLock::new();

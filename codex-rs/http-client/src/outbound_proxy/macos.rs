@@ -35,6 +35,8 @@ use system_configuration::core_foundation::url::CFURLGetTypeID;
 use system_configuration::core_foundation::url::CFURLRef;
 
 mod system_settings_store;
+#[cfg(target_os = "macos")]
+pub(crate) use system_settings_store::manual_system_proxies;
 
 const PAC_EXECUTION_TIMEOUT: Duration = Duration::from_secs(5);
 

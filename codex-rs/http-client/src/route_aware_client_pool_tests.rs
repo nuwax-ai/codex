@@ -369,6 +369,18 @@ async fn legacy_custom_ca_fallback_is_limited_to_reqwest_default() {
             let requests = server.join().expect("response server should finish");
             assert_eq!(requests.len(), 1);
         }
+        OutboundProxyPolicy::ResolvedDefault => {
+            // Same build path as RespectSystemProxy: resolved routes build
+            // explicit clients, so an invalid custom CA fails the build.
+            let error = pool
+                .client_for_url_with_resolver("http://127.0.0.1/update", |_| async {
+                    Ok(OutboundProxyRoute::Direct)
+                })
+                .await
+                .expect_err("resolved-default routes should reject invalid custom CAs");
+
+            assert!(matches!(error, RouteAwareClientPoolError::Build(_)));
+        }
         OutboundProxyPolicy::RespectSystemProxy => {
             let error = pool
                 .client_for_url_with_resolver("http://127.0.0.1/update", |_| async {

@@ -531,6 +531,15 @@ impl RouteAwareClientPool {
                 | (
                     OutboundProxyPolicy::RespectSystemProxy,
                     CustomCaFallback::LegacyTransportDefault,
+                )
+                // ResolvedDefault maps every route itself (Direct → no_proxy
+                // client, Proxy → explicit proxy), so the transport never
+                // consults system settings at build time; TransportDefault
+                // appears only for delegated schemes (SOCKS) or unparseable
+                // destinations and keeps the transport default.
+                | (
+                    OutboundProxyPolicy::ResolvedDefault,
+                    CustomCaFallback::Disabled | CustomCaFallback::LegacyTransportDefault,
                 ) => client_builder.build_for_resolved_route(
                     &pool.http_client_factory,
                     pool.route_class,
@@ -557,6 +566,8 @@ impl RouteAwareClientPool {
         self.client_builder.follows_redirects()
             && (self.http_client_factory.outbound_proxy_policy()
                 == OutboundProxyPolicy::RespectSystemProxy
+                || self.http_client_factory.outbound_proxy_policy()
+                    == OutboundProxyPolicy::ResolvedDefault
                 || self.http_client_factory.network_policy().is_managed()
                 || self.rustls_clients.is_some())
     }

@@ -32,7 +32,17 @@ const SYSTEM_PROXY_CACHE_MAX_ENTRIES: usize = 256;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 static ASYNC_SYSTEM_PROXY_RESOLUTION_PERMIT: Semaphore = Semaphore::const_new(1);
 
+#[cfg(test)]
+#[path = "outbound_proxy/resolved_default_route_tests.rs"]
+mod resolved_default_route_tests;
+
+#[cfg(test)]
+#[path = "outbound_proxy/resolved_default_dual_track_tests.rs"]
+mod resolved_default_dual_track_tests;
+
 mod default_proxy_matcher;
+pub(crate) use default_proxy_matcher::DefaultProxyMatcher;
+pub(crate) use default_proxy_matcher::ManualSystemProxies;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "windows")]
@@ -103,6 +113,14 @@ pub enum OutboundProxyPolicy {
     ReqwestDefault,
     /// Resolve system/PAC/WPAD settings, then environment settings, then direct routing.
     RespectSystemProxy,
+    /// Resolve the default transport's exact priority (environment first,
+    /// manual system entries filling empty scheme slots, ALL_PROXY fallback,
+    /// NO_PROXY exclusions) ourselves and hand the transport a fully explicit
+    /// route, so client construction never performs reqwest's synchronous
+    /// system-proxy read on the request path. SOCKS proxy URLs delegate to
+    /// the transport. Opt-in: the default migration is a separate
+    /// adjudication.
+    ResolvedDefault,
 }
 
 /// Privacy-safe macOS system proxy configuration for one outbound destination.
@@ -354,6 +372,10 @@ fn resolve_proxy_route(
         return OutboundProxyRoute::TransportDefault;
     }
 
+    if matches!(outbound_proxy_policy, OutboundProxyPolicy::ResolvedDefault) {
+        return resolve_resolved_default_route(env, request_url);
+    }
+
     let env_proxy_kind = EnvProxyKind::from_request_url(request_url);
     let request_url = proxy_resolution_url(request_url);
     let Some(origin) = RequestOrigin::parse(&request_url) else {
@@ -365,6 +387,47 @@ fn resolve_proxy_route(
         env_proxy_kind,
         resolve_system_proxy(&request_url, &origin),
     )
+}
+
+/// Resolves the default transport's priority explicitly for one destination.
+///
+/// The decision comes from [`DefaultProxyMatcher`] — environment variables
+/// first, manual system entries filling only empty scheme slots (served from
+/// the dedicated run-loop loader on macOS), ALL_PROXY as the last fallback,
+/// NO_PROXY applied first. A mapped route means the pooled client is built
+/// with an explicit proxy or `no_proxy()`, so reqwest never runs its own
+/// synchronous system read. SOCKS proxy URLs delegate to the transport
+/// (this build has no reqwest socks support), as does an unparseable
+/// destination.
+fn resolve_resolved_default_route(env: &dyn EnvSource, request_url: &str) -> OutboundProxyRoute {
+    let Ok(destination) = request_url.parse::<http::Uri>() else {
+        return OutboundProxyRoute::TransportDefault;
+    };
+    let matcher =
+        DefaultProxyMatcher::from_env_source_and_manual(env, manual_system_proxies_for_platform());
+    match matcher.intercept(&destination) {
+        None => OutboundProxyRoute::Direct,
+        Some(intercept) => match intercept.uri.scheme_str() {
+            Some("http" | "https") => OutboundProxyRoute::Proxy {
+                // The proxy URL keeps its userinfo so the transport parses
+                // credentials exactly as the reference transport does.
+                url: intercept.proxy_url.clone(),
+                no_proxy: None,
+            },
+            // socks4/4a/5/5h: delegate to the transport for exact parity.
+            _ => OutboundProxyRoute::TransportDefault,
+        },
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn manual_system_proxies_for_platform() -> ManualSystemProxies {
+    macos::manual_system_proxies()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn manual_system_proxies_for_platform() -> ManualSystemProxies {
+    ManualSystemProxies::default()
 }
 
 fn route_from_system_decision(
@@ -892,7 +955,7 @@ fn proxy_url_from_hostport(proxy_scheme: &str, hostport: &str) -> ParsedProxyLis
     ParsedProxyListDecision::Proxy(format!("{proxy_scheme}://{hostport}"))
 }
 
-trait EnvSource {
+pub(crate) trait EnvSource {
     fn var(&self, key: &str) -> Option<String>;
 }
 

@@ -26,7 +26,6 @@
 
 use std::net::IpAddr;
 
-use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
 use http::Uri;
 use http::header::HeaderValue;
@@ -49,6 +48,9 @@ pub(crate) struct ManualSystemProxies {
 pub(crate) struct DefaultProxyIntercept {
     pub(crate) uri: Uri,
     pub(crate) basic_auth: Option<HeaderValue>,
+    /// The proxy URL with its original userinfo intact, for transports that
+    /// parse credentials out of the proxy URL itself.
+    pub(crate) proxy_url: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -61,12 +63,14 @@ pub(crate) struct DefaultProxyMatcher {
 
 impl DefaultProxyMatcher {
     /// Builds the matcher from the process environment alone.
+    #[allow(dead_code)] // Parity surface: exercised by the subprocess vectors; wiring expands in T07-3.
     pub(crate) fn from_env() -> Self {
         Self::from_env_and_manual(ManualSystemProxies::default())
     }
 
     /// Builds the matcher, letting `manual` fill only the scheme entries the
     /// environment left empty — the locked resolver's precedence.
+    #[allow(dead_code)] // Parity surface; the route resolver injects an EnvSource instead.
     pub(crate) fn from_env_and_manual(manual: ManualSystemProxies) -> Self {
         let is_cgi = std::env::var_os("REQUEST_METHOD").is_some();
         if is_cgi {
@@ -84,6 +88,38 @@ impl DefaultProxyMatcher {
             https = manual.https;
         }
         let no = env_first(&["NO_PROXY", "no_proxy"]).unwrap_or_default();
+        let all_intercept = all.as_deref().and_then(parse_proxy_uri);
+        Self {
+            http: http
+                .as_deref()
+                .and_then(parse_proxy_uri)
+                .or(all_intercept.clone()),
+            https: https.as_deref().and_then(parse_proxy_uri).or(all_intercept),
+            no: NoProxy::from_string(&no),
+        }
+    }
+
+    /// Same precedence as [`Self::from_env_and_manual`] against an injected
+    /// environment source, for route resolution under test fixtures. CGI
+    /// status is process-wide and only meaningful for the real environment,
+    /// so it is not re-derived here.
+    pub(crate) fn from_env_source_and_manual(
+        env: &dyn crate::outbound_proxy::EnvSource,
+        manual: ManualSystemProxies,
+    ) -> Self {
+        // First SET variable wins, empty values counting as set (the locked
+        // resolver's get_first_env).
+        let first = |keys: &[&str]| -> Option<String> { keys.iter().find_map(|key| env.var(key)) };
+        let mut http = first(&["HTTP_PROXY", "http_proxy"]);
+        let mut https = first(&["HTTPS_PROXY", "https_proxy"]);
+        let all = first(&["ALL_PROXY", "all_proxy"]);
+        let no = first(&["NO_PROXY", "no_proxy"]).unwrap_or_default();
+        if http.as_deref().unwrap_or("").is_empty() {
+            http = manual.http;
+        }
+        if https.as_deref().unwrap_or("").is_empty() {
+            https = manual.https;
+        }
         let all_intercept = all.as_deref().and_then(parse_proxy_uri);
         Self {
             http: http
@@ -141,6 +177,7 @@ fn parse_proxy_uri(value: &str) -> Option<DefaultProxyIntercept> {
 
     let raw_authority = uri.authority()?;
     let mut basic_auth = None;
+    let scheme_for_url = uri.scheme_str().unwrap_or("http").to_string();
     let authority = if let Some((userinfo, host_port)) = raw_authority.as_str().split_once('@') {
         let (user, pass) = match userinfo.split_once(':') {
             Some((user, pass)) => (user, Some(pass)),
@@ -158,7 +195,12 @@ fn parse_proxy_uri(value: &str) -> Option<DefaultProxyIntercept> {
     builder = builder.authority(authority);
     // A path is required or the builder errors, exactly like the reference.
     let uri = builder.path_and_query("/").build().ok()?;
-    Some(DefaultProxyIntercept { uri, basic_auth })
+    let proxy_url = format!("{scheme_for_url}://{raw_authority}");
+    Some(DefaultProxyIntercept {
+        uri,
+        basic_auth,
+        proxy_url,
+    })
 }
 
 /// Percent-decoding exactly per the locked `percent_decode_str`: `%` must be
@@ -310,10 +352,6 @@ impl NoProxy {
             }),
             Err(_) => self.domains.iter().any(|d| domain_matches(d, host)),
         }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.ips.is_empty() && self.domains.is_empty()
     }
 }
 

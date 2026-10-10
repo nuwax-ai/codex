@@ -242,7 +242,7 @@ fn dead_thread_is_rebuilt_with_the_same_reader() {
     let (reader, _seen) = counting_reader(Arc::clone(&reads), Duration::from_millis(0));
     let loader = SystemSettingsLoader::with_reader_and_tunings(reader, test_tunings());
 
-    let first = loader.snapshot().expect("initial read should succeed");
+    let _first = loader.snapshot().expect("initial read should succeed");
     assert_eq!(loader.system_reads(), 1);
 
     loader.simulate_thread_death();
