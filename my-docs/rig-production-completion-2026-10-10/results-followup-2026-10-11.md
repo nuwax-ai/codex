@@ -63,7 +63,7 @@
 ### 批 FI — run6 827 终态逐身份归因 + code-mode 主根因闭环（第三批第 1 项）
 
 - 解析三平台日志全部失败块，只用显式证据（panic 原文/assert_cmd 错误/信号行）分类；`ci-run6-failure-ledger.tsv` 重写为 827 行 × (category + 首败摘录)。未归类从 564 降至 154（140 assertion-open + 14 no-evidence，待逐测 triage）。
-- **主根因（495/827=60%）**：code-mode host 家族——上游 `97576b179`（#36217）移除进程内 provider；host 二进制因 V8 工件缺口未构建；`Disabled` provider → `effective_tool_mode` 静默 Direct 回退 → `unsupported custom tool call: exec`。四环因果链全证据；**本机复现同签名失败**（`code_mode_can_return_exec_command_output`、`code_mode_can_resume_after_set_timeout`），即该家族非 CI 环境问题而是当前树的确定性行为，本机即可验证修复。
+- **主根因（567/827=69%）**：code-mode host 家族——上游 `97576b179`（#36217）移除进程内 provider；host 二进制因 V8 工件缺口未构建；`Disabled` provider → `effective_tool_mode` 静默 Direct 回退 → `unsupported custom tool call: exec`。四环因果链全证据；**本机复现同签名失败**（`code_mode_can_return_exec_command_output`、`code_mode_can_resume_after_set_timeout`、`app_tool_exposure::connector_omissions_*`）。归因纪律抽验：按套件名过激的重分类被本地通过的反例（guardian_denial 4/4、extension_sandbox file_access）纠正回退。本机构建 host 亦命中同一 v8 404——家族修复验证与 CI 同被工件缺口阻塞。未归类降至 93（79 assertion-open + 14 no-evidence）。
 - 其余：harness deadline 显式 63（处置逐测试开放）、bwrap 109（runner 能力，T32 同事项）、stack-overflow 2 身份（ubuntu SIGABRT=windows 0xc00000fd 同测试）、Windows runner PowerShell 2；另发现 **Windows 311 个"通过但泄漏"终态行**（不在 827 内，独立卫生信号）。
 - 详见 `ci-run6-attribution-2026-10-11.md`。不称任何项通过；分类只升级证据。
 
