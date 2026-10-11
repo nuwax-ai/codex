@@ -74,6 +74,11 @@
 - **CI 接线**：`fork-cargo-pr.yml` 三车道接入 `setup-rusty-v8`（ubuntu x86_64-unknown-linux-gnu / macos aarch64-apple-darwin / windows x86_64-pc-windows-msvc），解除 `codex-code-mode-runtime/-host/v8-poc` 三个排除（voice-host 排除不变，gstreamer 独立事项）；车道加 `codex-v8-poc/sandbox` feature——v8-poc 守卫测试要求 crate feature 与链接归档一致（车道 RUSTY_V8_ARCHIVE 强制 sandbox 归档；本地无归档默认关、用 denoland 普通归档，两环境自洽，6/6 验证）。YAML 结构校验通过。
 - **边界**：dispatch 仍需授权（未 push）；Linux/Windows 工件未本机验证（target 不同），CI 首跑见分晓；voice-host 排除与其余失败类别不变。
 
+### 批 FK — 栈假设数据点 + bwrap 能力校准工具（第三批第 3/4 项本机可做部分）
+
+- **栈溢出 macOS 数据点**：`guardian_ephemeral_retry_preserves_parallel_trunk_and_fork_history`（run6 ubuntu SIGABRT / windows 0xc00000fd 的同一身份）在本机显式 4MiB 与 2MiB 栈下均通过（4MiB 1/1；2MiB 3/3）——溢出条件是平台/调度相关而非仅栈尺寸常数；Linux/Windows 显式 4MiB 复现保持开放（需对应平台）。
+- **bwrap 能力校准**：新增 `scripts/bwrap_capability_check.sh`——按 codex 沙箱同一 unshare 标志集（user+ipc+pid / +net）分级探测，输出四类结论（全可用 / userns 被拒 / RTM_NEWADDR 边界即 hosted-runner 现状 / 意外失败），供 T32 的 runner 裁决在候选环境上一跑定型。bash -n 与非 Linux 优雅跳过已验证；Linux 判别路径待首个 Linux 环境实跑。
+
 ### 本轮_receipt（串行 threads 1，offline --locked，retries 0）
 
 - 聚合 receipt（Codex 复审末批同一过滤器 + 新家族，fresh app-server helper binary 重建后）：**108/109**。唯一失败 `legacy_custom_ca_fallback_is_limited_to_reqwest_default` 为 `route_aware_client_pool` 子进程族（Codex 复审首批同样失败过、隔离即过的已知负载敏感族，批 A 登记 R7 机制：子进程默认 client 的 SCDynamicStore 读取 vs 2s fixture 预算）；本会话未改 http-client 产品代码；隔离复验 PASS。不以此标签关闭该族在 CI 的失败。
@@ -93,7 +98,7 @@
 
 1. T18 读侧收口：crash 后 rollout 半行、export/archive/delete 与两次 resume 矩阵；app-server v2 ThreadTokenUsage/completeness 投影 + rawResponseItem 兼容；exec/SDK/UI unknown 持久性（第一批第 7 项）。
 2. 第二批（代理/生产默认）：第 1/2/3 项已落地（批 FF/FG/FH）；第 4 项迁移裁决材料就绪（`default-migration-adjudication-2026-10-11.md`），待用户裁决 A/B/C；冷/暖原预算与 runloop 因果实验仍待安静窗口。
-3. 第三批（CI/栈）：827 逐身份已完成（批 FI）；**V8 配对工件已接通且 567 家族修复本机实证转绿（批 FJ）**——CI 三车道已解除 V8 排除并接入校验过的配对工件，待 dispatch 授权后首跑验证 Linux/Windows target。剩余：bwrap 109（runner 能力/T32）、栈溢出 2 身份（需 Linux/Windows）、assertion-open 79 + no-evidence 14 的 Linux 侧 triage、Windows pass+leak 311 卫生项、voice-host 的 gstreamer 供给。
+3. 第三批（CI/栈）：827 逐身份已完成（批 FI）；**V8 配对工件已接通且 567 家族修复本机实证转绿（批 FJ）**——CI 三车道已解除 V8 排除并接入校验过的配对工件，待 dispatch 授权后首跑验证 Linux/Windows target。剩余：bwrap 109（runner 能力/T32——校准脚本已备 `scripts/bwrap_capability_check.sh`）、栈溢出 2 身份（macOS 4MiB/2MiB 均过，复现需 Linux/Windows）、assertion-open 79 + no-evidence 14 的 Linux 侧 triage、Windows pass+leak 311 卫生项、voice-host 的 gstreamer 供给。
 4. 第四批：T21–T40 原范围。
 
 本轮无 push、无 tag、无发布；全部为本地提交，按序：`46f2f87e3`、`243ddb5a1`、`78acb6df4`、`0ec9e1b04`(docs)、`9088aca8f`、`e4797d0dc`、`c1a5dd024`(docs) 为第一批；第二批为 `7922659b7`（wire 双轨）、`8d908c96d`（生命周期注入）、`c40172775`（跨版本 parity）、`17c4b28c5`(docs：迁移裁决材料)。
