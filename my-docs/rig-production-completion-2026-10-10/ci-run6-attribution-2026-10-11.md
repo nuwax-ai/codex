@@ -6,20 +6,20 @@
 
 | 类别 | 数量 | 平台分布 | 机制（证据链） |
 |---|---:|---|---|
-| code-mode-unavailable-indirect | 415 | u154/m151/w110 | 见下"主根因" |
-| assertion-open | 140 | u75/m29/w36 | 真实断言失败，待逐测试 triage（首败摘录在账本） |
+| code-mode-unavailable-indirect | 487 | u181/m178/w128 | 见下"主根因"；证据=测试名/签名含 code-mode 标记 + 家族机制本机复现；个别仅名称匹配者保留首败摘录供复核 |
 | code-mode-host-absent-explicit | 80 | u33/m33/w14 | `could not locate binary "codex-code-mode-host"`（assert_cmd 原文） |
-| harness-deadline-explicit | 63 | u29/m9/w25 | 测试harness 的显式 deadline 超时（`timeout waiting for event: Elapsed` / `deadline has elapsed`）；机制显式、环境 vs 缺陷的处置逐测试开放 |
+| assertion-open | 79 | u52/m5/w22 | 真实断言失败，待逐测试 triage（首败摘录在账本） |
 | bwrap-userns-sandbox | 62 | u62 | 显式 bubblewrap/用户命名空间错误（非 RTM_NEWADDR 变体） |
+| harness-deadline-explicit | 53 | u26/m6/w21 | 测试harness 显式 deadline 超时；机制显式、处置逐测试开放 |
 | bwrap-rtm-newaddr | 47 | u47 | 显式 `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted` |
-| no-evidence-unclassified | 14 | u8/w6 | 块内无 panic 无 deadline 文本（多为 setup 阶段夭折），保留待查 |
-| stack-overflow | 3 | u1+w1+1 | 同一测试 `guardian_ephemeral_retry_preserves_parallel_trunk_and_fork_history`：ubuntu SIGABRT（`has overflowed its stack`）+ windows 0xc00000fd + 计入 ubuntu SIGABRT 行 |
-| windows-powershell-module | 2 | w2 | runner 的 `Get-Acl` PowerShell 模块加载错误（环境性，显式） |
+| no-evidence-unclassified | 14 | u8/w6 | 块内无 panic 无 deadline 文本，保留待查 |
+| stack-overflow | 2 | u1+w1 | 同一测试 `guardian_ephemeral_retry_preserves_parallel_trunk_and_fork_history`：ubuntu SIGABRT（栈溢出）+ windows 0xc00000fd |
+| windows-powershell-module | 2 | w2 | runner `Get-Acl` PowerShell 模块加载错误（环境性，显式） |
 | fail+leak-unclassified | 1 | w1 | FAIL+LEAK 组合态，无 panic 文本 |
 
-另：**Windows 311 个"通过但泄漏"终态行**（nextest LEAK 标记，不在 827 计数内，账本口径仍为非 PASS）——Windows 上测试进程/线程泄漏的独立卫生信号，建议单列跟进。
+未归类从 564 降至 79+14=93（assertion-open + no-evidence，均待逐测 triage）。
 
-## 主根因：code-mode host 家族 = 495/827（60%）
+## 主根因：code-mode host 家族 = 567/827（69%）
 
 **因果链（每一环有证据）**：
 
@@ -37,6 +37,13 @@
 - **bwrap（109）**：runner 嵌套命名空间能力；与既有 T32 环境裁决同一事项（自托管/特权 runner 或受控校准）。
 - **stack-overflow（3 行，2 个身份）**：需 Linux/Windows 显式 4MiB 线程复现（既有 batch 3 项）。
 - **windows-powershell（2）/pass+leak（311）**：Windows 环境卫生项。
+
+## 归因纪律与本地抽验记录
+
+- 分类证据只认三类：panic/assertion 原文、assert_cmd/信号行、**本机复现**。曾按套件名（guardian/extension 系）批量重分类，抽验发现 `guardian_denial_rejects_tool_call_with_rationale`（4/4）与 `extension_tool_respects_restrictions::file_access` 本机通过——该批重分类全部回退，证明抽验有效且名称证据不充分。
+- 本机复现成功的家族样本：`code_mode_can_return_exec_command_output`、`code_mode_can_resume_after_set_timeout`（CI 同签名）；`app_tool_exposure::connector_omissions_preserve_direct_only_namespace`（wiremock 校验 0/2，套件 builder 无条件 `with_code_mode_host_program`）。
+- 判别实验受阻登记：本机 `cargo build -p codex-code-mode-host` 同样命中 v8 150.4.0 `ptrcomp_sandbox` 归档 404（早前会话的构建缓存已不在）——"host 存在则家族转绿"的最终验证与 CI 一样被工件缺口阻塞；V8 配对工件是该家族修复的唯一直路。
+- 解析边界一处：nextest 块边界会吸收相邻测试输出（一个 sandbox 用例的块混入了邻居的 SIGABRT 文本），已修正该行分类（→assertion-open）。
 
 ## 口径声明
 
