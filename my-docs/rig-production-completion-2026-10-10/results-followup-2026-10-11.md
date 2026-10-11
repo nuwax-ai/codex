@@ -42,6 +42,24 @@
 - 新 v2 RPC 集成 `capped_sampling_reports_terminal_usage_over_v2`：cap 终局 → tokenUsage 通知（last 与 thread total 均含终局帧计数）、turn/completed 带错误、零 rawResponseItem/completed、无完成的 agentMessage item。
 - 证据：core rig_output_cap 13/13 串行（含原生 wire usage 断言）；app-server 28/28（turn_cap_usage、token_usage 家族、R1b guardians）threads 1；workspace check 干净。
 
+### 批 FF — `7922659b7`：真实认证/CONNECT/SNI wire 双轨（第二批第 1 项）
+
+- 新 `resolved_default_auth_wire_tests`：子进程双轨记录两侧发往代理的**完整请求头**并断言逐字节一致——plain userinfo 的 `Proxy-Authorization`（精确 base64）与绝对 URI 请求行、percent-encoded userinfo 解码一致、**真隧道 CONNECT**（CONNECT 行+认证头一致；rustls origin 用 SNI 嗅探 cert resolver 实测两侧 ClientHello 的 SNI=URL host，随后两侧均按约拒绝自签证书）、407 同状态零重试风暴、IPv6 代理字面量。模块并入 `http_client_default_pool_local` 组；http-client 增加 tokio-rustls dev-dep（workspace 版本，MODULE.bazel.lock 无漂移）。
+- 证据：resolved_default+matcher 家族 29/29（threads 1）。
+- 窗口登记：load 7–13 下四个 `route_aware_client_pool` fixture 用例（managed_redirect、direct_and_routed、legacy_custom_ca、streams_request_bodies）在 2s accept 预算上失败——已在 `c1a5dd024` 与 `7922659b7` 两个无本批改动的树上复现（批 A 的 R7 负载敏感族），保留开放。
+
+### 批 FG — `8d908c96d`：loader 线程生命周期注入收口（第二批第 3 项 / F12 余项）
+
+- cfg(test) spawn 失败注入缝（与既有 simulate_thread_death 同族）+ 三测试：spawn 失败发布短 failure TTL 且无重生风暴、条件清除后恢复；重建预算耗尽（8 次）后永久不可用（跨 TTL 窗口无无限重生）；wedged 读的 stale 宽限过期后在等待预算内回答 None（有界陈旧）。
+- 证据：system_settings_store 11/11（threads 1）。
+
+### 批 FH — 跨版本 parity + 迁移裁决材料（第二批第 2/4 项）
+
+- 澄清事实：workspace 双 reqwest = 0.12.28（codex 核心栈，含 http-client 与本双轨的参照 client）与 0.13.4（rig bridge transport）；lock 中 0.12 的另一消费者是 code-mode（V8 门控，对照随配对工件工作顺延）。
+- 新 `proxy_version_parity_tests`（bridge 内，子进程）：0.12 参照 / 0.13 bridge 形态（retry-never，与 `client::http_client` 同构）/ ResolvedDefault 池三栈 × env http/https、NO_PROXY 命中与未命中、CGI 直连可达 origin、重定向链保持代理（且三栈完成）六场景同侧。模块并入 `rig_bridge_wire_local` 组；bridge 增加 reqwest 0.12 dev-dep（同 lock 内既有版本，Cargo.lock 仅加 dev 边）。
+- 迁移裁决材料成文：`default-migration-adjudication-2026-10-11.md`——具体 diff（config 两处主干一行 + 各显式调用点）、兼容证据汇总、四个待裁点（SystemProxyFallback 组合 gate 不能无声丢失、CFRunLoop 因果、同步读取差异面、OTLP 并发窗口复测）、A/B/C 选项。**未实施，未裁决。**
+- 证据：parity 六用例绿；codex-rust-rig-bridge 全量 259/259。
+
 ### 本轮_receipt（串行 threads 1，offline --locked，retries 0）
 
 - 聚合 receipt（Codex 复审末批同一过滤器 + 新家族，fresh app-server helper binary 重建后）：**108/109**。唯一失败 `legacy_custom_ca_fallback_is_limited_to_reqwest_default` 为 `route_aware_client_pool` 子进程族（Codex 复审首批同样失败过、隔离即过的已知负载敏感族，批 A 登记 R7 机制：子进程默认 client 的 SCDynamicStore 读取 vs 2s fixture 预算）；本会话未改 http-client 产品代码；隔离复验 PASS。不以此标签关闭该族在 CI 的失败。
@@ -60,8 +78,8 @@
 ## 开放与下一步（依赖顺序）
 
 1. T18 读侧收口：crash 后 rollout 半行、export/archive/delete 与两次 resume 矩阵；app-server v2 ThreadTokenUsage/completeness 投影 + rawResponseItem 兼容；exec/SDK/UI unknown 持久性（第一批第 7 项）。
-2. 第二批（代理/生产默认）：真实 Basic Auth/CONNECT/407/TLS/SNI/IPv6 头双轨；两版本 reqwest 对照；线程生命周期注入；默认迁移 diff 待裁决。
+2. 第二批（代理/生产默认）：第 1/2/3 项已落地（批 FF/FG/FH）；第 4 项迁移裁决材料就绪（`default-migration-adjudication-2026-10-11.md`），待用户裁决 A/B/C；冷/暖原预算与 runloop 因果实验仍待安静窗口。
 3. 第三批（CI/栈）：827 逐身份；V8 配对工件；bwrap 能力定位；Ubuntu SIGABRT/Windows 0xc00000fd 复现（显式 4MiB 线程）。
 4. 第四批：T21–T40 原范围。
 
-本轮无 push、无 tag、无发布；全部为本地提交（`46f2f87e3`、`243ddb5a1`、`78acb6df4`、`0ec9e1b04`(docs)、`9088aca8f`、`e4797d0dc`）。
+本轮无 push、无 tag、无发布；全部为本地提交，按序：`46f2f87e3`、`243ddb5a1`、`78acb6df4`、`0ec9e1b04`(docs)、`9088aca8f`、`e4797d0dc`、`c1a5dd024`(docs) 为第一批；第二批为 `7922659b7`（wire 双轨）、`8d908c96d`（生命周期注入）、`c40172775`（跨版本 parity）、`17c4b28c5`(docs：迁移裁决材料)。
