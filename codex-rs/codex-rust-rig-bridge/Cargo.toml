@@ -35,4 +35,7 @@ workspace = true
 [dev-dependencies]
 h2 = "0.4"
 pretty_assertions = { workspace = true }
+# The workspace's other reqwest major (the codex core stack) as a reference
+# client for cross-version proxy parity tests.
+reqwest012 = { package = "reqwest", version = "0.12", features = ["stream"] }
 tempfile = { workspace = true }

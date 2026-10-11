@@ -97,7 +97,7 @@ filter = 'package(codex-app-server) & kind(test)'
 test-group = 'app_server_integration_local'
 
 [[profile.local.overrides]]
-filter = 'package(codex-rust-rig-bridge) & binary(wire)'
+filter = 'package(codex-rust-rig-bridge) & (binary(wire) | test(/proxy_version_parity_tests/))'
 test-group = 'rig_bridge_wire_local'
 
 [[profile.local.overrides]]

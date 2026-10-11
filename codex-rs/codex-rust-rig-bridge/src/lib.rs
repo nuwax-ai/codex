@@ -68,3 +68,7 @@ mod stream_contract_tests;
 #[cfg(test)]
 #[path = "stream_lifecycle_tests.rs"]
 mod stream_lifecycle_tests;
+
+#[cfg(test)]
+#[path = "proxy_version_parity_tests.rs"]
+mod proxy_version_parity_tests;
