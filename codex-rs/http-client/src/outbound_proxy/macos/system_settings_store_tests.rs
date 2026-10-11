@@ -270,3 +270,103 @@ fn dead_thread_is_rebuilt_with_the_same_reader() {
     assert_eq!(token_of(&rebuilt), "read-2");
     assert_eq!(loader.system_reads(), 2);
 }
+
+/// An OS-level spawn failure must publish the short failure TTL (reads
+/// report unavailable) and recover by spawning again once the condition
+/// clears; the constructor's own spawn failure is warned, not fatal.
+#[test]
+fn spawn_failure_publishes_unavailable_and_recovers() {
+    let loader = SystemSettingsLoader::with_reader_and_tunings(
+        || Some(fixture_dictionary("spawn-recovered")),
+        test_tunings(),
+    );
+    loader.set_spawn_fails(true);
+    loader.simulate_thread_death();
+    assert!(
+        loader.snapshot().is_none(),
+        "a failed spawn reports the read unavailable"
+    );
+    assert!(
+        loader.snapshot().is_none(),
+        "within the failure TTL no respawn storm is issued"
+    );
+
+    loader.set_spawn_fails(false);
+    thread::sleep(test_tunings().failure_ttl + Duration::from_millis(50));
+    let snapshot = loader
+        .snapshot()
+        .expect("clearing the spawn failure should rebuild and serve");
+    assert_eq!(token_of(&snapshot), "spawn-recovered");
+}
+
+/// Repeated thread death past the rebuild budget keeps the loader down:
+/// reads stay unavailable instead of spawning unbounded threads.
+#[test]
+fn rebuild_budget_exhaustion_keeps_the_loader_down() {
+    let loader = SystemSettingsLoader::with_reader_and_tunings(
+        || Some(fixture_dictionary("budget")),
+        test_tunings(),
+    );
+    let _ = loader.snapshot().expect("initial read should succeed");
+
+    for _ in 0..super::MAX_THREAD_REBUILDS {
+        loader.simulate_thread_death();
+        thread::sleep(test_tunings().ttl + Duration::from_millis(50));
+        let _ = loader
+            .snapshot()
+            .expect("within the rebuild budget a new thread serves");
+    }
+    // The budget is spent: further deaths must not respawn.
+    loader.simulate_thread_death();
+    thread::sleep(test_tunings().ttl + Duration::from_millis(50));
+    assert!(
+        loader.snapshot().is_none(),
+        "past the rebuild budget the loader stays down"
+    );
+    // And it stays down after the failure TTL too — no unbounded churn.
+    thread::sleep(test_tunings().failure_ttl + Duration::from_millis(50));
+    assert!(loader.snapshot().is_none());
+}
+
+/// A wedged read whose previous snapshot is older than the stale grace must
+/// answer none instead of serving arbitrarily old settings.
+#[test]
+fn wedged_read_with_expired_stale_grace_answers_none() {
+    let reads = Arc::new(AtomicUsize::new(0));
+    let gate = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (reads2, gate2) = (Arc::clone(&reads), Arc::clone(&gate));
+    let reader = move || {
+        reads2.fetch_add(1, AtomicOrdering::SeqCst);
+        if gate2.load(AtomicOrdering::SeqCst) {
+            loop {
+                thread::sleep(Duration::from_secs(1));
+            }
+        }
+        Some(fixture_dictionary("short-lived"))
+    };
+    let loader = SystemSettingsLoader::with_reader_and_tunings(
+        reader,
+        LoaderTunings {
+            ttl: Duration::from_millis(100),
+            failure_ttl: Duration::from_millis(100),
+            wait_budget: Duration::from_millis(200),
+            stale_grace: Duration::from_millis(250),
+        },
+    );
+
+    let fresh = loader.snapshot().expect("first read is fast");
+    assert_eq!(token_of(&fresh), "short-lived");
+
+    gate.store(true, AtomicOrdering::SeqCst);
+    // Outlive the stale grace so the wedged read has no admissible fallback.
+    thread::sleep(Duration::from_millis(600));
+    let started = std::time::Instant::now();
+    assert!(
+        loader.snapshot().is_none(),
+        "an expired stale snapshot must not be served"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "the waiter budget still bounds the wait"
+    );
+}

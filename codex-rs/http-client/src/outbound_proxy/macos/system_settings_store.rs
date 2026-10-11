@@ -202,6 +202,10 @@ struct LoaderInner {
     system_reads: AtomicUsize,
     #[cfg(test)]
     loop_iterations: AtomicUsize,
+    /// Test injection: makes thread spawns fail at the OS boundary without
+    /// needing real resource exhaustion.
+    #[cfg(test)]
+    spawn_fails: std::sync::atomic::AtomicBool,
     reader: SharedReader,
     tunings: LoaderTunings,
 }
@@ -246,6 +250,8 @@ impl SystemSettingsLoader {
             system_reads: AtomicUsize::new(0),
             #[cfg(test)]
             loop_iterations: AtomicUsize::new(0),
+            #[cfg(test)]
+            spawn_fails: std::sync::atomic::AtomicBool::new(false),
             reader: Arc::new(Mutex::new(Box::new(reader))),
         });
         let loader = Self {
@@ -377,6 +383,11 @@ impl SystemSettingsLoader {
         let generation = self.inner.thread_generation.fetch_add(1, Ordering::SeqCst);
         **request = Some((sender, generation));
         let inner = Arc::clone(&self.inner);
+        #[cfg(test)]
+        if self.inner.spawn_fails.load(Ordering::SeqCst) {
+            **request = None;
+            return Err(std::io::Error::other("injected spawn failure"));
+        }
         match std::thread::Builder::new()
             .name("codex-system-proxy-settings".to_string())
             .spawn(move || loader_thread(inner, receiver, generation))
@@ -405,6 +416,12 @@ impl SystemSettingsLoader {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *request = None;
+    }
+
+    /// Injects OS-level thread spawn failures until cleared (tests).
+    #[cfg(test)]
+    pub(super) fn set_spawn_fails(&self, fails: bool) {
+        self.inner.spawn_fails.store(fails, Ordering::SeqCst);
     }
 }
 
