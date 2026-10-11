@@ -43,8 +43,10 @@ jobs:
             # installs gstreamer 1.28 via brew and covers its build and unit
             # tests.
             voice_host: exclude
+            v8_target: x86_64-unknown-linux-gnu
           - os: macos-latest
             voice_host: include
+            v8_target: aarch64-apple-darwin
     defaults:
       run:
         working-directory: codex-rs
@@ -74,6 +76,16 @@ jobs:
         with:
           tool: cargo-nextest,just
 
+      # The pinned v8 150.4.0 requests ptrcomp_sandbox prebuilt archives
+      # that denoland never published for that release; the Codex-built
+      # paired artifacts under this repository's release tags carry the
+      # matching binaries, verified against the in-repo trusted manifest
+      # (third_party/v8/rusty_v8_150_4_0_release_manifests.sha256).
+      - name: Setup rusty_v8 paired artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.v8_target }}
+
       - name: Format
         run: cargo fmt --all --check
 
@@ -85,16 +97,10 @@ jobs:
       - name: Test (workspace)
         shell: bash
         run: |
-          # The pinned v8 150.4.0 enables the sandbox feature (upstream
-          # 2e32d9589) whose ptrcomp_sandbox prebuilt archives were never
-          # published for that release, so clean runners 404 during the
-          # build script. The V8 pin is deliberate and must not drift; the
-          # code-mode crates need the paired-artifact process instead, so
-          # they stay out of this lane until that lands.
           if [[ "${{ matrix.voice_host }}" == "exclude" ]]; then
-            just test --workspace --exclude codex-voice-host --exclude codex-code-mode-runtime --exclude codex-code-mode-host --exclude codex-v8-poc --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
+            just test --workspace --exclude codex-voice-host --features codex-core/rust-rig,codex-v8-poc/sandbox --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
           else
-            just test --workspace --exclude codex-code-mode-runtime --exclude codex-code-mode-host --exclude codex-v8-poc --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
+            just test --workspace --features codex-core/rust-rig,codex-v8-poc/sandbox --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
           fi
 
   bazel-bridge-gate:
@@ -146,11 +152,15 @@ jobs:
         with:
           tool: cargo-nextest,just
 
+      - name: Setup rusty_v8 paired artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: x86_64-pc-windows-msvc
+
       # voice-host's pinned gstreamer v1_28 API surface needs the 500MB
       # gstreamer Windows installer plus pkg-config wiring, which this lane
       # does not provision; the macOS lane covers that crate's build and unit
-      # tests. The v8 sandbox crates are excluded for the same missing-
-      # prebuilt-artifact reason as the other lanes.
+      # tests.
       - name: Test (workspace)
         shell: bash
-        run: just test --workspace --exclude codex-voice-host --exclude codex-code-mode-runtime --exclude codex-code-mode-host --exclude codex-v8-poc --features codex-core/rust-rig --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
+        run: just test --workspace --exclude codex-voice-host --features codex-core/rust-rig,codex-v8-poc/sandbox --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
