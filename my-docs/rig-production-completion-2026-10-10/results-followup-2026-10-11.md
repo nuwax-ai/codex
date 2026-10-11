@@ -60,6 +60,13 @@
 - 迁移裁决材料成文：`default-migration-adjudication-2026-10-11.md`——具体 diff（config 两处主干一行 + 各显式调用点）、兼容证据汇总、四个待裁点（SystemProxyFallback 组合 gate 不能无声丢失、CFRunLoop 因果、同步读取差异面、OTLP 并发窗口复测）、A/B/C 选项。**未实施，未裁决。**
 - 证据：parity 六用例绿；codex-rust-rig-bridge 全量 259/259。
 
+### 批 FI — run6 827 终态逐身份归因 + code-mode 主根因闭环（第三批第 1 项）
+
+- 解析三平台日志全部失败块，只用显式证据（panic 原文/assert_cmd 错误/信号行）分类；`ci-run6-failure-ledger.tsv` 重写为 827 行 × (category + 首败摘录)。未归类从 564 降至 154（140 assertion-open + 14 no-evidence，待逐测 triage）。
+- **主根因（495/827=60%）**：code-mode host 家族——上游 `97576b179`（#36217）移除进程内 provider；host 二进制因 V8 工件缺口未构建；`Disabled` provider → `effective_tool_mode` 静默 Direct 回退 → `unsupported custom tool call: exec`。四环因果链全证据；**本机复现同签名失败**（`code_mode_can_return_exec_command_output`、`code_mode_can_resume_after_set_timeout`），即该家族非 CI 环境问题而是当前树的确定性行为，本机即可验证修复。
+- 其余：harness deadline 显式 63（处置逐测试开放）、bwrap 109（runner 能力，T32 同事项）、stack-overflow 2 身份（ubuntu SIGABRT=windows 0xc00000fd 同测试）、Windows runner PowerShell 2；另发现 **Windows 311 个"通过但泄漏"终态行**（不在 827 内，独立卫生信号）。
+- 详见 `ci-run6-attribution-2026-10-11.md`。不称任何项通过；分类只升级证据。
+
 ### 本轮_receipt（串行 threads 1，offline --locked，retries 0）
 
 - 聚合 receipt（Codex 复审末批同一过滤器 + 新家族，fresh app-server helper binary 重建后）：**108/109**。唯一失败 `legacy_custom_ca_fallback_is_limited_to_reqwest_default` 为 `route_aware_client_pool` 子进程族（Codex 复审首批同样失败过、隔离即过的已知负载敏感族，批 A 登记 R7 机制：子进程默认 client 的 SCDynamicStore 读取 vs 2s fixture 预算）；本会话未改 http-client 产品代码；隔离复验 PASS。不以此标签关闭该族在 CI 的失败。
@@ -79,7 +86,7 @@
 
 1. T18 读侧收口：crash 后 rollout 半行、export/archive/delete 与两次 resume 矩阵；app-server v2 ThreadTokenUsage/completeness 投影 + rawResponseItem 兼容；exec/SDK/UI unknown 持久性（第一批第 7 项）。
 2. 第二批（代理/生产默认）：第 1/2/3 项已落地（批 FF/FG/FH）；第 4 项迁移裁决材料就绪（`default-migration-adjudication-2026-10-11.md`），待用户裁决 A/B/C；冷/暖原预算与 runloop 因果实验仍待安静窗口。
-3. 第三批（CI/栈）：827 逐身份；V8 配对工件；bwrap 能力定位；Ubuntu SIGABRT/Windows 0xc00000fd 复现（显式 4MiB 线程）。
+3. 第三批（CI/栈）：827 逐身份已完成（批 FI，主根因=code-mode host 家族 60%，本地可验证）；剩余：V8 配对工件（修复 495 家族的阻塞）、bwrap 能力定位（109）、Ubuntu SIGABRT/Windows 0xc00000fd 复现（2 身份，需对应平台）、assertion-open 140 逐测 triage、Windows pass+leak 311 卫生项。
 4. 第四批：T21–T40 原范围。
 
 本轮无 push、无 tag、无发布；全部为本地提交，按序：`46f2f87e3`、`243ddb5a1`、`78acb6df4`、`0ec9e1b04`(docs)、`9088aca8f`、`e4797d0dc`、`c1a5dd024`(docs) 为第一批；第二批为 `7922659b7`（wire 双轨）、`8d908c96d`（生命周期注入）、`c40172775`（跨版本 parity）、`17c4b28c5`(docs：迁移裁决材料)。
