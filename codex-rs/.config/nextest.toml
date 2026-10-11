@@ -107,6 +107,12 @@ test-group = 'rig_bridge_wire_local'
 filter = 'package(codex-http-client) & test(/^route_aware_client_pool/)'
 test-group = 'http_client_default_pool_local'
 
+[[profile.local.overrides]]
+# Same mechanism: the dual-track and auth-wire subprocesses each build
+# reference clients that read system proxy settings synchronously.
+filter = 'package(codex-http-client) & test(/resolved_default_(dual_track|auth_wire)_tests/)'
+test-group = 'http_client_default_pool_local'
+
 
 [[profile.default.overrides]]
 # These tests exercise full Codex turns and apply_patch execution, and they are

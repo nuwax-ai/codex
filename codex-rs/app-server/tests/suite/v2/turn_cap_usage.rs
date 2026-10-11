@@ -20,7 +20,8 @@ use tempfile::TempDir;
 const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 fn cap_terminal_sse_response() -> String {
-    let frames = [json!({"type": "response.created", "response": {"id": "resp_cap_v2"}}),
+    let frames = [
+        json!({"type": "response.created", "response": {"id": "resp_cap_v2"}}),
         json!({"type": "response.output_item.added", "output_index": 0, "item": {"type": "message", "id": "msg_cap_v2", "role": "assistant", "content": []}}),
         json!({"type": "response.output_text.delta", "item_id": "msg_cap_v2", "delta": "cut short"}),
         json!({
@@ -34,7 +35,8 @@ fn cap_terminal_sse_response() -> String {
                     "total_tokens": 14
                 }
             }
-        })];
+        }),
+    ];
     frames
         .iter()
         .map(|frame| format!("data: {frame}\n\n"))

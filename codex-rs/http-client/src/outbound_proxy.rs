@@ -40,6 +40,10 @@ mod resolved_default_route_tests;
 #[path = "outbound_proxy/resolved_default_dual_track_tests.rs"]
 mod resolved_default_dual_track_tests;
 
+#[cfg(test)]
+#[path = "outbound_proxy/resolved_default_auth_wire_tests.rs"]
+mod resolved_default_auth_wire_tests;
+
 mod default_proxy_matcher;
 #[cfg(not(target_os = "windows"))]
 pub(crate) use default_proxy_matcher::DefaultProxyMatcher;
