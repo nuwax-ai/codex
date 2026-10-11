@@ -45,6 +45,11 @@
 - 判别实验受阻登记：本机 `cargo build -p codex-code-mode-host` 同样命中 v8 150.4.0 `ptrcomp_sandbox` 归档 404（早前会话的构建缓存已不在）——"host 存在则家族转绿"的最终验证与 CI 一样被工件缺口阻塞；V8 配对工件是该家族修复的唯一直路。
 - 解析边界一处：nextest 块边界会吸收相邻测试输出（一个 sandbox 用例的块混入了邻居的 SIGABRT 文本），已修正该行分类（→assertion-open）。
 
+## assertion-open 抽验（12 样本，2026-10-11 本机）
+
+- 从 ubuntu assertion-open 按簇去重抽 12 个：10 个可在 macOS 运行的**全部本地通过**（串行、安静窗口）——该池主体不在当前树上确定性失败，处置指向 CI 窗口/平台差异（每项仍需 Linux 侧验证后才能关闭）。
+- 2 个为 Linux-only（`background_network_approval_*`、`allowing_network_policy_amendment_*`：`#[cfg_attr(not(target_os="linux"), ignore)]`，需 trusted Linux proxy bridge）——本机无法验证；其 CI 块内 23 个 Linux-sandbox 族仅 2 个含 bwrap 文本，证据不足以归入 bwrap 类，维持 assertion-open 待 Linux 环境 triage。
+
 ## 口径声明
 
 - 分类只升级证据（从未分类→显式机制），未把任何项标成"通过"或关闭验收。

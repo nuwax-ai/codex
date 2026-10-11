@@ -86,7 +86,7 @@
 
 1. T18 读侧收口：crash 后 rollout 半行、export/archive/delete 与两次 resume 矩阵；app-server v2 ThreadTokenUsage/completeness 投影 + rawResponseItem 兼容；exec/SDK/UI unknown 持久性（第一批第 7 项）。
 2. 第二批（代理/生产默认）：第 1/2/3 项已落地（批 FF/FG/FH）；第 4 项迁移裁决材料就绪（`default-migration-adjudication-2026-10-11.md`），待用户裁决 A/B/C；冷/暖原预算与 runloop 因果实验仍待安静窗口。
-3. 第三批（CI/栈）：827 逐身份已完成（批 FI，主根因=code-mode host 家族 60%，本地可验证）；剩余：V8 配对工件（修复 495 家族的阻塞）、bwrap 能力定位（109）、Ubuntu SIGABRT/Windows 0xc00000fd 复现（2 身份，需对应平台）、assertion-open 140 逐测 triage、Windows pass+leak 311 卫生项。
+3. 第三批（CI/栈）：827 逐身份已完成（批 FI，严格证据口径：code-mode host 家族 567/827=69%，含本机复现与反例纠正记录；账本带首败摘录）。抽验：assertion-open 12 样本中 10 个 macOS 可跑者本地全过、2 个 Linux-only。剩余：V8 配对工件（567 家族修复的唯一阻塞，本机构建同样 404）、bwrap 109（runner 能力/T32）、栈溢出 2 身份（需 Linux/Windows）、assertion-open 79 + no-evidence 14 的 Linux 侧 triage、Windows pass+leak 311 卫生项。
 4. 第四批：T21–T40 原范围。
 
 本轮无 push、无 tag、无发布；全部为本地提交，按序：`46f2f87e3`、`243ddb5a1`、`78acb6df4`、`0ec9e1b04`(docs)、`9088aca8f`、`e4797d0dc`、`c1a5dd024`(docs) 为第一批；第二批为 `7922659b7`（wire 双轨）、`8d908c96d`（生命周期注入）、`c40172775`（跨版本 parity）、`17c4b28c5`(docs：迁移裁决材料)。
