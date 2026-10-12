@@ -81,15 +81,17 @@ jobs:
       # denied", and every sandbox-dependent suite (landlock, exec-server
       # filesystem, core approvals/network flows) fails on the denial path
       # instead of exercising the sandbox. Re-enable unprivileged userns;
-      # runners without the sysctl key never restricted it, so absence is
-      # not an error.
+      # Skip this AppArmor-specific setting only when its sysctl key is
+      # absent. A failed write must fail setup; sandbox tests still verify
+      # actual namespace support on every runner.
       - name: Enable unprivileged user namespaces (Linux)
         if: runner.os == 'Linux'
         run: |
-          if sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; then
+          if [[ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
             echo "unprivileged userns re-enabled"
           else
-            echo "sysctl key absent; unprivileged userns was never restricted on this runner"
+            echo "AppArmor userns sysctl absent; sandbox tests will verify namespace support"
           fi
 
       - name: macOS build dependencies
