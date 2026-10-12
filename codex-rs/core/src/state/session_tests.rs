@@ -233,6 +233,60 @@ fn ledger_key_separates_host_keys_from_provider_ids() {
     assert_eq!(keyless, None);
 }
 
+#[test]
+fn replayed_over_budget_identities_never_join_the_ledger() {
+    // OLD rollouts can carry identities written before the live budget
+    // existed. On resume they must not become join keys — nothing minted by
+    // the live path could match them and truncating would alias distinct
+    // ids — while budget-boundary identities still join.
+    let base = TokenUsageRecord {
+        thread_id: ThreadId::new(),
+        turn_id: "turn-1".to_string(),
+        session_id: SessionId::from(ThreadId::new()),
+        root_turn_id: "turn-1".to_string(),
+        response_id: String::new(),
+        response_key: None,
+        usage: TokenUsage::default(),
+        turn_token_usage: TokenUsage::default(),
+        thread_token_usage: TokenUsage::default(),
+    };
+    let boundary = "k".repeat(MAX_RESPONSE_IDENTITY_BYTES);
+    assert_eq!(
+        ResponseLedgerKey::of(&TokenUsageRecord {
+            response_key: Some(boundary.clone()),
+            ..base.clone()
+        }),
+        Some(ResponseLedgerKey::Sampling(boundary.clone()))
+    );
+    assert_eq!(
+        ResponseLedgerKey::of(&TokenUsageRecord {
+            response_id: boundary,
+            ..base.clone()
+        }),
+        Some(ResponseLedgerKey::ProviderResponseId(
+            "k".repeat(MAX_RESPONSE_IDENTITY_BYTES)
+        ))
+    );
+    let giant_host_key = "h".repeat(MAX_RESPONSE_IDENTITY_BYTES + 1);
+    assert_eq!(
+        ResponseLedgerKey::of(&TokenUsageRecord {
+            response_key: Some(giant_host_key),
+            response_id: "still-no-join".to_string(),
+            ..base.clone()
+        }),
+        None,
+        "an over-limit host key must not fall back to its provider id either: \
+         the live path could never have minted that key"
+    );
+    assert_eq!(
+        ResponseLedgerKey::of(&TokenUsageRecord {
+            response_id: "p".repeat(MAX_RESPONSE_IDENTITY_BYTES + 7),
+            ..base
+        }),
+        None
+    );
+}
+
 #[tokio::test]
 async fn keyless_reports_stay_additive() {
     let usage = |total_tokens| TokenUsage {

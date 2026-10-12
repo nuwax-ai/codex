@@ -96,12 +96,21 @@ pub(crate) struct TokenUsageReport<'a> {
 
 impl ResponseLedgerKey {
     /// The key a persisted record joins under: its host key when present,
-    /// else its provider response id when non-empty.
+    /// else its provider response id when non-empty. Both must respect the
+    /// live identity budget — an over-limit identity from an OLD rollout
+    /// never becomes a join key (nothing minted by the live path could ever
+    /// match it, and truncating would alias distinct ids). The record itself
+    /// stays untouched: cumulative totals keep it and the rollout keeps its
+    /// original bytes; only replacement joins are refused.
     pub(crate) fn of(record: &TokenUsageRecord) -> Option<Self> {
         match (&record.response_key, record.response_id.as_str()) {
-            (Some(key), _) => Some(Self::Sampling(key.clone())),
-            (None, "") => None,
-            (None, id) => Some(Self::ProviderResponseId(id.to_string())),
+            (Some(key), _) if key.len() <= MAX_RESPONSE_IDENTITY_BYTES => {
+                Some(Self::Sampling(key.clone()))
+            }
+            (None, id) if !id.is_empty() && id.len() <= MAX_RESPONSE_IDENTITY_BYTES => {
+                Some(Self::ProviderResponseId(id.to_string()))
+            }
+            _ => None,
         }
     }
 }
