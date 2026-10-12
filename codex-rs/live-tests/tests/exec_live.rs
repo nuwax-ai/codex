@@ -300,6 +300,69 @@ exec_matrix!(chat_rig_capped, ["mimo", "glm"]);
 exec_matrix!(anthropic_rig_capped, ["mimo", "glm"]);
 exec_matrix!(chat_rig_cap_exhausted, ["mimo", "glm"]);
 exec_matrix!(anthropic_rig_cap_exhausted, ["mimo", "glm"]);
+
+// ================================================================
+// Typed NUWAX_* environment startup: the provider group reaches the
+// child ONLY through its process environment (no config provider, no
+// credential on disk); the marker turn includes a real tool round trip
+// and the wrapper asserts the no-leak contract afterwards.
+// ================================================================
+
+/// Typed environment startup on the Chat wire — the primary "configure via
+/// environment variables and just run" path for third-party gateways.
+async fn chat_env_startup_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    codex_live_tests::run_nuwax_env_marker_turn(
+        "chat-env-startup",
+        cfg,
+        &cfg.base_url,
+        "chat",
+        /*output_cap*/ None,
+        "",
+        Some("Dispatching chat stream via rig"),
+    )
+    .await
+}
+
+/// Typed environment startup on the Anthropic wire.
+async fn anthropic_env_startup_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    let Some(anthropic_url) = codex_live_tests::anthropic_url_or_skip(cfg) else {
+        return Ok(());
+    };
+    codex_live_tests::run_nuwax_env_marker_turn(
+        "anthropic-env-startup",
+        cfg,
+        &anthropic_url,
+        "anthropic",
+        /*output_cap*/ None,
+        "",
+        Some("Dispatching chat stream via rig"),
+    )
+    .await
+}
+
+/// Typed environment startup on the Responses wire through the real
+/// Responses adapter. `web_search = "disabled"` is the explicit declaration
+/// for gateways that reject hosted tools (MiMo does; harmless elsewhere).
+async fn responses_env_startup_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow::Result<()> {
+    let Some(responses_url) = codex_live_tests::responses_url_or_skip(cfg) else {
+        return Ok(());
+    };
+    codex_live_tests::run_nuwax_env_marker_turn(
+        "responses-env-startup",
+        cfg,
+        &responses_url,
+        "responses",
+        /*output_cap*/ None,
+        "web_search = \"disabled\"\n",
+        Some("Dispatching responses stream via rig"),
+    )
+    .await
+}
+
+exec_matrix!(chat_env_startup, ["mimo", "glm", "step"]);
+exec_matrix!(anthropic_env_startup, ["mimo", "glm", "step"]);
+exec_matrix!(responses_env_startup, ["mimo", "glm", "step"]);
+
 /// Cross-turn web_search on the Anthropic wire: turn 2 replays turn 1's
 /// history with the WebSearchCall items dropped (pinned behavior); the live
 /// gateway accepting both turns is the baseline for the phase-3 replay.

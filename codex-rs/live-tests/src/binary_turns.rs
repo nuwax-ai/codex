@@ -376,6 +376,7 @@ pub async fn run_nuwax_env_marker_turn(
     base_url: &str,
     wire_api: &str,
     output_cap: Option<u64>,
+    extra_config: &str,
     expect_bridge_log: Option<&str>,
 ) -> Result<()> {
     let home = tempfile::TempDir::new()?;
@@ -392,7 +393,7 @@ pub async fn run_nuwax_env_marker_turn(
         cfg,
         base_url,
         &startup,
-        "",
+        extra_config,
         BinaryScenario::Marker { expect_bridge_log },
         &home,
         &cwd,

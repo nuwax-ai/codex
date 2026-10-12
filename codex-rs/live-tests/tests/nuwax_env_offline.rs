@@ -235,6 +235,7 @@ async fn nuwax_env_startup_reaches_rig_with_tool_round_trip_and_no_leak() -> Res
         &cfg.base_url,
         /*wire_api*/ "chat",
         Some(OUTPUT_CAP),
+        /*extra_config*/ "",
         Some("Dispatching chat stream via rig"),
     )
     .await?;
