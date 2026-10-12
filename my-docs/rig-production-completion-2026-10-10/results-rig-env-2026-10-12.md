@@ -175,6 +175,19 @@ windows 28 失败与基线逐身份核对：除两个新项外**全部命中基�
 
 下一步：push `d6ec7ccfd`+`6e7164700`（用户已授权 push 流程）→ 预期 ubuntu 8→6、macOS 3→1（仅剩 R11 栈溢出）、windows 不变。
 
+### 8.1 修复验证轮（run `38249075905`，HEAD `59f5ffee5`）
+
+| job | 结果 | 对比预期 |
+|---|---|---|
+| bazel gate | success | 三连绿 |
+| ubuntu | 21797 跑/21789 过/**7 败 1 超时** | schema ✓ 消失；`nuwax_env_offline` 仍败（见下）；guardian SIGABRT **首次在 ubuntu 复现**（R11 家族跨平台）；shell_snapshot×4 + skills + discovery 超时与预期一致 |
+| windows | 20625 跑/20574 过/**29 败 22 超时** | schema ✓ 消失；`nuwax_env_offline` = **`.exe` 后缀缺失**（build 步骤已成功构建，解析器只找无后缀名——已修 `4c9b25ca8`）；wires×2 超时与其它既有族持平（cli_stream×2、resume 族 2→4 轮转） |
+| macOS | **cancelled**（约 2h30m 处） | 本轮无数据（疑 job 超时/级联取消，登记） |
+
+两个 `nuwax_env_offline` 残余的处置（`4c9b25ca8`）：
+1. windows：解析器补 `.exe`。
+2. ubuntu：构建步骤生效（codex-exec 于 12:37/12:43 两次编译），但测试时（13:33）源内容仍不匹配——测试阶段某用例改动了树内构建输入，原错误无法指认。收据现嵌入**构建时有界 `git status` 快照**，校验失败时输出"embedded vs current"两侧哈希与状态清单——下一轮 CI 直接点名元凶。
+
 ## 7. 授权边界遵守
 
 无 push、无 dispatch、无付费请求、无 .env.local、无默认代理迁移、无 V8 pin 变更、无沙箱代码修改；凭据只存在于测试内存与子进程环境；ACP 仓库只读未动。
