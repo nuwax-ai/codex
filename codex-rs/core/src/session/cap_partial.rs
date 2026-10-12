@@ -26,6 +26,7 @@ use codex_protocol::protocol::CapPartialFragmentKind;
 use codex_protocol::protocol::ReportedResponseUsage;
 use codex_protocol::protocol::TokenBudgetEvidence;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 const MAX_FRAGMENT_BYTES: usize = 16 * 1024;
 const MAX_TURN_BYTES: usize = 64 * 1024;
@@ -43,6 +44,7 @@ const MAX_FRAGMENTS: usize = 32;
 pub(crate) struct CapPartialCapture {
     fragments: Vec<CapPartialFragment>,
     positions: HashMap<String, usize>,
+    delta_keys: HashSet<String>,
     stored_bytes: Vec<usize>,
     total_bytes: usize,
     enforced: Vec<CapBudgetKind>,
@@ -70,6 +72,7 @@ impl CapPartialCapture {
             Some(index) => index,
             None => return,
         };
+        self.delta_keys.insert(key.to_string());
         self.append_bounded(index, delta);
     }
 
@@ -85,16 +88,81 @@ impl CapPartialCapture {
             }
             return;
         }
-        let Some((kind, key, text)) = rendered_item(item) else {
+        let Some((kind, key)) = rendered_item(item) else {
             return;
         };
+        let anonymous_key;
         let key = if key.is_empty() {
             self.done_without_id += 1;
-            format!("done-{}", self.done_without_id)
+            anonymous_key = format!("done-{}", self.done_without_id);
+            anonymous_key.as_str()
         } else {
             key
         };
-        self.observe_whole(kind, &key, &text);
+        if self.positions.contains_key(key) {
+            return;
+        }
+        let Some(index) = self.position_for_new(kind, key) else {
+            return;
+        };
+        match item {
+            ResponseItem::AgentMessage { content, .. } => {
+                if content.iter().any(|part| {
+                    matches!(
+                        part,
+                        codex_protocol::models::AgentMessageInputContent::EncryptedContent { .. }
+                    )
+                }) {
+                    return;
+                }
+                for (part_index, part) in content.iter().enumerate() {
+                    if part_index > 0 {
+                        self.append_bounded(index, "\n");
+                    }
+                    if let codex_protocol::models::AgentMessageInputContent::InputText { text } =
+                        part
+                    {
+                        self.append_bounded(index, text);
+                    }
+                }
+            }
+            ResponseItem::Message { content, .. } => {
+                for part in content {
+                    if let codex_protocol::models::ContentItem::OutputText { text } = part {
+                        self.append_bounded(index, text);
+                    }
+                }
+            }
+            ResponseItem::Reasoning {
+                summary, content, ..
+            } => {
+                for part in summary {
+                    let codex_protocol::models::ReasoningItemReasoningSummary::SummaryText { text } =
+                        part;
+                    self.append_bounded(index, text);
+                }
+                for part in content.iter().flatten() {
+                    if let codex_protocol::models::ReasoningItemContent::ReasoningText { text } =
+                        part
+                    {
+                        self.append_bounded(index, text);
+                    }
+                }
+            }
+            ResponseItem::FunctionCall {
+                name, arguments, ..
+            } => {
+                for text in ["call ", name, ": ", arguments] {
+                    self.append_bounded(index, text);
+                }
+            }
+            ResponseItem::CustomToolCall { name, input, .. } => {
+                for text in ["call ", name, ": ", input] {
+                    self.append_bounded(index, text);
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Observes text that arrived whole (an item that never streamed, or a
@@ -113,6 +181,29 @@ impl CapPartialCapture {
             None => return,
         };
         self.append_bounded(index, text);
+    }
+
+    /// Captures done-only summary sections independently while marking their
+    /// parent item observed so its whole completion cannot duplicate them.
+    pub(crate) fn observe_reasoning_summary(
+        &mut self,
+        item_id: &str,
+        summary_index: i64,
+        text: &str,
+    ) {
+        if self.closed.is_some() {
+            self.record_observed_after_close(item_id);
+            return;
+        }
+        if self.delta_keys.contains(item_id) {
+            return;
+        }
+        let key = format!("{item_id}:summary:{summary_index}");
+        self.observe_whole(CapPartialFragmentKind::Reasoning, &key, text);
+        if let Some(&index) = self.positions.get(&key) {
+            self.fragments[index].item_id = Some(item_id.to_string());
+            self.positions.entry(item_id.to_string()).or_insert(index);
+        }
     }
 
     /// Finishes the capture for a sampling that exhausted its cap, or
@@ -185,10 +276,10 @@ impl CapPartialCapture {
         let binding = fragment_remaining.min(turn_remaining);
         let stored = match prefix_at_char_boundary(text, binding) {
             Some(prefix) => prefix,
-            None => text.to_string(),
+            None => text,
         };
         let fits = stored.len() == text.len();
-        self.fragments[index].text.push_str(&stored);
+        self.fragments[index].text.push_str(stored);
         self.stored_bytes[index] += stored.len();
         self.total_bytes += stored.len();
         if !fits {
@@ -232,79 +323,32 @@ impl CapPartialCapture {
 
 /// The fragment key and bounded render for an item that arrives whole.
 /// `None` for non-assistant-produced items.
-fn rendered_item(item: &ResponseItem) -> Option<(CapPartialFragmentKind, String, String)> {
+fn rendered_item(item: &ResponseItem) -> Option<(CapPartialFragmentKind, &str)> {
     match item {
-        ResponseItem::AgentMessage { id, content, .. } => {
-            let text = codex_protocol::models::plaintext_agent_message_content(content)
-                .unwrap_or_default();
-            Some((
-                CapPartialFragmentKind::AssistantText,
-                id.as_ref().map(ToString::to_string).unwrap_or_default(),
-                text,
-            ))
-        }
-        ResponseItem::Message {
-            role, id, content, ..
-        } if role == "assistant" => {
-            let text = content
-                .iter()
-                .filter_map(|part| match part {
-                    codex_protocol::models::ContentItem::OutputText { text } => Some(text.as_str()),
-                    _ => None,
-                })
-                .collect::<String>();
-            Some((
-                CapPartialFragmentKind::AssistantText,
-                id.as_ref().map(ToString::to_string).unwrap_or_default(),
-                text,
-            ))
-        }
-        ResponseItem::Reasoning {
-            summary,
-            content,
-            id,
-            ..
-        } => {
-            let text = summary
-                .iter()
-                .map(|part| match part {
-                    codex_protocol::models::ReasoningItemReasoningSummary::SummaryText { text } => {
-                        text.as_str()
-                    }
-                })
-                .chain(content.iter().flatten().filter_map(|part| match part {
-                    codex_protocol::models::ReasoningItemContent::ReasoningText { text } => {
-                        Some(text.as_str())
-                    }
-                    codex_protocol::models::ReasoningItemContent::Text { .. } => None,
-                }))
-                .collect::<String>();
-            Some((
-                CapPartialFragmentKind::Reasoning,
-                id.as_ref().map(ToString::to_string).unwrap_or_default(),
-                text,
-            ))
-        }
-        ResponseItem::FunctionCall {
-            call_id,
-            arguments,
-            name,
-            ..
-        } => Some((
-            CapPartialFragmentKind::ToolArguments,
-            call_id.to_string(),
-            format!("call {name}: {arguments}"),
+        ResponseItem::AgentMessage { id, .. } => Some((
+            CapPartialFragmentKind::AssistantText,
+            id.as_ref()
+                .map(codex_protocol::ResponseItemId::as_str)
+                .unwrap_or_default(),
         )),
-        ResponseItem::CustomToolCall {
-            call_id,
-            input,
-            name,
-            ..
-        } => Some((
-            CapPartialFragmentKind::ToolArguments,
-            call_id.to_string(),
-            format!("call {name}: {input}"),
+        ResponseItem::Message { role, id, .. } if role == "assistant" => Some((
+            CapPartialFragmentKind::AssistantText,
+            id.as_ref()
+                .map(codex_protocol::ResponseItemId::as_str)
+                .unwrap_or_default(),
         )),
+        ResponseItem::Reasoning { id, .. } => Some((
+            CapPartialFragmentKind::Reasoning,
+            id.as_ref()
+                .map(codex_protocol::ResponseItemId::as_str)
+                .unwrap_or_default(),
+        )),
+        ResponseItem::FunctionCall { call_id, .. } => {
+            Some((CapPartialFragmentKind::ToolArguments, call_id))
+        }
+        ResponseItem::CustomToolCall { call_id, .. } => {
+            Some((CapPartialFragmentKind::ToolArguments, call_id))
+        }
         _ => None,
     }
 }
@@ -318,7 +362,7 @@ fn item_id_for(kind: CapPartialFragmentKind, key: &str) -> Option<String> {
 
 /// Returns a prefix cut at a UTF-8 boundary when `text` exceeds `max_bytes`,
 /// or `None` when the whole text fits.
-fn prefix_at_char_boundary(text: &str, max_bytes: usize) -> Option<String> {
+fn prefix_at_char_boundary(text: &str, max_bytes: usize) -> Option<&str> {
     if text.len() <= max_bytes {
         return None;
     }
@@ -326,7 +370,7 @@ fn prefix_at_char_boundary(text: &str, max_bytes: usize) -> Option<String> {
     while end > 0 && !text.is_char_boundary(end) {
         end -= 1;
     }
-    Some(text[..end].to_string())
+    Some(&text[..end])
 }
 
 #[cfg(test)]

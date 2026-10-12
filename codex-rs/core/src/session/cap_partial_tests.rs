@@ -115,6 +115,72 @@ fn utf8_turn_budget_cut_closes_before_later_ascii_or_fragments() {
 }
 
 #[test]
+fn done_only_reasoning_sections_keep_each_section_once() {
+    let mut capture = CapPartialCapture::default();
+    capture.observe_reasoning_summary("reasoning-1", /*summary_index*/ 0, "first section");
+    capture.observe_reasoning_summary("reasoning-1", /*summary_index*/ 1, "second section");
+    capture.observe_reasoning_summary("reasoning-1", /*summary_index*/ 1, "second section");
+    capture.observe_item_done(&ResponseItem::Reasoning {
+        id: Some(ResponseItemId::from_server("reasoning-1".to_string())),
+        summary: vec![
+            codex_protocol::models::ReasoningItemReasoningSummary::SummaryText {
+                text: "first section".to_string(),
+            },
+            codex_protocol::models::ReasoningItemReasoningSummary::SummaryText {
+                text: "second section".to_string(),
+            },
+        ],
+        content: None,
+        encrypted_content: None,
+        internal_chat_message_metadata_passthrough: None,
+    });
+    let event = finish(capture);
+    assert_eq!(
+        event
+            .fragments
+            .iter()
+            .map(|fragment| (
+                fragment.fragment_key.as_str(),
+                fragment.item_id.as_deref(),
+                fragment.text.as_str()
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "reasoning-1:summary:0",
+                Some("reasoning-1"),
+                "first section"
+            ),
+            (
+                "reasoning-1:summary:1",
+                Some("reasoning-1"),
+                "second section"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn summary_done_does_not_duplicate_streamed_reasoning() {
+    let mut capture = CapPartialCapture::default();
+    capture.observe_delta(
+        CapPartialFragmentKind::Reasoning,
+        "reasoning-1",
+        "streamed section",
+    );
+    capture.observe_reasoning_summary("reasoning-1", /*summary_index*/ 0, "streamed section");
+    let event = finish(capture);
+    assert_eq!(
+        event
+            .fragments
+            .iter()
+            .map(|fragment| (fragment.fragment_key.as_str(), fragment.text.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("reasoning-1", "streamed section")]
+    );
+}
+
+#[test]
 fn turn_byte_ceiling_closes_the_capture() {
     let mut capture = CapPartialCapture::default();
     // Four fragments fill 64 KiB exactly; a fifth observes nothing.
