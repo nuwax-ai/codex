@@ -9,7 +9,7 @@
 | D1-a 失败载体 | 独立 `CapPartial` 事件 + paginated `TurnItem::CapPartial`（不复用 Message status） | 已裁决，T18 实施 |
 | D1-b 旧读取器 | 不预设兼容；V-D1-1 实测改前二进制读改后 rollout 与改后读旧，按实际行为登记（整份失败/单行跳过/保留） | 已裁决（实测前置），T18 执行 |
 | D1-c 预算数值 | 单片段 2,000 token / 16 KiB；每 turn 8,192 token / 64 KiB / 32 片段；保前缀 + `truncated` 标记；>1k token 片段保留 P0 人工门，>10k 禁止；无 tokenizer 证明 → unverified，不注入模型 | 已裁决，T18 实施 |
-| D1-d metadata/序列化总界 | 每身份串 256 B；事件身份元数据总和 8 KiB；事件 JSON 序列化 128 KiB（escaped 增量记账 + 4 KiB 结构包络预留）；超限身份整串丢弃绝不截断成存储键 | **已实施**（2026-10-12；capture 与 usage ledger 同批） |
+| D1-d metadata/序列化总界 | 每身份串 256 B；事件身份元数据总和 8 KiB；事件 JSON 序列化 128 KiB（escaped 增量记账 + 8 KiB 结构及 host key 包络预留）；超限身份整串丢弃绝不截断成存储键 | **已实施并复审修正**（2026-10-12；capture 与 usage ledger 同批） |
 | D2-a 失败 usage 载体 | 类型化 `ApiError::CapExhausted { message, response_id, reported_usage }`；presence 保留（`ReportedUsageCounters` 全 Option、显式零与缺席区分、Complete 仅全字段直报） | **已实施**（`5667058bc`；三线提取中 Responses SSE/WS 与 Anthropic wire 观测完成，rig 归一化回退只认非零） |
 | D3-a exec 事件 | 内嵌 `turn.failed`（不新增独立 turn.partial 事件），新字段 `skip_serializing_if` 保持无 cap 时旧字节 | 已裁决，T20 实施 |
 | D4-a 完整性枚举 | 三值 `UsageCompleteness`（Complete/Incomplete/Unknown）+ 全响应已知小计（`ReportedUsageCounts`），与 legacy `total/last` 并存不覆盖其口径 | 类型已实施（protocol）；reducer/持久化 T17–T19 |
@@ -26,7 +26,7 @@
 
 覆盖 D1-c 未含的任意长 provider item/call ID、usage response ID、JSON 元数据与最终序列化字节：
 
-- 预算：每身份串 ≤ 256 B（UTF-8 字节，capture 的 item/call/summary 键与 usage ledger 的 provider response ID）；单事件存储身份字节总和 ≤ 8 KiB；事件 JSON 序列化 ≤ 128 KiB（身份 + 文本按 serde_json 转义逐段增量记账，另预留 4 KiB 覆盖 32 片段最坏结构开销；记账表与 serde_json 转义有逐字节等价测试）。
+- 预算：每身份串 ≤ 256 B（UTF-8 字节，capture 的 item/call/summary 键与 usage ledger 的 provider response ID）；单事件存储身份字节总和 ≤ 8 KiB；事件 JSON 序列化 ≤ 128 KiB（身份 + 文本按 serde_json 转义逐段增量记账，另预留 8 KiB 覆盖 32 片段结构、完整 usage 与两条允许的 host key 的最坏转义开销；记账表与 serde_json 转义有逐字节等价测试）。
 - 身份超限语义：超限身份串绝不存储、绝不截断前缀、绝不进 key map——共享任意长前缀的两个不同超限 ID 不可能别名合并。capture 记 `IdentityBytes` 后对其余身份保持开放；重复超限观察只记一次。usage ledger 中超限 provider response ID 退化为既有 keyless-additive 语义（response_id 存空串、不 join 不替换，warn 日志只记长度不记内容）；host sampling key 路径不受 provider ID 长度影响。
 - 总界超限语义：身份元数据总和超限关闭整个 capture（`MetadataBytes`）；序列化预算超限当次追加按 escaped 形式截断并关闭（`EventBytes`）。裁切都在借用切片上进行，禁止先 clone/format 无界串再裁切；summary 组合键先验证 item id 有界才 format。
 - host 键（turn_id/response_key，UUID 派生）按构造有界；防御性超限时记 `IdentityBytes` 并以空串输出（不截断前缀）。

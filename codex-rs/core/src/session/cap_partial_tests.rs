@@ -485,6 +485,70 @@ fn metadata_total_closes_the_capture() {
 }
 
 #[test]
+fn summary_metadata_admission_charges_the_actual_parent_id() {
+    for padding in ["r", "\u{1}"] {
+        let mut capture = CapPartialCapture::default();
+        let mut expected = Vec::new();
+        // Sixteen summaries cost 7,968 raw identity bytes. Charging each
+        // section key twice would incorrectly retain another 160 bytes.
+        for index in 0..16 {
+            let item_id = format!("{index:03}{}", padding.repeat(241));
+            capture.observe_reasoning_summary(&item_id, /*summary_index*/ 0, "x");
+            expected.push(CapPartialFragment {
+                fragment_key: format!("{item_id}:summary:0"),
+                kind: CapPartialFragmentKind::Reasoning,
+                item_id: Some(item_id),
+                text: "x".to_string(),
+                truncated: false,
+            });
+        }
+        let item_id = "a".repeat(50);
+        capture.observe_delta(CapPartialFragmentKind::AssistantText, &item_id, "x");
+        expected.push(CapPartialFragment {
+            fragment_key: item_id.clone(),
+            kind: CapPartialFragmentKind::AssistantText,
+            item_id: Some(item_id),
+            text: "x".to_string(),
+            truncated: false,
+        });
+        // Only 124 bytes remain: the final summary's actual 122-byte
+        // identity fits, while a provisional double key charge would not.
+        let item_id = "z".repeat(56);
+        capture.observe_reasoning_summary(&item_id, /*summary_index*/ 0, "x");
+        expected.push(CapPartialFragment {
+            fragment_key: format!("{item_id}:summary:0"),
+            kind: CapPartialFragmentKind::Reasoning,
+            item_id: Some(item_id),
+            text: "x".to_string(),
+            truncated: false,
+        });
+        assert_eq!(capture.identity_bytes, 8190);
+        assert_eq!(capture.closed, None);
+        assert_eq!(capture.fragments, expected);
+        assert_eq!(
+            capture.serialized_identity_bytes,
+            expected
+                .iter()
+                .map(|fragment| {
+                    serde_json::to_string(&fragment.fragment_key).unwrap().len()
+                        + serde_json::to_string(fragment.item_id.as_ref().unwrap())
+                            .unwrap()
+                            .len()
+                        - 4
+                })
+                .sum::<usize>()
+        );
+        capture.observe_delta(CapPartialFragmentKind::AssistantText, "no", "dropped");
+        let event = finish(capture);
+        assert_eq!(event.fragments, expected);
+        assert_eq!(
+            event.budget.enforced_caps,
+            vec![CapBudgetKind::MetadataBytes]
+        );
+    }
+}
+
+#[test]
 fn serialized_total_binds_expandable_text_before_raw_budgets() {
     let mut capture = CapPartialCapture::default();
     // Control bytes expand six-fold in JSON, so the 128 KiB event ceiling
@@ -498,21 +562,14 @@ fn serialized_total_binds_expandable_text_before_raw_budgets() {
         );
     }
     let event = finish(capture);
-    // Five chunks stored whole, the sixth cut partway by the serialization
-    // total; the exact sixth-chunk prefix depends on the stored identities.
+    // Four chunks stored whole, the fifth cut partway by the serialization
+    // total; the exact fifth-chunk prefix depends on the stored identities.
     let total_bytes = event.budget.total_bytes as usize;
     assert!(
-        total_bytes > 5 * 4096 && total_bytes < 6 * 4096,
+        total_bytes > 4 * 4096 && total_bytes < 5 * 4096,
         "total_bytes = {total_bytes}"
     );
-    assert!(
-        event
-            .budget
-            .enforced_caps
-            .contains(&CapBudgetKind::EventBytes),
-        "enforced: {:?}",
-        event.budget.enforced_caps
-    );
+    assert_eq!(event.budget.enforced_caps, vec![CapBudgetKind::EventBytes]);
     // The finished event's real serialization must respect the ceiling.
     let serialized = serde_json::to_string(&event).expect("event serializes in tests");
     assert!(
@@ -539,6 +596,48 @@ fn escaped_len_accounting_matches_serde_json_exactly() {
             assert!(torture.starts_with(prefix));
         }
     }
+}
+
+#[test]
+fn serialized_envelope_covers_all_fragments_host_keys_and_usage() {
+    let mut capture = CapPartialCapture::default();
+    for index in 0..MAX_FRAGMENTS - 2 {
+        capture.observe_delta(
+            CapPartialFragmentKind::AssistantText,
+            &format!("item-{index}"),
+            "x",
+        );
+    }
+    for index in MAX_FRAGMENTS - 2..MAX_FRAGMENTS {
+        capture.observe_delta(
+            CapPartialFragmentKind::AssistantText,
+            &format!("item-{index}"),
+            &"\u{1}".repeat(MAX_FRAGMENT_BYTES),
+        );
+    }
+    let host_key = "\u{1}".repeat(MAX_IDENTITY_BYTES);
+    let counts = codex_protocol::protocol::ReportedUsageCounters {
+        input_tokens: Some(i64::MAX),
+        cached_input_tokens: Some(i64::MAX),
+        cache_write_input_tokens: Some(i64::MAX),
+        output_tokens: Some(i64::MAX),
+        reasoning_output_tokens: Some(i64::MAX),
+        total_tokens: Some(i64::MAX),
+    };
+    let usage = ReportedResponseUsage {
+        counts,
+        completeness: codex_protocol::protocol::UsageCompleteness::Complete,
+        normalized: counts.normalize_if_complete(),
+    };
+    let event = capture.finish(&host_key, &host_key, Some(&usage)).unwrap();
+    assert_eq!(event.fragments.len(), MAX_FRAGMENTS);
+    assert_eq!(event.budget.enforced_caps, vec![CapBudgetKind::EventBytes]);
+    let serialized = serde_json::to_vec(&event).unwrap();
+    assert!(
+        serialized.len() <= MAX_EVENT_SERIALIZED_BYTES,
+        "serialized {} bytes",
+        serialized.len()
+    );
 }
 
 #[test]

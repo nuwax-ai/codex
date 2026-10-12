@@ -49,9 +49,10 @@ const MAX_EVENT_METADATA_BYTES: usize = 8 * 1024;
 const MAX_EVENT_SERIALIZED_BYTES: usize = 128 * 1024;
 /// Serialization headroom reserved for structural fields — field names,
 /// punctuation, the budget block, and a full usage report — across the
-/// worst case of 32 fragments (~90 bytes of structure each). Counted
-/// identities and text do not draw from this reserve.
-const EVENT_ENVELOPE_BYTES: usize = 4096;
+/// worst case of 32 fragments. Also covers both host keys: each admitted
+/// 256-byte key can expand to 1,536 escaped bytes. Fragment identities and
+/// text are accounted separately and do not draw from this reserve.
+const EVENT_ENVELOPE_BYTES: usize = 8 * 1024;
 
 /// Incremental bounded capture for one sampling attempt.
 ///
@@ -98,7 +99,7 @@ impl CapPartialCapture {
             self.record_observed_after_close(key);
             return;
         }
-        let index = match self.position_for_new(kind, key) {
+        let index = match self.position_for_new(kind, key, key) {
             Some(index) => index,
             None => return,
         };
@@ -132,7 +133,7 @@ impl CapPartialCapture {
         if self.positions.contains_key(key) {
             return;
         }
-        let Some(index) = self.position_for_new(kind, key) else {
+        let Some(index) = self.position_for_new(kind, key, key) else {
             return;
         };
         match item {
@@ -195,24 +196,6 @@ impl CapPartialCapture {
         }
     }
 
-    /// Observes text that arrived whole (an item that never streamed, or a
-    /// summary delivered done-only). A key already fed by deltas is not
-    /// captured again.
-    pub(crate) fn observe_whole(&mut self, kind: CapPartialFragmentKind, key: &str, text: &str) {
-        if self.closed.is_some() {
-            self.record_observed_after_close(key);
-            return;
-        }
-        if self.positions.contains_key(key) {
-            return;
-        }
-        let index = match self.position_for_new(kind, key) {
-            Some(index) => index,
-            None => return,
-        };
-        self.append_bounded(index, text);
-    }
-
     /// Captures done-only summary sections independently while marking their
     /// parent item observed so its whole completion cannot duplicate them.
     pub(crate) fn observe_reasoning_summary(
@@ -235,24 +218,17 @@ impl CapPartialCapture {
             return;
         }
         let key = format!("{item_id}:summary:{summary_index}");
-        self.observe_whole(CapPartialFragmentKind::Reasoning, &key, text);
-        if let Some(&index) = self.positions.get(&key) {
-            // Swap the placeholder (the section key) for the real item id,
-            // adjusting the identity accounting by the exact byte delta.
-            let previous_len = self.fragments[index]
-                .item_id
-                .as_ref()
-                .map_or(0, String::len);
-            let previous_escaped = self.fragments[index]
-                .item_id
-                .as_ref()
-                .map_or(0, |id| json_escaped_len(id));
-            self.fragments[index].item_id = Some(item_id.to_string());
-            self.identity_bytes += item_id.len().saturating_sub(previous_len);
-            self.serialized_identity_bytes +=
-                json_escaped_len(item_id).saturating_sub(previous_escaped);
-            self.positions.entry(item_id.to_string()).or_insert(index);
+        if self.positions.contains_key(&key) {
+            return;
         }
+        // Admit the actual key and parent id together. Charging the section
+        // key twice can reject a summary that still fits the metadata budget.
+        let Some(index) = self.position_for_new(CapPartialFragmentKind::Reasoning, &key, item_id)
+        else {
+            return;
+        };
+        self.append_bounded(index, text);
+        self.positions.entry(item_id.to_string()).or_insert(index);
     }
 
     /// Finishes the capture for a sampling that exhausted its cap, or
@@ -296,7 +272,12 @@ impl CapPartialCapture {
         })
     }
 
-    fn position_for_new(&mut self, kind: CapPartialFragmentKind, key: &str) -> Option<usize> {
+    fn position_for_new(
+        &mut self,
+        kind: CapPartialFragmentKind,
+        key: &str,
+        item_id: &str,
+    ) -> Option<usize> {
         if let Some(&index) = self.positions.get(key) {
             return Some(index);
         }
@@ -312,10 +293,14 @@ impl CapPartialCapture {
             self.record_once(CapBudgetKind::IdentityBytes);
             return None;
         }
-        let item_id = item_id_for(kind, key);
-        let identity_delta = key.len() + item_id.as_ref().map_or(0, String::len);
-        let serialized_delta =
-            json_escaped_len(key) + item_id.as_ref().map_or(0, |id| json_escaped_len(id));
+        let item_id = match kind {
+            CapPartialFragmentKind::ToolArguments => Some(item_id),
+            CapPartialFragmentKind::AssistantText | CapPartialFragmentKind::Reasoning => {
+                (!item_id.is_empty()).then_some(item_id)
+            }
+        };
+        let identity_delta = key.len() + item_id.map_or(0, str::len);
+        let serialized_delta = json_escaped_len(key) + item_id.map_or(0, json_escaped_len);
         if self.identity_bytes + identity_delta > MAX_EVENT_METADATA_BYTES {
             self.record_once(CapBudgetKind::MetadataBytes);
             self.closed = Some(CapBudgetKind::MetadataBytes);
@@ -335,7 +320,7 @@ impl CapPartialCapture {
         self.fragments.push(CapPartialFragment {
             fragment_key: key.to_string(),
             kind,
-            item_id,
+            item_id: item_id.map(str::to_owned),
             text: String::new(),
             truncated: false,
         });
@@ -383,7 +368,7 @@ impl CapPartialCapture {
                 Some(prefix) => (prefix, false),
                 None => (candidate, true),
             };
-        let fits_raw = stored.len() == text.len();
+        let fits_raw = candidate.len() == text.len();
         self.fragments[index].text.push_str(stored);
         self.stored_bytes[index] += stored.len();
         self.total_bytes += stored.len();
@@ -467,13 +452,6 @@ fn rendered_item(item: &ResponseItem) -> Option<(CapPartialFragmentKind, &str)> 
             Some((CapPartialFragmentKind::ToolArguments, call_id))
         }
         _ => None,
-    }
-}
-
-fn item_id_for(kind: CapPartialFragmentKind, key: &str) -> Option<String> {
-    match kind {
-        CapPartialFragmentKind::ToolArguments => Some(key.to_string()),
-        _ => (!key.is_empty()).then(|| key.to_string()),
     }
 }
 
