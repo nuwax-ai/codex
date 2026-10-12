@@ -924,6 +924,113 @@ async fn responses_output_cap_error_is_terminal_without_core_resampling() -> Res
     Ok(())
 }
 
+/// Shared builder for the Responses cap-usage presence matrix: one terminal
+/// frame whose `usage` object carries exactly the counters under test.
+async fn responses_cap_usage_matrix_case(
+    usage: Option<Value>,
+) -> Result<(TurnOutcome, Vec<codex_protocol::protocol::TokenUsageRecord>)> {
+    let server = MockServer::start().await;
+    let mut response = json!({
+        "id": "resp_cap",
+        "incomplete_details": {"reason": "max_output_tokens"},
+    });
+    if let Some(usage) = usage {
+        response["usage"] = usage;
+    }
+    let body = responses::sse(vec![
+        responses::ev_response_created("resp_cap"),
+        responses::ev_message_item_added("msg_cap", ""),
+        responses::ev_output_text_delta("partial cap answer"),
+        json!({"type": "response.incomplete", "response": response}),
+    ]);
+    mount_capturing_response(&server, "/v1/responses", body).await?;
+    let (test, _env) =
+        cap_test_instance_with(&server.uri(), WireApi::Responses, /*cap_partial*/ true).await?;
+    let outcome = run_turn_until_complete(&test, "responses cap usage matrix").await?;
+    let records = persisted_usage_records(&test);
+    Ok((outcome, records))
+}
+
+/// A cap terminal frame with NO usage object must not fabricate counts: no
+/// ledger record is written and the diagnostic carries no report.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn responses_cap_without_terminal_usage_records_nothing() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let (outcome, records) = responses_cap_usage_matrix_case(None).await?;
+    assert_cap_terminal(&outcome, 1, "partial cap answer");
+    assert!(
+        records.is_empty(),
+        "an absent usage object must not fabricate a zero record"
+    );
+    assert!(
+        outcome.cap_partials[0].reported_usage.is_none(),
+        "the diagnostic carries no usage either"
+    );
+    Ok(())
+}
+
+/// A partially reported usage object keeps per-counter presence: the ledger
+/// stores the reported counter with zeros for absent ones, while the
+/// presence-preserving diagnostic marks the report Incomplete.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn responses_cap_partial_terminal_usage_keeps_presence() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let (outcome, records) =
+        responses_cap_usage_matrix_case(Some(json!({"input_tokens": 4}))).await?;
+    assert_cap_terminal(&outcome, 1, "partial cap answer");
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        (
+            records[0].usage.input_tokens,
+            records[0].usage.output_tokens,
+            records[0].usage.total_tokens
+        ),
+        (4, 0, 0),
+        "absent counters are zero in the ledger (it has no presence)"
+    );
+    let reported = outcome.cap_partials[0]
+        .reported_usage
+        .as_ref()
+        .expect("the partial report rides the diagnostic");
+    assert_eq!(reported.counts.input_tokens, Some(4));
+    assert_eq!(reported.counts.output_tokens, None);
+    assert_eq!(
+        reported.completeness,
+        codex_protocol::protocol::UsageCompleteness::Incomplete
+    );
+    Ok(())
+}
+
+/// Explicit zeros in the terminal usage are reported counts, not absence:
+/// they survive into the ledger and the diagnostic alike.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn responses_cap_explicit_zero_usage_is_reported() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let (outcome, records) = responses_cap_usage_matrix_case(Some(json!({
+        "input_tokens": 4, "output_tokens": 0, "total_tokens": 4
+    })))
+    .await?;
+    assert_cap_terminal(&outcome, 1, "partial cap answer");
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        (
+            records[0].usage.input_tokens,
+            records[0].usage.output_tokens
+        ),
+        (4, 0)
+    );
+    let reported = outcome.cap_partials[0]
+        .reported_usage
+        .as_ref()
+        .expect("the partial report rides the diagnostic");
+    assert_eq!(
+        reported.counts.output_tokens,
+        Some(0),
+        "an explicit zero is a reported counter, never dropped to absent"
+    );
+    Ok(())
+}
+
 /// A `finish_reason=stop` frame arriving AFTER the length terminal must not
 /// convert the failed turn into a success or trigger a resample.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
