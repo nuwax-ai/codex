@@ -64,13 +64,13 @@
 
 - 解析三平台日志全部失败块，只用显式证据（panic 原文/assert_cmd 错误/信号行）分类；`ci-run6-failure-ledger.tsv` 重写为 827 行 × (category + 首败摘录)。未归类从 564 降至 154（140 assertion-open + 14 no-evidence，待逐测 triage）。
 - **主根因（567/827=69%）**：code-mode host 家族——上游 `97576b179`（#36217）移除进程内 provider；host 二进制因 V8 工件缺口未构建；`Disabled` provider → `effective_tool_mode` 静默 Direct 回退 → `unsupported custom tool call: exec`。四环因果链全证据；**本机复现同签名失败**（`code_mode_can_return_exec_command_output`、`code_mode_can_resume_after_set_timeout`、`app_tool_exposure::connector_omissions_*`）。归因纪律抽验：按套件名过激的重分类被本地通过的反例（guardian_denial 4/4、extension_sandbox file_access）纠正回退。本机构建 host 亦命中同一 v8 404——家族修复验证与 CI 同被工件缺口阻塞。未归类降至 93（79 assertion-open + 14 no-evidence）。
-- 其余：harness deadline 显式 63（处置逐测试开放）、bwrap 109（runner 能力，T32 同事项）、stack-overflow 2 身份（ubuntu SIGABRT=windows 0xc00000fd 同测试）、Windows runner PowerShell 2；另发现 **Windows 311 个"通过但泄漏"终态行**（不在 827 内，独立卫生信号）。
+- 其余：harness deadline 显式 53（处置逐测试开放）、bwrap 109（runner 能力，T32 同事项）、stack-overflow 2 身份（ubuntu SIGABRT=windows 0xc00000fd 同测试）、Windows runner PowerShell 2；另发现 **Windows 311 个"通过但泄漏"终态行**（不在 827 内，独立卫生信号）。
 - 详见 `ci-run6-attribution-2026-10-11.md`。不称任何项通过；分类只升级证据。
 
-### 批 FJ — V8 配对工件接通 + 567 家族修复本机实证（第三批第 2 项）
+### 批 FJ — V8 配对工件接通 + macOS 家族样本验证（第三批第 2 项）
 
 - **事实修正**：此前"ptrcomp_sandbox 归档从未发布"的结论只对 denoland 默认源成立——**上游 openai/codex 的 `rusty-v8-v150.4.0` release 就是为本 pin 发布的配对工件**（8 个 target 的归档/binding/checksum），且仓库自带完整基础设施：`setup-rusty-v8` action（下载 + 双层校验：对 `third_party/v8/rusty_v8_150_4_0_release_manifests.sha256` 的 manifest-of-manifest + 文件 sha256）+ `rusty_v8_bazel.py` 版本解析。V8 pin 未动。
-- **本机判别实验（决定性）**：按 action 同一流程下载 aarch64-apple-darwin 工件并双层校验 → `RUSTY_V8_ARCHIVE`/`RUSTY_V8_SRC_BINDING_PATH` 下 host 二进制构建成功（1m46s）→ 567 家族各分支全绿：core `code_mode.rs` **143/143**（run6 全崩）、app-server `code_mode_host` **18/18**（"could not locate binary" 家族）、guardian code-mode 系 **23/23**、`code-mode-runtime/host` crate 测试通过。无 host 时同批测试确定性失败（批 FI 已证）——根因与修复闭环。
+- **本机判别实验（决定性）**：按 action 同一流程下载 aarch64-apple-darwin 工件并双层校验 → `RUSTY_V8_ARCHIVE`/`RUSTY_V8_SRC_BINDING_PATH` 下 host 二进制构建成功（1m46s）→ macOS 代表性集合通过（不能覆盖三平台 567 个历史身份）：core `code_mode.rs` **143/143**（run6 全崩）、app-server `code_mode_host` **18/18**（"could not locate binary" 家族）、guardian code-mode 系 **23/23**、`code-mode-runtime/host` crate 测试通过。无 host 时同批测试确定性失败（批 FI 已证）——根因与修复闭环。
 - **CI 接线**：`fork-cargo-pr.yml` 三车道接入 `setup-rusty-v8`（ubuntu x86_64-unknown-linux-gnu / macos aarch64-apple-darwin / windows x86_64-pc-windows-msvc），解除 `codex-code-mode-runtime/-host/v8-poc` 三个排除（voice-host 排除不变，gstreamer 独立事项）；车道加 `codex-v8-poc/sandbox` feature——v8-poc 守卫测试要求 crate feature 与链接归档一致（车道 RUSTY_V8_ARCHIVE 强制 sandbox 归档；本地无归档默认关、用 denoland 普通归档，两环境自洽，6/6 验证）。YAML 结构校验通过。
 - **边界**：dispatch 仍需授权（未 push）；Linux/Windows 工件未本机验证（target 不同），CI 首跑见分晓；voice-host 排除与其余失败类别不变。
 
@@ -98,7 +98,11 @@
 
 1. T18 读侧收口：crash 后 rollout 半行、export/archive/delete 与两次 resume 矩阵；app-server v2 ThreadTokenUsage/completeness 投影 + rawResponseItem 兼容；exec/SDK/UI unknown 持久性（第一批第 7 项）。
 2. 第二批（代理/生产默认）：第 1/2/3 项已落地（批 FF/FG/FH）；第 4 项迁移裁决材料就绪（`default-migration-adjudication-2026-10-11.md`），待用户裁决 A/B/C；冷/暖原预算与 runloop 因果实验仍待安静窗口。
-3. 第三批（CI/栈）：827 逐身份已完成（批 FI）；**V8 配对工件已接通且 567 家族修复本机实证转绿（批 FJ）**——CI 三车道已解除 V8 排除并接入校验过的配对工件，待 dispatch 授权后首跑验证 Linux/Windows target。剩余：bwrap 109（runner 能力/T32——校准脚本已备 `scripts/bwrap_capability_check.sh`）、栈溢出 2 身份（macOS 4MiB/2MiB 均过，复现需 Linux/Windows）、assertion-open 79 + no-evidence 14 的 Linux 侧 triage、Windows pass+leak 311 卫生项、voice-host 的 gstreamer 供给。
+3. 第三批（CI/栈）：827 逐身份已完成（批 FI）；**V8 配对工件已接通，macOS 样本支持修复机制（批 FJ）；567 个历史身份仍需新 CI 对照**——CI 三车道已解除 V8 排除并接入校验过的配对工件，提交推送后由 push 事件首跑验证 Linux/Windows target；手动 dispatch 单独授权。剩余：bwrap 109（runner 能力/T32——校准脚本已备 `scripts/bwrap_capability_check.sh`）、栈溢出 2 身份（macOS 4MiB/2MiB 均过，复现需 Linux/Windows）、assertion-open 79 + no-evidence 14 的 Linux 侧 triage、Windows pass+leak 311 卫生项、voice-host 的 gstreamer 供给。
 4. 第四批：T21–T40 原范围。
 
 本轮无 push、无 tag、无发布；全部为本地提交，按序：`46f2f87e3`、`243ddb5a1`、`78acb6df4`、`0ec9e1b04`(docs)、`9088aca8f`、`e4797d0dc`、`c1a5dd024`(docs) 为第一批；第二批为 `7922659b7`（wire 双轨）、`8d908c96d`（生命周期注入）、`c40172775`（跨版本 parity）、`17c4b28c5`(docs：迁移裁决材料)。
+
+## 2026-10-12 新复审入口
+
+请以 `codex-review-2026-10-12.md` 与 `claude-followup-2026-10-12.md` 为当前增量结论。此前 cap 工具“零执行”仅适用于未完成调用/桥层未发出的工具；native Responses 已收到完整 tool Done 时按既有调度执行，诊断记录不额外执行。完整 Done 后再收到 cap 的新测试原来使用未注册 shell，不能证明可执行工具被阻止。本轮修正该假绿断言，未改变 native 生产调度合同。

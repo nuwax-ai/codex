@@ -1,6 +1,6 @@
 # run6 827 个非 PASS 终态逐身份归因（2026-10-11）
 
-数据：run `38065399719`（SHA `e02dc3771`）三平台 nextest 日志（本地 `/tmp/run6logs/`）。方法：解析每个身份的完整失败块；**只用显式证据**分类——panic/assertion 原文、assert_cmd 错误、SIGABRT 信号行；签名聚类 + 噪声不计数。产物：`ci-run6-failure-ledger.tsv`（827 行，新增 category 与首败摘录列，不含日志正文/凭据）。修正前账本的 538+26=564 个未归类降至 154（140 assertion-open + 14 no-evidence，均为待逐测triage，不是已定性）。
+数据：run `38065399719`（SHA `e02dc3771`）三平台 nextest 日志（本地 `/tmp/run6logs/`）。方法：解析每个身份的完整失败块；**只用显式证据**分类——panic/assertion 原文、assert_cmd 错误、SIGABRT 信号行；签名聚类 + 噪声不计数。产物：`ci-run6-failure-ledger.tsv`（827 行，新增 category 与首败摘录列，不含日志正文/凭据）。修正前账本的 538+26=564 个未归类降至 93（79 assertion-open + 14 no-evidence，均为待逐测triage，不是已定性）。
 
 ## 归因结果（827 = 全部终态）
 
@@ -25,17 +25,17 @@
 
 1. 上游 `97576b179`（#36217，2026-07-30）"Run code mode exclusively through the standalone host" 删除了进程内 V8 runtime provider，默认 provider 只剩：`Feature::CodeModeHost`（或 `disable_in_process_fallback`）→ 依赖外部 `codex-code-mode-host` 二进制的 ProcessOwned；否则 → `DisabledCodeModeSessionProvider`（`core/src/thread_manager.rs`）。
 2. fork 的 CI 车道因 v8 150.4.0 `ptrcomp_sandbox` 预编译归档缺失（既有登记）`--exclude codex-code-mode-host` → 二进制不构建 → 80 个身份显式 `could not locate binary`。
-3. 其余 415 个：`Disabled` provider → `code_mode_available=false` → `effective_tool_mode` 静默回退 `ToolMode::Direct`（`core/src/tools/mod.rs:88`）→ registry 无 `exec` custom tool → 模型的 `exec` 调用得到 `unsupported custom tool call: exec`（`core/src/tools/registry.rs:878`）→ 测试断言崩溃（`first cell yielded`、cell ID 缺失、wiremock 校验计数差一、"Script completed" 缺席、analytics deadline 等多种表象，同一根因）。
+3. 其余 487 个：`Disabled` provider → `code_mode_available=false` → `effective_tool_mode` 静默回退 `ToolMode::Direct`（`core/src/tools/mod.rs:88`）→ registry 无 `exec` custom tool → 模型的 `exec` 调用得到 `unsupported custom tool call: exec`（`core/src/tools/registry.rs:878`）→ 测试断言崩溃（`first cell yielded`、cell ID 缺失、wiremock 校验计数差一、"Script completed" 缺席、analytics deadline 等多种表象，同一根因）。
 4. **本地复现**：`code_mode_can_return_exec_command_output` 在本机以与 CI 完全相同的签名失败（`items.len()==1`，内容即 `unsupported custom tool call: exec`）；`code_mode_can_resume_after_set_timeout` 同。即该家族不是 CI 环境问题，是当前树在"host 二进制缺席"配置下的确定性行为。
 
 **处置**：与既有 V8 配对工件登记同一阻塞——修复=工件配对或车道内构建 host（同一缺口）；不能靠 exclude 测试或假 host 求绿。本机可直接用该家族做修复验证（无需 CI）。
 
 ## 各类别下一步
 
-- **assertion-open（140）**：唯一需要逐测试工程判断的池子；账本首败摘录可直接当 triage 入口。建议先按 binary 分桶（core 为主）抽样。
-- **harness-deadline-explicit（63）**：机制显式（deadline 超时）；逐身份判定 CI 2-vCPU 时序 vs 真缺陷——不贴"并发固有"标签关闭。
+- **assertion-open（79）**：唯一需要逐测试工程判断的池子；账本首败摘录可直接当 triage 入口。建议先按 binary 分桶（core 为主）抽样。
+- **harness-deadline-explicit（53）**：机制显式（deadline 超时）；逐身份判定 CI 2-vCPU 时序 vs 真缺陷——不贴"并发固有"标签关闭。
 - **bwrap（109）**：runner 嵌套命名空间能力；与既有 T32 环境裁决同一事项（自托管/特权 runner 或受控校准）。
-- **stack-overflow（3 行，2 个身份）**：需 Linux/Windows 显式 4MiB 线程复现（既有 batch 3 项）。
+- **stack-overflow（2 个平台身份，同一测试）**：需 Linux/Windows 显式 4MiB 线程复现（既有 batch 3 项）。
 - **windows-powershell（2）/pass+leak（311）**：Windows 环境卫生项。
 
 ## 归因纪律与本地抽验记录
@@ -54,4 +54,8 @@
 
 - 分类只升级证据（从未分类→显式机制），未把任何项标成"通过"或关闭验收。
 - 408→410 的 ubuntu 差异已对齐（SIGABRT 行此前未入解析集，人工补录）。
-- `results.md` 批 S 的"strict missing host 60/60/36"口径被本轮细化：显式 80 + 间接 415 同根因；批 S 的"明确缺host输出块"计数是输出块口径，本账本是身份口径。
+- `results.md` 批 S 的"strict missing host 60/60/36"口径被本轮细化：显式分类 80 + 间接分类 487（其中名称匹配项仍须复核）；批 S 的"明确缺host输出块"计数是输出块口径，本账本是身份口径。
+
+## 2026-10-12 复审修正
+
+官方 openai/codex release 已发布当前 pin 的 sandbox 配对工件；此前 404 来自默认 denoland 下载源。567 是三个平台的历史分类身份（Ubuntu 214 / macOS 211 / Windows 142），不是本机已通过的测试数。macOS 的 143+18+23 个样本支持该机制，不能替代全部 567 个身份的新 CI 验证。487 个间接分类中只有名称或家族推断的条目仍需逐项确认。80 个 explicit 分类行在当前 TSV 中首败摘录为空，缺逐身份日志定位；分类暂保留为历史记录，补齐原始 run/job/完整身份与失败块定位前不能宣称每行可独立复核。
