@@ -123,6 +123,14 @@ jobs:
 
       # The rig bridges are behind the rust-rig feature; the suite that
       # exercises them needs it enabled for codex-core.
+      # The binary-level offline suite (live-tests::nuwax_env_offline)
+      # drives the codex-exec executable and validates its embedded
+      # source-receipt: nextest only builds test targets, so without this
+      # step the executable comes from the restored target cache of an
+      # older commit and the receipt correctly refuses it.
+      - name: Build binary-level test executables
+        run: cargo build --locked -p codex-exec --bin codex-exec
+
       - name: Test (workspace)
         shell: bash
         run: |
@@ -185,6 +193,11 @@ jobs:
         uses: ./.github/actions/setup-rusty-v8
         with:
           target: host
+
+      # Same receipt contract as the matrix lane: build codex-exec for the
+      # binary-level offline suite instead of restoring a stale one.
+      - name: Build binary-level test executables
+        run: cargo build --locked -p codex-exec --bin codex-exec
 
       # voice-host's pinned gstreamer v1_28 API surface needs the 500MB
       # gstreamer Windows installer plus pkg-config wiring, which this lane
