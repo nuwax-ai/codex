@@ -202,6 +202,34 @@ async fn projects_list_by_recency_and_preserve_metadata_timestamps() -> Result<(
     Ok(())
 }
 
+/// Waits for the response to a request, skipping unrelated GLOBAL
+/// notifications. The skills watcher reacts to each new thread cwd from an
+/// asynchronous task, so `skills/changed` may legally arrive while
+/// `thread/start` is still being processed; thread lifecycle notifications
+/// may not, and still fail the caller's ordering assertions.
+async fn read_response_skipping_global_notifications(
+    server: &mut TestAppServer,
+    expected_id: i64,
+) -> Result<codex_app_server_protocol::JSONRPCResponse> {
+    loop {
+        match server.read_next_message().await? {
+            JSONRPCMessage::Response(response)
+                if response.id == RequestId::Integer(expected_id) =>
+            {
+                return Ok(response);
+            }
+            JSONRPCMessage::Notification(notification)
+                if notification.method == "skills/changed" =>
+            {
+                continue;
+            }
+            message => panic!(
+                "request {expected_id} must respond before lifecycle notifications: {message:?}"
+            ),
+        }
+    }
+}
+
 #[tokio::test]
 async fn projects_persist_and_assign_threads() -> Result<()> {
     let responses = create_mock_responses_server_repeating_assistant("Done").await;
@@ -246,10 +274,7 @@ async fn projects_persist_and_assign_threads() -> Result<()> {
             ..Default::default()
         })
         .await?;
-    let JSONRPCMessage::Response(response) = server.read_next_message().await? else {
-        panic!("thread/start must respond before lifecycle notifications");
-    };
-    assert_eq!(response.id, RequestId::Integer(started_id));
+    let response = read_response_skipping_global_notifications(&mut server, started_id).await?;
     let started: ThreadStartResponse = serde_json::from_value(response.result)?;
     let JSONRPCMessage::Notification(thread_started) = server.read_next_message().await? else {
         panic!("thread/start must emit thread/started");
@@ -265,10 +290,7 @@ async fn projects_persist_and_assign_threads() -> Result<()> {
             ..Default::default()
         })
         .await?;
-    let JSONRPCMessage::Response(response) = server.read_next_message().await? else {
-        panic!("ephemeral thread/start must respond before lifecycle notifications");
-    };
-    assert_eq!(response.id, RequestId::Integer(ephemeral_id));
+    let response = read_response_skipping_global_notifications(&mut server, ephemeral_id).await?;
     let ephemeral: ThreadStartResponse = serde_json::from_value(response.result)?;
     let JSONRPCMessage::Notification(thread_started) = server.read_next_message().await? else {
         panic!("ephemeral thread/start must emit thread/started");
