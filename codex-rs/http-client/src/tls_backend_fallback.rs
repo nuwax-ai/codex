@@ -102,7 +102,13 @@ impl DestinationRoute {
 }
 
 pub(crate) fn should_retry_with_rustls(error: &reqwest::Error) -> bool {
-    error.is_connect() && !error.is_timeout() && error.source().is_some_and(has_retryable_tls_error)
+    // The recognized protocol-version marker in the source chain is the
+    // decisive signal. On Linux, OpenSSL surfaces the same alert the macOS
+    // connector reports as kind Connect through hyper_util as kind Request,
+    // so the reqwest kind must not gate the fallback; the marker match is
+    // already narrow and certificate-class failures are actively excluded.
+    // Timeouts never fall back.
+    !error.is_timeout() && error.source().is_some_and(has_retryable_tls_error)
 }
 
 fn has_retryable_tls_error(error: &(dyn Error + 'static)) -> bool {
