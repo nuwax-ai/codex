@@ -19,9 +19,9 @@
 | `9a7cd984b` | Anthropic 路由 cap-usage 矩阵（start/delta 累积、显式零穿透） |
 | `2503ece93` | 压缩 usage 改用 host sampling key（修跨压缩 provider ID 复用少计） |
 
-## 1. 当前 SHA 的 CI（run `38195171566`，HEAD `356052ee2`）
+## 1. 当前 SHA 的 CI（run `38195171566`，HEAD `356052ee2`，已完成：总体 failure）
 
-四 job：`bazel bridge gate (ubuntu)` **success**（该门首次全绿，V8 配对工件/setup 修复生效）；`nextest (ubuntu-latest)` **failure**（完整日志已取回并逐行归因，见下）；`nextest (windows)` **failure**（见下）；macos nextest 本文档写作时仍在运行，完成后补记。注意该 run 测的是 checkpoint `356052ee2`，本轮全部本地提交不在其中。
+四 job：`bazel bridge gate (ubuntu)` **success**（该门首次全绿，V8 配对工件/setup 修复生效）；`nextest (ubuntu-latest)` **failure**（完整日志已取回并逐行归因，见下）；`nextest (windows)` **failure**（见下）；`nextest (macos-latest)` **failure**（见下）。注意该 run 测的是 checkpoint `356052ee2`，本轮全部本地提交不在其中。
 
 ### ubuntu 失败归因（21757 测试身份，197 失败）
 
@@ -45,6 +45,13 @@
 
 - 28 失败（26 唯一身份）分族：insta `@windows` 快照不匹配（codex-tui approvals 弹窗 2、doctor 快照 2）；runner PowerShell `Microsoft.PowerShell.Security` 模块加载失败（codex-uds ACL 2）；其余 app-server plugin/projects/guardian-skills、exec-server junction/desktop、worktree、pty conpty、sandboxing manager 等单例家族（完整清单在 `/tmp/win-failures.txt`，逐身份归因待后续批次；与历史账目 Windows 家族重合）。
 - 196 leaky 集中在 codex-app-server message_processor gateway_oauth 与 v2 套件（PASS+LEAK 既有家族）；20 超时含 codex-windows-sandbox unified_exec legacy tty/cmd 系列（每个 2 次）。
+
+### macOS 结果（21714 运行：21708 过[含 16 slow]、3 失败、3 超时、68 跳过）
+
+- 2 个唯一 FAIL 身份**均在三平台复现**（ubuntu/windows 同名单失败），是基线 `356052ee2` 上真实可复现的产品问题，列为下批优先最小复现对象：
+  - `suite::v2::projects::projects_persist_and_assign_threads`：断言 `ephemeral thread/start must respond before lifecycle notifications`（`app-server/tests/suite/v2/projects.rs:269`）——ephemeral thread/start 响应与生命周期通知的顺序竞争。
+  - `suite::scenarios::guardian_checkpoint_migration_request_history`：insta 快照 `guardian_checkpoint_migration`（line 1664）不匹配。
+- 3 超时（60s）：`suite::v2::account::external_auth_refreshes_on_unauthorized::discovery`（windows 亦超时）、`codex-cli::app_server_daemon` 的 `managed_starts_ensure_one_updater_and_recover_a_missing_one` 与 `restart_applies_saved_updater_preference`（ubuntu 上该族因磁盘耗尽失败，macOS 表现为超时——两种机制待分别归因）。
 
 ## 2. D1-d：cap-partial 身份与序列化总界（第二批优先项）
 
