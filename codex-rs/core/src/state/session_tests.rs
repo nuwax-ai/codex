@@ -268,6 +268,104 @@ async fn keyless_reports_stay_additive() {
 }
 
 #[tokio::test]
+async fn over_budget_provider_response_ids_stay_keyless_additive() {
+    let thread_id = ThreadId::new();
+    let session_id = SessionId::from(ThreadId::new());
+    let usage = |total_tokens| TokenUsage {
+        total_tokens,
+        ..TokenUsage::default()
+    };
+    let mut state = SessionState::new(make_session_configuration_for_tests().await);
+    // Two over-budget ids sharing an entire prefix: neither is stored nor
+    // keyed — never truncated into a prefix join — so both reports stay
+    // additive and the records carry an empty id.
+    let giant_a = "a".repeat(MAX_RESPONSE_IDENTITY_BYTES + 1);
+    let mut giant_b = giant_a.clone();
+    giant_b.push('b');
+    let first = state.record_token_usage(
+        thread_id,
+        "turn-1",
+        session_id,
+        "root".to_string(),
+        /*response_key*/ None,
+        &giant_a,
+        &usage(30),
+    );
+    let second = state.record_token_usage(
+        thread_id,
+        "turn-1",
+        session_id,
+        "root".to_string(),
+        /*response_key*/ None,
+        &giant_b,
+        &usage(12),
+    );
+    assert_eq!(first.response_id, "");
+    assert_eq!(second.response_id, "");
+    assert_eq!(second.thread_token_usage, usage(42));
+    assert!(
+        state.response_token_usage.is_empty(),
+        "over-budget ids must not join the ledger"
+    );
+    // In-budget provider ids keep the legacy replace semantics.
+    let replaced = state.record_token_usage(
+        thread_id,
+        "turn-1",
+        session_id,
+        "root".to_string(),
+        /*response_key*/ None,
+        "resp-normal",
+        &usage(50),
+    );
+    let replay = state.record_token_usage(
+        thread_id,
+        "turn-1",
+        session_id,
+        "root".to_string(),
+        /*response_key*/ None,
+        "resp-normal",
+        &usage(60),
+    );
+    assert_eq!(replaced.response_id, "resp-normal");
+    assert_eq!(replay.thread_token_usage, usage(102));
+}
+
+#[tokio::test]
+async fn host_keyed_reports_join_regardless_of_provider_id_length() {
+    let thread_id = ThreadId::new();
+    let session_id = SessionId::from(ThreadId::new());
+    let usage = |total_tokens| TokenUsage {
+        total_tokens,
+        ..TokenUsage::default()
+    };
+    let mut state = SessionState::new(make_session_configuration_for_tests().await);
+    // A giant provider id cannot unseat a host-keyed sampling's join: the
+    // id degrades to empty in storage while the host key keeps replacing.
+    let giant = "g".repeat(MAX_RESPONSE_IDENTITY_BYTES + 7);
+    state.record_token_usage(
+        thread_id,
+        "turn-1",
+        session_id,
+        "root".to_string(),
+        Some("sampling:turn-1:0"),
+        &giant,
+        &usage(30),
+    );
+    let replay = state.record_token_usage(
+        thread_id,
+        "turn-1",
+        session_id,
+        "root".to_string(),
+        Some("sampling:turn-1:0"),
+        &giant,
+        &usage(45),
+    );
+    assert_eq!(replay.response_id, "");
+    assert_eq!(replay.response_key.as_deref(), Some("sampling:turn-1:0"));
+    assert_eq!(replay.thread_token_usage, usage(45));
+}
+
+#[tokio::test]
 async fn ledger_survives_into_new_turns_without_double_counting() {
     let thread_id = ThreadId::new();
     let session_id = SessionId::from(ThreadId::new());

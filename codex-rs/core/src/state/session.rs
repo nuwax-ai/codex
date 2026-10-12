@@ -75,6 +75,12 @@ pub(crate) enum ResponseLedgerKey {
     ProviderResponseId(String),
 }
 
+/// Provider identity strings longer than this are neither stored nor keyed
+/// whole: truncating one could alias two distinct ids sharing a prefix, so
+/// an over-budget id degrades its report to the existing keyless-additive
+/// semantics instead.
+const MAX_RESPONSE_IDENTITY_BYTES: usize = 256;
+
 impl ResponseLedgerKey {
     /// The key a persisted record joins under: its host key when present,
     /// else its provider response id when non-empty.
@@ -256,7 +262,26 @@ impl SessionState {
         // without one fall back to the provider response id, and keyless
         // reports stay purely additive. A re-report replaces its snapshot,
         // with the turn and thread subtotals re-derived by swapping the old
-        // snapshot for the new one.
+        // snapshot for the new one. Provider identity strings over the
+        // identity budget are neither stored nor keyed — never truncated
+        // into a prefix two distinct ids could share — so their reports
+        // degrade to the keyless-additive semantics with an empty id.
+        let response_id_over_budget = response_id.len() > MAX_RESPONSE_IDENTITY_BYTES;
+        if response_id_over_budget {
+            // Log only the length: the id itself is provider content of
+            // unbounded size and must not enter the log line.
+            tracing::warn!(
+                bytes = response_id.len(),
+                limit = MAX_RESPONSE_IDENTITY_BYTES,
+                "provider response id over the identity budget; report degrades to keyless"
+            );
+        }
+        let response_id = if response_id_over_budget {
+            ""
+        } else {
+            response_id
+        };
+        let response_key = response_key.filter(|key| key.len() <= MAX_RESPONSE_IDENTITY_BYTES);
         let ledger_key = match (response_key, response_id.is_empty()) {
             (Some(key), _) => Some(ResponseLedgerKey::Sampling(key.to_string())),
             (None, false) => Some(ResponseLedgerKey::ProviderResponseId(

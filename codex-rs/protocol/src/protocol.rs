@@ -2444,6 +2444,18 @@ pub enum CapBudgetKind {
     FragmentBytes,
     TurnBytes,
     TurnFragments,
+    /// A provider identity string (item/call/summary key) exceeded the
+    /// per-identity budget: the observation was dropped whole — never
+    /// truncated into a stored key, which could alias distinct identities
+    /// sharing a prefix.
+    IdentityBytes,
+    /// The event's stored identity bytes exceeded the metadata total,
+    /// closing the capture.
+    MetadataBytes,
+    /// The event's JSON-serialized size (escaped text and identities plus
+    /// the structural envelope) exceeded the event total, closing the
+    /// capture.
+    EventBytes,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]

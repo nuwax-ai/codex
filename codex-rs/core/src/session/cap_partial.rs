@@ -10,7 +10,12 @@
 //! collected-then-truncated from the ordinary history after the failure.
 //!
 //! Bounds follow the cap decisions (D1-c): 16 KiB per fragment, 64 KiB and
-//! 32 fragments per sampling, prefix-keep at UTF-8 boundaries. The finished
+//! 32 fragments per sampling, prefix-keep at UTF-8 boundaries. Identity and
+//! serialization totals (D1-d) bound what those text budgets did not cover:
+//! each provider identity string up to 256 bytes (over-budget identities
+//! drop whole, never truncated into aliased keys), 8 KiB of stored identity
+//! bytes per event, and a 128 KiB ceiling on the event's JSON serialization
+//! accounted on the escaped form as text is stored. The finished
 //! [`CapPartialEvent`] is diagnostic evidence only — fragments never become
 //! executable tool calls, synthesized completions, or model instructions,
 //! and without a verified tokenizer the recorded token evidence stays
@@ -31,6 +36,22 @@ use std::collections::HashSet;
 const MAX_FRAGMENT_BYTES: usize = 16 * 1024;
 const MAX_TURN_BYTES: usize = 64 * 1024;
 const MAX_FRAGMENTS: usize = 32;
+/// Per-identity budget for provider-minted streaming identities (item ids,
+/// tool call ids, summary section keys). An identity over this budget is
+/// dropped whole and never stored or keyed: truncating it into a stored key
+/// could alias two distinct identities that share a prefix.
+const MAX_IDENTITY_BYTES: usize = 256;
+/// Total raw bytes of stored identity strings (fragment keys plus item ids)
+/// in one event.
+const MAX_EVENT_METADATA_BYTES: usize = 8 * 1024;
+/// Hard ceiling on the event's JSON serialization: escaped fragment text
+/// plus escaped identities plus the structural envelope.
+const MAX_EVENT_SERIALIZED_BYTES: usize = 128 * 1024;
+/// Serialization headroom reserved for structural fields — field names,
+/// punctuation, the budget block, and a full usage report — across the
+/// worst case of 32 fragments (~90 bytes of structure each). Counted
+/// identities and text do not draw from this reserve.
+const EVENT_ENVELOPE_BYTES: usize = 4096;
 
 /// Incremental bounded capture for one sampling attempt.
 ///
@@ -47,6 +68,15 @@ pub(crate) struct CapPartialCapture {
     delta_keys: HashSet<String>,
     stored_bytes: Vec<usize>,
     total_bytes: usize,
+    /// Raw bytes of stored identity strings, against the event metadata
+    /// total.
+    identity_bytes: usize,
+    /// Escaped-JSON bytes the stored identities contribute to the event
+    /// serialization total.
+    serialized_identity_bytes: usize,
+    /// Escaped-JSON bytes the stored fragment text contributes to the event
+    /// serialization total.
+    serialized_text_bytes: usize,
     enforced: Vec<CapBudgetKind>,
     /// Set once a turn-level budget is exhausted; every further observation
     /// is dropped without storing. The reason stays attached so content
@@ -198,10 +228,29 @@ impl CapPartialCapture {
         if self.delta_keys.contains(item_id) {
             return;
         }
+        // Gate the item id before composing the section key, so an
+        // over-budget id never reaches the `format!`.
+        if item_id.len() > MAX_IDENTITY_BYTES {
+            self.record_once(CapBudgetKind::IdentityBytes);
+            return;
+        }
         let key = format!("{item_id}:summary:{summary_index}");
         self.observe_whole(CapPartialFragmentKind::Reasoning, &key, text);
         if let Some(&index) = self.positions.get(&key) {
+            // Swap the placeholder (the section key) for the real item id,
+            // adjusting the identity accounting by the exact byte delta.
+            let previous_len = self.fragments[index]
+                .item_id
+                .as_ref()
+                .map_or(0, String::len);
+            let previous_escaped = self.fragments[index]
+                .item_id
+                .as_ref()
+                .map_or(0, |id| json_escaped_len(id));
             self.fragments[index].item_id = Some(item_id.to_string());
+            self.identity_bytes += item_id.len().saturating_sub(previous_len);
+            self.serialized_identity_bytes +=
+                json_escaped_len(item_id).saturating_sub(previous_escaped);
             self.positions.entry(item_id.to_string()).or_insert(index);
         }
     }
@@ -209,7 +258,7 @@ impl CapPartialCapture {
     /// Finishes the capture for a sampling that exhausted its cap, or
     /// `None` when nothing assistant-produced preceded the cap.
     pub(crate) fn finish(
-        self,
+        mut self,
         turn_id: &str,
         response_key: &str,
         reported_usage: Option<&ReportedResponseUsage>,
@@ -217,9 +266,25 @@ impl CapPartialCapture {
         if self.fragments.is_empty() {
             return None;
         }
+        // Host-minted keys are bounded by construction (UUID-derived); if
+        // one ever exceeds the identity budget it is emitted empty — never
+        // truncated, which could alias a different key sharing the prefix —
+        // and the drop stays observable in the enforced caps.
+        let turn_id = if turn_id.len() > MAX_IDENTITY_BYTES {
+            self.record_once(CapBudgetKind::IdentityBytes);
+            String::new()
+        } else {
+            turn_id.to_string()
+        };
+        let response_key = if response_key.len() > MAX_IDENTITY_BYTES {
+            self.record_once(CapBudgetKind::IdentityBytes);
+            String::new()
+        } else {
+            response_key.to_string()
+        };
         Some(CapPartialEvent {
-            turn_id: turn_id.to_string(),
-            response_key: response_key.to_string(),
+            turn_id,
+            response_key,
             reported_usage: reported_usage.cloned(),
             budget: CapPartialBudget {
                 fragment_count: self.fragments.len() as u32,
@@ -240,21 +305,50 @@ impl CapPartialCapture {
             self.closed = Some(CapBudgetKind::TurnFragments);
             return None;
         }
+        // Identity gate: an over-budget identity is refused whole — never
+        // truncated into storage — while the capture stays open for other
+        // identities. Checked before any clone of the key.
+        if key.len() > MAX_IDENTITY_BYTES {
+            self.record_once(CapBudgetKind::IdentityBytes);
+            return None;
+        }
+        let item_id = item_id_for(kind, key);
+        let identity_delta = key.len() + item_id.as_ref().map_or(0, String::len);
+        let serialized_delta =
+            json_escaped_len(key) + item_id.as_ref().map_or(0, |id| json_escaped_len(id));
+        if self.identity_bytes + identity_delta > MAX_EVENT_METADATA_BYTES {
+            self.record_once(CapBudgetKind::MetadataBytes);
+            self.closed = Some(CapBudgetKind::MetadataBytes);
+            return None;
+        }
+        if self.serialized_identity_bytes
+            + self.serialized_text_bytes
+            + serialized_delta
+            + EVENT_ENVELOPE_BYTES
+            > MAX_EVENT_SERIALIZED_BYTES
+        {
+            self.record_once(CapBudgetKind::EventBytes);
+            self.closed = Some(CapBudgetKind::EventBytes);
+            return None;
+        }
         let index = self.fragments.len();
         self.fragments.push(CapPartialFragment {
             fragment_key: key.to_string(),
             kind,
-            item_id: item_id_for(kind, key),
+            item_id,
             text: String::new(),
             truncated: false,
         });
         self.stored_bytes.push(0);
+        self.identity_bytes += identity_delta;
+        self.serialized_identity_bytes += serialized_delta;
         self.positions.insert(key.to_string(), index);
         Some(index)
     }
 
     /// Appends `text` to fragment `index`, keeping at most the fragment and
-    /// turn byte budgets and dropping everything past them.
+    /// turn byte budgets plus the event serialization total, dropping
+    /// everything past them.
     fn append_bounded(&mut self, index: usize, text: &str) {
         if text.is_empty() {
             return;
@@ -273,18 +367,30 @@ impl CapPartialCapture {
         }
         let fragment_remaining = MAX_FRAGMENT_BYTES - self.stored_bytes[index];
         let turn_remaining = MAX_TURN_BYTES.saturating_sub(self.total_bytes);
-        let binding = fragment_remaining.min(turn_remaining);
-        let stored = match prefix_at_char_boundary(text, binding) {
+        let raw_binding = fragment_remaining.min(turn_remaining);
+        let candidate = match prefix_at_char_boundary(text, raw_binding) {
             Some(prefix) => prefix,
             None => text,
         };
-        let fits = stored.len() == text.len();
+        // The serialization total applies to the escaped form, so a delta of
+        // control characters can bind earlier than the raw budgets.
+        let serialized_remaining = MAX_EVENT_SERIALIZED_BYTES
+            .saturating_sub(EVENT_ENVELOPE_BYTES)
+            .saturating_sub(self.serialized_identity_bytes)
+            .saturating_sub(self.serialized_text_bytes);
+        let (stored, serialized_fit) =
+            match escaped_prefix_at_char_boundary(candidate, serialized_remaining) {
+                Some(prefix) => (prefix, false),
+                None => (candidate, true),
+            };
+        let fits_raw = stored.len() == text.len();
         self.fragments[index].text.push_str(stored);
         self.stored_bytes[index] += stored.len();
         self.total_bytes += stored.len();
-        if !fits {
+        self.serialized_text_bytes += json_escaped_len(stored);
+        if !fits_raw {
             self.fragments[index].truncated = true;
-            // The smaller remaining budget is the one the text exceeded.
+            // The smaller raw remaining budget is the one the text exceeded.
             let cap = if fragment_remaining <= turn_remaining {
                 CapBudgetKind::FragmentBytes
             } else {
@@ -296,11 +402,22 @@ impl CapPartialCapture {
                 self.record_once(CapBudgetKind::TurnBytes);
             }
         }
+        if !serialized_fit {
+            self.fragments[index].truncated = true;
+            self.record_once(CapBudgetKind::EventBytes);
+            self.closed = Some(CapBudgetKind::EventBytes);
+        }
         if self.total_bytes >= MAX_TURN_BYTES {
             self.closed = Some(CapBudgetKind::TurnBytes);
             // Closing on the turn budget is itself an enforced cap, even
             // when no further content ever arrives to record the drop.
             self.record_once(CapBudgetKind::TurnBytes);
+        }
+        if self.serialized_identity_bytes + self.serialized_text_bytes + EVENT_ENVELOPE_BYTES
+            >= MAX_EVENT_SERIALIZED_BYTES
+        {
+            self.closed = Some(CapBudgetKind::EventBytes);
+            self.record_once(CapBudgetKind::EventBytes);
         }
     }
 
@@ -367,6 +484,49 @@ fn prefix_at_char_boundary(text: &str, max_bytes: usize) -> Option<&str> {
         return None;
     }
     let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    Some(&text[..end])
+}
+
+/// Escaped size `text` occupies inside a serde_json string literal. Matches
+/// serde_json's table exactly: quotes and backslashes double, the five
+/// named control escapes double, other control characters expand to
+/// `\u00XX`, and non-ASCII bytes pass through unescaped.
+fn json_escaped_len(text: &str) -> usize {
+    text.bytes()
+        .map(|byte| match byte {
+            b'"' | b'\\' => 2,
+            0x08 | 0x09 | 0x0A | 0x0C | 0x0D => 2,
+            0x00..=0x1F => 6,
+            _ => 1,
+        })
+        .sum()
+}
+
+/// Returns the longest prefix of `text` whose escaped JSON size fits
+/// `max_escaped`, cut at a char boundary, or `None` when the whole text
+/// fits.
+fn escaped_prefix_at_char_boundary(text: &str, max_escaped: usize) -> Option<&str> {
+    let mut escaped = 0usize;
+    let mut end = 0usize;
+    for (index, byte) in text.bytes().enumerate() {
+        let cost = match byte {
+            b'"' | b'\\' => 2,
+            0x08 | 0x09 | 0x0A | 0x0C | 0x0D => 2,
+            0x00..=0x1F => 6,
+            _ => 1,
+        };
+        if escaped + cost > max_escaped {
+            break;
+        }
+        escaped += cost;
+        end = index + 1;
+    }
+    if end == text.len() {
+        return None;
+    }
     while end > 0 && !text.is_char_boundary(end) {
         end -= 1;
     }

@@ -357,3 +357,204 @@ fn idless_whole_items_get_distinct_keys() {
         event.fragments[1].fragment_key
     );
 }
+
+#[test]
+fn over_budget_identity_drops_whole_and_capture_stays_open() {
+    let mut capture = CapPartialCapture::default();
+    let giant = "i".repeat(MAX_IDENTITY_BYTES + 1);
+    capture.observe_delta(
+        CapPartialFragmentKind::AssistantText,
+        &giant,
+        "never stored",
+    );
+    // Repeated over-budget observations record the cap once.
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, &giant, "still never");
+    // A second giant id sharing the first's entire prefix: neither is
+    // stored, so neither can alias the other through a truncated key.
+    let mut same_prefix = giant.clone();
+    same_prefix.push('x');
+    capture.observe_delta(
+        CapPartialFragmentKind::AssistantText,
+        &same_prefix,
+        "no alias",
+    );
+    // The capture stays open for in-budget identities.
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-1", "kept");
+    let event = finish(capture);
+    assert_eq!(
+        event
+            .fragments
+            .iter()
+            .map(|fragment| fragment.fragment_key.as_str())
+            .collect::<Vec<_>>(),
+        vec!["item-1"]
+    );
+    assert_eq!(event.fragments[0].text, "kept");
+    assert_eq!(
+        event.budget.enforced_caps,
+        vec![CapBudgetKind::IdentityBytes]
+    );
+}
+
+#[test]
+fn identity_exactly_at_budget_is_kept() {
+    let mut capture = CapPartialCapture::default();
+    // Multibyte id of exactly 256 bytes: kept whole, no truncation.
+    let exact = "я".repeat(MAX_IDENTITY_BYTES / 2);
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, &exact, "text");
+    let event = finish(capture);
+    assert_eq!(event.fragments.len(), 1);
+    assert_eq!(event.fragments[0].fragment_key.len(), MAX_IDENTITY_BYTES);
+    assert!(event.budget.enforced_caps.is_empty());
+}
+
+#[test]
+fn over_budget_summary_item_id_drops_without_capture() {
+    let mut capture = CapPartialCapture::default();
+    let giant = "s".repeat(MAX_IDENTITY_BYTES + 1);
+    capture.observe_reasoning_summary(&giant, /*summary_index*/ 0, "section");
+    capture.observe_reasoning_summary("reasoning-1", /*summary_index*/ 0, "kept");
+    let event = finish(capture);
+    assert_eq!(
+        event
+            .fragments
+            .iter()
+            .map(|fragment| fragment.fragment_key.as_str())
+            .collect::<Vec<_>>(),
+        vec!["reasoning-1:summary:0"]
+    );
+    assert_eq!(
+        event.budget.enforced_caps,
+        vec![CapBudgetKind::IdentityBytes]
+    );
+}
+
+#[test]
+fn composed_summary_key_over_budget_degrades_to_whole_item() {
+    let mut capture = CapPartialCapture::default();
+    // In budget as a bare item id, but the composed section key
+    // (`{id}:summary:{index}`) exceeds the identity budget.
+    let long_id = "r".repeat(MAX_IDENTITY_BYTES - 5);
+    capture.observe_reasoning_summary(&long_id, /*summary_index*/ 0, "section zero");
+    // The rejected section key never marks the parent observed, so the
+    // whole completion still captures once, under the item id.
+    capture.observe_item_done(&ResponseItem::Reasoning {
+        id: Some(ResponseItemId::from_server(long_id.clone())),
+        summary: vec![
+            codex_protocol::models::ReasoningItemReasoningSummary::SummaryText {
+                text: "section zero".to_string(),
+            },
+        ],
+        content: None,
+        encrypted_content: None,
+        internal_chat_message_metadata_passthrough: None,
+    });
+    let event = finish(capture);
+    assert_eq!(
+        event
+            .fragments
+            .iter()
+            .map(|fragment| (fragment.fragment_key.as_str(), fragment.text.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(long_id.as_str(), "section zero")]
+    );
+    assert_eq!(
+        event.budget.enforced_caps,
+        vec![CapBudgetKind::IdentityBytes]
+    );
+}
+
+#[test]
+fn metadata_total_closes_the_capture() {
+    let mut capture = CapPartialCapture::default();
+    // Each accepted identity stores its key twice (fragment key + item id);
+    // at ~250 bytes per id the 8 KiB metadata total closes before the
+    // 32-fragment cap.
+    let id = |index: usize| format!("id-{index:03}-{}", "k".repeat(244));
+    for index in 0..17 {
+        capture.observe_delta(CapPartialFragmentKind::AssistantText, &id(index), "x");
+    }
+    assert_eq!(capture.fragments.len(), 16);
+    assert_eq!(capture.closed, Some(CapBudgetKind::MetadataBytes));
+    let event = finish(capture);
+    assert!(event.fragments.iter().all(|f| f.text == "x"));
+    assert_eq!(
+        event.budget.enforced_caps,
+        vec![CapBudgetKind::MetadataBytes]
+    );
+}
+
+#[test]
+fn serialized_total_binds_expandable_text_before_raw_budgets() {
+    let mut capture = CapPartialCapture::default();
+    // Control bytes expand six-fold in JSON, so the 128 KiB event ceiling
+    // binds well before the 64 KiB raw text budget.
+    let chunk = "\u{1}".repeat(4096);
+    for index in 0..20 {
+        capture.observe_delta(
+            CapPartialFragmentKind::AssistantText,
+            &format!("item-{index}"),
+            &chunk,
+        );
+    }
+    let event = finish(capture);
+    // Five chunks stored whole, the sixth cut partway by the serialization
+    // total; the exact sixth-chunk prefix depends on the stored identities.
+    let total_bytes = event.budget.total_bytes as usize;
+    assert!(
+        total_bytes > 5 * 4096 && total_bytes < 6 * 4096,
+        "total_bytes = {total_bytes}"
+    );
+    assert!(
+        event
+            .budget
+            .enforced_caps
+            .contains(&CapBudgetKind::EventBytes),
+        "enforced: {:?}",
+        event.budget.enforced_caps
+    );
+    // The finished event's real serialization must respect the ceiling.
+    let serialized = serde_json::to_string(&event).expect("event serializes in tests");
+    assert!(
+        serialized.len() <= MAX_EVENT_SERIALIZED_BYTES,
+        "serialized {} bytes over the {} ceiling",
+        serialized.len(),
+        MAX_EVENT_SERIALIZED_BYTES
+    );
+    assert!(
+        (event.budget.total_bytes as usize) < MAX_TURN_BYTES,
+        "the raw text budget never bound"
+    );
+}
+
+#[test]
+fn escaped_len_accounting_matches_serde_json_exactly() {
+    let torture = "plain \"quoted\" back\\slash \u{0}\u{1}\u{8}\u{9}\u{a}\u{c}\u{d}\u{1f} unicode 日本語 😀 tail";
+    let serialized = serde_json::to_string(torture).expect("tests may expect");
+    assert_eq!(json_escaped_len(torture) + 2, serialized.len());
+    // The cut helper never exceeds its budget and always returns a prefix.
+    for budget in [0, 1, 5, 13, 30, torture.len() - 1] {
+        if let Some(prefix) = escaped_prefix_at_char_boundary(torture, budget) {
+            assert!(json_escaped_len(prefix) <= budget);
+            assert!(torture.starts_with(prefix));
+        }
+    }
+}
+
+#[test]
+fn over_budget_host_keys_emit_empty_not_truncated() {
+    let mut capture = CapPartialCapture::default();
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-1", "text");
+    let giant_turn = "t".repeat(MAX_IDENTITY_BYTES + 1);
+    let giant_key = "k".repeat(MAX_IDENTITY_BYTES + 40);
+    let event = capture
+        .finish(&giant_turn, &giant_key, None)
+        .expect("fragments were captured");
+    // Degenerate empty values, never prefixes of the over-budget keys.
+    assert_eq!(event.turn_id, "");
+    assert_eq!(event.response_key, "");
+    assert_eq!(
+        event.budget.enforced_caps,
+        vec![CapBudgetKind::IdentityBytes]
+    );
+}
