@@ -56,6 +56,8 @@ pub(crate) fn write_manifest(
         // codex-exec declares no package features. This says nothing about
         // codex-core/rust-rig or workspace feature unification.
         package_features: &[],
+        tree_status: &source_identity::tree_status(&root)
+            .unwrap_or_else(|_| r#"{"entries":0,"head":[],"capture":"unavailable"}"#.to_string()),
     };
     let validation = match output {
         Ok(bytes) => validate_receipt(&bytes, Some(&expected)),
@@ -128,6 +130,8 @@ struct BuildReceipt {
     git_sha: String,
     git_dirty: String,
     source: SourceReceipt,
+    #[serde(default)]
+    tree_status: Option<serde_json::Value>,
     target: String,
     profile: String,
     features: PackageFeatures,
@@ -161,6 +165,10 @@ struct ReceiptExpectation<'a> {
     target: &'a str,
     profile: &'a str,
     package_features: &'a [String],
+    /// Current bounded `git status --porcelain` snapshot; compared against
+    /// the build-time snapshot embedded in the receipt so a mid-run source
+    /// mutation is named, not just hash-mismatched.
+    tree_status: &'a str,
 }
 
 fn failed_receipt(status: &str, reason: &str) -> serde_json::Value {
@@ -224,9 +232,20 @@ fn validate_receipt(bytes: &[u8], expected: Option<&ReceiptExpectation<'_>>) -> 
     let package_matches = receipt.target == expected.target
         && receipt.profile == expected.profile
         && receipt.features.enabled == expected.package_features;
+    let current_tree_status: serde_json::Value = serde_json::from_str(expected.tree_status)
+        .unwrap_or_else(|_| serde_json::Value::String(expected.tree_status.to_string()));
+    let source_mismatch_detail = format!(
+        "source revision/content mismatch: embedded git {} source {} vs current git {} source {}; tree_status embedded {} vs current {}",
+        &receipt.git_sha[..12.min(receipt.git_sha.len())],
+        &receipt.source.sha256[..12.min(receipt.source.sha256.len())],
+        &expected.git_sha[..12.min(expected.git_sha.len())],
+        &expected.source_sha256[..12.min(expected.source_sha256.len())],
+        serde_json::to_string(&receipt.tree_status).unwrap_or_default(),
+        serde_json::to_string(&current_tree_status).unwrap_or_default(),
+    );
     serde_json::json!({
         "status": if source_matches && package_matches { "source_and_package_validated" } else { "mismatch" },
-        "reason": if !source_matches { "source revision/content mismatch" } else if !package_matches { "target/profile/package feature mismatch" } else { "resolved dependency feature graph unknown" },
+        "reason": if !source_matches { &source_mismatch_detail } else if !package_matches { "target/profile/package feature mismatch" } else { "resolved dependency feature graph unknown" },
         "source_validated": source_matches,
         "package_configuration_validated": package_matches,
         "build_configuration_validated": false,

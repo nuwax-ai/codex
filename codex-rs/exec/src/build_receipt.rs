@@ -10,9 +10,12 @@ const TARGET: &str = env!("EXEC_BUILD_TARGET");
 const PROFILE: &str = env!("EXEC_BUILD_PROFILE");
 const FEATURES: &str = env!("EXEC_BUILD_FEATURES");
 const SOURCE_FINGERPRINT: &str = env!("EXEC_BUILD_SOURCE_FINGERPRINT");
+const TREE_STATUS: &str = env!("EXEC_BUILD_TREE_STATUS");
 
 /// The receipt as a JSON object; the `--build-receipt` output shape.
 pub fn value() -> Value {
+    let tree_status = serde_json::from_str::<Value>(TREE_STATUS)
+        .unwrap_or_else(|_| Value::String(TREE_STATUS.to_string()));
     json!({
         "format": "codex-exec-build-receipt",
         "version": 1,
@@ -22,6 +25,7 @@ pub fn value() -> Value {
             "algorithm": env!("EXEC_BUILD_SOURCE_ALGORITHM"),
             "sha256": SOURCE_FINGERPRINT,
         },
+        "tree_status": tree_status,
         "target": TARGET,
         "profile": PROFILE,
         "features": {

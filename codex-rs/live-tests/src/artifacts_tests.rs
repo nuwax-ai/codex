@@ -7,6 +7,7 @@ fn expected() -> ReceiptExpectation<'static> {
         target: "x86_64-unknown-linux-gnu",
         profile: "debug",
         package_features: &[],
+        tree_status: r#"{"entries":0,"head":[]}"#,
     }
 }
 

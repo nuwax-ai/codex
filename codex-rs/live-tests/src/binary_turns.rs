@@ -44,9 +44,17 @@ pub fn codex_exec_binary() -> Result<PathBuf> {
     let target = std::env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| root.join("codex-rs").join("target"));
+    // Windows executables carry the .exe suffix the resolver would otherwise
+    // miss (CI run 38249075905: the build succeeded, the finder found
+    // nothing).
+    let binary_name = if cfg!(windows) {
+        "codex-exec.exe"
+    } else {
+        "codex-exec"
+    };
     let binary = ["debug", "release"]
         .iter()
-        .map(|profile| target.join(profile).join("codex-exec"))
+        .map(|profile| target.join(profile).join(binary_name))
         .find(|path| path.is_file())
         .ok_or_else(|| {
             anyhow!(

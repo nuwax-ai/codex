@@ -149,6 +149,44 @@ pub fn git_output(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     )
 }
 
+/// Bounded `git status --porcelain` snapshot as a single-line JSON object,
+/// shared by the build-time receipt and the validation-time comparison so a
+/// source-content mismatch can name the tree difference. Hand-assembled:
+/// build scripts do not carry serde_json.
+pub fn tree_status(root: &Path) -> Result<String, String> {
+    let output = git_output(root, &["status", "--porcelain"])?;
+    let text = String::from_utf8(output).map_err(|_| "status is not UTF-8".to_string())?;
+    let entries = text.lines().filter(|line| !line.is_empty()).count();
+    let head: Vec<String> = text
+        .lines()
+        .filter(|line| !line.is_empty())
+        .take(32)
+        .map(|line| format!("\"{}\"", json_escape(line)))
+        .collect();
+    Ok(format!(
+        "{{\"entries\":{entries},\"head\":[{}]}}",
+        head.join(",")
+    ))
+}
+
+fn json_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            character if (character as u32) < 0x20 => {
+                escaped.push_str(&format!("\\u{:04x}", character as u32))
+            }
+            character => escaped.push(character),
+        }
+    }
+    escaped
+}
+
 pub fn source_identity(root: &Path) -> Result<SourceIdentity, String> {
     let revision = git_output(root, &["rev-parse", "HEAD"])?;
     let git_sha = std::str::from_utf8(&revision)

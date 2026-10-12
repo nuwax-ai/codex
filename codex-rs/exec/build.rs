@@ -88,6 +88,15 @@ fn main() {
         "cargo:rustc-env=EXEC_BUILD_SOURCE_ALGORITHM={}",
         build_source_identity::SOURCE_ALGORITHM
     );
+    // Bounded `git status --porcelain` snapshot, embedded in the receipt so a
+    // mid-run source mutation can be NAMED at validation time (build-time vs
+    // test-time status) instead of surfacing as a bare hash mismatch. Build
+    // scripts avoid serde_json; escape just enough for a JSON string array.
+    let tree_status = root
+        .as_ref()
+        .and_then(|root| build_source_identity::tree_status(root).ok())
+        .unwrap_or_else(|| r#"{"entries":0,"head":[],"capture":"unavailable"}"#.to_string());
+    println!("cargo:rustc-env=EXEC_BUILD_TREE_STATUS={tree_status}");
     for name in ["TARGET", "PROFILE"] {
         println!("cargo:rerun-if-env-changed={name}");
         let value = std::env::var(name).unwrap_or_else(|_| "unknown".into());
