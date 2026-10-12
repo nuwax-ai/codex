@@ -2711,7 +2711,11 @@ async fn try_run_sampling_request(
                         // error stays the turn's terminal even if accounting
                         // fails here.
                         if let Err(accounting_error) = sess
-                            .update_token_usage_info(&turn_context, Some(&usage))
+                            .record_token_usage_info(
+                                &turn_context,
+                                &step_context.settings,
+                                Some(&usage),
+                            )
                             .await
                         {
                             warn!(
@@ -2719,6 +2723,7 @@ async fn try_run_sampling_request(
                                 "failed to account a capped sampling's usage"
                             );
                         }
+                        sess.send_token_count_event(&turn_context).await;
                     }
                     if turn_context
                         .config

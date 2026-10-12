@@ -2,6 +2,7 @@
 
 use super::*;
 use codex_protocol::ResponseItemId;
+use pretty_assertions::assert_eq;
 
 fn finish(capture: CapPartialCapture) -> CapPartialEvent {
     capture
@@ -66,14 +67,13 @@ fn fragment_byte_ceiling_truncates_at_utf8_boundary_and_drops_excess() {
     );
     assert_eq!(event.budget.total_bytes as usize, MAX_FRAGMENT_BYTES - 2);
 
-    // Excess bytes after the budget are dropped without growing memory:
-    // a later delta first fills the bytes left under the ceiling, then the
-    // rest is dropped and the fragment is marked truncated at the ceiling.
+    // Once any bytes are dropped, later deltas cannot fill the spare UTF-8
+    // bytes: that would splice a suffix onto the captured prefix.
     let mut capture = CapPartialCapture::default();
     capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-1", &first);
     capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-1", "late tail");
     let event = finish(capture);
-    assert_eq!(event.fragments[0].text.len(), MAX_FRAGMENT_BYTES);
+    assert_eq!(event.fragments[0].text, "a".repeat(MAX_FRAGMENT_BYTES - 2));
     assert!(event.fragments[0].truncated);
     // A further delta to the saturated fragment drops without growing.
     let mut capture = CapPartialCapture::default();
@@ -83,9 +83,35 @@ fn fragment_byte_ceiling_truncates_at_utf8_boundary_and_drops_excess() {
     // A different fragment still captures while the full one drops.
     capture.observe_delta(CapPartialFragmentKind::AssistantText, "item-2", "other");
     let event = finish(capture);
-    assert_eq!(event.fragments[0].text.len(), MAX_FRAGMENT_BYTES);
+    assert_eq!(event.fragments[0].text, "a".repeat(MAX_FRAGMENT_BYTES - 2));
     assert!(event.fragments[0].truncated);
     assert_eq!(event.fragments[1].text, "other");
+}
+
+#[test]
+fn utf8_turn_budget_cut_closes_before_later_ascii_or_fragments() {
+    let mut capture = CapPartialCapture::default();
+    for index in 0..3 {
+        capture.observe_delta(
+            CapPartialFragmentKind::AssistantText,
+            &format!("full-{index}"),
+            &"x".repeat(MAX_FRAGMENT_BYTES),
+        );
+    }
+    capture.observe_delta(
+        CapPartialFragmentKind::AssistantText,
+        "almost-full",
+        &"x".repeat(MAX_FRAGMENT_BYTES - 2),
+    );
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "last", "😀");
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "last", "ab");
+    capture.observe_delta(CapPartialFragmentKind::AssistantText, "late", "z");
+    let event = finish(capture);
+    assert_eq!(event.budget.total_bytes as usize, MAX_TURN_BYTES - 2);
+    assert_eq!(event.fragments.len(), 5);
+    assert_eq!(event.fragments[4].text, "");
+    assert!(event.fragments[4].truncated);
+    assert_eq!(event.budget.enforced_caps, vec![CapBudgetKind::TurnBytes]);
 }
 
 #[test]

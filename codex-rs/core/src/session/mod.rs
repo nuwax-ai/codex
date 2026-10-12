@@ -4777,9 +4777,7 @@ impl Session {
         response_id: Option<&str>,
         reported: Option<&codex_protocol::protocol::ReportedResponseUsage>,
     ) -> Option<TokenUsage> {
-        let Some(reported) = reported else {
-            return None;
-        };
+        let reported = reported?;
         let usage = TokenUsage {
             input_tokens: reported.counts.input_tokens.unwrap_or_default(),
             cached_input_tokens: reported.counts.cached_input_tokens.unwrap_or_default(),

@@ -1,20 +1,32 @@
 //! Verifies observed Responses API usage is durably recorded in rollout history.
 
 use anyhow::Result;
+use codex_core::RecoverTurnRequest;
+use codex_core::StartIfIdleSubmission;
+use codex_core::TurnInputRequest;
 use codex_history::RolloutItem;
 use codex_protocol::SessionId;
+use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::TokenUsageRecord;
+use codex_protocol::turn_input::SuspendTurnOutcome;
+use codex_protocol::user_input::UserInput;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed_with_tokens;
 use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_response_created;
+use core_test_support::responses::mount_response_sequence;
+use core_test_support::responses::mount_sse_once;
 use core_test_support::responses::mount_sse_sequence;
 use core_test_support::responses::sse;
+use core_test_support::responses::sse_response;
 use core_test_support::responses::start_mock_server;
 use core_test_support::skip_if_no_network;
 use core_test_support::test_codex::test_codex;
+use core_test_support::wait_for_event;
 use pretty_assertions::assert_eq;
 use serde_json::json;
+use std::sync::Arc;
+use std::time::Duration;
 
 fn token_usage_records(path: &std::path::Path) -> Vec<TokenUsageRecord> {
     std::fs::read_to_string(path)
@@ -26,6 +38,121 @@ fn token_usage_records(path: &std::path::Path) -> Vec<TokenUsageRecord> {
             _ => None,
         })
         .collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn recovered_turn_keeps_prior_sampling_usage_on_a_new_session() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = start_mock_server().await;
+    let plan_args =
+        json!({"plan": [{"step": "keep sampling", "status": "in_progress"}]}).to_string();
+    let requests = mount_response_sequence(
+        &server,
+        vec![
+            sse_response(sse(vec![
+                ev_response_created("response-reused"),
+                ev_function_call("call-before-recovery", "update_plan", &plan_args),
+                ev_completed_with_tokens("response-reused", /*total_tokens*/ 30),
+            ])),
+            sse_response(sse(vec![ev_completed_with_tokens(
+                "delayed", /*total_tokens*/ 100,
+            )]))
+            .set_delay(Duration::from_secs(/*secs*/ 60)),
+        ],
+    )
+    .await;
+    let test = test_codex().build_with_auto_env(&server).await?;
+    let submission = test
+        .codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: "recover this unfinished turn".to_string(),
+            text_elements: Vec::new(),
+        }]))
+        .await?;
+    let codex_core::TurnInputSubmission::Started { turn_id } = submission else {
+        panic!("expected a started turn");
+    };
+    wait_for_event(&test.codex, |event| {
+        matches!(event, EventMsg::TokenCount(event)
+        if event.info.as_ref().is_some_and(|info| info.last_token_usage.total_tokens == 30))
+    })
+    .await;
+    tokio::time::timeout(Duration::from_secs(/*secs*/ 10), async {
+        while requests.requests().len() < 2 {
+            tokio::time::sleep(Duration::from_millis(/*millis*/ 10)).await;
+        }
+    })
+    .await
+    .expect("second sampling reached the server before suspension");
+    assert_eq!(
+        test.codex.suspend_turn_and_shutdown().await?,
+        SuspendTurnOutcome::Suspended {
+            turn_id: turn_id.clone(),
+        }
+    );
+    let rollout_path = test.codex.rollout_path().expect("rollout path");
+    test.thread_manager
+        .remove_thread(&test.session_configured.thread_id)
+        .await
+        .expect("remove suspended thread");
+
+    let recovery_server = start_mock_server().await;
+    mount_sse_once(
+        &recovery_server,
+        sse(vec![
+            ev_response_created("response-reused"),
+            ev_assistant_message("recovered-message", "done"),
+            ev_completed_with_tokens("response-reused", /*total_tokens*/ 40),
+        ]),
+    )
+    .await;
+    let cwd = test.config.cwd.clone();
+    let mut resume_builder = test_codex().with_config(move |config| config.cwd = cwd);
+    if let Some(url) = test.executor_environment().exec_server_url() {
+        resume_builder = resume_builder.with_exec_server_url(url);
+    }
+    let resumed = resume_builder
+        .resume(
+            &recovery_server,
+            Arc::clone(&test.home),
+            rollout_path.clone(),
+        )
+        .await?;
+    assert_eq!(
+        resumed
+            .codex
+            .recover_turn_if_idle(RecoverTurnRequest {
+                turn_id: turn_id.clone(),
+                thread_settings: Default::default(),
+                trace: None,
+                cyber_access_program: None,
+            })
+            .await?,
+        StartIfIdleSubmission::Started {
+            turn_id: turn_id.clone()
+        }
+    );
+    wait_for_event(&resumed.codex, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+    resumed.codex.shutdown_and_wait().await?;
+
+    let records = token_usage_records(&rollout_path);
+    assert_eq!(
+        records
+            .iter()
+            .map(|record| (
+                record.turn_id.as_str(),
+                record.turn_token_usage.total_tokens,
+                record.thread_token_usage.total_tokens,
+            ))
+            .collect::<Vec<_>>(),
+        vec![(turn_id.as_str(), 30, 30), (turn_id.as_str(), 70, 70)]
+    );
+    assert!(records.iter().all(|record| record.response_key.is_some()));
+    assert_ne!(records[0].response_key, records[1].response_key);
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

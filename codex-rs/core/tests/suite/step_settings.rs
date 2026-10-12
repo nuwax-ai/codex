@@ -22,6 +22,8 @@ use codex_history::RolloutItem;
 use codex_login::CodexAuth;
 use codex_models_manager::bundled_models_response;
 use codex_models_manager::manager::RefreshStrategy;
+use codex_otel::MetricsClient;
+use codex_otel::MetricsConfig;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::config_types::ReasoningSummary;
 use codex_protocol::config_types::ServiceTier;
@@ -106,6 +108,8 @@ use core_test_support::wait_for_event;
 use core_test_support::wait_for_event_match;
 use core_test_support::wait_for_mcp_server;
 use image::GenericImageView;
+use opentelemetry_sdk::metrics::data::AggregatedMetrics;
+use opentelemetry_sdk::metrics::data::MetricData;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
@@ -266,6 +270,98 @@ async fn apply_turn_settings(
         submit_turn_settings(thread, turn_id, update).await?,
         TurnSettingsUpdateOutcome::Applied
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn capped_sampling_usage_follows_the_switched_step_model() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = start_mock_server().await;
+    let responses = mount_sse_sequence(
+        &server,
+        vec![
+            paused_response("before-cap-switch", "pause-cap-switch"),
+            sse(vec![
+                ev_response_created("capped-after-switch"),
+                json!({
+                    "type": "response.incomplete",
+                    "response": {
+                        "id": "capped-after-switch",
+                        "incomplete_details": {"reason": "max_output_tokens"},
+                        "usage": {"input_tokens": 4, "output_tokens": 64, "total_tokens": 68},
+                    },
+                }),
+            ]),
+        ],
+    )
+    .await;
+    let metrics = codex_otel::install_global_metrics(MetricsClient::new(
+        MetricsConfig::in_memory("test", "codex-core", "test", Default::default())
+            .with_runtime_reader(),
+    )?);
+    let test = direct_tool_settings_test()
+        .build_with_auto_env(&server)
+        .await?;
+    let pause = start_paused_turn(&test.codex).await?;
+    apply_turn_settings(
+        &test.codex,
+        &pause.turn_id,
+        TurnSettingsUpdate {
+            model: Some(MODEL_B.to_string()),
+            ..Default::default()
+        },
+    )
+    .await?;
+    answer_paused_turn(&test.codex, &pause.turn_id).await?;
+    let completed = wait_for_event_match(&test.codex, |event| match event {
+        EventMsg::TurnComplete(completed) => Some(completed.clone()),
+        _ => None,
+    })
+    .await;
+    assert!(
+        completed.error.is_some(),
+        "the cap remains a failure terminal"
+    );
+    test.codex.shutdown_and_wait().await?;
+    assert_eq!(
+        responses
+            .requests()
+            .iter()
+            .map(|request| request.body_json()["model"].clone())
+            .collect::<Vec<_>>(),
+        vec![json!(MODEL_A), json!(MODEL_B)]
+    );
+
+    let snapshot = metrics.snapshot()?;
+    let metric = snapshot
+        .scope_metrics()
+        .flat_map(opentelemetry_sdk::metrics::data::ScopeMetrics::metrics)
+        .find(|metric| metric.name() == codex_otel::TURN_TOKEN_USAGE_METRIC)
+        .expect("turn token usage histogram");
+    let AggregatedMetrics::F64(MetricData::Histogram(histogram)) = metric.data() else {
+        panic!("expected turn token usage histogram");
+    };
+    let mut actual = histogram
+        .data_points()
+        .filter_map(|point| {
+            let tags: HashMap<_, _> = point
+                .attributes()
+                .map(|tag| (tag.key.as_str(), tag.value.to_string()))
+                .collect();
+            (tags.get("token_type").map(String::as_str) == Some("total")).then(|| {
+                (
+                    tags.get("model").expect("model attribution").clone(),
+                    point.sum(),
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    actual.sort_by(|left, right| left.0.cmp(&right.0));
+    assert_eq!(
+        actual,
+        vec![(MODEL_A.to_string(), 0.0), (MODEL_B.to_string(), 68.0)]
+    );
+    metrics.shutdown()?;
     Ok(())
 }
 

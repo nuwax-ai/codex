@@ -165,7 +165,15 @@ impl CapPartialCapture {
     /// Appends `text` to fragment `index`, keeping at most the fragment and
     /// turn byte budgets and dropping everything past them.
     fn append_bounded(&mut self, index: usize, text: &str) {
-        if self.stored_bytes[index] >= MAX_FRAGMENT_BYTES {
+        if text.is_empty() {
+            return;
+        }
+        if let Some(reason) = self.closed {
+            self.fragments[index].truncated = true;
+            self.record_once(reason);
+            return;
+        }
+        if self.fragments[index].truncated || self.stored_bytes[index] >= MAX_FRAGMENT_BYTES {
             // This fragment already hit its own budget: the delta is dropped
             // and the fragment now provably holds a prefix.
             self.fragments[index].truncated = true;
@@ -192,6 +200,10 @@ impl CapPartialCapture {
                 CapBudgetKind::TurnBytes
             };
             self.record_once(cap);
+            if turn_remaining <= fragment_remaining {
+                self.closed = Some(CapBudgetKind::TurnBytes);
+                self.record_once(CapBudgetKind::TurnBytes);
+            }
         }
         if self.total_bytes >= MAX_TURN_BYTES {
             self.closed = Some(CapBudgetKind::TurnBytes);

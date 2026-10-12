@@ -81,7 +81,7 @@ impl ResponseLedgerKey {
     pub(crate) fn of(record: &TokenUsageRecord) -> Option<Self> {
         match (&record.response_key, record.response_id.as_str()) {
             (Some(key), _) => Some(Self::Sampling(key.clone())),
-            (None, id) if id.is_empty() => None,
+            (None, "") => None,
             (None, id) => Some(Self::ProviderResponseId(id.to_string())),
         }
     }
