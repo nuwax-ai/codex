@@ -136,7 +136,7 @@ pub(crate) fn with_terminal_check(
                         }
                     }
                     RigProtocol::Anthropic => {
-                        let value: serde_json::Value = match serde_json::from_str(&event.data) {
+                        let mut value: serde_json::Value = match serde_json::from_str(&event.data) {
                             Ok(value) => value,
                             Err(error) => {
                                 return Some((
@@ -153,6 +153,41 @@ pub(crate) fn with_terminal_check(
                                 Err(Error::Instance(Box::new(error))),
                                 (frames, true, None, usage, false),
                             ));
+                        }
+                        // Rig 0.42 adds four Anthropic counters with unchecked
+                        // u64 arithmetic. Bound only its decoder-facing copy,
+                        // including message_start's input fallback. Original
+                        // counters were observed above and are restored by
+                        // AnthropicUsage::apply before bridge conversion; the
+                        // raw tee and presence-preserving report stay intact.
+                        let counters = match value["type"].as_str() {
+                            Some("message_start") => value
+                                .get_mut("message")
+                                .and_then(|message| message.get_mut("usage")),
+                            Some("message_delta") => value.get_mut("usage"),
+                            _ => None,
+                        };
+                        let mut rewritten = false;
+                        if let Some(counters) = counters {
+                            for name in [
+                                "input_tokens",
+                                "output_tokens",
+                                "cache_read_input_tokens",
+                                "cache_creation_input_tokens",
+                            ] {
+                                if let Some(counter) = counters.get_mut(name)
+                                    && counter.as_u64().is_some_and(|count| count > u64::MAX / 4)
+                                {
+                                    *counter = serde_json::Value::from(0);
+                                    rewritten = true;
+                                }
+                            }
+                        }
+                        if rewritten {
+                            encoded = format!(
+                                "event: {}\nid: {}\ndata: {value}\n\n",
+                                event.event, event.id
+                            );
                         }
                         match value["type"].as_str() {
                             Some("message_delta") if !value["delta"]["stop_reason"].is_null() => {
@@ -200,3 +235,7 @@ pub(crate) fn with_terminal_check(
         },
     ))
 }
+
+#[cfg(test)]
+#[path = "sse_tests.rs"]
+mod tests;

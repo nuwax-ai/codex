@@ -22,6 +22,10 @@ use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::WireApi;
 use codex_protocol::items::TurnItem;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::ReportedResponseUsage;
+use codex_protocol::protocol::ReportedUsageCounters;
+use codex_protocol::protocol::TokenUsage;
+use codex_protocol::protocol::TokenUsageRecord;
 use codex_protocol::user_input::UserInput;
 use core_test_support::responses;
 use core_test_support::skip_if_no_network;
@@ -882,7 +886,7 @@ async fn anthropic_output_cap_error_is_terminal_without_core_resampling() -> Res
 async fn anthropic_cap_usage_matrix_case(
     start_usage: Option<Value>,
     delta_usage: Option<Value>,
-) -> Result<(TurnOutcome, Vec<codex_protocol::protocol::TokenUsageRecord>)> {
+) -> Result<(TurnOutcome, Vec<TokenUsageRecord>, usize)> {
     let server = MockServer::start().await;
     let mut message = json!({
         "id": "msg_cap", "type": "message", "role": "assistant",
@@ -908,12 +912,12 @@ async fn anthropic_cap_usage_matrix_case(
         ),
         anthropic_frame("message_delta", delta),
     ) + "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
-    mount_capturing_response(&server, "/v1/messages", body).await?;
+    let log = mount_capturing_response(&server, "/v1/messages", body).await?;
     let (test, _env) =
         cap_test_instance_with(&server.uri(), WireApi::Anthropic, /*cap_partial*/ true).await?;
     let outcome = run_turn_until_complete(&test, "anthropic cap usage matrix").await?;
     let records = persisted_usage_records(&test);
-    Ok((outcome, records))
+    Ok((outcome, records, log.posts()))
 }
 
 /// Start/delta usage accumulates: the start frame's input count and the
@@ -922,12 +926,12 @@ async fn anthropic_cap_usage_matrix_case(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn anthropic_cap_usage_accumulates_start_and_delta() -> Result<()> {
     skip_if_no_network!(Ok(()));
-    let (outcome, records) = anthropic_cap_usage_matrix_case(
+    let (outcome, records, posts) = anthropic_cap_usage_matrix_case(
         Some(json!({"input_tokens": 4, "output_tokens": 0})),
         Some(json!({"output_tokens": 64})),
     )
     .await?;
-    assert_cap_terminal(&outcome, 1, "partial cap answer");
+    assert_cap_terminal(&outcome, posts, "partial cap answer");
     assert_eq!(records.len(), 1);
     assert_eq!(
         (
@@ -960,20 +964,20 @@ async fn anthropic_cap_usage_accumulates_start_and_delta() -> Result<()> {
 
 /// Rig's Anthropic deserializer requires a usage object on both
 /// message_start and the terminal message_delta (a stream omitting either
-/// is unparseable and fails as a retryable truncation, per the dedicated
-/// truncation tests). The interesting legal matrix cell is therefore an
+/// is unparseable and fails as a retryable stream error, covered by
+/// anthropic_cap_missing_usage_is_retryable). Another legal matrix cell is an
 /// explicit zero on the terminal delta: rig 0.42 normalizes a zero output
 /// count to missing, and the wire accumulator must restore it as a
 /// reported zero end to end.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn anthropic_cap_terminal_delta_explicit_zero_output_is_reported() -> Result<()> {
     skip_if_no_network!(Ok(()));
-    let (outcome, records) = anthropic_cap_usage_matrix_case(
+    let (outcome, records, posts) = anthropic_cap_usage_matrix_case(
         Some(json!({"input_tokens": 4, "output_tokens": 0})),
         Some(json!({"output_tokens": 0})),
     )
     .await?;
-    assert_cap_terminal(&outcome, 1, "partial cap answer");
+    assert_cap_terminal(&outcome, posts, "partial cap answer");
     assert_eq!(records.len(), 1);
     assert_eq!(
         (
@@ -1050,7 +1054,7 @@ async fn responses_output_cap_error_is_terminal_without_core_resampling() -> Res
 /// frame whose `usage` object carries exactly the counters under test.
 async fn responses_cap_usage_matrix_case(
     usage: Option<Value>,
-) -> Result<(TurnOutcome, Vec<codex_protocol::protocol::TokenUsageRecord>)> {
+) -> Result<(TurnOutcome, Vec<TokenUsageRecord>, usize)> {
     let server = MockServer::start().await;
     let mut response = json!({
         "id": "resp_cap",
@@ -1065,12 +1069,12 @@ async fn responses_cap_usage_matrix_case(
         responses::ev_output_text_delta("partial cap answer"),
         json!({"type": "response.incomplete", "response": response}),
     ]);
-    mount_capturing_response(&server, "/v1/responses", body).await?;
+    let log = mount_capturing_response(&server, "/v1/responses", body).await?;
     let (test, _env) =
         cap_test_instance_with(&server.uri(), WireApi::Responses, /*cap_partial*/ true).await?;
     let outcome = run_turn_until_complete(&test, "responses cap usage matrix").await?;
     let records = persisted_usage_records(&test);
-    Ok((outcome, records))
+    Ok((outcome, records, log.posts()))
 }
 
 /// A cap terminal frame with NO usage object must not fabricate counts: no
@@ -1078,8 +1082,8 @@ async fn responses_cap_usage_matrix_case(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn responses_cap_without_terminal_usage_records_nothing() -> Result<()> {
     skip_if_no_network!(Ok(()));
-    let (outcome, records) = responses_cap_usage_matrix_case(None).await?;
-    assert_cap_terminal(&outcome, 1, "partial cap answer");
+    let (outcome, records, posts) = responses_cap_usage_matrix_case(None).await?;
+    assert_cap_terminal(&outcome, posts, "partial cap answer");
     assert!(
         records.is_empty(),
         "an absent usage object must not fabricate a zero record"
@@ -1097,9 +1101,9 @@ async fn responses_cap_without_terminal_usage_records_nothing() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn responses_cap_partial_terminal_usage_keeps_presence() -> Result<()> {
     skip_if_no_network!(Ok(()));
-    let (outcome, records) =
+    let (outcome, records, posts) =
         responses_cap_usage_matrix_case(Some(json!({"input_tokens": 4}))).await?;
-    assert_cap_terminal(&outcome, 1, "partial cap answer");
+    assert_cap_terminal(&outcome, posts, "partial cap answer");
     assert_eq!(records.len(), 1);
     assert_eq!(
         (
@@ -1128,11 +1132,11 @@ async fn responses_cap_partial_terminal_usage_keeps_presence() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn responses_cap_explicit_zero_usage_is_reported() -> Result<()> {
     skip_if_no_network!(Ok(()));
-    let (outcome, records) = responses_cap_usage_matrix_case(Some(json!({
+    let (outcome, records, posts) = responses_cap_usage_matrix_case(Some(json!({
         "input_tokens": 4, "output_tokens": 0, "total_tokens": 4
     })))
     .await?;
-    assert_cap_terminal(&outcome, 1, "partial cap answer");
+    assert_cap_terminal(&outcome, posts, "partial cap answer");
     assert_eq!(records.len(), 1);
     assert_eq!(
         (
@@ -1150,6 +1154,198 @@ async fn responses_cap_explicit_zero_usage_is_reported() -> Result<()> {
         Some(0),
         "an explicit zero is a reported counter, never dropped to absent"
     );
+    Ok(())
+}
+
+async fn chat_cap_usage_matrix_case(
+    usage: Value,
+) -> Result<(TurnOutcome, Vec<TokenUsageRecord>, usize)> {
+    let server = MockServer::start().await;
+    let body = sse(&[
+        chat_chunk(
+            json!({"role": "assistant", "content": "partial cap answer"}),
+            None,
+        ),
+        chat_chunk(json!({}), Some("length")),
+        json!({
+            "id": "chatcmpl-cap", "object": "chat.completion.chunk", "created": 1,
+            "model": "cap-test", "choices": [], "usage": usage,
+        }),
+    ]) + "data: [DONE]\n\n";
+    let log = mount_capturing_response(&server, "/v1/chat/completions", body).await?;
+    let (test, _env) =
+        cap_test_instance_with(&server.uri(), WireApi::Chat, /*cap_partial*/ true).await?;
+    let outcome = run_turn_until_complete(&test, "chat cap usage matrix").await?;
+    let records = persisted_usage_records(&test);
+    Ok((outcome, records, log.posts()))
+}
+
+/// Rig rejects malformed required counters before publishing Final. Its
+/// stream error is retryable; neither wire-observed counters nor the cap
+/// marker may become a completed response, cap diagnostic or ledger record.
+fn assert_retryable_usage_failure(
+    outcome: &TurnOutcome,
+    records: &[TokenUsageRecord],
+    posts: usize,
+    error_fragment: &str,
+) {
+    assert_eq!(
+        posts, 3,
+        "one sampling plus the configured two stream retries"
+    );
+    let terminal = outcome.turn_error.as_deref().expect("a stream failure");
+    assert!(
+        terminal.contains(error_fragment),
+        "unexpected terminal: {terminal}"
+    );
+    assert!(
+        !terminal.contains("Output token limit reached"),
+        "an undecodable terminal must not be classified as a cap: {terminal}"
+    );
+    assert_eq!(outcome.errors.len(), 1, "exactly one terminal error event");
+    assert_eq!(outcome.final_agent_message, None);
+    assert_eq!(
+        (
+            outcome.completed_agent_items,
+            outcome.completed_responses,
+            outcome.exec_begun
+        ),
+        (0, 0, 0)
+    );
+    assert!(outcome.completed_tool_items.is_empty());
+    assert!(outcome.cap_partials.is_empty());
+    assert!(
+        records.is_empty(),
+        "no terminal usage was accepted: {records:?}"
+    );
+}
+
+/// Unlike the raw accumulator, Rig's unsigned Chat/Anthropic usage
+/// deserializers reject negative counters. Responses extracts each counter
+/// independently, so its legal counters survive a delivered cap terminal.
+#[test_case::test_case(WireApi::Chat; "chat")]
+#[test_case::test_case(WireApi::Anthropic; "anthropic")]
+#[test_case::test_case(WireApi::Responses; "responses")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cap_negative_usage_follows_the_protocol_decoder(wire_api: WireApi) -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let (outcome, records, posts) = match wire_api {
+        WireApi::Chat => {
+            chat_cap_usage_matrix_case(json!({
+                "prompt_tokens": -1, "completion_tokens": 64, "total_tokens": 64,
+            }))
+            .await?
+        }
+        WireApi::Anthropic => {
+            anthropic_cap_usage_matrix_case(
+                Some(json!({"input_tokens": 4, "output_tokens": 0})),
+                Some(json!({"input_tokens": -1, "output_tokens": 64})),
+            )
+            .await?
+        }
+        WireApi::Responses => {
+            responses_cap_usage_matrix_case(Some(json!({
+                "input_tokens": -1, "output_tokens": 64, "total_tokens": 64,
+            })))
+            .await?
+        }
+    };
+    match wire_api {
+        WireApi::Chat | WireApi::Anthropic => {
+            assert_retryable_usage_failure(&outcome, &records, posts, "invalid value: integer");
+        }
+        WireApi::Responses => {
+            assert_cap_terminal(&outcome, posts, "partial cap answer");
+            assert_eq!(records.len(), 1);
+            assert_eq!(
+                records[0].usage,
+                TokenUsage {
+                    output_tokens: 64,
+                    total_tokens: 64,
+                    ..Default::default()
+                }
+            );
+            assert_eq!(
+                outcome.cap_partials[0].reported_usage,
+                ReportedResponseUsage::from_counters(ReportedUsageCounters {
+                    output_tokens: Some(64),
+                    total_tokens: Some(64),
+                    ..Default::default()
+                })
+            );
+        }
+    }
+    Ok(())
+}
+
+/// A counter above i64 but inside the wire's unsigned range is parseable.
+/// The cap report discards only that counter, retaining valid counts and
+/// ending after one request rather than treating overflow as a retry.
+#[test_case::test_case(WireApi::Chat; "chat")]
+#[test_case::test_case(WireApi::Anthropic; "anthropic")]
+#[test_case::test_case(WireApi::Responses; "responses")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cap_overflow_usage_keeps_other_reported_counters(wire_api: WireApi) -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let (outcome, records, posts) = match wire_api {
+        WireApi::Chat => {
+            chat_cap_usage_matrix_case(json!({
+                "prompt_tokens": 4, "completion_tokens": u64::MAX, "total_tokens": 4,
+            }))
+            .await?
+        }
+        WireApi::Anthropic => {
+            anthropic_cap_usage_matrix_case(
+                Some(json!({"input_tokens": 4, "output_tokens": 0})),
+                Some(json!({"output_tokens": u64::MAX})),
+            )
+            .await?
+        }
+        WireApi::Responses => {
+            responses_cap_usage_matrix_case(Some(json!({
+                "input_tokens": 4, "output_tokens": u64::MAX, "total_tokens": 4,
+            })))
+            .await?
+        }
+    };
+    assert_cap_terminal(&outcome, posts, "partial cap answer");
+    assert_eq!(records.len(), 1);
+    let total_tokens = match wire_api {
+        WireApi::Anthropic => None,
+        WireApi::Chat | WireApi::Responses => Some(4),
+    };
+    assert_eq!(
+        records[0].usage,
+        TokenUsage {
+            input_tokens: 4,
+            total_tokens: total_tokens.unwrap_or_default(),
+            ..Default::default()
+        }
+    );
+    assert_eq!(
+        outcome.cap_partials[0].reported_usage,
+        ReportedResponseUsage::from_counters(ReportedUsageCounters {
+            input_tokens: Some(4),
+            total_tokens,
+            ..Default::default()
+        })
+    );
+    Ok(())
+}
+
+#[test_case::test_case(None, Some(json!({"output_tokens": 64})); "message_start")]
+#[test_case::test_case(Some(json!({"input_tokens": 4, "output_tokens": 0})), None; "message_delta")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anthropic_cap_missing_usage_is_retryable(
+    start_usage: Option<Value>,
+    delta_usage: Option<Value>,
+) -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    // message_stop remains present: this exercises required usage decoding,
+    // independently of the existing missing-message_stop truncation case.
+    let (outcome, records, posts) =
+        anthropic_cap_usage_matrix_case(start_usage, delta_usage).await?;
+    assert_retryable_usage_failure(&outcome, &records, posts, "missing field `usage`");
     Ok(())
 }
 
