@@ -1,5 +1,7 @@
 # 给 Claude Code：先闭环 Codex 的 Rig 环境启动与 Linux 服务验收
 
+**同日最新进展：** 后续批次已实现 app-server Chat/Responses 正例、typed 环境 live harness、原生 Linux 离线工具闭环及两个历史失败切片；见 `results-rig-env-2026-10-12.md`。用户随后提供测试密钥并授权有限 live 验证：全部 13 个所列模型/协议基础组合及三个主模型工具往返已通过（保留 MiMo 首次未调用工具与复验），独立计数 20 次请求；见 `results-codex-live-probe-2026-10-12.md` 和对应脱敏 receipt。密钥未进入本提示词，临时凭据已清理。不要重复开发已完成部分；下一步先补该结果文档末尾的预算、工具断言及字节脱敏扫描，再做限定主路径深入验证。以下原批次计划保留作范围/合同参考。
+
 直接复制本文件作为下一轮任务。主仓库 `/Volumes/soddy/git_workspace/fork-nuwax-codex`，工作分支 `test`。用户目标：用环境变量配置国内模型或自定义第三方平台，通过 Rig 启动并稳定使用 fork Codex。首个运行目标是 Linux/容器的 app-server；实际客户端是 `/Volumes/soddy/git_workspace/fork-codex-acp-ts` 的 `dev`，但本轮开发中心仍放在 Codex，不扩大为 ACP 重构。
 
 先读 AGENTS.md、本目录 `codex-review-claude-2026-10-12.md`、`results-followup-2026-10-12.md`、spec/plan/tasks 和原 handoff。记录分支、HEAD、工作区及 remote；尊重已有并行改动，不 reset/clean/stash-all/强推，不重写 Codex 已保存的阶段提交。当前修复包括连接阶段 TLS fallback、typed rustls alert、cap 身份/包络记账、Anthropic usage overflow guard、真实请求数和 local/remote v2 压缩回归，不重复开发这些部分。
@@ -17,7 +19,7 @@
 1. 现有 live binary harness 的 `live-tests/src/binary_turns.rs`/`binary_turns/runner.rs` 用临时 config.toml provider 和 experimental_bearer_token；给它加 typed 启动模式，将 NUWAX_MODEL/BASE_URL/WIRE_API/API_KEY 和可选 cap/retry/idle 只传子进程环境，保留现有 config 模式。复用 bounded capture、超时、工件和 source/bin receipt，不另造路由。
 2. 先用本地 mock 验证该模式真的走 env→CLI seeds→Rig、准确的请求和工具执行，home/sqlite 隔离；密钥不写配置、收据、日志、rollout 或 git。
 3. 用用户实际选择且平台支持的一个 provider/model/wire 验收 marker、一次无害工具往返、usage、取消、resume、compaction；明确平台真实支持的协议，不把不存在的 Responses/Anthropic 网关当产品故障。真实 cap 触顶与“请求接受 cap 字段”分开验收。
-4. 当前 session 没有付费 live 授权。先完成离线代码和可审收据模板，再向用户说明具体厂商/模型/请求数/费用边界并取得授权；不擅自使用 .env.local 或所有厂商跑矩阵。无凭据则继续其它离线及 Linux 工作，不因这一项停止全部开发。
+4. 本会话已经取得用户提供的测试凭据及有限 live 测试授权，上述验收已执行；它不授权无限重试或任意新增厂商矩阵。后续新批次明确厂商/模型/请求数上限并复用已有证据，不复制凭据进 Git/提示词，不擅自将全部 live 矩阵当默认运行。新会话的凭据和额外费用范围仍由用户提供；缺凭据时继续独立离线工作。
 
 ## 批次 C：Linux/容器服务验证和下一阶段边界
 

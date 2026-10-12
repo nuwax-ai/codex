@@ -1,0 +1,872 @@
+{
+  "date": "2026-10-12",
+  "scope": "Codex bounded live probe; local forwarding gate to real HTTPS providers",
+  "provider_posts": 20,
+  "phases": [
+    {
+      "binary": "/Volumes/soddy/git_workspace/fork-nuwax-codex/codex-rs/target/debug/codex-exec",
+      "binary_sha256": "62e8b5cb04809dd6a6a02542e204d1351b57eba8bd0dab2da437af22ec4ac3c0",
+      "build_receipt": {
+        "dependency_features": {
+          "reason": "cargo_build_script_has_no_resolved_dependency_feature_graph",
+          "status": "unknown"
+        },
+        "features": {
+          "enabled": [],
+          "scope": "codex-exec"
+        },
+        "format": "codex-exec-build-receipt",
+        "git_dirty": "clean",
+        "git_sha": "b5a886e396a77edbc01b0e5acf3af3ca947bc41c",
+        "profile": "debug",
+        "source": {
+          "algorithm": "git-build-input-content-sha256-v1",
+          "sha256": "77fff998c63fe1c2b344443da853594cc8928cda5c6d69e67a4546300cc7cdf0"
+        },
+        "target": "aarch64-apple-darwin",
+        "version": 1
+      },
+      "controller": "local forwarding gate; HTTPS certificate verification enabled",
+      "max_actual_provider_posts": 8,
+      "output_cap_per_request": 2048,
+      "cases": [
+        {
+          "vendor": "mimo",
+          "model": "mimo-v2.6-flash",
+          "wire": "chat",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 2.75,
+          "provider_posts": [
+            {
+              "destination": "https://token-plan-cn.xiaomimimo.com/v1/chat/completions",
+              "model": "mimo-v2.6-flash",
+              "wire": "chat",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40527,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 8974,
+            "cached_input_tokens": 6144,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 8,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "stderr_tail": "",
+          "passed": true,
+          "rig_request_capture_available": true,
+          "cap_verified": true,
+          "usage_verified": true
+        },
+        {
+          "vendor": "mimo",
+          "model": "mimo-v2.6-flash",
+          "wire": "anthropic",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 2.68,
+          "provider_posts": [
+            {
+              "destination": "https://token-plan-cn.xiaomimimo.com/anthropic/v1/messages",
+              "model": "mimo-v2.6-flash",
+              "wire": "anthropic",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40060,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 8976,
+            "cached_input_tokens": 6144,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 11,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "stderr_tail": "",
+          "passed": true,
+          "rig_request_capture_available": true,
+          "cap_verified": true,
+          "usage_verified": true
+        },
+        {
+          "vendor": "mimo",
+          "model": "mimo-v2.6-flash",
+          "wire": "responses",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 5.69,
+          "provider_posts": [
+            {
+              "destination": "https://token-plan-cn.xiaomimimo.com/v1/responses",
+              "model": "mimo-v2.6-flash",
+              "wire": "responses",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_output_tokens": 2048
+              },
+              "request_body_bytes": 41888,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 9115,
+            "cached_input_tokens": 6144,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 9,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "stderr_tail": "",
+          "passed": true,
+          "rig_request_capture_available": true,
+          "cap_verified": true,
+          "usage_verified": true
+        },
+        {
+          "vendor": "glm",
+          "model": "GLM-5.3-Flash",
+          "wire": "chat",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 2.69,
+          "provider_posts": [
+            {
+              "destination": "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
+              "model": "GLM-5.3-Flash",
+              "wire": "chat",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40524,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 8814,
+            "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 16,
+            "reasoning_output_tokens": 7
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "stderr_tail": "",
+          "passed": true,
+          "rig_request_capture_available": true,
+          "cap_verified": true,
+          "usage_verified": true
+        },
+        {
+          "vendor": "glm",
+          "model": "GLM-5.3-Flash",
+          "wire": "anthropic",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 15.74,
+          "provider_posts": [
+            {
+              "destination": "https://open.bigmodel.cn/api/anthropic/v1/messages",
+              "model": "GLM-5.3-Flash",
+              "wire": "anthropic",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40057,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 8816,
+            "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 20,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "stderr_tail": "",
+          "passed": true,
+          "rig_request_capture_available": true,
+          "cap_verified": true,
+          "usage_verified": true
+        },
+        {
+          "vendor": "glm",
+          "model": "GLM-5.3-Flash",
+          "wire": "responses",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 5.19,
+          "provider_posts": [
+            {
+              "destination": "https://open.bigmodel.cn/api/v1/responses",
+              "model": "GLM-5.3-Flash",
+              "wire": "responses",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_output_tokens": 2048
+              },
+              "request_body_bytes": 41883,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 8757,
+            "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 18,
+            "reasoning_output_tokens": 8
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "stderr_tail": "",
+          "passed": true,
+          "rig_request_capture_available": true,
+          "cap_verified": true,
+          "usage_verified": true
+        },
+        {
+          "vendor": "step",
+          "model": "step-5-preview",
+          "wire": "chat",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 5.18,
+          "provider_posts": [
+            {
+              "destination": "https://api.stepfun.com/step_plan/v1/chat/completions",
+              "model": "step-5-preview",
+              "wire": "chat",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40526,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 9173,
+            "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 10,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "stderr_tail": "",
+          "passed": true,
+          "rig_request_capture_available": true,
+          "cap_verified": true,
+          "usage_verified": true
+        },
+        {
+          "vendor": "step",
+          "model": "step-5-preview",
+          "wire": "anthropic",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 2.69,
+          "provider_posts": [
+            {
+              "destination": "https://api.stepfun.com/step_plan/v1/messages",
+              "model": "step-5-preview",
+              "wire": "anthropic",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40059,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 9343,
+            "cached_input_tokens": 3328,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 13,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "stderr_tail": "",
+          "passed": true,
+          "rig_request_capture_available": true,
+          "cap_verified": true,
+          "usage_verified": true
+        }
+      ],
+      "provider_posts_sent": 8
+    },
+    {
+      "binary": "/Volumes/soddy/git_workspace/fork-nuwax-codex/codex-rs/target/debug/codex-exec",
+      "binary_sha256": "62e8b5cb04809dd6a6a02542e204d1351b57eba8bd0dab2da437af22ec4ac3c0",
+      "build_receipt": {
+        "dependency_features": {
+          "reason": "cargo_build_script_has_no_resolved_dependency_feature_graph",
+          "status": "unknown"
+        },
+        "features": {
+          "enabled": [],
+          "scope": "codex-exec"
+        },
+        "format": "codex-exec-build-receipt",
+        "git_dirty": "clean",
+        "git_sha": "b5a886e396a77edbc01b0e5acf3af3ca947bc41c",
+        "profile": "debug",
+        "source": {
+          "algorithm": "git-build-input-content-sha256-v1",
+          "sha256": "77fff998c63fe1c2b344443da853594cc8928cda5c6d69e67a4546300cc7cdf0"
+        },
+        "target": "aarch64-apple-darwin",
+        "version": 1
+      },
+      "controller": "local forwarding gate; HTTPS certificate verification enabled",
+      "phase": "alternate",
+      "max_actual_provider_posts": 5,
+      "output_cap_per_request": 2048,
+      "cases": [
+        {
+          "vendor": "mimo",
+          "model": "mimo-v2.5",
+          "wire": "chat",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 12.16,
+          "provider_posts": [
+            {
+              "destination": "https://token-plan-cn.xiaomimimo.com/v1/chat/completions",
+              "model": "mimo-v2.5",
+              "wire": "chat",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40521,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 8974,
+            "cached_input_tokens": 6144,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 8,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "rig_request_capture_available": true,
+          "tool_command_matches": false,
+          "paired_marker_tool_output_in_followup": false,
+          "stderr_tail": "",
+          "passed": true,
+          "cap_verified": true,
+          "usage_verified": true
+        },
+        {
+          "vendor": "mimo",
+          "model": "mimo-v2.5",
+          "wire": "anthropic",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 5.47,
+          "provider_posts": [
+            {
+              "destination": "https://token-plan-cn.xiaomimimo.com/anthropic/v1/messages",
+              "model": "mimo-v2.5",
+              "wire": "anthropic",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40054,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 8973,
+            "cached_input_tokens": 6144,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 11,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "rig_request_capture_available": true,
+          "tool_command_matches": false,
+          "paired_marker_tool_output_in_followup": false,
+          "stderr_tail": "",
+          "passed": true,
+          "cap_verified": true,
+          "usage_verified": true
+        },
+        {
+          "vendor": "mimo",
+          "model": "mimo-v2.5",
+          "wire": "responses",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 12.12,
+          "provider_posts": [
+            {
+              "destination": "https://token-plan-cn.xiaomimimo.com/v1/responses",
+              "model": "mimo-v2.5",
+              "wire": "responses",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_output_tokens": 2048
+              },
+              "request_body_bytes": 41876,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 9112,
+            "cached_input_tokens": 1024,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 9,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "rig_request_capture_available": true,
+          "tool_command_matches": false,
+          "paired_marker_tool_output_in_followup": false,
+          "stderr_tail": "",
+          "passed": true,
+          "cap_verified": true,
+          "usage_verified": true
+        },
+        {
+          "vendor": "step",
+          "model": "step-3.7-flash",
+          "wire": "chat",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 2.48,
+          "provider_posts": [
+            {
+              "destination": "https://api.stepfun.com/step_plan/v1/chat/completions",
+              "model": "step-3.7-flash",
+              "wire": "chat",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40526,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 9171,
+            "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 25,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "rig_request_capture_available": true,
+          "tool_command_matches": false,
+          "paired_marker_tool_output_in_followup": false,
+          "stderr_tail": "",
+          "passed": true,
+          "cap_verified": true,
+          "usage_verified": true
+        },
+        {
+          "vendor": "step",
+          "model": "step-3.7-flash",
+          "wire": "anthropic",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 2.8,
+          "provider_posts": [
+            {
+              "destination": "https://api.stepfun.com/step_plan/v1/messages",
+              "model": "step-3.7-flash",
+              "wire": "anthropic",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40059,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 9212,
+            "cached_input_tokens": 3584,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 69,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "rig_request_capture_available": true,
+          "tool_command_matches": false,
+          "paired_marker_tool_output_in_followup": false,
+          "stderr_tail": "",
+          "passed": true,
+          "cap_verified": true,
+          "usage_verified": true
+        }
+      ],
+      "provider_posts_sent": 5
+    },
+    {
+      "binary": "/Volumes/soddy/git_workspace/fork-nuwax-codex/codex-rs/target/debug/codex-exec",
+      "binary_sha256": "62e8b5cb04809dd6a6a02542e204d1351b57eba8bd0dab2da437af22ec4ac3c0",
+      "build_receipt": {
+        "dependency_features": {
+          "reason": "cargo_build_script_has_no_resolved_dependency_feature_graph",
+          "status": "unknown"
+        },
+        "features": {
+          "enabled": [],
+          "scope": "codex-exec"
+        },
+        "format": "codex-exec-build-receipt",
+        "git_dirty": "clean",
+        "git_sha": "b5a886e396a77edbc01b0e5acf3af3ca947bc41c",
+        "profile": "debug",
+        "source": {
+          "algorithm": "git-build-input-content-sha256-v1",
+          "sha256": "77fff998c63fe1c2b344443da853594cc8928cda5c6d69e67a4546300cc7cdf0"
+        },
+        "target": "aarch64-apple-darwin",
+        "version": 1
+      },
+      "controller": "local forwarding gate; HTTPS certificate verification enabled",
+      "phase": "tools",
+      "max_actual_provider_posts": 6,
+      "output_cap_per_request": 2048,
+      "cases": [
+        {
+          "vendor": "mimo",
+          "model": "mimo-v2.6-flash",
+          "wire": "chat",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 14.75,
+          "provider_posts": [
+            {
+              "destination": "https://token-plan-cn.xiaomimimo.com/v1/chat/completions",
+              "model": "mimo-v2.6-flash",
+              "wire": "chat",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40667,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 1,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 9026,
+            "cached_input_tokens": 6144,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 19,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "rig_request_capture_available": true,
+          "tool_command_matches": false,
+          "paired_marker_tool_output_in_followup": false,
+          "stderr_tail": "",
+          "passed": false,
+          "cap_verified": true,
+          "usage_verified": true
+        },
+        {
+          "vendor": "glm",
+          "model": "GLM-5.3-Flash",
+          "wire": "responses",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 7.46,
+          "provider_posts": [
+            {
+              "destination": "https://open.bigmodel.cn/api/v1/responses",
+              "model": "GLM-5.3-Flash",
+              "wire": "responses",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_output_tokens": 2048
+              },
+              "request_body_bytes": 42027,
+              "http_status": 200
+            },
+            {
+              "destination": "https://open.bigmodel.cn/api/v1/responses",
+              "model": "GLM-5.3-Flash",
+              "wire": "responses",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_output_tokens": 2048
+              },
+              "request_body_bytes": 42539,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 2,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 17693,
+            "cached_input_tokens": 8768,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 59,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "rig_request_capture_available": true,
+          "tool_command_matches": true,
+          "paired_marker_tool_output_in_followup": true,
+          "stderr_tail": "",
+          "passed": true,
+          "cap_verified": true,
+          "usage_verified": true
+        },
+        {
+          "vendor": "step",
+          "model": "step-5-preview",
+          "wire": "anthropic",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 7.27,
+          "provider_posts": [
+            {
+              "destination": "https://api.stepfun.com/step_plan/v1/messages",
+              "model": "step-5-preview",
+              "wire": "anthropic",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40204,
+              "http_status": 200
+            },
+            {
+              "destination": "https://api.stepfun.com/step_plan/v1/messages",
+              "model": "step-5-preview",
+              "wire": "anthropic",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40686,
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 2,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 18892,
+            "cached_input_tokens": 8960,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 68,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "rig_request_capture_available": true,
+          "tool_command_matches": true,
+          "paired_marker_tool_output_in_followup": true,
+          "stderr_tail": "",
+          "passed": true,
+          "cap_verified": true,
+          "usage_verified": true
+        }
+      ],
+      "provider_posts_sent": 5
+    },
+    {
+      "binary": "/Volumes/soddy/git_workspace/fork-nuwax-codex/codex-rs/target/debug/codex-exec",
+      "binary_sha256": "62e8b5cb04809dd6a6a02542e204d1351b57eba8bd0dab2da437af22ec4ac3c0",
+      "build_receipt": {
+        "dependency_features": {
+          "reason": "cargo_build_script_has_no_resolved_dependency_feature_graph",
+          "status": "unknown"
+        },
+        "features": {
+          "enabled": [],
+          "scope": "codex-exec"
+        },
+        "format": "codex-exec-build-receipt",
+        "git_dirty": "clean",
+        "git_sha": "b5a886e396a77edbc01b0e5acf3af3ca947bc41c",
+        "profile": "debug",
+        "source": {
+          "algorithm": "git-build-input-content-sha256-v1",
+          "sha256": "77fff998c63fe1c2b344443da853594cc8928cda5c6d69e67a4546300cc7cdf0"
+        },
+        "target": "aarch64-apple-darwin",
+        "version": 1
+      },
+      "controller": "local forwarding gate; HTTPS certificate verification enabled",
+      "phase": "mimo_tool_reprobe",
+      "max_actual_provider_posts": 2,
+      "output_cap_per_request": 2048,
+      "cases": [
+        {
+          "vendor": "mimo",
+          "model": "mimo-v2.6-flash",
+          "wire": "chat",
+          "return_code": 0,
+          "timed_out": false,
+          "seconds": 4.62,
+          "provider_posts": [
+            {
+              "destination": "https://token-plan-cn.xiaomimimo.com/v1/chat/completions",
+              "model": "mimo-v2.6-flash",
+              "wire": "chat",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 40772,
+              "tool_names": [
+                "exec_command",
+                "write_stdin",
+                "request_user_input",
+                "view_image",
+                "multi_agent_v1__close_agent",
+                "multi_agent_v1__resume_agent",
+                "multi_agent_v1__send_input",
+                "multi_agent_v1__spawn_agent",
+                "multi_agent_v1__wait_agent",
+                "get_goal",
+                "create_goal",
+                "update_goal"
+              ],
+              "http_status": 200
+            },
+            {
+              "destination": "https://token-plan-cn.xiaomimimo.com/v1/chat/completions",
+              "model": "mimo-v2.6-flash",
+              "wire": "chat",
+              "auth_matches_supplied_key": true,
+              "cap": {
+                "max_tokens": 2048
+              },
+              "request_body_bytes": 41217,
+              "tool_names": [
+                "exec_command",
+                "write_stdin",
+                "request_user_input",
+                "view_image",
+                "multi_agent_v1__close_agent",
+                "multi_agent_v1__resume_agent",
+                "multi_agent_v1__send_input",
+                "multi_agent_v1__spawn_agent",
+                "multi_agent_v1__wait_agent",
+                "get_goal",
+                "create_goal",
+                "update_goal"
+              ],
+              "http_status": 200
+            }
+          ],
+          "capture_attempts": 2,
+          "marker_matches": true,
+          "completed_turns": 1,
+          "usage": {
+            "input_tokens": 18204,
+            "cached_input_tokens": 15168,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 74,
+            "reasoning_output_tokens": 0
+          },
+          "failures": [],
+          "gateway_errors": [],
+          "credential_leak_files": [],
+          "rig_request_capture_available": true,
+          "tool_command_matches": true,
+          "paired_marker_tool_output_in_followup": true,
+          "stderr_tail": "",
+          "passed": true,
+          "cap_verified": true,
+          "usage_verified": true
+        }
+      ],
+      "provider_posts_sent": 2
+    }
+  ]
+}
