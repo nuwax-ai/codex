@@ -188,6 +188,14 @@ windows 28 失败与基线逐身份核对：除两个新项外**全部命中基�
 1. windows：解析器补 `.exe`。
 2. ubuntu：构建步骤生效（codex-exec 于 12:37/12:43 两次编译），但测试时（13:33）源内容仍不匹配——测试阶段某用例改动了树内构建输入，原错误无法指认。收据现嵌入**构建时有界 `git status` 快照**，校验失败时输出"embedded vs current"两侧哈希与状态清单——下一轮 CI 直接点名元凶。
 
+### 8.2 诊断轮（run `38268053863`，HEAD `ee3e3cd43`）——四项定案（`80f092fbf`）
+
+- **ubuntu `nuwax_env_offline` 元凶（收据诊断点名）**：` D codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_kickoff_remote_compaction_windows.snap.new`——`5913e929f` 误提交的 insta 残留在 CI 上场景通过时被 insta **删除**（本机该测试失败故只重写、树不变，掩盖了此路径）。已从 git 删除该文件；收据的 tree_status 诊断保留为守卫。
+- **windows `nuwax_env_offline`**：`.exe` 修复生效后进入下一层——`build input link leaves source tree: vendor/bubblewrap/LICENSE`（`LICENSE -> COPYING` 同目录相对链接）：Windows `canonicalize` 返回 `\\?\` 前缀路径与未规范化 root 比较失败（macOS /tmp 软链同理）。`source_identity` 现在 canonicalize root 一次。
+- **ubuntu `projects_persist` 复发**：断言从"响应先行"推进到"thread/started 先行"后，仍遇 `thread/status|settings`、`skills/changed` 等异步维护通知在响应之后交织。等待 `thread/started` 时跳过白名单类，其余消息仍判失败。
+- **macOS 两连 cancelled 定案**：matrix lane `timeout-minutes: 150` 裁掉了正常需 ~2h28m 的车道（两次均在 ~2h30m 处取消）。lane 提至 180 分钟；测试级 deadline 不变。
+- **bazel gate 首红（非本轮回归）**：rustc 1.95.0 在 `linker.rs:134` JoinPathsError ICE，仅在 rules_rust `process_wrapper` bootstrap **真实编译**时触发（本地以绿轮 `.bazelrc` + 原始缓存复现同样失败；绿轮该 action 全为缓存命中）。缓存路径 flag 不进 action key，红轮未命中另有基础设施原因。登记为工具链问题：需 toolchain/rules_rust 层面处置（pin 变更需授权），本轮不动。
+
 ## 7. 授权边界遵守
 
 无 push、无 dispatch、无付费请求、无 .env.local、无默认代理迁移、无 V8 pin 变更、无沙箱代码修改；凭据只存在于测试内存与子进程环境；ACP 仓库只读未动。
