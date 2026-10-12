@@ -39,6 +39,9 @@ type SuccessfulTlsFallbackServer = (
     mpsc::Receiver<io::Result<Vec<String>>>,
 );
 
+#[path = "route_aware_tls_replay_tests.rs"]
+mod replay_tests;
+
 #[tokio::test]
 async fn default_pool_does_not_retry_a_native_tls_protocol_failure() {
     let (url, attempts, stop_server) =

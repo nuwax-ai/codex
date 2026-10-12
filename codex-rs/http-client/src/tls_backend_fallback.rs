@@ -102,13 +102,10 @@ impl DestinationRoute {
 }
 
 pub(crate) fn should_retry_with_rustls(error: &reqwest::Error) -> bool {
-    // The recognized protocol-version marker in the source chain is the
-    // decisive signal. On Linux, OpenSSL surfaces the same alert the macOS
-    // connector reports as kind Connect through hyper_util as kind Request,
-    // so the reqwest kind must not gate the fallback; the marker match is
-    // already narrow and certificate-class failures are actively excluded.
-    // Timeouts never fall back.
-    !error.is_timeout() && error.source().is_some_and(has_retryable_tls_error)
+    // A peer can send the same alert after consuming a request. Only
+    // connection establishment failures are safe to replay. Reqwest's
+    // is_connect checks the source chain, including outer Request errors.
+    error.is_connect() && !error.is_timeout() && error.source().is_some_and(has_retryable_tls_error)
 }
 
 fn has_retryable_tls_error(error: &(dyn Error + 'static)) -> bool {
@@ -138,6 +135,14 @@ fn has_retryable_tls_error(error: &(dyn Error + 'static)) -> bool {
         let is_macos_protocol_version_error = message.contains("bad protocol version");
         // Linux OpenSSL reports the peer's "tlsv1 alert protocol version".
         let is_linux_protocol_version_error = message.contains("tlsv1 alert protocol version");
+        // Custom CA bundles can select rustls even for the transport-default
+        // client. Classify its alert by type, without relying on Display text.
+        let is_rustls_protocol_version_error = matches!(
+            error.downcast_ref::<rustls::Error>(),
+            Some(rustls::Error::AlertReceived(
+                rustls::AlertDescription::ProtocolVersion
+            ))
+        );
         // Windows Schannel may expose the protocol alert as a raw or formatted OS error.
         let is_schannel_protocol_version_error = error
             .downcast_ref::<std::io::Error>()
@@ -147,11 +152,21 @@ fn has_retryable_tls_error(error: &(dyn Error + 'static)) -> bool {
             || message.contains("0x80090302");
         if is_macos_protocol_version_error
             || is_linux_protocol_version_error
+            || is_rustls_protocol_version_error
             || is_schannel_protocol_version_error
         {
             recognized_negotiation_failure = true;
         }
-        source = error.source();
+        // io::Error::source skips the wrapped error itself. Hyper can wrap
+        // TLS errors in multiple io payloads, so inspect each payload too.
+        source = if let Some(payload) = error
+            .downcast_ref::<std::io::Error>()
+            .and_then(std::io::Error::get_ref)
+        {
+            Some(payload)
+        } else {
+            error.source()
+        };
     }
 
     recognized_negotiation_failure
