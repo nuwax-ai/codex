@@ -66,9 +66,21 @@
 
 `ResponseLedgerKey::of`（resume 重建 per-response ledger 的 join 函数）此前无条件接受任意长度 host key/provider id。现在两命名空间超限即拒绝成为 join 键（超限 host key 也不回退到其 provider id——live 路径不可能铸出该键），与 live `record_token_usage` 同纪律；**不截断、不改 rollout 原字节**，累计值（来自 last record，非 join map）继续计入。边界 ≤256B 仍可 join；回归覆盖两命名空间边界与超限。state::session 16/16、resume+token_usage_rollout+compact 102/102。
 
-### 3.3 Linux/容器（进行中，见 §6 更新）
+### 3.3 Linux/容器（原生构建 + NUWAX 环境闭环：通过）
 
-容器：OrbStack (Docker 29.4.0)，镜像 `rcoder-k8s:0.1.334-arm64` = Debian 13 trixie aarch64、cargo 1.99.0（与宿主同版）。校准：默认 seccomp 禁 `CLONE_NEWUSER`（`unshare -Ur` EPERM）；`--security-opt seccomp=unconfined` 后 userns OK；bwrap 未安装且无网络补装——本轮 Linux 验证走 danger-full-access 公共链路（不依赖 bwrap），bwrap 依赖的沙箱族留待可装环境。依赖缓存：宿主 `~/.cargo/{registry,git}` RO 挂载即可 `--locked --offline`。
+容器：OrbStack (Docker 29.4.0)，镜像 `rcoder-k8s`（公司 registry，Debian 13 trixie，aarch64-unknown-linux-gnu）；repo 工具链钉 rustc **1.95.0**（容器 rustup 自动安装；镜像默认 1.99.0 仅用于初始探测）。依赖缓存：宿主 `~/.cargo/{registry,git}` RO 挂载即可 `--locked --offline`。
+
+校准：
+- 默认 seccomp 禁 `CLONE_NEWUSER`（`unshare -Ur` → EPERM）；`--security-opt seccomp=unconfined` 后 **userns OK**。CI sysctl 修复（`8c5d46dab`）针对的是 AppArmor 内核键，容器内无该键——两机制独立，均已如实记录。
+- bwrap 未安装；容器内有网（rustup/registry 可达）但本轮未装，Linux 验证走 danger-full-access 公共链路（不依赖 bwrap）。沙箱族留待可装环境。
+- 镜像曾被外部进程清理，改用公司 registry 重新拉取后完成。
+
+原生结果（稳定树上，可写卷内源副本）：
+- `cargo build --locked --offline -p codex-exec --bin codex-exec`：**通过**（增量 2m40s；首次全量约 3m15s）。
+- 二进制内嵌收据：git `0858f5d01375`（测试时点 HEAD，dirty=1 为未提交的本文档表格修正），target `aarch64-unknown-linux-gnu`，profile debug——source/bin 收据机制在 Linux 原生路径同样工作。
+- `cargo test --locked --offline -p codex-live-tests --test nuwax_env_offline`：**1/1 通过（8.85s）**——NUWAX 环境启动（env→CLI seeds→rig→wire）、真实 shell 工具往返、Bearer 凭据、cap 字段与非泄露合同全部在原生 Linux 实跑通过。容器内无 just/nextest，用 `cargo test` 单测名运行，为记录在案的偏差。
+
+两次首败（保留）：①活挂载工作树上 docs 提交发生在构建与测试之间 → 收据按设计拒收（git_sha 变化；cargo 因输入未变不重链，收据保守失败是正确行为）；②挂载点上 cp/rm 失败（Device busy）→ 改 tar 排除式拷贝到可写卷。
 
 ### 3.4 CI（C.2）
 
@@ -94,7 +106,7 @@
 
 每批 scoped `just fix`、`just fmt`、`git diff --check`；最终 fix/fmt 后未重跑同批测试。宿主无 `CODEX_SANDBOX*` 继承标记（`env | grep` 确认），nextest PASS 即真实执行。
 
-## 5. 本轮提交（6 个，均本地）
+## 5. 本轮提交（5 代码 + 1 文档，均本地）
 
 | 提交 | 内容 |
 |---|---|
@@ -103,19 +115,19 @@
 | `eac4a4ae5` | guardian checkpoint migration 快照按 R1b 意图再生（三平台失败 2 修复） |
 | `59a2b4aa2` | live harness typed NUWAX 环境启动模式 + 离线验证（+530/-15） |
 | `9c87bc67f` | resume ledger 身份遵守 live 预算 |
+| `0858f5d01` | 本文档 + Tasks 标注 |
 
 ## 6. 开放项（按"必须修复 / 已验证 / 待平台或授权 / 独立扩展"）
 
 **必须修复（无新确认产品缺陷；本批无）**
 
-**当前已验证**：macOS 上三 wire 环境启动（exec/app-server）、工具往返、中断、热/冷 resume、usage 上报、双进程隔离、凭据零持久化、typed 环境模式离线闭环、两三平台失败根因修复、resume 身份规范化。（Linux 容器链路若 §3.3 构建通过则补记。）
+**当前已验证**：macOS 上三 wire 环境启动（exec/app-server）、工具往返、中断、热/冷 resume、usage 上报、双进程隔离、凭据零持久化、typed 环境模式离线闭环、两三平台失败根因修复、resume 身份规范化；**Linux 容器（Debian 13 aarch64）原生构建 + typed 环境模式闭环（§3.3）**。
 
 **待平台/授权**：
 1. 真实 provider 一条链路（B.3）——待用户授权厂商/model/请求数/费用。
 2. push 授权 → 新 SHA CI 验证 userns/磁盘/TLS 三修复。
-3. bwrap 沙箱族在 Linux 容器内的运行（需可装 bwrap 的镜像）。
+3. bwrap 沙箱族在 Linux 容器内的运行（容器有网可装 bwrap，留待专门批次）。
 4. WS cap fixture（待实际使用 WS 路径的模型声明）。
-5. Linux 原生构建/测试结果（进行中，完成后补记于此节下方）。
 
 **独立扩展**：astra `.snap.new` 残留与技能隔离；ACP 三问题；D6/模型可见 partial（P0 门不变）；app-server thread/read/attach/分页等 T19/T20；T21–T40 原队列。
 
