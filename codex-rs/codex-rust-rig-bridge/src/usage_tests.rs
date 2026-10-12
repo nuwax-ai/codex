@@ -132,3 +132,45 @@ fn chat_usage_explicit_zero_counters_stay_reported() {
     );
     assert!(report.normalized.is_none());
 }
+
+#[test]
+fn chat_negative_and_overflow_counters_stay_unreported() {
+    let mut usage = ChatUsage::default();
+    usage.observe(&json!({
+        "choices":[],
+        "usage":{
+            "prompt_tokens":-5,
+            "completion_tokens":u64::MAX,
+            "prompt_tokens_details":{"cached_tokens":-1},
+            "total_tokens":3
+        }
+    }));
+    assert_eq!(
+        usage.snapshot_report(),
+        ReportedResponseUsage::from_counters(ReportedUsageCounters {
+            total_tokens: Some(3),
+            ..Default::default()
+        }),
+        "negative or overflowing counters are absent, never zero or negative"
+    );
+}
+
+#[test]
+fn anthropic_negative_counters_leave_the_previous_snapshot_unchanged() {
+    let mut usage = AnthropicUsage::default();
+    usage.observe(&json!({"type":"message_start","message":{"usage":{
+        "input_tokens":9,"output_tokens":11
+    }}}));
+    usage.observe(&json!({"type":"message_delta","usage":{
+        "input_tokens":-2,"output_tokens":13
+    }}));
+    assert_eq!(
+        usage.snapshot_report(),
+        ReportedResponseUsage::from_counters(ReportedUsageCounters {
+            input_tokens: Some(9),
+            output_tokens: Some(13),
+            ..Default::default()
+        }),
+        "a negative delta counter is unreportable and keeps the last good value"
+    );
+}
