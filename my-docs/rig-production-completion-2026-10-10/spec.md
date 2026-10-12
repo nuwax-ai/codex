@@ -43,6 +43,7 @@
 - 提取厂商实际报告的计数，缺失不填 0；显式零、部分计数、完整计数和未知分别表示。多 response、retry、pause 的累计用稳定 host response 身份去重。
 - legacy/paginated 均能保存、读取、resume 可见 partial；工具参数只作不可执行诊断文本。跨后续成功、attach、重连、压缩与恢复仍能查询 usage 完整性。
 - 模型可见片段在 core/context 定义 struct，实现 ContextualUserFragment 并注册识别器/授权分类；不冒充人类指令。采集、序列化与完整 render 均有 byte/count/token 硬限。
+- 身份与序列化总界（D1-d）：provider 身份串（item/call/summary 键、usage response ID）≤256 B，超限整串丢弃绝不截断成存储键（杜绝同前缀别名）；单事件身份字节 ≤8 KiB；事件 JSON 序列化 ≤128 KiB（escaped 增量记账）。超限可观测：capture 记入 `enforced_caps`（IdentityBytes/MetadataBytes/EventBytes），usage ledger 退化 keyless-additive 且日志只记长度。工具 identity、授权与 wire 事件上的 provider id 不变。
 - 新格式必须有实际旧读取器测试、开关和升级/降级规则。预算无计量证明时不得声称 token 限额 verified。
 
 ### S4：D6
