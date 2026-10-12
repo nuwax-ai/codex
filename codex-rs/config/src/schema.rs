@@ -16,6 +16,10 @@ use serde_json::Map;
 use serde_json::Value;
 use std::path::Path;
 
+#[cfg(test)]
+#[path = "schema_tests.rs"]
+mod tests;
+
 /// Determines the conditions under which the user is consulted to approve
 /// running the command proposed by Codex.
 #[allow(dead_code)]
@@ -131,6 +135,15 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
                 feature.key.to_string(),
                 schema_gen.subschema_for::<codex_features::FeatureToml<
                     codex_features::CurrentTimeReminderConfigToml,
+                >>(),
+            );
+            continue;
+        }
+        if feature.id == codex_features::Feature::CapPartialDiagnostics {
+            validation.properties.insert(
+                feature.key.to_string(),
+                schema_gen.subschema_for::<codex_features::FeatureToml<
+                    codex_features::CapPartialDiagnosticsConfigToml,
                 >>(),
             );
             continue;

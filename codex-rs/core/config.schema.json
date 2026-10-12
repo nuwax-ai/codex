@@ -527,6 +527,15 @@
       },
       "type": "object"
     },
+    "CapPartialDiagnosticsConfigToml": {
+      "description": "Config for [`crate::Feature::CapPartialDiagnostics`].",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "ChatBridge": {
       "description": "Model bridge implementation backing this provider (fork extension). `Rig` is the default for third-party providers and supports the explicitly selected Responses, Chat Completions, or Anthropic wire. `Native` selects the upstream Responses transport. The legacy `Genai` bridge only supports Chat Completions and Anthropic.",
       "oneOf": [
@@ -795,7 +804,7 @@
               "type": "boolean"
             },
             "cap_partial_diagnostics": {
-              "type": "boolean"
+              "$ref": "#/definitions/FeatureToml_for_CapPartialDiagnosticsConfigToml"
             },
             "chronicle": {
               "type": "boolean"
@@ -1538,6 +1547,16 @@
         }
       },
       "type": "object"
+    },
+    "FeatureToml_for_CapPartialDiagnosticsConfigToml": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/definitions/CapPartialDiagnosticsConfigToml"
+        }
+      ]
     },
     "FeatureToml_for_CodeModeConfigToml": {
       "anyOf": [
@@ -6874,7 +6893,7 @@
           "type": "boolean"
         },
         "cap_partial_diagnostics": {
-          "type": "boolean"
+          "$ref": "#/definitions/FeatureToml_for_CapPartialDiagnosticsConfigToml"
         },
         "chronicle": {
           "type": "boolean"
