@@ -17,10 +17,11 @@
 | `d1e1374f1` | tls fallback 分类器按链内标记判定（修 ubuntu 5 失败） |
 | `e85c66883` | Responses 路由 cap-usage presence 矩阵（缺失/部分/显式零） |
 | `9a7cd984b` | Anthropic 路由 cap-usage 矩阵（start/delta 累积、显式零穿透） |
+| `2503ece93` | 压缩 usage 改用 host sampling key（修跨压缩 provider ID 复用少计） |
 
 ## 1. 当前 SHA 的 CI（run `38195171566`，HEAD `356052ee2`）
 
-四 job：`bazel bridge gate (ubuntu)` **success**（该门首次全绿，V8 配对工件/setup 修复生效）；`nextest (ubuntu-latest)` **failure**（完整日志已取回并逐行归因，见下）；windows/macos nextest 本文档写作时仍在运行，完成后补记。
+四 job：`bazel bridge gate (ubuntu)` **success**（该门首次全绿，V8 配对工件/setup 修复生效）；`nextest (ubuntu-latest)` **failure**（完整日志已取回并逐行归因，见下）；`nextest (windows)` **failure**（见下）；macos nextest 本文档写作时仍在运行，完成后补记。注意该 run 测的是 checkpoint `356052ee2`，本轮全部本地提交不在其中。
 
 ### ubuntu 失败归因（21757 测试身份，197 失败）
 
@@ -39,6 +40,11 @@
 ### tls 修复的边界
 
 `d1e1374f1` 依据：run6 账目与本次日志一致显示同一告警在 ubuntu 为 `kind: Request`、macOS 本地为 Connect；分类器改为按源链内平台标记判定（超时仍不回退、证书类仍主动排除）。本机 macOS `codex-http-client` 182/182 通过；Linux 确认待 CI。
+
+### windows 结果（20585 运行：20537 过[含 196 leaky、34 slow]、28 失败、20 超时、138 跳过）
+
+- 28 失败（26 唯一身份）分族：insta `@windows` 快照不匹配（codex-tui approvals 弹窗 2、doctor 快照 2）；runner PowerShell `Microsoft.PowerShell.Security` 模块加载失败（codex-uds ACL 2）；其余 app-server plugin/projects/guardian-skills、exec-server junction/desktop、worktree、pty conpty、sandboxing manager 等单例家族（完整清单在 `/tmp/win-failures.txt`，逐身份归因待后续批次；与历史账目 Windows 家族重合）。
+- 196 leaky 集中在 codex-app-server message_processor gateway_oauth 与 v2 套件（PASS+LEAK 既有家族）；20 超时含 codex-windows-sandbox unified_exec legacy tty/cmd 系列（每个 2 次）。
 
 ## 2. D1-d：cap-partial 身份与序列化总界（第二批优先项）
 
@@ -77,6 +83,7 @@
 - **Responses 矩阵**（`e85c66883`）：终局无 usage → 不落账不造假报告；部分计数 → ledger 缺席计零（设计如此）、诊断保 presence 且 Incomplete；显式零 → ledger 与诊断都保留为已报计数。三例首跑即过。
 - **Anthropic 矩阵**（`9a7cd984b`）：start(input)+delta(output) 累积进 ledger 与诊断（total 恒缺席、Incomplete）；终局 delta 显式零 output 穿透 rig 0.42 零→缺失归一化，端到端保留 Some(0)。
 - **Anthropic 首败记录（保留）**：构造矩阵时两次首败——rig 的 Anthropic 反序列化要求 message_start 与终局 message_delta 都带 usage（start 还要求 output_tokens 字段）；缺任一则 JsonError → 流按可重试截断失败。这不是缺陷而是 rig 的严格性与既有截断分类的正确行为；相应非法形状由既有 truncation 测试覆盖，矩阵测试改为合法形状。
+- **压缩 host key**（`2503ece93`）：compact/compact_remote_v2 两条压缩路径此前以 `response_key: None` 记账（legacy provider-ID key）——provider 跨压缩复用同一 response ID 时第二次替换第一次的已计花费。现在每次压缩 wire attempt 铸造独立 host sampling key（与常规 turn 同一身份纪律），回归测试证明两次复用 "r1" 的压缩分别计费（30+12=42）。compact 套件 89/89（含既有 `manual_compact_records_durable_and_local_token_usage` 的整记录深比较不变）。
 
 ## 5. 验证记录汇总（macOS arm64，本机）
 

@@ -25,7 +25,7 @@
 
 - [ ] **T15 P1/P0：落实7个兼容决策。** 失败载体/记录/旧reader/硬限/usage口径/API与exec/启用降级。DoD：具体类型/样例diff、旧reader实测、固定预算及opt-in语义；>1k fragment经人工门，无未说明默认迁移。（进展 2026-10-12：D1-d 身份/序列化总界已实现并测试——每身份 256B、元数据 8KiB、序列化 128KiB escaped 记账，超限不截断不别名；详见 results-followup-2026-10-12.md。typed context fragment、P0 人工门、旧 reader 实测仍开放。）
 - [ ] **T16 P1：三协议失败usage。** Responses共用SSE/WS与Rig、Chat迟到usage、Anthropicstart/delta；presence/显式0/未知。DoD：已报告计数不丢，无假成功，完整/部分/缺帧/非法各有真实wire回归。（进展 2026-10-12：Chat 迟到 usage-only/primary chunk、Responses 缺失/部分/显式零、Anthropic start/delta 累积与显式零穿透、负值/溢出语义均有 wire/单元回归；V-D2-1 关闭。WS 传输层专用 fixture 与取消路径仍开放。）
-- [ ] **T17 P1：稳定response reducer。** Host key、累积快照替换、多response/retry/pause、重复/缺失provider ID。DoD：无重复累计，unknown/incomplete不会被后续成功抹掉。
+- [ ] **T17 P1：稳定response reducer。** Host key、累积快照替换、多response/retry/pause、重复/缺失provider ID。DoD：无重复累计，unknown/incomplete不会被后续成功抹掉。（进展 2026-10-12：压缩路径（compact 与 compact_remote_v2）补上 host sampling key，跨压缩复用 provider ID 不再替换少计；rig_output_cap/compact 套件回归通过。多 response/pause 累积矩阵仍开放。）
 - [ ] **T18 P1/P0：partial双存储读写/resume。** 有界采集/持久化/完整render，typed context fragment及授权分类，sidecar或经实测兼容的新格式。DoD：legacy/paginated/crash/export/archive/delete/两次resume/旧reader/模型切换，截断工具零执行；同会话继续与resume投影一致，无计量证明的诊断保存不能关闭模型恢复验收。
 - [ ] **T19 P1：查询API与SDK/UI。** ThreadTokenUsage字段、nullable v2、TS/schema、rawResponseItem/*兼容与snapshot；thread/read/attach/重连/分页重放。DoD：同一历史完整性一致，旧历史缺证未知，旧客户端兼容。
 - [ ] **T20 P1：exec失败与端到端闭环。** JSON/SDK快照与turn累计、partial在failed之前。DoD：恰一次失败、零Completed/重采样/截断工具，关闭后无delta，无cap旧行为兼容。
