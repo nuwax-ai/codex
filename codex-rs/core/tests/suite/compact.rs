@@ -1241,6 +1241,85 @@ async fn manual_compact_records_durable_and_local_token_usage() {
     );
 }
 
+/// Two compactions whose provider echoes the SAME response id must both
+/// count: each compaction attempt joins the ledger by its own minted host
+/// key, never by the reusable provider id.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn repeated_compaction_response_ids_count_separately() {
+    skip_if_no_network!();
+
+    let server = start_mock_server().await;
+
+    // Both compaction responses reuse the provider id "r1" with different
+    // totals; wiremock serves them in mount order.
+    mount_sse_once(
+        &server,
+        sse(vec![
+            ev_assistant_message("m1", SUMMARY_TEXT),
+            ev_completed_with_tokens("r1", /*total_tokens*/ 30),
+        ]),
+    )
+    .await;
+    mount_sse_once(
+        &server,
+        sse(vec![
+            ev_assistant_message("m2", SUMMARY_TEXT),
+            ev_completed_with_tokens("r1", /*total_tokens*/ 12),
+        ]),
+    )
+    .await;
+
+    let model_provider = non_openai_model_provider(&server);
+    let mut builder = test_codex().with_config(move |config| {
+        config.model_provider = model_provider;
+        set_test_compact_prompt(config);
+    });
+    let test = builder.build(&server).await.unwrap();
+    let rollout_path = test.codex.rollout_path().expect("rollout path");
+    let codex = test.codex;
+
+    for _ in 0..2 {
+        codex.submit(Op::Compact).await.unwrap();
+        wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    }
+
+    let records = fs::read_to_string(rollout_path)
+        .expect("read rollout")
+        .lines()
+        .filter_map(|line| codex_rollout::parse_rollout_line(line).ok())
+        .filter_map(|line| match line.item {
+            RolloutItem::TokenUsageRecord(record) => Some(record),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        records.len(),
+        2,
+        "each compaction records its own sampling: {records:?}"
+    );
+    assert_eq!(
+        records[0].response_key.is_some(),
+        true,
+        "compaction samplings join by a minted host key"
+    );
+    assert_ne!(
+        records[0].response_key, records[1].response_key,
+        "the two compactions mint distinct host keys"
+    );
+    assert_eq!(
+        (
+            records[0].response_id.as_str(),
+            records[1].response_id.as_str()
+        ),
+        ("r1", "r1"),
+        "the provider id is advisory and may repeat"
+    );
+    assert_eq!(
+        records[1].thread_token_usage.total_tokens, 42,
+        "the reused provider id must not replace the first compaction's spend"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn manual_compact_emits_context_compaction_items() {
     skip_if_no_network!();

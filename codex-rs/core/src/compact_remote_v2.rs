@@ -407,6 +407,11 @@ async fn run_remote_compaction_request_v2(
         .min(MAX_REMOTE_COMPACTION_V2_STREAM_RETRIES);
     let mut retry_state = ResponsesStreamRetryState::default();
     loop {
+        // Each wire attempt is its own sampling: mint a fresh host key so
+        // the ledger joins this compaction attempt by host identity instead
+        // of the provider response id, which a provider may reuse across
+        // distinct compactions.
+        let response_key = sess.next_sampling_response_key(&turn_context.sub_id);
         let result = match client_session
             .stream(
                 prompt,
@@ -424,7 +429,9 @@ async fn run_remote_compaction_request_v2(
             )
             .await
         {
-            Ok(stream) => collect_compaction_output(sess, turn_context, stream).await,
+            Ok(stream) => {
+                collect_compaction_output(sess, turn_context, stream, &response_key).await
+            }
             Err(err) => Err(err),
         };
 
@@ -450,6 +457,7 @@ async fn collect_compaction_output(
     sess: &Session,
     turn_context: &TurnContext,
     mut stream: ResponseStream,
+    response_key: &str,
 ) -> CodexResult<RemoteCompactionV2Output> {
     let mut output_item_count = 0usize;
     let mut compaction_count = 0usize;
@@ -475,7 +483,7 @@ async fn collect_compaction_output(
             } => {
                 sess.record_observed_response_completed(
                     turn_context,
-                    /*response_key*/ None,
+                    Some(response_key),
                     &response_id,
                     token_usage.as_ref(),
                     usage_metadata.as_ref(),
@@ -1272,7 +1280,7 @@ mod tests {
 
         let (sess, turn_context, rx) =
             crate::session::tests::make_session_and_context_with_rx().await;
-        let output = collect_compaction_output(&sess, &turn_context, stream)
+        let output = collect_compaction_output(&sess, &turn_context, stream, "sampling:test:0")
             .await
             .expect("compaction should be collected");
 

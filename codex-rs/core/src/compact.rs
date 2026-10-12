@@ -294,6 +294,11 @@ async fn run_compact_task_inner_impl(
         let responses_metadata = sess
             .compaction_responses_metadata(turn_context.as_ref(), compaction_metadata)
             .await;
+        // Each wire attempt is its own sampling: mint a fresh host key so
+        // the ledger joins this compaction attempt by host identity instead
+        // of the provider response id, which a provider may reuse across
+        // distinct compactions.
+        let response_key = sess.next_sampling_response_key(&turn_context.sub_id);
         let attempt_result = drain_to_completed(
             &sess,
             turn_context.as_ref(),
@@ -301,6 +306,7 @@ async fn run_compact_task_inner_impl(
             &responses_metadata,
             &prompt,
             compaction_metadata.phase(),
+            &response_key,
         )
         .await;
 
@@ -763,6 +769,7 @@ async fn drain_to_completed(
     responses_metadata: &CodexResponsesMetadata,
     prompt: &Prompt,
     phase: CompactionPhase,
+    response_key: &str,
 ) -> CodexResult<CompactionResponse> {
     let mut stream = client_session
         .stream(
@@ -825,7 +832,7 @@ async fn drain_to_completed(
             }) => {
                 sess.record_observed_response_completed(
                     turn_context,
-                    /*response_key*/ None,
+                    Some(response_key),
                     &response_id,
                     token_usage.as_ref(),
                     usage_metadata.as_ref(),
