@@ -573,29 +573,150 @@ async fn cap_partial_emits_persists_and_the_rollout_resumes(
     Ok(())
 }
 
-/// The native Responses wire completes items before the terminal, so a
-/// whole tool call that never executes (the cap forbids it) is still
-/// captured at the observation point as non-executable ToolArguments
-/// diagnostics.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn responses_cap_partial_captures_completed_tool_arguments_as_diagnostics() -> Result<()> {
+async fn cap_partial_keeps_text_seeded_by_output_item_added() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    let body = responses::sse(vec![
+        responses::ev_response_created("seeded-cap"),
+        responses::ev_message_item_added("seeded-message", "initial prefix"),
+        responses::ev_output_text_delta(" and tail"),
+        json!({
+            "type": "response.incomplete",
+            "response": {"id": "seeded-cap", "incomplete_details": {"reason": "max_output_tokens"}}
+        }),
+    ]);
+    let log = mount_capturing_response(&server, "/v1/responses", body).await?;
+    let (test, _env) =
+        cap_test_instance_with(&server.uri(), WireApi::Responses, /*cap_partial*/ true).await?;
+    let outcome = run_turn_until_complete(&test, "cap after a seeded message").await?;
+    assert_cap_terminal(&outcome, log.posts(), " and tail");
+    assert_eq!(outcome.cap_partials.len(), 1);
+    assert_eq!(
+        outcome.cap_partials[0]
+            .fragments
+            .iter()
+            .map(|fragment| (
+                fragment.kind,
+                fragment.fragment_key.as_str(),
+                fragment.text.as_str(),
+            ))
+            .collect::<Vec<_>>(),
+        vec![(
+            codex_protocol::protocol::CapPartialFragmentKind::AssistantText,
+            "seeded-message",
+            "initial prefix and tail",
+        )]
+    );
+    Ok(())
+}
+
+/// Both Responses routes dispatch a complete tool item received before the
+/// cap terminal. Capturing its arguments as diagnostics must preserve that
+/// execution and must not execute the tool a second time.
+#[test_case::test_case(None; "rig")]
+#[test_case::test_case(Some(codex_model_provider_info::ChatBridge::Native); "native")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn responses_cap_partial_captures_completed_tool_arguments_as_diagnostics(
+    bridge: Option<codex_model_provider_info::ChatBridge>,
+) -> Result<()> {
     skip_if_no_network!(Ok(()));
     let server = MockServer::start().await;
     let body = responses::sse(vec![
         responses::ev_response_created("resp_cap_diag"),
         responses::ev_message_item_added("msg_diag", ""),
         responses::ev_output_text_delta("partial with a tool"),
-        responses::ev_function_call("call_diag", "shell", "{\"command\":[\"echo\",\"hi\"]}"),
+        responses::ev_exec_command_call("call_diag", "echo hi"),
         json!({
             "type": "response.incomplete",
             "response": {"id": "resp_cap_diag", "incomplete_details": {"reason": "max_output_tokens"}}
         }),
     ]);
     let log = mount_capturing_response(&server, "/v1/responses", body).await?;
-    let (test, _env) = cap_test_instance_with(&server.uri(), WireApi::Responses, true).await?;
+    let mut provider = output_cap_provider(&server.uri(), WireApi::Responses);
+    provider.experimental_bridge = bridge;
+    let test = test_codex()
+        .with_model("gpt-5.5")
+        .with_model_info_override("gpt-5.5", |model| {
+            model.shell_type = codex_protocol::openai_models::ConfigShellToolType::UnifiedExec;
+            model.tool_mode = Some(codex_protocol::openai_models::ToolMode::Direct);
+        })
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
+        .with_config(move |config| {
+            config.model_provider = provider;
+            for feature in [
+                codex_features::Feature::ShellTool,
+                codex_features::Feature::UnifiedExec,
+                codex_features::Feature::CapPartialDiagnostics,
+            ] {
+                config
+                    .features
+                    .enable(feature)
+                    .expect("enable tool diagnostics");
+            }
+            config
+                .permissions
+                .set_permission_profile(codex_protocol::models::PermissionProfile::Disabled)
+                .expect("test command permissions");
+        })
+        .build_with_auto_env(&server)
+        .await?;
     let outcome = run_turn_until_complete(&test, "cap after a whole tool call").await?;
-    assert_cap_terminal(&outcome, log.posts(), "partial with a tool");
-    assert_eq!(outcome.exec_begun, 0, "the completed tool never executes");
+    let terminal = outcome
+        .turn_error
+        .as_deref()
+        .context("cap must fail the turn")?;
+    assert!(terminal.contains("Output token limit reached"));
+    assert_eq!(outcome.errors.len(), 1, "one cap terminal error event");
+    assert!(outcome.errors[0].contains("Output token limit reached"));
+    assert_eq!(log.posts(), 1, "the cap must not resample");
+    assert_eq!(
+        (outcome.completed_agent_items, outcome.completed_responses),
+        (0, 0),
+        "the cap must not complete the assistant item or response"
+    );
+    assert_eq!(outcome.final_agent_message, None);
+    assert_eq!(outcome.agent_deltas, "partial with a tool");
+    assert_eq!(
+        outcome.exec_begun, 1,
+        "the whole tool executes exactly once"
+    );
+    assert!(
+        log.first_body()["tools"]
+            .as_array()
+            .context("the request advertises direct tools")?
+            .iter()
+            .any(|tool| tool["name"] == "exec_command"),
+        "exec_command must be registered on the native wire"
+    );
+    let rollout_path = test.codex.rollout_path().context("rollout path")?;
+    let outputs = std::fs::read_to_string(rollout_path)?
+        .lines()
+        .filter_map(|line| codex_rollout::parse_rollout_line(line).ok())
+        .filter_map(|line| match line.item {
+            codex_history::RolloutItem::ResponseItem(envelope) => match envelope.item {
+                codex_protocol::models::ResponseItem::FunctionCallOutput {
+                    call_id,
+                    output,
+                    ..
+                } if call_id.as_deref() == Some("call_diag") => Some(output),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        outputs.len(),
+        1,
+        "diagnostics must not duplicate tool execution"
+    );
+    let output = outputs[0]
+        .text_content()
+        .context("exec_command text output")?;
+    assert!(output.contains("Process exited with code 0"));
+    assert!(output.lines().any(|line| line.trim() == "hi"));
     assert_eq!(outcome.cap_partials.len(), 1);
     let partial = &outcome.cap_partials[0];
     let tool = partial
@@ -606,7 +727,7 @@ async fn responses_cap_partial_captures_completed_tool_arguments_as_diagnostics(
         })
         .expect("the whole tool call captured as diagnostics");
     assert_eq!(tool.fragment_key, "call_diag");
-    assert_eq!(tool.text, "call shell: {\"command\":[\"echo\",\"hi\"]}");
+    assert_eq!(tool.text, "call exec_command: {\"cmd\":\"echo hi\"}");
     assert!(
         partial
             .fragments
