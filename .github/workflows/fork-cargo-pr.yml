@@ -7,9 +7,9 @@
 # scripts/bazel_bridge_gate.sh): the bazel-bridge-gate job below keeps the
 # Bazel-built public path on all three model wires under regression.
 #
-# Not yet dispatched from this fork — the workflow file is the deliverable;
-# running it requires push/CI authorization (registered in
-# my-docs/rig-stability-next/).
+# Push and PR events run this offline gate. Manual dispatch is a separate
+# user-authorized operation; completed runs and coverage limits are recorded
+# in my-docs/rig-production-completion-2026-10-10/.
 
 name: Fork Cargo PR
 
@@ -43,10 +43,8 @@ jobs:
             # installs gstreamer 1.28 via brew and covers its build and unit
             # tests.
             voice_host: exclude
-            v8_target: x86_64-unknown-linux-gnu
           - os: macos-latest
             voice_host: include
-            v8_target: aarch64-apple-darwin
     defaults:
       run:
         working-directory: codex-rs
@@ -84,7 +82,9 @@ jobs:
       - name: Setup rusty_v8 paired artifacts
         uses: ./.github/actions/setup-rusty-v8
         with:
-          target: ${{ matrix.v8_target }}
+          # Runner labels can change architecture; match the installed native
+          # Rust toolchain instead of assuming its host triple.
+          target: host
 
       - name: Format
         run: cargo fmt --all --check
@@ -155,7 +155,7 @@ jobs:
       - name: Setup rusty_v8 paired artifacts
         uses: ./.github/actions/setup-rusty-v8
         with:
-          target: x86_64-pc-windows-msvc
+          target: host
 
       # voice-host's pinned gstreamer v1_28 API surface needs the 500MB
       # gstreamer Windows installer plus pkg-config wiring, which this lane
