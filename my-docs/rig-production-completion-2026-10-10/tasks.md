@@ -20,7 +20,7 @@
 - [ ] **T10 P1：R11真正栈问题。** 区分future构造/移动/尺寸/poll深度，正常4MiB显式线程及同feature精确集合。DoD：取得真实溢出或受控机制证据，最小修复后单跑/模块并发/公共Core路径通过；不增栈求绿。
 - [ ] **T11 P1：R1b有限checkpoint重放。** Runtime grant绑定checkpoint/producer/target/session，不用持久bool或任意scope哨兵。DoD：13身份及sync/async/context modes/pool分支阳性wire有checkpoint，普通resume/非法来源阴性仍降级，历史前缀不改。
 - [ ] **T12 P1：Luna post-answer终局。** Gate控制审批/tool-start/早退/generation/cache/采样交错。DoD：合法请求发出并终结，正确拒绝不发，取消/Superseded不丢终局，不增加等待期限。
-- [ ] **T13 P1：收口其余历史族与新失败。** 按TSV复验TUI45、app-server18、Core31、exec9、HTTP6、install1、otel6、rmcp2、v8-poc1等（部分与前项重叠，不能求和为新用例总数）。DoD：119每行状态齐全，快照逐项解释，完整首次SIGABRT/新增失败未遗漏。
+- [ ] **T13 P1：收口其余历史族与新失败。** 按TSV复验TUI45、app-server18、Core31、exec9、HTTP6、install1、otel6、rmcp2、v8-poc1等（部分与前项重叠，不能求和为新用例总数）。DoD：119每行状态齐全，快照逐项解释，完整首次SIGABRT/新增失败未遗漏。（进展 2026-10-12：三平台复现的两失败已根因修复——projects 为测试对全局 skills/changed 通知的过严断言（097f56e56），guardian 快照为 R1b 9d307f72d 漏更新、按意图逐张接受（eac4a4ae5）；guardian_code_mode_messaging 需 V8 构建的 code-mode-host，本机无法构建属环境限制。）
 - [ ] **T14 P1：稳定性公共切片闭环。** proxy/TLS/WS/exec-registry/watcher/Guardian/TUI/Core/Rig复验。DoD：实际执行有请求断言；test-only直连、native fixture和warmup的覆盖边界明确，源与二进制匹配。
 
 ## 包1：cap partial / usage（6项）
@@ -43,7 +43,7 @@
 - [ ] **T24 P1：完整CLI配置路由。** 四命令/四环境状态/flags/install/daemon/embedded/remote。DoD：真实owner/RPC、连接前fail-fast、配置字节与机密不回显，不能仅枚举单测。
 - [ ] **T25 P1：writer生命周期。** cold/loaded/subscribed/running、resume持锁到unload、held/free校准、PID/window/error。DoD：owner存在不新建writer，lock/实际RPC证据同步，轮询局限公开。
 - [ ] **T26 P1：crash/restart/持久队列。** Gate注入owner退出/重启与enqueue/execution。DoD：恢复不丢不重执行，名字歧义/分页稳定，执行失败不把enqueue成功冒称模型成功。
-- [ ] **T27 P1：环境接线与并行预算。** 双home/有效SQLite/模型/凭据/协议/retry/idle、CLI覆盖/失活/坏值。DoD：真实HTTP attempts、长短idle观测、取消后无新请求，daemon/config不被污染。
+- [ ] **T27 P1：环境接线与并行预算。** 双home/有效SQLite/模型/凭据/协议/retry/idle、CLI覆盖/失活/坏值。DoD：真实HTTP attempts、长短idle观测、取消后无新请求，daemon/config不被污染（进展 2026-10-12：app-server 补齐 Chat/Responses 正向环境启动——工具往返、流中断+两次恢复、usage 上报、凭据/rollout 零持久化，经真实子进程 public JSON-RPC（167f197c8）；live harness 增 typed NUWAX 环境启动模式并离线闭环验证（59a2b4aa2，169/169）；exec+app-server 全 nuwax 族 28/28 复验。）
 
 ## 包5：字段、来源与历史（4项）
 
@@ -54,7 +54,7 @@
 
 ## 包6：平台与异OS（4项）
 
-- [ ] **T32 P1：Linux与容器。** 原生build/test、双进程三wire/预算/凭据/根目录、信任源与信号。DoD：真实镜像/平台/版本记录，交叉编译或Mac mock不替代。
+- [ ] **T32 P1：Linux与容器。** 原生build/test、双进程三wire/预算/凭据/根目录、信任源与信号。DoD：真实镜像/平台/版本记录，交叉编译或Mac mock不替代（进展 2026-10-12：OrbStack Debian 13 aarch64 容器校准——默认 seccomp 禁 userns、--security-opt seccomp=unconfined 后可用；bwrap 未装且无网补装；宿主 cargo registry/git 缓存 RO 挂载可 --locked --offline 构建；原生 build+NUWAX 环境闭环测试进行中。）
 - [ ] **T33 P1：Windows。** 原生build/test、FILE/DIR、路径/锁/skills、Ctrl-C三等待阶段。DoD：控制台事件处理到退出，退出后无attempt，不能用Unix kill代替。
 - [ ] **T34 P1：macOS冷态/代理/watch。** 系统proxy受控双轨、TLS冷启动、watch/unwatch/drop/就绪与失败恢复。DoD：低载条件和线程/时序分项记录，保持原deadline，原生实际执行。
 - [ ] **T35 P1：异OS app/exec/remote。** Auto_env/runfiles/资源路径与客户端服务端配置。DoD：至少实际两OS组合，owner和执行机身份可核，未具备平台明确阻断。
