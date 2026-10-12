@@ -1099,6 +1099,102 @@ async fn chat_cap_finish_chunk_without_done_is_retryable_truncation() -> Result<
     Ok(())
 }
 
+/// V-D2-1: a usage-only chunk arriving AFTER the `finish_reason=length`
+/// chunk but before `[DONE]` — the wire order several gateways use — must
+/// still ride the cap terminal's presence-preserving report. The wire check
+/// observes every frame that flows, and rig publishes its final record only
+/// after `[DONE]`, so the snapshot the cap error carries includes the late
+/// chunk; an explicit zero stays zero and unreported counters stay absent.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn chat_cap_usage_only_chunk_after_length_finish_is_retained() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    let late_usage = json!({
+        "id": "chatcmpl-cap", "object": "chat.completion.chunk", "created": 1,
+        "model": "cap-test", "choices": [],
+        "usage": {
+            "prompt_tokens": 6,
+            "completion_tokens": 64,
+            "prompt_tokens_details": {"cached_tokens": 0},
+            "total_tokens": 70
+        }
+    });
+    let body = sse(&[
+        chat_chunk(
+            json!({"role": "assistant", "content": "late usage answer"}),
+            None,
+        ),
+        chat_chunk(json!({}), Some("length")),
+        late_usage,
+    ]) + "data: [DONE]\n\n";
+    let log = mount_capturing_response(&server, "/v1/chat/completions", body).await?;
+    let (test, _env) =
+        cap_test_instance_with(&server.uri(), WireApi::Chat, /*cap_partial*/ true).await?;
+    let outcome = run_turn_until_complete(&test, "chat late usage chunk").await?;
+    assert_cap_terminal(&outcome, 1, "late usage answer");
+    assert_eq!(log.posts(), 1, "no resample");
+    let partial = &outcome.cap_partials[0];
+    let reported = partial
+        .reported_usage
+        .as_ref()
+        .expect("the late usage-only chunk rides the cap terminal");
+    assert_eq!(
+        (
+            reported.counts.input_tokens,
+            reported.counts.output_tokens,
+            reported.counts.cached_input_tokens,
+            reported.counts.total_tokens,
+        ),
+        (Some(6), Some(64), Some(0), Some(70)),
+        "explicit zero presence is preserved, reported counters are not lost"
+    );
+    assert_eq!(
+        (
+            reported.counts.cache_write_input_tokens,
+            reported.counts.reasoning_output_tokens
+        ),
+        (None, None),
+        "the Chat wire reports neither counter; absence stays absent"
+    );
+    assert_eq!(
+        reported.completeness,
+        codex_protocol::protocol::UsageCompleteness::Incomplete,
+        "without cache-write/reasoning counters the report is incomplete, not normalized"
+    );
+    Ok(())
+}
+
+/// A primary-choice delta arriving after the first Chat terminal chunk must
+/// be dropped, not spliced into the visible partial: the first terminal is
+/// the authoritative one, and content past it never reaches the turn.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn chat_late_primary_chunk_after_length_finish_is_dropped() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    let body = sse(&[
+        chat_chunk(
+            json!({"role": "assistant", "content": "real partial"}),
+            None,
+        ),
+        chat_chunk(json!({}), Some("length")),
+        chat_chunk(
+            json!({"role": "assistant", "content": "ghost continuation"}),
+            None,
+        ),
+    ]) + "data: [DONE]\n\n";
+    let log = mount_capturing_response(&server, "/v1/chat/completions", body).await?;
+    let (test, _env) = cap_test_instance(&server.uri(), WireApi::Chat).await?;
+    let outcome = run_turn_until_complete(&test, "chat late primary chunk").await?;
+    assert_cap_terminal(&outcome, 1, "real partial");
+    assert_eq!(log.posts(), 1, "no resample");
+    assert!(
+        !outcome.agent_deltas.contains("ghost"),
+        "content after the first terminal must never surface: {:?}",
+        outcome.agent_deltas
+    );
+    Ok(())
+}
+
 /// Documented boundary: a Chat gateway that stalls after the finish chunk
 /// (connection open, no `[DONE]`) has not delivered its terminal on the wire,
 /// so the stream costs the idle budget and fails — it must NOT report
