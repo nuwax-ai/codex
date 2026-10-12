@@ -21,6 +21,8 @@ pub(super) struct Scene<'a> {
     pub(super) wire: codex_rust_rig_bridge::RigProtocol,
     pub(super) capture_requirement: super::capture_validation::CaptureRequirement,
     pub(super) expected_cap: super::capture_validation::CapExpectation,
+    /// Child-only typed environment (empty in config mode).
+    pub(super) startup_env: &'a [(String, String)],
 }
 
 pub(super) enum BinaryScenario<'a> {

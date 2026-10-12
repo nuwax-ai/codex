@@ -119,6 +119,7 @@ async fn run_cap(fixture: &Fixture, case: CapCase, wire: RigProtocol) -> Result<
             expected_url_prefix: "https://unit.test/v1",
             wire,
             capture_requirement: CaptureRequirement::Required,
+            startup_env: &[],
             expected_cap: CapExpectation::Explicit(32),
         },
         BinaryScenario::CapExhausted,

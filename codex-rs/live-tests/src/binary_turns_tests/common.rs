@@ -242,6 +242,7 @@ impl Fixture {
                 expected_url_prefix: "https://unit.test/v1",
                 wire: codex_rust_rig_bridge::RigProtocol::Responses,
                 capture_requirement: capture_validation::CaptureRequirement::Optional,
+                startup_env: &[],
                 expected_cap: capture_validation::CapExpectation::Absent,
             },
             match kind {

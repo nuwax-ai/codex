@@ -12,6 +12,10 @@ pub(super) struct ExecTurn<'a> {
     pub(super) prompt: &'a str,
     pub(super) last_message: &'a Path,
     pub(super) request_capture: &'a Path,
+    /// Extra child-only environment (the NUWAX_* startup group in typed
+    /// mode). Applied after the standard env so it cannot be overridden by
+    /// an inherited value.
+    pub(super) env: &'a [(String, String)],
 }
 
 /// Executes a turn without checking scene assertions. Implementations must
@@ -55,6 +59,17 @@ impl ExecRunner for ProcessRunner {
             .env("CODEX_SQLITE_HOME", turn.home)
             .env("RUST_LOG", "info")
             .env("CODEX_RIG_REQUEST_CAPTURE_FILE", turn.request_capture)
+            // The NUWAX_* group is child-only: strip anything inherited from
+            // the test process first, then apply the scene's typed values.
+            .env_remove("NUWAX_MODEL")
+            .env_remove("NUWAX_BASE_URL")
+            .env_remove("NUWAX_WIRE_API")
+            .env_remove("NUWAX_API_KEY")
+            .env_remove("NUWAX_MAX_OUTPUT_TOKENS")
+            .env_remove("NUWAX_REQUEST_MAX_RETRIES")
+            .env_remove("NUWAX_STREAM_MAX_RETRIES")
+            .env_remove("NUWAX_STREAM_IDLE_TIMEOUT_MS")
+            .envs(turn.env.iter().map(|(name, value)| (name, value)))
             .current_dir(turn.cwd)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -186,6 +201,7 @@ pub(super) async fn execute_expecting(
             prompt,
             last_message,
             request_capture: &request_capture,
+            env: scene.startup_env,
         })
         .await;
     let prefix = if label.is_empty() {

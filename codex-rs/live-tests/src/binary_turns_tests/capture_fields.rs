@@ -283,6 +283,7 @@ async fn capture_scene_requires_real_attempts_before_asserting_wire_evidence() {
                 expected_url_prefix: "https://unit.test/v1",
                 wire: RigProtocol::Responses,
                 capture_requirement: CaptureRequirement::Required,
+                startup_env: &[],
                 expected_cap: capture_validation::CapExpectation::Absent,
             },
             BinaryScenario::Marker {

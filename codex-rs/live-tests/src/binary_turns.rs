@@ -139,6 +139,85 @@ wire_api = "{wire_api}"
     std::fs::write(home.join("config.toml"), toml)
 }
 
+/// How the child process learns its provider: the temporary config.toml
+/// (existing mode) or the typed `NUWAX_*` subprocess environment only.
+#[derive(Debug)]
+pub enum Startup<'a> {
+    /// `model_providers.<vendor>` + `experimental_bearer_token` written into
+    /// the temporary home's config.toml.
+    Config {
+        wire_api: &'a str,
+        bridge: Option<&'a str>,
+        output_cap: Option<u64>,
+    },
+    /// The `NUWAX_*` startup group passed to the child environment only;
+    /// config.toml carries no provider section and no credential.
+    NuwaxEnv {
+        wire_api: &'a str,
+        output_cap: Option<u64>,
+        request_max_retries: Option<i64>,
+        stream_max_retries: Option<i64>,
+        stream_idle_timeout_ms: Option<i64>,
+    },
+}
+
+impl Startup<'_> {
+    fn env_vars(&self, cfg: &LiveConfig, base_url: &str) -> Vec<(String, String)> {
+        match self {
+            Startup::Config { .. } => Vec::new(),
+            Startup::NuwaxEnv {
+                wire_api,
+                output_cap,
+                request_max_retries,
+                stream_max_retries,
+                stream_idle_timeout_ms,
+            } => {
+                let mut vars = vec![
+                    ("NUWAX_BASE_URL".to_string(), base_url.to_string()),
+                    ("NUWAX_WIRE_API".to_string(), wire_api.to_string()),
+                    ("NUWAX_API_KEY".to_string(), cfg.api_key.clone()),
+                    ("NUWAX_MODEL".to_string(), cfg.model.clone()),
+                ];
+                let mut optional = [
+                    (
+                        "NUWAX_MAX_OUTPUT_TOKENS",
+                        output_cap.map(|cap| cap.to_string()),
+                    ),
+                    (
+                        "NUWAX_REQUEST_MAX_RETRIES",
+                        request_max_retries.map(|value| value.to_string()),
+                    ),
+                    (
+                        "NUWAX_STREAM_MAX_RETRIES",
+                        stream_max_retries.map(|value| value.to_string()),
+                    ),
+                    (
+                        "NUWAX_STREAM_IDLE_TIMEOUT_MS",
+                        stream_idle_timeout_ms.map(|value| value.to_string()),
+                    ),
+                ];
+                vars.extend(optional.iter_mut().filter_map(|(name, value)| {
+                    value.take().map(|value| (name.to_string(), value))
+                }));
+                vars
+            }
+        }
+    }
+}
+
+/// Writes the NON-provider settings shared by both startup modes into
+/// `home/config.toml`. In typed environment mode this is everything the
+/// child reads from config — no provider table, no credential.
+fn write_base_config_toml(home: &Path, extra: &str) -> std::io::Result<()> {
+    let toml = format!(
+        r#"approval_policy = "never"
+sandbox_mode = "danger-full-access"
+{extra}
+"#
+    );
+    std::fs::write(home.join("config.toml"), toml)
+}
+
 /// Runs one executable scene and retains partial rollouts on every failure.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_marker_turn(
@@ -269,21 +348,122 @@ async fn run_binary_scene(
     output_cap: Option<u64>,
     scenario: BinaryScenario<'_>,
 ) -> Result<()> {
+    run_scene_with_startup(
+        protocol,
+        cfg,
+        base_url,
+        &Startup::Config {
+            wire_api,
+            bridge,
+            output_cap,
+        },
+        extra_config,
+        scenario,
+    )
+    .await
+}
+
+/// Typed `NUWAX_*` environment startup: the provider group (base URL, wire,
+/// credential, model and the optional cap/retry/idle budget) reaches the
+/// child ONLY through its process environment — config.toml carries no
+/// provider section and no credential. Shares the manifest, bounded capture,
+/// artifacts and scene assertions with the config mode; additionally proves
+/// after a successful scene that neither the credential nor the ephemeral
+/// provider definition leaked into config, rollouts or artifacts.
+pub async fn run_nuwax_env_marker_turn(
+    protocol: &str,
+    cfg: &LiveConfig,
+    base_url: &str,
+    wire_api: &str,
+    output_cap: Option<u64>,
+    expect_bridge_log: Option<&str>,
+) -> Result<()> {
+    let home = tempfile::TempDir::new()?;
+    let cwd = tempfile::TempDir::new()?;
+    let startup = Startup::NuwaxEnv {
+        wire_api,
+        output_cap,
+        request_max_retries: None,
+        stream_max_retries: None,
+        stream_idle_timeout_ms: None,
+    };
+    let outcome = run_scene(
+        protocol,
+        cfg,
+        base_url,
+        &startup,
+        "",
+        BinaryScenario::Marker { expect_bridge_log },
+        &home,
+        &cwd,
+    )
+    .await;
+    assert_no_credential_leak(&home, &cwd, cfg).await?;
+    outcome
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_scene_with_startup(
+    protocol: &str,
+    cfg: &LiveConfig,
+    base_url: &str,
+    startup: &Startup<'_>,
+    extra_config: &str,
+    scenario: BinaryScenario<'_>,
+) -> Result<()> {
+    let home = tempfile::TempDir::new()?;
+    let cwd = tempfile::TempDir::new()?;
+    run_scene(
+        protocol,
+        cfg,
+        base_url,
+        startup,
+        extra_config,
+        scenario,
+        &home,
+        &cwd,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_scene(
+    protocol: &str,
+    cfg: &LiveConfig,
+    base_url: &str,
+    startup: &Startup<'_>,
+    extra_config: &str,
+    scenario: BinaryScenario<'_>,
+    home: &tempfile::TempDir,
+    cwd: &tempfile::TempDir,
+) -> Result<()> {
     anyhow::ensure!(
         cassette_mode() != CassetteMode::Replay,
         "exec_live cannot replay; use --test bridge_live for offline replay"
     );
-    let home = tempfile::TempDir::new()?;
-    let cwd = tempfile::TempDir::new()?;
-    write_config_toml(
-        home.path(),
-        cfg,
-        base_url,
-        wire_api,
-        bridge,
-        extra_config,
-        output_cap,
-    )?;
+    let startup_env = startup.env_vars(cfg, base_url);
+    let output_cap = match startup {
+        Startup::Config { output_cap, .. } => *output_cap,
+        Startup::NuwaxEnv { output_cap, .. } => *output_cap,
+    };
+    let wire_api = match startup {
+        Startup::Config { wire_api, .. } => {
+            write_config_toml(
+                home.path(),
+                cfg,
+                base_url,
+                wire_api,
+                bridge_of(startup),
+                extra_config,
+                output_cap,
+            )?;
+            *wire_api
+        }
+        Startup::NuwaxEnv { wire_api, .. } => {
+            write_base_config_toml(home.path(), extra_config)?;
+            wire_api
+        }
+    };
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let marker = format!("{}-{protocol}-{nonce}-{}", cfg.vendor, std::process::id());
     let artifacts_dir = repo_root()
@@ -292,7 +472,7 @@ async fn run_binary_scene(
         .join(format!("live-{}", cfg.vendor))
         .join(&marker);
     std::fs::create_dir_all(&artifacts_dir)?;
-    let prepared = write_manifest(&artifacts_dir, cfg, protocol, bridge)?;
+    let prepared = write_manifest(&artifacts_dir, cfg, protocol, bridge_of(startup))?;
     if let Some(parent) = artifacts_dir.parent() {
         prune_artifacts(parent.to_path_buf());
     }
@@ -313,20 +493,83 @@ async fn run_binary_scene(
                 "anthropic" => codex_rust_rig_bridge::RigProtocol::Anthropic,
                 _ => anyhow::bail!("unsupported live scene wire API"),
             },
-            capture_requirement: match bridge {
-                Some("native" | "genai") => capture_validation::CaptureRequirement::Optional,
-                None if cfg.vendor == "openai" => capture_validation::CaptureRequirement::Optional,
-                _ => capture_validation::CaptureRequirement::Required,
+            capture_requirement: match startup {
+                // The environment group never sets experimental_bridge, so
+                // every attempt goes through rig and must leave a capture.
+                Startup::NuwaxEnv { .. } => capture_validation::CaptureRequirement::Required,
+                Startup::Config {
+                    bridge: Some("native" | "genai"),
+                    ..
+                } => capture_validation::CaptureRequirement::Optional,
+                Startup::Config { bridge: None, .. } if cfg.vendor == "openai" => {
+                    capture_validation::CaptureRequirement::Optional
+                }
+                Startup::Config { .. } => capture_validation::CaptureRequirement::Required,
             },
             expected_cap: match (wire_api, output_cap) {
                 (_, Some(cap)) => capture_validation::CapExpectation::Explicit(cap),
                 ("anthropic", None) => capture_validation::CapExpectation::AnthropicDefault,
                 (_, None) => capture_validation::CapExpectation::Absent,
             },
+            startup_env: &startup_env,
         },
         scenario,
     )
     .await
+}
+
+fn bridge_of<'a>(startup: &Startup<'a>) -> Option<&'a str> {
+    match startup {
+        Startup::Config { bridge, .. } => *bridge,
+        Startup::NuwaxEnv { .. } => None,
+    }
+}
+
+/// The typed environment mode's own non-leak contract: after a successful
+/// scene, the credential and the ephemeral provider definition must be
+/// absent from the child's config, its rollouts and every artifact.
+async fn assert_no_credential_leak(
+    home: &tempfile::TempDir,
+    cwd: &tempfile::TempDir,
+    cfg: &LiveConfig,
+) -> Result<()> {
+    let mut scanned = 0usize;
+    let mut offenders = Vec::new();
+    for root in [home.path(), cwd.path()] {
+        for entry in walk_files(root)? {
+            scanned += 1;
+            let content = std::fs::read_to_string(&entry).unwrap_or_default();
+            if content.contains(&cfg.api_key)
+                || content.contains("experimental_bearer_token")
+                || content.contains("model_providers.nuwax_env")
+            {
+                offenders.push(entry);
+            }
+        }
+    }
+    anyhow::ensure!(
+        offenders.is_empty(),
+        "credential or ephemeral provider definition leaked into: {offenders:?}"
+    );
+    anyhow::ensure!(scanned > 0, "expected at least a config.toml to scan");
+    Ok(())
+}
+
+fn walk_files(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+    Ok(files)
 }
 
 /// Retention is secondary evidence work: a failure never replaces the original error.
