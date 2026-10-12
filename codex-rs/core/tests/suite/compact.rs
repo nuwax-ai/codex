@@ -7,6 +7,7 @@ use codex_core::config::Config;
 use codex_features::Feature;
 use codex_history::RolloutItem;
 use codex_login::CodexAuth;
+use codex_model_provider::RemoteCompactionSupport;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::built_in_model_providers;
 use codex_models_manager::bundled_models_response;
@@ -1244,44 +1245,70 @@ async fn manual_compact_records_durable_and_local_token_usage() {
 /// Two compactions whose provider echoes the SAME response id must both
 /// count: each compaction attempt joins the ledger by its own minted host
 /// key, never by the reusable provider id.
+#[test_case::test_case(RemoteCompactionSupport::Unsupported; "local")]
+#[test_case::test_case(RemoteCompactionSupport::V2; "remote_v2")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn repeated_compaction_response_ids_count_separately() {
+async fn repeated_compaction_response_ids_count_separately(
+    remote_compaction: RemoteCompactionSupport,
+) {
     skip_if_no_network!();
 
     let server = start_mock_server().await;
 
-    // Both compaction responses reuse the provider id "r1" with different
-    // totals; wiremock serves them in mount order.
-    mount_sse_once(
+    // Both compaction responses reuse the provider id "r1" with different totals.
+    let response_mock = mount_sse_sequence(
         &server,
-        sse(vec![
-            ev_assistant_message("m1", SUMMARY_TEXT),
-            ev_completed_with_tokens("r1", /*total_tokens*/ 30),
-        ]),
-    )
-    .await;
-    mount_sse_once(
-        &server,
-        sse(vec![
-            ev_assistant_message("m2", SUMMARY_TEXT),
-            ev_completed_with_tokens("r1", /*total_tokens*/ 12),
-        ]),
+        [30, 12]
+            .into_iter()
+            .map(|total_tokens| {
+                let output = match remote_compaction {
+                    RemoteCompactionSupport::Unsupported => {
+                        ev_assistant_message("summary", SUMMARY_TEXT)
+                    }
+                    RemoteCompactionSupport::V2 => json!({
+                        "type": "response.output_item.done",
+                        "item": {"type": "compaction", "encrypted_content": SUMMARY_TEXT},
+                    }),
+                };
+                sse(vec![output, ev_completed_with_tokens("r1", total_tokens)])
+            })
+            .collect(),
     )
     .await;
 
-    let model_provider = non_openai_model_provider(&server);
+    let model_provider = match remote_compaction {
+        RemoteCompactionSupport::Unsupported => non_openai_model_provider(&server),
+        RemoteCompactionSupport::V2 => openai_model_provider(&server),
+    };
     let mut builder = test_codex().with_config(move |config| {
         config.model_provider = model_provider;
         set_test_compact_prompt(config);
     });
-    let test = builder.build(&server).await.unwrap();
+    let test = builder
+        .build_with_auto_env(&server)
+        .await
+        .expect("build compaction test");
     let rollout_path = test.codex.rollout_path().expect("rollout path");
     let codex = test.codex;
 
     for _ in 0..2 {
-        codex.submit(Op::Compact).await.unwrap();
+        codex.submit(Op::Compact).await.expect("submit compaction");
         wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
     }
+
+    let expected_trigger_count = usize::from(remote_compaction == RemoteCompactionSupport::V2);
+    assert_eq!(
+        response_mock
+            .requests()
+            .iter()
+            .map(|request| (
+                request.path(),
+                request.inputs_of_type("compaction_trigger").len()
+            ))
+            .collect::<Vec<_>>(),
+        vec![("/v1/responses".to_string(), expected_trigger_count); 2],
+        "exactly two requests must use the selected compaction path"
+    );
 
     let records = fs::read_to_string(rollout_path)
         .expect("read rollout")
@@ -1297,25 +1324,29 @@ async fn repeated_compaction_response_ids_count_separately() {
         2,
         "each compaction records its own sampling: {records:?}"
     );
-    assert_eq!(
-        records[0].response_key.is_some(),
-        true,
-        "compaction samplings join by a minted host key"
-    );
+    let response_keys = records
+        .iter()
+        .map(|record| {
+            record
+                .response_key
+                .as_deref()
+                .expect("compaction sampling must have a persisted host key")
+        })
+        .collect::<Vec<_>>();
     assert_ne!(
-        records[0].response_key, records[1].response_key,
+        response_keys[0], response_keys[1],
         "the two compactions mint distinct host keys"
     );
     assert_eq!(
-        (
-            records[0].response_id.as_str(),
-            records[1].response_id.as_str()
-        ),
-        ("r1", "r1"),
-        "the provider id is advisory and may repeat"
-    );
-    assert_eq!(
-        records[1].thread_token_usage.total_tokens, 42,
+        records
+            .iter()
+            .map(|record| (
+                record.response_id.as_str(),
+                record.usage.total_tokens,
+                record.thread_token_usage.total_tokens,
+            ))
+            .collect::<Vec<_>>(),
+        vec![("r1", 30, 30), ("r1", 12, 42)],
         "the reused provider id must not replace the first compaction's spend"
     );
 }
