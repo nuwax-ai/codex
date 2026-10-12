@@ -65,6 +65,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes libcap-dev pkg-config bubblewrap
 
+      # ubuntu-latest ≥24.04 restricts unprivileged user namespaces via
+      # AppArmor (kernel.apparmor_restrict_unprivileged_userns=1); bubblewrap
+      # then fails every sandbox start with "setting up uid map: Permission
+      # denied", and every sandbox-dependent suite (landlock, exec-server
+      # filesystem, core approvals/network flows) fails on the denial path
+      # instead of exercising the sandbox. Re-enable unprivileged userns;
+      # runners without the sysctl key never restricted it, so absence is
+      # not an error.
+      - name: Enable unprivileged user namespaces (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          if sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; then
+            echo "unprivileged userns re-enabled"
+          else
+            echo "sysctl key absent; unprivileged userns was never restricted on this runner"
+          fi
+
       - name: macOS build dependencies
         if: runner.os == 'macOS'
         run: brew install pkgconf gstreamer gst-plugins-base
