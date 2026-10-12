@@ -61,7 +61,7 @@
 
 ## 包7：真实厂商（2项，需凭据/费用授权）
 
-- [ ] **T36 P1：限定MiMo/GLM/Step矩阵。** 支持的wire/model×marker/tool/reasoning/cap/usage/error。DoD：当前source/bin新receipt、实际字段和状态，协议不存在记限制；密钥不落工件。
+- [ ] **T36 P1：限定MiMo/GLM/Step矩阵。** 支持的wire/model×marker/tool/reasoning/cap/usage/error。DoD：当前source/bin新receipt、实际字段和状态，协议不存在记限制；密钥不落工件（进展 2026-10-12：用户授权后实跑——三厂商 typed NUWAX env startup（chat 全过；anthropic mimo 首败为偶发空文本收尾、复跑过；responses mimo/glm 过、step 无网关自动跳过）+ mimo compact/resume 与真实触顶，共 30 次请求；收据 b5a886e396a7；工件密钥扫描零命中。live 取消场景类型与 glm/step 深链路未跑。）
 - [ ] **T37 P1：真实触顶与opaque能力。** Responses live cap触顶、signed/citation/search/pause等声明能力。DoD：实际触发语义与读写/恢复闭环；接受cap字段≠触顶，旧收据不复用。
 
 ## 包8：最终门禁与发布准备（3项）

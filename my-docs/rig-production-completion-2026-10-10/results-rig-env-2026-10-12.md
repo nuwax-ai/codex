@@ -50,9 +50,27 @@
 - 场景自身捕获证据（url/model/cap/attempt）+ 非泄露合同同批生效。
 - 首败记录：收据正确拒绝 fmt 前构建的二进制（source fingerprint mismatch）——重建后通过。crate **169/169**（168 既有 + 1 新增）。
 
-### 2.3 真实 provider（待授权，未执行）
+### 2.3 真实 provider 链路（用户已授权三家，2026-10-12 执行）
 
-离线代码与可审收据模板已就绪（上）。需用户明确：厂商/model/wire、请求数上限、费用边界与凭据来源；不使用 .env.local 或全厂商矩阵。授权后以 `exec_live` 矩阵加一行 `run_nuwax_env_marker_turn` 场景即可（含一次无害工具往返、usage、取消、resume、compaction；真实触顶与"接受 cap 字段"分开验收）。
+用户当轮提供三家测试密钥并授权验证（mimo=小米 token-plan、glm=智谱 Coding Plan、step=StepFun step_plan；均为国内网关）。凭据只写入仓库根 `.env.local`（`.env*` gitignore 已验证）；二进制收据 `b5a886e396a7`（clean）对应本轮场景代码提交。**总消耗 30 次真实请求**（按 requests.jsonl 清点；flash/preview 级模型，marker turn 很小），全工件密钥泄露扫描零命中。
+
+场景与结果（`exec_live` 矩阵新增 `*_env_startup` 三场景，`8ceb0d8ea..b5a886e396a7` 代码 tip）：
+
+| 场景 | mimo (mimo-v2.6-flash) | glm (GLM-5.3-Flash) | step (step-5-preview) |
+|---|---|---|---|
+| chat env startup（typed 环境→rig→wire，真实工具往返） | PASS 14.4s | PASS 13.8s | PASS 10.8s |
+| anthropic env startup | PASS（复跑；见下首败） | PASS 14.8s | PASS 12.8s |
+| responses env startup（真实 Responses 适配器，web_search 显式 disabled） | PASS 14.5s | PASS 17.7s | 自动跳过（step 未声明 Responses 端点） |
+| compact_chat_rig（压缩+跨进程恢复，config 模式） | PASS 21.1s | — | — |
+| chat_rig_cap_exhausted（真实触顶，config 模式） | PASS 9.4s（恰 1 次请求无重采样） | — | — |
+
+每个场景的捕获证据均断言 url/model（+cap 字段），turn.completed usage 实报（如 mimo anthropic 18,212 input / 174 output 含 12,992 cached），typed 模式的非泄露合同全部生效。
+
+**首败记录（保留）**：`mimo_anthropic_env_startup` 首跑 "marker turn produced no final answer"——工件显示工具已真实执行（exit 0 含 marker）、工具结果已按 wire 回传（4 消息请求捕获）、usage 已报，但 mimo anthropic 网关该次以**仅 thinking、无文本**收尾（174 output tokens 全在思考），`--output-last-message` 为空。复跑通过——偶发模型行为，非 bridge/环境模式缺陷；工件在 `logs/live-mimo/mimo-anthropic-env-startup-1791798243329268000-26432`。
+
+未跑项（如实登记）：live 取消（exec 单发进程无该场景类型；取消语义已由 app-server 真实子进程测试覆盖）；glm/step 的 compact 与触顶（路径已由 mimo 证明，按预算不再扩展）；websearch（glm 已知支持，与 NUWAX 主链路无关）。
+
+协议能力边界（实测确认，非产品故障）：step 无 Responses 网关（按用户文档自动跳过）；mimo Responses 网关拒绝 hosted tools（沿用既有 web_search=disabled 显式声明）；mimo anthropic 偶发空文本收尾（见首败）。
 
 ## 3. 批次 C
 
@@ -116,6 +134,8 @@
 | `59a2b4aa2` | live harness typed NUWAX 环境启动模式 + 离线验证（+530/-15） |
 | `9c87bc67f` | resume ledger 身份遵守 live 预算 |
 | `0858f5d01` | 本文档 + Tasks 标注 |
+| `0ddf7d643` | Linux 容器验证补记 |
+| `b5a886e396a7` | exec_live 矩阵新增 NUWAX env startup 三场景（extra_config 参数） |
 
 ## 6. 开放项（按"必须修复 / 已验证 / 待平台或授权 / 独立扩展"）
 
@@ -124,7 +144,7 @@
 **当前已验证**：macOS 上三 wire 环境启动（exec/app-server）、工具往返、中断、热/冷 resume、usage 上报、双进程隔离、凭据零持久化、typed 环境模式离线闭环、两三平台失败根因修复、resume 身份规范化；**Linux 容器（Debian 13 aarch64）原生构建 + typed 环境模式闭环（§3.3）**。
 
 **待平台/授权**：
-1. 真实 provider 一条链路（B.3）——待用户授权厂商/model/请求数/费用。
+1. ~~真实 provider 一条链路（B.3）~~ → **已执行**（§2.3：三厂商 env 启动 + mimo 压缩/触顶，30 次请求）；live 取消场景类型与 glm/step 深链路留待下批。
 2. push 授权 → 新 SHA CI 验证 userns/磁盘/TLS 三修复。
 3. bwrap 沙箱族在 Linux 容器内的运行（容器有网可装 bwrap，留待专门批次）。
 4. WS cap fixture（待实际使用 WS 路径的模型声明）。
