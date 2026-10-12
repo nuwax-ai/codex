@@ -36,7 +36,7 @@
 ## 开放项（进入 T17 前必须定）
 
 1. **稳定 response_key**：host 在 sampling 开始创建并持久化；成功 Completed 与 CapExhausted 共用 reducer；同 key 快照替换、跨 response 逐计数相加；provider id 仅辅助。实现位置与持久化载体在 T17 批内设计评审。
-2. V-D2-1：Chat 终止后迟到 usage chunk 的 wire 顺序测试（rig 是否在 finish 后丢弃后续 chunk）。
+2. ~~V-D2-1：Chat 终止后迟到 usage chunk 的 wire 顺序测试~~ **已关闭（2026-10-12）**：`chat_cap_usage_only_chunk_after_length_finish_is_retained` 证明 rig 在 `[DONE]` 后才发布 final record，wire check 观察所有流过帧，finish 后、`[DONE]` 前的 usage-only chunk 完整进入 cap 终局报告（显式零保留、未报缺席、恒 Incomplete 不归一化）。同批 `chat_late_primary_chunk_after_length_finish_is_dropped` 证明首终局后迟到 primary-choice chunk 被丢弃不进可见 partial。归一化回退（`rig_usage_report` 只认非零）无需收紧：它仅在 wire 完全未观察到 usage 时使用，零/缺席不可分是 rig 归一化的固有属性。
 3. 模型可见 fragment（D1 的 ContextualUserFragment 注册、预算内 render、识别器注册）全部在 T18，先过 P0 人工门再注入。
 
 ## 关联契约变更登记（R1b 顺带）
