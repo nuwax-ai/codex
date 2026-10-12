@@ -4,6 +4,8 @@
 
 每项完成证据写 `results.md`：当前HEAD/source/bin、完整命令/feature/target、实际非零执行、首败/复验、skip/timeout/abort、工件路径和未验边界。全部历史身份见 `historical-open-tests.tsv`，逐项追加当前状态，不覆盖旧窗口。
 
+**2026-10-12 Codex 复审进展：** TLS 重发安全门及真实 Linux 根因、cap summary/escaped/envelope 记账、Anthropic 极值 usage overflow 已修复；新增真实计数/非法 usage 和 local/remote v2 压缩回归。432 个 Core/bridge、184 个 HTTP 和 24 个环境入口身份实跑通过（合计 640），首败及覆盖边界见 `codex-review-claude-2026-10-12.md`。用户选择完整 workspace 留下一轮/CI。下阶段先闭环 Linux/容器 app-server 的 Rig 环境启动，ACP dev 仅用于入口兼容确认；40 项复合 DoD 未全部完成，checkbox 保持开放。
+
 ## 包3：确认缺陷与稳定性（优先；14项）
 
 - [ ] **T01 P1：统一历史与当前账目。** 恢复旧机still249/signatures/四日志的完整身份联结；裁决relay #224及registration17/15/18/16；补10-10五套件实际收据。DoD：119每个tuple都有当前执行/阻断，SIGABRT和非383失败另列，原始首败保留。

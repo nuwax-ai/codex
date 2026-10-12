@@ -2,11 +2,13 @@
 
 工作分支 `test`。起始 HEAD `356052ee2`（与 `origin/test` 一致，checkpoint 确认包含，无需 fast-forward）。工作树起始干净；本轮全部改动为本地小批提交，**未 push**（远程 push/手动 dispatch 按交接需明确授权）。
 
+**Codex 复审修正（同日，起点 `79ab0ce28`）：** 下文保留 Claude 的阶段收据；TLS 根因/安全边界、D1-d 计费与包络、部分测试覆盖及数量的原结论已纠正。新增修复及实际执行证据见 [codex-review-claude-2026-10-12.md](codex-review-claude-2026-10-12.md)，下一轮聚焦 Rig 环境启动的提示词见 [claude-next-rig-env-2026-10-12.md](claude-next-rig-env-2026-10-12.md)。旧结果不替代新 SHA 的验收。
+
 本轮提交（按序）：
 
 | 提交 | 内容 |
 |---|---|
-| `c569e2b38` | D1-d cap-partial 身份/序列化总界（实现+测试，508 行） |
+| `c569e2b38` | D1-d cap-partial 身份/序列化总界（+508/-12，共 520 changed lines，超出复杂批 <500 目标） |
 | `732ec0d77` | Spec/裁决文档登记 D1-d |
 | `ccee53c48` | ToolError Codex 装箱 + record_token_usage typed 参数 |
 | `3f9376bf6` | V-D2-1 Chat 迟到 usage/primary chunk wire 测试 |
@@ -14,7 +16,7 @@
 | `dc34e0814` | 负值/溢出 usage 计数语义单测 |
 | `edde3a18a` | CI：Linux 放开 unprivileged userns |
 | `a0765f355` | CI：Linux 释放预装工具链磁盘 |
-| `d1e1374f1` | tls fallback 分类器按链内标记判定（修 ubuntu 5 失败） |
+| `d1e1374f1` | tls fallback 原修复尝试（复审发现会重发已消费 POST、未处理真实 rustls 告警；已另批修正） |
 | `e85c66883` | Responses 路由 cap-usage presence 矩阵（缺失/部分/显式零） |
 | `9a7cd984b` | Anthropic 路由 cap-usage 矩阵（start/delta 累积、显式零穿透） |
 | `2503ece93` | 压缩 usage 改用 host sampling key（修跨压缩 provider ID 复用少计） |
@@ -32,14 +34,14 @@
 | codex-app-server（command_exec/analytics/executor_skills 等） | 24 | 日志含 `Codex's Linux sandbox uses bubblewrap and needs access to create user namespaces` | 同上 |
 | codex-linux-sandbox landlock 套件 | 22 | 同上 | 同上 |
 | codex-cli sandbox_* | 3 | 同上 | 同上 |
-| codex-http-client tls_fallback_tests | 5 | ubuntu 上协议版本告警以 `kind: Request`（经 hyper_util）浮现，`is_connect()` 门槛拦截了合法 rustls 回退（run6 账目同一形态） | 产品修复 `d1e1374f1` |
+| codex-http-client tls_fallback_tests | 5 | 外层 `kind: Request` 的源链仍是 Connect，`is_connect()` 已识别；`SSL_CERT_FILE` 选择 rustls，漏识别 typed ProtocolVersion 告警 | `d1e1374f1` 原归因不成立；Codex 复审恢复 Connect 门并补 typed rustls 识别，待 Linux CI |
 | codex-cli app_server_daemon | 2 | `No space left on device`（runner 磁盘耗尽） | CI 修复 `a0765f355` |
 
 三项修复均待下一次 push 自动触发的 CI 验证；本轮不将其记为已验证。190 个沙箱身份的最终裁决仍依赖修复后 CI 的真实结果，不因根因明确而预先记绿。
 
 ### tls 修复的边界
 
-`d1e1374f1` 依据：run6 账目与本次日志一致显示同一告警在 ubuntu 为 `kind: Request`、macOS 本地为 Connect；分类器改为按源链内平台标记判定（超时仍不回退、证书类仍主动排除）。本机 macOS `codex-http-client` 182/182 通过；Linux 确认待 CI。
+`d1e1374f1` 原依据是外层错误 kind 差异；Codex 复审证实该差异不影响 `is_connect()` 的源链检查。移除门槛还会在已消费 POST 后发生的协议告警中重发。后续修复恢复连接限制，识别嵌套 io payload 的 typed rustls ProtocolVersion；新增连接告警与已消费 POST 回归，本机 184/184 实跑通过。旧 182/182 未覆盖此风险；Linux 仍待新 SHA CI。
 
 ### windows 结果（20585 运行：20537 过[含 196 leaky、34 slow]、28 失败、20 超时、138 跳过）
 
@@ -58,7 +60,7 @@
 语义先落 Spec（`cap-decisions-2026-10-10.md` D1-d 行 + `spec.md` S3 增补），再实现（`c569e2b38`）：
 
 - 每身份串 ≤256 B：capture 的 item/call/summary 键与 usage ledger 的 provider response ID。超限整串丢弃、绝不截断成存储键（同前缀不同 ID 不可能别名）。
-- 事件身份元数据总和 ≤8 KiB；事件 JSON 序列化 ≤128 KiB（serde_json 转义逐段增量记账 + 4 KiB 结构包络，包络按 32 片段最坏结构开销 ~3.6 KiB 定值）。
+- 事件身份元数据总和 ≤8 KiB；事件 JSON 序列化 ≤128 KiB。原 4 KiB 结构包络未覆盖两条允许 host key 的最坏转义开销，复审回归得到 133,444 B 超限；已增为 8 KiB。summary 身份重复计费和 EventBytes 误报 raw cap 同批修正，具体首败/回归见复审记录。
 - 可观测性：`CapBudgetKind` 新增 `IdentityBytes`/`MetadataBytes`/`EventBytes`；usage ledger 超限退化 keyless-additive，warn 只记长度不记内容。
 - 裁切都在借用切片上进行；summary 组合键先验证 item id ≤256 才 format；`finish()` 对 host 键防御性检查（超限输出空串不截断）。
 - 工具 identity、授权及 wire 事件（RawResponseCompleted 等）上的 provider id 不变。
@@ -86,18 +88,18 @@
 ## 4. 三协议 usage 闭环补充
 
 - **V-D2-1 关闭**（`3f9376bf6`）：`chat_cap_usage_only_chunk_after_length_finish_is_retained` 证明 finish 后、`[DONE]` 前的 usage-only chunk 完整进入 cap 终局报告（6/64/0/70 presence、显式零保留、未报缺席、恒 Incomplete）；`chat_late_primary_chunk_after_length_finish_is_dropped` 证明首终局后迟到 primary-choice chunk 丢弃不进可见 partial。两者均在非零 retry 预算下断言单次 POST。rig_output_cap 套件最终 22/22。
-- **负值/溢出**（`dc34e0814`）：Chat 负值/溢出计数在该 usage 对象内缺席（同对象合法计数仍上报）；Anthropic 负值 delta 保留上一有效值。桥 crate 261/261。
+- **负值/溢出**（`dc34e0814`）：这是 raw accumulator 单测的语义：Chat 非法计数缺席、Anthropic 负值保上一有效值，未经过 Rig wire 反序列化。后续真实 wire 回归证实 Chat/Anthropic 负值当前在 unsigned 解码阶段产生有界 stream retry；Responses 逐字段容错。Anthropic u64 极值还发现真实加法 overflow，已由 Codex 修复并补回归；不将单测语义泛化为三协议 wire 逐字段容错。
 - **Responses 矩阵**（`e85c66883`）：终局无 usage → 不落账不造假报告；部分计数 → ledger 缺席计零（设计如此）、诊断保 presence 且 Incomplete；显式零 → ledger 与诊断都保留为已报计数。三例首跑即过。
 - **Anthropic 矩阵**（`9a7cd984b`）：start(input)+delta(output) 累积进 ledger 与诊断（total 恒缺席、Incomplete）；终局 delta 显式零 output 穿透 rig 0.42 零→缺失归一化，端到端保留 Some(0)。
-- **Anthropic 首败记录（保留）**：构造矩阵时两次首败——rig 的 Anthropic 反序列化要求 message_start 与终局 message_delta 都带 usage（start 还要求 output_tokens 字段）；缺任一则 JsonError → 流按可重试截断失败。这不是缺陷而是 rig 的严格性与既有截断分类的正确行为；相应非法形状由既有 truncation 测试覆盖，矩阵测试改为合法形状。
+- **Anthropic 首败记录（保留）**：构造矩阵时两次首败——rig 的 Anthropic 反序列化要求 message_start 与终局 message_delta 都带 usage（start 还要求 output_tokens 字段）；缺任一则 JsonError → 流按有界 stream retry 失败。原“既有 truncation 已覆盖”不实：该 fixture 保 usage、仅缺 message_stop。Codex 复审后新增两种缺 usage 但有 message_stop 的 wire 回归，独立证明错误、attempt 和零 ledger/completion 语义。
 - **压缩 host key**（`2503ece93`）：compact/compact_remote_v2 两条压缩路径此前以 `response_key: None` 记账（legacy provider-ID key）——provider 跨压缩复用同一 response ID 时第二次替换第一次的已计花费。现在每次压缩 wire attempt 铸造独立 host sampling key（与常规 turn 同一身份纪律），回归测试证明两次复用 "r1" 的压缩分别计费（30+12=42）。compact 套件 89/89（含既有 `manual_compact_records_durable_and_local_token_usage` 的整记录深比较不变）。
 
 ## 5. 验证记录汇总（macOS arm64，本机）
 
 - `just test -p codex-protocol --locked --offline`：367/367。
 - `just test -p codex-core cap_partial / 'state::session' / suite::token_usage_rollout / suite::resume / suite::compact`：19/19、15/15、3/3、9/9、88/88。
-- `just test -p codex-core --features rust-rig -E 'test(rig_output_cap)'`：22/22（17 既有 + 5 新增：Chat 迟到 usage/primary 两例 + Responses 矩阵三例；Anthropic 矩阵两例计入，总数 22）。
-- `just test -p codex-core --features rust-rig -E 'test(anthropic_cap_) + test(responses_cap_)'`：6/6。
+- `just test -p codex-core --features rust-rig -E 'test(rig_output_cap)'`：原报告 22/22，身份分解应为 15 既有 + 7 新增（Chat 2、Responses 3、Anthropic 2）。五个新矩阵的 POST 断言原先传常量，已在复审中改为真实 RequestLog。
+- `just test -p codex-core --features rust-rig -E 'test(anthropic_cap_) + test(responses_cap_)'`：原记录 6/6；该 predicate 当前静态选中 8 个身份，缺精确历史 receipt，保留为待核证据，不作为当前验收。
 - `just test -p codex-core capped_sampling_usage_follows_the_switched_step_model`：1/1。
 - `just test -p codex-rust-rig-bridge --locked --offline`：261/261。
 - `just test -p codex-http-client --locked --offline`：182/182（分类器修改后）。
