@@ -87,6 +87,7 @@ mod model_provider_enforcement;
 mod multi_agent_v2_developer_instructions;
 mod nuwax_isolation;
 mod nuwax_positive;
+mod nuwax_positive_wires;
 mod otel;
 mod output_schema;
 mod permission_profile_list;
