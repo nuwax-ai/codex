@@ -151,6 +151,30 @@
 
 **独立扩展**：astra `.snap.new` 残留与技能隔离；ACP 三问题；D6/模型可见 partial（P0 门不变）；app-server thread/read/attach/分页等 T19/T20；T21–T40 原队列。
 
+## 8. 新 SHA CI（run `38232412143`，HEAD `510a5450b`，30 提交推送后触发）
+
+| job | 基线 `356052ee2`（run 38195171566） | 本次 | 结论 |
+|---|---|---|---|
+| bazel bridge gate (ubuntu) | success | **success** | 二连绿，V8 配对工件稳定 |
+| nextest ubuntu | **197 失败** | 21797 跑/21788 过/**8 败 1 超时** | 三修复全部生效（userns 190、磁盘 2、tls 5 全消失；"Free runner disk space" 步骤正常） |
+| nextest macOS | 3 败 3 超时 | 21754 跑/**3 败 5 超时** | 见下 |
+| nextest windows | 28 败 20 超时 196 leaky | 20625 跑/**28 败 19 超时 205 leaky** | 与基线完全持平，全部既有族 |
+
+**两个三平台修复确认消失**：`projects_persist_and_assign_threads` 与 `guardian_checkpoint_migration_request_history` 在全部三平台通过。
+
+ubuntu 8 失败归因：
+- `nuwax_env_offline`（本轮新增测试）：CI 收据拒绝 rust-cache 的陈旧 codex-exec（nextest 只构建测试目标）→ **已修 `6e7164700`**（两条 lane 测试前显式构建 codex-exec）。
+- `schema_fixtures` RolloutLine.json：CapBudgetKind 三变体确实进入导出 schema（上轮"不在生成产物中"判断错误，CI 抓获）→ **已修 `d6ec7ccfd`**（再生后差异恰为三个枚举串，旧 0 次/新各 1 次）。
+- `shell_snapshot` ×5（全部 `remote_*` 变体，`local_*` 全过）：**userns 修复新解锁暴露的 Linux 既有问题**——本地 macOS 7/7 过、测试早于本轮、基线时 ubuntu 上无法运行。独立任务：Linux 容器内最小复现。
+- skills `repo_ancestry_without_project_marker`：runner 临时目录位置环境差异（本地 177/177 过）。
+- 超时 `external_auth_refreshes_on_unauthorized::discovery`：基线 macOS/Windows 即超的既有族，现三平台皆超。
+
+macOS 3 失败：schema（已修）、nuwax_env_offline 收据（已修）、`guardian_ephemeral_retry_preserves_parallel_trunk_and_fork_history` **栈溢出 SIGABRT**（R11/T10 既有家族；与基线未解释的第三个失败吻合，历史账本亦有 Linux/Windows 复现记录）。超时 5 = discovery + `app_server_daemon` 族 4（基线 2，同族 +2）。
+
+windows 28 失败与基线逐身份核对：除两个新项外**全部命中基线清单**（approvals/doctor 快照、uds ACL、junction/desktop、worktree、conpty、sandboxing manager、plugin/guardian-skills/marketplace/skills/workspace_roots/rig_anthropic 等单例族轮转；doctor 子进程输出含 "Recursion too deep" 亦为既有）。唯一新增 = **`nuwax_positive_wires` chat/responses 工具往返两个 60s TIMEOUT**：turn 已启动、工具执行挂起无后续事件——Windows CI 执行环境挂起，与基线 `codex-windows-sandbox unified_exec legacy_*` 超时同族；ubuntu/macOS 该三测试全过。登记为独立任务（Windows CI 执行环境诊断），不放宽超时、不 skip。
+
+下一步：push `d6ec7ccfd`+`6e7164700`（用户已授权 push 流程）→ 预期 ubuntu 8→6、macOS 3→1（仅剩 R11 栈溢出）、windows 不变。
+
 ## 7. 授权边界遵守
 
 无 push、无 dispatch、无付费请求、无 .env.local、无默认代理迁移、无 V8 pin 变更、无沙箱代码修改；凭据只存在于测试内存与子进程环境；ACP 仓库只读未动。
