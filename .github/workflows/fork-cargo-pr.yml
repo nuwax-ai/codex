@@ -51,6 +51,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The 21k-test workspace build fills the runner disk; the daemon tests
+      # failed with "No space left on device" copying fixtures. Remove
+      # preinstalled toolchains this workflow never uses (~25 GB) before the
+      # build starts.
+      - name: Free runner disk space (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghcup /usr/local/.ghcup || true
+          df -h /
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
