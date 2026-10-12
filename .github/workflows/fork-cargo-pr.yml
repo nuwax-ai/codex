@@ -31,7 +31,10 @@ jobs:
   test:
     name: nextest (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 150
+    # The macOS lane needs ~2h28m of wall clock on a good runner; 150 kept
+    # clipping it at the edge (runs 38249075905 and 38268053863 were
+    # cancelled ~2h30m in). Test-level deadlines are unchanged.
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:

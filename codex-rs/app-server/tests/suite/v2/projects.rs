@@ -230,6 +230,29 @@ async fn read_response_skipping_global_notifications(
     }
 }
 
+/// Waits for the thread/start lifecycle notification, skipping asynchronous
+/// GLOBAL or thread-maintenance notifications that legally interleave (the
+/// skills watcher reacts to each new thread cwd; status/settings updates
+/// follow lifecycle out of band). Any other message before thread/started
+/// still fails the ordering assertion.
+async fn read_thread_started_skipping_async_notifications(
+    server: &mut TestAppServer,
+) -> Result<codex_app_server_protocol::JSONRPCNotification> {
+    loop {
+        let JSONRPCMessage::Notification(notification) = server.read_next_message().await? else {
+            panic!("thread/start must emit thread/started, got a non-notification");
+        };
+        match notification.method.as_str() {
+            "thread/started" => return Ok(notification),
+            "skills/changed"
+            | "thread/status/changed"
+            | "thread/settings/updated"
+            | "remoteControl/status/changed" => continue,
+            other => panic!("thread/start must emit thread/started first, got {other}"),
+        }
+    }
+}
+
 #[tokio::test]
 async fn projects_persist_and_assign_threads() -> Result<()> {
     let responses = create_mock_responses_server_repeating_assistant("Done").await;
@@ -276,10 +299,7 @@ async fn projects_persist_and_assign_threads() -> Result<()> {
         .await?;
     let response = read_response_skipping_global_notifications(&mut server, started_id).await?;
     let started: ThreadStartResponse = serde_json::from_value(response.result)?;
-    let JSONRPCMessage::Notification(thread_started) = server.read_next_message().await? else {
-        panic!("thread/start must emit thread/started");
-    };
-    assert_eq!(thread_started.method, "thread/started");
+    read_thread_started_skipping_async_notifications(&mut server).await?;
     assert_eq!(started.thread.project_id, Some(created.project.id.clone()));
 
     server.clear_message_buffer();
@@ -292,10 +312,7 @@ async fn projects_persist_and_assign_threads() -> Result<()> {
         .await?;
     let response = read_response_skipping_global_notifications(&mut server, ephemeral_id).await?;
     let ephemeral: ThreadStartResponse = serde_json::from_value(response.result)?;
-    let JSONRPCMessage::Notification(thread_started) = server.read_next_message().await? else {
-        panic!("ephemeral thread/start must emit thread/started");
-    };
-    assert_eq!(thread_started.method, "thread/started");
+    read_thread_started_skipping_async_notifications(&mut server).await?;
     assert_eq!(
         ephemeral.thread.project_id,
         Some(created.project.id.clone())

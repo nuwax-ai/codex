@@ -188,7 +188,12 @@ fn json_escape(value: &str) -> String {
 }
 
 pub fn source_identity(root: &Path) -> Result<SourceIdentity, String> {
-    let revision = git_output(root, &["rev-parse", "HEAD"])?;
+    // Canonicalize once: the symlink-target comparison below must run against
+    // the canonical root (Windows canonicalize() returns \\?\-prefixed
+    // extended paths; macOS /tmp is itself a symlink), or in-tree links like
+    // vendor/bubblewrap/LICENSE -> COPYING are misread as leaving the tree.
+    let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let revision = git_output(&root, &["rev-parse", "HEAD"])?;
     let git_sha = std::str::from_utf8(&revision)
         .map_err(|_| "git revision is not UTF-8")?
         .trim()
@@ -197,7 +202,7 @@ pub fn source_identity(root: &Path) -> Result<SourceIdentity, String> {
         return Err("git did not provide a full revision".into());
     }
     let listed = git_output(
-        root,
+        &root,
         &[
             "ls-files",
             "--cached",
@@ -235,7 +240,7 @@ pub fn source_identity(root: &Path) -> Result<SourceIdentity, String> {
                     let resolved = std::fs::canonicalize(&path).map_err(|error| {
                         format!("cannot resolve build input link {relative}: {error}")
                     })?;
-                    if !resolved.starts_with(root) {
+                    if !resolved.starts_with(&root) {
                         return Err(format!("build input link leaves source tree: {relative}"));
                     }
                     hasher.update(b"symlink");
@@ -271,7 +276,7 @@ pub fn source_identity(root: &Path) -> Result<SourceIdentity, String> {
         inputs.push(path);
     }
     let status = git_output(
-        root,
+        &root,
         &["status", "--porcelain", "-z", "--untracked-files=all"],
     )?;
     Ok(SourceIdentity {
