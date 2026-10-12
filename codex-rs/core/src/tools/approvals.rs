@@ -469,7 +469,7 @@ impl ApprovalResolution {
                     .timeout_instructions
                     .to_string(),
             )),
-            ReviewDecision::Abort => Err(ToolError::Codex(CodexErr::TurnAborted)),
+            ReviewDecision::Abort => Err(ToolError::Codex(Box::new(CodexErr::TurnAborted))),
             decision => Ok(decision),
         }
     }

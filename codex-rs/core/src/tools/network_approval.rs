@@ -1211,8 +1211,10 @@ pub(crate) async fn begin_network_approval(
             fallback_policy_decider,
         )
         .map_err(|err| {
-            ToolError::Codex(codex_protocol::error::CodexErr::Io(io::Error::other(
-                format!("failed to create execution-scoped network proxy: {err}"),
+            ToolError::Codex(Box::new(codex_protocol::error::CodexErr::Io(
+                io::Error::other(format!(
+                    "failed to create execution-scoped network proxy: {err}"
+                )),
             )))
         })?;
     let cancellation_token = CancellationToken::new();

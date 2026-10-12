@@ -1272,7 +1272,7 @@ impl UnifiedExecProcessManager {
         } else {
             attempt.env_for(command, options, network, environment_id)
         }
-        .map_err(ToolError::Codex)?;
+        .map_err(|err| ToolError::Codex(Box::new(err)))?;
         let network_policy_decider = network_proxy_launch
             .as_ref()
             .filter(|launch| launch.policy_decision_timeout_ms.is_some())
@@ -1296,10 +1296,10 @@ impl UnifiedExecProcessManager {
         .await
         .map_err(|err| match err {
             UnifiedExecError::SandboxDenied { output, .. } => {
-                ToolError::Codex(CodexErr::Sandbox(SandboxErr::Denied {
+                ToolError::Codex(Box::new(CodexErr::Sandbox(SandboxErr::Denied {
                     output: Box::new(output),
                     network_policy_decision: None,
-                }))
+                })))
             }
             other => ToolError::Rejected(other.to_string()),
         })

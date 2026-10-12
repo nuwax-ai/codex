@@ -81,6 +81,19 @@ pub(crate) enum ResponseLedgerKey {
 /// semantics instead.
 const MAX_RESPONSE_IDENTITY_BYTES: usize = 256;
 
+/// One usage report entering the ledger: where it was observed, which
+/// sampling it belongs to, and the counters themselves. A single typed
+/// value keeps the record call self-documenting at every call site.
+pub(crate) struct TokenUsageReport<'a> {
+    pub(crate) thread_id: ThreadId,
+    pub(crate) turn_id: &'a str,
+    pub(crate) session_id: SessionId,
+    pub(crate) root_turn_id: String,
+    pub(crate) response_key: Option<&'a str>,
+    pub(crate) response_id: &'a str,
+    pub(crate) usage: &'a TokenUsage,
+}
+
 impl ResponseLedgerKey {
     /// The key a persisted record joins under: its host key when present,
     /// else its provider response id when non-empty.
@@ -248,16 +261,16 @@ impl SessionState {
         self.history.set_token_info(info);
     }
 
-    pub(crate) fn record_token_usage(
-        &mut self,
-        thread_id: ThreadId,
-        turn_id: &str,
-        session_id: SessionId,
-        root_turn_id: String,
-        response_key: Option<&str>,
-        response_id: &str,
-        usage: &TokenUsage,
-    ) -> TokenUsageRecord {
+    pub(crate) fn record_token_usage(&mut self, report: TokenUsageReport<'_>) -> TokenUsageRecord {
+        let TokenUsageReport {
+            thread_id,
+            turn_id,
+            session_id,
+            root_turn_id,
+            response_key,
+            response_id,
+            usage,
+        } = report;
         // Samplings join the ledger by their minted host key; legacy reports
         // without one fall back to the provider response id, and keyless
         // reports stay purely additive. A re-report replaces its snapshot,

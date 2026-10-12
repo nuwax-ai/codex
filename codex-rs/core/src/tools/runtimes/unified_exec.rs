@@ -360,7 +360,7 @@ impl<'a> ToolRuntime<UnifiedExecRequest, UnifiedExecAttempt> for UnifiedExecRunt
                     ))
                     .await
                     .map_err(|err| {
-                        ToolError::Codex(CodexErr::Io(io::Error::other(err.to_string())))
+                        ToolError::Codex(Box::new(CodexErr::Io(io::Error::other(err.to_string()))))
                     })?;
                 if routes_approval_policy_to_guardian(
                     ctx.step_context.settings.approval_policy(),
@@ -392,9 +392,9 @@ impl<'a> ToolRuntime<UnifiedExecRequest, UnifiedExecAttempt> for UnifiedExecRunt
                             .info()
                             .await
                             .map_err(|err| {
-                                ToolError::Codex(CodexErr::Io(io::Error::other(format!(
+                                ToolError::Codex(Box::new(CodexErr::Io(io::Error::other(format!(
                                     "failed to query exec-server capabilities: {err}"
-                                ))))
+                                )))))
                             })?;
                     if !environment_info.capabilities.network_proxy_launch {
                         return Err(ToolError::Rejected(
@@ -414,10 +414,10 @@ impl<'a> ToolRuntime<UnifiedExecRequest, UnifiedExecAttempt> for UnifiedExecRunt
                         Some(&req.turn_environment.selection.environment_id),
                     )
                     .map_err(|err| {
-                        ToolError::Codex(CodexErr::Io(io::Error::other(format!(
+                        ToolError::Codex(Box::new(CodexErr::Io(io::Error::other(format!(
                             "failed to prepare network proxy for environment `{}`: {err}",
                             req.turn_environment.selection.environment_id
-                        ))))
+                        )))))
                     })?;
                 (prepared.env, Some(prepared.sandbox_context), None)
             }
@@ -670,7 +670,7 @@ impl<'a> ToolRuntime<UnifiedExecRequest, UnifiedExecAttempt> for UnifiedExecRunt
                     managed_network,
                     Some(&req.turn_environment.selection.environment_id),
                 )
-                .map_err(ToolError::Codex)?;
+                .map_err(|err| ToolError::Codex(Box::new(err)))?;
             exec_env.exec_server_env_config = req.exec_server_env_config.clone();
             match zsh_fork::maybe_prepare_unified_exec(req, attempt, ctx, exec_env, zsh_fork_config)
                 .await?
@@ -697,10 +697,10 @@ impl<'a> ToolRuntime<UnifiedExecRequest, UnifiedExecAttempt> for UnifiedExecRunt
                         .await
                         .map_err(|err| match err {
                             UnifiedExecError::SandboxDenied { output, .. } => {
-                                ToolError::Codex(CodexErr::Sandbox(SandboxErr::Denied {
+                                ToolError::Codex(Box::new(CodexErr::Sandbox(SandboxErr::Denied {
                                     output: Box::new(output),
                                     network_policy_decision: None,
-                                }))
+                                })))
                             }
                             other => ToolError::Rejected(other.to_string()),
                         });

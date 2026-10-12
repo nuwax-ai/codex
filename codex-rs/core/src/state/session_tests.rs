@@ -10,19 +10,54 @@ use codex_protocol::protocol::TokenUsage;
 use codex_protocol::protocol::TokenUsageRecord;
 use pretty_assertions::assert_eq;
 
+/// One ledger under test: fresh thread/session identities and a session
+/// state, with a one-line record helper that spells out the report identity.
+struct LedgerFixture {
+    thread_id: ThreadId,
+    session_id: SessionId,
+    state: SessionState,
+}
+
+impl LedgerFixture {
+    async fn new() -> Self {
+        Self {
+            thread_id: ThreadId::new(),
+            session_id: SessionId::from(ThreadId::new()),
+            state: SessionState::new(make_session_configuration_for_tests().await),
+        }
+    }
+
+    fn record(
+        &mut self,
+        turn_id: &str,
+        root_turn_id: &str,
+        response_key: Option<&str>,
+        response_id: &str,
+        usage: &TokenUsage,
+    ) -> TokenUsageRecord {
+        self.state.record_token_usage(TokenUsageReport {
+            thread_id: self.thread_id,
+            turn_id,
+            session_id: self.session_id,
+            root_turn_id: root_turn_id.to_string(),
+            response_key,
+            response_id,
+            usage,
+        })
+    }
+}
+
 #[tokio::test]
 async fn record_token_usage_continues_restored_totals() {
-    let thread_id = ThreadId::new();
-    let session_id = SessionId::from(ThreadId::new());
     let usage = |total_tokens| TokenUsage {
         total_tokens,
         ..TokenUsage::default()
     };
-    let mut restored = SessionState::new(make_session_configuration_for_tests().await);
-    restored.latest_token_usage_record = Some(TokenUsageRecord {
-        thread_id,
+    let mut ledger = LedgerFixture::new().await;
+    ledger.state.latest_token_usage_record = Some(TokenUsageRecord {
+        thread_id: ledger.thread_id,
         turn_id: "turn-b".to_string(),
-        session_id,
+        session_id: ledger.session_id,
         root_turn_id: "root-turn".to_string(),
         response_id: "response-c".to_string(),
         response_key: None,
@@ -30,11 +65,9 @@ async fn record_token_usage_continues_restored_totals() {
         turn_token_usage: usage(30),
         thread_token_usage: usage(230),
     });
-    let after_resume = restored.record_token_usage(
-        thread_id,
+    let after_resume = ledger.record(
         "turn-b",
-        session_id,
-        "root-turn".to_string(),
+        "root-turn",
         /*response_key*/ None,
         "response-d",
         &usage(20),
@@ -42,9 +75,9 @@ async fn record_token_usage_continues_restored_totals() {
     assert_eq!(
         after_resume,
         TokenUsageRecord {
-            thread_id,
+            thread_id: ledger.thread_id,
             turn_id: "turn-b".to_string(),
-            session_id,
+            session_id: ledger.session_id,
             root_turn_id: "root-turn".to_string(),
             response_id: "response-d".to_string(),
             response_key: None,
@@ -57,82 +90,50 @@ async fn record_token_usage_continues_restored_totals() {
 
 #[tokio::test]
 async fn repeated_response_reports_replace_their_snapshot() {
-    let thread_id = ThreadId::new();
-    let session_id = SessionId::from(ThreadId::new());
     let usage = |total_tokens| TokenUsage {
         total_tokens,
         ..TokenUsage::default()
     };
-    let mut state = SessionState::new(make_session_configuration_for_tests().await);
+    let mut ledger = LedgerFixture::new().await;
 
-    let first = state.record_token_usage(
-        thread_id,
-        "turn-1",
-        session_id,
-        "root".to_string(),
-        /*response_key*/ None,
-        "response-a",
-        &usage(30),
-    );
+    let first = ledger.record("turn-1", "root", None, "response-a", &usage(30));
     assert_eq!(first.turn_token_usage, usage(30));
     assert_eq!(first.thread_token_usage, usage(30));
 
     // The same response re-reports a LARGER cumulative snapshot (pause
     // continuation / duplicate delivery): the totals swap the old snapshot
     // for the new one instead of adding on top.
-    let replaced = state.record_token_usage(
-        thread_id,
-        "turn-1",
-        session_id,
-        "root".to_string(),
-        /*response_key*/ None,
-        "response-a",
-        &usage(45),
-    );
+    let replaced = ledger.record("turn-1", "root", None, "response-a", &usage(45));
     assert_eq!(replaced.turn_token_usage, usage(45));
     assert_eq!(replaced.thread_token_usage, usage(45));
 
     // A second response in the same turn still adds.
-    let second = state.record_token_usage(
-        thread_id,
-        "turn-1",
-        session_id,
-        "root".to_string(),
-        /*response_key*/ None,
-        "response-b",
-        &usage(10),
-    );
+    let second = ledger.record("turn-1", "root", None, "response-b", &usage(10));
     assert_eq!(second.turn_token_usage, usage(55));
     assert_eq!(second.thread_token_usage, usage(55));
 }
 
 #[tokio::test]
 async fn same_provider_id_on_different_samplings_does_not_alias() {
-    let thread_id = ThreadId::new();
-    let session_id = SessionId::from(ThreadId::new());
     let usage = |total_tokens| TokenUsage {
         total_tokens,
         ..TokenUsage::default()
     };
-    let mut state = SessionState::new(make_session_configuration_for_tests().await);
+    let mut ledger = LedgerFixture::new().await;
 
     // Two samplings whose provider echoes the SAME response id: each joins
     // the ledger by its own host key, so both count and neither replaces the
     // other.
-    let first = state.record_token_usage(
-        thread_id,
+    let first = ledger.record(
         "turn-1",
-        session_id,
-        "root".to_string(),
+        "root",
         Some("sampling:turn-1:0"),
         "resp-dup",
         &usage(30),
     );
-    let second = state.record_token_usage(
-        thread_id,
+    let second = ledger.record(
         "turn-1",
-        session_id,
-        "root".to_string(),
+        "root",
         Some("sampling:turn-1:1"),
         "resp-dup",
         &usage(12),
@@ -145,11 +146,9 @@ async fn same_provider_id_on_different_samplings_does_not_alias() {
     );
 
     // A re-report of the FIRST sampling swaps only its own snapshot.
-    let replaced = state.record_token_usage(
-        thread_id,
+    let replaced = ledger.record(
         "turn-1",
-        session_id,
-        "root".to_string(),
+        "root",
         Some("sampling:turn-1:0"),
         "resp-dup",
         &usage(35),
@@ -163,36 +162,28 @@ async fn same_provider_id_on_different_samplings_does_not_alias() {
 
 #[tokio::test]
 async fn host_key_moves_between_turns_like_legacy_keys() {
-    let thread_id = ThreadId::new();
-    let session_id = SessionId::from(ThreadId::new());
     let usage = |total_tokens| TokenUsage {
         total_tokens,
         ..TokenUsage::default()
     };
-    let mut state = SessionState::new(make_session_configuration_for_tests().await);
-    state.record_token_usage(
-        thread_id,
+    let mut ledger = LedgerFixture::new().await;
+    ledger.record(
         "turn-1",
-        session_id,
-        "root".to_string(),
+        "root",
         Some("sampling:turn-1:0"),
         "response-a",
         &usage(30),
     );
-    state.record_token_usage(
-        thread_id,
+    ledger.record(
         "turn-2",
-        session_id,
-        "root".to_string(),
+        "root",
         Some("sampling:turn-2:0"),
         "response-b",
         &usage(10),
     );
-    let replayed = state.record_token_usage(
-        thread_id,
+    let replayed = ledger.record(
         "turn-2",
-        session_id,
-        "root".to_string(),
+        "root",
         Some("sampling:turn-1:0"),
         "response-a",
         &usage(45),
@@ -244,24 +235,14 @@ fn ledger_key_separates_host_keys_from_provider_ids() {
 
 #[tokio::test]
 async fn keyless_reports_stay_additive() {
-    let thread_id = ThreadId::new();
-    let session_id = SessionId::from(ThreadId::new());
     let usage = |total_tokens| TokenUsage {
         total_tokens,
         ..TokenUsage::default()
     };
-    let mut state = SessionState::new(make_session_configuration_for_tests().await);
+    let mut ledger = LedgerFixture::new().await;
     // Keyless snapshots cannot replace anything: each report adds.
     for (report, expected_total) in [(10, 10), (25, 35), (25, 60)] {
-        let record = state.record_token_usage(
-            thread_id,
-            "turn-1",
-            session_id,
-            "root".to_string(),
-            /*response_key*/ None,
-            "",
-            &usage(report),
-        );
+        let record = ledger.record("turn-1", "root", None, "", &usage(report));
         assert_eq!(record.turn_token_usage, usage(expected_total));
         assert_eq!(record.thread_token_usage, usage(expected_total));
     }
@@ -269,93 +250,53 @@ async fn keyless_reports_stay_additive() {
 
 #[tokio::test]
 async fn over_budget_provider_response_ids_stay_keyless_additive() {
-    let thread_id = ThreadId::new();
-    let session_id = SessionId::from(ThreadId::new());
     let usage = |total_tokens| TokenUsage {
         total_tokens,
         ..TokenUsage::default()
     };
-    let mut state = SessionState::new(make_session_configuration_for_tests().await);
+    let mut ledger = LedgerFixture::new().await;
     // Two over-budget ids sharing an entire prefix: neither is stored nor
     // keyed — never truncated into a prefix join — so both reports stay
     // additive and the records carry an empty id.
     let giant_a = "a".repeat(MAX_RESPONSE_IDENTITY_BYTES + 1);
     let mut giant_b = giant_a.clone();
     giant_b.push('b');
-    let first = state.record_token_usage(
-        thread_id,
-        "turn-1",
-        session_id,
-        "root".to_string(),
-        /*response_key*/ None,
-        &giant_a,
-        &usage(30),
-    );
-    let second = state.record_token_usage(
-        thread_id,
-        "turn-1",
-        session_id,
-        "root".to_string(),
-        /*response_key*/ None,
-        &giant_b,
-        &usage(12),
-    );
+    let first = ledger.record("turn-1", "root", None, &giant_a, &usage(30));
+    let second = ledger.record("turn-1", "root", None, &giant_b, &usage(12));
     assert_eq!(first.response_id, "");
     assert_eq!(second.response_id, "");
     assert_eq!(second.thread_token_usage, usage(42));
     assert!(
-        state.response_token_usage.is_empty(),
+        ledger.state.response_token_usage.is_empty(),
         "over-budget ids must not join the ledger"
     );
     // In-budget provider ids keep the legacy replace semantics.
-    let replaced = state.record_token_usage(
-        thread_id,
-        "turn-1",
-        session_id,
-        "root".to_string(),
-        /*response_key*/ None,
-        "resp-normal",
-        &usage(50),
-    );
-    let replay = state.record_token_usage(
-        thread_id,
-        "turn-1",
-        session_id,
-        "root".to_string(),
-        /*response_key*/ None,
-        "resp-normal",
-        &usage(60),
-    );
+    let replaced = ledger.record("turn-1", "root", None, "resp-normal", &usage(50));
+    let replay = ledger.record("turn-1", "root", None, "resp-normal", &usage(60));
     assert_eq!(replaced.response_id, "resp-normal");
     assert_eq!(replay.thread_token_usage, usage(102));
 }
 
 #[tokio::test]
 async fn host_keyed_reports_join_regardless_of_provider_id_length() {
-    let thread_id = ThreadId::new();
-    let session_id = SessionId::from(ThreadId::new());
     let usage = |total_tokens| TokenUsage {
         total_tokens,
         ..TokenUsage::default()
     };
-    let mut state = SessionState::new(make_session_configuration_for_tests().await);
+    let mut ledger = LedgerFixture::new().await;
     // A giant provider id cannot unseat a host-keyed sampling's join: the
     // id degrades to empty in storage while the host key keeps replacing.
     let giant = "g".repeat(MAX_RESPONSE_IDENTITY_BYTES + 7);
-    state.record_token_usage(
-        thread_id,
+    ledger.record(
         "turn-1",
-        session_id,
-        "root".to_string(),
+        "root",
         Some("sampling:turn-1:0"),
         &giant,
         &usage(30),
     );
-    let replay = state.record_token_usage(
-        thread_id,
+    let replay = ledger.record(
         "turn-1",
-        session_id,
-        "root".to_string(),
+        "root",
         Some("sampling:turn-1:0"),
         &giant,
         &usage(45),
@@ -367,42 +308,16 @@ async fn host_keyed_reports_join_regardless_of_provider_id_length() {
 
 #[tokio::test]
 async fn ledger_survives_into_new_turns_without_double_counting() {
-    let thread_id = ThreadId::new();
-    let session_id = SessionId::from(ThreadId::new());
     let usage = |total_tokens| TokenUsage {
         total_tokens,
         ..TokenUsage::default()
     };
-    let mut state = SessionState::new(make_session_configuration_for_tests().await);
-    state.record_token_usage(
-        thread_id,
-        "turn-1",
-        session_id,
-        "root".to_string(),
-        /*response_key*/ None,
-        "response-a",
-        &usage(30),
-    );
-    state.record_token_usage(
-        thread_id,
-        "turn-2",
-        session_id,
-        "root".to_string(),
-        /*response_key*/ None,
-        "response-b",
-        &usage(10),
-    );
+    let mut ledger = LedgerFixture::new().await;
+    ledger.record("turn-1", "root", None, "response-a", &usage(30));
+    ledger.record("turn-2", "root", None, "response-b", &usage(10));
     // A new turn starts a fresh turn subtotal while the thread keeps its
     // total; re-report of turn-1's response must not inflate turn-2.
-    let replayed = state.record_token_usage(
-        thread_id,
-        "turn-2",
-        session_id,
-        "root".to_string(),
-        /*response_key*/ None,
-        "response-a",
-        &usage(45),
-    );
+    let replayed = ledger.record("turn-2", "root", None, "response-a", &usage(45));
     assert_eq!(
         replayed.turn_token_usage,
         usage(55),
@@ -413,21 +328,13 @@ async fn ledger_survives_into_new_turns_without_double_counting() {
         usage(55),
         "the thread total holds both latest snapshots"
     );
-    let updated = state.record_token_usage(
-        thread_id,
-        "turn-2",
-        session_id,
-        "root".to_string(),
-        /*response_key*/ None,
-        "response-a",
-        &usage(50),
-    );
+    let updated = ledger.record("turn-2", "root", None, "response-a", &usage(50));
     assert_eq!(
         updated,
         TokenUsageRecord {
-            thread_id,
+            thread_id: ledger.thread_id,
             turn_id: "turn-2".to_string(),
-            session_id,
+            session_id: ledger.session_id,
             root_turn_id: "root".to_string(),
             response_id: "response-a".to_string(),
             response_key: None,

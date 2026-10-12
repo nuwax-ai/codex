@@ -13,6 +13,7 @@ pub(crate) use service::SessionServices;
 pub(crate) use session::ReasoningEffortPin;
 pub(crate) use session::ResponseLedgerKey;
 pub(crate) use session::SessionState;
+pub(crate) use session::TokenUsageReport;
 pub(crate) use turn::AcceptedUserInputResponse;
 pub(crate) use turn::ActiveTurn;
 pub(crate) use turn::MailboxDeliveryPhase;

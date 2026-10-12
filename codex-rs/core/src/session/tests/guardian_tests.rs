@@ -974,13 +974,15 @@ async fn sandbox_denied_retry_uses_the_action_policy_and_reviewer() {
         ) -> Result<String, ToolError> {
             self.attempts += 1;
             if self.attempts == 1 {
-                return Err(ToolError::Codex(CodexErr::Sandbox(SandboxErr::Denied {
-                    output: Box::new(ExecToolCallOutput {
-                        exit_code: 1,
-                        ..Default::default()
-                    }),
-                    network_policy_decision: None,
-                })));
+                return Err(ToolError::Codex(Box::new(CodexErr::Sandbox(
+                    SandboxErr::Denied {
+                        output: Box::new(ExecToolCallOutput {
+                            exit_code: 1,
+                            ..Default::default()
+                        }),
+                        network_policy_decision: None,
+                    },
+                ))));
             }
             Ok("sandbox-retry-succeeded".to_string())
         }

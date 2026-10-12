@@ -375,7 +375,9 @@ pub(crate) struct ToolCtx {
 #[derive(Debug)]
 pub(crate) enum ToolError {
     Rejected(String),
-    Codex(CodexErr),
+    /// Boxed: `CodexErr` is by far the largest variant, and every unboxed
+    /// copy inflated the enum (and every `Result` carrying it) to its size.
+    Codex(Box<CodexErr>),
 }
 
 pub(crate) trait ToolRuntime<Req, Out>: Approvable<Req> + Sandboxable {

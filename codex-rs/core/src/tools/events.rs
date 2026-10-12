@@ -763,10 +763,12 @@ mod tests {
             ..Default::default()
         };
         assert_failed_apply_patch_tracks_committed_delta(
-            Err(ToolError::Codex(CodexErr::Sandbox(SandboxErr::Denied {
-                output: Box::new(output),
-                network_policy_decision: None,
-            }))),
+            Err(ToolError::Codex(Box::new(CodexErr::Sandbox(
+                SandboxErr::Denied {
+                    output: Box::new(output),
+                    network_policy_decision: None,
+                },
+            )))),
             PatchApplyStatus::Failed,
         )
         .await;

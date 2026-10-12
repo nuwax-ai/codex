@@ -311,6 +311,7 @@ use crate::state::PendingRequestPermissions;
 use crate::state::ReasoningEffortPin;
 use crate::state::SessionServices;
 use crate::state::SessionState;
+use crate::state::TokenUsageReport;
 #[cfg(test)]
 use crate::stream_events_utils::HandleOutputCtx;
 #[cfg(test)]
@@ -4747,18 +4748,22 @@ impl Session {
         let Some(usage) = usage else {
             return;
         };
-        let record = self.state.lock().await.record_token_usage(
-            self.thread_id,
-            &turn_context.sub_id,
-            self.session_id(),
-            turn_context
-                .turn_metadata_state
-                .root_turn_id()
-                .unwrap_or_else(|| turn_context.sub_id.clone()),
-            response_key,
-            response_id,
-            usage,
-        );
+        let record = self
+            .state
+            .lock()
+            .await
+            .record_token_usage(TokenUsageReport {
+                thread_id: self.thread_id,
+                turn_id: &turn_context.sub_id,
+                session_id: self.session_id(),
+                root_turn_id: turn_context
+                    .turn_metadata_state
+                    .root_turn_id()
+                    .unwrap_or_else(|| turn_context.sub_id.clone()),
+                response_key,
+                response_id,
+                usage,
+            });
         self.persist_rollout_items(&[RolloutItem::TokenUsageRecord(record)])
             .await;
     }
@@ -4789,18 +4794,22 @@ impl Session {
             total_tokens: reported.counts.total_tokens.unwrap_or_default(),
             codex_rollout_budget_units: None,
         };
-        let record = self.state.lock().await.record_token_usage(
-            self.thread_id,
-            &turn_context.sub_id,
-            self.session_id(),
-            turn_context
-                .turn_metadata_state
-                .root_turn_id()
-                .unwrap_or_else(|| turn_context.sub_id.clone()),
-            Some(response_key),
-            response_id.unwrap_or_default(),
-            &usage,
-        );
+        let record = self
+            .state
+            .lock()
+            .await
+            .record_token_usage(TokenUsageReport {
+                thread_id: self.thread_id,
+                turn_id: &turn_context.sub_id,
+                session_id: self.session_id(),
+                root_turn_id: turn_context
+                    .turn_metadata_state
+                    .root_turn_id()
+                    .unwrap_or_else(|| turn_context.sub_id.clone()),
+                response_key: Some(response_key),
+                response_id: response_id.unwrap_or_default(),
+                usage: &usage,
+            });
         self.persist_rollout_items(&[RolloutItem::TokenUsageRecord(record)])
             .await;
         Some(usage)
