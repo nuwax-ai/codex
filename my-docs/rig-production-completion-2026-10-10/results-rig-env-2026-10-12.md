@@ -196,6 +196,17 @@ windows 28 失败与基线逐身份核对：除两个新项外**全部命中基�
 - **macOS 两连 cancelled 定案**：matrix lane `timeout-minutes: 150` 裁掉了正常需 ~2h28m 的车道（两次均在 ~2h30m 处取消）。lane 提至 180 分钟；测试级 deadline 不变。
 - **bazel gate 首红（非本轮回归）**：rustc 1.95.0 在 `linker.rs:134` JoinPathsError ICE，仅在 rules_rust `process_wrapper` bootstrap **真实编译**时触发（本地以绿轮 `.bazelrc` + 原始缓存复现同样失败；绿轮该 action 全为缓存命中）。缓存路径 flag 不进 action key，红轮未命中另有基础设施原因。登记为工具链问题：需 toolchain/rules_rust 层面处置（pin 变更需授权），本轮不动。
 
+### 8.3 四修复验证轮（run `38286839054`，HEAD `b497795f2`）——全部生效
+
+| job | 结果 | 对比预期 |
+|---|---|---|
+| bazel gate | failure | 同一 rustc 1.95.0 bootstrap JoinPathsError ICE（登记的工具链问题，未动） |
+| ubuntu | 21797 跑/21788 过/8 败 1 超时 | ✅ `nuwax_env_offline` 通过（astra 删除生效）；✅ `projects_persist` 通过（白名单生效）；shell_snapshot×4+skills+discovery+guardian SIGABRT 如预期；新增两个轮转单例（hooks::permission_request_hook 3042 断言、hooks_executor subagent_enabled），登记为轮转 flaky 族 |
+| macOS | 21754 跑/21750 过/**1 败 3 超时** | ✅ 180 分钟内正常完成（2609s，不再 cancelled）；**完全符合预期**：guardian SIGABRT（R11）+ discovery/daemon×2 超时（基线族）；无任何新失败 |
+| windows | 20625 跑/20576 过/28 败 21 超时 | ✅ `nuwax_env_offline` 通过（canonicalize root 生效）；28 败与基线同族同量（轮转单例：process_exec buffered_output_cap、resume 族超时、`nuwax_cross_process_scope::cross_process_resume` 在 windows 超时——fork 自有测试，登记独立任务）；wires×2 超时（已知 Windows 执行环境挂起） |
+
+CI 追踪收敛状态：三条 nextest lane 的失败已全部归入——已修复项（本轮前）、登记的既有族（R11 栈溢出、shell_snapshot Linux、windows 执行环境/沙箱族、discovery/daemon 超时族、轮转单例）与一个工具链问题（rustc 1.95.0 bootstrap ICE，需 pin/rules_rust 层面处置，按授权边界待用户决策）。无未归因失败。
+
 ## 7. 授权边界遵守
 
 无 push、无 dispatch、无付费请求、无 .env.local、无默认代理迁移、无 V8 pin 变更、无沙箱代码修改；凭据只存在于测试内存与子进程环境；ACP 仓库只读未动。
