@@ -25,8 +25,13 @@ async fn reqwest_012_and_013_route_env_proxies_identically() {
             "https://env-https.test/a",
         ),
         (
-            &[("HTTP_PROXY", "http://PROXY"), ("NO_PROXY", "hit.test")],
-            "http://env-hit.test/bypassed",
+            &[("HTTP_PROXY", "http://PROXY"), ("NO_PROXY", "localhost")],
+            "http://localhost:ORIGINPORT/bypassed",
+        ),
+        // A suffix without a domain boundary must not bypass the proxy.
+        (
+            &[("HTTP_PROXY", "http://PROXY"), ("NO_PROXY", "host")],
+            "http://localhost:ORIGINPORT/still-proxied",
         ),
         (
             &[("HTTP_PROXY", "http://PROXY"), ("NO_PROXY", "other.test")],
@@ -84,6 +89,7 @@ async fn reqwest_012_and_013_route_env_proxies_identically() {
     let origin = CountingListener::spawn().await;
     let template = std::env::var("PARITY_URL").expect("parent passes the url");
     let url = template
+        .replace("ORIGINPORT", &origin.address.port().to_string())
         .replace("REDIRECTOR", &redirector.address.to_string())
         .replace("PROXY", &proxy.address.to_string())
         .replace("ORIGIN", &origin.address.to_string());
@@ -119,14 +125,17 @@ async fn reqwest_012_and_013_route_env_proxies_identically() {
     let before = (proxy.reset(), redirector.reset(), origin.reset());
     let outcome012 = send012(&client012, &url).await;
     let seen012 = counts(&proxy, &redirector, &origin, before);
+    let proxy_requests012 = proxy.requests_since(before.0);
 
     let before = (proxy.reset(), redirector.reset(), origin.reset());
     let outcome013 = send013(&client013, &url).await;
     let seen013 = counts(&proxy, &redirector, &origin, before);
+    let proxy_requests013 = proxy.requests_since(before.0);
 
     let before = (proxy.reset(), redirector.reset(), origin.reset());
     let outcome_pool = send_pool(&pool, &url).await;
     let seen_pool = counts(&proxy, &redirector, &origin, before);
+    let proxy_requests_pool = proxy.requests_since(before.0);
 
     assert_eq!(
         seen012, seen013,
@@ -136,18 +145,38 @@ async fn reqwest_012_and_013_route_env_proxies_identically() {
         seen012, seen_pool,
         "the ResolvedDefault pool routed the case differently"
     );
-    assert!(
-        seen012.0 + seen012.1 + seen012.2 > 0,
-        "no stack observed any request (0.12: {outcome012:?}, 0.13: {outcome013:?}, pool: {outcome_pool:?})"
+    assert_eq!(
+        proxy_requests012, proxy_requests013,
+        "reqwest 0.12 and 0.13 sent different proxy request paths"
     );
-    // The redirect case must complete on both majors; other cases only
-    // need identical routing.
-    if url.contains("REDIRECTOR") {
+    assert_eq!(
+        proxy_requests012, proxy_requests_pool,
+        "the ResolvedDefault pool sent different proxy request paths"
+    );
+    if template.contains("REDIRECTOR") {
         assert_eq!(
-            (outcome012.is_ok(), outcome013.is_ok(), outcome_pool.is_ok()),
-            (true, true, true),
+            (outcome012, outcome013, outcome_pool),
+            (Ok(200), Ok(200), Ok(200)),
             "the redirect chain must complete on every stack"
         );
+        assert_eq!(seen012, (2, 0, 0), "both redirect hops use the proxy");
+        assert_eq!(
+            proxy_requests012,
+            vec![
+                format!("GET http://{}/start HTTP/1.1", redirector.address),
+                format!("GET http://{}/final HTTP/1.1", redirector.address),
+            ],
+            "the proxy sees the initial and final paths exactly once"
+        );
+    } else if template.ends_with("/bypassed") || template.ends_with("/cgi-direct") {
+        assert_eq!(seen012, (0, 0, 1), "the request reaches the direct origin");
+        assert_eq!(
+            (outcome012, outcome013, outcome_pool),
+            (Ok(200), Ok(200), Ok(200)),
+            "direct routing must complete on every stack"
+        );
+    } else {
+        assert_eq!(seen012, (1, 0, 0), "the request uses the proxy");
     }
     proxy.shutdown().await;
     redirector.shutdown().await;
@@ -167,43 +196,30 @@ fn counts(
     )
 }
 
-async fn send012(client: &reqwest012::Client, url: &str) -> Result<(), String> {
+async fn send012(client: &reqwest012::Client, url: &str) -> Result<u16, String> {
     let request = client.get(url).timeout(Duration::from_secs(5));
-    match request.send().await {
-        Ok(_) => Ok(()),
-        Err(error) => {
-            let text = format!("{error:#}");
-            // Connection-class failures still prove the routing side.
-            if text.contains("tcp connect error") || text.contains("connect") {
-                Ok(())
-            } else {
-                Err(text)
-            }
-        }
-    }
+    request
+        .send()
+        .await
+        .map(|response| response.status().as_u16())
+        .map_err(|error| format!("{error:#}"))
 }
 
-async fn send013(client: &reqwest_rig::Client, url: &str) -> Result<(), String> {
+async fn send013(client: &reqwest_rig::Client, url: &str) -> Result<u16, String> {
     let request = client.get(url).timeout(Duration::from_secs(5));
-    match request.send().await {
-        Ok(_) => Ok(()),
-        Err(error) => {
-            let text = format!("{error:#}");
-            if text.contains("tcp connect error") || text.contains("connect") {
-                Ok(())
-            } else {
-                Err(text)
-            }
-        }
-    }
+    request
+        .send()
+        .await
+        .map(|response| response.status().as_u16())
+        .map_err(|error| format!("{error:#}"))
 }
 
 async fn send_pool(
     pool: &codex_http_client::RouteAwareClientPool,
     url: &str,
-) -> Result<(), String> {
+) -> Result<u16, String> {
     match tokio::time::timeout(Duration::from_secs(5), pool.get(url).send()).await {
-        Ok(Ok(_)) => Ok(()),
+        Ok(Ok(response)) => Ok(response.status().as_u16()),
         Ok(Err(error)) => Err(error.to_string()),
         Err(_) => Err("pool request timed out".to_string()),
     }
@@ -279,6 +295,10 @@ impl CountingListener {
 
     fn count_new_requests(&self, before: usize) -> usize {
         self.requests.lock().expect("recorder lock").len() - before
+    }
+
+    fn requests_since(&self, before: usize) -> Vec<String> {
+        self.requests.lock().expect("recorder lock")[before..].to_vec()
     }
 
     async fn shutdown(self) {
