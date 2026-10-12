@@ -877,6 +877,128 @@ async fn anthropic_output_cap_error_is_terminal_without_core_resampling() -> Res
     Ok(())
 }
 
+/// Shared builder for the Anthropic cap-usage matrix: message_start and the
+/// terminal message_delta carry exactly the usage objects under test.
+async fn anthropic_cap_usage_matrix_case(
+    start_usage: Option<Value>,
+    delta_usage: Option<Value>,
+) -> Result<(TurnOutcome, Vec<codex_protocol::protocol::TokenUsageRecord>)> {
+    let server = MockServer::start().await;
+    let mut message = json!({
+        "id": "msg_cap", "type": "message", "role": "assistant",
+        "content": [], "model": "cap-test", "stop_reason": null,
+    });
+    if let Some(usage) = start_usage {
+        message["usage"] = usage;
+    }
+    let mut delta = json!({"delta": {"stop_reason": "max_tokens", "stop_sequence": null}});
+    if let Some(usage) = delta_usage {
+        delta["usage"] = usage;
+    }
+    let body = format!(
+        "{}{}{}{}",
+        anthropic_frame("message_start", json!({"message": message})),
+        anthropic_frame(
+            "content_block_start",
+            json!({"index": 0, "content_block": {"type": "text", "text": ""}})
+        ),
+        anthropic_frame(
+            "content_block_delta",
+            json!({"index": 0, "delta": {"type": "text_delta", "text": "partial cap answer"}})
+        ),
+        anthropic_frame("message_delta", delta),
+    ) + "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+    mount_capturing_response(&server, "/v1/messages", body).await?;
+    let (test, _env) =
+        cap_test_instance_with(&server.uri(), WireApi::Anthropic, /*cap_partial*/ true).await?;
+    let outcome = run_turn_until_complete(&test, "anthropic cap usage matrix").await?;
+    let records = persisted_usage_records(&test);
+    Ok((outcome, records))
+}
+
+/// Start/delta usage accumulates: the start frame's input count and the
+/// terminal delta's output count both survive; the wire never reports a
+/// total so the diagnostic stays Incomplete with no total.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anthropic_cap_usage_accumulates_start_and_delta() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let (outcome, records) = anthropic_cap_usage_matrix_case(
+        Some(json!({"input_tokens": 4, "output_tokens": 0})),
+        Some(json!({"output_tokens": 64})),
+    )
+    .await?;
+    assert_cap_terminal(&outcome, 1, "partial cap answer");
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        (
+            records[0].usage.input_tokens,
+            records[0].usage.output_tokens,
+            records[0].usage.total_tokens,
+        ),
+        (4, 64, 0),
+        "the start frame's input and the delta's output survive; the absent total is zero"
+    );
+    let reported = outcome.cap_partials[0]
+        .reported_usage
+        .as_ref()
+        .expect("the accumulated report rides the diagnostic");
+    assert_eq!(
+        (
+            reported.counts.input_tokens,
+            reported.counts.output_tokens,
+            reported.counts.total_tokens,
+        ),
+        (Some(4), Some(64), None),
+        "presence keeps the unreported total absent"
+    );
+    assert_eq!(
+        reported.completeness,
+        codex_protocol::protocol::UsageCompleteness::Incomplete
+    );
+    Ok(())
+}
+
+/// Rig's Anthropic deserializer requires a usage object on both
+/// message_start and the terminal message_delta (a stream omitting either
+/// is unparseable and fails as a retryable truncation, per the dedicated
+/// truncation tests). The interesting legal matrix cell is therefore an
+/// explicit zero on the terminal delta: rig 0.42 normalizes a zero output
+/// count to missing, and the wire accumulator must restore it as a
+/// reported zero end to end.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anthropic_cap_terminal_delta_explicit_zero_output_is_reported() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let (outcome, records) = anthropic_cap_usage_matrix_case(
+        Some(json!({"input_tokens": 4, "output_tokens": 0})),
+        Some(json!({"output_tokens": 0})),
+    )
+    .await?;
+    assert_cap_terminal(&outcome, 1, "partial cap answer");
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        (
+            records[0].usage.input_tokens,
+            records[0].usage.output_tokens
+        ),
+        (4, 0),
+        "the explicit zero output rides the ledger as a count, not as missing"
+    );
+    let reported = outcome.cap_partials[0]
+        .reported_usage
+        .as_ref()
+        .expect("the wire-observed report rides the diagnostic");
+    assert_eq!(
+        (reported.counts.input_tokens, reported.counts.output_tokens),
+        (Some(4), Some(0)),
+        "the explicit zero output stays a reported zero despite rig's zero-to-missing normalization"
+    );
+    assert_eq!(
+        reported.counts.total_tokens, None,
+        "the Anthropic wire never reports a total"
+    );
+    Ok(())
+}
+
 /// Semantic control for the shared terminal policy: the native Responses
 /// decoder classifies `incomplete_details.reason=max_output_tokens` the same
 /// non-retryable way, on the fork's Responses passthrough wire.
