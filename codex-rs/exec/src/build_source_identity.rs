@@ -15,6 +15,11 @@ pub const SOURCE_ALGORITHM: &str = "git-build-input-content-sha256-v1";
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(5);
 const GIT_OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
 const MAX_PIPE_READERS: usize = 16;
+const MAX_TREE_STATUS_BYTES: usize = 8 * 1024;
+const MAX_TREE_STATUS_ENTRIES: usize = 32;
+// 32 quoted entries plus counters fit comfortably within the status budget,
+// leaving room for the rest of the executable's 32 KiB receipt.
+const MAX_ESCAPED_STATUS_ENTRY_BYTES: usize = 192;
 static PIPE_READERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 struct PipeReaderLease;
@@ -149,29 +154,51 @@ pub fn git_output(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     )
 }
 
-/// Bounded `git status --porcelain` snapshot as a single-line JSON object,
+/// Byte-bounded `git status --porcelain` snapshot as a single-line JSON object,
 /// shared by the build-time receipt and the validation-time comparison so a
 /// source-content mismatch can name the tree difference. Hand-assembled:
-/// build scripts do not carry serde_json.
+/// build scripts do not carry serde_json. Truncated paths remain diagnostic
+/// prefixes, with explicit counts for shortened and omitted entries.
 pub fn tree_status(root: &Path) -> Result<String, String> {
     let output = git_output(root, &["status", "--porcelain"])?;
     let text = String::from_utf8(output).map_err(|_| "status is not UTF-8".to_string())?;
     let entries = text.lines().filter(|line| !line.is_empty()).count();
+    let mut truncated_entries = 0;
     let head: Vec<String> = text
         .lines()
         .filter(|line| !line.is_empty())
-        .take(32)
-        .map(|line| format!("\"{}\"", json_escape(line)))
+        .take(MAX_TREE_STATUS_ENTRIES)
+        .map(|line| {
+            let (escaped, truncated) = json_escape_bounded(line);
+            truncated_entries += usize::from(truncated);
+            format!("\"{escaped}\"")
+        })
         .collect();
-    Ok(format!(
-        "{{\"entries\":{entries},\"head\":[{}]}}",
+    let omitted_entries = entries.saturating_sub(head.len());
+    let status = format!(
+        "{{\"entries\":{entries},\"head\":[{}],\"truncated_entries\":{truncated_entries},\"omitted_entries\":{omitted_entries}}}",
         head.join(",")
-    ))
+    );
+    debug_assert!(status.len() <= MAX_TREE_STATUS_BYTES);
+    Ok(status)
 }
 
-fn json_escape(value: &str) -> String {
-    let mut escaped = String::with_capacity(value.len());
+fn json_escape_bounded(value: &str) -> (String, bool) {
+    let mut escaped = String::with_capacity(value.len().min(MAX_ESCAPED_STATUS_ENTRY_BYTES));
+    let mut suffix_boundary = 0;
     for character in value.chars() {
+        let encoded_bytes = match character {
+            '"' | '\\' | '\n' | '\r' | '\t' => 2,
+            character if (character as u32) < 0x20 => 6,
+            character => character.len_utf8(),
+        };
+        if escaped.len() + encoded_bytes > MAX_ESCAPED_STATUS_ENTRY_BYTES {
+            // End at an entire encoded character, never within a JSON escape
+            // or a UTF-8 sequence, and visibly mark the diagnostic prefix.
+            escaped.truncate(suffix_boundary);
+            escaped.push_str("...");
+            return (escaped, true);
+        }
         match character {
             '"' => escaped.push_str("\\\""),
             '\\' => escaped.push_str("\\\\"),
@@ -183,8 +210,11 @@ fn json_escape(value: &str) -> String {
             }
             character => escaped.push(character),
         }
+        if escaped.len() <= MAX_ESCAPED_STATUS_ENTRY_BYTES - 3 {
+            suffix_boundary = escaped.len();
+        }
     }
-    escaped
+    (escaped, false)
 }
 
 pub fn source_identity(root: &Path) -> Result<SourceIdentity, String> {
