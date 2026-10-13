@@ -492,26 +492,40 @@ async fn live_env_compact_and_post_compact_recall() -> Result<()> {
     // The compact turn runs to completion before the recall turn can start
     // (compaction is itself a turn; steering into it is rejected).
     let before_compact = ledger_attempts(&ledger);
-    let deadline = Instant::now() + Duration::from_secs(60);
-    loop {
-        let notification = timeout(
-            READ_TIMEOUT,
-            app.read_stream_until_matching_notification("compaction progress", |notification| {
-                matches!(
-                    notification.method.as_str(),
-                    "item/completed" | "turn/completed"
-                )
-            }),
-        )
-        .await??;
-        let params = notification.params.clone().unwrap_or_default();
-        let is_compaction_done = params["item"]["type"].as_str() == Some("contextCompaction")
-            || params["turn"]["status"].as_str().is_some();
-        if is_compaction_done {
-            break;
-        }
-        anyhow::ensure!(Instant::now() < deadline, "compaction never completed");
-    }
+    // Stale notifications from earlier turns must not satisfy the wait. The
+    // compaction ITEM completes while the compact TURN is still finalizing
+    // (rollout migration): wait for both, pinned to the compact turn's id.
+    app.clear_message_buffer();
+    let compaction = timeout(
+        READ_TIMEOUT,
+        app.read_stream_until_matching_notification("compaction item completed", |notification| {
+            notification.method.as_str() == "item/completed"
+                && notification
+                    .params
+                    .as_ref()
+                    .and_then(|params| params["item"]["type"].as_str())
+                    .is_some_and(|kind| kind == "contextCompaction")
+        }),
+    )
+    .await??;
+    let compact_turn_id = compaction
+        .params
+        .as_ref()
+        .and_then(|params| params["turnId"].as_str())
+        .context("compaction turn id")?
+        .to_string();
+    let _ = timeout(
+        READ_TIMEOUT,
+        app.read_stream_until_matching_notification("compact turn completed", |notification| {
+            notification.method.as_str() == "turn/completed"
+                && notification
+                    .params
+                    .as_ref()
+                    .and_then(|params| params["turn"]["id"].as_str())
+                    .is_some_and(|turn_id| turn_id == compact_turn_id)
+        }),
+    )
+    .await??;
     anyhow::ensure!(
         ledger_attempts(&ledger) > before_compact,
         "compaction never sampled the live wire"

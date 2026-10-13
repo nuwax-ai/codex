@@ -719,24 +719,40 @@ async fn env_group_compact_and_recall_keep_the_typed_wire_and_usage_accounting()
     // Compaction is itself a turn: the recall turn cannot start until the
     // compact turn reports completion, or turn input is rejected with
     // ActiveTurnNotSteerable.
-    loop {
-        let notification = timeout(
-            READ_TIMEOUT,
-            app.read_stream_until_matching_notification("compaction progress", |notification| {
-                matches!(
-                    notification.method.as_str(),
-                    "item/completed" | "turn/completed"
-                )
-            }),
-        )
-        .await??;
-        let params = notification.params.clone().unwrap_or_default();
-        let compaction_done = params["item"]["type"].as_str() == Some("contextCompaction")
-            || params["turn"]["status"].as_str().is_some();
-        if compaction_done {
-            break;
-        }
-    }
+    // Stale notifications from earlier turns must not satisfy the wait. The
+    // compaction ITEM completes while the compact TURN is still finalizing
+    // (rollout migration): wait for both, pinned to the compact turn's id.
+    app.clear_message_buffer();
+    let compaction = timeout(
+        READ_TIMEOUT,
+        app.read_stream_until_matching_notification("compaction item completed", |notification| {
+            notification.method.as_str() == "item/completed"
+                && notification
+                    .params
+                    .as_ref()
+                    .and_then(|params| params["item"]["type"].as_str())
+                    .is_some_and(|kind| kind == "contextCompaction")
+        }),
+    )
+    .await??;
+    let compact_turn_id = compaction
+        .params
+        .as_ref()
+        .and_then(|params| params["turnId"].as_str())
+        .context("compaction turn id")?
+        .to_string();
+    let _ = timeout(
+        READ_TIMEOUT,
+        app.read_stream_until_matching_notification("compact turn completed", |notification| {
+            notification.method.as_str() == "turn/completed"
+                && notification
+                    .params
+                    .as_ref()
+                    .and_then(|params| params["turn"]["id"].as_str())
+                    .is_some_and(|turn_id| turn_id == compact_turn_id)
+        }),
+    )
+    .await??;
     assert!(
         log.all().len() >= 2,
         "the compact sampling must reach the typed wire first"
