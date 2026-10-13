@@ -212,10 +212,10 @@ pub(super) async fn handle(
     mode: TurnInputMode,
     submission_id: String,
 ) -> CodexResult<TurnInputSubmission> {
-    // Box the branch futures: `handle` is a thin dispatcher whose inline
-    // awaits would otherwise inline each branch's (much larger) state
-    // machine into this one, inflating every poll frame through the
-    // submission path (same fix pattern as #13429).
+    // Keep the branch futures behind pointers so the largest child state
+    // does not enlarge this dispatch future. This follows the wrapper
+    // boxing pattern in #13429; future layout and poll stack-frame size
+    // are separate measurements.
     let result = match mode {
         TurnInputMode::StartOrSteer => {
             Box::pin(start_or_steer(session, request, submission_id)).await

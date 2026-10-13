@@ -16,7 +16,7 @@
 | nextest (macos) | failure | 21767 跑/21759 过/**1 败 7 超时**：guardian SIGABRT 0.392s（同 §3）+ app_server_daemon 族 7 超时（基线族，较上轮 +4，族内轮转）|
 | nextest (windows) | failure | 20637 跑/20589 过/**27 败 21 超时 198 leaky**；与 run 38286839054 身份级 diff：新增 5/消失 6 全落在已登记轮转单例族（resume/config_rpc/process_exec/tui/file_watcher）；`nuwax_env_idle_timeout_closes_a_stalled_stream` 34.7s FAIL 归入 Windows 执行环境族登记，不放宽、不用 Unix 代验 |
 
-四 job 均 failure 但**全部失败身份均落在已登记残差/基线族内，复审五提交未引入任何新失败**。
+实际是 **Bazel success、三个 nextest failure**，整个 run 为 failure。表中记录的是失败身份的归类；落入既有族不自动证明其根因相同或本轮零回归，新出现的具体身份仍需保留首败和独立对照。
 
 ## 2. Bazel bootstrap JoinPathsError 关闭（批次一第 2 项）
 
@@ -24,26 +24,30 @@ run 38358243799 的 gate **success**（06:42–07:08，26 分钟）。冷执行�
 
 结论：**新 Linux CI 因果关闭**。旧"rustc 1.95.0 ICE 工具链问题"定性为 rc 表达式制造含冒号 sysroot 路径（复审第 4 项机制），无需 pin 变更。macOS 无缓存冷 bootstrap 已由复审会话实编证明（1177 actions）。本项关闭。
 
-## 3. Guardian SIGABRT（R11）根因与修复：`695b2a63b`
+## 3. Guardian SIGABRT（R11）栈压力观测与候选修复：`695b2a63b`
 
-### 根因（测量证据，非推测）
+### 观测、候选机制及证据边界
 
 - 溢出线程=测试自建的 **4MiB 专用线程**（上游 #17846/`2bfa62761` 加的包装），ubuntu+macOS 双平台同名线程 0.39–0.56s 崩。
-- **本机（1.95.0 与 1.99.0 双工具链、b497795f2 与 0b5cdf8bf 双 SHA、单 crate 与 workspace 特性并集）全部通过**；cargo metadata 证实两种构建的 codex-core 特性完全一致（default+rust-genai+rust-rig）→ 排除 SHA/特性/工具链锁定差异。
-- CI 与本机的系统性差异=**rustc 版本浮动**：三条 nextest lane 用 `dtolnay/rust-toolchain@stable`=**1.99.0**（本 run 内 macOS lane 从 1.98.1 升 1.99.0），本机默认 1.95.0。
-- 装好 1.99.0 后本机复现路径：把测试栈常量降到 **1MiB（0.034s 崩）/2MiB（0.125s）/3MiB（0.677s）** 逐档触发，4MiB 过——峰值占用量 ~3.1–3.9MiB，与 CI ≥4MiB 吻合。
-- macOS 崩溃报告逐帧静态帧尺寸测量（nm+objdump 序言 `sub sp` 累计，探针循环模式取 `sub x9,sp,#N,lsl#12` 目标值）：debug 构建下薄分发器的 poll 帧把每个分支的子 future 状态机全部内联——`submission_loop` 匹配块 **1036KB**、`run_turn` **1184KB**、`turn_input::handle` 304+392KB、`ModelClientSession::stream` 476KB、`apply_started`/`start_if_idle`/`new_turn` 192/200/160+92KB，最深链合计 **~3.1MB**。机制与上游 #13429 的"thin wrapper 内联大 future"完全同型。
+- 上一轮报告本机 1.95.0/1.99.0、两 SHA 在原始4MiB下均通过；这本身不能证明编译器版本就是 CI/local 差异根因。workspace cargo metadata 的特性并集不能替代实际 test binary 的编译图；复审查看与旧 crash basename 相同的 `codex-core-ef8ac5bbb7ed29cb` fingerprint，仅显示 default+rust-rig。旧报告未逐次绑定 compiler/SHA/features/binary UUID，不能据此排除 feature 差异。
+- 此前记录 CI `@stable` 浮动到1.99.0、本机默认工具链不同，这是构建条件而非已确认唯一原因。需要相同源码、实际 features、编译参数和原始4MiB预算的对照。
+- 前轮缩栈记录：1/2/3MiB下崩溃、4MiB通过，确认受控低栈压力；它不是本机原始4MiB的 CI 同形故障复现，也不能单独给出动态峰值 ~3.1–3.9MiB。
+- 前轮反汇编静态帧记录：submission_loop匹配块1036KB、run_turn1184KB、turn_input::handle304+392KB、stream476KB及其它包装帧。数字保持为该次构建的观测，不作为实际动态峰值精确值。互斥 await 分支的 future 布局一般按最大变体占位，不能把“全部分支状态机相加”与 future 构造/移动临时量、poll栈帧或优化器函数内联混同。[上游#13429](https://github.com/openai/codex/pull/13429) 支持在包装链用 heap pointer 替代 inline child future 的修法，但未证明本例 CI 触发条件完全相同。
 
 ### 修复（`695b2a63b`，5 文件 +209/−160）
 
-按上游 #13429 既有模式在**测量定位的边界**逐一 `Box::pin`：`submission_loop` 全部 op 臂、`turn_input::handle` 四个 mode 分支与两处 `apply_started`/`new_turn_with_sub_id(_if)`、`run_turn` 的 compaction/采样/流式子调用与采样 async 块、`RegularTask::run` 的 prewarm 块与 run_turn 包装、`ModelClientSession::stream` 的三 wire 分发。**测试文件零改动**（常量保持上游 4MiB 原文）。
+实际 diff 是 **55 个新增 Box::pin 调用点**：handlers28、turn_input8、turn13、regular2、client4；5 文件 +209/-160，共369 changed lines。控制流、参数、await/错误传播、instrument/or_cancel顺序不变；具体 Pin<Box<F>> 不擦除类型，但执行到这些边界会新增 heap 分配/释放，未做性能成本量化。测试文件零改动，常量保持上游4MiB。
 
 ### 验证
 
-- 1.99.0 阈值：修复前 3MiB 崩（CI 4MiB 崩）→ 修复后 **3.25MiB 过、2.875MiB 强制触发**。提交链各阶段逐帧测量：提交分发匹配块 1036→装箱后链上消失，`turn_input::handle` 392→172KB，run_turn 循环 1184→约 1MB（其本体仍是最大单帧——装箱移除子状态、不移除函数自身局部量），`stream()` 装箱 wire 分支后自身帧仍 ~476KB；2.875MiB 强制溢出栈顶为流式小帧叠在 run_turn 本体之上。
+- 前轮分别记录修复前3MiB失败、修复后3.25MiB通过/2.875MiB失败；两组预算不同、阈值区间重叠，不能据此声称已量化 before/after 栈余量改善。若需要量化，补同一binary条件/相同预算对照并保留收据。前轮静态帧观测保留：submission dispatch1036KB在该调用链消失、handle392→172KB、run_turn本体仍约1MB、stream仍约476KB；不将这些静态数字当成动态峰值。
 - 4MiB 合同在 **1.99.0 与 1.95.0 双工具链通过**；guardian 全族、resume/compact/token_usage/turn_input_submission 计 490+ 通过；`sampling_is_ready_for_daemon_recovery` 模块并发失败经基线对照（stash 本修复后同样失败）确认为**预先存在的模块并发脆弱性**，与本修复无关。
 - clippy 无告警、`cargo fmt --check` 干净、`git diff --check` 干净；codex-exec 重建后 live-tests 离线套件 **54/54**。
 - CI 判决待下次授权 push（本提交不在 run 38358243799 内）。
+
+### Codex 独立复审补证
+
+完整核对55个装箱点未发现业务语义回归；原始4MiB合同在显式 `rust-genai,rust-rig` 下以1.95.0/1.99.0各实跑通过，实际test binary fingerprint/SHA/UUID已留存。现有取消/turn mode/三wire cap/WS fallback/resume/compact/token_usage选集168条完成验证，其中两条CodeMode用例首跑因缺helper失败，原pin双层校验构建helper后2/2通过。未改任何测试栈预算，未将这些本机通过当成新CI判决。详细命令及证据边界见 [codex-box-review-2026-10-13.md](codex-box-review-2026-10-13.md)。
 
 ## 4. Linux shell_snapshot / skills（批次一第 4 项）：机制钉死一项，其余留下一批
 

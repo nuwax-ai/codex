@@ -505,9 +505,8 @@ pub(super) async fn submission_loop(
                     mode,
                     reply,
                 } => {
-                    // Boxed for the same reason as the branches in
-                    // `turn_input::handle`: the dispatch block must not
-                    // inline the much larger turn futures.
+                    // Keep the larger turn state out of this dispatch future,
+                    // as in the branches of `turn_input::handle`.
                     let result =
                         Box::pin(turn_input::handle(&sess, *request, mode, sub.id.clone())).await;
                     let _ = reply.send(result);

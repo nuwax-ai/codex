@@ -1,0 +1,37 @@
+{
+  "head": "a8e1a655a1447825b426389b9924638fc831f637",
+  "dirty": "",
+  "requested_features": [
+    "rust-genai",
+    "rust-rig"
+  ],
+  "requested_stack_bytes": 4194304,
+  "compiler_versions": {
+    "1.95.0": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+    "1.99.0": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1\n"
+  },
+  "test_binaries": [
+    {
+      "binary": "codex_core-50c57835df3642a4",
+      "uuid": "UUID: 5DC1C150-FBF6-3BEF-8E15-8C2874608FBC (arm64)",
+      "sha256": "e54923399076ca1168f9563e02894b2dfd3484d245498cb3ffe1863e4f2ee4c1",
+      "features": [
+        "default",
+        "rust-genai",
+        "rust-rig"
+      ],
+      "rustc_fingerprint": 2179919275645516985
+    },
+    {
+      "binary": "codex_core-5bcaae865b120c5c",
+      "uuid": "UUID: 093CB052-E2F2-3988-9F00-2249652AB375 (arm64)",
+      "sha256": "c4ee896a109fa5f7e37dcc8ceb8fdc52694a6cc18df67cd99b47dd5bab3c7e17",
+      "features": [
+        "default",
+        "rust-genai",
+        "rust-rig"
+      ],
+      "rustc_fingerprint": 17356518491003051113
+    }
+  ]
+}

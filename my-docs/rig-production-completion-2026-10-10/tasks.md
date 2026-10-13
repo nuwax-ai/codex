@@ -21,7 +21,7 @@
 - [ ] **T09 P1：R10冷首请求。** 找回旧四失败身份，无预热进程测TLS/WS/代理/HTTP IMDS。DoD：原deadline下冷/暖同窗对照，build/connect/handshake/header/body分段，不靠warmup/吞EOF关项。
 - [ ] **T10 P1：R11真正栈问题。** 区分future构造/移动/尺寸/poll深度，正常4MiB显式线程及同feature精确集合。DoD：取得真实溢出或受控机制证据，最小修复后单跑/模块并发/公共Core路径通过；不增栈求绿。
 
-  > 2026-10-13 进展（`695b2a63b`，详见 results-followup-2026-10-13.md §3）：根因=CI nextest lane 浮动 stable=1.99.0 下 debug 薄分发器 poll 帧内联全部子 future（逐帧测量：submission_loop 1036KB/run_turn 1184KB/stream 分发 476KB，最深链 ~3.1MB，机制同上游 #13429）。按 #13429 模式在测量边界 Box::pin（5 文件 +209/-160，测试零改动）。本机 1.99.0 阈值 3MiB 崩→3.25MiB 过，4MiB 合同双工具链通过；guardian/resume/compact/token_usage 套件、clippy/fmt、live-tests 离线 54/54 过；daemon_recovery 模块并发失败经基线对照为预先存在。CI 判决待下次授权 push（run 38358243799 不含本修复，guardian 仍按预期失败）。
+  > 2026-10-13 进展（`695b2a63b`）：55个future调用点装箱（5文件+209/-160），保留上游4MiB合同，生产控制流未发现回归。独立复审修正：版本差异的CI因果未证明、metadata并集不证明test binary features、不同预算阈值不能量化改善、静态poll帧不等于动态峰值。本轮明确rust-genai+rust-rig在1.95.0/1.99.0均通过原始4MiB测试；详细记录见codex-box-review-2026-10-13.md。R11保持开放，CI仍不含本候选修复。
 - [ ] **T11 P1：R1b有限checkpoint重放。** Runtime grant绑定checkpoint/producer/target/session，不用持久bool或任意scope哨兵。DoD：13身份及sync/async/context modes/pool分支阳性wire有checkpoint，普通resume/非法来源阴性仍降级，历史前缀不改。
 - [ ] **T12 P1：Luna post-answer终局。** Gate控制审批/tool-start/早退/generation/cache/采样交错。DoD：合法请求发出并终结，正确拒绝不发，取消/Superseded不丢终局，不增加等待期限。
 - [ ] **T13 P1：收口其余历史族与新失败。** 按TSV复验TUI45、app-server18、Core31、exec9、HTTP6、install1、otel6、rmcp2、v8-poc1等（部分与前项重叠，不能求和为新用例总数）。DoD：119每行状态齐全，快照逐项解释，完整首次SIGABRT/新增失败未遗漏。（进展 2026-10-12：三平台复现的两失败已根因修复——projects 为测试对全局 skills/changed 通知的过严断言（097f56e56），guardian 快照为 R1b 9d307f72d 漏更新、按意图逐张接受（eac4a4ae5）；guardian_code_mode_messaging 需 V8 构建的 code-mode-host，本机无法构建属环境限制。）
