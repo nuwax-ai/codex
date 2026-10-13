@@ -59,9 +59,13 @@ pub async fn list_connectors(config: &Config) -> anyhow::Result<Vec<AppInfo>> {
     if !apps_enabled(config).await? {
         return Ok(Vec::new());
     }
+    // `tokio::join!` inlines both branches into this one async body; boxing
+    // keeps their (much larger) state machines out of its layout, which the
+    // MSVC toolchain otherwise cannot lay out within the compiler's query
+    // depth limit (same wrapper-boxing pattern as openai/codex#13429).
     let (connectors_result, accessible_result) = tokio::join!(
-        list_all_connectors(config),
-        list_accessible_connectors_from_mcp_tools(config),
+        Box::pin(list_all_connectors(config)),
+        Box::pin(list_accessible_connectors_from_mcp_tools(config)),
     );
     let connectors = connectors_result?;
     let accessible = accessible_result?;
