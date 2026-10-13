@@ -1,5 +1,7 @@
 # 结果：Rig 环境启动闭环批次（2026-10-12，第二份）
 
+**2026-10-13 独立复审补充：** 本文件保留各轮历史结论；新发现的恢复身份克隆、凭据扫描及收据字节上限已另批修复，见 `codex-review-2026-10-13.md`。其中 Bazel cache 的 `%{BAZEL_CACHE_ROOT:-~/.cache}` 实际不展开，会制造含冒号的物理 sysroot；旧 repo symlink 残留复现不能排除该原因，不能据此认定只能迁移工具链 pin。修正配置后本机禁缓存冷 bootstrap 编译通过，Linux gate 等新 SHA CI。四项修复生效不等于四 job 全绿，baseline 同败也不等于可接受。
+
 接续 [claude-next-rig-env-2026-10-12.md](claude-next-rig-env-2026-10-12.md)。起始 HEAD `8aefb5a6f`（Codex 复审后的代码 tip），工作树起始干净；`test` 领先 `origin/test` 27 个提交（Codex 6 + 本轮 6），**全部未 push**。平台：macOS arm64（Darwin 27.0.0，rustc 1.99.0 aarch64-apple-darwin）。
 
 ## 0. source/bin 对应（批次 A.1）

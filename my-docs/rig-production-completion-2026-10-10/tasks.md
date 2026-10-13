@@ -8,6 +8,8 @@
 
 ## 包3：确认缺陷与稳定性（优先；14项）
 
+**2026-10-13 Codex 复审：** 旧记录恢复、receipt 转义总界、二进制/JSON key 凭据扫描、工具 call/result 与准确 usage、live 重试默认和 Bazel cache 字面路径已修正；195 个定向测试与无 action cache 的本地 bootstrap 通过。详见 `codex-review-2026-10-13.md`，后续顺序见 `claude-next-2026-10-13.md`。用户本轮授权 commit+push；新 SHA 全量结果以新 CI 为准，旧38286839054四job仍失败。复合DoD不勾完成。
+
 - [ ] **T01 P1：统一历史与当前账目。** 恢复旧机still249/signatures/四日志的完整身份联结；裁决relay #224及registration17/15/18/16；补10-10五套件实际收据。DoD：119每个tuple都有当前执行/阻断，SIGABRT和非383失败另列，原始首败保留。
 - [ ] **T02 P1：修CI启动与构建依赖。** 正确Bazel安装Action；三平台glib/gstreamer/pkg-config依赖或经审查的合法target/feature门控。DoD：锁定当前SHA四job均实际进入相应build/test，不以删workspace成员或setup绿代替测试绿。（进展 2026-10-12：bazel bridge gate 首次 success；ubuntu 197 失败逐行归因为 userns 拒绝 190/磁盘耗尽 2/tls 分类 5，对应 CI 修复（sysctl 放开 userns、清理预装工具链）与产品修复（tls 链内标记分类）已本地提交，待下次 push 的 CI 实证。）
 - [ ] **T03 P1：修native-root无损来源键。** 所有平台Option<OsString> FILE/DIR，缺失/空/非Unicode不合并。DoD：本地受控loader及Windows真实A→B新connector拒旧信新；旧connector不变。
