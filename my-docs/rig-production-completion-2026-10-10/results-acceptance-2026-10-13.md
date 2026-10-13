@@ -9,8 +9,9 @@
 | `c1236f99c` | **feat(bridge)**: 发送前硬请求预算 `CODEX_RIG_MAX_HTTP_ATTEMPTS`（账本权威、跨进程）+ harness 接线 + 离线验证 2/2 |
 | `8b3b2023e` | **test(app-server)**: env 模式压缩+召回验收（离线链路最后缺口） |
 | `b5111c9fd` | **fix(chatgpt)**: join! 分支装箱，解 MSVC 布局查询深度溢出（Windows 原生机编译阻断） |
-| `8f086f599` | **test(app-server)**: LIVE 门控验收三场景 + wires 审批钉死（Windows 挂起机制修复） |
-| （文档） | 本文件 + tasks 标注 |
+| `8f086f599` | **test(app-server)**: LIVE 门控验收三场景 + wires 审批钉死（Windows 挂起机制修复，原生复验 7/7） |
+| `c8f1f8540` | style: cargo fmt 收尾 |
+| `087719182` | 文档（本文件+tasks 标注） |
 
 ## 0. 环境与构建收据
 
@@ -61,7 +62,7 @@
 
 - **`b5111c9fd` 编译阻断修复**：codex-chatgpt `list_connectors` 的 `tokio::join!` 双分支内联致 MSVC 布局查询深度溢出——1.98.1/1.99.0 双工具链、装箱基线 `0b5cdf8bf` 均复现（非本轮回归；GH windows-latest 可编译，物理机不行），按 #13429 模式装箱两分支后 15.7s 过。CI 若在 runner 上遇同题此修复同样适用。
 - 首轮 CI 同构批次（V8 三重校验后）：**26 跑/22 过**。过：**guardian 4MiB 合同（1.99.0-windows 原生，装箱修复第 4 平台证据）**、wires interrupt+双恢复（CI 上超时的身份在原生实机通过）、cross_process_resume 一员、exec nuwax 全环境族（三 wire/重试/并行隔离/fail-fast）。
-- **wires 工具往返 2×TIMEOUT 机制钉死（原生 JSON-RPC 全文）**：工具调用真实到达（powershell 包装 echo marker），但默认 `on-request` 审批下 powershell 包装不被自动放行→app-server 发 `item/commandExecution/requestApproval`→测试客户端永不回应→挂起。unix 裸 echo 自动放行故 CI ubuntu/mac 过。修复：`8f086f599` 将 fork 自有 wires/live 套件审批钉死 never（测试主题是 wire 非审批）；复验见 §7。
+- **wires 工具往返 2×TIMEOUT 机制钉死（原生 JSON-RPC 全文）**：工具调用真实到达（powershell 包装 echo marker），但默认 `on-request` 审批下 powershell 包装不被自动放行→app-server 发 `item/commandExecution/requestApproval`→测试客户端永不回应→挂起。unix 裸 echo 自动放行故 CI ubuntu/mac 过。修复：`8f086f599` 将 fork 自有 wires/live 套件审批钉死 never（测试主题是 wire 非审批）。**修复后 Windows 原生复验：wires 工具往返 chat+responses 双双 PASS（4.2s）、compact+召回 4.6s、interrupt+双恢复 5.2s、live 三条 skip 路径正常——CI 上的两条 wires 超时身份在原生实机确认由该机制修复**。
 - `nuwax_env_idle_timeout_closes_a_stalled_stream` FAIL 26.4s、`nuwax_env_parallel_processes_enforce_distinct_idle_budgets` FAIL 26.3s——CI 已登记 Windows 执行环境族的原生同形复现，事件/进程证据在 `win-final-run.log`，独立机制留下一批（不放宽 timeout）。
 
 ## 5. 真实模型批次（macOS 直连 HTTPS，恰好用满 24/24）
@@ -89,7 +90,7 @@
 | 项 | 状态 |
 |---|---|
 | guardian R11 CI 判决 | 本机 4 平台证据齐；**待 push 后 CI**（run 38358243799 不含修复） |
-| Windows idle 族×2 | 原生同形复现+证据留存，机制未定，下一批 |
+| Windows idle 族×2 | 原生复现维持（修复后复验 50.5s FAIL / 60s TIMEOUT），机制未定，下一批；wires×2 已修复实证 |
 | shell_snapshot×4（Linux） | 全复现+半程取证（argv/捕获/恢复路径已排除），重 source 入口待最后一发插桩；修复下一批 |
 | skills /tmp/.git | 特权+干净 /tmp 通过；泄漏与 bwrap 失败路径相关；GH 非同源未排除，非 root 复刻待续 |
 | Linux 实机 | **SSH 凭据阻断**，用户提供后补 |
@@ -98,7 +99,7 @@
 
 ## 8. 四问回答（本轮边界内）
 
-1. **哪个精确版本、平台、模型和协议已经可以使用？** `8f086f599`（=bf591fcf9+5 本地提交，未 push）：macOS arm64 上经 NUWAX_* 环境变量 + Rig 的 **Chat 协议**（MiMo mimo-v2.6-flash 已实机全链验证：工具/取消/热冷恢复/压缩/usage/触顶；GLM-5.3-Flash、step-5-preview 的 Chat typed-env 工具往返亦过）+ Anthropic/Responses 协议（mock 全链 + 历史真实收据）；ACP dev 消费链路（CODEX_PATH→新 codex CLI）15/15。Windows 原生：离线三协议 mock 链路 22/26 过（wires 工具往返待修复后复验），live 未做。Linux：容器校准环境可用；原生实机阻断于 SSH。
+1. **哪个精确版本、平台、模型和协议已经可以使用？** `8f086f599`（=bf591fcf9+5 本地提交，未 push）：macOS arm64 上经 NUWAX_* 环境变量 + Rig 的 **Chat 协议**（MiMo mimo-v2.6-flash 已实机全链验证：工具/取消/热冷恢复/压缩/usage/触顶；GLM-5.3-Flash、step-5-preview 的 Chat typed-env 工具往返亦过）+ Anthropic/Responses 协议（mock 全链 + 历史真实收据）；ACP dev 消费链路（CODEX_PATH→新 codex CLI）15/15。Windows 原生：离线 mock 链路修复后 wires 全绿（chat/responses 工具往返、压缩召回、中断双恢复 7/7），仅 idle 族×2 复现（独立机制登记）；live 未做（预算已用满）。Linux：容器校准环境可用；原生实机阻断于 SSH。
 2. **已修复缺陷与提交？** MSVC 布局溢出 `b5111c9fd`；wires 审批挂起（机制+测试修复）`8f086f599`；预算闸门缺失 `c1236f99c`（本轮授权的前置能力）；压缩验收缺口 `8b3b2023e`+`8f086f599`（时序竞态）。
 3. **真正阻断使用的缺陷？** Linux 原生实机访问（凭据）；Windows idle 族×2（影响长流场景稳定性，机制未定）；shell_snapshot×4（Linux 沙箱快照回放，影响 exec-server 沙箱路径非 NUWAX 主链）；无NUWAX 主链阻断项。
 4. **最短剩余任务？** ①用户解 Linux SSH→原生 guardian/nuwax/沙箱三件套复验；②push 6+4 提交取 CI 判决（guardian+wires windows+chatgpt）；③shell_snapshot 重 source 入口收口（插桩已排队）；④Windows idle 族机制取证。
