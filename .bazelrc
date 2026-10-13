@@ -3,11 +3,11 @@ common --repo_env=BAZEL_NO_APPLE_CPP_TOOLCHAIN=1
 # Dummy xcode config so we don't need to build xcode_locator in repo rule.
 common --xcode_version_config=//:disable_xcode
 
-# Local cache roots. BAZEL_CACHE_ROOT relocates them off a small system disk
-# (export it in your shell profile); unset, everything stays under ~/.cache.
-common --disk_cache=%{BAZEL_CACHE_ROOT:-~/.cache}/bazel-disk-cache
-common --repo_contents_cache=%{BAZEL_CACHE_ROOT:-~/.cache}/bazel-repo-contents-cache
-common --repository_cache=%{BAZEL_CACHE_ROOT:-~/.cache}/bazel-repo-cache
+# Bazel does not expand shell environment expressions in rc option values.
+# Override these with explicit paths in the ignored user.bazelrc file.
+common --disk_cache=~/.cache/bazel-disk-cache
+common --repo_contents_cache=~/.cache/bazel-repo-contents-cache
+common --repository_cache=~/.cache/bazel-repo-cache
 common --remote_cache_compression
 startup --experimental_remote_repo_contents_cache
 
