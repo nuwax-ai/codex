@@ -206,6 +206,18 @@ async fn child(
         .await
 }
 
+/// The wires suite exercises the provider wire, not approvals: pin the
+/// policy to `never` so the executed marker command never blocks on an
+/// approval request. On Windows the shell wrapper (`powershell -Command`)
+/// is not auto-approved under the default `on-request` policy and the turn
+/// would hang on a requestApproval no test client answers.
+fn never_approval_thread() -> ThreadStartParams {
+    ThreadStartParams {
+        approval_policy: Some(codex_app_server_protocol::AskForApproval::Never),
+        ..Default::default()
+    }
+}
+
 fn assert_common_wire_shape(request: &wiremock::Request, expected_path: &str) -> Result<Value> {
     let body: Value = serde_json::from_slice(&request.body).context("request body json")?;
     assert_eq!(
@@ -278,7 +290,7 @@ async fn chat_env_group_executes_a_tool_round_trip_over_the_real_chat_wire() -> 
 
     let codex_home = TempDir::new()?;
     let mut app = child(&codex_home, &server.uri(), "chat", &[]).await?;
-    let thread = app.start_thread(ThreadStartParams::default()).await?.thread;
+    let thread = app.start_thread(never_approval_thread()).await?.thread;
     let completed = completed_turn(&mut app, &thread.id, "run the marker command").await?;
     let answers: Vec<_> = completed
         .turn
@@ -352,7 +364,7 @@ async fn responses_env_group_executes_a_tool_round_trip_over_the_real_responses_
 
     let codex_home = TempDir::new()?;
     let mut app = child(&codex_home, &server.uri(), "responses", &[]).await?;
-    let thread = app.start_thread(ThreadStartParams::default()).await?.thread;
+    let thread = app.start_thread(never_approval_thread()).await?.thread;
 
     // Raw request + notification loop: the rig-decoded usage from BOTH
     // responses must reach the shared v2 accounting before completion.
@@ -527,7 +539,7 @@ async fn env_group_stream_interrupt_cancels_the_request_and_two_resumes_continue
         ],
     )
     .await?;
-    let thread = app.start_thread(ThreadStartParams::default()).await?.thread;
+    let thread = app.start_thread(never_approval_thread()).await?.thread;
     let environment = app.auto_env_params()?;
     let TurnStartResponse { turn } = app
         .request(|request_id| ClientRequest::TurnStart {
@@ -689,7 +701,7 @@ async fn env_group_compact_and_recall_keep_the_typed_wire_and_usage_accounting()
 
     let codex_home = TempDir::new()?;
     let mut app = child(&codex_home, &server.uri(), "chat", &[]).await?;
-    let thread = app.start_thread(ThreadStartParams::default()).await?.thread;
+    let thread = app.start_thread(never_approval_thread()).await?.thread;
     completed_turn(
         &mut app,
         &thread.id,
@@ -703,17 +715,31 @@ async fn env_group_compact_and_recall_keep_the_typed_wire_and_usage_accounting()
         })
         .await?;
     let _: ThreadCompactStartResponse = timeout(READ_TIMEOUT, app.read_response(compact_id)).await??;
-    // The compact sampling is exchange 2 on the SAME typed wire; wait until
-    // it has actually reached the provider before the recall turn.
-    timeout(Duration::from_secs(10), async {
-        loop {
-            if log.all().len() >= 2 {
-                return Ok::<(), anyhow::Error>(());
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
+    // Compaction is itself a turn: the recall turn cannot start until the
+    // compact turn reports completion, or turn input is rejected with
+    // ActiveTurnNotSteerable.
+    loop {
+        let notification = timeout(
+            READ_TIMEOUT,
+            app.read_stream_until_matching_notification("compaction progress", |notification| {
+                matches!(
+                    notification.method.as_str(),
+                    "item/completed" | "turn/completed"
+                )
+            }),
+        )
+        .await??;
+        let params = notification.params.clone().unwrap_or_default();
+        let compaction_done = params["item"]["type"].as_str() == Some("contextCompaction")
+            || params["turn"]["status"].as_str().is_some();
+        if compaction_done {
+            break;
         }
-    })
-    .await??;
+    }
+    assert!(
+        log.all().len() >= 2,
+        "the compact sampling must reach the typed wire first"
+    );
 
     let recalled = completed_turn(&mut app, &thread.id, "暗号是什么？直接回答暗号本身。").await?;
     let answers: Vec<&str> = recalled
