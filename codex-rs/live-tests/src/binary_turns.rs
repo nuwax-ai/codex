@@ -8,6 +8,7 @@ use scenarios::BinaryScenario;
 use scenarios::Scene;
 
 mod capture_validation;
+mod credential_scan;
 mod rollouts;
 mod runner;
 mod scenarios;
@@ -392,9 +393,11 @@ pub async fn run_nuwax_env_marker_turn(
     let startup = Startup::NuwaxEnv {
         wire_api,
         output_cap,
-        request_max_retries: None,
-        stream_max_retries: None,
-        stream_idle_timeout_ms: None,
+        // Live acceptance sends each sampling once. Provider continuation
+        // requests are a separate budget; these controls do not cap them.
+        request_max_retries: Some(0),
+        stream_max_retries: Some(0),
+        stream_idle_timeout_ms: Some(45_000),
     };
     run_scene(
         protocol,
@@ -551,43 +554,7 @@ fn assert_no_credential_leak(
     artifacts: &Path,
     cfg: &LiveConfig,
 ) -> Result<()> {
-    let mut scanned = 0usize;
-    let mut offenders = Vec::new();
-    for root in [home, cwd, artifacts] {
-        for entry in walk_files(root)? {
-            scanned += 1;
-            let content = std::fs::read_to_string(&entry).unwrap_or_default();
-            if content.contains(&cfg.api_key)
-                || content.contains("experimental_bearer_token")
-                || content.contains("model_providers.nuwax_env")
-            {
-                offenders.push(entry);
-            }
-        }
-    }
-    anyhow::ensure!(
-        offenders.is_empty(),
-        "credential or ephemeral provider definition leaked into: {offenders:?}"
-    );
-    anyhow::ensure!(scanned > 0, "expected at least a config.toml to scan");
-    Ok(())
-}
-
-fn walk_files(root: &Path) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        for entry in std::fs::read_dir(&dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else {
-                files.push(path);
-            }
-        }
-    }
-    Ok(files)
+    credential_scan::verify(&[home, cwd, artifacts], &cfg.api_key)
 }
 
 /// Retention is secondary evidence work: a failure never replaces the original error.

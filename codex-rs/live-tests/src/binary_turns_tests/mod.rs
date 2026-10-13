@@ -6,5 +6,6 @@ mod cap_exhaustion;
 mod capture_fields;
 mod capture_pipes;
 mod common;
+mod credential_scan;
 mod retention;
 mod runner_scenes;
