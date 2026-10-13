@@ -89,7 +89,10 @@ async fn budget_exactly_covering_the_round_trip_completes_normally() -> Result<(
     let artifacts = newest_artifacts_dir("nuwax-budget-ok")?;
     let ledger = std::fs::read_to_string(artifacts.join("requests.jsonl"))?;
     assert_eq!(
-        ledger.lines().filter(|line| !line.trim().is_empty()).count(),
+        ledger
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .count(),
         2,
         "both dispatched attempts are on the capture ledger"
     );
@@ -128,7 +131,10 @@ async fn budget_one_short_refuses_the_continuation_before_any_dispatch() -> Resu
         /*http_attempt_budget*/ Some(1),
     )
     .await;
-    assert!(outcome.is_err(), "a one-short budget cannot complete the turn");
+    assert!(
+        outcome.is_err(),
+        "a one-short budget cannot complete the turn"
+    );
 
     let (marker, no_second_connection) =
         tokio::time::timeout(Duration::from_secs(30), server).await???;
@@ -139,8 +145,7 @@ async fn budget_one_short_refuses_the_continuation_before_any_dispatch() -> Resu
     );
 
     let artifacts = newest_artifacts_dir("nuwax-budget-short")?;
-    let events =
-        std::fs::read_to_string(artifacts.join("events.jsonl")).unwrap_or_default();
+    let events = std::fs::read_to_string(artifacts.join("events.jsonl")).unwrap_or_default();
     assert!(
         events.contains("HTTP attempt budget of 1 exhausted"),
         "the refusal must surface as the turn's terminal error: {events}"
@@ -151,7 +156,10 @@ async fn budget_one_short_refuses_the_continuation_before_any_dispatch() -> Resu
     );
     let ledger = std::fs::read_to_string(artifacts.join("requests.jsonl"))?;
     assert_eq!(
-        ledger.lines().filter(|line| !line.trim().is_empty()).count(),
+        ledger
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .count(),
         1,
         "the refused attempt never entered the ledger"
     );

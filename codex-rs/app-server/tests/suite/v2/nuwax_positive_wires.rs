@@ -714,7 +714,8 @@ async fn env_group_compact_and_recall_keep_the_typed_wire_and_usage_accounting()
             thread_id: thread.id.clone(),
         })
         .await?;
-    let _: ThreadCompactStartResponse = timeout(READ_TIMEOUT, app.read_response(compact_id)).await??;
+    let _: ThreadCompactStartResponse =
+        timeout(READ_TIMEOUT, app.read_response(compact_id)).await??;
     // Compaction is itself a turn: the recall turn cannot start until the
     // compact turn reports completion, or turn input is rejected with
     // ActiveTurnNotSteerable.
@@ -761,7 +762,10 @@ async fn env_group_compact_and_recall_keep_the_typed_wire_and_usage_accounting()
     assert!(requests.len() >= 3, "learn + compact + recall exchanges");
     for (index, request) in requests.iter().enumerate() {
         let body = assert_common_wire_shape(request, "/v1/chat/completions")?;
-        assert_eq!(body["max_tokens"], 2048, "exchange {index} keeps the env cap");
+        assert_eq!(
+            body["max_tokens"], 2048,
+            "exchange {index} keeps the env cap"
+        );
     }
     let mut leaked_rollouts = Vec::new();
     let mut pending = vec![codex_home.path().to_path_buf()];
@@ -770,7 +774,9 @@ async fn env_group_compact_and_recall_keep_the_typed_wire_and_usage_accounting()
             let path = entry.path();
             if path.is_dir() {
                 pending.push(path);
-            } else if path.extension().is_some_and(|extension| extension == "jsonl")
+            } else if path
+                .extension()
+                .is_some_and(|extension| extension == "jsonl")
                 && std::fs::read_to_string(&path)
                     .unwrap_or_default()
                     .contains(TEST_KEY)

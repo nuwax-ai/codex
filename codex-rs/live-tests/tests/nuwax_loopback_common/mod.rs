@@ -138,7 +138,9 @@ pub async fn respond_sse(socket: &mut TcpStream, payload: &str) -> Result<()> {
 /// The tool-call SSE frames for the first exchange of a marker round trip.
 pub fn tool_call_frames(tool: &str, marker: &str) -> String {
     chat_sse(vec![
-        chat_chunk(json!({"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": null})),
+        chat_chunk(
+            json!({"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": null}),
+        ),
         chat_chunk(json!({"index": 0, "delta": {"tool_calls": [
             {"index": 0, "id": "call-env-offline", "type": "function",
              "function": {"name": tool, "arguments": tool_call_arguments(tool, marker)}}
@@ -151,7 +153,9 @@ pub fn tool_call_frames(tool: &str, marker: &str) -> String {
 /// The final-answer SSE frames echoing `answer` back.
 pub fn final_answer_frames(answer: &str) -> String {
     chat_sse(vec![
-        chat_chunk(json!({"index": 0, "delta": {"role": "assistant", "content": answer}, "finish_reason": null})),
+        chat_chunk(
+            json!({"index": 0, "delta": {"role": "assistant", "content": answer}, "finish_reason": null}),
+        ),
         chat_chunk(json!({"index": 0, "delta": {}, "finish_reason": "stop"})),
         usage_chunk(),
     ])

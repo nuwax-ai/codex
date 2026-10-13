@@ -44,7 +44,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tempfile::TempDir;
 use tokio::time::timeout;
-use tokio::time::{sleep, Instant};
+use tokio::time::{Instant, sleep};
 
 const READ_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 90);
 
@@ -133,11 +133,14 @@ fn ledger_attempts(ledger: &Path) -> usize {
 /// configured model — asserted from the pre-send capture, never from logs.
 fn assert_ledger_shape(ledger: &Path, vendor: &LiveVendor) -> Result<()> {
     let contents = std::fs::read_to_string(ledger).context("capture ledger")?;
-    let attempts: Vec<&str> = contents.lines().filter(|line| !line.trim().is_empty()).collect();
+    let attempts: Vec<&str> = contents
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
     anyhow::ensure!(!attempts.is_empty(), "the capture ledger is empty");
     for (index, line) in attempts.iter().enumerate() {
-        let entry: Value = serde_json::from_str(line)
-            .with_context(|| format!("ledger entry {index}"))?;
+        let entry: Value =
+            serde_json::from_str(line).with_context(|| format!("ledger entry {index}"))?;
         let url = entry["url"].as_str().unwrap_or_default();
         anyhow::ensure!(
             url.starts_with(&vendor.base_url),
@@ -206,9 +209,7 @@ fn agent_text(completed: &TurnCompletedNotification) -> String {
         .items
         .iter()
         .filter_map(|item| match item {
-            codex_app_server_protocol::ThreadItem::AgentMessage { text, .. } => {
-                Some(text.as_str())
-            }
+            codex_app_server_protocol::ThreadItem::AgentMessage { text, .. } => Some(text.as_str()),
             _ => None,
         })
         .collect::<Vec<_>>()
@@ -241,7 +242,14 @@ async fn live_env_tool_round_trip_usage_and_interrupt_with_two_resumes() -> Resu
     let ledger = artifacts.join("requests.jsonl");
     let marker = marker("roundtrip");
 
-    let mut app = live_child(&codex_home, &vendor, &ledger, /*budget*/ 6, /*cap*/ 2048).await?;
+    let mut app = live_child(
+        &codex_home,
+        &vendor,
+        &ledger,
+        /*budget*/ 6,
+        /*cap*/ 2048,
+    )
+    .await?;
     let thread = app.start_thread(never_approval_thread()).await?.thread;
 
     // 1. Tool round trip with a random marker: the command must really run,
@@ -307,8 +315,7 @@ async fn live_env_tool_round_trip_usage_and_interrupt_with_two_resumes() -> Resu
                 .clone(),
         )?;
     assert!(
-        usage.token_usage.last.input_tokens > 0
-            && usage.token_usage.last.output_tokens > 0,
+        usage.token_usage.last.input_tokens > 0 && usage.token_usage.last.output_tokens > 0,
         "live usage must be nonzero: {:?}",
         usage.token_usage.last
     );
@@ -329,27 +336,27 @@ async fn live_env_tool_round_trip_usage_and_interrupt_with_two_resumes() -> Resu
         "the final answer must carry the executed marker: {answer}"
     );
 
-
     // 2. Real interrupt mid-generation; the in-flight attempt must be the
     //    last wire request until the resume.
     let environment = app.auto_env_params()?;
     let TurnStartResponse { turn } = timeout(
         READ_TIMEOUT,
-        app.request(|request_id| {
-            codex_app_server_protocol::ClientRequest::TurnStart {
+        app.request(
+            |request_id| codex_app_server_protocol::ClientRequest::TurnStart {
                 request_id,
                 params: TurnStartParams {
                     thread_id: thread.id.clone(),
                     client_user_message_id: None,
                     input: vec![V2UserInput::Text {
-                        text: "请写一篇至少六百字的文章，主题是远海的信标，不要提前结束。".to_string(),
+                        text: "请写一篇至少六百字的文章，主题是远海的信标，不要提前结束。"
+                            .to_string(),
                         text_elements: Vec::new(),
                     }],
                     environments: Some(vec![environment]),
                     ..Default::default()
                 },
-            }
-        }),
+            },
+        ),
     )
     .await??;
     let _: codex_app_server_protocol::TurnStartedNotification =
@@ -357,15 +364,15 @@ async fn live_env_tool_round_trip_usage_and_interrupt_with_two_resumes() -> Resu
     sleep(Duration::from_millis(1500)).await;
     let _: TurnInterruptResponse = timeout(
         READ_TIMEOUT,
-        app.request(|request_id| {
-            codex_app_server_protocol::ClientRequest::TurnInterrupt {
+        app.request(
+            |request_id| codex_app_server_protocol::ClientRequest::TurnInterrupt {
                 request_id,
                 params: TurnInterruptParams {
                     thread_id: thread.id.clone(),
                     turn_id: turn.id.clone(),
                 },
-            }
-        }),
+            },
+        ),
     )
     .await??;
     let interrupted: TurnCompletedNotification =
@@ -407,14 +414,22 @@ async fn live_env_tool_round_trip_usage_and_interrupt_with_two_resumes() -> Resu
 
     // 4. Cold resume in a fresh child sharing the SAME ledger and budget.
     app.shutdown_gracefully().await?;
-    let mut cold = live_child(&codex_home, &vendor, &ledger, /*budget*/ 6, /*cap*/ 2048).await?;
+    let mut cold = live_child(
+        &codex_home,
+        &vendor,
+        &ledger,
+        /*budget*/ 6,
+        /*cap*/ 2048,
+    )
+    .await?;
     let resume_id = cold
         .send_thread_resume_request(ThreadResumeParams {
             thread_id: thread.id.clone(),
             ..Default::default()
         })
         .await?;
-    let resumed: ThreadResumeResponse = timeout(READ_TIMEOUT, cold.read_response(resume_id)).await??;
+    let resumed: ThreadResumeResponse =
+        timeout(READ_TIMEOUT, cold.read_response(resume_id)).await??;
     assert_eq!(
         (resumed.model.as_str(), resumed.model_provider.as_str()),
         (vendor.model.as_str(), "nuwax_env")
@@ -450,7 +465,14 @@ async fn live_env_compact_and_post_compact_recall() -> Result<()> {
     let ledger = artifacts.join("requests.jsonl");
     let passphrase = marker("secret");
 
-    let mut app = live_child(&codex_home, &vendor, &ledger, /*budget*/ 6, /*cap*/ 2048).await?;
+    let mut app = live_child(
+        &codex_home,
+        &vendor,
+        &ledger,
+        /*budget*/ 6,
+        /*cap*/ 2048,
+    )
+    .await?;
     let thread = app.start_thread(never_approval_thread()).await?.thread;
     let learned = start_turn_and_wait(
         &mut app,
@@ -465,7 +487,8 @@ async fn live_env_compact_and_post_compact_recall() -> Result<()> {
             thread_id: thread.id.clone(),
         })
         .await?;
-    let _: ThreadCompactStartResponse = timeout(READ_TIMEOUT, app.read_response(compact_id)).await??;
+    let _: ThreadCompactStartResponse =
+        timeout(READ_TIMEOUT, app.read_response(compact_id)).await??;
     // The compact turn runs to completion before the recall turn can start
     // (compaction is itself a turn; steering into it is rejected).
     let before_compact = ledger_attempts(&ledger);
@@ -529,7 +552,14 @@ async fn live_env_output_cap_exhaustion_fails_without_resampling() -> Result<()>
     std::fs::create_dir_all(&artifacts)?;
     let ledger = artifacts.join("requests.jsonl");
 
-    let mut app = live_child(&codex_home, &vendor, &ledger, /*budget*/ 2, /*cap*/ 64).await?;
+    let mut app = live_child(
+        &codex_home,
+        &vendor,
+        &ledger,
+        /*budget*/ 2,
+        /*cap*/ 64,
+    )
+    .await?;
     let thread = app.start_thread(never_approval_thread()).await?.thread;
     let completed = start_turn_and_wait(
         &mut app,
