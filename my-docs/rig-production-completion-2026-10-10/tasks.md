@@ -47,7 +47,7 @@
 - [ ] **T24 P1：完整CLI配置路由。** 四命令/四环境状态/flags/install/daemon/embedded/remote。DoD：真实owner/RPC、连接前fail-fast、配置字节与机密不回显，不能仅枚举单测。
 - [ ] **T25 P1：writer生命周期。** cold/loaded/subscribed/running、resume持锁到unload、held/free校准、PID/window/error。DoD：owner存在不新建writer，lock/实际RPC证据同步，轮询局限公开。
 - [ ] **T26 P1：crash/restart/持久队列。** Gate注入owner退出/重启与enqueue/execution。DoD：恢复不丢不重执行，名字歧义/分页稳定，执行失败不把enqueue成功冒称模型成功。
-- [ ] **T27 P1：环境接线与并行预算。** 双home/有效SQLite/模型/凭据/协议/retry/idle、CLI覆盖/失活/坏值。DoD：真实HTTP attempts、长短idle观测、取消后无新请求，daemon/config不被污染（进展 2026-10-12：app-server 补齐 Chat/Responses 正向环境启动——工具往返、流中断+两次恢复、usage 上报、凭据/rollout 零持久化，经真实子进程 public JSON-RPC（167f197c8）；live harness 增 typed NUWAX 环境启动模式并离线闭环验证（59a2b4aa2，169/169）；exec+app-server 全 nuwax 族 28/28 复验。）
+- [ ] **T27 P1：环境接线与并行预算。**（进展 2026-10-13 晚：硬请求预算闸门 `CODEX_RIG_MAX_HTTP_ATTEMPTS` 已实现并离线验证（`c1236f99c`，发送前判定、账本跨进程权威、服务端连接数证明拒绝请求未上线）；离线链路补齐 env 压缩+召回（`8b3b2023e`/`8f086f599`，7/7）；live 三场景+exec 三厂商 24/24 全过（工具/取消/热冷恢复/压缩/usage/触顶、非泄漏全绿）；ACP 消费链路 15/15。见 results-acceptance-2026-10-13.md。） 双home/有效SQLite/模型/凭据/协议/retry/idle、CLI覆盖/失活/坏值。DoD：真实HTTP attempts、长短idle观测、取消后无新请求，daemon/config不被污染（进展 2026-10-12：app-server 补齐 Chat/Responses 正向环境启动——工具往返、流中断+两次恢复、usage 上报、凭据/rollout 零持久化，经真实子进程 public JSON-RPC（167f197c8）；live harness 增 typed NUWAX 环境启动模式并离线闭环验证（59a2b4aa2，169/169）；exec+app-server 全 nuwax 族 28/28 复验。）
 
 ## 包5：字段、来源与历史（4项）
 
