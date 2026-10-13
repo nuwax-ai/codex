@@ -434,21 +434,24 @@ pub(super) async fn submission_loop(
         let should_exit = async {
             match sub.op {
                 Op::Interrupt => {
-                    interrupt(&sess).await;
+                    Box::pin(interrupt(&sess)).await;
                     false
                 }
                 Op::InterruptIfNoPendingInput { turn_id, reply } => {
-                    sess.interrupt_turn_if_no_pending_input(&turn_id, reply)
-                        .await;
+                    Box::pin(sess.interrupt_turn_if_no_pending_input(&turn_id, reply)).await;
                     false
                 }
                 Op::CleanBackgroundTerminals => {
-                    clean_background_terminals(&sess).await;
+                    Box::pin(clean_background_terminals(&sess)).await;
                     false
                 }
                 Op::RealtimeConversationStart(params) => {
-                    if let Err(err) =
-                        handle_realtime_conversation_start(&sess, sub.id.clone(), params).await
+                    if let Err(err) = Box::pin(handle_realtime_conversation_start(
+                        &sess,
+                        sub.id.clone(),
+                        params,
+                    ))
+                    .await
                     {
                         sess.send_event_raw(Event {
                             id: sub.id.clone(),
@@ -463,23 +466,38 @@ pub(super) async fn submission_loop(
                     false
                 }
                 Op::RealtimeConversationAudio(params) => {
-                    handle_realtime_conversation_audio(&sess, sub.id.clone(), params).await;
+                    Box::pin(handle_realtime_conversation_audio(
+                        &sess,
+                        sub.id.clone(),
+                        params,
+                    ))
+                    .await;
                     false
                 }
                 Op::RealtimeConversationText(params) => {
-                    handle_realtime_conversation_text(&sess, sub.id.clone(), params).await;
+                    Box::pin(handle_realtime_conversation_text(
+                        &sess,
+                        sub.id.clone(),
+                        params,
+                    ))
+                    .await;
                     false
                 }
                 Op::RealtimeConversationSpeech(params) => {
-                    handle_realtime_conversation_speech(&sess, sub.id.clone(), params).await;
+                    Box::pin(handle_realtime_conversation_speech(
+                        &sess,
+                        sub.id.clone(),
+                        params,
+                    ))
+                    .await;
                     false
                 }
                 Op::RealtimeConversationClose => {
-                    handle_realtime_conversation_close(&sess, sub.id.clone()).await;
+                    Box::pin(handle_realtime_conversation_close(&sess, sub.id.clone())).await;
                     false
                 }
                 Op::RealtimeConversationListVoices => {
-                    realtime_conversation_list_voices(&sess, sub.id.clone()).await;
+                    Box::pin(realtime_conversation_list_voices(&sess, sub.id.clone())).await;
                     false
                 }
                 Op::TurnInput {
@@ -487,7 +505,11 @@ pub(super) async fn submission_loop(
                     mode,
                     reply,
                 } => {
-                    let result = turn_input::handle(&sess, *request, mode, sub.id.clone()).await;
+                    // Boxed for the same reason as the branches in
+                    // `turn_input::handle`: the dispatch block must not
+                    // inline the much larger turn futures.
+                    let result =
+                        Box::pin(turn_input::handle(&sess, *request, mode, sub.id.clone())).await;
                     let _ = reply.send(result);
                     false
                 }
@@ -496,20 +518,22 @@ pub(super) async fn submission_loop(
                     start_options,
                     reply,
                 } => {
-                    let result = turn_input::handle_recovery(
+                    let result = Box::pin(turn_input::handle_recovery(
                         &sess,
                         thread_settings,
                         start_options,
                         sub.id.clone(),
-                    )
+                    ))
                     .await;
                     let _ = reply.send(result);
                     false
                 }
                 Op::SuspendTurnAndShutdown { reply } => {
-                    let result =
-                        super::turn_suspension::suspend_turn_and_shutdown(&sess, sub.id.clone())
-                            .await;
+                    let result = Box::pin(super::turn_suspension::suspend_turn_and_shutdown(
+                        &sess,
+                        sub.id.clone(),
+                    ))
+                    .await;
                     // Exit only after history is durable and its writer has closed; an error
                     // must leave responsibility for the thread with the current worker.
                     let should_exit = matches!(
@@ -524,7 +548,7 @@ pub(super) async fn submission_loop(
                     reply,
                 } => {
                     let _settings_guard = thread_settings::acquire_persistence_lock(&sess).await;
-                    match thread_settings::update(&sess, thread_settings).await {
+                    match Box::pin(thread_settings::update(&sess, thread_settings)).await {
                         Ok(snapshot) => {
                             // Reply first: the caller may hold a lock its event consumer needs.
                             if let Some(reply) = reply {
@@ -556,7 +580,7 @@ pub(super) async fn submission_loop(
                     update,
                     reply,
                 } => {
-                    let outcome = sess.apply_turn_settings(&turn_id, update).await;
+                    let outcome = Box::pin(sess.apply_turn_settings(&turn_id, update)).await;
                     let _ = reply.send(outcome);
                     false
                 }
@@ -564,8 +588,13 @@ pub(super) async fn submission_loop(
                     communication,
                     start_options,
                 } => {
-                    inter_agent_communication(&sess, sub.id.clone(), communication, start_options)
-                        .await;
+                    Box::pin(inter_agent_communication(
+                        &sess,
+                        sub.id.clone(),
+                        communication,
+                        start_options,
+                    ))
+                    .await;
                     false
                 }
                 Op::ExecApproval {
@@ -573,23 +602,23 @@ pub(super) async fn submission_loop(
                     turn_id,
                     decision,
                 } => {
-                    exec_approval(&sess, approval_id, turn_id, decision).await;
+                    Box::pin(exec_approval(&sess, approval_id, turn_id, decision)).await;
                     false
                 }
                 Op::PatchApproval { id, decision } => {
-                    patch_approval(&sess, id, decision).await;
+                    Box::pin(patch_approval(&sess, id, decision)).await;
                     false
                 }
                 Op::UserInputAnswer { id, response } => {
-                    request_user_input_response(&sess, id, response).await;
+                    Box::pin(request_user_input_response(&sess, id, response)).await;
                     false
                 }
                 Op::RequestPermissionsResponse { id, response } => {
-                    request_permissions_response(&sess, id, response).await;
+                    Box::pin(request_permissions_response(&sess, id, response)).await;
                     false
                 }
                 Op::DynamicToolResponse { id, response } => {
-                    dynamic_tool_response(&sess, id, response).await;
+                    Box::pin(dynamic_tool_response(&sess, id, response)).await;
                     false
                 }
                 Op::RefreshMcpServers => {
@@ -597,22 +626,28 @@ pub(super) async fn submission_loop(
                     false
                 }
                 Op::ReloadUserConfig => {
-                    reload_user_config(&sess).await;
+                    Box::pin(reload_user_config(&sess)).await;
                     false
                 }
                 Op::Compact => {
-                    compact(&sess, sub.id.clone()).await;
+                    Box::pin(compact(&sess, sub.id.clone())).await;
                     false
                 }
                 Op::SetThreadMemoryMode { mode } => {
-                    set_thread_memory_mode(&sess, sub.id.clone(), mode).await;
+                    Box::pin(set_thread_memory_mode(&sess, sub.id.clone(), mode)).await;
                     false
                 }
                 Op::RunUserShellCommand {
                     command,
                     timeout_ms,
                 } => {
-                    run_user_shell_command(&sess, sub.id.clone(), command, timeout_ms).await;
+                    Box::pin(run_user_shell_command(
+                        &sess,
+                        sub.id.clone(),
+                        command,
+                        timeout_ms,
+                    ))
+                    .await;
                     false
                 }
                 Op::ResolveElicitation {
@@ -622,17 +657,24 @@ pub(super) async fn submission_loop(
                     content,
                     meta,
                 } => {
-                    resolve_elicitation(&sess, server_name, request_id, decision, content, meta)
-                        .await;
+                    Box::pin(resolve_elicitation(
+                        &sess,
+                        server_name,
+                        request_id,
+                        decision,
+                        content,
+                        meta,
+                    ))
+                    .await;
                     false
                 }
-                Op::Shutdown => shutdown(&sess, sub.id.clone()).await,
+                Op::Shutdown => Box::pin(shutdown(&sess, sub.id.clone())).await,
                 Op::Review { review_request } => {
-                    review(&sess, &config, sub.id.clone(), review_request).await;
+                    Box::pin(review(&sess, &config, sub.id.clone(), review_request)).await;
                     false
                 }
                 Op::ApproveGuardianDeniedAction { event } => {
-                    approve_guardian_denied_action(&sess, event).await;
+                    Box::pin(approve_guardian_denied_action(&sess, event)).await;
                     false
                 }
                 _ => false, // Ignore unknown ops; enum is non_exhaustive to allow extensions.

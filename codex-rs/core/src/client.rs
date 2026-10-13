@@ -2608,35 +2608,33 @@ impl ModelClientSession {
                 // `experimental_bridge = "native"` forces it explicitly.
                 #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
                 if info.uses_model_bridge() {
-                    return self
-                        .stream_model_bridge(
-                            prompt,
-                            model_info,
-                            session_telemetry,
-                            effort,
-                            summary,
-                            service_tier,
-                            responses_metadata,
-                            inference_trace,
-                        )
-                        .await;
+                    return Box::pin(self.stream_model_bridge(
+                        prompt,
+                        model_info,
+                        session_telemetry,
+                        effort,
+                        summary,
+                        service_tier,
+                        responses_metadata,
+                        inference_trace,
+                    ))
+                    .await;
                 }
                 if self.client.responses_websocket_enabled() {
                     let request_trace = current_span_w3c_trace_context();
-                    match self
-                        .stream_responses_websocket(
-                            prompt,
-                            model_info,
-                            session_telemetry,
-                            effort.clone(),
-                            summary,
-                            service_tier.clone(),
-                            responses_metadata,
-                            /*warmup*/ false,
-                            request_trace,
-                            inference_trace,
-                        )
-                        .await?
+                    match Box::pin(self.stream_responses_websocket(
+                        prompt,
+                        model_info,
+                        session_telemetry,
+                        effort.clone(),
+                        summary,
+                        service_tier.clone(),
+                        responses_metadata,
+                        /*warmup*/ false,
+                        request_trace,
+                        inference_trace,
+                    ))
+                    .await?
                     {
                         WebsocketStreamOutcome::Stream(stream) => return Ok(stream),
                         WebsocketStreamOutcome::FallbackToHttp => {
@@ -2645,7 +2643,7 @@ impl ModelClientSession {
                     }
                 }
 
-                self.stream_responses_api(
+                Box::pin(self.stream_responses_api(
                     prompt,
                     model_info,
                     session_telemetry,
@@ -2654,12 +2652,12 @@ impl ModelClientSession {
                     service_tier,
                     responses_metadata,
                     inference_trace,
-                )
+                ))
                 .await
             }
             #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
             WireApi::Chat | WireApi::Anthropic => {
-                self.stream_model_bridge(
+                Box::pin(self.stream_model_bridge(
                     prompt,
                     model_info,
                     session_telemetry,
@@ -2668,7 +2666,7 @@ impl ModelClientSession {
                     service_tier,
                     responses_metadata,
                     inference_trace,
-                )
+                ))
                 .await
             }
             #[cfg(not(any(feature = "rust-genai", feature = "rust-rig")))]

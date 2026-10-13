@@ -151,19 +151,17 @@ impl PreparedTurnInputSettings {
         };
         let turn_context = match kind {
             TurnStartKind::User | TurnStartKind::Recovery => Some(
-                session
-                    .new_turn_with_sub_id(submission_id.clone(), updates, options)
+                Box::pin(session.new_turn_with_sub_id(submission_id.clone(), updates, options))
                     .await?,
             ),
             TurnStartKind::Automatic => {
-                session
-                    .new_turn_with_sub_id_if(
-                        submission_id.clone(),
-                        updates,
-                        options,
-                        |current, proposed| kind.permits_settings(current, proposed),
-                    )
-                    .await?
+                Box::pin(session.new_turn_with_sub_id_if(
+                    submission_id.clone(),
+                    updates,
+                    options,
+                    |current, proposed| kind.permits_settings(current, proposed),
+                ))
+                .await?
             }
         };
         let Some((turn_context, settings_snapshot)) = turn_context else {
@@ -214,8 +212,14 @@ pub(super) async fn handle(
     mode: TurnInputMode,
     submission_id: String,
 ) -> CodexResult<TurnInputSubmission> {
+    // Box the branch futures: `handle` is a thin dispatcher whose inline
+    // awaits would otherwise inline each branch's (much larger) state
+    // machine into this one, inflating every poll frame through the
+    // submission path (same fix pattern as #13429).
     let result = match mode {
-        TurnInputMode::StartOrSteer => start_or_steer(session, request, submission_id).await,
+        TurnInputMode::StartOrSteer => {
+            Box::pin(start_or_steer(session, request, submission_id)).await
+        }
         TurnInputMode::StartIfIdle => {
             let kind = match &request.input {
                 SubmittedTurnInput::UserInput { content, .. } if !content.is_empty() => {
@@ -225,13 +229,13 @@ pub(super) async fn handle(
                 | SubmittedTurnInput::ResponseItem(_)
                 | SubmittedTurnInput::InterAgentCommunication(_) => TurnStartKind::Automatic,
             };
-            start_if_idle(
+            Box::pin(start_if_idle(
                 session,
                 request,
                 submission_id,
                 kind,
                 /*expected_previous_turn_id*/ None,
-            )
+            ))
             .await
         }
         TurnInputMode::ContinueIfIdle {
@@ -242,17 +246,17 @@ pub(super) async fn handle(
                     "continuation requires internal response input".to_string(),
                 ));
             }
-            start_if_idle(
+            Box::pin(start_if_idle(
                 session,
                 request,
                 submission_id,
                 TurnStartKind::Recovery,
                 Some(expected_previous_turn_id),
-            )
+            ))
             .await
         }
         TurnInputMode::Steer { expected_turn_id } => {
-            steer(session, request, expected_turn_id, submission_id).await
+            Box::pin(steer(session, request, expected_turn_id, submission_id)).await
         }
     };
     // Link this request's trace to the accepted turn, which may have an older trace.
@@ -362,9 +366,12 @@ async fn start_or_steer(
                 };
                 Some(admission)
             };
-            let Some(turn_context) = settings
-                .apply_started(session, submission_id.clone(), TurnStartKind::User)
-                .await?
+            let Some(turn_context) = Box::pin(settings.apply_started(
+                session,
+                submission_id.clone(),
+                TurnStartKind::User,
+            ))
+            .await?
             else {
                 unreachable!("explicit user input can enter Plan mode");
             };
@@ -484,22 +491,20 @@ async fn start_if_idle(
             return Err(error);
         }
     };
-    let turn_context = match settings
-        .apply_started(session, submission_id.clone(), kind)
-        .await
-    {
-        Ok(Some(turn_context)) => turn_context,
-        Ok(None) => {
-            session.clear_reserved_idle_turn(&turn_state).await;
-            return Ok(TurnInputSubmission::NotSubmitted {
-                reason: NotSubmittedReason::PlanMode,
-            });
-        }
-        Err(error) => {
-            session.clear_reserved_idle_turn(&turn_state).await;
-            return Err(error);
-        }
-    };
+    let turn_context =
+        match Box::pin(settings.apply_started(session, submission_id.clone(), kind)).await {
+            Ok(Some(turn_context)) => turn_context,
+            Ok(None) => {
+                session.clear_reserved_idle_turn(&turn_state).await;
+                return Ok(TurnInputSubmission::NotSubmitted {
+                    reason: NotSubmittedReason::PlanMode,
+                });
+            }
+            Err(error) => {
+                session.clear_reserved_idle_turn(&turn_state).await;
+                return Err(error);
+            }
+        };
     if let Some(responsesapi_client_metadata) = responsesapi_client_metadata {
         turn_context
             .turn_metadata_state

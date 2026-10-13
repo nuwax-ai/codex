@@ -182,12 +182,12 @@ pub(crate) async fn run_turn(
     // new user message are recorded. Estimate pending incoming items (context
     // diffs/full reinjection + user input) and trigger compaction preemptively
     // when they would push the thread over the compaction threshold.
-    if let Err(err) = run_pre_sampling_compact(
+    if let Err(err) = Box::pin(run_pre_sampling_compact(
         &sess,
         &turn_context,
         &mut client_session,
         &cancellation_token,
-    )
+    ))
     .await
     {
         // Compaction runs before the new input is recorded, so preserve it on every failure.
@@ -257,14 +257,13 @@ pub(crate) async fn run_turn(
     required_servers.dedup();
 
     // run_turn owns the step used to seed context and make the first sampling request.
-    let first_step_context = match sess
-        .capture_step_context_with_required_mcp_servers(
-            Arc::clone(&turn_context),
-            &cancellation_token,
-            required_servers,
-            required_plugins,
-        )
-        .await
+    let first_step_context = match Box::pin(sess.capture_step_context_with_required_mcp_servers(
+        Arc::clone(&turn_context),
+        &cancellation_token,
+        required_servers,
+        required_plugins,
+    ))
+    .await
     {
         Ok(step_context) => step_context,
         Err(err) if matches!(err.details(), CodexErrorDetails::TurnAborted) => {
@@ -309,14 +308,15 @@ pub(crate) async fn run_turn(
     );
     let mut world_state = world_state?;
 
-    let Some((injection_items, explicitly_enabled_connectors)) = build_skills_and_plugins(
-        &sess,
-        first_step_context.as_ref(),
-        &user_input,
-        &mentioned_plugins,
-        &cancellation_token,
-    )
-    .await
+    let Some((injection_items, explicitly_enabled_connectors)) =
+        Box::pin(build_skills_and_plugins(
+            &sess,
+            first_step_context.as_ref(),
+            &user_input,
+            &mentioned_plugins,
+            &cancellation_token,
+        ))
+        .await
     else {
         return Ok(None);
     };
@@ -345,7 +345,7 @@ pub(crate) async fn run_turn(
         sess.services
             .thread_extension_data
             .insert(crate::guardian::ExhaustedReviewBudget::Compacting);
-        run_auto_compact(
+        Box::pin(run_auto_compact(
             &sess,
             Arc::clone(&first_step_context),
             /*fallback_step_context*/ None,
@@ -353,7 +353,7 @@ pub(crate) async fn run_turn(
             InitialContextInjection::DoNotInject,
             CompactionReason::ContextLimit,
             CompactionPhase::PreTurn,
-        )
+        ))
         .await?;
         world_state = sess
             .record_context_updates_and_set_reference_context_item(first_step_context.as_ref())
@@ -464,12 +464,12 @@ pub(crate) async fn run_turn(
         let step_context = match next_step_context.take() {
             Some(step_context) if pending_input.is_empty() => step_context,
             None if pending_input.is_empty() => {
-                sess.capture_step_context_with_required_mcp_servers(
+                Box::pin(sess.capture_step_context_with_required_mcp_servers(
                     Arc::clone(&turn_context),
                     &cancellation_token,
                     required_servers,
                     required_plugins,
-                )
+                ))
                 .await?
             }
             Some(_) | None => {
@@ -489,16 +489,16 @@ pub(crate) async fn run_turn(
                 required_servers.extend(pending_required_servers);
                 required_servers.sort_unstable();
                 required_servers.dedup();
-                sess.capture_step_context_with_required_mcp_servers(
+                Box::pin(sess.capture_step_context_with_required_mcp_servers(
                     Arc::clone(&turn_context),
                     &cancellation_token,
                     required_servers,
                     required_plugins,
-                )
+                ))
                 .await?
             }
         };
-        let sampling_request_result: CodexResult<_> = async {
+        let sampling_request_result: CodexResult<_> = Box::pin(async {
             super::time_reminder::maybe_record_current_time_reminder(
                 sess.as_ref(),
                 turn_context.as_ref(),
@@ -523,7 +523,7 @@ pub(crate) async fn run_turn(
             .instrument(trace_span!("run_turn.prepare_sampling_request_input"))
             .await;
 
-            run_sampling_request(
+            Box::pin(run_sampling_request(
                 Arc::clone(&sess),
                 Arc::clone(&step_context),
                 Arc::clone(&turn_context.extension_data),
@@ -531,9 +531,9 @@ pub(crate) async fn run_turn(
                 &mut client_session,
                 sampling_request_input,
                 cancellation_token.child_token(),
-            )
+            ))
             .await
-        }
+        })
         .await;
         match sampling_request_result {
             Ok((sampling_request_output, sampling_request_input)) => {
@@ -613,7 +613,7 @@ pub(crate) async fn run_turn(
 
                 // as long as compaction works well in getting us way below the token limit, we shouldn't worry about being in an infinite loop.
                 if should_roll_over {
-                    if let Err(err) = run_auto_compact(
+                    if let Err(err) = Box::pin(run_auto_compact(
                         &sess,
                         Arc::clone(&step_context),
                         /*fallback_step_context*/ None,
@@ -624,7 +624,7 @@ pub(crate) async fn run_turn(
                         },
                         CompactionReason::ContextLimit,
                         CompactionPhase::MidTurn,
-                    )
+                    ))
                     .await
                     {
                         if matches!(err.details(), CodexErrorDetails::TurnAborted) {
@@ -725,7 +725,7 @@ pub(crate) async fn run_turn(
                         .turn_end_compaction_threshold_reached
                         && !sess.input_queue.has_pending_input(&sess.active_turn).await
                         && !cancellation_token.is_cancelled()
-                        && let Err(err) = run_auto_compact(
+                        && let Err(err) = Box::pin(run_auto_compact(
                             &sess,
                             Arc::clone(&step_context),
                             /*fallback_step_context*/ None,
@@ -733,7 +733,7 @@ pub(crate) async fn run_turn(
                             InitialContextInjection::DoNotInject,
                             CompactionReason::ContextLimit,
                             CompactionPhase::PostTurn,
-                        )
+                        ))
                         .await
                     {
                         if matches!(
@@ -776,7 +776,7 @@ pub(crate) async fn run_turn(
                 sess.services
                     .thread_extension_data
                     .insert(crate::guardian::ExhaustedReviewBudget::Compacting);
-                run_auto_compact(
+                Box::pin(run_auto_compact(
                     &sess,
                     Arc::clone(&step_context),
                     /*fallback_step_context*/ None,
@@ -787,7 +787,7 @@ pub(crate) async fn run_turn(
                     },
                     CompactionReason::ContextLimit,
                     CompactionPhase::MidTurn,
-                )
+                ))
                 .await?;
                 can_drain_pending_input = false;
                 continue;
@@ -1691,7 +1691,7 @@ async fn run_sampling_request(
             .await?;
         }
         let response_key = sess.next_sampling_response_key(&turn_context.sub_id);
-        let err = match try_run_sampling_request(
+        let err = match Box::pin(try_run_sampling_request(
             tool_runtime.clone(),
             Arc::clone(&sess),
             Arc::clone(&step_context),
@@ -1702,7 +1702,7 @@ async fn run_sampling_request(
             &prompt,
             &response_key,
             cancellation_token.child_token(),
-        )
+        ))
         .await
         {
             Ok(output) => {
@@ -2585,20 +2585,22 @@ async fn try_run_sampling_request(
     let effort = sess
         .reasoning_effort_for_request(&step_context.settings, super::RequestEffortUsage::Sampling)
         .await;
-    let mut stream = client_session
-        .stream(
-            prompt,
-            &step_context.settings.model_info,
-            &step_context.session_telemetry,
-            effort,
-            step_context.settings.reasoning_summary,
-            step_context.settings.service_tier.clone(),
-            responses_metadata,
-            &inference_trace,
-        )
-        .instrument(trace_span!("stream_request"))
-        .or_cancel(&cancellation_token)
-        .await??;
+    let mut stream = Box::pin(
+        client_session
+            .stream(
+                prompt,
+                &step_context.settings.model_info,
+                &step_context.session_telemetry,
+                effort,
+                step_context.settings.reasoning_summary,
+                step_context.settings.service_tier.clone(),
+                responses_metadata,
+                &inference_trace,
+            )
+            .instrument(trace_span!("stream_request")),
+    )
+    .or_cancel(&cancellation_token)
+    .await??;
     let model_output_provenance = client_session.output_provenance().cloned();
     if cancellation_token.is_cancelled() {
         return Err(CodexErr::TurnAborted);
