@@ -20,7 +20,7 @@
 | macOS（本机，Darwin 27 arm64） | 开发+离线+live 直连 | rustc 1.95.0（repo pin）/1.99.0 双工具链 | HEAD `8f086f599` 干净树；codex-exec/codex-app-server/codex CLI debug 构建（收据内嵌 git SHA+tree 快照，期间两次正确拒绝编辑前二进制） |
 | Windows 11 26200（soddygo@192.168.32.235，原生，非 WSL） | 原生 Windows 验收 | rustc 1.98.1/1.99.0-msvc、MSVC2022、cargo-nextest 0.9.146、V8 用 setup-rusty-v8 同源三重校验（openai/codex release + third_party/v8 清单） | bundle 同步至 `8f086f599`，独立目录 `~/nuwax-acceptance/`，CI 同构命令（`--workspace --exclude codex-voice-host --features codex-core/rust-rig,codex-v8-poc/sandbox`） |
 | OrbStack Debian 13 aarch64（`codex-linux`，**--privileged**） | Linux 校准 | bwrap 可用（本轮升级特权后 `--ro-bind / / --proc /proc` OK）、userns OK、双工具链、nextest、strace/inotify | `/src` 同步 `8f086f599`（注意：为取证曾临时插桩，见 §6） |
-| Linux 实机 swufe@192.168.32.163 | — | **阻断**：publickey/password 均拒，本机密钥未获授权；.env.local 无 SSH 口令。需要用户提供访问凭据后补原生数据 | 未测（如实登记） |
+| Linux 实机 swufe@192.168.32.163（Ubuntu 24.04.4 LTS, kernel 7.0, x86_64, 72C/62G/1.7T） | **原生验证（本轮后半完成）** | 用户凭据解锁后 ssh-copy-id 免密；rustc 1.95.0+1.99.0（1.99=b940084d7 与 CI 同 hash）经 Mac 下载+LAN 传输离线安装；nextest 0.9.146；cargo 注册表缓存自 Mac 流式同步（清除 AppleDouble 垃圾后编译通过） | `~/nuwax-acceptance/codex-src` 独立目录，`80c8dbf94`（=f392013aa 同内容 am）；codex-exec SHA256 `d25ebcdb…`，收据内嵌 git SHA |
 
 磁盘处置记录：本机 `/Volumes/soddy` 一度 100%，删除**可再生的** `codex-rs/target`（102G，含全部历史构建产物）；容器删除本轮自建的 1.95 旧 target 卷。用户 bazel 缓存与 Docker 构建缓存未动。
 
@@ -85,15 +85,25 @@
 - **skills /tmp 污染对照**：特权容器干净 /tmp 下 `repo_ancestry_without_project_marker_does_not_walk_parents` **通过**；bwrap 成功运行的本轮全量测试后 /tmp 未再出现 `.git/.agents/.codex` 顶层泄漏（仅注册表 `codex-bwrap-synthetic-mount-targets-0` 与正常临时目录）。旧证据（非特权、bwrap 失败路径）中的 /tmp/.git CREATE 与 scaffold mkdirat 并存——**泄漏与 bwrap 失败/回退路径强相关**的假设增强；GH runner 上该测试失败是否同源（userns 模式差异）需以非 root 用户复刻（容器 testuser 已备，PATH 权限修复后未及重跑）。
 - bwrap/userns//proc/工具执行：容器内 `remote_sandboxed_*` 文件系统与进程族 4/4 过、`unshare -Ur` OK、bwrap 挂载 OK；GH 同构非 root 复刻未完成（登记）。
 
+## 6b. Linux 原生实机（Ubuntu 24.04 x86_64，GH runner 同构）
+
+- **userns/bwrap**：机器出厂 `kernel.apparmor_restrict_unprivileged_userns=1` → `unshare -Ur`/bwrap 全拒（CI 文档记载的同类拒绝路径在物理机原样出现）；按 CI 同一条 sysctl 解锁后 `USERNS-OK`/`BWRAP-OK`——CI 的 userns 修复在真实 Ubuntu 24.04 复验生效。
+- **guardian 4MiB：1.99.0 与 1.95.0 双工具链 PASS**（真 x86_64 Linux；1.99.0 与 CI lane 同 rustc hash）。装箱修复本机证据集达 6 组合：macOS 1.95/1.99、Linux 容器 1.99(aarch64)、Linux 原生 1.95/1.99(x86_64)、Windows 原生 1.99。
+- **nuwax 离线全族 32/32 PASS**（exec+app-server 全环境族、三 wire、重试、并行隔离、idle/stream_wait、跨进程恢复）——Windows 上失败的 idle 族在 Linux 全过，平台特异性对照坐实。
+- **预算离线 3/3 PASS**（含服务端连接数权威的预算不足场景）+ nuwax_env_offline PASS。
+- **shell_snapshot×4 全部复现且与 CI 逐签名一致**（pipe/tty=xx↔xxxx、remote_sandbox=EROFS+exit41、blocked_descriptor=断言失败）——**GH 同构环境（同 distro/同 arch/非 root/真 userns+bwrap）定性复现完成**，与容器取证（回放 argv 干净、重 source 在 codex-linux-sandbox 包装链内）合并为下一批修复起点。
+- **skills repo_ancestry PASS 且 /tmp 全程无泄漏**（inotify 监控 + NO-TMP-LEAK）——真实 Linux 上该测试通过；CI 的 /tmp/.git 污染另有前置条件（候选：GH runner 的 tmpfs /tmp、2 万测试并发规模），下一批按此缩小。
+- 新测试缺陷修正：compact 等待跨平台竞态（Linux 0.9s 首败 `ActiveTurnNotSteerable`，学习轮缓冲通知抢先满足宽松等待）→ 两段精确等待（contextCompaction 条目→取 turnId→等该 turn 完成），macOS/Linux 双过（`f392013aa`）。
+
 ## 7. 残差账目
 
 | 项 | 状态 |
 |---|---|
-| guardian R11 CI 判决 | 本机 4 平台证据齐；**待 push 后 CI**（run 38358243799 不含修复） |
+| guardian R11 CI 判决 | 本机 6 平台-工具链组合证据齐（含真 Linux x86_64 双工具链）；**待 push 后 CI**（run 38358243799 不含修复） |
 | Windows idle 族×2 | 原生复现维持（修复后复验 50.5s FAIL / 60s TIMEOUT），机制未定，下一批；wires×2 已修复实证 |
 | shell_snapshot×4（Linux） | 全复现+半程取证（argv/捕获/恢复路径已排除），重 source 入口待最后一发插桩；修复下一批 |
-| skills /tmp/.git | 特权+干净 /tmp 通过；泄漏与 bwrap 失败路径相关；GH 非同源未排除，非 root 复刻待续 |
-| Linux 实机 | **SSH 凭据阻断**，用户提供后补 |
+| skills /tmp/.git | 真实 Linux（非 root+真 userns+bwrap）通过且 /tmp 零泄漏；CI 污染前置条件收窄至 GH 特有环境（tmpfs/规模），下一批 |
+| Linux 实机 | **已解锁并完成**（§6b）；用户目录原样保留（Nuwax/nuwax-install 等未动，测试用独立 ~/nuwax-acceptance/） |
 | 轮转单例/discovery/daemon 族 | 维持登记 |
 | codex-chatgpt MSVC 布局 | 已修（`b5111c9fd`）；若 CI runner 未来触同题同修适用 |
 
