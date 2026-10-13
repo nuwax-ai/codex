@@ -194,21 +194,44 @@ async fn marker(
             "expected dispatch log `{expected}` on stderr: {stderr}"
         );
     }
-    let executed = stdout
+    let events = stdout
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-        .any(|event| {
-            let item = event.get("item").unwrap_or(&event);
-            event["type"] == "item.completed"
-                && item["type"] == "command_execution"
-                && item["exit_code"].as_i64() == Some(0)
-                && item["aggregated_output"]
-                    .as_str()
-                    .is_some_and(|output| output.contains(scene.marker))
-        });
+        .collect::<Vec<_>>();
+    let executed = events.iter().any(|event| {
+        let item = event.get("item").unwrap_or(event);
+        event["type"] == "item.completed"
+            && item["type"] == "command_execution"
+            && item["exit_code"].as_i64() == Some(0)
+            && item["aggregated_output"]
+                .as_str()
+                .is_some_and(|output| output.contains(scene.marker))
+    });
     anyhow::ensure!(
         executed,
         "executed command must complete with exit 0 and the marker in its output"
+    );
+    anyhow::ensure!(
+        final_message.contains(scene.marker),
+        "final answer must contain the executed marker"
+    );
+    let completed = events
+        .iter()
+        .filter(|event| event["type"] == "turn.completed")
+        .collect::<Vec<_>>();
+    anyhow::ensure!(
+        completed.len() == 1 && !events.iter().any(|event| event["type"] == "turn.failed"),
+        "marker scene must complete exactly once without a failed turn"
+    );
+    let usage = &completed[0]["usage"];
+    anyhow::ensure!(
+        usage["input_tokens"]
+            .as_i64()
+            .is_some_and(|count| count > 0)
+            && usage["output_tokens"]
+                .as_i64()
+                .is_some_and(|count| count > 0),
+        "marker completion must include nonzero input/output usage"
     );
     println!(
         "[{}] OK marker={} final_message_chars={}",

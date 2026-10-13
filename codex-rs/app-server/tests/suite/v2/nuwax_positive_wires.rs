@@ -28,6 +28,8 @@ use codex_app_server_protocol::ThreadReadResponse;
 use codex_app_server_protocol::ThreadResumeParams;
 use codex_app_server_protocol::ThreadResumeResponse;
 use codex_app_server_protocol::ThreadStartParams;
+use codex_app_server_protocol::ThreadTokenUsageUpdatedNotification;
+use codex_app_server_protocol::TokenUsageBreakdown;
 use codex_app_server_protocol::TurnCompletedNotification;
 use codex_app_server_protocol::TurnInterruptParams;
 use codex_app_server_protocol::TurnInterruptResponse;
@@ -177,6 +179,7 @@ async fn child(
         "NUWAX_MAX_OUTPUT_TOKENS",
         "NUWAX_REQUEST_MAX_RETRIES",
         "NUWAX_STREAM_MAX_RETRIES",
+        "NUWAX_STREAM_IDLE_TIMEOUT_MS",
     ]
     .iter()
     .map(|name| (*name, None))
@@ -310,7 +313,7 @@ async fn chat_env_group_executes_a_tool_round_trip_over_the_real_chat_wire() -> 
         .as_array()
         .context("chat history messages")?
         .iter()
-        .filter(|message| message["role"] == "tool")
+        .filter(|message| message["role"] == "tool" && message["tool_call_id"] == "call-nuwax-1")
         .filter_map(|message| message["content"].as_str())
         .collect();
     assert!(
@@ -416,9 +419,38 @@ async fn responses_env_group_executes_a_tool_round_trip_over_the_real_responses_
         })
         .collect();
     assert_eq!(answers, vec![RESPONSES_ANSWER]);
-    assert!(
-        !token_usage_notifications.is_empty(),
-        "rig-decoded usage must reach thread/tokenUsage/updated"
+    let usage: ThreadTokenUsageUpdatedNotification = serde_json::from_value(
+        token_usage_notifications
+            .last()
+            .context("rig-decoded usage must reach thread/tokenUsage/updated")?
+            .clone(),
+    )
+    .context("thread/tokenUsage/updated shape")?;
+    assert_eq!(
+        (usage.thread_id.as_str(), usage.turn_id.as_str()),
+        (thread.id.as_str(), completed.turn.id.as_str())
+    );
+    assert_eq!(
+        (usage.token_usage.last, usage.token_usage.total),
+        (
+            TokenUsageBreakdown {
+                input_tokens: 4,
+                output_tokens: 2,
+                total_tokens: 6,
+                cached_input_tokens: 0,
+                cache_write_input_tokens: 0,
+                reasoning_output_tokens: 0,
+            },
+            TokenUsageBreakdown {
+                input_tokens: 8,
+                output_tokens: 4,
+                total_tokens: 12,
+                cached_input_tokens: 0,
+                cache_write_input_tokens: 0,
+                reasoning_output_tokens: 0,
+            },
+        ),
+        "both Responses completions must reach shared usage accounting"
     );
     app.shutdown_gracefully().await?;
 
@@ -440,11 +472,18 @@ async fn responses_env_group_executes_a_tool_round_trip_over_the_real_responses_
         assert!(body.get("messages").is_none());
     }
     let second = assert_common_wire_shape(&requests[1], "/v1/responses")?;
-    let serialized_history = serde_json::to_string(&second["input"])?;
+    let tool_result = second["input"]
+        .as_array()
+        .context("responses history items")?
+        .iter()
+        .find(|item| item["type"] == "function_call_output" && item["call_id"] == "call-nuwax-1")
+        .context("the executed call's function_call_output item")?;
+    let output = tool_result["output"]
+        .as_str()
+        .context("function_call_output text")?;
     assert!(
-        serialized_history.contains("function_call_output")
-            && serialized_history.contains(TOOL_MARKER),
-        "the tool result returns as a function_call_output item: {serialized_history}"
+        output.contains(TOOL_MARKER),
+        "the executed call's output returns to the provider: {tool_result}"
     );
     Ok(())
 }

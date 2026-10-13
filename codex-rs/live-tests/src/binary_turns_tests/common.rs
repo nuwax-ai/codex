@@ -58,6 +58,8 @@ pub(crate) enum Fault {
     Exit,
     MissingFinal,
     MissingMarker,
+    MissingFinalMarker,
+    MissingUsage,
     WrongPassphrase,
     NoCompaction,
     NoSearch,
@@ -123,7 +125,22 @@ impl ExecRunner for FakeRunner {
                     "type":"command_execution", "exit_code":0,
                     "aggregated_output":if fault == Some(Fault::MissingMarker) { "wrong output" } else { MARKER }
                 }}).to_string().into_bytes();
-                "done".to_string()
+                if fault != Some(Fault::MissingUsage) {
+                    stdout.extend_from_slice(b"\n");
+                    stdout.extend_from_slice(
+                        serde_json::json!({"type":"turn.completed","usage":{
+                            "input_tokens":4,"output_tokens":2,"cached_input_tokens":0,
+                            "cache_write_input_tokens":0,"reasoning_output_tokens":0
+                        }})
+                        .to_string()
+                        .as_bytes(),
+                    );
+                }
+                if fault == Some(Fault::MissingFinalMarker) {
+                    "unrelated answer".to_string()
+                } else {
+                    MARKER.to_string()
+                }
             }
             Kind::Compact => {
                 if ordinal == 1 {

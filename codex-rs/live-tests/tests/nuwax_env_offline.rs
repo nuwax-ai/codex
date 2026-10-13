@@ -200,17 +200,27 @@ async fn nuwax_env_startup_reaches_rig_with_tool_round_trip_and_no_leak() -> Res
                 respond_sse(&mut socket, &payload).await?;
                 marker = Some(extracted);
             } else {
-                let serialized = serde_json::to_string(&body["messages"])?;
-                let executed = marker.as_deref().is_some_and(|marker| {
-                    serialized.contains(marker) && serialized.contains("\"role\":\"tool\"")
-                });
+                let marker = marker
+                    .as_deref()
+                    .context("marker captured before tool result")?;
+                let tool_result = body["messages"]
+                    .as_array()
+                    .context("tool result messages")?
+                    .iter()
+                    .find(|message| {
+                        message["role"] == "tool" && message["tool_call_id"] == "call-env-offline"
+                    })
+                    .context("the executed call's tool result")?;
+                let content = tool_result["content"]
+                    .as_str()
+                    .context("tool result text")?;
                 anyhow::ensure!(
-                    executed,
-                    "the second request must return the executed tool output to the provider: {serialized}"
+                    content.contains(marker),
+                    "the executed call's output must return to the provider: {tool_result}"
                 );
                 let payload = chat_sse(vec![
                     chat_chunk(
-                        json!({"index": 0, "delta": {"role": "assistant", "content": "marker executed"}, "finish_reason": null}),
+                        json!({"index": 0, "delta": {"role": "assistant", "content": marker}, "finish_reason": null}),
                     ),
                     chat_chunk(json!({"index": 0, "delta": {}, "finish_reason": "stop"})),
                     usage_chunk(),

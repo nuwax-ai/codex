@@ -141,16 +141,22 @@ async fn post_execution_hash_failure_retains_received_bytes_and_wins_over_captur
         .await
         .expect_err("hash must fail");
     assert!(error.to_string().contains("changed after its receipt"));
-    let events: Value = serde_json::from_slice(
-        &std::fs::read(fixture.artifacts.path().join("events.jsonl"))
-            .expect("captured stdout before final verification"),
-    )
-    .expect("event JSON");
+    let events = std::fs::read_to_string(fixture.artifacts.path().join("events.jsonl"))
+        .expect("captured stdout before final verification")
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("event JSON"))
+        .collect::<Vec<_>>();
     assert_eq!(
         events,
-        serde_json::json!({"type":"item.completed","item":{
-            "type":"command_execution", "exit_code":0, "aggregated_output":MARKER,
-        }})
+        vec![
+            serde_json::json!({"type":"item.completed","item":{
+                "type":"command_execution", "exit_code":0, "aggregated_output":MARKER,
+            }}),
+            serde_json::json!({"type":"turn.completed","usage":{
+                "input_tokens":4,"output_tokens":2,"cached_input_tokens":0,
+                "cache_write_input_tokens":0,"reasoning_output_tokens":0,
+            }}),
+        ]
     );
     assert_eq!(
         std::fs::read(fixture.artifacts.path().join("stderr.log")).expect("stderr retained"),

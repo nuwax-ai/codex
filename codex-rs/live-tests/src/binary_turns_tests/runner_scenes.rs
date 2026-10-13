@@ -20,6 +20,18 @@ async fn actual_scene_runner_matrix_retains_each_failure_after_home_cleanup() {
             Fault::MissingMarker,
             "marker in its output",
         ),
+        (
+            Kind::Marker,
+            1,
+            Fault::MissingFinalMarker,
+            "final answer must contain",
+        ),
+        (
+            Kind::Marker,
+            1,
+            Fault::MissingUsage,
+            "complete exactly once",
+        ),
         (Kind::Compact, 1, Fault::Launch, "injected launch failure"),
         (Kind::Compact, 2, Fault::Exit, "injected exit failure"),
         (
@@ -200,8 +212,9 @@ while [ "$#" -gt 0 ]; do
 done
 mkdir -p "$CODEX_HOME/sessions/2026/10/03"
 printf '%s\n' '{{"type":"session_meta"}}' > "$CODEX_HOME/sessions/2026/10/03/{ROLLOUT_NAME}"
-printf '%s\n' 'done' > "$last"
+printf '%s\n' '{MARKER}' > "$last"
 printf '%s\n' '{{"type":"item.completed","item":{{"type":"command_execution","exit_code":0,"aggregated_output":"{MARKER}"}}}}'
+printf '%s\n' '{{"type":"turn.completed","usage":{{"input_tokens":4,"output_tokens":2,"cached_input_tokens":0,"cache_write_input_tokens":0,"reasoning_output_tokens":0}}}}'
 printf '%s' 'dispatch-log' >&2
 exit {exit_code}
 "#
