@@ -23,6 +23,8 @@ use anyhow::Context;
 use anyhow::Result;
 use app_test_support::TestAppServer;
 use codex_app_server_protocol::ClientRequest;
+use codex_app_server_protocol::ThreadCompactStartParams;
+use codex_app_server_protocol::ThreadCompactStartResponse;
 use codex_app_server_protocol::ThreadReadParams;
 use codex_app_server_protocol::ThreadReadResponse;
 use codex_app_server_protocol::ThreadResumeParams;
@@ -653,6 +655,107 @@ async fn env_group_stream_interrupt_cancels_the_request_and_two_resumes_continue
     assert!(
         !persisted.contains(TEST_KEY),
         "the referenced credential must never persist into the rollout"
+    );
+    let config = std::fs::read_to_string(codex_home.path().join("config.toml")).unwrap_or_default();
+    assert!(
+        !config.contains(TEST_KEY),
+        "the credential must never persist into config"
+    );
+    Ok(())
+}
+
+/// Closes the typed-environment acceptance chain's last gap: compaction and
+/// post-compaction recall must ride the SAME `NUWAX_*` Chat wire (credentialed
+/// request per attempt, cap field, usage accounting), and the credential must
+/// stay out of the persisted rollout and config.
+#[tokio::test]
+async fn env_group_compact_and_recall_keep_the_typed_wire_and_usage_accounting() -> Result<()> {
+    let server = MockServer::start().await;
+    let log = RequestLog::default();
+    let passphrase = "nuwax-compact-passphrase";
+    for (times, body) in [
+        (1, chat_final_sse("OK")),
+        (1, chat_final_sse("summary: the passphrase was agreed")),
+        (1, chat_final_sse(passphrase)),
+    ] {
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(log.clone())
+            .respond_with(ResponseTemplate::new(200).set_body_raw(body, "text/event-stream"))
+            .up_to_n_times(times)
+            .mount(&server)
+            .await;
+    }
+
+    let codex_home = TempDir::new()?;
+    let mut app = child(&codex_home, &server.uri(), "chat", &[]).await?;
+    let thread = app.start_thread(ThreadStartParams::default()).await?.thread;
+    completed_turn(
+        &mut app,
+        &thread.id,
+        &format!("请记住暗号：{passphrase}。只回复OK。"),
+    )
+    .await?;
+
+    let compact_id = app
+        .send_thread_compact_start_request(ThreadCompactStartParams {
+            thread_id: thread.id.clone(),
+        })
+        .await?;
+    let _: ThreadCompactStartResponse = timeout(READ_TIMEOUT, app.read_response(compact_id)).await??;
+    // The compact sampling is exchange 2 on the SAME typed wire; wait until
+    // it has actually reached the provider before the recall turn.
+    timeout(Duration::from_secs(10), async {
+        loop {
+            if log.all().len() >= 2 {
+                return Ok::<(), anyhow::Error>(());
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await??;
+
+    let recalled = completed_turn(&mut app, &thread.id, "暗号是什么？直接回答暗号本身。").await?;
+    let answers: Vec<&str> = recalled
+        .turn
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            codex_app_server_protocol::ThreadItem::AgentMessage { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        answers.iter().any(|text| text.contains(passphrase)),
+        "the passphrase must survive compaction: {answers:?}"
+    );
+    app.shutdown_gracefully().await?;
+
+    let requests = log.all();
+    assert!(requests.len() >= 3, "learn + compact + recall exchanges");
+    for (index, request) in requests.iter().enumerate() {
+        let body = assert_common_wire_shape(request, "/v1/chat/completions")?;
+        assert_eq!(body["max_tokens"], 2048, "exchange {index} keeps the env cap");
+    }
+    let mut leaked_rollouts = Vec::new();
+    let mut pending = vec![codex_home.path().to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|extension| extension == "jsonl")
+                && std::fs::read_to_string(&path)
+                    .unwrap_or_default()
+                    .contains(TEST_KEY)
+            {
+                leaked_rollouts.push(path);
+            }
+        }
+    }
+    assert!(
+        leaked_rollouts.is_empty(),
+        "the credential must never persist into the rollouts: {leaked_rollouts:?}"
     );
     let config = std::fs::read_to_string(codex_home.path().join("config.toml")).unwrap_or_default();
     assert!(
