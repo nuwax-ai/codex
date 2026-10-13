@@ -14,6 +14,7 @@ use super::AdditionalContextStore;
 use super::auto_compact_window::AutoCompactWindow;
 use super::auto_compact_window::AutoCompactWindowIds;
 use super::auto_compact_window::AutoCompactWindowSnapshot;
+use super::token_usage_record::MAX_RESPONSE_IDENTITY_BYTES;
 use crate::context_manager::ContextManager;
 use crate::context_manager::HistoryReplacement;
 use crate::session::PreviousTurnSettings;
@@ -75,12 +76,6 @@ pub(crate) enum ResponseLedgerKey {
     ProviderResponseId(String),
 }
 
-/// Provider identity strings longer than this are neither stored nor keyed
-/// whole: truncating one could alias two distinct ids sharing a prefix, so
-/// an over-budget id degrades its report to the existing keyless-additive
-/// semantics instead.
-const MAX_RESPONSE_IDENTITY_BYTES: usize = 256;
-
 /// One usage report entering the ledger: where it was observed, which
 /// sampling it belongs to, and the counters themselves. A single typed
 /// value keeps the record call self-documenting at every call site.
@@ -99,9 +94,9 @@ impl ResponseLedgerKey {
     /// else its provider response id when non-empty. Both must respect the
     /// live identity budget — an over-limit identity from an OLD rollout
     /// never becomes a join key (nothing minted by the live path could ever
-    /// match it, and truncating would alias distinct ids). The record itself
-    /// stays untouched: cumulative totals keep it and the rollout keeps its
-    /// original bytes; only replacement joins are refused.
+    /// match it, and truncating would alias distinct ids). Restored values
+    /// separately normalize oversized identities without changing counters
+    /// or the original rollout bytes.
     pub(crate) fn of(record: &TokenUsageRecord) -> Option<Self> {
         match (&record.response_key, record.response_id.as_str()) {
             (Some(key), _) if key.len() <= MAX_RESPONSE_IDENTITY_BYTES => {

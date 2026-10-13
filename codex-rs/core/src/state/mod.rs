@@ -2,6 +2,7 @@ mod additional_context;
 mod auto_compact_window;
 mod service;
 mod session;
+mod token_usage_record;
 mod turn;
 mod turn_token_usage;
 
@@ -14,6 +15,7 @@ pub(crate) use session::ReasoningEffortPin;
 pub(crate) use session::ResponseLedgerKey;
 pub(crate) use session::SessionState;
 pub(crate) use session::TokenUsageReport;
+pub(crate) use token_usage_record::clone_usage_record_for_resume;
 pub(crate) use turn::AcceptedUserInputResponse;
 pub(crate) use turn::ActiveTurn;
 pub(crate) use turn::MailboxDeliveryPhase;

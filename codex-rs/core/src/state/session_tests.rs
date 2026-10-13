@@ -287,6 +287,93 @@ fn replayed_over_budget_identities_never_join_the_ledger() {
     );
 }
 
+#[test]
+fn restored_usage_records_normalize_identities_without_changing_counters() {
+    let usage = TokenUsage {
+        input_tokens: 10,
+        output_tokens: 20,
+        total_tokens: 30,
+        ..TokenUsage::default()
+    };
+    let base = TokenUsageRecord {
+        thread_id: ThreadId::new(),
+        turn_id: "turn-1".to_string(),
+        session_id: SessionId::from(ThreadId::new()),
+        root_turn_id: "turn-1".to_string(),
+        response_id: String::new(),
+        response_key: None,
+        usage: usage.clone(),
+        turn_token_usage: usage.clone(),
+        thread_token_usage: usage,
+    };
+    let giant = "p".repeat(MAX_RESPONSE_IDENTITY_BYTES + 1);
+    let boundary = "я".repeat(MAX_RESPONSE_IDENTITY_BYTES / 2);
+    for (response_key, response_id, expected_key, expected_id) in [
+        (
+            Some("sampling:0".to_string()),
+            giant.clone(),
+            Some("sampling:0".to_string()),
+            String::new(),
+        ),
+        (None, giant.clone(), None, String::new()),
+        (Some(giant), "provider".to_string(), None, String::new()),
+        (
+            Some(boundary.clone()),
+            boundary.clone(),
+            Some(boundary.clone()),
+            boundary,
+        ),
+    ] {
+        let original = TokenUsageRecord {
+            response_key,
+            response_id,
+            ..base.clone()
+        };
+        let restored = crate::state::clone_usage_record_for_resume(&original);
+        assert_eq!(
+            restored,
+            TokenUsageRecord {
+                response_key: expected_key,
+                response_id: expected_id,
+                ..base.clone()
+            }
+        );
+        assert_eq!(
+            ResponseLedgerKey::of(&restored),
+            ResponseLedgerKey::of(&original)
+        );
+    }
+}
+
+#[tokio::test]
+async fn restored_bounded_host_key_keeps_snapshot_replacement() {
+    let usage = |total_tokens| TokenUsage {
+        total_tokens,
+        ..TokenUsage::default()
+    };
+    let mut ledger = LedgerFixture::new().await;
+    let mut original = ledger.record("turn-1", "root", Some("sampling:0"), "provider", &usage(30));
+    original.response_id = "p".repeat(MAX_RESPONSE_IDENTITY_BYTES + 1);
+    original.thread_token_usage = usage(230);
+    let restored = crate::state::clone_usage_record_for_resume(&original);
+    ledger.state.latest_token_usage_record = Some(restored.clone());
+    ledger.state.response_token_usage.insert(
+        ResponseLedgerKey::of(&restored).expect("bounded host key still joins"),
+        restored,
+    );
+    let replaced = ledger.record("turn-1", "root", Some("sampling:0"), "provider", &usage(35));
+    assert_eq!(
+        replaced,
+        TokenUsageRecord {
+            response_id: "provider".to_string(),
+            usage: usage(35),
+            turn_token_usage: usage(35),
+            thread_token_usage: usage(235),
+            ..original
+        }
+    );
+}
+
 #[tokio::test]
 async fn keyless_reports_stay_additive() {
     let usage = |total_tokens| TokenUsage {

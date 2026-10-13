@@ -1840,9 +1840,14 @@ impl Session {
     ) -> Option<TokenUsageRecord> {
         for item in rollout_items.iter().rev() {
             match item {
-                RolloutItem::TokenUsageRecord(record) => return Some(record.clone()),
+                RolloutItem::TokenUsageRecord(record) => {
+                    return Some(crate::state::clone_usage_record_for_resume(record));
+                }
                 RolloutItem::Compacted(compacted) => {
-                    return compacted.latest_token_usage_record.clone();
+                    return compacted
+                        .latest_token_usage_record
+                        .as_ref()
+                        .map(crate::state::clone_usage_record_for_resume);
                 }
                 _ => {}
             }
@@ -1861,7 +1866,7 @@ impl Session {
         let mut ledger = std::collections::HashMap::new();
         let mut apply = |record: &TokenUsageRecord| {
             if let Some(key) = crate::state::ResponseLedgerKey::of(record) {
-                ledger.insert(key, record.clone());
+                ledger.insert(key, crate::state::clone_usage_record_for_resume(record));
             }
         };
         for item in rollout_items {

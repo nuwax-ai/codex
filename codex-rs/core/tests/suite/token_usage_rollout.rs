@@ -7,6 +7,7 @@ use codex_core::TurnInputRequest;
 use codex_history::RolloutItem;
 use codex_protocol::SessionId;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::Op;
 use codex_protocol::protocol::TokenUsageRecord;
 use codex_protocol::turn_input::SuspendTurnOutcome;
 use codex_protocol::user_input::UserInput;
@@ -330,5 +331,126 @@ async fn same_id_responses_across_distinct_samplings_count_separately_after_resu
         "host keys are unique per sampling even for a repeated provider id"
     );
     assert_eq!(mock.requests().len(), 5);
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum LegacyUsageIdentity {
+    BoundedHost,
+    OversizedHost,
+    Keyless,
+}
+
+#[test_case::test_case(LegacyUsageIdentity::BoundedHost; "bounded_host")]
+#[test_case::test_case(LegacyUsageIdentity::OversizedHost; "oversized_host")]
+#[test_case::test_case(LegacyUsageIdentity::Keyless; "keyless")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn resume_bounds_usage_identities_without_rewriting_history(
+    identity: LegacyUsageIdentity,
+) -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = start_mock_server().await;
+    let mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_assistant_message("before-resume", "first"),
+                ev_completed_with_tokens("response-before-resume", /*total_tokens*/ 30),
+            ]),
+            // No usage is reported by compaction: its checkpoint exposes the
+            // restored latest record without replacing it with a new report.
+            sse(vec![
+                ev_assistant_message("compact-summary", "summary"),
+                json!({"type": "response.completed", "response": {"id": "compact"}}),
+            ]),
+            sse(vec![
+                ev_assistant_message("after-resume", "second"),
+                ev_completed_with_tokens("response-after-resume", /*total_tokens*/ 40),
+            ]),
+        ],
+    )
+    .await;
+    let test = test_codex()
+        .with_config(|config| config.model_provider.name = "OpenAI-compatible test provider".into())
+        .build_with_auto_env(&server)
+        .await?;
+    test.submit_turn("first").await?;
+    test.codex.flush_rollout().await?;
+    let rollout_path = test.codex.rollout_path().expect("rollout path");
+    let mut legacy = token_usage_records(&rollout_path)
+        .pop()
+        .expect("initial sampling usage");
+    match identity {
+        LegacyUsageIdentity::BoundedHost => {
+            legacy.response_id = "p".repeat(/*n*/ 1024 * 1024);
+        }
+        LegacyUsageIdentity::OversizedHost => {
+            legacy.response_key = Some("h".repeat(/*n*/ 1024 * 1024));
+        }
+        LegacyUsageIdentity::Keyless => {
+            legacy.response_key = None;
+            legacy.response_id = "p".repeat(/*n*/ 1024 * 1024);
+        }
+    }
+    // Append a historical fixture through the public persistence boundary.
+    test.codex
+        .append_rollout_items(&[RolloutItem::TokenUsageRecord(legacy.clone())])
+        .await?;
+    test.codex.shutdown_and_wait().await?;
+    let original_prefix = std::fs::read(&rollout_path)?;
+    let mut expected_restored = legacy.clone();
+    expected_restored.response_id.clear();
+    if matches!(identity, LegacyUsageIdentity::OversizedHost) {
+        expected_restored.response_key = None;
+    }
+
+    let resume_builder = || {
+        let cwd = test.config.cwd.clone();
+        let mut builder = test_codex().with_config(move |config| {
+            config.cwd = cwd;
+            config.model_provider.name = "OpenAI-compatible test provider".into();
+        });
+        if let Some(url) = test.executor_environment().exec_server_url() {
+            builder = builder.with_exec_server_url(url);
+        }
+        builder
+    };
+    let resumed = resume_builder()
+        .resume(&server, Arc::clone(&test.home), rollout_path.clone())
+        .await?;
+    resumed.codex.submit(Op::Compact).await?;
+    wait_for_event(&resumed.codex, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+    resumed.codex.shutdown_and_wait().await?;
+    let checkpoint = std::fs::read_to_string(&rollout_path)?
+        .lines()
+        .filter_map(|line| codex_rollout::parse_rollout_line(line).ok())
+        .find_map(|line| match line.item {
+            RolloutItem::Compacted(compacted) => compacted.latest_token_usage_record,
+            _ => None,
+        })
+        .expect("compaction checkpoint keeps restored usage");
+    assert_eq!(checkpoint, expected_restored);
+
+    let resumed_again = resume_builder()
+        .resume(&server, Arc::clone(&test.home), rollout_path.clone())
+        .await?;
+    resumed_again.submit_turn("second").await?;
+    resumed_again.codex.shutdown_and_wait().await?;
+    let records = token_usage_records(&rollout_path);
+    let latest = records.last().expect("new sampling usage");
+    assert_eq!(
+        (
+            latest.usage.total_tokens,
+            latest.thread_token_usage.total_tokens
+        ),
+        (40, 70)
+    );
+    assert_eq!(records.len(), 3);
+    assert_eq!(records[1], legacy);
+    assert!(std::fs::read(&rollout_path)?.starts_with(&original_prefix));
+    assert_eq!(mock.requests().len(), 3);
     Ok(())
 }
