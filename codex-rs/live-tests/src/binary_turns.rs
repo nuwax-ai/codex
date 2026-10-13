@@ -396,7 +396,7 @@ pub async fn run_nuwax_env_marker_turn(
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
     };
-    let outcome = run_scene(
+    run_scene(
         protocol,
         cfg,
         base_url,
@@ -406,9 +406,7 @@ pub async fn run_nuwax_env_marker_turn(
         &home,
         &cwd,
     )
-    .await;
-    assert_no_credential_leak(&home, &cwd, cfg).await?;
-    outcome
+    .await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -524,7 +522,16 @@ async fn run_scene(
         },
         scenario,
     )
-    .await
+    .await?;
+    // The typed environment mode's own contract: after a SUCCESSFUL scene,
+    // the credential and the ephemeral provider definition must be absent
+    // from the child's config, its rollouts AND the retained artifacts.
+    // Failure paths return the scene's own error untouched — evidence
+    // always beats a secondary scan failure.
+    if matches!(startup, Startup::NuwaxEnv { .. }) {
+        assert_no_credential_leak(home.path(), cwd.path(), &artifacts_dir, cfg)?;
+    }
+    Ok(())
 }
 
 fn bridge_of<'a>(startup: &Startup<'a>) -> Option<&'a str> {
@@ -534,17 +541,19 @@ fn bridge_of<'a>(startup: &Startup<'a>) -> Option<&'a str> {
     }
 }
 
-/// The typed environment mode's own non-leak contract: after a successful
-/// scene, the credential and the ephemeral provider definition must be
-/// absent from the child's config, its rollouts and every artifact.
-async fn assert_no_credential_leak(
-    home: &tempfile::TempDir,
-    cwd: &tempfile::TempDir,
+/// The typed environment mode's non-leak contract, executed after a
+/// successful scene: the credential and the ephemeral provider definition
+/// must be absent from the child's home, its working directory and every
+/// retained artifact (manifest, events, stderr, request capture).
+fn assert_no_credential_leak(
+    home: &Path,
+    cwd: &Path,
+    artifacts: &Path,
     cfg: &LiveConfig,
 ) -> Result<()> {
     let mut scanned = 0usize;
     let mut offenders = Vec::new();
-    for root in [home.path(), cwd.path()] {
+    for root in [home, cwd, artifacts] {
         for entry in walk_files(root)? {
             scanned += 1;
             let content = std::fs::read_to_string(&entry).unwrap_or_default();
