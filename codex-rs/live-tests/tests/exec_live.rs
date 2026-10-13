@@ -319,6 +319,7 @@ async fn chat_env_startup_scenario(cfg: &codex_live_tests::LiveConfig) -> anyhow
         /*output_cap*/ None,
         "",
         Some("Dispatching chat stream via rig"),
+        /*http_attempt_budget*/ Some(6),
     )
     .await
 }
@@ -336,6 +337,7 @@ async fn anthropic_env_startup_scenario(cfg: &codex_live_tests::LiveConfig) -> a
         /*output_cap*/ None,
         "",
         Some("Dispatching chat stream via rig"),
+        /*http_attempt_budget*/ Some(6),
     )
     .await
 }
@@ -355,6 +357,7 @@ async fn responses_env_startup_scenario(cfg: &codex_live_tests::LiveConfig) -> a
         /*output_cap*/ None,
         "web_search = \"disabled\"\n",
         Some("Dispatching responses stream via rig"),
+        /*http_attempt_budget*/ Some(6),
     )
     .await
 }

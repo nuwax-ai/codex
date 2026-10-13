@@ -266,6 +266,7 @@ async fn real_process_output_overflow_stops_the_child_before_its_wait_deadline_a
                 wire: codex_rust_rig_bridge::RigProtocol::Responses,
                 capture_requirement: capture_validation::CaptureRequirement::Optional,
                 startup_env: &[],
+                http_attempt_budget: None,
                 expected_cap: capture_validation::CapExpectation::Absent,
             },
             BinaryScenario::Marker {
@@ -363,6 +364,7 @@ async fn known_nonzero_child_exit_remains_primary_over_later_pipe_drain_failure(
             wire: codex_rust_rig_bridge::RigProtocol::Responses,
             capture_requirement: capture_validation::CaptureRequirement::Optional,
             startup_env: &[],
+            http_attempt_budget: None,
             expected_cap: capture_validation::CapExpectation::Absent,
         },
         BinaryScenario::Marker {

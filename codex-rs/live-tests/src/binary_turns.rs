@@ -387,6 +387,7 @@ pub async fn run_nuwax_env_marker_turn(
     output_cap: Option<u64>,
     extra_config: &str,
     expect_bridge_log: Option<&str>,
+    http_attempt_budget: Option<usize>,
 ) -> Result<()> {
     let home = tempfile::TempDir::new()?;
     let cwd = tempfile::TempDir::new()?;
@@ -408,6 +409,7 @@ pub async fn run_nuwax_env_marker_turn(
         BinaryScenario::Marker { expect_bridge_log },
         &home,
         &cwd,
+        http_attempt_budget,
     )
     .await
 }
@@ -432,6 +434,7 @@ async fn run_scene_with_startup(
         scenario,
         &home,
         &cwd,
+        /*http_attempt_budget*/ None,
     )
     .await
 }
@@ -446,6 +449,7 @@ async fn run_scene(
     scenario: BinaryScenario<'_>,
     home: &tempfile::TempDir,
     cwd: &tempfile::TempDir,
+    http_attempt_budget: Option<usize>,
 ) -> Result<()> {
     anyhow::ensure!(
         cassette_mode() != CassetteMode::Replay,
@@ -522,6 +526,7 @@ async fn run_scene(
                 (_, None) => capture_validation::CapExpectation::Absent,
             },
             startup_env: &startup_env,
+            http_attempt_budget,
         },
         scenario,
     )

@@ -12,6 +12,10 @@ pub(super) struct ExecTurn<'a> {
     pub(super) prompt: &'a str,
     pub(super) last_message: &'a Path,
     pub(super) request_capture: &'a Path,
+    /// Hard pre-dispatch cap on the child's total HTTP attempts, enforced by
+    /// the rig bridge against the shared capture ledger. `None` leaves the
+    /// child unbounded (an inherited value is stripped either way).
+    pub(super) http_attempt_budget: Option<usize>,
     /// Extra child-only environment (the NUWAX_* startup group in typed
     /// mode). Applied after the standard env so it cannot be overridden by
     /// an inherited value.
@@ -59,6 +63,11 @@ impl ExecRunner for ProcessRunner {
             .env("CODEX_SQLITE_HOME", turn.home)
             .env("RUST_LOG", "info")
             .env("CODEX_RIG_REQUEST_CAPTURE_FILE", turn.request_capture)
+            .env_remove("CODEX_RIG_MAX_HTTP_ATTEMPTS")
+            .envs(
+                turn.http_attempt_budget
+                    .map(|budget| ("CODEX_RIG_MAX_HTTP_ATTEMPTS", budget.to_string())),
+            )
             // The NUWAX_* group is child-only: strip anything inherited from
             // the test process first, then apply the scene's typed values.
             .env_remove("NUWAX_MODEL")
@@ -201,6 +210,7 @@ pub(super) async fn execute_expecting(
             prompt,
             last_message,
             request_capture: &request_capture,
+            http_attempt_budget: scene.http_attempt_budget,
             env: scene.startup_env,
         })
         .await;

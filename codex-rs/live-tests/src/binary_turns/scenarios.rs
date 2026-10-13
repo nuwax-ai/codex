@@ -23,6 +23,9 @@ pub(super) struct Scene<'a> {
     pub(super) expected_cap: super::capture_validation::CapExpectation,
     /// Child-only typed environment (empty in config mode).
     pub(super) startup_env: &'a [(String, String)],
+    /// Hard pre-dispatch HTTP attempt cap passed to the child (see
+    /// [`runner::ExecTurn::http_attempt_budget`]).
+    pub(super) http_attempt_budget: Option<usize>,
 }
 
 pub(super) enum BinaryScenario<'a> {

@@ -10,6 +10,17 @@ fn recorder(file: Option<PathBuf>) -> Arc<Mutex<FinalRequestCapture>> {
     }))
 }
 
+fn budgeted_recorder(
+    file: Option<PathBuf>,
+    max_attempts: usize,
+) -> Arc<Mutex<FinalRequestCapture>> {
+    Arc::new(Mutex::new(FinalRequestCapture {
+        file,
+        max_attempts: Some(max_attempts),
+        ..Default::default()
+    }))
+}
+
 fn request(url: &str, body: impl Into<bytes::Bytes>) -> Request<bytes::Bytes> {
     Request::builder()
         .method("POST")
@@ -34,6 +45,139 @@ fn lines(path: &std::path::Path) -> Vec<Value> {
         .lines()
         .map(|line| serde_json::from_str(line).expect("capture line"))
         .collect()
+}
+
+#[test]
+fn attempt_budget_refuses_dispatch_beyond_the_cap_without_mutation() {
+    let temp = tempfile::tempdir().expect("directory");
+    let path = temp.path().join("budget.jsonl");
+    let capture = budgeted_recorder(Some(path.clone()), /*max_attempts*/ 2);
+    record(
+        &Some(capture.clone()),
+        &request("https://example.com/responses", "{\"attempt\":1}"),
+    )
+    .expect("first attempt inside budget");
+    record(
+        &Some(capture.clone()),
+        &request("https://example.com/responses", "{\"attempt\":2}"),
+    )
+    .expect("second attempt exactly fills the budget");
+    let before = capture_snapshot(&capture);
+    let error = record(
+        &Some(capture.clone()),
+        &request("https://example.com/responses", "{\"attempt\":3}"),
+    )
+    .expect_err("third attempt must be refused before dispatch");
+    assert!(
+        error
+            .to_string()
+            .contains("HTTP attempt budget of 2 exhausted"),
+        "{error}"
+    );
+    assert!(
+        matches!(api_error(&error), Some(codex_api::ApiError::InvalidRequest { message })
+            if message.contains("HTTP attempt budget of 2 exhausted")),
+        "budget exhaustion must fail fast: {error}"
+    );
+    assert_eq!(capture_snapshot(&capture), before);
+    assert_eq!(
+        lines(&path).len(),
+        2,
+        "refusal must not append to the ledger"
+    );
+}
+
+#[test]
+fn attempt_budget_spans_recorder_instances_through_the_shared_file() {
+    let temp = tempfile::tempdir().expect("directory");
+    let path = temp.path().join("shared-budget.jsonl");
+    let first = budgeted_recorder(Some(path.clone()), /*max_attempts*/ 3);
+    for attempt in 1..=2 {
+        record(
+            &Some(first.clone()),
+            &request(
+                "https://example.com/responses",
+                format!("{{\"attempt\":{attempt}}}"),
+            ),
+        )
+        .expect("first recorder attempts");
+    }
+    // A fresh recorder starts with empty in-memory history, exactly like a
+    // second process; only the shared ledger can hold the budget.
+    let second = budgeted_recorder(Some(path.clone()), /*max_attempts*/ 3);
+    record(
+        &Some(second.clone()),
+        &request("https://example.com/responses", "{\"attempt\":3}"),
+    )
+    .expect("ledger has room for the third attempt");
+    let before = std::fs::read(&path).expect("ledger with three attempts");
+    let third = budgeted_recorder(Some(path.clone()), /*max_attempts*/ 3);
+    let error = record(
+        &Some(third.clone()),
+        &request("https://example.com/responses", "{\"attempt\":4}"),
+    )
+    .expect_err("a fresh recorder must still honor the ledger budget");
+    assert!(
+        error
+            .to_string()
+            .contains("HTTP attempt budget of 3 exhausted"),
+        "{error}"
+    );
+    assert_eq!(std::fs::read(&path).expect("unchanged ledger"), before);
+    assert_eq!(capture_snapshot(&third), (json!({"requests":[]}), 0));
+}
+
+#[test]
+fn zero_attempt_budget_refuses_the_very_first_attempt() {
+    let temp = tempfile::tempdir().expect("directory");
+    let path = temp.path().join("zero-budget.jsonl");
+    let capture = budgeted_recorder(Some(path.clone()), /*max_attempts*/ 0);
+    let error = record(
+        &Some(capture.clone()),
+        &request("https://example.com/responses", "{}"),
+    )
+    .expect_err("a zero budget must refuse before any dispatch");
+    assert!(
+        error
+            .to_string()
+            .contains("HTTP attempt budget of 0 exhausted"),
+        "{error}"
+    );
+    assert!(!path.exists(), "no attempt may reach the ledger");
+    assert_eq!(capture_snapshot(&capture), (json!({"requests":[]}), 0));
+}
+
+#[test]
+fn budget_parsing_accepts_bounds_and_rejects_unverifiable_values() {
+    use std::ffi::OsStr;
+    assert_eq!(parse_budget(None).expect("unset"), None);
+    assert_eq!(
+        parse_budget(Some(OsStr::new("0"))).expect("zero negative control"),
+        Some(0)
+    );
+    assert_eq!(
+        parse_budget(Some(OsStr::new("64"))).expect("ledger bound"),
+        Some(MAX_ATTEMPTS)
+    );
+    assert_eq!(
+        parse_budget(Some(OsStr::new(" 6 "))).expect("trimmed decimal"),
+        Some(6)
+    );
+    for (value, expected) in [
+        ("", "nonempty decimal number"),
+        ("abc", "decimal number of attempts"),
+        ("65", "must not exceed 64"),
+        ("-1", "decimal number of attempts"),
+    ] {
+        let error = parse_budget(Some(OsStr::new(value))).expect_err(value);
+        assert!(
+            matches!((&error, expected), (
+                codex_api::ApiError::InvalidRequest { message },
+                _,
+            ) if message.contains(expected)),
+            "{value}: {error:?}"
+        );
+    }
 }
 
 #[test]

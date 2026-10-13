@@ -284,6 +284,7 @@ async fn capture_scene_requires_real_attempts_before_asserting_wire_evidence() {
                 wire: RigProtocol::Responses,
                 capture_requirement: CaptureRequirement::Required,
                 startup_env: &[],
+                http_attempt_budget: None,
                 expected_cap: capture_validation::CapExpectation::Absent,
             },
             BinaryScenario::Marker {

@@ -120,6 +120,7 @@ async fn run_cap(fixture: &Fixture, case: CapCase, wire: RigProtocol) -> Result<
             wire,
             capture_requirement: CaptureRequirement::Required,
             startup_env: &[],
+                http_attempt_budget: None,
             expected_cap: CapExpectation::Explicit(32),
         },
         BinaryScenario::CapExhausted,

@@ -32,21 +32,71 @@ pub struct FinalRequestCapture {
     bytes: usize,
     #[serde(skip)]
     file: Option<PathBuf>,
+    /// Optional hard cap on total dispatched HTTP attempts enforced BEFORE
+    /// dispatch (sampling, continuations and retries all flow through
+    /// `record`). Counted against the capture file so the budget spans every
+    /// process appending to the same ledger.
+    #[serde(skip)]
+    max_attempts: Option<usize>,
 }
 
 pub type FinalRequestRecorder = Option<Arc<Mutex<FinalRequestCapture>>>;
 
 pub(crate) fn from_env() -> Result<FinalRequestRecorder, codex_api::ApiError> {
+    let max_attempts = budget_from_env()?;
     match std::env::var_os("CODEX_RIG_REQUEST_CAPTURE_FILE") {
-        None => Ok(None),
+        None => {
+            if max_attempts.is_some() {
+                return Err(codex_api::ApiError::InvalidRequest {
+                    message: "CODEX_RIG_MAX_HTTP_ATTEMPTS requires \
+                              CODEX_RIG_REQUEST_CAPTURE_FILE: the budget is enforced and \
+                              verified against the attempt ledger"
+                        .into(),
+                });
+            }
+            Ok(None)
+        }
         Some(path) if path.is_empty() => Err(codex_api::ApiError::InvalidRequest {
             message: "CODEX_RIG_REQUEST_CAPTURE_FILE must be a nonempty path".into(),
         }),
         Some(path) => Ok(Some(Arc::new(Mutex::new(FinalRequestCapture {
             file: Some(PathBuf::from(path)),
+            max_attempts,
             ..Default::default()
         })))),
     }
+}
+
+/// `CODEX_RIG_MAX_HTTP_ATTEMPTS`: a hard, pre-dispatch cap on the number of
+/// HTTP attempts a process (and every process sharing the capture file) may
+/// dispatch. `0` is a valid negative-control value; values above the capture
+/// ledger's own bound are rejected because they could never be verified.
+pub(crate) fn parse_budget(
+    value: Option<&std::ffi::OsStr>,
+) -> Result<Option<usize>, codex_api::ApiError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let invalid = |message: String| codex_api::ApiError::InvalidRequest { message };
+    if value.is_empty() {
+        return Err(invalid(
+            "CODEX_RIG_MAX_HTTP_ATTEMPTS must be a nonempty decimal number".into(),
+        ));
+    }
+    let budget: usize = value.to_string_lossy().trim().parse().map_err(|_| {
+        invalid("CODEX_RIG_MAX_HTTP_ATTEMPTS must be a decimal number of attempts".into())
+    })?;
+    if budget > MAX_ATTEMPTS {
+        return Err(invalid(format!(
+            "CODEX_RIG_MAX_HTTP_ATTEMPTS must not exceed {MAX_ATTEMPTS}, the capture \
+             ledger's own attempt bound"
+        )));
+    }
+    Ok(Some(budget))
+}
+
+fn budget_from_env() -> Result<Option<usize>, codex_api::ApiError> {
+    parse_budget(std::env::var_os("CODEX_RIG_MAX_HTTP_ATTEMPTS").as_deref())
 }
 
 #[derive(Debug)]
@@ -120,6 +170,13 @@ pub(crate) fn record(
     let mut capture = recorder
         .lock()
         .map_err(|_| capture_error("request capture lock poisoned"))?;
+    if let Some(budget) = capture.max_attempts
+        && capture.requests.len() >= budget
+    {
+        return Err(capture_error(format!(
+            "request capture HTTP attempt budget of {budget} exhausted before dispatch"
+        )));
+    }
     if capture.requests.len() >= MAX_ATTEMPTS
         || capture.bytes.saturating_add(encoded.len()) > MAX_CAPTURE_BYTES
     {
@@ -128,14 +185,18 @@ pub(crate) fn record(
         ));
     }
     if let Some(file) = &capture.file {
-        append_file(file, &encoded)?;
+        append_file(file, &encoded, capture.max_attempts)?;
     }
     capture.bytes += encoded.len();
     capture.requests.push(entry);
     Ok(())
 }
 
-fn append_file(path: &std::path::Path, encoded: &[u8]) -> Result<(), Error> {
+fn append_file(
+    path: &std::path::Path,
+    encoded: &[u8],
+    max_attempts: Option<usize>,
+) -> Result<(), Error> {
     use std::io::Write;
     let _guard = FILE_WRITE_LOCK
         .lock()
@@ -151,7 +212,18 @@ fn append_file(path: &std::path::Path, encoded: &[u8]) -> Result<(), Error> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(_) => return Err(capture_error("cannot inspect request capture file")),
     };
-    if existing.iter().filter(|byte| **byte == b'\n').count() >= MAX_ATTEMPTS
+    // The file is the cross-process authority: a fresh recorder starts with an
+    // empty in-memory history, so the budget must be checked against the
+    // ledger every process appends to.
+    let file_attempts = existing.iter().filter(|byte| **byte == b'\n').count();
+    if let Some(budget) = max_attempts
+        && file_attempts >= budget
+    {
+        return Err(capture_error(format!(
+            "request capture HTTP attempt budget of {budget} exhausted before dispatch"
+        )));
+    }
+    if file_attempts >= MAX_ATTEMPTS
         || existing.len().saturating_add(encoded.len()) > MAX_CAPTURE_BYTES
     {
         return Err(capture_error(
