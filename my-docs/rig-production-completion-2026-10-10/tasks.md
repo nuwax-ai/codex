@@ -73,6 +73,7 @@
 
 ## 包8：最终门禁与发布准备（3项）
 
+  > 2026-10-14 main 合并检查点：`codex/merge-main-20261014` `481a3f485`（origin/main cb03f28a4 562 提交并入，43 冲突逐机制解决，生成物重生成；bridge 280/280、genai 23/23、core 定向 333/333、core 全量 5333/5358；残差 2 真实回归 + 环境项已登记）。详见 results-merge-main-2026-10-14.md。
 - [ ] **T38 P1：workspace/Bazel/Python/三平台CI。** 当前SHA完整集合排除live、retries0；真实Bazel三wire/bridges-out、cache同进程并发、skills canary。DoD：非零执行、首次结果完整、skip/timeout/abort单列；setup/build/test分别绿。
 - [ ] **T39 P1：独立验收与提交审计。** Final source/git/dependency/bin/receipt、secrets、旧配置/历史、diff规模与上游merge面。DoD：全部40项有证据/明确平台限制且发布范围已裁决，不能把基线同败当接受。
 - [ ] **T40 P1：可发布工件与回滚方案。** npm/平台包安装升级/签名/hash/资源/目录与数据回滚演练。DoD：可审制品及checklist完整；真正push/tag/npm发布等待明确授权，准备完成不冒称已发布。
