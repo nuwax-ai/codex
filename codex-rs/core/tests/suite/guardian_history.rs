@@ -408,15 +408,16 @@ async fn guardian_history_uses_deltas_between_eviction_batches(
         ]
     );
     if reuse_parent_checkpoint {
-        // Earlier restrictions travel in the checkpoint, not a replayed backup.
+        // Earlier restrictions travel in the checkpoint, not a replayed backup;
+        // the delta assertions above verify the reviewer consumed the
+        // checkpoint as its transcript. Fork opaque-replay contract: a
+        // checkpoint restored from a rollout without captured producer
+        // provenance is never re-encrypted onto the provider wire — the
+        // projection degrades it instead of replaying unverified ciphertext.
         for request in &guardian_requests {
             assert_eq!(
-                request
-                    .inputs_of_type("compaction")
-                    .iter()
-                    .map(|item| item["encrypted_content"].clone())
-                    .collect::<Vec<_>>(),
-                vec![json!("opaque checkpoint")],
+                request.inputs_of_type("compaction"),
+                Vec::<serde_json::Value>::new()
             );
         }
     } else {

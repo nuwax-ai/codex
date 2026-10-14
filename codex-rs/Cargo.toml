@@ -455,6 +455,9 @@ regex-automata = { version = "0.4.13", default-features = false, features = ["st
 regex-lite = "0.1.8"
 regex-syntax = "0.8.8"
 reqwest = { version = "0.12", features = ["cookies"] }
+# rmcp-v3.3.0 included enterprise authorization helpers (rust-sdk#1234);
+# the merged rmcp-client (fork work absorbed upstream, evolved for 3.5)
+# requires upstream's 3.5.1 pin.
 rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "4048ac40e958fb1a7d614617a2ae8d26666ee2fa", version = "=3.5.1", default-features = false }
 runfiles = { git = "https://github.com/dzbarsky/rules_rust", rev = "b56cbaa8465e74127f1ea216f813cd377295ad81" }
 rustix = { version = "1.1.4", features = ["net"] }

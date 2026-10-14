@@ -2291,11 +2291,37 @@ async fn responses_websocket_creates_on_non_prefix(
     assert_eq!(second["model"].as_str(), Some(MODEL));
     assert_eq!(second["stream"], serde_json::Value::Bool(true));
     assert_eq!(second.get("previous_response_id"), None);
+    // Fork opaque-replay contract: a bare compaction checkpoint without
+    // captured producer provenance is degraded by request projection, so the
+    // full resend carries only the surviving items (empty for this variant);
+    // every other variant resends its complete input.
+    let expected_input = if matches!(
+        prompt_two.input.as_slice(),
+        [ResponseItem::Compaction { .. }]
+    ) {
+        Vec::new()
+    } else {
+        prompt_two.input.clone()
+    };
     assert_eq!(
         second["input"],
-        serde_json::to_value(&prompt_two.input).unwrap()
+        serde_json::to_value(&expected_input).unwrap()
     );
 
+    // Fork opaque-replay contract degrades a provenance-less compaction
+    // checkpoint before the resend, so the variant's recorded current item
+    // type is the empty resend's "none".
+    // The degraded resend is shorter than the previous prefix, so the
+    // recorded reason is the shortened input rather than the raw mismatch.
+    let is_compaction_replacement = matches!(
+        prompt_two.input.as_slice(),
+        [ResponseItem::Compaction { .. }]
+    );
+    let (reason, current_item_type) = if is_compaction_replacement {
+        ("input_shortened", "none")
+    } else {
+        (reason, current_item_type)
+    };
     assert_continuation_metrics_with_item_types(
         &harness.session_telemetry,
         &[
