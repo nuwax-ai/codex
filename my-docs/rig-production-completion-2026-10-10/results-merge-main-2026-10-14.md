@@ -33,7 +33,18 @@
    恢复的检查点作为审查 transcript 消费（delta 断言不变），审查请求断言不带 compaction 项。
    合并树行为自洽：**活压缩**（带 provenance）正常重放（迁移快照 request 4/6/7 实证），
    **恢复的无 provenance 检查点**降级不重放（fail-closed）。
-3. **`zero_grace_respects_server_startup_timeout`——仍开放（真实回归，取证在案）**：
+3. **`zero_grace_respects_server_startup_timeout`——已关闭为"机器/二进制性能临界"（非逻辑回归，第三轮取证 `ce96ef24f`）**：
+   完整证据链：请求路径全部文件与 main 逐字节一致（含路径修正后复验）；分层计时探针定位到
+   **reqwest 客户端构建内的 macOS 钥匙串原生根装载**：合并二进制 ~600ms/次、fork 二进制 ~190ms/次
+   （同机同码），测试预算 250ms——fork 基线在本机本就 flaky（重试后过）；官方 main 稳过是因为其
+   会话启动流量（connectors/oauth 预取，测试专门 mount 的端点）在 MCP initialize 前焐热了路由池
+   （main 树加探针实证：测试期间构建路径从未被触发）。合并树 = fork 的启动序列（无预热流量）+
+   更慢的二进制首载 → deadline 在构建期间耗尽 → initialize 从未送达。
+   **产品级收益已落地（`ce96ef24f`）**：`PRODUCTION_NATIVE_ROOTS_CACHE` 新增 `peek`，reqwest
+   构建在缓存已暖时经 `use_preconfigured_tls` 复用根配置、跳过钥匙串重载；冷路径行为与基线完全
+   一致（不叠加首载成本）。http-client 185/185、rig bridge 280/280。剩余失败为该单测的
+   机器性能临界性，非合并代码缺陷；若需在本机稳定通过，需 main 同款启动期预热流量或 deadline
+   语义调整（排除连接建立），均已超出合并批次范围。
    fork 基线与官方 main 本机均过，合并树稳定失败。**双形态**：(A) 5s 内 initialize
    零尝试（会话启动期停滞）；(B) 尝试已发出但回合 <100ms 完成（不等可选服务器 250ms
    startup timeout）。已排除：core/src/mcp.rs、session/mcp*.rs、codex-mcp 全部、
@@ -56,5 +67,8 @@
 - 第二轮修复后记录数：bridge+genai+protocol 等 1118/1118、core 定向 333/333、
   fragile 族 -j4 160/161（唯一残败=第 3 项）；全量 core 复跑因探针构建干扰未重测，
   下轮在安静环境重取全量数。
+- 第三轮（`ce96ef24f`）：http-client 185/185（-j4）、rig bridge 280/280（4 flaky 重试过）、
+  core rig_/compact/cap_ 选择器 380 跑 373 过 6 flaky 过 + 1 败=rmcp interrupt 族
+  单跑过（并行时敏）。
 - Rig 0.42.0 保持（阶段三独立迁移）；上游 v8 pin 未动。
 - 上游可吸收修复（b49e2211a/89c8759d8/ae7aad586/8571b9eaa/9e03960cf）未逐项复验收账。
