@@ -134,8 +134,8 @@ async fn snapshot_failure_retries_are_bounded_and_single_flight(
             if let Some(reader) = reader {
                 let fd = std::os::fd::AsRawFd::as_raw_fd(&reader);
                 let last = prepared.command.len() - 1;
-                prepared.command[last] = prepared.command[last]
-                    .replace(&format!("/dev/fd/{fd}"), "/dev/fd/SNAPSHOT");
+                prepared.command[last] =
+                    prepared.command[last].replace(&format!("/dev/fd/{fd}"), "/dev/fd/SNAPSHOT");
             }
         }
         assert_eq!(

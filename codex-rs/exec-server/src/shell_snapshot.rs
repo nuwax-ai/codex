@@ -287,10 +287,9 @@ impl ShellSnapshotCache {
         // socket"). `--norc` is the only gate on that path; `-p` suppresses
         // BASH_ENV but not this sourcing.
         let (shell_flags, startup) = match shell_type {
-            // `--norc` must lead: the sandbox wrapper chain mishandles a long
-            // option placed between short flags, handing bash a stray `--`.
+            // Bash requires long options before single-character options.
             ShellType::Bash => (&["--norc", "-pc"][..], "set +o privileged\n"),
-            ShellType::Zsh => (&["-f", "-c"][..], "setopt RCS\n"),
+            ShellType::Zsh => (&["-fc"][..], "setopt RCS\n"),
             ShellType::Sh => (&["-c"][..], ""),
             ShellType::PowerShell | ShellType::Cmd => unreachable!(),
         };
@@ -303,6 +302,7 @@ impl ShellSnapshotCache {
             .command
             .extend(shell_flags.iter().copied().map(String::from));
         prepared.command.push(replay_script);
+        prepared.command.extend_from_slice(&params.argv[3..]);
 
         Ok(reader)
     }

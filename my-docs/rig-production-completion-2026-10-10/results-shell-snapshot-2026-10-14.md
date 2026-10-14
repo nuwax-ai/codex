@@ -29,12 +29,12 @@
   **`["--norc", "-pc"]`**（zsh 已有等价物 `-f`，sh 不变）。`--norc`（no_rc）是
   isnetconn 分支的唯一闸门；`-p` 只压制 BASH_ENV、压不了该分支（bash 源码 1206 行：
   BASH_ENV 分支另查 `privileged_mode`），故 BASH_ENV 变体行为不变。
-  argv 组装改为 truncate+extend（tail 重建）。
-- **`--norc` 必须打头**：实测 wrapper 链对"夹在短旗标之间的长选项"处理有缺陷
-  （`bash -p --norc -c …` 最终让 bash 收到游离 `--` → `bash: --: invalid option`；
-  `bash --norc -pc …` 正常）。该缺陷定位到 `apply_inner_command_argv0_for_launcher`/
-  bwrap `--argv0` 回退一族的命令尾重组（launcher.rs/linux_run_main.rs 多处按第一个
-  `--` 切分），**登记为独立问题，本批不修**。
+  argv 组装改为 truncate+extend（tail 重建）。Codex 复审发现初版遗漏了脚本后的
+  `argv[3..]`，已补回原始位置参数，并增加实际执行回归。
+- **`--norc` 必须打头**：这是 Bash 自身要求长选项位于单字符选项之前。
+  macOS Bash 3.2 与 GNU Bash 5.2 的手册均明确此规则，直接执行
+  `bash -p --norc -c …` 就会产生 `bash: --: invalid option`，无需经过 wrapper。
+  原文将错误归因于包装链重组证据不足，Codex 复审撤销这项归因和残差登记。
 - `shell_snapshot_tests.rs`：归一化断言从 `command[2]` 改为末元素（回放脚本位置随
   flags 数量移动），两份 prepared 仍同形可比。
 
@@ -42,7 +42,7 @@
 
 - 目标 4 项中 3 项转绿：`remote_sandbox`、`remote_pipe_recovery`、`remote_tty_recovery`
   （此前与 CI 逐签名一致地失败）。
-- `snapshot_failure_retries_are_bounded_and_single_flight` 单测 8 变体全过（含适配后）。
+- `snapshot_failure_retries_are_bounded_and_single_flight` 定义有 **7** 个变体；原文的8个计数错误已更正。
 - 全 crate `-p codex-exec-server` 回归：见 §结果行（609/610，唯一残败 = blocked_descriptor_path）。
 - 取证工具链留档：fixture 自报插桩（$0/$-/BASH_SOURCE/父 cmdline/env dump）、
   argv0 别名复刻 wrapper（`codex-linux-sandbox` 符号链接→exec_process 测试二进制）、
@@ -57,6 +57,6 @@
    ——websocket 无握手重置，客户端 25s 恢复超时）。疑点指向 Deny /dev/fd 下 fd 传递/探针
    与 wrapper `--ro-bind-fd` 校验（`verify_fd_mounts` panic 路线）或 seccomp 信号致死，
    待下一批发掘。
-2. **wrapper 链长选项脆性**：命令尾中间的长选项被重组出游离 `--`（见上），建议在
-   launcher/argv0 回退路径加针对性测试后修复。
-3. 上一轮其余登记项不变（Windows idle 族×2、skills /tmp 污染 GH 前置条件等）。
+2. 上一轮其余登记项不变（Windows idle 族×2、skills /tmp 污染 GH 前置条件等）。
+
+Codex 独立复审、修复及新增平台验证见 `codex-shell-snapshot-review-2026-10-14.md`。

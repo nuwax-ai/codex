@@ -4,7 +4,7 @@
 
 ## 改了什么
 
-1. `codex-rs/exec-server/src/shell_snapshot.rs` `ShellSnapshotCache::prepare()` 尾部：bash 快照回放的启动旗标由单个 `"-pc"` 改为 `["--norc", "-pc"]`；argv 尾部组装从"改写下标 1、2"改为 `truncate(shell_start + 1)` 后 `extend(flags)` + `push(replay_script)`。zsh 由 `"-fc"` 拆为 `["-f", "-c"]`（语义不变，仅为统一 &[&str] 类型）；sh 不变。
+1. 原提交 `codex-rs/exec-server/src/shell_snapshot.rs` 的 bash 快照回放旗标由 `"-pc"` 改为 `["--norc", "-pc"]`，尾部组装改为 truncate 后重建。Codex 复审已补回遗漏的 `params.argv[3..]`，保持脚本位置参数；zsh 保留原 `"-fc"`，sh 不变。
 2. `codex-rs/exec-server/src/shell_snapshot_tests.rs`：并发单测对两份 prepared command 的 fd 归一化，从固定下标 `command[2]` 改为末元素（回放脚本位置随旗标数量移动）。
 
 ## 主张的机制（可直接复核的事实链）
@@ -26,23 +26,21 @@
 1. **`--norc` 的语义边界**：确认它只置 no_rc、只闸 isnetconn 分支；不影响 BASH_ENV 分支
    （该分支由 `privileged_mode == 0` 闸，`-p` 保留故 BASH_ENV 行为不变）、不影响 login
    分支与 POSIX ENV。`local_bash_env`/`remote_bash_env` 变体已随全 crate 回归通过。
-2. **argv 尾部重建的安全性**：入口已有 `ends_with(&params.argv)` 守卫且 argv.len()≥3；
-   capture 路径（同文件 `capture_snapshot`）有自己的 `shell_start`，且在改写前执行。
-   请确认无其他消费点假定回放尾部长度为 3（我已 grep，仅两处 shell_start）。
-3. **`--norc` 必须打头**的包装链缺陷声明：`bash -p --norc -c …` 经 wrapper 后 bash 收到
-   游离 `--`（实测 `bash: --: invalid option`）；`--norc` 打头则正常。根因未修（疑在
-   launcher/argv0 回退对第一个 `--` 的切分重组），已登记。复审如认为是同一机制可修，
-   请单独立项，不要并入本提交。
-4. **测试适配的等价性**：归一化末元素后两份 prepared（各自持有不同 reader fd）仍同形可比；
-   断言语义与原先一致。
+2. **argv 尾部重建的安全性**：入口 `ends_with(&params.argv)` 与 argv.len()≥3 只保证
+   shell_start 可定位，不保证没有脚本后的参数。初版遗漏这些参数的回归已由 Codex 修复。
+   capture 路径保留原参数，新增 local/localhost-remote 真执行回归验证 $0/$1/$2/$#。
+3. **`--norc` 必须打头**：Bash 自身要求长选项先于短选项；直接执行相反顺序即可报错。
+   包装链缺陷的原归因没有独立证据，已撤销，不再作为下一批任务。
+4. **测试适配的等价性**：现有三参数单测的末元素仍是脚本；一般带位置参数的命令
+   不满足这一点。新增回归实际执行并比较整个结果，不依赖脚本是最后一个argv。
 5. **可移植性**：`--norc` 为 bash 长选项（bash 2.0+，macOS bash 3.2 亦支持）；该路径
    仅 bash/zsh/sh 三种 ShellType 触达，PowerShell/Cmd unreachable 不变。
 
 ## 已验证据（Linux 实机 swufe@192.168.32.163，Ubuntu 24.04 x86_64，rustc 1.99.0）
 
 - 原 CI 失败 4 身份中 3 个转绿：`remote_sandbox`、`remote_pipe_recovery`、`remote_tty_recovery`。
-- `snapshot_failure_retries_are_bounded_and_single_flight` 8 变体 + concurrent bash/bash_tty
-  选择器共 11/11 过。
+- `snapshot_failure_retries_are_bounded_and_single_flight` 源码定义有 **7** 个变体。
+  原摘要记录选择器11/11，但将单测写成8个错误；平台独立实际身份/数量见 Codex 复审记录。
 - 全 crate `-p codex-exec-server` 回归：**610 跑 / 609 过 / 1 败**，唯一残败 =
   `blocked_descriptor_path`（/dev/fd Deny 变体）——**独立第二机制**，双形态（0.3s 并发某路
   stdout 空；25.3s exec-server 无声死亡→websocket 重置→恢复超时，stderr 零输出疑信号致死），
@@ -55,8 +53,10 @@
 ## 明确不主张的
 
 - 不主张修复 blocked_descriptor_path（独立机制，证据已登记待下批）。
-- 不主张修复 wrapper 长选项脆性（登记项）。
-- 不主张 seccomp 层改 errno（ENOSYS 同样不在 bash 的"非 socket"错误集；返回 ENOTSOK
+- 不主张存在已证实的 wrapper 长选项缺陷；原登记由 Codex 复审撤销。
+- 不主张 seccomp 层改 errno（ENOSYS 同样不在 bash 的"非 socket"错误集；返回 ENOTSOCK
   会污染真实 socket 查询——旗标层是正确层级）。
+
+后续 Codex 复审修复及验证见 `codex-shell-snapshot-review-2026-10-14.md`；本交接对象仍指原始提交，不把复审结果反算为原提交已完成。
 - 不扩称为"shell_snapshot 全族已稳"：concurrent 的 WorkspaceWrite/tty 变体在 Linux 实机过、
   macOS 由 CI 判。

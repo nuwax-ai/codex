@@ -9,6 +9,97 @@ enum SnapshotSandbox {
     DenyFdPath,
 }
 
+#[test_case("bash", false; "local_bash")]
+#[test_case("bash", true; "remote_bash")]
+#[test_case("sh", false; "local_sh")]
+#[test_case("sh", true; "remote_sh")]
+#[cfg_attr(target_os = "macos", test_case("zsh", false; "local_zsh"))]
+#[cfg_attr(target_os = "macos", test_case("zsh", true; "remote_zsh"))]
+#[serial_test::serial(remote_exec_server)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shell_snapshot_replay_preserves_positional_arguments(
+    shell: &str,
+    use_remote: bool,
+) -> Result<()> {
+    let context = create_process_context(use_remote).await?;
+    let home = TempDir::new()?;
+    let profile = match shell {
+        "bash" => ".bashrc",
+        "zsh" => ".zshrc",
+        "sh" => ".snapshot-env",
+        shell => anyhow::bail!("unsupported snapshot test shell: {shell}"),
+    };
+    std::fs::write(
+        home.path().join(profile),
+        "printf x >> \"$HOME/captures\"\nexport SNAPSHOT_ARGUMENT_MARKER=restored\n",
+    )?;
+    let mut env = HashMap::from([
+        (
+            "HOME".to_string(),
+            home.path().to_string_lossy().into_owned(),
+        ),
+        ("PATH".to_string(), "/usr/bin:/bin".to_string()),
+    ]);
+    if shell == "sh" {
+        env.insert(
+            "ENV".to_string(),
+            home.path().join(profile).to_string_lossy().into_owned(),
+        );
+    }
+    let started = context
+        .backend
+        .start(ExecParams {
+            metadata: Default::default(),
+            process_id: ProcessId::from("snapshot-arguments"),
+            argv: vec![
+                format!("/bin/{shell}"),
+                "-lc".to_string(),
+                "printf '%s|%s|%s|%s|%s' \"$SNAPSHOT_ARGUMENT_MARKER\" \"$0\" \"$#\" \"$1\" \"$2\""
+                    .to_string(),
+                "snapshot argv0".to_string(),
+                "first 'quoted' value".to_string(),
+                "--norc".to_string(),
+            ],
+            cwd: PathUri::from_host_native_path(home.path())?,
+            env,
+            env_policy: None,
+            shell_snapshot: Some(ShellSnapshotRequest {
+                scope_id: "arguments".to_string(),
+                shell: ShellInfo {
+                    name: shell.to_string(),
+                    path: format!("/bin/{shell}"),
+                },
+            }),
+            tty: false,
+            pipe_stdin: false,
+            arg0: None,
+            sandbox: None,
+            enforce_managed_network: false,
+            managed_network: None,
+            network_proxy: None,
+        })
+        .await?;
+    let (output, errors, status, closed) =
+        collect_process_output_from_events(started.process).await?;
+    assert_eq!(
+        (
+            output,
+            errors,
+            status,
+            closed,
+            std::fs::read_to_string(home.path().join("captures"))?,
+        ),
+        (
+            "restored|snapshot argv0|2|first 'quoted' value|--norc".to_string(),
+            String::new(),
+            Some(0),
+            true,
+            "x".to_string(),
+        )
+    );
+    Ok(())
+}
+
 #[test_case("bash", false, SnapshotSandbox::None; "bash")]
 #[test_case("bash", true, SnapshotSandbox::None; "bash_tty")]
 #[cfg_attr(target_os = "macos", test_case("zsh", false, SnapshotSandbox::None; "zsh"))]
