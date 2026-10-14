@@ -95,11 +95,28 @@
 - **skills repo_ancestry PASS 且 /tmp 全程无泄漏**（inotify 监控 + NO-TMP-LEAK）——真实 Linux 上该测试通过；CI 的 /tmp/.git 污染另有前置条件（候选：GH runner 的 tmpfs /tmp、2 万测试并发规模），下一批按此缩小。
 - 新测试缺陷修正：compact 等待跨平台竞态（Linux 0.9s 首败 `ActiveTurnNotSteerable`，学习轮缓冲通知抢先满足宽松等待）→ 两段精确等待（contextCompaction 条目→取 turnId→等该 turn 完成），macOS/Linux 双过（`f392013aa`）。
 
+## 6c. CI 判决（run `38501139574`，HEAD `f6fffa7a2`，2026-10-14）
+
+第一轮 run `38488060124`（HEAD `2d7c5247c`）在 ubuntu/macos 的 clippy 步骤死于本仓新代码两个 lint（`too_many_arguments` 8/7、`redundant_clone`——本地 nextest 不执行 clippy 故未拦；`f6fffa7a2` 修复并经 CI 同命令本地验证）；该轮 **windows lane 完整跑完并交付判决**：43 失败全部为登记基线族、**wires×2 超时消失（审批修复 CI 实证）**、guardian 零出现。
+
+第二轮 `38501139574` 全量判决：
+
+| lane | 结果 | 失败身份核对 |
+|---|---|---|
+| bazel gate (ubuntu) | **success** | 连绿 |
+| nextest ubuntu | failure | **21815 跑/21810 过/仅 5 败 0 超时 = 恰好 shell_snapshot×4 + skills×1，与登记残差集一身份不差**；guardian **PASS**；上轮的 hooks 轮转单例与 discovery 超时本轮均过（轮转性再证） |
+| nextest macos | failure | 21774 跑/**0 败 3 超时** = discovery + app_server_daemon×2（登记基线族）；guardian **PASS**（上轮 1F+7T → 0F+3T） |
+| nextest windows | failure | 20602 跑/26 败 19 超时，全部登记基线族（sandbox/conpty/uds/doctor/resume 超时/轮转单例）；guardian **PASS**；wires×2 第二连绿；idle_timeout 本轮复现（登记族轮转） |
+
+**R11 guardian SIGABRT：三平台 CI 判决全部通过**（本机 6 平台-工具链组合 + CI 3 平台）——本 fork 最大稳定性问题正式关闭（T10 的 R11 子项）。
+
+本轮新增测试在 CI 三平台全部通过（预算×2、compact、live-skip×3）；chatgpt 装箱在 CI 三平台无副作用。
+
 ## 7. 残差账目
 
 | 项 | 状态 |
 |---|---|
-| guardian R11 CI 判决 | 本机 6 平台-工具链组合证据齐（含真 Linux x86_64 双工具链）；**待 push 后 CI**（run 38358243799 不含修复） |
+| guardian R11 CI 判决 | **已关闭**：run 38501139574 三平台 guardian 全 PASS（§6c） |
 | Windows idle 族×2 | 原生复现维持（修复后复验 50.5s FAIL / 60s TIMEOUT），机制未定，下一批；wires×2 已修复实证 |
 | shell_snapshot×4（Linux） | 全复现+半程取证（argv/捕获/恢复路径已排除），重 source 入口待最后一发插桩；修复下一批 |
 | skills /tmp/.git | 真实 Linux（非 root+真 userns+bwrap）通过且 /tmp 零泄漏；CI 污染前置条件收窄至 GH 特有环境（tmpfs/规模），下一批 |
