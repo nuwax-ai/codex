@@ -265,9 +265,13 @@ fn whole_items_without_deltas_capture_once_and_not_twice() {
         role: "assistant".to_string(),
         content: vec![codex_protocol::models::ContentItem::OutputText {
             text: "streamed fully".to_string(),
+            annotations: None,
+            logprobs: None,
         }],
         phase: None,
         internal_chat_message_metadata_passthrough: None,
+        encrypted_content: None,
+        status: None,
     });
     // An item that never streamed captures whole.
     capture.observe_item_done(&ResponseItem::Message {
@@ -275,9 +279,13 @@ fn whole_items_without_deltas_capture_once_and_not_twice() {
         role: "assistant".to_string(),
         content: vec![codex_protocol::models::ContentItem::OutputText {
             text: "arrived whole".to_string(),
+            annotations: None,
+            logprobs: None,
         }],
         phase: None,
         internal_chat_message_metadata_passthrough: None,
+        encrypted_content: None,
+        status: None,
     });
     // Non-assistant items are ignored.
     capture.observe_item_done(&ResponseItem::Message {
@@ -285,9 +293,13 @@ fn whole_items_without_deltas_capture_once_and_not_twice() {
         role: "user".to_string(),
         content: vec![codex_protocol::models::ContentItem::OutputText {
             text: "user text".to_string(),
+            annotations: None,
+            logprobs: None,
         }],
         phase: None,
         internal_chat_message_metadata_passthrough: None,
+        encrypted_content: None,
+        status: None,
     });
     let event = finish(capture);
     assert_eq!(
@@ -316,6 +328,7 @@ fn tool_arguments_are_non_executable_diagnostics() {
         namespace: None,
         input: "{\"command\":[\"echo\",\"hi\"]}".to_string(),
         internal_chat_message_metadata_passthrough: None,
+        encrypted_content: None,
     });
     let event = finish(capture);
     assert_eq!(
@@ -345,9 +358,13 @@ fn idless_whole_items_get_distinct_keys() {
             role: "assistant".to_string(),
             content: vec![codex_protocol::models::ContentItem::OutputText {
                 text: text.to_string(),
+                annotations: None,
+                logprobs: None,
             }],
             phase: None,
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         });
     }
     let event = finish(capture);

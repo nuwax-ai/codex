@@ -20,22 +20,16 @@ use serde_json::Value;
 /// Returns `None` if the input contains no convertible messages (e.g. only
 /// internal/local items).
 pub fn responses_request_to_chat_request(request: &ResponsesApiRequest) -> Option<ChatRequest> {
-    let system = if request.instructions.is_empty() {
-        None
-    } else {
-        Some(request.instructions.clone())
-    };
-
     let messages = convert_response_items(&request.input);
 
-    if messages.is_empty() && system.is_none() {
+    if messages.is_empty() {
         return None;
     }
+    // Base instructions now travel as the leading developer message inside
+    // `input` (mapped to ChatRole::System by convert_response_items) instead
+    // of the removed request-level instructions field.
 
     let mut chat_req = ChatRequest::new(messages);
-    if let Some(sys) = system {
-        chat_req = chat_req.with_system(sys);
-    }
 
     // `request.tools` is `Option<ResponsesApiTools>` (opaque raw JSON). Extract
     // the tool array via the Serialize impl (as_raw_value is pub(crate)-gated).
@@ -330,7 +324,7 @@ fn convert_content_items(items: &[ContentItem]) -> Vec<ContentPart> {
     items
         .iter()
         .filter_map(|item| match item {
-            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+            ContentItem::InputText { text } | ContentItem::OutputText { text, .. } => {
                 Some(ContentPart::Text(text.clone()))
             }
             ContentItem::InputImage { image, .. } => {
@@ -426,7 +420,6 @@ mod tests {
     fn test_single_user_message() {
         let request = ResponsesApiRequest {
             model: "gpt-5".into(),
-            instructions: String::new(),
             input: vec![ResponseItem::Message {
                 id: None,
                 role: "user".into(),
@@ -435,6 +428,8 @@ mod tests {
                 }],
                 phase: None,
                 internal_chat_message_metadata_passthrough: None,
+                encrypted_content: None,
+                status: None,
             }],
             tools: None,
             tool_choice: "auto".into(),
@@ -463,14 +458,30 @@ mod tests {
     fn test_system_instructions() {
         let request = ResponsesApiRequest {
             model: "gpt-5".into(),
-            instructions: "You are helpful.".into(),
-            input: vec![ResponseItem::Message {
-                id: None,
-                role: "user".into(),
-                content: vec![ContentItem::InputText { text: "Hi".into() }],
-                phase: None,
-                internal_chat_message_metadata_passthrough: None,
-            }],
+            // Base instructions travel as the leading developer message now
+            // that the request-level instructions field is gone.
+            input: vec![
+                ResponseItem::Message {
+                    id: None,
+                    role: "developer".into(),
+                    content: vec![ContentItem::InputText {
+                        text: "You are helpful.".into(),
+                    }],
+                    phase: None,
+                    internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
+                },
+                ResponseItem::Message {
+                    id: None,
+                    role: "user".into(),
+                    content: vec![ContentItem::InputText { text: "Hi".into() }],
+                    phase: None,
+                    internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
+                },
+            ],
             tools: None,
             tool_choice: "auto".into(),
             parallel_tool_calls: true,
@@ -488,14 +499,16 @@ mod tests {
         };
 
         let result = responses_request_to_chat_request(&request).unwrap();
-        assert_eq!(result.system, Some("You are helpful.".into()));
+        assert_eq!(
+            result.messages.first().map(|msg| msg.role.clone()),
+            Some(ChatRole::System)
+        );
     }
 
     #[test]
     fn test_function_call_and_output() {
         let request = ResponsesApiRequest {
             model: "gpt-5".into(),
-            instructions: String::new(),
             input: vec![
                 ResponseItem::FunctionCall {
                     id: None,
@@ -505,6 +518,8 @@ mod tests {
                     encrypted_function_args: None,
                     call_id: "call_1".into(),
                     internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
                 },
                 ResponseItem::FunctionCallOutput {
                     id: None,
@@ -544,7 +559,6 @@ mod tests {
     fn test_empty_input() {
         let request = ResponsesApiRequest {
             model: "gpt-5".into(),
-            instructions: String::new(),
             input: vec![],
             tools: None,
             tool_choice: "auto".into(),
@@ -573,7 +587,6 @@ mod tests {
     fn test_reasoning_injected_into_assistant_message() {
         let request = ResponsesApiRequest {
             model: "deepseek-v4-flash".into(),
-            instructions: "You are helpful.".into(),
             input: vec![
                 // First turn: user asks something
                 ResponseItem::Message {
@@ -584,6 +597,8 @@ mod tests {
                     }],
                     phase: None,
                     internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
                 },
                 // First turn: assistant responds with text
                 ResponseItem::Message {
@@ -591,9 +606,13 @@ mod tests {
                     role: "assistant".into(),
                     content: vec![ContentItem::OutputText {
                         text: "Hi there!".into(),
+                        annotations: None,
+                        logprobs: None,
                     }],
                     phase: None,
                     internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
                 },
                 // First turn: reasoning content from the assistant's thinking
                 ResponseItem::Reasoning {
@@ -612,6 +631,8 @@ mod tests {
                     }],
                     phase: None,
                     internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
                 },
             ],
             tools: None,
@@ -631,7 +652,6 @@ mod tests {
         };
 
         let result = responses_request_to_chat_request(&request).unwrap();
-        assert_eq!(result.system, Some("You are helpful.".into()));
         // Messages: user(Hello), assistant(+ReasoningContent), user(What was...)
         assert_eq!(result.messages.len(), 3);
 
@@ -661,7 +681,6 @@ mod tests {
     fn test_reasoning_before_assistant_message_is_benign() {
         let request = ResponsesApiRequest {
             model: "deepseek-v4-flash".into(),
-            instructions: String::new(),
             input: vec![
                 // Reasoning BEFORE assistant message (should be skipped)
                 ResponseItem::Reasoning {
@@ -676,9 +695,13 @@ mod tests {
                     role: "assistant".into(),
                     content: vec![ContentItem::OutputText {
                         text: "response".into(),
+                        annotations: None,
+                        logprobs: None,
                     }],
                     phase: None,
                     internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
                 },
             ],
             tools: None,
@@ -713,7 +736,6 @@ mod tests {
     fn test_tool_call_merges_with_reasoning_assistant() {
         let request = ResponsesApiRequest {
             model: "deepseek-v4-flash".into(),
-            instructions: "You are helpful.".into(),
             input: vec![
                 // Turn 1: user asks
                 ResponseItem::Message {
@@ -724,6 +746,8 @@ mod tests {
                     }],
                     phase: None,
                     internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
                 },
                 // Turn 1: assistant responds (empty text — typical when model calls tool immediately)
                 ResponseItem::Message {
@@ -732,6 +756,8 @@ mod tests {
                     content: vec![],
                     phase: None,
                     internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
                 },
                 // Turn 1: reasoning content (from DeepSeek thinking mode)
                 ResponseItem::Reasoning {
@@ -750,6 +776,8 @@ mod tests {
                     encrypted_function_args: None,
                     call_id: "call_1".into(),
                     internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
                 },
                 // Turn 1: tool result
                 ResponseItem::FunctionCallOutput {
@@ -814,7 +842,6 @@ mod tests {
     fn test_reasoning_without_assistant_message_is_skipped() {
         let request = ResponsesApiRequest {
             model: "deepseek-v4-flash".into(),
-            instructions: String::new(),
             input: vec![
                 ResponseItem::Message {
                     id: None,
@@ -824,6 +851,8 @@ mod tests {
                     }],
                     phase: None,
                     internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
                 },
                 // Reasoning without a preceding assistant message
                 ResponseItem::Reasoning {
@@ -934,7 +963,6 @@ mod tests {
         // namespace specs exactly like the non-lite path.
         let request = ResponsesApiRequest {
             model: "gpt-5".into(),
-            instructions: String::new(),
             input: vec![
                 ResponseItem::AdditionalTools {
                     id: None,
@@ -958,6 +986,8 @@ mod tests {
                     content: vec![ContentItem::InputText { text: "hi".into() }],
                     phase: None,
                     internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
                 },
             ],
             tools: None,

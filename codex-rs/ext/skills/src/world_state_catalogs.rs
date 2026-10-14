@@ -168,6 +168,11 @@ impl<'a> CatalogContext<'a> {
                 .get::<SkillsSessionState>()
                 .and_then(|state| state.mcp_resources.clone()),
             executor_capability_discovery: self.input.executor_capability_discovery.cloned(),
+            executor_capability_discovery_v2: self
+                .input
+                .executor_capability_discovery_v2
+                .map(Vec::from)
+                .unwrap_or_default(),
         };
 
         let cloud = self.cloud_catalog_contribution(&query);
@@ -184,11 +189,11 @@ impl<'a> CatalogContext<'a> {
     }
 
     async fn discover_executor_catalog(&self, query: SkillListQuery) -> CatalogContribution {
-        self.thread_state
+        let mut catalog = self
+            .thread_state
             .refresh_executor_catalog(self.providers, query)
             .await;
-        let mut catalog = self.thread_state.executor_catalog_snapshot();
-        if let Some(selected_plugins) = self.input.turn_store.get::<SelectedPluginSnapshot>() {
+        if let Some(selected_plugins) = self.input.step_store.get::<SelectedPluginSnapshot>() {
             attribute_executor_plugins(&mut catalog, &selected_plugins);
         }
         self.input
@@ -244,6 +249,7 @@ impl<'a> CatalogContext<'a> {
                     include_cloud_skills: false,
                     mcp_resources: None,
                     executor_capability_discovery: None,
+                    executor_capability_discovery_v2: Vec::new(),
                 })
                 .await;
             self.input

@@ -73,7 +73,7 @@ async fn paused_turn_continues_with_verbatim_assistant_blocks() {
             ResponseEvent::OutputItemDone(item) => match item {
                 codex_protocol::models::ResponseItem::Message { content, .. } => {
                     for part in content {
-                        if let codex_protocol::models::ContentItem::OutputText { text } = part {
+                        if let codex_protocol::models::ContentItem::OutputText { text, .. } = part {
                             texts.push(text);
                         }
                     }

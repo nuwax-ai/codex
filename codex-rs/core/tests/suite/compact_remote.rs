@@ -117,6 +117,7 @@ async fn start_realtime_conversation(codex: &codex_core::CodexThread) -> Result<
             realtime_end_instructions: None,
             prompt: Some(Some("backend prompt".to_string())),
             realtime_session_id: None,
+            voice_session_id: None,
             transport: None,
             version: None,
             voice: None,
@@ -194,6 +195,7 @@ fn amazon_bedrock_test_codex() -> TestCodexBuilder {
         .with_model(AMAZON_BEDROCK_GPT_5_5_MODEL_ID)
         .with_config(|config| {
             config.model_provider = ModelProviderInfo {
+                capabilities: None,
                 base_url: config.model_provider.base_url.clone(),
                 ..ModelProviderInfo::create_amazon_bedrock_provider(/*aws*/ None)
             };
@@ -367,6 +369,8 @@ async fn remote_compact_v2_retains_only_client_developer_messages_when_enabled(
     )
     .await?;
     let developer = |text: &str| ResponseItem::Message {
+        status: None,
+        encrypted_content: None,
         id: None,
         role: "developer".to_string(),
         content: vec![ContentItem::InputText {

@@ -17,7 +17,6 @@ use tokio::io::AsyncWriteExt;
 pub fn request(items: Vec<Value>) -> ResponsesApiRequest {
     ResponsesApiRequest {
         model: "review-model".into(),
-        instructions: "system instructions".into(),
         input: items
             .into_iter()
             .map(|item| serde_json::from_value::<ResponseItem>(item).expect("fixture item"))

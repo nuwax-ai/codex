@@ -46,6 +46,8 @@ fn projection_clears_envelopes_but_keeps_the_visible_item() {
             content: vec![],
             phase: None,
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         },
         reasoning_item(
             Some("codex-rig-reasoning-v1:source-payload".to_string()),
@@ -78,6 +80,8 @@ fn projection_passes_non_envelope_ciphertext_and_plain_items_through() {
             encrypted_function_args: None,
             call_id: "c1".into(),
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         },
     ];
     let before = input.clone();

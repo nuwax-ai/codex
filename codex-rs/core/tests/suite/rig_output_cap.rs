@@ -49,6 +49,7 @@ fn output_cap_provider(base_url: &str, wire_api: WireApi) -> ModelProviderInfo {
         WireApi::Anthropic => "anthropic",
     };
     ModelProviderInfo {
+        capabilities: None,
         name: format!("rig-cap-{protocol_name}"),
         base_url: Some(format!("{base_url}/v1")),
         model_catalog_url: None,

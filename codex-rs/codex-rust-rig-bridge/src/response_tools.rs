@@ -103,6 +103,7 @@ impl PendingTools {
                 namespace: None,
                 input: String::new(),
                 internal_chat_message_metadata_passthrough: None,
+                encrypted_content: None,
             };
             let added = item.clone();
             if let ResponseItem::CustomToolCall { input: body, .. } = &mut item {
@@ -118,6 +119,8 @@ impl PendingTools {
                 arguments: String::new(),
                 encrypted_function_args: None,
                 internal_chat_message_metadata_passthrough: None,
+                encrypted_content: None,
+                status: None,
             };
             let added = item.clone();
             if let ResponseItem::FunctionCall {

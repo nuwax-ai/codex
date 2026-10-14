@@ -25,6 +25,7 @@ use wiremock::MockServer;
 
 fn bridged_responses_provider(server: &MockServer) -> ModelProviderInfo {
     ModelProviderInfo {
+        capabilities: None,
         name: "rig-responses".into(),
         base_url: Some(format!("{}/v1", server.uri())),
         model_catalog_url: None,
@@ -120,7 +121,16 @@ async fn responses_bridge_preserves_lite_request_contract() -> Result<()> {
             );
         } else {
             assert!(body["tools"].is_array());
-            assert_eq!(body["instructions"], "bridge instructions");
+            // The request-level instructions field is gone upstream; base
+            // instructions travel as the leading developer message.
+            assert!(body.get("instructions").is_none());
+            let messages = request.inputs_of_type("message");
+            assert_eq!(messages[0]["role"], json!("developer"));
+            assert!(
+                messages[0]["content"][0]["text"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("bridge instructions"))
+            );
             assert!(additional_tools.is_empty());
         }
         test.codex.shutdown_and_wait().await?;
@@ -454,6 +464,7 @@ async fn bridge_chat_compact_recovers_from_context_window_rejection() -> Result<
     }
 
     let provider = ModelProviderInfo {
+        capabilities: None,
         name: "rig-chat".into(),
         wire_api: WireApi::Chat,
         ..bridged_responses_provider(&server)
@@ -587,6 +598,7 @@ async fn chat_credential_instance_preserves_reasoning_content_on_tool_continuati
             .await;
     }
     let provider = ModelProviderInfo {
+        capabilities: None,
         name: "DeepSeek test".into(),
         provider_id: Some("deepseek-selector-test".into()),
         wire_api: WireApi::Chat,

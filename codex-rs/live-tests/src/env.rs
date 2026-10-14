@@ -83,6 +83,20 @@ pub fn anthropic_url_or_skip(cfg: &LiveConfig) -> Option<String> {
     cfg.anthropic_base_url.clone()
 }
 
+pub fn developer_message(text: &str) -> ResponseItem {
+    ResponseItem::Message {
+        id: None,
+        role: "developer".into(),
+        content: vec![ContentItem::InputText {
+            text: text.to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+        encrypted_content: None,
+        status: None,
+    }
+}
+
 pub fn user_message(text: &str) -> ResponseItem {
     ResponseItem::Message {
         id: None,
@@ -92,5 +106,7 @@ pub fn user_message(text: &str) -> ResponseItem {
         }],
         phase: None,
         internal_chat_message_metadata_passthrough: None,
+        encrypted_content: None,
+        status: None,
     }
 }

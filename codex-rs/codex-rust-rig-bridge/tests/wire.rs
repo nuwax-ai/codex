@@ -77,7 +77,7 @@ async fn final_chat_request_preserves_url_headers_role_effort_and_request_id() {
             .contains("x-gateway-auth: Bearer local-test-dummy")
     );
     assert_eq!(
-        wire["body"]["messages"][1],
+        wire["body"]["messages"][0],
         json!({"role":"system","content":[{"type":"text","text":"developer rule"}]})
     );
     assert_eq!(wire["body"]["reasoning_effort"], "medium");
@@ -271,13 +271,12 @@ async fn function_and_custom_image_results_reach_both_protocols_as_images() {
 
 #[tokio::test]
 async fn namespaced_additional_custom_tools_keep_wrapper_and_history_name() {
-    let mut request = request(vec![
+    let request = request(vec![
         user(),
         json!({"type":"additional_tools","role":"developer","tools":[{"type":"namespace","name":"functions","tools":[{"type":"custom","name":"apply_patch","format":{"type":"text"}}]}]}),
         json!({"type":"custom_tool_call","namespace":"functions","name":"apply_patch","call_id":"c1","input":"patch"}),
         json!({"type":"custom_tool_call_output","call_id":"c1","output":"applied"}),
     ]);
-    request.instructions.clear();
     let (wire, _, _) = capture(&request, RigProtocol::Chat).await;
     let tool = &wire["body"]["tools"][0]["function"];
     assert_eq!(tool["parameters"]["properties"]["input"]["type"], "string");

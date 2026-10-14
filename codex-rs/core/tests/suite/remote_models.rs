@@ -42,7 +42,7 @@ use core_test_support::responses::start_mock_server;
 use core_test_support::skip_if_no_network;
 use core_test_support::skip_if_sandbox;
 use core_test_support::test_codex::TestCodex;
-use core_test_support::test_codex::local_selections;
+use core_test_support::test_codex::local_requests;
 use core_test_support::test_codex::test_codex;
 use core_test_support::test_codex::turn_permission_fields;
 use core_test_support::wait_for_event;
@@ -85,7 +85,6 @@ async fn disabled_update_plan_preserves_custom_catalog_instructions() -> Result<
         .as_mut()
         .expect("model prompt templates");
     messages.instructions_template = Some(INSTRUCTIONS.to_string());
-    messages.instructions_variables = None;
     let test = test_codex()
         .with_model("gpt-5.5")
         .with_config(move |config| {
@@ -96,7 +95,7 @@ async fn disabled_update_plan_preserves_custom_catalog_instructions() -> Result<
         .await?;
     test.submit_turn("hello").await?;
     let request = response.single_request().body_json();
-    assert_eq!(request["instructions"], INSTRUCTIONS);
+    assert_eq!(response.single_request().instructions_text(), INSTRUCTIONS);
     assert!(!request["tools"].to_string().contains("update_plan"));
     Ok(())
 }
@@ -182,6 +181,7 @@ async fn remote_models_get_model_info_uses_longest_matching_prefix() -> Result<(
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
+        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -693,7 +693,7 @@ async fn remote_models_remote_model_uses_unified_exec() -> Result<()> {
                 text_elements: Vec::new(),
             }])
             .with_thread_settings(ThreadSettingsOverrides {
-                environments: Some(local_selections(cwd_path)),
+                environments: Some(local_requests(cwd_path)),
                 approval_policy: Some(AskForApproval::Never),
                 sandbox_policy: Some(sandbox_policy),
                 permission_profile,
@@ -963,7 +963,7 @@ async fn remote_models_apply_legacy_instructions(auth: CodexAuth) -> Result<()> 
                 text_elements: Vec::new(),
             }])
             .with_thread_settings(ThreadSettingsOverrides {
-                environments: Some(local_selections(cwd_path.clone())),
+                environments: Some(local_requests(cwd_path.clone())),
                 approval_policy: Some(AskForApproval::Never),
                 sandbox_policy: Some(sandbox_policy),
                 permission_profile,
@@ -993,7 +993,7 @@ async fn remote_models_apply_legacy_instructions(auth: CodexAuth) -> Result<()> 
                 text_elements: Vec::new(),
             }])
             .with_thread_settings(ThreadSettingsOverrides {
-                environments: Some(local_selections(cwd_path)),
+                environments: Some(local_requests(cwd_path)),
                 approval_policy: Some(AskForApproval::Never),
                 sandbox_policy: Some(sandbox_policy),
                 permission_profile,
@@ -1046,6 +1046,7 @@ async fn remote_models_do_not_append_removed_builtin_presets() -> Result<()> {
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
+        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1112,6 +1113,7 @@ async fn remote_models_merge_adds_new_high_priority_first() -> Result<()> {
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
+        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1164,6 +1166,7 @@ async fn remote_models_merge_replaces_overlapping_model() -> Result<()> {
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
+        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1213,6 +1216,7 @@ async fn remote_models_merge_preserves_bundled_models_on_empty_response() -> Res
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
+        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1260,6 +1264,7 @@ async fn remote_models_request_times_out_after_5s() -> Result<()> {
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
+        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1335,6 +1340,7 @@ async fn remote_models_hide_picker_only_models() -> Result<()> {
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
+        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1586,7 +1592,7 @@ async fn model_catalog_url_supplies_conversation_model_and_instructions() -> Res
     test.submit_turn("hello").await?;
     let request = response.single_request().body_json();
     assert_eq!(request["model"], "gateway-conversation");
-    assert_eq!(request["instructions"], instructions);
+    assert_eq!(response.single_request().instructions_text(), instructions);
     assert_eq!(request["text"].get("verbosity"), None);
     Ok(())
 }

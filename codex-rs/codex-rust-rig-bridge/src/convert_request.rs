@@ -4,7 +4,6 @@ use crate::request_messages::convert_response_items;
 use codex_api::ApiError;
 use codex_api::ResponsesApiRequest;
 use rig_core::completion::CompletionRequest;
-use rig_core::completion::message::Message;
 use rig_core::completion::message::ToolChoice;
 use serde_json::Value;
 use serde_json::json;
@@ -82,20 +81,12 @@ pub(crate) fn responses_request_to_completion_request(
         );
     }
     let mut websearch_replay = Vec::new();
-    let mut chat_history =
+    let chat_history =
         convert_response_items(&request.input, protocol, source, &mut websearch_replay)?;
     if chat_history.is_empty() {
         return Err(ApiError::InvalidRequest {
             message: "No convertible messages in request".into(),
         });
-    }
-    if !request.instructions.is_empty() {
-        chat_history.insert(
-            0,
-            Message::System {
-                content: request.instructions.clone(),
-            },
-        );
     }
     let selection = crate::request_tools::request_tools(request);
     let advertised: Vec<&str> = selection

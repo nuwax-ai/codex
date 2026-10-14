@@ -527,6 +527,8 @@ async fn authorization_change_supersedes_in_flight_classification_without_publis
             }],
             phase: None,
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         }])
         .await?;
     let outcomes = wait_for_outcome(&fixture.metrics, &["success", "superseded"]).await?;

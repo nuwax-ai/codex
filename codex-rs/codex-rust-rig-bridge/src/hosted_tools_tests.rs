@@ -388,6 +388,7 @@ fn captured_search_citations_share_the_envelope_byte_budget() {
                 None
             )),
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
         }
     );
 }

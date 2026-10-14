@@ -379,6 +379,7 @@ pub(crate) fn web_search_call_events(
         action: action.clone(),
         wire_blocks,
         internal_chat_message_metadata_passthrough: None,
+        encrypted_content: None,
     };
     vec![
         ResponseEvent::OutputItemAdded(make(None, wire_blocks.clone())),

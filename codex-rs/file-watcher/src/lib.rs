@@ -1,11 +1,6 @@
 //! Watches subscribed files or directories and routes coarse-grained change
 //! notifications to the subscribers that own matching watched paths.
 
-mod backend;
-mod registration;
-
-pub use registration::WatchRegistration;
-
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::Path;
@@ -19,7 +14,9 @@ use std::time::Duration;
 
 use notify::Event;
 use notify::EventKind;
+use notify::RecommendedWatcher;
 use notify::RecursiveMode;
+use notify::Watcher;
 use tokio::runtime::Handle;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::Notify;
@@ -56,24 +53,6 @@ struct WatchState {
 struct SubscriberState {
     watched_paths: HashMap<SubscriberWatchKey, SubscriberWatchState>,
     tx: WatchSender,
-    readiness_invalidation: ReadinessInvalidation,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ReadinessInvalidation {
-    Enabled,
-    Disabled,
-}
-
-enum RawEvent {
-    Filesystem(notify::Result<Event>),
-    Ready(PathBuf),
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum NotificationSource {
-    Filesystem,
-    Readiness,
 }
 
 /// Immutable per-subscriber watch identity.
@@ -238,7 +217,8 @@ impl PathWatchCounts {
 }
 
 struct FileWatcherInner {
-    backend: backend::BackendController,
+    watcher: RecommendedWatcher,
+    watched_paths: HashMap<PathBuf, RecursiveMode>,
 }
 
 /// Coalesces bursts of watch notifications and emits at most once per interval.
@@ -325,8 +305,6 @@ pub struct FileWatcherSubscriber {
 impl FileWatcherSubscriber {
     /// Registers the provided paths for this subscriber and returns an RAII
     /// guard that unregisters them on drop.
-    /// Backend installation runs off-thread. Default subscribers receive a
-    /// coarse readiness invalidation for changes from the setup window.
     pub fn register_paths(&self, watched_paths: Vec<WatchPath>) -> WatchRegistration {
         let watched_paths = dedupe_watched_paths(watched_paths)
             .into_iter()
@@ -340,9 +318,10 @@ impl FileWatcherSubscriber {
                 }
             })
             .collect::<Vec<_>>();
-        self.file_watcher.register_paths(self.id, &watched_paths);
+        let registration_succeeded = self.file_watcher.register_paths(self.id, &watched_paths);
 
         WatchRegistration {
+            registration_succeeded,
             file_watcher: Arc::downgrade(&self.file_watcher),
             subscriber_id: self.id,
             watched_paths: watched_paths
@@ -364,6 +343,40 @@ impl Drop for FileWatcherSubscriber {
     }
 }
 
+/// RAII guard for a set of active path registrations.
+pub struct WatchRegistration {
+    registration_succeeded: bool,
+    file_watcher: std::sync::Weak<FileWatcher>,
+    subscriber_id: SubscriberId,
+    watched_paths: Vec<SubscriberWatchKey>,
+}
+
+impl WatchRegistration {
+    /// Whether all required OS watches registered successfully at creation time.
+    pub fn registration_succeeded(&self) -> bool {
+        self.registration_succeeded
+    }
+}
+
+impl Default for WatchRegistration {
+    fn default() -> Self {
+        Self {
+            registration_succeeded: false,
+            file_watcher: std::sync::Weak::new(),
+            subscriber_id: 0,
+            watched_paths: Vec::new(),
+        }
+    }
+}
+
+impl Drop for WatchRegistration {
+    fn drop(&mut self) {
+        if let Some(file_watcher) = self.file_watcher.upgrade() {
+            file_watcher.unregister_paths(self.subscriber_id, &self.watched_paths);
+        }
+    }
+}
+
 /// Multi-subscriber file watcher built on top of `notify`.
 pub struct FileWatcher {
     inner: Option<Arc<Mutex<FileWatcherInner>>>,
@@ -375,15 +388,13 @@ impl FileWatcher {
     /// on the current Tokio runtime.
     pub fn new() -> notify::Result<Self> {
         let (raw_tx, raw_rx) = mpsc::unbounded_channel();
-        let raw_tx_clone = raw_tx.clone();
+        let raw_tx_clone = raw_tx;
         let watcher = notify::recommended_watcher(move |res| {
-            let _ = raw_tx_clone.send(RawEvent::Filesystem(res));
+            let _ = raw_tx_clone.send(res);
         })?;
         let inner = FileWatcherInner {
-            backend: backend::BackendController::spawn(watcher, move |path| {
-                let _ = raw_tx.send(RawEvent::Ready(path.to_path_buf()));
-            })
-            .map_err(notify::Error::io)?,
+            watcher,
+            watched_paths: HashMap::new(),
         };
         let state = Arc::new(RwLock::new(WatchState::default()));
         let file_watcher = Self {
@@ -406,20 +417,6 @@ impl FileWatcher {
     /// Adds a new subscriber and returns both its registration handle and its
     /// dedicated event receiver.
     pub fn add_subscriber(self: &Arc<Self>) -> (FileWatcherSubscriber, Receiver) {
-        self.add_subscriber_with_readiness(ReadinessInvalidation::Enabled)
-    }
-
-    /// Adds a subscriber that receives real filesystem changes and omits
-    /// readiness invalidations. Await its registration's readiness before
-    /// relying on backend notifications.
-    pub fn add_change_subscriber(self: &Arc<Self>) -> (FileWatcherSubscriber, Receiver) {
-        self.add_subscriber_with_readiness(ReadinessInvalidation::Disabled)
-    }
-
-    fn add_subscriber_with_readiness(
-        self: &Arc<Self>,
-        readiness_invalidation: ReadinessInvalidation,
-    ) -> (FileWatcherSubscriber, Receiver) {
         let (tx, rx) = watch_channel();
         let mut state = self
             .state
@@ -432,7 +429,6 @@ impl FileWatcher {
             SubscriberState {
                 watched_paths: HashMap::new(),
                 tx,
-                readiness_invalidation,
             },
         );
 
@@ -447,7 +443,7 @@ impl FileWatcher {
         &self,
         subscriber_id: SubscriberId,
         watched_paths: &[SubscriberWatchRegistration],
-    ) {
+    ) -> bool {
         let mut state = self
             .state
             .write()
@@ -457,7 +453,7 @@ impl FileWatcher {
         for registration in watched_paths {
             let actual = {
                 let Some(subscriber) = state.subscribers.get_mut(&subscriber_id) else {
-                    return;
+                    return false;
                 };
                 match subscriber.watched_paths.entry(registration.key.clone()) {
                     std::collections::hash_map::Entry::Occupied(mut entry) => {
@@ -487,6 +483,29 @@ impl FileWatcher {
                 self.reconfigure_watch(&actual.path, next_mode, &mut inner_guard);
             }
         }
+
+        // Registration remains best-effort. Check that every requested path has an OS watch.
+        let Some(inner) = &self.inner else {
+            return false;
+        };
+        let guard = inner_guard.get_or_insert_with(|| {
+            inner
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        });
+        let Some(subscriber) = state.subscribers.get(&subscriber_id) else {
+            return false;
+        };
+        watched_paths.iter().all(|registration| {
+            let Some(watch) = subscriber.watched_paths.get(&registration.key) else {
+                return false;
+            };
+            match guard.watched_paths.get(&watch.actual.path) {
+                Some(RecursiveMode::Recursive) => true,
+                Some(RecursiveMode::NonRecursive) => !watch.actual.recursive,
+                None => false,
+            }
+        })
     }
 
     fn unregister_paths(&self, subscriber_id: SubscriberId, watched_paths: &[SubscriberWatchKey]) {
@@ -595,9 +614,30 @@ impl FileWatcher {
             return;
         };
 
-        // Desired subscriptions are distinct from successfully installed
-        // backend watches; the worker owns actual state and retries failures.
-        guard.backend.update(path, next_mode);
+        let existing_mode = guard.watched_paths.get(path).copied();
+        if existing_mode == next_mode {
+            return;
+        }
+
+        if existing_mode.is_some() {
+            if let Err(err) = guard.watcher.unwatch(path) {
+                warn!("failed to unwatch {}: {err}", path.display());
+            }
+            guard.watched_paths.remove(path);
+        }
+
+        let Some(next_mode) = next_mode else {
+            return;
+        };
+        if !path.exists() {
+            return;
+        }
+
+        if let Err(err) = guard.watcher.watch(path, next_mode) {
+            warn!("failed to watch {}: {err}", path.display());
+            return;
+        }
+        guard.watched_paths.insert(path.to_path_buf(), next_mode);
     }
 
     fn apply_actual_watch_move<'a>(
@@ -635,30 +675,28 @@ impl FileWatcher {
 
     // Bridge `notify`'s callback-based events into the Tokio runtime and
     // notify the matching subscribers.
-    fn spawn_event_loop(&self, mut raw_rx: mpsc::UnboundedReceiver<RawEvent>) {
+    fn spawn_event_loop(&self, mut raw_rx: mpsc::UnboundedReceiver<notify::Result<Event>>) {
         if let Ok(handle) = Handle::try_current() {
             let state = Arc::clone(&self.state);
             let inner = self.inner.as_ref().map(Arc::downgrade);
             handle.spawn(async move {
-                while let Some(event) = raw_rx.recv().await {
-                    let (paths, source) = match event {
-                        RawEvent::Filesystem(Ok(event)) => {
+                loop {
+                    match raw_rx.recv().await {
+                        Some(Ok(event)) => {
                             if !is_mutating_event(&event) {
                                 continue;
                             }
                             if event.paths.is_empty() {
                                 continue;
                             }
-                            (event.paths, NotificationSource::Filesystem)
+                            let inner = inner.as_ref().and_then(std::sync::Weak::upgrade);
+                            Self::notify_subscribers(&state, inner.as_ref(), &event.paths).await;
                         }
-                        RawEvent::Filesystem(Err(err)) => {
+                        Some(Err(err)) => {
                             warn!("file watcher error: {err}");
-                            continue;
                         }
-                        RawEvent::Ready(path) => (vec![path], NotificationSource::Readiness),
-                    };
-                    let inner = inner.as_ref().and_then(std::sync::Weak::upgrade);
-                    Self::notify_subscribers(&state, inner.as_ref(), &paths, source).await;
+                        None => break,
+                    }
                 }
             });
         } else {
@@ -670,7 +708,6 @@ impl FileWatcher {
         state: &RwLock<WatchState>,
         inner: Option<&Arc<Mutex<FileWatcherInner>>>,
         event_paths: &[PathBuf],
-        source: NotificationSource,
     ) {
         let subscribers_to_notify: Vec<(WatchSender, Vec<PathBuf>)> = {
             let mut state = state
@@ -688,9 +725,7 @@ impl FileWatcher {
                             subscriber_watch,
                             subscriber_watch_state,
                             event_path,
-                        ) && (source == NotificationSource::Filesystem
-                            || subscriber.readiness_invalidation == ReadinessInvalidation::Enabled)
-                        {
+                        ) {
                             changed_paths.push(path);
                         }
 
@@ -732,17 +767,14 @@ impl FileWatcher {
 
     #[cfg(test)]
     pub(crate) async fn send_paths_for_test(&self, paths: Vec<PathBuf>) {
-        Self::notify_subscribers(
-            &self.state,
-            self.inner.as_ref(),
-            &paths,
-            NotificationSource::Filesystem,
-        )
-        .await;
+        Self::notify_subscribers(&self.state, self.inner.as_ref(), &paths).await;
     }
 
     #[cfg(test)]
-    fn spawn_event_loop_for_test(&self, raw_rx: mpsc::UnboundedReceiver<RawEvent>) {
+    pub(crate) fn spawn_event_loop_for_test(
+        &self,
+        raw_rx: mpsc::UnboundedReceiver<notify::Result<Event>>,
+    ) {
         self.spawn_event_loop(raw_rx);
     }
 

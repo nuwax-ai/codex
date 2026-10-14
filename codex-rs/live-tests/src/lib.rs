@@ -90,6 +90,7 @@ pub use bridge_turns::run_turn;
 pub use bridge_turns::run_turn_rig;
 pub use env::StaticBearerAuth;
 pub use env::anthropic_url_or_skip;
+pub use env::developer_message;
 pub use env::repo_root;
 pub use env::responses_url_or_skip;
 pub use env::shared_auth;

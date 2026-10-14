@@ -4,10 +4,12 @@ use std::sync::Arc;
 use crate::config::Config;
 use codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID;
 use codex_config::McpServerConfig;
+use codex_config::types::PluginsConfigToml;
 use codex_connectors::ConnectorRuntimeManager;
 use codex_connectors::PluginConnectorSource;
 use codex_core_plugins::PluginsManager;
 use codex_exec_server::ExecutorCapabilityDiscoverySnapshot;
+use codex_exec_server::ExecutorCapabilityDiscoveryV2Snapshot;
 use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::ExtensionRegistry;
@@ -155,6 +157,7 @@ impl McpManager {
         .config
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[tracing::instrument(name = "mcp.runtime_config.project_for_step", skip_all)]
     pub(crate) async fn runtime_config_for_step(
         &self,
@@ -164,23 +167,69 @@ impl McpManager {
         identity: McpThreadIdentity<'_>,
         ready_selected_capability_roots: &[SelectedCapabilityRoot],
         executor_capability_discovery: Option<&ExecutorCapabilityDiscoverySnapshot>,
+        executor_capability_discovery_v2: Option<&[ExecutorCapabilityDiscoveryV2Snapshot]>,
     ) -> McpRuntimeProjection {
+        let mut context = McpServerContributionContext::for_step(
+            config,
+            thread_init,
+            thread_store,
+            identity.originator,
+            ready_selected_capability_roots,
+            executor_capability_discovery,
+            executor_capability_discovery_v2,
+        )
+        .with_session_source(identity.session_source)
+        .with_auth_changed(identity.auth_changed);
+        if let McpEnvironmentScope::Selected(environments) = &identity.environments {
+            context = context.with_selected_environments(environments);
+        }
         self.runtime_config_with_context(
-            McpServerContributionContext::for_step(
-                config,
-                thread_init,
-                thread_store,
-                identity.originator,
-                ready_selected_capability_roots,
-                executor_capability_discovery,
-            )
-            .with_session_source(identity.session_source)
-            .with_auth_changed(identity.auth_changed),
+            context,
             Some(identity.originator),
             identity.environments,
             identity.disabled_plugin_ids,
         )
         .await
+    }
+
+    /// Resolves only plugins from this step's ready roots, independent of shared MCP refresh.
+    pub(crate) async fn selected_plugins_for_step(
+        &self,
+        context: McpServerContributionContext<'_, Config>,
+        plugins_config: &PluginsConfigToml,
+        disabled_plugin_ids: &[String],
+    ) -> SelectedPluginSnapshot {
+        let roots = context
+            .ready_selected_capability_roots()
+            .unwrap_or_default();
+        let mut selected = SelectedPluginSnapshot::default();
+        if roots.is_empty() {
+            return selected;
+        }
+        for contributor in self.extensions.mcp_server_contributors() {
+            for SelectedPlugin {
+                selected_root_id,
+                plugin_id,
+                ..
+            } in contributor.selected_plugins(context, plugins_config).await
+            {
+                if !roots.iter().any(|root| root.id == selected_root_id) {
+                    continue;
+                }
+                if !context.config().features.enabled(Feature::Plugins)
+                    || !plugins_config.allows_plugin(&plugin_id)
+                    || disabled_plugin_ids.contains(&plugin_id)
+                {
+                    selected.disabled_plugin_roots.push(selected_root_id);
+                } else {
+                    selected.plugins.push(SelectedPluginIdentity {
+                        selected_root_id: Some(selected_root_id),
+                        plugin_id,
+                    });
+                }
+            }
+        }
+        selected
     }
 
     async fn runtime_config_with_context(
@@ -191,6 +240,7 @@ impl McpManager {
         disabled_plugin_ids: &[String],
     ) -> McpRuntimeProjection {
         let config = context.config();
+        let plugins_config = &config.plugins;
         let mut selected_plugin_connector_sources = Vec::new();
         let mut selected_plugin_registrations = Vec::new();
         let mut selected_plugins = Vec::new();
@@ -207,8 +257,12 @@ impl McpManager {
                 selected_root_id,
                 plugin_id,
                 mcp,
-            } in contributor.selected_plugins(context).await
+            } in contributor.selected_plugins(context, plugins_config).await
             {
+                if !plugins_config.allows_plugin(&plugin_id) {
+                    disabled_plugin_roots.push(selected_root_id);
+                    continue;
+                }
                 let selection_order = plugin_selection_order;
                 plugin_selection_order += 1;
                 let disabled = disabled_plugin_ids.contains(&plugin_id);

@@ -1,4 +1,5 @@
 use super::*;
+use rig_core::completion::message::Message;
 #[cfg(test)]
 mod mapping {
     use super::*;
@@ -20,11 +21,26 @@ mod mapping {
             .map(|(request, meta)| (request, meta.custom_names))
     }
 
+    fn base_instructions_item() -> ResponseItem {
+        ResponseItem::Message {
+            id: None,
+            role: "developer".into(),
+            content: vec![ContentItem::InputText {
+                text: "be helpful".into(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
+        }
+    }
+
     fn base_request(input: Vec<ResponseItem>) -> ResponsesApiRequest {
         ResponsesApiRequest {
             model: "test-model".into(),
-            instructions: "be helpful".into(),
-            input,
+            input: std::iter::once(base_instructions_item())
+                .chain(input)
+                .collect(),
             tools: None,
             tool_choice: "auto".into(),
             parallel_tool_calls: true,
@@ -51,6 +67,8 @@ mod mapping {
             }],
             phase: None,
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         }
     }
 
@@ -60,9 +78,13 @@ mod mapping {
             role: "assistant".into(),
             content: vec![ContentItem::OutputText {
                 text: text.to_string(),
+                annotations: None,
+                logprobs: None,
             }],
             phase: None,
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         }
     }
 
@@ -89,6 +111,8 @@ mod mapping {
             encrypted_function_args: None,
             call_id: call_id.into(),
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         }
     }
 
@@ -108,7 +132,9 @@ mod mapping {
 
     #[test]
     fn empty_input_yields_none() {
-        assert!(responses_request_to_completion_request(&base_request(vec![])).is_none());
+        let mut request = base_request(vec![]);
+        request.input.clear();
+        assert!(responses_request_to_completion_request(&request).is_none());
     }
 
     #[test]
@@ -351,6 +377,8 @@ mod mapping {
             }],
             phase: None,
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         }
     }
 
@@ -591,7 +619,6 @@ mod text_format_tests {
     fn base_request(input: Vec<ResponseItem>) -> ResponsesApiRequest {
         ResponsesApiRequest {
             model: "m".into(),
-            instructions: String::new(),
             input,
             tools: None,
             tool_choice: "auto".into(),
@@ -619,6 +646,8 @@ mod text_format_tests {
             }],
             phase: None,
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         }
     }
 }
@@ -647,7 +676,6 @@ mod review_fix_tests {
     fn base_request(input: Vec<ResponseItem>) -> ResponsesApiRequest {
         ResponsesApiRequest {
             model: "m".into(),
-            instructions: String::new(),
             input,
             tools: None,
             tool_choice: "auto".into(),
@@ -675,6 +703,8 @@ mod review_fix_tests {
             }],
             phase: None,
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         }
     }
 
@@ -684,9 +714,13 @@ mod review_fix_tests {
             role: "assistant".into(),
             content: vec![ContentItem::OutputText {
                 text: text.to_string(),
+                annotations: None,
+                logprobs: None,
             }],
             phase: None,
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         }
     }
 
@@ -713,6 +747,8 @@ mod review_fix_tests {
             encrypted_function_args: None,
             call_id: call_id.into(),
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         }
     }
 
@@ -831,6 +867,8 @@ mod review_fix_tests {
                 }],
                 phase: None,
                 internal_chat_message_metadata_passthrough: None,
+                encrypted_content: None,
+                status: None,
             }]))
             .expect("convertible");
         let Message::User { content } = req.chat_history.last().expect("user") else {
@@ -864,7 +902,6 @@ mod custom_tool_tests {
     fn custom_tool_gets_input_wrapper_schema_and_round_trips() {
         let mut request = ResponsesApiRequest {
             model: "m".into(),
-            instructions: String::new(),
             input: vec![ResponseItem::Message {
                 id: None,
                 role: "user".into(),
@@ -873,6 +910,8 @@ mod custom_tool_tests {
                 }],
                 phase: None,
                 internal_chat_message_metadata_passthrough: None,
+                encrypted_content: None,
+                status: None,
             }],
             tools: None,
             tool_choice: "auto".into(),

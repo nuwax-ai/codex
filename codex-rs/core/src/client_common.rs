@@ -29,8 +29,7 @@ pub struct Prompt {
     /// absent on every ordinary turn.
     pub(crate) opaque_replay_grant: Option<crate::guardian::OpaqueReplayGrant>,
 
-    /// Tools available to the model, including additional tools sourced from
-    /// external MCP servers.
+    /// Tool definitions to inject into this request, empty when supplied by history.
     pub(crate) tools: Arc<[ToolSpec]>,
 
     /// Whether parallel tool calls are permitted for this prompt.
@@ -125,7 +124,7 @@ fn normalize_image_detail(detail: &mut Option<ImageDetail>, model_info: &ModelIn
 
 pub struct ResponseStream {
     pub(crate) rx_event: mpsc::Receiver<Result<ResponseEvent>>,
-    pub(crate) interrupt: Option<oneshot::Sender<()>>,
+    pub(crate) interrupt: Option<oneshot::Sender<codex_api::ResponseInterrupt>>,
     /// Signals the mapper task that the consumer stopped polling before the
     /// provider stream reached its own terminal event.
     pub(crate) consumer_dropped: CancellationToken,

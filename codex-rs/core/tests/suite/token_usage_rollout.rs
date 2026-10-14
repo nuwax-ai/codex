@@ -70,7 +70,7 @@ async fn recovered_turn_keeps_prior_sampling_usage_on_a_new_session() -> Result<
             text_elements: Vec::new(),
         }]))
         .await?;
-    let codex_core::TurnInputSubmission::Started { turn_id } = submission else {
+    let codex_core::TurnInputSubmission::Started { turn_id, .. } = submission else {
         panic!("expected a started turn");
     };
     wait_for_event(&test.codex, |event| {
@@ -130,6 +130,7 @@ async fn recovered_turn_keeps_prior_sampling_usage_on_a_new_session() -> Result<
             })
             .await?,
         StartIfIdleSubmission::Started {
+            root_turn_id: turn_id.clone(),
             turn_id: turn_id.clone()
         }
     );

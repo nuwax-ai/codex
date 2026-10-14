@@ -32,7 +32,7 @@ use codex_live_tests::LiveWire;
 use codex_live_tests::anthropic_url_or_skip;
 use codex_live_tests::responses_url_or_skip;
 use codex_live_tests::run_turn;
-use codex_live_tests::user_message;
+use codex_live_tests::{developer_message, user_message};
 use codex_protocol::models::FunctionCallOutputBody;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ResponseItem;
@@ -785,8 +785,9 @@ fn ab_diff_fixtures() {
 fn base_request(cfg: &LiveConfig, instructions: &str, prompt: &str) -> ResponsesApiRequest {
     ResponsesApiRequest {
         model: cfg.model.clone(),
-        instructions: instructions.into(),
-        input: vec![user_message(prompt)],
+        // Base instructions travel as the leading developer message now that
+        // the request-level instructions field is gone.
+        input: vec![developer_message(instructions), user_message(prompt)],
         tools: None,
         tool_choice: "auto".into(),
         parallel_tool_calls: true,

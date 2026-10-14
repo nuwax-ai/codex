@@ -48,6 +48,7 @@ async fn anthropic_actual_credentials_keep_signed_replay_and_rotation_drops_only
     );
     let responder = mount_anthropic_sequence(&server, vec![first, follow.clone(), follow]).await;
     let provider = ModelProviderInfo {
+        capabilities: None,
         requires_openai_auth: true,
         // The selector remains identical while the actual key rotates. PATH is
         // existing non-secret state; the test never changes process environment.

@@ -94,9 +94,16 @@ fn assert_lifecycle(events: &[ResponseEvent], expected_completions: usize) -> Ve
                 if content.is_empty() {
                     content.push(ContentItem::OutputText {
                         text: String::new(),
+                        annotations: None,
+                        logprobs: None,
                     });
                 }
-                let ContentItem::OutputText { text } = &mut content[0] else {
+                let ContentItem::OutputText {
+                    text,
+                    annotations: None,
+                    logprobs: None,
+                } = &mut content[0]
+                else {
                     panic!("unexpected message content");
                 };
                 text.push_str(delta);
@@ -275,6 +282,8 @@ fn interleaved_parallel_calls_commit_in_first_seen_order_with_matching_ids_and_i
         encrypted_function_args: None,
         call_id: "wire-t1".into(),
         internal_chat_message_metadata_passthrough: None,
+        encrypted_content: None,
+        status: None,
     };
     let custom_done = ResponseItem::CustomToolCall {
         id: Some(codex_protocol::ResponseItemId::from_server(
@@ -286,6 +295,7 @@ fn interleaved_parallel_calls_commit_in_first_seen_order_with_matching_ids_and_i
         input: "raw input".into(),
         call_id: "wire-t2".into(),
         internal_chat_message_metadata_passthrough: None,
+        encrypted_content: None,
     };
     assert_eq!(done, vec![function_done.clone(), custom_done.clone()]);
     let mut function_added = function_done.clone();
@@ -347,9 +357,15 @@ fn paused_final_flushes_text_tool_text_in_order_without_completed() {
     let done = assert_lifecycle(&events, /*expected_completions*/ 0);
     assert!(
         matches!(done.as_slice(), [ResponseItem::Message { content: before, .. }, ResponseItem::FunctionCall { call_id, .. }, ResponseItem::Message { content: after, .. }]
-        if before == &vec![ContentItem::OutputText { text: "before".into() }]
-            && call_id == "wire-t1"
-            && after == &vec![ContentItem::OutputText { text: "after".into() }])
+                if before == &vec![ContentItem::OutputText { text: "before".into(),
+         annotations: None,
+         logprobs: None,
+        }]
+                    && call_id == "wire-t1"
+                    && after == &vec![ContentItem::OutputText { text: "after".into(),
+         annotations: None,
+         logprobs: None,
+        }])
     );
     assert!(!state.completed_emitted());
 }

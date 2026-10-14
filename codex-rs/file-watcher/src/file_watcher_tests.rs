@@ -277,7 +277,7 @@ fn recursive_registration_downgrades_to_non_recursive_after_drop() {
         let inner = watcher.inner.as_ref().expect("watcher inner");
         let inner = inner.lock().expect("inner lock");
         assert_eq!(
-            inner.backend.desired.lock().unwrap().get(&root),
+            inner.watched_paths.get(&root),
             Some(&RecursiveMode::Recursive)
         );
     }
@@ -288,7 +288,7 @@ fn recursive_registration_downgrades_to_non_recursive_after_drop() {
         let inner = watcher.inner.as_ref().expect("watcher inner");
         let inner = inner.lock().expect("inner lock");
         assert_eq!(
-            inner.backend.desired.lock().unwrap().get(&root),
+            inner.watched_paths.get(&root),
             Some(&RecursiveMode::NonRecursive)
         );
     }
@@ -297,7 +297,7 @@ fn recursive_registration_downgrades_to_non_recursive_after_drop() {
 }
 
 #[test]
-fn unregister_holds_state_lock_until_desired_update_is_submitted() {
+fn unregister_holds_state_lock_until_unwatch_finishes() {
     let temp_dir = tempfile::tempdir().expect("temp dir");
     let root = temp_dir.path().join("watched-dir");
     std::fs::create_dir(&root).expect("create root");
@@ -340,7 +340,7 @@ fn unregister_holds_state_lock_until_desired_update_is_submitted() {
     let inner = watcher.inner.as_ref().expect("watcher inner");
     let inner = inner.lock().expect("inner lock");
     assert_eq!(
-        inner.backend.desired.lock().unwrap().get(&root),
+        inner.watched_paths.get(&root),
         Some(&RecursiveMode::NonRecursive)
     );
     drop(inner);
@@ -556,19 +556,19 @@ async fn spawn_event_loop_filters_non_mutating_events() {
     watcher.spawn_event_loop_for_test(raw_rx);
 
     raw_tx
-        .send(RawEvent::Filesystem(Ok(notify_event(
+        .send(Ok(notify_event(
             EventKind::Access(AccessKind::Open(AccessMode::Any)),
             vec![path("/tmp/skills/SKILL.md")],
-        ))))
+        )))
         .expect("send access event");
     let blocked = timeout(TEST_THROTTLE_INTERVAL, rx.recv()).await;
     assert_eq!(blocked.is_err(), true);
 
     raw_tx
-        .send(RawEvent::Filesystem(Ok(notify_event(
+        .send(Ok(notify_event(
             EventKind::Create(CreateKind::File),
             vec![path("/tmp/skills/SKILL.md")],
-        ))))
+        )))
         .expect("send create event");
     let event = timeout(Duration::from_secs(1), rx.recv())
         .await
@@ -593,129 +593,102 @@ async fn dropping_live_watcher_releases_inner_watcher() {
 }
 
 #[tokio::test]
-async fn live_registration_invalidates_setup_window_and_delivers_later_changes() {
-    let temp = tempfile::tempdir().expect("fixture directory");
-    let path = temp.path().join("observed.txt");
-    std::fs::write(&path, "initial").expect("initial content");
-    let watcher = Arc::new(FileWatcher::new().expect("live watcher"));
-    let (subscriber, mut receiver) = watcher.add_subscriber();
-    let registration = subscriber.register_path(path.clone(), /*recursive*/ false);
-    registration.ready().await.expect("backend readiness");
-    let ready = tokio::time::timeout(Duration::from_secs(/*secs*/ 5), receiver.recv())
-        .await
-        .expect("backend readiness invalidation")
-        .expect("open subscription");
-    assert_eq!(
-        ready,
-        FileWatcherEvent {
-            paths: vec![path.clone()]
-        }
-    );
-    std::fs::write(&path, "changed after readiness").expect("changed content");
-    let changed = tokio::time::timeout(Duration::from_secs(/*secs*/ 5), receiver.recv())
-        .await
-        .expect("real backend change")
-        .expect("open subscription");
-    assert_eq!(changed, FileWatcherEvent { paths: vec![path] });
-}
-
-#[tokio::test]
-async fn readiness_source_is_filtered_without_filtering_real_root_changes() {
-    let temp = tempfile::tempdir().expect("fixture directory");
-    let path = temp.path().join("observed.txt");
-    std::fs::write(&path, "initial").expect("initial content");
-    let watcher = Arc::new(FileWatcher::noop());
-    let (cached, mut cached_receiver) = watcher.add_subscriber();
-    let (changes, mut change_receiver) = watcher.add_change_subscriber();
-    let _cached_registration = cached.register_path(path.clone(), /*recursive*/ false);
-    let _change_registration = changes.register_path(path.clone(), /*recursive*/ false);
-    let (raw_tx, raw_rx) = mpsc::unbounded_channel();
-    watcher.spawn_event_loop_for_test(raw_rx);
-    raw_tx
-        .send(RawEvent::Ready(path.clone()))
-        .expect("readiness event");
-    assert_eq!(
-        timeout(Duration::from_secs(/*secs*/ 1), cached_receiver.recv())
-            .await
-            .expect("cached readiness invalidation"),
-        Some(FileWatcherEvent {
-            paths: vec![path.clone()]
-        })
-    );
-    assert!(
-        timeout(TEST_THROTTLE_INTERVAL, change_receiver.recv())
-            .await
-            .is_err()
-    );
-    raw_tx
-        .send(RawEvent::Filesystem(Ok(notify_event(
-            EventKind::Modify(ModifyKind::Any),
-            vec![path.clone()],
-        ))))
-        .expect("real root change");
-    assert_eq!(
-        timeout(Duration::from_secs(/*secs*/ 1), change_receiver.recv())
-            .await
-            .expect("real change notification"),
-        Some(FileWatcherEvent { paths: vec![path] })
-    );
-}
-
-#[tokio::test]
-async fn change_subscriber_waits_for_readiness_and_delivers_only_real_changes() {
-    let temp = tempfile::tempdir().expect("fixture directory");
-    let path = temp.path().join("observed.txt");
-    std::fs::write(&path, "initial").expect("initial content");
-    let watcher = Arc::new(FileWatcher::new().expect("live watcher"));
-    let (subscriber, mut receiver) = watcher.add_change_subscriber();
-    let registration = subscriber.register_path(path.clone(), /*recursive*/ false);
-    registration.ready().await.expect("backend readiness");
-    assert!(
-        timeout(Duration::from_millis(/*millis*/ 100), receiver.recv())
-            .await
-            .is_err()
-    );
-    std::fs::write(&path, "changed after readiness").expect("changed content");
-    let changed = timeout(Duration::from_secs(/*secs*/ 5), receiver.recv())
-        .await
-        .expect("real backend change")
-        .expect("open subscription");
-    assert_eq!(changed, FileWatcherEvent { paths: vec![path] });
-}
-
-#[tokio::test]
-async fn missing_actual_path_remains_desired_and_activates_after_recreation() {
-    let temp = tempfile::tempdir().expect("fixture directory");
-    let path = temp.path().join("registration-race.txt");
-    std::fs::write(&path, "initial").expect("initial content");
-    let watcher = Arc::new(FileWatcher::new().expect("live watcher"));
-    let (subscriber, mut receiver) = watcher.add_subscriber();
-    let requested = WatchPath {
-        path: path.clone(),
-        recursive: false,
-    };
-    let (actual, matched, fallback) = actual_watch_path(&requested);
-    let registration = SubscriberWatchRegistration {
-        key: SubscriberWatchKey { requested, matched },
-        actual,
-        fallback,
-    };
-    // Deterministically delete the selected actual path between path selection
-    // and submitting the logical registration to the backend.
-    std::fs::remove_file(&path).expect("remove before backend registration");
-    watcher.register_paths(subscriber.id, &[registration]);
-    {
-        let inner = watcher.inner.as_ref().expect("watcher inner");
-        let inner = inner.lock().expect("inner lock");
+async fn registration_reports_success_for_new_and_shared_watches()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let watcher = Arc::new(FileWatcher::new()?);
+    let (subscriber, _rx) = watcher.add_subscriber();
+    let (other_subscriber, _other_rx) = watcher.add_subscriber();
+    // Missing directories succeed through a non-recursive watch on their existing parent.
+    for path in [
+        directory.path().to_path_buf(),
+        directory.path().join("missing"),
+    ] {
+        let first = subscriber.register_path(path.clone(), /*recursive*/ true);
+        let shared = other_subscriber.register_path(path.clone(), /*recursive*/ false);
+        assert!(first.registration_succeeded(), "new watch for {path:?}");
+        assert!(shared.registration_succeeded(), "shared watch for {path:?}");
+        drop(first);
         assert_eq!(
-            *inner.backend.desired.lock().expect("desired lock"),
-            HashMap::from([(path.clone(), RecursiveMode::NonRecursive)])
+            watcher.watch_counts_for_test(directory.path()),
+            Some((1, 0))
+        );
+        drop(shared);
+        assert_eq!(watcher.watch_counts_for_test(directory.path()), None);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn registration_reports_missing_os_watches() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let root = directory.path().canonicalize()?;
+    let missing = root.join("a-missing");
+    let watched = root.join("b-watched");
+    std::fs::create_dir(&watched)?;
+    let watcher = Arc::new(FileWatcher::new()?);
+    let (subscriber, _rx) = watcher.add_subscriber();
+    let paths = vec![
+        WatchPath {
+            path: missing.clone(),
+            recursive: true,
+        },
+        WatchPath {
+            path: watched.clone(),
+            recursive: true,
+        },
+    ];
+    // Model a path disappearing after resolution but before the OS registration.
+    let registrations = paths
+        .iter()
+        .map(|watch| SubscriberWatchRegistration {
+            key: SubscriberWatchKey {
+                requested: watch.clone(),
+                matched: watch.clone(),
+            },
+            actual: watch.clone(),
+            fallback: false,
+        })
+        .collect::<Vec<_>>();
+    assert!(!watcher.register_paths(subscriber.id, &registrations));
+
+    std::fs::create_dir(&missing)?;
+    // The directory now exists, but the unchanged mode does not retry its OS watch.
+    let repeated = subscriber.register_paths(paths);
+    assert!(!repeated.registration_succeeded());
+    // The other path registered successfully despite the first path's failure.
+    let successful = subscriber.register_path(watched.clone(), /*recursive*/ true);
+    assert!(successful.registration_succeeded());
+    {
+        let inner = watcher
+            .inner
+            .as_ref()
+            .ok_or("missing watcher backend")?
+            .lock()
+            .map_err(|_| "poisoned watcher lock")?;
+        assert_eq!(
+            inner.watched_paths,
+            HashMap::from([(watched.clone(), RecursiveMode::Recursive)])
         );
     }
-    std::fs::write(&path, "recreated").expect("recreate without another registration");
-    let ready = timeout(Duration::from_secs(/*secs*/ 5), receiver.recv())
-        .await
-        .expect("backend activation after recreation")
-        .expect("open subscription");
-    assert_eq!(ready, FileWatcherEvent { paths: vec![path] });
+    drop(successful);
+    drop(repeated);
+    // Release the original registrations made directly through the subscriber ID.
+    drop(subscriber);
+    assert_eq!(watcher.watch_counts_for_test(&missing), None);
+    assert_eq!(watcher.watch_counts_for_test(&watched), None);
+    Ok(())
+}
+
+#[test]
+fn noop_registration_reports_failure() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let watcher = Arc::new(FileWatcher::noop());
+    let (subscriber, _rx) = watcher.add_subscriber();
+    let registration =
+        subscriber.register_path(directory.path().to_path_buf(), /*recursive*/ true);
+    assert!(!registration.registration_succeeded());
+    drop(registration);
+    assert_eq!(watcher.watch_counts_for_test(directory.path()), None);
+    Ok(())
 }

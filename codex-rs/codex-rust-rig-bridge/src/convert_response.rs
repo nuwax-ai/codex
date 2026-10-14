@@ -153,6 +153,8 @@ pub(crate) fn rig_event_to_response_events(
                     content: vec![],
                     phase: None,
                     internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
                 }));
             }
             pending.text_buffer.push_str(&text.text);
@@ -227,9 +229,13 @@ fn finish_text(pending: &mut PendingRigMessage, events: &mut Vec<ResponseEvent>)
             role: "assistant".into(),
             content: vec![ContentItem::OutputText {
                 text: std::mem::take(&mut pending.text_buffer),
+                annotations: None,
+                logprobs: None,
             }],
             phase: None,
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         }));
     }
 }

@@ -92,18 +92,18 @@ impl FsWatchManager {
             )));
         }
         let outgoing = self.outgoing.clone();
-        let (subscriber, rx) = self.file_watcher.add_change_subscriber();
+        let (subscriber, rx) = self.file_watcher.add_subscriber();
         let watch_root = params.path.clone();
         let registration = subscriber.register_paths(vec![WatchPath {
             path: params.path.to_path_buf(),
             recursive: false,
         }]);
-        registration.ready().await.map_err(|error| {
-            internal_error(format!(
-                "failed to watch {}: {error}",
+        if !registration.registration_succeeded() {
+            return Err(internal_error(format!(
+                "failed to watch {}",
                 watch_root.as_path().display()
-            ))
-        })?;
+            )));
+        }
         let (terminate_tx, terminate_rx) = oneshot::channel();
 
         match self.state.lock().await.entries.entry(watch_key) {

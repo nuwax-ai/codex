@@ -89,6 +89,8 @@ pub fn chat_event_to_response_event(
                     encrypted_function_args: None,
                     call_id: call_id.clone(),
                     internal_chat_message_metadata_passthrough: None,
+                    encrypted_content: None,
+                    status: None,
                 }));
             }
 
@@ -194,9 +196,13 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
             role: "assistant".into(),
             content: vec![ContentItem::OutputText {
                 text: std::mem::take(&mut pending.text_buffer),
+                annotations: None,
+                logprobs: None,
             }],
             phase: None,
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         };
         events.push(ResponseEvent::OutputItemDone(message_item));
     }
@@ -213,6 +219,8 @@ fn handle_stream_end(end: StreamEnd, pending: &mut PendingAssistantMessage) -> V
             encrypted_function_args: None,
             call_id: pending_tc.id,
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         };
         events.push(ResponseEvent::OutputItemDone(tc_item));
     }
@@ -250,6 +258,8 @@ fn ensure_message_item_added(
             content: vec![],
             phase: None,
             internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
         }));
     }
 }
@@ -302,7 +312,8 @@ mod tests {
         // First chunk emits OutputItemAdded(Message) + OutputTextDelta
         assert_eq!(events.len(), 2);
         assert!(matches!(&events[0], ResponseEvent::OutputItemAdded(
-            ResponseItem::Message { role, .. }
+            ResponseItem::Message { role, ..
+}
         ) if role == "assistant"));
         assert!(matches!(&events[1], ResponseEvent::OutputTextDelta(t) if t == "Hello"));
         assert_eq!(pending.text_buffer, "Hello");
@@ -508,7 +519,8 @@ mod tests {
         // First chunk: OutputItemAdded(CustomToolCall) + ToolCallInputDelta
         assert_eq!(events.len(), 2);
         assert!(matches!(&events[0], ResponseEvent::OutputItemAdded(
-            ResponseItem::FunctionCall { call_id, name, .. }
+            ResponseItem::FunctionCall { call_id, name, ..
+}
         ) if call_id == "call_1" && name == "get_weather"));
         assert!(matches!(&events[1], ResponseEvent::ToolCallInputDelta {
             call_id, ..

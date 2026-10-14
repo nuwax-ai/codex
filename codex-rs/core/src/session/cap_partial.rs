@@ -159,7 +159,7 @@ impl CapPartialCapture {
             }
             ResponseItem::Message { content, .. } => {
                 for part in content {
-                    if let codex_protocol::models::ContentItem::OutputText { text } = part {
+                    if let codex_protocol::models::ContentItem::OutputText { text, .. } = part {
                         self.append_bounded(index, text);
                     }
                 }

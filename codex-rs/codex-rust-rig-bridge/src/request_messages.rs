@@ -157,7 +157,10 @@ pub(crate) fn convert_response_items(
                     let mut text = Vec::new();
                     for part in content {
                         match part {
-                            ContentItem::InputText { text: part } | ContentItem::OutputText { text: part } => text.push(part.as_str()),
+                            ContentItem::InputText { text: part } | ContentItem::OutputText { text: part,
+ annotations: None,
+ logprobs: None,
+} => text.push(part.as_str()),
                             _ => return Err(codex_api::ApiError::InvalidRequest { message: "Non-text system/developer content cannot be sent through the Rig bridge".into() }),
                         }
                     }

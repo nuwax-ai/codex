@@ -228,7 +228,9 @@ pub(crate) fn convert_user_content(
     _protocol: RigProtocol,
 ) -> Result<Vec<UserContent>, codex_api::ApiError> {
     items.iter().map(|item| match item {
-        ContentItem::InputText { text } | ContentItem::OutputText { text } => Ok(UserContent::text(text.clone())),
+        ContentItem::InputText { text } | ContentItem::OutputText { text, .. } => {
+        Ok(UserContent::text(text.clone()))
+    },
         ContentItem::InputImage { image, detail } => {
             let ImageReference::Inline { image_url } = image else {
                 return Err(codex_api::ApiError::InvalidRequest {
@@ -250,7 +252,7 @@ pub(crate) fn convert_assistant_content(
     items
         .iter()
         .map(|item| match item {
-            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+            ContentItem::InputText { text } | ContentItem::OutputText { text, .. } => {
                 Ok(AssistantContent::text(text.clone()))
             }
             ContentItem::InputImage { .. } => Err(codex_api::ApiError::InvalidRequest {
