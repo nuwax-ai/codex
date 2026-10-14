@@ -106,7 +106,7 @@ fn attempt_budget_spans_recorder_instances_through_the_shared_file() {
     // second process; only the shared ledger can hold the budget.
     let second = budgeted_recorder(Some(path.clone()), /*max_attempts*/ 3);
     record(
-        &Some(second.clone()),
+        &Some(second),
         &request("https://example.com/responses", "{\"attempt\":3}"),
     )
     .expect("ledger has room for the third attempt");

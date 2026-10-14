@@ -379,6 +379,7 @@ async fn run_binary_scene(
 /// artifacts and scene assertions with the config mode; additionally proves
 /// after a successful scene that neither the credential nor the ephemeral
 /// provider definition leaked into config, rollouts or artifacts.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_nuwax_env_marker_turn(
     protocol: &str,
     cfg: &LiveConfig,
