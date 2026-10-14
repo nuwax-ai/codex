@@ -280,17 +280,29 @@ impl ShellSnapshotCache {
         let shell_start = prepared.command.len() - params.argv.len();
         // Automatic startup files run before the restoration script and could
         // reintroduce environment variables that the snapshot already filtered.
-        let (shell_flag, startup) = match shell_type {
-            ShellType::Bash => ("-pc", "set +o privileged\n"),
-            ShellType::Zsh => ("-fc", "setopt RCS\n"),
-            ShellType::Sh => ("-c", ""),
+        // Bash also auto-sources ~/.bashrc for non-interactive `-c` shells
+        // whenever it cannot rule out a network stdin: the network sandbox
+        // denies getpeername with EPERM, which bash's isnetconn() counts as a
+        // network connection (only ENOTSOCK/ENOTCONN/EINVAL/EBADF mean "not a
+        // socket"). `--norc` is the only gate on that path; `-p` suppresses
+        // BASH_ENV but not this sourcing.
+        let (shell_flags, startup) = match shell_type {
+            // `--norc` must lead: the sandbox wrapper chain mishandles a long
+            // option placed between short flags, handing bash a stray `--`.
+            ShellType::Bash => (&["--norc", "-pc"][..], "set +o privileged\n"),
+            ShellType::Zsh => (&["-f", "-c"][..], "setopt RCS\n"),
+            ShellType::Sh => (&["-c"][..], ""),
             ShellType::PowerShell | ShellType::Cmd => unreachable!(),
         };
-        prepared.command[shell_start + 1] = shell_flag.to_string();
-        prepared.command[shell_start + 2] = format!(
+        let replay_script = format!(
             "{startup}if ! {restore} >/dev/null; then printf 'failed to restore shell snapshot\\n' >&2; fi\n{}",
             params.argv[2]
         );
+        prepared.command.truncate(shell_start + 1);
+        prepared
+            .command
+            .extend(shell_flags.iter().copied().map(String::from));
+        prepared.command.push(replay_script);
 
         Ok(reader)
     }
