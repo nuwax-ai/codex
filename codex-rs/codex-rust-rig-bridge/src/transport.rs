@@ -390,7 +390,7 @@ impl HttpClientExt for RigHttpClient {
         U: From<Bytes> + WasmCompatSend + 'static,
     {
         let request = self.prepare(request).map(|request| request.map(Into::into));
-        let inner = self.inner.clone();
+        let inner = rig_reqwest::ReqwestClient::from(self.inner.clone());
         async move {
             HttpClientExt::send(&inner, request?)
                 .await
@@ -407,7 +407,7 @@ impl HttpClientExt for RigHttpClient {
         U: From<Bytes> + WasmCompatSend + 'static,
     {
         let request = self.prepare(request);
-        let inner = self.inner.clone();
+        let inner = rig_reqwest::ReqwestClient::from(self.inner.clone());
         async move {
             HttpClientExt::send_multipart(&inner, request?)
                 .await
@@ -500,7 +500,7 @@ impl HttpClientExt for RigHttpClient {
             let anthropic_sse_tee = self.anthropic_sse_tee.clone();
             Ok(response.map(|body| {
                 let body = Box::pin(body.map(|chunk| chunk.map_err(sanitize_error)))
-                    as rig_core::http_client::sse::BoxedStream;
+                    as rig_core::http_client::BoxedStream;
                 match self.protocol {
                     // Responses passthrough consumes the raw SSE bytes with
                     // codex-api's decoder and its own strict terminal policy;
@@ -538,9 +538,9 @@ const WIRE_TEE_CAP_BYTES: usize = 8 * 1024 * 1024;
 /// through unchanged, up to [`WIRE_TEE_CAP_BYTES`]. Recording only; `None`
 /// returns the stream untouched.
 fn tee_wire_bytes(
-    body: rig_core::http_client::sse::BoxedStream,
+    body: rig_core::http_client::BoxedStream,
     recorder: Option<Arc<Mutex<Vec<u8>>>>,
-) -> rig_core::http_client::sse::BoxedStream {
+) -> rig_core::http_client::BoxedStream {
     match recorder {
         Some(recorder) => {
             let mut capped = false;
@@ -569,7 +569,7 @@ fn tee_wire_bytes(
                     }
                 }
                 chunk
-            })) as rig_core::http_client::sse::BoxedStream
+            })) as rig_core::http_client::BoxedStream
         }
         None => body,
     }

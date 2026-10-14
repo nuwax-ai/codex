@@ -15,6 +15,9 @@ pub(crate) async fn send_streaming(
     retry: Option<&RetryConfig>,
     recorder: &crate::FinalRequestRecorder,
 ) -> Result<StreamingResponse, Error> {
+    // rig 0.44's HttpClientExt lives on rig-reqwest's client wrapper; the
+    // decorator's pooled reqwest client is wrapped per attempt (cheap clone).
+    let client = rig_reqwest::ReqwestClient::from(client.clone());
     let policy = retry.map(RetryConfig::to_policy);
     let max_retries = policy
         .as_ref()
@@ -68,9 +71,7 @@ pub(crate) async fn send_streaming(
 
 fn classify(error: &Error) -> Option<TransportError> {
     match error {
-        Error::InvalidStatusCode(status)
-        | Error::InvalidStatusCodeWithMessage(status, _)
-        | Error::InvalidStatusCodeWithDetails { status, .. } => Some(TransportError::Http {
+        Error::InvalidStatusCodeWithDetails { status, .. } => Some(TransportError::Http {
             status: *status,
             url: None,
             headers: None,

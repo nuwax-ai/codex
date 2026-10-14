@@ -6,7 +6,6 @@ use http::HeaderMap;
 // rest of codex. Depend on rig's major explicitly (renamed) so the two never
 // share a type — features unify with rig-core's defaults (rustls TLS).
 use reqwest_rig as reqwest13;
-use rig_core::client::CompletionClient;
 
 /// Which rig provider implementation serves a given base URL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
@@ -138,11 +137,24 @@ static SHARED_HTTP_CLIENTS: std::sync::OnceLock<
 /// cap, so default generously (documented in the plan: revisit per model).
 pub const DEFAULT_ANTHROPIC_MAX_TOKENS: u64 = 16384;
 
-pub(crate) type RigChatModel =
-    rig_core::providers::openai::completion::CompletionModel<crate::transport::RigHttpClient>;
+pub(crate) type RigChatModel = rig_core::driver::Model<
+    rig_core::providers::openai::wire::Chat,
+    crate::transport::RigHttpClient,
+>;
 
-pub(crate) type RigAnthropicModel =
-    rig_core::providers::anthropic::completion::CompletionModel<crate::transport::RigHttpClient>;
+pub(crate) type RigAnthropicModel = rig_core::driver::Model<
+    rig_core::providers::anthropic::wire::Messages,
+    crate::transport::RigHttpClient,
+>;
+
+/// `wire` sent through the bridge's own transport decorator, keeping the
+/// decorator's budget gate, capture, and auth rewrite on every attempt.
+fn model_via_bridge<W>(
+    wire: W,
+    transport: crate::transport::RigHttpClient,
+) -> rig_core::driver::Model<W, crate::transport::RigHttpClient> {
+    rig_core::driver::Model { wire, transport }
+}
 
 /// The SDK appends an endpoint by string concatenation. Remove query/fragment
 /// first and let the transport append percent-encoded pairs to the FINAL URI.
@@ -239,13 +251,14 @@ pub(crate) fn build_chat_model(
 ) -> Result<RigChatModel, codex_api::ApiError> {
     let (api_key, wire_auth) = crate::wire_auth::resolved_sdk_auth(headers, RigProtocol::Chat)?;
     http.wire_auth = Some(wire_auth);
-    let client = rig_core::providers::openai::CompletionsClient::builder()
-        .api_key(api_key)
-        .base_url(base_url)
-        .http_client(http)
-        .build()
-        .map_err(map_client_error)?;
-    Ok(client.completion_model(model_name))
+    let provider = rig_core::providers::openai::OpenAIConfig::new(api_key).with_base_url(base_url);
+    let wire = rig_core::providers::openai::wire::Chat {
+        provider,
+        model: model_name.to_string(),
+        strict_tools: false,
+        tool_result_array_content: false,
+    };
+    Ok(model_via_bridge(wire, http))
 }
 
 /// rig's OpenAI client speaking the Responses wire. The model capability is
@@ -257,17 +270,16 @@ pub(crate) fn build_responses_client(
     base_url: &str,
     headers: &HeaderMap,
     mut http: crate::transport::RigHttpClient,
-) -> Result<rig_core::providers::openai::Client<crate::transport::RigHttpClient>, codex_api::ApiError>
-{
+) -> Result<crate::transport::RigHttpClient, codex_api::ApiError> {
     let (api_key, wire_auth) =
         crate::wire_auth::resolved_sdk_auth(headers, RigProtocol::Responses)?;
     http.wire_auth = Some(wire_auth);
-    rig_core::providers::openai::Client::builder()
-        .api_key(api_key)
-        .base_url(base_url)
-        .http_client(http)
-        .build()
-        .map_err(map_client_error)
+    // The passthrough no longer routes through a rig provider client: the
+    // Responses wire serializes Codex's own request and drives
+    // `send_streaming` on this decorator directly, so auth (bearer key),
+    // query joining, and per-attempt headers stay in the bridge's hands.
+    let _ = api_key;
+    Ok(http)
 }
 
 pub(crate) fn build_anthropic_model(
@@ -279,26 +291,26 @@ pub(crate) fn build_anthropic_model(
     let (api_key, wire_auth) =
         crate::wire_auth::resolved_sdk_auth(headers, RigProtocol::Anthropic)?;
     http.wire_auth = Some(wire_auth);
-    let mut builder = rig_core::providers::anthropic::Client::builder()
-        .api_key(api_key)
-        .base_url(base_url)
-        .http_client(http);
+    let mut config =
+        rig_core::providers::anthropic::wire::AnthropicConfig::new(api_key).with_base_url(base_url);
     if let Some(version) = headers.get("anthropic-version") {
         let version = version
             .to_str()
             .map_err(|_| codex_api::ApiError::InvalidRequest {
                 message: "Invalid anthropic-version header: expected an ASCII value".into(),
             })?;
-        builder = builder.anthropic_version(version);
+        config.version = version.to_string();
     }
-    let client = builder.build().map_err(map_client_error)?;
-    Ok(client.completion_model(model_name))
-}
-
-fn map_client_error(e: rig_core::http_client::Error) -> codex_api::ApiError {
-    codex_api::ApiError::Transport(codex_api::TransportError::Network(format!(
-        "rig client build failed: {e}"
-    )))
+    let wire = rig_core::providers::anthropic::wire::Messages {
+        provider: config,
+        model: model_name.to_string(),
+        default_max_tokens: None,
+        prompt_caching: false,
+        static_prefix_cache_ttl: None,
+        strict_tools: false,
+        tool_input_streaming: Default::default(),
+    };
+    Ok(model_via_bridge(wire, http))
 }
 
 #[cfg(test)]

@@ -37,13 +37,18 @@ pub(crate) fn append_tool_result(
         ));
     }
     let result = UserContent::ToolResult(rig_core::completion::message::ToolResult {
-        call: rig_core::completion::message::ToolCallId::new_or_mint(call_id.to_string()),
-        provider: rig_core::completion::message::ProviderCallId::new(call_id),
-        name: tool_names
-            .get(call_id)
-            .cloned()
-            .unwrap_or_else(|| "unknown_tool".into()),
+        call: rig_core::completion::message::CallId::from_wire(call_id.to_string()),
+        name: rig_core::completion::message::ToolName::new(
+            tool_names
+                .get(call_id)
+                .cloned()
+                .unwrap_or_else(|| "unknown_tool".into()),
+        )
+        .map_err(|_| codex_api::ApiError::InvalidRequest {
+            message: "Executed tool name must not be empty".into(),
+        })?,
         content,
+        is_error: false,
     });
     // Accumulate adjacent tool results before supplemental images. Rig's Chat serializer
     // emits ToolResult entries first, preserving the required parallel call/result order.
@@ -178,7 +183,7 @@ fn data_url_image(data_url: &str) -> Option<RigImage> {
         data: DocumentSourceKind::Base64(payload.to_string()),
         media_type: Some(media_type),
         detail: None,
-        additional_params: None,
+        native: None,
     })
 }
 
@@ -209,7 +214,7 @@ fn image_from_url(
         data: DocumentSourceKind::Url(url.to_string()),
         media_type: None,
         detail: None,
-        additional_params: None,
+        native: None,
     });
     image.detail = detail.map(|detail| match detail {
         CodexDetail::Auto => RigDetail::Auto,

@@ -72,8 +72,8 @@ pub fn replay_fixture_events(
 /// list, for recording into the fixture alongside the rig events.
 pub fn extract_custom_tool_names(request: &codex_api::ResponsesApiRequest) -> HashSet<String> {
     crate::request_tools::request_tools(request)
-        .meta
-        .custom_names
+        .map(|selection| selection.meta.custom_names)
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

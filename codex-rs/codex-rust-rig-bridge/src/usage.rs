@@ -73,14 +73,14 @@ impl AnthropicUsage {
             (&mut usage.reasoning_tokens, self.reasoning),
         ] {
             if let Some(value) = value {
-                *target = value;
+                *target = Some(value);
             }
         }
-        usage.total_tokens = usage
-            .input_tokens
-            .saturating_add(usage.cached_input_tokens)
-            .saturating_add(usage.cache_creation_input_tokens)
-            .saturating_add(usage.output_tokens);
+        // 0.44's `input_tokens` already includes cached and cache-written
+        // input, so the total never re-adds them.
+        if let (Some(input), Some(output)) = (usage.input_tokens, usage.output_tokens) {
+            usage.total_tokens = Some(input.saturating_add(output));
+        }
     }
 }
 

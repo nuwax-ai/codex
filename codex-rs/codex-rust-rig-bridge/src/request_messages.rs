@@ -110,7 +110,7 @@ pub(crate) fn convert_response_items(
 
     for (item_index, item) in items.iter().enumerate() {
         let before = match messages.last() {
-            Some(Message::Assistant { content, .. }) => serialized_assistant_len(content),
+            Some(Message::Assistant(assistant)) => serialized_assistant_len(&assistant.content),
             _ => 0,
         };
         match item {
@@ -141,14 +141,13 @@ pub(crate) fn convert_response_items(
                         // text is dropped by the OpenAI wire, losing the
                         // DeepSeek-required reasoning replay.
                         match messages.last_mut() {
-                            Some(Message::Assistant { content, .. }) => {
-                                content.extend(parts);
+                            Some(Message::Assistant(assistant)) => {
+                                assistant.content.extend(parts);
                             }
                             _ => {
-                                messages.push(Message::Assistant {
-                                    id: None,
-                                    content: parts,
-                                });
+                                messages.push(Message::Assistant(
+                                    rig_core::completion::message::AssistantMessage::new(parts),
+                                ));
                                 assistant_messages += 1;
                             }
                         }
@@ -181,14 +180,17 @@ pub(crate) fn convert_response_items(
             ResponseItem::Reasoning { .. } => {
                 for reasoning in crate::reasoning::replay_reasoning(item, source, protocol) {
                     match messages.last_mut() {
-                        Some(Message::Assistant { content, .. }) => {
-                            content.push(AssistantContent::Reasoning(reasoning));
+                        Some(Message::Assistant(assistant)) => {
+                            assistant
+                                .content
+                                .push(AssistantContent::Reasoning(reasoning));
                         }
                         _ => {
-                            messages.push(Message::Assistant {
-                                id: None,
-                                content: vec![AssistantContent::Reasoning(reasoning)],
-                            });
+                            messages.push(Message::Assistant(
+                                rig_core::completion::message::AssistantMessage::new(vec![
+                                    AssistantContent::Reasoning(reasoning),
+                                ]),
+                            ));
                             assistant_messages += 1;
                         }
                     }
@@ -253,21 +255,17 @@ pub(crate) fn convert_response_items(
                         if kept.is_empty() && envelope.layout.is_none() {
                             continue;
                         }
-                        if !matches!(messages.last(), Some(Message::Assistant { .. })) {
-                            let Some(anchor) = anchor.filter(|_| !kept.is_empty()) else {
+                        if !matches!(messages.last(), Some(Message::Assistant(_))) {
+                            if anchor.is_none() || kept.is_empty() {
                                 continue;
                             };
-                            messages.push(Message::Assistant {
-                                id: None,
-                                // This SDK anchor is removed before replay and does not
-                                // contribute to segment offsets or response boundaries.
-                                content: vec![AssistantContent::Text(rig_core::completion::message::Text {
-                                    text: String::new(),
-                                    additional_params: rig_core::completion::message::AdditionalParams::from_entries([
-                                        ("anthropic_content", anchor),
-                                    ]),
-                                })],
-                            });
+                            messages.push(Message::Assistant(
+                                rig_core::completion::message::AssistantMessage::new(vec![
+                                    // This SDK anchor is removed before replay and does not
+                                    // contribute to segment offsets or response boundaries.
+                                    AssistantContent::text(String::new()),
+                                ]),
+                            ));
                             assistant_messages += 1;
                         }
                         let target = assistant_messages - 1;
@@ -399,16 +397,15 @@ pub(crate) fn convert_response_items(
                 };
                 let part = AssistantContent::tool_call(
                     call_id.clone(),
-                    crate::request_tools::flat_name(name, namespace.as_deref()),
+                    crate::request_tools::flat_tool_name(name, namespace.as_deref())?,
                     args,
                 );
                 match messages.last_mut() {
-                    Some(Message::Assistant { content, .. }) => content.push(part),
+                    Some(Message::Assistant(assistant)) => assistant.content.push(part),
                     _ => {
-                        messages.push(Message::Assistant {
-                            id: None,
-                            content: vec![part],
-                        });
+                        messages.push(Message::Assistant(
+                            rig_core::completion::message::AssistantMessage::new(vec![part]),
+                        ));
                         assistant_messages += 1;
                     }
                 }
@@ -444,16 +441,15 @@ pub(crate) fn convert_response_items(
                 let args = serde_json::json!({ "input": input });
                 let part = AssistantContent::tool_call(
                     call_id.clone(),
-                    crate::request_tools::flat_name(name, namespace.as_deref()),
+                    crate::request_tools::flat_tool_name(name, namespace.as_deref())?,
                     args,
                 );
                 match messages.last_mut() {
-                    Some(Message::Assistant { content, .. }) => content.push(part),
+                    Some(Message::Assistant(assistant)) => assistant.content.push(part),
                     _ => {
-                        messages.push(Message::Assistant {
-                            id: None,
-                            content: vec![part],
-                        });
+                        messages.push(Message::Assistant(
+                            rig_core::completion::message::AssistantMessage::new(vec![part]),
+                        ));
                         assistant_messages += 1;
                     }
                 }
@@ -500,14 +496,15 @@ pub(crate) fn convert_response_items(
                 }
                 if !text.is_empty() {
                     match messages.last_mut() {
-                        Some(Message::Assistant { content, .. }) => {
-                            content.push(AssistantContent::text(text));
+                        Some(Message::Assistant(assistant)) => {
+                            assistant.content.push(AssistantContent::text(text));
                         }
                         _ => {
-                            messages.push(Message::Assistant {
-                                id: None,
-                                content: vec![AssistantContent::text(text)],
-                            });
+                            messages.push(Message::Assistant(
+                                rig_core::completion::message::AssistantMessage::new(vec![
+                                    AssistantContent::text(text),
+                                ]),
+                            ));
                             assistant_messages += 1;
                         }
                     }
@@ -526,9 +523,9 @@ pub(crate) fn convert_response_items(
         };
         if let Some(id) =
             id.filter(|id| crate::hosted_replay::segment_response(id.as_str()).is_some())
-            && let Some(Message::Assistant { content, .. }) = messages.last()
+            && let Some(Message::Assistant(assistant)) = messages.last()
         {
-            let after = serialized_assistant_len(content);
+            let after = serialized_assistant_len(&assistant.content);
             if after > before {
                 owned_segments
                     .entry(assistant_messages - 1)
@@ -583,9 +580,11 @@ fn serialized_assistant_len(content: &[AssistantContent]) -> usize {
         .iter()
         .map(|part| match part {
             AssistantContent::Text(text) => usize::from(!text.text.is_empty()),
-            AssistantContent::Reasoning(reasoning) => reasoning.content.len(),
+            AssistantContent::Reasoning(reasoning) => reasoning.text.len(),
             AssistantContent::ToolCall(_) => 1,
-            AssistantContent::Image(_) => 0,
+            // `AssistantContent` is non-exhaustive upstream; unmodeled
+            // blocks contribute no Anthropic wire block.
+            _ => 0,
         })
         .sum()
 }

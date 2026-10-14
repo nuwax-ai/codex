@@ -42,7 +42,9 @@ pub(crate) fn flat_name(name: &str, namespace: Option<&str>) -> String {
     }
 }
 
-pub(crate) fn request_tools(request: &ResponsesApiRequest) -> RequestTools {
+pub(crate) fn request_tools(
+    request: &ResponsesApiRequest,
+) -> Result<RequestTools, codex_api::ApiError> {
     let mut tools: Vec<Value> = match request.tools.as_ref() {
         None => Vec::new(),
         // Practically unreachable: the raw tool JSON was already valid and
@@ -65,7 +67,7 @@ pub(crate) fn request_tools(request: &ResponsesApiRequest) -> RequestTools {
             tools.extend(extra.iter().cloned());
         }
     }
-    let mut selection = parse_tools(&tools);
+    let mut selection = parse_tools(&tools)?;
     for item in &request.input {
         let (call_id, output) = match item {
             ResponseItem::FunctionCallOutput {
@@ -85,10 +87,10 @@ pub(crate) fn request_tools(request: &ResponsesApiRequest) -> RequestTools {
                 .insert(call_id.clone(), !success);
         }
     }
-    selection
+    Ok(selection)
 }
 
-pub(crate) fn parse_tools(tools: &[Value]) -> RequestTools {
+pub(crate) fn parse_tools(tools: &[Value]) -> Result<RequestTools, codex_api::ApiError> {
     let mut definitions = Vec::new();
     let mut custom = HashSet::new();
     let mut strict = HashMap::new();
@@ -106,7 +108,7 @@ pub(crate) fn parse_tools(tools: &[Value]) -> RequestTools {
                         &mut custom,
                         &mut strict,
                         &mut hosted_tools,
-                    );
+                    )?;
                 }
             }
         } else {
@@ -117,10 +119,10 @@ pub(crate) fn parse_tools(tools: &[Value]) -> RequestTools {
                 &mut custom,
                 &mut strict,
                 &mut hosted_tools,
-            );
+            )?;
         }
     }
-    RequestTools {
+    Ok(RequestTools {
         definitions,
         meta: ToolMeta {
             custom_names: custom,
@@ -129,7 +131,7 @@ pub(crate) fn parse_tools(tools: &[Value]) -> RequestTools {
             hosted_tools,
             websearch_replay: Vec::new(),
         },
-    }
+    })
 }
 
 fn append_tool(
@@ -139,16 +141,16 @@ fn append_tool(
     custom: &mut HashSet<String>,
     strict: &mut HashMap<String, bool>,
     hosted_tools: &mut Vec<Value>,
-) {
+) -> Result<(), codex_api::ApiError> {
     // Hosted (server-side) tools carry no function schema and no `name`;
     // they never become function definitions. Keep the raw declaration for
     // per-protocol translation by `hosted_tools`.
     if !matches!(tool["type"].as_str(), Some("function") | Some("custom")) {
         hosted_tools.push(tool.clone());
-        return;
+        return Ok(());
     }
     let Some(name) = tool["name"].as_str() else {
-        return;
+        return Ok(());
     };
     let name = flat_name(name, namespace);
     let parameters = match tool["type"].as_str() {
@@ -161,7 +163,7 @@ fn append_tool(
             .cloned()
             .unwrap_or_else(|| json!({"type":"object", "properties":{}})),
         // Unreachable: hosted tool types returned above.
-        _ => return,
+        _ => return Ok(()),
     };
     if let Some(value) = tool["strict"].as_bool() {
         strict.insert(name.clone(), value);
@@ -173,8 +175,13 @@ fn append_tool(
     } else {
         ""
     };
+    let tool_name = rig_core::completion::message::ToolName::new(name.clone()).map_err(|_| {
+        codex_api::ApiError::InvalidRequest {
+            message: format!("Tool name {name:?} must not be empty"),
+        }
+    })?;
     definitions.push(ToolDefinition {
-        name,
+        name: tool_name,
         description: tool["description"]
             .as_str()
             .filter(|description| !description.is_empty())
@@ -182,4 +189,17 @@ fn append_tool(
             .to_string(),
         parameters,
     });
+    Ok(())
+}
+
+/// A history tool call's flat wire name as a `ToolName`.
+pub(crate) fn flat_tool_name(
+    name: &str,
+    namespace: Option<&str>,
+) -> Result<rig_core::completion::message::ToolName, codex_api::ApiError> {
+    rig_core::completion::message::ToolName::new(flat_name(name, namespace)).map_err(|_| {
+        codex_api::ApiError::InvalidRequest {
+            message: format!("Historical tool {name:?} flattened name must not be empty"),
+        }
+    })
 }

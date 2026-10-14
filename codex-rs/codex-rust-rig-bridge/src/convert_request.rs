@@ -81,14 +81,14 @@ pub(crate) fn responses_request_to_completion_request(
         );
     }
     let mut websearch_replay = Vec::new();
-    let chat_history =
+    let mut chat_history =
         convert_response_items(&request.input, protocol, source, &mut websearch_replay)?;
     if chat_history.is_empty() {
         return Err(ApiError::InvalidRequest {
             message: "No convertible messages in request".into(),
         });
     }
-    let selection = crate::request_tools::request_tools(request);
+    let selection = crate::request_tools::request_tools(request)?;
     let advertised: Vec<&str> = selection
         .definitions
         .iter()
@@ -164,34 +164,41 @@ pub(crate) fn responses_request_to_completion_request(
     let websearch_replay = crate::hosted_replay::sanitize_for_request(websearch_replay);
     let mut selection = selection;
     selection.meta.websearch_replay = websearch_replay;
-    Ok((
-        CompletionRequest {
-            model: Some(request.model.clone()),
-            preamble: None,
-            chat_history,
-            documents: Vec::new(),
-            tools: selection.definitions,
-            temperature: None,
-            max_tokens: (protocol == RigProtocol::Anthropic)
-                .then_some(crate::client::DEFAULT_ANTHROPIC_MAX_TOKENS),
-            tool_choice: map_tool_choice(&request.tool_choice),
-            additional_params: (!params.is_empty()).then_some(Value::Object(params)),
-            output_schema,
-            record_telemetry_content: false,
-        },
-        selection.meta,
-    ))
+    // `CompletionRequest` is `#[non_exhaustive]`; start from the public
+    // constructor and layer the converted fields on top so new upstream
+    // fields keep their defaults.
+    let prompt = chat_history
+        .pop()
+        .expect("convertible history is non-empty");
+    let mut completion = CompletionRequest::new(prompt);
+    chat_history.extend(std::mem::take(&mut completion.chat_history));
+    completion.chat_history = chat_history;
+    completion.model = Some(request.model.clone());
+    completion.tools = selection.definitions;
+    completion.max_tokens =
+        (protocol == RigProtocol::Anthropic).then_some(crate::client::DEFAULT_ANTHROPIC_MAX_TOKENS);
+    completion.tool_choice = map_tool_choice(&request.tool_choice)?;
+    completion.additional_params = (!params.is_empty()).then_some(Value::Object(params));
+    completion.output_schema = output_schema;
+    completion.record_telemetry_content = false;
+    Ok((completion, selection.meta))
 }
 
-fn map_tool_choice(choice: &str) -> Option<ToolChoice> {
-    Some(match choice {
+fn map_tool_choice(choice: &str) -> Result<Option<ToolChoice>, ApiError> {
+    Ok(Some(match choice {
         "auto" => ToolChoice::Auto,
         "none" => ToolChoice::None,
         "required" => ToolChoice::Required,
         other => ToolChoice::Specific {
-            function_names: vec![other.to_string()],
+            function_names: vec![
+                rig_core::completion::message::ToolName::new(other.to_string()).map_err(|_| {
+                    ApiError::InvalidRequest {
+                        message: "tool_choice references a tool with an empty name".into(),
+                    }
+                })?,
+            ],
         },
-    })
+    }))
 }
 
 /// Fails fast when the Responses `tool_choice` cannot be honored on the

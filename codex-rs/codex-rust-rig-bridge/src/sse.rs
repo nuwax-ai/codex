@@ -3,8 +3,8 @@ use crate::RigProtocol;
 use bytes::Bytes;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
+use rig_core::http_client::BoxedStream;
 use rig_core::http_client::Error;
-use rig_core::http_client::sse::BoxedStream;
 use std::sync::Arc;
 use std::sync::Mutex;
 
