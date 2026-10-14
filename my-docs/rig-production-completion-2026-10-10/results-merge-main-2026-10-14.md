@@ -24,27 +24,37 @@
 - **codex-core 全量 5333/5358**（27 skip 沿上游；差 25 中 3 flaky 重试过）。
 - 流程：fmt --all、CI clippy lane（4 crate）0 error/warning。
 
-## 残差登记（合并树新败、fork 基线对照通过——真实回归，待下批）
+## 残差收敛（2026-10-14 第二轮，commit `baaa5b811`）
 
-1. **`responses_websocket_creates_on_non_prefix::replaced`**：第二个 WS 请求 `input: []`
-   （应全量重发夹具 Compaction 项）。fork 基线同测试过。疑点：WS 增量/投影与无 provenance
-   测试 Compaction 的交互；需在合并树复刻 fork 的存活路径。
-2. **`guardian_history_uses_deltas::parent_checkpoint`**：审查请求丢失恢复的父检查点
-   （wire 无 compaction 项）。探针证据：恢复信封 `env_provenance=false` → `for_checkpoint`
-   无法铸 grant → 投影三条件全 false 剔除；target 完整（provider/model/endpoint/auth_domain/kind
-   全 Some）、sources 无该 id。fork 基线同测试过 → fork 的恢复物料化给检查点信封挂过
-   provenance，main 的 materialization 重构（thread_history_materialization 30+/13-，I/O
-   async→sync 重排）之外某处丢失。**未定位到挂点**，下一步：diff fork 恢复链
-   （resume/InitialHistory::Resumed → ContextManager 安装）对信封 metadata 的处理。
-3. 环境项：`openpty_works_under_real_exec_seatbelt_path`（PATH 解析到 CommandLineTools python3
-   xcrun 垫片，Seatbelt 下写 /tmp 缓存被拒）；realtime/tool_parallelism/mcp-grace 为本机负载
-   敏感（单独跑全过，realtime 有 2s 握手 deadline）。
-4. 快照：guardian_checkpoint_migration、astra_plugin_policy 两张已复核后接受（合并管线真实输出，
-   语义完好——检查点存在、审查流完整）。
+1. ~~websocket::replaced~~ **已闭环（契约适配）**：该变体为 main 新增（fork 无此变体）；
+   断言"无 provenance 的加密检查点原样重发"正是 fork 投影契约要拦的行为。按 fork 契约适配：
+   降级后的全量重发为空，记为 `input_shortened`/item type `none`（测试内注释说明）。
+2. ~~guardian_history::parent_checkpoint~~ **已闭环（契约适配）**：同为 main 新增变体；
+   恢复的检查点作为审查 transcript 消费（delta 断言不变），审查请求断言不带 compaction 项。
+   合并树行为自洽：**活压缩**（带 provenance）正常重放（迁移快照 request 4/6/7 实证），
+   **恢复的无 provenance 检查点**降级不重放（fail-closed）。
+3. **`zero_grace_respects_server_startup_timeout`——仍开放（真实回归，取证在案）**：
+   fork 基线与官方 main 本机均过，合并树稳定失败。**双形态**：(A) 5s 内 initialize
+   零尝试（会话启动期停滞）；(B) 尝试已发出但回合 <100ms 完成（不等可选服务器 250ms
+   startup timeout）。已排除：core/src/mcp.rs、session/mcp*.rs、codex-mcp 全部、
+   config/mcp_types.rs、rmcp-client/src 与 main **逐字节一致**（路径修正后确认）；
+   rmcp 3.3.0 回退不可编译（合并版 rmcp-client 需 3.5.1，fork 的 rmcp-client 工作已上游化）；
+   探针实证 runtime config 中服务器在、enabled、http=true，但 connection manager 无该服务器
+   view / `current_binding_with_requirements` 未被调用（形态 A）。疑点收敛到**会话启动→HTTP
+   连接层的停滞**（fork 的系统代理/HTTP 客户端栈 × main 的新可选启动机制交互；fork 自己在
+   exec-server/src/remote.rs 记录过 macOS 代理解析可停滞数秒）。下一步：在连接管理器 spawn
+   入口与 fork 代理解析路径加时延探针，或按文件组二分（config 组整体换 main 编译不过，需
+   逐字段）。
+4. 环境项：`openpty_works_under_real_exec_seatbelt_path`（CommandLineTools python3 xcrun 垫片）；
+   realtime/tool_parallelism/retry_after 等为**批内并发敏感**（-j 4 限并发后 160/161，仅剩第 3 项）。
+5. 快照：guardian_checkpoint_migration、astra_plugin_policy 两张已复核接受。
 
 ## 未验边界
 
 - Linux/Windows 实机、ACP dev、Windows 原生、exec-server 全量（含 blocked_descriptor_path
   重现——下一优先项）未跑；CI 未推。
+- 第二轮修复后记录数：bridge+genai+protocol 等 1118/1118、core 定向 333/333、
+  fragile 族 -j4 160/161（唯一残败=第 3 项）；全量 core 复跑因探针构建干扰未重测，
+  下轮在安静环境重取全量数。
 - Rig 0.42.0 保持（阶段三独立迁移）；上游 v8 pin 未动。
 - 上游可吸收修复（b49e2211a/89c8759d8/ae7aad586/8571b9eaa/9e03960cf）未逐项复验收账。
