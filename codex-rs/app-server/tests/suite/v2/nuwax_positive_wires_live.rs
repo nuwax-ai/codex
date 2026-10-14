@@ -43,8 +43,9 @@ use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tempfile::TempDir;
+use tokio::time::Instant;
+use tokio::time::sleep;
 use tokio::time::timeout;
-use tokio::time::{Instant, sleep};
 
 const READ_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 90);
 
