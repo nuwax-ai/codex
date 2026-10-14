@@ -432,16 +432,45 @@ impl HttpClientExt for RigHttpClient {
             // tool-result error markers, tool-choice repair) may touch it.
             let rewrite = self.chat_family_rewrite();
             let chat_family_rewrite = rewrite.needed();
-            if chat_family_rewrite {
-                let mut body: serde_json::Value = serde_json::from_slice(request.body())
-                    .map_err(|error| Error::Instance(error.into()))?;
-                rewrite.apply(&mut body);
-                *request.body_mut() = serde_json::to_vec(&body)
-                    .map_err(|error| Error::Instance(error.into()))?
-                    .into();
-                request.headers_mut().remove(http::header::CONTENT_LENGTH);
+            // The context budget needs the parsed body to separate inline
+            // image payloads from text (wire_images). Reuse the rewrite's
+            // parse when it runs; otherwise parse only for measurement.
+            let budget_measures_body = self.wire_budget.context_window_tokens.is_some();
+            let mut measured_body: Option<serde_json::Value> = None;
+            if chat_family_rewrite || budget_measures_body {
+                match serde_json::from_slice(request.body()) {
+                    Ok(mut body) => {
+                        if chat_family_rewrite {
+                            rewrite.apply(&mut body);
+                            *request.body_mut() = serde_json::to_vec(&body)
+                                .map_err(|error| Error::Instance(error.into()))?
+                                .into();
+                            request.headers_mut().remove(http::header::CONTENT_LENGTH);
+                        }
+                        measured_body = Some(body);
+                    }
+                    // A rewrite path keeps its hard parse error; a
+                    // measurement-only failure falls back to the legacy
+                    // whole-body estimate rather than rejecting a request
+                    // the provider might accept.
+                    Err(error) if !chat_family_rewrite => {
+                        tracing::warn!(
+                            ?error,
+                            "wire body is not measurable JSON; context budget falls back to the whole-body text estimate"
+                        );
+                    }
+                    Err(error) => return Err(Error::Instance(error.into())),
+                }
             }
-            self.wire_budget.check(request.body().len())?;
+            let image_costs = if budget_measures_body {
+                measured_body
+                    .as_ref()
+                    .map(|body| crate::wire_images::measure(self.protocol, body))
+            } else {
+                None
+            };
+            self.wire_budget
+                .check_body(request.body().len(), image_costs)?;
             let response = crate::request_retry::send_streaming(
                 &self.inner,
                 request,

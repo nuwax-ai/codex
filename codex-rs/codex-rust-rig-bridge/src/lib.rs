@@ -34,6 +34,7 @@ mod transport_identity;
 mod usage;
 mod wire_auth;
 mod wire_budget;
+mod wire_images;
 
 pub use bridge_impl::RigModelBridge;
 pub use client::DEFAULT_ANTHROPIC_MAX_TOKENS;

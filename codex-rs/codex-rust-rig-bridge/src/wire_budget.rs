@@ -38,7 +38,16 @@ impl std::fmt::Display for WireBudgetExceeded {
 impl std::error::Error for WireBudgetExceeded {}
 
 impl WireBudget {
-    pub(crate) fn check(self, bytes: usize) -> Result<(), rig_core::http_client::Error> {
+    /// `image_costs` separates wire bytes from model content cost: inline
+    /// image payloads are excluded from the text estimate and re-charged as
+    /// coarse vision tokens (`wire_images::measure`). `None` keeps the legacy
+    /// whole-body text estimate — used when no context window is configured
+    /// or the body could not be measured.
+    pub(crate) fn check_body(
+        self,
+        wire_bytes: usize,
+        image_costs: Option<crate::wire_images::WireImageCosts>,
+    ) -> Result<(), rig_core::http_client::Error> {
         if self.context_window_tokens.is_some_and(|window| {
             window <= 0
                 || u64::try_from(window)
@@ -48,13 +57,20 @@ impl WireBudget {
                 WireBudgetExceeded::Configuration,
             )));
         }
-        let estimate = codex_utils_string::approx_tokens_from_byte_count(bytes);
+        let estimate = match image_costs {
+            Some(costs) => {
+                let text_bytes = wire_bytes.saturating_sub(costs.inline_payload_bytes);
+                codex_utils_string::approx_tokens_from_byte_count(text_bytes)
+                    .saturating_add(costs.vision_tokens)
+            }
+            None => codex_utils_string::approx_tokens_from_byte_count(wire_bytes),
+        };
         let exceeds_context = self.context_window_tokens.is_some_and(|window| {
             u64::try_from(window).map_or(true, |window| {
                 estimate.saturating_add(self.output_tokens.unwrap_or_default()) > window
             })
         });
-        let failure = if bytes > MAX_WIRE_BYTES {
+        let failure = if wire_bytes > MAX_WIRE_BYTES {
             Some(WireBudgetExceeded::Bytes)
         } else if exceeds_context {
             Some(WireBudgetExceeded::Context)
@@ -91,3 +107,7 @@ pub(crate) fn api_error(
 #[cfg(test)]
 #[path = "wire_budget_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "wire_budget_outbound_tests.rs"]
+mod outbound_tests;

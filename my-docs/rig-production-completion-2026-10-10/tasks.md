@@ -42,7 +42,7 @@
 ## 包2：D6可信预算（3项）
 
 - [ ] **T21 P0：计量证明。** 官方单位/framing、provider/model/tokenizer版本/证明域。DoD：可复核Exact/ProvenUpperBound；缺证明明确unverified，不能用bytes/4/分位数认证。
-- [ ] **T22 P0：适配器与边界。** ASCII/CJK/高熵/JSON/签名/引用/完整framing、缓存失效与计量失败。DoD：完整wire/token阈值、未知来源、20KB/41KB/4次续接/取消回归，超限零下一POST。
+- [ ] **T22 P0：适配器与边界。** ASCII/CJK/高熵/JSON/签名/引用/完整framing、缓存失效与计量失败。DoD：完整wire/token阈值、未知来源、20KB/41KB/4次续接/取消回归，超限零下一POST。（进展 2026-10-14：wire 预算图片误算已修——`WireBudget::check_body` 拆分 wire bytes 与内容成本，新模块 `wire_images.rs` 按三协议 content 路径识别内联图（普通图 1844 token 平价、original 取 10000 patch 上限、URL/file-id 非零），文本内伪造 data URL 不绕预算；三协议出站回归（逐字节断言+同图不同编码尺寸）先行失败后转绿，bridge 全 crate 280/280。详见 results-wire-image-budget-2026-10-14.md。20KB/41KB/续接/取消矩阵仍开放。）
 - [ ] **T23 P0：显式启用与兼容。** LegacyBytes默认保持，KeepWholeOrFail，未知模型错误明确。DoD：不截断签名/删opaque/改写rollout，拒绝旧内容的模式单独opt-in，人工复审未绕过。
 
 ## 包4：owner/行政（4项）
