@@ -115,6 +115,29 @@ impl NativeRootsCache {
     /// judged after the lock is acquired and expiry computed after the load
     /// finishes; a caller that waits behind another load never extends an
     /// entry's lifetime past real expiry.
+    /// Returns the cached roots without triggering a platform load.
+    ///
+    /// Callers that must not pay (or wait for) the first platform load use
+    /// this to reuse already-warm roots and otherwise keep their ordinary
+    /// first-build behavior.
+    pub(crate) fn peek(
+        &self,
+        source_key: NativeRootsSourceKey,
+        now: impl Fn() -> Instant,
+    ) -> Option<Arc<RootCertStore>> {
+        let cache = self.entry.lock().unwrap_or_else(|poisoned| {
+            warn!("native roots cache lock was poisoned; clearing the entry and reloading");
+            let mut guard = poisoned.into_inner();
+            *guard = None;
+            self.entry.clear_poison();
+            guard
+        });
+        cache
+            .as_ref()
+            .filter(|cached| cached.source_key == source_key && cached.expires_at > now())
+            .map(|cached| Arc::clone(&cached.roots))
+    }
+
     pub(crate) fn load(
         &self,
         source_key: NativeRootsSourceKey,

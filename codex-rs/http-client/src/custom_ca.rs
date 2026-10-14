@@ -380,6 +380,27 @@ fn build_reqwest_client_with_env(
         "using system root certificates because no CA override environment variable was selected"
     );
 
+    // Every reqwest build otherwise reloads the platform trust store (on
+    // macOS a keychain round trip that can cost hundreds of milliseconds),
+    // which starves startup-deadline budgets when several route pools build
+    // their first client. When the shared native-roots cache is already
+    // warm, hand reqwest that configuration so this build skips the reload.
+    // A cold cache keeps the ordinary first-build behavior: the first build
+    // must not pay extra work on top of the platform load.
+    if let Some(roots) = PRODUCTION_NATIVE_ROOTS_CACHE.peek(
+        NativeRootsSourceKey::from_env_values(
+            env_source.var_os(SSL_CERT_FILE_ENV),
+            env_source.var_os(SSL_CERT_DIR_ENV),
+        ),
+        Instant::now,
+    ) {
+        ensure_rustls_crypto_provider();
+        let config = ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        builder = builder.use_rustls_tls().use_preconfigured_tls(config);
+    }
+
     match builder.build() {
         Ok(client) => Ok(client),
         Err(source) => {
