@@ -517,6 +517,33 @@ gitignored）。识图此前未证实的主因正是本缺陷（图片从未送�
 
 
 
+## 进展（2026-10-15 第十一轮：记忆模型同类缺陷修复 + 付费 v2 录制）
+
+用户授权后两项收口：
+
+1. **记忆管线同类缺陷**（提交 `d115bfdbe`）：phase1 提取与 phase2 巩固
+   此前从 OpenAI 目录取 gpt-5.6-luna／terra，而请求走当前 provider——
+   第三方端点 400，记忆管线整体静默失效。两处改经
+   `reachable_memory_model`（显式 memories.* 配置恒优先；内置 openai 保
+   留目录首选；其他 provider 用当前活动模型）。guardian-v2 async_scorer
+   与 sync_reviewer 两处同类点一并接入（经
+   `core::guardian_review::reachable_review_model_id` 公开导出）。
+   live 验证（MiMo chat，付费）：巩固 agent 线程以 mimo-v2.6-flash
+   真实派发（workspace-write／medium effort／rig 桥日志在案）；提取任务
+   受 `min_rollout_idle_hours` 小时级门控，新会话按设计不触发。
+   遗留观察（非本缺陷）：短生命周期 `codex exec` 在用户回合结束即退
+   出，后台巩固 agent 被杀记 `failed_agent`——长驻宿主（desktop/ACP）
+   不受影响；单列待后续验证。
+2. **付费 LIVE_CASSETTE=record 录制**（fixture 提交同上）：三厂商
+   bridge_live **84/84 真实绿**；150 个 fixture 文件以 0.44 v2 格式
+   （items+terminal，实际 recorder 写入）替换 v1 载荷（git 历史可溯，
+   legacy 翻译单测仍在）。录后离线复验 replay+roundtrip **91/91 全绿**；
+   全部 fixture 扫描凭据泄漏（认证头名与真实键值）：零。
+   Guardian-v2 两个既有失败（pool_pressure、flaky handshake）在
+   /tmp 基线 worktree 复现，与两修复无关，单列。
+
+
+
 ## 执行清单
 
 - [x] Phase A 非流部分（12/16 文件）
@@ -534,6 +561,8 @@ gitignored）。识图此前未证实的主因正是本缺陷（图片从未送�
       入口硬限 + 20 截图 stress；Linux/Windows 定向平台收据见第八/九轮。
       —— 第十轮补齐：ACP dev 联调全场景（含真实识图）+ Guardian 第三方
       审查缺陷修复（f6b1ad38f）。
-      —— 未闭环：全量 workspace/CI、代理/TLS、interrupt 夹具跨平台适配、
-      付费 LIVE_CASSETTE=record 录制。
+      —— 第十一轮补齐：记忆模型同类缺陷修复（d115bfdbe）+ 付费 v2
+      录制 84/84（录后离线 replay 91/91）。
+      —— 未闭环：全量 workspace/CI、代理/TLS、interrupt 夹具跨平台
+      适配、guardian-v2 两个既有失败、巩固 agent 短进程宿主行为。
 - [x] reasoning v1 旧 DTO 解码保留（v2 写入、v1 解码+转换、rollout 不改写）
