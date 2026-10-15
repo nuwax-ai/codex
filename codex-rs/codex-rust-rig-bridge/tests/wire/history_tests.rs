@@ -14,6 +14,190 @@ use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[tokio::test]
+async fn actual_chat_second_request_preserves_reasoning_content_and_tool_identity() {
+    let call_id = "call_history_identity_longer_than_forty_characters_0123456789";
+    let frames = [
+        json!({"id":"chat-history","model":"review-model","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"need lookup"},"finish_reason":null}]}),
+        json!({"id":"chat-history","model":"review-model","choices":[{"index":0,"delta":{"content":"let me check"},"finish_reason":null}]}),
+        json!({"id":"chat-history","model":"review-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":call_id,"type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":null}]}),
+        json!({"id":"chat-history","model":"review-model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}),
+    ];
+    let mut payload: String = frames
+        .into_iter()
+        .map(|frame| format!("data: {frame}\n\n"))
+        .collect();
+    payload.push_str("data: [DONE]\n\n");
+    let (address, server) =
+        support::sequence_server(vec![payload, support::CHAT_SSE.to_string()]).await;
+    let provider = provider(address);
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut request = support::request(vec![support::user()]);
+    support::set_tools(
+        &mut request,
+        json!([{"type":"function","name":"lookup","parameters":{"type":"object","properties":{}}}]),
+    );
+    let mut first = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Chat,
+        Duration::from_secs(3),
+    )
+    .await
+    .unwrap();
+    let mut saved_items = Vec::new();
+    while let Some(event) = first.next().await {
+        if let ResponseEvent::OutputItemDone(item) = event.unwrap() {
+            saved_items.push(item);
+        }
+    }
+    // Round-trip the emitted items through the rollout's serialized shape.
+    request.input.extend(
+        serde_json::from_value::<Vec<ResponseItem>>(serde_json::to_value(saved_items).unwrap())
+            .unwrap(),
+    );
+    request.input.push(
+        serde_json::from_value(json!({
+            "type":"function_call_output","call_id":call_id,"output":"done"
+        }))
+        .unwrap(),
+    );
+    let mut second = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Chat,
+        Duration::from_secs(3),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = second.next().await {
+        event.unwrap();
+    }
+    let requests = server.await.unwrap();
+    assert_eq!(
+        requests[1]["messages"],
+        json!([
+            {"role":"user","content":"hello"},
+            {"role":"assistant","content":"let me check","reasoning_content":"need lookup",
+                "tool_calls":[{"id":call_id,"type":"function","function":{"name":"lookup","arguments":"{}"}}]},
+            {"role":"tool","tool_call_id":call_id,"content":"done"}
+        ])
+    );
+}
+
+#[tokio::test]
+async fn legacy_and_projected_chat_reasoning_replays_in_reasoning_content() {
+    for envelope_kind in ["v1", "projected", "duplicated plaintext"] {
+        let (address, server) = support::sequence_server(vec![support::CHAT_SSE.to_string()]).await;
+        let provider = provider(address);
+        let source = support::source_for_dummy_auth(&provider, RigProtocol::Chat);
+        let encrypted_content = match envelope_kind {
+            "v1" => Some(format!(
+                "codex-rig-reasoning-v1:{}",
+                json!({"source":source,"blocks":[{"content":[{"type":"text","content":{"text":"saved thought"}}]}]})
+            )),
+            "projected" => None,
+            "duplicated plaintext" => Some("saved thought".to_string()),
+            _ => unreachable!(),
+        };
+        let mut request = support::request(vec![
+            support::user(),
+            json!({"type":"reasoning","summary":[],"encrypted_content":encrypted_content,
+                "content":[{"type":"reasoning_text","text":"saved thought"}]}),
+            json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"let me check"}]}),
+            json!({"type":"function_call","name":"lookup","call_id":"call-history","arguments":"{}"}),
+            json!({"type":"function_call_output","call_id":"call-history","output":"done"}),
+        ]);
+        support::set_tools(
+            &mut request,
+            json!([{"type":"function","name":"lookup","parameters":{"type":"object","properties":{}}}]),
+        );
+        let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+        let mut stream = stream_via_rig(
+            &request,
+            &provider,
+            &auth,
+            http::HeaderMap::new(),
+            RigProtocol::Chat,
+            Duration::from_secs(3),
+        )
+        .await
+        .unwrap();
+        while let Some(event) = stream.next().await {
+            event.unwrap();
+        }
+        let requests = server.await.unwrap();
+        assert_eq!(
+            requests[0]["messages"],
+            json!([
+                {"role":"user","content":"hello"},
+                {"role":"assistant","content":"let me check","reasoning_content":"saved thought",
+                    "tool_calls":[{"id":"call-history","type":"function","function":{"name":"lookup","arguments":"{}"}}]},
+                {"role":"tool","tool_call_id":"call-history","content":"done"}
+            ]),
+            "{envelope_kind} reasoning must keep the Chat replay field"
+        );
+    }
+}
+
+#[tokio::test]
+async fn legacy_anthropic_reasoning_preserves_each_signed_and_redacted_part() {
+    let (address, server) =
+        support::sequence_server(vec![support::ANTHROPIC_SSE.to_string()]).await;
+    let provider = provider(address);
+    let source = support::source_for_dummy_auth(&provider, RigProtocol::Anthropic);
+    let envelope = format!(
+        "codex-rig-reasoning-v1:{}",
+        json!({"source":source,"blocks":[{"content":[
+            {"type":"text","content":{"text":"first thought","signature":"sig-a"}},
+            {"type":"text","content":{"text":"second thought","signature":"sig-b"}},
+            {"type":"redacted","content":{"data":"redacted-original"}},
+            {"type":"encrypted","content":"encrypted-original"}
+        ]}]}),
+    );
+    let request = support::request(vec![
+        support::user(),
+        json!({"type":"reasoning","summary":[],"encrypted_content":envelope,
+            "content":[{"type":"reasoning_text","text":"first thought"},
+                {"type":"reasoning_text","text":"second thought"}]}),
+        json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"previous answer"}]}),
+        json!({"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]}),
+    ]);
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(3),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = stream.next().await {
+        event.unwrap();
+    }
+    let requests = server.await.unwrap();
+    assert_eq!(
+        requests[0]["messages"],
+        json!([
+            {"role":"user","content":[{"type":"text","text":"hello"}]},
+            {"role":"assistant","content":[
+                {"type":"thinking","thinking":"first thought","signature":"sig-a"},
+                {"type":"thinking","thinking":"second thought","signature":"sig-b"},
+                {"type":"redacted_thinking","data":"redacted-original"},
+                {"type":"redacted_thinking","data":"encrypted-original"},
+                {"type":"text","text":"previous answer"}
+            ]},
+            {"role":"user","content":[{"type":"text","text":"continue"}]}
+        ])
+    );
+}
+
 fn anthropic_tool_turn() -> String {
     let mut frames = vec![
         json!({"type":"message_start","message":{"id":"msg-history","type":"message","role":"assistant","content":[],"model":"review-model","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":4,"output_tokens":0}}}),
@@ -411,12 +595,10 @@ async fn replay_signed_thinking_under_model(
 }
 
 #[tokio::test]
-async fn same_model_origin_fingerprint_covers_system_prompt_and_hosted_tools() {
-    // claude-sonnet-4-5 does not bind its items to the request context, so
-    // rig compares the origin's context fingerprint: sorted tools, the
-    // folded leading system prompt, and the raw hosted tools. A bridge
-    // fingerprint that diverges from rig's private `context_of` downgrades
-    // the turn to cross-model and the signed thinking degrades to text.
+async fn same_model_origin_covers_system_prompt_and_hosted_tools() {
+    // claude-sonnet-4-5 does not bind its items to the request context.
+    // Rig compares its origin's wire, provider and model, preserving signed
+    // thinking alongside the full system prompt and raw hosted tools.
     let body = replay_signed_thinking_under_model(
         "claude-sonnet-4-5",
         json!([
@@ -437,9 +619,8 @@ async fn same_model_origin_fingerprint_covers_system_prompt_and_hosted_tools() {
         ],
     )
     .await;
-    // Two LEADING system messages stay separate blocks on the wire (only a
-    // mid-conversation system triggers the fold); the context fingerprint
-    // joins them internally, which is what the thinking assertion pins.
+    // Two leading system messages stay separate blocks on the wire; only a
+    // mid-conversation system message triggers the fold.
     let system = body["system"].as_array().unwrap();
     assert_eq!(
         system,
@@ -448,8 +629,8 @@ async fn same_model_origin_fingerprint_covers_system_prompt_and_hosted_tools() {
             json!({"type":"text","text":"second instruction"}),
         ]
     );
-    // The hosted web_search tool rides the serialized tools array (raw
-    // additional_params), which the fingerprint also covers.
+    // The hosted web_search tool rides the serialized tools array through
+    // additional_params.
     let tools = body["tools"].as_array().unwrap();
     assert!(
         tools.iter().any(|tool| {
@@ -466,7 +647,7 @@ async fn same_model_origin_fingerprint_covers_system_prompt_and_hosted_tools() {
             {"type":"thinking","thinking":"signed thought","signature":"SIGNED"},
             {"type":"tool_use","id":"call-origin","name":"lookup","input":{}}
         ]}),
-        "signed thinking must survive the same-model fingerprint comparison"
+        "signed thinking must survive the same-model origin comparison"
     );
 }
 

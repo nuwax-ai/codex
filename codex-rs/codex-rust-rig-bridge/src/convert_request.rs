@@ -192,96 +192,30 @@ pub(crate) fn responses_request_to_completion_request(
     completion.additional_params = (!params.is_empty()).then_some(Value::Object(params));
     completion.output_schema = output_schema;
     completion.record_telemetry_content = false;
-    // rig 0.44's history adapter replays a turn's provider items only when
-    // the turn's origin matches the request's wire, provider and model (and
-    // context, on models that do not bind items to it). History the bridge
-    // rebuilt is by construction from this same endpoint, so every assistant
-    // turn claims that origin; the per-source envelopes already gate what is
-    // replayed.
-    if protocol == RigProtocol::Anthropic {
-        let origin = anthropic_history_origin(&completion, &request.model);
-        for message in &mut completion.chat_history {
-            if let rig_core::completion::message::Message::Assistant(turn) = message {
-                turn.origin = Some(origin.clone());
-            }
+    // Both wires need the origin to retain reasoning as reasoning and to
+    // preserve provider call IDs. The source gate already checked opaque
+    // replay against this endpoint, model and authorization domain. Anthropic
+    // context-bound models default to adaptive thinking here, so Rig asks the
+    // provider to drop unbound blocks instead of comparing a fingerprint.
+    let (api, provider) = match protocol {
+        RigProtocol::Chat => ("openai.chat", rig_core::providers::openai::PROVIDER_NAME),
+        RigProtocol::Anthropic => (
+            "anthropic.messages",
+            rig_core::providers::anthropic::PROVIDER_NAME,
+        ),
+        RigProtocol::Responses => {
+            return Err(ApiError::InvalidRequest {
+                message: RESPONSES_NOT_CONVERTIBLE_MSG.into(),
+            });
+        }
+    };
+    let origin = rig_core::completion::message::Origin::new(api, provider, &request.model);
+    for message in &mut completion.chat_history {
+        if let rig_core::completion::message::Message::Assistant(turn) = message {
+            turn.origin = Some(origin.clone());
         }
     }
     Ok((completion, selection.meta))
-}
-
-/// The `Origin` of a rebuilt history assistant turn on the Anthropic wire.
-/// Mirrors the driver's own `Same` inputs: wire, provider descriptor, the
-/// request's model, and — unless the model binds its items to the request
-/// context — the context fingerprint below. Keep in sync with the pinned
-/// rig version's `Operation::prepare`/`history::adapt_for`.
-fn anthropic_history_origin(
-    completion: &CompletionRequest,
-    model: &str,
-) -> rig_core::completion::message::Origin {
-    use rig_core::completion::message::Api;
-    use rig_core::completion::message::Origin;
-    // A model that binds its items to the request context asks the provider
-    // to drop unbound ones, so the driver compares no fingerprint there; a
-    // request with no `thinking` option is adaptive by default.
-    let binds_context = rig_core::providers::anthropic::completion::claude_spec(model)
-        .is_some_and(|spec| spec.compat.binds_context);
-    Origin {
-        // The Messages wire's API name (`wire::MESSAGES_API`).
-        api: Api::from("anthropic.messages"),
-        provider: rig_core::providers::anthropic::PROVIDER_NAME.to_string(),
-        model: model.to_string(),
-        response_model: None,
-        response_id: None,
-        context: (!binds_context).then(|| anthropic_context_fingerprint(completion, model)),
-    }
-}
-
-/// Mirrors rig 0.44's private `history::context_of` for the Messages wire:
-/// the fingerprint of the sorted tool definitions, the leading system
-/// prompt as the wire sends it, and the raw hosted tools. A fingerprint
-/// mismatch only downgrades the turn to plain text, so a drift here fails
-/// visibly in the reasoning-replay wire tests rather than corrupting a
-/// request.
-fn anthropic_context_fingerprint(
-    completion: &CompletionRequest,
-    model: &str,
-) -> rig_core::completion::message::Fingerprint {
-    use rig_core::completion::message::Fingerprint;
-    use rig_core::completion::message::Message;
-    let claude_spec = rig_core::providers::anthropic::completion::claude_spec(model);
-    // The wire folds every system message into one unless the model takes
-    // them mid-conversation.
-    let folds = !claude_spec.is_some_and(|spec| spec.compat.mid_conversation_system);
-    let mut tools: Vec<_> = completion.tools.iter().collect();
-    tools.sort_by(|left, right| left.name.cmp(&right.name));
-    let mut system: Vec<&str> = completion
-        .chat_history
-        .iter()
-        .map_while(|message| match message {
-            Message::System { content } => Some(Some(content.as_str())),
-            _ => folds.then_some(None),
-        })
-        .flatten()
-        .filter(|content| !content.trim().is_empty())
-        .collect();
-    let joined;
-    if folds && system.len() > 1 {
-        joined = system.join("\n\n");
-        system = vec![joined.as_str()];
-    }
-    let raw_tools: &[Value] = completion
-        .additional_params
-        .as_ref()
-        .and_then(|params| params.get("tools"))
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
-    let mut fields = vec![json!("context"), json!(tools)];
-    fields.push(json!(system));
-    if !raw_tools.is_empty() {
-        fields.push(json!(raw_tools));
-    }
-    Fingerprint::of(&Value::Array(fields))
 }
 
 fn map_tool_choice(choice: &str) -> Result<Option<ToolChoice>, ApiError> {

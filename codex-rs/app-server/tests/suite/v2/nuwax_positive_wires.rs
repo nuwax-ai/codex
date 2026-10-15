@@ -118,6 +118,9 @@ fn exec_command_arguments() -> String {
 fn chat_tool_call_sse() -> String {
     chat_sse(vec![
         chat_frame(
+            json!({"index": 0, "delta": {"reasoning_content": "Use the shell tool."}, "finish_reason": null}),
+        ),
+        chat_frame(
             json!({"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": null}),
         ),
         chat_frame(json!({"index": 0, "delta": {"tool_calls": [
@@ -131,6 +134,9 @@ fn chat_tool_call_sse() -> String {
 
 fn chat_final_sse(answer: &str) -> String {
     chat_sse(vec![
+        chat_frame(
+            json!({"index": 0, "delta": {"reasoning_content": "Check the tool result."}, "finish_reason": null}),
+        ),
         chat_frame(
             json!({"index": 0, "delta": {"role": "assistant", "content": answer}, "finish_reason": null}),
         ),
@@ -323,6 +329,14 @@ async fn chat_env_group_executes_a_tool_round_trip_over_the_real_chat_wire() -> 
     );
     let second = assert_common_wire_shape(&requests[1], "/v1/chat/completions")?;
     assert_eq!(second["max_tokens"], 2048);
+    let assistant_reasoning: Vec<_> = second["messages"]
+        .as_array()
+        .context("chat history messages")?
+        .iter()
+        .filter(|message| message["role"] == "assistant")
+        .filter_map(|message| message["reasoning_content"].as_str())
+        .collect();
+    assert_eq!(assistant_reasoning, ["Use the shell tool."]);
     let tool_results: Vec<&str> = second["messages"]
         .as_array()
         .context("chat history messages")?
@@ -652,11 +666,11 @@ async fn env_group_stream_interrupt_cancels_the_request_and_two_resumes_continue
             .context("chat history messages")?
             .iter()
             .filter(|message| message["role"] == "user")
-            .filter_map(|message| match &message["content"] {
-                Value::String(text) => Some(text.as_str()),
-                Value::Array(parts) => parts.iter().find_map(|part| part["text"].as_str()),
-                _ => None,
+            .flat_map(|message| match &message["content"] {
+                Value::Array(parts) => parts.as_slice(),
+                content => std::slice::from_ref(content),
             })
+            .filter_map(|part| part.as_str().or_else(|| part["text"].as_str()))
             .collect();
         assert!(
             user_texts.contains(&prompt),
