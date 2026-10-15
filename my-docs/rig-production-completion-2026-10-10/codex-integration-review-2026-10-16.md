@@ -1,5 +1,8 @@
 # Codex 集成复审：Rig、图片预算、后台模型与证据更正
 
+> **同日后续更正**：无条件把纯文本也夹到10K造成真实回归，已收窄为图片承载结果；
+> 新收据及旧CI/ACP误判更正见 [稳定性复审](codex-stability-review-2026-10-16.md)。
+
 审查起点 `914a400d7`，本轮开发范围 `29d55354c..914a400d7`。复审在
 `/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014`
 的 `codex/rig-044-20261014` 进行；用户授权修复后合回主工作区 `test` 并 push。

@@ -1,5 +1,12 @@
 # CI 与使用路径验收账本（2026-10-16）
 
+> **Codex 同日复审更正（以此为准）**：截断簇已确认是无条件10K夹断纯文本的跨平台回归，
+> 不是已证实的Linux取数分叉；cap累计spend没有丢失，旧测试错误要求覆盖context baseline；
+> ACP两项“产品缺陷”已撤回，修正共享mock及通知关联后同二进制六场景通过。
+> Windows作业因磁盘耗尽中断，原76只计FAIL并漏掉TIMEOUT/FAIL+LEAK，不能作为完整结论。
+> 本轮实际修复、完整统计、原生补录和最终复验见
+> [复审与收口记录](codex-stability-review-2026-10-16.md)。以下Round12内容保留历史过程。
+
 Round 12。执行者 Claude Code（本文件）；复审请求直接交 Codex。
 范围：`test` 分支 `8e7c5904b`（CI run `38782462743`）→ 本轮新增
 `e6ab13a18`（夹具修复）与 ACP dev `2b4ae13`（验收归档）。未 push、
@@ -27,7 +34,7 @@ Round 12。执行者 Claude Code（本文件）；复审请求直接交 Codex。
 
 ### 1.1 已定位根因的簇
 
-**A. ubuntu 截断簇（truncation×3 + code_mode×5 + guardian_context_budget
+**A. 原记录称ubuntu截断簇（现已确认跨平台纯函数回归）（truncation×3 + code_mode×5 + guardian_context_budget
 + step_settings 等，~12 个）——首败在 Codex 集成提交内。**
 - Linux 主验机（192.168.32.163）复现：`4a0dd66d5` 红、`914a400d7` 绿
   （二分需先 `cargo build -p codex-rmcp-client --bin test_stdio_server`，
@@ -41,7 +48,7 @@ Round 12。执行者 Claude Code（本文件）；复审请求直接交 Codex。
 - 待 Codex 续查方向：`9e4a4276b`（共享硬限）与 `4a0dd66d5` 之间的
   item-wise/formatted 两级截断在 Linux 的取数路径。
 
-**B. `capped_sampling_reports_terminal_usage_over_v2`——先于本审查范围存在。**
+**B. `capped_sampling_reports_terminal_usage_over_v2`——旧合同冲突，原“存储缺陷”归因撤回。**
 - mac 本地即复现（app-server::all，`-p codex-app-server --features
   codex-core/rust-rig`）；`29d55354c`（活动起点）即红 → 随 main 合并
   进入（上游测试 `e4797d0dc` vs 本仓 SpendingOnly 语义）。
@@ -98,8 +105,7 @@ Round 12。执行者 Claude Code（本文件）；复审请求直接交 Codex。
   六场景驱动、runner 含 sha256 收据校验；零凭据扫描通过）。
 - 当前二进制 `e6ab13a18`（sha256
   `1b9a2fa74ca39775eafdbf740bc39422c5c75edff26c49285951bf4aba542e55`）
-  实测：S1/S2/S4 过；**S3/S5/S6 揭出两个产品缺陷**（原版 tmp 驱动同
-  样复现，排除归档版自身因素）：
+  实测：S1/S2/S4 过；**S3/S5/S6 当时被误判为两个产品缺陷（复审已撤回）**（原版 tmp 驱动共用同一错误mock，不能排除验收器因素）：
   1. MCP 工具在请求 `tools` 列表中以 `mcp__screenshots__take_screenshot`
      广告、服务器 `status=ready`，但执行返回 `unsupported call:` 同名
      ——广告/执行目录不一致。914a400d7 与 e6ab13a18 均复现；10-15 晚
