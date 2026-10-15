@@ -271,30 +271,19 @@ fn truncate_function_output_items_with_policy_discards_empty_text() {
         },
     ];
     items.extend(content);
-    // Images now share the per-output budget: with a budget far below one
-    // image's visual cost, only the NEWEST image survives (never silently
-    // zero), the older one is reported through the omission marker, and the
-    // unaffordable text/audio collapse to their markers. Encrypted content
-    // still passes free.
+    // An unaffordable image becomes an explicit omission; preserving it
+    // would violate the caller's shared visual/text budget.
     for policy in [TruncationPolicy::Bytes(16), TruncationPolicy::Tokens(4)] {
         let output = truncate_function_output_items_with_policy(&items, policy, |_| 1);
-        let images: Vec<_> = output
-            .iter()
-            .filter(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. }))
-            .collect();
-        assert_eq!(images.len(), 1, "{policy:?}: {output:?}");
-        assert_eq!(
-            images[0],
-            &FunctionCallOutputContentItem::InputImage {
-                image: ImageReference::File {
-                    file_id: "file_123".to_string(),
-                },
-                detail: Some(DEFAULT_IMAGE_DETAIL),
-            }
+        assert!(
+            !output
+                .iter()
+                .any(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. })),
+            "{policy:?}: {output:?}"
         );
         assert!(output.iter().any(|item| matches!(
             item,
-            FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 1 image")
+            FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 2 image")
         )));
         assert!(output.iter().any(|item| matches!(
             item,
@@ -385,27 +374,16 @@ fn formatted_truncate_text_content_items_with_policy_merges_text_and_appends_med
     let (output, original_token_count) =
         formatted_truncate_text_content_items_with_policy(&items, TruncationPolicy::Bytes(8));
 
-    // Images share the byte budget now: with 8 bytes the newest image is the
-    // only one that can stay, the two older ones become the omission marker,
-    // and the text collapses against a budget fully consumed by the image.
+    // None of the images fits an eight-byte visual allowance.
     assert_eq!(original_token_count, Some(4));
-    let images: Vec<_> = output
-        .iter()
-        .filter(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. }))
-        .collect();
-    assert_eq!(images.len(), 1, "{output:?}");
-    assert_eq!(
-        images[0],
-        &FunctionCallOutputContentItem::InputImage {
-            image: ImageReference::Inline {
-                image_url: "img:two".to_string(),
-            },
-            detail: Some(DEFAULT_IMAGE_DETAIL),
-        }
+    assert!(
+        !output
+            .iter()
+            .any(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. }))
     );
     assert!(matches!(
         output.last(),
-        Some(FunctionCallOutputContentItem::InputText { text }) if text.contains("omitted 2 image")
+        Some(FunctionCallOutputContentItem::InputText { text }) if text.contains("omitted 3 image")
     ));
 }
 
@@ -567,7 +545,7 @@ fn kept_image_urls(output: &[FunctionCallOutputContentItem]) -> Vec<String> {
 }
 
 #[test]
-fn image_count_cap_keeps_the_newest_images_and_reports_the_rest() {
+fn image_hard_token_cap_keeps_the_newest_images_and_reports_the_rest() {
     let items: Vec<_> = (0..MAX_TOOL_OUTPUT_IMAGES + 3)
         .map(|index| image_item(&format!("img-{index}"), Some(DEFAULT_IMAGE_DETAIL)))
         .collect();
@@ -578,13 +556,13 @@ fn image_count_cap_keeps_the_newest_images_and_reports_the_rest() {
     );
     assert_eq!(
         kept_image_urls(&output),
-        (3..MAX_TOOL_OUTPUT_IMAGES + 3)
+        (6..MAX_TOOL_OUTPUT_IMAGES + 3)
             .map(|index| format!("img-{index}"))
             .collect::<Vec<_>>(),
         "the newest images survive the count cap"
     );
     assert!(output.iter().any(|item| matches!(item,
-        FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 3 image")
+        FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 6 image")
     )));
 }
 
@@ -670,35 +648,27 @@ fn text_and_images_share_one_budget() {
 }
 
 #[test]
-fn original_detail_images_bypass_the_shared_charge_but_respect_count_caps() {
-    let total = MAX_TOOL_OUTPUT_IMAGES + 2;
-    let mut items: Vec<_> = (0..total)
-        .map(|index| {
-            image_item(
-                &format!("img-original-{index}"),
-                Some(codex_protocol::models::ImageDetail::Original),
-            )
-        })
-        .collect();
-    items.insert(0, text_item("context"));
-    // Even a budget of zero standard-image tokens cannot delete the newest
-    // original image, and original images as a group ride the count cap
-    // only — their visual cost is accounted patch-based in the context
-    // window, not against the per-output text budget.
+fn original_detail_uses_a_conservative_visual_charge() {
+    let items = vec![image_item(
+        "original",
+        Some(codex_protocol::models::ImageDetail::Original),
+    )];
     let output =
-        truncate_function_output_items_with_policy(&items, TruncationPolicy::Tokens(1), |_| 0);
-    let kept: Vec<_> = kept_image_urls(&output);
-    assert_eq!(kept.len(), MAX_TOOL_OUTPUT_IMAGES, "{output:?}");
-    let newest = format!("img-original-{}", total - 1);
-    assert_eq!(kept.last().map(String::as_str), Some(newest.as_str()));
+        truncate_function_output_items_with_policy(&items, TruncationPolicy::Tokens(10_000), |_| 0);
+    assert_eq!(kept_image_urls(&output), Vec::<String>::new());
+    assert!(output.iter().any(
+        |item| matches!(item, FunctionCallOutputContentItem::InputText { text }
+        if text.contains("unknown original costs 10000 tokens plus control headroom"))
+    ));
 }
 
 #[test]
-fn the_newest_image_survives_even_when_nothing_fits() {
+fn an_unaffordable_newest_image_is_reported_explicitly() {
     let items = vec![image_item("img-a", Some(DEFAULT_IMAGE_DETAIL))];
     let output =
         truncate_function_output_items_with_policy(&items, TruncationPolicy::Tokens(1), |_| 0);
-    assert_eq!(kept_image_urls(&output), vec!["img-a".to_string()]);
+    assert_eq!(kept_image_urls(&output), Vec::<String>::new());
+    assert!(output.iter().any(|item| matches!(item, FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 1 image"))));
 }
 
 #[test]
@@ -737,11 +707,11 @@ fn file_references_pass_size_limits_but_still_cost_visual_tokens() {
         TruncationPolicy::Tokens(2 * TOOL_OUTPUT_IMAGE_VISUAL_TOKENS),
         |_| 0,
     );
-    let kept: Vec<_> = output
+    let kept = output
         .iter()
         .filter(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. }))
-        .collect();
-    assert_eq!(kept.len(), 2);
+        .count();
+    assert_eq!(kept, 2);
     assert!(!output.iter().any(|item| matches!(item,
         FunctionCallOutputContentItem::InputText { text } if text.contains("image")
     )));

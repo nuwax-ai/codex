@@ -3,14 +3,20 @@
 mod image_limits;
 
 pub use image_limits::ImageAdmission;
+pub use image_limits::MAX_IMAGE_REFERENCE_BYTES;
 pub use image_limits::MAX_TOOL_OUTPUT_IMAGE_BYTES;
 pub use image_limits::MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES;
 pub use image_limits::MAX_TOOL_OUTPUT_IMAGES;
+pub use image_limits::MAX_TOOL_OUTPUT_VISIBLE_TOKENS;
+use image_limits::OmissionKind;
 pub use image_limits::TOOL_OUTPUT_IMAGE_ORIGINAL_VISUAL_TOKENS;
 pub use image_limits::TOOL_OUTPUT_IMAGE_VISUAL_TOKENS;
 pub use image_limits::admit_tool_output_images;
-pub use image_limits::charged_visual_tokens;
+use image_limits::bounded_tool_output_policy;
 use image_limits::image_budget_charge;
+use image_limits::is_tool_output_header;
+use image_limits::omission_marker;
+pub use image_limits::omitted_images_marker;
 
 use std::borrow::Cow;
 
@@ -104,8 +110,21 @@ pub fn truncate_function_output_payload(
     policy: TruncationPolicy,
     estimate_audio_token_count: impl Fn(&str) -> usize,
 ) {
+    let policy = bounded_tool_output_policy(policy);
     match &mut output.body {
-        FunctionCallOutputBody::Text(text) => *text = truncate_text(text, policy),
+        FunctionCallOutputBody::Text(text) => {
+            let header_len = text.find("\nOutput:").and_then(|index| {
+                [index + "\nOutput:".len(), index + "\nOutput:\n".len()]
+                    .into_iter()
+                    .find(|&end| text.get(..end).is_some_and(is_tool_output_header))
+            });
+            *text = if let Some(header_len) = header_len {
+                let (header, body) = text.split_at(header_len);
+                format!("{header}{}", truncate_text(body, policy))
+            } else {
+                truncate_text(text, policy)
+            };
+        }
         FunctionCallOutputBody::ContentItems(items) => {
             *items = truncate_function_output_items_with_policy(
                 items,
@@ -120,6 +139,16 @@ pub fn formatted_truncate_text_content_items_with_policy(
     items: &[FunctionCallOutputContentItem],
     policy: TruncationPolicy,
 ) -> (Vec<FunctionCallOutputContentItem>, Option<usize>) {
+    let policy = bounded_tool_output_policy(policy);
+    if items.iter().any(|item| {
+        matches!(item, FunctionCallOutputContentItem::InputText { text }
+        if is_tool_output_header(text) || omission_marker(text).is_some())
+    }) {
+        return (
+            truncate_function_output_items_with_policy(items, policy, |_| 0),
+            None,
+        );
+    }
     // The image entrance limits apply before any text collapsing so the
     // same per-result bounds hold on every producer (Code Mode, MCP,
     // function tools).
@@ -201,17 +230,6 @@ pub fn formatted_truncate_text_content_items_with_policy(
     (out, Some(original_token_count))
 }
 
-fn omitted_images_marker(dropped: usize) -> FunctionCallOutputContentItem {
-    FunctionCallOutputContentItem::InputText {
-        text: format!(
-            "[omitted {dropped} image(s): over the per-output image limits (max {} images, {} MiB each, {} MiB total) ...]",
-            MAX_TOOL_OUTPUT_IMAGES,
-            MAX_TOOL_OUTPUT_IMAGE_BYTES / (1024 * 1024),
-            MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES / (1024 * 1024),
-        ),
-    }
-}
-
 fn policy_saturating_sub(policy: TruncationPolicy, charge: usize) -> TruncationPolicy {
     match policy {
         TruncationPolicy::Bytes(bytes) => TruncationPolicy::Bytes(bytes.saturating_sub(charge)),
@@ -224,7 +242,9 @@ pub fn truncate_function_output_items_with_policy(
     policy: TruncationPolicy,
     estimate_audio_token_count: impl Fn(&str) -> usize,
 ) -> Vec<FunctionCallOutputContentItem> {
+    let policy = bounded_tool_output_policy(policy);
     let admission = admit_tool_output_images(items, policy);
+    let mut omitted_image_items = admission.dropped;
     let mut out: Vec<FunctionCallOutputContentItem> = Vec::with_capacity(items.len());
     let mut remaining_budget = match policy {
         TruncationPolicy::Bytes(_) => policy.byte_budget(),
@@ -238,6 +258,26 @@ pub fn truncate_function_output_items_with_policy(
     for (index, item) in items.iter().enumerate() {
         match item {
             FunctionCallOutputContentItem::InputText { text } => {
+                // Only one bounded leading header is control data. Similar text
+                // elsewhere, or an oversized forged header, spends the ordinary budget.
+                if index == 0 && is_tool_output_header(text) {
+                    out.push(item.clone());
+                    continue;
+                }
+                if let Some((kind, count)) = omission_marker(text) {
+                    match kind {
+                        OmissionKind::Image => {
+                            omitted_image_items = omitted_image_items.saturating_add(count)
+                        }
+                        OmissionKind::Text => {
+                            omitted_text_items = omitted_text_items.saturating_add(count)
+                        }
+                        OmissionKind::Audio => {
+                            omitted_audio_items = omitted_audio_items.saturating_add(count)
+                        }
+                    }
+                    continue;
+                }
                 // Empty text contributes no model content but still consumes an API array slot.
                 if text.is_empty() {
                     continue;
@@ -305,8 +345,8 @@ pub fn truncate_function_output_items_with_policy(
         }
     }
 
-    if admission.dropped > 0 {
-        out.push(omitted_images_marker(admission.dropped));
+    if omitted_image_items > 0 {
+        out.push(omitted_images_marker(omitted_image_items));
     }
     if omitted_text_items > 0 {
         out.push(FunctionCallOutputContentItem::InputText {
