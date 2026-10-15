@@ -432,6 +432,31 @@ context×2：同一提交（c0d07a7a2）干净树在 /tmp 新 worktree 全过
 
 
 
+## 进展（2026-10-15 第八轮：Linux 主验收据）
+
+候选 `4ca0e4fa0`（源码 tar → 192.168.32.163，Ubuntu 24.04，72 核，
+rustc 1.95.0（8af696dd，与 pin 版本一致；`RUSTUP_TOOLCHAIN=1.95.0`
+绕过 rustup 处理 rust-toolchain.toml 的 transaction panic）。
+
+| 范围 | 结果 | 备注 |
+|---|---|---|
+| Bridge 全 crate | 299/299 | `cargo nextest -p codex-rust-rig-bridge --locked --retries 0` |
+| core rig 家族 + 图片限额 + stress | 68/70，2 失败均定性 | stress 首跑缺 `test_stdio_server` fixture（构建后重跑 PASS）；`anthropic_interrupt_during_tool_runs_it_once` 因 Ubuntu 24.04 AppArmor 限制非白名单二进制 unshare userns（`uid_map: Operation not permitted`，bwrap loopback 无法建立）——同测试 macOS 通过，环境性，非代码回归；机器证据：`unshare -Urn` 同样失败 |
+| utils image/output-truncation | 44/44 | 含像素炸弹拒绝、36MP 合法解码 |
+| live-tests replay 整 crate | 195/195 | tar 包无 `.git` 曾致 repo_root/receipt 失败；`git init` 真实仓库后全绿 |
+| nuwax env 离线三件套 | 3/3 | 需远程 `cargo build -p codex-exec`（receipt 以整树为准） |
+
+关键对照结论：第六轮在 mac worktree 失败的 startup-context/grace 簇
+（mcp_optional_startup_grace×3、interrupt_during_mcp_startup×2、
+shutdown_cancels_startup_prewarm、realtime startup×2）在 Linux
+**全部通过**——确证那是 mac worktree 所在 /Volumes 卷的 IO 时序问题，
+与迁移和图片批代码无关。
+
+未做（Linux）：全量 workspace/CI、代理/TLS、真实厂商 API。Windows
+原生验证流水线同日启动（收据见后续轮次）。
+
+
+
 ## 执行清单
 
 - [x] Phase A 非流部分（12/16 文件）
