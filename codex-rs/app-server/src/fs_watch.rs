@@ -204,7 +204,7 @@ mod tests {
         AbsolutePathBuf::try_from(path).expect("path should be absolute")
     }
 
-    fn manager_with_noop_watcher() -> FsWatchManager {
+    fn manager_with_file_watcher() -> FsWatchManager {
         const OUTGOING_BUFFER: usize = 1;
         let (tx, _rx) = mpsc::channel(OUTGOING_BUFFER);
         FsWatchManager::new_with_file_watcher(
@@ -212,7 +212,7 @@ mod tests {
                 tx,
                 codex_analytics::AnalyticsEventsClient::disabled(),
             )),
-            Arc::new(FileWatcher::noop()),
+            Arc::new(FileWatcher::new().expect("file watcher")),
         )
     }
 
@@ -222,7 +222,7 @@ mod tests {
         let head_path = temp_dir.path().join("HEAD");
         std::fs::write(&head_path, "ref: refs/heads/main\n").expect("write HEAD");
 
-        let manager = manager_with_noop_watcher();
+        let manager = manager_with_file_watcher();
         let path = absolute_path(head_path);
         let watch_id = "watch-head".to_string();
         let response = manager
@@ -254,7 +254,7 @@ mod tests {
         let head_path = temp_dir.path().join("HEAD");
         std::fs::write(&head_path, "ref: refs/heads/main\n").expect("write HEAD");
 
-        let manager = manager_with_noop_watcher();
+        let manager = manager_with_file_watcher();
         manager
             .watch(
                 ConnectionId(1),
@@ -301,7 +301,7 @@ mod tests {
         std::fs::write(&head_path, "ref: refs/heads/main\n").expect("write HEAD");
         std::fs::write(&fetch_head_path, "old-fetch\n").expect("write FETCH_HEAD");
 
-        let manager = manager_with_noop_watcher();
+        let manager = manager_with_file_watcher();
         manager
             .watch(
                 ConnectionId(1),
@@ -338,7 +338,7 @@ mod tests {
         std::fs::write(&fetch_head_path, "old-fetch\n").expect("write FETCH_HEAD");
         std::fs::write(&packed_refs_path, "refs\n").expect("write packed-refs");
 
-        let manager = manager_with_noop_watcher();
+        let manager = manager_with_file_watcher();
         let response = manager
             .watch(
                 ConnectionId(1),

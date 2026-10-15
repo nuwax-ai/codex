@@ -535,7 +535,7 @@ async fn anthropic_interrupt_before_headers_closes_socket_and_allows_follow_up()
 /// The tool call asks for escalated execution with `AskForApproval::OnRequest`
 /// and the test answers each approval through the same `Op::ExecApproval`
 /// handshake the suites already use, then interrupts once `ExecCommandBegin`
-/// proves the command is genuinely running. This keeps real execution on
+/// confirms process launch succeeded. This keeps real execution on
 /// every platform: Windows does not stall at its blanket exec-approval gate,
 /// and Linux machines whose AppArmor policy denies unprivileged userns
 /// (no bwrap sandbox) still run the command for real, unsandboxed.
