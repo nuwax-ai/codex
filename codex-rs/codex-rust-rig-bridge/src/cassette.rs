@@ -20,6 +20,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use codex_api::ResponseEvent;
+use codex_protocol::protocol::ReportedResponseUsage;
 use rig_core::completion::request::FinishReason;
 use rig_core::completion::request::Usage as RigUsage;
 use rig_core::streaming::Item;
@@ -44,15 +45,23 @@ pub struct TerminalRecord {
     pub model: Option<String>,
     #[serde(default)]
     pub usage: RigUsage,
+    /// Wire counters retain presence that Rig may replace with derived values.
+    /// Older recordings omit this field and keep their normalized-usage fallback.
+    #[serde(default)]
+    pub wire_reported_usage: Option<ReportedResponseUsage>,
 }
 
 impl TerminalRecord {
-    fn from_terminal(terminal: &StreamTerminal) -> Self {
+    fn from_terminal(
+        terminal: &StreamTerminal,
+        wire_reported_usage: Option<ReportedResponseUsage>,
+    ) -> Self {
         Self {
             finish_reason: terminal.finish_reason.clone(),
             response_id: terminal.response_id.clone(),
             model: terminal.model.clone(),
             usage: terminal.usage,
+            wire_reported_usage,
         }
     }
 
@@ -79,8 +88,12 @@ impl RigRecording {
         self.events.push(event);
     }
 
-    pub(crate) fn record_terminal(&mut self, terminal: &StreamTerminal) {
-        self.terminal = Some(TerminalRecord::from_terminal(terminal));
+    pub(crate) fn record_terminal(
+        &mut self,
+        terminal: &StreamTerminal,
+        wire_reported_usage: Option<ReportedResponseUsage>,
+    ) {
+        self.terminal = Some(TerminalRecord::from_terminal(terminal, wire_reported_usage));
     }
 }
 
@@ -167,6 +180,7 @@ pub fn replay_rig_events(
             )),
         };
     };
+    pending.wire_reported_usage = terminal.wire_reported_usage.clone();
     match handle_stream_terminal(terminal.into_terminal(), &mut pending) {
         Ok(events) => {
             out.extend(events);
@@ -364,6 +378,7 @@ fn legacy_terminal(final_record: &Value) -> TerminalRecord {
         response_id,
         model,
         usage,
+        wire_reported_usage: None,
     }
 }
 

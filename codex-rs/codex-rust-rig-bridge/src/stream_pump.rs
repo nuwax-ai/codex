@@ -233,12 +233,26 @@ pub(crate) fn spawn_pump(
             }
         }
 
-        // Record the terminal AFTER wire-counter correction so a cassette
-        // replay reproduces the corrected usage the live stream emitted.
+        let report = match protocol {
+            RigProtocol::Anthropic => anthropic_usage
+                .lock()
+                .map(|usage| usage.snapshot_report())
+                .ok()
+                .flatten(),
+            RigProtocol::Chat => chat_usage
+                .lock()
+                .map(|usage| usage.snapshot_report())
+                .ok()
+                .flatten(),
+            RigProtocol::Responses => None,
+        };
+        pending.wire_reported_usage = report.clone();
+        // Record both corrected usage and raw counter presence, so replay
+        // retains the exact report used by the live terminal error.
         if let Some(rec) = &events_recorder
             && let Ok(mut buf) = rec.lock()
         {
-            buf.record_terminal(&stream_terminal_of(&response));
+            buf.record_terminal(&stream_terminal_of(&response), report);
         }
 
         // Fork (nuwax-codex) D3: a paused turn continues bridge-internally —
@@ -313,20 +327,6 @@ pub(crate) fn spawn_pump(
             return;
         }
 
-        let report = match protocol {
-            RigProtocol::Anthropic => anthropic_usage
-                .lock()
-                .map(|usage| usage.snapshot_report())
-                .ok()
-                .flatten(),
-            RigProtocol::Chat => chat_usage
-                .lock()
-                .map(|usage| usage.snapshot_report())
-                .ok()
-                .flatten(),
-            RigProtocol::Responses => None,
-        };
-        pending.wire_reported_usage = report;
         let terminal = stream_terminal_of(&response);
         let mut events =
             match crate::convert_response::handle_stream_terminal(terminal, &mut pending) {

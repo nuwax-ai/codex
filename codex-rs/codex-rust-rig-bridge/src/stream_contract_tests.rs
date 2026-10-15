@@ -104,6 +104,7 @@ fn replay(
                     response_id: None,
                     model: None,
                     usage: Usage::new(),
+                    wire_reported_usage: None,
                 });
                 continue;
             }

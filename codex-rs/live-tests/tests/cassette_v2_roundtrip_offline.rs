@@ -20,6 +20,8 @@ use codex_live_tests::load_rig_event_fixture_at;
 use codex_live_tests::save_rig_event_fixture_at;
 use codex_live_tests::shared_auth;
 use codex_live_tests::vendor_provider;
+use codex_protocol::protocol::ReportedResponseUsage;
+use codex_protocol::protocol::ReportedUsageCounters;
 use codex_rust_rig_bridge::RigProtocol;
 use codex_rust_rig_bridge::replay_fixture_events;
 use codex_rust_rig_bridge::stream_via_rig_with_recording;
@@ -32,7 +34,7 @@ use std::time::Duration;
 
 const VENDOR: &str = "roundtrip";
 
-fn bridge_request(tools: Option<Value>) -> ResponsesApiRequest {
+fn bridge_request(tools: Option<Value>) -> Result<ResponsesApiRequest> {
     let mut request = ResponsesApiRequest {
         model: "roundtrip-model".into(),
         input: vec![
@@ -40,7 +42,7 @@ fn bridge_request(tools: Option<Value>) -> ResponsesApiRequest {
                 "type":"message", "role":"user",
                 "content":[{"type":"input_text","text":"offline roundtrip"}]
             }))
-            .expect("fixture user item"),
+            .context("fixture user item")?,
         ],
         tools: None,
         tool_choice: "auto".into(),
@@ -59,10 +61,10 @@ fn bridge_request(tools: Option<Value>) -> ResponsesApiRequest {
     };
     if let Some(tools) = tools {
         let raw: Arc<serde_json::value::RawValue> =
-            Arc::from(serde_json::value::to_raw_value(&tools).expect("tools raw value"));
+            Arc::from(serde_json::value::to_raw_value(&tools).context("tools raw value")?);
         request.tools = Some(raw.into());
     }
-    request
+    Ok(request)
 }
 
 /// One-shot local SSE gateway: serve `payload` to the single request.
@@ -144,19 +146,19 @@ fn normalize_value(value: &mut Value) {
     }
 }
 
-fn normalized_events(events: Vec<Result<ResponseEvent, ApiError>>) -> Value {
+fn normalized_events(events: Vec<Result<ResponseEvent, ApiError>>) -> Result<Value> {
     let mapped: Vec<Value> = events
         .into_iter()
         .map(|event| match event {
             Ok(event) => {
-                let mut value = serde_json::to_value(&event).expect("serialize response event");
+                let mut value = serde_json::to_value(&event).context("serialize response event")?;
                 normalize_value(&mut value);
-                value
+                Ok(value)
             }
-            Err(error) => json!({"stream_error": format!("{error:?}")}),
+            Err(error) => Ok(json!({"stream_error": format!("{error:?}")})),
         })
-        .collect();
-    Value::Array(mapped)
+        .collect::<Result<_>>()?;
+    Ok(Value::Array(mapped))
 }
 
 struct Roundtrip {
@@ -169,15 +171,15 @@ struct Roundtrip {
 /// Records one attempt through the live recorder and pipeline, saves,
 /// reloads and replays it, then requires equality of the normalized event
 /// lists. Returns both lists for scenario-specific asserts.
-async fn roundtrip(scene: Roundtrip, root: &Path) -> (Value, Value) {
+async fn roundtrip(scene: Roundtrip, root: &Path) -> Result<(Value, Value)> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
-        .expect("bind roundtrip gateway");
-    let address = listener.local_addr().expect("roundtrip address");
+        .context("bind roundtrip gateway")?;
+    let address = listener.local_addr().context("roundtrip address")?;
     let payload = scene.sse.clone();
     let server = tokio::spawn(async move { serve_sse(&listener, &payload).await });
     let provider = vendor_provider(VENDOR, &format!("http://{address}/v1"));
-    let request = bridge_request(scene.tools.clone());
+    let request = bridge_request(scene.tools.clone())?;
     let recorder = Arc::new(std::sync::Mutex::new(
         codex_rust_rig_bridge::RigRecording::default(),
     ));
@@ -191,22 +193,30 @@ async fn roundtrip(scene: Roundtrip, root: &Path) -> (Value, Value) {
         Some(recorder.clone()),
     )
     .await;
-    let (mut stream, _) = start.expect("roundtrip stream starts");
+    let (mut stream, _) = start.context("roundtrip stream starts")?;
     let mut live = Vec::new();
     while let Some(event) = stream.rx_event.recv().await {
         live.push(event);
     }
-    server.await.expect("server task").expect("server served");
+    server
+        .await
+        .context("server task")?
+        .context("server served")?;
 
-    let recording = recorder.lock().expect("recorder lock").clone();
+    let recording = recorder
+        .lock()
+        .map_err(|_| anyhow::anyhow!("recorder lock poisoned"))?
+        .clone();
     assert!(
         !recording.events.is_empty(),
         "the recorder observed the rig events of the attempt"
     );
     let custom_tools = codex_rust_rig_bridge::extract_custom_tool_names(&request);
     let path = save_rig_event_fixture_at(root, VENDOR, scene.tag, &recording, &custom_tools)
-        .expect("persist v2 fixture");
-    let fixture = load_rig_event_fixture_at(&path).expect("reload v2 fixture");
+        .context("persist v2 fixture")?;
+    let fixture = load_rig_event_fixture_at(&path)
+        .map_err(anyhow::Error::msg)
+        .context("reload v2 fixture")?;
     assert!(
         fixture.rig_events.is_empty(),
         "a fresh recording must use the v2 items layout, not legacy rig_events"
@@ -217,9 +227,9 @@ async fn roundtrip(scene: Roundtrip, root: &Path) -> (Value, Value) {
     if let Some(error) = replayed.error {
         replay_events.push(Err(error));
     }
-    let live = normalized_events(live);
-    let replay = normalized_events(replay_events);
-    (live, replay)
+    let live = normalized_events(live)?;
+    let replay = normalized_events(replay_events)?;
+    Ok((live, replay))
 }
 
 fn chat_sse(frames: &[Value]) -> String {
@@ -317,7 +327,7 @@ fn envelope_of(events: &Value) -> String {
 /// Chat: reasoning → text, with a late usage-only chunk carrying cache
 /// counters after the finish frame.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn chat_reasoning_text_late_usage_cache_roundtrips() {
+async fn chat_reasoning_text_late_usage_cache_roundtrips() -> Result<()> {
     let root = tempfile::tempdir().expect("fixture root");
     let (live, replay) = roundtrip(
         Roundtrip {
@@ -338,7 +348,7 @@ async fn chat_reasoning_text_late_usage_cache_roundtrips() {
         },
         root.path(),
     )
-    .await;
+    .await?;
     assert_eq!(
         live, replay,
         "the full event list survives the disk round-trip"
@@ -355,12 +365,13 @@ async fn chat_reasoning_text_late_usage_cache_roundtrips() {
         live.to_string().contains("\"cached_input_tokens\":128"),
         "cache counters survive: {live}"
     );
+    Ok(())
 }
 
 /// Chat: reasoning → custom tool call; the fixture's custom-tool list must
 /// restore the CustomToolCall identity and the provider's call id.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn chat_reasoning_custom_tool_roundtrips() {
+async fn chat_reasoning_custom_tool_roundtrips() -> Result<()> {
     let root = tempfile::tempdir().expect("fixture root");
     let (live, replay) = roundtrip(
         Roundtrip {
@@ -385,7 +396,7 @@ async fn chat_reasoning_custom_tool_roundtrips() {
         },
         root.path(),
     )
-    .await;
+    .await?;
     assert_eq!(
         live, replay,
         "the full event list survives the disk round-trip"
@@ -399,12 +410,13 @@ async fn chat_reasoning_custom_tool_roundtrips() {
         encoded.contains("echo hi"),
         "custom tool input survives: {encoded}"
     );
+    Ok(())
 }
 
 /// Anthropic: signed thinking → text with cache usage; the v2 envelope's
 /// native signature must survive the disk round-trip.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn anthropic_signed_thinking_text_roundtrips() {
+async fn anthropic_signed_thinking_text_roundtrips() -> Result<()> {
     let root = tempfile::tempdir().expect("fixture root");
     let (live, replay) = roundtrip(
         Roundtrip {
@@ -419,7 +431,7 @@ async fn anthropic_signed_thinking_text_roundtrips() {
         },
         root.path(),
     )
-    .await;
+    .await?;
     assert_eq!(
         live, replay,
         "the full event list survives the disk round-trip"
@@ -436,12 +448,13 @@ async fn anthropic_signed_thinking_text_roundtrips() {
         live.to_string().contains("\"input_tokens\":94"),
         "inclusive input usage survives: {live}"
     );
+    Ok(())
 }
 
 /// Anthropic: thinking → client tool call; the provider call id pairs the
 /// result on the next request in both live and replay outputs.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn anthropic_thinking_tool_roundtrips() {
+async fn anthropic_thinking_tool_roundtrips() -> Result<()> {
     let root = tempfile::tempdir().expect("fixture root");
     let (live, replay) = roundtrip(
         Roundtrip {
@@ -460,7 +473,7 @@ async fn anthropic_thinking_tool_roundtrips() {
         },
         root.path(),
     )
-    .await;
+    .await?;
     assert_eq!(
         live, replay,
         "the full event list survives the disk round-trip"
@@ -469,13 +482,14 @@ async fn anthropic_thinking_tool_roundtrips() {
         live.to_string().contains("call_tool_rt"),
         "provider tool id survives: {live}"
     );
+    Ok(())
 }
 
 /// Anthropic: the output cap terminal (max_tokens) must surface as the
 /// identical CapExhausted error, with wire-corrected usage, after the
 /// round-trip.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn anthropic_cap_error_roundtrips() {
+async fn anthropic_cap_error_roundtrips() -> Result<()> {
     let root = tempfile::tempdir().expect("fixture root");
     let (live, replay) = roundtrip(
         Roundtrip {
@@ -490,7 +504,7 @@ async fn anthropic_cap_error_roundtrips() {
         },
         root.path(),
     )
-    .await;
+    .await?;
     assert_eq!(live, replay, "the cap error survives the disk round-trip");
     let encoded = live.to_string();
     assert!(
@@ -505,11 +519,96 @@ async fn anthropic_cap_error_roundtrips() {
         encoded.contains("output_tokens: Some(64)"),
         "the cap usage report survives: {encoded}"
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn chat_cap_error_preserves_reported_usage_presence_roundtrips() -> Result<()> {
+    let cases = [
+        (
+            "complete",
+            json!({"prompt_tokens":23,"completion_tokens":7,"total_tokens":30,
+                "prompt_tokens_details":{"cached_tokens":11},
+                "completion_tokens_details":{"reasoning_tokens":3}}),
+            ReportedUsageCounters {
+                input_tokens: Some(23),
+                cached_input_tokens: Some(11),
+                output_tokens: Some(7),
+                reasoning_output_tokens: Some(3),
+                total_tokens: Some(30),
+                ..Default::default()
+            },
+        ),
+        (
+            "zero",
+            json!({"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,
+                "prompt_tokens_details":{"cached_tokens":0},
+                "completion_tokens_details":{"reasoning_tokens":0}}),
+            ReportedUsageCounters {
+                input_tokens: Some(0),
+                cached_input_tokens: Some(0),
+                output_tokens: Some(0),
+                reasoning_output_tokens: Some(0),
+                total_tokens: Some(0),
+                ..Default::default()
+            },
+        ),
+        (
+            "partial",
+            json!({"completion_tokens":7}),
+            ReportedUsageCounters {
+                output_tokens: Some(7),
+                ..Default::default()
+            },
+        ),
+    ];
+    for (tag, usage, counts) in cases {
+        let root = tempfile::tempdir().expect("fixture root");
+        let (live, replay) = roundtrip(
+            Roundtrip {
+                protocol: RigProtocol::Chat,
+                sse: chat_sse(&[
+                    chat_frame(json!({"content":"partial cap answer"}), None),
+                    chat_frame(json!({}), Some("length")),
+                    chat_usage(usage),
+                ]),
+                tools: None,
+                tag,
+            },
+            root.path(),
+        )
+        .await?;
+        let path = root
+            .path()
+            .join(VENDOR)
+            .join(format!("rig-events-{tag}.json"));
+        let terminal = load_rig_event_fixture_at(&path)
+            .expect("reload persisted terminal")
+            .terminal
+            .expect("recorded terminal");
+        let expected_report = ReportedResponseUsage::from_counters(counts);
+        assert_eq!(terminal.wire_reported_usage, expected_report, "{tag}");
+        let expected_error = ApiError::CapExhausted {
+            message: "Output token limit reached; increase max_tokens before retrying".into(),
+            response_id: terminal.response_id,
+            reported_usage: expected_report,
+        };
+        assert_eq!(
+            live.as_array().expect("live events").last(),
+            Some(&json!({"stream_error": format!("{expected_error:?}")})),
+            "{tag}: the live error retains only directly reported counters"
+        );
+        assert_eq!(
+            live, replay,
+            "{tag}: the complete cap error and streamed prefix survive"
+        );
+    }
+    Ok(())
 }
 
 /// Chat: content_filter terminal must replay as the identical error.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn chat_content_filter_roundtrips() {
+async fn chat_content_filter_roundtrips() -> Result<()> {
     let root = tempfile::tempdir().expect("fixture root");
     let (live, replay) = roundtrip(
         Roundtrip {
@@ -523,7 +622,7 @@ async fn chat_content_filter_roundtrips() {
         },
         root.path(),
     )
-    .await;
+    .await?;
     assert_eq!(
         live, replay,
         "the filter error survives the disk round-trip"
@@ -532,12 +631,13 @@ async fn chat_content_filter_roundtrips() {
         live.to_string().contains("ContentFilter"),
         "the terminal is the content filter: {live}"
     );
+    Ok(())
 }
 
 /// Anthropic: an unmapped stop reason must replay as the identical
 /// stream error naming the reason.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn anthropic_unknown_finish_roundtrips() {
+async fn anthropic_unknown_finish_roundtrips() -> Result<()> {
     let root = tempfile::tempdir().expect("fixture root");
     let (live, replay) = roundtrip(
         Roundtrip {
@@ -552,7 +652,7 @@ async fn anthropic_unknown_finish_roundtrips() {
         },
         root.path(),
     )
-    .await;
+    .await?;
     assert_eq!(
         live, replay,
         "the unknown-finish error survives the disk round-trip"
@@ -562,4 +662,5 @@ async fn anthropic_unknown_finish_roundtrips() {
         encoded.contains("Incomplete Rig response"),
         "the terminal names the incomplete response: {encoded}"
     );
+    Ok(())
 }

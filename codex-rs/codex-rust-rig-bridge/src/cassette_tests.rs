@@ -1,4 +1,6 @@
 use super::*;
+use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::TokenUsage;
 use pretty_assertions::assert_eq;
 use rig_core::completion::message::ToolCall;
 use rig_core::completion::request::FinishReason;
@@ -17,6 +19,7 @@ fn terminal() -> TerminalRecord {
         response_id: None,
         model: None,
         usage: Usage::new(),
+        wire_reported_usage: None,
     }
 }
 
@@ -51,6 +54,92 @@ fn replay_rejects_missing_terminal_records() {
         .unwrap_err();
     assert!(
         matches!(error, codex_api::ApiError::Stream(message) if message.contains("without a terminal record"))
+    );
+}
+
+#[test]
+fn older_v2_terminals_keep_the_normalized_usage_fallback() {
+    let fixture: RigEventFixture = serde_json::from_value(serde_json::json!({
+        "vendor": "old-v2", "tag": "cap", "items": [],
+        "terminal": {
+            "finish_reason": "length", "response_id": "old-cap",
+            "usage": {"input_tokens":4,"output_tokens":6,"total_tokens":10}
+        }
+    }))
+    .expect("v2 recordings before wire presence was persisted still load");
+    let expected = codex_api::ApiError::CapExhausted {
+        message: "Output token limit reached; increase max_tokens before retrying".into(),
+        response_id: Some("old-cap".into()),
+        reported_usage: codex_protocol::protocol::ReportedResponseUsage::from_counters(
+            codex_protocol::protocol::ReportedUsageCounters {
+                input_tokens: Some(4),
+                output_tokens: Some(6),
+                ..Default::default()
+            },
+        ),
+    };
+    let actual = replay_fixture_events(&fixture)
+        .into_result()
+        .expect_err("old cap fixture");
+    assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+}
+
+#[test]
+fn recorded_v1_tool_turn_keeps_provider_ids_arguments_and_usage() {
+    // Byte-for-byte 0.42 recording from 0b71e182ecb787e61438700b151e519cc28b7c33:
+    // live-tests/tests/fixtures/mimo/rig-events-anthropic-tool-t1.json.
+    let fixture: RigEventFixture = serde_json::from_str(include_str!(
+        "../tests/fixtures/legacy/mimo-anthropic-tool-t1-v1.json"
+    ))
+    .expect("historical v1 fixture");
+    let events = replay_fixture_events(&fixture)
+        .into_result()
+        .expect("convert the real 0.42 recording through the current decoder");
+    let actual: Vec<_> = events
+        .into_iter()
+        .filter(|event| {
+            matches!(
+                event,
+                ResponseEvent::OutputItemDone(ResponseItem::FunctionCall { .. })
+                    | ResponseEvent::Completed { .. }
+            )
+        })
+        .collect();
+    let Some(ResponseEvent::OutputItemDone(ResponseItem::FunctionCall {
+        id: Some(item_id), ..
+    })) = actual.first()
+    else {
+        panic!("expected the recorded tool before completion: {actual:?}");
+    };
+    // Only the synthetic response nonce varies; the tool is the second segment.
+    assert!(item_id.starts_with("rigseg_") && item_id.ends_with("_1"));
+    let expected = vec![
+        ResponseEvent::OutputItemDone(ResponseItem::FunctionCall {
+            id: Some(item_id.clone()),
+            call_id: "call_32a1841217a1438a871eb84c".into(),
+            name: "get_weather".into(),
+            namespace: None,
+            arguments: "{\"city\": \"北京\"}".into(),
+            encrypted_function_args: None,
+            internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
+        }),
+        ResponseEvent::Completed {
+            response_id: "msg_9ad890228d634af188ee24b8".into(),
+            token_usage: Some(TokenUsage {
+                input_tokens: 131,
+                output_tokens: 35,
+                total_tokens: 166,
+                ..Default::default()
+            }),
+            usage_metadata: None,
+            end_turn: Some(false),
+        },
+    ];
+    assert_eq!(
+        serde_json::to_value(actual).unwrap(),
+        serde_json::to_value(expected).unwrap()
     );
 }
 
