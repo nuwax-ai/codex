@@ -129,3 +129,107 @@ async fn anthropic_usage_terminal_counters_are_authoritative() {
         }
     );
 }
+
+/// Anthropic requires the usage object on message_start and message_delta.
+/// A frame without it is a truncated/malformed reply the bridge must fail
+/// (retryable for core) — rig's lenient reader would fold a default terminal.
+/// The message_start failure surfaces as a stream START error (the bridge
+/// eagerly resolves the first frame); the message_delta failure arrives
+/// mid-stream after partial text.
+#[tokio::test]
+async fn anthropic_missing_usage_fails_the_stream_before_a_terminal() {
+    async fn run(
+        start_usage: Option<Value>,
+        delta_usage: Option<Value>,
+    ) -> Vec<Result<ResponseEvent, codex_api::ApiError>> {
+        let mut message = json!({
+            "id":"msg-missing","type":"message","role":"assistant","content":[],
+            "model":"review-model","stop_reason":null,"stop_sequence":null
+        });
+        if let Some(usage) = start_usage {
+            message["usage"] = usage;
+        }
+        let mut delta = json!({"type":"message_delta","delta":{"stop_reason":"max_tokens","stop_sequence":null}});
+        if let Some(usage) = delta_usage {
+            delta["usage"] = usage;
+        } else {
+            delta.as_object_mut().unwrap().remove("usage");
+        }
+        let frames = vec![
+            json!({"type":"message_start","message":message}),
+            json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
+            json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial"}}),
+            delta,
+            json!({"type":"message_stop"}),
+        ];
+        let payload: String = frames
+            .into_iter()
+            .map(|frame| {
+                format!(
+                    "event: {}\ndata: {frame}\n\n",
+                    frame["type"].as_str().unwrap()
+                )
+            })
+            .collect();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let provider = provider(listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { support::serve_payload(&listener, &payload).await });
+        let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+        // A malformed FIRST frame fails the eager start; a malformed later
+        // frame fails inside the returned stream. Both must carry the wire
+        // requirement through the provider error mapping.
+        match stream_via_rig_with_recording(
+            &support::request(vec![support::user()]),
+            &provider,
+            &auth,
+            http::HeaderMap::new(),
+            RigProtocol::Anthropic,
+            Duration::from_secs(3),
+            None,
+        )
+        .await
+        {
+            Ok((mut stream, _)) => {
+                let mut events = Vec::new();
+                while let Some(event) = stream.next().await {
+                    events.push(event);
+                }
+                server.await.unwrap();
+                events
+            }
+            Err(error) => vec![Err(error)],
+        }
+    }
+
+    for (start, delta, label) in [
+        (None, Some(json!({"output_tokens":64})), "message_start"),
+        (
+            Some(json!({"input_tokens":4,"output_tokens":0})),
+            None,
+            "message_delta",
+        ),
+    ] {
+        let events = run(start, delta).await;
+        let errors: Vec<_> = events
+            .iter()
+            .filter_map(|event| event.as_ref().err())
+            .collect();
+        assert_eq!(errors.len(), 1, "{label}: {events:?}");
+        let message = match &errors[0] {
+            codex_api::ApiError::Transport(codex_api::TransportError::Network(message)) => {
+                message.clone()
+            }
+            other => panic!("{label}: expected a retryable transport error, got {other:?}"),
+        };
+        assert!(
+            message.contains("missing field `usage`"),
+            "{label}: the wire requirement survives the provider error mapping: {message}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, Ok(ResponseEvent::Completed { .. }))),
+            "{label}: no terminal may be folded from a malformed stream"
+        );
+    }
+}

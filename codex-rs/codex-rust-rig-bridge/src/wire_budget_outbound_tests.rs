@@ -26,6 +26,13 @@ type TestError = Box<dyn std::error::Error + Send + Sync>;
 /// length by design (nothing may ever connect).
 const IO_DEADLINE: Duration = Duration::from_secs(5);
 
+/// Headroom for wrapping a task that itself waits out `IO_DEADLINE` (the
+/// negative control's no-connection accept window): the wrapper must not
+/// race the inner timer to the same instant, or a loaded runtime fails the
+/// test before the inner deadline can report its clean `None`. The inner
+/// deadline stays the assertion; this only bounds its teardown.
+const OUTER_DEADLINE: Duration = Duration::from_secs(10);
+
 const CONTEXT_WINDOW_128K: i64 = 128_000;
 const SSE_EMPTY_RESPONSE: &[u8] =
     b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: 0\r\n\r\n";
@@ -148,8 +155,8 @@ async fn dispatch(
         .uri(format!("http://{address}{path}"))
         .header(http::header::CONTENT_TYPE, "application/json")
         .body(body)?;
-    let outcome = tokio::time::timeout(IO_DEADLINE, client.send_streaming(request)).await;
-    let server_body = tokio::time::timeout(IO_DEADLINE, server).await???;
+    let outcome = tokio::time::timeout(OUTER_DEADLINE, client.send_streaming(request)).await;
+    let server_body = tokio::time::timeout(OUTER_DEADLINE, server).await???;
     Ok(match outcome {
         Ok(Ok(_stream)) => OutboundOutcome {
             dispatched: server_body,

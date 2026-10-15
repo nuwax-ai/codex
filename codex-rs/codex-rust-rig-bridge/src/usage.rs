@@ -2,8 +2,38 @@
 //! Rig 0.42 drops optional counters absent from the terminal delta and treats
 //! an explicit zero input count as missing. Correct its normalized final usage
 //! from the wire before recording or converting that final event.
+//!
+//! The observers are also the fork's fail-fast usage contract: rig 0.44's own
+//! decoders read counters leniently (`as_u64`, absent = unknown), so a
+//! malformed or missing usage frame would silently become a default terminal
+//! instead of the retryable stream error the fork has always surfaced. The
+//! observers restore that strictness at the wire boundary rig sits behind.
 use rig_core::completion::Usage;
 use serde_json::Value;
+
+/// A counter that is present must be a valid unsigned integer.
+fn require_counter(object: &Value, name: &str, frame: &str) -> Result<Option<u64>, String> {
+    let value = &object[name];
+    if value.is_null() {
+        return Ok(None);
+    }
+    value.as_u64().map(Some).ok_or_else(|| {
+        format!("invalid value: integer `{value}`, expected u64 at `{name}` of the {frame}")
+    })
+}
+
+/// The usage object a frame must carry: present and an object.
+fn require_usage<'a>(value: &'a Value, frame: &str) -> Result<&'a Value, String> {
+    if value.is_null() {
+        return Err(format!("missing field `usage` at the {frame}"));
+    }
+    if !value.is_object() {
+        return Err(format!(
+            "invalid type for `usage` at the {frame}: expected an object"
+        ));
+    }
+    Ok(value)
+}
 
 #[derive(Default)]
 pub(crate) struct AnthropicUsage {
@@ -15,15 +45,16 @@ pub(crate) struct AnthropicUsage {
 }
 
 impl AnthropicUsage {
-    pub(crate) fn observe(&mut self, event: &Value) {
-        let usage = match event["type"].as_str() {
+    pub(crate) fn observe(&mut self, event: &Value) -> Result<(), String> {
+        let (usage, frame) = match event["type"].as_str() {
             Some("message_start") => {
                 *self = Self::default();
-                &event["message"]["usage"]
+                (&event["message"]["usage"], "Anthropic message_start frame")
             }
-            Some("message_delta") => &event["usage"],
-            _ => return,
+            Some("message_delta") => (&event["usage"], "Anthropic message_delta frame"),
+            _ => return Ok(()),
         };
+        let usage = require_usage(usage, frame)?;
         for (counter, name) in [
             (&mut self.input, "input_tokens"),
             (&mut self.output, "output_tokens"),
@@ -31,16 +62,18 @@ impl AnthropicUsage {
             (&mut self.cache_creation, "cache_creation_input_tokens"),
         ] {
             // Missing/null means unchanged; a reported zero is authoritative.
-            if let Some(value) = usage[name].as_u64() {
+            if let Some(value) = require_counter(usage, name, frame)? {
                 *counter = Some(value);
             }
         }
-        if let Some(value) = usage["output_tokens_details"]
-            .get("thinking_tokens")
-            .and_then(Value::as_u64)
+        if let Some(details) = usage
+            .get("output_tokens_details")
+            .filter(|details| details.is_object())
+            && let Some(value) = require_counter(details, "thinking_tokens", frame)?
         {
             self.reasoning = Some(value);
         }
+        Ok(())
     }
 
     /// Snapshots the observed counters as a presence-preserving report.
@@ -114,19 +147,36 @@ pub(crate) struct ChatUsage {
 
 impl ChatUsage {
     /// Observes one Chat frame; frames without a usable `usage` object
-    /// (absent or null) leave the previous snapshot unchanged.
-    pub(crate) fn observe(&mut self, value: &Value) {
+    /// (absent or null) leave the previous snapshot unchanged. A present
+    /// object with malformed counters fails the turn.
+    pub(crate) fn observe(&mut self, value: &Value) -> Result<(), String> {
         let usage = &value["usage"];
-        if !usage.is_object() {
-            return;
+        if usage.is_null() {
+            return Ok(());
         }
+        let usage = require_usage(usage, "Chat usage object")?;
         *self = Self {
-            input: usage["prompt_tokens"].as_u64(),
-            output: usage["completion_tokens"].as_u64(),
-            cached: usage["prompt_tokens_details"]["cached_tokens"].as_u64(),
-            reasoning: usage["completion_tokens_details"]["reasoning_tokens"].as_u64(),
-            total: usage["total_tokens"].as_u64(),
+            input: require_counter(usage, "prompt_tokens", "Chat usage object")?,
+            output: require_counter(usage, "completion_tokens", "Chat usage object")?,
+            cached: require_counter(
+                usage
+                    .get("prompt_tokens_details")
+                    .filter(|details| details.is_object())
+                    .unwrap_or(&Value::Null),
+                "cached_tokens",
+                "Chat usage object",
+            )?,
+            reasoning: require_counter(
+                usage
+                    .get("completion_tokens_details")
+                    .filter(|details| details.is_object())
+                    .unwrap_or(&Value::Null),
+                "reasoning_tokens",
+                "Chat usage object",
+            )?,
+            total: require_counter(usage, "total_tokens", "Chat usage object")?,
         };
+        Ok(())
     }
 
     /// Snapshots the observed counters as a presence-preserving report.

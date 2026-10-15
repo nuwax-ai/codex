@@ -15,21 +15,19 @@ pub(crate) enum WireUsageObserver {
 }
 
 impl WireUsageObserver {
-    /// Observes one decoded frame; `Err` when the shared state is poisoned.
-    fn observe(&self, value: &serde_json::Value) -> Result<(), ()> {
+    /// Observes one decoded frame. `Err` carries the fail-fast usage message
+    /// (malformed or missing counters) or reports poisoned shared state.
+    fn observe(&self, value: &serde_json::Value) -> Result<(), String> {
         match self {
             Self::Anthropic(usage) => usage
                 .lock()
-                .map(|mut usage| usage.observe(value))
-                .map(|_| ())
-                .map_err(|_| ()),
+                .map_err(|_| "Anthropic usage state is unavailable".to_string())
+                .and_then(|mut usage| usage.observe(value)),
             Self::Chat(usage) => usage
                 .lock()
-                .map(|mut usage| usage.observe(value))
-                .map(|_| ())
-                .map_err(|_| ()),
+                .map_err(|_| "Chat usage state is unavailable".to_string())
+                .and_then(|mut usage| usage.observe(value)),
         }
-        .map_err(|_| ())
     }
 }
 
@@ -95,12 +93,14 @@ pub(crate) fn with_terminal_check(
                             // A Chat frame may carry a complete usage object
                             // (the terminal chunk, or a trailing usage-only
                             // chunk): retain its counters with wire presence.
+                            // A present-but-malformed usage value fails the
+                            // stream here — rig's own lenient reader would
+                            // silently fold a default terminal instead.
                             if let Some(value) = value.as_ref()
-                                && value["usage"].is_object()
-                                && usage.observe(value).is_err()
+                                && !value["usage"].is_null()
+                                && let Err(message) = usage.observe(value)
                             {
-                                let error =
-                                    std::io::Error::other("Chat usage state is unavailable");
+                                let error = std::io::Error::other(message);
                                 return Some((
                                     Err(Error::Instance(Box::new(error))),
                                     (frames, true, None, usage, false),
@@ -145,10 +145,12 @@ pub(crate) fn with_terminal_check(
                                 ));
                             }
                         };
-                        let observed = usage.observe(&value).is_ok();
-                        if !observed {
-                            let error =
-                                std::io::Error::other("Anthropic usage state is unavailable");
+                        // Missing usage on a required frame, or a malformed
+                        // counter, fails the stream here: rig's lenient
+                        // reader would fold a default terminal instead of the
+                        // retryable failure the fork contract promises.
+                        if let Err(message) = usage.observe(&value) {
+                            let error = std::io::Error::other(message);
                             return Some((
                                 Err(Error::Instance(Box::new(error))),
                                 (frames, true, None, usage, false),

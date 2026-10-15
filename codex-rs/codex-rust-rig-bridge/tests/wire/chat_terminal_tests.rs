@@ -299,3 +299,67 @@ async fn late_primary_text_and_tools_do_not_escape_the_length_error() {
     assert_cap_failure(&events);
     assert_visible_output(&events, "kept", Vec::new());
 }
+
+/// Rig closes a tool call the output budget cut mid-arguments without its
+/// native item. That close must not fail the stream with a tool-shape
+/// complaint — the cap terminal explains the cut, and the truncated call
+/// never publishes executable items.
+#[tokio::test]
+async fn a_budget_cut_tool_call_does_not_replace_the_cap_terminal() {
+    let events = run_chat(vec![
+        chat_chunk(
+            json!({"index":0,"delta":{"role":"assistant","content":"partial cap answer"},"finish_reason":null}),
+        ),
+        chat_chunk(
+            json!({"index":0,"delta":{"tool_calls":[{
+                "index":0,"id":"call_cut","type":"function",
+                "function":{"name":"lookup","arguments":"{\"q\":\"ab"}
+            }]},"finish_reason":null}),
+        ),
+        chat_chunk(json!({"index":0,"delta":{},"finish_reason":"length"})),
+        usage_chunk(),
+    ])
+    .await;
+    assert_cap_failure(&events);
+    assert_visible_output(&events, "partial cap answer", Vec::new());
+}
+
+/// A present usage object with malformed counters is a wire failure core can
+/// retry, not a silent default terminal: rig's lenient reader would fold it
+/// into `Usage::default`, so the bridge's wire check rejects the frame.
+#[tokio::test]
+async fn malformed_usage_counters_fail_the_stream_instead_of_folding_a_terminal() {
+    let events = run_chat(vec![
+        chat_chunk(
+            json!({"index":0,"delta":{"role":"assistant","content":"kept"},"finish_reason":null}),
+        ),
+        chat_chunk(json!({"index":0,"delta":{},"finish_reason":"stop"})),
+        json!({
+            "id": "chatcmpl-terminal", "object": "chat.completion.chunk", "created": 1,
+            "model": "review-model", "choices": [],
+            "usage": {"prompt_tokens": -5, "completion_tokens": 7, "total_tokens": 7},
+        }),
+    ])
+    .await;
+    let errors: Vec<_> = events
+        .iter()
+        .filter_map(|event| event.as_ref().err())
+        .collect();
+    assert_eq!(errors.len(), 1, "{events:?}");
+    match &errors[0] {
+        codex_api::ApiError::Transport(codex_api::TransportError::Network(message)) => {
+            assert!(
+                message.contains("invalid value: integer `-5`"),
+                "the wire counter error survives the provider error mapping: {message}"
+            );
+        }
+        other => {
+            panic!("malformed usage must surface as a retryable transport error, got {other:?}")
+        }
+    }
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, Ok(ResponseEvent::Completed { .. })))
+    );
+}

@@ -19,6 +19,10 @@ struct PendingTool {
     raw: String,
     done: Option<ResponseItem>,
     events: Vec<ResponseEvent>,
+    /// The provider's own output budget cut this call mid-arguments (rig
+    /// closes it without a native item). It must never execute; the turn's
+    /// terminal — usually the output cap — is what explains the cut.
+    cut: bool,
 }
 
 pub(crate) struct PendingTools {
@@ -56,6 +60,17 @@ impl PendingTools {
         // 0.44 carries arguments as a map; non-object arguments the provider
         // sent arrive in `invalid_arguments` and stay unexecutable.
         if call.function.invalid_arguments.is_some() {
+            // Rig closes a call the provider's own output budget cut with no
+            // native item — the provider never stated it complete. Erroring
+            // here would replace the turn's real terminal (the cap error)
+            // with a tool-shape complaint and make core resample a budget
+            // failure. Mark it cut instead: nothing executes, and `finish`
+            // fails the turn only when the terminal itself was benign.
+            if call.native.is_none() {
+                let entry = self.entry(id);
+                entry.cut = true;
+                return Ok(());
+            }
             return Err(invalid_tool("arguments must be a JSON object"));
         }
         let custom = self.custom.contains(call.function.name.as_str());
@@ -138,8 +153,20 @@ impl PendingTools {
     }
 
     pub(crate) fn finish(&mut self) -> Result<HashMap<String, Vec<ResponseEvent>>, ApiError> {
-        if self.calls.values().any(|tool| tool.done.is_none()) {
+        if self
+            .calls
+            .values()
+            .any(|tool| tool.done.is_none() && !tool.cut)
+        {
             return Err(invalid_tool("stream ended with an unconfirmed tool call"));
+        }
+        // A benign terminal (stop/tool calls) with a cut call means the
+        // provider ended cleanly after sending arguments nothing can execute
+        // — fail fast rather than silently dropping model intent.
+        if self.calls.values().any(|tool| tool.cut) {
+            return Err(invalid_tool(
+                "a tool call closed with incomplete arguments and no provider item",
+            ));
         }
         let mut calls = HashMap::new();
         for id in std::mem::take(&mut self.order) {
