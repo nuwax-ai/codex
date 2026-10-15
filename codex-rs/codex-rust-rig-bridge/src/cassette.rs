@@ -168,17 +168,14 @@ fn translate_legacy_events(
 ) -> Result<RigRecording, codex_api::ApiError> {
     let mut recording = RigRecording::default();
     let text_part = 0u32;
-    let mut reasoning_part = 0u32;
-    let mut tool_part = 0u32;
+    let mut next_part = 1u32;
     let mut reasoning_ids: HashMap<String, u32> = HashMap::new();
     let mut tool_ids: HashMap<String, u32> = HashMap::new();
-    let mut saw_terminal = false;
     for event in rig_events {
         // The legacy enum is untagged: discriminate by field shape.
         if event.get("kind").is_some() {
             // StreamFinal: usage/finish/model fields.
             recording.terminal = Some(legacy_terminal(event));
-            saw_terminal = true;
             continue;
         }
         if let Some(text) = event.get("text").and_then(Value::as_str) {
@@ -193,8 +190,9 @@ fn translate_legacy_events(
             event.get("reasoning"),
         ) {
             let part = *reasoning_ids.entry(id.to_string()).or_insert_with(|| {
-                reasoning_part += 1;
-                reasoning_part
+                let part = next_part;
+                next_part += 1;
+                part
             });
             if let Some(text) = reasoning.as_str() {
                 recording.record_event(Item::Event(StreamEvent::Reasoning {
@@ -203,10 +201,22 @@ fn translate_legacy_events(
                 }));
             } else {
                 let converted = crate::reasoning::convert_legacy_reasoning_value(reasoning)?;
-                recording.record_event(Item::Event(StreamEvent::End {
-                    part: part_from_index(part)?,
-                    content: rig_core::completion::message::AssistantContent::Reasoning(converted),
-                }));
+                for (index, block) in converted.into_iter().enumerate() {
+                    // A 0.42 Reasoning may contain multiple signed, redacted
+                    // or encrypted blocks. The first confirms its deltas;
+                    // the rest each need a distinct 0.44 stream part.
+                    let part = if index == 0 {
+                        part
+                    } else {
+                        let part = next_part;
+                        next_part += 1;
+                        part
+                    };
+                    recording.record_event(Item::Event(StreamEvent::End {
+                        part: part_from_index(part)?,
+                        content: rig_core::completion::message::AssistantContent::Reasoning(block),
+                    }));
+                }
             }
             continue;
         }
@@ -215,8 +225,9 @@ fn translate_legacy_events(
             event.get("content"),
         ) {
             let part = *tool_ids.entry(id.to_string()).or_insert_with(|| {
-                tool_part += 1;
-                tool_part
+                let part = next_part;
+                next_part += 1;
+                part
             });
             match content.get("Delta").and_then(Value::as_str) {
                 Some(fragment) => {
@@ -245,8 +256,9 @@ fn translate_legacy_events(
         if let Some(call) = event.get("tool_call") {
             if let Some(id) = event.get("internal_call_id").and_then(Value::as_str) {
                 let part = *tool_ids.entry(id.to_string()).or_insert_with(|| {
-                    tool_part += 1;
-                    tool_part
+                    let part = next_part;
+                    next_part += 1;
+                    part
                 });
                 let converted = legacy_tool_call(call)?;
                 recording.record_event(Item::Event(StreamEvent::End {
@@ -261,8 +273,6 @@ fn translate_legacy_events(
             continue;
         }
     }
-    let _ = text_part;
-    let _ = saw_terminal || terminal.is_some() || recording.terminal.is_some();
     if recording.terminal.is_none()
         && let Some(terminal) = terminal
     {
@@ -273,11 +283,19 @@ fn translate_legacy_events(
 
 /// Builds the terminal record from a serialized 0.42 `StreamFinal`.
 fn legacy_terminal(final_record: &Value) -> TerminalRecord {
+    let protocol = if final_record["provider"]
+        .as_str()
+        .is_some_and(|provider| provider.contains("anthropic"))
+    {
+        crate::RigProtocol::Anthropic
+    } else {
+        crate::RigProtocol::Chat
+    };
     let usage = serde_json::from_value::<LegacyUsage>(
         final_record.get("usage").cloned().unwrap_or(Value::Null),
     )
     .unwrap_or_default()
-    .into_usage();
+    .into_usage(protocol);
     let finish_reason = final_record
         .get("finish_reason")
         .cloned()
@@ -285,6 +303,7 @@ fn legacy_terminal(final_record: &Value) -> TerminalRecord {
     let response_id = final_record
         .get("response_id")
         .and_then(Value::as_str)
+        .or_else(|| final_record.get("message_id").and_then(Value::as_str))
         .map(str::to_string);
     let model = final_record
         .get("model")
@@ -305,9 +324,8 @@ struct LegacyUsage {
     input_tokens: u64,
     #[serde(default)]
     output_tokens: u64,
-    // The recorded `total_tokens` is deliberately absent: it predates the
-    // inclusive input, so `into_usage` re-derives it (see below). Serde
-    // ignores the field on decode.
+    #[serde(default)]
+    total_tokens: u64,
     #[serde(default)]
     cached_input_tokens: u64,
     #[serde(default)]
@@ -318,17 +336,32 @@ struct LegacyUsage {
 
 impl LegacyUsage {
     /// 0.44 semantics: `input_tokens` includes cached and cache-written
-    /// input, and only nonzero legacy counters count as reported (zero was
-    /// the old missing sentinel). The legacy `total_tokens` predates the
-    /// inclusive input, so it is re-derived exactly as the live pump's
-    /// wire-counter correction would have recorded it.
-    fn into_usage(self) -> RigUsage {
+    /// input. Only Anthropic's legacy input excludes cache; Chat's prompt
+    /// count and reported total are already inclusive. Zero was the old
+    /// missing sentinel, so only nonzero legacy counters count as reported.
+    fn into_usage(self, protocol: crate::RigProtocol) -> RigUsage {
         let reported = |value: u64| (value > 0).then_some(value);
-        let input = self.input_tokens + self.cached_input_tokens + self.cache_creation_input_tokens;
+        let input = match protocol {
+            crate::RigProtocol::Anthropic => self
+                .input_tokens
+                .saturating_add(self.cached_input_tokens)
+                .saturating_add(self.cache_creation_input_tokens),
+            crate::RigProtocol::Chat | crate::RigProtocol::Responses => self.input_tokens,
+        };
+        let total = match protocol {
+            crate::RigProtocol::Anthropic => input.saturating_add(self.output_tokens),
+            crate::RigProtocol::Chat | crate::RigProtocol::Responses => {
+                if self.total_tokens == 0 {
+                    input.saturating_add(self.output_tokens)
+                } else {
+                    self.total_tokens
+                }
+            }
+        };
         let mut usage = RigUsage::new();
         usage.input_tokens = reported(input);
         usage.output_tokens = reported(self.output_tokens);
-        usage.total_tokens = reported(input.saturating_add(self.output_tokens));
+        usage.total_tokens = reported(total);
         usage.cached_input_tokens = reported(self.cached_input_tokens);
         usage.cache_creation_input_tokens = reported(self.cache_creation_input_tokens);
         usage.reasoning_tokens = reported(self.reasoning_tokens);

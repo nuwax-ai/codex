@@ -4,6 +4,8 @@
 
 use codex_protocol::models::ReasoningItemContent;
 use codex_protocol::models::ResponseItem;
+use rig_core::completion::message::AssistantContent;
+use rig_core::completion::message::Native;
 use rig_core::completion::message::Reasoning;
 
 /// Marker prefix of the original (rig 0.42) reasoning envelope. Kept for
@@ -63,61 +65,76 @@ struct Replay {
 
 impl Replay {
     /// The blocks in rig 0.44 form, converting legacy v1 blocks on read.
-    fn into_blocks(self) -> Vec<Reasoning> {
+    fn into_blocks(self, protocol: crate::RigProtocol) -> Vec<Reasoning> {
         if let Some(legacy) = self.legacy_blocks {
-            return legacy.into_iter().map(convert_legacy_reasoning).collect();
+            return legacy_replay_blocks(legacy, protocol);
         }
         self.blocks
     }
 }
 
-/// Rebuilds an 0.44 `Reasoning` from a recorded 0.42 block. Signatures and
-/// encrypted payloads survive in `native` so same-source replay can restore
-/// the provider's original item; text and redaction map to their fields.
-fn convert_legacy_reasoning(block: LegacyReasoning) -> Reasoning {
-    // A recorded 0.42 block could hold several content parts; 0.44's shape
-    // holds one. The first part decides the mapping and the rest join the
-    // visible text, preserving everything providers echo back.
-    let mut parts = block.content.into_iter();
-    let Some(first) = parts.next() else {
-        return Reasoning::default();
-    };
-    let mut reasoning = match first {
-        LegacyReasoningContent::Text { text, signature } => Reasoning {
-            text,
-            redacted: false,
-            native: signature.map(|signature| rig_core::completion::message::Native {
-                item: serde_json::json!({ "signature": signature }),
-                fingerprint: rig_core::completion::message::Fingerprint::of(&signature),
-            }),
-        },
-        LegacyReasoningContent::Encrypted(data) => Reasoning {
-            text: String::new(),
-            redacted: false,
-            native: Some(rig_core::completion::message::Native {
-                item: serde_json::json!({ "encrypted": data }),
-                fingerprint: rig_core::completion::message::Fingerprint::of(&data),
-            }),
-        },
-        LegacyReasoningContent::Redacted { data } => Reasoning {
-            text: data,
-            redacted: true,
-            native: None,
-        },
-        // Summaries folded into the visible text, as 0.44's single `text`
-        // field carries summaries too.
-        LegacyReasoningContent::Summary(text) => Reasoning::new(text),
-    };
-    for rest in parts {
-        if let LegacyReasoningContent::Text { text, .. } | LegacyReasoningContent::Summary(text) =
-            rest
-            && !reasoning.redacted
-        {
-            reasoning.text.push('\n');
-            reasoning.text.push_str(&text);
-        }
-    }
-    reasoning
+/// One 0.44 block for each 0.42 content part: a signature applies only to
+/// its own text, and redacted or encrypted parts retain their own payload.
+fn convert_legacy_reasoning(block: LegacyReasoning) -> Vec<Reasoning> {
+    block
+        .content
+        .into_iter()
+        .map(|part| {
+            let (mut reasoning, item) = match part {
+                LegacyReasoningContent::Text { text, signature } => {
+                    let item = signature.map(|signature| {
+                        serde_json::json!({"type":"thinking","thinking":text,"signature":signature})
+                    });
+                    (Reasoning::new(text), item)
+                }
+                LegacyReasoningContent::Encrypted(data)
+                | LegacyReasoningContent::Redacted { data } => (
+                    Reasoning {
+                        redacted: true,
+                        ..Reasoning::default()
+                    },
+                    Some(serde_json::json!({"type":"redacted_thinking","data":data})),
+                ),
+                // 0.42 replayed summaries as unsigned thinking, but did not
+                // project them into Codex's visible reasoning content.
+                LegacyReasoningContent::Summary(text) => (
+                    Reasoning {
+                        redacted: true,
+                        ..Reasoning::default()
+                    },
+                    Some(serde_json::json!({"type":"thinking","thinking":text})),
+                ),
+            };
+            if let Some(item) = item {
+                reasoning.native = Some(Native {
+                    item,
+                    fingerprint: AssistantContent::Reasoning(reasoning.clone()).fingerprint(),
+                });
+            }
+            reasoning
+        })
+        .collect()
+}
+
+fn legacy_replay_blocks(
+    blocks: Vec<LegacyReasoning>,
+    protocol: crate::RigProtocol,
+) -> Vec<Reasoning> {
+    blocks
+        .into_iter()
+        .flat_map(convert_legacy_reasoning)
+        .map(|mut reasoning| {
+            // The old Messages encoder sent unsigned text as thinking too.
+            // Chat gives that text its own reasoning_content field instead.
+            if protocol == crate::RigProtocol::Anthropic && reasoning.native.is_none() {
+                reasoning.native = Some(Native {
+                    item: serde_json::json!({"type":"thinking","thinking":reasoning.text}),
+                    fingerprint: AssistantContent::Reasoning(reasoning.clone()).fingerprint(),
+                });
+            }
+            reasoning
+        })
+        .collect()
 }
 
 /// Converts one legacy (0.42) `Reasoning` JSON object — as recorded inside
@@ -125,7 +142,7 @@ fn convert_legacy_reasoning(block: LegacyReasoning) -> Reasoning {
 /// envelope decode and the cassette translation.
 pub(crate) fn convert_legacy_reasoning_value(
     value: &serde_json::Value,
-) -> Result<Reasoning, codex_api::ApiError> {
+) -> Result<Vec<Reasoning>, codex_api::ApiError> {
     let legacy: LegacyReasoning = serde_json::from_value(value.clone()).map_err(|error| {
         codex_api::ApiError::Stream(format!("invalid legacy reasoning block: {error}"))
     })?;
@@ -235,11 +252,9 @@ pub(crate) fn replay_reasoning(
                 blocks: Vec<LegacyReasoning>,
             }
             return match serde_json::from_str::<LegacyReplay>(encoded) {
-                Ok(replay) if replay.source == source => replay
-                    .blocks
-                    .into_iter()
-                    .map(convert_legacy_reasoning)
-                    .collect(),
+                Ok(replay) if replay.source == source => {
+                    legacy_replay_blocks(replay.blocks, protocol)
+                }
                 Ok(_) => {
                     tracing::warn!(
                         "Dropping reasoning envelope recorded for a different endpoint/model"
@@ -253,7 +268,7 @@ pub(crate) fn replay_reasoning(
             };
         }
         return match serde_json::from_str::<Replay>(encoded) {
-            Ok(replay) if replay.source == source => replay.into_blocks(),
+            Ok(replay) if replay.source == source => replay.into_blocks(protocol),
             Ok(replay) => {
                 // Recorded against a different endpoint/protocol/model —
                 // e.g. the user switched provider mid-session. Reasoning
