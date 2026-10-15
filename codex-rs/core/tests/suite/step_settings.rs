@@ -405,7 +405,7 @@ async fn tool_result_history_keeps_originating_model_across_switch_and_replay() 
         .with_config(|config| {
             for model in &mut config.model_catalog.as_mut().expect("models").models {
                 model.truncation_policy =
-                    TruncationPolicyConfig::tokens(if model.slug == MODEL_B { 400 } else { 100 });
+                    TruncationPolicyConfig::tokens(if model.slug == MODEL_B { 4000 } else { 2000 });
                 model.supports_image_detail_original = model.slug == MODEL_B;
                 model.use_responses_lite = false;
                 model.input_modalities = if model.slug == MODEL_C {
@@ -536,10 +536,15 @@ async fn tool_result_history_keeps_originating_model_across_switch_and_replay() 
     for request in &requests[1..] {
         assert_eq!(request_turn_id(request), turn_id);
     }
-    for (index, (call_id, limit, dimensions)) in
-        [("call-a", 100, (1600, 1600)), ("call-b", 400, (2048, 2048))]
-            .into_iter()
-            .enumerate()
+    // Both originating budgets must fit their image plus a distinct text
+    // remainder. Standard detail costs 1844 tokens; the 2048px original has
+    // 64×64 patches. The screenshot budget is shared with the retained text.
+    for (index, (call_id, limit, visual_tokens, dimensions)) in [
+        ("call-a", 2000, 1844, (1600, 1600)),
+        ("call-b", 4000, 4096, (2048, 2048)),
+    ]
+    .into_iter()
+    .enumerate()
     {
         let raw = &raw_outputs[index];
         assert_eq!(raw["output"][0]["text"], text);
@@ -552,8 +557,11 @@ async fn tool_result_history_keeps_originating_model_across_switch_and_replay() 
             dimensions
         );
         let mut expected = raw.clone();
+        let text_budget = (TruncationPolicy::Tokens(limit) * 1.2)
+            .token_budget()
+            .saturating_sub(visual_tokens);
         expected["output"][0]["text"] =
-            json!(truncate_text(&text, TruncationPolicy::Tokens(limit) * 1.2));
+            json!(truncate_text(&text, TruncationPolicy::Tokens(text_budget)));
         assert_eq!(requests[2].function_call_output(call_id), expected);
     }
     assert_eq!(
@@ -661,7 +669,7 @@ async fn tool_result_history_keeps_originating_model_across_switch_and_replay() 
         raw_outputs
             .clone()
             .into_iter()
-            .zip([Some(120), Some(480)])
+            .zip([Some(2400), Some(4800)])
             .collect::<Vec<_>>()
     );
 

@@ -2,7 +2,7 @@ use crate::TruncationPolicy;
 use crate::approx_bytes_for_tokens;
 use codex_protocol::models::FunctionCallOutputContentItem;
 
-/// Hard cap for model-visible text and charged media in one tool result.
+/// Hard cap for model-visible text and charged media in one image-bearing tool result.
 pub const MAX_TOOL_OUTPUT_VISIBLE_TOKENS: usize = 10_000;
 /// Bound reference identifiers and data-URL headers separately from image payloads.
 pub const MAX_IMAGE_REFERENCE_BYTES: usize = 8 * 1024;
@@ -11,13 +11,33 @@ pub const MAX_IMAGE_REFERENCE_BYTES: usize = 8 * 1024;
 const CONTROL_HEADROOM_TOKENS: usize = 256;
 const MAX_TOOL_OUTPUT_HEADER_BYTES: usize = 256;
 
-pub(crate) fn bounded_tool_output_policy(policy: TruncationPolicy) -> TruncationPolicy {
+fn bounded_image_output_policy(policy: TruncationPolicy) -> TruncationPolicy {
     let content_tokens = MAX_TOOL_OUTPUT_VISIBLE_TOKENS - CONTROL_HEADROOM_TOKENS;
     match policy {
         TruncationPolicy::Tokens(tokens) => TruncationPolicy::Tokens(tokens.min(content_tokens)),
         TruncationPolicy::Bytes(bytes) => {
             TruncationPolicy::Bytes(bytes.min(approx_bytes_for_tokens(content_tokens)))
         }
+    }
+}
+
+pub(crate) fn tool_output_items_policy(
+    items: &[FunctionCallOutputContentItem],
+    policy: TruncationPolicy,
+) -> TruncationPolicy {
+    // The screenshot backstop must not override explicit exec/MCP text limits.
+    // Keep the image cap on later history passes even if all images were omitted.
+    if items.iter().any(|item| match item {
+        FunctionCallOutputContentItem::InputImage { .. } => true,
+        FunctionCallOutputContentItem::InputText { text } => {
+            matches!(omission_marker(text), Some((OmissionKind::Image, _)))
+        }
+        FunctionCallOutputContentItem::InputAudio { .. }
+        | FunctionCallOutputContentItem::EncryptedContent { .. } => false,
+    }) {
+        bounded_image_output_policy(policy)
+    } else {
+        policy
     }
 }
 
@@ -221,7 +241,7 @@ pub fn admit_tool_output_images(
     // per-output budget. Keep images newest-first while their cumulative
     // visual cost fits. Original detail uses bounded header dimensions where
     // available and otherwise costs the conservative patch ceiling.
-    let budget_bytes = bounded_tool_output_policy(policy).byte_budget();
+    let budget_bytes = bounded_image_output_policy(policy).byte_budget();
     let mut visual_total = 0usize;
     let mut visual_kept: Vec<usize> = Vec::new();
     for &index in candidates.iter().rev() {

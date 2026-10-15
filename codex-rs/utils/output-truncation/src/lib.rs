@@ -12,11 +12,11 @@ use image_limits::OmissionKind;
 pub use image_limits::TOOL_OUTPUT_IMAGE_ORIGINAL_VISUAL_TOKENS;
 pub use image_limits::TOOL_OUTPUT_IMAGE_VISUAL_TOKENS;
 pub use image_limits::admit_tool_output_images;
-use image_limits::bounded_tool_output_policy;
 use image_limits::image_budget_charge;
 use image_limits::is_tool_output_header;
 use image_limits::omission_marker;
 pub use image_limits::omitted_images_marker;
+use image_limits::tool_output_items_policy;
 
 use std::borrow::Cow;
 
@@ -110,7 +110,6 @@ pub fn truncate_function_output_payload(
     policy: TruncationPolicy,
     estimate_audio_token_count: impl Fn(&str) -> usize,
 ) {
-    let policy = bounded_tool_output_policy(policy);
     match &mut output.body {
         FunctionCallOutputBody::Text(text) => {
             let header_len = text.find("\nOutput:").and_then(|index| {
@@ -139,7 +138,7 @@ pub fn formatted_truncate_text_content_items_with_policy(
     items: &[FunctionCallOutputContentItem],
     policy: TruncationPolicy,
 ) -> (Vec<FunctionCallOutputContentItem>, Option<usize>) {
-    let policy = bounded_tool_output_policy(policy);
+    let policy = tool_output_items_policy(items, policy);
     if items.iter().any(|item| {
         matches!(item, FunctionCallOutputContentItem::InputText { text }
         if is_tool_output_header(text) || omission_marker(text).is_some())
@@ -242,7 +241,7 @@ pub fn truncate_function_output_items_with_policy(
     policy: TruncationPolicy,
     estimate_audio_token_count: impl Fn(&str) -> usize,
 ) -> Vec<FunctionCallOutputContentItem> {
-    let policy = bounded_tool_output_policy(policy);
+    let policy = tool_output_items_policy(items, policy);
     let admission = admit_tool_output_images(items, policy);
     let mut omitted_image_items = admission.dropped;
     let mut out: Vec<FunctionCallOutputContentItem> = Vec::with_capacity(items.len());

@@ -118,27 +118,96 @@ fn large_caller_policy_cannot_exceed_the_single_output_hard_cap() {
 }
 
 #[test]
-fn plain_text_and_structured_mcp_payloads_keep_the_same_hard_cap() {
+fn plain_text_and_structured_mcp_payloads_respect_explicit_large_budgets() {
     let structured = codex_protocol::mcp::CallToolResult {
         content: vec![],
         structured_content: Some(serde_json::json!({"data": "x".repeat(80_000)})),
         is_error: Some(false),
         meta: None,
     };
-    let mut payloads = [
+    let payloads = [
         FunctionCallOutputPayload {
             body: FunctionCallOutputBody::Text("x".repeat(80_000)),
             success: None,
         },
         structured.as_function_call_output_payload(),
     ];
-    for payload in &mut payloads {
-        truncate_function_output_payload(payload, TruncationPolicy::Tokens(usize::MAX), |_| 0);
-        let FunctionCallOutputBody::Text(text) = &payload.body else {
-            panic!("text payload");
-        };
-        assert!(approx_token_count(text) <= MAX_TOOL_OUTPUT_VISIBLE_TOKENS);
+    for policy in [
+        TruncationPolicy::Tokens(30_000),
+        TruncationPolicy::Bytes(120_000),
+    ] {
+        for payload in &payloads {
+            let mut output = payload.clone();
+            truncate_function_output_payload(&mut output, policy, |_| 0);
+            assert_eq!(&output, payload);
+        }
     }
+}
+
+#[test]
+fn text_items_and_formatted_output_respect_explicit_large_budgets() {
+    let items = vec![FunctionCallOutputContentItem::InputText {
+        text: "x".repeat(80_000),
+    }];
+    for policy in [
+        TruncationPolicy::Tokens(30_000),
+        TruncationPolicy::Bytes(120_000),
+    ] {
+        assert_eq!(
+            truncate_function_output_items_with_policy(&items, policy, |_| 0),
+            items
+        );
+        assert_eq!(
+            formatted_truncate_text_content_items_with_policy(&items, policy),
+            (items.clone(), None)
+        );
+    }
+}
+
+#[test]
+fn explicit_text_budget_still_truncates_above_its_configured_limit() {
+    let text = "x".repeat(80_000);
+    for policy in [
+        TruncationPolicy::Tokens(15_000),
+        TruncationPolicy::Bytes(60_000),
+    ] {
+        let expected = truncate_text(&text, policy);
+        assert!(approx_token_count(&expected) > MAX_TOOL_OUTPUT_VISIBLE_TOKENS);
+        let mut payload = FunctionCallOutputPayload {
+            body: FunctionCallOutputBody::Text(text.clone()),
+            success: Some(true),
+        };
+        truncate_function_output_payload(&mut payload, policy, |_| 0);
+        assert_eq!(
+            payload,
+            FunctionCallOutputPayload {
+                body: FunctionCallOutputBody::Text(expected.clone()),
+                success: Some(true),
+            }
+        );
+        assert_eq!(
+            truncate_function_output_items_with_policy(
+                &[FunctionCallOutputContentItem::InputText { text: text.clone() }],
+                policy,
+                |_| 0,
+            ),
+            vec![FunctionCallOutputContentItem::InputText { text: expected }]
+        );
+    }
+}
+
+#[test]
+fn image_omission_marker_preserves_the_image_cap_on_later_passes() {
+    let items = vec![
+        omitted_images_marker(2),
+        FunctionCallOutputContentItem::InputText {
+            text: "x".repeat(80_000),
+        },
+    ];
+    let output =
+        truncate_function_output_items_with_policy(&items, TruncationPolicy::Tokens(30_000), |_| 0);
+    assert!(visible_tokens(&output) <= MAX_TOOL_OUTPUT_VISIBLE_TOKENS);
+    assert_eq!(output.last(), items.first());
 }
 
 #[test]
