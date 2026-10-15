@@ -457,6 +457,27 @@ shutdown_cancels_startup_prewarm、realtime startup×2）在 Linux
 
 
 
+## 进展（2026-10-15 第九轮：Windows 原生收据）
+
+候选 `4ca0e4fa0`（源码 tar → 192.168.32.235 `win`，原生 Git Bash + MSVC，
+rustc 1.95.0，无 WSL；注意 scp 与交互 bash 的 `/tmp` 映射不同，落点
+`C:\tmp\rig044-val`）。
+
+| 范围 | 结果 | 备注 |
+|---|---|---|
+| Bridge 全 crate | 297/297 | 比 macOS/Linux 少 2 项为平台 cfg 门控 |
+| utils image/output-truncation | 44/44 | 同 Linux |
+| core rig 家族（wire 级） | 58/59 | 唯一失败 `anthropic_interrupt_during_tool_runs_it_once`：Windows 上 shell 工具走 exec approval（`powershell sleep 60` 请求批准而非直接运行），测试夹具按 Unix 沙箱语义编写——环境性，同测试 macOS 通过、Linux 因 AppArmor userns 失败（第八轮）；迁移与图片批代码无关。后续可给该夹具做平台适配（独立小补丁） |
+| live-tests replay 整 crate | 187/187 有效 | tar 无 `.git` 同 Linux；`git init` 真实仓库后 replay 全绿 |
+| nuwax env 离线三件套 | 3/3 | 远程构建 codex-exec 后（receipt 以整树为准） |
+| 20 截图 stress | PASS | test_stdio_server 构建后 5.8s 真实执行 |
+
+三平台未验边界（统一）：全量 workspace/CI、代理/TLS、真实厂商 API/识图
+（待付费授权）、ACP dev（本轮不付费约束下顺延）、`anthropic_interrupt_
+during_tool_runs_it_once` 的跨平台夹具适配。
+
+
+
 ## 执行清单
 
 - [x] Phase A 非流部分（12/16 文件）
@@ -470,6 +491,8 @@ shutdown_cancels_startup_prewarm、realtime startup×2）在 Linux
       真实执行、新增 rig_image_history 4/4）；live-tests replay 195/195
       （含离线 v2 cassette 往返 7/7）。app-server env 公共接口 9/9、
       nuwax env 离线 3/3、Bazel lock 同步沿用复审轮（代码路径未变）。
-      —— 未闭环：当前候选的 Linux/Windows/CI 与 ACP dev（第三批）。
-      真实付费录制单列，不阻塞离线工作。
+      —— 三批已收口（第六至九轮）：缺陷修复 + 生命周期证据 + 图片
+      入口硬限 + 20 截图 stress；Linux/Windows 定向平台收据见第八/九轮。
+      —— 未闭环：全量 workspace/CI、代理/TLS、ACP dev（付费约束顺延）、
+      interrupt 夹具跨平台适配、真实付费录制与识图。
 - [x] reasoning v1 旧 DTO 解码保留（v2 写入、v1 解码+转换、rollout 不改写）
