@@ -13,6 +13,7 @@ use crate::config::Config;
 use crate::config::NetworkProxySpec;
 use crate::context::ContextualUserFragment;
 use crate::context::GuardianConversationHistory;
+use codex_model_provider_info::OPENAI_PROVIDER_ID;
 
 /// Adds the captured model, policy prompt and live network rules before reuse selection.
 pub fn build_guardian_review_session_config(
@@ -99,10 +100,15 @@ pub(crate) async fn resolve_review_model(
         )
         .await;
     let default_review_model_id = turn.provider.approval_review_preferred_model();
+    let reachable_review_model_id = reachable_review_model_id(
+        turn.config.model_provider_id.as_str(),
+        default_review_model_id,
+        context.model_info.slug.as_str(),
+    );
     let review_model = codex_guardian_reviewer::select_review_model(
         &context.model_info,
         context.reasoning_effort.as_ref(),
-        default_review_model_id,
+        reachable_review_model_id,
         &available_models,
     );
     // Resolve a separate reviewer against the current catalog on every attempt.
@@ -123,4 +129,47 @@ pub(crate) async fn resolve_review_model(
             )
         };
     (review_model, guardian_model_info)
+}
+
+/// The reviewer id that can actually be served on the turn's provider.
+///
+/// Third-party providers only provably serve their configured models: the
+/// OpenAI catalog aliases behind the preferred reviewer ids get a vendor
+/// 400 ("Unsupported model …"), which fails the review and thereby rejects
+/// every guardian-approved tool call. On such providers the preferred
+/// reviewer IS the active model; an explicit user override still wins
+/// inside `select_review_model`.
+fn reachable_review_model_id<'a>(
+    provider_id: &str,
+    preferred: &'a str,
+    active_model: &'a str,
+) -> &'a str {
+    if provider_id == OPENAI_PROVIDER_ID {
+        preferred
+    } else {
+        active_model
+    }
+}
+
+#[cfg(test)]
+mod reachable_review_model_tests {
+    use super::reachable_review_model_id;
+
+    #[test]
+    fn builtin_openai_keeps_the_catalog_preferred_reviewer() {
+        assert_eq!(
+            reachable_review_model_id("openai", "codex-auto-review", "gpt-5.4"),
+            "codex-auto-review"
+        );
+    }
+
+    #[test]
+    fn third_party_providers_review_with_their_active_model() {
+        // A vendor endpoint rejects OpenAI catalog ids, which used to fail
+        // every automatic approval review and reject all guarded tools.
+        assert_eq!(
+            reachable_review_model_id("mimo", "gpt-5.6-luna", "mimo-v2.6-flash"),
+            "mimo-v2.6-flash"
+        );
+    }
 }

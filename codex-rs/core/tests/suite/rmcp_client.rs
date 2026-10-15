@@ -5133,8 +5133,7 @@ async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Res
             move |config| {
                 config.model_provider = provider;
                 config.model_auto_compact_token_limit = Some(AUTO_COMPACT_TOKEN_LIMIT);
-                config.compact_prompt =
-                    Some(codex_core::compact::SUMMARIZATION_PROMPT.to_string());
+                config.compact_prompt = Some(codex_core::compact::SUMMARIZATION_PROMPT.to_string());
                 insert_mcp_server(
                     config,
                     server_name,
@@ -5206,10 +5205,13 @@ async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Res
     // The final sampling after compaction carries fewer images than the
     // pre-compaction peak: local compaction drops old media by design
     // instead of failing the request.
-    let images_in = |body: &serde_json::Value| {
-        body.to_string().matches("\"type\":\"image_url\"").count()
-    };
-    let peak = sampling.iter().map(|body| images_in(body)).max().unwrap_or(0);
+    let images_in =
+        |body: &serde_json::Value| body.to_string().matches("\"type\":\"image_url\"").count();
+    let peak = sampling
+        .iter()
+        .map(|body| images_in(body))
+        .max()
+        .unwrap_or(0);
     let last = images_in(sampling.last().expect("final sampling"));
     assert!(
         last < peak,
@@ -5318,7 +5320,8 @@ fn chat_stress_tool_sse(arguments: &str, total_tokens: i64) -> wiremock::Respons
         "choices": [],
         "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": total_tokens}
     });
-    let body = format!("data: {first}\n\ndata: {finish}\n\ndata: {final_chunk}\n\ndata: [DONE]\n\n");
+    let body =
+        format!("data: {first}\n\ndata: {finish}\n\ndata: {final_chunk}\n\ndata: [DONE]\n\n");
     responses::sse_response(body)
 }
 
