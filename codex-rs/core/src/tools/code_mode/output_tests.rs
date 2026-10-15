@@ -5,6 +5,59 @@ use codex_protocol::models::ImageReference;
 use pretty_assertions::assert_eq;
 
 #[test]
+fn yielded_cell_header_and_image_omission_survive_history_truncation() {
+    let output = CodeModeToolOutput::new(
+        FunctionToolOutput::from_content(
+            (0..2)
+                .map(|index| FunctionCallOutputContentItem::InputImage {
+                    image: ImageReference::File {
+                        file_id: format!("shot-{index}"),
+                    },
+                    detail: Some(codex_protocol::models::ImageDetail::High),
+                })
+                .collect(),
+            Some(true),
+        ),
+        "Script running with cell ID cell-1".to_string(),
+        Duration::from_millis(100),
+        None,
+    );
+    let item: codex_protocol::models::ResponseItem = output
+        .to_response_item(
+            "exec",
+            &ToolPayload::Custom {
+                input: "image(result)".to_string(),
+            },
+        )
+        .into();
+    let mut history = crate::context_manager::ContextManager::new();
+    history.record_items(
+        [&item],
+        codex_utils_output_truncation::TruncationPolicy::Tokens(1_537),
+    );
+    let codex_protocol::models::ResponseItem::CustomToolCallOutput { output, .. } =
+        history.raw_items().next().expect("stored exec result")
+    else {
+        panic!("custom result");
+    };
+    let items = output.content_items().expect("typed screenshot");
+    assert!(
+        matches!(&items[0], FunctionCallOutputContentItem::InputText { text }
+        if text == "Script running with cell ID cell-1\nWall time 0.1 seconds\nOutput:\n")
+    );
+    assert_eq!(
+        items
+            .iter()
+            .filter(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. }))
+            .count(),
+        1
+    );
+    assert!(
+        matches!(items.last(), Some(FunctionCallOutputContentItem::InputText { text }) if text.contains("omitted 1 image"))
+    );
+}
+
+#[test]
 fn completed_timing_preserves_content_and_distinguishes_zero_from_unavailable() {
     let content = vec![
         FunctionCallOutputContentItem::InputText {

@@ -7,6 +7,47 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 
 #[test]
+fn mcp_image_omission_and_wall_time_survive_the_actual_history_boundary() {
+    let tool = McpToolOutput {
+        result: CallToolResult {
+            content: (0..2)
+                .map(|index| {
+                    json!({
+                        "type": "image", "mimeType": "image/png", "data": format!("shot-{index}")
+                    })
+                })
+                .collect(),
+            structured_content: None,
+            is_error: Some(false),
+            meta: None,
+        },
+        tool_input: json!({}),
+        result_metadata_capture_allowed: false,
+        wall_time: Duration::from_millis(100),
+        original_image_detail_supported: true,
+        truncation_policy: TruncationPolicy::Tokens(1_537),
+    };
+    let mut envelopes = vec![
+        crate::tools::registry::AnyToolResult {
+            call_id: "shots".to_string(),
+            payload: ToolPayload::Function {
+                arguments: "{}".to_string(),
+            },
+            result: Box::new(tool),
+            post_tool_use_payload: None,
+        }
+        .into_response(),
+    ];
+    let before = envelopes[0].item.clone();
+    let mut history = crate::context_manager::ContextManager::new();
+    history.record_annotated_items(&mut envelopes, TruncationPolicy::Tokens(10_000));
+    assert_eq!(
+        history.raw_items().cloned().collect::<Vec<_>>(),
+        vec![before]
+    );
+}
+
+#[test]
 fn custom_tool_calls_should_roundtrip_as_custom_outputs() {
     let payload = ToolPayload::Custom {
         input: "patch".to_string(),
@@ -198,7 +239,7 @@ fn mcp_tool_output_response_item_preserves_content_items() {
         result_metadata_capture_allowed: false,
         wall_time: std::time::Duration::from_millis(500),
         original_image_detail_supported: false,
-        truncation_policy: TruncationPolicy::Bytes(1024),
+        truncation_policy: TruncationPolicy::Bytes(8192),
     };
 
     let response = output.to_response_item(
@@ -556,7 +597,7 @@ fn exec_command_tool_output_preserves_omission_metadata_when_truncated() {
 }
 
 /// The MCP entrance bounds tool-result images before anything decodes or
-/// dispatches: over the count cap, the newest images survive, the rest
+/// dispatches: over the shared token cap, the newest images survive, the rest
 /// become one bounded marker, and the payload still pairs with its call id.
 #[test]
 fn mcp_tool_output_caps_images_at_the_common_entrance() {
@@ -583,8 +624,7 @@ fn mcp_tool_output_caps_images_at_the_common_entrance() {
         result_metadata_capture_allowed: false,
         wall_time: std::time::Duration::from_millis(10),
         original_image_detail_supported: true,
-        // Large enough that only the count cap bites (the payload applies
-        // the serialization allowance on top).
+        // A generous caller budget cannot raise the shared 10K hard cap.
         truncation_policy: TruncationPolicy::Tokens(20_000),
     };
 
@@ -598,19 +638,18 @@ fn mcp_tool_output_caps_images_at_the_common_entrance() {
     };
     assert_eq!(call_id, "mcp-call-images");
     let items = output.content_items().expect("content items");
-    let images: Vec<_> = items
+    let images = items
         .iter()
         .filter(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. }))
-        .collect();
+        .count();
     assert_eq!(
-        images.len(),
-        codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGES,
-        "{items:?}"
+        images, 5,
+        "the shared 10K cap allows five high-detail images: {items:?}"
     );
-    // The NEWEST images survive; the four oldest are the marker.
+    // The newest five images survive the shared visual-token cap.
     assert!(
         items.iter().any(|item| matches!(item,
-            FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 4 image")
+            FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 7 image")
         )),
         "{items:?}"
     );
@@ -619,5 +658,6 @@ fn mcp_tool_output_caps_images_at_the_common_entrance() {
         !encoded.contains("IMG0\"") && !encoded.contains("IMG3\""),
         "dropped images leave no residue: {encoded}"
     );
-    assert!(encoded.contains("IMG4"));
+    assert!(!encoded.contains("IMG6\""));
+    assert!(encoded.contains("IMG7"));
 }

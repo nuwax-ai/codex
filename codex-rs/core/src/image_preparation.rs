@@ -348,15 +348,13 @@ fn is_remote_image_url(image_url: &str) -> bool {
 }
 
 /// Submission-time backstop for the per-result image entrance limits. The
-/// producer's truncation already applied them (including the shared
-/// text+visual token budget); here only the count/size bounds matter, so the
-/// visual budget is effectively unbounded and cannot double-drop. Dropped
+/// producer's truncation already applied them, so the fixed hard ceiling is
+/// idempotent while still bounding legacy and dynamic outputs. Dropped
 /// images become bounded text: the first carries the marker, the rest empty
 /// slots (a slice cannot shrink; the backstop path is rare by design).
 fn enforce_tool_output_image_limits(items: &mut [FunctionCallOutputContentItem]) {
-    let snapshot: Vec<_> = items.to_vec();
     let admission = codex_utils_output_truncation::admit_tool_output_images(
-        &snapshot,
+        items,
         codex_protocol::protocol::TruncationPolicy::Tokens(usize::MAX),
     );
     if admission.dropped == 0 {
@@ -367,20 +365,13 @@ fn enforce_tool_output_image_limits(items: &mut [FunctionCallOutputContentItem])
         if matches!(item, FunctionCallOutputContentItem::InputImage { .. })
             && !admission.keep[index]
         {
-            *item = FunctionCallOutputContentItem::InputText {
-                text: if marker_written {
-                    String::new()
-                } else {
-                    marker_written = true;
-                    format!(
-                        "[omitted {} image(s): over the per-output image limits (max {} images, {} MiB each, {} MiB total) ...]",
-                        admission.dropped,
-                        codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGES,
-                        codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGE_BYTES / (1024 * 1024),
-                        codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES
-                            / (1024 * 1024),
-                    )
-                },
+            *item = if marker_written {
+                FunctionCallOutputContentItem::InputText {
+                    text: String::new(),
+                }
+            } else {
+                marker_written = true;
+                codex_utils_output_truncation::omitted_images_marker(admission.dropped)
             };
         }
     }
@@ -408,6 +399,16 @@ async fn prepare_image(
     };
     metadata.push(prepared.metadata(origin));
     let resize = prepared.resize;
+    // Tool outputs have no message role. Keep their original-detail bytes
+    // inspectable: uploading to a File reference would discard the dimensions
+    // needed by the shared budget on the next history pass. User messages and
+    // other detail levels retain the attachment store's normal upload policy.
+    if origin.message_role.is_none() && *detail == Some(ImageDetail::Original) {
+        *image = ImageReference::Inline {
+            image_url: prepared.into_data_url(),
+        };
+        return Ok(resize);
+    }
     let request = UploadRequest {
         thread_id: origin.thread_id.to_owned(),
         ephemeral: origin.ephemeral,

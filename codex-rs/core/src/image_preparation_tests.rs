@@ -25,6 +25,157 @@ use serde_json::json;
 
 use super::*;
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn two_by_two_original_tool_image_reaches_prepared_history_with_detail_intact() {
+    let image_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII=";
+    let image_store = RecordingFileAttachmentStore::default();
+    let mut envelopes = vec![crate::tools::registry::AnyToolResult {
+        call_id: "original-shot".to_string(),
+        payload: codex_tools::ToolPayload::Function { arguments: "{}".to_string() },
+        result: Box::new(crate::tools::context::McpToolOutput {
+            result: codex_protocol::mcp::CallToolResult {
+                content: vec![serde_json::json!({"type": "image", "mimeType": "image/png", "data": image_url, "_meta": {"codex/imageDetail": "original"}})],
+                structured_content: None,
+                is_error: Some(false),
+                meta: None,
+            },
+            tool_input: serde_json::json!({}),
+            result_metadata_capture_allowed: false,
+            wall_time: std::time::Duration::from_millis(/*millis*/ 100),
+            original_image_detail_supported: true,
+            truncation_policy: codex_utils_output_truncation::TruncationPolicy::Tokens(32),
+        }),
+        post_tool_use_payload: None,
+    }.into_response()];
+    let mut items = vec![envelopes[0].item.clone()];
+    prepare_response_items(
+        "thread-original",
+        /*ephemeral*/ false,
+        &mut items,
+        ImagePreparationMode::DetailBased,
+        ImageResizeNoticeMode::Disabled,
+        &image_store,
+    )
+    .await;
+    assert_eq!(
+        *image_store.uploads.lock().expect("uploads lock"),
+        Vec::<UploadRequest>::new()
+    );
+    envelopes[0].item = items.remove(0);
+    let expected = envelopes[0].item.clone();
+    let mut history = crate::context_manager::ContextManager::new();
+    history.record_annotated_items(
+        &mut envelopes,
+        codex_utils_output_truncation::TruncationPolicy::Tokens(10_000),
+    );
+    assert_eq!(
+        history.raw_items().cloned().collect::<Vec<_>>(),
+        vec![expected.clone()]
+    );
+    let ResponseItem::FunctionCallOutput { output, .. } = expected else {
+        panic!("original tool output");
+    };
+    assert_eq!(
+        output.content_items().expect("typed image")[1],
+        FunctionCallOutputContentItem::InputImage {
+            image: ImageReference::Inline {
+                image_url: image_url.to_string()
+            },
+            detail: Some(ImageDetail::Original),
+        }
+    );
+}
+
+#[derive(Default)]
+struct RecordingFileAttachmentStore {
+    uploads: std::sync::Mutex<Vec<UploadRequest>>,
+}
+
+impl AttachmentStore for RecordingFileAttachmentStore {
+    fn upload(&self, request: UploadRequest) -> UploadFuture<'_> {
+        self.uploads.lock().expect("uploads lock").push(request);
+        Box::pin(async {
+            Ok(UploadResult::File {
+                file_id: "file-uploaded".to_string(),
+            })
+        })
+    }
+
+    fn resolve<'a>(&'a self, request: ResolveRequest<'a>) -> ResolveFuture<'a> {
+        let file_id = request.file_id;
+        Box::pin(async move {
+            Err(AttachmentStoreError::new(
+                AttachmentStoreErrorKind::NotFound,
+                format!("attachment `{file_id}` was not found"),
+            ))
+        })
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn user_original_and_high_tool_images_keep_the_file_store_upload_policy() {
+    let (image_url, bytes) = png_data_url(/*width*/ 2, /*height*/ 2);
+    let image_store = RecordingFileAttachmentStore::default();
+    let mut items = vec![
+        from_value::<ResponseItem>(json!({"type": "message", "role": "user", "content": [{"type": "input_image", "image_url": image_url, "detail": "original"}]})).expect("user image"),
+        from_value::<ResponseItem>(json!({"type": "function_call_output", "call_id": "high-shot", "output": [{"type": "input_image", "image_url": image_url, "detail": "high"}]})).expect("tool image"),
+    ];
+    prepare_response_items(
+        "thread-upload",
+        /*ephemeral*/ false,
+        &mut items,
+        ImagePreparationMode::DetailBased,
+        ImageResizeNoticeMode::Disabled,
+        &image_store,
+    )
+    .await;
+    let references: Vec<_> = items
+        .iter()
+        .map(|item| match item {
+            ResponseItem::Message { content, .. } => match &content[0] {
+                ContentItem::InputImage { image, detail } => (image.clone(), *detail),
+                other => panic!("expected user image, got {other:?}"),
+            },
+            ResponseItem::FunctionCallOutput { output, .. } => {
+                match &output.content_items().expect("tool content")[0] {
+                    FunctionCallOutputContentItem::InputImage { image, detail } => {
+                        (image.clone(), *detail)
+                    }
+                    other => panic!("expected tool image, got {other:?}"),
+                }
+            }
+            other => panic!("unexpected prepared item: {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        references,
+        vec![
+            (
+                ImageReference::File {
+                    file_id: "file-uploaded".to_string()
+                },
+                Some(ImageDetail::Original)
+            ),
+            (
+                ImageReference::File {
+                    file_id: "file-uploaded".to_string()
+                },
+                Some(ImageDetail::High)
+            ),
+        ]
+    );
+    let request = UploadRequest {
+        thread_id: "thread-upload".to_string(),
+        ephemeral: false,
+        file_name: None,
+        data: bytes,
+    };
+    assert_eq!(
+        *image_store.uploads.lock().expect("uploads lock"),
+        vec![request.clone(), request]
+    );
+}
+
 struct FailingAttachmentStore;
 
 impl AttachmentStore for FailingAttachmentStore {
@@ -723,7 +874,8 @@ async fn tool_output_backstop_caps_unbounded_image_counts() {
         .collect();
     assert_eq!(
         images.len(),
-        codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGES
+        5,
+        "the backstop also enforces the shared visual-token ceiling"
     );
     let kept: Vec<_> = images
         .iter()
@@ -735,7 +887,7 @@ async fn tool_output_backstop_caps_unbounded_image_counts() {
             _ => None,
         })
         .collect();
-    let first_kept = total - codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGES;
+    let first_kept = total - 5;
     assert_eq!(
         kept,
         (first_kept..total)
@@ -745,7 +897,7 @@ async fn tool_output_backstop_caps_unbounded_image_counts() {
     );
     assert!(
         prepared_items.iter().any(|item| matches!(item,
-            FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 4 image")
+            FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 7 image")
         )),
         "the backstop leaves a bounded marker: {prepared_items:?}"
     );

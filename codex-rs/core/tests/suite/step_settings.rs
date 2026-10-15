@@ -3040,20 +3040,39 @@ async fn captured_step_controls_mcp_output_limit(supports_images: bool) -> Resul
         .filter(|item| item["type"] == "input_image")
         .map(|item| item["detail"].clone())
         .collect::<Vec<_>>();
-    assert_eq!(
-        images,
-        if supports_images {
-            vec![json!("high")]
-        } else {
-            vec![]
-        }
-    );
+    assert_eq!(images, Vec::<Value>::new());
+    // MCP sanitization replaces an unsupported image with a text notice before
+    // output truncation. The title fills the small quota, so that notice is
+    // reported as an omitted text item rather than an over-budget image.
+    let omission_fragment = if supports_images {
+        "omitted 1 image"
+    } else {
+        "omitted 1 text items"
+    };
+    let omission = recorded_output["output"]
+        .as_array()
+        .expect("MCP content")
+        .iter()
+        .filter_map(|item| item["text"].as_str())
+        .find(|text| text.contains(omission_fragment))
+        .expect("the captured model's media policy has a bounded quota explanation");
+    assert!(omission.len() <= 256, "{omission}");
     wait_for_event(&test.codex, |event| {
         matches!(event, EventMsg::TurnComplete(_))
     })
     .await;
     let requests = responses.requests();
     let output_item = requests[2].function_call_output("mcp-b");
+    assert_eq!(output_item["call_id"], json!("mcp-b"));
+    assert_eq!(
+        output_item["output"]
+            .as_array()
+            .expect("MCP content")
+            .iter()
+            .filter(|item| item["type"] == "input_image")
+            .count(),
+        0
+    );
     let output = output_item["output"]
         .as_array()
         .expect("MCP content")
@@ -3061,15 +3080,11 @@ async fn captured_step_controls_mcp_output_limit(supports_images: bool) -> Resul
         .filter_map(|item| item["text"].as_str())
         .collect::<Vec<_>>()
         .join("\n");
-    // With the image present, its visual cost consumes the tiny fallback
-    // budget first, so the text cannot even afford a truncated snippet and
-    // collapses to the omission marker. Without the image, the text
-    // truncates against the full budget as before.
-    if supports_images {
-        assert!(output.contains("omitted"), "{output}");
-    } else {
-        assert!(output.contains("truncated"), "{output}");
-    }
+    // The actual model request retains its call pairing, the corresponding
+    // bounded quota explanation and timing header while truncating text.
+    assert!(output.starts_with("Wall time:"), "{output}");
+    assert!(output.contains(omission), "{output}");
+    assert!(output.contains("truncated"), "{output}");
     assert!(output.matches("abcdefghij").count() < 10, "{output}");
     Ok(())
 }
