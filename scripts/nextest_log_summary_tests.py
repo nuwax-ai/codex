@@ -65,6 +65,91 @@ class NextestLogSummaryTests(unittest.TestCase):
         self.assertEqual(report["counts"]["distinct_tests"], 2)
         self.assertEqual(report["changed_status_cases"], [])
 
+    def test_compound_failure_and_summary_reprints_are_normalized(self):
+        report = parse_lines(
+            [
+                "Nextest run ID windows-run with nextest profile: ci\n",
+                result("PASS", 1, 3, name="normal"),
+                result(
+                    "FAIL + LEAK",
+                    2,
+                    3,
+                    "codex-core::all",
+                    "suite::cli_stream::responses_api_stream_cli",
+                ),
+                result("LEAK", 3, 3, name="leaked_process"),
+                "Summary [60.000s] 3 tests run: 2 passed (1 leaky), 1 failed\n",
+                result(
+                    "FAIL+  LEAK",
+                    2,
+                    3,
+                    "codex-core::all",
+                    "suite::cli_stream::responses_api_stream_cli",
+                ),
+            ]
+        )
+        self.assertTrue(report["complete_unambiguous"])
+        self.assertEqual(
+            report["counts"],
+            {
+                "executions": 3,
+                "distinct_tests": 3,
+                "non_pass_executions": 2,
+                "non_pass_distinct_tests": 2,
+                "non_pass_unique_names": 2,
+                "statuses": {"FAIL + LEAK": 1, "LEAK": 1, "PASS": 1},
+                "repeated_result_lines": 1,
+            },
+        )
+        self.assertEqual(report["results"][1]["status"], "FAIL + LEAK")
+
+    def test_unknown_compound_status_is_reported_instead_of_ignored(self):
+        for status in ("FAIL + UNKNOWN", "PASS+LEAK", "FAIL ++ LEAK"):
+            with self.subTest(status=status):
+                report = parse_lines(
+                    [result("PASS", 1, 2), result(status, 2, 2, name="unknown")]
+                )
+                self.assertFalse(report["complete_unambiguous"])
+                self.assertEqual(report["counts"]["statuses"], {"PASS": 1})
+                self.assertEqual(
+                    report["issues"],
+                    [
+                        {"kind": "unparsed_result", "line": 2},
+                        {
+                            "kind": "missing_results",
+                            "run_id": "unidentified",
+                            "ordinals": [2],
+                        },
+                    ],
+                )
+
+    def test_truncated_compound_log_without_summary_keeps_observed_failure(self):
+        report = parse_lines(
+            [
+                "Nextest run ID interrupted with nextest profile: ci\n",
+                result("PASS", 1, 3, name="normal"),
+                result("FAIL + LEAK", 2, 3, name="failed_before_disk_full"),
+                "Error: There is not enough space on the disk. (os error 112)\n",
+            ]
+        )
+        self.assertFalse(report["complete_unambiguous"])
+        self.assertEqual(report["counts"]["statuses"], {"FAIL + LEAK": 1, "PASS": 1})
+        self.assertEqual(
+            report["issues"],
+            [{"kind": "missing_results", "run_id": "interrupted", "ordinals": [3]}],
+        )
+
+    def test_compound_retry_attempt_is_not_counted_as_a_terminal_result(self):
+        report = parse_lines(
+            [
+                "TRY 1 FAIL + LEAK [1.000s] (1/1) codex-core test_case\n",
+                result("PASS", 1, 1),
+            ]
+        )
+        self.assertFalse(report["complete_unambiguous"])
+        self.assertEqual(report["counts"]["statuses"], {"PASS": 1})
+        self.assertEqual(report["issues"], [{"kind": "unparsed_result", "line": 1}])
+
     def test_conflicting_slot_is_reported_and_not_counted_as_pass_or_fail(self):
         report = parse_lines([result("PASS", 1, 1), result("SIGABRT", 1, 1)])
         self.assertFalse(report["complete_unambiguous"])

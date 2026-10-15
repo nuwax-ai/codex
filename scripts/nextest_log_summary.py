@@ -17,11 +17,11 @@ import re
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 RUN = re.compile(r"Nextest run ID (\S+)")
 RESULT = re.compile(
-    r"^\s*(?P<status>[A-Z][A-Z0-9_-]*)\s+\[(?P<elapsed>[^]]+)\]\s+"
+    r"^\s*(?P<status>FAIL\s*\+\s*LEAK|[A-Z][A-Z0-9_-]*)\s+\[(?P<elapsed>[^]]+)\]\s+"
     r"\(\s*(?P<ordinal>\d+)/(?P<total>\d+)\)\s+"
     r"(?P<binary>\S+)\s+(?P<name>\S+)\s*$"
 )
-RESULT_CANDIDATE = re.compile(r"^\s*[A-Z][A-Z0-9_ -]*\s+\[[^]]+\]\s+\(\s*\d+/\d+\)")
+RESULT_CANDIDATE = re.compile(r"^\s*[A-Z][A-Z0-9_ +\t-]*\s+\[[^]]+\]\s+\(\s*\d+/\d+\)")
 SUMMARY = re.compile(r"^\s*Summary\s+\[[^]]+\]\s+(\d+) tests run:")
 
 
@@ -47,6 +47,7 @@ def parse_lines(lines):
                 issues.append({"kind": "unparsed_result", "line": line_number})
             continue
         row = match.groupdict()
+        row["status"] = re.sub(r"\s*\+\s*", " + ", row["status"])
         row["ordinal"] = int(row["ordinal"])
         row["total"] = int(row["total"])
         row["elapsed"] = row["elapsed"].strip()
