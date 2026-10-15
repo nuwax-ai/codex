@@ -36,6 +36,11 @@ fn responses_requests_clear_hosted_replay_payloads_without_changing_history() ->
         );
         let prompt = Prompt {
             input: vec![original.clone()],
+            // Isolate saved-history projection from the default instruction prefix.
+            base_instructions: BaseInstructions {
+                text: String::new(),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let metadata = test_responses_metadata_for_client(
@@ -94,6 +99,13 @@ fn provider_switch_keeps_native_ciphertext_but_filters_bridge_reasoning() -> any
         encrypted_content: Some("codex-rig-reasoning-v1:opaque".into()),
         internal_chat_message_metadata_passthrough: None,
     };
+    let v2_envelope = ResponseItem::Reasoning {
+        id: None,
+        summary: vec![],
+        content: None,
+        encrypted_content: Some("codex-rig-reasoning-v2:opaque".into()),
+        internal_chat_message_metadata_passthrough: None,
+    };
     for bridge in [
         None,
         Some(codex_model_provider_info::ChatBridge::Rig),
@@ -109,9 +121,18 @@ fn provider_switch_keeps_native_ciphertext_but_filters_bridge_reasoning() -> any
             },
             None,
         );
-        let original = vec![native.clone(), legacy.clone(), envelope.clone()];
+        let original = vec![
+            native.clone(),
+            legacy.clone(),
+            envelope.clone(),
+            v2_envelope.clone(),
+        ];
         let prompt = Prompt {
             input: original.clone(),
+            base_instructions: BaseInstructions {
+                text: String::new(),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let metadata = test_responses_metadata_for_client(

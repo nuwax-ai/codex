@@ -3570,7 +3570,7 @@ fn is_rig_reasoning_envelope(value: &str) -> bool {
     }
     #[cfg(not(feature = "rust-rig"))]
     {
-        value.starts_with("codex-rig-reasoning-v1:")
+        value.starts_with("codex-rig-reasoning-v1:") || value.starts_with("codex-rig-reasoning-v2:")
     }
 }
 
