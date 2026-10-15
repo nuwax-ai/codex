@@ -5030,3 +5030,303 @@ impl Drop for EnvVarGuard {
         }
     }
 }
+
+/// Twenty consecutive synthetic screenshots through the rig Chat wire with
+/// a bounded context window: the formal auto-compaction boundary must fire
+/// ahead of the request that would exceed the window (never a mid-flight
+/// rejection, never per-sampling deletion), every screenshot turn still
+/// completes, and a cold resume after the stress continues cleanly.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Result<()> {
+    use codex_model_provider_info::ModelProviderInfo;
+    use codex_model_provider_info::WireApi;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
+    skip_if_wine_exec!(
+        Ok(()),
+        "requires a Windows test_stdio_server in the Wine-exec environment"
+    );
+    skip_if_no_network!(Ok(()));
+
+    const SCREENSHOTS: usize = 20;
+    // The context budget the compactor defends. With growing reported
+    // usage (round i reports i * 3_000 tokens) the boundary fires
+    // mid-sequence, well before the final rounds.
+    const AUTO_COMPACT_TOKEN_LIMIT: i64 = 30_000;
+
+    let server = start_mock_server().await;
+    let log = ChatBodyLog::default();
+    // One stateful responder drives the whole conversation: sampling
+    // requests receive the next screenshot call until all twenty have been
+    // requested, then the final answer; compaction requests always receive
+    // a summary. This is independent of exactly WHEN the boundary fires.
+    let served_calls = Arc::new(AtomicUsize::new(0));
+    let compactions = Arc::new(AtomicUsize::new(0));
+    {
+        let log = log.clone();
+        let served_calls = Arc::clone(&served_calls);
+        let compactions = Arc::clone(&compactions);
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/v1/chat/completions"))
+            .and(move |request: &wiremock::Request| {
+                let body = serde_json::from_slice::<serde_json::Value>(&request.body)
+                    .expect("chat request JSON");
+                log.0.lock().expect("stress log").push(body);
+                true
+            })
+            .respond_with(move |request: &wiremock::Request| {
+                let body = std::str::from_utf8(&request.body).expect("request UTF-8");
+                if body.contains("CONTEXT CHECKPOINT COMPACTION") {
+                    compactions.fetch_add(1, Ordering::SeqCst);
+                    return chat_stress_sse("COMPACT SUMMARY", /*total_tokens*/ 1_000);
+                }
+                let call = served_calls.fetch_add(1, Ordering::SeqCst);
+                let total = ((call + 1) * 3_000) as i64;
+                if call < SCREENSHOTS {
+                    chat_stress_tool_sse(r#"{"scenario":"image_only"}"#, total)
+                } else {
+                    chat_stress_sse("all screenshots processed", total)
+                }
+            })
+            .mount(&server)
+            .await;
+    }
+
+    let stress_provider = ModelProviderInfo {
+        capabilities: None,
+        name: "rig-chat-stress".into(),
+        base_url: Some(format!("{}/v1", server.uri())),
+        model_catalog_url: None,
+        env_key: None,
+        env_key_instructions: None,
+        experimental_bearer_token: None,
+        // No explicit bridge: the fork default routes third-party wires
+        // through rig; the chat-completions wire shape is asserted below.
+        experimental_bridge: None,
+        provider_id: Some("rig-stress-test".into()),
+        auth: None,
+        gateway_oauth: None,
+        aws: None,
+        wire_api: WireApi::Chat,
+        query_params: None,
+        http_headers: None,
+        env_http_headers: None,
+        request_max_retries: Some(0),
+        stream_max_retries: Some(0),
+        stream_idle_timeout_ms: Some(10_000),
+        websocket_connect_timeout_ms: None,
+        requires_openai_auth: false,
+        supports_websockets: false,
+        supports_standalone_web_search: false,
+        include_internal_metadata: false,
+        max_output_tokens: None,
+        hosted_results_replay: None,
+    };
+    let server_name = "rmcp";
+    let command = remote_aware_stdio_server_bin()?;
+    let fixture = test_codex()
+        .with_model_info_override("gpt-5.4", |model| model.supports_search_tool = false)
+        .with_config({
+            let provider = stress_provider.clone();
+            let command = command.clone();
+            move |config| {
+                config.model_provider = provider;
+                config.model_auto_compact_token_limit = Some(AUTO_COMPACT_TOKEN_LIMIT);
+                config.compact_prompt =
+                    Some(codex_core::compact::SUMMARIZATION_PROMPT.to_string());
+                insert_mcp_server(
+                    config,
+                    server_name,
+                    stdio_transport(
+                        command,
+                        Some(HashMap::from([(
+                            "MCP_TEST_IMAGE_DATA_URL".to_string(),
+                            OPENAI_PNG.to_string(),
+                        )])),
+                        Vec::new(),
+                    ),
+                    TestMcpServerOptions {
+                        environment_id: remote_aware_environment_id(),
+                        ..Default::default()
+                    },
+                );
+            }
+        })
+        .build_with_auto_env(&server)
+        .await?;
+    wait_for_mcp_server(&fixture.codex, server_name).await?;
+
+    fixture
+        .codex
+        .start_or_steer_turn(read_only_user_turn(
+            &fixture,
+            "take twenty screenshots and summarize",
+        ))
+        .await?;
+    let complete = core_test_support::wait_for_event(&fixture.codex, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+    let EventMsg::TurnComplete(complete) = complete else {
+        unreachable!("matched TurnComplete");
+    };
+    assert!(
+        complete.error.is_none(),
+        "the stress turn must complete without a context-window failure: {:?}",
+        complete.error
+    );
+
+    let bodies = log.bodies();
+    let sampling: Vec<_> = bodies
+        .iter()
+        .filter(|body| !body.to_string().contains("CONTEXT CHECKPOINT COMPACTION"))
+        .collect();
+    let compaction: Vec<_> = bodies
+        .iter()
+        .filter(|body| body.to_string().contains("CONTEXT CHECKPOINT COMPACTION"))
+        .collect();
+    assert_eq!(
+        sampling.len(),
+        SCREENSHOTS + 1,
+        "twenty screenshot samplings plus the final answer: {} total requests",
+        bodies.len()
+    );
+    assert!(
+        compaction.len() >= 1,
+        "the formal compaction boundary must fire ahead of the window"
+    );
+    // Screenshots reach the model as typed images.
+    assert!(
+        sampling
+            .iter()
+            .any(|body| body.to_string().contains("image_url")),
+        "screenshots ride the typed image field in model requests"
+    );
+    // The final sampling after compaction carries fewer images than the
+    // pre-compaction peak: local compaction drops old media by design
+    // instead of failing the request.
+    let images_in = |body: &serde_json::Value| {
+        body.to_string().matches("\"type\":\"image_url\"").count()
+    };
+    let peak = sampling.iter().map(|body| images_in(body)).max().unwrap_or(0);
+    let last = images_in(sampling.last().expect("final sampling"));
+    assert!(
+        last < peak,
+        "post-compaction request sheds old images: last={last} peak={peak}"
+    );
+    assert_eq!(
+        served_calls.load(Ordering::SeqCst),
+        SCREENSHOTS + 1,
+        "the responder handed out every planned screenshot call"
+    );
+    assert_eq!(
+        compactions.load(Ordering::SeqCst),
+        compaction.len(),
+        "responder and capture agree on the compaction count"
+    );
+    // No sampling was retried or failed mid-flight: exactly one request per
+    // sampling plus the compaction(s) reached the server.
+    assert_eq!(
+        bodies.len(),
+        sampling.len() + compaction.len(),
+        "no extra attempts beyond the planned samplings and compactions"
+    );
+
+    // Cold resume after the stress: the compacted rollout still yields a
+    // working continuation, appending without rewriting history.
+    let rollout_path = fixture.codex.rollout_path().expect("rollout path");
+    let before_resume = std::fs::read_to_string(&rollout_path)?;
+    fixture.codex.shutdown_and_wait().await?;
+    let cwd = fixture.config.cwd.clone();
+    let home = fixture.home.clone();
+    let mut resume_builder = test_codex()
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
+        .with_config({
+            let provider = stress_provider;
+            move |config| {
+                config.model_provider = provider;
+                config.cwd = cwd;
+            }
+        });
+    if let Some(exec_server_url) = fixture.executor_environment().exec_server_url() {
+        resume_builder = resume_builder.with_exec_server_url(exec_server_url);
+    }
+    let resumed = resume_builder
+        .resume(&server, home, rollout_path.clone())
+        .await?;
+    resumed
+        .codex
+        .start_or_steer_turn(read_only_user_turn(&resumed, "continue after stress"))
+        .await?;
+    let complete = core_test_support::wait_for_event(&resumed.codex, |event| {
+        matches!(event, EventMsg::TurnComplete(_))
+    })
+    .await;
+    let EventMsg::TurnComplete(complete) = complete else {
+        unreachable!("matched TurnComplete");
+    };
+    assert!(complete.error.is_none());
+    resumed.codex.shutdown_and_wait().await?;
+    let after_resume = std::fs::read_to_string(&rollout_path)?;
+    assert!(
+        after_resume.starts_with(&before_resume),
+        "resume appends without rewriting the stressed rollout"
+    );
+    Ok(())
+}
+
+fn chat_stress_sse(text: &str, total_tokens: i64) -> wiremock::ResponseTemplate {
+    let first = serde_json::json!({
+        "id": "chatcmpl-stress", "object": "chat.completion.chunk", "created": 1,
+        "model": "server-model",
+        "choices": [{"index": 0, "delta": {"role": "assistant", "content": text}, "finish_reason": null}]
+    });
+    let final_chunk = serde_json::json!({
+        "id": "chatcmpl-stress", "object": "chat.completion.chunk", "created": 1,
+        "model": "server-model",
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": total_tokens}
+    });
+    let body = format!("data: {first}\n\ndata: {final_chunk}\n\ndata: [DONE]\n\n");
+    responses::sse_response(body)
+}
+
+fn chat_stress_tool_sse(arguments: &str, total_tokens: i64) -> wiremock::ResponseTemplate {
+    let first = serde_json::json!({
+        "id": "chatcmpl-stress", "object": "chat.completion.chunk", "created": 1,
+        "model": "server-model",
+        "choices": [{
+            "index": 0,
+            "delta": {"tool_calls": [{
+                "index": 0, "id": "call_shot", "type": "function",
+                "function": {"name": "mcp__rmcp__image_scenario", "arguments": arguments}
+            }]},
+            "finish_reason": null
+        }]
+    });
+    let finish = serde_json::json!({
+        "id": "chatcmpl-stress", "object": "chat.completion.chunk", "created": 1,
+        "model": "server-model",
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]
+    });
+    let final_chunk = serde_json::json!({
+        "id": "chatcmpl-stress", "object": "chat.completion.chunk", "created": 1,
+        "model": "server-model",
+        "choices": [],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": total_tokens}
+    });
+    let body = format!("data: {first}\n\ndata: {finish}\n\ndata: {final_chunk}\n\ndata: [DONE]\n\n");
+    responses::sse_response(body)
+}
+
+#[derive(Clone, Default)]
+struct ChatBodyLog(Arc<Mutex<Vec<serde_json::Value>>>);
+
+impl ChatBodyLog {
+    fn bodies(&self) -> Vec<serde_json::Value> {
+        self.0.lock().expect("stress log").clone()
+    }
+}
