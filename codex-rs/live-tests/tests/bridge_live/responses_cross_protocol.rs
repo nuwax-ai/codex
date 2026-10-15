@@ -20,6 +20,7 @@ pub(super) async fn scenario_responses_cross_protocol(cfg: &LiveConfig) {
     let source = codex_live_tests::load_rig_event_fixture(&cfg.vendor, "tool-t1")
         .expect("recorded Chat tool turn for cross-protocol history");
     let source_events = codex_rust_rig_bridge::replay_fixture_events(&source)
+        .into_result()
         .expect("convert actual recorded Rig Chat events into history");
     let source_turn = codex_live_tests::load_fixture(&cfg.vendor, "rig", "tool-t1")
         .expect("recorded Chat request for cross-protocol history");

@@ -26,7 +26,9 @@ fn replay_includes_created_and_stops_at_the_first_completion() {
         terminal: Some(terminal()),
         ..Default::default()
     };
-    let events = replay_rig_events(&recording, HashSet::new()).unwrap();
+    let events = replay_rig_events(&recording, HashSet::new())
+        .into_result()
+        .unwrap();
     let expected = vec![
         ResponseEvent::Created { response_id: None },
         ResponseEvent::Completed {
@@ -44,7 +46,9 @@ fn replay_includes_created_and_stops_at_the_first_completion() {
 
 #[test]
 fn replay_rejects_missing_terminal_records() {
-    let error = replay_rig_events(&RigRecording::default(), HashSet::new()).unwrap_err();
+    let error = replay_rig_events(&RigRecording::default(), HashSet::new())
+        .into_result()
+        .unwrap_err();
     assert!(
         matches!(error, codex_api::ApiError::Stream(message) if message.contains("without a terminal record"))
     );
@@ -74,7 +78,9 @@ fn replay_does_not_recover_from_a_conversion_error_at_the_terminal() {
         })],
         terminal: Some(terminal()),
     };
-    let error = replay_rig_events(&recording, HashSet::from(["custom".into()])).unwrap_err();
+    let error = replay_rig_events(&recording, HashSet::from(["custom".into()]))
+        .into_result()
+        .unwrap_err();
     assert!(matches!(error, codex_api::ApiError::Stream(_)));
 }
 
@@ -127,7 +133,9 @@ fn legacy_chat_replay_keeps_cache_inside_the_recorded_prompt_total() {
         }]
     }))
     .expect("legacy Chat fixture");
-    let events = replay_fixture_events(&fixture).expect("replay legacy Chat usage");
+    let events = replay_fixture_events(&fixture)
+        .into_result()
+        .expect("replay legacy Chat usage");
     let expected = vec![
         ResponseEvent::Created { response_id: None },
         ResponseEvent::ServerModel("mimo-v2.6-flash".into()),
@@ -172,7 +180,9 @@ fn legacy_anthropic_replay_restores_message_id_and_inclusive_usage() {
         }]
     }))
     .expect("legacy Anthropic fixture");
-    let events = replay_fixture_events(&fixture).expect("replay legacy Anthropic terminal");
+    let events = replay_fixture_events(&fixture)
+        .into_result()
+        .expect("replay legacy Anthropic terminal");
     let expected = vec![
         ResponseEvent::Created { response_id: None },
         ResponseEvent::Completed {

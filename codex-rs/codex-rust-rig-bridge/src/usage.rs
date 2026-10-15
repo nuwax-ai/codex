@@ -80,18 +80,28 @@ impl AnthropicUsage {
     ///
     /// Returns `None` when nothing was observed. The Anthropic wire never
     /// reports a total, so the report is at best `Incomplete`; explicit zeros
-    /// observed on the wire stay zeros here.
+    /// observed on the wire stay zeros here. `input_tokens` is reported
+    /// INCLUSIVE of cache read/write — the same semantics `apply` writes and
+    /// `map_usage` publishes on the Completed path, so a cap terminal and a
+    /// completion of identical wire data agree.
     pub(crate) fn snapshot_report(
         &self,
     ) -> Option<codex_protocol::protocol::ReportedResponseUsage> {
+        let counter = |value: Option<u64>| value.and_then(|value| i64::try_from(value).ok());
+        let input = self
+            .input
+            .map(|input| {
+                input
+                    .saturating_add(self.cached.unwrap_or_default())
+                    .saturating_add(self.cache_creation.unwrap_or_default())
+            })
+            .and_then(|input| i64::try_from(input).ok());
         let counts = codex_protocol::protocol::ReportedUsageCounters {
-            input_tokens: self.input.and_then(|value| i64::try_from(value).ok()),
-            cached_input_tokens: self.cached.and_then(|value| i64::try_from(value).ok()),
-            cache_write_input_tokens: self
-                .cache_creation
-                .and_then(|value| i64::try_from(value).ok()),
-            output_tokens: self.output.and_then(|value| i64::try_from(value).ok()),
-            reasoning_output_tokens: self.reasoning.and_then(|value| i64::try_from(value).ok()),
+            input_tokens: input,
+            cached_input_tokens: counter(self.cached),
+            cache_write_input_tokens: counter(self.cache_creation),
+            output_tokens: counter(self.output),
+            reasoning_output_tokens: counter(self.reasoning),
             total_tokens: None,
         };
         codex_protocol::protocol::ReportedResponseUsage::from_counters(counts)

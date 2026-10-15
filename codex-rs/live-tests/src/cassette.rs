@@ -68,8 +68,17 @@ pub fn load_rig_event_fixture(
 ) -> Result<codex_rust_rig_bridge::RigEventFixture, String> {
     let path = rig_event_fixture_path(vendor, tag)
         .ok_or_else(|| "Cannot locate Rig fixtures".to_string())?;
+    load_rig_event_fixture_at(&path)
+}
+
+/// Loads a rig-event fixture from an explicit path (offline round-trip
+/// tests exercise the same parse as replay without touching the env-driven
+/// fixture root).
+pub fn load_rig_event_fixture_at(
+    path: &Path,
+) -> Result<codex_rust_rig_bridge::RigEventFixture, String> {
     let contents =
-        std::fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
     serde_json::from_str(&contents).map_err(|error| format!("{}: {error}", path.display()))
 }
 
@@ -82,6 +91,33 @@ pub fn save_rig_event_fixture(
 ) -> Result<()> {
     let path =
         rig_event_fixture_path(vendor, tag).ok_or_else(|| anyhow!("Cannot locate Rig fixtures"))?;
+    write_rig_event_fixture(&path, vendor, tag, recording, custom_tools)?;
+    println!("[cassette-rig] recorded {}", path.display());
+    Ok(())
+}
+
+/// Saves a rig-event fixture under an explicit root, reusing the exact
+/// serialization and layout of [`save_rig_event_fixture`] so offline
+/// round-trip tests exercise the real on-disk format.
+pub fn save_rig_event_fixture_at(
+    root: &Path,
+    vendor: &str,
+    tag: &str,
+    recording: &codex_rust_rig_bridge::RigRecording,
+    custom_tools: &std::collections::HashSet<String>,
+) -> Result<PathBuf> {
+    let path = rig_event_fixture_path_in(root, vendor, tag);
+    write_rig_event_fixture(&path, vendor, tag, recording, custom_tools)?;
+    Ok(path)
+}
+
+fn write_rig_event_fixture(
+    path: &Path,
+    vendor: &str,
+    tag: &str,
+    recording: &codex_rust_rig_bridge::RigRecording,
+    custom_tools: &std::collections::HashSet<String>,
+) -> Result<()> {
     let mut custom_tools: Vec<_> = custom_tools.iter().cloned().collect();
     custom_tools.sort();
     let fixture = codex_rust_rig_bridge::RigEventFixture {
@@ -92,14 +128,15 @@ pub fn save_rig_event_fixture(
         rig_events: Vec::new(),
         custom_tools,
     };
-    write_fixture(&path, &fixture)?;
-    println!("[cassette-rig] recorded {}", path.display());
-    Ok(())
+    write_fixture(path, &fixture)
 }
 
 fn rig_event_fixture_path(vendor: &str, tag: &str) -> Option<PathBuf> {
-    let root = fixture_root()?;
-    Some(root.join(vendor).join(format!("rig-events-{tag}.json")))
+    fixture_root().map(|root| rig_event_fixture_path_in(&root, vendor, tag))
+}
+
+fn rig_event_fixture_path_in(root: &Path, vendor: &str, tag: &str) -> PathBuf {
+    root.join(vendor).join(format!("rig-events-{tag}.json"))
 }
 
 /// Saves all HTTP attempts. Raw bodies preserve serialization, and may contain

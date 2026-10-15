@@ -107,6 +107,27 @@ pub struct RigEventFixture {
     pub custom_tools: Vec<String>,
 }
 
+/// The result of replaying a recording through the current conversion.
+///
+/// The live pump delivers the streamed prefix (Created, item deltas)
+/// BEFORE a terminal error reaches the consumer; a replay that returned
+/// only `Result` would drop that prefix on error terminals, so the events
+/// and the terminal error travel together.
+#[derive(Debug)]
+pub struct RigReplay {
+    /// Every event the live stream would have delivered, in order.
+    pub events: Vec<ResponseEvent>,
+    /// The terminal error the live stream would have sent after `events`.
+    pub error: Option<codex_api::ApiError>,
+}
+
+impl RigReplay {
+    /// The events, or the terminal error when the attempt failed.
+    pub fn into_result(self) -> Result<Vec<ResponseEvent>, codex_api::ApiError> {
+        self.error.map_or(Ok(self.events), Err)
+    }
+}
+
 /// Replays a recording through the CURRENT bridge conversion code, producing
 /// the codex events the current implementation would emit.
 ///
@@ -116,39 +137,68 @@ pub struct RigEventFixture {
 pub fn replay_rig_events(
     recording: &RigRecording,
     custom_tool_names: HashSet<String>,
-) -> Result<Vec<ResponseEvent>, codex_api::ApiError> {
+) -> RigReplay {
     let mut pending = PendingRigMessage::new(Arc::new(custom_tool_names), "cassette".into());
     let mut out = vec![ResponseEvent::Created { response_id: None }];
     for event in &recording.events {
-        out.extend(rig_event_to_response_events(event.clone(), &mut pending)?);
+        match rig_event_to_response_events(event.clone(), &mut pending) {
+            Ok(events) => out.extend(events),
+            Err(error) => {
+                return RigReplay {
+                    events: out,
+                    error: Some(error),
+                };
+            }
+        }
         // The live pump stops polling the provider as soon as completion is
         // emitted.
         if pending.completed_emitted() {
-            return Ok(out);
+            return RigReplay {
+                events: out,
+                error: None,
+            };
         }
     }
     let Some(terminal) = recording.terminal.clone() else {
-        return Err(codex_api::ApiError::Stream(
-            "Rig cassette ended without a terminal record".into(),
-        ));
+        return RigReplay {
+            events: out,
+            error: Some(codex_api::ApiError::Stream(
+                "Rig cassette ended without a terminal record".into(),
+            )),
+        };
     };
-    out.extend(handle_stream_terminal(
-        terminal.into_terminal(),
-        &mut pending,
-    )?);
-    Ok(out)
+    match handle_stream_terminal(terminal.into_terminal(), &mut pending) {
+        Ok(events) => {
+            out.extend(events);
+            RigReplay {
+                events: out,
+                error: None,
+            }
+        }
+        Err(error) => RigReplay {
+            events: out,
+            error: Some(error),
+        },
+    }
 }
 
 /// Convenience wrapper that replays from a fixture without custom tools
 /// (the common scenario for recorded scenarios).
-pub fn replay_fixture_events(
-    fixture: &RigEventFixture,
-) -> Result<Vec<ResponseEvent>, codex_api::ApiError> {
+pub fn replay_fixture_events(fixture: &RigEventFixture) -> RigReplay {
     let custom_tools: HashSet<String> = fixture.custom_tools.iter().cloned().collect();
     if !fixture.rig_events.is_empty() || fixture.terminal.is_none() {
         // Legacy (0.42) fixtures carry their events in `rig_events`; the
         // translation below is part of the replay contract.
-        let recording = translate_legacy_events(&fixture.rig_events, fixture.terminal.as_ref())?;
+        let recording =
+            match translate_legacy_events(&fixture.rig_events, fixture.terminal.as_ref()) {
+                Ok(recording) => recording,
+                Err(error) => {
+                    return RigReplay {
+                        events: Vec::new(),
+                        error: Some(error),
+                    };
+                }
+            };
         return replay_rig_events(&recording, custom_tools);
     }
     let recording = RigRecording {

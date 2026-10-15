@@ -201,6 +201,7 @@ mod resume_warning;
 mod retry_after;
 mod review;
 mod rig_anthropic_hosted_tools;
+mod rig_image_history;
 mod rig_output_cap;
 mod rig_responses_bridge;
 mod rmcp_client;

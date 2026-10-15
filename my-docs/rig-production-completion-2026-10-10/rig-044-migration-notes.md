@@ -243,17 +243,114 @@ bridge_live 84/84），修掉回放暴露的三个问题并补齐两条 origin �
   188 个协议场景实际执行。旧 rig-event fixture 回放也不经过 0.44 wire decoder。
 - 当前候选 Linux/Windows、全量 CI、ACP dev 和真实厂商视觉仍未验收。
 
+## 进展（2026-10-15 第五轮：生命周期证据补准 + 复审假通过纠正）
+
+按 [Claude 开发交接](claude-next-rig-images-2026-10-15.md) 第一批执行，基线
+`29d55354c`（保留全部 Codex 复审修复）。
+
+### 复审收据纠正（重要）
+
+复审记录的「Core cap 含原生对照 30/30」是**假通过**：其沙箱设置了禁网
+环境变量，`skip_if_no_network!` 全部提前 return Ok（复审日志中 30 项均为
+0.02 秒 PASS；真实执行需 1.6–19 秒）。本机启用网络真实执行同一选择器后
+**30 项中 7 项失败**，均为 0.44 迁移引入的真实缺陷（复审测试树与最终提交
+仅差 fmt，见 `/private/tmp/codex-rig044-review-core-cap.log` 对照）。已修复
+（提交 `6c2d2c562`）：
+
+1. **被输出预算截断的 tool 调用覆盖了 cap 终态**：rig 0.44 在流内以无
+   native item 的 End 关闭被 length 截断的调用，桥的 invalid-arguments
+   严格检查把它变成 Stream 错误——既替换了本应解释截断的 CapExhausted，
+   又因 Stream 可重试把单发 mock 耗成 404（cap_partial 两用例的失败
+   机制）。现无 native 的截断关闭标记为 cut：不执行、不发布，cap 终态
+   照常出现；仅良性终态遇到 cut 调用才 fail-fast。
+2. **0.44 宽容 usage 读取丢掉 fork 的严格契约**：负数计数被 `as_u64`
+   静默吞掉、message_start/delta 缺 usage 折叠成默认终态，而 0.42 桥
+   一直把这两种情形作为可重试流错误（"invalid value: integer"、
+   "missing field `usage`"）。wire 级 usage 观测器恢复该严格性，消息
+   原样穿过 provider 错误映射（Transport::Network，core 可重试）。
+3. wire-budget 负控 loopback 外层 wrapper 与内层 5s accept 窗同限竞速，
+   负载下 Elapsed 假超时；外层给余量（10s），内层 5s 断言不变。
+
+第五轮随后两处补丁（同一批）：`replay_rig_events`/`replay_fixture_events`
+改为返回 `RigReplay{events, error}`——live 泵在错误终态前会先送出流式前缀
+（Created/deltas），纯 `Result` 回放会丢弃该前缀；`AnthropicUsage::
+snapshot_report` 的 input 改为包含式（+cache 读/写），与 `apply`/
+`map_usage` 的 Completed 口径一致（core 既有断言的夹具无 cache，两种口径
+同值，故此前未暴露）。
+
+### 生命周期证据收据（真实执行，2026-10-15，候选树含上述修复）
+
+选择器、命令与数量（均为断言实际执行的秒级用例，无 early-Ok）：
+
+| 范围 | 结果 | 命令关键参数 |
+|---|---|---|
+| Bridge 全 crate | 299/299 | `-p codex-rust-rig-bridge --locked --offline --retries 0 --test-threads 8` |
+| 显式 Rig core 家族 | 50/50 | `-p codex-core --features rust-rig,rust-genai --test all --locked --offline --retries 0 --test-threads 4 -E 'test(rig_anthropic)+test(rig_responses_bridge)+test(rig_output_cap)+test(rig_image)'` |
+| live-tests replay 整 crate | 195/195 | `LIVE_CASSETTE=replay LIVE_VENDORS=mimo,glm,step -p codex-live-tests …` |
+
+- 既有显式套件及真实断言点：`rig_responses_bridge`（Responses resume 不
+  回填 provenance、Chat compact 超窗恢复、Chat 凭据实例 reasoning 续链、
+  输出 cap 不重采样、Lite 契约）、`rig_anthropic_hosted_tools`/`_identity_/
+  _source_rotation_/_credential_instance_`（保存/恢复/fork/来源与凭据轮换/
+  暂停续链，bridge=rig provenance 断言内嵌）、`rig_output_cap`（三 wire
+  终态矩阵，本轮修复后真实执行）。路由证明不依赖 display name：全部走
+  `wire_api` 非 Responses-openai 的第三方 provider + 独立 loopback endpoint
+  非零命中（路径断言 `/v1/chat/completions`、`/v1/messages`、`/v1/responses`），
+  provenance `bridge=rig` 由 identity/rotation 套件逐项断言。
+- 默认 provider 的 281 resume/compact + 62 env 回归保留为一般回归，不冒称
+  走 Rig（复审更正继续有效）。
+
+### 新增覆盖
+
+1. **图片历史 × 三 wire × 冷恢复/fork/local compact**（`core/tests/suite/
+   rig_image_history.rs`，4/4）：真实 2×2 PNG 经 LocalImage 准备管线入史，
+   update_plan 工具往返同行；冷恢复后下一请求逐字节重放同一图片载荷
+   （Chat `image_url` data URL／Anthropic base64 `source`+media_type／
+   Responses `input_image`）且 call/result 配对完整；Anthropic 单元另含
+   fork（热路径）同断言；Chat local compact 后压缩请求经 rig wire、后续
+   请求无图片字节（本地压缩弃媒体为设计行为）、rollout 只追加。图片不
+   退化为文本副本（data-URL 形态负控）。
+2. **离线 v2 cassette 磁盘往返**（`live-tests/tests/
+   cassette_v2_roundtrip_offline.rs`，7/7）：本地 Chat/Anthropic SSE 经
+   **实际 recorder**（`stream_via_rig_with_recording`）录单 attempt，经
+   `save_rig_event_fixture` 同一序列化/布局写入临时目录（新增 `_at`
+   变体），重载后 `replay_fixture_events` 回放，完整事件列表逐项相等。
+   仅归一化两类生成值：`rigseg_*` 合成 item id 与 v2 envelope 的 endpoint
+   source。覆盖 reasoning→文本（含迟到 usage+cache）、reasoning→自定义
+   工具（fixture custom_tools 恢复 CustomToolCall 与 call id）、签名
+   thinking→文本（SIG 原样存活）、thinking→工具、cap（CapExhausted 及
+   usage 报告逐字段等）、content_filter、未知 finish。无手写 v2 fixture。
+   旧 v1 fixture 未动。
+
+### cassette 单 attempt 限制（单列）
+
+Rig-event cassette 仍只把单 attempt 作为有效证据：共享 recorder 跨 pause
+会复用 Part 并覆盖 terminal（`record_terminal` 每次覆盖 `Option`），多
+attempt 录制不经由该路径验证。pause/hosted/HTTP/idle/truncation 继续由
+真实 loopback wire 测试覆盖，不以 cassette PASS 代替。本轮未触及该限制；
+如需支持，须独立小补丁（显式拒绝多 attempt 录制或 per-attempt 格式）。
+
+### 未验边界（本批后仍开放）
+
+- Linux/Windows 原生、全量 CI/workspace、ACP dev、真实厂商 API/识图——
+  未运行（第三批机器定向验证时处理）。
+- 付费 `LIVE_CASSETTE=record` 录制轮次仍待授权。
+- 复审"30/30"类沙箱禁网收据：后续引用其日志时注意其 PASS 均可能为
+  early-return；以本轮真实执行收据为准。
+
 ## 执行清单
+
 - [x] Phase A 非流部分（12/16 文件）
 - [x] Phase A 流核心 4 文件 + cassette（280/280 绿，clippy 0 警告）
 - [x] Phase B 测试/夹具/cassette 适配（fixture v2 + legacy v1 翻译 + live-tests 编译面）
 - [ ] Phase C 验证：三 wire 出站、工具配对、终局/迟到 usage、cap、取消、
       retry/idle/HTTP 预算、代理/TLS、signed reasoning 旧会话、resume/compact、
       app-server env、live-tests 离线；`just bazel-lock-update`
-      —— 当前复审通过：bridge 295/295；Core 无 rust-rig 的投影回归 3/3、
-      rig_output_cap 30/30（含原生对照）；app-server env 公共接口 9/9；
-      nuwax env 离线 3/3；legacy bridge_live replay 84 PASS（含内部跳过）；
-      之前已同步 Bazel lock。默认 provider 的 281+62 单独保留为一般回归。
-      —— 未闭环：显式 Rig 生命周期专项、离线 v2 实录 fixture、当前候选的
-      Linux/Windows/CI 与 ACP dev。真实付费录制单列，不阻塞离线工作。
+      —— 第五轮真实执行收据（含复审假通过纠正与 7 项缺陷修复）：
+      bridge 299/299；显式 Rig core 家族 50/50（含 rig_output_cap 30/30
+      真实执行、新增 rig_image_history 4/4）；live-tests replay 195/195
+      （含离线 v2 cassette 往返 7/7）。app-server env 公共接口 9/9、
+      nuwax env 离线 3/3、Bazel lock 同步沿用复审轮（代码路径未变）。
+      —— 未闭环：当前候选的 Linux/Windows/CI 与 ACP dev（第三批）。
+      真实付费录制单列，不阻塞离线工作。
 - [x] reasoning v1 旧 DTO 解码保留（v2 写入、v1 解码+转换、rollout 不改写）

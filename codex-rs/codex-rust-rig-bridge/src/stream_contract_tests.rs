@@ -111,7 +111,7 @@ fn replay(
         recording.events.push(item);
         let _ = PartKind::ToolCall;
     }
-    crate::replay_rig_events(&recording, custom)
+    crate::replay_rig_events(&recording, custom).into_result()
 }
 
 #[test]
@@ -327,13 +327,16 @@ fn legacy_rig_cassette_requires_real_conversion_and_a_terminal_record() {
     let fixture: crate::RigEventFixture =
         serde_json::from_value(json!({"vendor":"test","tag":"legacy","rig_events":[legacy_final]}))
             .unwrap();
-    let events = crate::replay_fixture_events(&fixture).unwrap();
+    let events = crate::replay_fixture_events(&fixture)
+        .into_result()
+        .unwrap();
     assert!(matches!(
         events.last(),
         Some(ResponseEvent::Completed { .. })
     ));
     assert!(
         crate::replay_rig_events(&crate::cassette::RigRecording::default(), HashSet::new())
+            .into_result()
             .is_err()
     );
 }

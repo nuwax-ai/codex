@@ -59,7 +59,9 @@ async fn anthropic_usage(deltas: Vec<Value>) -> TokenUsage {
         }
     }
     server.await.unwrap();
-    let replay = replay_rig_events(&recorder.lock().unwrap().clone(), Default::default()).unwrap();
+    let replay = replay_rig_events(&recorder.lock().unwrap().clone(), Default::default())
+        .into_result()
+        .unwrap();
     let replay_usage = replay.into_iter().find_map(|event| match event {
         ResponseEvent::Completed { token_usage, .. } => token_usage,
         _ => None,

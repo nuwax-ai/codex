@@ -51,6 +51,7 @@ pub use responses::stream_responses_via_rig_with_sse_recording;
 pub mod cassette;
 pub use cassette::RigEventFixture;
 pub use cassette::RigRecording;
+pub use cassette::RigReplay;
 pub use cassette::extract_custom_tool_names;
 pub use cassette::replay_fixture_events;
 pub use cassette::replay_rig_events;

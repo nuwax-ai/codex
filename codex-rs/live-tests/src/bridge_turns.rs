@@ -101,6 +101,7 @@ fn replay_rig_turn(cfg: &LiveConfig, tag: &str) -> Vec<ResponseEvent> {
         fixture.items.len() + fixture.rig_events.len()
     );
     codex_rust_rig_bridge::replay_fixture_events(&fixture)
+        .into_result()
         .unwrap_or_else(|error| panic!("[cassette-rig] {}/{}: {error}", cfg.vendor, tag))
 }
 
