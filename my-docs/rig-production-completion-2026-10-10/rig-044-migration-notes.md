@@ -407,6 +407,31 @@ context×2：同一提交（c0d07a7a2）干净树在 /tmp 新 worktree 全过
 差分证据：/tmp/baseline-check 基线（同命令同提交）。候选修复：Linux
 主验机上重跑该簇；不在本批放宽任何 deadline。
 
+## 进展（2026-10-15 第七轮：连续截图 stress + 平台验证启动）
+
+1. **20 次连续截图 stress**（`rmcp_client::
+   twenty_synthetic_screenshots_trigger_formal_compaction`，提交
+   `4ca0e4fa0`）：rig Chat wire + 30K auto-compact 限额 + 递增 usage；
+   有状态响应器驱动（与边界触发时机解耦）。钉住合同：21 次采样每发
+   恰一次（截图以 typed image 入模）、正式 CONTEXT CHECKPOINT
+   COMPACTION 先于窗口触发（非中途拒绝）、压缩后请求 shedding 旧图
+   （峰值 vs 最后一张图数）、无额外 attempt、压力后冷恢复继续且
+   rollout 只追加。
+2. **Linux 主验**（192.168.32.163，swufe@，rustc 1.95.0 与 pin 一致）：
+   候选 HEAD（4ca0e4fa0）源码 tar + 作用域套件（bridge 全量 / core
+   rig 家族 + 图片限额 + stress + 环境性失败簇 / utils 两 crate /
+   live-tests replay 整 crate）在远程后台执行——第六轮的环境性
+   startup 簇在 Linux 快盘上重验是关键对照。收据见下轮记录。
+3. **Windows**（192.168.32.235 `win`，cargo/rustc 在位）：Linux 通过
+   后同一流水线执行原生验证（WSL 不用）。
+4. **ACP dev 联调**：本轮明确不调用付费/真实厂商 API——截图、取消、
+   冷恢复、压缩四项验收都需要真实模型回合，故 ACP dev 实测顺延到
+   授权付费 API 的轮次；不把「看到了文件」当作识图成功。
+5. Guardian/溢出类新失败如出现，按同 SHA/工具链/features/栈做候选
+   与基线对照后归类（本轮未触及）。
+
+
+
 ## 执行清单
 
 - [x] Phase A 非流部分（12/16 文件）
