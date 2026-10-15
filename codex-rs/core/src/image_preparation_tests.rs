@@ -668,3 +668,106 @@ fn preparation_errors_use_bounded_actionable_placeholders() {
         assert_eq!(error.placeholder(), expected);
     }
 }
+
+/// The submission-time backstop re-applies the per-result image limits to
+/// tool outputs that never went through the producer's truncation (dynamic
+/// tools, rehydrated rollouts): excess images become a bounded marker plus
+/// empty slots, and the newest images survive.
+#[tokio::test(flavor = "multi_thread")]
+async fn tool_output_backstop_caps_unbounded_image_counts() {
+    fn output_item(output: FunctionCallOutputPayload) -> ResponseItem {
+        ResponseItem::FunctionCallOutput {
+            id: None,
+            call_id: Some("call_backstop".to_string()),
+            name: None,
+            namespace: None,
+            output,
+            internal_chat_message_metadata_passthrough: None,
+        }
+    }
+
+    let total = codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGES + 4;
+    let payload = FunctionCallOutputPayload {
+        body: FunctionCallOutputBody::ContentItems(
+            (0..total)
+                .map(|index| FunctionCallOutputContentItem::InputImage {
+                    image: ImageReference::Inline {
+                        image_url: format!("img-{index}"),
+                    },
+                    detail: None,
+                })
+                .chain(std::iter::once(FunctionCallOutputContentItem::InputText {
+                    text: "caption".to_string(),
+                }))
+                .collect(),
+        ),
+        success: Some(true),
+    };
+    let mut items = vec![output_item(payload)];
+    let _ = prepare_response_items(
+        "thread-backstop",
+        /*ephemeral*/ false,
+        &mut items,
+        ImagePreparationMode::DetailBased,
+        ImageResizeNoticeMode::Disabled,
+        &InlineAttachmentStore,
+    )
+    .await;
+    let ResponseItem::FunctionCallOutput { output, .. } = &items[0] else {
+        panic!("payload item survived: {items:?}");
+    };
+    let prepared_items = output.content_items().expect("content items");
+    let images: Vec<_> = prepared_items
+        .iter()
+        .filter(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. }))
+        .collect();
+    assert_eq!(
+        images.len(),
+        codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGES
+    );
+    let kept: Vec<_> = images
+        .iter()
+        .filter_map(|item| match item {
+            FunctionCallOutputContentItem::InputImage {
+                image: ImageReference::Inline { image_url },
+                ..
+            } => Some(image_url.clone()),
+            _ => None,
+        })
+        .collect();
+    let first_kept = total - codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGES;
+    assert_eq!(
+        kept,
+        (first_kept..total)
+            .map(|index| format!("img-{index}"))
+            .collect::<Vec<_>>(),
+        "the backstop keeps the newest images"
+    );
+    assert!(
+        prepared_items.iter().any(|item| matches!(item,
+            FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 4 image")
+        )),
+        "the backstop leaves a bounded marker: {prepared_items:?}"
+    );
+
+    // Already-bounded payloads pass through untouched: a second application
+    // drops nothing and changes no item.
+    let mut again = vec![output_item(output.clone())];
+    let _ = prepare_response_items(
+        "thread-backstop",
+        /*ephemeral*/ false,
+        &mut again,
+        ImagePreparationMode::DetailBased,
+        ImageResizeNoticeMode::Disabled,
+        &InlineAttachmentStore,
+    )
+    .await;
+    let ResponseItem::FunctionCallOutput { output: replay, .. } = &again[0] else {
+        unreachable!()
+    };
+    assert_eq!(
+        replay.content_items().expect("items"),
+        output.content_items().expect("items"),
+        "the backstop is idempotent"
+    );
+}

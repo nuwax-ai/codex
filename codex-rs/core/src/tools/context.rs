@@ -188,6 +188,17 @@ impl McpToolOutput {
             sanitize_original_image_detail(self.original_image_detail_supported, items);
         }
 
+        // History receives this budget in tokens. Code Mode keeps the raw
+        // result. Truncate BEFORE the wall-time header joins the payload:
+        // images now reserve their visual cost from the same budget, and the
+        // bounded constant header must survive even when that budget is
+        // exhausted — like the truncator's own omission markers.
+        truncate_function_output_payload(
+            &mut payload,
+            with_serialization_allowance(self.truncation_policy),
+            estimate_audio_token_count,
+        );
+
         let wall_time_seconds = self.wall_time.as_secs_f64();
         let header = format!("Wall time: {wall_time_seconds:.4} seconds\nOutput:");
 
@@ -203,13 +214,6 @@ impl McpToolOutput {
                 items.insert(0, FunctionCallOutputContentItem::InputText { text: header });
             }
         }
-
-        // History receives this budget in tokens. Code Mode keeps the raw result.
-        truncate_function_output_payload(
-            &mut payload,
-            with_serialization_allowance(self.truncation_policy),
-            estimate_audio_token_count,
-        );
         payload
     }
 }

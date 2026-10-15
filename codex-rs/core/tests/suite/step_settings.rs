@@ -3061,7 +3061,15 @@ async fn captured_step_controls_mcp_output_limit(supports_images: bool) -> Resul
         .filter_map(|item| item["text"].as_str())
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(output.contains("truncated"), "{output}");
+    // With the image present, its visual cost consumes the tiny fallback
+    // budget first, so the text cannot even afford a truncated snippet and
+    // collapses to the omission marker. Without the image, the text
+    // truncates against the full budget as before.
+    if supports_images {
+        assert!(output.contains("omitted"), "{output}");
+    } else {
+        assert!(output.contains("truncated"), "{output}");
+    }
     assert!(output.matches("abcdefghij").count() < 10, "{output}");
     Ok(())
 }

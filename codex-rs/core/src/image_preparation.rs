@@ -303,6 +303,11 @@ async fn prepare_tool_output_content(
     mode: ImagePreparationMode,
     image_store: &dyn AttachmentStore,
 ) -> Vec<ResizedImage> {
+    // Submission-time backstop for the per-result image entrance limits:
+    // every producer normally truncates through codex-utils-output-truncation
+    // before items reach history, but dynamic tools and rehydrated rollouts
+    // can arrive unbounded. Idempotent: already-limited payloads pass.
+    enforce_tool_output_image_limits(items);
     let image_count = items
         .iter()
         .filter(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. }))
@@ -340,6 +345,45 @@ fn is_remote_image_url(image_url: &str) -> bool {
     image_url.split_once(':').is_some_and(|(scheme, _)| {
         scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
     })
+}
+
+/// Submission-time backstop for the per-result image entrance limits. The
+/// producer's truncation already applied them (including the shared
+/// text+visual token budget); here only the count/size bounds matter, so the
+/// visual budget is effectively unbounded and cannot double-drop. Dropped
+/// images become bounded text: the first carries the marker, the rest empty
+/// slots (a slice cannot shrink; the backstop path is rare by design).
+fn enforce_tool_output_image_limits(items: &mut [FunctionCallOutputContentItem]) {
+    let snapshot: Vec<_> = items.to_vec();
+    let admission = codex_utils_output_truncation::admit_tool_output_images(
+        &snapshot,
+        codex_protocol::protocol::TruncationPolicy::Tokens(usize::MAX),
+    );
+    if admission.dropped == 0 {
+        return;
+    }
+    let mut marker_written = false;
+    for (index, item) in items.iter_mut().enumerate() {
+        if matches!(item, FunctionCallOutputContentItem::InputImage { .. })
+            && !admission.keep[index]
+        {
+            *item = FunctionCallOutputContentItem::InputText {
+                text: if marker_written {
+                    String::new()
+                } else {
+                    marker_written = true;
+                    format!(
+                        "[omitted {} image(s): over the per-output image limits (max {} images, {} MiB each, {} MiB total) ...]",
+                        admission.dropped,
+                        codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGES,
+                        codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGE_BYTES / (1024 * 1024),
+                        codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES
+                            / (1024 * 1024),
+                    )
+                },
+            };
+        }
+    }
 }
 
 fn is_data_url(image_url: &str) -> bool {

@@ -24,6 +24,18 @@ const DATA_URL_PREFIX: &str = "data:";
 pub const PROMPT_IMAGE_PATCH_SIZE: u32 = 32;
 /// Maximum width or height used when resizing images before uploading.
 pub const MAX_DIMENSION: u32 = 2048;
+
+/// Upper bound on the pixels one prompt image may declare, checked from the
+/// format header BEFORE the full decode allocates width × height × channels.
+/// This is a decode-safety guard against decompression bombs, sized above the
+/// largest legitimate original-detail image (6000 × 6000 = 36 MP).
+pub const MAX_PROMPT_IMAGE_PIXELS: u64 = 40_000_000;
+
+/// Upper bound on the encoded bytes one prepared prompt image may occupy
+/// (re-encoded or preserved source). Aligned with the whole-request wire
+/// byte limit: anything larger can never be sent, so refusing at preparation
+/// keeps the failure bounded and attributable instead of a wire rejection.
+pub const MAX_PREPARED_IMAGE_BYTES: usize = 32 * 1024 * 1024;
 /// Maximum accepted byte length for prompt image input representations.
 ///
 /// This is a high sanity guard against pathological inputs, not a protocol
@@ -140,6 +152,21 @@ fn load_for_prompt_bytes_uncached(
         let mut decoder = ImageReader::with_format(Cursor::new(&file_bytes), guessed_format)
             .into_decoder()
             .map_err(|source| ImageProcessingError::decode_error(&path_buf, source))?;
+        // Reject a declared pixel count the full decode could never afford
+        // before any raster allocation happens. The header dimensions are
+        // cheap to read; a bomb declares far more pixels than it encodes.
+        {
+            let (width, height) = decoder.dimensions();
+            if u64::from(width) * u64::from(height) > MAX_PROMPT_IMAGE_PIXELS {
+                return Err(ImageProcessingError::ImageTooLarge {
+                    representation: "declared pixels",
+                    size: (u64::from(width) * u64::from(height))
+                        .try_into()
+                        .unwrap_or(usize::MAX),
+                    max: usize::try_from(MAX_PROMPT_IMAGE_PIXELS).unwrap_or(usize::MAX),
+                });
+            }
+        }
         // Preserve the metadata most important for rendering prompt images faithfully: the color
         // profile and EXIF data, including orientation. Other format-specific metadata is
         // intentionally not copied.
@@ -217,8 +244,22 @@ fn load_for_prompt_bytes_uncached(
             }
         };
 
-        Ok(encoded)
+        admit_encoded_image(encoded)
     })()
+}
+
+/// A prepared image above [`MAX_PREPARED_IMAGE_BYTES`] can never fit a
+/// request the wire layer would send; refuse it here so the failure is a
+/// bounded, attributable placeholder instead of a wire rejection.
+fn admit_encoded_image(encoded: EncodedImage) -> Result<EncodedImage, ImageProcessingError> {
+    if encoded.bytes.len() > MAX_PREPARED_IMAGE_BYTES {
+        return Err(ImageProcessingError::ImageTooLarge {
+            representation: "prepared image bytes",
+            size: encoded.bytes.len(),
+            max: MAX_PREPARED_IMAGE_BYTES,
+        });
+    }
+    Ok(encoded)
 }
 
 fn cache_image(cache: &ImageCache, key: ImageCacheKey, image: EncodedImage, byte_capacity: usize) {

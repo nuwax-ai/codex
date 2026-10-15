@@ -378,3 +378,74 @@ async fn bounds_cache_by_encoded_byte_size() {
     assert!(cache.get(&key(2)).is_some());
     assert!(cache.get(&key(3)).is_none());
 }
+
+/// A PNG declaring far more pixels than its payload could ever encode. The
+/// pixel cap must refuse it from the header alone, before the full decode
+/// allocates a raster of that size.
+fn png_declaring_dimensions(width: u32, height: u32) -> Vec<u8> {
+    fn chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+        out.extend_from_slice(kind);
+        out.extend_from_slice(data);
+        let mut crc = 0xFFFF_FFFFu32;
+        for byte in kind.iter().chain(data) {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                crc = if crc & 1 != 0 {
+                    (crc >> 1) ^ 0xEDB8_8320
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        out.extend_from_slice(&(!crc).to_be_bytes());
+        out
+    }
+    let mut png = Vec::new();
+    png.extend_from_slice(&[0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n']);
+    let mut ihdr = Vec::new();
+    ihdr.extend_from_slice(&width.to_be_bytes());
+    ihdr.extend_from_slice(&height.to_be_bytes());
+    ihdr.extend_from_slice(&[8, 6, 0, 0, 0]); // 8-bit RGBA
+    png.extend_from_slice(&chunk(b"IHDR", &ihdr));
+    // A minimal IDAT so the decoder initializes (header-only PNGs fail
+    // decoder construction before dimensions are readable). The payload is
+    // never decoded: the dimension guard refuses first.
+    png.extend_from_slice(&chunk(b"IDAT", &[0u8; 8]));
+    png.extend_from_slice(&chunk(b"IEND", &[]));
+    png
+}
+
+#[test]
+fn declared_pixel_bomb_is_refused_before_the_full_decode() {
+    let bomb = png_declaring_dimensions(50_000, 50_000);
+    let error = load_for_prompt_bytes(
+        std::path::Path::new("<pixel-bomb.png>"),
+        bomb,
+        PromptImageMode::HIGH_DETAIL,
+    )
+    .expect_err("2.5 billion declared pixels must be refused");
+    assert!(
+        matches!(error, ImageProcessingError::ImageTooLarge { representation, .. }
+            if representation == "declared pixels"),
+        "the refusal names the decode-time guard: {error:?}"
+    );
+}
+
+#[test]
+fn legitimately_large_dimensions_still_decode() {
+    // 6,000 x 6,000 is the original-detail ceiling (36 MP) and must stay
+    // under the 40 MP decode guard.
+    let image = ImageBuffer::from_pixel(6_000, 6_000, Rgba([1, 2, 3, 255]));
+    let encoded = image_bytes(&image, ImageFormat::Png);
+    let prepared = load_for_prompt_bytes(
+        std::path::Path::new("<large.png>"),
+        encoded,
+        PromptImageMode::ORIGINAL_DETAIL,
+    )
+    .expect("36 MP decodes within the guard");
+    // Original-detail still applies its own patch ceiling and may resize;
+    // the point here is the 40 MP decode guard did not reject it.
+    assert!(prepared.width <= 6_000 && prepared.height <= 6_000);
+}

@@ -338,6 +338,75 @@ attempt 录制不经由该路径验证。pause/hosted/HTTP/idle/truncation 继�
 - 复审"30/30"类沙箱禁网收据：后续引用其日志时注意其 PASS 均可能为
   early-return；以本轮真实执行收据为准。
 
+## 进展（2026-10-15 第六轮：MCP／Code Mode 图片入口硬限）
+
+按交接第二批执行。先写额度（具名常量+理由落在
+`utils/output-truncation/src/lib.rs` 与 `utils/image/src/lib.rs`），再实现：
+
+### 额度表（单条工具结果维度）
+
+| 常量 | 值 | 理由 |
+|---|---|---|
+| `MAX_TOOL_OUTPUT_IMAGES` | 8 | Guardian 对话级用 4；工具级 8 容纳多步批量截图，仍界住上下文 |
+| `MAX_TOOL_OUTPUT_IMAGE_BYTES` | 16 MiB/图（encoded） | 6000px original PNG 合法体积之上、解码前拒绝炸弹 |
+| `MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES` | 24 MiB/结果 | 聚合 encoded 上限，超限从最旧开始丢 |
+| `TOOL_OUTPUT_IMAGE_VISUAL_TOKENS` | 1,844/图（high/auto） | 与 core history 估算和 bridge wire_images 平价（~7,373B 准备图）三处同步 |
+| original detail | 不占文本预算 | 其成本由 patch 粒度上下文记账与压缩承担；仅受数量/字节上限 |
+| `MAX_PROMPT_IMAGE_PIXELS` | 40 MP（全局） | 头部声明尺寸预检，>6000×6000 合法上限（36MP）；解码分配前拒绝 |
+| `MAX_PREPARED_IMAGE_BYTES` | 32 MiB（全局） | 与 wire 整包硬限对齐：超此值必被 wire 拒，提前给出有界可归因失败 |
+
+### 实施点（最靠近共同入口，零新增传参）
+
+1. **`utils/output-truncation`**（MCP `McpToolOutput::response_payload` 与
+   Code Mode `truncate_code_mode_result` 都已调用）：条目截断先做图片
+   准入——超单图/数量/聚合上限者从最旧丢起，保最新（任何限额不能静默
+   删光），落一条有界省略标记；kept 图片按视觉 token 预扣同一预算
+   （Bytes 策略按近似字节换算），文本只能花剩余额度——"文本接近 10K
+   后无限加图"不再可能。encrypted_content 仍免费通过。
+2. **`core/image_preparation::prepare_tool_output_content`** 提交期兜底：
+   对未经过生产者截断的来源（dynamic tools、rollout 重载）幂等重施
+   数量/字节上限（token 预算不二次扣），防止旧历史绕过。
+3. **`utils/image`** 解码安全：decoder 初始化后先读 header 尺寸，超
+   40MP 直接 ImageTooLarge（解压炸弹在栅格分配前拒绝）；准备产物超
+   32MiB 同样拒绝（占位符路径已有）。
+4. **wall-time 头部移到截断之后**（context.rs）：头部成为与省略标记
+   同级的有界常量开销，图片占满预算时头部仍可见。
+
+### 合同保持与负控
+
+- typed image 不变：MCP image 块→`InputImage`、Code Mode `image()`→
+  typed、普通 JS 返回不发内容、`text()` 恒为文本（勘路确认，无字符串
+  猜图）。structuredContent 优先语义未动（其 Base64 作为 TEXT 计入
+  token 截断，天然有界）。未知/畸形 MCP 块仍是 JSON 文本回退。
+- 用户消息图片不走工具预算（`prepare_message_content` 独立路径）。
+- request capture 2MiB 上限为纯诊断捕获，不拒绝请求（Phase A 设计），
+  与 attempt 预算解耦确认。
+- 三 wire typed 字段的出站证明沿用 Phase A outbound 测试（用户+工具图
+  双覆盖）与 rig_image_history；上限发生在 payload 构造期，先于任何
+  HTTP 派发。
+
+### 验证（真实执行）
+
+- output-truncation 29/29（新增 9 项：数量/单图/聚合/共享预算/original
+  豁免/always-keep-newest/Bytes 换算/File 引用；更新 3 项钉住旧
+  「图片零成本」语义的测试并注明理由）；
+- utils/image 15/15（新增像素炸弹拒绝 + 36MP 合法解码）；
+- core lib context 370/370（新增 MCP 入口 12 图上限回归）、
+  image_preparation 8/8（新增兜底幂等回归）；
+- 家族复跑 image/code_mode/rig_/rmcp stdio image/context 929 选中，
+  除下述环境簇外全过。step_settings 的小预算用例按新语义更新
+  （图片在则省略标记，无图则截断照旧）。
+
+### 环境性失败簇（本 worktree，与代码无关）
+
+`mcp_optional_startup_grace`×3、`interrupt_during_mcp_startup`×2、
+`shutdown_cancels_startup_prewarm`×1、`realtime_conversation` startup
+context×2：同一提交（c0d07a7a2）干净树在 /tmp 新 worktree 全过
+（0.2-0.7s），在本 worktree 稳定失败（deadline 5s 耗尽）——
+本 worktree 位于 /Volumes 卷，会话初始化慢于这些 5s 级 deadline。
+差分证据：/tmp/baseline-check 基线（同命令同提交）。候选修复：Linux
+主验机上重跑该簇；不在本批放宽任何 deadline。
+
 ## 执行清单
 
 - [x] Phase A 非流部分（12/16 文件）

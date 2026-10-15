@@ -554,3 +554,70 @@ fn exec_command_tool_output_preserves_omission_metadata_when_truncated() {
     assert!(text.contains("Warning: truncated output (original token count: 42000)"));
     assert_eq!(text.matches(&marker).count(), 1);
 }
+
+/// The MCP entrance bounds tool-result images before anything decodes or
+/// dispatches: over the count cap, the newest images survive, the rest
+/// become one bounded marker, and the payload still pairs with its call id.
+#[test]
+fn mcp_tool_output_caps_images_at_the_common_entrance() {
+    let total = codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGES + 4;
+    let mut content = vec![serde_json::json!({
+        "type": "text",
+        "text": "screenshots attached",
+    })];
+    for index in 0..total {
+        content.push(serde_json::json!({
+            "type": "image",
+            "mimeType": "image/png",
+            "data": format!("IMG{index}"),
+        }));
+    }
+    let output = McpToolOutput {
+        result: CallToolResult {
+            content,
+            structured_content: None,
+            is_error: Some(false),
+            meta: None,
+        },
+        tool_input: json!({}),
+        result_metadata_capture_allowed: false,
+        wall_time: std::time::Duration::from_millis(10),
+        original_image_detail_supported: true,
+        // Large enough that only the count cap bites (the payload applies
+        // the serialization allowance on top).
+        truncation_policy: TruncationPolicy::Tokens(20_000),
+    };
+
+    let ResponseInputItem::FunctionCallOutput { call_id, output } = output.to_response_item(
+        "mcp-call-images",
+        &ToolPayload::Function {
+            arguments: "{}".to_string(),
+        },
+    ) else {
+        panic!("function call output");
+    };
+    assert_eq!(call_id, "mcp-call-images");
+    let items = output.content_items().expect("content items");
+    let images: Vec<_> = items
+        .iter()
+        .filter(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. }))
+        .collect();
+    assert_eq!(
+        images.len(),
+        codex_utils_output_truncation::MAX_TOOL_OUTPUT_IMAGES,
+        "{items:?}"
+    );
+    // The NEWEST images survive; the four oldest are the marker.
+    assert!(
+        items.iter().any(|item| matches!(item,
+            FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 4 image")
+        )),
+        "{items:?}"
+    );
+    let encoded = serde_json::to_string(&items).unwrap();
+    assert!(
+        !encoded.contains("IMG0\"") && !encoded.contains("IMG3\""),
+        "dropped images leave no residue: {encoded}"
+    );
+    assert!(encoded.contains("IMG4"));
+}
