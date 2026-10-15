@@ -295,7 +295,7 @@ async fn live_env_tool_round_trip_usage_and_interrupt_with_two_resumes() -> Resu
                 } else {
                     completed = Some(
                         serde_json::from_value::<TurnCompletedNotification>(
-                            notification.params.clone().context("params")?,
+                            notification.params.context("params")?,
                         )
                         .context("turn/completed shape")?,
                     );

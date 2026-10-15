@@ -950,8 +950,7 @@ async fn drain_to_completed(
                             reported_usage.as_ref(),
                         )
                         .await
-                    {
-                        if let Err(accounting_error) = sess
+                        && let Err(accounting_error) = sess
                             .record_token_usage_info(
                                 turn_context,
                                 &turn_context.initial_settings,
@@ -959,12 +958,11 @@ async fn drain_to_completed(
                                 TokenUsageContext::SpendingOnly,
                             )
                             .await
-                        {
-                            tracing::warn!(
-                                error = %accounting_error,
-                                "failed to account a capped compaction's usage"
-                            );
-                        }
+                    {
+                        tracing::warn!(
+                            error = %accounting_error,
+                            "failed to account a capped compaction's usage"
+                        );
                     }
                     sess.send_token_count_event(turn_context).await;
                 }

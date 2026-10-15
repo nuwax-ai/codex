@@ -1896,7 +1896,7 @@ impl ResponsesHttpExecutor<'_> {
         &self,
         turn_state: &Arc<OnceLock<String>>,
         output_provenance: &Arc<std::sync::Mutex<Option<codex_history::ModelOutputProvenance>>>,
-        event_sender: Option<&Sender<ProtocolEvent>>,
+        _event_sender: Option<&Sender<ProtocolEvent>>,
         prompt: &Prompt,
         model_info: &ModelInfo,
         session_telemetry: &SessionTelemetry,
@@ -1969,7 +1969,7 @@ impl ResponsesHttpExecutor<'_> {
                     .map_api_error(ApiError::Transport(error.into()))
             })?;
             let replay_authorization = opaque_replay_authorization(
-                &self.client,
+                self.client,
                 prompt,
                 &producing_source,
                 &options.extra_headers,
