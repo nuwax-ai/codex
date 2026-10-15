@@ -531,12 +531,28 @@ async fn anthropic_interrupt_before_headers_closes_socket_and_allows_follow_up()
 
 /// C2/N5: interrupting a long-running client tool aborts the turn, records
 /// the call with an aborted output, and does not re-execute the tool.
+///
+/// The tool call asks for escalated execution with `AskForApproval::OnRequest`
+/// and the test answers each approval through the same `Op::ExecApproval`
+/// handshake the suites already use, then interrupts once `ExecCommandBegin`
+/// proves the command is genuinely running. This keeps real execution on
+/// every platform: Windows does not stall at its blanket exec-approval gate,
+/// and Linux machines whose AppArmor policy denies unprivileged userns
+/// (no bwrap sandbox) still run the command for real, unsandboxed.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn anthropic_interrupt_during_tool_runs_it_once() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = MockServer::start().await;
-    let args = r#"{"cmd":"sleep 60","yield_time_ms":60000}"#;
+    #[cfg(windows)]
+    // `ping -n 61 127.0.0.1` blocks for ~60s on loopback in cmd, PowerShell
+    // and Git Bash alike, so the interrupt lands mid-execution.
+    let stall_command = "ping -n 61 127.0.0.1";
+    #[cfg(not(windows))]
+    let stall_command = "sleep 60";
+    let args = format!(
+        r#"{{"cmd":"{stall_command}","yield_time_ms":60000,"sandbox_permissions":"require_escalated"}}"#
+    );
     let tool_call = format!(
         "event: content_block_start\ndata: {{\"type\":\"content_block_start\",\"index\":1,\"content_block\":{{\"type\":\"tool_use\",\"id\":\"toolu_sleep\",\"name\":\"exec_command\",\"input\":{{}}}}}}\n\nevent: content_block_delta\ndata: {{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{{\"type\":\"input_json_delta\",\"partial_json\":{args:?}}}}}\n\n"
     );
@@ -561,6 +577,9 @@ async fn anthropic_interrupt_during_tool_runs_it_once() -> Result<()> {
         ))
         .with_config(move |config| {
             config.model_provider = provider;
+            config.permissions.approval_policy = codex_core::config::Constrained::allow_any(
+                codex_protocol::protocol::AskForApproval::OnRequest,
+            );
         })
         .build_with_auto_env(&server)
         .await?;
@@ -574,23 +593,37 @@ async fn anthropic_interrupt_during_tool_runs_it_once() -> Result<()> {
         ]))
         .await?;
     let mut begins = 0usize;
-    let begin = core_test_support::wait_for_event(&codex, |event| {
-        if matches!(
-            event,
-            codex_protocol::protocol::EventMsg::ExecCommandBegin(_)
-        ) {
-            begins += 1;
+    let begin = loop {
+        let event = core_test_support::wait_for_event(&codex, |event| {
+            if matches!(
+                event,
+                codex_protocol::protocol::EventMsg::ExecCommandBegin(_)
+            ) {
+                begins += 1;
+            }
+            matches!(
+                event,
+                codex_protocol::protocol::EventMsg::ExecApprovalRequest(_)
+                    | codex_protocol::protocol::EventMsg::ExecCommandBegin(_)
+                    | codex_protocol::protocol::EventMsg::Error(_)
+                    | codex_protocol::protocol::EventMsg::TurnComplete(_)
+                    | codex_protocol::protocol::EventMsg::TurnAborted(_)
+            )
+        })
+        .await;
+        match event {
+            codex_protocol::protocol::EventMsg::ExecApprovalRequest(approval) => {
+                codex
+                    .submit(codex_protocol::protocol::Op::ExecApproval {
+                        id: approval.effective_approval_id(),
+                        turn_id: None,
+                        decision: codex_protocol::protocol::ReviewDecision::Approved,
+                    })
+                    .await?;
+            }
+            other => break other,
         }
-        matches!(
-            event,
-            codex_protocol::protocol::EventMsg::ExecCommandBegin(_)
-                | codex_protocol::protocol::EventMsg::ExecApprovalRequest(_)
-                | codex_protocol::protocol::EventMsg::Error(_)
-                | codex_protocol::protocol::EventMsg::TurnComplete(_)
-                | codex_protocol::protocol::EventMsg::TurnAborted(_)
-        )
-    })
-    .await;
+    };
     let captured_requests = responder.captured();
     let tool_outputs: Vec<_> = captured_requests
         .iter()
