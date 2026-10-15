@@ -572,3 +572,38 @@ gitignored）。识图此前未证实的主因正是本缺陷（图片从未送�
       —— 未闭环：全量 workspace/CI、代理/TLS、interrupt 夹具跨平台
       适配、guardian-v2 两个既有失败、巩固 agent 短进程宿主行为。
 - [x] reasoning v1 旧 DTO 解码保留（v2 写入、v1 解码+转换、rollout 不改写）
+
+
+## 进展（2026-10-16 第十二轮：CI 验收与使用路径收口）
+
+执行 `claude-next-ci-validation-2026-10-16.md` 交接，详细证据与分类见
+[ci-validation-ledger-2026-10-16.md](ci-validation-ledger-2026-10-16.md)。
+
+- CI run `38782462743`（`8e7c5904b`）：bazel gate 绿；ubuntu ~25 个失败、
+  windows 76 个、macos 被取消无结论。基线 `38528171490`（`bc4517dad`）
+  早于 main 合并内容 593 个提交，"新增"是合并∨R1-11∨Codex 集成的并集。
+- 重要环境性更正：裸 `cargo nextest` 缺 `RUST_MIN_STACK=8388608` 时会话
+  spawn poll 链确定性爆栈（两平台、两工具链、clean/增量均复现）——
+  第一轮 Linux 69 个"失败"全是该环境性，补齐后 303/303、114/114、
+  196/196、61/62、51/52。rustup 默认漂移到 1.99.0 且 pin 按 cwd 解析，
+  CI 用 @stable 与 pin 不一致——结构性风险，留给 Codex 决策。
+- ubuntu 截断簇（~12 个）二分锁定首败于 Codex 集成提交
+  （`914a400d7` 绿 → `4a0dd66d5` 红；39,004 字节=默认 10K 语义、
+  prepared=Some(30000) 选择正确、mac 全绿平台分叉）。
+- `capped_sampling_reports_terminal_usage_over_v2` 在 `29d55354c` 即红
+  （上游 e4797d0dc 测试 vs SpendingOnly 持久化 last 语义），独立历史
+  缺陷单列。
+- `anthropic_interrupt_during_tool_runs_it_once` 跨平台夹具修复
+  （`e6ab13a18`，独立提交）：require_escalated + Op::ExecApproval 应答
+  握手 + 平台真实阻塞命令；mac 与 Linux 原生（AppArmor 机）实测过，
+  Windows 待流水线收尾。
+- ACP 无凭据验收套件归档（ACP dev `2b4ae13`）；对当前二进制实测揭出
+  两个产品缺陷：MCP 工具广告/执行目录不一致（unsupported call）、
+  取消后新 prompt 不进模型请求。原版 tmp 驱动同样复现，归档 runner 即
+  回归器。
+- 第三批代码级定性：exec 退出杀巩固 agent = `failed_agent`（非干净
+  取消）+ 1h 重试延迟，不丢水位、无硬次数上限、SIGKILL 会占满 lease；
+  daemon/ACP 长宿主不受直接影响。最小修复方向与回归断言已写入账本。
+- 未闭环：ubuntu 截断簇根因（Codex 续查）、fs_watch 双平台新增、
+  windows 61 个新增分诊、ACP 两缺陷、turn_cap_usage 修复、Windows
+  原生流水线收尾、Code Mode image()/text() 三分验证。
