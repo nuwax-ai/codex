@@ -216,8 +216,14 @@ bridge_live 84/84），修掉回放暴露的三个问题并补齐两条 origin �
   `drops_unbound_items` 三处（非退化输入现已被 wire 测试钉住）。
 - 录制轮次（LIVE_CASSETTE=record，需付费 API）未跑——待用户授权后进行；
   到时新 fixture 将以 v2 格式写入。
-- resume/compact、app-server env 的 codex-core 级回归待跑（本轮已覆盖：
-  bridge 283/283、live-tests replay 188/188、nuwax 离线 3/3）。
+- codex-core 级回归已完成（2026-10-15 第四轮）：resume/compact 家族
+  （suite::{resume, resume_warning, compact*, compact_resume_fork,
+  multi_agent_resume, scenarios_compaction, truncation resume 等，
+  `--test all -E 'test(resume)+test(compact)'`）**281/281 全过**；
+  env 家族（remote_env*/environments/env_startup gate，
+  `-E 'test(remote_env)+test(environments)+test(env_startup)'`）
+  **62/62 全过**。全套 core 的既有基线失败家族（guardian SIGABRT 等，
+  见 ci-run 账本）不在迁移验证范围。
 
 ## 执行清单
 - [x] Phase A 非流部分（12/16 文件）
@@ -228,5 +234,7 @@ bridge_live 84/84），修掉回放暴露的三个问题并补齐两条 origin �
       app-server env、live-tests 离线；`just bazel-lock-update`
       —— 已完成：bridge 283/283（含 origin 两条 + legacy usage 单测）、
       live-tests 离线 replay 188/188（bridge_live 84 场景 + nuwax/exec 跳过
-      语义）、nuwax env 离线 3/3、bazel lock 同步
+      语义）、nuwax env 离线 3/3、bazel lock 同步、
+      codex-core resume/compact 281/281、env 家族 62/62
+      —— 仅剩：LIVE_CASSETTE=record 录制轮次（需付费 API 授权）
 - [x] reasoning v1 旧 DTO 解码保留（v2 写入、v1 解码+转换、rollout 不改写）
