@@ -1,68 +1,248 @@
 {
   "vendor": "mimo",
   "tag": "tool-t2",
-  "rig_events": [
+  "items": [
     {
-      "id": "QLblEjkDaAFlW2PcehzRT",
-      "reasoning": "Get"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "QLblEjkDaAFlW2PcehzRT",
-      "reasoning": " the result and"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The weather tool"
+      }
     },
     {
-      "id": "QLblEjkDaAFlW2PcehzRT",
-      "reasoning": " reply"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " returned the"
+      }
     },
     {
-      "id": "QLblEjkDaAFlW2PcehzRT",
-      "reasoning": "."
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " result for"
+      }
     },
     {
-      "text": "北京今天天气："
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Beijing:"
+      }
     },
     {
-      "text": "**晴**，气温"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " sunny, 23°C."
+      }
     },
     {
-      "text": " **23°C**。"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
     },
     {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 204,
-        "output_tokens": 24,
-        "total_tokens": 228,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 7
-      },
-      "finish_reason": "stop",
-      "message_id": null,
-      "response_id": "61254142-5b21-4758-9e0b-85b131cc3a73_ca4a73b3b60444128e4ab980f2a30c93",
-      "provider": "openai",
-      "model": "mimo-v2.6-flash",
-      "raw": {
-        "additional_params": {
-          "created": 1790303511,
-          "object": "chat.completion.chunk"
-        },
-        "finish_reason": "stop",
-        "model": "mimo-v2.6-flash",
-        "response_id": "61254142-5b21-4758-9e0b-85b131cc3a73_ca4a73b3b60444128e4ab980f2a30c93",
-        "usage": {
-          "completion_tokens": 24,
-          "completion_tokens_details": {
-            "reasoning_tokens": 7
-          },
-          "prompt_tokens": 204,
-          "prompt_tokens_details": {
-            "cached_tokens": 0
-          },
-          "total_tokens": 228
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "北京今天的天气情况"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "如下：\n\n- **天气状况"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**：晴 "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "☀️"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "\n- **气温"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**：23°C\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "天气"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "晴"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "朗，气温"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "适宜"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，适合"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "外出活动"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "！如需"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "更多信息"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，欢迎"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "继续"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "问我"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "北京今天的天气情况如下：\n\n- **天气状况**：晴 ☀️\n- **气温**：23°C\n\n天气晴朗，气温适宜，适合外出活动！如需更多信息，欢迎继续问我。"
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "The weather tool returned the result for Beijing: sunny, 23°C.",
+          "native": {
+            "item": {
+              "reasoning_content": "The weather tool returned the result for Beijing: sunny, 23°C."
+            },
+            "fingerprint": "01e8fff4b046f8dd"
+          }
         }
       }
     }
-  ]
+  ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "48889518-b8fa-4e8d-8d9b-4a81f7ab6fc2_287f08d7b3af4289a0cb40e71a4eb853",
+    "model": "mimo-v2.6-flash",
+    "usage": {
+      "input_tokens": 194,
+      "output_tokens": 64,
+      "total_tokens": 258,
+      "cached_input_tokens": 128,
+      "reasoning_tokens": 17
+    }
+  },
+  "rig_events": [],
+  "custom_tools": []
 }

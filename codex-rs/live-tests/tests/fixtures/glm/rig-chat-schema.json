@@ -3,30 +3,41 @@
   "bridge": "rig",
   "tag": "chat-schema",
   "request": {
-    "include": [],
+    "model": "GLM-5.3-Flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "北京和上海分别叫什么名字?",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant. Answer in Chinese."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
+        "content": [
+          {
+            "type": "input_text",
+            "text": "北京和上海分别叫什么名字?"
+          }
+        ]
       }
     ],
-    "instructions": "You are a helpful assistant. Answer in Chinese.",
-    "model": "GLM-5.3-Flash",
+    "tool_choice": "auto",
     "parallel_tool_calls": true,
     "reasoning": null,
     "store": false,
-    "stream": true,
+    "include": [],
     "text": {
       "format": {
-        "name": "city_pair",
+        "type": "json_schema",
+        "strict": false,
         "schema": {
-          "additionalProperties": false,
+          "type": "object",
           "properties": {
             "city1": {
               "type": "string"
@@ -39,13 +50,11 @@
             "city1",
             "city2"
           ],
-          "type": "object"
+          "additionalProperties": false
         },
-        "strict": false,
-        "type": "json_schema"
+        "name": "city_pair"
       }
-    },
-    "tool_choice": "auto"
+    }
   },
   "events": [
     {
@@ -56,7 +65,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_18d8ed30d95914180",
+        "id": "rigseg_18debda181c79c781_0",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -202,13 +211,19 @@
     },
     {
       "ReasoningContentDelta": {
+        "delta": " other",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
         "delta": " names",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " of",
+        "delta": " for",
         "content_index": 0
       }
     },
@@ -262,7 +277,49 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " bit",
+        "delta": " question",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " about",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " alternative",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " names",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "/n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "ick",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "names",
         "content_index": 0
       }
     },
@@ -274,19 +331,19 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " an",
+        "delta": " Beijing",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " ambiguous",
+        "delta": " and",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " question",
+        "delta": " Shanghai",
         "content_index": 0
       }
     },
@@ -328,397 +385,13 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " they",
+        "delta": " I",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " might",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " be",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " asking",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ":\n\n",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "1",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ".",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " They",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " could",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " be",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " asking",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " about",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " the",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " historical",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "/",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "alternate",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " names",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " of",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " Beijing",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " and",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " Shanghai",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "\n",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "2",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ".",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " They",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " could",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " be",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " asking",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " about",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " abbrev",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "iations",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "/n",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "ick",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "names",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " of",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " these",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " cities",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "\n",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "3",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ".",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " The",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " question",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " is",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " somewhat",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " odd",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " because",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " \"",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "Be",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "ijing",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "\"",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " and",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " \"",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "Sh",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "anghai",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "\"",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " ARE",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " their",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " names",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "\n\n",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "Let",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " me",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " think",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " about",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " the",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " common",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " interpretations",
+        "delta": " know",
         "content_index": 0
       }
     },
@@ -778,72 +451,6 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Abb",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "rev",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "iation",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ":",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " 京",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " (",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "J",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "ī",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "ng",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ")\n",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "-",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
         "delta": " Historical",
         "content_index": 0
       }
@@ -880,97 +487,43 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": ",",
+        "delta": " -",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " 北",
+        "delta": " from",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "平",
+        "delta": " ancient",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ",",
+        "delta": " Yan",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " 大",
+        "delta": " state",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "都",
+        "delta": "\n",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " (",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "D",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "adu",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ",",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " Yuan",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " dynasty",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "),",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " 北",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "平",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ",",
+        "delta": "-",
         "content_index": 0
       }
     },
@@ -988,7 +541,295 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": ",",
+        "delta": " -",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ancient",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " name",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " 北",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "平",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " -",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " used",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " during",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Republic",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " of",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " China",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " era",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " (",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "192",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "8",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "19",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "4",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "9",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ")\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " 大",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "都",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " -",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Yuan",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Dynasty",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " capital",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " 京",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "师",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "燕",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "都",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "涿",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "郡",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " -",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " S",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "ui",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " dynasty",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
         "content_index": 0
       }
     },
@@ -1012,6 +853,24 @@
     },
     {
       "ReasoningContentDelta": {
+        "delta": " -",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ancient",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " name",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
         "delta": "\n",
         "content_index": 0
       }
@@ -1024,19 +883,157 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Nick",
+        "delta": " 中",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "name",
+        "delta": "都",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ":",
+        "delta": " -",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Jin",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Dynasty",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " 北",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "平",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "府",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "顺",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "天府",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " -",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Ming",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "/Q",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "ing",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " era",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "Modern",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " nick",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "names",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ":\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
         "content_index": 0
       }
     },
@@ -1055,6 +1052,60 @@
     {
       "ReasoningContentDelta": {
         "delta": "都",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " -",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " popular",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " internet",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " slang",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "燕",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "京",
         "content_index": 0
       }
     },
@@ -1114,30 +1165,6 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Abb",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "rev",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "iation",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ":",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
         "delta": " ",
         "content_index": 0
       }
@@ -1174,7 +1201,97 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " or",
+        "delta": " -",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " abbreviation",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ",",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " comes",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " from",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "沪",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "渎",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ",",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " an",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ancient",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " fishing",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " tool",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " name",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
         "content_index": 0
       }
     },
@@ -1216,43 +1333,37 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": ")\n",
+        "delta": ")",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "-",
+        "delta": " -",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Historical",
+        "delta": " from",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " names",
+        "delta": " 春",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ":",
+        "delta": "申",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " 华",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "亭",
+        "delta": "君",
         "content_index": 0
       }
     },
@@ -1264,19 +1375,103 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " 松",
+        "delta": " a",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "江",
+        "delta": " lord",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "府",
+        "delta": " of",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Chu",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " state",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " during",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " W",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "arring",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " States",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " period",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " whose",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " f",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "ief",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " was",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " in",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " this",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " area",
         "content_index": 0
       }
     },
@@ -1289,24 +1484,6 @@
     {
       "ReasoningContentDelta": {
         "delta": "-",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " Nick",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "name",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ":",
         "content_index": 0
       }
     },
@@ -1330,7 +1507,49 @@
     },
     {
       "ReasoningContentDelta": {
+        "delta": " -",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " modern",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " nickname",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
         "delta": ",",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " originally",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " from",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Japanese",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " writer",
         "content_index": 0
       }
     },
@@ -1342,7 +1561,187 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "申",
+        "delta": " (",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "Mat",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "sum",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "ura",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Sh",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "ō",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "ta",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ")",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " in",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " his",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "192",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "4",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " work",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " \"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "魔",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "都",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "上海",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " \n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " 上海",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "滩",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " 东方",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "巴黎",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " 不",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "夜",
         "content_index": 0
       }
     },
@@ -1354,85 +1753,13 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": ",",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " ",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "沪",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "上",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
         "delta": "\n\n",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "So",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " the",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " most",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " likely",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " interpretation",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " is",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " asking",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " about",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": "The",
         "content_index": 0
       }
     },
@@ -1462,43 +1789,103 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": ")",
+        "delta": "):\n",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " of",
+        "delta": "-",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " these",
+        "delta": " Beijing",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " two",
+        "delta": ":",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " cities",
+        "delta": " 京",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ",",
+        "delta": "\n",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " which",
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Shanghai",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ":",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "沪",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " or",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "申",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "The",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " question",
         "content_index": 0
       }
     },
@@ -1516,181 +1903,43 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " common",
+        "delta": " bit",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " question",
+        "delta": " ambiguous",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " in",
+        "delta": " -",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Chinese",
+        "delta": " it",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " education",
+        "delta": " could",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ":\n",
+        "delta": " be",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "-",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " 北京",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "简称",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "\"",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "京",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "\"\n",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "-",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " 上海",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "简称",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "\"",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "沪",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "\"",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "或",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "\"",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "申",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "\"\n\n",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "I",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " should",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " answer",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " this",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " compreh",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "ensively",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ",",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " covering",
+        "delta": " asking",
         "content_index": 0
       }
     },
@@ -1714,7 +1963,109 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " The",
+        "delta": " What",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " are",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " nick",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "names",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "/",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "alternative",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " names",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " of",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Beijing",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " and",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Shanghai",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "?\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "2",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " What",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " are",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " their",
         "content_index": 0
       }
     },
@@ -1744,25 +2095,79 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": ")\n",
+        "delta": ")?\n\n",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "2",
+        "delta": "I",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ".",
+        "delta": " should",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Historical",
+        "delta": " cover",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " both",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " interpretations",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " -",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " abbrev",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "iations",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " and",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " historical",
         "content_index": 0
       }
     },
@@ -1774,49 +2179,13 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " (",
+        "delta": "/n",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "历史",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "名称",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ")\n",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "3",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ".",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " Common",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " nick",
+        "delta": "ick",
         "content_index": 0
       }
     },
@@ -1828,7 +2197,73 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " (",
+        "delta": ".\n\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "Let",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " me",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " structure",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " a",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " good",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " answer",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " in",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Chinese",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ":\n\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "**",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "北京的",
         "content_index": 0
       }
     },
@@ -1846,13 +2281,31 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "/",
+        "delta": ":",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "昵",
+        "delta": "**\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "简",
         "content_index": 0
       }
     },
@@ -1864,97 +2317,697 @@
     },
     {
       "ReasoningContentDelta": {
+        "delta": ":",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "京",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "历",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "史",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "名称",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ":",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "燕",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "京",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "、",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "蓟",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "、",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "幽",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "州",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "、",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "大都",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "(",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "元",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "朝",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ")、",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "北平",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "(",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "民国",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "时期",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ")、",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "顺",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "天府",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "(",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "明清",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ")\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "现",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "代",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "别",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "称",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ":",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "帝",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "都",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "(",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "网络",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "流行",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "语",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
         "delta": ")\n\n",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "Since",
+        "delta": "**",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": "上海的",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " question",
+        "delta": "别",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " is",
+        "delta": "称",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " ambiguous",
+        "delta": ":",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ",",
+        "delta": "**\n",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " I",
+        "delta": "-",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "'ll",
+        "delta": " ",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " cover",
+        "delta": "简",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": "称",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " most",
+        "delta": ":",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " likely",
+        "delta": "沪",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " interpretations",
+        "delta": "、",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ".",
+        "delta": "申",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " The",
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "历",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "史",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "由来",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ":\"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "沪",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "来自",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "古代",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "渔民",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "使用的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "捕",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "鱼",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "工具",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "扈",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\";",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "申",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "源于",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "战国",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "时期",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "楚国",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "春",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "申",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "君",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "黄",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "歇",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "封",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "地",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "现",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "代",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "别",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "称",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ":",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "魔",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "都",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "、",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "上海",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "滩",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "、",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "东方",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "巴黎",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "、",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "不",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "夜",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "城",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\n\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "The",
         "content_index": 0
       }
     },
@@ -1990,13 +3043,133 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " as",
+        "delta": " since",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " instructed",
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " user",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " asked",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " in",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Chinese",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " I",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "'ll",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " use",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " a",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " clear",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " format",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " with",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " headers",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " or",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " bullet",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " points",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " to",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " organize",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " information",
         "content_index": 0
       }
     },
@@ -2009,529 +3182,82 @@
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_18d8ed320b7054d81",
+        "id": "rigseg_18debda181c79c781_1",
         "role": "assistant",
         "content": []
       }
     },
     {
-      "OutputTextDelta": "北京"
+      "OutputTextDelta": "{"
     },
     {
-      "OutputTextDelta": "和"
+      "OutputTextDelta": " \""
     },
     {
-      "OutputTextDelta": "上海"
+      "OutputTextDelta": "city"
     },
     {
-      "OutputTextDelta": "作为中国"
+      "OutputTextDelta": "1"
     },
     {
-      "OutputTextDelta": "两大"
+      "OutputTextDelta": "\":"
     },
     {
-      "OutputTextDelta": "重要"
+      "OutputTextDelta": " \""
     },
     {
-      "OutputTextDelta": "城市"
+      "OutputTextDelta": "Be"
     },
     {
-      "OutputTextDelta": "，"
+      "OutputTextDelta": "ijing"
     },
     {
-      "OutputTextDelta": "有"
+      "OutputTextDelta": "\","
     },
     {
-      "OutputTextDelta": "多个"
+      "OutputTextDelta": " \""
     },
     {
-      "OutputTextDelta": "名称"
+      "OutputTextDelta": "city"
     },
     {
-      "OutputTextDelta": "：\n\n"
+      "OutputTextDelta": "2"
     },
     {
-      "OutputTextDelta": "##"
+      "OutputTextDelta": "\":"
     },
     {
-      "OutputTextDelta": " "
+      "OutputTextDelta": " \""
     },
     {
-      "OutputTextDelta": "简"
+      "OutputTextDelta": "Sh"
     },
     {
-      "OutputTextDelta": "称"
-    },
-    {
-      "OutputTextDelta": "\n"
-    },
-    {
-      "OutputTextDelta": "-"
-    },
-    {
-      "OutputTextDelta": " **"
-    },
-    {
-      "OutputTextDelta": "北京"
-    },
-    {
-      "OutputTextDelta": "**"
-    },
-    {
-      "OutputTextDelta": "："
-    },
-    {
-      "OutputTextDelta": "简称"
-    },
-    {
-      "OutputTextDelta": "“"
-    },
-    {
-      "OutputTextDelta": "**"
-    },
-    {
-      "OutputTextDelta": "京"
-    },
-    {
-      "OutputTextDelta": "**"
-    },
-    {
-      "OutputTextDelta": "”\n"
-    },
-    {
-      "OutputTextDelta": "-"
-    },
-    {
-      "OutputTextDelta": " **"
-    },
-    {
-      "OutputTextDelta": "上海"
-    },
-    {
-      "OutputTextDelta": "**"
-    },
-    {
-      "OutputTextDelta": "："
-    },
-    {
-      "OutputTextDelta": "简称"
-    },
-    {
-      "OutputTextDelta": "“"
-    },
-    {
-      "OutputTextDelta": "**"
-    },
-    {
-      "OutputTextDelta": "沪"
-    },
-    {
-      "OutputTextDelta": "**"
-    },
-    {
-      "OutputTextDelta": "”，"
-    },
-    {
-      "OutputTextDelta": "也称"
-    },
-    {
-      "OutputTextDelta": "“"
-    },
-    {
-      "OutputTextDelta": "**"
-    },
-    {
-      "OutputTextDelta": "申"
-    },
-    {
-      "OutputTextDelta": "**"
-    },
-    {
-      "OutputTextDelta": "”\n\n"
-    },
-    {
-      "OutputTextDelta": "##"
-    },
-    {
-      "OutputTextDelta": " "
-    },
-    {
-      "OutputTextDelta": "历"
-    },
-    {
-      "OutputTextDelta": "史"
-    },
-    {
-      "OutputTextDelta": "名称"
-    },
-    {
-      "OutputTextDelta": "\n\n"
-    },
-    {
-      "OutputTextDelta": "**"
-    },
-    {
-      "OutputTextDelta": "北京"
-    },
-    {
-      "OutputTextDelta": "："
-    },
-    {
-      "OutputTextDelta": "**\n"
-    },
-    {
-      "OutputTextDelta": "-"
-    },
-    {
-      "OutputTextDelta": " "
-    },
-    {
-      "OutputTextDelta": "燕"
-    },
-    {
-      "OutputTextDelta": "京"
-    },
-    {
-      "OutputTextDelta": "（"
-    },
-    {
-      "OutputTextDelta": "古代"
-    },
-    {
-      "OutputTextDelta": "燕"
-    },
-    {
-      "OutputTextDelta": "国"
-    },
-    {
-      "OutputTextDelta": "都"
-    },
-    {
-      "OutputTextDelta": "城"
-    },
-    {
-      "OutputTextDelta": "）\n"
-    },
-    {
-      "OutputTextDelta": "-"
-    },
-    {
-      "OutputTextDelta": " "
-    },
-    {
-      "OutputTextDelta": "蓟"
-    },
-    {
-      "OutputTextDelta": "、"
-    },
-    {
-      "OutputTextDelta": "幽"
-    },
-    {
-      "OutputTextDelta": "州"
-    },
-    {
-      "OutputTextDelta": "（"
-    },
-    {
-      "OutputTextDelta": "古代"
-    },
-    {
-      "OutputTextDelta": "称"
-    },
-    {
-      "OutputTextDelta": "谓"
-    },
-    {
-      "OutputTextDelta": "）\n"
-    },
-    {
-      "OutputTextDelta": "-"
-    },
-    {
-      "OutputTextDelta": " 大"
-    },
-    {
-      "OutputTextDelta": "都"
-    },
-    {
-      "OutputTextDelta": "（"
-    },
-    {
-      "OutputTextDelta": "元"
-    },
-    {
-      "OutputTextDelta": "朝"
-    },
-    {
-      "OutputTextDelta": "时期"
-    },
-    {
-      "OutputTextDelta": "）\n"
-    },
-    {
-      "OutputTextDelta": "-"
-    },
-    {
-      "OutputTextDelta": " 北"
-    },
-    {
-      "OutputTextDelta": "平"
-    },
-    {
-      "OutputTextDelta": "（"
-    },
-    {
-      "OutputTextDelta": "民国"
-    },
-    {
-      "OutputTextDelta": "时期"
-    },
-    {
-      "OutputTextDelta": "，"
-    },
-    {
-      "OutputTextDelta": "192"
-    },
-    {
-      "OutputTextDelta": "8"
-    },
-    {
-      "OutputTextDelta": "-"
-    },
-    {
-      "OutputTextDelta": "19"
-    },
-    {
-      "OutputTextDelta": "4"
-    },
-    {
-      "OutputTextDelta": "9"
-    },
-    {
-      "OutputTextDelta": "年"
-    },
-    {
-      "OutputTextDelta": "）\n\n"
-    },
-    {
-      "OutputTextDelta": "**"
-    },
-    {
-      "OutputTextDelta": "上海"
-    },
-    {
-      "OutputTextDelta": "："
-    },
-    {
-      "OutputTextDelta": "**\n"
-    },
-    {
-      "OutputTextDelta": "-"
-    },
-    {
-      "OutputTextDelta": " 华"
-    },
-    {
-      "OutputTextDelta": "亭"
-    },
-    {
-      "OutputTextDelta": "（"
-    },
-    {
-      "OutputTextDelta": "古代"
-    },
-    {
-      "OutputTextDelta": "）\n"
-    },
-    {
-      "OutputTextDelta": "-"
-    },
-    {
-      "OutputTextDelta": " 松"
-    },
-    {
-      "OutputTextDelta": "江"
-    },
-    {
-      "OutputTextDelta": "府"
-    },
-    {
-      "OutputTextDelta": "（"
-    },
-    {
-      "OutputTextDelta": "明清"
-    },
-    {
-      "OutputTextDelta": "时期"
-    },
-    {
-      "OutputTextDelta": "）\n\n"
-    },
-    {
-      "OutputTextDelta": "##"
-    },
-    {
-      "OutputTextDelta": " "
-    },
-    {
-      "OutputTextDelta": "常"
-    },
-    {
-      "OutputTextDelta": "见"
-    },
-    {
-      "OutputTextDelta": "别"
-    },
-    {
-      "OutputTextDelta": "称"
-    },
-    {
-      "OutputTextDelta": "/"
-    },
-    {
-      "OutputTextDelta": "雅"
-    },
-    {
-      "OutputTextDelta": "号"
-    },
-    {
-      "OutputTextDelta": "\n"
-    },
-    {
-      "OutputTextDelta": "-"
-    },
-    {
-      "OutputTextDelta": " **"
-    },
-    {
-      "OutputTextDelta": "北京"
-    },
-    {
-      "OutputTextDelta": "**"
-    },
-    {
-      "OutputTextDelta": "："
-    },
-    {
-      "OutputTextDelta": "帝"
-    },
-    {
-      "OutputTextDelta": "都"
-    },
-    {
-      "OutputTextDelta": "\n"
-    },
-    {
-      "OutputTextDelta": "-"
-    },
-    {
-      "OutputTextDelta": " **"
-    },
-    {
-      "OutputTextDelta": "上海"
-    },
-    {
-      "OutputTextDelta": "**"
-    },
-    {
-      "OutputTextDelta": "："
-    },
-    {
-      "OutputTextDelta": "魔"
-    },
-    {
-      "OutputTextDelta": "都"
-    },
-    {
-      "OutputTextDelta": "、"
-    },
-    {
-      "OutputTextDelta": "申"
-    },
-    {
-      "OutputTextDelta": "城"
-    },
-    {
-      "OutputTextDelta": "、"
-    },
-    {
-      "OutputTextDelta": "沪"
-    },
-    {
-      "OutputTextDelta": "上"
-    },
-    {
-      "OutputTextDelta": "、"
-    },
-    {
-      "OutputTextDelta": "东方"
-    },
-    {
-      "OutputTextDelta": "明珠"
-    },
-    {
-      "OutputTextDelta": "\n\n"
-    },
-    {
-      "OutputTextDelta": "您"
-    },
-    {
-      "OutputTextDelta": "想"
-    },
-    {
-      "OutputTextDelta": "了解"
-    },
-    {
-      "OutputTextDelta": "哪"
-    },
-    {
-      "OutputTextDelta": "方面的"
-    },
-    {
-      "OutputTextDelta": "具体"
-    },
-    {
-      "OutputTextDelta": "信息"
-    },
-    {
-      "OutputTextDelta": "呢"
-    },
-    {
-      "OutputTextDelta": "？"
-    },
-    {
-      "OutputTextDelta": "我可以"
-    },
-    {
-      "OutputTextDelta": "为您"
-    },
-    {
-      "OutputTextDelta": "详细介绍。"
+      "OutputTextDelta": "anghai\" }"
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_18d8ed30d95914180",
+        "id": "rigseg_18debda181c79c781_0",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The user is asking in Chinese: \"北京和上海分别叫什么名字?\" which translates to \"What are the names of Beijing and Shanghai respectively?\"\n\nThis is a bit of an ambiguous question. Let me think about what they might be asking:\n\n1. They could be asking about the historical/alternate names of Beijing and Shanghai\n2. They could be asking about abbreviations/nicknames of these cities\n3. The question is somewhat odd because \"Beijing\" and \"Shanghai\" ARE their names\n\nLet me think about the common interpretations:\n\n**Beijing (北京):**\n- Abbreviation: 京 (Jīng)\n- Historical names: 燕京, 北平, 大都 (Dadu, Yuan dynasty), 北平, 蓟, 幽州\n- Nickname: 帝都\n\n**Shanghai (上海):**\n- Abbreviation: 沪 (Hù) or 申 (Shēn)\n- Historical names: 华亭, 松江府\n- Nickname: 魔都, 申城, 沪上\n\nSo the most likely interpretation is asking about the abbreviations (简称) of these two cities, which is a common question in Chinese education:\n- 北京简称\"京\"\n- 上海简称\"沪\"或\"申\"\n\nI should answer this comprehensively, covering:\n1. The abbreviations (简称)\n2. Historical names (历史名称)\n3. Common nicknames (别称/昵称)\n\nSince the question is ambiguous, I'll cover the most likely interpretations. The answer should be in Chinese as instructed."
+            "text": "The user is asking in Chinese: \"北京和上海分别叫什么名字?\" which translates to \"What are the other names for Beijing and Shanghai respectively?\"\n\nThis is a question about the alternative names/nicknames of Beijing and Shanghai. Let me think about what I know:\n\n**Beijing (北京):**\n- Historical names: 燕京 - from ancient Yan state\n- 蓟 - ancient name\n- 北平 - used during Republic of China era (1928-1949)\n- 大都 - Yuan Dynasty capital\n- 京师\n- 燕都\n- 涿郡 - Sui dynasty\n- 幽州 - ancient name\n- 中都 - Jin Dynasty\n- 北平府\n- 顺天府 - Ming/Qing era\n\nModern nicknames:\n- 帝都 - popular internet slang\n- 燕京\n\n**Shanghai (上海):**\n- 沪 (Hù) - abbreviation, comes from 沪渎, an ancient fishing tool name\n- 申 (Shēn) - from 春申君, a lord of Chu state during Warring States period whose fief was in this area\n- 魔都 - modern nickname, originally from Japanese writer  (Matsumura Shōta) in his 1924 work \"魔都上海\" \n- 上海滩\n- 东方巴黎\n- 不夜城\n\nThe abbreviations (简称):\n- Beijing: 京\n- Shanghai: 沪 or 申\n\nThe question is a bit ambiguous - it could be asking:\n1. What are the nicknames/alternative names of Beijing and Shanghai?\n2. What are their abbreviations (简称)?\n\nI should cover both interpretations - the abbreviations and the historical names/nicknames.\n\nLet me structure a good answer in Chinese:\n\n**北京的别称:**\n- 简称:京\n- 历史名称:燕京、蓟、幽州、大都(元朝)、北平(民国时期)、顺天府(明清)\n- 现代别称:帝都(网络流行语)\n\n**上海的别称:**\n- 简称:沪、申\n- 历史由来:\"沪\"来自古代渔民使用的捕鱼工具\"扈\";\"申\"源于战国时期楚国春申君黄歇的封地\n- 现代别称:魔都、上海滩、东方巴黎、不夜城\n\nThe answer should be in Chinese since the user asked in Chinese. I'll use a clear format with headers or bullet points to organize the information."
           }
         ],
-        "encrypted_content": "codex-rig-reasoning-v1:{\"source\":\"Chat:b128924be867f6a3f1a20aa59333d06e2990009343f8ece023aaec1976c0d463\",\"blocks\":[{\"id\":null,\"content\":[{\"type\":\"text\",\"content\":{\"text\":\"The user is asking in Chinese: \\\"北京和上海分别叫什么名字?\\\" which translates to \\\"What are the names of Beijing and Shanghai respectively?\\\"\\n\\nThis is a bit of an ambiguous question. Let me think about what they might be asking:\\n\\n1. They could be asking about the historical/alternate names of Beijing and Shanghai\\n2. They could be asking about abbreviations/nicknames of these cities\\n3. The question is somewhat odd because \\\"Beijing\\\" and \\\"Shanghai\\\" ARE their names\\n\\nLet me think about the common interpretations:\\n\\n**Beijing (北京):**\\n- Abbreviation: 京 (Jīng)\\n- Historical names: 燕京, 北平, 大都 (Dadu, Yuan dynasty), 北平, 蓟, 幽州\\n- Nickname: 帝都\\n\\n**Shanghai (上海):**\\n- Abbreviation: 沪 (Hù) or 申 (Shēn)\\n- Historical names: 华亭, 松江府\\n- Nickname: 魔都, 申城, 沪上\\n\\nSo the most likely interpretation is asking about the abbreviations (简称) of these two cities, which is a common question in Chinese education:\\n- 北京简称\\\"京\\\"\\n- 上海简称\\\"沪\\\"或\\\"申\\\"\\n\\nI should answer this comprehensively, covering:\\n1. The abbreviations (简称)\\n2. Historical names (历史名称)\\n3. Common nicknames (别称/昵称)\\n\\nSince the question is ambiguous, I'll cover the most likely interpretations. The answer should be in Chinese as instructed.\"}}]}]}"
+        "encrypted_content": "codex-rig-reasoning-v2:{\"source\":\"Chat:ff7c0febcb9b657d0c79ff8ab2ec601e543c030e5aadc729ce6200a504080a00\",\"blocks\":[{\"text\":\"The user is asking in Chinese: \\\"北京和上海分别叫什么名字?\\\" which translates to \\\"What are the other names for Beijing and Shanghai respectively?\\\"\\n\\nThis is a question about the alternative names/nicknames of Beijing and Shanghai. Let me think about what I know:\\n\\n**Beijing (北京):**\\n- Historical names: 燕京 - from ancient Yan state\\n- 蓟 - ancient name\\n- 北平 - used during Republic of China era (1928-1949)\\n- 大都 - Yuan Dynasty capital\\n- 京师\\n- 燕都\\n- 涿郡 - Sui dynasty\\n- 幽州 - ancient name\\n- 中都 - Jin Dynasty\\n- 北平府\\n- 顺天府 - Ming/Qing era\\n\\nModern nicknames:\\n- 帝都 - popular internet slang\\n- 燕京\\n\\n**Shanghai (上海):**\\n- 沪 (Hù) - abbreviation, comes from 沪渎, an ancient fishing tool name\\n- 申 (Shēn) - from 春申君, a lord of Chu state during Warring States period whose fief was in this area\\n- 魔都 - modern nickname, originally from Japanese writer  (Matsumura Shōta) in his 1924 work \\\"魔都上海\\\" \\n- 上海滩\\n- 东方巴黎\\n- 不夜城\\n\\nThe abbreviations (简称):\\n- Beijing: 京\\n- Shanghai: 沪 or 申\\n\\nThe question is a bit ambiguous - it could be asking:\\n1. What are the nicknames/alternative names of Beijing and Shanghai?\\n2. What are their abbreviations (简称)?\\n\\nI should cover both interpretations - the abbreviations and the historical names/nicknames.\\n\\nLet me structure a good answer in Chinese:\\n\\n**北京的别称:**\\n- 简称:京\\n- 历史名称:燕京、蓟、幽州、大都(元朝)、北平(民国时期)、顺天府(明清)\\n- 现代别称:帝都(网络流行语)\\n\\n**上海的别称:**\\n- 简称:沪、申\\n- 历史由来:\\\"沪\\\"来自古代渔民使用的捕鱼工具\\\"扈\\\";\\\"申\\\"源于战国时期楚国春申君黄歇的封地\\n- 现代别称:魔都、上海滩、东方巴黎、不夜城\\n\\nThe answer should be in Chinese since the user asked in Chinese. I'll use a clear format with headers or bullet points to organize the information.\",\"native\":{\"item\":{\"reasoning_content\":\"The user is asking in Chinese: \\\"北京和上海分别叫什么名字?\\\" which translates to \\\"What are the other names for Beijing and Shanghai respectively?\\\"\\n\\nThis is a question about the alternative names/nicknames of Beijing and Shanghai. Let me think about what I know:\\n\\n**Beijing (北京):**\\n- Historical names: 燕京 - from ancient Yan state\\n- 蓟 - ancient name\\n- 北平 - used during Republic of China era (1928-1949)\\n- 大都 - Yuan Dynasty capital\\n- 京师\\n- 燕都\\n- 涿郡 - Sui dynasty\\n- 幽州 - ancient name\\n- 中都 - Jin Dynasty\\n- 北平府\\n- 顺天府 - Ming/Qing era\\n\\nModern nicknames:\\n- 帝都 - popular internet slang\\n- 燕京\\n\\n**Shanghai (上海):**\\n- 沪 (Hù) - abbreviation, comes from 沪渎, an ancient fishing tool name\\n- 申 (Shēn) - from 春申君, a lord of Chu state during Warring States period whose fief was in this area\\n- 魔都 - modern nickname, originally from Japanese writer  (Matsumura Shōta) in his 1924 work \\\"魔都上海\\\" \\n- 上海滩\\n- 东方巴黎\\n- 不夜城\\n\\nThe abbreviations (简称):\\n- Beijing: 京\\n- Shanghai: 沪 or 申\\n\\nThe question is a bit ambiguous - it could be asking:\\n1. What are the nicknames/alternative names of Beijing and Shanghai?\\n2. What are their abbreviations (简称)?\\n\\nI should cover both interpretations - the abbreviations and the historical names/nicknames.\\n\\nLet me structure a good answer in Chinese:\\n\\n**北京的别称:**\\n- 简称:京\\n- 历史名称:燕京、蓟、幽州、大都(元朝)、北平(民国时期)、顺天府(明清)\\n- 现代别称:帝都(网络流行语)\\n\\n**上海的别称:**\\n- 简称:沪、申\\n- 历史由来:\\\"沪\\\"来自古代渔民使用的捕鱼工具\\\"扈\\\";\\\"申\\\"源于战国时期楚国春申君黄歇的封地\\n- 现代别称:魔都、上海滩、东方巴黎、不夜城\\n\\nThe answer should be in Chinese since the user asked in Chinese. I'll use a clear format with headers or bullet points to organize the information.\"},\"fingerprint\":\"f6a1e1580a0473b5\"}}]}"
       }
     },
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_18d8ed320b7054d81",
+        "id": "rigseg_18debda181c79c781_1",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "北京和上海作为中国两大重要城市，有多个名称：\n\n## 简称\n- **北京**：简称“**京**”\n- **上海**：简称“**沪**”，也称“**申**”\n\n## 历史名称\n\n**北京：**\n- 燕京（古代燕国都城）\n- 蓟、幽州（古代称谓）\n- 大都（元朝时期）\n- 北平（民国时期，1928-1949年）\n\n**上海：**\n- 华亭（古代）\n- 松江府（明清时期）\n\n## 常见别称/雅号\n- **北京**：帝都\n- **上海**：魔都、申城、沪上、东方明珠\n\n您想了解哪方面的具体信息呢？我可以为您详细介绍。"
+            "text": "{ \"city1\": \"Beijing\", \"city2\": \"Shanghai\" }"
           }
         ]
       }
@@ -2541,14 +3267,14 @@
     },
     {
       "Completed": {
-        "response_id": "20260927005405debc18625b8b4c69",
+        "response_id": "20261015233002c18f2d6e02c84a12",
         "token_usage": {
           "input_tokens": 31,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 503,
-          "reasoning_output_tokens": 324,
-          "total_tokens": 534
+          "output_tokens": 556,
+          "reasoning_output_tokens": 518,
+          "total_tokens": 587
         },
         "usage_metadata": null,
         "end_turn": true

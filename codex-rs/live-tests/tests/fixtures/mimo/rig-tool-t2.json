@@ -3,57 +3,79 @@
   "bridge": "rig",
   "tag": "tool-t2",
   "request": {
-    "include": [],
+    "model": "mimo-v2.6-flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant."
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。"
+          }
+        ]
+      },
+      {
+        "type": "reasoning",
+        "id": "rigseg_18debdaba7d465401_0",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user is asking about the weather in Beijing today. I need to call the get_weather tool."
           }
         ],
-        "role": "user",
-        "type": "message"
+        "encrypted_content": "codex-rig-reasoning-v2:{\"source\":\"Chat:e5cae4a6237ba6f121ab025beba8a461bb802ab858a18d924c87e6edff44bab6\",\"blocks\":[{\"text\":\"The user is asking about the weather in Beijing today. I need to call the get_weather tool.\",\"native\":{\"item\":{\"reasoning_content\":\"The user is asking about the weather in Beijing today. I need to call the get_weather tool.\"},\"fingerprint\":\"449c28d94d97be84\"}}]}"
       },
       {
-        "arguments": "{\"city\": \"北京\"}",
-        "call_id": "call_bfc41b909c8b43caad1edc4b",
+        "type": "function_call",
+        "id": "rigseg_18debdaba7d465401_1",
         "name": "get_weather",
-        "type": "function_call"
+        "arguments": "{\"city\": \"北京\"}",
+        "call_id": "call_51fded158f724764a0e3e4d1"
       },
       {
-        "call_id": "call_bfc41b909c8b43caad1edc4b",
-        "output": "{\"city\":\"北京\",\"condition\":\"晴\",\"temp_c\":23}",
-        "type": "function_call_output"
+        "type": "function_call_output",
+        "call_id": "call_51fded158f724764a0e3e4d1",
+        "output": "{\"city\":\"北京\",\"condition\":\"晴\",\"temp_c\":23}"
       }
     ],
-    "instructions": "You are a helpful assistant.",
-    "model": "mimo-v2.6-flash",
-    "parallel_tool_calls": false,
-    "reasoning": null,
-    "store": false,
-    "stream": true,
-    "tool_choice": "auto",
     "tools": [
       {
-        "description": "Get the current weather for a city",
+        "type": "function",
         "name": "get_weather",
+        "description": "Get the current weather for a city",
         "parameters": {
+          "type": "object",
           "properties": {
             "city": {
-              "description": "City name, e.g. 北京",
-              "type": "string"
+              "type": "string",
+              "description": "City name, e.g. 北京"
             }
           },
           "required": [
             "city"
-          ],
-          "type": "object"
+          ]
         },
-        "strict": false,
-        "type": "function"
+        "strict": false
       }
-    ]
+    ],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "include": []
   },
   "events": [
     {
@@ -64,7 +86,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_18d86f8eeb0b4e301",
+        "id": "rigseg_18debdaca703d5783_0",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -72,82 +94,136 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "Get",
+        "delta": "The weather tool",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the result and",
-        "content_index": 1
+        "delta": " returned the",
+        "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " reply",
-        "content_index": 2
+        "delta": " result for",
+        "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ".",
-        "content_index": 3
+        "delta": " Beijing:",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " sunny, 23°C.",
+        "content_index": 0
       }
     },
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_18d86f8eee3787e02",
+        "id": "rigseg_18debdaca703d5783_1",
         "role": "assistant",
         "content": []
       }
     },
     {
-      "OutputTextDelta": "北京今天天气："
+      "OutputTextDelta": "北京今天的天气情况"
     },
     {
-      "OutputTextDelta": "**晴**，气温"
+      "OutputTextDelta": "如下：\n\n- **天气状况"
     },
     {
-      "OutputTextDelta": " **23°C**。"
+      "OutputTextDelta": "**：晴 "
+    },
+    {
+      "OutputTextDelta": "☀️"
+    },
+    {
+      "OutputTextDelta": "\n- **气温"
+    },
+    {
+      "OutputTextDelta": "**：23°C\n\n"
+    },
+    {
+      "OutputTextDelta": "天气"
+    },
+    {
+      "OutputTextDelta": "晴"
+    },
+    {
+      "OutputTextDelta": "朗，气温"
+    },
+    {
+      "OutputTextDelta": "适宜"
+    },
+    {
+      "OutputTextDelta": "，适合"
+    },
+    {
+      "OutputTextDelta": "外出活动"
+    },
+    {
+      "OutputTextDelta": "！如需"
+    },
+    {
+      "OutputTextDelta": "更多信息"
+    },
+    {
+      "OutputTextDelta": "，欢迎"
+    },
+    {
+      "OutputTextDelta": "继续"
+    },
+    {
+      "OutputTextDelta": "问我"
+    },
+    {
+      "OutputTextDelta": "。"
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_18d86f8eeb0b4e301",
+        "id": "rigseg_18debdaca703d5783_0",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "Get the result and reply."
+            "text": "The weather tool returned the result for Beijing: sunny, 23°C."
           }
         ],
-        "encrypted_content": "Get the result and reply."
+        "encrypted_content": "codex-rig-reasoning-v2:{\"source\":\"Chat:9a97e32de02c74b4dbfaf1b401794a26a745c8f1e54021e4db15e5548b0e34a1\",\"blocks\":[{\"text\":\"The weather tool returned the result for Beijing: sunny, 23°C.\",\"native\":{\"item\":{\"reasoning_content\":\"The weather tool returned the result for Beijing: sunny, 23°C.\"},\"fingerprint\":\"01e8fff4b046f8dd\"}}]}"
       }
     },
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_18d86f8eee3787e02",
+        "id": "rigseg_18debdaca703d5783_1",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "北京今天天气：**晴**，气温 **23°C**。"
+            "text": "北京今天的天气情况如下：\n\n- **天气状况**：晴 ☀️\n- **气温**：23°C\n\n天气晴朗，气温适宜，适合外出活动！如需更多信息，欢迎继续问我。"
           }
         ]
       }
     },
     {
+      "ServerModel": "mimo-v2.6-flash"
+    },
+    {
       "Completed": {
-        "response_id": "61254142-5b21-4758-9e0b-85b131cc3a73_ca4a73b3b60444128e4ab980f2a30c93",
+        "response_id": "48889518-b8fa-4e8d-8d9b-4a81f7ab6fc2_287f08d7b3af4289a0cb40e71a4eb853",
         "token_usage": {
-          "input_tokens": 204,
-          "cached_input_tokens": 0,
+          "input_tokens": 194,
+          "cached_input_tokens": 128,
           "cache_write_input_tokens": 0,
-          "output_tokens": 24,
-          "reasoning_output_tokens": 7,
-          "total_tokens": 228
+          "output_tokens": 64,
+          "reasoning_output_tokens": 17,
+          "total_tokens": 258
         },
         "usage_metadata": null,
         "end_turn": true

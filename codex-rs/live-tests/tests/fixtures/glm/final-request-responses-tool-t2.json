@@ -1,0 +1,85 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://open.bigmodel.cn/api/v1/responses",
+      "body_raw": "{\"model\":\"GLM-5.3-Flash\",\"stream\":true,\"input\":[{\"type\":\"message\",\"role\":\"developer\",\"content\":[{\"type\":\"input_text\",\"text\":\"You are a helpful assistant.\"}]},{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。\"}]},{\"type\":\"reasoning\",\"id\":\"rs_resp_20261015233100de0f8b744f344a42\",\"summary\":[],\"content\":[{\"type\":\"reasoning_text\",\"text\":\"The user is asking about the weather in Shanghai today, and explicitly asks me to call the get_weather tool rather than making up an answer. I should call the tool with the city parameter \\\"上海\\\".\"}],\"encrypted_content\":null},{\"type\":\"function_call\",\"status\":\"completed\",\"id\":\"fc_call_df2fd73c593e4ddc9f87fcc5\",\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"上海\\\"}\",\"call_id\":\"call_df2fd73c593e4ddc9f87fcc5\"},{\"type\":\"function_call_output\",\"call_id\":\"call_df2fd73c593e4ddc9f87fcc5\",\"output\":\"{\\\"city\\\":\\\"上海\\\",\\\"condition\\\":\\\"多云\\\",\\\"temp_c\\\":26}\"}],\"tools\":[{\n        \"type\": \"function\",\n        \"name\": \"get_weather\",\n        \"description\": \"Get the current weather for a city\",\n        \"parameters\": {\n            \"type\": \"object\",\n            \"properties\": {\n                \"city\": {\"type\": \"string\", \"description\": \"City name, e.g. 北京\"}\n            },\n            \"required\": [\"city\"]\n        },\n        \"strict\": false\n    }],\"tool_choice\":\"auto\",\"parallel_tool_calls\":false,\"reasoning\":null,\"store\":false,\"include\":[]}",
+      "body": {
+        "model": "GLM-5.3-Flash",
+        "stream": true,
+        "input": [
+          {
+            "type": "message",
+            "role": "developer",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "You are a helpful assistant."
+              }
+            ]
+          },
+          {
+            "type": "message",
+            "role": "user",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。"
+              }
+            ]
+          },
+          {
+            "type": "reasoning",
+            "id": "rs_resp_20261015233100de0f8b744f344a42",
+            "summary": [],
+            "content": [
+              {
+                "type": "reasoning_text",
+                "text": "The user is asking about the weather in Shanghai today, and explicitly asks me to call the get_weather tool rather than making up an answer. I should call the tool with the city parameter \"上海\"."
+              }
+            ],
+            "encrypted_content": null
+          },
+          {
+            "type": "function_call",
+            "status": "completed",
+            "id": "fc_call_df2fd73c593e4ddc9f87fcc5",
+            "name": "get_weather",
+            "arguments": "{\"city\":\"上海\"}",
+            "call_id": "call_df2fd73c593e4ddc9f87fcc5"
+          },
+          {
+            "type": "function_call_output",
+            "call_id": "call_df2fd73c593e4ddc9f87fcc5",
+            "output": "{\"city\":\"上海\",\"condition\":\"多云\",\"temp_c\":26}"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "name": "get_weather",
+            "description": "Get the current weather for a city",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string",
+                  "description": "City name, e.g. 北京"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            },
+            "strict": false
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "reasoning": null,
+        "store": false,
+        "include": []
+      }
+    }
+  ]
+}

@@ -3,28 +3,37 @@
   "bridge": "rig",
   "tag": "anthropic-effort-none",
   "request": {
-    "include": [],
+    "model": "GLM-5.3-Flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "用一句话回答:法国的首都是哪里?",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant. Answer in Chinese."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
+        "content": [
+          {
+            "type": "input_text",
+            "text": "用一句话回答:法国的首都是哪里?"
+          }
+        ]
       }
     ],
-    "instructions": "You are a helpful assistant. Answer in Chinese.",
-    "model": "GLM-5.3-Flash",
+    "tool_choice": "auto",
     "parallel_tool_calls": true,
     "reasoning": {
       "effort": "none"
     },
     "store": false,
-    "stream": true,
-    "tool_choice": "auto"
+    "include": []
   },
   "events": [
     {
@@ -35,7 +44,7 @@
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_18d910825d7d7dc80",
+        "id": "rigseg_18debd955ed010f81_0",
         "role": "assistant",
         "content": []
       }
@@ -46,7 +55,7 @@
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_18d910825d7d7dc80",
+        "id": "rigseg_18debd955ed010f81_0",
         "role": "assistant",
         "content": [
           {
@@ -61,7 +70,7 @@
     },
     {
       "Completed": {
-        "response_id": "msg_202609271141178266e3f442bc4993",
+        "response_id": "msg_2026101523290992da35fc8ba14ab2",
         "token_usage": {
           "input_tokens": 32,
           "cached_input_tokens": 0,

@@ -3,28 +3,37 @@
   "bridge": "rig",
   "tag": "anthropic-effort-none",
   "request": {
-    "include": [],
+    "model": "mimo-v2.6-flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "用一句话回答:法国的首都是哪里?",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant. Answer in Chinese."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
+        "content": [
+          {
+            "type": "input_text",
+            "text": "用一句话回答:法国的首都是哪里?"
+          }
+        ]
       }
     ],
-    "instructions": "You are a helpful assistant. Answer in Chinese.",
-    "model": "mimo-v2.6-flash",
+    "tool_choice": "auto",
     "parallel_tool_calls": true,
     "reasoning": {
       "effort": "none"
     },
     "store": false,
-    "stream": true,
-    "tool_choice": "auto"
+    "include": []
   },
   "events": [
     {
@@ -35,7 +44,7 @@
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_18d91083086775680",
+        "id": "rigseg_18debd94bd7df8781_0",
         "role": "assistant",
         "content": []
       }
@@ -44,12 +53,15 @@
       "OutputTextDelta": "法国"
     },
     {
-      "OutputTextDelta": "的首都是巴黎。"
+      "OutputTextDelta": "的首都是巴黎"
+    },
+    {
+      "OutputTextDelta": "。"
     },
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_18d91083086775680",
+        "id": "rigseg_18debd94bd7df8781_0",
         "role": "assistant",
         "content": [
           {
@@ -64,7 +76,7 @@
     },
     {
       "Completed": {
-        "response_id": "msg_81913699c4f04eb2ac2753ea",
+        "response_id": "msg_f51db5096c0444a1bc94ce35",
         "token_usage": {
           "input_tokens": 33,
           "cached_input_tokens": 0,

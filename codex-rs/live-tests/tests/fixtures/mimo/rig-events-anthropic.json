@@ -1,123 +1,279 @@
 {
   "vendor": "mimo",
   "tag": "anthropic",
-  "rig_events": [
+  "items": [
     {
-      "id": "jvWCsBurZedlJfO8Hdb1Z",
-      "reasoning": "用"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "jvWCsBurZedlJfO8Hdb1Z",
-      "reasoning": "一句话说明二分查找的思想"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用"
+      }
     },
     {
-      "id": "jvWCsBurZedlJfO8Hdb1Z",
-      "reasoning": "。"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "一句话概括"
+      }
     },
     {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "用一句话说明二分查找的思想。"
-            }
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "二分查找的思想。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "用一句话概括二分查找的思想。"
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "每次"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "将待"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "查找"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "区间"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**对"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "半折"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "分**，根据"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "中间"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "元素"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "与目标值的比较"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "结果，排除"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "掉"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "不可能"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "存在"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "目标"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "的一"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "半区间"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，从而逐步"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "缩小范围"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，最终"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "找到目标或"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "确认"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "不存在。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "每次将待查找的区间**对半折分**，根据中间元素与目标值的比较结果，排除掉不可能存在目标的一半区间，从而逐步缩小范围，最终找到目标或确认不存在。",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "每次将待查找的区间**对半折分**，根据中间元素与目标值的比较结果，排除掉不可能存在目标的一半区间，从而逐步缩小范围，最终找到目标或确认不存在。"
+            },
+            "fingerprint": "0137e48f6a8e1cc7"
           }
-        ]
-      },
-      "id": "jvWCsBurZedlJfO8Hdb1Z"
-    },
-    {
-      "text": "**"
-    },
-    {
-      "text": "二分查找的思想是"
-    },
-    {
-      "text": "：每次将"
-    },
-    {
-      "text": "有序"
-    },
-    {
-      "text": "查找"
-    },
-    {
-      "text": "范围"
-    },
-    {
-      "text": "对"
-    },
-    {
-      "text": "半折，"
-    },
-    {
-      "text": "通过"
-    },
-    {
-      "text": "与"
-    },
-    {
-      "text": "中间元素"
-    },
-    {
-      "text": "比较，"
-    },
-    {
-      "text": "将"
-    },
-    {
-      "text": "解"
-    },
-    {
-      "text": "的"
-    },
-    {
-      "text": "范围缩小一半"
-    },
-    {
-      "text": "，从而"
-    },
-    {
-      "text": "逐步"
-    },
-    {
-      "text": "逼近"
-    },
-    {
-      "text": "目标。"
-    },
-    {
-      "text": "**"
-    },
-    {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 29,
-        "output_tokens": 46,
-        "total_tokens": 75,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": "msg_6ecb916703874dea8eb85af0",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "mimo-v2.6-flash",
-      "raw": {
-        "message_id": "msg_6ecb916703874dea8eb85af0",
-        "model": "mimo-v2.6-flash",
-        "stop_reason": "end_turn",
-        "usage": {
-          "cache_creation_input_tokens": null,
-          "cache_read_input_tokens": null,
-          "input_tokens": 29,
-          "output_tokens": 46
         }
       }
     }
-  ]
+  ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "msg_2ee17f8d45d241a6b40dcf8b",
+    "model": "mimo-v2.6-flash",
+    "usage": {
+      "input_tokens": 29,
+      "output_tokens": 55,
+      "total_tokens": 84
+    }
+  },
+  "rig_events": [],
+  "custom_tools": []
 }

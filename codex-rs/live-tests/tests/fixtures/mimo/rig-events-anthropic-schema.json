@@ -1,208 +1,2247 @@
 {
   "vendor": "mimo",
   "tag": "anthropic-schema",
-  "rig_events": [
+  "items": [
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": "The user is asking what"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": " Beijing"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The user is"
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": " and Shanghai are called respectively"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " asking about the"
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": ". This seems"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " names of Beijing and Shanghai. This seems"
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": " like a straightforward question about the"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " like a straightforward question,"
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": " names of these"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " but it"
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": " two Chinese"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " could also"
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": " cities.\n\nBe"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " be a r"
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": "ijing ("
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "iddle or word"
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": "北京) and Shanghai (上海) are"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "play"
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": " the names"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ".\n\nLet"
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": " of two"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " me think about this more"
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": " major"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " carefully."
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": " cities"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " The question \""
+      }
     },
     {
-      "id": "qZ5S2r3V8Enj4iaqo4sZO",
-      "reasoning": " in China."
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "北京和上海分别叫什么名字?\""
+      }
     },
     {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "The user is asking what Beijing and Shanghai are called respectively. This seems like a straightforward question about the names of these two Chinese cities.\n\nBeijing (北京) and Shanghai (上海) are the names of two major cities in China."
-            }
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " could be interpreted"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " literally"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " what"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " are Beijing"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " and Shanghai called.\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "But"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " this might"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " be a"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " word"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "play/riddle. Let"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " me think...\n\n\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "北京\" means"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " \"Northern"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Capital\" and \"上海\" means \""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Upon"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the Sea\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " (liter"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ally \""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "on the sea\").\n\nWait"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ", this"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " could be a riddle about"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " changing"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " one"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " character. \n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Actually"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ", let me"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " think about this as"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " a r"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "iddle:\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "If"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " you change \"北京"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\" to something"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " and"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " \"上海\" to something...\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Or maybe"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " it's simpler"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " than"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " I think -"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " it"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "'s asking"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " what"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Beijing"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " and Shanghai are officially"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " named"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "- 北京的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "全"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "称是"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\"北京市\"\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "- 上海的全称是\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "上海市\"\n\nOr"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " it"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " could be a joke"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "/r"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "iddle where the"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " answer plays"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " on the"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " characters:\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "- 北京 →"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "没"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "有"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "北"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " →"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 京"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "- 上海 → 没"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "有上 → 海"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n\nHmm, let"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " me think about this differently. This"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " might be a classic"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Chinese"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " word"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "play:\n\n\"北京\"和"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\"上海\"分别"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "叫什么名字？\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Could"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " it be that"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "- 北京叫"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\"南京"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\"（"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "北"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "对"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "南）?"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " No, that"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " doesn't make sense.\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Wait"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ", maybe the"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " r"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "iddle is:\n- 北"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "京去掉"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\"北"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\"叫什么"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "？→"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 京\n- 上海去掉\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "上\"叫什么？→ 海"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n\nSo"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "北京叫\"京\"，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "上海叫\"海\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "？\n\nOr maybe:\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "- 北京的名字"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " →"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "京\n- 上海的名字 → "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "海\n\nHmm"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ", but that"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " seems"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " too simple.\n\nActually, I"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " think this might be a straightforward"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " geography"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " question asking"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " for their"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " alternative"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " names or official"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " design"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ations.\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Or"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " perhaps"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " it's asking"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " about:\n-"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 北京:"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "燕"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "京、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "京师"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、北平"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n-"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 上海: "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "沪、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "申、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "魔"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "都"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n\nLet me just answer"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " it"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " as a"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " general"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " knowledge"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " question about alternative"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " names.\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Actually, re"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-reading the question"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ", maybe"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " it's a r"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "iddle where the"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " answer is:\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "- 北京 "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "叫 \""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "京\" (the"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " name without"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 北)\n- 上海 叫"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " \"海\" (the name without 上"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ")\n\nOr maybe"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the r"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "iddle answer"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " is:\n北京"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "叫\"京\"，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "上海叫\"海\"\n\nHmm"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ", I"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "'m over"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "thinking this"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ". Let me just provide"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " a helpful"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " answer covering the"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " common"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " alternative names"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "/h"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "istorical names"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " for both"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " cities.\n\nActually, wait"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ". I"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " think this"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " might be a famous"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " riddle:\n\n\"北京和"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "上海分别叫什么名字？"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\"\n\nThe answer could"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " be playing"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " on the"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " idea"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " that:\n- 北京的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "名\"是\"京\"（"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "去掉"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\"北\"）\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "- 上海的\"名\"是"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\"海\"（去掉\"上\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "）\n\nOr another"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " interpretation: "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "北京 is"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " called \"京\" and"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 上海 is called \"沪"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\"\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Hmm"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ", let"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " me just give"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " a comprehensive answer about"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " their"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " common"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " names/"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "aliases."
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "The user is asking about the names of Beijing and Shanghai. This seems like a straightforward question, but it could also be a riddle or wordplay.\n\nLet me think about this more carefully. The question \"北京和上海分别叫什么名字?\" could be interpreted literally - what are Beijing and Shanghai called.\n\nBut this might be a wordplay/riddle. Let me think...\n\n\"北京\" means \"Northern Capital\" and \"上海\" means \"Upon the Sea\" (literally \"on the sea\").\n\nWait, this could be a riddle about changing one character. \n\nActually, let me think about this as a riddle:\n\nIf you change \"北京\" to something and \"上海\" to something...\n\nOr maybe it's simpler than I think - it's asking what Beijing and Shanghai are officially named:\n- 北京的全称是\"北京市\"\n- 上海的全称是\"上海市\"\n\nOr it could be a joke/riddle where the answer plays on the characters:\n- 北京 →没有北 → 京- 上海 → 没有上 → 海\n\nHmm, let me think about this differently. This might be a classic Chinese wordplay:\n\n\"北京\"和\"上海\"分别叫什么名字？\n\nCould it be that:\n- 北京叫\"南京\"（北对南）? No, that doesn't make sense.\n\nWait, maybe the riddle is:\n- 北京去掉\"北\"叫什么？→ 京\n- 上海去掉\"上\"叫什么？→ 海\n\nSo北京叫\"京\"，上海叫\"海\"？\n\nOr maybe:\n- 北京的名字 →京\n- 上海的名字 → 海\n\nHmm, but that seems too simple.\n\nActually, I think this might be a straightforward geography question asking for their alternative names or official designations.\n\nOr perhaps it's asking about:\n- 北京:燕京、京师、北平\n- 上海: 沪、申、魔都\n\nLet me just answer it as a general knowledge question about alternative names.\n\nActually, re-reading the question, maybe it's a riddle where the answer is:\n- 北京 叫 \"京\" (the name without 北)\n- 上海 叫 \"海\" (the name without 上)\n\nOr maybe the riddle answer is:\n北京叫\"京\"，上海叫\"海\"\n\nHmm, I'm overthinking this. Let me just provide a helpful answer covering the common alternative names/historical names for both cities.\n\nActually, wait. I think this might be a famous riddle:\n\n\"北京和上海分别叫什么名字？\"\n\nThe answer could be playing on the idea that:\n- 北京的\"名\"是\"京\"（去掉\"北\"）\n- 上海的\"名\"是\"海\"（去掉\"上\"）\n\nOr another interpretation: 北京 is called \"京\" and 上海 is called \"沪\"\n\nHmm, let me just give a comprehensive answer about their common names/aliases."
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "##"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " 北京和上海的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "别称"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "/"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "名字"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "\n\n**北京**：\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "- **京"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**（"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "简称"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "）\n- **燕京"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**幽"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "都**（"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "古代称呼"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "）\n- **北平"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**（民国"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "时期曾"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "改"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "名）\n- **帝"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "都"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**、**京城"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**上海**：\n- **沪"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**（简称）\n- **申"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**（简称"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，源自"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "战国"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "时期"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "春申君"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "）\n- **魔都**（近"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "现代"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "别"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "称）\n- **淞"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "沪"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**（历史上"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "合"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "称）\n\n---\n\n如果您"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "问"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "是一道"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**脑"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "筋"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "急"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "转弯"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "/"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "字谜"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**，常见的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "答案是：\n\n>"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " **"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "北京**"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "去掉"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "\"北\"叫 **"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "京"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**，**上海**去掉\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "上\"叫 **海**。\n\n请"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "告诉我"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "您的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "题"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "意"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，我可以给出"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "更准确的回答"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "！😊"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "## 北京和上海的别称/名字\n\n**北京**：\n- **京**（简称）\n- **燕京**、**幽都**（古代称呼）\n- **北平**（民国时期曾改名）\n- **帝都**、**京城**\n\n**上海**：\n- **沪**（简称）\n- **申**（简称，源自战国时期春申君）\n- **魔都**（近现代别称）\n- **淞沪**（历史上合称）\n\n---\n\n如果您问的是一道**脑筋急转弯/字谜**，常见的答案是：\n\n> **北京**去掉\"北\"叫 **京**，**上海**去掉\"上\"叫 **海**。\n\n请告诉我您的题意，我可以给出更准确的回答！😊",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "## 北京和上海的别称/名字\n\n**北京**：\n- **京**（简称）\n- **燕京**、**幽都**（古代称呼）\n- **北平**（民国时期曾改名）\n- **帝都**、**京城**\n\n**上海**：\n- **沪**（简称）\n- **申**（简称，源自战国时期春申君）\n- **魔都**（近现代别称）\n- **淞沪**（历史上合称）\n\n---\n\n如果您问的是一道**脑筋急转弯/字谜**，常见的答案是：\n\n> **北京**去掉\"北\"叫 **京**，**上海**去掉\"上\"叫 **海**。\n\n请告诉我您的题意，我可以给出更准确的回答！😊"
+            },
+            "fingerprint": "09a2ac9a83e4b41f"
           }
-        ]
-      },
-      "id": "qZ5S2r3V8Enj4iaqo4sZO"
-    },
-    {
-      "text": "**"
-    },
-    {
-      "text": "北京**"
-    },
-    {
-      "text": "和**上海**就是"
-    },
-    {
-      "text": "它们"
-    },
-    {
-      "text": "各自的名称：\n\n- **"
-    },
-    {
-      "text": "北京**（"
-    },
-    {
-      "text": "Beijing），"
-    },
-    {
-      "text": "是中国的"
-    },
-    {
-      "text": "首都，全"
-    },
-    {
-      "text": "称\""
-    },
-    {
-      "text": "京"
-    },
-    {
-      "text": "\""
-    },
-    {
-      "text": "。\n"
-    },
-    {
-      "text": "- **上海**（Shanghai"
-    },
-    {
-      "text": "），是"
-    },
-    {
-      "text": "位于"
-    },
-    {
-      "text": "中国"
-    },
-    {
-      "text": "东部的直辖市"
-    },
-    {
-      "text": "，简"
-    },
-    {
-      "text": "称为"
-    },
-    {
-      "text": "\"沪\"或"
-    },
-    {
-      "text": "\"申\"。\n\n你"
-    },
-    {
-      "text": "具体"
-    },
-    {
-      "text": "想了解"
-    },
-    {
-      "text": "的是哪"
-    },
-    {
-      "text": "方面的"
-    },
-    {
-      "text": "信息呢"
-    },
-    {
-      "text": "？比如别"
-    },
-    {
-      "text": "称、英文"
-    },
-    {
-      "text": "名"
-    },
-    {
-      "text": "、还是"
-    },
-    {
-      "text": "其他"
-    },
-    {
-      "text": "？😊"
-    },
-    {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 29,
-        "output_tokens": 126,
-        "total_tokens": 155,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": "msg_56069565c1ad45d8a42b9ad1",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "mimo-v2.6-flash",
-      "raw": {
-        "message_id": "msg_56069565c1ad45d8a42b9ad1",
-        "model": "mimo-v2.6-flash",
-        "stop_reason": "end_turn",
-        "usage": {
-          "cache_creation_input_tokens": null,
-          "cache_read_input_tokens": null,
-          "input_tokens": 29,
-          "output_tokens": 126
         }
       }
     }
   ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "msg_585f9b075ac6493a8aef2d64",
+    "model": "mimo-v2.6-flash",
+    "usage": {
+      "input_tokens": 29,
+      "output_tokens": 800,
+      "total_tokens": 829
+    }
+  },
+  "rig_events": [],
   "custom_tools": []
 }

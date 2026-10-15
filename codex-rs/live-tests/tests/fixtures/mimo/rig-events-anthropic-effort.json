@@ -1,203 +1,327 @@
 {
   "vendor": "mimo",
   "tag": "anthropic-effort",
-  "rig_events": [
+  "items": [
     {
-      "id": "6qz4M7u1d5Qdf83lrMfXu",
-      "reasoning": "The user asks to"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "6qz4M7u1d5Qdf83lrMfXu",
-      "reasoning": " explain quick"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用"
+      }
     },
     {
-      "id": "6qz4M7u1d5Qdf83lrMfXu",
-      "reasoning": "sort's average time"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "一句话说明快速排序的平均时间"
+      }
     },
     {
-      "id": "6qz4M7u1d5Qdf83lrMfXu",
-      "reasoning": " complexity in one sentence,"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "复杂度及其"
+      }
     },
     {
-      "id": "6qz4M7u1d5Qdf83lrMfXu",
-      "reasoning": " with a"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "原因"
+      }
     },
     {
-      "id": "6qz4M7u1d5Qdf83lrMfXu",
-      "reasoning": " brief explanation of"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。"
+      }
     },
     {
-      "id": "6qz4M7u1d5Qdf83lrMfXu",
-      "reasoning": " why."
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "用一句话说明快速排序的平均时间复杂度及其原因。"
+        }
+      }
     },
     {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "The user asks to explain quicksort's average time complexity in one sentence, with a brief explanation of why."
-            }
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "快速排序的平均时间"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "复杂度为 **O(n log"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " n)**，因为每次分区"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "操作"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "都能"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "将数据"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "大致等"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "分为"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "两半"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，使"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "问题"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "规模"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "逐"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "层"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "减半，递"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "归深度"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "约为 log n "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "层，每层需要"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " O"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "(n) 的时间"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "进行"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "分区比较"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "与"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "交换，因此总代价"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "为 O(n)"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " × O(log"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " n) = O(n log n)"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "快速排序的平均时间复杂度为 **O(n log n)**，因为每次分区操作都能将数据大致等分为两半，使问题规模逐层减半，递归深度约为 log n 层，每层需要 O(n) 的时间进行分区比较与交换，因此总代价为 O(n) × O(log n) = O(n log n)。",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "快速排序的平均时间复杂度为 **O(n log n)**，因为每次分区操作都能将数据大致等分为两半，使问题规模逐层减半，递归深度约为 log n 层，每层需要 O(n) 的时间进行分区比较与交换，因此总代价为 O(n) × O(log n) = O(n log n)。"
+            },
+            "fingerprint": "98a4d204d3fb7806"
           }
-        ]
-      },
-      "id": "6qz4M7u1d5Qdf83lrMfXu"
-    },
-    {
-      "text": "**快速排序的平均"
-    },
-    {
-      "text": "时间"
-    },
-    {
-      "text": "复杂度为"
-    },
-    {
-      "text": " O(n log n"
-    },
-    {
-      "text": ")。**\n\n"
-    },
-    {
-      "text": "**原因"
-    },
-    {
-      "text": "简"
-    },
-    {
-      "text": "述：** "
-    },
-    {
-      "text": "每次选取"
-    },
-    {
-      "text": "基准"
-    },
-    {
-      "text": "（pivot"
-    },
-    {
-      "text": "）进行"
-    },
-    {
-      "text": "划分时，假设"
-    },
-    {
-      "text": "大致"
-    },
-    {
-      "text": "能"
-    },
-    {
-      "text": "将待"
-    },
-    {
-      "text": "排序"
-    },
-    {
-      "text": "序列均匀"
-    },
-    {
-      "text": "地"
-    },
-    {
-      "text": "分为"
-    },
-    {
-      "text": "两半"
-    },
-    {
-      "text": "，那么"
-    },
-    {
-      "text": "划分"
-    },
-    {
-      "text": "的"
-    },
-    {
-      "text": "深度约为"
-    },
-    {
-      "text": " log n "
-    },
-    {
-      "text": "层，而每一层的"
-    },
-    {
-      "text": "划分操作"
-    },
-    {
-      "text": "都"
-    },
-    {
-      "text": "需"
-    },
-    {
-      "text": "对 n"
-    },
-    {
-      "text": " 个元素进行扫描"
-    },
-    {
-      "text": "比较"
-    },
-    {
-      "text": "，因此总"
-    },
-    {
-      "text": "复杂度"
-    },
-    {
-      "text": "为"
-    },
-    {
-      "text": " **"
-    },
-    {
-      "text": "O"
-    },
-    {
-      "text": "(n)"
-    },
-    {
-      "text": " × O(log"
-    },
-    {
-      "text": " n) = O(n log n)**"
-    },
-    {
-      "text": "。"
-    },
-    {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 36,
-        "output_tokens": 121,
-        "total_tokens": 157,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": "msg_5b5b24792a754dfa8854245e",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "mimo-v2.6-flash",
-      "raw": {
-        "message_id": "msg_5b5b24792a754dfa8854245e",
-        "model": "mimo-v2.6-flash",
-        "stop_reason": "end_turn",
-        "usage": {
-          "cache_creation_input_tokens": null,
-          "cache_read_input_tokens": null,
-          "input_tokens": 36,
-          "output_tokens": 121
         }
       }
     }
   ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "msg_ad2d795a903a4dc6bbcc6880",
+    "model": "mimo-v2.6-flash",
+    "usage": {
+      "input_tokens": 36,
+      "output_tokens": 94,
+      "total_tokens": 130
+    }
+  },
+  "rig_events": [],
   "custom_tools": []
 }

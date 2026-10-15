@@ -3,26 +3,35 @@
   "bridge": "rig",
   "tag": "chat",
   "request": {
-    "include": [],
+    "model": "mimo-v2.6-flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "用一句话解释什么是斐波那契数列。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant. Answer in Chinese."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
+        "content": [
+          {
+            "type": "input_text",
+            "text": "用一句话解释什么是斐波那契数列。"
+          }
+        ]
       }
     ],
-    "instructions": "You are a helpful assistant. Answer in Chinese.",
-    "model": "mimo-v2.6-flash",
+    "tool_choice": "auto",
     "parallel_tool_calls": true,
     "reasoning": null,
     "store": false,
-    "stream": true,
-    "tool_choice": "auto"
+    "include": []
   },
   "events": [
     {
@@ -33,7 +42,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_18d86f8cc38b93080",
+        "id": "rigseg_18debda15ef916b81_0",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -48,19 +57,19 @@
     {
       "ReasoningContentDelta": {
         "delta": "一句话解释斐波那契",
-        "content_index": 1
+        "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
         "delta": "数列。",
-        "content_index": 2
+        "content_index": 0
       }
     },
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_18d86f8cc39727e01",
+        "id": "rigseg_18debda15ef916b81_1",
         "role": "assistant",
         "content": []
       }
@@ -69,34 +78,28 @@
       "OutputTextDelta": "斐波那契"
     },
     {
-      "OutputTextDelta": "数列是一个"
+      "OutputTextDelta": "数列是指"
     },
     {
       "OutputTextDelta": "从0"
     },
     {
-      "OutputTextDelta": "和1开始（"
+      "OutputTextDelta": "和1开始，后续"
     },
     {
-      "OutputTextDelta": "或从"
+      "OutputTextDelta": "每一项"
     },
     {
-      "OutputTextDelta": "1和1开始），每个"
+      "OutputTextDelta": "都"
     },
     {
-      "OutputTextDelta": "后续"
+      "OutputTextDelta": "等于前两项之"
     },
     {
-      "OutputTextDelta": "数字"
+      "OutputTextDelta": "和（"
     },
     {
-      "OutputTextDelta": "都等于"
-    },
-    {
-      "OutputTextDelta": "前两个数字之"
-    },
-    {
-      "OutputTextDelta": "和的数列（如0"
+      "OutputTextDelta": "0"
     },
     {
       "OutputTextDelta": ","
@@ -108,21 +111,15 @@
       "OutputTextDelta": ", 3, 5, "
     },
     {
-      "OutputTextDelta": "8, 13, "
+      "OutputTextDelta": "8, 13, …"
     },
     {
-      "OutputTextDelta": "21,"
-    },
-    {
-      "OutputTextDelta": " 34……"
-    },
-    {
-      "OutputTextDelta": "）。"
+      "OutputTextDelta": "）的数列。"
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_18d86f8cc38b93080",
+        "id": "rigseg_18debda15ef916b81_0",
         "summary": [],
         "content": [
           {
@@ -130,32 +127,35 @@
             "text": "用一句话解释斐波那契数列。"
           }
         ],
-        "encrypted_content": "用一句话解释斐波那契数列。"
+        "encrypted_content": "codex-rig-reasoning-v2:{\"source\":\"Chat:49d9bcce6b0a621874120d37f405bb83dea18e26673277e3a1389da00486714c\",\"blocks\":[{\"text\":\"用一句话解释斐波那契数列。\",\"native\":{\"item\":{\"reasoning_content\":\"用一句话解释斐波那契数列。\"},\"fingerprint\":\"e39c573ae5735c0f\"}}]}"
       }
     },
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_18d86f8cc39727e01",
+        "id": "rigseg_18debda15ef916b81_1",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "斐波那契数列是一个从0和1开始（或从1和1开始），每个后续数字都等于前两个数字之和的数列（如0, 1, 1, 2, 3, 5, 8, 13, 21, 34……）。"
+            "text": "斐波那契数列是指从0和1开始，后续每一项都等于前两项之和（0, 1, 1, 2, 3, 5, 8, 13, …）的数列。"
           }
         ]
       }
     },
     {
+      "ServerModel": "mimo-v2.6-flash"
+    },
+    {
       "Completed": {
-        "response_id": "18a6bc7a-73ad-4c08-aa40-3a6897590a90_9794347ff0b04758a990cc281efa4fef",
+        "response_id": "47724fe4-8756-4ebd-84cb-a95c67ed8367_4ff5ca24c4214277b1b923b96ec147cc",
         "token_usage": {
           "input_tokens": 32,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 81,
+          "output_tokens": 66,
           "reasoning_output_tokens": 11,
-          "total_tokens": 113
+          "total_tokens": 98
         },
         "usage_metadata": null,
         "end_turn": true

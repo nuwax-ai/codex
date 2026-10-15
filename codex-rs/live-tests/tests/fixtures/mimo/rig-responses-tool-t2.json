@@ -3,168 +3,194 @@
   "bridge": "rig",
   "tag": "responses-tool-t2",
   "request": {
-    "include": [],
+    "model": "mimo-v2.6-flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
-      },
-      {
         "content": [
           {
-            "text": "The user wants weather for Shanghai. Call get_weather with city 上海.",
-            "type": "reasoning_text"
+            "type": "input_text",
+            "text": "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。"
+          }
+        ]
+      },
+      {
+        "type": "reasoning",
+        "id": "rs_e92dee8002d04d08b6be2c46a52aa83d",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user wants to know Shanghai's weather. Call the tool."
           }
         ],
-        "encrypted_content": null,
-        "id": "rs_46eb92cb141e4b94a38984948d0a5431",
-        "summary": [],
-        "type": "reasoning"
+        "encrypted_content": null
       },
       {
-        "arguments": "{\"city\": \"上海\"}",
-        "call_id": "call_7b148e8c981044a1b422ef1b",
-        "id": "fc_139956faf2ea452aaaca646ad63b110c",
+        "type": "function_call",
+        "status": "completed",
+        "id": "fc_3d3bb664bdd34f8d8bbc6883c8a25521",
         "name": "get_weather",
-        "type": "function_call"
+        "arguments": "{\"city\": \"上海\"}",
+        "call_id": "call_5a7500e9b6c1463f8157c10f"
       },
       {
-        "call_id": "call_7b148e8c981044a1b422ef1b",
-        "output": "{\"city\":\"上海\",\"condition\":\"多云\",\"temp_c\":26}",
-        "type": "function_call_output"
+        "type": "function_call_output",
+        "call_id": "call_5a7500e9b6c1463f8157c10f",
+        "output": "{\"city\":\"上海\",\"condition\":\"多云\",\"temp_c\":26}"
       }
     ],
-    "instructions": "You are a helpful assistant.",
-    "model": "mimo-v2.6-flash",
-    "parallel_tool_calls": false,
-    "reasoning": null,
-    "store": false,
-    "stream": true,
-    "tool_choice": "auto",
     "tools": [
       {
-        "description": "Get the current weather for a city",
+        "type": "function",
         "name": "get_weather",
+        "description": "Get the current weather for a city",
         "parameters": {
+          "type": "object",
           "properties": {
             "city": {
-              "description": "City name, e.g. 北京",
-              "type": "string"
+              "type": "string",
+              "description": "City name, e.g. 北京"
             }
           },
           "required": [
             "city"
-          ],
-          "type": "object"
+          ]
         },
-        "strict": false,
-        "type": "function"
+        "strict": false
       }
-    ]
+    ],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "include": []
   },
   "events": [
     {
+      "ServerModel": "mimo-v2.6-flash"
+    },
+    {
       "Created": {
-        "response_id": "resp_102ffe98b303448db3439a885e16ad8a"
+        "response_id": "resp_bcbc29f159904f5fb3ae6f0f2b0b7dc1"
       }
     },
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rs_deaa08e19d1c4c908ab36494c89639ba",
+        "id": "rs_84a7f64a41834460bc3d2706b0dd760b",
         "summary": [],
         "encrypted_content": null
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "Report",
+        "delta": "Answer",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": " in",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " weather.",
+        "delta": " Chinese.",
         "content_index": 0
       }
     },
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "msg_905fafaab71a47aebf1d6c084cabb54d",
+        "status": "in_progress",
+        "id": "msg_5c88dd43bab541e2b8a87b8ebcf70986",
         "role": "assistant",
         "content": []
       }
     },
     {
-      "OutputTextDelta": "上海今天的"
+      "OutputTextDelta": "上海今天天气：\n\n"
     },
     {
-      "OutputTextDelta": "天气情况"
+      "OutputTextDelta": "- **天气状况"
     },
     {
-      "OutputTextDelta": "：\n\n- **"
+      "OutputTextDelta": "**：多云 "
     },
     {
-      "OutputTextDelta": "天气状况"
+      "OutputTextDelta": "☁"
     },
     {
-      "OutputTextDelta": "**：多云\n"
+      "OutputTextDelta": "️\n- **气温**：2"
     },
     {
-      "OutputTextDelta": "- **气温**：26"
-    },
-    {
-      "OutputTextDelta": "°C\n\n总体"
+      "OutputTextDelta": "6°C\n\n总体"
     },
     {
       "OutputTextDelta": "来说"
     },
     {
-      "OutputTextDelta": "比较舒适"
+      "OutputTextDelta": "比较舒适，适合出行"
     },
     {
-      "OutputTextDelta": "，适合出行"
+      "OutputTextDelta": "。如果需要更"
     },
     {
-      "OutputTextDelta": "。如果您"
+      "OutputTextDelta": "详细的预报"
     },
     {
-      "OutputTextDelta": "需要更"
+      "OutputTextDelta": "（如风"
     },
     {
-      "OutputTextDelta": "详细的天气"
+      "OutputTextDelta": "力"
     },
     {
-      "OutputTextDelta": "信息（如湿度"
+      "OutputTextDelta": "、湿度"
     },
     {
-      "OutputTextDelta": "、风力"
+      "OutputTextDelta": "），"
     },
     {
-      "OutputTextDelta": "等），可以告诉我。"
+      "OutputTextDelta": "建议"
+    },
+    {
+      "OutputTextDelta": "查看"
+    },
+    {
+      "OutputTextDelta": "天气"
+    },
+    {
+      "OutputTextDelta": "应用"
+    },
+    {
+      "OutputTextDelta": "获取"
+    },
+    {
+      "OutputTextDelta": "最新信息。"
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rs_deaa08e19d1c4c908ab36494c89639ba",
+        "id": "rs_84a7f64a41834460bc3d2706b0dd760b",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "Report the weather."
+            "text": "Answer in Chinese."
           }
         ],
         "encrypted_content": null
@@ -173,39 +199,41 @@
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "msg_905fafaab71a47aebf1d6c084cabb54d",
+        "status": "completed",
+        "id": "msg_5c88dd43bab541e2b8a87b8ebcf70986",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "上海今天的天气情况：\n\n- **天气状况**：多云\n- **气温**：26°C\n\n总体来说比较舒适，适合出行。如果您需要更详细的天气信息（如湿度、风力等），可以告诉我。"
+            "text": "上海今天天气：\n\n- **天气状况**：多云 ☁️\n- **气温**：26°C\n\n总体来说比较舒适，适合出行。如果需要更详细的预报（如风力、湿度），建议查看天气应用获取最新信息。",
+            "annotations": []
           }
         ]
       }
     },
     {
       "Completed": {
-        "response_id": "resp_102ffe98b303448db3439a885e16ad8a",
+        "response_id": "resp_bcbc29f159904f5fb3ae6f0f2b0b7dc1",
         "token_usage": {
-          "input_tokens": 190,
-          "cached_input_tokens": 0,
+          "input_tokens": 188,
+          "cached_input_tokens": 64,
           "cache_write_input_tokens": 0,
-          "output_tokens": 55,
+          "output_tokens": 60,
           "reasoning_output_tokens": 5,
-          "total_tokens": 245
+          "total_tokens": 248
         },
         "usage_metadata": {
           "amount": null,
           "metadata": {
-            "input_tokens": 190,
+            "input_tokens": 188,
             "input_tokens_details": {
-              "cached_tokens": 0
+              "cached_tokens": 64
             },
-            "output_tokens": 55,
+            "output_tokens": 60,
             "output_tokens_details": {
               "reasoning_tokens": 5
             },
-            "total_tokens": 245
+            "total_tokens": 248
           }
         },
         "end_turn": null

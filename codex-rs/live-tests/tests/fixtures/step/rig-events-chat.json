@@ -1,155 +1,808 @@
 {
   "vendor": "step",
   "tag": "chat",
-  "rig_events": [
+  "items": [
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": "We"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": " need answer in Chinese"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用户"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": ", one sentence."
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "要求用一句话解释"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": " Need concise"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "什么是斐波那"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": ". \"斐波"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "契数列。我需要"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": "那契数列是从"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用中文回答，"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": "0和"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "并且保持"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": "1开始，每一项"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "简洁。\n\n斐"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": "等于"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "波那契数列"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": "前两项之和的"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "的定义"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": "无穷"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "是"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": "数列，如"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "：从0"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": "0,1,"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "和1开始"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": "1,2,"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，后续"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": "3,5,"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "的每一个"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": "8...\""
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "数"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": " Ensure"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "都是之前"
+      }
     },
     {
-      "id": "GDEUJJklE3S7Y73GXzA9x",
-      "reasoning": " one sentence."
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "两个数的"
+      }
     },
     {
-      "text": "斐波那契"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "之和。也就是"
+      }
     },
     {
-      "text": "数列是从0和"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "：0, "
+      }
     },
     {
-      "text": "1开始、"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "1, 1"
+      }
     },
     {
-      "text": "每一项"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ", 2,"
+      }
     },
     {
-      "text": "都"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 3, "
+      }
     },
     {
-      "text": "等于前两项之和"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "5, 8"
+      }
     },
     {
-      "text": "的数列，例如"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ", 13,"
+      }
     },
     {
-      "text": "：0, "
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 21...\n\n我需要"
+      }
     },
     {
-      "text": "1, 1"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "组织成一句话，"
+      }
     },
     {
-      "text": ", 2,"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "既要"
+      }
     },
     {
-      "text": " 3, "
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "准确又要"
+      }
     },
     {
-      "text": "5, 8"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "简洁。\n\n可能的"
+      }
     },
     {
-      "text": ", 13……"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "表述：\n\""
+      }
     },
     {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 36,
-        "output_tokens": 99,
-        "total_tokens": 135,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": null,
-      "response_id": "7e8fec6dd9073e388a499c52dbbd8007.0468c2fef8752dd43cb1d16bf7b8bdea",
-      "provider": "openai",
-      "model": "step-5-preview",
-      "raw": {
-        "additional_params": {
-          "agent": "",
-          "created": 1790303482,
-          "object": "chat.completion.chunk"
-        },
-        "finish_reason": "stop",
-        "model": "step-5-preview",
-        "response_id": "7e8fec6dd9073e388a499c52dbbd8007.0468c2fef8752dd43cb1d16bf7b8bdea",
-        "usage": {
-          "completion_tokens": 99,
-          "completion_tokens_details": {
-            "reasoning_tokens": 0
-          },
-          "prompt_tokens": 36,
-          "prompt_tokens_details": {
-            "cached_tokens": 0
-          },
-          "total_tokens": 135
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "斐波那契"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "数列是一个"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "从0和"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "1开始，后续"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "每一项都"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "等于前两项"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "之和的数列，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "即0"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、1、1"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、2、3"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、5、8"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "13、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "21……\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n或者"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "更"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "简洁：\n\"斐"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "波那契数列"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "是从0和1"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "开始，每一项"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "都等于前两项"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "之和的无限"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "数列。\"\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n检查一下："
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n- 是否"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "涵盖了"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "起点"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "？是的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，0"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "和1。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n- 是否涵盖了"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "递推关系？"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "是的，每一项"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "等于前两项之和"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。\n- 是否"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "是一句话？是的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。\n\n再"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "精"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "炼一下："
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n\"斐波那"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "契数列是指"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "从0和1开始，其后"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "每一项都"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "等于前两项之和"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "的数列，例如"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "0"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、1、1"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、2、3"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、5、8"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、13……\"\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n这个解释"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "很"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "清晰。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "斐波那契"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "数列是从0和"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "1开始，其后"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "每一项都"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "等于前两项之和"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "的数列，例如"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "0、1、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "1、2、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "3、5、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "8、13、21……"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "斐波那契数列是从0和1开始，其后每一项都等于前两项之和的数列，例如0、1、1、2、3、5、8、13、21……"
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "用户要求用一句话解释什么是斐波那契数列。我需要用中文回答，并且保持简洁。\n\n斐波那契数列的定义是：从0和1开始，后续的每一个数都是之前两个数的之和。也就是：0, 1, 1, 2, 3, 5, 8, 13, 21...\n\n我需要组织成一句话，既要准确又要简洁。\n\n可能的表述：\n\"斐波那契数列是一个从0和1开始，后续每一项都等于前两项之和的数列，即0、1、1、2、3、5、8、13、21……\"\n或者更简洁：\n\"斐波那契数列是从0和1开始，每一项都等于前两项之和的无限数列。\"\n\n检查一下：\n- 是否涵盖了起点？是的，0和1。\n- 是否涵盖了递推关系？是的，每一项等于前两项之和。\n- 是否是一句话？是的。\n\n再精炼一下：\n\"斐波那契数列是指从0和1开始，其后每一项都等于前两项之和的数列，例如0、1、1、2、3、5、8、13……\"\n\n这个解释很清晰。",
+          "native": {
+            "item": {
+              "reasoning_content": "用户要求用一句话解释什么是斐波那契数列。我需要用中文回答，并且保持简洁。\n\n斐波那契数列的定义是：从0和1开始，后续的每一个数都是之前两个数的之和。也就是：0, 1, 1, 2, 3, 5, 8, 13, 21...\n\n我需要组织成一句话，既要准确又要简洁。\n\n可能的表述：\n\"斐波那契数列是一个从0和1开始，后续每一项都等于前两项之和的数列，即0、1、1、2、3、5、8、13、21……\"\n或者更简洁：\n\"斐波那契数列是从0和1开始，每一项都等于前两项之和的无限数列。\"\n\n检查一下：\n- 是否涵盖了起点？是的，0和1。\n- 是否涵盖了递推关系？是的，每一项等于前两项之和。\n- 是否是一句话？是的。\n\n再精炼一下：\n\"斐波那契数列是指从0和1开始，其后每一项都等于前两项之和的数列，例如0、1、1、2、3、5、8、13……\"\n\n这个解释很清晰。"
+            },
+            "fingerprint": "2b09bf1ab2851579"
+          }
         }
       }
     }
-  ]
+  ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "21a1ce78d3798b13eded1faec9651e3f.d877871183b6c15c8c86211887d2a02a",
+    "model": "step-5-preview",
+    "usage": {
+      "input_tokens": 36,
+      "output_tokens": 287,
+      "total_tokens": 323,
+      "cached_input_tokens": 0,
+      "reasoning_tokens": 0
+    }
+  },
+  "rig_events": [],
+  "custom_tools": []
 }

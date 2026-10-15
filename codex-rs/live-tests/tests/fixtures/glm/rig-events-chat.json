@@ -1,358 +1,1480 @@
 {
   "vendor": "glm",
   "tag": "chat",
-  "rig_events": [
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "The"
+  "items": [
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " user"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " asks"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " user"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " in"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " is"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " Chinese"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " asking"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": ":"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " me"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " \""
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " to"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "用"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " explain"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "一句话"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " what"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "解释"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "什么是"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Fibonacci"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "斐"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " sequence"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "波"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " is"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "那"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "契"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " one"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "数"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " sentence"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "列"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "。\""
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " and"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " ("
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " I"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "Ex"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " should"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "plain"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " answer"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " in"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " one"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Chinese"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " sentence"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ".\n\n"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " what"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Fibonacci"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " Fibonacci"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " sequence"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " sequence"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " is"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " is"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " a"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": ".)\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " sequence"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "I"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " where"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " should"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " each"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " answer"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " number"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " in"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " is"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " Chinese"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " with"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " sum"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " one"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " of"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": " sentence"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "cAKcO1EgJeuhxpynV-CqO",
-      "reasoning": "."
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " two"
+      }
     },
-    {
-      "text": "斐"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " preceding"
+      }
     },
-    {
-      "text": "波"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ones"
+      }
     },
-    {
-      "text": "那"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
     },
-    {
-      "text": "契"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " starting"
+      }
     },
-    {
-      "text": "数"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " from"
+      }
     },
-    {
-      "text": "列"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "text": "是一个"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "0"
+      }
     },
-    {
-      "text": "从"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " and"
+      }
     },
-    {
-      "text": "0"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "text": "和"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "1"
+      }
     },
-    {
-      "text": "1"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ("
+      }
     },
-    {
-      "text": "开始"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "or"
+      }
     },
-    {
-      "text": "、"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "text": "之后"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "1"
+      }
     },
-    {
-      "text": "每一"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " and"
+      }
     },
-    {
-      "text": "项"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "text": "都"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "1"
+      }
     },
-    {
-      "text": "等于"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ").\n\n"
+      }
     },
-    {
-      "text": "前"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "One"
+      }
     },
-    {
-      "text": "两项"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " sentence"
+      }
     },
-    {
-      "text": "之和"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
     },
-    {
-      "text": "的"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Chinese"
+      }
     },
-    {
-      "text": "数"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":\n"
+      }
     },
-    {
-      "text": "列"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "斐"
+      }
     },
-    {
-      "text": "，"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "波"
+      }
     },
-    {
-      "text": "即"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "那"
+      }
     },
-    {
-      "text": "0"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "契"
+      }
     },
-    {
-      "text": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "数"
+      }
     },
-    {
-      "text": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "列"
+      }
     },
-    {
-      "text": "1"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "是一个"
+      }
     },
-    {
-      "text": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "每一"
+      }
     },
-    {
-      "text": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "项"
+      }
     },
-    {
-      "text": "1"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "都"
+      }
     },
-    {
-      "text": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "等于"
+      }
     },
-    {
-      "text": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "前"
+      }
     },
-    {
-      "text": "2"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "两项"
+      }
     },
-    {
-      "text": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "之和"
+      }
     },
-    {
-      "text": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "的"
+      }
     },
-    {
-      "text": "3"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "数"
+      }
     },
-    {
-      "text": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "列"
+      }
     },
-    {
-      "text": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，"
+      }
     },
-    {
-      "text": "5"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "通常"
+      }
     },
-    {
-      "text": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "从"
+      }
     },
-    {
-      "text": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "0"
+      }
     },
-    {
-      "text": "8"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "和"
+      }
     },
-    {
-      "text": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "1"
+      }
     },
-    {
-      "text": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "（"
+      }
     },
-    {
-      "text": "13"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "或"
+      }
     },
-    {
-      "text": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "1"
+      }
     },
-    {
-      "text": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "和"
+      }
     },
-    {
-      "text": "21"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "1"
+      }
     },
-    {
-      "text": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "）"
+      }
     },
-    {
-      "text": " 34……"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "开始"
+      }
     },
-    {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 34,
-        "output_tokens": 96,
-        "total_tokens": 130,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 39
-      },
-      "finish_reason": "stop",
-      "message_id": null,
-      "response_id": "2026092510315072210018fd894fd7",
-      "provider": "openai",
-      "model": "glm-5.3-flash",
-      "raw": {
-        "additional_params": {
-          "created": 1790303510,
-          "object": "chat.completion.chunk"
-        },
-        "finish_reason": "stop",
-        "model": "glm-5.3-flash",
-        "response_id": "2026092510315072210018fd894fd7",
-        "usage": {
-          "completion_tokens": 96,
-          "completion_tokens_details": {
-            "reasoning_tokens": 39
-          },
-          "prompt_tokens": 34,
-          "prompt_tokens_details": {
-            "cached_tokens": 0
-          },
-          "total_tokens": 130
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "即"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "0"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "1"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "1"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "2"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "3"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "5"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "8"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "13"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "21"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "34"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "……\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "That"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "'s"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " one"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " sentence"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " that"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " captures"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " definition"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "."
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "斐"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "波"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "那"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "契"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "数"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "列"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "是一个"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "从"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "0"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "和"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "1"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "开始"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "之后"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "每一"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "项"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "都"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "等于"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "前"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "两项"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "之和"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "数"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "列"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "即"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "0"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "1"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "1"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "2"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "3"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "5"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "8"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "13"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "21"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "34"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "……"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "斐波那契数列是一个从0和1开始、之后每一项都等于前两项之和的数列，即0、1、1、2、3、5、8、13、21、34……"
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "The user is asking me to explain what the Fibonacci sequence is in one sentence, and I should answer in Chinese.\n\nThe Fibonacci sequence is a sequence where each number is the sum of the two preceding ones, starting from 0 and 1 (or 1 and 1).\n\nOne sentence in Chinese:\n斐波那契数列是一个每一项都等于前两项之和的数列，通常从0和1（或1和1）开始，即0, 1, 1, 2, 3, 5, 8, 13, 21, 34……\n\nThat's one sentence that captures the definition.",
+          "native": {
+            "item": {
+              "reasoning_content": "The user is asking me to explain what the Fibonacci sequence is in one sentence, and I should answer in Chinese.\n\nThe Fibonacci sequence is a sequence where each number is the sum of the two preceding ones, starting from 0 and 1 (or 1 and 1).\n\nOne sentence in Chinese:\n斐波那契数列是一个每一项都等于前两项之和的数列，通常从0和1（或1和1）开始，即0, 1, 1, 2, 3, 5, 8, 13, 21, 34……\n\nThat's one sentence that captures the definition."
+            },
+            "fingerprint": "2014ada0f475c4ea"
+          }
         }
       }
     }
-  ]
+  ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "2026101523295518bbd75aa0fe472e",
+    "model": "glm-5.3-flash",
+    "usage": {
+      "input_tokens": 34,
+      "output_tokens": 179,
+      "total_tokens": 213,
+      "cached_input_tokens": 0,
+      "reasoning_tokens": 131
+    }
+  },
+  "rig_events": [],
+  "custom_tools": []
 }

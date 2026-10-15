@@ -3,57 +3,69 @@
   "bridge": "rig",
   "tag": "responses-tool-t1",
   "request": {
-    "include": [],
+    "model": "mimo-v2.6-flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
+        "content": [
+          {
+            "type": "input_text",
+            "text": "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。"
+          }
+        ]
       }
     ],
-    "instructions": "You are a helpful assistant.",
-    "model": "mimo-v2.6-flash",
-    "parallel_tool_calls": false,
-    "reasoning": null,
-    "store": false,
-    "stream": true,
-    "tool_choice": "auto",
     "tools": [
       {
-        "description": "Get the current weather for a city",
+        "type": "function",
         "name": "get_weather",
+        "description": "Get the current weather for a city",
         "parameters": {
+          "type": "object",
           "properties": {
             "city": {
-              "description": "City name, e.g. 北京",
-              "type": "string"
+              "type": "string",
+              "description": "City name, e.g. 北京"
             }
           },
           "required": [
             "city"
-          ],
-          "type": "object"
+          ]
         },
-        "strict": false,
-        "type": "function"
+        "strict": false
       }
-    ]
+    ],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "include": []
   },
   "events": [
     {
+      "ServerModel": "mimo-v2.6-flash"
+    },
+    {
       "Created": {
-        "response_id": "resp_2b58559160a74722a2e8b3756ea57fe0"
+        "response_id": "resp_bd2057a151034d828b7747c04ee8728a"
       }
     },
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rs_46eb92cb141e4b94a38984948d0a5431",
+        "id": "rs_e92dee8002d04d08b6be2c46a52aa83d",
         "summary": [],
         "encrypted_content": null
       }
@@ -66,58 +78,59 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " weather",
+        "delta": " to",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " for Shanghai.",
+        "delta": " know",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Call",
+        "delta": " Shanghai",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " get_weather with",
+        "delta": "'s weather. Call",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " city 上",
+        "delta": " the",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "海.",
+        "delta": " tool.",
         "content_index": 0
       }
     },
     {
       "OutputItemAdded": {
         "type": "function_call",
-        "id": "fc_139956faf2ea452aaaca646ad63b110c",
+        "status": "in_progress",
+        "id": "fc_3d3bb664bdd34f8d8bbc6883c8a25521",
         "name": "get_weather",
         "arguments": "",
-        "call_id": "call_7b148e8c981044a1b422ef1b"
+        "call_id": "call_5a7500e9b6c1463f8157c10f"
       }
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rs_46eb92cb141e4b94a38984948d0a5431",
+        "id": "rs_e92dee8002d04d08b6be2c46a52aa83d",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The user wants weather for Shanghai. Call get_weather with city 上海."
+            "text": "The user wants to know Shanghai's weather. Call the tool."
           }
         ],
         "encrypted_content": null
@@ -126,35 +139,36 @@
     {
       "OutputItemDone": {
         "type": "function_call",
-        "id": "fc_139956faf2ea452aaaca646ad63b110c",
+        "status": "completed",
+        "id": "fc_3d3bb664bdd34f8d8bbc6883c8a25521",
         "name": "get_weather",
         "arguments": "{\"city\": \"上海\"}",
-        "call_id": "call_7b148e8c981044a1b422ef1b"
+        "call_id": "call_5a7500e9b6c1463f8157c10f"
       }
     },
     {
       "Completed": {
-        "response_id": "resp_2b58559160a74722a2e8b3756ea57fe0",
+        "response_id": "resp_bd2057a151034d828b7747c04ee8728a",
         "token_usage": {
           "input_tokens": 132,
-          "cached_input_tokens": 0,
+          "cached_input_tokens": 64,
           "cache_write_input_tokens": 0,
-          "output_tokens": 35,
-          "reasoning_output_tokens": 16,
-          "total_tokens": 167
+          "output_tokens": 33,
+          "reasoning_output_tokens": 14,
+          "total_tokens": 165
         },
         "usage_metadata": {
           "amount": null,
           "metadata": {
             "input_tokens": 132,
             "input_tokens_details": {
-              "cached_tokens": 0
+              "cached_tokens": 64
             },
-            "output_tokens": 35,
+            "output_tokens": 33,
             "output_tokens_details": {
-              "reasoning_tokens": 16
+              "reasoning_tokens": 14
             },
-            "total_tokens": 167
+            "total_tokens": 165
           }
         },
         "end_turn": null

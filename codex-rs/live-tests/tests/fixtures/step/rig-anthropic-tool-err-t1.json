@@ -3,46 +3,55 @@
   "bridge": "rig",
   "tag": "anthropic-tool-err-t1",
   "request": {
-    "include": [],
+    "model": "step-5-preview",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "请调用 get_weather 查询北京天气;如果工具报错,请直接告诉用户工具失败了。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
+        "content": [
+          {
+            "type": "input_text",
+            "text": "请调用 get_weather 查询北京天气;如果工具报错,请直接告诉用户工具失败了。"
+          }
+        ]
       }
     ],
-    "instructions": "You are a helpful assistant.",
-    "model": "step-5-preview",
-    "parallel_tool_calls": false,
-    "reasoning": null,
-    "store": false,
-    "stream": true,
-    "tool_choice": "auto",
     "tools": [
       {
-        "description": "Get the current weather for a city",
+        "type": "function",
         "name": "get_weather",
+        "description": "Get the current weather for a city",
         "parameters": {
+          "type": "object",
           "properties": {
             "city": {
-              "description": "City name, e.g. 北京",
-              "type": "string"
+              "type": "string",
+              "description": "City name, e.g. 北京"
             }
           },
           "required": [
             "city"
-          ],
-          "type": "object"
+          ]
         },
-        "strict": false,
-        "type": "function"
+        "strict": false
       }
-    ]
+    ],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "include": []
   },
   "events": [
     {
@@ -53,7 +62,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_18d910852de411780",
+        "id": "rigseg_18debd970fcd19181_0",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -79,7 +88,61 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "_weather for",
+        "delta": "_weather to query",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " Beijing weather. If",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the tool reports",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " an error, I",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " should directly",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " tell the user that",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the tool failed.\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\nLet me call the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " weather",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " tool for",
         "content_index": 0
       }
     },
@@ -90,87 +153,42 @@
       }
     },
     {
-      "ReasoningContentDelta": {
-        "delta": " Let me do",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " that.",
-        "content_index": 0
-      }
-    },
-    {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_18d910852de411780",
+        "id": "rigseg_18debd970fcd19181_0",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The user wants me to call get_weather for Beijing. Let me do that."
+            "text": "The user wants me to call get_weather to query Beijing weather. If the tool reports an error, I should directly tell the user that the tool failed.\n\nLet me call the weather tool for Beijing."
           }
         ],
-        "encrypted_content": "codex-rig-reasoning-v1:{\"source\":\"Anthropic:b00fab0031fb8980d885dd1cecf7ed0ae707a093a049143a89751f70c6d9e53b\",\"blocks\":[{\"id\":null,\"content\":[{\"type\":\"text\",\"content\":{\"text\":\"The user wants me to call get_weather for Beijing. Let me do that.\",\"signature\":\"9467ad3179f148c49688b915595e7c2c\"}}]}]}"
-      }
-    },
-    {
-      "OutputItemAdded": {
-        "type": "message",
-        "id": "txt_18d91085391cdef81",
-        "role": "assistant",
-        "content": []
-      }
-    },
-    {
-      "OutputTextDelta": "我来"
-    },
-    {
-      "OutputTextDelta": "为你"
-    },
-    {
-      "OutputTextDelta": "查询北京的"
-    },
-    {
-      "OutputTextDelta": "天气。"
-    },
-    {
-      "OutputItemDone": {
-        "type": "message",
-        "id": "txt_18d91085391cdef81",
-        "role": "assistant",
-        "content": [
-          {
-            "type": "output_text",
-            "text": "我来为你查询北京的天气。"
-          }
-        ]
+        "encrypted_content": "codex-rig-reasoning-v2:{\"source\":\"Anthropic:7f2331434380b3aaf205864f27bf0a438fd8ff2c82c7302c11ae7f05228fb88c\",\"blocks\":[{\"text\":\"The user wants me to call get_weather to query Beijing weather. If the tool reports an error, I should directly tell the user that the tool failed.\\n\\nLet me call the weather tool for Beijing.\",\"native\":{\"item\":{\"type\":\"thinking\",\"thinking\":\"The user wants me to call get_weather to query Beijing weather. If the tool reports an error, I should directly tell the user that the tool failed.\\n\\nLet me call the weather tool for Beijing.\",\"signature\":\"41d9e3c717764e9ba8232dcab4ffbe70\"},\"fingerprint\":\"88af3303589551fe\"}}]}"
       }
     },
     {
       "OutputItemAdded": {
         "type": "function_call",
-        "id": "aNpjgihNa0fN-MvmnY6Rm",
+        "id": "rigseg_18debd970fcd19181_1",
         "name": "get_weather",
         "arguments": "",
-        "call_id": "chatcmpl-tool-aa0d3306f9544444"
+        "call_id": "chatcmpl-tool-90ddf376702d19d3"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "aNpjgihNa0fN-MvmnY6Rm",
-        "call_id": "chatcmpl-tool-aa0d3306f9544444",
+        "item_id": "rigseg_18debd970fcd19181_1",
+        "call_id": "chatcmpl-tool-90ddf376702d19d3",
         "delta": "{\"city\": \"北京\"}"
       }
     },
     {
       "OutputItemDone": {
         "type": "function_call",
-        "id": "aNpjgihNa0fN-MvmnY6Rm",
+        "id": "rigseg_18debd970fcd19181_1",
         "name": "get_weather",
         "arguments": "{\"city\": \"北京\"}",
-        "call_id": "chatcmpl-tool-aa0d3306f9544444"
+        "call_id": "chatcmpl-tool-90ddf376702d19d3"
       }
     },
     {
@@ -178,14 +196,14 @@
     },
     {
       "Completed": {
-        "response_id": "chatcmpl-04d7075d3ede3c39c2dd0e28f3337a9a-9299e31a",
+        "response_id": "chatcmpl-3530c5a26fd88e3c1710dda66708af5c-a4f13b5d",
         "token_usage": {
-          "input_tokens": 265,
+          "input_tokens": 277,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 47,
+          "output_tokens": 65,
           "reasoning_output_tokens": 0,
-          "total_tokens": 312
+          "total_tokens": 342
         },
         "usage_metadata": null,
         "end_turn": false

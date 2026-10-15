@@ -3,63 +3,82 @@
   "bridge": "rig",
   "tag": "responses",
   "request": {
-    "include": [],
+    "model": "mimo-v2.6-flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "用一句话解释什么是递归。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant. Answer in Chinese."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
+        "content": [
+          {
+            "type": "input_text",
+            "text": "用一句话解释什么是递归。"
+          }
+        ]
       }
     ],
-    "instructions": "You are a helpful assistant. Answer in Chinese.",
-    "model": "mimo-v2.6-flash",
+    "tool_choice": "auto",
     "parallel_tool_calls": true,
     "reasoning": null,
     "store": false,
-    "stream": true,
-    "tool_choice": "auto"
+    "include": []
   },
   "events": [
     {
+      "ServerModel": "mimo-v2.6-flash"
+    },
+    {
       "Created": {
-        "response_id": "resp_6dd2c4dd9134435d9839d3e5a6bc5b99"
+        "response_id": "resp_3ac84c6303574baca96d406c3dac08b7"
       }
     },
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rs_3d338301b0f8436c91245361c3e7dfcc",
+        "id": "rs_7e1aba08111c464ba7ff198e4c501530",
         "summary": [],
         "encrypted_content": null
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "用",
+        "delta": "The user asks me",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "一句话解释递",
+        "delta": " to explain what recursion is",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "归。",
+        "delta": " in one sentence,",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " in Chinese.",
         "content_index": 0
       }
     },
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "msg_e6b58713ce064be98a9e660a27de982b",
+        "status": "in_progress",
+        "id": "msg_77b1a3887d3a4dd78598afbef3429c53",
         "role": "assistant",
         "content": []
       }
@@ -80,49 +99,37 @@
       "OutputTextDelta": "用自身"
     },
     {
-      "OutputTextDelta": "来"
+      "OutputTextDelta": "，通过"
     },
     {
-      "OutputTextDelta": "解决一个"
+      "OutputTextDelta": "不断"
     },
     {
-      "OutputTextDelta": "规模"
+      "OutputTextDelta": "缩小问题规模"
     },
     {
-      "OutputTextDelta": "更"
+      "OutputTextDelta": "直到遇到"
     },
     {
-      "OutputTextDelta": "小的"
+      "OutputTextDelta": "基本情况"
     },
     {
-      "OutputTextDelta": "同类问题，直到"
+      "OutputTextDelta": "（递"
     },
     {
-      "OutputTextDelta": "达到"
+      "OutputTextDelta": "归出口"
     },
     {
-      "OutputTextDelta": "可以"
+      "OutputTextDelta": "）来解决问题"
     },
     {
-      "OutputTextDelta": "直接"
+      "OutputTextDelta": "的"
     },
     {
-      "OutputTextDelta": "给出"
+      "OutputTextDelta": "编程"
     },
     {
-      "OutputTextDelta": "答案"
-    },
-    {
-      "OutputTextDelta": "的基本"
-    },
-    {
-      "OutputTextDelta": "情况"
-    },
-    {
-      "OutputTextDelta": "（base"
-    },
-    {
-      "OutputTextDelta": " case）为止"
+      "OutputTextDelta": "思想"
     },
     {
       "OutputTextDelta": "。"
@@ -130,12 +137,12 @@
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rs_3d338301b0f8436c91245361c3e7dfcc",
+        "id": "rs_7e1aba08111c464ba7ff198e4c501530",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "用一句话解释递归。"
+            "text": "The user asks me to explain what recursion is in one sentence, in Chinese."
           }
         ],
         "encrypted_content": null
@@ -144,26 +151,28 @@
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "msg_e6b58713ce064be98a9e660a27de982b",
+        "status": "completed",
+        "id": "msg_77b1a3887d3a4dd78598afbef3429c53",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "递归就是函数在运行过程中调用自身来解决一个规模更小的同类问题，直到达到可以直接给出答案的基本情况（base case）为止。"
+            "text": "递归就是函数在运行过程中调用自身，通过不断缩小问题规模直到遇到基本情况（递归出口）来解决问题的编程思想。",
+            "annotations": []
           }
         ]
       }
     },
     {
       "Completed": {
-        "response_id": "resp_6dd2c4dd9134435d9839d3e5a6bc5b99",
+        "response_id": "resp_3ac84c6303574baca96d406c3dac08b7",
         "token_usage": {
           "input_tokens": 28,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 43,
-          "reasoning_output_tokens": 7,
-          "total_tokens": 71
+          "output_tokens": 49,
+          "reasoning_output_tokens": 17,
+          "total_tokens": 77
         },
         "usage_metadata": {
           "amount": null,
@@ -172,11 +181,11 @@
             "input_tokens_details": {
               "cached_tokens": 0
             },
-            "output_tokens": 43,
+            "output_tokens": 49,
             "output_tokens_details": {
-              "reasoning_tokens": 7
+              "reasoning_tokens": 17
             },
-            "total_tokens": 71
+            "total_tokens": 77
           }
         },
         "end_turn": null

@@ -3,46 +3,55 @@
   "bridge": "rig",
   "tag": "anthropic-tool-t1",
   "request": {
-    "include": [],
+    "model": "mimo-v2.6-flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
+        "content": [
+          {
+            "type": "input_text",
+            "text": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。"
+          }
+        ]
       }
     ],
-    "instructions": "You are a helpful assistant.",
-    "model": "mimo-v2.6-flash",
-    "parallel_tool_calls": false,
-    "reasoning": null,
-    "store": false,
-    "stream": true,
-    "tool_choice": "auto",
     "tools": [
       {
-        "description": "Get the current weather for a city",
+        "type": "function",
         "name": "get_weather",
+        "description": "Get the current weather for a city",
         "parameters": {
+          "type": "object",
           "properties": {
             "city": {
-              "description": "City name, e.g. 北京",
-              "type": "string"
+              "type": "string",
+              "description": "City name, e.g. 北京"
             }
           },
           "required": [
             "city"
-          ],
-          "type": "object"
+          ]
         },
-        "strict": false,
-        "type": "function"
+        "strict": false
       }
-    ]
+    ],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "include": []
   },
   "events": [
     {
@@ -53,7 +62,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_18d86f8acd8a96d00",
+        "id": "rigseg_18debd9ecd0af5701_0",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -61,89 +70,86 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "用户",
+        "delta": "The user explicitly",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "要求查询",
-        "content_index": 1
+        "delta": " asks for",
+        "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "北京天气，必须",
-        "content_index": 2
+        "delta": " get",
+        "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "调用工具",
-        "content_index": 3
+        "delta": "_weather call",
+        "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "。直接",
-        "content_index": 4
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "调用。",
-        "content_index": 5
-      }
-    },
-    {
-      "OutputItemAdded": {
-        "type": "function_call",
-        "id": "NG2z1KltcTb0E18K6wL80",
-        "name": "get_weather",
-        "arguments": "",
-        "call_id": "NG2z1KltcTb0E18K6wL80"
-      }
-    },
-    {
-      "ToolCallInputDelta": {
-        "item_id": "NG2z1KltcTb0E18K6wL80",
-        "call_id": "NG2z1KltcTb0E18K6wL80",
-        "delta": "{\"city\": \"北京\"}"
+        "delta": ".",
+        "content_index": 0
       }
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_18d86f8acd8a96d00",
+        "id": "rigseg_18debd9ecd0af5701_0",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "用户要求查询北京天气，必须调用工具。直接调用。"
+            "text": "The user explicitly asks for get_weather call."
           }
         ],
-        "encrypted_content": "用户要求查询北京天气，必须调用工具。直接调用。"
+        "encrypted_content": "codex-rig-reasoning-v2:{\"source\":\"Anthropic:2c20efb7546ff782f73c251fd434849681b2d1702f4f3f7d3b9a38902557e65e\",\"blocks\":[{\"text\":\"The user explicitly asks for get_weather call.\"}]}"
+      }
+    },
+    {
+      "OutputItemAdded": {
+        "type": "function_call",
+        "id": "rigseg_18debd9ecd0af5701_1",
+        "name": "get_weather",
+        "arguments": "",
+        "call_id": "call_0601fe22112d4612ac9c5a29"
+      }
+    },
+    {
+      "ToolCallInputDelta": {
+        "item_id": "rigseg_18debd9ecd0af5701_1",
+        "call_id": "call_0601fe22112d4612ac9c5a29",
+        "delta": "{\"city\": \"北京\"}"
       }
     },
     {
       "OutputItemDone": {
         "type": "function_call",
-        "id": "NG2z1KltcTb0E18K6wL80",
+        "id": "rigseg_18debd9ecd0af5701_1",
         "name": "get_weather",
         "arguments": "{\"city\": \"北京\"}",
-        "call_id": "call_32a1841217a1438a871eb84c"
+        "call_id": "call_0601fe22112d4612ac9c5a29"
       }
     },
     {
+      "ServerModel": "mimo-v2.6-flash"
+    },
+    {
       "Completed": {
-        "response_id": "",
+        "response_id": "msg_6a0627cb7fbc436db3619841",
         "token_usage": {
-          "input_tokens": 131,
+          "input_tokens": 132,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 35,
+          "output_tokens": 29,
           "reasoning_output_tokens": 0,
-          "total_tokens": 166
+          "total_tokens": 161
         },
         "usage_metadata": null,
         "end_turn": false

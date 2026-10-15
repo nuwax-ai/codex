@@ -1,370 +1,729 @@
 {
   "vendor": "step",
   "tag": "anthropic-effort",
-  "rig_events": [
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "用户"
-    },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "要求用一句话说明"
-    },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "快速排序的平均复杂度"
-    },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "，并简单解释"
-    },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "为什么。\n"
-    },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "\n快速"
-    },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "排序的平均"
-    },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "时间复杂度是"
-    },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": " O(n log n"
-    },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": ")。原因是"
+  "items": [
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "每次划分"
-    },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "选定"
-    },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "基准"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用户"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "值"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "要求用"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "后，每次"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "一句话说明快速排序"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "遍历"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "的平均复杂度，并"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "把"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "简单解释为什么。\n"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "当前"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n快速"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "数组分成两个子"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "排序的平均"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "数组，平均情况下"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "时间复杂度是"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "每次"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " O(n log n"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "都能"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ")。"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "把数组分成"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n原因：每次划分"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "近似"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "（partition"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "等"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "）平均"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "长的两部分"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "能将"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "，所以"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "数组分成两个大小"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "递归树的"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "相近的子"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "深度约为"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "数组，递归"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": " log"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "树的"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": " n，而每一"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "深度平均"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "层需要"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "为 O(log n"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "遍历全部"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ")，而"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "元素"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "每一层需要"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "进行"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " O"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "划分"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "(n) 的时间"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "，即"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "来完成"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "每"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "划分操作"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "层需要"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，因此总平均"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": " O(n) "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "复杂度为 O(n"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "的时间，因此总"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " log n)。\n\n用户"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "平均"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "要求\"用一句话"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "复杂度为 O(n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "说明\"，所以应该"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": " log n)。\n\n需要用"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "尽量"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "中文"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "简洁，"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "回答，并且"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "但后面"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "“"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "又说"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "一句话说明”"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\"并"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "平均"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "简单解释为什么\"，"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "复杂度，然后"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "所以可以第一"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "简单解释。可以"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "句话"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "组织"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "给结论"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "成："
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，第二"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "\n-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "句话解释。"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": " 第一"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "或者把"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "句给出"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "解释"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "复杂度"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "压缩到"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "。"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "一句话里"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "\n- 然后用"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。\n\n让我组织一下"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "一两"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "：\n\""
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "句"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "快速排序的平均时间复杂度"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "简单"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "为 O(n log"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "解释。\n\n确保"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " n)，因为在"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "简洁"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "随机"
+      }
     },
-    {
-      "id": "1CPD4-opYpPc-kexR3468",
-      "reasoning": "。"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "或"
+      }
     },
-    {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "用户要求用一句话说明快速排序的平均复杂度，并简单解释为什么。\n\n快速排序的平均时间复杂度是 O(n log n)。原因是每次划分选定基准值后，每次遍历把当前数组分成两个子数组，平均情况下每次都能把数组分成近似等长的两部分，所以递归树的深度约为 log n，而每一层需要遍历全部元素进行划分，即每层需要 O(n) 的时间，因此总平均复杂度为 O(n log n)。\n\n需要用中文回答，并且“一句话说明”平均复杂度，然后简单解释。可以组织成：\n- 第一句给出复杂度。\n- 然后用一两句简单解释。\n\n确保简洁。",
-              "signature": "d5130f2f02ca48c88853481ebf314a26"
-            }
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "均匀划分"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "的情况下"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，递归树"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "平均深度为 O"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "(log n)，且"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "每层划分"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "总共"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "需要"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " O(n) "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "次比较操作"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。\"\n\n这样应该"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "满足要求。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "用户要求用一句话说明快速排序的平均复杂度，并简单解释为什么。\n\n快速排序的平均时间复杂度是 O(n log n)。\n原因：每次划分（partition）平均能将数组分成两个大小相近的子数组，递归树的深度平均为 O(log n)，而每一层需要 O(n) 的时间来完成划分操作，因此总平均复杂度为 O(n log n)。\n\n用户要求\"用一句话说明\"，所以应该尽量简洁，但后面又说\"并简单解释为什么\"，所以可以第一句话给结论，第二句话解释。或者把解释压缩到一句话里。\n\n让我组织一下：\n\"快速排序的平均时间复杂度为 O(n log n)，因为在随机或均匀划分的情况下，递归树平均深度为 O(log n)，且每层划分总共需要 O(n) 次比较操作。\"\n\n这样应该满足要求。",
+          "native": {
+            "item": {
+              "type": "thinking",
+              "thinking": "用户要求用一句话说明快速排序的平均复杂度，并简单解释为什么。\n\n快速排序的平均时间复杂度是 O(n log n)。\n原因：每次划分（partition）平均能将数组分成两个大小相近的子数组，递归树的深度平均为 O(log n)，而每一层需要 O(n) 的时间来完成划分操作，因此总平均复杂度为 O(n log n)。\n\n用户要求\"用一句话说明\"，所以应该尽量简洁，但后面又说\"并简单解释为什么\"，所以可以第一句话给结论，第二句话解释。或者把解释压缩到一句话里。\n\n让我组织一下：\n\"快速排序的平均时间复杂度为 O(n log n)，因为在随机或均匀划分的情况下，递归树平均深度为 O(log n)，且每层划分总共需要 O(n) 次比较操作。\"\n\n这样应该满足要求。",
+              "signature": "94250a830ca6412687a28060c1a83685"
+            },
+            "fingerprint": "6a3865bd5800b759"
           }
-        ]
-      },
-      "id": "1CPD4-opYpPc-kexR3468"
+        }
+      }
     },
     {
-      "text": "快速排序"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
     },
     {
-      "text": "的平均时间复杂度是 **"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "快速排序的平均时间复杂度"
+      }
     },
     {
-      "text": "O(n log n"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "为 **O(n"
+      }
     },
     {
-      "text": ")**。  \n"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " log n)**，"
+      }
     },
     {
-      "text": "因为在平均情况下，"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "因为在每次划分都能"
+      }
     },
     {
-      "text": "每次划分都能"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "大致"
+      }
     },
     {
-      "text": "近似"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "均分"
+      }
     },
     {
-      "text": "把数组均匀"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "数组的情况下"
+      }
     },
     {
-      "text": "分成两个子问题"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，递归树的"
+      }
     },
     {
-      "text": "，递归"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "平均深度是"
+      }
     },
     {
-      "text": "深度约为 log"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " O(log n)，"
+      }
     },
     {
-      "text": " n，而每"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "而每一"
+      }
     },
     {
-      "text": "层划分"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "层所有"
+      }
     },
     {
-      "text": "总共要"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "子"
+      }
     },
     {
-      "text": "遍历 O"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "数组的划分"
+      }
     },
     {
-      "text": "(n)"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "操作总共需要 O"
+      }
     },
     {
-      "text": " 个元素，"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "(n) 次"
+      }
     },
     {
-      "text": "所以总复杂度为"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "比较。"
+      }
     },
     {
-      "text": " O(n log n"
-    },
-    {
-      "text": ")。"
-    },
-    {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 39,
-        "output_tokens": 191,
-        "total_tokens": 230,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": "chatcmpl-dc46e8f1e72bde8ffd2e6e09f240a4e8-ad464ea4",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "step-5-preview",
-      "raw": {
-        "message_id": "chatcmpl-dc46e8f1e72bde8ffd2e6e09f240a4e8-ad464ea4",
-        "model": "step-5-preview",
-        "stop_reason": "end_turn",
-        "usage": {
-          "cache_creation_input_tokens": 0,
-          "cache_read_input_tokens": 0,
-          "input_tokens": 39,
-          "output_tokens": 191
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "快速排序的平均时间复杂度为 **O(n log n)**，因为在每次划分都能大致均分数组的情况下，递归树的平均深度是 O(log n)，而每一层所有子数组的划分操作总共需要 O(n) 次比较。",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "快速排序的平均时间复杂度为 **O(n log n)**，因为在每次划分都能大致均分数组的情况下，递归树的平均深度是 O(log n)，而每一层所有子数组的划分操作总共需要 O(n) 次比较。"
+            },
+            "fingerprint": "521adeef955c4ff6"
+          }
         }
       }
     }
   ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "chatcmpl-d57579d51e97a7c3b30368f3528d85e9-80c49a13",
+    "model": "step-5-preview",
+    "usage": {
+      "input_tokens": 39,
+      "output_tokens": 215,
+      "total_tokens": 254,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0
+    }
+  },
+  "rig_events": [],
   "custom_tools": []
 }

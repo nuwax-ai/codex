@@ -1,0 +1,56 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://api.stepfun.com/step_plan/v1/chat/completions",
+      "body_raw": "{\"model\":\"step-5-preview\",\"messages\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"You are a helpful assistant.\"}]},{\"role\":\"user\",\"content\":\"请分别查询北京和上海两个城市的天气：用两次独立的 get_weather 工具调用（一次查北京，一次查上海，不要合并成一次调用），然后一起告诉我。\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"description\":\"Get the current weather for a city\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\",\"description\":\"City name, e.g. 北京\"}},\"required\":[\"city\"]},\"strict\":false}}],\"tool_choice\":\"auto\",\"parallel_tool_calls\":true,\"store\":false,\"stream_options\":{\"include_usage\":true},\"stream\":true}",
+      "body": {
+        "model": "step-5-preview",
+        "messages": [
+          {
+            "role": "system",
+            "content": [
+              {
+                "type": "text",
+                "text": "You are a helpful assistant."
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": "请分别查询北京和上海两个城市的天气：用两次独立的 get_weather 工具调用（一次查北京，一次查上海，不要合并成一次调用），然后一起告诉我。"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "description": "Get the current weather for a city",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "type": "string",
+                    "description": "City name, e.g. 北京"
+                  }
+                },
+                "required": [
+                  "city"
+                ]
+              },
+              "strict": false
+            }
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": true,
+        "store": false,
+        "stream_options": {
+          "include_usage": true
+        },
+        "stream": true
+      }
+    }
+  ]
+}

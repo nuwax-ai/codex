@@ -1,103 +1,201 @@
 {
   "vendor": "step",
   "tag": "anthropic-tool-err-t2",
-  "rig_events": [
+  "items": [
     {
-      "id": "Sin3HpQ9wgY7i7dUI276L",
-      "reasoning": "工具"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "Sin3HpQ9wgY7i7dUI276L",
-      "reasoning": "报错了"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "工具"
+      }
     },
     {
-      "id": "Sin3HpQ9wgY7i7dUI276L",
-      "reasoning": ","
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "报"
+      }
     },
     {
-      "id": "Sin3HpQ9wgY7i7dUI276L",
-      "reasoning": "按"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "错了，我需要"
+      }
     },
     {
-      "id": "Sin3HpQ9wgY7i7dUI276L",
-      "reasoning": "用户要求"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "直接告诉用户工具"
+      }
     },
     {
-      "id": "Sin3HpQ9wgY7i7dUI276L",
-      "reasoning": "直接告诉"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "失败了。"
+      }
     },
     {
-      "id": "Sin3HpQ9wgY7i7dUI276L",
-      "reasoning": "用户工具失败了"
-    },
-    {
-      "id": "Sin3HpQ9wgY7i7dUI276L",
-      "reasoning": "。"
-    },
-    {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "工具报错了,按用户要求直接告诉用户工具失败了。",
-              "signature": "a77dc36e7ffa4bd0824e62464b6e4b4f"
-            }
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "工具报错了，我需要直接告诉用户工具失败了。",
+          "native": {
+            "item": {
+              "type": "thinking",
+              "thinking": "工具报错了，我需要直接告诉用户工具失败了。",
+              "signature": "fe5cb68ab25c4abc8627687790bb997f"
+            },
+            "fingerprint": "7b5344cb745b4999"
           }
-        ]
-      },
-      "id": "Sin3HpQ9wgY7i7dUI276L"
+        }
+      }
     },
     {
-      "text": "工具调用"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
     },
     {
-      "text": "失败"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "工具"
+      }
     },
     {
-      "text": ":天气"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "失败了："
+      }
     },
     {
-      "text": "服务当前"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "天气"
+      }
     },
     {
-      "text": "不可用("
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "服务不可"
+      }
     },
     {
-      "text": "模拟错误"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "用（weather"
+      }
     },
     {
-      "text": ")。"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " service unavailable）。请"
+      }
     },
     {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 314,
-        "output_tokens": 28,
-        "total_tokens": 342,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": "chatcmpl-6d4dcb5e153a0958bc796e2d5675e520-9f8194a0",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "step-5-preview",
-      "raw": {
-        "message_id": "chatcmpl-6d4dcb5e153a0958bc796e2d5675e520-9f8194a0",
-        "model": "step-5-preview",
-        "stop_reason": "end_turn",
-        "usage": {
-          "cache_creation_input_tokens": 0,
-          "cache_read_input_tokens": 0,
-          "input_tokens": 314,
-          "output_tokens": 28
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "稍后"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "重试或"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "换个"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "方式"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "查询。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "工具失败了：天气服务不可用（weather service unavailable）。请稍后重试或换个方式查询。",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "工具失败了：天气服务不可用（weather service unavailable）。请稍后重试或换个方式查询。"
+            },
+            "fingerprint": "a72bfba3ef511456"
+          }
         }
       }
     }
   ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "chatcmpl-bdae8f34de6005fba8bb2f8c776fb5be-8bb35211",
+    "model": "step-5-preview",
+    "usage": {
+      "input_tokens": 326,
+      "output_tokens": 35,
+      "total_tokens": 361,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0
+    }
+  },
+  "rig_events": [],
   "custom_tools": []
 }

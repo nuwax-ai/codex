@@ -3,28 +3,37 @@
   "bridge": "rig",
   "tag": "effort",
   "request": {
-    "include": [],
+    "model": "mimo-v2.6-flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "1+1 等于几？直接回答。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
+        "content": [
+          {
+            "type": "input_text",
+            "text": "1+1 等于几？直接回答。"
+          }
+        ]
       }
     ],
-    "instructions": "You are a helpful assistant.",
-    "model": "mimo-v2.6-flash",
+    "tool_choice": "auto",
     "parallel_tool_calls": true,
     "reasoning": {
       "effort": "low"
     },
     "store": false,
-    "stream": true,
-    "tool_choice": "auto"
+    "include": []
   },
   "events": [
     {
@@ -35,7 +44,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_18d86f8d2ccd63f00",
+        "id": "rigseg_18debda4ea3e2aa81_0",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -50,7 +59,7 @@
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_18d86f8d2dc911a01",
+        "id": "rigseg_18debda4ea3e2aa81_1",
         "role": "assistant",
         "content": []
       }
@@ -61,7 +70,7 @@
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_18d86f8d2ccd63f00",
+        "id": "rigseg_18debda4ea3e2aa81_0",
         "summary": [],
         "content": [
           {
@@ -69,13 +78,13 @@
             "text": "2"
           }
         ],
-        "encrypted_content": "2"
+        "encrypted_content": "codex-rig-reasoning-v2:{\"source\":\"Chat:6e355d96a2d715872fbd646d14b506d0b73375c847f2f1ae669d705973ed5b77\",\"blocks\":[{\"text\":\"2\",\"native\":{\"item\":{\"reasoning_content\":\"2\"},\"fingerprint\":\"df9158a5ba60cbaf\"}}]}"
       }
     },
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_18d86f8d2dc911a01",
+        "id": "rigseg_18debda4ea3e2aa81_1",
         "role": "assistant",
         "content": [
           {
@@ -86,8 +95,11 @@
       }
     },
     {
+      "ServerModel": "mimo-v2.6-flash"
+    },
+    {
       "Completed": {
-        "response_id": "7dbec85d-3135-4463-9c80-55f3285f9bc3_de88f9485b174a90b9aa15cd0be5d68b",
+        "response_id": "5761ac57-25a7-4d72-b5f1-9b55ac70141a_a3e317251a5c4fab85ad387d68e7db15",
         "token_usage": {
           "input_tokens": 29,
           "cached_input_tokens": 0,

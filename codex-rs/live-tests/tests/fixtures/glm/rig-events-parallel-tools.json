@@ -1,289 +1,670 @@
 {
   "vendor": "glm",
   "tag": "parallel-tools",
-  "rig_events": [
+  "items": [
     {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": "The"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " user"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " wants"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " me"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " to"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " check"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " the"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " weather"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " for"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " Beijing"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " and"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " Shanghai"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " using"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " two"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " independent"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " get"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": "_weather"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " tool"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " calls"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": "."
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " Since"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " these"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " are"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " independent"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " calls"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " with"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " no"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " dependencies"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " between"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " them"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": ","
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " I"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " should"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " make"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " both"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " calls"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " in"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " the"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " same"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": " block"
-    },
-    {
-      "id": "swYBVQRRdSmgpsHO0Hs_n",
-      "reasoning": "."
-    },
-    {
-      "text": "我来"
-    },
-    {
-      "text": "分别"
-    },
-    {
-      "text": "查询"
-    },
-    {
-      "text": "北京"
-    },
-    {
-      "text": "和"
-    },
-    {
-      "text": "上海的"
-    },
-    {
-      "text": "天气"
-    },
-    {
-      "text": "："
-    },
-    {
-      "internal_call_id": "6ABpU0BAPCVYGQvR0ns5u",
-      "content": {
-        "Name": "get_weather"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
       }
     },
     {
-      "internal_call_id": "6ABpU0BAPCVYGQvR0ns5u",
-      "content": {
-        "Delta": "{\"city\":\"北京\"}"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The"
       }
     },
     {
-      "internal_call_id": "BWZEB8-4xSAsbtJX5_mTq",
-      "content": {
-        "Name": "get_weather"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " user"
       }
     },
     {
-      "internal_call_id": "BWZEB8-4xSAsbtJX5_mTq",
-      "content": {
-        "Delta": "{\"city\":\"上海\"}"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " wants"
       }
     },
     {
-      "tool_call": {
-        "id": "call_6773414dcea947c5b59a42e0",
-        "provider": {
-          "call_id": "call_6773414dcea947c5b59a42e0"
-        },
-        "function": {
-          "name": "get_weather",
-          "arguments": {
-            "city": "北京"
-          }
-        },
-        "signature": null,
-        "additional_params": null
-      },
-      "internal_call_id": "6ABpU0BAPCVYGQvR0ns5u"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " me"
+      }
     },
     {
-      "tool_call": {
-        "id": "call_de9db03e6c604bacb2399f9b",
-        "provider": {
-          "call_id": "call_de9db03e6c604bacb2399f9b"
-        },
-        "function": {
-          "name": "get_weather",
-          "arguments": {
-            "city": "上海"
-          }
-        },
-        "signature": null,
-        "additional_params": null
-      },
-      "internal_call_id": "BWZEB8-4xSAsbtJX5_mTq"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " to"
+      }
     },
     {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 212,
-        "output_tokens": 71,
-        "total_tokens": 283,
-        "cached_input_tokens": 192,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 41
-      },
-      "finish_reason": "tool_calls",
-      "message_id": null,
-      "response_id": "20260925103155dbb76f23da564ca4",
-      "provider": "openai",
-      "model": "glm-5.3-flash",
-      "raw": {
-        "additional_params": {
-          "created": 1790303515,
-          "object": "chat.completion.chunk"
-        },
-        "finish_reason": "tool_calls",
-        "model": "glm-5.3-flash",
-        "response_id": "20260925103155dbb76f23da564ca4",
-        "usage": {
-          "completion_tokens": 71,
-          "completion_tokens_details": {
-            "reasoning_tokens": 41
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " query"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " weather"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " for"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Beijing"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " and"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Shanghai"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " using"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " two"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " independent"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " get"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "_weather"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " tool"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " calls"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "."
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Since"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " these"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " are"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " independent"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " calls"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " with"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " no"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " dependencies"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " between"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " them"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " I"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " should"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " make"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " both"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " calls"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " same"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " function"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "_calls"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " block"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "."
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "好的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "我将"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "分别"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "查询"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "北京"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "和"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "上海的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "天气"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "这两个"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "查询"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "相互"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "独立"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "我会"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "同时"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "发起"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "两次"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "调用"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "："
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "好的，我将分别查询北京和上海的天气。这两个查询相互独立，我会同时发起两次调用："
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 2,
+        "kind": "tool_call",
+        "name": "get_weather"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "{\"city\":\"北京\"}"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 3,
+        "kind": "tool_call",
+        "name": "get_weather"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 3,
+        "json": "{\"city\":\"上海\"}"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 2,
+        "content": {
+          "type": "toolcall",
+          "id": {
+            "provider": "call_6bce301a51404bddbbaa20ab"
           },
-          "prompt_tokens": 212,
-          "prompt_tokens_details": {
-            "cached_tokens": 192
+          "function": {
+            "name": "get_weather",
+            "arguments": {
+              "city": "北京"
+            }
           },
-          "total_tokens": 283
+          "native": {
+            "item": {
+              "id": "call_6bce301a51404bddbbaa20ab",
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "arguments": "{\"city\":\"北京\"}"
+              }
+            },
+            "fingerprint": "849e802fd9a3019e"
+          }
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 3,
+        "content": {
+          "type": "toolcall",
+          "id": {
+            "provider": "call_93410c88a2554b32b22c528f"
+          },
+          "function": {
+            "name": "get_weather",
+            "arguments": {
+              "city": "上海"
+            }
+          },
+          "native": {
+            "item": {
+              "id": "call_93410c88a2554b32b22c528f",
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "arguments": "{\"city\":\"上海\"}"
+              }
+            },
+            "fingerprint": "0847c16f61f45372"
+          }
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "The user wants me to query the weather for Beijing and Shanghai using two independent get_weather tool calls. Since these are independent calls with no dependencies between them, I should make both calls in the same function_calls block.",
+          "native": {
+            "item": {
+              "reasoning_content": "The user wants me to query the weather for Beijing and Shanghai using two independent get_weather tool calls. Since these are independent calls with no dependencies between them, I should make both calls in the same function_calls block."
+            },
+            "fingerprint": "f3c9eeb871966012"
+          }
         }
       }
     }
-  ]
+  ],
+  "terminal": {
+    "finish_reason": "tool_calls",
+    "response_id": "202610152330248f8619416878493a",
+    "model": "glm-5.3-flash",
+    "usage": {
+      "input_tokens": 213,
+      "output_tokens": 86,
+      "total_tokens": 299,
+      "cached_input_tokens": 0,
+      "reasoning_tokens": 43
+    }
+  },
+  "rig_events": [],
+  "custom_tools": []
 }

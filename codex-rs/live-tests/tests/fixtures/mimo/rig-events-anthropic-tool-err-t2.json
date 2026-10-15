@@ -1,97 +1,159 @@
 {
   "vendor": "mimo",
   "tag": "anthropic-tool-err-t2",
-  "rig_events": [
+  "items": [
     {
-      "id": "etCcYPeC5mbSXv3U99J5k",
-      "reasoning": "The tool returned an error. The"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "etCcYPeC5mbSXv3U99J5k",
-      "reasoning": " user said"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The tool failed"
+      }
     },
     {
-      "id": "etCcYPeC5mbSXv3U99J5k",
-      "reasoning": " if"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ". Tell"
+      }
     },
     {
-      "id": "etCcYPeC5mbSXv3U99J5k",
-      "reasoning": " the tool fails, directly"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the user directly."
+      }
     },
     {
-      "id": "etCcYPeC5mbSXv3U99J5k",
-      "reasoning": " tell them it"
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "The tool failed. Tell the user directly."
+        }
+      }
     },
     {
-      "id": "etCcYPeC5mbSXv3U99J5k",
-      "reasoning": " failed."
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
     },
     {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "The tool returned an error. The user said if the tool fails, directly tell them it failed."
-            }
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "工具调"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "用失败了："
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "天气"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "服务当前"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "不可用（weather service unavailable），无法"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "获取北京天气"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "。请"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "稍后再"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "试。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "工具调用失败了：天气服务当前不可用（weather service unavailable），无法获取北京天气。请稍后再试。",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "工具调用失败了：天气服务当前不可用（weather service unavailable），无法获取北京天气。请稍后再试。"
+            },
+            "fingerprint": "bb76fcf6575e5b37"
           }
-        ]
-      },
-      "id": "etCcYPeC5mbSXv3U99J5k"
-    },
-    {
-      "text": "工具"
-    },
-    {
-      "text": "调"
-    },
-    {
-      "text": "用失败了,"
-    },
-    {
-      "text": "天气服务"
-    },
-    {
-      "text": "当前"
-    },
-    {
-      "text": "不可用,"
-    },
-    {
-      "text": "无法查询北京"
-    },
-    {
-      "text": "天气。"
-    },
-    {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 56,
-        "output_tokens": 40,
-        "total_tokens": 224,
-        "cached_input_tokens": 128,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": "msg_e2fd5dc059774661a3ec3519",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "mimo-v2.6-flash",
-      "raw": {
-        "message_id": "msg_e2fd5dc059774661a3ec3519",
-        "model": "mimo-v2.6-flash",
-        "stop_reason": "end_turn",
-        "usage": {
-          "cache_creation_input_tokens": null,
-          "cache_read_input_tokens": 128,
-          "input_tokens": 56,
-          "output_tokens": 40
         }
       }
     }
   ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "msg_f69442c77f4a422eb4c9afa7",
+    "model": "mimo-v2.6-flash",
+    "usage": {
+      "input_tokens": 186,
+      "output_tokens": 38,
+      "total_tokens": 224
+    }
+  },
+  "rig_events": [],
   "custom_tools": []
 }

@@ -1,457 +1,1544 @@
 {
   "vendor": "glm",
   "tag": "anthropic",
-  "rig_events": [
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": "The"
+  "items": [
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " user"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " is"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " user"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " asking"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " is"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " me"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " asking"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " to"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " me"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " explain"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " to"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " explain"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " idea"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " of"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " idea"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " binary"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " of"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " search"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " binary"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " ("
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " search"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": "二"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": "分"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " one"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": "查找"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " sentence"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": ")"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " in"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " one"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Chinese"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " sentence"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ".\n\n"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Binary"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " in"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " search"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " Chinese"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": ".\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " The"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": "Binary"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " core"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " search"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " idea"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": ":"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " is"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " repeatedly"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " to"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " divide"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " repeatedly"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " divide"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " sorted"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " search"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " search"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " range"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " interval"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " in"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " half"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " half"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " by"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " by"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " comparing"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " comparing"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " target"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " target"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " with"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " value"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " with"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " middle"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " element"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " middle"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " element"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " disc"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " of"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": "arding"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " a"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " sorted"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " half"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " array"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " that"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " cannot"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " narrowing"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " contain"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " down"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " to"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " target"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " one"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " half"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " until"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " where"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " target"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " target"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " is"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " could"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " found"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " be"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " or"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " until"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " range"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " found"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " is"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " or"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " empty"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": ".\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " interval"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": "Let"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " is"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " me"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " empty"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " write"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ".\n\n"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " this"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Let"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " in"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " me"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " one"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " craft"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " concise"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " a"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " Chinese"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " concise"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": " sentence"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " one"
+      }
     },
-    {
-      "id": "18Z4kpI9xboW4p823NiQh",
-      "reasoning": "."
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-s"
+      }
     },
-    {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "The user is asking me to explain the idea of binary search (二分查找) in one sentence, in Chinese.\n\nBinary search: repeatedly divide the sorted search range in half by comparing the target with the middle element, discarding the half that cannot contain the target, until the target is found or the range is empty.\n\nLet me write this in one concise Chinese sentence.",
-              "signature": "de9e9ce7667b4fc2a1c78cc4"
-            }
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "entence"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " answer"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Chinese"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "二"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "分"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "查找"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "的思想"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "是"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "："
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "在一个"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "有序"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "数组"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "中"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "每次"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "将"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "目标"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "值"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "与"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "中间"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "元素"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "比较"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "从而"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "排除"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "一半"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "搜索"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "范围"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "不断"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "将"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "查找"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "区间"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "折"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "半"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "缩小"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "直到"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "找到"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "目标"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "或"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "区间"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "为"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "空"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "That"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "'s"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " one"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " sentence"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "."
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Keep"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " it"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " brief"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " since"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " request"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " is"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " for"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " one"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " sentence"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "."
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "The user is asking me to explain the idea of binary search in one sentence, in Chinese.\n\nBinary search: The core idea is to repeatedly divide the search interval in half by comparing the target value with the middle element of a sorted array, narrowing down to one half where the target could be, until found or the interval is empty.\n\nLet me craft a concise one-sentence answer in Chinese:\n\n二分查找的思想是：在一个有序数组中，每次将目标值与中间元素比较，从而排除一半的搜索范围，不断将查找区间折半缩小，直到找到目标或区间为空。\n\nThat's one sentence. Keep it brief since the request is for one sentence.",
+          "native": {
+            "item": {
+              "type": "thinking",
+              "thinking": "The user is asking me to explain the idea of binary search in one sentence, in Chinese.\n\nBinary search: The core idea is to repeatedly divide the search interval in half by comparing the target value with the middle element of a sorted array, narrowing down to one half where the target could be, until found or the interval is empty.\n\nLet me craft a concise one-sentence answer in Chinese:\n\n二分查找的思想是：在一个有序数组中，每次将目标值与中间元素比较，从而排除一半的搜索范围，不断将查找区间折半缩小，直到找到目标或区间为空。\n\nThat's one sentence. Keep it brief since the request is for one sentence.",
+              "signature": "6e7cea4cb28e45718c08f34e"
+            },
+            "fingerprint": "f3b6793daaafce23"
           }
-        ]
-      },
-      "id": "18Z4kpI9xboW4p823NiQh"
+        }
+      }
     },
     {
-      "text": "二"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
     },
     {
-      "text": "分"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "二"
+      }
     },
     {
-      "text": "查找"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "分"
+      }
     },
     {
-      "text": "的思想"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "查找"
+      }
     },
     {
-      "text": "是"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "的思想"
+      }
     },
     {
-      "text": "："
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "是"
+      }
     },
     {
-      "text": "在"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "："
+      }
     },
     {
-      "text": "有序"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "在一个"
+      }
     },
     {
-      "text": "数组"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**"
+      }
     },
     {
-      "text": "中"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "有序"
+      }
     },
     {
-      "text": "，"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "**"
+      }
     },
     {
-      "text": "每次"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "序列"
+      }
     },
     {
-      "text": "将"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "中"
+      }
     },
     {
-      "text": "查找"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，"
+      }
     },
     {
-      "text": "范围"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "每次"
+      }
     },
     {
-      "text": "与"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "将"
+      }
     },
     {
-      "text": "中间"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "目标"
+      }
     },
     {
-      "text": "元素"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "值"
+      }
     },
     {
-      "text": "比较"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "与"
+      }
     },
     {
-      "text": "后"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "区间"
+      }
     },
     {
-      "text": "缩减"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "中间"
+      }
     },
     {
-      "text": "一半"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "元素"
+      }
     },
     {
-      "text": "，"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "比较"
+      }
     },
     {
-      "text": "从而"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，"
+      }
     },
     {
-      "text": "快速"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "根据"
+      }
     },
     {
-      "text": "逼近"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "比较"
+      }
     },
     {
-      "text": "目标"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "结果"
+      }
     },
     {
-      "text": "位置"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "排除"
+      }
     },
     {
-      "text": "，"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "掉"
+      }
     },
     {
-      "text": "直到"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "一半"
+      }
     },
     {
-      "text": "找到"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "的"
+      }
     },
     {
-      "text": "目标"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "搜索"
+      }
     },
     {
-      "text": "或"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "范围"
+      }
     },
     {
-      "text": "确定"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，"
+      }
     },
     {
-      "text": "目标"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "不断"
+      }
     },
     {
-      "text": "不存在。"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "将"
+      }
     },
     {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 31,
-        "output_tokens": 114,
-        "total_tokens": 145,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": "msg_2026092510313116dd8cb2b0894c1a",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "GLM-5.3-Flash",
-      "raw": {
-        "message_id": "msg_2026092510313116dd8cb2b0894c1a",
-        "model": "GLM-5.3-Flash",
-        "stop_reason": "end_turn",
-        "usage": {
-          "cache_creation_input_tokens": null,
-          "cache_read_input_tokens": 0,
-          "input_tokens": 31,
-          "output_tokens": 114
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "查找"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "区间"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "折"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "半"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "缩小"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "直到"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "找到"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "目标"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "值"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "或区间为空。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "二分查找的思想是：在一个**有序**序列中，每次将目标值与区间中间元素比较，根据比较结果排除掉一半的搜索范围，不断将查找区间折半缩小，直到找到目标值或区间为空。",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "二分查找的思想是：在一个**有序**序列中，每次将目标值与区间中间元素比较，根据比较结果排除掉一半的搜索范围，不断将查找区间折半缩小，直到找到目标值或区间为空。"
+            },
+            "fingerprint": "3d3370ebd0120d39"
+          }
         }
       }
     }
-  ]
+  ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "msg_202610152328547b4f9dbf4886489b",
+    "model": "GLM-5.3-Flash",
+    "usage": {
+      "input_tokens": 31,
+      "output_tokens": 190,
+      "total_tokens": 221,
+      "cached_input_tokens": 0
+    }
+  },
+  "rig_events": [],
+  "custom_tools": []
 }

@@ -3,57 +3,79 @@
   "bridge": "rig",
   "tag": "anthropic-tool-err-t2",
   "request": {
-    "include": [],
+    "model": "mimo-v2.6-flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "请调用 get_weather 查询北京天气;如果工具报错,请直接告诉用户工具失败了。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant."
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "请调用 get_weather 查询北京天气;如果工具报错,请直接告诉用户工具失败了。"
+          }
+        ]
+      },
+      {
+        "type": "reasoning",
+        "id": "rigseg_18debd9c9164d3801_0",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user wants to call get_weather for Beijing. Let's do it."
           }
         ],
-        "role": "user",
-        "type": "message"
+        "encrypted_content": "codex-rig-reasoning-v2:{\"source\":\"Anthropic:16d021f3597d526e28b90916e1dea23457c2f3f007407eb916878dacaffe4968\",\"blocks\":[{\"text\":\"The user wants to call get_weather for Beijing. Let's do it.\"}]}"
       },
       {
-        "arguments": "{\"city\": \"北京\"}",
-        "call_id": "call_b48f496a42f1403ea3a6ae47",
+        "type": "function_call",
+        "id": "rigseg_18debd9c9164d3801_1",
         "name": "get_weather",
-        "type": "function_call"
+        "arguments": "{\"city\": \"北京\"}",
+        "call_id": "call_cbac69b5093842cf93d09880"
       },
       {
-        "call_id": "call_b48f496a42f1403ea3a6ae47",
-        "output": "{\"error\":\"weather service unavailable (simulated)\"}",
-        "type": "function_call_output"
+        "type": "function_call_output",
+        "call_id": "call_cbac69b5093842cf93d09880",
+        "output": "{\"error\":\"weather service unavailable (simulated)\"}"
       }
     ],
-    "instructions": "You are a helpful assistant.",
-    "model": "mimo-v2.6-flash",
-    "parallel_tool_calls": false,
-    "reasoning": null,
-    "store": false,
-    "stream": true,
-    "tool_choice": "auto",
     "tools": [
       {
-        "description": "Get the current weather for a city",
+        "type": "function",
         "name": "get_weather",
+        "description": "Get the current weather for a city",
         "parameters": {
+          "type": "object",
           "properties": {
             "city": {
-              "description": "City name, e.g. 北京",
-              "type": "string"
+              "type": "string",
+              "description": "City name, e.g. 北京"
             }
           },
           "required": [
             "city"
-          ],
-          "type": "object"
+          ]
         },
-        "strict": false,
-        "type": "function"
+        "strict": false
       }
-    ]
+    ],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "include": []
   },
   "events": [
     {
@@ -64,7 +86,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_18d91089f032d9181",
+        "id": "rigseg_18debd9df8736ba83_0",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -72,95 +94,80 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "The tool returned an error. The",
+        "delta": "The tool failed",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " user said",
+        "delta": ". Tell",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " if",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " the tool fails, directly",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " tell them it",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " failed.",
+        "delta": " the user directly.",
         "content_index": 0
       }
     },
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_18d91089f032d9181",
+        "id": "rigseg_18debd9df8736ba83_0",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The tool returned an error. The user said if the tool fails, directly tell them it failed."
+            "text": "The tool failed. Tell the user directly."
           }
         ],
-        "encrypted_content": "codex-rig-reasoning-v1:{\"source\":\"Anthropic:1d782f075448499f964a1fd0c6ec877184294fe44f63fcd82247102c381f4a5c\",\"blocks\":[{\"id\":null,\"content\":[{\"type\":\"text\",\"content\":{\"text\":\"The tool returned an error. The user said if the tool fails, directly tell them it failed.\"}}]}]}"
+        "encrypted_content": "codex-rig-reasoning-v2:{\"source\":\"Anthropic:5dbd163d35c2f41d0ba4833cbcf72b08d3b27d79801271abc598fa6273b66da1\",\"blocks\":[{\"text\":\"The tool failed. Tell the user directly.\"}]}"
       }
     },
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_18d91089ffed56582",
+        "id": "rigseg_18debd9df8736ba83_1",
         "role": "assistant",
         "content": []
       }
     },
     {
-      "OutputTextDelta": "工具"
+      "OutputTextDelta": "工具调"
     },
     {
-      "OutputTextDelta": "调"
+      "OutputTextDelta": "用失败了："
     },
     {
-      "OutputTextDelta": "用失败了,"
+      "OutputTextDelta": "天气"
     },
     {
-      "OutputTextDelta": "天气服务"
+      "OutputTextDelta": "服务当前"
     },
     {
-      "OutputTextDelta": "当前"
+      "OutputTextDelta": "不可用（weather service unavailable），无法"
     },
     {
-      "OutputTextDelta": "不可用,"
+      "OutputTextDelta": "获取北京天气"
     },
     {
-      "OutputTextDelta": "无法查询北京"
+      "OutputTextDelta": "。请"
     },
     {
-      "OutputTextDelta": "天气。"
+      "OutputTextDelta": "稍后再"
+    },
+    {
+      "OutputTextDelta": "试。"
     },
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_18d91089ffed56582",
+        "id": "rigseg_18debd9df8736ba83_1",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "工具调用失败了,天气服务当前不可用,无法查询北京天气。"
+            "text": "工具调用失败了：天气服务当前不可用（weather service unavailable），无法获取北京天气。请稍后再试。"
           }
         ]
       }
@@ -170,12 +177,12 @@
     },
     {
       "Completed": {
-        "response_id": "msg_e2fd5dc059774661a3ec3519",
+        "response_id": "msg_f69442c77f4a422eb4c9afa7",
         "token_usage": {
-          "input_tokens": 184,
-          "cached_input_tokens": 128,
+          "input_tokens": 186,
+          "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 40,
+          "output_tokens": 38,
           "reasoning_output_tokens": 0,
           "total_tokens": 224
         },

@@ -1,0 +1,31 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://token-plan-cn.xiaomimimo.com/anthropic/v1/messages",
+      "body_raw": "{\"model\":\"mimo-v2.6-flash\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"用一句话说明二分查找的思想。\"}]}],\"max_tokens\":16384,\"system\":[{\"type\":\"text\",\"text\":\"You are a helpful assistant. Answer in Chinese.\"}],\"stream\":true}",
+      "body": {
+        "model": "mimo-v2.6-flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "用一句话说明二分查找的思想。"
+              }
+            ]
+          }
+        ],
+        "max_tokens": 16384,
+        "system": [
+          {
+            "type": "text",
+            "text": "You are a helpful assistant. Answer in Chinese."
+          }
+        ],
+        "stream": true
+      }
+    }
+  ]
+}

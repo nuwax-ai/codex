@@ -1,264 +1,357 @@
 {
   "vendor": "glm",
   "tag": "anthropic-tool-t2",
-  "rig_events": [
+  "items": [
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": "The"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "text"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": " tool"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "北京"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": " returned"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "今天的"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": " the"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "天气"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": " weather"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "情况"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": " for"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "如下"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": " Beijing"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "：\n\n"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": ":"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "-"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": " sunny"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": " **"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": ","
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "天气"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": " "
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "状况"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": "23"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "**"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": "°C"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "："
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": "."
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "晴"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": " Let"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": " "
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": " me"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "☀"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": " answer"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "️"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": " the"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "\n"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": " user"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "-"
+      }
     },
     {
-      "id": "LLgeWdfzybv2hQl-7Lrzf",
-      "reasoning": "."
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": " **"
+      }
     },
     {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "The tool returned the weather for Beijing: sunny, 23°C. Let me answer the user.",
-              "signature": "294107d6964947db9c9693b4"
-            }
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "气温"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "**"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "："
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "23"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "°C"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "今天"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "天气"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "晴"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "朗"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "气温"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "舒适"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "宜"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "人"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "很适合"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "外出"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "活动"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "！"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "text",
+          "text": "北京今天的天气情况如下：\n\n- **天气状况**：晴 ☀️\n- **气温**：23°C\n\n今天天气晴朗，气温舒适宜人，很适合外出活动！",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "北京今天的天气情况如下：\n\n- **天气状况**：晴 ☀️\n- **气温**：23°C\n\n今天天气晴朗，气温舒适宜人，很适合外出活动！"
+            },
+            "fingerprint": "519f494c9cdf676b"
           }
-        ]
-      },
-      "id": "LLgeWdfzybv2hQl-7Lrzf"
-    },
-    {
-      "text": "北京"
-    },
-    {
-      "text": "今天的"
-    },
-    {
-      "text": "天气"
-    },
-    {
-      "text": "情况"
-    },
-    {
-      "text": "如下"
-    },
-    {
-      "text": "：\n\n"
-    },
-    {
-      "text": "-"
-    },
-    {
-      "text": " **"
-    },
-    {
-      "text": "天气"
-    },
-    {
-      "text": "状况"
-    },
-    {
-      "text": "**"
-    },
-    {
-      "text": "："
-    },
-    {
-      "text": "晴"
-    },
-    {
-      "text": " "
-    },
-    {
-      "text": "☀"
-    },
-    {
-      "text": "️"
-    },
-    {
-      "text": "\n"
-    },
-    {
-      "text": "-"
-    },
-    {
-      "text": " **"
-    },
-    {
-      "text": "气温"
-    },
-    {
-      "text": "**"
-    },
-    {
-      "text": "："
-    },
-    {
-      "text": "23"
-    },
-    {
-      "text": "°C"
-    },
-    {
-      "text": "\n\n"
-    },
-    {
-      "text": "今天"
-    },
-    {
-      "text": "北京"
-    },
-    {
-      "text": "天气"
-    },
-    {
-      "text": "晴"
-    },
-    {
-      "text": "朗"
-    },
-    {
-      "text": "，"
-    },
-    {
-      "text": "温度"
-    },
-    {
-      "text": "适宜"
-    },
-    {
-      "text": "，"
-    },
-    {
-      "text": "很适合"
-    },
-    {
-      "text": "外出"
-    },
-    {
-      "text": "活动"
-    },
-    {
-      "text": "。"
-    },
-    {
-      "text": "需要"
-    },
-    {
-      "text": "查询"
-    },
-    {
-      "text": "其他"
-    },
-    {
-      "text": "城市的"
-    },
-    {
-      "text": "天气"
-    },
-    {
-      "text": "吗"
-    },
-    {
-      "text": "？"
-    },
-    {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 224,
-        "output_tokens": 67,
-        "total_tokens": 291,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": "msg_20260925103141f3bc69953d2c4eb0",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "GLM-5.3-Flash",
-      "raw": {
-        "message_id": "msg_20260925103141f3bc69953d2c4eb0",
-        "model": "GLM-5.3-Flash",
-        "stop_reason": "end_turn",
-        "usage": {
-          "cache_creation_input_tokens": null,
-          "cache_read_input_tokens": 0,
-          "input_tokens": 224,
-          "output_tokens": 67
         }
       }
     }
-  ]
+  ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "msg_20261015232946a66dae1567684bc6",
+    "model": "GLM-5.3-Flash",
+    "usage": {
+      "input_tokens": 225,
+      "output_tokens": 41,
+      "total_tokens": 266,
+      "cached_input_tokens": 0
+    }
+  },
+  "rig_events": [],
+  "custom_tools": []
 }

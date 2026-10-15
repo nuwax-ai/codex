@@ -3,81 +3,95 @@
   "bridge": "rig",
   "tag": "responses-tool-t2",
   "request": {
-    "include": [],
+    "model": "GLM-5.3-Flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
-      },
-      {
         "content": [
           {
-            "text": "The user is asking about the weather in Shanghai (上海) today. They explicitly asked me to call the get_weather tool. Let me do that.",
-            "type": "reasoning_text"
+            "type": "input_text",
+            "text": "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。"
+          }
+        ]
+      },
+      {
+        "type": "reasoning",
+        "id": "rs_resp_20261015233100de0f8b744f344a42",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user is asking about the weather in Shanghai today, and explicitly asks me to call the get_weather tool rather than making up an answer. I should call the tool with the city parameter \"上海\"."
           }
         ],
-        "encrypted_content": null,
-        "id": "rs_resp_2026092801145372af02a600e9474f",
-        "summary": [],
-        "type": "reasoning"
+        "encrypted_content": null
       },
       {
-        "arguments": "{\"city\":\"上海\"}",
-        "call_id": "call_d38d5b5ffec34bae97764e9e",
-        "id": "fc_call_d38d5b5ffec34bae97764e9e",
+        "type": "function_call",
+        "status": "completed",
+        "id": "fc_call_df2fd73c593e4ddc9f87fcc5",
         "name": "get_weather",
-        "type": "function_call"
+        "arguments": "{\"city\":\"上海\"}",
+        "call_id": "call_df2fd73c593e4ddc9f87fcc5"
       },
       {
-        "call_id": "call_d38d5b5ffec34bae97764e9e",
-        "output": "{\"city\":\"上海\",\"condition\":\"多云\",\"temp_c\":26}",
-        "type": "function_call_output"
+        "type": "function_call_output",
+        "call_id": "call_df2fd73c593e4ddc9f87fcc5",
+        "output": "{\"city\":\"上海\",\"condition\":\"多云\",\"temp_c\":26}"
       }
     ],
-    "instructions": "You are a helpful assistant.",
-    "model": "GLM-5.3-Flash",
-    "parallel_tool_calls": false,
-    "reasoning": null,
-    "store": false,
-    "stream": true,
-    "tool_choice": "auto",
     "tools": [
       {
-        "description": "Get the current weather for a city",
+        "type": "function",
         "name": "get_weather",
+        "description": "Get the current weather for a city",
         "parameters": {
+          "type": "object",
           "properties": {
             "city": {
-              "description": "City name, e.g. 北京",
-              "type": "string"
+              "type": "string",
+              "description": "City name, e.g. 北京"
             }
           },
           "required": [
             "city"
-          ],
-          "type": "object"
+          ]
         },
-        "strict": false,
-        "type": "function"
+        "strict": false
       }
-    ]
+    ],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "include": []
   },
   "events": [
     {
+      "ServerModel": "GLM-5.3-Flash"
+    },
+    {
       "Created": {
-        "response_id": "resp_20260928011457e72bb515a9a74ea1"
+        "response_id": "resp_20261015233105f1db6999b89b4e54"
       }
     },
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "msg_resp_20260928011457e72bb515a9a74ea1",
+        "status": "in_progress",
+        "id": "msg_resp_20261015233105f1db6999b89b4e54",
         "role": "assistant",
         "content": []
       }
@@ -179,7 +193,10 @@
       "OutputTextDelta": "天气"
     },
     {
-      "OutputTextDelta": "还不错"
+      "OutputTextDelta": "比较"
+    },
+    {
+      "OutputTextDelta": "舒适"
     },
     {
       "OutputTextDelta": "，"
@@ -191,104 +208,70 @@
       "OutputTextDelta": "天气"
     },
     {
+      "OutputTextDelta": "不"
+    },
+    {
+      "OutputTextDelta": "冷"
+    },
+    {
+      "OutputTextDelta": "不"
+    },
+    {
+      "OutputTextDelta": "热"
+    },
+    {
       "OutputTextDelta": "，"
     },
     {
-      "OutputTextDelta": "气温"
-    },
-    {
-      "OutputTextDelta": "也比较"
-    },
-    {
-      "OutputTextDelta": "舒适"
-    },
-    {
-      "OutputTextDelta": "宜"
-    },
-    {
-      "OutputTextDelta": "人"
-    },
-    {
-      "OutputTextDelta": "。"
-    },
-    {
-      "OutputTextDelta": "如果"
+      "OutputTextDelta": "适合"
     },
     {
       "OutputTextDelta": "外出"
     },
     {
-      "OutputTextDelta": "的话"
+      "OutputTextDelta": "活动"
     },
     {
-      "OutputTextDelta": "，"
-    },
-    {
-      "OutputTextDelta": "建议"
-    },
-    {
-      "OutputTextDelta": "可以"
-    },
-    {
-      "OutputTextDelta": "带"
-    },
-    {
-      "OutputTextDelta": "一件"
-    },
-    {
-      "OutputTextDelta": "薄"
-    },
-    {
-      "OutputTextDelta": "外套"
-    },
-    {
-      "OutputTextDelta": "以"
-    },
-    {
-      "OutputTextDelta": "备"
-    },
-    {
-      "OutputTextDelta": "温度"
-    },
-    {
-      "OutputTextDelta": "变化。"
+      "OutputTextDelta": "。"
     },
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "msg_resp_20260928011457e72bb515a9a74ea1",
+        "status": "completed",
+        "id": "msg_resp_20261015233105f1db6999b89b4e54",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "根据查询结果，上海今天的天气情况如下：\n\n- **天气状况**：多云 ☁️\n- **气温**：26°C\n\n今天上海天气还不错，多云天气，气温也比较舒适宜人。如果外出的话，建议可以带一件薄外套以备温度变化。"
+            "text": "根据查询结果，上海今天的天气情况如下：\n\n- **天气状况**：多云 ☁️\n- **气温**：26°C\n\n今天上海天气比较舒适，多云天气不冷不热，适合外出活动。",
+            "annotations": []
           }
         ]
       }
     },
     {
       "Completed": {
-        "response_id": "resp_20260928011457e72bb515a9a74ea1",
+        "response_id": "resp_20261015233105f1db6999b89b4e54",
         "token_usage": {
-          "input_tokens": 254,
+          "input_tokens": 264,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 60,
+          "output_tokens": 48,
           "reasoning_output_tokens": 0,
-          "total_tokens": 314
+          "total_tokens": 312
         },
         "usage_metadata": {
           "amount": null,
           "metadata": {
-            "input_tokens": 254,
+            "input_tokens": 264,
             "input_tokens_details": {
               "cached_tokens": 0
             },
-            "output_tokens": 60,
+            "output_tokens": 48,
             "output_tokens_details": {
               "reasoning_tokens": 0
             },
-            "total_tokens": 314
+            "total_tokens": 312
           }
         },
         "end_turn": null

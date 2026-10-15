@@ -1,0 +1,64 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://open.bigmodel.cn/api/v1/responses",
+      "body_raw": "{\"model\":\"GLM-5.3-Flash\",\"stream\":true,\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。\"}]},{\"type\":\"reasoning\",\"id\":\"rigseg_18debdaa73fb92a80_0\",\"summary\":[],\"content\":[{\"type\":\"reasoning_text\",\"text\":\"The user is asking about the weather in Beijing today. They explicitly want me to call the get_weather tool. Let me do that.\"}],\"encrypted_content\":null},{\"type\":\"function_call\",\"id\":\"rigseg_18debdaa73fb92a80_1\",\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"北京\\\"}\",\"call_id\":\"call_8dbec5c7428d48098810fc0a\"},{\"type\":\"function_call_output\",\"call_id\":\"call_8dbec5c7428d48098810fc0a\",\"output\":\"{\\\"city\\\":\\\"北京\\\",\\\"condition\\\":\\\"晴\\\",\\\"temp_c\\\":22,\\\"report_token\\\":\\\"XPROTO_glm_7d31a94e\\\"}\"},{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"请逐字复制工具结果中的 report_token 字段，只输出该字段的值。\"}]}],\"tool_choice\":\"auto\",\"parallel_tool_calls\":true,\"reasoning\":null,\"store\":false,\"include\":[]}",
+      "body": {
+        "model": "GLM-5.3-Flash",
+        "stream": true,
+        "input": [
+          {
+            "type": "message",
+            "role": "user",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。"
+              }
+            ]
+          },
+          {
+            "type": "reasoning",
+            "id": "rigseg_18debdaa73fb92a80_0",
+            "summary": [],
+            "content": [
+              {
+                "type": "reasoning_text",
+                "text": "The user is asking about the weather in Beijing today. They explicitly want me to call the get_weather tool. Let me do that."
+              }
+            ],
+            "encrypted_content": null
+          },
+          {
+            "type": "function_call",
+            "id": "rigseg_18debdaa73fb92a80_1",
+            "name": "get_weather",
+            "arguments": "{\"city\":\"北京\"}",
+            "call_id": "call_8dbec5c7428d48098810fc0a"
+          },
+          {
+            "type": "function_call_output",
+            "call_id": "call_8dbec5c7428d48098810fc0a",
+            "output": "{\"city\":\"北京\",\"condition\":\"晴\",\"temp_c\":22,\"report_token\":\"XPROTO_glm_7d31a94e\"}"
+          },
+          {
+            "type": "message",
+            "role": "user",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "请逐字复制工具结果中的 report_token 字段，只输出该字段的值。"
+              }
+            ]
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": true,
+        "reasoning": null,
+        "store": false,
+        "include": []
+      }
+    }
+  ]
+}

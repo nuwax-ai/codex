@@ -3,46 +3,55 @@
   "bridge": "rig",
   "tag": "anthropic-tool-err-t1",
   "request": {
-    "include": [],
+    "model": "GLM-5.3-Flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "请调用 get_weather 查询北京天气;如果工具报错,请直接告诉用户工具失败了。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
+        "content": [
+          {
+            "type": "input_text",
+            "text": "请调用 get_weather 查询北京天气;如果工具报错,请直接告诉用户工具失败了。"
+          }
+        ]
       }
     ],
-    "instructions": "You are a helpful assistant.",
-    "model": "GLM-5.3-Flash",
-    "parallel_tool_calls": false,
-    "reasoning": null,
-    "store": false,
-    "stream": true,
-    "tool_choice": "auto",
     "tools": [
       {
-        "description": "Get the current weather for a city",
+        "type": "function",
         "name": "get_weather",
+        "description": "Get the current weather for a city",
         "parameters": {
+          "type": "object",
           "properties": {
             "city": {
-              "description": "City name, e.g. 北京",
-              "type": "string"
+              "type": "string",
+              "description": "City name, e.g. 北京"
             }
           },
           "required": [
             "city"
-          ],
-          "type": "object"
+          ]
         },
-        "strict": false,
-        "type": "function"
+        "strict": false
       }
-    ]
+    ],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "include": []
   },
   "events": [
     {
@@ -53,7 +62,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_18d9108799f49c280",
+        "id": "rigseg_18debd9a99f051e81_0",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -139,6 +148,102 @@
     },
     {
       "ReasoningContentDelta": {
+        "delta": " If",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " tool",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " errors",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ",",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " I",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " should",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " tell",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " user",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " directly",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " that",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " tool",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " failed",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
         "delta": " Let",
         "content_index": 0
       }
@@ -151,13 +256,19 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " do",
+        "delta": " call",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " that",
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " tool",
         "content_index": 0
       }
     },
@@ -170,40 +281,40 @@
     {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rsn_18d9108799f49c280",
+        "id": "rigseg_18debd9a99f051e81_0",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The user wants me to call get_weather for Beijing (北京). Let me do that."
+            "text": "The user wants me to call get_weather for Beijing (北京). If the tool errors, I should tell the user directly that the tool failed. Let me call the tool."
           }
         ],
-        "encrypted_content": "codex-rig-reasoning-v1:{\"source\":\"Anthropic:2190428bc33b2332c7bb81613a9905cdbcf0c613358b8c7cb63b557c6481dde6\",\"blocks\":[{\"id\":null,\"content\":[{\"type\":\"text\",\"content\":{\"text\":\"The user wants me to call get_weather for Beijing (北京). Let me do that.\",\"signature\":\"f6b7d1277df2476b816c8656\"}}]}]}"
+        "encrypted_content": "codex-rig-reasoning-v2:{\"source\":\"Anthropic:664743d6c143a812bb29c635b77ba346cd7b2163bf48629e6a3df6cc49c55272\",\"blocks\":[{\"text\":\"The user wants me to call get_weather for Beijing (北京). If the tool errors, I should tell the user directly that the tool failed. Let me call the tool.\",\"native\":{\"item\":{\"type\":\"thinking\",\"thinking\":\"The user wants me to call get_weather for Beijing (北京). If the tool errors, I should tell the user directly that the tool failed. Let me call the tool.\",\"signature\":\"c230e7db5afb42358b3e2747\"},\"fingerprint\":\"373ce5c57ecda535\"}}]}"
       }
     },
     {
       "OutputItemAdded": {
         "type": "function_call",
-        "id": "9Pmj_SSfKr7FX-YDFQI9e",
+        "id": "rigseg_18debd9a99f051e81_1",
         "name": "get_weather",
         "arguments": "",
-        "call_id": "call_2864f74f062f405099eff795"
+        "call_id": "call_c162a9f73acf497ba7b889b6"
       }
     },
     {
       "ToolCallInputDelta": {
-        "item_id": "9Pmj_SSfKr7FX-YDFQI9e",
-        "call_id": "call_2864f74f062f405099eff795",
+        "item_id": "rigseg_18debd9a99f051e81_1",
+        "call_id": "call_c162a9f73acf497ba7b889b6",
         "delta": "{\"city\":\"北京\"}"
       }
     },
     {
       "OutputItemDone": {
         "type": "function_call",
-        "id": "9Pmj_SSfKr7FX-YDFQI9e",
+        "id": "rigseg_18debd9a99f051e81_1",
         "name": "get_weather",
         "arguments": "{\"city\":\"北京\"}",
-        "call_id": "call_2864f74f062f405099eff795"
+        "call_id": "call_c162a9f73acf497ba7b889b6"
       }
     },
     {
@@ -211,14 +322,14 @@
     },
     {
       "Completed": {
-        "response_id": "msg_20260927114137cb68129798724660",
+        "response_id": "msg_20261015232929e2b3d29cfbfa4d4a",
         "token_usage": {
-          "input_tokens": 196,
+          "input_tokens": 197,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 30,
+          "output_tokens": 47,
           "reasoning_output_tokens": 0,
-          "total_tokens": 226
+          "total_tokens": 244
         },
         "usage_metadata": null,
         "end_turn": false

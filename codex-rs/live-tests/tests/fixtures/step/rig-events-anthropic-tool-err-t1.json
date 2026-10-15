@@ -1,137 +1,222 @@
 {
   "vendor": "step",
   "tag": "anthropic-tool-err-t1",
-  "rig_events": [
+  "items": [
     {
-      "id": "pTLWfY7UiS6vtDEUUuLD6",
-      "reasoning": "The"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "pTLWfY7UiS6vtDEUUuLD6",
-      "reasoning": " user wants me to"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The"
+      }
     },
     {
-      "id": "pTLWfY7UiS6vtDEUUuLD6",
-      "reasoning": " call get"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " user wants me to"
+      }
     },
     {
-      "id": "pTLWfY7UiS6vtDEUUuLD6",
-      "reasoning": "_weather for"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " call get"
+      }
     },
     {
-      "id": "pTLWfY7UiS6vtDEUUuLD6",
-      "reasoning": " Beijing."
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "_weather to query"
+      }
     },
     {
-      "id": "pTLWfY7UiS6vtDEUUuLD6",
-      "reasoning": " Let me do"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Beijing weather. If"
+      }
     },
     {
-      "id": "pTLWfY7UiS6vtDEUUuLD6",
-      "reasoning": " that."
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the tool reports"
+      }
     },
     {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "The user wants me to call get_weather for Beijing. Let me do that.",
-              "signature": "9467ad3179f148c49688b915595e7c2c"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " an error, I"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " should directly"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " tell the user that"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the tool failed.\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\nLet me call the"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " weather"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " tool for"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Beijing."
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "The user wants me to call get_weather to query Beijing weather. If the tool reports an error, I should directly tell the user that the tool failed.\n\nLet me call the weather tool for Beijing.",
+          "native": {
+            "item": {
+              "type": "thinking",
+              "thinking": "The user wants me to call get_weather to query Beijing weather. If the tool reports an error, I should directly tell the user that the tool failed.\n\nLet me call the weather tool for Beijing.",
+              "signature": "41d9e3c717764e9ba8232dcab4ffbe70"
+            },
+            "fingerprint": "88af3303589551fe"
+          }
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "tool_call",
+        "name": "get_weather"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 1,
+        "json": "{"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 1,
+        "json": "\"city\": "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 1,
+        "json": "\"北京\"}"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "toolcall",
+          "id": {
+            "provider": "chatcmpl-tool-90ddf376702d19d3"
+          },
+          "function": {
+            "name": "get_weather",
+            "arguments": {
+              "city": "北京"
             }
+          },
+          "native": {
+            "item": {
+              "type": "tool_use",
+              "id": "chatcmpl-tool-90ddf376702d19d3",
+              "name": "get_weather",
+              "input": {
+                "city": "北京"
+              }
+            },
+            "fingerprint": "1b09d334b72fda98"
           }
-        ]
-      },
-      "id": "pTLWfY7UiS6vtDEUUuLD6"
-    },
-    {
-      "text": "我来"
-    },
-    {
-      "text": "为你"
-    },
-    {
-      "text": "查询北京的"
-    },
-    {
-      "text": "天气。"
-    },
-    {
-      "internal_call_id": "aNpjgihNa0fN-MvmnY6Rm",
-      "content": {
-        "Name": "get_weather"
-      }
-    },
-    {
-      "internal_call_id": "aNpjgihNa0fN-MvmnY6Rm",
-      "content": {
-        "Delta": "{"
-      }
-    },
-    {
-      "internal_call_id": "aNpjgihNa0fN-MvmnY6Rm",
-      "content": {
-        "Delta": "\"city\": "
-      }
-    },
-    {
-      "internal_call_id": "aNpjgihNa0fN-MvmnY6Rm",
-      "content": {
-        "Delta": "\"北京\""
-      }
-    },
-    {
-      "internal_call_id": "aNpjgihNa0fN-MvmnY6Rm",
-      "content": {
-        "Delta": "}"
-      }
-    },
-    {
-      "tool_call": {
-        "id": "chatcmpl-tool-aa0d3306f9544444",
-        "provider": {
-          "call_id": "chatcmpl-tool-aa0d3306f9544444"
-        },
-        "function": {
-          "name": "get_weather",
-          "arguments": {
-            "city": "北京"
-          }
-        },
-        "signature": null,
-        "additional_params": null
-      },
-      "internal_call_id": "aNpjgihNa0fN-MvmnY6Rm"
-    },
-    {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 265,
-        "output_tokens": 47,
-        "total_tokens": 312,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "tool_calls",
-      "message_id": "chatcmpl-04d7075d3ede3c39c2dd0e28f3337a9a-9299e31a",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "step-5-preview",
-      "raw": {
-        "message_id": "chatcmpl-04d7075d3ede3c39c2dd0e28f3337a9a-9299e31a",
-        "model": "step-5-preview",
-        "stop_reason": "tool_use",
-        "usage": {
-          "cache_creation_input_tokens": 0,
-          "cache_read_input_tokens": 0,
-          "input_tokens": 265,
-          "output_tokens": 47
         }
       }
     }
   ],
+  "terminal": {
+    "finish_reason": "tool_calls",
+    "response_id": "chatcmpl-3530c5a26fd88e3c1710dda66708af5c-a4f13b5d",
+    "model": "step-5-preview",
+    "usage": {
+      "input_tokens": 277,
+      "output_tokens": 65,
+      "total_tokens": 342,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0
+    }
+  },
+  "rig_events": [],
   "custom_tools": []
 }

@@ -1,1835 +1,4336 @@
 {
   "vendor": "glm",
   "tag": "chat-schema",
-  "rig_events": [
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "The"
+  "items": [
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " user"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " is"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " user"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " asking"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " is"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " in"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " asking"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Chinese"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ":"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Chinese"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " \""
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "北京"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " \""
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "和"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "北京"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "上海"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "和"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "分别"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "上海"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "叫"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "分别"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "什么"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "叫"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "名字"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "什么"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "?\""
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "名字"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " which"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "?\""
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " translates"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " which"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " to"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " translates"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " \""
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " to"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "What"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " \""
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " are"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "What"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " are"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " names"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " of"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " other"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Beijing"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " names"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " and"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " for"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Shanghai"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Beijing"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " respectively"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " and"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "?\"\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Shanghai"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "This"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " respectively"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " is"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "?\"\n\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " a"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "This"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " bit"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " is"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " of"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " a"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " an"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " question"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " ambiguous"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " about"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " question"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "."
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " alternative"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Let"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " names"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " me"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "/n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " think"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ick"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " about"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "names"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " what"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " of"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " they"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Beijing"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " might"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " and"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " be"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Shanghai"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " asking"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "."
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ":\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Let"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "1"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " me"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "."
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " think"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " They"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " about"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " could"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " what"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " be"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " I"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " asking"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " know"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " about"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":\n\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "**"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " historical"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Be"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "/"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ijing"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "alternate"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ("
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " names"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "北京"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " of"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "):"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Beijing"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "**\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " and"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Shanghai"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Historical"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " names"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "2"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "."
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " They"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "燕"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " could"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "京"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " be"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " asking"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " from"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " about"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ancient"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " abbrev"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Yan"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "iations"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " state"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "/n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "ick"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "names"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " of"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "蓟"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " these"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " cities"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ancient"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " name"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "3"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "."
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " The"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 北"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " question"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "平"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " is"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " somewhat"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " used"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " odd"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " during"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " because"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Republic"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " \""
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " of"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "Be"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " China"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "ijing"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " era"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\""
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ("
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " and"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "192"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " \""
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "8"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "Sh"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "anghai"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "19"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\""
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "4"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " ARE"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "9"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " their"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ")\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " names"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 大"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "Let"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "都"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " me"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " think"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Yuan"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " about"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Dynasty"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " capital"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " common"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " interpretations"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ":\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 京"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "师"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "Be"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "ijing"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " ("
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "北京"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "燕"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "):"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "都"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "**\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Abb"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "rev"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "涿"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "iation"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "郡"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ":"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " 京"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " S"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " ("
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ui"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "J"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " dynasty"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "ī"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "ng"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ")\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "幽"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Historical"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "州"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " names"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ":"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ancient"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " name"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "燕"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "京"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 中"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " 北"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "都"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "平"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Jin"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " 大"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Dynasty"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "都"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " ("
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "D"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 北"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "adu"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "平"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "府"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Yuan"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " dynasty"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "),"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " 北"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "顺"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "平"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "天府"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Ming"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "蓟"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "/Q"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ing"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " era"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "幽"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "州"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Modern"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " nick"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "names"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Nick"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "name"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ":"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "帝"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "帝"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "都"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "都"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " popular"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " internet"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "Sh"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " slang"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "anghai"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " ("
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "上海"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "):"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "燕"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "**\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "京"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Abb"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "**"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "rev"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Sh"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "iation"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "anghai"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ":"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ("
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "上海"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "沪"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "):"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " ("
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "**\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "H"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "ù"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ")"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "沪"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " or"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ("
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "H"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "申"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ù"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " ("
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ")"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "Sh"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "ē"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " abbreviation"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ")\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " comes"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " from"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Historical"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " names"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "沪"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ":"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "渎"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " 华"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "亭"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " an"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ancient"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " 松"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " fishing"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "江"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " tool"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "府"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " name"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Nick"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "name"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "申"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ":"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ("
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Sh"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "魔"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ē"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "都"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ")"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "申"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " from"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "城"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 春"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "申"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "君"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "沪"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "上"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " a"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " lord"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "So"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " of"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Chu"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " most"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " state"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " likely"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " during"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " interpretation"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " W"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " is"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "arring"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " asking"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " States"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " about"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " period"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " whose"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " abbrev"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " f"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "iations"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ief"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " ("
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " was"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "简称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " this"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " area"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "魔"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "都"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " modern"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " nickname"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " originally"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " from"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Japanese"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " writer"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ("
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Mat"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "sum"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ura"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Sh"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ō"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ta"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ")"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " his"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "192"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "4"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " work"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " \""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "魔"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "都"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "上海"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\""
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ")"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " \n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " of"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " these"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 上海"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " two"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "滩"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " cities"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " which"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 东方"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " is"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "巴黎"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " a"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " common"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " question"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 不"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " in"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "夜"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Chinese"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "城"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " education"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ":\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " abbrev"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " 北京"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "iations"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "简称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ("
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\""
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "简称"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "京"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "):\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\"\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Beijing"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " 上海"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "简称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 京"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\""
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "沪"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\""
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Shanghai"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "或"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\""
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "申"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "沪"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "\"\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " or"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "I"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " should"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "申"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " answer"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " this"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " compreh"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " question"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "ensively"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " is"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " a"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " covering"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " bit"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ":\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ambiguous"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "1"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "."
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " it"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " The"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " could"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " abbrev"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " be"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "iations"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " asking"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " ("
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "简称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "1"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ")\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "."
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "2"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " What"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "."
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " are"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Historical"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " names"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " nick"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " ("
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "names"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "历史"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "/"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "名称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "alternative"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ")\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " names"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "3"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " of"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "."
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Beijing"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Common"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " and"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " nick"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Shanghai"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "names"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "?\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " ("
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "2"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "别"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "."
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " What"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "/"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " are"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "昵"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " their"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " abbrev"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ")\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "iations"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "Since"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ("
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "简称"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " question"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ")?\n\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " is"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "I"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " ambiguous"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " should"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": ","
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " cover"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " I"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " both"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "'ll"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " interpretations"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " cover"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " -"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " the"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " most"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " abbrev"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " likely"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "iations"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " interpretations"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " and"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "."
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " The"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " historical"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " answer"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " names"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " should"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "/n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " be"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ick"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " in"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "names"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " Chinese"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ".\n\n"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " as"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Let"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": " instructed"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " me"
+      }
     },
-    {
-      "id": "dY85uKvyIj0FFGZJ6xmvy",
-      "reasoning": "."
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " structure"
+      }
     },
-    {
-      "text": "北京"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " a"
+      }
     },
-    {
-      "text": "和"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " good"
+      }
     },
-    {
-      "text": "上海"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " answer"
+      }
     },
-    {
-      "text": "作为中国"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
     },
-    {
-      "text": "两大"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Chinese"
+      }
     },
-    {
-      "text": "重要"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":\n\n"
+      }
     },
-    {
-      "text": "城市"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "**"
+      }
     },
-    {
-      "text": "，"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "北京的"
+      }
     },
-    {
-      "text": "有"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "别"
+      }
     },
-    {
-      "text": "多个"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "称"
+      }
     },
-    {
-      "text": "名称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":"
+      }
     },
-    {
-      "text": "：\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "**\n"
+      }
     },
-    {
-      "text": "##"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "text": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "text": "简"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "简"
+      }
     },
-    {
-      "text": "称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "称"
+      }
     },
-    {
-      "text": "\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":"
+      }
     },
-    {
-      "text": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "京"
+      }
     },
-    {
-      "text": " **"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "text": "北京"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "text": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "text": "："
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "历"
+      }
     },
-    {
-      "text": "简称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "史"
+      }
     },
-    {
-      "text": "“"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "名称"
+      }
     },
-    {
-      "text": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":"
+      }
     },
-    {
-      "text": "京"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "燕"
+      }
     },
-    {
-      "text": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "京"
+      }
     },
-    {
-      "text": "”\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、"
+      }
     },
-    {
-      "text": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "蓟"
+      }
     },
-    {
-      "text": " **"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、"
+      }
     },
-    {
-      "text": "上海"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "幽"
+      }
     },
-    {
-      "text": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "州"
+      }
     },
-    {
-      "text": "："
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、"
+      }
     },
-    {
-      "text": "简称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "大都"
+      }
     },
-    {
-      "text": "“"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "("
+      }
     },
-    {
-      "text": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "元"
+      }
     },
-    {
-      "text": "沪"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "朝"
+      }
     },
-    {
-      "text": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ")、"
+      }
     },
-    {
-      "text": "”，"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "北平"
+      }
     },
-    {
-      "text": "也称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "("
+      }
     },
-    {
-      "text": "“"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "民国"
+      }
     },
-    {
-      "text": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "时期"
+      }
     },
-    {
-      "text": "申"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ")、"
+      }
     },
-    {
-      "text": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "顺"
+      }
     },
-    {
-      "text": "”\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "天府"
+      }
     },
-    {
-      "text": "##"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "("
+      }
     },
-    {
-      "text": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "明清"
+      }
     },
-    {
-      "text": "历"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ")\n"
+      }
     },
-    {
-      "text": "史"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "text": "名称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "text": "\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "现"
+      }
     },
-    {
-      "text": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "代"
+      }
     },
-    {
-      "text": "北京"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "别"
+      }
     },
-    {
-      "text": "："
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "称"
+      }
     },
-    {
-      "text": "**\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":"
+      }
     },
-    {
-      "text": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "帝"
+      }
     },
-    {
-      "text": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "都"
+      }
     },
-    {
-      "text": "燕"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "("
+      }
     },
-    {
-      "text": "京"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "网络"
+      }
     },
-    {
-      "text": "（"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "流行"
+      }
     },
-    {
-      "text": "古代"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "语"
+      }
     },
-    {
-      "text": "燕"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ")\n\n"
+      }
     },
-    {
-      "text": "国"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "**"
+      }
     },
-    {
-      "text": "都"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "上海的"
+      }
     },
-    {
-      "text": "城"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "别"
+      }
     },
-    {
-      "text": "）\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "称"
+      }
     },
-    {
-      "text": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":"
+      }
     },
-    {
-      "text": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "**\n"
+      }
     },
-    {
-      "text": "蓟"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "text": "、"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "text": "幽"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "简"
+      }
     },
-    {
-      "text": "州"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "称"
+      }
     },
-    {
-      "text": "（"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":"
+      }
     },
-    {
-      "text": "古代"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "沪"
+      }
     },
-    {
-      "text": "称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、"
+      }
     },
-    {
-      "text": "谓"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "申"
+      }
     },
-    {
-      "text": "）\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "text": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "text": " 大"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "text": "都"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "历"
+      }
     },
-    {
-      "text": "（"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "史"
+      }
     },
-    {
-      "text": "元"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "由来"
+      }
     },
-    {
-      "text": "朝"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":\""
+      }
     },
-    {
-      "text": "时期"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "沪"
+      }
     },
-    {
-      "text": "）\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\""
+      }
     },
-    {
-      "text": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "来自"
+      }
     },
-    {
-      "text": " 北"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "古代"
+      }
     },
-    {
-      "text": "平"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "渔民"
+      }
     },
-    {
-      "text": "（"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "使用的"
+      }
     },
-    {
-      "text": "民国"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "捕"
+      }
     },
-    {
-      "text": "时期"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "鱼"
+      }
     },
-    {
-      "text": "，"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "工具"
+      }
     },
-    {
-      "text": "192"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\""
+      }
     },
-    {
-      "text": "8"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "扈"
+      }
     },
-    {
-      "text": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\";"
+      }
     },
-    {
-      "text": "19"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\""
+      }
     },
-    {
-      "text": "4"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "申"
+      }
     },
-    {
-      "text": "9"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\""
+      }
     },
-    {
-      "text": "年"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "源于"
+      }
     },
-    {
-      "text": "）\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "战国"
+      }
     },
-    {
-      "text": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "时期"
+      }
     },
-    {
-      "text": "上海"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "楚国"
+      }
     },
-    {
-      "text": "："
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "春"
+      }
     },
-    {
-      "text": "**\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "申"
+      }
     },
-    {
-      "text": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "君"
+      }
     },
-    {
-      "text": " 华"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "黄"
+      }
     },
-    {
-      "text": "亭"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "歇"
+      }
     },
-    {
-      "text": "（"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "的"
+      }
     },
-    {
-      "text": "古代"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "封"
+      }
     },
-    {
-      "text": "）\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "地"
+      }
     },
-    {
-      "text": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n"
+      }
     },
-    {
-      "text": " 松"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "-"
+      }
     },
-    {
-      "text": "江"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
     },
-    {
-      "text": "府"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "现"
+      }
     },
-    {
-      "text": "（"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "代"
+      }
     },
-    {
-      "text": "明清"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "别"
+      }
     },
-    {
-      "text": "时期"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "称"
+      }
     },
-    {
-      "text": "）\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":"
+      }
     },
-    {
-      "text": "##"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "魔"
+      }
     },
-    {
-      "text": " "
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "都"
+      }
     },
-    {
-      "text": "常"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、"
+      }
     },
-    {
-      "text": "见"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "上海"
+      }
     },
-    {
-      "text": "别"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "滩"
+      }
     },
-    {
-      "text": "称"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、"
+      }
     },
-    {
-      "text": "/"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "东方"
+      }
     },
-    {
-      "text": "雅"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "巴黎"
+      }
     },
-    {
-      "text": "号"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、"
+      }
     },
-    {
-      "text": "\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "不"
+      }
     },
-    {
-      "text": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "夜"
+      }
     },
-    {
-      "text": " **"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "城"
+      }
     },
-    {
-      "text": "北京"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n\n"
+      }
     },
-    {
-      "text": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The"
+      }
     },
-    {
-      "text": "："
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " answer"
+      }
     },
-    {
-      "text": "帝"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " should"
+      }
     },
-    {
-      "text": "都"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " be"
+      }
     },
-    {
-      "text": "\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
     },
-    {
-      "text": "-"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Chinese"
+      }
     },
-    {
-      "text": " **"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " since"
+      }
     },
-    {
-      "text": "上海"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "text": "**"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " user"
+      }
     },
-    {
-      "text": "："
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " asked"
+      }
     },
-    {
-      "text": "魔"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " in"
+      }
     },
-    {
-      "text": "都"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Chinese"
+      }
     },
-    {
-      "text": "、"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "."
+      }
     },
-    {
-      "text": "申"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " I"
+      }
     },
-    {
-      "text": "城"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "'ll"
+      }
     },
-    {
-      "text": "、"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " use"
+      }
     },
-    {
-      "text": "沪"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " a"
+      }
     },
-    {
-      "text": "上"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " clear"
+      }
     },
-    {
-      "text": "、"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " format"
+      }
     },
-    {
-      "text": "东方"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " with"
+      }
     },
-    {
-      "text": "明珠"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " headers"
+      }
     },
-    {
-      "text": "\n\n"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " or"
+      }
     },
-    {
-      "text": "您"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " bullet"
+      }
     },
-    {
-      "text": "想"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " points"
+      }
     },
-    {
-      "text": "了解"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " to"
+      }
     },
-    {
-      "text": "哪"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " organize"
+      }
     },
-    {
-      "text": "方面的"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
-    {
-      "text": "具体"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " information"
+      }
     },
-    {
-      "text": "信息"
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "."
+      }
     },
-    {
-      "text": "呢"
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
     },
-    {
-      "text": "？"
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "{"
+      }
     },
-    {
-      "text": "我可以"
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " \""
+      }
     },
-    {
-      "text": "为您"
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "city"
+      }
     },
-    {
-      "text": "详细介绍。"
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "1"
+      }
     },
-    {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 31,
-        "output_tokens": 503,
-        "total_tokens": 534,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 324
-      },
-      "finish_reason": "stop",
-      "message_id": null,
-      "response_id": "20260927005405debc18625b8b4c69",
-      "provider": "openai",
-      "model": "glm-5.3-flash",
-      "raw": {
-        "additional_params": {
-          "created": 1790441645,
-          "object": "chat.completion.chunk"
-        },
-        "finish_reason": "stop",
-        "model": "glm-5.3-flash",
-        "response_id": "20260927005405debc18625b8b4c69",
-        "usage": {
-          "completion_tokens": 503,
-          "completion_tokens_details": {
-            "reasoning_tokens": 324
-          },
-          "prompt_tokens": 31,
-          "prompt_tokens_details": {
-            "cached_tokens": 0
-          },
-          "total_tokens": 534
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "\":"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " \""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "Be"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "ijing"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "\","
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " \""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "city"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "2"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "\":"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " \""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "Sh"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "anghai\" }"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "{ \"city1\": \"Beijing\", \"city2\": \"Shanghai\" }"
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "The user is asking in Chinese: \"北京和上海分别叫什么名字?\" which translates to \"What are the other names for Beijing and Shanghai respectively?\"\n\nThis is a question about the alternative names/nicknames of Beijing and Shanghai. Let me think about what I know:\n\n**Beijing (北京):**\n- Historical names: 燕京 - from ancient Yan state\n- 蓟 - ancient name\n- 北平 - used during Republic of China era (1928-1949)\n- 大都 - Yuan Dynasty capital\n- 京师\n- 燕都\n- 涿郡 - Sui dynasty\n- 幽州 - ancient name\n- 中都 - Jin Dynasty\n- 北平府\n- 顺天府 - Ming/Qing era\n\nModern nicknames:\n- 帝都 - popular internet slang\n- 燕京\n\n**Shanghai (上海):**\n- 沪 (Hù) - abbreviation, comes from 沪渎, an ancient fishing tool name\n- 申 (Shēn) - from 春申君, a lord of Chu state during Warring States period whose fief was in this area\n- 魔都 - modern nickname, originally from Japanese writer  (Matsumura Shōta) in his 1924 work \"魔都上海\" \n- 上海滩\n- 东方巴黎\n- 不夜城\n\nThe abbreviations (简称):\n- Beijing: 京\n- Shanghai: 沪 or 申\n\nThe question is a bit ambiguous - it could be asking:\n1. What are the nicknames/alternative names of Beijing and Shanghai?\n2. What are their abbreviations (简称)?\n\nI should cover both interpretations - the abbreviations and the historical names/nicknames.\n\nLet me structure a good answer in Chinese:\n\n**北京的别称:**\n- 简称:京\n- 历史名称:燕京、蓟、幽州、大都(元朝)、北平(民国时期)、顺天府(明清)\n- 现代别称:帝都(网络流行语)\n\n**上海的别称:**\n- 简称:沪、申\n- 历史由来:\"沪\"来自古代渔民使用的捕鱼工具\"扈\";\"申\"源于战国时期楚国春申君黄歇的封地\n- 现代别称:魔都、上海滩、东方巴黎、不夜城\n\nThe answer should be in Chinese since the user asked in Chinese. I'll use a clear format with headers or bullet points to organize the information.",
+          "native": {
+            "item": {
+              "reasoning_content": "The user is asking in Chinese: \"北京和上海分别叫什么名字?\" which translates to \"What are the other names for Beijing and Shanghai respectively?\"\n\nThis is a question about the alternative names/nicknames of Beijing and Shanghai. Let me think about what I know:\n\n**Beijing (北京):**\n- Historical names: 燕京 - from ancient Yan state\n- 蓟 - ancient name\n- 北平 - used during Republic of China era (1928-1949)\n- 大都 - Yuan Dynasty capital\n- 京师\n- 燕都\n- 涿郡 - Sui dynasty\n- 幽州 - ancient name\n- 中都 - Jin Dynasty\n- 北平府\n- 顺天府 - Ming/Qing era\n\nModern nicknames:\n- 帝都 - popular internet slang\n- 燕京\n\n**Shanghai (上海):**\n- 沪 (Hù) - abbreviation, comes from 沪渎, an ancient fishing tool name\n- 申 (Shēn) - from 春申君, a lord of Chu state during Warring States period whose fief was in this area\n- 魔都 - modern nickname, originally from Japanese writer  (Matsumura Shōta) in his 1924 work \"魔都上海\" \n- 上海滩\n- 东方巴黎\n- 不夜城\n\nThe abbreviations (简称):\n- Beijing: 京\n- Shanghai: 沪 or 申\n\nThe question is a bit ambiguous - it could be asking:\n1. What are the nicknames/alternative names of Beijing and Shanghai?\n2. What are their abbreviations (简称)?\n\nI should cover both interpretations - the abbreviations and the historical names/nicknames.\n\nLet me structure a good answer in Chinese:\n\n**北京的别称:**\n- 简称:京\n- 历史名称:燕京、蓟、幽州、大都(元朝)、北平(民国时期)、顺天府(明清)\n- 现代别称:帝都(网络流行语)\n\n**上海的别称:**\n- 简称:沪、申\n- 历史由来:\"沪\"来自古代渔民使用的捕鱼工具\"扈\";\"申\"源于战国时期楚国春申君黄歇的封地\n- 现代别称:魔都、上海滩、东方巴黎、不夜城\n\nThe answer should be in Chinese since the user asked in Chinese. I'll use a clear format with headers or bullet points to organize the information."
+            },
+            "fingerprint": "f6a1e1580a0473b5"
+          }
         }
       }
     }
   ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "20261015233002c18f2d6e02c84a12",
+    "model": "glm-5.3-flash",
+    "usage": {
+      "input_tokens": 31,
+      "output_tokens": 556,
+      "total_tokens": 587,
+      "cached_input_tokens": 0,
+      "reasoning_tokens": 518
+    }
+  },
+  "rig_events": [],
   "custom_tools": []
 }

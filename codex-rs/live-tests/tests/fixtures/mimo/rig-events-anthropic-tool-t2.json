@@ -1,77 +1,176 @@
 {
   "vendor": "mimo",
   "tag": "anthropic-tool-t2",
-  "rig_events": [
+  "items": [
     {
-      "id": "x8w0yUwg97VeuKgTW1hub",
-      "reasoning": "Answer in"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "x8w0yUwg97VeuKgTW1hub",
-      "reasoning": " Chinese."
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Answer in"
+      }
     },
     {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "Answer in Chinese."
-            }
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Chinese."
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "Answer in Chinese."
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "北京今天天气"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "：**晴**，气温"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " **23°C**。\n\n"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "适合外出"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "活动"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，不过晴"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "天紫外线"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "较强"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "，注意"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "防晒"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "和补水"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "北京今天天气：**晴**，气温 **23°C**。\n\n适合外出活动，不过晴天紫外线较强，注意防晒和补水。",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "北京今天天气：**晴**，气温 **23°C**。\n\n适合外出活动，不过晴天紫外线较强，注意防晒和补水。"
+            },
+            "fingerprint": "cc40496090b96399"
           }
-        ]
-      },
-      "id": "x8w0yUwg97VeuKgTW1hub"
-    },
-    {
-      "text": "北京今天天气"
-    },
-    {
-      "text": "晴"
-    },
-    {
-      "text": "朗"
-    },
-    {
-      "text": "，气温约"
-    },
-    {
-      "text": " 23°C，"
-    },
-    {
-      "text": "适合出行"
-    },
-    {
-      "text": "。"
-    },
-    {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 60,
-        "output_tokens": 23,
-        "total_tokens": 211,
-        "cached_input_tokens": 128,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": "msg_f03d5c439dea4a13aeecf6d7",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "mimo-v2.6-flash",
-      "raw": {
-        "message_id": "msg_f03d5c439dea4a13aeecf6d7",
-        "model": "mimo-v2.6-flash",
-        "stop_reason": "end_turn",
-        "usage": {
-          "cache_creation_input_tokens": null,
-          "cache_read_input_tokens": 128,
-          "input_tokens": 60,
-          "output_tokens": 23
         }
       }
     }
-  ]
+  ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "msg_ee6478a175f3444f8048c0e8",
+    "model": "mimo-v2.6-flash",
+    "usage": {
+      "input_tokens": 183,
+      "output_tokens": 37,
+      "total_tokens": 220,
+      "cached_input_tokens": 128
+    }
+  },
+  "rig_events": [],
+  "custom_tools": []
 }

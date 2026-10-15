@@ -1,181 +1,341 @@
 {
   "vendor": "mimo",
   "tag": "parallel-tools",
-  "rig_events": [
+  "items": [
     {
-      "id": "jSZHkLQz2kwJknBT0R1rV",
-      "reasoning": "The user wants two independent"
-    },
-    {
-      "id": "jSZHkLQz2kwJknBT0R1rV",
-      "reasoning": " tool calls,"
-    },
-    {
-      "id": "jSZHkLQz2kwJknBT0R1rV",
-      "reasoning": " one for Beijing,"
-    },
-    {
-      "id": "jSZHkLQz2kwJknBT0R1rV",
-      "reasoning": " one for Shanghai. Let"
-    },
-    {
-      "id": "jSZHkLQz2kwJknBT0R1rV",
-      "reasoning": " me make"
-    },
-    {
-      "id": "jSZHkLQz2kwJknBT0R1rV",
-      "reasoning": " both calls in the"
-    },
-    {
-      "id": "jSZHkLQz2kwJknBT0R1rV",
-      "reasoning": " same block since"
-    },
-    {
-      "id": "jSZHkLQz2kwJknBT0R1rV",
-      "reasoning": " they're independent."
-    },
-    {
-      "internal_call_id": "QT04c7WJPz5z-RaduO_ji",
-      "content": {
-        "Name": "get_weather"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
       }
     },
     {
-      "internal_call_id": "QT04c7WJPz5z-RaduO_ji",
-      "content": {
-        "Delta": "{\"city\": "
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The user wants me"
       }
     },
     {
-      "internal_call_id": "QT04c7WJPz5z-RaduO_ji",
-      "content": {
-        "Delta": "\""
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " to query weather"
       }
     },
     {
-      "internal_call_id": "QT04c7WJPz5z-RaduO_ji",
-      "content": {
-        "Delta": "北京"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " for Beijing"
       }
     },
     {
-      "internal_call_id": "QT04c7WJPz5z-RaduO_ji",
-      "content": {
-        "Delta": "\""
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " and Shanghai separately,"
       }
     },
     {
-      "internal_call_id": "QT04c7WJPz5z-RaduO_ji",
-      "content": {
-        "Delta": "}"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " using two independent tool"
       }
     },
     {
-      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9",
-      "content": {
-        "Name": "get_weather"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " calls. I"
       }
     },
     {
-      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9",
-      "content": {
-        "Delta": "{\"city\": "
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " should"
       }
     },
     {
-      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9",
-      "content": {
-        "Delta": "\""
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " make both calls in"
       }
     },
     {
-      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9",
-      "content": {
-        "Delta": "上海"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the same block since"
       }
     },
     {
-      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9",
-      "content": {
-        "Delta": "\""
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " they are"
       }
     },
     {
-      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9",
-      "content": {
-        "Delta": "}"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " independent."
       }
     },
     {
-      "tool_call": {
-        "id": "call_ffe4a0dd7de84b27b2b04d3a",
-        "provider": {
-          "call_id": "call_ffe4a0dd7de84b27b2b04d3a"
-        },
-        "function": {
-          "name": "get_weather",
-          "arguments": {
-            "city": "北京"
-          }
-        },
-        "signature": null,
-        "additional_params": null
-      },
-      "internal_call_id": "QT04c7WJPz5z-RaduO_ji"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
     },
     {
-      "tool_call": {
-        "id": "call_4bfb91e359b148ba8f00cc30",
-        "provider": {
-          "call_id": "call_4bfb91e359b148ba8f00cc30"
-        },
-        "function": {
-          "name": "get_weather",
-          "arguments": {
-            "city": "上海"
-          }
-        },
-        "signature": null,
-        "additional_params": null
-      },
-      "internal_call_id": "8K1BNjhHLRd-KK7EZ0eY9"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "我"
+      }
     },
     {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 151,
-        "output_tokens": 67,
-        "total_tokens": 218,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 31
-      },
-      "finish_reason": "tool_calls",
-      "message_id": null,
-      "response_id": "3d9d7a5a-dee6-488a-aaf7-9eaa787a2c89_df2bb178ff304ddfb3494c0c6ecffd0c",
-      "provider": "openai",
-      "model": "mimo-v2.6-flash",
-      "raw": {
-        "additional_params": {
-          "created": 1790303508,
-          "object": "chat.completion.chunk"
-        },
-        "finish_reason": "tool_calls",
-        "model": "mimo-v2.6-flash",
-        "response_id": "3d9d7a5a-dee6-488a-aaf7-9eaa787a2c89_df2bb178ff304ddfb3494c0c6ecffd0c",
-        "usage": {
-          "completion_tokens": 67,
-          "completion_tokens_details": {
-            "reasoning_tokens": 31
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "来分别查询北京"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "和上海的天气"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "我来分别查询北京和上海的天气。"
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 2,
+        "kind": "tool_call",
+        "name": "get_weather"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "{\"city\": "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "北京"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "}"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 3,
+        "kind": "tool_call",
+        "name": "get_weather"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 3,
+        "json": "{\"city\": "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 3,
+        "json": "\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 3,
+        "json": "上海"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 3,
+        "json": "\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 3,
+        "json": "}"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 2,
+        "content": {
+          "type": "toolcall",
+          "id": {
+            "provider": "call_eee0a1b9d0e74568855053a3"
           },
-          "prompt_tokens": 151,
-          "prompt_tokens_details": {
-            "cached_tokens": 0
+          "function": {
+            "name": "get_weather",
+            "arguments": {
+              "city": "北京"
+            }
           },
-          "total_tokens": 218
+          "native": {
+            "item": {
+              "id": "call_eee0a1b9d0e74568855053a3",
+              "function": {
+                "arguments": "{\"city\": \"北京\"}",
+                "name": "get_weather"
+              },
+              "type": "function"
+            },
+            "fingerprint": "a31690545e43a0e5"
+          }
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 3,
+        "content": {
+          "type": "toolcall",
+          "id": {
+            "provider": "call_d877b476c1c243f48c72b933"
+          },
+          "function": {
+            "name": "get_weather",
+            "arguments": {
+              "city": "上海"
+            }
+          },
+          "native": {
+            "item": {
+              "id": "call_d877b476c1c243f48c72b933",
+              "function": {
+                "arguments": "{\"city\": \"上海\"}",
+                "name": "get_weather"
+              },
+              "type": "function"
+            },
+            "fingerprint": "65f0547d12a9d590"
+          }
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "The user wants me to query weather for Beijing and Shanghai separately, using two independent tool calls. I should make both calls in the same block since they are independent.",
+          "native": {
+            "item": {
+              "reasoning_content": "The user wants me to query weather for Beijing and Shanghai separately, using two independent tool calls. I should make both calls in the same block since they are independent."
+            },
+            "fingerprint": "21da6a2dbf2e07c2"
+          }
         }
       }
     }
-  ]
+  ],
+  "terminal": {
+    "finish_reason": "tool_calls",
+    "response_id": "31d46f04-93ea-4f02-927a-29ae64c5f2a2_b5bc331d69814b90bcf58afd68aaefe5",
+    "model": "mimo-v2.6-flash",
+    "usage": {
+      "input_tokens": 152,
+      "output_tokens": 80,
+      "total_tokens": 232,
+      "reasoning_tokens": 34
+    }
+  },
+  "rig_events": [],
+  "custom_tools": []
 }

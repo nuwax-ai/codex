@@ -1,131 +1,352 @@
 {
   "vendor": "step",
   "tag": "effort",
-  "rig_events": [
+  "items": [
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "用户"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "问了一个"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用户"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "简单"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "问了一个"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "的问题：\"1+"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "简单的"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "1 等于几"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "数学问题：\"1"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "？直接回答。\""
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "+1 等于"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "（"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "几？直接回答"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "1+1等于"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。\" 意思是"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "几？直接回答"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\"1+1"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "。）\n\n这是一个"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " equals what?"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "基础的"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " Answer directly.\"\n"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "算术"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\n "
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "问题，"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "这是一个"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "答案是2。用户"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "直接的"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "要求直接"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "请求"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "回答，所以我应该"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，用户"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "只"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "希望"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "给出"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "直接回答，"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "答案"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "不需要过多"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "，不需要"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "解释。1"
+      }
     },
     {
-      "id": "sDMcEhYFXaTyMnuCNVu2y",
-      "reasoning": "额外解释。"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "+1="
+      }
     },
     {
-      "text": "2"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "2。\n\n "
+      }
     },
     {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 37,
-        "output_tokens": 52,
-        "total_tokens": 89,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": null,
-      "response_id": "794afd071cc39f4d9d9c752d091d8f6a.6bc16e91ddcca131290a17c3b25ea918",
-      "provider": "openai",
-      "model": "step-5-preview",
-      "raw": {
-        "additional_params": {
-          "agent": "",
-          "created": 1790303484,
-          "object": "chat.completion.chunk"
-        },
-        "finish_reason": "stop",
-        "model": "step-5-preview",
-        "response_id": "794afd071cc39f4d9d9c752d091d8f6a.6bc16e91ddcca131290a17c3b25ea918",
-        "usage": {
-          "completion_tokens": 52,
-          "completion_tokens_details": {
-            "reasoning_tokens": 0
-          },
-          "prompt_tokens": 37,
-          "prompt_tokens_details": {
-            "cached_tokens": 0
-          },
-          "total_tokens": 89
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "我应该用"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "中文回答，因为"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用户用中文提问"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。直接"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "回答\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "2\"即可"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "或者\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "1+1等于"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "2\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。\n\n 用户说"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "\"直接回答\"，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "所以"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "应该简洁。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "2"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "2"
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "用户问了一个简单的数学问题：\"1+1 等于几？直接回答。\" 意思是\"1+1 equals what? Answer directly.\"\n\n 这是一个直接的请求，用户希望直接回答，不需要过多解释。1+1=2。\n\n 我应该用中文回答，因为用户用中文提问。直接回答\"2\"即可，或者\"1+1等于2\"。\n\n 用户说\"直接回答\"，所以应该简洁。",
+          "native": {
+            "item": {
+              "reasoning_content": "用户问了一个简单的数学问题：\"1+1 等于几？直接回答。\" 意思是\"1+1 equals what? Answer directly.\"\n\n 这是一个直接的请求，用户希望直接回答，不需要过多解释。1+1=2。\n\n 我应该用中文回答，因为用户用中文提问。直接回答\"2\"即可，或者\"1+1等于2\"。\n\n 用户说\"直接回答\"，所以应该简洁。"
+            },
+            "fingerprint": "7a8fc9681d7febbb"
+          }
         }
       }
     }
-  ]
+  ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "a4c4f646d80f4a54dc572825e3776ede.eba0d24e7cd12359390fdabead652aed",
+    "model": "step-5-preview",
+    "usage": {
+      "input_tokens": 37,
+      "output_tokens": 91,
+      "total_tokens": 128,
+      "cached_input_tokens": 0,
+      "reasoning_tokens": 0
+    }
+  },
+  "rig_events": [],
+  "custom_tools": []
 }

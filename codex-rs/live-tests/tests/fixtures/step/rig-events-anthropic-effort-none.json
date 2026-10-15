@@ -1,140 +1,241 @@
 {
   "vendor": "step",
   "tag": "anthropic-effort-none",
-  "rig_events": [
+  "items": [
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "用户"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "要求用一句话回答"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用户"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "\""
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "要求"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "法国的首都是哪里"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用一句话回答“"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "?\"。这是一个简单的"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "法国的首都是哪里"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "常识问题"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "?”"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "。\n\n法国的"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "首都是巴黎("
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "这是一个简单"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "Paris)。"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "的地理常识"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "我需要用中文简洁"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "问题。\n\n法国的"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "地回答。\n"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "首都是巴黎（"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "\n可能的"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "Paris）。\n\n需要用"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "回答:"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "中文"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "\n- 法国的首"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "回答，并且"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "都是巴黎。\n-"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "控制"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": " 巴黎是法国的"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "在一"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "首都。\n\n两种"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "句话内"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "都可以，"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。\n\n回答"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "保持"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "：法国的首都是"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "简洁直接"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "巴黎。"
+      }
     },
     {
-      "id": "-M9WhxDX-XT-0crjoyA5r",
-      "reasoning": "。"
-    },
-    {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "用户要求用一句话回答\"法国的首都是哪里?\"。这是一个简单的常识问题。\n\n法国的首都是巴黎(Paris)。我需要用中文简洁地回答。\n\n可能的回答:\n- 法国的首都是巴黎。\n- 巴黎是法国的首都。\n\n两种都可以，保持简洁直接。",
-              "signature": "4e3965cfedc2466b8efed77cf7eb3d65"
-            }
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "用户要求用一句话回答“法国的首都是哪里?”。这是一个简单的地理常识问题。\n\n法国的首都是巴黎（Paris）。\n\n需要用中文回答，并且控制在一句话内。\n\n回答：法国的首都是巴黎。",
+          "native": {
+            "item": {
+              "type": "thinking",
+              "thinking": "用户要求用一句话回答“法国的首都是哪里?”。这是一个简单的地理常识问题。\n\n法国的首都是巴黎（Paris）。\n\n需要用中文回答，并且控制在一句话内。\n\n回答：法国的首都是巴黎。",
+              "signature": "5388c26432764bde954487bb4cb2f3cb"
+            },
+            "fingerprint": "e856bb162b5b0553"
           }
-        ]
-      },
-      "id": "-M9WhxDX-XT-0crjoyA5r"
+        }
+      }
     },
     {
-      "text": "法国的"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
     },
     {
-      "text": "首都是巴黎。"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "法国的"
+      }
     },
     {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 35,
-        "output_tokens": 61,
-        "total_tokens": 96,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": "chatcmpl-624c8a95a3f4ca8b41a3eda5150f5b8d-96088f87",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "step-5-preview",
-      "raw": {
-        "message_id": "chatcmpl-624c8a95a3f4ca8b41a3eda5150f5b8d-96088f87",
-        "model": "step-5-preview",
-        "stop_reason": "end_turn",
-        "usage": {
-          "cache_creation_input_tokens": 0,
-          "cache_read_input_tokens": 0,
-          "input_tokens": 35,
-          "output_tokens": 61
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "首都是巴黎。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "法国的首都是巴黎。",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "法国的首都是巴黎。"
+            },
+            "fingerprint": "ac417a057e71c387"
+          }
         }
       }
     }
   ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "chatcmpl-0246a8ae81cb65e7bf1ddf0693de965d-b2cff6fb",
+    "model": "step-5-preview",
+    "usage": {
+      "input_tokens": 35,
+      "output_tokens": 49,
+      "total_tokens": 84,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0
+    }
+  },
+  "rig_events": [],
   "custom_tools": []
 }

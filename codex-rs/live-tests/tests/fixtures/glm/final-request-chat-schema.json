@@ -1,0 +1,56 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
+      "body_raw": "{\"model\":\"GLM-5.3-Flash\",\"messages\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"You are a helpful assistant. Answer in Chinese.\"}]},{\"role\":\"user\",\"content\":\"北京和上海分别叫什么名字?\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"city_pair\",\"strict\":false,\"schema\":{\"type\":\"object\",\"properties\":{\"city1\":{\"type\":\"string\"},\"city2\":{\"type\":\"string\"}},\"required\":[\"city1\",\"city2\"],\"additionalProperties\":false}}},\"parallel_tool_calls\":true,\"store\":false,\"stream_options\":{\"include_usage\":true},\"stream\":true}",
+      "body": {
+        "model": "GLM-5.3-Flash",
+        "messages": [
+          {
+            "role": "system",
+            "content": [
+              {
+                "type": "text",
+                "text": "You are a helpful assistant. Answer in Chinese."
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": "北京和上海分别叫什么名字?"
+          }
+        ],
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "city_pair",
+            "strict": false,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "city1": {
+                  "type": "string"
+                },
+                "city2": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city1",
+                "city2"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "parallel_tool_calls": true,
+        "store": false,
+        "stream_options": {
+          "include_usage": true
+        },
+        "stream": true
+      }
+    }
+  ]
+}

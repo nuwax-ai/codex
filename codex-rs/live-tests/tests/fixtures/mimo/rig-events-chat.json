@@ -1,109 +1,200 @@
 {
   "vendor": "mimo",
   "tag": "chat",
-  "rig_events": [
+  "items": [
     {
-      "id": "I9FfTu34wGkME-e88wuQA",
-      "reasoning": "用"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "I9FfTu34wGkME-e88wuQA",
-      "reasoning": "一句话解释斐波那契"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用"
+      }
     },
     {
-      "id": "I9FfTu34wGkME-e88wuQA",
-      "reasoning": "数列。"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "一句话解释斐波那契"
+      }
     },
     {
-      "text": "斐波那契"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "数列。"
+      }
     },
     {
-      "text": "数列是一个"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
     },
     {
-      "text": "从0"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "斐波那契"
+      }
     },
     {
-      "text": "和1开始（"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "数列是指"
+      }
     },
     {
-      "text": "或从"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "从0"
+      }
     },
     {
-      "text": "1和1开始），每个"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "和1开始，后续"
+      }
     },
     {
-      "text": "后续"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "每一项"
+      }
     },
     {
-      "text": "数字"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "都"
+      }
     },
     {
-      "text": "都等于"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "等于前两项之"
+      }
     },
     {
-      "text": "前两个数字之"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "和（"
+      }
     },
     {
-      "text": "和的数列（如0"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "0"
+      }
     },
     {
-      "text": ","
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": ","
+      }
     },
     {
-      "text": " 1, 1, 2"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " 1, 1, 2"
+      }
     },
     {
-      "text": ", 3, 5, "
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": ", 3, 5, "
+      }
     },
     {
-      "text": "8, 13, "
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "8, 13, …"
+      }
     },
     {
-      "text": "21,"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "）的数列。"
+      }
     },
     {
-      "text": " 34……"
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "斐波那契数列是指从0和1开始，后续每一项都等于前两项之和（0, 1, 1, 2, 3, 5, 8, 13, …）的数列。"
+        }
+      }
     },
     {
-      "text": "）。"
-    },
-    {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 32,
-        "output_tokens": 81,
-        "total_tokens": 113,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 11
-      },
-      "finish_reason": "stop",
-      "message_id": null,
-      "response_id": "18a6bc7a-73ad-4c08-aa40-3a6897590a90_9794347ff0b04758a990cc281efa4fef",
-      "provider": "openai",
-      "model": "mimo-v2.6-flash",
-      "raw": {
-        "additional_params": {
-          "created": 1790303502,
-          "object": "chat.completion.chunk"
-        },
-        "finish_reason": "stop",
-        "model": "mimo-v2.6-flash",
-        "response_id": "18a6bc7a-73ad-4c08-aa40-3a6897590a90_9794347ff0b04758a990cc281efa4fef",
-        "usage": {
-          "completion_tokens": 81,
-          "completion_tokens_details": {
-            "reasoning_tokens": 11
-          },
-          "prompt_tokens": 32,
-          "prompt_tokens_details": {
-            "cached_tokens": 0
-          },
-          "total_tokens": 113
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "用一句话解释斐波那契数列。",
+          "native": {
+            "item": {
+              "reasoning_content": "用一句话解释斐波那契数列。"
+            },
+            "fingerprint": "e39c573ae5735c0f"
+          }
         }
       }
     }
-  ]
+  ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "47724fe4-8756-4ebd-84cb-a95c67ed8367_4ff5ca24c4214277b1b923b96ec147cc",
+    "model": "mimo-v2.6-flash",
+    "usage": {
+      "input_tokens": 32,
+      "output_tokens": 66,
+      "total_tokens": 98,
+      "cached_input_tokens": 0,
+      "reasoning_tokens": 11
+    }
+  },
+  "rig_events": [],
+  "custom_tools": []
 }

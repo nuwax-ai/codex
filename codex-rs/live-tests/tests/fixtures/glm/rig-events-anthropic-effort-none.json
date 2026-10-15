@@ -1,38 +1,53 @@
 {
   "vendor": "glm",
   "tag": "anthropic-effort-none",
-  "rig_events": [
+  "items": [
     {
-      "text": "法国的首都是巴黎。"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "text"
+      }
     },
     {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 32,
-        "output_tokens": 7,
-        "total_tokens": 39,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": "msg_202609271141178266e3f442bc4993",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "GLM-5.3-Flash",
-      "raw": {
-        "message_id": "msg_202609271141178266e3f442bc4993",
-        "model": "GLM-5.3-Flash",
-        "stop_reason": "end_turn",
-        "usage": {
-          "cache_creation_input_tokens": null,
-          "cache_read_input_tokens": 0,
-          "input_tokens": 32,
-          "output_tokens": 7
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "法国的首都是巴黎。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "text",
+          "text": "法国的首都是巴黎。",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "法国的首都是巴黎。"
+            },
+            "fingerprint": "ac417a057e71c387"
+          }
         }
       }
     }
   ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "msg_2026101523290992da35fc8ba14ab2",
+    "model": "GLM-5.3-Flash",
+    "usage": {
+      "input_tokens": 32,
+      "output_tokens": 7,
+      "total_tokens": 39,
+      "cached_input_tokens": 0
+    }
+  },
+  "rig_events": [],
   "custom_tools": []
 }

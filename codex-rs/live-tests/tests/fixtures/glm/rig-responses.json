@@ -3,37 +3,49 @@
   "bridge": "rig",
   "tag": "responses",
   "request": {
-    "include": [],
+    "model": "GLM-5.3-Flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "用一句话解释什么是递归。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant. Answer in Chinese."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
+        "content": [
+          {
+            "type": "input_text",
+            "text": "用一句话解释什么是递归。"
+          }
+        ]
       }
     ],
-    "instructions": "You are a helpful assistant. Answer in Chinese.",
-    "model": "GLM-5.3-Flash",
+    "tool_choice": "auto",
     "parallel_tool_calls": true,
     "reasoning": null,
     "store": false,
-    "stream": true,
-    "tool_choice": "auto"
+    "include": []
   },
   "events": [
     {
+      "ServerModel": "GLM-5.3-Flash"
+    },
+    {
       "Created": {
-        "response_id": "resp_202609280112581397775742314b12"
+        "response_id": "resp_202610152330312578cfb1ddc5452f"
       }
     },
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rs_resp_202609280112581397775742314b12",
+        "id": "rs_resp_202610152330312578cfb1ddc5452f",
         "summary": [],
         "encrypted_content": null
       }
@@ -52,7 +64,7 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " wants",
+        "delta": " asks",
         "content_index": 0
       }
     },
@@ -76,19 +88,7 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " what",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
         "delta": " recursion",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " is",
         "content_index": 0
       }
     },
@@ -130,13 +130,25 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": ".\n\n",
+        "delta": ".",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "A",
+        "delta": " This",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " is",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " a",
         "content_index": 0
       }
     },
@@ -148,31 +160,25 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " humorous",
+        "delta": " setup",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " way",
+        "delta": " for",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " to",
+        "delta": " a",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " explain",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " recursion",
+        "delta": " joke",
         "content_index": 0
       }
     },
@@ -185,6 +191,72 @@
     {
       "ReasoningContentDelta": {
         "delta": " \"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "要",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "理解",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "递",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "归",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "，",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "首先要",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "理解",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "递",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "归",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " (",
         "content_index": 0
       }
     },
@@ -244,7 +316,7 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": ".\"\n\n",
+        "delta": ").\n\n",
         "content_index": 0
       }
     },
@@ -274,13 +346,7 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " concise",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ",",
+        "delta": " clear",
         "content_index": 0
       }
     },
@@ -322,289 +388,37 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": ":\n\n",
+        "delta": ".",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "递",
+        "delta": " I",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "归",
+        "delta": " could",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "是一种",
+        "delta": " do",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "函数",
+        "delta": " both",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "或",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "过程",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "直接",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "或",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "间接",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "调用",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "自身的",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "编程",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "/",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "数学",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "方法",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "，",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "通过",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "将",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "大",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "问题",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "分解",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "为",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "结构",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "相同的",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "更",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "小",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "问题",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "来",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "求解",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "，",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "并",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "依赖",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "基准",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "条件",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "（",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "终止",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "条件",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "）",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "避免",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "无限",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "循环",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "。\n\n",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "That",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "'s",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " one",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " sentence",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " but",
+        "delta": ":",
         "content_index": 0
       }
     },
@@ -616,325 +430,25 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " bit",
+        "delta": " proper",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " long",
+        "delta": " definition",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ".",
+        "delta": ",",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Let",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " me",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " keep",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " it",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " to",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " one",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " clear",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " sentence",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ":\n\n",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "递",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "归",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "是指在",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "函数",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "或",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "问题的",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "定义",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "中",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "直接",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "或",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "间接",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "调用",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "（",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "引用",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "）",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "自身",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "，",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "通过",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "把",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "大",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "问题",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "分解",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "为",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "规模",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "更",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "小的",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "同类",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "子",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "问题",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "来",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "求解",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "，",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "且",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "必须有",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "终止",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "条件",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "以防",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "无限",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "循环",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "的方法",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "。\n\n",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "Or",
+        "delta": " or",
         "content_index": 0
       }
     },
@@ -952,151 +466,25 @@
     },
     {
       "ReasoningContentDelta": {
+        "delta": " recursive",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
         "delta": " joke",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ":",
+        "delta": ".",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " \"",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "要",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "理解",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "递",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "归",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "，",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "你",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "首先要",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "理解",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "递",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "归",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "。\"",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " —",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " this",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " is",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " clever",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " but",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " may",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " not",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " actually",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " explain",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": ".\n\n",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": "The",
+        "delta": " The",
         "content_index": 0
       }
     },
@@ -1108,7 +496,7 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " says",
+        "delta": " is",
         "content_index": 0
       }
     },
@@ -1180,6 +568,12 @@
     },
     {
       "ReasoningContentDelta": {
+        "delta": " So",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
         "delta": " I",
         "content_index": 0
       }
@@ -1187,6 +581,408 @@
     {
       "ReasoningContentDelta": {
         "delta": " should",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " give",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " exactly",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " one",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " sentence",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".\n\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "A",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " good",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " one",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "-s",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "entence",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " definition",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ":",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "递",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "归",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "是指",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "一个",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "函数",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "在其",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "定义",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "中",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "直接",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "或",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "间接",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "调用",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "自身",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "，",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "通过",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "将",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "问题",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "分解",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "为",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "更",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "小的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "同类",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "子",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "问题",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "来",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "求解",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "的",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "编程",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "方法",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "。\n\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "Or",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " the",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " playful",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " version",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ":",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " ",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "递",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "归",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "就是",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "要",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "理解",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "递",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "归",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "，",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "你",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "首先要",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "理解",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "递",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "归",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "\"",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "。\n\n",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "I",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": "'ll",
         "content_index": 0
       }
     },
@@ -1216,55 +1012,19 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": ".",
+        "delta": ",",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " Maybe",
+        "delta": " maybe",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " I",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " can",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " give",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " the",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " definition",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " plus",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
-        "delta": " optionally",
+        "delta": " with",
         "content_index": 0
       }
     },
@@ -1276,37 +1036,37 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " witty",
+        "delta": " touch",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " addition",
+        "delta": " of",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": ",",
+        "delta": " humor",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " but",
+        "delta": ".",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " the",
+        "delta": " Since",
         "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": " user",
+        "delta": " they",
         "content_index": 0
       }
     },
@@ -1342,12 +1102,6 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " so",
-        "content_index": 0
-      }
-    },
-    {
-      "ReasoningContentDelta": {
         "delta": " I",
         "content_index": 0
       }
@@ -1360,7 +1114,13 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": " stick",
+        "delta": " keep",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " it",
         "content_index": 0
       }
     },
@@ -1389,14 +1149,74 @@
       }
     },
     {
+      "ReasoningContentDelta": {
+        "delta": " Let",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " me",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " write",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " a",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " proper",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " definition",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " in",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " one",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": " sentence",
+        "content_index": 0
+      }
+    },
+    {
+      "ReasoningContentDelta": {
+        "delta": ".",
+        "content_index": 0
+      }
+    },
+    {
       "OutputItemDone": {
         "type": "reasoning",
-        "id": "rs_resp_202609280112581397775742314b12",
+        "id": "rs_resp_202610152330312578cfb1ddc5452f",
         "summary": [],
         "content": [
           {
             "type": "reasoning_text",
-            "text": "The user wants me to explain what recursion is in one sentence, in Chinese.\n\nA classic humorous way to explain recursion: \"To understand recursion, you must first understand recursion.\"\n\nLet me give a concise, one-sentence explanation in Chinese:\n\n递归是一种函数或过程直接或间接调用自身的编程/数学方法，通过将大问题分解为结构相同的更小问题来求解，并依赖基准条件（终止条件）避免无限循环。\n\nThat's one sentence but a bit long. Let me keep it to one clear sentence:\n\n递归是指在函数或问题的定义中直接或间接调用（引用）自身，通过把大问题分解为规模更小的同类子问题来求解，且必须有终止条件以防无限循环的方法。\n\nOr the classic joke: \"要理解递归，你首先要理解递归。\" — this is clever but may not actually explain.\n\nThe request says \"用一句话解释\" - explain in one sentence. I should give one clear sentence. Maybe I can give the definition plus optionally a witty addition, but the user asked for one sentence, so I should stick to one sentence."
+            "text": "The user asks me to explain recursion in one sentence, in Chinese. This is a classic setup for a joke: \"要理解递归，首先要理解递归\" (To understand recursion, you must first understand recursion).\n\nLet me give a clear one-sentence explanation in Chinese. I could do both: a proper definition, or the classic recursive joke. The request is \"用一句话解释\" - explain in one sentence. So I should give exactly one sentence.\n\nA good one-sentence definition: 递归是指一个函数在其定义中直接或间接调用自身，通过将问题分解为更小的同类子问题来求解的编程方法。\n\nOr the playful version: 递归就是\"要理解递归，你首先要理解递归\"。\n\nI'll give one clear sentence, maybe with a touch of humor. Since they asked for one sentence, I should keep it to one sentence. Let me write a proper definition in one sentence."
           }
         ],
         "encrypted_content": null
@@ -1405,7 +1225,8 @@
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "msg_resp_202609280112581397775742314b12",
+        "status": "in_progress",
+        "id": "msg_resp_202610152330312578cfb1ddc5452f",
         "role": "assistant",
         "content": []
       }
@@ -1417,7 +1238,10 @@
       "OutputTextDelta": "归"
     },
     {
-      "OutputTextDelta": "是指在"
+      "OutputTextDelta": "是指"
+    },
+    {
+      "OutputTextDelta": "一个"
     },
     {
       "OutputTextDelta": "函数"
@@ -1426,7 +1250,10 @@
       "OutputTextDelta": "或"
     },
     {
-      "OutputTextDelta": "问题的"
+      "OutputTextDelta": "过程"
+    },
+    {
+      "OutputTextDelta": "在"
     },
     {
       "OutputTextDelta": "定义"
@@ -1442,6 +1269,9 @@
     },
     {
       "OutputTextDelta": "间接"
+    },
+    {
+      "OutputTextDelta": "地"
     },
     {
       "OutputTextDelta": "调用"
@@ -1463,6 +1293,9 @@
     },
     {
       "OutputTextDelta": "问题"
+    },
+    {
+      "OutputTextDelta": "不断"
     },
     {
       "OutputTextDelta": "分解"
@@ -1498,10 +1331,31 @@
       "OutputTextDelta": "，"
     },
     {
-      "OutputTextDelta": "并"
+      "OutputTextDelta": "直到"
     },
     {
-      "OutputTextDelta": "依靠"
+      "OutputTextDelta": "遇到"
+    },
+    {
+      "OutputTextDelta": "可直接"
+    },
+    {
+      "OutputTextDelta": "解决"
+    },
+    {
+      "OutputTextDelta": "的基础"
+    },
+    {
+      "OutputTextDelta": "情况"
+    },
+    {
+      "OutputTextDelta": "（"
+    },
+    {
+      "OutputTextDelta": "递"
+    },
+    {
+      "OutputTextDelta": "归"
     },
     {
       "OutputTextDelta": "终止"
@@ -1510,16 +1364,10 @@
       "OutputTextDelta": "条件"
     },
     {
-      "OutputTextDelta": "避免"
+      "OutputTextDelta": "）"
     },
     {
-      "OutputTextDelta": "无限"
-    },
-    {
-      "OutputTextDelta": "循环"
-    },
-    {
-      "OutputTextDelta": "的方法"
+      "OutputTextDelta": "为止"
     },
     {
       "OutputTextDelta": "。"
@@ -1527,26 +1375,28 @@
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "msg_resp_202609280112581397775742314b12",
+        "status": "completed",
+        "id": "msg_resp_202610152330312578cfb1ddc5452f",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "递归是指在函数或问题的定义中直接或间接调用自身，通过把大问题分解为规模更小的同类子问题来求解，并依靠终止条件避免无限循环的方法。"
+            "text": "递归是指一个函数或过程在定义中直接或间接地调用自身，通过把大问题不断分解为规模更小的同类子问题来求解，直到遇到可直接解决的基础情况（递归终止条件）为止。",
+            "annotations": []
           }
         ]
       }
     },
     {
       "Completed": {
-        "response_id": "resp_202609280112581397775742314b12",
+        "response_id": "resp_202610152330312578cfb1ddc5452f",
         "token_usage": {
           "input_tokens": 30,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 265,
-          "reasoning_output_tokens": 225,
-          "total_tokens": 295
+          "output_tokens": 242,
+          "reasoning_output_tokens": 193,
+          "total_tokens": 272
         },
         "usage_metadata": {
           "amount": null,
@@ -1555,11 +1405,11 @@
             "input_tokens_details": {
               "cached_tokens": 0
             },
-            "output_tokens": 265,
+            "output_tokens": 242,
             "output_tokens_details": {
-              "reasoning_tokens": 225
+              "reasoning_tokens": 193
             },
-            "total_tokens": 295
+            "total_tokens": 272
           }
         },
         "end_turn": null

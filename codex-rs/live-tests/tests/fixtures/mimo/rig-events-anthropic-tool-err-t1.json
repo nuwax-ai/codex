@@ -1,102 +1,132 @@
 {
   "vendor": "mimo",
   "tag": "anthropic-tool-err-t1",
-  "rig_events": [
+  "items": [
     {
-      "id": "xnHqOtV8sKRQ3_brrPz0C",
-      "reasoning": "The user wants"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "xnHqOtV8sKRQ3_brrPz0C",
-      "reasoning": " to query"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The user"
+      }
     },
     {
-      "id": "xnHqOtV8sKRQ3_brrPz0C",
-      "reasoning": " Beijing weather."
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " wants to"
+      }
     },
     {
-      "id": "xnHqOtV8sKRQ3_brrPz0C",
-      "reasoning": " Let"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " call"
+      }
     },
     {
-      "id": "xnHqOtV8sKRQ3_brrPz0C",
-      "reasoning": " me call the"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " get_weather for Beijing. Let"
+      }
     },
     {
-      "id": "xnHqOtV8sKRQ3_brrPz0C",
-      "reasoning": " tool."
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "'s"
+      }
     },
     {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "The user wants to query Beijing weather. Let me call the tool."
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " do it."
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "The user wants to call get_weather for Beijing. Let's do it."
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "tool_call",
+        "name": "get_weather"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 1,
+        "json": "{\"city\": \"北京\"}"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "toolcall",
+          "id": {
+            "provider": "call_cbac69b5093842cf93d09880"
+          },
+          "function": {
+            "name": "get_weather",
+            "arguments": {
+              "city": "北京"
             }
+          },
+          "native": {
+            "item": {
+              "type": "tool_use",
+              "id": "call_cbac69b5093842cf93d09880",
+              "name": "get_weather",
+              "input": {
+                "city": "北京"
+              }
+            },
+            "fingerprint": "c9d160381da4cca9"
           }
-        ]
-      },
-      "id": "xnHqOtV8sKRQ3_brrPz0C"
-    },
-    {
-      "internal_call_id": "0iR9SfIRLw0Rxay3YqY7S",
-      "content": {
-        "Name": "get_weather"
-      }
-    },
-    {
-      "internal_call_id": "0iR9SfIRLw0Rxay3YqY7S",
-      "content": {
-        "Delta": "{\"city\": \"北京\"}"
-      }
-    },
-    {
-      "tool_call": {
-        "id": "call_b48f496a42f1403ea3a6ae47",
-        "provider": {
-          "call_id": "call_b48f496a42f1403ea3a6ae47"
-        },
-        "function": {
-          "name": "get_weather",
-          "arguments": {
-            "city": "北京"
-          }
-        },
-        "signature": null,
-        "additional_params": null
-      },
-      "internal_call_id": "0iR9SfIRLw0Rxay3YqY7S"
-    },
-    {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 132,
-        "output_tokens": 34,
-        "total_tokens": 166,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "tool_calls",
-      "message_id": "msg_f058b9023f7446fb9290002c",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "mimo-v2.6-flash",
-      "raw": {
-        "message_id": "msg_f058b9023f7446fb9290002c",
-        "model": "mimo-v2.6-flash",
-        "stop_reason": "tool_use",
-        "usage": {
-          "cache_creation_input_tokens": null,
-          "cache_read_input_tokens": null,
-          "input_tokens": 132,
-          "output_tokens": 34
         }
       }
     }
   ],
+  "terminal": {
+    "finish_reason": "tool_calls",
+    "response_id": "msg_5d483f96e6aa406f9b1482a7",
+    "model": "mimo-v2.6-flash",
+    "usage": {
+      "input_tokens": 133,
+      "output_tokens": 35,
+      "total_tokens": 168
+    }
+  },
+  "rig_events": [],
   "custom_tools": []
 }

@@ -3,57 +3,79 @@
   "bridge": "rig",
   "tag": "anthropic-tool-t2",
   "request": {
-    "include": [],
+    "model": "mimo-v2.6-flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant."
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。"
+          }
+        ]
+      },
+      {
+        "type": "reasoning",
+        "id": "rigseg_18debd9ecd0af5701_0",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "The user explicitly asks for get_weather call."
           }
         ],
-        "role": "user",
-        "type": "message"
+        "encrypted_content": "codex-rig-reasoning-v2:{\"source\":\"Anthropic:2c20efb7546ff782f73c251fd434849681b2d1702f4f3f7d3b9a38902557e65e\",\"blocks\":[{\"text\":\"The user explicitly asks for get_weather call.\"}]}"
       },
       {
-        "arguments": "{\"city\": \"北京\"}",
-        "call_id": "call_32a1841217a1438a871eb84c",
+        "type": "function_call",
+        "id": "rigseg_18debd9ecd0af5701_1",
         "name": "get_weather",
-        "type": "function_call"
+        "arguments": "{\"city\": \"北京\"}",
+        "call_id": "call_0601fe22112d4612ac9c5a29"
       },
       {
-        "call_id": "call_32a1841217a1438a871eb84c",
-        "output": "{\"city\":\"北京\",\"condition\":\"晴\",\"temp_c\":23}",
-        "type": "function_call_output"
+        "type": "function_call_output",
+        "call_id": "call_0601fe22112d4612ac9c5a29",
+        "output": "{\"city\":\"北京\",\"condition\":\"晴\",\"temp_c\":23}"
       }
     ],
-    "instructions": "You are a helpful assistant.",
-    "model": "mimo-v2.6-flash",
-    "parallel_tool_calls": false,
-    "reasoning": null,
-    "store": false,
-    "stream": true,
-    "tool_choice": "auto",
     "tools": [
       {
-        "description": "Get the current weather for a city",
+        "type": "function",
         "name": "get_weather",
+        "description": "Get the current weather for a city",
         "parameters": {
+          "type": "object",
           "properties": {
             "city": {
-              "description": "City name, e.g. 北京",
-              "type": "string"
+              "type": "string",
+              "description": "City name, e.g. 北京"
             }
           },
           "required": [
             "city"
-          ],
-          "type": "object"
+          ]
         },
-        "strict": false,
-        "type": "function"
+        "strict": false
       }
-    ]
+    ],
+    "tool_choice": "auto",
+    "parallel_tool_calls": false,
+    "reasoning": null,
+    "store": false,
+    "include": []
   },
   "events": [
     {
@@ -64,7 +86,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_18d86f8bea201eb81",
+        "id": "rigseg_18debd9fbd3546183_0",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -79,13 +101,27 @@
     {
       "ReasoningContentDelta": {
         "delta": " Chinese.",
-        "content_index": 1
+        "content_index": 0
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rigseg_18debd9fbd3546183_0",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "Answer in Chinese."
+          }
+        ],
+        "encrypted_content": "codex-rig-reasoning-v2:{\"source\":\"Anthropic:7e5aeab5a72d471b3056c2b6ecd372d885d54da706e2bb0b25051934a4be7efa\",\"blocks\":[{\"text\":\"Answer in Chinese.\"}]}"
       }
     },
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_18d86f8bed59cdb82",
+        "id": "rigseg_18debd9fbd3546183_1",
         "role": "assistant",
         "content": []
       }
@@ -94,60 +130,64 @@
       "OutputTextDelta": "北京今天天气"
     },
     {
-      "OutputTextDelta": "晴"
+      "OutputTextDelta": "：**晴**，气温"
     },
     {
-      "OutputTextDelta": "朗"
+      "OutputTextDelta": " **23°C**。\n\n"
     },
     {
-      "OutputTextDelta": "，气温约"
+      "OutputTextDelta": "适合外出"
     },
     {
-      "OutputTextDelta": " 23°C，"
+      "OutputTextDelta": "活动"
     },
     {
-      "OutputTextDelta": "适合出行"
+      "OutputTextDelta": "，不过晴"
+    },
+    {
+      "OutputTextDelta": "天紫外线"
+    },
+    {
+      "OutputTextDelta": "较强"
+    },
+    {
+      "OutputTextDelta": "，注意"
+    },
+    {
+      "OutputTextDelta": "防晒"
+    },
+    {
+      "OutputTextDelta": "和补水"
     },
     {
       "OutputTextDelta": "。"
     },
     {
       "OutputItemDone": {
-        "type": "reasoning",
-        "id": "rsn_18d86f8bea201eb81",
-        "summary": [],
-        "content": [
-          {
-            "type": "reasoning_text",
-            "text": "Answer in Chinese."
-          }
-        ],
-        "encrypted_content": "Answer in Chinese."
-      }
-    },
-    {
-      "OutputItemDone": {
         "type": "message",
-        "id": "txt_18d86f8bed59cdb82",
+        "id": "rigseg_18debd9fbd3546183_1",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "北京今天天气晴朗，气温约 23°C，适合出行。"
+            "text": "北京今天天气：**晴**，气温 **23°C**。\n\n适合外出活动，不过晴天紫外线较强，注意防晒和补水。"
           }
         ]
       }
     },
     {
+      "ServerModel": "mimo-v2.6-flash"
+    },
+    {
       "Completed": {
-        "response_id": "",
+        "response_id": "msg_ee6478a175f3444f8048c0e8",
         "token_usage": {
-          "input_tokens": 188,
+          "input_tokens": 183,
           "cached_input_tokens": 128,
           "cache_write_input_tokens": 0,
-          "output_tokens": 23,
+          "output_tokens": 37,
           "reasoning_output_tokens": 0,
-          "total_tokens": 211
+          "total_tokens": 220
         },
         "usage_metadata": null,
         "end_turn": true

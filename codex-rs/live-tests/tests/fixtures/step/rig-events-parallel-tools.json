@@ -1,239 +1,1046 @@
 {
   "vendor": "step",
   "tag": "parallel-tools",
-  "rig_events": [
+  "items": [
     {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "用户"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "要求分别"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "查询北京和上海"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "两个城市的天气，"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "用"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "两次独立的 get_"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "weather 工具调用"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "（"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "一次查北京，"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "一次查上海，"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "不要合并成一次"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "调用），然后一起"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "告诉我"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "。\n\n我"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "需要在同一个"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "块"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "中发起"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "两个独立的调用"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "，"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "每个"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "调用分别"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "查询北京"
-    },
-    {
-      "id": "npV4mAjE3stFo_9WpAdT3",
-      "reasoning": "和上海。"
-    },
-    {
-      "text": "我来分别"
-    },
-    {
-      "text": "查询北京和上海的"
-    },
-    {
-      "text": "天气。"
-    },
-    {
-      "internal_call_id": "5-e7W73RtiUmx0gNaG0FL",
-      "content": {
-        "Name": "get_weather"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
       }
     },
     {
-      "internal_call_id": "5-e7W73RtiUmx0gNaG0FL",
-      "content": {
-        "Delta": "{"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "好的"
       }
     },
     {
-      "internal_call_id": "5-e7W73RtiUmx0gNaG0FL",
-      "content": {
-        "Delta": "\"city\": "
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，用户要求我"
       }
     },
     {
-      "internal_call_id": "5-e7W73RtiUmx0gNaG0FL",
-      "content": {
-        "Delta": "\"北京\""
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "分别查询北京和"
       }
     },
     {
-      "internal_call_id": "5-e7W73RtiUmx0gNaG0FL",
-      "content": {
-        "Delta": "}"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "上海"
       }
     },
     {
-      "internal_call_id": "x0q5oa95EIvGURzkra42u",
-      "content": {
-        "Name": "get_weather"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "两个城市的天气，"
       }
     },
     {
-      "internal_call_id": "x0q5oa95EIvGURzkra42u",
-      "content": {
-        "Delta": "{"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "并且特别"
       }
     },
     {
-      "internal_call_id": "x0q5oa95EIvGURzkra42u",
-      "content": {
-        "Delta": "\"city\": "
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "强调了"
       }
     },
     {
-      "internal_call_id": "x0q5oa95EIvGURzkra42u",
-      "content": {
-        "Delta": "\"上海\""
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "要用两次独立的 get"
       }
     },
     {
-      "internal_call_id": "x0q5oa95EIvGURzkra42u",
-      "content": {
-        "Delta": "}"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "_weather 工具"
       }
     },
     {
-      "tool_call": {
-        "id": "chatcmpl-tool-87f58e549286210a",
-        "provider": {
-          "call_id": "chatcmpl-tool-87f58e549286210a"
-        },
-        "function": {
-          "name": "get_weather",
-          "arguments": {
-            "city": "北京"
-          }
-        },
-        "signature": null,
-        "additional_params": null
-      },
-      "internal_call_id": "5-e7W73RtiUmx0gNaG0FL"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "调用，不能"
+      }
     },
     {
-      "tool_call": {
-        "id": "chatcmpl-tool-b0074817995fd49b",
-        "provider": {
-          "call_id": "chatcmpl-tool-b0074817995fd49b"
-        },
-        "function": {
-          "name": "get_weather",
-          "arguments": {
-            "city": "上海"
-          }
-        },
-        "signature": null,
-        "additional_params": null
-      },
-      "internal_call_id": "x0q5oa95EIvGURzkra42u"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "合并成一次。"
+      }
     },
     {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 281,
-        "output_tokens": 111,
-        "total_tokens": 392,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "tool_calls",
-      "message_id": null,
-      "response_id": "7a3ce3b00a94f433ac38139f211bbf0e.dee137ccada39830552cf4ca7fd19367",
-      "provider": "openai",
-      "model": "step-5-preview",
-      "raw": {
-        "additional_params": {
-          "agent": "",
-          "created": 1790303487,
-          "object": "chat.completion.chunk"
-        },
-        "finish_reason": "tool_calls",
-        "model": "step-5-preview",
-        "response_id": "7a3ce3b00a94f433ac38139f211bbf0e.dee137ccada39830552cf4ca7fd19367",
-        "usage": {
-          "completion_tokens": 111,
-          "completion_tokens_details": {
-            "reasoning_tokens": 0
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "我先"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "确认一下用户"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "的需求：他们"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "想要两个城市当前"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "天气的信息"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，但"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "特意"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "要求分开"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "调用，可能是"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "想验证"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "我"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "是否"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "能够独立执行多个"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "工具调用，或者"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "对"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "数据获取"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "过程"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "有特定"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "要求。\n\n接下来"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，我需要"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "按照指示"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "分别"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "调用 get"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "_weather 函数"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "第一次调用传入"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "参数"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " city"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "为“北京”，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "第二次调用传入"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "参数 city"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " 为“上海"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "”。这两个"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "调用之间没有依赖"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "关系，所以"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "可以"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "同时"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "发起"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，不需要"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "等待"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "第一个"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "结果再"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "执行第二个。这样"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "既"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "满足了"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用户“"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "独立调用”的要求"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，又提高了"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "效率。\n\n然后，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "在获取"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "两个城市的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "天气数据"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "后，我需要"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "将"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "结果整合起来，"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用清晰的方式回复"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用户。可能需要"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "分别"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "列出"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "每个"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "城市的天气情况"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，比如温度、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "天气状况、风力"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "等，并"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "确保"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "信息准确无误"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。同时"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，保持"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "回答"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "简洁明了，直接"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "呈现"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "结果"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "，避免冗余"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "信息"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。\n\n最后，检查"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "一下是否完全"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "符合用户的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "指示：两次"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "独立"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "调用、分别查询"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "、"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "一起告诉"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "结果"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "。确认"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "无误"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "后，就可以"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "发送回复"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "了。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "我将"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "分别调用"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "两次工具来"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "查询北京和上海的"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "天气。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "我将分别调用两次工具来查询北京和上海的天气。"
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 2,
+        "kind": "tool_call",
+        "name": "get_weather"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "{"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "\"city\": "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "\"北京\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "}"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 3,
+        "kind": "tool_call",
+        "name": "get_weather"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 3,
+        "json": "{"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 3,
+        "json": "\"city\": "
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 3,
+        "json": "\"上海\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 3,
+        "json": "}"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 2,
+        "content": {
+          "type": "toolcall",
+          "id": {
+            "provider": "chatcmpl-tool-bf01f73ae01e618f"
           },
-          "prompt_tokens": 281,
-          "prompt_tokens_details": {
-            "cached_tokens": 0
+          "function": {
+            "name": "get_weather",
+            "arguments": {
+              "city": "北京"
+            }
           },
-          "total_tokens": 392
+          "native": {
+            "item": {
+              "id": "chatcmpl-tool-bf01f73ae01e618f",
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "arguments": "{\"city\": \"北京\"}"
+              }
+            },
+            "fingerprint": "75e7bdae5513675f"
+          }
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 3,
+        "content": {
+          "type": "toolcall",
+          "id": {
+            "provider": "chatcmpl-tool-975f2c827144419a"
+          },
+          "function": {
+            "name": "get_weather",
+            "arguments": {
+              "city": "上海"
+            }
+          },
+          "native": {
+            "item": {
+              "id": "chatcmpl-tool-975f2c827144419a",
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "arguments": "{\"city\": \"上海\"}"
+              }
+            },
+            "fingerprint": "54a6c60df9377b9e"
+          }
+        }
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "好的，用户要求我分别查询北京和上海两个城市的天气，并且特别强调了要用两次独立的 get_weather 工具调用，不能合并成一次。我先确认一下用户的需求：他们想要两个城市当前天气的信息，但特意要求分开调用，可能是想验证我是否能够独立执行多个工具调用，或者对数据获取过程有特定要求。\n\n接下来，我需要按照指示分别调用 get_weather 函数。第一次调用传入参数 city 为“北京”，第二次调用传入参数 city 为“上海”。这两个调用之间没有依赖关系，所以可以同时发起，不需要等待第一个结果再执行第二个。这样既满足了用户“独立调用”的要求，又提高了效率。\n\n然后，在获取两个城市的天气数据后，我需要将结果整合起来，用清晰的方式回复用户。可能需要分别列出每个城市的天气情况，比如温度、天气状况、风力等，并确保信息准确无误。同时，保持回答简洁明了，直接呈现结果，避免冗余信息。\n\n最后，检查一下是否完全符合用户的指示：两次独立调用、分别查询、一起告诉结果。确认无误后，就可以发送回复了。",
+          "native": {
+            "item": {
+              "reasoning_content": "好的，用户要求我分别查询北京和上海两个城市的天气，并且特别强调了要用两次独立的 get_weather 工具调用，不能合并成一次。我先确认一下用户的需求：他们想要两个城市当前天气的信息，但特意要求分开调用，可能是想验证我是否能够独立执行多个工具调用，或者对数据获取过程有特定要求。\n\n接下来，我需要按照指示分别调用 get_weather 函数。第一次调用传入参数 city 为“北京”，第二次调用传入参数 city 为“上海”。这两个调用之间没有依赖关系，所以可以同时发起，不需要等待第一个结果再执行第二个。这样既满足了用户“独立调用”的要求，又提高了效率。\n\n然后，在获取两个城市的天气数据后，我需要将结果整合起来，用清晰的方式回复用户。可能需要分别列出每个城市的天气情况，比如温度、天气状况、风力等，并确保信息准确无误。同时，保持回答简洁明了，直接呈现结果，避免冗余信息。\n\n最后，检查一下是否完全符合用户的指示：两次独立调用、分别查询、一起告诉结果。确认无误后，就可以发送回复了。"
+            },
+            "fingerprint": "ed8c01a7ab498271"
+          }
         }
       }
     }
-  ]
+  ],
+  "terminal": {
+    "finish_reason": "tool_calls",
+    "response_id": "eee869416e3740f2771b00c1c2db21e5.25c6ff294073af1a8a59a1f4d28ef0a2",
+    "model": "step-5-preview",
+    "usage": {
+      "input_tokens": 284,
+      "output_tokens": 288,
+      "total_tokens": 572,
+      "cached_input_tokens": 0,
+      "reasoning_tokens": 0
+    }
+  },
+  "rig_events": [],
+  "custom_tools": []
 }

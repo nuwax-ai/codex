@@ -1,0 +1,54 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://api.stepfun.com/step_plan/v1/messages",
+      "body_raw": "{\"model\":\"step-5-preview\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"请调用 get_weather 查询北京天气;如果工具报错,请直接告诉用户工具失败了。\"}]}],\"max_tokens\":16384,\"system\":[{\"type\":\"text\",\"text\":\"You are a helpful assistant.\"}],\"tool_choice\":{\"type\":\"auto\",\"disable_parallel_tool_use\":true},\"tools\":[{\"name\":\"get_weather\",\"description\":\"Get the current weather for a city\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\",\"description\":\"City name, e.g. 北京\"}},\"required\":[\"city\"]},\"strict\":false}],\"stream\":true}",
+      "body": {
+        "model": "step-5-preview",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "请调用 get_weather 查询北京天气;如果工具报错,请直接告诉用户工具失败了。"
+              }
+            ]
+          }
+        ],
+        "max_tokens": 16384,
+        "system": [
+          {
+            "type": "text",
+            "text": "You are a helpful assistant."
+          }
+        ],
+        "tool_choice": {
+          "type": "auto",
+          "disable_parallel_tool_use": true
+        },
+        "tools": [
+          {
+            "name": "get_weather",
+            "description": "Get the current weather for a city",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string",
+                  "description": "City name, e.g. 北京"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            },
+            "strict": false
+          }
+        ],
+        "stream": true
+      }
+    }
+  ]
+}

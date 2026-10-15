@@ -1,0 +1,64 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://token-plan-cn.xiaomimimo.com/v1/responses",
+      "body_raw": "{\"model\":\"mimo-v2.6-flash\",\"stream\":true,\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。\"}]},{\"type\":\"reasoning\",\"id\":\"rigseg_18debda83ce76c580_0\",\"summary\":[],\"content\":[{\"type\":\"reasoning_text\",\"text\":\"用户要求必须调用 get_weather 工具查询北京天气。这是一个直接的查询，没有违法行为，也不需要其他工具。调用即可。\"}],\"encrypted_content\":null},{\"type\":\"function_call\",\"id\":\"rigseg_18debda83ce76c580_1\",\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\": \\\"北京\\\"}\",\"call_id\":\"call_bfc41b909c8b43caad1edc4b\"},{\"type\":\"function_call_output\",\"call_id\":\"call_bfc41b909c8b43caad1edc4b\",\"output\":\"{\\\"city\\\":\\\"北京\\\",\\\"condition\\\":\\\"晴\\\",\\\"temp_c\\\":22,\\\"report_token\\\":\\\"XPROTO_mimo_7d31a94e\\\"}\"},{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"请逐字复制工具结果中的 report_token 字段，只输出该字段的值。\"}]}],\"tool_choice\":\"auto\",\"parallel_tool_calls\":true,\"reasoning\":null,\"store\":false,\"include\":[]}",
+      "body": {
+        "model": "mimo-v2.6-flash",
+        "stream": true,
+        "input": [
+          {
+            "type": "message",
+            "role": "user",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。"
+              }
+            ]
+          },
+          {
+            "type": "reasoning",
+            "id": "rigseg_18debda83ce76c580_0",
+            "summary": [],
+            "content": [
+              {
+                "type": "reasoning_text",
+                "text": "用户要求必须调用 get_weather 工具查询北京天气。这是一个直接的查询，没有违法行为，也不需要其他工具。调用即可。"
+              }
+            ],
+            "encrypted_content": null
+          },
+          {
+            "type": "function_call",
+            "id": "rigseg_18debda83ce76c580_1",
+            "name": "get_weather",
+            "arguments": "{\"city\": \"北京\"}",
+            "call_id": "call_bfc41b909c8b43caad1edc4b"
+          },
+          {
+            "type": "function_call_output",
+            "call_id": "call_bfc41b909c8b43caad1edc4b",
+            "output": "{\"city\":\"北京\",\"condition\":\"晴\",\"temp_c\":22,\"report_token\":\"XPROTO_mimo_7d31a94e\"}"
+          },
+          {
+            "type": "message",
+            "role": "user",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "请逐字复制工具结果中的 report_token 字段，只输出该字段的值。"
+              }
+            ]
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": true,
+        "reasoning": null,
+        "store": false,
+        "include": []
+      }
+    }
+  ]
+}

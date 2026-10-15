@@ -1,0 +1,85 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://token-plan-cn.xiaomimimo.com/v1/responses",
+      "body_raw": "{\"model\":\"mimo-v2.6-flash\",\"stream\":true,\"input\":[{\"type\":\"message\",\"role\":\"developer\",\"content\":[{\"type\":\"input_text\",\"text\":\"You are a helpful assistant.\"}]},{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。\"}]},{\"type\":\"reasoning\",\"id\":\"rs_e92dee8002d04d08b6be2c46a52aa83d\",\"summary\":[],\"content\":[{\"type\":\"reasoning_text\",\"text\":\"The user wants to know Shanghai's weather. Call the tool.\"}],\"encrypted_content\":null},{\"type\":\"function_call\",\"status\":\"completed\",\"id\":\"fc_3d3bb664bdd34f8d8bbc6883c8a25521\",\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\": \\\"上海\\\"}\",\"call_id\":\"call_5a7500e9b6c1463f8157c10f\"},{\"type\":\"function_call_output\",\"call_id\":\"call_5a7500e9b6c1463f8157c10f\",\"output\":\"{\\\"city\\\":\\\"上海\\\",\\\"condition\\\":\\\"多云\\\",\\\"temp_c\\\":26}\"}],\"tools\":[{\n        \"type\": \"function\",\n        \"name\": \"get_weather\",\n        \"description\": \"Get the current weather for a city\",\n        \"parameters\": {\n            \"type\": \"object\",\n            \"properties\": {\n                \"city\": {\"type\": \"string\", \"description\": \"City name, e.g. 北京\"}\n            },\n            \"required\": [\"city\"]\n        },\n        \"strict\": false\n    }],\"tool_choice\":\"auto\",\"parallel_tool_calls\":false,\"reasoning\":null,\"store\":false,\"include\":[]}",
+      "body": {
+        "model": "mimo-v2.6-flash",
+        "stream": true,
+        "input": [
+          {
+            "type": "message",
+            "role": "developer",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "You are a helpful assistant."
+              }
+            ]
+          },
+          {
+            "type": "message",
+            "role": "user",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。"
+              }
+            ]
+          },
+          {
+            "type": "reasoning",
+            "id": "rs_e92dee8002d04d08b6be2c46a52aa83d",
+            "summary": [],
+            "content": [
+              {
+                "type": "reasoning_text",
+                "text": "The user wants to know Shanghai's weather. Call the tool."
+              }
+            ],
+            "encrypted_content": null
+          },
+          {
+            "type": "function_call",
+            "status": "completed",
+            "id": "fc_3d3bb664bdd34f8d8bbc6883c8a25521",
+            "name": "get_weather",
+            "arguments": "{\"city\": \"上海\"}",
+            "call_id": "call_5a7500e9b6c1463f8157c10f"
+          },
+          {
+            "type": "function_call_output",
+            "call_id": "call_5a7500e9b6c1463f8157c10f",
+            "output": "{\"city\":\"上海\",\"condition\":\"多云\",\"temp_c\":26}"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "name": "get_weather",
+            "description": "Get the current weather for a city",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string",
+                  "description": "City name, e.g. 北京"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            },
+            "strict": false
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "reasoning": null,
+        "store": false,
+        "include": []
+      }
+    }
+  ]
+}

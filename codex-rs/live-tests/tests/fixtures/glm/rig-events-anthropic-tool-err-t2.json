@@ -1,317 +1,624 @@
 {
   "vendor": "glm",
   "tag": "anthropic-tool-err-t2",
-  "rig_events": [
+  "items": [
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": "The"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " tool"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "The"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " call"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " tool"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " returned"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " returned"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " an"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " an"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " error"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " error"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": ":"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ":"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " \""
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " \""
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": "weather"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "weather"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " service"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " service"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " unavailable"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " unavailable"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " ("
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " ("
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": "sim"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "sim"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": "ulated"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "ulated"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": ")\"."
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ")\"."
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " The"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " According"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " user"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " to"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " instructed"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " me"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " user"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " to"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "'s"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " tell"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " instructions"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " them"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": ","
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " directly"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " I"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " if"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " should"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " the"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " tell"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " tool"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " fails"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " user"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": "."
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " directly"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " So"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " that"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " I"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " the"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " should"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " tool"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " inform"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": " failed"
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " the"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "."
+      }
     },
     {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " user"
-    },
-    {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " that"
-    },
-    {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " the"
-    },
-    {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " tool"
-    },
-    {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": " failed"
-    },
-    {
-      "id": "6sfs6881Jm4W-3rK5MCn8",
-      "reasoning": "."
-    },
-    {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "The tool call returned an error: \"weather service unavailable (simulated)\". The user instructed me to tell them directly if the tool fails. So I should inform the user that the tool failed.",
-              "signature": "37250db756234ba5a6972703"
-            }
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "The tool returned an error: \"weather service unavailable (simulated)\". According to the user's instructions, I should tell the user directly that the tool failed.",
+          "native": {
+            "item": {
+              "type": "thinking",
+              "thinking": "The tool returned an error: \"weather service unavailable (simulated)\". According to the user's instructions, I should tell the user directly that the tool failed.",
+              "signature": "75a976e2c1d141828b70e34b"
+            },
+            "fingerprint": "2c0518e647bb2f1c"
           }
-        ]
-      },
-      "id": "6sfs6881Jm4W-3rK5MCn8"
+        }
+      }
     },
     {
-      "text": "很"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
     },
     {
-      "text": "抱歉"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "很"
+      }
     },
     {
-      "text": ","
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "抱歉"
+      }
     },
     {
-      "text": "天气"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": ","
+      }
     },
     {
-      "text": "查询"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "查询"
+      }
     },
     {
-      "text": "工具"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "北京"
+      }
     },
     {
-      "text": "调用"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "天气"
+      }
     },
     {
-      "text": "失败了"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "时"
+      }
     },
     {
-      "text": ","
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "工具"
+      }
     },
     {
-      "text": "无法"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "调用"
+      }
     },
     {
-      "text": "获取"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "失败了"
+      }
     },
     {
-      "text": "北京的"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "("
+      }
     },
     {
-      "text": "天气"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "错误"
+      }
     },
     {
-      "text": "信息"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "信息"
+      }
     },
     {
-      "text": "。"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": ":"
+      }
     },
     {
-      "text": "请"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "weather"
+      }
     },
     {
-      "text": "稍"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " service"
+      }
     },
     {
-      "text": "后再"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": " unavailable"
+      }
     },
     {
-      "text": "试"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": ")。"
+      }
     },
     {
-      "text": ","
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "目前"
+      }
     },
     {
-      "text": "或"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "无法"
+      }
     },
     {
-      "text": "通过"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "获取"
+      }
     },
     {
-      "text": "其他"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "天气"
+      }
     },
     {
-      "text": "渠道"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "数据"
+      }
     },
     {
-      "text": "("
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": ","
+      }
     },
     {
-      "text": "如"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "建议"
+      }
     },
     {
-      "text": "天气"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "您"
+      }
     },
     {
-      "text": " App"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "稍"
+      }
     },
     {
-      "text": "、"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "后再"
+      }
     },
     {
-      "text": "中国"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "试"
+      }
     },
     {
-      "text": "天气"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": ","
+      }
     },
     {
-      "text": "网"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "或"
+      }
     },
     {
-      "text": "等"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "通过"
+      }
     },
     {
-      "text": ")"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "其他"
+      }
     },
     {
-      "text": "查询"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "天气"
+      }
     },
     {
-      "text": "实时"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "服务"
+      }
     },
     {
-      "text": "天气。"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "查询"
+      }
     },
     {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 223,
-        "output_tokens": 79,
-        "total_tokens": 302,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": "msg_20260927114141e57548d638b141a5",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "GLM-5.3-Flash",
-      "raw": {
-        "message_id": "msg_20260927114141e57548d638b141a5",
-        "model": "GLM-5.3-Flash",
-        "stop_reason": "end_turn",
-        "usage": {
-          "cache_creation_input_tokens": null,
-          "cache_read_input_tokens": 0,
-          "input_tokens": 223,
-          "output_tokens": 79
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "很抱歉,查询北京天气时工具调用失败了(错误信息:weather service unavailable)。目前无法获取天气数据,建议您稍后再试,或通过其他天气服务查询。",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "很抱歉,查询北京天气时工具调用失败了(错误信息:weather service unavailable)。目前无法获取天气数据,建议您稍后再试,或通过其他天气服务查询。"
+            },
+            "fingerprint": "097f6346637e6552"
+          }
         }
       }
     }
   ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "msg_2026101523293455bf517d954c4109",
+    "model": "GLM-5.3-Flash",
+    "usage": {
+      "input_tokens": 224,
+      "output_tokens": 71,
+      "total_tokens": 295,
+      "cached_input_tokens": 0
+    }
+  },
+  "rig_events": [],
   "custom_tools": []
 }

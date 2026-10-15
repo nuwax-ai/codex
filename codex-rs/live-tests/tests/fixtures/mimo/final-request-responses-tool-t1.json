@@ -1,0 +1,60 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://token-plan-cn.xiaomimimo.com/v1/responses",
+      "body_raw": "{\"model\":\"mimo-v2.6-flash\",\"stream\":true,\"input\":[{\"type\":\"message\",\"role\":\"developer\",\"content\":[{\"type\":\"input_text\",\"text\":\"You are a helpful assistant.\"}]},{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。\"}]}],\"tools\":[{\n        \"type\": \"function\",\n        \"name\": \"get_weather\",\n        \"description\": \"Get the current weather for a city\",\n        \"parameters\": {\n            \"type\": \"object\",\n            \"properties\": {\n                \"city\": {\"type\": \"string\", \"description\": \"City name, e.g. 北京\"}\n            },\n            \"required\": [\"city\"]\n        },\n        \"strict\": false\n    }],\"tool_choice\":\"auto\",\"parallel_tool_calls\":false,\"reasoning\":null,\"store\":false,\"include\":[]}",
+      "body": {
+        "model": "mimo-v2.6-flash",
+        "stream": true,
+        "input": [
+          {
+            "type": "message",
+            "role": "developer",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "You are a helpful assistant."
+              }
+            ]
+          },
+          {
+            "type": "message",
+            "role": "user",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "上海今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。"
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "name": "get_weather",
+            "description": "Get the current weather for a city",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string",
+                  "description": "City name, e.g. 北京"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            },
+            "strict": false
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "reasoning": null,
+        "store": false,
+        "include": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
+      "body_raw": "{\"model\":\"GLM-5.3-Flash\",\"messages\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"You are a helpful assistant. Answer in Chinese.\"}]},{\"role\":\"user\",\"content\":\"用一句话解释什么是斐波那契数列。\"}],\"parallel_tool_calls\":true,\"store\":false,\"stream_options\":{\"include_usage\":true},\"stream\":true}",
+      "body": {
+        "model": "GLM-5.3-Flash",
+        "messages": [
+          {
+            "role": "system",
+            "content": [
+              {
+                "type": "text",
+                "text": "You are a helpful assistant. Answer in Chinese."
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": "用一句话解释什么是斐波那契数列。"
+          }
+        ],
+        "parallel_tool_calls": true,
+        "store": false,
+        "stream_options": {
+          "include_usage": true
+        },
+        "stream": true
+      }
+    }
+  ]
+}

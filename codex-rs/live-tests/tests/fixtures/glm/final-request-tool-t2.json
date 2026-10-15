@@ -1,0 +1,75 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
+      "body_raw": "{\"model\":\"GLM-5.3-Flash\",\"messages\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"You are a helpful assistant.\"}]},{\"role\":\"user\",\"content\":\"北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。\"},{\"role\":\"assistant\",\"content\":\"我来为您查询北京的天气情况。\",\"tool_calls\":[{\"type\":\"function\",\"id\":\"call_d23a3a072dc640309a6a9731\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"北京\\\"}\"}}]},{\"role\":\"tool\",\"tool_call_id\":\"call_d23a3a072dc640309a6a9731\",\"content\":\"{\\\"city\\\":\\\"北京\\\",\\\"condition\\\":\\\"晴\\\",\\\"temp_c\\\":23}\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"description\":\"Get the current weather for a city\",\"parameters\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\",\"description\":\"City name, e.g. 北京\"}},\"required\":[\"city\"]},\"strict\":false}}],\"tool_choice\":\"auto\",\"parallel_tool_calls\":false,\"store\":false,\"stream_options\":{\"include_usage\":true},\"stream\":true}",
+      "body": {
+        "model": "GLM-5.3-Flash",
+        "messages": [
+          {
+            "role": "system",
+            "content": [
+              {
+                "type": "text",
+                "text": "You are a helpful assistant."
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": "北京今天天气怎么样？请务必调用 get_weather 工具查询，不要凭空回答。"
+          },
+          {
+            "role": "assistant",
+            "content": "我来为您查询北京的天气情况。",
+            "tool_calls": [
+              {
+                "type": "function",
+                "id": "call_d23a3a072dc640309a6a9731",
+                "function": {
+                  "name": "get_weather",
+                  "arguments": "{\"city\":\"北京\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "call_d23a3a072dc640309a6a9731",
+            "content": "{\"city\":\"北京\",\"condition\":\"晴\",\"temp_c\":23}"
+          }
+        ],
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "description": "Get the current weather for a city",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "type": "string",
+                    "description": "City name, e.g. 北京"
+                  }
+                },
+                "required": [
+                  "city"
+                ]
+              },
+              "strict": false
+            }
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "store": false,
+        "stream_options": {
+          "include_usage": true
+        },
+        "stream": true
+      }
+    }
+  ]
+}

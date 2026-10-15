@@ -1,0 +1,52 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://token-plan-cn.xiaomimimo.com/anthropic/v1/messages",
+      "body_raw": "{\"model\":\"mimo-v2.6-flash\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"北京和上海分别叫什么名字?\"}]}],\"max_tokens\":16384,\"system\":[{\"type\":\"text\",\"text\":\"You are a helpful assistant. Answer in Chinese.\"}],\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"city1\":{\"type\":\"string\"},\"city2\":{\"type\":\"string\"}},\"required\":[\"city1\",\"city2\"],\"additionalProperties\":false}}},\"stream\":true}",
+      "body": {
+        "model": "mimo-v2.6-flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "北京和上海分别叫什么名字?"
+              }
+            ]
+          }
+        ],
+        "max_tokens": 16384,
+        "system": [
+          {
+            "type": "text",
+            "text": "You are a helpful assistant. Answer in Chinese."
+          }
+        ],
+        "output_config": {
+          "format": {
+            "type": "json_schema",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "city1": {
+                  "type": "string"
+                },
+                "city2": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city1",
+                "city2"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "stream": true
+      }
+    }
+  ]
+}

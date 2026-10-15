@@ -3,26 +3,35 @@
   "bridge": "rig",
   "tag": "anthropic",
   "request": {
-    "include": [],
+    "model": "mimo-v2.6-flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "用一句话说明二分查找的思想。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant. Answer in Chinese."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
+        "content": [
+          {
+            "type": "input_text",
+            "text": "用一句话说明二分查找的思想。"
+          }
+        ]
       }
     ],
-    "instructions": "You are a helpful assistant. Answer in Chinese.",
-    "model": "mimo-v2.6-flash",
+    "tool_choice": "auto",
     "parallel_tool_calls": true,
     "reasoning": null,
     "store": false,
-    "stream": true,
-    "tool_choice": "auto"
+    "include": []
   },
   "events": [
     {
@@ -33,7 +42,7 @@
     {
       "OutputItemAdded": {
         "type": "reasoning",
-        "id": "rsn_18d86f89f604f9800",
+        "id": "rigseg_18debd921562a3e81_0",
         "summary": [],
         "content": null,
         "encrypted_content": null
@@ -47,124 +56,136 @@
     },
     {
       "ReasoningContentDelta": {
-        "delta": "一句话说明二分查找的思想",
-        "content_index": 1
+        "delta": "一句话概括",
+        "content_index": 0
       }
     },
     {
       "ReasoningContentDelta": {
-        "delta": "。",
-        "content_index": 2
+        "delta": "二分查找的思想。",
+        "content_index": 0
+      }
+    },
+    {
+      "OutputItemDone": {
+        "type": "reasoning",
+        "id": "rigseg_18debd921562a3e81_0",
+        "summary": [],
+        "content": [
+          {
+            "type": "reasoning_text",
+            "text": "用一句话概括二分查找的思想。"
+          }
+        ],
+        "encrypted_content": "codex-rig-reasoning-v2:{\"source\":\"Anthropic:d1cf1b874167dea18c680a6c991291f2f64f3c1020e4942d6564a2460e0f5ed7\",\"blocks\":[{\"text\":\"用一句话概括二分查找的思想。\"}]}"
       }
     },
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_18d86f89fc6331701",
+        "id": "rigseg_18debd921562a3e81_1",
         "role": "assistant",
         "content": []
       }
     },
     {
-      "OutputTextDelta": "**"
+      "OutputTextDelta": "每次"
     },
     {
-      "OutputTextDelta": "二分查找的思想是"
-    },
-    {
-      "OutputTextDelta": "：每次将"
-    },
-    {
-      "OutputTextDelta": "有序"
+      "OutputTextDelta": "将待"
     },
     {
       "OutputTextDelta": "查找"
     },
     {
-      "OutputTextDelta": "范围"
-    },
-    {
-      "OutputTextDelta": "对"
-    },
-    {
-      "OutputTextDelta": "半折，"
-    },
-    {
-      "OutputTextDelta": "通过"
-    },
-    {
-      "OutputTextDelta": "与"
-    },
-    {
-      "OutputTextDelta": "中间元素"
-    },
-    {
-      "OutputTextDelta": "比较，"
-    },
-    {
-      "OutputTextDelta": "将"
-    },
-    {
-      "OutputTextDelta": "解"
-    },
-    {
       "OutputTextDelta": "的"
     },
     {
-      "OutputTextDelta": "范围缩小一半"
+      "OutputTextDelta": "区间"
     },
     {
-      "OutputTextDelta": "，从而"
+      "OutputTextDelta": "**对"
     },
     {
-      "OutputTextDelta": "逐步"
+      "OutputTextDelta": "半折"
     },
     {
-      "OutputTextDelta": "逼近"
+      "OutputTextDelta": "分**，根据"
     },
     {
-      "OutputTextDelta": "目标。"
+      "OutputTextDelta": "中间"
     },
     {
-      "OutputTextDelta": "**"
+      "OutputTextDelta": "元素"
     },
     {
-      "OutputItemDone": {
-        "type": "reasoning",
-        "id": "rsn_18d86f89f604f9800",
-        "summary": [],
-        "content": [
-          {
-            "type": "reasoning_text",
-            "text": "用一句话说明二分查找的思想。"
-          }
-        ],
-        "encrypted_content": "用一句话说明二分查找的思想。"
-      }
+      "OutputTextDelta": "与目标值的比较"
+    },
+    {
+      "OutputTextDelta": "结果，排除"
+    },
+    {
+      "OutputTextDelta": "掉"
+    },
+    {
+      "OutputTextDelta": "不可能"
+    },
+    {
+      "OutputTextDelta": "存在"
+    },
+    {
+      "OutputTextDelta": "目标"
+    },
+    {
+      "OutputTextDelta": "的一"
+    },
+    {
+      "OutputTextDelta": "半区间"
+    },
+    {
+      "OutputTextDelta": "，从而逐步"
+    },
+    {
+      "OutputTextDelta": "缩小范围"
+    },
+    {
+      "OutputTextDelta": "，最终"
+    },
+    {
+      "OutputTextDelta": "找到目标或"
+    },
+    {
+      "OutputTextDelta": "确认"
+    },
+    {
+      "OutputTextDelta": "不存在。"
     },
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_18d86f89fc6331701",
+        "id": "rigseg_18debd921562a3e81_1",
         "role": "assistant",
         "content": [
           {
             "type": "output_text",
-            "text": "**二分查找的思想是：每次将有序查找范围对半折，通过与中间元素比较，将解的范围缩小一半，从而逐步逼近目标。**"
+            "text": "每次将待查找的区间**对半折分**，根据中间元素与目标值的比较结果，排除掉不可能存在目标的一半区间，从而逐步缩小范围，最终找到目标或确认不存在。"
           }
         ]
       }
     },
     {
+      "ServerModel": "mimo-v2.6-flash"
+    },
+    {
       "Completed": {
-        "response_id": "",
+        "response_id": "msg_2ee17f8d45d241a6b40dcf8b",
         "token_usage": {
           "input_tokens": 29,
           "cached_input_tokens": 0,
           "cache_write_input_tokens": 0,
-          "output_tokens": 46,
+          "output_tokens": 55,
           "reasoning_output_tokens": 0,
-          "total_tokens": 75
+          "total_tokens": 84
         },
         "usage_metadata": null,
         "end_turn": true

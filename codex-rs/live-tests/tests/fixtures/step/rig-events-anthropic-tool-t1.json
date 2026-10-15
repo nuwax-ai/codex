@@ -1,188 +1,248 @@
 {
   "vendor": "step",
   "tag": "anthropic-tool-t1",
-  "rig_events": [
+  "items": [
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "用户"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "reasoning"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "想"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "用户"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "查询北京今天的"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "要求查询"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "天气，并明确"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "北京今天的"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "要求调用 get"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "天气，明确"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "_weather 工具"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "要求调用 get_"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "。我需要调用"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "weather 工具。"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "这个"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "我应该"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "工具来"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "调用该"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "获取北京的"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "工具查询北京的"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "天气信息。\n"
+      "item": "event",
+      "value": {
+        "event": "reasoning",
+        "part": 0,
+        "text": "天气。"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "\n参数"
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "reasoning",
+          "text": "用户要求查询北京今天的天气，明确要求调用 get_weather 工具。我应该调用该工具查询北京的天气。",
+          "native": {
+            "item": {
+              "type": "thinking",
+              "thinking": "用户要求查询北京今天的天气，明确要求调用 get_weather 工具。我应该调用该工具查询北京的天气。",
+              "signature": "bb6546d210c549088f0cc1221f7bd7a3"
+            },
+            "fingerprint": "432ef69a3dc6cd72"
+          }
+        }
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "："
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 1,
+        "kind": "text"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "\n- city"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "我来"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": ": \""
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "查询北京今天的"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "北京\" (用户"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 1,
+        "text": "天气。"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "提到"
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 1,
+        "content": {
+          "type": "text",
+          "text": "我来查询北京今天的天气。",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "我来查询北京今天的天气。"
+            },
+            "fingerprint": "c1fabe41c58396ae"
+          }
+        }
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "的是北京)\n"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 2,
+        "kind": "tool_call",
+        "name": "get_weather"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "\n让我调用 get_"
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "{"
+      }
     },
     {
-      "id": "0z8xvqTn6hDLrg96kpPmy",
-      "reasoning": "weather 工具。"
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "\"city\": "
+      }
     },
     {
-      "reasoning": {
-        "id": null,
-        "content": [
-          {
-            "type": "text",
-            "content": {
-              "text": "用户想查询北京今天的天气，并明确要求调用 get_weather 工具。我需要调用这个工具来获取北京的天气信息。\n\n参数：\n- city: \"北京\" (用户提到的是北京)\n\n让我调用 get_weather 工具。",
-              "signature": "3fd8f88aa3584c93b1f72a74dce9ceff"
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "\"北京\""
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "arguments",
+        "part": 2,
+        "json": "}"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 2,
+        "content": {
+          "type": "toolcall",
+          "id": {
+            "provider": "chatcmpl-tool-ba5c2e1792e73194"
+          },
+          "function": {
+            "name": "get_weather",
+            "arguments": {
+              "city": "北京"
             }
+          },
+          "native": {
+            "item": {
+              "type": "tool_use",
+              "id": "chatcmpl-tool-ba5c2e1792e73194",
+              "name": "get_weather",
+              "input": {
+                "city": "北京"
+              }
+            },
+            "fingerprint": "7777c990daf2f589"
           }
-        ]
-      },
-      "id": "0z8xvqTn6hDLrg96kpPmy"
-    },
-    {
-      "text": "我来"
-    },
-    {
-      "text": "为您"
-    },
-    {
-      "text": "查询北京今天的"
-    },
-    {
-      "text": "天气。"
-    },
-    {
-      "internal_call_id": "Myo1L_TLIKt7sP0gva8xF",
-      "content": {
-        "Name": "get_weather"
-      }
-    },
-    {
-      "internal_call_id": "Myo1L_TLIKt7sP0gva8xF",
-      "content": {
-        "Delta": "{"
-      }
-    },
-    {
-      "internal_call_id": "Myo1L_TLIKt7sP0gva8xF",
-      "content": {
-        "Delta": "\"city\": "
-      }
-    },
-    {
-      "internal_call_id": "Myo1L_TLIKt7sP0gva8xF",
-      "content": {
-        "Delta": "\"北京\""
-      }
-    },
-    {
-      "internal_call_id": "Myo1L_TLIKt7sP0gva8xF",
-      "content": {
-        "Delta": "}"
-      }
-    },
-    {
-      "tool_call": {
-        "id": "chatcmpl-tool-b2ddb00c1df8684d",
-        "provider": {
-          "call_id": "chatcmpl-tool-b2ddb00c1df8684d"
-        },
-        "function": {
-          "name": "get_weather",
-          "arguments": {
-            "city": "北京"
-          }
-        },
-        "signature": null,
-        "additional_params": null
-      },
-      "internal_call_id": "Myo1L_TLIKt7sP0gva8xF"
-    },
-    {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 262,
-        "output_tokens": 80,
-        "total_tokens": 342,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "tool_calls",
-      "message_id": "chatcmpl-58ef83f55d5370369f16da47070311d4-b7bef665",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "step-5-preview",
-      "raw": {
-        "message_id": "chatcmpl-58ef83f55d5370369f16da47070311d4-b7bef665",
-        "model": "step-5-preview",
-        "stop_reason": "tool_use",
-        "usage": {
-          "cache_creation_input_tokens": 0,
-          "cache_read_input_tokens": 0,
-          "input_tokens": 262,
-          "output_tokens": 80
         }
       }
     }
-  ]
+  ],
+  "terminal": {
+    "finish_reason": "tool_calls",
+    "response_id": "chatcmpl-0b7121d969bf9aaa64475a442ded7b57-90f64958",
+    "model": "step-5-preview",
+    "usage": {
+      "input_tokens": 274,
+      "output_tokens": 54,
+      "total_tokens": 328,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0
+    }
+  },
+  "rig_events": [],
+  "custom_tools": []
 }

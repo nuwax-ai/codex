@@ -1,41 +1,68 @@
 {
   "vendor": "mimo",
   "tag": "anthropic-effort-none",
-  "rig_events": [
+  "items": [
     {
-      "text": "法国"
+      "item": "event",
+      "value": {
+        "event": "start",
+        "part": 0,
+        "kind": "text"
+      }
     },
     {
-      "text": "的首都是巴黎。"
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "法国"
+      }
     },
     {
-      "kind": "final",
-      "usage": {
-        "input_tokens": 33,
-        "output_tokens": 7,
-        "total_tokens": 40,
-        "cached_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "tool_use_prompt_tokens": 0,
-        "reasoning_tokens": 0
-      },
-      "finish_reason": "stop",
-      "message_id": "msg_81913699c4f04eb2ac2753ea",
-      "response_id": null,
-      "provider": "anthropic",
-      "model": "mimo-v2.6-flash",
-      "raw": {
-        "message_id": "msg_81913699c4f04eb2ac2753ea",
-        "model": "mimo-v2.6-flash",
-        "stop_reason": "end_turn",
-        "usage": {
-          "cache_creation_input_tokens": null,
-          "cache_read_input_tokens": null,
-          "input_tokens": 33,
-          "output_tokens": 7
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "的首都是巴黎"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "text",
+        "part": 0,
+        "text": "。"
+      }
+    },
+    {
+      "item": "event",
+      "value": {
+        "event": "end",
+        "part": 0,
+        "content": {
+          "type": "text",
+          "text": "法国的首都是巴黎。",
+          "native": {
+            "item": {
+              "type": "text",
+              "text": "法国的首都是巴黎。"
+            },
+            "fingerprint": "ac417a057e71c387"
+          }
         }
       }
     }
   ],
+  "terminal": {
+    "finish_reason": "stop",
+    "response_id": "msg_f51db5096c0444a1bc94ce35",
+    "model": "mimo-v2.6-flash",
+    "usage": {
+      "input_tokens": 33,
+      "output_tokens": 7,
+      "total_tokens": 40
+    }
+  },
+  "rig_events": [],
   "custom_tools": []
 }

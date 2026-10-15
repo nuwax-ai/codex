@@ -3,28 +3,37 @@
   "bridge": "rig",
   "tag": "effort",
   "request": {
-    "include": [],
+    "model": "GLM-5.3-Flash",
+    "stream": true,
     "input": [
       {
+        "type": "message",
+        "role": "developer",
         "content": [
           {
-            "text": "1+1 等于几？直接回答。",
-            "type": "input_text"
+            "type": "input_text",
+            "text": "You are a helpful assistant."
           }
-        ],
+        ]
+      },
+      {
+        "type": "message",
         "role": "user",
-        "type": "message"
+        "content": [
+          {
+            "type": "input_text",
+            "text": "1+1 等于几？直接回答。"
+          }
+        ]
       }
     ],
-    "instructions": "You are a helpful assistant.",
-    "model": "GLM-5.3-Flash",
+    "tool_choice": "auto",
     "parallel_tool_calls": true,
     "reasoning": {
       "effort": "low"
     },
     "store": false,
-    "stream": true,
-    "tool_choice": "auto"
+    "include": []
   },
   "events": [
     {
@@ -35,7 +44,7 @@
     {
       "OutputItemAdded": {
         "type": "message",
-        "id": "txt_18d86f8f8e462f980",
+        "id": "rigseg_18debda5fa7608681_0",
         "role": "assistant",
         "content": []
       }
@@ -46,7 +55,7 @@
     {
       "OutputItemDone": {
         "type": "message",
-        "id": "txt_18d86f8f8e462f980",
+        "id": "rigseg_18debda5fa7608681_0",
         "role": "assistant",
         "content": [
           {
@@ -57,8 +66,11 @@
       }
     },
     {
+      "ServerModel": "glm-5.3-flash"
+    },
+    {
       "Completed": {
-        "response_id": "2026092510315300f790da6c1a49c9",
+        "response_id": "20261015233019bcf8f4cc614b41f6",
         "token_usage": {
           "input_tokens": 31,
           "cached_input_tokens": 0,
