@@ -1,5 +1,7 @@
 use super::common::*;
 use pretty_assertions::assert_eq;
+use rig_core::completion::message::AssistantContent;
+use rig_core::completion::message::Reasoning;
 
 #[tokio::test]
 async fn anthropic_two_search_only_turns_replay_exact_raw_groups() {
@@ -23,6 +25,157 @@ async fn anthropic_two_search_only_turns_replay_exact_raw_groups() {
             user, {"role":"assistant","content":first},
             user, {"role":"assistant","content":second}, user,
         ])
+    );
+}
+
+#[tokio::test]
+async fn anthropic_blank_assistant_keeps_search_replay_in_its_original_turn() {
+    for text in ["", " \n\t "] {
+        let first = search_pair("blank-turn");
+        let second = search_pair("visible-turn");
+        let messages = capture_search_replay(
+            vec![
+                support::user(),
+                json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":text}]}),
+                json!({"type":"web_search_call","wire_blocks":first}),
+                support::user(),
+                json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"later answer"}]}),
+                json!({"type":"web_search_call","wire_blocks":second}),
+                support::user(),
+            ],
+            SearchReplay::Enabled,
+        )
+        .await;
+        let user = json!({"role":"user","content":[{"type":"text","text":"hello"}]});
+        let mut visible = vec![json!({"type":"text","text":"later answer"})];
+        visible.extend(second.as_array().unwrap().iter().cloned());
+        assert_eq!(
+            messages,
+            json!([
+                user, {"role":"assistant","content":first},
+                user, {"role":"assistant","content":visible}, user,
+            ]),
+            "blank assistant text {text:?} must not shift either replay group"
+        );
+    }
+}
+
+#[tokio::test]
+async fn anthropic_reused_call_ids_keep_each_tool_failure_after_history_adaptation() {
+    for [first_success, second_success] in [[false, false], [false, true], [true, false]] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let provider = provider(listener.local_addr().unwrap());
+        let server =
+            tokio::spawn(
+                async move { support::serve_payload(&listener, support::ANTHROPIC_SSE).await },
+            );
+        let mut request = support::request(vec![
+            support::user(),
+            json!({"type":"function_call","name":"lookup","call_id":"c1","arguments":"{}"}),
+            json!({"type":"function_call_output","call_id":"c1","output":"first result"}),
+            support::user(),
+            json!({"type":"function_call","name":"lookup","call_id":"c1","arguments":"{}"}),
+            json!({"type":"function_call_output","call_id":"c1","output":"second result"}),
+        ]);
+        for (output, success) in request
+            .input
+            .iter_mut()
+            .filter_map(|item| match item {
+                ResponseItem::FunctionCallOutput { output, .. } => Some(output),
+                _ => None,
+            })
+            .zip([first_success, second_success])
+        {
+            output.success = Some(success);
+        }
+        support::set_tools(
+            &mut request,
+            json!([{"type":"function","name":"lookup","parameters":{"type":"object","properties":{}}}]),
+        );
+        let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+        let mut stream = stream_via_rig(
+            &request,
+            &provider,
+            &auth,
+            http::HeaderMap::new(),
+            RigProtocol::Anthropic,
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+        while let Some(event) = stream.next().await {
+            event.unwrap();
+        }
+        let wire = server.await.unwrap();
+        let mut expected = json!([
+            {"role":"user","content":[{"type":"text","text":"hello"}]},
+            {"role":"assistant","content":[{"type":"tool_use","id":"c1","name":"lookup","input":{}}]},
+            {"role":"user","content":[
+                {"type":"tool_result","tool_use_id":"c1","content":[{"type":"text","text":"first result"}]},
+                {"type":"text","text":"hello"},
+            ]},
+            {"role":"assistant","content":[{"type":"tool_use","id":"c2","name":"lookup","input":{}}]},
+            {"role":"user","content":[{"type":"tool_result","tool_use_id":"c2","content":[{"type":"text","text":"second result"}]}]},
+        ]);
+        if !first_success {
+            expected[2]["content"][0]["is_error"] = true.into();
+        }
+        if !second_success {
+            expected[4]["content"][0]["is_error"] = true.into();
+        }
+        assert_eq!(
+            wire["body"]["messages"], expected,
+            "tool outcomes must follow their adapted calls: {first_success}, {second_success}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn anthropic_edited_v2_reasoning_does_not_revalidate_its_stale_signature() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let provider = provider(listener.local_addr().unwrap());
+    let server =
+        tokio::spawn(
+            async move { support::serve_payload(&listener, support::ANTHROPIC_SSE).await },
+        );
+    let source = support::source_for_dummy_auth(&provider, RigProtocol::Anthropic);
+    let AssistantContent::Reasoning(mut reasoning) =
+        AssistantContent::Reasoning(Reasoning::new("original thought")).with_native(json!({
+            "type":"thinking","thinking":"original thought","signature":"original-signature"
+        }))
+    else {
+        panic!("reasoning block must keep its canonical kind");
+    };
+    reasoning.text = "edited thought".into();
+    let envelope = json!({"source":source,"blocks":[reasoning]});
+    let request = support::request(vec![
+        support::user(),
+        json!({"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"edited thought"}],
+            "encrypted_content":format!("codex-rig-reasoning-v2:{envelope}")}),
+        json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":"answer"}]}),
+        support::user(),
+    ]);
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = stream.next().await {
+        event.unwrap();
+    }
+    let wire = server.await.unwrap();
+    assert_eq!(
+        wire["body"]["messages"][1],
+        json!({"role":"assistant","content":[
+            {"type":"text","text":"edited thought"},
+            {"type":"text","text":"answer"},
+        ]})
     );
 }
 

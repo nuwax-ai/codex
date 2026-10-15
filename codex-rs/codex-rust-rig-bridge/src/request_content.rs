@@ -48,7 +48,7 @@ pub(crate) fn append_tool_result(
             message: "Executed tool name must not be empty".into(),
         })?,
         content,
-        is_error: false,
+        is_error: output.success == Some(false),
     });
     // Accumulate adjacent tool results before supplemental images. Rig's Chat serializer
     // emits ToolResult entries first, preserving the required parallel call/result order.

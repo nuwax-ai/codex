@@ -126,11 +126,8 @@ async fn dispatch(
     path: &str,
     body: &Value,
 ) -> Result<OutboundOutcome, TestError> {
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
-    let address = listener.local_addr()?;
-    let attempts = Arc::new(AtomicUsize::new(0));
-    let server_attempts = Arc::clone(&attempts);
-    let server = tokio::spawn(async move { serve_one_sse(listener, server_attempts).await });
+    // Native trust-store initialization is synchronous and can be slow on
+    // macOS. Arm the server's IO deadline only after client setup finishes.
     let client = crate::transport::RigHttpClient {
         inner: reqwest_rig::Client::builder().no_proxy().build()?,
         protocol,
@@ -140,11 +137,17 @@ async fn dispatch(
         },
         ..Default::default()
     };
+    let body = Bytes::from(serde_json::to_vec(body)?);
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let address = listener.local_addr()?;
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let server_attempts = Arc::clone(&attempts);
+    let server = tokio::spawn(async move { serve_one_sse(listener, server_attempts).await });
     let request = http::Request::builder()
         .method(http::Method::POST)
         .uri(format!("http://{address}{path}"))
         .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Bytes::from(serde_json::to_vec(body)?))?;
+        .body(body)?;
     let outcome = tokio::time::timeout(IO_DEADLINE, client.send_streaming(request)).await;
     let server_body = tokio::time::timeout(IO_DEADLINE, server).await???;
     Ok(match outcome {
@@ -359,14 +362,6 @@ async fn same_image_with_larger_encoding_still_fits_the_window() -> Result<(), T
     // vision cost must not scale with the encoded length, so both requests
     // must dispatch under a window the old whole-body estimate would reject
     // the larger one from.
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
-    let address = listener.local_addr()?;
-    let attempts = Arc::new(AtomicUsize::new(0));
-    let server_attempts = Arc::clone(&attempts);
-    let (stop, stop_receiver) = tokio::sync::watch::channel(false);
-    let server = tokio::spawn(async move {
-        serve_sse_until_stopped(listener, server_attempts, stop_receiver).await
-    });
     let client = crate::transport::RigHttpClient {
         inner: reqwest_rig::Client::builder().no_proxy().build()?,
         protocol: crate::RigProtocol::Chat,
@@ -376,6 +371,14 @@ async fn same_image_with_larger_encoding_still_fits_the_window() -> Result<(), T
         },
         ..Default::default()
     };
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let address = listener.local_addr()?;
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let server_attempts = Arc::clone(&attempts);
+    let (stop, stop_receiver) = tokio::sync::watch::channel(false);
+    let server = tokio::spawn(async move {
+        serve_sse_until_stopped(listener, server_attempts, stop_receiver).await
+    });
     let mut expected_bodies = Vec::new();
     for payload in [image_payload(100_000), image_payload(600_000)] {
         let body = json!({

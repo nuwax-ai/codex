@@ -290,11 +290,16 @@ impl ChatFamilyRewrite<'_> {
                     }
                     for block in content {
                         if block["type"] == "tool_result"
-                            && let Some(is_error) = block["tool_use_id"]
+                            && block.get("is_error").is_none()
+                            && block["tool_use_id"]
                                 .as_str()
                                 .and_then(|id| self.tool_result_errors.get(id))
+                                == Some(&false)
                         {
-                            block["is_error"] = (*is_error).into();
+                            // Failure follows the typed result through SDK ID
+                            // renames. Original-ID metadata only restores an
+                            // explicit success flag omitted by the encoder.
+                            block["is_error"] = false.into();
                         }
                     }
                 }
