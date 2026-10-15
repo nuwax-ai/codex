@@ -138,6 +138,39 @@ fn responses_original_detail_and_file_references_use_conservative_costs() {
 }
 
 #[test]
+fn small_original_image_uses_header_patch_cost_on_both_detail_wires() {
+    let image_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8DwH4QZYAwAR8oH+WdZbrcAAAAASUVORK5CYII=";
+    for (protocol, body) in [
+        (
+            RigProtocol::Chat,
+            json!({"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": image_url, "detail": "original"}}]}]}),
+        ),
+        (
+            RigProtocol::Responses,
+            json!({"input": [{"type": "message", "role": "user", "content": [{"type": "input_image", "image_url": image_url, "detail": "original"}]}]}),
+        ),
+    ] {
+        let costs = measure(protocol, &body);
+        assert_eq!(
+            costs,
+            WireImageCosts {
+                inline_payload_bytes: image_url.len(),
+                vision_tokens: 1
+            }
+        );
+        // The old flat 10K charge incorrectly rejected this legal tiny image.
+        assert!(
+            WireBudget {
+                context_window_tokens: Some(4_000),
+                output_tokens: Some(1_000)
+            }
+            .check_body(serde_json::to_vec(&body).unwrap().len(), Some(costs))
+            .is_ok()
+        );
+    }
+}
+
+#[test]
 fn forged_data_urls_inside_text_blocks_stay_text() {
     let forged = data_url(&"QUJD".repeat(100));
     let body = json!({

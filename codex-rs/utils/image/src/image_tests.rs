@@ -8,6 +8,86 @@ use image::Rgba;
 use image::metadata::Orientation;
 
 const TEST_RGB_ICC_PROFILE: &[u8] = b"0123456789abcdefRGB ";
+
+#[test]
+fn prepared_image_guard_accounts_for_base64_without_allocating_the_payload() {
+    assert!(validate_prepared_image_size("image/png", 25 * 1024 * 1024).is_err());
+    assert!(validate_prepared_image_size("image/png", 1024).is_ok());
+    assert!(validate_prepared_image_size("image/png", usize::MAX).is_err());
+    let available = MAX_PREPARED_IMAGE_BYTES
+        - PREPARED_IMAGE_REQUEST_HEADROOM_BYTES
+        - "data:image/png;base64,".len();
+    let last_fitting_binary_length = available / 4 * 3;
+    assert!(validate_prepared_image_size("image/png", last_fitting_binary_length).is_ok());
+    assert!(validate_prepared_image_size("image/png", last_fitting_binary_length + 1).is_err());
+}
+
+#[test]
+fn original_image_header_estimate_preserves_small_legal_images() {
+    let image =
+        ImageBuffer::from_pixel(/*width*/ 2, /*height*/ 2, Rgba([255, 0, 0, 255]));
+    for format in [ImageFormat::Png, ImageFormat::WebP] {
+        let url = data_url_from_bytes("image/test", &image_bytes(&image, format));
+        assert_eq!(estimate_original_image_tokens(&url), Some(1));
+    }
+}
+
+#[test]
+fn original_image_header_estimate_accepts_a_normal_desktop_without_raster_allocation() {
+    // This is a 3 MiB RGBA raster. The header decoder's 1 MiB allocation limit
+    // must constrain header/metadata work rather than reject the pixel buffer
+    // that this estimation path never allocates.
+    let image = ImageBuffer::from_pixel(
+        /*width*/ 1_024,
+        /*height*/ 768,
+        Rgba([40, 80, 120, 255]),
+    );
+    let url = data_url_from_bytes("image/png", &image_bytes(&image, ImageFormat::Png));
+    assert_eq!(estimate_original_image_tokens(&url), Some(768));
+}
+
+#[test]
+fn original_image_header_estimate_does_not_decode_the_raster() {
+    // These fixtures have invalid raster data. Header inspection still resolves
+    // their patch grids without allocating a 4 or 36 megapixel pixel buffer.
+    for (width, height, expected) in [
+        (2_000, 2_000, Some(3_969)),
+        (6_000, 6_000, Some(10_000)),
+        (50_000, 50_000, None),
+    ] {
+        let url = data_url_from_bytes("image/png", &png_declaring_dimensions(width, height));
+        assert_eq!(estimate_original_image_tokens(&url), expected);
+    }
+}
+
+#[test]
+fn original_image_header_estimate_rejects_unbounded_or_unknown_inputs() {
+    for url in [
+        "https://example.test/image.png",
+        "data:image/png;base64,%%%",
+        "data:image/png;base64,eA==",
+    ] {
+        assert_eq!(estimate_original_image_tokens(url), None);
+    }
+    let huge_header = format!("data:{};base64,eA==", "x".repeat(8 * 1024));
+    assert_eq!(estimate_original_image_tokens(&huge_header), None);
+}
+
+#[test]
+fn original_image_header_estimate_ignores_png_metadata_after_ihdr() {
+    // A compressed 2 MiB ICC profile does not participate in the pixel budget.
+    // Only IHDR is read, so the profile is neither decompressed nor rejected
+    // as though this header estimator were the full image preparation path.
+    let mut profile = vec![0; 2 * 1024 * 1024];
+    profile[16..20].copy_from_slice(b"RGB ");
+    let image =
+        ImageBuffer::from_pixel(/*width*/ 2, /*height*/ 2, Rgba([255, 0, 0, 255]));
+    let bytes = image_bytes_with_metadata(&image, ImageFormat::Png, &profile);
+    assert_eq!(
+        estimate_original_image_tokens(&data_url_from_bytes("image/png", &bytes)),
+        Some(1)
+    );
+}
 const TEST_CMYK_ICC_PROFILE: &[u8] = b"0123456789abcdefCMYK";
 const ROTATE_90_EXIF: &[u8] = &[
     0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x12, 0x01, 0x03, 0x00, 0x01, 0x00,
@@ -383,10 +463,10 @@ async fn bounds_cache_by_encoded_byte_size() {
 /// pixel cap must refuse it from the header alone, before the full decode
 /// allocates a raster of that size.
 fn png_declaring_dimensions(width: u32, height: u32) -> Vec<u8> {
-    fn chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+    fn chunk(kind: [u8; 4], data: &[u8]) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(&(data.len() as u32).to_be_bytes());
-        out.extend_from_slice(kind);
+        out.extend_from_slice(&kind);
         out.extend_from_slice(data);
         let mut crc = 0xFFFF_FFFFu32;
         for byte in kind.iter().chain(data) {
@@ -408,12 +488,12 @@ fn png_declaring_dimensions(width: u32, height: u32) -> Vec<u8> {
     ihdr.extend_from_slice(&width.to_be_bytes());
     ihdr.extend_from_slice(&height.to_be_bytes());
     ihdr.extend_from_slice(&[8, 6, 0, 0, 0]); // 8-bit RGBA
-    png.extend_from_slice(&chunk(b"IHDR", &ihdr));
+    png.extend_from_slice(&chunk(*b"IHDR", &ihdr));
     // A minimal IDAT so the decoder initializes (header-only PNGs fail
     // decoder construction before dimensions are readable). The payload is
     // never decoded: the dimension guard refuses first.
-    png.extend_from_slice(&chunk(b"IDAT", &[0u8; 8]));
-    png.extend_from_slice(&chunk(b"IEND", &[]));
+    png.extend_from_slice(&chunk(*b"IDAT", &[0u8; 8]));
+    png.extend_from_slice(&chunk(*b"IEND", &[]));
     png
 }
 

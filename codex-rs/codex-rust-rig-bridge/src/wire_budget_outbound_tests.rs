@@ -133,13 +133,22 @@ async fn dispatch(
     path: &str,
     body: &Value,
 ) -> Result<OutboundOutcome, TestError> {
+    dispatch_with_window(protocol, path, body, CONTEXT_WINDOW_128K).await
+}
+
+async fn dispatch_with_window(
+    protocol: RigProtocol,
+    path: &str,
+    body: &Value,
+    context_window_tokens: i64,
+) -> Result<OutboundOutcome, TestError> {
     // Native trust-store initialization is synchronous and can be slow on
     // macOS. Arm the server's IO deadline only after client setup finishes.
     let client = crate::transport::RigHttpClient {
         inner: reqwest_rig::Client::builder().no_proxy().build()?,
         protocol,
         wire_budget: WireBudget {
-            context_window_tokens: Some(CONTEXT_WINDOW_128K),
+            context_window_tokens: Some(context_window_tokens),
             output_tokens: None,
         },
         ..Default::default()
@@ -170,6 +179,41 @@ async fn dispatch(
         },
         Err(_) => return Err("send_streaming timed out".into()),
     })
+}
+
+#[tokio::test]
+async fn small_original_image_reaches_the_socket_with_a_small_window() -> Result<(), TestError> {
+    let image_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+    for (protocol, path, body) in [
+        (
+            RigProtocol::Chat,
+            "/v1/chat/completions",
+            json!({
+                "model":"test-model", "stream":true, "messages":[{"role":"user","content":[
+                    {"type":"image_url","image_url":{"url":image_url,"detail":"original"}}
+                ]}]
+            }),
+        ),
+        (
+            RigProtocol::Responses,
+            "/v1/responses",
+            json!({
+                "model":"test-model", "stream":true, "input":[{"type":"message","role":"user","content":[
+                    {"type":"input_image","image_url":image_url,"detail":"original"}
+                ]}]
+            }),
+        ),
+    ] {
+        let outcome =
+            dispatch_with_window(protocol, path, &body, /*context_window_tokens*/ 4_000).await?;
+        assert!(
+            outcome.api_error.is_none(),
+            "small originals keep their true patch cost"
+        );
+        assert_eq!(outcome.attempts, 1);
+        assert_eq!(outcome.dispatched, Some(serde_json::to_vec(&body)?));
+    }
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

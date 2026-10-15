@@ -27,6 +27,7 @@ bytes = { workspace = true }
 sha2 = { workspace = true }
 codex-http-client = { workspace = true }
 codex-utils-string = { workspace = true }
+codex-utils-image = { workspace = true }
 # rig 0.42 embeds a reqwest 0.13 transport while the workspace pins 0.12 for
 # the rest of codex. Depend on rig's major under a rename so the two majors
 # never share a type; TLS comes from feature unification with rig-core.

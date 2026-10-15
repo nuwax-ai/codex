@@ -4590,6 +4590,7 @@ dependencies = [
  "codex-http-client",
  "codex-protocol",
  "codex-tools",
+ "codex-utils-image",
  "codex-utils-string",
  "eventsource-stream",
  "futures",
@@ -5174,6 +5175,7 @@ name = "codex-utils-output-truncation"
 version = "0.0.0"
 dependencies = [
  "codex-protocol",
+ "codex-utils-image",
  "codex-utils-string",
  "pretty_assertions",
  "serde_json",

@@ -190,11 +190,12 @@ fn record_image_reference(url: Option<&str>, detail: Option<&str>, costs: &mut W
             .saturating_add(url.unwrap_or_default().len());
     }
     let vision = match detail {
-        // Original-detail inline images bypass central resizing; without
-        // decoded dimensions, charge the conservative patch ceiling. Core
-        // resolves dimensions where it can and applies the same ceiling
-        // where it cannot; the wire layer always takes the ceiling.
-        Some("original") => ORIGINAL_DETAIL_PATCH_CEILING,
+        // Reuse the entrance's bounded header estimate. Unknown/file references
+        // still pay the conservative ceiling; the wire must not make them free.
+        Some("original") => url
+            .and_then(codex_utils_image::estimate_original_image_tokens)
+            .and_then(|tokens| u64::try_from(tokens).ok())
+            .unwrap_or(ORIGINAL_DETAIL_PATCH_CEILING),
         _ => prepared_image_vision_tokens(),
     };
     costs.vision_tokens = costs.vision_tokens.saturating_add(vision);

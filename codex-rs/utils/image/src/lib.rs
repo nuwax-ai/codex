@@ -27,15 +27,16 @@ pub const MAX_DIMENSION: u32 = 2048;
 
 /// Upper bound on the pixels one prompt image may declare, checked from the
 /// format header BEFORE the full decode allocates width × height × channels.
-/// This is a decode-safety guard against decompression bombs, sized above the
-/// largest legitimate original-detail image (6000 × 6000 = 36 MP).
+/// This decode-safety guard permits 6000 × 6000 (36 MP) originals while
+/// rejecting larger sources, including otherwise valid photos above 40 MP.
 pub const MAX_PROMPT_IMAGE_PIXELS: u64 = 40_000_000;
 
-/// Upper bound on the encoded bytes one prepared prompt image may occupy
-/// (re-encoded or preserved source). Aligned with the whole-request wire
-/// byte limit: anything larger can never be sent, so refusing at preparation
-/// keeps the failure bounded and attributable instead of a wire rejection.
+/// Wire ceiling for one prepared image's Base64 data URL and request headroom.
+/// Check its serialized representation rather than just the smaller binary
+/// source so an image cannot individually exceed the whole-request limit.
 pub const MAX_PREPARED_IMAGE_BYTES: usize = 32 * 1024 * 1024;
+/// Space for request framing and ordinary text around a single inline image.
+const PREPARED_IMAGE_REQUEST_HEADROOM_BYTES: usize = 1024 * 1024;
 /// Maximum accepted byte length for prompt image input representations.
 ///
 /// This is a high sanity guard against pathological inputs, not a protocol
@@ -44,8 +45,10 @@ pub const MAX_PROMPT_IMAGE_INPUT_BYTES: usize = 1024 * 1024 * 1024;
 const MAX_IMAGE_CACHE_BYTES: usize = 64 * 1024 * 1024;
 
 pub mod error;
+mod original_image_tokens;
 
 pub use crate::error::ImageProcessingError;
+pub use original_image_tokens::estimate_original_image_tokens;
 
 #[derive(Debug, Clone)]
 pub struct EncodedImage {
@@ -248,18 +251,32 @@ fn load_for_prompt_bytes_uncached(
     })()
 }
 
-/// A prepared image above [`MAX_PREPARED_IMAGE_BYTES`] can never fit a
-/// request the wire layer would send; refuse it here so the failure is a
-/// bounded, attributable placeholder instead of a wire rejection.
+/// Refuse images whose data URL and request headroom exceed the wire ceiling,
+/// giving an attributable image placeholder before constructing the request.
 fn admit_encoded_image(encoded: EncodedImage) -> Result<EncodedImage, ImageProcessingError> {
-    if encoded.bytes.len() > MAX_PREPARED_IMAGE_BYTES {
+    validate_prepared_image_size(&encoded.mime, encoded.bytes.len())?;
+    Ok(encoded)
+}
+
+fn validate_prepared_image_size(mime: &str, byte_len: usize) -> Result<(), ImageProcessingError> {
+    // Check the representation actually serialized onto the wire without
+    // allocating a Base64 string or a raster just to measure it.
+    let data_url_bytes = byte_len
+        .checked_add(2)
+        .and_then(|bytes| bytes.checked_div(3))
+        .and_then(|groups| groups.checked_mul(4))
+        .and_then(|encoded| encoded.checked_add("data:;base64,".len()))
+        .and_then(|encoded| encoded.checked_add(mime.len()))
+        .unwrap_or(usize::MAX);
+    let max = MAX_PREPARED_IMAGE_BYTES - PREPARED_IMAGE_REQUEST_HEADROOM_BYTES;
+    if data_url_bytes > max {
         return Err(ImageProcessingError::ImageTooLarge {
-            representation: "prepared image bytes",
-            size: encoded.bytes.len(),
-            max: MAX_PREPARED_IMAGE_BYTES,
+            representation: "prepared image data URL bytes",
+            size: data_url_bytes,
+            max,
         });
     }
-    Ok(encoded)
+    Ok(())
 }
 
 fn cache_image(cache: &ImageCache, key: ImageCacheKey, image: EncodedImage, byte_capacity: usize) {
