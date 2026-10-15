@@ -64,7 +64,9 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghcup /usr/local/.ghcup || true
           df -h /
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Match codex-rs/rust-toolchain.toml so local receipts and CI use the
+      # same compiler instead of silently moving with stable releases.
+      - uses: dtolnay/rust-toolchain@1.95.0
         with:
           components: rustfmt, clippy
 
@@ -181,7 +183,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Native tests create databases and fixture trees in TEMP. The runner's
+      # default C: TEMP filled during run 38782462743 while the checkout uses
+      # the workspace drive. Keep test data off C: and outside the source tree.
+      - name: Configure Windows test temporary directory
+        shell: pwsh
+        run: |
+          $testTemp = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) 'codex-test-temp'
+          New-Item -ItemType Directory -Force -Path $testTemp | Out-Null
+          "TEMP=$testTemp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TMP=$testTemp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free, Root
+
+      # Keep this aligned with codex-rs/rust-toolchain.toml and the Unix lane.
+      - uses: dtolnay/rust-toolchain@1.95.0
 
       - uses: Swatinem/rust-cache@v2
         with:
