@@ -139,7 +139,7 @@ pub(crate) async fn resolve_review_model(
 /// every guardian-approved tool call. On such providers the preferred
 /// reviewer IS the active model; an explicit user override still wins
 /// inside `select_review_model`.
-fn reachable_review_model_id<'a>(
+pub fn reachable_review_model_id<'a>(
     provider_id: &str,
     preferred: &'a str,
     active_model: &'a str,

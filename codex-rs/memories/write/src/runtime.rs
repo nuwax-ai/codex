@@ -459,3 +459,73 @@ impl MemoryStartupContext {
         Ok(())
     }
 }
+
+/// Resolves a memory-pipeline model id that the configured provider can
+/// actually serve.
+///
+/// Same defect class as the guardian reviewer fix: the OpenAI catalog
+/// aliases behind the preferred memory models are only reachable on the
+/// built-in OpenAI provider — a third-party endpoint answers 400 for them,
+/// which silently disabled memory extraction and consolidation on custom
+/// providers (the background jobs fail on every rollout). Explicit
+/// `memories.extract_model` / `memories.consolidation_model` config always
+/// wins; on any other provider the user's active model is the only id we
+/// know is servable.
+pub(crate) fn reachable_memory_model(
+    provider_id: &str,
+    configured: Option<&str>,
+    preferred: &str,
+    active_model: Option<&str>,
+) -> String {
+    if let Some(configured) = configured {
+        return configured.to_string();
+    }
+    if provider_id == codex_model_provider_info::OPENAI_PROVIDER_ID {
+        return preferred.to_string();
+    }
+    active_model
+        .map(str::to_string)
+        .unwrap_or_else(|| preferred.to_string())
+}
+
+#[cfg(test)]
+mod reachable_memory_model_tests {
+    use super::reachable_memory_model;
+
+    #[test]
+    fn explicit_memories_config_always_wins() {
+        assert_eq!(
+            reachable_memory_model(
+                "mimo",
+                Some("custom-extractor"),
+                "gpt-5.6-luna",
+                Some("mimo-v2.6-flash")
+            ),
+            "custom-extractor"
+        );
+    }
+
+    #[test]
+    fn builtin_openai_keeps_the_preferred_model() {
+        assert_eq!(
+            reachable_memory_model("openai", None, "gpt-5.6-luna", Some("gpt-5.4")),
+            "gpt-5.6-luna"
+        );
+    }
+
+    #[test]
+    fn third_party_providers_fall_back_to_the_active_model() {
+        assert_eq!(
+            reachable_memory_model("mimo", None, "gpt-5.6-luna", Some("mimo-v2.6-flash")),
+            "mimo-v2.6-flash"
+        );
+    }
+
+    #[test]
+    fn without_an_active_model_the_preferred_id_is_the_last_resort() {
+        assert_eq!(
+            reachable_memory_model("mimo", None, "gpt-5.6-terra", None),
+            "gpt-5.6-terra"
+        );
+    }
+}

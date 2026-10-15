@@ -160,12 +160,12 @@ async fn build_request_context(
     context: &MemoryStartupContext,
     config: &Config,
 ) -> StageOneRequestContext {
-    let model_name = config.memories.extract_model.clone().unwrap_or_else(|| {
-        context
-            .provider()
-            .memory_extraction_preferred_model()
-            .to_string()
-    });
+    let model_name = crate::runtime::reachable_memory_model(
+        &config.model_provider_id,
+        config.memories.extract_model.as_deref(),
+        context.provider().memory_extraction_preferred_model(),
+        config.model.as_deref(),
+    );
     context
         .stage_one_request_context(config, &model_name, crate::stage_one::REASONING_EFFORT)
         .await

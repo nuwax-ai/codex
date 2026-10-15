@@ -5,4 +5,5 @@ pub use crate::guardian::GuardianReviewSession;
 pub use crate::guardian::GuardianReviewState;
 pub use crate::guardian::PreparedGuardianContext;
 pub use crate::guardian::prepare_review_prewarm;
+pub use crate::guardian::reachable_review_model_id;
 pub use crate::mcp_tool_call::conversation_history::conversation_history_tools;

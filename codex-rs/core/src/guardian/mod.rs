@@ -25,6 +25,7 @@ pub(crate) use replay_grant::authorize_opaque_replay;
 mod review;
 mod review_session;
 mod reviewer_config;
+pub use reviewer_config::reachable_review_model_id;
 pub(crate) use reviewer_config::resolve_review_model;
 mod runtime;
 #[cfg(test)]

@@ -341,13 +341,12 @@ mod agent {
         }
         .ok()?;
 
-        agent_config.model = Some(
-            config
-                .memories
-                .consolidation_model
-                .clone()
-                .unwrap_or_else(|| provider.memory_consolidation_preferred_model().to_string()),
-        );
+        agent_config.model = Some(crate::runtime::reachable_memory_model(
+            &config.model_provider_id,
+            config.memories.consolidation_model.as_deref(),
+            provider.memory_consolidation_preferred_model(),
+            config.model.as_deref(),
+        ));
         agent_config.model_reasoning_effort = Some(crate::stage_two::REASONING_EFFORT);
 
         Some(agent_config)

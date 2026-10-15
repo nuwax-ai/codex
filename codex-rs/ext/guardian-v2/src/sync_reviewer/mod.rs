@@ -95,8 +95,15 @@ impl ThreadLifecycleContributor<Config> for GuardianExtension {
                                 options.config.model_provider.clone(),
                                 /*auth_manager*/ None,
                             );
+                            let preferred = provider.approval_review_preferred_model();
+                            let reviewer_model =
+                                codex_core::guardian_review::reachable_review_model_id(
+                                    &options.config.model_provider_id,
+                                    preferred,
+                                    options.config.model.as_deref().unwrap_or(preferred),
+                                );
                             options.thread_extension_init.insert(CodexResponsesHeaders {
-                                model: provider.approval_review_preferred_model().to_owned(),
+                                model: reviewer_model.to_owned(),
                                 headers: http::HeaderMap::from_iter([(
                                     http::HeaderName::from_static("x-codex-guardian"),
                                     http::HeaderValue::from_static("reviewer"),

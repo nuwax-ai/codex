@@ -318,11 +318,19 @@ impl Classification {
         let result: Result<ClassificationOutcome, String> = async {
             let review_model = if config.guardian_policy_config.is_none() {
                 let review_model_id = review_model_override.as_deref().unwrap_or_else(|| {
-                    create_model_provider(
+                    // Third-party providers cannot serve the OpenAI catalog
+                    // aliases behind the preferred reviewer id; prefer the
+                    // active model there (see the core reviewer fix).
+                    let preferred = create_model_provider(
                         config.model_provider.clone(),
                         Some(manager.auth_manager()),
                     )
-                    .approval_review_preferred_model()
+                    .approval_review_preferred_model();
+                    codex_core::guardian_review::reachable_review_model_id(
+                        &config.model_provider_id,
+                        preferred,
+                        config.model.as_deref().unwrap_or(preferred),
+                    )
                 });
                 let review_model = manager
                     .get_models_manager()
