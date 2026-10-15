@@ -1,5 +1,9 @@
 # Rig 0.44 迁移：Codex 复审与阶段收据
 
+**2026-10-16更正：下表Core cap 30/30因禁网跳过宏提前return，撤回为未执行，
+不能算通过证据。原日志30项共0.212s。本轮实际执行与后续修复收据见
+[集成复审](codex-integration-review-2026-10-16.md)，以该记录为准。**
+
 日期：2026-10-15。审查范围为 `5b6b51457..bc4930f27` 的迁移及其测试证据，
 并修复下列问题。工作目录是
 `/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014`，
@@ -103,7 +107,7 @@
 |---|---|---|
 | Bridge 全 crate | 295/295，0 skipped | `just test -p codex-rust-rig-bridge --locked --offline --retries 0 --test-threads 8` |
 | Core 无 rust-rig 投影 | 3/3 | `just test -p codex-core --lib --no-default-features --locked --offline --retries 0 -E 'test(client::tests::bridge_tests)'` |
-| Core cap 含原生对照 | 30/30 | `just test -p codex-core --features rust-rig,rust-genai --test all --locked --offline --retries 0 --test-threads 4 -E 'test(rig_output_cap)'` |
+| Core cap 含原生对照 | 撤回：该轮30项被提前跳过 | `just test -p codex-core --features rust-rig,rust-genai --test all --locked --offline --retries 0 --test-threads 4 -E 'test(rig_output_cap)'` |
 | app-server 公开 JSON-RPC 环境路径 | 9/9 | `just test -p codex-app-server --test all --locked --offline --retries 0 --test-threads 2 -E 'test(suite::v2::nuwax_positive::) + test(suite::v2::nuwax_positive_wires::) + test(suite::v2::nuwax_isolation::)'` |
 | env 启动／恰好预算／差一预算 | 3/3 | `just test -p codex-live-tests --test nuwax_env_offline --test nuwax_env_budget_offline --locked --offline --retries 0 --test-threads 1` |
 | 旧 cassette replay | nextest 84 PASS，含内部跳过 | `LIVE_CASSETTE=replay LIVE_VENDORS=mimo,glm,step just test -p codex-live-tests --test bridge_live --locked --offline --retries 0 --test-threads 4` |

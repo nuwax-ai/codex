@@ -2,8 +2,11 @@
 
 分支 `codex/rig-044-20261014`（基于整合分支 `5b6b51457`）。pin 已升
 `rig-core = "=0.44.0"`（bridge + live-tests），`cargo update -p rig-core` 引入
-`rig-http 0.44`/`rig-tungstenite 0.44`。**已完成编译适配和本机定向离线验证，
-尚未合回 test、未 push；不能宣称三平台或国内厂商实测验收完成。**
+`rig-http 0.44`/`rig-tungstenite 0.44`。**以下为迁移当时的历史状态：已完成
+编译适配和本机定向离线验证，尚未合回 test、未 push；当时不能宣称三平台
+或国内厂商实测验收完成。** 2026-10-16修复、验证与最终Git交付状态统一见
+[Codex集成复审记录第3节](codex-integration-review-2026-10-16.md#3-本轮验证收据)，
+不以本工单开头的历史状态判断当前是否已合回或推送。
 
 2026-10-15 Codex 复审发现并修复 10 类问题，Bridge 最终 295/295；详细问题、
 首败、命令、二进制与验证边界见 [复审记录](codex-rig-044-review-2026-10-15.md)。
@@ -534,10 +537,12 @@ gitignored）。识图此前未证实的主因正是本缺陷（图片从未送�
    遗留观察（非本缺陷）：短生命周期 `codex exec` 在用户回合结束即退
    出，后台巩固 agent 被杀记 `failed_agent`——长驻宿主（desktop/ACP）
    不受影响；单列待后续验证。
-2. **付费 LIVE_CASSETTE=record 录制**（fixture 提交同上）：三厂商
-   bridge_live **84/84 真实绿**；150 个 fixture 文件以 0.44 v2 格式
-   （items+terminal，实际 recorder 写入）替换 v1 载荷（git 历史可溯，
-   legacy 翻译单测仍在）。录后离线复验 replay+roundtrip **91/91 全绿**；
+2. **LIVE_CASSETTE=record 录制**（fixture提交45abfd28e）：nextest报告
+   bridge_live **84 PASS，含内部提前返回，不能称84个真实付费场景**。
+   实际更新150个工件：42个rig-events为0.44 items+terminal，50个请求、
+   50个转换事件、8个raw Responses SSE，共50个turn captures（MiMo/GLM
+   三wire、Step两wire）。旧v1可从git追溯，Codex复审另保留一份真实golden。
+   录后离线 replay+roundtrip **91 PASS同样包含内部跳过**；
    全部 fixture 扫描凭据泄漏（认证头名与真实键值）：零。
    Guardian-v2 两个既有失败（pool_pressure、flaky handshake）在
    /tmp 基线 worktree 复现，与两修复无关，单列。
@@ -560,9 +565,10 @@ gitignored）。识图此前未证实的主因正是本缺陷（图片从未送�
       —— 三批已收口（第六至九轮）：缺陷修复 + 生命周期证据 + 图片
       入口硬限 + 20 截图 stress；Linux/Windows 定向平台收据见第八/九轮。
       —— 第十轮补齐：ACP dev 联调全场景（含真实识图）+ Guardian 第三方
-      审查缺陷修复（f6b1ad38f）。
+      审查缺陷修复（f6b1ad38f），后续运行时模型／Bedrock边界由Codex复审修正。
       —— 第十一轮补齐：记忆模型同类缺陷修复（d115bfdbe）+ 付费 v2
-      录制 84/84（录后离线 replay 91/91）。
+      录制84 PASS（含内部跳过，实际50个turn captures）；录后离线91 PASS
+      也不冒称全部场景实际执行。Codex最终复审见codex-integration-review-2026-10-16.md。
       —— 未闭环：全量 workspace/CI、代理/TLS、interrupt 夹具跨平台
       适配、guardian-v2 两个既有失败、巩固 agent 短进程宿主行为。
 - [x] reasoning v1 旧 DTO 解码保留（v2 写入、v1 解码+转换、rollout 不改写）

@@ -5,6 +5,11 @@
 请求与自曝弱点清单；详细过程见
 [rig-044-migration-notes.md](rig-044-migration-notes.md) 第五至十一轮。
 
+Codex复审更正：录制84/84是nextest报告数，含内部提前返回；不能称84个
+真实付费场景。150个变动工件中仅42个rig-events使用items+terminal；其余
+是请求／转换事件／Responses SSE。最终修复与证据见
+[集成复审](codex-integration-review-2026-10-16.md)。
+
 ## 提交地图
 
 | 提交 | 内容 |
@@ -51,8 +56,10 @@ mock）；(2) 0.44 宽容 usage 读取（as_u64/null 兜底）丢失 0.42 的
    弱点：metadata 大小上限未做成显式常量；Code Mode 普通 JS return /
    text() 负控未新增测试（勘路确认合同成立）；该批 891 insertions
    略超"普通批 <800"指引（其中约六成为测试）。
-3. **v2 fixture 覆盖**（45abfd28e）：150 文件以 0.44 格式（items+
-   terminal）替换 v1 载荷。录制轮 84/84 真实付费绿（三厂商三 wire）；
+3. **v2 fixture 覆盖**（45abfd28e）：150个更新工件中，42个rig-events为
+   0.44 items+terminal，另有50请求、50转换事件、8 raw Responses SSE。
+   录制轮nextest报告84 PASS（含内部跳过；实际留存50个turn captures）；
+   MiMo/GLM三wire、Step两wire有录制工件；
    录后离线 replay+roundtrip 91/91。自扫凭据零泄漏（认证头名 + 三个
    真实键值两轮扫描），建议独立复核。注意 replay 的 PASS 计数含
    early-Ok 内部跳过（既有语义，勿当全场景执行数）。
@@ -82,7 +89,7 @@ mock）；(2) 0.44 宽容 usage 读取（as_u64/null 兜底）丢失 0.42 的
 | memories-write / guardian-v2 相关 | 54/54 / 目标套件绿 |
 | Linux 主验 | bridge 299/299；core 68/70（2 环境性）；replay 195/195；nuwax 3/3 |
 | Windows 原生 | bridge 297/297；core 58/59（1 环境性）；replay 187 有效；nuwax 3/3；stress PASS |
-| 付费录制 / 录后离线 | 84/84 / 91/91 |
+| 录制 / 录后离线报告数（含内部跳过） | 84 PASS / 91 PASS；实际50个turn captures |
 | ACP dev（MiMo+GLM） | 关键场景 6/6 + 识图 PASS |
 
 ## 未闭环（非本批代码）
