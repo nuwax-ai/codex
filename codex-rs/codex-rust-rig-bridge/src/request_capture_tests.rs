@@ -588,8 +588,7 @@ fn capture_limit_and_file_errors_remain_non_retryable_through_http_and_completio
             if message == expected_message),
             "HTTP capture error must fail fast: {error}"
         );
-        let completion =
-            rig_core::completion::request::CompletionError::RequestError(Box::new(error));
+        let completion = rig_core::error::ProviderError::Http(std::sync::Arc::new(error));
         assert!(
             matches!(api_error(&completion), Some(codex_api::ApiError::InvalidRequest { message })
             if message == expected_message),

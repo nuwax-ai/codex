@@ -13,7 +13,6 @@ use codex_api::TransportError;
 use futures::Future;
 use futures::StreamExt;
 use http::HeaderMap;
-use rig_core::completion::CompletionModel;
 use tokio::sync::mpsc;
 
 use crate::client::RigProtocol;
@@ -22,8 +21,7 @@ use crate::convert_request::responses_request_to_completion_request;
 /// Shared handle the stream pump fills with Rig events when the caller
 /// wants to record the bridge boundary (cassette mode). `None` = no
 /// recording overhead.
-pub type RigEventRecorder =
-    Option<Arc<std::sync::Mutex<Vec<rig_core::streaming::StreamedAssistantContent>>>>;
+pub type RigEventRecorder = Option<Arc<std::sync::Mutex<crate::cassette::RigRecording>>>;
 
 pub use crate::request_capture::FinalRequestRecorder;
 
@@ -438,12 +436,12 @@ fn stream_via_rig_attempt(
             RigProtocol::Chat => {
                 let chat_model =
                     crate::client::build_chat_model(&model, &base_url, &headers, http)?;
-                chat_model.stream(completion_request).await
+                chat_model.stream(completion_request)
             }
             RigProtocol::Anthropic => {
                 let anthropic_model =
                     crate::client::build_anthropic_model(&model, &base_url, &headers, http)?;
-                anthropic_model.stream(completion_request).await
+                anthropic_model.stream(completion_request)
             }
             // Unreachable: rejected at the top of this function.
             RigProtocol::Responses => {
@@ -454,7 +452,7 @@ fn stream_via_rig_attempt(
         }
         .map_err(|e| {
             tracing::error!(model = %model, error = %e, "rig stream failed");
-            map_completion_error(e)
+            map_provider_error(e)
         })?;
 
         let mut rig_stream = stream_response;
@@ -469,7 +467,7 @@ fn stream_via_rig_attempt(
             }
             Ok(Some(Err(e))) => {
                 tracing::error!(model = %model, error = %e, "rig stream failed before first event");
-                return Err(map_completion_error(e));
+                return Err(map_provider_error(e));
             }
             Ok(first) => first,
         };
@@ -591,16 +589,16 @@ fn stream_via_rig_attempt(
 /// Maps rig errors onto codex's transport taxonomy, preserving the HTTP
 /// status when rig surfaced one so codex-core's 401-recovery loop still
 /// triggers.
-pub(crate) fn map_completion_error(e: rig_core::completion::request::CompletionError) -> ApiError {
-    use rig_core::completion::request::CompletionError;
+pub(crate) fn map_provider_error(e: rig_core::error::ProviderError) -> ApiError {
+    use rig_core::error::ProviderError;
     if let Some(error) =
         crate::wire_budget::api_error(&e).or_else(|| crate::request_capture::api_error(&e))
     {
         return error;
     }
-    // Both variants can carry an HTTP status; the Provider variant is what
-    // non-2xx provider responses actually arrive as (rig defers them into
-    // the stream), so both must map to Http{status} for codex-core's
+    // A preserved provider reply can carry an HTTP status; that variant is
+    // what non-2xx provider responses arrive as (rig defers them into the
+    // stream), so it must map to Http{status} for codex-core's
     // 401-recovery loop to trigger.
     if let Some(status) = e.provider_response_status() {
         let headers = e.provider_response_headers().cloned();
@@ -620,11 +618,9 @@ pub(crate) fn map_completion_error(e: rig_core::completion::request::CompletionE
         });
     }
     match e {
-        CompletionError::RequestError(_) | CompletionError::UrlError(_) => {
-            ApiError::InvalidRequest {
-                message: format!("rig request failed: {e}"),
-            }
-        }
+        ProviderError::Request(_) | ProviderError::Url(_) => ApiError::InvalidRequest {
+            message: format!("rig request failed: {e}"),
+        },
         _ => ApiError::Transport(TransportError::Network(format!("rig error: {e}"))),
     }
 }

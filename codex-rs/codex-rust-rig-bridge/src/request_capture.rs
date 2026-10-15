@@ -122,6 +122,15 @@ pub(crate) fn api_error(
                 message: error.to_string(),
             });
         }
+        // Rig 0.44's `ProviderError::Http` keeps its transport error in an
+        // `Arc` that `source()` does not expose; descend into it explicitly
+        // so a failure classified here stays non-retryable when rig wraps it.
+        if let Some(rig_core::error::ProviderError::Http(inner)) =
+            error.downcast_ref::<rig_core::error::ProviderError>()
+        {
+            error = &**inner;
+            continue;
+        }
         let source = error.source()?;
         error = source;
     }

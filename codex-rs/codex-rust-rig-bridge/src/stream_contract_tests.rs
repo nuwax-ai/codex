@@ -1,53 +1,123 @@
-use crate::convert_response::PendingRigMessage;
-use crate::convert_response::rig_event_to_response_events;
 use codex_api::ResponseEvent;
 use codex_protocol::models::ReasoningItemContent;
 use codex_protocol::models::ResponseItem;
 use pretty_assertions::assert_eq;
 use rig_core::completion::message::Reasoning;
 use rig_core::completion::message::ToolCall;
-use rig_core::completion::message::ToolCallId;
 use rig_core::completion::message::ToolFunction;
 use rig_core::completion::request::FinishReason;
 use rig_core::completion::request::Usage;
-use rig_core::streaming::StreamFinal;
-use rig_core::streaming::StreamedAssistantContent as Event;
-use rig_core::streaming::ToolCallDeltaContent;
+use rig_core::streaming::Item;
+use rig_core::streaming::Part;
+use rig_core::streaming::PartKind;
+use rig_core::streaming::StreamEvent;
 use serde_json::json;
+use std::collections::HashMap;
 use std::collections::HashSet;
-use std::sync::Arc;
 
-fn final_event() -> Event {
-    Event::Final(
-        StreamFinal::new("anthropic", Usage::new()).with_finish_reason(FinishReason::ToolCalls),
-    )
+/// Legacy-shaped test inputs; [`replay`] allocates 0.44 parts per id and
+/// folds the terminal into a recording.
+enum TestEvent {
+    ToolArgs { id: String, args: String },
+    ToolEnd { id: String, call: ToolCall },
+    ReasoningDelta { id: String, text: String },
+    ReasoningEnd { id: String, reasoning: Reasoning },
+    Terminal(FinishReason),
 }
-fn tool(arguments: serde_json::Value) -> Event {
-    Event::ToolCall {
-        internal_call_id: "internal".into(),
-        tool_call: ToolCall {
-            id: ToolCallId::new_or_mint("provider-call"),
-            provider: None,
-            function: ToolFunction {
-                name: "apply_patch".into(),
-                arguments,
+
+fn part_of(index: u32) -> Part {
+    serde_json::from_value(serde_json::Value::from(index)).expect("Part is transparent")
+}
+
+fn final_event() -> TestEvent {
+    TestEvent::Terminal(FinishReason::ToolCalls)
+}
+fn tool(arguments: serde_json::Value) -> TestEvent {
+    TestEvent::ToolEnd {
+        id: "internal".into(),
+        call: ToolCall::from_wire(
+            "provider-call",
+            ToolFunction {
+                name: rig_core::completion::message::ToolName::new("apply_patch")
+                    .expect("non-empty tool name"),
+                arguments: arguments.as_object().cloned().unwrap_or_default(),
+                invalid_arguments: None,
             },
-            signature: None,
-            additional_params: None,
-        },
+        ),
     }
 }
-fn delta(text: &str) -> Event {
-    Event::ToolCallDelta {
-        internal_call_id: "internal".into(),
-        content: ToolCallDeltaContent::Delta(text.into()),
+fn delta(text: &str) -> TestEvent {
+    TestEvent::ToolArgs {
+        id: "internal".into(),
+        args: text.into(),
     }
+}
+
+/// Replays legacy-shaped events through the current conversion, allocating
+/// one stream part per distinct id.
+fn replay(
+    events: Vec<TestEvent>,
+    custom: HashSet<String>,
+) -> Result<Vec<ResponseEvent>, codex_api::ApiError> {
+    let mut recording = crate::cassette::RigRecording::default();
+    let mut next_part = 0u32;
+    let mut parts: HashMap<String, Part> = HashMap::new();
+    for event in events {
+        let item = match event {
+            TestEvent::ToolArgs { id, args } => {
+                let part = *parts.entry(id.clone()).or_insert_with(|| {
+                    next_part += 1;
+                    part_of(next_part)
+                });
+                Item::Event(StreamEvent::Arguments { part, json: args })
+            }
+            TestEvent::ToolEnd { id, call } => {
+                let part = *parts.entry(id.clone()).or_insert_with(|| {
+                    next_part += 1;
+                    part_of(next_part)
+                });
+                Item::Event(StreamEvent::End {
+                    part,
+                    content: rig_core::completion::message::AssistantContent::ToolCall(call),
+                })
+            }
+            TestEvent::ReasoningDelta { id, text } => {
+                let part = *parts.entry(id.clone()).or_insert_with(|| {
+                    next_part += 1;
+                    part_of(next_part)
+                });
+                Item::Event(StreamEvent::Reasoning { part, text })
+            }
+            TestEvent::ReasoningEnd { id, reasoning } => {
+                let part = *parts.entry(id.clone()).or_insert_with(|| {
+                    next_part += 1;
+                    part_of(next_part)
+                });
+                Item::Event(StreamEvent::End {
+                    part,
+                    content: rig_core::completion::message::AssistantContent::Reasoning(reasoning),
+                })
+            }
+            TestEvent::Terminal(finish) => {
+                recording.terminal = Some(crate::cassette::TerminalRecord {
+                    finish_reason: Some(finish),
+                    response_id: None,
+                    model: None,
+                    usage: Usage::new(),
+                });
+                continue;
+            }
+        };
+        recording.events.push(item);
+        let _ = PartKind::ToolCall;
+    }
+    crate::replay_rig_events(&recording, custom)
 }
 
 #[test]
 fn custom_added_delta_done_have_consistent_type_call_id_and_unwrapped_input() {
-    let events = crate::replay_rig_events(
-        &[
+    let events = replay(
+        vec![
             delta(r#"{"input":"PATCH"}"#),
             tool(json!({"input":"PATCH"})),
             final_event(),
@@ -86,8 +156,8 @@ fn custom_added_delta_done_have_consistent_type_call_id_and_unwrapped_input() {
 
 #[test]
 fn rig_repaired_arguments_are_emitted_once_and_match_done() {
-    let events = crate::replay_rig_events(
-        &[
+    let events = replay(
+        vec![
             delta("null"),
             delta(r#"{"x":1}"#),
             tool(json!({"x":1})),
@@ -127,15 +197,15 @@ fn argument_limit_applies_to_fragments_and_authoritative_tool_values() {
         ],
         vec![tool(value), final_event()],
     ] {
-        assert!(crate::replay_rig_events(&events, HashSet::new()).is_err());
+        assert!(replay(events, HashSet::new()).is_err());
     }
 }
 
 #[test]
 fn malformed_custom_wrapper_fails_before_executing_a_tool() {
     assert!(
-        crate::replay_rig_events(
-            &[tool(json!({"other":"lost input"})), final_event()],
+        replay(
+            vec![tool(json!({"other":"lost input"})), final_event()],
             HashSet::from(["apply_patch".into()])
         )
         .is_err()
@@ -144,40 +214,50 @@ fn malformed_custom_wrapper_fails_before_executing_a_tool() {
 
 #[test]
 fn reasoning_blocks_signatures_redactions_and_indices_survive_replay() {
-    let first = Reasoning::new_with_signature("first chunk", Some("signed-first".into()));
-    let second = Reasoning::new_with_signature("second", Some("signed-second".into()));
-    let redacted = Reasoning::redacted("opaque-redacted-data");
-    let mut pending = PendingRigMessage::new(Arc::new(HashSet::new()), "original-source".into());
-    let mut events = Vec::new();
-    for event in [
-        Event::ReasoningDelta {
-            id: "r1".into(),
-            provider_id: None,
-            reasoning: "first ".into(),
-        },
-        Event::ReasoningDelta {
-            id: "r1".into(),
-            provider_id: None,
-            reasoning: "chunk".into(),
-        },
-        Event::Reasoning {
-            id: "r1".into(),
-            reasoning: first.clone(),
-        },
-        Event::Reasoning {
-            id: "r2".into(),
-            reasoning: second.clone(),
-        },
-        Event::Reasoning {
-            id: "r3".into(),
-            reasoning: redacted.clone(),
-        },
-        final_event(),
-        final_event(),
-    ] {
-        events.extend(rig_event_to_response_events(event, &mut pending).unwrap());
-    }
-    let indices: Vec<_> = events
+    let signed = |text: &str, signature: &str| Reasoning {
+        text: text.into(),
+        redacted: false,
+        native: Some(rig_core::completion::message::Native {
+            item: serde_json::json!({ "signature": signature }),
+            fingerprint: rig_core::completion::message::Fingerprint::of(&signature),
+        }),
+    };
+    let first = signed("first chunk", "signed-first");
+    let second = signed("second", "signed-second");
+    let redacted = Reasoning {
+        text: "opaque-redacted-data".into(),
+        redacted: true,
+        native: None,
+    };
+    let converted = replay(
+        vec![
+            TestEvent::ReasoningDelta {
+                id: "r1".into(),
+                text: "first ".into(),
+            },
+            TestEvent::ReasoningDelta {
+                id: "r1".into(),
+                text: "chunk".into(),
+            },
+            TestEvent::ReasoningEnd {
+                id: "r1".into(),
+                reasoning: first.clone(),
+            },
+            TestEvent::ReasoningEnd {
+                id: "r2".into(),
+                reasoning: second.clone(),
+            },
+            TestEvent::ReasoningEnd {
+                id: "r3".into(),
+                reasoning: redacted.clone(),
+            },
+            final_event(),
+            final_event(),
+        ],
+        HashSet::new(),
+    )
+    .unwrap();
+    let indices: Vec<_> = converted
         .iter()
         .filter_map(|event| match event {
             ResponseEvent::ReasoningContentDelta { content_index, .. } => Some(*content_index),
@@ -185,7 +265,7 @@ fn reasoning_blocks_signatures_redactions_and_indices_survive_replay() {
         })
         .collect();
     assert_eq!(indices, vec![0, 0]);
-    let item = events
+    let item = converted
         .iter()
         .find_map(|event| match event {
             ResponseEvent::OutputItemDone(item @ ResponseItem::Reasoning { .. }) => Some(item),
@@ -193,7 +273,7 @@ fn reasoning_blocks_signatures_redactions_and_indices_survive_replay() {
         })
         .unwrap();
     assert_eq!(
-        crate::reasoning::replay_reasoning(item, "original-source", crate::RigProtocol::Anthropic),
+        crate::reasoning::replay_reasoning(item, "cassette", crate::RigProtocol::Anthropic),
         vec![first, second, redacted]
     );
     assert!(
@@ -214,7 +294,7 @@ fn reasoning_blocks_signatures_redactions_and_indices_survive_replay() {
         );
     }
     assert_eq!(
-        events
+        converted
             .iter()
             .filter(|event| matches!(event, ResponseEvent::Completed { .. }))
             .count(),
@@ -238,36 +318,45 @@ fn opaque_responses_reasoning_is_never_replayed_as_plaintext() {
 
 #[test]
 fn legacy_rig_cassette_requires_real_conversion_and_a_terminal_record() {
-    let fixture: crate::RigEventFixture = serde_json::from_value(
-        json!({"vendor":"test","tag":"legacy","rig_events":[final_event()]}),
-    )
-    .unwrap();
+    // A serialized 0.42 Final record (untagged StreamFinal JSON shape).
+    let legacy_final = json!({
+        "kind":"final",
+        "usage":{},
+        "finish_reason":"tool_calls",
+    });
+    let fixture: crate::RigEventFixture =
+        serde_json::from_value(json!({"vendor":"test","tag":"legacy","rig_events":[legacy_final]}))
+            .unwrap();
     let events = crate::replay_fixture_events(&fixture).unwrap();
     assert!(matches!(
         events.last(),
         Some(ResponseEvent::Completed { .. })
     ));
-    assert!(crate::replay_rig_events(&[], HashSet::new()).is_err());
+    assert!(
+        crate::replay_rig_events(&crate::cassette::RigRecording::default(), HashSet::new())
+            .is_err()
+    );
 }
 
 #[test]
 fn redacted_blocks_do_not_shift_visible_reasoning_content_indices() {
-    let mut pending = PendingRigMessage::new(Arc::new(HashSet::new()), "source".into());
-    rig_event_to_response_events(
-        Event::Reasoning {
-            id: "r0".into(),
-            reasoning: Reasoning::redacted("opaque"),
-        },
-        &mut pending,
-    )
-    .unwrap();
-    let events = rig_event_to_response_events(
-        Event::ReasoningDelta {
-            id: "r1".into(),
-            provider_id: None,
-            reasoning: "visible".into(),
-        },
-        &mut pending,
+    let events = replay(
+        vec![
+            TestEvent::ReasoningEnd {
+                id: "r0".into(),
+                reasoning: Reasoning {
+                    text: "opaque".into(),
+                    redacted: true,
+                    native: None,
+                },
+            },
+            TestEvent::ReasoningDelta {
+                id: "r1".into(),
+                text: "visible".into(),
+            },
+            TestEvent::Terminal(FinishReason::Stop),
+        ],
+        HashSet::new(),
     )
     .unwrap();
     assert!(events.iter().any(|event| matches!(

@@ -179,17 +179,23 @@ pub(crate) fn convert_response_items(
             }
             ResponseItem::Reasoning { .. } => {
                 for reasoning in crate::reasoning::replay_reasoning(item, source, protocol) {
+                    // On the Anthropic wire a signed or redacted block rides
+                    // its provider item natively: rig 0.44 replays a
+                    // same-model turn's native items verbatim, which is the
+                    // only way signed thinking and redacted payloads survive
+                    // the history adapter.
+                    let part = if protocol == RigProtocol::Anthropic {
+                        anthropic_reasoning_block(reasoning)
+                    } else {
+                        AssistantContent::Reasoning(reasoning)
+                    };
                     match messages.last_mut() {
                         Some(Message::Assistant(assistant)) => {
-                            assistant
-                                .content
-                                .push(AssistantContent::Reasoning(reasoning));
+                            assistant.content.push(part);
                         }
                         _ => {
                             messages.push(Message::Assistant(
-                                rig_core::completion::message::AssistantMessage::new(vec![
-                                    AssistantContent::Reasoning(reasoning),
-                                ]),
+                                rig_core::completion::message::AssistantMessage::new(vec![part]),
                             ));
                             assistant_messages += 1;
                         }
@@ -207,11 +213,6 @@ pub(crate) fn convert_response_items(
                         // Result-only projections still need a block Rig can
                         // serialize. Keep the original validated call for the
                         // SDK anchor; transport removes it before raw replay.
-                        let anchor = envelope
-                            .blocks
-                            .iter()
-                            .find(|block| block["type"] == "server_tool_use")
-                            .cloned();
                         let mut kept: Vec<(Value, usize)> = Vec::new();
                         for (position, block) in envelope.blocks.into_iter().enumerate() {
                             let keep = match block["type"].as_str() {
@@ -256,14 +257,23 @@ pub(crate) fn convert_response_items(
                             continue;
                         }
                         if !matches!(messages.last(), Some(Message::Assistant(_))) {
-                            if anchor.is_none() || kept.is_empty() {
+                            if kept.is_empty() {
                                 continue;
-                            };
+                            }
+                            // The SDK anchor is a marker text block: rig 0.44's
+                            // `adapt` drops a turn whose blocks it cannot
+                            // replay (an empty-text anchor vanished there,
+                            // merging the surrounding user turns), while a
+                            // non-blank text block survives every adapt path.
+                            // The transport rewrite strips the marker and
+                            // splices the full raw group, so it never reaches
+                            // the provider and does not contribute to segment
+                            // offsets or response boundaries.
                             messages.push(Message::Assistant(
                                 rig_core::completion::message::AssistantMessage::new(vec![
-                                    // This SDK anchor is removed before replay and does not
-                                    // contribute to segment offsets or response boundaries.
-                                    AssistantContent::text(String::new()),
+                                    AssistantContent::text(
+                                        crate::hosted_replay::SDK_ANCHOR_TEXT.to_owned(),
+                                    ),
                                 ]),
                             ));
                             assistant_messages += 1;
@@ -573,14 +583,63 @@ pub(crate) fn convert_response_items(
     Ok(messages)
 }
 
-/// Exact block cardinality of pinned Rig 0.42's Anthropic serializer. Raw
-/// server-tool anchors are stripped by transport before these offsets are used.
+/// A replayed reasoning block with its Anthropic wire item attached
+/// natively, when it carries provider data. `adapt` and the encoder replay
+/// a same-model turn's native item verbatim (`Replay::Item`), so the signed
+/// `thinking` / `redacted_thinking` shapes reach the wire unchanged; an
+/// unsigned block stays a plain `Reasoning`, which the encoder sends as
+/// visible text.
+fn anthropic_reasoning_block(
+    reasoning: rig_core::completion::message::Reasoning,
+) -> AssistantContent {
+    // The stream decode keeps a block's payload in its native item: a
+    // redacted block's data lives only there (the canonical text is empty),
+    // and a streamed thinking block's item is the original wire JSON. Replay
+    // the item verbatim when it is one; a legacy (v1) signature-only item
+    // synthesizes the wire shape.
+    let wire_item = reasoning
+        .native
+        .as_ref()
+        .map(|native| native.item.clone())
+        .filter(|item| item.get("type").is_some())
+        .or_else(|| {
+            if reasoning.redacted {
+                Some(serde_json::json!({"type":"redacted_thinking","data":reasoning.text}))
+            } else {
+                reasoning.native.as_ref().map(|native| {
+                    let mut item = serde_json::json!({
+                        "type": "thinking",
+                        "thinking": reasoning.text,
+                    });
+                    if let Some(fields) = native.item.as_object() {
+                        for (key, value) in fields {
+                            item[key.as_str()] = value.clone();
+                        }
+                    }
+                    item
+                })
+            }
+        });
+    match wire_item {
+        Some(item) => AssistantContent::Reasoning(reasoning).with_native(item),
+        None => AssistantContent::Reasoning(reasoning),
+    }
+}
+
+/// Block cardinality of the serialized assistant content. Raw server-tool
+/// anchors are stripped by transport before these offsets are used.
 fn serialized_assistant_len(content: &[AssistantContent]) -> usize {
     content
         .iter()
         .map(|part| match part {
-            AssistantContent::Text(text) => usize::from(!text.text.is_empty()),
-            AssistantContent::Reasoning(reasoning) => reasoning.text.len(),
+            // The SDK anchor marker is stripped before the wire, so it holds
+            // no block position. A reasoning block is one wire block whatever
+            // its text length: the count indexes the content array, which the
+            // identity splice slices directly.
+            AssistantContent::Text(text) => usize::from(
+                !text.text.is_empty() && text.text != crate::hosted_replay::SDK_ANCHOR_TEXT,
+            ),
+            AssistantContent::Reasoning(_) => 1,
             AssistantContent::ToolCall(_) => 1,
             // `AssistantContent` is non-exhaustive upstream; unmodeled
             // blocks contribute no Anthropic wire block.

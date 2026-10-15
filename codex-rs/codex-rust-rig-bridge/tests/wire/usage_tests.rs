@@ -40,7 +40,7 @@ async fn anthropic_usage(deltas: Vec<Value>) -> TokenUsage {
         support::serve_payload(&listener, &payload).await
     });
     let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
-    let recorder = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let recorder = Arc::new(std::sync::Mutex::new(Default::default()));
     let (mut stream, _) = stream_via_rig_with_recording(
         &support::request(vec![support::user()]),
         &provider,
@@ -59,7 +59,7 @@ async fn anthropic_usage(deltas: Vec<Value>) -> TokenUsage {
         }
     }
     server.await.unwrap();
-    let replay = replay_rig_events(&recorder.lock().unwrap(), Default::default()).unwrap();
+    let replay = replay_rig_events(&recorder.lock().unwrap().clone(), Default::default()).unwrap();
     let replay_usage = replay.into_iter().find_map(|event| match event {
         ResponseEvent::Completed { token_usage, .. } => token_usage,
         _ => None,

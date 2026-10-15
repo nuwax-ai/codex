@@ -77,7 +77,7 @@ pub fn load_rig_event_fixture(
 pub fn save_rig_event_fixture(
     vendor: &str,
     tag: &str,
-    rig_events: &[rig_core::streaming::StreamedAssistantContent],
+    recording: &codex_rust_rig_bridge::RigRecording,
     custom_tools: &std::collections::HashSet<String>,
 ) -> Result<()> {
     let path =
@@ -87,7 +87,9 @@ pub fn save_rig_event_fixture(
     let fixture = codex_rust_rig_bridge::RigEventFixture {
         vendor: vendor.to_string(),
         tag: tag.to_string(),
-        rig_events: rig_events.to_vec(),
+        items: recording.events.clone(),
+        terminal: recording.terminal.clone(),
+        rig_events: Vec::new(),
         custom_tools,
     };
     write_fixture(&path, &fixture)?;

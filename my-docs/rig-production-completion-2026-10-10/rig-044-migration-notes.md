@@ -116,10 +116,70 @@ stream 需要重写：
    序列化——cassette.rs 的 RigEventFixture 需要版本化（v2 记 Item<StreamEvent>），
    旧 0.42 fixture 的解码路径保留（与 reasoning v1 同理）。
 
+## 进展（2026-10-15 第二轮：流核心完成，280/280 绿）
+
+流核心 4 文件 + cassette 重写完成（convert_response/response_tools/stream_pump/
+stream/cassette + reasoning v1 解码共用），lib+tests 编译 0 错，280 测试全过，
+clippy 0 警告，codex-core/codex-live-tests 编译通过（live-tests 的 recorder/
+fixture 接口已随迁）。按 0.44 语义的设计决策与坑：
+
+1. **历史适配器 `adapt` 是最大的语义断层**（0.42 无此层）。`Model::stream` 经
+   `Operation::prepare` 调 `history::adapt_for`，规则：相邻 user 消息合并、
+   空内容/空白文本 turn 丢弃、跨模型 turn 的 Opaque/签名 Reasoning 降级为纯
+   文本、无工具声明时 tool call 历史折叠成文本（tools_as_text）。桥接对策：
+   - 每个重建的历史 assistant turn 挂同源 `Origin{api:"anthropic.messages",
+     provider:"anthropic", model, context}`（`anthropic_history_origin`）；context
+     指纹镜像 rig 私有的 `history::context_of`（`anthropic_context_fingerprint`，
+     输入 = 排序后 tools + leading system + raw tools），仅在模型不绑定上下文时
+     计算（binds_context 模型在 adaptive thinking 下不做指纹比较——与 driver 的
+     drops_unbound_items 谓词一致）。**rig 升级时这两处镜像必须同步**。
+   - 签名/redacted reasoning 挂 `with_native(wire item)`：同源 turn 的 native
+     item 逐字回放（`Replay::Item`），这是签名 thinking/redacted_thinking 上
+     wire 的唯一通道；流式解码时 redacted 的 payload 只在 native item 里
+     （canonical text 为空），legacy v1 签名才合成 wire 块。
+   - hosted 搜索锚点改为 **marker 文本块**（`SDK_ANCHOR_TEXT`，NUL 前缀）：
+     空文本锚点会被 adapt 的 blank 过滤丢弃并导致相邻 user 合并；marker 在所有
+     adapt 路径存活，transport 剥掉后拼接原始 wire 块。锚点不计入
+     serialized_assistant_len（不上 wire）。
+   - hosted server 工具放 `additional_params["tools"]`（rig 原生序列化 raw
+     tools，transport 不再拼接 tools 数组）；同时使 declares_tools 为真，
+     避免 tools_as_text 折叠历史 tool call。
+   - `serialized_assistant_len` 的 Reasoning 计 1（块基数，不再按 text.len()）：
+     identity splice 按 content 数组切片，字符数会越界回退到末尾追加。
+2. **usage 权威在桥内累加器**：rig 0.44 的 fold 只保留 start+terminal 帧，
+   中间累计帧会丢；`AnthropicUsage::apply` 保持 fork 的逐帧覆盖语义（显式 0
+   覆盖、null/缺省不动），但写入 `input_tokens` 用包含式值
+   （wire input + cache_read + cache_creation，与 0.44 Usage 语义对齐）。
+3. **`ProviderError::Http` 的 `source()` 返回 None**（0.44 只对 Json/Url/Request
+   暴露 source）：capture/budget 错误分类器需显式下钻 `Http(Arc<Error>)` 内层，
+   否则 fail-fast 错误被误分类为可重试网络错误（生产级修复，非仅测试）。
+4. pause_turn 从 wire tee 解析（`anthropic_stop_reason`），tee 同时喂 hosted
+   工具块与暂停续链。
+5. Responses 透传手构 URI 不带 query——transport `prepare` 统一追加（曾双重
+   拼接）。
+6. `tool_input_streaming: Off`（0.44 默认 Eager 会给每个工具加
+   eager_input_streaming 字段，偏离 0.42 wire 形状）。
+7. cassette 双版本：fixture v2 记 `Item<StreamEvent>` + TerminalRecord，v1
+   （0.42 untagged）在读侧翻译（Name delta→Start、Delta→Arguments、ToolCall→
+   End、Final→terminal；`translate_legacy_events`）；`Part` 经 serde 透明形式
+   构造（`part_from_index`，失败走 Stream 错误不 panic）。legacy usage 换算：
+   0.44 input = 旧 input + cached + cache_creation。
+8. 测试侧的 0.44 适配（fork-contract adaptations，均有注释标记）：无工具声明
+   的纯历史请求在 wire 测试里显式声明工具（生产恒有工具声明）；opt-out/
+   去重尾部等无锚点场景的相邻 user 合并期望改为合并后的形状。
+
+### 已知残留（Phase C 复核项）
+- `anthropic_context_fingerprint` 与 `anthropic_history_origin` 镜像 rig 内部
+  逻辑，rig 版本升级时需人工核对 `Operation::prepare`/`history::context_of`/
+  `drops_unbound_items` 三处。
+- 绑定上下文的 Claude 模型（binds_context=true）走"无指纹比较"分支，依赖
+  provider 侧 drop_block；该路径无离线测试覆盖（模型目录驱动的行为）。
+- live-tests 仅离线编译验证（recorder/fixture 迁移后），录制/回放轮次未跑。
+
 ## 执行清单
 - [x] Phase A 非流部分（12/16 文件）
-- [ ] Phase A 流核心 4 文件 + cassette（上述 7 点设计）
-- [ ] Phase B 测试/夹具/cassette 适配（rig_event fixture 结构变化）
+- [x] Phase A 流核心 4 文件 + cassette（280/280 绿，clippy 0 警告）
+- [x] Phase B 测试/夹具/cassette 适配（fixture v2 + legacy v1 翻译 + live-tests 编译面）
 - [ ] Phase C 验证：三 wire 出站、工具配对、终局/迟到 usage、cap、取消、
       retry/idle/HTTP 预算、代理/TLS、signed reasoning 旧会话、resume/compact、
       app-server env、live-tests 离线；`just bazel-lock-update`

@@ -98,7 +98,7 @@ fn replay_rig_turn(cfg: &LiveConfig, tag: &str) -> Vec<ResponseEvent> {
         "[cassette-rig] replaying {}/{} through current bridge conversion ({} rig events, offline)",
         cfg.vendor,
         tag,
-        fixture.rig_events.len()
+        fixture.items.len() + fixture.rig_events.len()
     );
     codex_rust_rig_bridge::replay_fixture_events(&fixture)
         .unwrap_or_else(|error| panic!("[cassette-rig] {}/{}: {error}", cfg.vendor, tag))
@@ -285,7 +285,11 @@ pub async fn run_turn_rig(
     let provider = vendor_provider(&cfg.vendor, base_url);
     let recording = cassette_mode() == CassetteMode::Record;
     let mut recorders = codex_rust_rig_bridge::RigTurnRecorders {
-        events: recording.then(|| Arc::new(std::sync::Mutex::new(Vec::new()))),
+        events: recording.then(|| {
+            Arc::new(std::sync::Mutex::new(
+                codex_rust_rig_bridge::RigRecording::default(),
+            ))
+        }),
         final_request: recording.then(|| {
             Arc::new(std::sync::Mutex::new(
                 codex_rust_rig_bridge::FinalRequestCapture::default(),
@@ -312,9 +316,9 @@ pub async fn run_turn_rig(
     // Save the rig-event fixture and the sanitized final request alongside
     // the event-level one (D2: the wire shape the vendor actually received).
     if let Some(rec) = returned.events {
-        let rig_events = rec.lock().expect("Rig recorder lock");
+        let recording = rec.lock().expect("Rig recorder lock");
         let custom_tools = codex_rust_rig_bridge::extract_custom_tool_names(request);
-        save_rig_event_fixture(&cfg.vendor, tag, &rig_events, &custom_tools)
+        save_rig_event_fixture(&cfg.vendor, tag, &recording, &custom_tools)
             .expect("record Rig events");
     }
     if let Some(captured) = returned.final_request {

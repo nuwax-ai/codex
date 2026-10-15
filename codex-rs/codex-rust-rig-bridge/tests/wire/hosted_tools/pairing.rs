@@ -29,7 +29,7 @@ async fn anthropic_two_search_only_turns_replay_exact_raw_groups() {
 #[tokio::test]
 async fn anthropic_search_only_after_tool_result_replays_in_its_own_assistant() {
     let blocks = search_pair("search-after-tool");
-    let messages = capture_search_replay(
+    let messages = capture_search_replay_with_tools(
         vec![
             support::user(),
             json!({"type":"function_call","name":"lookup","call_id":"call-1","arguments":"{}"}),
@@ -38,6 +38,7 @@ async fn anthropic_search_only_after_tool_result_replays_in_its_own_assistant() 
             support::user(),
         ],
         SearchReplay::Enabled,
+        Some(json!([{"type":"function","name":"lookup","description":"lookup","parameters":{"type":"object","properties":{}}}])),
     )
     .await;
     let user = json!({"role":"user","content":[{"type":"text","text":"hello"}]});
@@ -62,8 +63,17 @@ async fn anthropic_search_only_opt_out_removes_sdk_anchors_and_empty_assistants(
         support::user(),
         json!({"type":"web_search_call","wire_blocks":[{"type":"unknown_legacy_block","opaque":"unused"}]}),
     ], SearchReplay::Disabled).await;
-    let user = json!({"role":"user","content":[{"type":"text","text":"hello"}]});
-    assert_eq!(messages, json!([user, user, user]));
+    // rig 0.44's history adapter merges adjacent user messages once the
+    // anchor turns are gone; with no anchors to keep apart, the opt-out
+    // body is one merged user turn (fork-contract adaptation).
+    assert_eq!(
+        messages,
+        json!([{"role":"user","content":[
+            {"type":"text","text":"hello"},
+            {"type":"text","text":"hello"},
+            {"type":"text","text":"hello"},
+        ]}])
+    );
 }
 
 #[tokio::test]
@@ -144,12 +154,14 @@ async fn anthropic_malformed_loaded_search_payloads_drop_before_sdk_conversion()
             SearchReplay::Enabled,
         )
         .await;
+        // Anchor-less drops leave adjacent user turns, which rig 0.44's
+        // history adapter merges (fork-contract adaptation).
         assert_eq!(
             messages,
-            json!([
-                {"role":"user", "content":[{"type":"text", "text":"hello"}]},
-                {"role":"user", "content":[{"type":"text", "text":"hello"}]},
-            ])
+            json!([{"role":"user", "content":[
+                {"type":"text", "text":"hello"},
+                {"type":"text", "text":"hello"},
+            ]}])
         );
     }
 }
@@ -166,10 +178,15 @@ async fn anthropic_late_search_result_opt_out_removes_result_only_anchors() {
             json!({"type":"web_search_call", "wire_blocks":pair}),
             support::user(),
         ];
-        let user = json!({"role":"user", "content":[{"type":"text", "text":"hello"}]});
+        // rig 0.44 merges the anchor-less adjacent user turns
+        // (fork-contract adaptation).
         assert_eq!(
             capture_search_replay(items, SearchReplay::Disabled).await,
-            json!([user, user, user])
+            json!([{"role":"user", "content":[
+                {"type":"text", "text":"hello"},
+                {"type":"text", "text":"hello"},
+                {"type":"text", "text":"hello"},
+            ]}])
         );
     }
 }
@@ -195,11 +212,18 @@ async fn anthropic_search_dedupe_across_user_messages_keeps_one_call_and_result(
     )
     .await;
     let user = json!({"role":"user", "content":[{"type":"text", "text":"hello"}]});
+    // The deduped tail turns hold no anchors, so rig 0.44 merges those
+    // adjacent user turns (fork-contract adaptation).
     assert_eq!(
         messages,
         json!([
             user, {"role":"assistant", "content":[pair[0].clone()]},
-            user, {"role":"assistant", "content":[pair[1].clone()]}, user, user, user,
+            user, {"role":"assistant", "content":[pair[1].clone()]},
+            {"role":"user", "content":[
+                {"type":"text", "text":"hello"},
+                {"type":"text", "text":"hello"},
+                {"type":"text", "text":"hello"},
+            ]},
         ])
     );
 }

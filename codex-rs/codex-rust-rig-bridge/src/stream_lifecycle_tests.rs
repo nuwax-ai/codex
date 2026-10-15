@@ -1,4 +1,6 @@
 use crate::convert_response::PendingRigMessage;
+use crate::convert_response::StreamTerminal;
+use crate::convert_response::handle_stream_terminal;
 use crate::convert_response::rig_event_to_response_events;
 use codex_api::ApiError;
 use codex_api::ResponseEvent;
@@ -6,17 +8,15 @@ use codex_protocol::models::ContentItem;
 use codex_protocol::models::ReasoningItemContent;
 use codex_protocol::models::ResponseItem;
 use pretty_assertions::assert_eq;
-use rig_core::completion::message::ProviderCallId;
 use rig_core::completion::message::Reasoning;
-use rig_core::completion::message::ToolCall;
-use rig_core::completion::message::ToolCallId;
-use rig_core::completion::message::ToolFunction;
 use rig_core::completion::request::FinishReason;
 use rig_core::completion::request::Usage;
-use rig_core::streaming::StreamFinal;
-use rig_core::streaming::StreamedAssistantContent;
-use rig_core::streaming::ToolCallDeltaContent;
+use rig_core::streaming::Item;
+use rig_core::streaming::Part;
+use rig_core::streaming::PartKind;
+use rig_core::streaming::StreamEvent;
 use serde_json::json;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -24,56 +24,220 @@ fn pending() -> PendingRigMessage {
     PendingRigMessage::new(Arc::new(HashSet::from(["custom".into()])), "source".into())
 }
 
-fn reasoning_delta(id: &str, text: &str) -> StreamedAssistantContent {
-    StreamedAssistantContent::ReasoningDelta {
+fn part_of(index: u32) -> Part {
+    serde_json::from_value(serde_json::Value::from(index)).expect("Part is transparent")
+}
+
+/// Legacy-shaped test inputs; each helper carries its stream-local id, and
+/// [`apply`] allocates one 0.44 part per distinct id.
+enum TestEvent {
+    Text(String),
+    ReasoningDelta {
+        id: String,
+        text: String,
+    },
+    ReasoningEnd {
+        id: String,
+        reasoning: Reasoning,
+    },
+    ToolName {
+        id: String,
+        name: String,
+    },
+    ToolArgs {
+        id: String,
+        args: String,
+    },
+    ToolEnd {
+        id: String,
+        name: String,
+        arguments: serde_json::Map<String, serde_json::Value>,
+    },
+    Terminal(FinishReason),
+    TerminalWithUsage(FinishReason, Usage),
+}
+
+fn reasoning_delta(id: &str, text: &str) -> TestEvent {
+    TestEvent::ReasoningDelta {
         id: id.into(),
-        provider_id: None,
-        reasoning: text.into(),
+        text: text.into(),
     }
 }
 
-fn signed_reasoning(id: &str, text: &str) -> StreamedAssistantContent {
-    StreamedAssistantContent::Reasoning {
+fn signed_reasoning_value(id: &str, text: &str) -> Reasoning {
+    let signature = format!("signature-{id}");
+    Reasoning {
+        text: text.into(),
+        redacted: false,
+        native: Some(rig_core::completion::message::Native {
+            item: json!({ "signature": signature }),
+            fingerprint: rig_core::completion::message::Fingerprint::of(&signature),
+        }),
+    }
+}
+
+fn signed_reasoning(id: &str, text: &str) -> TestEvent {
+    TestEvent::ReasoningEnd {
         id: id.into(),
-        reasoning: Reasoning::new_with_signature(text, Some(format!("signature-{id}"))),
+        reasoning: signed_reasoning_value(id, text),
     }
 }
 
-fn tool_delta(id: &str, content: ToolCallDeltaContent) -> StreamedAssistantContent {
-    StreamedAssistantContent::ToolCallDelta {
-        internal_call_id: id.into(),
-        content,
+fn tool_delta(id: &str, name: &str) -> TestEvent {
+    TestEvent::ToolName {
+        id: id.into(),
+        name: name.into(),
     }
 }
 
-fn tool(id: &str, name: &str, arguments: serde_json::Value) -> StreamedAssistantContent {
-    StreamedAssistantContent::ToolCall {
-        internal_call_id: id.into(),
-        tool_call: ToolCall {
-            id: ToolCallId::new_or_mint(format!("local-{id}")),
-            provider: ProviderCallId::new(format!("wire-{id}")),
-            function: ToolFunction {
-                name: name.into(),
-                arguments,
-            },
-            signature: None,
-            additional_params: None,
-        },
+fn tool_args(id: &str, args: &str) -> TestEvent {
+    TestEvent::ToolArgs {
+        id: id.into(),
+        args: args.into(),
     }
 }
 
-fn terminal(reason: FinishReason) -> StreamedAssistantContent {
-    StreamedAssistantContent::Final(
-        StreamFinal::new("test", Usage::new()).with_finish_reason(reason),
-    )
+fn tool(id: &str, name: &str, arguments: serde_json::Value) -> TestEvent {
+    TestEvent::ToolEnd {
+        id: id.into(),
+        name: name.into(),
+        arguments: arguments.as_object().cloned().unwrap_or_default(),
+    }
 }
 
-fn drive(input: Vec<StreamedAssistantContent>) -> Vec<ResponseEvent> {
-    let mut state = pending();
-    input
-        .into_iter()
-        .flat_map(|event| rig_event_to_response_events(event, &mut state).expect("valid stream"))
-        .collect()
+fn terminal(reason: FinishReason) -> TestEvent {
+    TestEvent::Terminal(reason)
+}
+
+/// Converts test events into 0.44 stream items, applying each through the
+/// live conversion; terminals go through the terminal handler. The part
+/// map lives across calls so interleaved fragments of one id share a part.
+struct Driver {
+    state: PendingRigMessage,
+    next_part: u32,
+    parts: HashMap<String, Part>,
+}
+
+impl Driver {
+    fn new() -> Self {
+        Self {
+            state: pending(),
+            next_part: 0,
+            parts: HashMap::new(),
+        }
+    }
+
+    fn apply(&mut self, events: Vec<TestEvent>) -> Result<Vec<ResponseEvent>, ApiError> {
+        let state = &mut self.state;
+        let next_part = &mut self.next_part;
+        let parts = &mut self.parts;
+        let part_for = |key: &str, next_part: &mut u32, parts: &mut HashMap<String, Part>| {
+            *parts.entry(key.to_string()).or_insert_with(|| {
+                *next_part += 1;
+                part_of(*next_part)
+            })
+        };
+        let mut out = Vec::new();
+        for event in events {
+            match event {
+                TestEvent::Text(text) => out.extend(rig_event_to_response_events(
+                    Item::Event(StreamEvent::Text {
+                        part: part_of(0),
+                        text,
+                    }),
+                    state,
+                )?),
+                TestEvent::ReasoningDelta { id, text } => {
+                    let part = part_for(&id, next_part, parts);
+                    out.extend(rig_event_to_response_events(
+                        Item::Event(StreamEvent::Reasoning { part, text }),
+                        state,
+                    )?)
+                }
+                TestEvent::ReasoningEnd { id, reasoning } => {
+                    let part = part_for(&id, next_part, parts);
+                    out.extend(rig_event_to_response_events(
+                        Item::Event(StreamEvent::End {
+                            part,
+                            content: rig_core::completion::message::AssistantContent::Reasoning(
+                                reasoning,
+                            ),
+                        }),
+                        state,
+                    )?)
+                }
+                TestEvent::ToolName { id, name } => {
+                    let part = part_for(&id, next_part, parts);
+                    out.extend(rig_event_to_response_events(
+                        Item::Event(StreamEvent::Start {
+                            part,
+                            kind: PartKind::ToolCall,
+                            name: Some(
+                                rig_core::completion::message::ToolName::new(name)
+                                    .expect("non-empty tool name"),
+                            ),
+                        }),
+                        state,
+                    )?)
+                }
+                TestEvent::ToolArgs { id, args } => {
+                    let part = part_for(&id, next_part, parts);
+                    out.extend(rig_event_to_response_events(
+                        Item::Event(StreamEvent::Arguments { part, json: args }),
+                        state,
+                    )?)
+                }
+                TestEvent::ToolEnd {
+                    id,
+                    name,
+                    arguments,
+                } => {
+                    let part = part_for(&id, next_part, parts);
+                    out.extend(rig_event_to_response_events(
+                        Item::Event(StreamEvent::End {
+                            part,
+                            content: rig_core::completion::message::AssistantContent::ToolCall(
+                                rig_core::completion::message::ToolCall::from_wire(
+                                    format!("wire-{id}"),
+                                    rig_core::completion::message::ToolFunction {
+                                        name: rig_core::completion::message::ToolName::new(name)
+                                            .expect("non-empty tool name"),
+                                        arguments,
+                                        invalid_arguments: None,
+                                    },
+                                ),
+                            ),
+                        }),
+                        state,
+                    )?)
+                }
+                TestEvent::Terminal(reason) => out.extend(handle_stream_terminal(
+                    StreamTerminal {
+                        finish_reason: Some(reason),
+                        response_id: None,
+                        model: None,
+                        usage: Usage::new(),
+                    },
+                    state,
+                )?),
+                TestEvent::TerminalWithUsage(reason, usage) => out.extend(handle_stream_terminal(
+                    StreamTerminal {
+                        finish_reason: Some(reason),
+                        response_id: None,
+                        model: None,
+                        usage,
+                    },
+                    state,
+                )?),
+            }
+        }
+        Ok(out)
+    }
+}
+
+fn drive(input: Vec<TestEvent>) -> Vec<ResponseEvent> {
+    let mut driver = Driver::new();
+    driver.apply(input).expect("valid stream")
 }
 
 /// Model core's single active item and reconstruct each Done from its deltas.
@@ -185,10 +349,10 @@ fn text_and_reasoning_switches_close_each_item_before_the_next_delta() {
     let events = drive(vec![
         reasoning_delta("r1", "first"),
         signed_reasoning("r1", "first"),
-        StreamedAssistantContent::text("answer one"),
+        TestEvent::Text("answer one".into()),
         reasoning_delta("r2", "second"),
         signed_reasoning("r2", "second"),
-        StreamedAssistantContent::text("answer two"),
+        TestEvent::Text("answer two".into()),
         terminal(FinishReason::Stop),
     ]);
     let done = assert_lifecycle(&events, /*expected_completions*/ 1);
@@ -200,33 +364,28 @@ fn text_and_reasoning_switches_close_each_item_before_the_next_delta() {
                 "source",
                 crate::RigProtocol::Anthropic
             ),
-            vec![Reasoning::new_with_signature(
-                text,
-                Some(format!("signature-{id}"))
-            )]
+            vec![signed_reasoning_value(id, text)]
         );
     }
 }
 
 #[test]
 fn reasoning_after_a_tool_keeps_its_position_and_is_deferred_until_final() {
-    let mut state = pending();
-    let mut events = rig_event_to_response_events(reasoning_delta("r1", "before"), &mut state)
-        .expect("reasoning starts");
-    for event in [
-        tool_delta("t1", ToolCallDeltaContent::Name("lookup".into())),
-        reasoning_delta("r2", "after"),
-        tool("t1", "lookup", json!({"key": 1})),
-        StreamedAssistantContent::text("answer"),
+    let mut driver = Driver::new();
+    let mut events = Vec::new();
+    for chunk in [
+        vec![reasoning_delta("r1", "before")],
+        vec![tool_delta("t1", "lookup")],
+        vec![reasoning_delta("r2", "after")],
+        vec![tool("t1", "lookup", json!({"key": 1}))],
+        vec![TestEvent::Text("answer".into())],
     ] {
-        assert!(
-            rig_event_to_response_events(event, &mut state)
-                .expect("buffered suffix")
-                .is_empty()
-        );
+        events.extend(driver.apply(chunk).expect("buffered suffix"));
     }
     events.extend(
-        rig_event_to_response_events(terminal(FinishReason::ToolCalls), &mut state).expect("final"),
+        driver
+            .apply(vec![terminal(FinishReason::ToolCalls)])
+            .expect("final"),
     );
     let done = assert_lifecycle(&events, /*expected_completions*/ 1);
     assert!(matches!(
@@ -242,28 +401,23 @@ fn reasoning_after_a_tool_keeps_its_position_and_is_deferred_until_final() {
 
 #[test]
 fn interleaved_parallel_calls_commit_in_first_seen_order_with_matching_ids_and_input() {
-    let mut state = pending();
+    let mut driver = Driver::new();
     for event in [
-        tool_delta("t1", ToolCallDeltaContent::Name("lookup".into())),
-        tool_delta("t1", ToolCallDeltaContent::Delta("{\"key\": ".into())),
-        tool_delta("t2", ToolCallDeltaContent::Name("custom".into())),
-        tool_delta(
-            "t2",
-            ToolCallDeltaContent::Delta("{\"input\":\"raw ".into()),
-        ),
-        tool_delta("t1", ToolCallDeltaContent::Delta("1}".into())),
-        tool_delta("t2", ToolCallDeltaContent::Delta("input\"}".into())),
+        tool_delta("t1", "lookup"),
+        tool_args("t1", "{\"key\": "),
+        tool_delta("t2", "custom"),
+        tool_args("t2", "{\"input\":\"raw "),
+        tool_args("t1", "1}"),
+        tool_args("t2", "input\"}"),
         tool("t2", "custom", json!({"input": "raw input"})),
         tool("t1", "lookup", json!({"key": 1})),
     ] {
-        assert!(
-            rig_event_to_response_events(event, &mut state)
-                .expect("buffered tool")
-                .is_empty()
-        );
+        assert!(driver.apply(vec![event]).expect("buffered tool").is_empty());
     }
-    let events =
-        rig_event_to_response_events(terminal(FinishReason::ToolCalls), &mut state).expect("final");
+    let events = driver
+        .apply(vec![terminal(FinishReason::ToolCalls)])
+        .expect("final");
+    let state = &driver.state;
     let done = assert_lifecycle(&events, /*expected_completions*/ 1);
     assert_eq!(
         events.len(),
@@ -337,20 +491,24 @@ fn interleaved_parallel_calls_commit_in_first_seen_order_with_matching_ids_and_i
 
 #[test]
 fn paused_final_flushes_text_tool_text_in_order_without_completed() {
-    let mut state = pending();
+    let mut driver = Driver::new();
     let mut events = Vec::new();
-    for event in [
-        StreamedAssistantContent::text("before"),
-        tool("t1", "lookup", json!({"key": 1})),
-        StreamedAssistantContent::text("after"),
+    for chunk in [
+        vec![TestEvent::Text("before".into())],
+        vec![tool("t1", "lookup", json!({"key": 1}))],
+        vec![TestEvent::Text("after".into())],
     ] {
-        events.extend(rig_event_to_response_events(event, &mut state).expect("stream event"));
+        events.extend(driver.apply(chunk).expect("stream event"));
     }
     events.extend(
         crate::convert_response::paused_final_events(
-            StreamFinal::new("test", Usage::new())
-                .with_finish_reason(FinishReason::Other("pause_turn".into())),
-            &mut state,
+            StreamTerminal {
+                finish_reason: Some(FinishReason::Other("pause_turn".into())),
+                response_id: None,
+                model: None,
+                usage: Usage::new(),
+            },
+            &mut driver.state,
         )
         .expect("paused final"),
     );
@@ -367,7 +525,7 @@ fn paused_final_flushes_text_tool_text_in_order_without_completed() {
          logprobs: None,
         }])
     );
-    assert!(!state.completed_emitted());
+    assert!(!driver.state.completed_emitted());
 }
 
 #[test]
@@ -379,20 +537,20 @@ fn unsuccessful_terminals_never_publish_buffered_tools() {
         FinishReason::Other("provider_failure".into()),
         FinishReason::Other("model_context_window_exceeded".into()),
     ] {
-        let mut state = pending();
+        let mut driver = Driver::new();
         assert!(
-            rig_event_to_response_events(tool("t1", "lookup", json!({})), &mut state)
+            driver
+                .apply(vec![tool("t1", "lookup", json!({}))])
                 .expect("buffer tool")
                 .is_empty()
         );
-        let error = rig_event_to_response_events(terminal(reason.clone()), &mut state)
+        let error = driver
+            .apply(vec![terminal(reason.clone())])
             .expect_err("unsuccessful terminal");
         match reason {
             FinishReason::Other(ref inner) if inner == "model_context_window_exceeded" => {
                 assert!(matches!(error, ApiError::ContextWindowExceeded));
             }
-            // Exhausting the caller-selected output cap matches the native
-            // Responses decoder: a non-retryable budget configuration error.
             FinishReason::Length => assert!(matches!(
                 error,
                 ApiError::CapExhausted { ref message, .. } if message.contains("Output token limit reached")
@@ -400,91 +558,87 @@ fn unsuccessful_terminals_never_publish_buffered_tools() {
             FinishReason::ContentFilter => assert!(matches!(error, ApiError::ContentFilter)),
             _ => assert!(matches!(error, ApiError::Stream(_))),
         }
-        assert!(!state.completed_emitted());
+        assert!(!driver.state.completed_emitted());
     }
 }
 
 #[test]
 fn cap_usage_discards_counters_that_exceed_signed_range() {
-    let mut state = pending();
+    let mut driver = Driver::new();
     let mut usage = Usage::new();
-    usage.input_tokens = u64::MAX;
-    usage.total_tokens = 4;
-    let error = rig_event_to_response_events(
-        StreamedAssistantContent::Final(
-            StreamFinal::new("test", usage).with_finish_reason(FinishReason::Length),
-        ),
-        &mut state,
-    )
-    .expect_err("output cap");
+    usage.input_tokens = Some(u64::MAX);
+    usage.total_tokens = Some(4);
+    let error = driver
+        .apply(vec![TestEvent::TerminalWithUsage(
+            FinishReason::Length,
+            usage,
+        )])
+        .expect_err("output cap");
     let ApiError::CapExhausted { reported_usage, .. } = error else {
         panic!("expected output cap");
     };
-    // The input is invalid and the only remaining number is an SDK-derived
-    // total, so there is no evidence of any usable wire counter.
     assert_eq!(reported_usage, None);
 }
 
 #[test]
 fn a_terminal_cannot_confirm_an_unfinished_call() {
-    let mut state = pending();
+    let mut driver = Driver::new();
     for event in [
         tool("t1", "lookup", json!({})),
-        tool_delta("t2", ToolCallDeltaContent::Name("lookup".into())),
-        tool_delta("t2", ToolCallDeltaContent::Delta("{\"key\":".into())),
+        tool_delta("t2", "lookup"),
+        tool_args("t2", "{\"key\":"),
     ] {
-        assert!(
-            rig_event_to_response_events(event, &mut state)
-                .expect("buffered tool")
-                .is_empty()
-        );
+        assert!(driver.apply(vec![event]).expect("buffered tool").is_empty());
     }
-    let error = rig_event_to_response_events(terminal(FinishReason::ToolCalls), &mut state)
+    let error = driver
+        .apply(vec![terminal(FinishReason::ToolCalls)])
         .expect_err("unconfirmed call");
     assert!(
         matches!(error, ApiError::Stream(message) if message.contains("unconfirmed tool call"))
     );
-    assert!(!state.completed_emitted());
+    assert!(!driver.state.completed_emitted());
 }
 
 #[test]
 fn a_late_signature_cannot_duplicate_or_rewrite_a_completed_reasoning_item() {
-    let mut state = pending();
-    rig_event_to_response_events(reasoning_delta("r1", "thinking"), &mut state).expect("reasoning");
-    let boundary =
-        rig_event_to_response_events(StreamedAssistantContent::text("answer"), &mut state)
-            .expect("text boundary");
+    let mut driver = Driver::new();
+    driver
+        .apply(vec![reasoning_delta("r1", "thinking")])
+        .expect("reasoning");
+    let boundary = driver
+        .apply(vec![TestEvent::Text("answer".into())])
+        .expect("text boundary");
     assert!(matches!(
         boundary.first(),
         Some(ResponseEvent::OutputItemDone(
             ResponseItem::Reasoning { .. }
         ))
     ));
-    let error = rig_event_to_response_events(signed_reasoning("r1", "thinking"), &mut state)
+    let error = driver
+        .apply(vec![signed_reasoning("r1", "thinking")])
         .expect_err("late reasoning update");
     assert!(
         matches!(error, ApiError::Stream(message) if message.contains("reasoning changed after"))
     );
-    assert!(!state.completed_emitted());
+    assert!(!driver.state.completed_emitted());
 }
 
 #[test]
 fn cap_fallback_does_not_claim_derived_totals_or_complete_wire_presence() {
-    let mut state = pending();
-    let mut event = terminal(FinishReason::Length);
-    let StreamedAssistantContent::Final(record) = &mut event else {
-        panic!("terminal");
-    };
-    record.usage = rig_core::completion::Usage {
-        input_tokens: 10,
-        output_tokens: 5,
-        total_tokens: 18,
-        cached_input_tokens: 1,
-        cache_creation_input_tokens: 2,
-        reasoning_tokens: 3,
-        ..Default::default()
-    };
-    let error = rig_event_to_response_events(event, &mut state).expect_err("cap");
+    let mut driver = Driver::new();
+    let mut usage = Usage::new();
+    usage.input_tokens = Some(10);
+    usage.output_tokens = Some(5);
+    usage.total_tokens = Some(18);
+    usage.cached_input_tokens = Some(1);
+    usage.cache_creation_input_tokens = Some(2);
+    usage.reasoning_tokens = Some(3);
+    let error = driver
+        .apply(vec![TestEvent::TerminalWithUsage(
+            FinishReason::Length,
+            usage,
+        )])
+        .expect_err("cap");
     let ApiError::CapExhausted {
         reported_usage: Some(report),
         ..

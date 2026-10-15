@@ -2,32 +2,104 @@
 //! replays them through the CURRENT conversion code, so bridge refactors
 //! and rig upgrades can be regression-tested offline.
 //!
-//! This sits at a deliberate boundary: rig's SSE → `StreamedAssistantContent`
+//! This sits at a deliberate boundary: rig's SSE → `Item<StreamEvent>`
 //! parsing is rig's responsibility (tested by rig itself); OUR conversion
-//! (`StreamedAssistantContent` → codex `ResponseEvent`) is what this cassette
-//! exercises. Recording captures the intermediate events; replay feeds them
-//! into the live conversion functions — a conversion bug introduced after
-//! recording makes replay fail.
+//! (`Item` → codex `ResponseEvent`) is what this cassette exercises.
+//! Recording captures the intermediate events plus the folded terminal —
+//! rig 0.44 moved the provider's end out of the event stream into
+//! `Streamed::finish()`, so events alone can no longer reproduce a
+//! `Completed`. Replay feeds both into the live conversion functions — a
+//! conversion bug introduced after recording makes replay fail.
+//!
+//! Fixtures recorded against rig 0.42 (`rig_events` holding untagged
+//! `StreamedAssistantContent` JSON) are translated on read, never
+//! re-recorded: the translation is part of what the replay exercises.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use codex_api::ResponseEvent;
-use rig_core::streaming::StreamedAssistantContent;
+use rig_core::completion::request::FinishReason;
+use rig_core::completion::request::Usage as RigUsage;
+use rig_core::streaming::Item;
+use rig_core::streaming::Part;
+use rig_core::streaming::PartKind;
+use rig_core::streaming::StreamEvent;
+use serde_json::Value;
 
 use crate::convert_response::PendingRigMessage;
+use crate::convert_response::StreamTerminal;
+use crate::convert_response::handle_stream_terminal;
 use crate::convert_response::rig_event_to_response_events;
+
+/// The typed terminal facts a recording captures at `finish()` time.
+#[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
+pub struct TerminalRecord {
+    #[serde(default)]
+    pub finish_reason: Option<FinishReason>,
+    #[serde(default)]
+    pub response_id: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub usage: RigUsage,
+}
+
+impl TerminalRecord {
+    fn from_terminal(terminal: &StreamTerminal) -> Self {
+        Self {
+            finish_reason: terminal.finish_reason.clone(),
+            response_id: terminal.response_id.clone(),
+            model: terminal.model.clone(),
+            usage: terminal.usage,
+        }
+    }
+
+    fn into_terminal(self) -> StreamTerminal {
+        StreamTerminal {
+            finish_reason: self.finish_reason,
+            response_id: self.response_id,
+            model: self.model,
+            usage: self.usage,
+        }
+    }
+}
+
+/// What the stream pump fills when the caller wants to record the bridge
+/// boundary (cassette mode). `None` = no recording overhead.
+#[derive(Default, Clone)]
+pub struct RigRecording {
+    pub events: Vec<Item<StreamEvent>>,
+    pub terminal: Option<TerminalRecord>,
+}
+
+impl RigRecording {
+    pub(crate) fn record_event(&mut self, event: Item<StreamEvent>) {
+        self.events.push(event);
+    }
+
+    pub(crate) fn record_terminal(&mut self, terminal: &StreamTerminal) {
+        self.terminal = Some(TerminalRecord::from_terminal(terminal));
+    }
+}
 
 /// One recorded turn at the rig-event boundary.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct RigEventFixture {
     pub vendor: String,
     pub tag: String,
-    /// Rig events at the bridge boundary, serialized with Rig's serde derives.
-    /// Anthropic cumulative usage is corrected from wire counters before recording;
-    /// the SDK-native payload in `Final.raw` is unchanged. HTTP auth headers are
-    /// not captured at this boundary.
-    pub rig_events: Vec<StreamedAssistantContent>,
+    /// Rig 0.44 stream items plus the folded terminal. Anthropic
+    /// cumulative usage is corrected from wire counters before recording.
+    /// HTTP auth headers are not captured at this boundary.
+    #[serde(default)]
+    pub items: Vec<Item<StreamEvent>>,
+    #[serde(default)]
+    pub terminal: Option<TerminalRecord>,
+    /// Legacy (rig 0.42) recordings: untagged `StreamedAssistantContent`
+    /// JSON, translated on read by [`translate_legacy_events`].
+    #[serde(default)]
+    pub rig_events: Vec<Value>,
     /// Names of custom (freeform) tools declared in the recorded request.
     /// Replay needs these to restore CustomToolCall items instead of
     /// FunctionCall for tools that were declared as custom.
@@ -35,28 +107,36 @@ pub struct RigEventFixture {
     pub custom_tools: Vec<String>,
 }
 
-/// Replays recorded rig events through the CURRENT bridge conversion code,
-/// producing the codex events the current implementation would emit.
+/// Replays a recording through the CURRENT bridge conversion code, producing
+/// the codex events the current implementation would emit.
 ///
-/// This is the core value of the Rig-event cassette: even after the
-/// bridge or rig is refactored, the same input events must produce the
-/// same output events — any divergence is a conversion regression.
+/// This is the core value of the Rig-event cassette: even after the bridge
+/// or rig is refactored, the same input must produce the same output — any
+/// divergence is a conversion regression.
 pub fn replay_rig_events(
-    rig_events: &[StreamedAssistantContent],
+    recording: &RigRecording,
     custom_tool_names: HashSet<String>,
 ) -> Result<Vec<ResponseEvent>, codex_api::ApiError> {
     let mut pending = PendingRigMessage::new(Arc::new(custom_tool_names), "cassette".into());
     let mut out = vec![ResponseEvent::Created { response_id: None }];
-    for event in rig_events {
+    for event in &recording.events {
         out.extend(rig_event_to_response_events(event.clone(), &mut pending)?);
-        // The live pump stops polling the provider as soon as completion is emitted.
+        // The live pump stops polling the provider as soon as completion is
+        // emitted.
         if pending.completed_emitted() {
             return Ok(out);
         }
     }
-    Err(codex_api::ApiError::Stream(
-        "Rig cassette ended without a terminal record".into(),
-    ))
+    let Some(terminal) = recording.terminal.clone() else {
+        return Err(codex_api::ApiError::Stream(
+            "Rig cassette ended without a terminal record".into(),
+        ));
+    };
+    out.extend(handle_stream_terminal(
+        terminal.into_terminal(),
+        &mut pending,
+    )?);
+    Ok(out)
 }
 
 /// Convenience wrapper that replays from a fixture without custom tools
@@ -65,7 +145,241 @@ pub fn replay_fixture_events(
     fixture: &RigEventFixture,
 ) -> Result<Vec<ResponseEvent>, codex_api::ApiError> {
     let custom_tools: HashSet<String> = fixture.custom_tools.iter().cloned().collect();
-    replay_rig_events(&fixture.rig_events, custom_tools)
+    if !fixture.rig_events.is_empty() || fixture.terminal.is_none() {
+        // Legacy (0.42) fixtures carry their events in `rig_events`; the
+        // translation below is part of the replay contract.
+        let recording = translate_legacy_events(&fixture.rig_events, fixture.terminal.as_ref())?;
+        return replay_rig_events(&recording, custom_tools);
+    }
+    let recording = RigRecording {
+        events: fixture.items.clone(),
+        terminal: fixture.terminal.clone(),
+    };
+    replay_rig_events(&recording, custom_tools)
+}
+
+/// Translates rig 0.42 `StreamedAssistantContent` JSON (untagged) into a
+/// rig 0.44 recording: growth events become part-indexed items, complete
+/// events become `End` items carrying converted content, and the legacy
+/// `Final` record becomes the terminal. Old recordings are never re-written.
+fn translate_legacy_events(
+    rig_events: &[Value],
+    terminal: Option<&TerminalRecord>,
+) -> Result<RigRecording, codex_api::ApiError> {
+    let mut recording = RigRecording::default();
+    let text_part = 0u32;
+    let mut reasoning_part = 0u32;
+    let mut tool_part = 0u32;
+    let mut reasoning_ids: HashMap<String, u32> = HashMap::new();
+    let mut tool_ids: HashMap<String, u32> = HashMap::new();
+    let mut saw_terminal = false;
+    for event in rig_events {
+        // The legacy enum is untagged: discriminate by field shape.
+        if event.get("kind").is_some() {
+            // StreamFinal: usage/finish/model fields.
+            recording.terminal = Some(legacy_terminal(event));
+            saw_terminal = true;
+            continue;
+        }
+        if let Some(text) = event.get("text").and_then(Value::as_str) {
+            recording.record_event(Item::Event(StreamEvent::Text {
+                part: part_from_index(text_part)?,
+                text: text.to_string(),
+            }));
+            continue;
+        }
+        if let (Some(id), Some(reasoning)) = (
+            event.get("id").and_then(Value::as_str),
+            event.get("reasoning"),
+        ) {
+            let part = *reasoning_ids.entry(id.to_string()).or_insert_with(|| {
+                reasoning_part += 1;
+                reasoning_part
+            });
+            if let Some(text) = reasoning.as_str() {
+                recording.record_event(Item::Event(StreamEvent::Reasoning {
+                    part: part_from_index(part)?,
+                    text: text.to_string(),
+                }));
+            } else {
+                let converted = crate::reasoning::convert_legacy_reasoning_value(reasoning)?;
+                recording.record_event(Item::Event(StreamEvent::End {
+                    part: part_from_index(part)?,
+                    content: rig_core::completion::message::AssistantContent::Reasoning(converted),
+                }));
+            }
+            continue;
+        }
+        if let (Some(id), Some(content)) = (
+            event.get("internal_call_id").and_then(Value::as_str),
+            event.get("content"),
+        ) {
+            let part = *tool_ids.entry(id.to_string()).or_insert_with(|| {
+                tool_part += 1;
+                tool_part
+            });
+            match content.get("Delta").and_then(Value::as_str) {
+                Some(fragment) => {
+                    recording.record_event(Item::Event(StreamEvent::Arguments {
+                        part: part_from_index(part)?,
+                        json: fragment.to_string(),
+                    }));
+                }
+                // The legacy Name fragment announced the tool; 0.44 opens a
+                // tool part with its name in `Start`.
+                None => {
+                    let name = content.get("Name").and_then(Value::as_str).unwrap_or("");
+                    recording.record_event(Item::Event(StreamEvent::Start {
+                        part: part_from_index(part)?,
+                        kind: PartKind::ToolCall,
+                        name: Some(name.to_string())
+                            .filter(|name| !name.is_empty())
+                            .and_then(|name| {
+                                rig_core::completion::message::ToolName::new(name).ok()
+                            }),
+                    }));
+                }
+            }
+            continue;
+        }
+        if let Some(call) = event.get("tool_call") {
+            if let Some(id) = event.get("internal_call_id").and_then(Value::as_str) {
+                let part = *tool_ids.entry(id.to_string()).or_insert_with(|| {
+                    tool_part += 1;
+                    tool_part
+                });
+                let converted = legacy_tool_call(call)?;
+                recording.record_event(Item::Event(StreamEvent::End {
+                    part: part_from_index(part)?,
+                    content: rig_core::completion::message::AssistantContent::ToolCall(converted),
+                }));
+            }
+            continue;
+        }
+        if let Some(unknown) = event.get("unknown") {
+            let _ = unknown;
+            continue;
+        }
+    }
+    let _ = text_part;
+    let _ = saw_terminal || terminal.is_some() || recording.terminal.is_some();
+    if recording.terminal.is_none()
+        && let Some(terminal) = terminal
+    {
+        recording.terminal = Some(terminal.clone());
+    }
+    Ok(recording)
+}
+
+/// Builds the terminal record from a serialized 0.42 `StreamFinal`.
+fn legacy_terminal(final_record: &Value) -> TerminalRecord {
+    let usage = serde_json::from_value::<LegacyUsage>(
+        final_record.get("usage").cloned().unwrap_or(Value::Null),
+    )
+    .unwrap_or_default()
+    .into_usage();
+    let finish_reason = final_record
+        .get("finish_reason")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<FinishReason>(value).ok());
+    let response_id = final_record
+        .get("response_id")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let model = final_record
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    TerminalRecord {
+        finish_reason,
+        response_id,
+        model,
+        usage,
+    }
+}
+
+/// The 0.42 usage shape: plain integers with zero as the missing sentinel.
+#[derive(serde::Deserialize, Default)]
+struct LegacyUsage {
+    #[serde(default)]
+    input_tokens: u64,
+    #[serde(default)]
+    output_tokens: u64,
+    #[serde(default)]
+    total_tokens: u64,
+    #[serde(default)]
+    cached_input_tokens: u64,
+    #[serde(default)]
+    cache_creation_input_tokens: u64,
+    #[serde(default)]
+    reasoning_tokens: u64,
+}
+
+impl LegacyUsage {
+    /// 0.44 semantics: `input_tokens` includes cached and cache-written
+    /// input, and only nonzero legacy counters count as reported (zero was
+    /// the old missing sentinel).
+    fn into_usage(self) -> RigUsage {
+        let reported = |value: u64| (value > 0).then_some(value);
+        let input = self.input_tokens + self.cached_input_tokens + self.cache_creation_input_tokens;
+        let mut usage = RigUsage::new();
+        usage.input_tokens = reported(input);
+        usage.output_tokens = reported(self.output_tokens);
+        usage.total_tokens = reported(self.total_tokens);
+        usage.cached_input_tokens = reported(self.cached_input_tokens);
+        usage.cache_creation_input_tokens = reported(self.cache_creation_input_tokens);
+        usage.reasoning_tokens = reported(self.reasoning_tokens);
+        usage
+    }
+}
+
+/// Builds a `Part` from a position. `Part::new` is crate-private upstream;
+/// the serde-transparent form is the public spelling. Every `u32` is a
+/// valid position, but the failure surfaces as an error, never a panic.
+fn part_from_index(index: u32) -> Result<Part, codex_api::ApiError> {
+    serde_json::from_value::<Part>(serde_json::Value::from(index)).map_err(|error| {
+        codex_api::ApiError::Stream(format!(
+            "legacy stream position {index} is invalid: {error}"
+        ))
+    })
+}
+
+/// Converts a serialized 0.42 `ToolCall` into the 0.44 shape.
+fn legacy_tool_call(
+    call: &Value,
+) -> Result<rig_core::completion::message::ToolCall, codex_api::ApiError> {
+    let id = call
+        .get("id")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            call.get("provider")
+                .and_then(|provider| provider.get("call_id"))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or_default()
+        .to_string();
+    let name = call
+        .get("function")
+        .and_then(|function| function.get("name"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let arguments = call
+        .get("function")
+        .and_then(|function| function.get("arguments"))
+        .and_then(|arguments| arguments.as_object())
+        .cloned()
+        .unwrap_or_default();
+    let function = rig_core::completion::message::ToolFunction {
+        name: rig_core::completion::message::ToolName::new(name).map_err(|_| {
+            codex_api::ApiError::Stream("legacy cassette tool name must not be empty".into())
+        })?,
+        arguments,
+        invalid_arguments: None,
+    };
+    Ok(rig_core::completion::message::ToolCall::from_wire(
+        id, function,
+    ))
 }
 
 /// Extracts the names of custom (freeform) tools from a request's tool

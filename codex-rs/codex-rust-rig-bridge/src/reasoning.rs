@@ -117,6 +117,18 @@ fn convert_legacy_reasoning(block: LegacyReasoning) -> Reasoning {
     reasoning
 }
 
+/// Converts one legacy (0.42) `Reasoning` JSON object — as recorded inside
+/// v1 envelopes or legacy cassettes — into the 0.44 shape. Shared by the
+/// envelope decode and the cassette translation.
+pub(crate) fn convert_legacy_reasoning_value(
+    value: &serde_json::Value,
+) -> Result<Reasoning, codex_api::ApiError> {
+    let legacy: LegacyReasoning = serde_json::from_value(value.clone()).map_err(|error| {
+        codex_api::ApiError::Stream(format!("invalid legacy reasoning block: {error}"))
+    })?;
+    Ok(convert_legacy_reasoning(legacy))
+}
+
 #[derive(Default)]
 pub(crate) struct ReasoningState {
     ids: Vec<String>,
@@ -141,9 +153,14 @@ impl ReasoningState {
             // for this id replaced the block (completion supersedes deltas).
             tracing::debug!(id = %self.ids[index], "dropping reasoning delta after its completed block");
         }
-        // Earlier blocks count once each; the 0.44 shape holds one block per
-        // provider item.
-        index
+        // The visible content index counts only blocks that hold visible
+        // text: redacted blocks stay in the envelope for replay but occupy
+        // no visible slot, so they must not shift the indices.
+        self.blocks
+            .iter()
+            .take(index)
+            .filter(|b| !b.redacted)
+            .count()
     }
 
     pub(crate) fn complete(&mut self, id: String, reasoning: Reasoning) {

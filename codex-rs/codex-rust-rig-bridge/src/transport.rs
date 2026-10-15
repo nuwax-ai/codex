@@ -251,18 +251,6 @@ impl ChatFamilyRewrite<'_> {
             if self.disable_anthropic_thinking {
                 body_map.insert("thinking".into(), serde_json::json!({"type":"disabled"}));
             }
-            if self.protocol == crate::RigProtocol::Anthropic
-                && !self.anthropic_server_tools.is_empty()
-            {
-                // Server tools have no function schema; they join the
-                // serialized function tools as raw typed entries.
-                let tools = body_map
-                    .entry("tools")
-                    .or_insert_with(|| serde_json::json!([]));
-                if let Some(tools) = tools.as_array_mut() {
-                    tools.extend(self.anthropic_server_tools.iter().cloned());
-                }
-            }
             if let Some(effort) = self.anthropic_effort {
                 // Merge into any existing output_config (rig may have
                 // serialized output_config.format from output_schema).
@@ -289,10 +277,16 @@ impl ChatFamilyRewrite<'_> {
                     .and_then(serde_json::Value::as_array_mut)
                 {
                     if assistant {
-                        // The SDK's server_tool_use entries are only nonempty
-                        // anchors; full raw blocks (including unknown fields)
-                        // are restored below, or dropped when replay is disabled.
-                        content.retain(|block| block["type"] != "server_tool_use");
+                        // Anchor residue only: the SDK marker text block and
+                        // any server_tool_use entry; full raw blocks
+                        // (including unknown fields) are restored below, or
+                        // dropped when replay is disabled.
+                        content.retain(|block| {
+                            block["type"] != "server_tool_use"
+                                && !(block["type"] == "text"
+                                    && block["text"].as_str()
+                                        == Some(crate::hosted_replay::SDK_ANCHOR_TEXT))
+                        });
                     }
                     for block in content {
                         if block["type"] == "tool_result"

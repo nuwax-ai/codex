@@ -113,22 +113,18 @@ fn hosted_replay_after_tool_result_does_not_attach_to_the_tool_call_turn() {
     let messages = convert_response_items(&items, RigProtocol::Anthropic, "source", &mut replay)
         .expect("convert history");
     assert_eq!(messages.len(), 3);
-    assert_eq!(replay, vec![legacy_group(1, expected_blocks.clone(), 2, 0)]);
-    let Some(Message::Assistant { content, .. }) = messages.last() else {
+    assert_eq!(replay, vec![legacy_group(1, expected_blocks, 2, 0)]);
+    let Some(Message::Assistant(assistant)) = messages.last() else {
         panic!("search assistant");
     };
-    assert_eq!(content.len(), 1);
-    let AssistantContent::Text(anchor) = &content[0] else {
+    assert_eq!(assistant.content.len(), 1);
+    let AssistantContent::Text(anchor) = &assistant.content[0] else {
         panic!("SDK raw-content anchor");
     };
-    assert_eq!(anchor.text, "");
-    assert_eq!(
-        anchor
-            .additional_params
-            .as_ref()
-            .and_then(|params| params.get("anthropic_content")),
-        expected_blocks.first()
-    );
+    // 0.44 Text carries no side channel: the anchor is the marker constant
+    // the transport strips before splicing the raw group; the replayed
+    // blocks themselves are asserted via the replay groups above.
+    assert_eq!(anchor.text, crate::hosted_replay::SDK_ANCHOR_TEXT);
 }
 
 #[test]
@@ -147,23 +143,19 @@ fn late_result_only_projection_uses_the_validated_original_call_as_its_sdk_ancho
     assert_eq!(
         replay,
         vec![
-            legacy_group(0, vec![call.clone()], 0, 0),
+            legacy_group(0, vec![call], 0, 0),
             legacy_group(1, vec![result], 2, 0),
         ]
     );
-    let Some(Message::Assistant { content, .. }) = messages.last() else {
-        panic!("late assistant")
+    let Some(Message::Assistant(assistant)) = messages.last() else {
+        panic!("late assistant");
     };
-    let AssistantContent::Text(anchor) = &content[0] else {
-        panic!("raw call anchor")
+    let AssistantContent::Text(anchor) = &assistant.content[0] else {
+        panic!("raw call anchor");
     };
-    assert_eq!(
-        anchor
-            .additional_params
-            .as_ref()
-            .and_then(|params| params.get("anthropic_content")),
-        Some(&call)
-    );
+    // Position marker only; the kept blocks are asserted via the replay
+    // groups (the call stays at its original history position there).
+    assert_eq!(anchor.text, crate::hosted_replay::SDK_ANCHOR_TEXT);
 }
 
 #[test]

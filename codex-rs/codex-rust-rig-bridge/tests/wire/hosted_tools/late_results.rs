@@ -60,8 +60,17 @@ async fn anthropic_late_search_results_preserve_response_positions_and_raw_field
                     vec![pair[1].clone()]
                 };
                 let user = json!({"role":"user", "content":[{"type":"text", "text":"hello"}]});
+                // rig 0.44 folds tool history into text unless the request
+                // declares tools; declare `lookup` (production requests
+                // always carry their function tools) to keep the
+                // tool_use/tool_result wire shapes this test asserts.
                 assert_eq!(
-                    capture_search_replay(items, SearchReplay::Enabled).await,
+                    capture_search_replay_with_tools(
+                        items,
+                        SearchReplay::Enabled,
+                        Some(json!([{"type":"function","name":"lookup","description":"lookup","parameters":{"type":"object","properties":{}}}])),
+                    )
+                    .await,
                     json!([
                         user.clone(),
                         {"role":"assistant", "content":[{"type":"tool_use", "id":"client", "name":"lookup", "input":{}}, pair[0].clone()]},

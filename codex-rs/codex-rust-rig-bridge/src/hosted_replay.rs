@@ -146,6 +146,15 @@ pub(crate) fn parse_envelope(value: &Value) -> Option<Envelope> {
     })
 }
 
+/// Placeholder text of the SDK assistant-message anchor that holds a
+/// persisted web-search pair's replay position. rig 0.44's `adapt` drops a
+/// turn whose blocks it cannot replay (empty text, foreign Opaque items),
+/// which merges the surrounding user turns; a marker text block survives
+/// every adapt path, keeps the turn boundaries stable, and is stripped by
+/// the transport rewrite before the raw wire blocks are spliced in. The NUL
+/// prefix cannot appear in model output or user text on the wire.
+pub(crate) const SDK_ANCHOR_TEXT: &str = "\u{0}codex-rig:web-search-anchor";
+
 pub(crate) fn replayable(envelope: &Envelope, current_source: &str) -> bool {
     envelope.source.as_deref() == Some(current_source)
 }

@@ -59,6 +59,17 @@ pub(crate) fn search_pair(id: &str) -> Value {
 }
 
 pub(crate) async fn capture_search_replay(raw_items: Vec<Value>, replay: SearchReplay) -> Value {
+    capture_search_replay_with_tools(raw_items, replay, None).await
+}
+
+/// rig 0.44's history adapter folds tool calls into text unless the request
+/// declares tools; production requests always carry function tools, so tests
+/// that assert tool_use/tool_result history shapes declare theirs here.
+pub(crate) async fn capture_search_replay_with_tools(
+    raw_items: Vec<Value>,
+    replay: SearchReplay,
+    tools: Option<Value>,
+) -> Value {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mut provider = provider(listener.local_addr().unwrap());
     provider.hosted_results_replay = match replay {
@@ -90,7 +101,10 @@ pub(crate) async fn capture_search_replay(raw_items: Vec<Value>, replay: SearchR
             item
         })
         .collect();
-    let request = support::request(items);
+    let mut request = support::request(items);
+    if let Some(tools) = tools {
+        support::set_tools(&mut request, tools);
+    }
     let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
     let mut stream = stream_via_rig(
         &request,

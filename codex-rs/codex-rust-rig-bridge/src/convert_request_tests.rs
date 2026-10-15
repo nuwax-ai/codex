@@ -158,9 +158,10 @@ mod mapping {
         .expect("convertible");
         // system + one assistant message carrying text AND reasoning
         assert_eq!(req.chat_history.len(), 2);
-        let Message::Assistant { content, .. } = req.chat_history.last().expect("assistant") else {
+        let Message::Assistant(assistant) = req.chat_history.last().expect("assistant") else {
             panic!("expected assistant message");
         };
+        let content = &assistant.content;
         assert_eq!(content.len(), 2);
         assert!(matches!(content[0], AssistantContent::Text(_)));
         assert!(matches!(content[1], AssistantContent::Reasoning(_)));
@@ -174,9 +175,10 @@ mod mapping {
             function_call("call_1", "get_weather", r#"{"city":"北京"}"#),
         ]))
         .expect("convertible");
-        let Message::Assistant { content, .. } = req.chat_history.last().expect("assistant") else {
+        let Message::Assistant(assistant) = req.chat_history.last().expect("assistant") else {
             panic!("expected assistant message");
         };
+        let content = &assistant.content;
         // text + tool call in one assistant message (Chat Completions shape)
         assert_eq!(content.len(), 2);
         assert!(matches!(content[1], AssistantContent::ToolCall(_)));
@@ -213,7 +215,7 @@ mod mapping {
             ]
         }]"#;
         let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
-        let selection = parse_tools(&tools);
+        let selection = parse_tools(&tools).unwrap();
         let (parsed, custom) = (selection.definitions, selection.meta.custom_names);
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].name, "mcp__memory__create_entities");
@@ -227,7 +229,7 @@ mod mapping {
             {"type": "function", "name": "f", "description": "", "parameters": {}}
         ]"#;
         let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
-        let selection = parse_tools(&tools);
+        let selection = parse_tools(&tools).unwrap();
         assert_eq!(selection.definitions.len(), 1);
         assert_eq!(selection.definitions[0].name, "f");
         // Hosted declarations stay available for per-protocol translation
@@ -242,7 +244,7 @@ mod mapping {
     fn custom_tool_without_description_gets_fallback() {
         let tools_json = r#"[{"type": "custom", "name": "apply_patch"}, {"type": "custom", "name": "rich", "description": "Real description"}]"#;
         let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
-        let parsed = parse_tools(&tools).definitions;
+        let parsed = parse_tools(&tools).unwrap().definitions;
         assert_eq!(parsed.len(), 2);
         assert!(
             parsed[0].description.contains("`input` field"),
@@ -255,14 +257,20 @@ mod mapping {
     #[test]
     fn tool_choice_maps_known_values() {
         use rig_core::completion::message::ToolChoice;
-        assert!(matches!(map_tool_choice("auto"), Some(ToolChoice::Auto)));
-        assert!(matches!(map_tool_choice("none"), Some(ToolChoice::None)));
         assert!(matches!(
-            map_tool_choice("required"),
+            map_tool_choice("auto").unwrap(),
+            Some(ToolChoice::Auto)
+        ));
+        assert!(matches!(
+            map_tool_choice("none").unwrap(),
+            Some(ToolChoice::None)
+        ));
+        assert!(matches!(
+            map_tool_choice("required").unwrap(),
             Some(ToolChoice::Required)
         ));
         assert!(matches!(
-            map_tool_choice("get_weather"),
+            map_tool_choice("get_weather").unwrap(),
             Some(ToolChoice::Specific { .. })
         ));
     }
@@ -409,11 +417,11 @@ mod mapping {
         let messages = convert_items(&input, RigProtocol::Chat).expect("convertible");
         assert!(messages.iter().any(|message| matches!(
             message,
-            rig_core::completion::message::Message::Assistant { content, .. }
-                if content.iter().any(|part| matches!(
+            rig_core::completion::message::Message::Assistant(assistant)
+                if assistant.content.iter().any(|part| matches!(
                     part,
                     AssistantContent::ToolCall(call)
-                        if call.function.arguments == serde_json::json!({})
+                        if call.function.arguments == serde_json::Map::new()
                 ))
         )));
     }
@@ -479,15 +487,23 @@ mod mapping {
             ];
             let expected = vec![
                 Message::user("hi"),
-                Message::Assistant {
-                    id: None,
-                    content: vec![AssistantContent::tool_call("call-1", "lookup", arguments)],
-                },
-                Message::User {
-                    content: vec![UserContent::tool_result_from_wire(
+                Message::Assistant(rig_core::completion::message::AssistantMessage::new(vec![
+                    AssistantContent::tool_call(
                         "call-1",
-                        "lookup",
-                        vec![ToolResultContent::text("ok")],
+                        rig_core::completion::message::ToolName::new("lookup")
+                            .expect("non-empty tool name"),
+                        arguments,
+                    ),
+                ])),
+                Message::User {
+                    content: vec![UserContent::ToolResult(
+                        rig_core::completion::message::ToolResult {
+                            call: rig_core::completion::message::CallId::from_wire("call-1"),
+                            name: rig_core::completion::message::ToolName::new("lookup")
+                                .expect("non-empty tool name"),
+                            content: vec![ToolResultContent::text("ok")],
+                            is_error: false,
+                        },
                     )],
                 },
                 Message::User {
@@ -544,7 +560,9 @@ mod mapping {
         let thinking_count: usize = anthropic
             .iter()
             .flat_map(|message| match message {
-                rig_core::completion::message::Message::Assistant { content, .. } => content.iter(),
+                rig_core::completion::message::Message::Assistant(assistant) => {
+                    assistant.content.iter()
+                }
                 _ => [].iter(),
             })
             .filter(|part| matches!(part, AssistantContent::Reasoning(_)))
@@ -557,7 +575,9 @@ mod mapping {
         let chat_count: usize = chat
             .iter()
             .flat_map(|message| match message {
-                rig_core::completion::message::Message::Assistant { content, .. } => content.iter(),
+                rig_core::completion::message::Message::Assistant(assistant) => {
+                    assistant.content.iter()
+                }
                 _ => [].iter(),
             })
             .filter(|part| matches!(part, AssistantContent::Reasoning(_)))
@@ -774,9 +794,10 @@ mod review_fix_tests {
             assistant_count, 1,
             "reasoning+text+tool call must be ONE assistant message"
         );
-        let Message::Assistant { content, .. } = req.chat_history.last().expect("assistant") else {
+        let Message::Assistant(assistant) = req.chat_history.last().expect("assistant") else {
             panic!()
         };
+        let content = &assistant.content;
         // reasoning + text + tool call, in order
         assert!(matches!(content[0], AssistantContent::Reasoning(_)));
         assert!(matches!(content[1], AssistantContent::Text(_)));
@@ -803,9 +824,10 @@ mod review_fix_tests {
             },
         ]))
         .expect("convertible");
-        let Message::Assistant { content, .. } = req.chat_history.last().expect("assistant") else {
+        let Message::Assistant(assistant) = req.chat_history.last().expect("assistant") else {
             panic!("expected assistant message");
         };
+        let content = &assistant.content;
         assert!(content.iter().any(|part| matches!(
             part,
             AssistantContent::Text(t) if t.text.contains("task complete")

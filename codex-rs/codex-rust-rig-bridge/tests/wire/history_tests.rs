@@ -158,6 +158,13 @@ async fn tool_success_flag_is_preserved_and_absent_flags_remain_absent() {
         if let ResponseItem::CustomToolCallOutput { output, .. } = &mut request.input[2] {
             output.success = success;
         }
+        // rig 0.44 folds tool history into text unless the request declares
+        // tools; declare the custom tool (production requests always carry
+        // their tools) so the tool_use/tool_result blocks stay on the wire.
+        support::set_tools(
+            &mut request,
+            json!([{"type":"custom","name":"exec","description":"exec"}]),
+        );
         let (wire, _, _) = support::capture(&request, RigProtocol::Anthropic).await;
         let result = &wire["body"]["messages"][2]["content"][0];
         assert_eq!(

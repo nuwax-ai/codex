@@ -49,8 +49,10 @@ fn hosted_only_anthropic_restores_tool_choice_with_parallel_flag() {
         Some(&choice),
     );
     rewrite.disable_anthropic_parallel = true;
-    // rig's streaming path serialized neither `tools` nor `tool_choice`.
-    let mut body = json!({"model": "m", "messages": []});
+    // 0.44 serializes raw server tools itself (additional_params); the
+    // rewrite restores only the `tool_choice` rig dropped with no typed
+    // tools, and the serialized body carries the raw tools already.
+    let mut body = json!({"model": "m", "messages": [], "tools": [server_tool]});
     assert!(rewrite.needed());
     rewrite.apply(&mut body);
     assert_eq!(
@@ -100,11 +102,12 @@ fn serialized_rig_choice_is_not_overwritten_by_the_restore() {
         &server_tools,
         Some(&choice),
     );
-    // Mixed tools: rig serialized function tools plus its own tool_choice.
+    // Mixed tools: rig serialized the function and raw server tools plus
+    // its own tool_choice.
     let mut body = json!({
         "model": "m",
         "messages": [],
-        "tools": [{"name": "shell", "input_schema": {}}],
+        "tools": [{"name": "shell", "input_schema": {}}, server_tools[0].clone()],
         "tool_choice": {"type": "any"},
     });
     rewrite.apply(&mut body);
@@ -180,7 +183,7 @@ async fn wire_tee_caps_its_buffer_and_passes_every_chunk_through() {
     // 12 MiB in 1 MiB chunks: well past the cap, all chunks must still flow.
     let chunk = Bytes::from(vec![b'x'; 1024 * 1024]);
     let source = futures::stream::iter((0..12).map(move |_| Ok(chunk.clone())));
-    let body = Box::pin(source) as rig_core::http_client::sse::BoxedStream;
+    let body = Box::pin(source) as rig_core::http_client::BoxedStream;
     let tee = super::tee_wire_bytes(body, Some(recorder.clone()));
     let passed: Vec<_> = tee.collect().await;
     assert_eq!(passed.len(), 12, "the cap must never drop stream chunks");

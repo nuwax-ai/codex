@@ -17,8 +17,9 @@ use std::time::Duration;
 use crate::RigEventRecorder;
 use crate::RigProtocol;
 use crate::convert_response::PendingRigMessage;
+use crate::convert_response::StreamTerminal;
 use crate::convert_response::rig_event_to_response_events;
-use crate::stream::map_completion_error;
+use crate::stream::map_provider_error;
 
 /// A paused turn continues bridge-internally at most this many times before
 /// the pump surfaces the pause as an explicit error.
@@ -37,8 +38,8 @@ pub(crate) struct PumpContext {
     /// into the stream, so the attempt already waited for it).
     pub(crate) first_event: Option<
         Result<
-            rig_core::streaming::StreamedAssistantContent,
-            rig_core::completion::request::CompletionError,
+            rig_core::streaming::Item<rig_core::streaming::StreamEvent>,
+            rig_core::error::ProviderError,
         >,
     >,
     pub(crate) events_recorder: RigEventRecorder,
@@ -60,7 +61,7 @@ pub(crate) struct PumpContext {
 /// the consumer drops the receiving stream.
 pub(crate) fn spawn_pump(
     tx: tokio::sync::mpsc::Sender<Result<ResponseEvent, ApiError>>,
-    mut rig_stream: rig_core::streaming::StreamingCompletionResponse,
+    mut rig_stream: rig_core::streaming::CompletionStream,
     context: PumpContext,
 ) -> tokio::task::JoinHandle<()> {
     let PumpContext {
@@ -120,139 +121,11 @@ pub(crate) fn spawn_pump(
                 }
             };
             match item {
-                Some(Ok(mut event)) => {
-                    if protocol == RigProtocol::Anthropic
-                        && let rig_core::streaming::StreamedAssistantContent::Final(record) =
-                            &mut event
-                    {
-                        let normalized = anthropic_usage
-                            .lock()
-                            .map(|usage| usage.apply(&mut record.usage))
-                            .map_err(|_| {
-                                ApiError::Stream("Anthropic usage state is unavailable".into())
-                            });
-                        if let Err(error) = normalized {
-                            let _ = tx.send(Err(error)).await;
-                            return;
-                        }
-                    }
+                Some(Ok(event)) => {
                     if let Some(rec) = &events_recorder
                         && let Ok(mut buf) = rec.lock()
                     {
-                        buf.push(event.clone());
-                    }
-                    // Fork (nuwax-codex) D3: a paused turn continues
-                    // bridge-internally — flush this attempt's content
-                    // WITHOUT a Completed terminal and hand the raw wire
-                    // blocks to the chainer for the official re-send recipe.
-                    let paused = protocol == RigProtocol::Anthropic
-                        && matches!(
-                            &event,
-                            rig_core::streaming::StreamedAssistantContent::Final(record)
-                                if matches!(
-                                    record.finish_reason.as_ref(),
-                                    Some(rig_core::completion::request::FinishReason::Other(reason))
-                                        if reason == "pause_turn"
-                                )
-                        );
-                    if paused {
-                        if pause_depth >= PAUSE_CONTINUATION_LIMIT {
-                            let _ = tx
-                                .send(Err(ApiError::Stream(format!(
-                                    "Anthropic turn kept pausing (pause_turn) beyond the \
-                                     continuation cap of {PAUSE_CONTINUATION_LIMIT}"
-                                ))))
-                                .await;
-                            return;
-                        }
-                        let rig_core::streaming::StreamedAssistantContent::Final(record) = event
-                        else {
-                            return;
-                        };
-                        let mut events = match crate::convert_response::paused_final_events(
-                            record,
-                            &mut pending,
-                        ) {
-                            Ok(events) => events,
-                            Err(error) => {
-                                let _ = tx.send(Err(error)).await;
-                                return;
-                            }
-                        };
-                        let mut capture = crate::hosted_replay::PauseCapture {
-                            items: events
-                                .iter()
-                                .filter_map(|event| match event {
-                                    ResponseEvent::OutputItemDone(item) => Some(item.clone()),
-                                    _ => None,
-                                })
-                                .collect(),
-                            raw_content: Vec::new(),
-                        };
-                        if let Some(tee) = &sse_tee
-                            && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
-                        {
-                            let raw = match crate::hosted_replay::raw_indexed_assistant_content(
-                                &sse_bytes,
-                            )
-                            .await
-                            {
-                                Ok(raw) => raw,
-                                Err(error) => {
-                                    let _ = tx.send(Err(error)).await;
-                                    return;
-                                }
-                            };
-                            let layout =
-                                crate::hosted_tools::response_layout(&raw, pending.segments());
-                            let injected = crate::hosted_tools::captured_search_events(
-                                &sse_bytes,
-                                pump_source.as_str(),
-                                pending.response_id(),
-                                &replay_calls,
-                                layout.as_deref(),
-                            )
-                            .await;
-                            capture
-                                .items
-                                .extend(injected.iter().filter_map(|event| match event {
-                                    ResponseEvent::OutputItemDone(item) => Some(item.clone()),
-                                    _ => None,
-                                }));
-                            capture.raw_content = raw.into_iter().map(|(_, block)| block).collect();
-                            events.extend(injected);
-                        }
-                        if let Ok(mut slot) = paused_capture.lock() {
-                            *slot = Some(capture);
-                        }
-                        for ev in events {
-                            if tx.send(Ok(ev)).await.is_err() {
-                                return;
-                            }
-                        }
-                        return;
-                    }
-                    // Supply presence-true wire counters to the converter for
-                    // Anthropic and Chat terminals (rig's normalized usage
-                    // cannot distinguish unreported from zero).
-                    if matches!(
-                        &event,
-                        rig_core::streaming::StreamedAssistantContent::Final(_)
-                    ) {
-                        let report = match protocol {
-                            RigProtocol::Anthropic => anthropic_usage
-                                .lock()
-                                .map(|usage| usage.snapshot_report())
-                                .ok()
-                                .flatten(),
-                            RigProtocol::Chat => chat_usage
-                                .lock()
-                                .map(|usage| usage.snapshot_report())
-                                .ok()
-                                .flatten(),
-                            RigProtocol::Responses => None,
-                        };
-                        pending.wire_reported_usage = report;
+                        buf.record_event(event.clone());
                     }
                     let mut events = match rig_event_to_response_events(event, &mut pending) {
                         Ok(events) => events,
@@ -313,23 +186,215 @@ pub(crate) fn spawn_pump(
                     // terminal. Forward the error and stop — codex's retry
                     // machinery handles reattempts.
                     tracing::error!(error = %e, "rig stream error");
-                    let _ = tx.send(Err(map_completion_error(e))).await;
+                    let _ = tx.send(Err(map_provider_error(e))).await;
                     return;
                 }
-                None => {
-                    // rig's contract: ending without a terminal record means
-                    // truncation, never a successful completion.
-                    if !pending.completed_emitted() {
-                        let _ = tx
-                            .send(Err(ApiError::Transport(TransportError::Network(
-                                "rig stream ended without a terminal record (truncated)"
-                                    .to_string(),
-                            ))))
-                            .await;
+                None => break,
+            }
+        }
+
+        // The stream ended without an in-stream terminal: rig 0.44 folds
+        // the provider's end into a response via `finish()`.
+        let mut response = match rig_stream.finish().await {
+            Ok(response) => response,
+            Err(error) => {
+                // A reply the provider did not end is truncation, never a
+                // successful completion.
+                let _ = tx.send(Err(map_provider_error(error))).await;
+                return;
+            }
+        };
+
+        let mut paused = false;
+        if protocol == RigProtocol::Anthropic {
+            let normalized = anthropic_usage
+                .lock()
+                .map(|usage| usage.apply(&mut response.usage))
+                .map_err(|_| ApiError::Stream("Anthropic usage state is unavailable".into()));
+            if let Err(error) = normalized {
+                let _ = tx.send(Err(error)).await;
+                return;
+            }
+            if let Some(tee) = &sse_tee
+                && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
+                && anthropic_stop_reason(&sse_bytes).as_deref() == Some("pause_turn")
+            {
+                paused = true;
+            }
+        }
+
+        // Record the terminal AFTER wire-counter correction so a cassette
+        // replay reproduces the corrected usage the live stream emitted.
+        if let Some(rec) = &events_recorder
+            && let Ok(mut buf) = rec.lock()
+        {
+            buf.record_terminal(&stream_terminal_of(&response));
+        }
+
+        // Fork (nuwax-codex) D3: a paused turn continues bridge-internally —
+        // flush this attempt's content WITHOUT a Completed terminal and hand
+        // the raw wire blocks to the chainer for the official re-send recipe.
+        if paused {
+            if pause_depth >= PAUSE_CONTINUATION_LIMIT {
+                let _ = tx
+                    .send(Err(ApiError::Stream(format!(
+                        "Anthropic turn kept pausing (pause_turn) beyond the \
+                         continuation cap of {PAUSE_CONTINUATION_LIMIT}"
+                    ))))
+                    .await;
+                return;
+            }
+            let terminal = stream_terminal_of(&response);
+            let mut events =
+                match crate::convert_response::paused_final_events(terminal, &mut pending) {
+                    Ok(events) => events,
+                    Err(error) => {
+                        let _ = tx.send(Err(error)).await;
+                        return;
                     }
+                };
+            let mut capture = crate::hosted_replay::PauseCapture {
+                items: events
+                    .iter()
+                    .filter_map(|event| match event {
+                        ResponseEvent::OutputItemDone(item) => Some(item.clone()),
+                        _ => None,
+                    })
+                    .collect(),
+                raw_content: Vec::new(),
+            };
+            if let Some(tee) = &sse_tee
+                && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
+            {
+                let raw =
+                    match crate::hosted_replay::raw_indexed_assistant_content(&sse_bytes).await {
+                        Ok(raw) => raw,
+                        Err(error) => {
+                            let _ = tx.send(Err(error)).await;
+                            return;
+                        }
+                    };
+                let layout = crate::hosted_tools::response_layout(&raw, pending.segments());
+                let injected = crate::hosted_tools::captured_search_events(
+                    &sse_bytes,
+                    pump_source.as_str(),
+                    pending.response_id(),
+                    &replay_calls,
+                    layout.as_deref(),
+                )
+                .await;
+                capture
+                    .items
+                    .extend(injected.iter().filter_map(|event| match event {
+                        ResponseEvent::OutputItemDone(item) => Some(item.clone()),
+                        _ => None,
+                    }));
+                capture.raw_content = raw.into_iter().map(|(_, block)| block).collect();
+                events.extend(injected);
+            }
+            if let Ok(mut slot) = paused_capture.lock() {
+                *slot = Some(capture);
+            }
+            for ev in events {
+                if tx.send(Ok(ev)).await.is_err() {
                     return;
                 }
             }
+            return;
+        }
+
+        let report = match protocol {
+            RigProtocol::Anthropic => anthropic_usage
+                .lock()
+                .map(|usage| usage.snapshot_report())
+                .ok()
+                .flatten(),
+            RigProtocol::Chat => chat_usage
+                .lock()
+                .map(|usage| usage.snapshot_report())
+                .ok()
+                .flatten(),
+            RigProtocol::Responses => None,
+        };
+        pending.wire_reported_usage = report;
+        let terminal = stream_terminal_of(&response);
+        let mut events =
+            match crate::convert_response::handle_stream_terminal(terminal, &mut pending) {
+                Ok(events) => events,
+                Err(error) => {
+                    let _ = tx.send(Err(error)).await;
+                    return;
+                }
+            };
+        if pending.completed_emitted()
+            && let Some(tee) = &sse_tee
+            && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
+            && !events.is_empty()
+        {
+            let layout = match crate::hosted_replay::raw_indexed_assistant_content(&sse_bytes).await
+            {
+                Ok(raw) => crate::hosted_tools::response_layout(&raw, pending.segments()),
+                Err(error) => {
+                    tracing::warn!(%error, "hosted layout capture failed; replaying response-scoped pairs only");
+                    None
+                }
+            };
+            let injected = crate::hosted_tools::captured_search_events(
+                &sse_bytes,
+                pump_source.as_str(),
+                pending.response_id(),
+                &replay_calls,
+                layout.as_deref(),
+            )
+            .await;
+            if !injected.is_empty() {
+                let terminal_event = events.split_off(events.len() - 1);
+                events.extend(injected);
+                events.extend(terminal_event);
+            }
+        }
+        for ev in events {
+            if tx.send(Ok(ev)).await.is_err() {
+                return;
+            }
         }
     })
+}
+
+/// Extracts the terminal facts the converter needs from rig's folded
+/// response.
+fn stream_terminal_of(response: &rig_core::completion::CompletionResponse) -> StreamTerminal {
+    StreamTerminal {
+        finish_reason: response.finish_reason(),
+        response_id: response.origin.response_id.clone(),
+        model: response.origin.response_model.clone(),
+        usage: response.usage,
+    }
+}
+
+/// Last `message_delta` stop reason on the teed Anthropic wire, `None` when
+/// the bytes hold none. Bounded by the tee cap.
+fn anthropic_stop_reason(sse_bytes: &[u8]) -> Option<String> {
+    let mut stop_reason = None;
+    for line in sse_bytes.split(|byte| *byte == b'\n') {
+        let Some(payload) = line.strip_prefix(b"data:") else {
+            continue;
+        };
+        let payload = serde_json::from_slice::<serde_json::Value>(
+            payload.strip_prefix(b" ").unwrap_or(payload),
+        )
+        .ok();
+        let Some(payload) = payload else {
+            continue;
+        };
+        if payload.get("type").and_then(serde_json::Value::as_str) == Some("message_delta")
+            && let Some(reason) = payload
+                .get("delta")
+                .and_then(|delta| delta.get("stop_reason"))
+                .and_then(serde_json::Value::as_str)
+        {
+            stop_reason = Some(reason.to_string());
+        }
+    }
+    stop_reason
 }

@@ -1,13 +1,13 @@
-//! Buffer arguments until Rig confirms a tool call. Rig can repair fragmented
-//! JSON and does not expose the provider call ID until that event; publishing
-//! earlier would make the Added/Delta/Done values disagree with each other.
+//! Buffer arguments until the stream's `End` confirms a tool call. The
+//! completed `ToolCall` carries the provider's id and repaired arguments;
+//! publishing earlier would make the Added/Delta/Done values disagree with
+//! each other.
 
 use codex_api::ApiError;
 use codex_api::ResponseEvent;
 use codex_protocol::ResponseItemId;
 use codex_protocol::models::ResponseItem;
 use rig_core::completion::message::ToolCall;
-use rig_core::streaming::ToolCallDeltaContent;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -43,31 +43,28 @@ impl PendingTools {
         })
     }
 
-    pub(crate) fn delta(
-        &mut self,
-        id: String,
-        delta: ToolCallDeltaContent,
-    ) -> Result<(), ApiError> {
+    pub(crate) fn delta(&mut self, id: String, fragment: &str) -> Result<(), ApiError> {
         let entry = self.entry(id);
-        if let ToolCallDeltaContent::Delta(text) = delta {
-            if entry.raw.len().saturating_add(text.len()) > MAX_TOOL_ARGS_BYTES {
-                return Err(invalid_tool("arguments exceeded the 1 MiB limit"));
-            }
-            entry.raw.push_str(&text);
+        if entry.raw.len().saturating_add(fragment.len()) > MAX_TOOL_ARGS_BYTES {
+            return Err(invalid_tool("arguments exceeded the 1 MiB limit"));
         }
+        entry.raw.push_str(fragment);
         Ok(())
     }
 
     pub(crate) fn complete(&mut self, id: String, call: ToolCall) -> Result<(), ApiError> {
-        if !call.function.arguments.is_object() {
+        // 0.44 carries arguments as a map; non-object arguments the provider
+        // sent arrive in `invalid_arguments` and stay unexecutable.
+        if call.function.invalid_arguments.is_some() {
             return Err(invalid_tool("arguments must be a JSON object"));
         }
-        let custom = self.custom.contains(&call.function.name);
+        let custom = self.custom.contains(call.function.name.as_str());
         let entry = self.entry(id.clone());
         if entry.done.is_some() {
             return Err(invalid_tool("duplicate completed tool call"));
         }
-        let encoded = call.function.arguments.to_string();
+        let arguments_map = call.function.arguments.clone();
+        let encoded = serde_json::Value::Object(arguments_map.clone()).to_string();
         if encoded.len() > MAX_TOOL_ARGS_BYTES {
             return Err(invalid_tool("arguments exceeded the 1 MiB limit"));
         }
@@ -76,17 +73,14 @@ impl PendingTools {
         let arguments = if serde_json::from_str::<serde_json::Value>(&entry.raw)
             .ok()
             .as_ref()
-            == Some(&call.function.arguments)
+            == Some(&serde_json::Value::Object(arguments_map))
         {
             std::mem::take(&mut entry.raw)
         } else {
             encoded
         };
-        let call_id = call
-            .provider
-            .as_ref()
-            .map(|provider| provider.call_id.clone())
-            .unwrap_or_else(|| call.id.to_string());
+        // The call's one identity: the provider's id, or one rig issued.
+        let call_id = call.id.wire().into_owned();
         let (added, done, delta) = if custom {
             let input = call
                 .function
@@ -99,7 +93,7 @@ impl PendingTools {
                 id: Some(ResponseItemId::from_server(id.clone())),
                 status: None,
                 call_id: call_id.clone(),
-                name: call.function.name,
+                name: call.function.name.to_string(),
                 namespace: None,
                 input: String::new(),
                 internal_chat_message_metadata_passthrough: None,
@@ -114,7 +108,7 @@ impl PendingTools {
             let mut item = ResponseItem::FunctionCall {
                 id: Some(ResponseItemId::from_server(id.clone())),
                 call_id: call_id.clone(),
-                name: call.function.name,
+                name: call.function.name.to_string(),
                 namespace: None,
                 arguments: String::new(),
                 encrypted_function_args: None,

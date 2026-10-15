@@ -7,7 +7,6 @@
 //! pipeline (role rewriting, message merging, tool filtering, reasoning
 //! envelopes) is never entered.
 
-use bytes::Bytes;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -215,17 +214,9 @@ async fn stream_responses_via_rig_inner(
 
     // rig 0.44 has no provider post_sse builder: the passthrough assembles
     // the request itself. The transport decorator owns auth synthesis
-    // (wire_auth), query joining, and per-attempt headers on send.
-    let mut uri = format!("{}/responses", base_url.trim_end_matches('/'));
-    if !query.is_empty() {
-        let pairs = query
-            .iter()
-            .map(|(key, value)| format!("{key}={}", urlencode(value)))
-            .collect::<Vec<_>>()
-            .join("&");
-        uri.push('?');
-        uri.push_str(&pairs);
-    }
+    // (wire_auth), query joining, and per-attempt headers on send — the
+    // URI carries no query, `prepare` appends the provider's pairs.
+    let uri = format!("{}/responses", base_url.trim_end_matches('/'));
     let mut stream_request = http::Request::builder()
         .method(http::Method::POST)
         .uri(uri)
@@ -350,22 +341,6 @@ fn adapt_body_stream(body: rig_core::http_client::BoxedStream) -> codex_api::Byt
     Box::pin(body.map(|chunk| {
         chunk.map_err(|error| TransportError::Network(format!("rig responses stream: {error}")))
     }))
-}
-
-/// Percent-encodes one query value the way reqwest's `query_pairs_mut`
-/// would, so hand-built request URIs match the SDK's encoding.
-fn urlencode(value: &str) -> String {
-    let mut encoded = String::with_capacity(value.len());
-    for byte in value.as_bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                encoded.push(*byte as char);
-            }
-            b' ' => encoded.push_str("%20"),
-            _ => encoded.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    encoded
 }
 
 #[cfg(test)]

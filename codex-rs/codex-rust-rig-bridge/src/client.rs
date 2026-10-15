@@ -267,7 +267,7 @@ pub(crate) fn build_chat_model(
 /// on the returned client — but constructing the client through rig keeps
 /// URI joining, Bearer auth, and provider customization in rig's hands.
 pub(crate) fn build_responses_client(
-    base_url: &str,
+    _base_url: &str,
     headers: &HeaderMap,
     mut http: crate::transport::RigHttpClient,
 ) -> Result<crate::transport::RigHttpClient, codex_api::ApiError> {
@@ -308,7 +308,9 @@ pub(crate) fn build_anthropic_model(
         prompt_caching: false,
         static_prefix_cache_ttl: None,
         strict_tools: false,
-        tool_input_streaming: Default::default(),
+        // 0.42 wire parity: no per-tool `eager_input_streaming` flag. The
+        // provider streams tool input as it chooses (rig's `Off`).
+        tool_input_streaming: rig_core::providers::anthropic::wire::ToolInputStreaming::Off,
     };
     Ok(model_via_bridge(wire, http))
 }

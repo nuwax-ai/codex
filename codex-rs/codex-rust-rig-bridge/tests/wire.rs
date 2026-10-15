@@ -221,7 +221,17 @@ async fn function_and_custom_image_results_reach_both_protocols_as_images() {
                     json!({"type":"function_call_output","call_id":"c1","output":[{"type":"input_image","image_url":IMAGE,"detail":"high"}]}),
                 )
             };
-            let request = request(vec![user(), call, result]);
+            let mut request = request(vec![user(), call, result]);
+            // rig 0.44 folds tool history into text unless the request
+            // declares tools; declare the tool the history exercised
+            // (production requests always carry their function tools) so
+            // the tool_use/tool_result image shapes stay on the wire.
+            let tool = if custom {
+                json!({"type":"custom","name":"exec","description":"exec"})
+            } else {
+                json!({"type":"function","name":"view_image","description":"view","parameters":{"type":"object","properties":{}}})
+            };
+            set_tools(&mut request, json!([tool]));
             let (wire, _, _) = capture(&request, protocol).await;
             let encoded = wire["body"]["messages"].to_string();
             assert!(

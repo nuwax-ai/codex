@@ -46,17 +46,13 @@ async fn safe_anthropic_counter_combinations_preserve_frames_and_terminal_order(
     assert_eq!(frames, events);
     let mut normalized = rig_core::completion::Usage::new();
     usage.apply(&mut normalized);
-    assert_eq!(
-        normalized,
-        rig_core::completion::Usage {
-            input_tokens: safe,
-            output_tokens: safe,
-            cached_input_tokens: safe,
-            cache_creation_input_tokens: safe,
-            total_tokens: safe * 4,
-            ..Default::default()
-        }
-    );
+    // 0.44 semantics: input already includes cache read+write.
+    assert_eq!(normalized.input_tokens, Some(safe * 3));
+    assert_eq!(normalized.output_tokens, Some(safe));
+    assert_eq!(normalized.cached_input_tokens, Some(safe));
+    assert_eq!(normalized.cache_creation_input_tokens, Some(safe));
+    assert_eq!(normalized.total_tokens, Some(safe * 4));
+    assert_eq!(normalized.reasoning_tokens, None);
 }
 
 #[tokio::test]
@@ -87,15 +83,10 @@ async fn unsafe_anthropic_counters_only_change_the_rig_decoder_copy() {
     );
     let mut normalized = rig_core::completion::Usage::new();
     usage.apply(&mut normalized);
-    assert_eq!(
-        normalized,
-        rig_core::completion::Usage {
-            input_tokens: u64::MAX,
-            output_tokens: u64::MAX,
-            cached_input_tokens: 7,
-            cache_creation_input_tokens: 9,
-            total_tokens: u64::MAX,
-            ..Default::default()
-        }
-    );
+    // Saturating: u64::MAX input + cache parts still saturate, never wrap.
+    assert_eq!(normalized.input_tokens, Some(u64::MAX));
+    assert_eq!(normalized.output_tokens, Some(u64::MAX));
+    assert_eq!(normalized.cached_input_tokens, Some(7));
+    assert_eq!(normalized.cache_creation_input_tokens, Some(9));
+    assert_eq!(normalized.total_tokens, Some(u64::MAX));
 }

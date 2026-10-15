@@ -41,7 +41,7 @@ fn typed_budget_failure_survives_the_completion_error_chain() {
         api_error(&error),
         Some(codex_api::ApiError::InvalidRequest { .. })
     ));
-    let completion = rig_core::completion::request::CompletionError::RequestError(Box::new(error));
+    let completion = rig_core::error::ProviderError::Http(std::sync::Arc::new(error));
     assert!(matches!(
         api_error(&completion),
         Some(codex_api::ApiError::InvalidRequest { .. })

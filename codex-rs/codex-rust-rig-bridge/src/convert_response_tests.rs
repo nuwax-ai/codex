@@ -1,86 +1,166 @@
 use super::*;
+use rig_core::completion::request::FinishReason;
+use rig_core::completion::request::Usage;
+use rig_core::streaming::Item;
+use rig_core::streaming::Part;
+use rig_core::streaming::PartKind;
+use rig_core::streaming::StreamEvent;
+
+/// Legacy-shaped test inputs; `drive` allocates 0.44 parts per id.
+enum TestEvent {
+    Text(String),
+    ReasoningDelta {
+        id: String,
+        text: String,
+    },
+    ToolName {
+        id: String,
+        name: String,
+    },
+    ToolArgs {
+        id: String,
+        args: String,
+    },
+    ToolEnd {
+        id: String,
+        call: rig_core::completion::message::ToolCall,
+    },
+    Terminal(StreamTerminal),
+}
+
+fn part_of(index: u32) -> Part {
+    serde_json::from_value(serde_json::Value::from(index)).expect("Part is transparent")
+}
+
 #[cfg(test)]
 mod mapping {
     use super::*;
     use pretty_assertions::assert_eq;
     fn rig_event_to_response_events(
-        event: StreamedAssistantContent,
+        event: Item<StreamEvent>,
         pending: &mut PendingRigMessage,
     ) -> Vec<ResponseEvent> {
         super::rig_event_to_response_events(event, pending).expect("valid events")
     }
-    use rig_core::completion::message::ToolCallId;
-    use rig_core::completion::message::ToolFunction;
     use rig_core::completion::request::FinishReason;
     use rig_core::completion::request::Usage;
-    use rig_core::streaming::StreamedAssistantContent;
-    use rig_core::streaming::ToolCallDeltaContent;
 
-    fn text_delta(text: &str) -> StreamedAssistantContent {
-        StreamedAssistantContent::Text(rig_core::completion::message::Text {
-            text: text.to_string(),
-            additional_params: None,
+    fn text_delta(text: &str) -> TestEvent {
+        TestEvent::Text(text.to_string())
+    }
+
+    fn reasoning_delta(text: &str, id: &str) -> TestEvent {
+        TestEvent::ReasoningDelta {
+            id: id.into(),
+            text: text.into(),
+        }
+    }
+
+    fn tool_name(id: &str, name: &str) -> TestEvent {
+        TestEvent::ToolName {
+            id: id.into(),
+            name: name.into(),
+        }
+    }
+
+    fn tool_args(id: &str, args: &str) -> TestEvent {
+        TestEvent::ToolArgs {
+            id: id.into(),
+            args: args.into(),
+        }
+    }
+
+    fn complete_tool(id: &str, wire_call_id: &str, name: &str, arguments: &str) -> TestEvent {
+        TestEvent::ToolEnd {
+            id: id.into(),
+            call: rig_core::completion::message::ToolCall::from_wire(
+                wire_call_id,
+                rig_core::completion::message::ToolFunction {
+                    name: rig_core::completion::message::ToolName::new(name)
+                        .expect("non-empty tool name"),
+                    arguments: serde_json::from_str(arguments).unwrap_or_default(),
+                    invalid_arguments: None,
+                },
+            ),
+        }
+    }
+
+    fn final_record(finish: Option<FinishReason>) -> TestEvent {
+        TestEvent::Terminal(StreamTerminal {
+            finish_reason: finish,
+            response_id: None,
+            model: None,
+            usage: Usage::new(),
         })
     }
 
-    fn reasoning_delta(text: &str, id: &str) -> StreamedAssistantContent {
-        StreamedAssistantContent::ReasoningDelta {
-            id: id.into(),
-            provider_id: None,
-            reasoning: text.into(),
-        }
-    }
-
-    fn tool_name(id: &str, name: &str) -> StreamedAssistantContent {
-        StreamedAssistantContent::ToolCallDelta {
-            internal_call_id: id.into(),
-            content: ToolCallDeltaContent::Name(name.into()),
-        }
-    }
-
-    fn tool_args(id: &str, args: &str) -> StreamedAssistantContent {
-        StreamedAssistantContent::ToolCallDelta {
-            internal_call_id: id.into(),
-            content: ToolCallDeltaContent::Delta(args.into()),
-        }
-    }
-
-    fn complete_tool(
-        id: &str,
-        wire_call_id: &str,
-        name: &str,
-        arguments: &str,
-    ) -> StreamedAssistantContent {
-        StreamedAssistantContent::ToolCall {
-            internal_call_id: id.into(),
-            tool_call: rig_core::completion::message::ToolCall {
-                id: ToolCallId::new_or_mint(wire_call_id),
-                provider: None,
-                function: ToolFunction {
-                    name: name.into(),
-                    arguments: serde_json::from_str(arguments).unwrap_or_default(),
-                },
-                signature: None,
-                additional_params: None,
-            },
-        }
-    }
-
-    fn final_record(finish: Option<FinishReason>) -> StreamedAssistantContent {
-        let mut record = StreamFinal::new("test", Usage::new());
-        if let Some(finish) = finish {
-            record = record.with_finish_reason(finish);
-        }
-        StreamedAssistantContent::Final(record)
-    }
-
-    fn drive(events: Vec<StreamedAssistantContent>) -> Vec<ResponseEvent> {
+    fn drive(events: Vec<TestEvent>) -> Vec<ResponseEvent> {
         let mut pending =
             PendingRigMessage::new(std::sync::Arc::new(Default::default()), "test".into());
-        events
-            .into_iter()
-            .flat_map(|e| rig_event_to_response_events(e, &mut pending))
-            .collect()
+        let mut next_part = 0u32;
+        let mut parts: std::collections::HashMap<String, Part> = std::collections::HashMap::new();
+        fn part_for(
+            key: Option<&str>,
+            parts: &mut std::collections::HashMap<String, Part>,
+            next_part: &mut u32,
+        ) -> Part {
+            match key {
+                Some(key) => *parts.entry(key.to_string()).or_insert_with(|| {
+                    *next_part += 1;
+                    part_of(*next_part)
+                }),
+                None => {
+                    *next_part += 1;
+                    part_of(*next_part)
+                }
+            }
+        }
+        let mut out = Vec::new();
+        for event in events {
+            let item = match event {
+                TestEvent::Text(text) => Item::Event(StreamEvent::Text {
+                    // One text stream per drive: a fixed part keeps deltas
+                    // joining the same part.
+                    part: part_of(0),
+                    text,
+                }),
+                TestEvent::ReasoningDelta { id, text } => {
+                    let part = part_for(Some(&id), &mut parts, &mut next_part);
+                    Item::Event(StreamEvent::Reasoning { part, text })
+                }
+                TestEvent::ToolName { id, name } => {
+                    let part = part_for(Some(&id), &mut parts, &mut next_part);
+                    Item::Event(StreamEvent::Start {
+                        part,
+                        kind: PartKind::ToolCall,
+                        name: Some(
+                            rig_core::completion::message::ToolName::new(name)
+                                .expect("non-empty tool name"),
+                        ),
+                    })
+                }
+                TestEvent::ToolArgs { id, args } => {
+                    let part = part_for(Some(&id), &mut parts, &mut next_part);
+                    Item::Event(StreamEvent::Arguments { part, json: args })
+                }
+                TestEvent::ToolEnd { id, call } => {
+                    let part = part_for(Some(&id), &mut parts, &mut next_part);
+                    Item::Event(StreamEvent::End {
+                        part,
+                        content: rig_core::completion::message::AssistantContent::ToolCall(call),
+                    })
+                }
+                TestEvent::Terminal(terminal) => {
+                    out.extend(
+                        super::super::handle_stream_terminal(terminal, &mut pending)
+                            .expect("terminal"),
+                    );
+                    continue;
+                }
+            };
+            out.extend(rig_event_to_response_events(item, &mut pending));
+        }
+        out
     }
 
     /// Regression (caught live on MiMo, 2026-09-24): the final
@@ -197,25 +277,30 @@ mod mapping {
     #[test]
     fn usage_maps_all_counters() {
         let mut usage = Usage::new();
-        usage.input_tokens = 10;
-        usage.cached_input_tokens = 4;
-        usage.cache_creation_input_tokens = 2;
-        usage.output_tokens = 6;
-        usage.reasoning_tokens = 3;
-        usage.total_tokens = 16;
-        let record = StreamFinal::new("test", usage);
-        let events = drive(vec![StreamedAssistantContent::Final(record)]);
+        // 0.44 semantics: input_tokens already includes cache read+write.
+        usage.input_tokens = Some(16);
+        usage.cached_input_tokens = Some(4);
+        usage.cache_creation_input_tokens = Some(2);
+        usage.output_tokens = Some(6);
+        usage.reasoning_tokens = Some(3);
+        usage.total_tokens = Some(22);
+        let events = drive(vec![TestEvent::Terminal(StreamTerminal {
+            finish_reason: Some(FinishReason::Stop),
+            response_id: None,
+            model: None,
+            usage,
+        })]);
         let completed = events.iter().find_map(|e| match e {
             ResponseEvent::Completed { token_usage, .. } => token_usage.clone(),
             _ => None,
         });
         let usage = completed.expect("completed with usage");
-        assert_eq!(usage.input_tokens, 10);
+        assert_eq!(usage.input_tokens, 16);
         assert_eq!(usage.cached_input_tokens, 4);
         assert_eq!(usage.cache_write_input_tokens, 2);
         assert_eq!(usage.output_tokens, 6);
         assert_eq!(usage.reasoning_output_tokens, 3);
-        assert_eq!(usage.total_tokens, 16);
+        assert_eq!(usage.total_tokens, 22);
     }
 
     /// rig's contract: ending without a terminal record is truncation — the
@@ -225,7 +310,13 @@ mod mapping {
     fn stream_without_final_never_completes() {
         let mut pending =
             PendingRigMessage::new(std::sync::Arc::new(Default::default()), "test".into());
-        let events = rig_event_to_response_events(text_delta("hi"), &mut pending);
+        let events = rig_event_to_response_events(
+            Item::Event(StreamEvent::Text {
+                part: part_of(0),
+                text: "hi".into(),
+            }),
+            &mut pending,
+        );
         assert!(
             events
                 .iter()
@@ -246,9 +337,8 @@ mod mapping {
 mod custom_tool_response_tests {
     use super::*;
     use pretty_assertions::assert_eq;
-    use rig_core::streaming::ToolCallDeltaContent;
     fn rig_event_to_response_events(
-        event: StreamedAssistantContent,
+        event: Item<StreamEvent>,
         pending: &mut PendingRigMessage,
     ) -> Vec<ResponseEvent> {
         super::rig_event_to_response_events(event, pending).expect("valid events")
@@ -264,27 +354,38 @@ mod custom_tool_response_tests {
             ["apply_patch".to_string()].into_iter().collect();
         let mut pending = PendingRigMessage::new(std::sync::Arc::new(custom), "test".into());
 
-        let tool_event = StreamedAssistantContent::ToolCall {
-            internal_call_id: "t1".into(),
-            tool_call: rig_core::completion::message::ToolCall {
-                id: rig_core::completion::message::ToolCallId::new_or_mint("call_1"),
-                provider: None,
-                function: rig_core::completion::message::ToolFunction {
-                    name: "apply_patch".into(),
-                    arguments: serde_json::json!({"input": "*** Begin Patch\n+hello"}),
-                },
-                signature: None,
-                additional_params: None,
-            },
-        };
-        let final_event = StreamedAssistantContent::Final(StreamFinal::new(
-            "test",
-            rig_core::completion::request::Usage::new(),
-        ));
+        let tool_event = Item::Event(StreamEvent::End {
+            part: part_of(1),
+            content: rig_core::completion::message::AssistantContent::ToolCall(
+                rig_core::completion::message::ToolCall::from_wire(
+                    "call_1",
+                    rig_core::completion::message::ToolFunction {
+                        name: rig_core::completion::message::ToolName::new("apply_patch")
+                            .expect("non-empty tool name"),
+                        arguments: serde_json::json!({"input": "*** Begin Patch\n+hello"})
+                            .as_object()
+                            .cloned()
+                            .unwrap_or_default(),
+                        invalid_arguments: None,
+                    },
+                ),
+            ),
+        });
 
         let mut all = Vec::new();
         all.extend(rig_event_to_response_events(tool_event, &mut pending));
-        all.extend(rig_event_to_response_events(final_event, &mut pending));
+        all.extend(
+            super::super::handle_stream_terminal(
+                StreamTerminal {
+                    finish_reason: Some(FinishReason::Stop),
+                    response_id: None,
+                    model: None,
+                    usage: Usage::new(),
+                },
+                &mut pending,
+            )
+            .expect("terminal"),
+        );
 
         let done_item = all
             .iter()
@@ -309,21 +410,32 @@ mod custom_tool_response_tests {
         let mut pending =
             PendingRigMessage::new(std::sync::Arc::new(Default::default()), "test".into());
         // name arrives → establishes item; deltas accumulate; NO complete event
-        let name_event = StreamedAssistantContent::ToolCallDelta {
-            internal_call_id: "t1".into(),
-            content: ToolCallDeltaContent::Name("get_weather".into()),
-        };
-        let delta_event = StreamedAssistantContent::ToolCallDelta {
-            internal_call_id: "t1".into(),
-            content: ToolCallDeltaContent::Delta(r#"{"city":"#.into()),
-        };
-        let final_event = StreamedAssistantContent::Final(StreamFinal::new(
-            "test",
-            rig_core::completion::request::Usage::new(),
-        ));
+        let name_event = Item::Event(StreamEvent::Start {
+            part: part_of(1),
+            kind: PartKind::ToolCall,
+            name: Some(
+                rig_core::completion::message::ToolName::new("get_weather")
+                    .expect("non-empty tool name"),
+            ),
+        });
+        let delta_event = Item::Event(StreamEvent::Arguments {
+            part: part_of(1),
+            json: r#"{"city":"#.into(),
+        });
         assert!(rig_event_to_response_events(name_event, &mut pending).is_empty());
         assert!(rig_event_to_response_events(delta_event, &mut pending).is_empty());
-        assert!(super::rig_event_to_response_events(final_event, &mut pending).is_err());
+        assert!(
+            super::super::handle_stream_terminal(
+                StreamTerminal {
+                    finish_reason: Some(FinishReason::Stop),
+                    response_id: None,
+                    model: None,
+                    usage: Usage::new(),
+                },
+                &mut pending
+            )
+            .is_err()
+        );
         assert!(!pending.completed_emitted());
     }
 }

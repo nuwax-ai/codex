@@ -65,8 +65,22 @@ impl AnthropicUsage {
     }
 
     pub(crate) fn apply(&self, usage: &mut Usage) {
+        // The accumulator observes every wire usage frame (message_start,
+        // intermediate deltas, terminal delta) and is authoritative: a
+        // counter explicitly reported in a later frame — including an
+        // explicit zero — overwrites the prior value, while null/absent
+        // fields leave it alone. Rig 0.44's own fold only keeps the start
+        // and terminal frames, so its values cannot be trusted here.
+        // `input_tokens` is written INCLUSIVE of cache read/write, matching
+        // rig 0.44's `Usage` semantics; the wire field alone is the
+        // uncached count.
+        if let Some(input) = self.input {
+            let inclusive = input
+                .saturating_add(self.cached.unwrap_or_default())
+                .saturating_add(self.cache_creation.unwrap_or_default());
+            usage.input_tokens = Some(inclusive);
+        }
         for (target, value) in [
-            (&mut usage.input_tokens, self.input),
             (&mut usage.output_tokens, self.output),
             (&mut usage.cached_input_tokens, self.cached),
             (&mut usage.cache_creation_input_tokens, self.cache_creation),
@@ -76,8 +90,6 @@ impl AnthropicUsage {
                 *target = Some(value);
             }
         }
-        // 0.44's `input_tokens` already includes cached and cache-written
-        // input, so the total never re-adds them.
         if let (Some(input), Some(output)) = (usage.input_tokens, usage.output_tokens) {
             usage.total_tokens = Some(input.saturating_add(output));
         }
