@@ -1,8 +1,17 @@
-# Rig 0.42 → 0.44 迁移工单（进行中）
+# Rig 0.42 → 0.44 迁移工单（复审候选）
 
 分支 `codex/rig-044-20261014`（基于整合分支 `5b6b51457`）。pin 已升
 `rig-core = "=0.44.0"`（bridge + live-tests），`cargo update -p rig-core` 引入
-`rig-http 0.44`/`rig-tungstenite 0.44`。**未完成、未验证、未合回**。
+`rig-http 0.44`/`rig-tungstenite 0.44`。**已完成编译适配和本机定向离线验证，
+尚未合回 test、未 push；不能宣称三平台或国内厂商实测验收完成。**
+
+2026-10-15 Codex 复审发现并修复 10 类问题，Bridge 最终 295/295；详细问题、
+首败、命令、二进制与验证边界见 [复审记录](codex-rig-044-review-2026-10-15.md)。
+以下各“进展”节保留历史轮次；其旧测试计数不等于当前完整验收结论。
+特别更正：resume/compact 281 和 env 62 是 Core 默认 provider 回归，不能证明
+全部经过 Rig，也不是 app-server 公共接口回归。Phase C 仍有显式 Rig 生命周期
+专项证据待补，付费录制不是唯一剩余项。下一轮见
+[Claude 开发交接](claude-next-rig-images-2026-10-15.md)。
 
 ## 0.44 API 映射笔记（源码已核，/tmp/rig-044-review + registry）
 
@@ -106,7 +115,7 @@ stream 需要重写：
    从 wire tee 解析 `message_delta.delta.stop_reason=="pause_turn"`（tee 已存在于
    pump，currently only for hosted tools）。
 4. **usage 语义**：CompletionResponse.usage 全 Option；`input_tokens` 已含 cache
-   读+写（0.42 是分开的）。map_usage/rig_usage_report 不得再加 cache；Anthropic
+   读+写（0.42 Anthropic 分开，Chat 原本已包含）。map_usage/rig_usage_report 不得再加 cache；Anthropic
    溢出 sanitize 保留。wire_reported_usage 注入点从流内 Final 移到 finish() 之前。
 5. **`Model::stream()` 不再是 future**（返回 Result<Streamed, ProviderError>）；
    stream.rs 的 `.await` 与"首事件预取"逻辑保留但类型重接；零发送取消语义变化
@@ -127,16 +136,15 @@ fixture 接口已随迁）。按 0.44 语义的设计决策与坑：
    `Operation::prepare` 调 `history::adapt_for`，规则：相邻 user 消息合并、
    空内容/空白文本 turn 丢弃、跨模型 turn 的 Opaque/签名 Reasoning 降级为纯
    文本、无工具声明时 tool call 历史折叠成文本（tools_as_text）。桥接对策：
-   - 每个重建的历史 assistant turn 挂同源 `Origin{api:"anthropic.messages",
-     provider:"anthropic", model, context}`（`anthropic_history_origin`）；context
-     指纹镜像 rig 私有的 `history::context_of`（`anthropic_context_fingerprint`，
-     输入 = 排序后 tools + leading system + raw tools），仅在模型不绑定上下文时
-     计算（binds_context 模型在 adaptive thinking 下不做指纹比较——与 driver 的
-     drops_unbound_items 谓词一致）。**rig 升级时这两处镜像必须同步**。
-   - 签名/redacted reasoning 挂 `with_native(wire item)`：同源 turn 的 native
-     item 逐字回放（`Replay::Item`），这是签名 thinking/redacted_thinking 上
-     wire 的唯一通道；流式解码时 redacted 的 payload 只在 native item 里
-     （canonical text 为空），legacy v1 签名才合成 wire 块。
+   - 复审后 Chat/Anthropic 都挂同源 `Origin::new(api, provider, model)`；opaque
+     replay 先受 endpoint/model/auth-domain 的 source gate 限制。删除原先的
+     Anthropic context 指纹镜像：当前可达 SDK thinking 配置不执行该比较，
+     旧测试不能证明镜像算法正确。将来若在 adapt 之前引入显式 thinking 配置，
+     必须重新验证 context-bound 模型的 origin，不能伪造当前上下文指纹。
+   - v2 签名/redacted reasoning 保留原 native item 及 fingerprint；canonical
+     内容被编辑时由 SDK 降级，不能重新 `with_native()` 洗掉失配。只有旧 v1
+     DTO 在读侧合成正确 native 块。redacted payload 留在 native item，
+     canonical text 为空。Chat 的旧文本推理补 reasoning_content 原生字段。
    - hosted 搜索锚点改为 **marker 文本块**（`SDK_ANCHOR_TEXT`，NUL 前缀）：
      空文本锚点会被 adapt 的 blank 过滤丢弃并导致相邻 user 合并；marker 在所有
      adapt 路径存活，transport 剥掉后拼接原始 wire 块。锚点不计入
@@ -153,8 +161,9 @@ fixture 接口已随迁）。按 0.44 语义的设计决策与坑：
 3. **`ProviderError::Http` 的 `source()` 返回 None**（0.44 只对 Json/Url/Request
    暴露 source）：capture/budget 错误分类器需显式下钻 `Http(Arc<Error>)` 内层，
    否则 fail-fast 错误被误分类为可重试网络错误（生产级修复，非仅测试）。
-4. pause_turn 从 wire tee 解析（`anthropic_stop_reason`），tee 同时喂 hosted
-   工具块与暂停续链。
+4. 从 wire tee 解析 pause_turn 与 model_context_window_exceeded
+   （`anthropic_stop_reason`）：前者保留暂停续链，后者恢复上下文耗尽错误，
+   避免 SDK 的 Length 归类误判为输出 cap；tee 同时喂 hosted 工具块。
 5. Responses 透传手构 URI 不带 query——transport `prepare` 统一追加（曾双重
    拼接）。
 6. `tool_input_streaming: Off`（0.44 默认 Eager 会给每个工具加
@@ -162,8 +171,9 @@ fixture 接口已随迁）。按 0.44 语义的设计决策与坑：
 7. cassette 双版本：fixture v2 记 `Item<StreamEvent>` + TerminalRecord，v1
    （0.42 untagged）在读侧翻译（Name delta→Start、Delta→Arguments、ToolCall→
    End、Final→terminal；`translate_legacy_events`）；`Part` 经 serde 透明形式
-   构造（`part_from_index`，失败走 Stream 错误不 panic）。legacy usage 换算：
-   0.44 input = 旧 input + cached + cache_creation。
+   构造（`part_from_index`，失败走 Stream 错误不 panic）。复审修正 legacy usage：
+   仅 Anthropic 把 cache 加入 input 并重派生 total；Chat 原 input/total 已包含
+   cache，不得再加一次。此 cassette 格式尚不证明多 attempt pause 回放。
 8. 测试侧的 0.44 适配（fork-contract adaptations，均有注释标记）：无工具声明
    的纯历史请求在 wire 测试里显式声明工具（生产恒有工具声明）；opt-out/
    去重尾部等无锚点场景的相邻 user 合并期望改为合并后的形状。
@@ -178,20 +188,18 @@ bridge_live 84/84），修掉回放暴露的三个问题并补齐两条 origin �
    `#[serde(tag="type", content="content", rename_all="snake_case")]` 邻接标记
    （`{"type":"text","content":{"text":..,"signature":..}}`），不是外标记单键
    map。已按 0.42 registry 源码核对修正。
-2. **legacy usage 换算的 total 口径**：input 升级为包含式后，记录值里的
-   `total_tokens`（旧口径，不含 cache）必须同步重派生为
-   `inclusive_input + output`，否则违反 total ≥ input+output 不变量
-   （bridge_live tool 场景回放抓到）。与 live pump 的 wire 校正语义一致，
-   单测 `legacy_usage_upgrades_to_inclusive_counters_and_rederives_the_total`
-   钉住算术。
+2. **legacy usage 换算的 total 口径**：第三轮曾对两协议统一加 cache 并重派生
+   total；Codex 复审证实这会重复计算 Chat cache，现已改成 provider-aware。
+   Anthropic 加 cache 后重派生 total；Chat 保留旧 input 和非零 reported total。
+   真实旧 Chat fixture 的 131 input / 128 cache / 51 output 仍回放为 131/182，
+   而非错误的 259/310；另覆盖饱和算术。
 3. **exec_live 在 replay 下误激活**：exec 级场景起真实 codex 进程打真端点，
    replay 占位 URL 使其必然失败；matrix 宏统一在 `CassetteMode::Replay` 下
    跳过（与 bridge_live auth 场景的既有模式一致）。
-4. **origin 覆盖补齐**（上一轮的残留项 2）：
-   `same_model_origin_fingerprint_covers_system_prompt_and_hosted_tools`
-   （claude-sonnet-4-5：非退化指纹输入——双 developer system、function +
-   hosted 工具、raw tools 上 wire；顺带钉住两个前导 system 在 wire 上保持
-   两个块，只有中途 system 才触发合并）与
+4. **origin 覆盖补齐**（上一轮的残留项 2）：复审后测试改名为
+   `same_model_origin_covers_system_prompt_and_hosted_tools`
+   （claude-sonnet-4-5：双 developer system、function + hosted 工具、raw tools
+   上 wire；钉住前导 system 块及签名保持，不再声称验证 context 指纹镜像）与
    `binds_context_claude_models_replay_signed_thinking_without_a_fingerprint`
    （claude-sonnet-5-5：目录驱动的无指纹分支）。
 5. **nuwax 离线三件套修复**（startup 工具往返 / budget 恰好覆盖 / budget
@@ -210,20 +218,30 @@ bridge_live 84/84），修掉回放暴露的三个问题并补齐两条 origin �
 7. `just bazel-lock-update` 已跑（Cargo.lock 的 0.44 依赖已同步进
    MODULE.bazel.lock）。
 
-### 已知残留（Phase C 复核项）
-- `anthropic_context_fingerprint` 与 `anthropic_history_origin` 镜像 rig 内部
-  逻辑，rig 版本升级时需人工核对 `Operation::prepare`/`history::context_of`/
-  `drops_unbound_items` 三处（非退化输入现已被 wire 测试钉住）。
-- 录制轮次（LIVE_CASSETTE=record，需付费 API）未跑——待用户授权后进行；
-  到时新 fixture 将以 v2 格式写入。
-- codex-core 级回归已完成（2026-10-15 第四轮）：resume/compact 家族
+### 已知残留与证据边界（Codex 复审更正）
+- 显式 Rig 的 Core 冷/热 resume、compact 已有专项测试，当前候选仍需明确
+  复验并补图片历史缺口；须配置
+  provider_id/experimental_bridge 并捕获真实 loopback 请求证明路由，不能用
+  默认 OpenAI mock 的通过数代替。Anthropic 签名还需跨真实 rollout 冷恢复。
+- v2 录制可先用本地 SSE + 实际 recorder 生成并回放，完全离线。厂商付费
+  `LIVE_CASSETTE=record` 待另行授权；mock 不证明厂商支持或真实识图。
+- Rig-event cassette 当前只把单 attempt 作为有效证据。共享 recorder 跨 pause
+  会复用 Part 并覆盖 terminal；0.42 也不支持成功回放该路径。本轮不扩大修复，
+  pause/hosted 由真实 loopback wire 测试验证，不能拿单 attempt 回放代替。
+- 第四轮报告 codex-core resume/compact 家族
   （suite::{resume, resume_warning, compact*, compact_resume_fork,
   multi_agent_resume, scenarios_compaction, truncation resume 等，
   `--test all -E 'test(resume)+test(compact)'`）**281/281 全过**；
   env 家族（remote_env*/environments/env_startup gate，
   `-E 'test(remote_env)+test(environments)+test(env_startup)'`）
-  **62/62 全过**。全套 core 的既有基线失败家族（guardian SIGABRT 等，
-  见 ci-run 账本）不在迁移验证范围。
+  **62/62 全过**。这些使用默认 Core 测试 provider；更改 display name 或仅启用
+  rust-rig feature 不强制走 Rig。env 62 是 Core remote_env/environments/gate，
+  不是 app-server env API；本次另跑真实 app-server 公共接口 9/9。
+- 旧 CI ledger 不能证明当前 SHA 的 guardian SIGABRT/超时与迁移无关；需相同
+  平台、工具链、features、线程栈的候选/基线对照后才能归类。
+- 历史 188/188 是 nextest PASS 数，包含 replay 模式下内部 early-Ok；不能写成
+  188 个协议场景实际执行。旧 rig-event fixture 回放也不经过 0.44 wire decoder。
+- 当前候选 Linux/Windows、全量 CI、ACP dev 和真实厂商视觉仍未验收。
 
 ## 执行清单
 - [x] Phase A 非流部分（12/16 文件）
@@ -232,9 +250,10 @@ bridge_live 84/84），修掉回放暴露的三个问题并补齐两条 origin �
 - [ ] Phase C 验证：三 wire 出站、工具配对、终局/迟到 usage、cap、取消、
       retry/idle/HTTP 预算、代理/TLS、signed reasoning 旧会话、resume/compact、
       app-server env、live-tests 离线；`just bazel-lock-update`
-      —— 已完成：bridge 283/283（含 origin 两条 + legacy usage 单测）、
-      live-tests 离线 replay 188/188（bridge_live 84 场景 + nuwax/exec 跳过
-      语义）、nuwax env 离线 3/3、bazel lock 同步、
-      codex-core resume/compact 281/281、env 家族 62/62
-      —— 仅剩：LIVE_CASSETTE=record 录制轮次（需付费 API 授权）
+      —— 当前复审通过：bridge 295/295；Core 无 rust-rig 的投影回归 3/3、
+      rig_output_cap 30/30（含原生对照）；app-server env 公共接口 9/9；
+      nuwax env 离线 3/3；legacy bridge_live replay 84 PASS（含内部跳过）；
+      之前已同步 Bazel lock。默认 provider 的 281+62 单独保留为一般回归。
+      —— 未闭环：显式 Rig 生命周期专项、离线 v2 实录 fixture、当前候选的
+      Linux/Windows/CI 与 ACP dev。真实付费录制单列，不阻塞离线工作。
 - [x] reasoning v1 旧 DTO 解码保留（v2 写入、v1 解码+转换、rollout 不改写）
