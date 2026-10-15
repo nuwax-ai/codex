@@ -56,7 +56,13 @@ pub fn start_memories_startup_task(
             config.as_ref(),
             source.clone(),
         ));
+        let thread = Arc::clone(&thread);
         tokio::spawn(async move {
+            // Config retains the startup model, while runtime overrides and catalog
+            // defaults live in the thread settings. Pin one choice for both phases.
+            let mut config = config.as_ref().clone();
+            config.model = Some(thread.config_snapshot().await.model);
+            let config = Arc::new(config);
             if context.memory_store().await.is_none() {
                 warn!("state db unavailable for memories startup pipeline; skipping");
                 return;

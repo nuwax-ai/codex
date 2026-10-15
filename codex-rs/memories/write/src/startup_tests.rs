@@ -61,6 +61,8 @@ use tokio::time::Instant;
 
 #[path = "startup_dual_write_tests.rs"]
 mod dual_write;
+#[path = "startup_model_tests.rs"]
+mod models;
 
 #[tokio::test]
 async fn memories_startup_creates_memory_root() -> anyhow::Result<()> {
