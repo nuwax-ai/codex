@@ -5050,10 +5050,25 @@ async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Res
     skip_if_no_network!(Ok(()));
 
     const SCREENSHOTS: usize = 20;
-    // The context budget the compactor defends. With growing reported
-    // usage (round i reports i * 3_000 tokens) the boundary fires
-    // mid-sequence, well before the final rounds.
+    // Report the captured request's text and visual cost, rather than an
+    // artificial round counter. Compaction must keep both sampling and its
+    // own requests within the configured window, including output reserve.
     const AUTO_COMPACT_TOKEN_LIMIT: i64 = 30_000;
+    const CONTEXT_WINDOW: i64 = 40_000;
+
+    let screenshots: Arc<Vec<String>> = Arc::new(
+        (0..SCREENSHOTS)
+            .map(|index| {
+                let image = ImageBuffer::from_pixel(2, 2, Rgba([index as u8, 40, 60, 255]));
+                let mut encoded = Cursor::new(Vec::new());
+                DynamicImage::ImageRgba8(image).write_to(&mut encoded, image::ImageFormat::Png)?;
+                Ok(format!(
+                    "data:image/png;base64,{}",
+                    BASE64_STANDARD.encode(encoded.into_inner())
+                ))
+            })
+            .collect::<anyhow::Result<_>>()?,
+    );
 
     let server = start_mock_server().await;
     let log = ChatBodyLog::default();
@@ -5067,6 +5082,7 @@ async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Res
         let log = log.clone();
         let served_calls = Arc::clone(&served_calls);
         let compactions = Arc::clone(&compactions);
+        let screenshots = Arc::clone(&screenshots);
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/v1/chat/completions"))
             .and(move |request: &wiremock::Request| {
@@ -5076,15 +5092,18 @@ async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Res
                 true
             })
             .respond_with(move |request: &wiremock::Request| {
-                let body = std::str::from_utf8(&request.body).expect("request UTF-8");
-                if body.contains("CONTEXT CHECKPOINT COMPACTION") {
+                let body: serde_json::Value =
+                    serde_json::from_slice(&request.body).expect("request JSON");
+                if body.to_string().contains("CONTEXT CHECKPOINT COMPACTION") {
                     compactions.fetch_add(1, Ordering::SeqCst);
                     return chat_stress_sse("COMPACT SUMMARY", /*total_tokens*/ 1_000);
                 }
                 let call = served_calls.fetch_add(1, Ordering::SeqCst);
-                let total = ((call + 1) * 3_000) as i64;
+                let total = screenshot_request_tokens(&body) + 1;
                 if call < SCREENSHOTS {
-                    chat_stress_tool_sse(r#"{"scenario":"image_only"}"#, total)
+                    let arguments =
+                        json!({"scenario":"image_only", "data_url": screenshots[call]}).to_string();
+                    chat_stress_tool_sse(&format!("call_shot_{call}"), &arguments, total)
                 } else {
                     chat_stress_sse("all screenshots processed", total)
                 }
@@ -5120,13 +5139,16 @@ async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Res
         supports_websockets: false,
         supports_standalone_web_search: false,
         include_internal_metadata: false,
-        max_output_tokens: None,
+        max_output_tokens: Some(1_024),
         hosted_results_replay: None,
     };
     let server_name = "rmcp";
     let command = remote_aware_stdio_server_bin()?;
     let fixture = test_codex()
-        .with_model_info_override("gpt-5.4", |model| model.supports_search_tool = false)
+        .with_model_info_override("gpt-5.4", |model| {
+            model.supports_search_tool = false;
+            model.context_window = Some(CONTEXT_WINDOW);
+        })
         .with_config({
             let provider = stress_provider.clone();
             let command = command.clone();
@@ -5192,9 +5214,56 @@ async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Res
         bodies.len()
     );
     assert!(
-        compaction.len() >= 1,
+        !compaction.is_empty(),
         "the formal compaction boundary must fire ahead of the window"
     );
+    // Every screenshot must actually reach a model as an image, either in
+    // sampling or the formal compaction request. Tool arguments containing
+    // the same data URL are deliberately excluded from this observation.
+    let seen_images: std::collections::BTreeSet<_> =
+        bodies.iter().flat_map(screenshot_urls).collect();
+    let expected_images: std::collections::BTreeSet<_> =
+        screenshots.iter().map(String::as_str).collect();
+    assert_eq!(
+        seen_images, expected_images,
+        "each distinct screenshot must reach a typed image field"
+    );
+    for body in &bodies {
+        let reserve = body["max_completion_tokens"]
+            .as_i64()
+            .or_else(|| body["max_tokens"].as_i64())
+            .expect("explicit output reserve");
+        assert!(
+            screenshot_request_tokens(body) + reserve <= CONTEXT_WINDOW * 95 / 100,
+            "sampling and compaction requests must fit the usable window"
+        );
+    }
+    let seen_results: std::collections::BTreeSet<_> = bodies
+        .iter()
+        .flat_map(|body| body["messages"].as_array().unwrap())
+        .filter(|message| message["role"] == "tool")
+        .filter_map(|message| message["tool_call_id"].as_str())
+        .map(str::to_string)
+        .collect();
+    let expected_results: std::collections::BTreeSet<_> = (0..SCREENSHOTS)
+        .map(|index| format!("call_shot_{index}"))
+        .collect();
+    assert!(seen_results.is_subset(&expected_results));
+    for body in &sampling {
+        let messages = body["messages"].as_array().unwrap();
+        let calls: std::collections::BTreeSet<_> = messages
+            .iter()
+            .filter_map(|message| message["tool_calls"].as_array())
+            .flatten()
+            .filter_map(|call| call["id"].as_str())
+            .collect();
+        let results: std::collections::BTreeSet<_> = messages
+            .iter()
+            .filter(|message| message["role"] == "tool")
+            .filter_map(|message| message["tool_call_id"].as_str())
+            .collect();
+        assert_eq!(calls, results, "sampling keeps complete call/result pairs");
+    }
     // Screenshots reach the model as typed images.
     assert!(
         sampling
@@ -5238,8 +5307,26 @@ async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Res
     // Cold resume after the stress: the compacted rollout still yields a
     // working continuation, appending without rewriting history.
     let rollout_path = fixture.codex.rollout_path().expect("rollout path");
-    let before_resume = std::fs::read_to_string(&rollout_path)?;
     fixture.codex.shutdown_and_wait().await?;
+    let before_resume = std::fs::read_to_string(&rollout_path)?;
+    let recorded: Vec<serde_json::Value> = before_resume
+        .lines()
+        .map(serde_json::from_str)
+        .collect::<std::result::Result<_, _>>()?;
+    // Compaction deliberately folds tool messages into its transcript. The
+    // append-only rollout must still retain every original call/result pair.
+    for kind in ["function_call", "function_call_output"] {
+        let ids: std::collections::BTreeSet<_> = recorded
+            .iter()
+            .filter(|line| line["type"] == "response_item" && line["payload"]["type"] == kind)
+            .filter_map(|line| line["payload"]["call_id"].as_str())
+            .map(str::to_string)
+            .collect();
+        assert_eq!(
+            ids, expected_results,
+            "all screenshot {kind} identities persist"
+        );
+    }
     let cwd = fixture.config.cwd.clone();
     let home = fixture.home.clone();
     let mut resume_builder = test_codex()
@@ -5290,20 +5377,24 @@ fn chat_stress_sse(text: &str, total_tokens: i64) -> wiremock::ResponseTemplate 
         "id": "chatcmpl-stress", "object": "chat.completion.chunk", "created": 1,
         "model": "server-model",
         "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": total_tokens}
+        "usage": {"prompt_tokens": total_tokens - 1, "completion_tokens": 1, "total_tokens": total_tokens}
     });
     let body = format!("data: {first}\n\ndata: {final_chunk}\n\ndata: [DONE]\n\n");
     responses::sse_response(body)
 }
 
-fn chat_stress_tool_sse(arguments: &str, total_tokens: i64) -> wiremock::ResponseTemplate {
+fn chat_stress_tool_sse(
+    call_id: &str,
+    arguments: &str,
+    total_tokens: i64,
+) -> wiremock::ResponseTemplate {
     let first = serde_json::json!({
         "id": "chatcmpl-stress", "object": "chat.completion.chunk", "created": 1,
         "model": "server-model",
         "choices": [{
             "index": 0,
             "delta": {"tool_calls": [{
-                "index": 0, "id": "call_shot", "type": "function",
+                "index": 0, "id": call_id, "type": "function",
                 "function": {"name": "mcp__rmcp__image_scenario", "arguments": arguments}
             }]},
             "finish_reason": null
@@ -5318,11 +5409,30 @@ fn chat_stress_tool_sse(arguments: &str, total_tokens: i64) -> wiremock::Respons
         "id": "chatcmpl-stress", "object": "chat.completion.chunk", "created": 1,
         "model": "server-model",
         "choices": [],
-        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": total_tokens}
+        "usage": {"prompt_tokens": total_tokens - 1, "completion_tokens": 1, "total_tokens": total_tokens}
     });
     let body =
         format!("data: {first}\n\ndata: {finish}\n\ndata: {final_chunk}\n\ndata: [DONE]\n\n");
     responses::sse_response(body)
+}
+
+fn screenshot_urls(body: &serde_json::Value) -> Vec<&str> {
+    body["messages"]
+        .as_array()
+        .expect("captured Chat messages")
+        .iter()
+        .filter_map(|message| message["content"].as_array())
+        .flatten()
+        .filter(|block| block["type"] == "image_url")
+        .filter_map(|block| block["image_url"]["url"].as_str())
+        .collect()
+}
+
+fn screenshot_request_tokens(body: &serde_json::Value) -> i64 {
+    let urls = screenshot_urls(body);
+    let text_bytes = body.to_string().len() - urls.iter().map(|url| url.len()).sum::<usize>();
+    i64::try_from(text_bytes.div_ceil(4) + urls.len() * 1_844)
+        .expect("bounded test request fits i64")
 }
 
 #[derive(Clone, Default)]

@@ -25,6 +25,7 @@ use core_test_support::skip_if_no_network;
 use core_test_support::test_codex::test_codex;
 use image::ImageBuffer;
 use image::Rgba;
+use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
 use std::path::Path;
@@ -192,7 +193,6 @@ fn image_payload(wire_api: WireApi, body: &Value) -> Option<String> {
                 WireApi::Responses => (block["type"] == "input_image")
                     .then(|| block["image_url"].as_str().map(str::to_string))
                     .flatten(),
-                _ => None,
             })
         })
     };
@@ -215,7 +215,6 @@ fn image_payload(wire_api: WireApi, body: &Value) -> Option<String> {
                 .filter(|item| item["role"] == "user")
                 .find_map(|item| scan(&item["content"]))
         }),
-        _ => None,
     }
 }
 
@@ -235,7 +234,6 @@ fn assert_media_type(wire_api: WireApi, body: &Value) {
                 "chat/responses inline images are PNG data URLs: {url}"
             );
         }
-        _ => {}
     }
 }
 
@@ -310,22 +308,58 @@ async fn submit_text_turn_raw(codex: &codex_core::CodexThread, prompt: &str) -> 
 }
 
 async fn wait_turn_complete(codex: &codex_core::CodexThread) -> Result<()> {
-    tokio::time::timeout(Duration::from_secs(60), async {
-        core_test_support::wait_for_event(codex, |event| {
-            matches!(event, EventMsg::TurnComplete(_))
-        })
-        .await;
+    let event = tokio::time::timeout(Duration::from_secs(60), async {
+        core_test_support::wait_for_event(codex, |event| matches!(event, EventMsg::TurnComplete(_)))
+            .await
     })
     .await
     .context("timed out waiting for TurnComplete")?;
+    let EventMsg::TurnComplete(complete) = event else {
+        unreachable!("matched TurnComplete");
+    };
+    anyhow::ensure!(
+        complete.error.is_none(),
+        "turn failed: {:?}",
+        complete.error
+    );
     Ok(())
 }
 
-fn plan_args_value() -> Value {
-    json!({"plan": [{"step": "describe the image", "status": "completed"}]})
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn image_lifecycle_wait_rejects_failed_turns() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = wiremock::MockServer::start().await;
+    let log = mount_sequence(
+        &server,
+        "/v1/chat/completions",
+        vec![chat_sse(&[
+            chat_text_frame("partial answer", Some("length")),
+            chat_usage_frame(),
+        ])],
+    )
+    .await;
+    let provider = rig_image_provider(&server.uri(), WireApi::Chat);
+    let test = test_codex()
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
+        .with_config(move |config| config.model_provider = provider)
+        .build_with_auto_env(&server)
+        .await?;
+    let error = submit_text_turn_raw(&test.codex, "hit the output cap")
+        .await
+        .expect_err("a failed TurnComplete must not satisfy the lifecycle test");
+    test.codex.shutdown_and_wait().await?;
+    assert!(
+        error.to_string().contains("Output token limit reached"),
+        "{error}"
+    );
+    assert_eq!(log.bodies().len(), 1, "the output cap is terminal");
+    Ok(())
 }
 
-/// One wire's full image lifecycle: an image+prompt turn whose response/// calls `update_plan` (proving call/result pairing rides along), the
+/// One wire's full image lifecycle: an image+prompt turn whose response
+/// calls `update_plan` (proving call/result pairing rides along), the
 /// session closes, and a resumed session's next request must carry the same
 /// image payload and the same tool pair. The Anthropic cell additionally
 /// forks the saved thread before resuming, covering the hot path.
@@ -503,7 +537,6 @@ async fn image_resume_cell(wire_api: WireApi) -> Result<()> {
                 .count();
             assert_eq!(call_pair, 2, "responses call/result pair survives resume");
         }
-        _ => {}
     }
     // The image never degrades into a text copy of its bytes. This is a
     // data-URL check: on Anthropic the base64 payload is the typed
