@@ -1,5 +1,6 @@
 use super::error_tests::provider;
 use super::support;
+use codex_api::ApiError;
 use codex_api::ResponseEvent;
 use codex_api::ResponseStream;
 use codex_api::SharedAuthProvider;
@@ -282,4 +283,64 @@ async fn function_and_custom_lifecycles_wait_for_the_released_terminal_frame() {
         );
         server.await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn anthropic_context_window_terminal_is_not_an_output_cap() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let provider = provider(listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        let frames = [
+            json!({"type":"message_start","message":{"id":"msg-context","type":"message","role":"assistant","content":[],"model":"review-model","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":4,"output_tokens":0}}}),
+            json!({"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call-context","name":"lookup","input":{}}}),
+            json!({"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{}"}}),
+            json!({"type":"content_block_stop","index":0}),
+            json!({"type":"message_delta","delta":{"stop_reason":"model_context_window_exceeded","stop_sequence":null},"usage":{"output_tokens":2}}),
+            json!({"type":"message_stop"}),
+        ];
+        let payload: String = frames
+            .into_iter()
+            .map(|frame| {
+                format!(
+                    "event: {}\ndata: {frame}\n\n",
+                    frame["type"].as_str().unwrap()
+                )
+            })
+            .collect();
+        support::serve_payload(&listener, &payload).await
+    });
+    let mut request = support::request(vec![support::user()]);
+    support::set_tools(
+        &mut request,
+        json!([{"type":"function","name":"lookup","parameters":{"type":"object","properties":{}}}]),
+    );
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut stream = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(3),
+    )
+    .await
+    .expect("start real Anthropic HTTP stream");
+    let mut events = Vec::new();
+    let mut errors = Vec::new();
+    while let Some(event) = stream.next().await {
+        match event {
+            Ok(event) => events.push(event),
+            Err(error) => errors.push(error),
+        }
+    }
+    server.await.unwrap();
+    assert_eq!(
+        serde_json::to_value(events).unwrap(),
+        serde_json::to_value(vec![ResponseEvent::Created { response_id: None }]).unwrap(),
+        "a context-window terminal must not confirm the pending tool"
+    );
+    assert!(
+        matches!(errors.as_slice(), [ApiError::ContextWindowExceeded]),
+        "context exhaustion must retain its recovery classification: {errors:?}"
+    );
 }

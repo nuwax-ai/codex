@@ -217,9 +217,19 @@ pub(crate) fn spawn_pump(
             }
             if let Some(tee) = &sse_tee
                 && let Some(sse_bytes) = tee.lock().ok().map(|bytes| bytes.clone())
-                && anthropic_stop_reason(&sse_bytes).as_deref() == Some("pause_turn")
+                && let Some(reason) = anthropic_stop_reason(&sse_bytes)
             {
-                paused = true;
+                match reason.as_str() {
+                    "pause_turn" => paused = true,
+                    // Rig 0.44 folds both context exhaustion and max_tokens
+                    // into Length. Preserve the wire distinction so core can
+                    // recover by compacting rather than increasing the cap.
+                    "model_context_window_exceeded" => {
+                        response = response
+                            .with_finish_reason(rig_core::completion::FinishReason::Other(reason));
+                    }
+                    _ => {}
+                }
             }
         }
 

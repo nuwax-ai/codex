@@ -132,6 +132,84 @@ fn expected_usage() -> Vec<TokenUsage> {
 }
 
 #[tokio::test]
+async fn chat_reasoning_can_finish_after_the_answer_text() {
+    let events = run_chat(vec![
+        chat_chunk(
+            json!({"index":0,"delta":{"reasoning_content":"thinking"},"finish_reason":null}),
+        ),
+        chat_chunk(json!({"index":0,"delta":{"content":"answer"},"finish_reason":null})),
+        chat_chunk(json!({"index":0,"delta":{},"finish_reason":"stop"})),
+        usage_chunk(),
+    ])
+    .await;
+    assert!(events.iter().all(Result::is_ok), "{events:?}");
+    assert_visible_output(&events, "answer", expected_usage());
+    let reasoning: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            Ok(ResponseEvent::OutputItemDone(ResponseItem::Reasoning {
+                content,
+                encrypted_content,
+                ..
+            })) => Some((content.clone(), encrypted_content.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(reasoning.len(), 1);
+    assert_eq!(
+        reasoning[0].0,
+        Some(vec![
+            codex_protocol::models::ReasoningItemContent::ReasoningText {
+                text: "thinking".to_string(),
+            }
+        ])
+    );
+    let envelope = reasoning[0]
+        .1
+        .as_deref()
+        .expect("reasoning replay envelope");
+    let envelope: Value =
+        serde_json::from_str(envelope.strip_prefix("codex-rig-reasoning-v2:").unwrap()).unwrap();
+    assert_eq!(
+        envelope["blocks"][0]["native"]["item"]["reasoning_content"],
+        "thinking"
+    );
+}
+
+#[tokio::test]
+async fn chat_reasoning_can_finish_after_a_tool_call() {
+    let events = run_chat(vec![
+        chat_chunk(json!({"index":0,"delta":{"reasoning_content":"thinking"},"finish_reason":null})),
+        chat_chunk(json!({"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-after-reasoning","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":null})),
+        chat_chunk(json!({"index":0,"delta":{},"finish_reason":"tool_calls"})),
+        usage_chunk(),
+    ])
+    .await;
+    assert!(events.iter().all(Result::is_ok), "{events:?}");
+    let completed: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            Ok(ResponseEvent::OutputItemDone(ResponseItem::Reasoning { .. })) => Some("reasoning"),
+            Ok(ResponseEvent::OutputItemDone(ResponseItem::FunctionCall { call_id, .. })) => {
+                assert_eq!(call_id, "call-after-reasoning");
+                Some("tool")
+            }
+            Ok(ResponseEvent::Completed {
+                end_turn,
+                token_usage,
+                ..
+            }) => {
+                assert_eq!(end_turn, &Some(false));
+                assert_eq!(token_usage.as_ref(), expected_usage().first());
+                Some("completed")
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(completed, ["reasoning", "tool", "completed"]);
+}
+
+#[tokio::test]
 async fn empty_finish_reason_does_not_drop_the_real_length_terminal() {
     let events = run_chat(vec![
         chat_chunk(json!({"index":0,"delta":{"content":"kept"},"finish_reason":""})),

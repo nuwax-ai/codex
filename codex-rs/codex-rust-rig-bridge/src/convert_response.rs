@@ -18,6 +18,7 @@ use std::collections::HashSet;
 enum DeferredOutput {
     Event(Box<ResponseEvent>),
     Tool(String),
+    Reasoning(String),
 }
 
 /// The stream's terminal facts, extracted from rig's `CompletionResponse`
@@ -45,7 +46,9 @@ pub(crate) struct PendingRigMessage {
     source: String,
     completed: bool,
     active_reasoning_parts: HashSet<String>,
+    open_reasoning_parts: HashSet<String>,
     closed_reasoning_parts: HashSet<String>,
+    deferred_reasoning: std::collections::HashMap<String, Option<ResponseEvent>>,
     tool_positions: HashSet<String>,
     suffix: Vec<DeferredOutput>,
 }
@@ -82,7 +85,9 @@ impl PendingRigMessage {
             source,
             completed: false,
             active_reasoning_parts: HashSet::new(),
+            open_reasoning_parts: HashSet::new(),
             closed_reasoning_parts: HashSet::new(),
+            deferred_reasoning: std::collections::HashMap::new(),
             tool_positions: HashSet::new(),
             suffix: Vec::new(),
         }
@@ -133,6 +138,14 @@ impl PendingRigMessage {
     }
 
     fn tool_position(&mut self, id: &str, events: &mut Vec<ResponseEvent>) {
+        if !self.open_reasoning_parts.is_empty()
+            && let Some(reasoning_id) = &self.reasoning_item_id
+            && !self.deferred_reasoning.contains_key(reasoning_id)
+        {
+            self.deferred_reasoning.insert(reasoning_id.clone(), None);
+            self.suffix
+                .push(DeferredOutput::Reasoning(reasoning_id.clone()));
+        }
         finish_reasoning(self, events);
         finish_text(self, events);
         self.suffix
@@ -179,8 +192,10 @@ pub(crate) fn rig_event_to_response_events(
             events.push(ResponseEvent::OutputTextDelta(text));
         }
         Item::Event(StreamEvent::Reasoning { part, text }) => {
-            finish_text(pending, &mut events);
             let id = part_key(part);
+            if !pending.active_reasoning_parts.contains(&id) {
+                finish_text(pending, &mut events);
+            }
             pending.reasoning_added(&id, &mut events)?;
             let index = pending.reasoning.delta(id, &text);
             events.push(ResponseEvent::ReasoningContentDelta {
@@ -192,6 +207,16 @@ pub(crate) fn rig_event_to_response_events(
             let id = part_key(part);
             pending.tool_position(&id, &mut events);
             pending.tools.delta(id, &json)?;
+        }
+        Item::Event(StreamEvent::Start {
+            kind: PartKind::Reasoning,
+            part,
+            ..
+        }) => {
+            finish_text(pending, &mut events);
+            let id = part_key(part);
+            pending.reasoning_added(&id, &mut events)?;
+            pending.open_reasoning_parts.insert(id);
         }
         Item::Event(StreamEvent::Start {
             kind: PartKind::ToolCall,
@@ -211,9 +236,12 @@ pub(crate) fn rig_event_to_response_events(
                     // confirms the accumulated buffer.
                 }
                 rig_core::completion::message::AssistantContent::Reasoning(reasoning) => {
-                    finish_text(pending, &mut events);
                     let id = part_key(part);
+                    if !pending.active_reasoning_parts.contains(&id) {
+                        finish_text(pending, &mut events);
+                    }
                     pending.reasoning_added(&id, &mut events)?;
+                    pending.open_reasoning_parts.remove(&id);
                     pending.reasoning.complete(id, reasoning);
                 }
                 rig_core::completion::message::AssistantContent::ToolCall(call) => {
@@ -240,20 +268,28 @@ pub(crate) fn rig_event_to_response_events(
 }
 
 fn finish_reasoning(pending: &mut PendingRigMessage, events: &mut Vec<ResponseEvent>) {
+    // Chat keeps its reasoning part open while answer text or tools stream.
+    // Only End carries the authoritative native reasoning item for replay.
+    if !pending.open_reasoning_parts.is_empty() {
+        return;
+    }
     if let Some((content, encoded)) = pending.reasoning.finish(&pending.source) {
         pending
             .closed_reasoning_parts
             .extend(pending.active_reasoning_parts.drain());
-        events.push(ResponseEvent::OutputItemDone(ResponseItem::Reasoning {
-            id: pending
-                .reasoning_item_id
-                .take()
-                .map(ResponseItemId::from_server),
+        let id = pending.reasoning_item_id.take();
+        let event = ResponseEvent::OutputItemDone(ResponseItem::Reasoning {
+            id: id.clone().map(ResponseItemId::from_server),
             summary: vec![],
             content: Some(content),
             encrypted_content: Some(encoded),
             internal_chat_message_metadata_passthrough: None,
-        }));
+        });
+        if let Some(slot) = id.and_then(|id| pending.deferred_reasoning.get_mut(&id)) {
+            *slot = Some(event);
+        } else {
+            events.push(event);
+        }
     }
 }
 
@@ -377,6 +413,11 @@ pub(crate) fn handle_stream_terminal(
 }
 
 fn finish_pending_output(pending: &mut PendingRigMessage) -> Result<Vec<ResponseEvent>, ApiError> {
+    if !pending.open_reasoning_parts.is_empty() {
+        return Err(ApiError::Stream(
+            "stream ended with unconfirmed reasoning".into(),
+        ));
+    }
     let mut tool_events = pending.tools.finish()?;
     let mut events = Vec::new();
     finish_reasoning(pending, &mut events);
@@ -388,6 +429,14 @@ fn finish_pending_output(pending: &mut PendingRigMessage) -> Result<Vec<Response
         for item in std::mem::take(&mut pending.suffix) {
             match item {
                 DeferredOutput::Event(event) => events.push(*event),
+                DeferredOutput::Reasoning(id) => {
+                    let event = pending
+                        .deferred_reasoning
+                        .remove(&id)
+                        .flatten()
+                        .ok_or_else(|| ApiError::Stream("missing completed reasoning".into()))?;
+                    events.push(event);
+                }
                 DeferredOutput::Tool(id) => {
                     if let Some(mut call) = tool_events.remove(&id) {
                         if let Some(segment_id) = pending.tool_segment_ids.get(&id) {
