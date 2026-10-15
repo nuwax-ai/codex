@@ -161,7 +161,7 @@ async fn build_request_context(
     config: &Config,
 ) -> StageOneRequestContext {
     let model_name = crate::runtime::reachable_memory_model(
-        &config.model_provider_id,
+        &config.model_provider,
         config.memories.extract_model.as_deref(),
         context.provider().memory_extraction_preferred_model(),
         config.model.as_deref(),

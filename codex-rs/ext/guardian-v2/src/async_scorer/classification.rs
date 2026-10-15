@@ -327,9 +327,13 @@ impl Classification {
                     )
                     .approval_review_preferred_model();
                     codex_core::guardian_review::reachable_review_model_id(
-                        &config.model_provider_id,
+                        &config.model_provider,
                         preferred,
-                        config.model.as_deref().unwrap_or(preferred),
+                        // The thread's Config retains its startup model.
+                        parent_model
+                            .as_ref()
+                            .map(|model| model.slug.as_str())
+                            .unwrap_or(preferred),
                     )
                 });
                 let review_model = manager

@@ -72,6 +72,8 @@ use serde_json::json;
 
 use crate::async_scorer::authorization::ScoreAuthorization;
 
+#[path = "classification_model_tests.rs"]
+mod classification_model;
 #[path = "conversation_tests.rs"]
 mod conversation;
 #[path = "pending_score_tests.rs"]

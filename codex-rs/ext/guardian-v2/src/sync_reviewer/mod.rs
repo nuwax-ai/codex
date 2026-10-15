@@ -98,7 +98,7 @@ impl ThreadLifecycleContributor<Config> for GuardianExtension {
                             let preferred = provider.approval_review_preferred_model();
                             let reviewer_model =
                                 codex_core::guardian_review::reachable_review_model_id(
-                                    &options.config.model_provider_id,
+                                    &options.config.model_provider,
                                     preferred,
                                     options.config.model.as_deref().unwrap_or(preferred),
                                 );

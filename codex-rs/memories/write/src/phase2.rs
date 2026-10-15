@@ -342,7 +342,7 @@ mod agent {
         .ok()?;
 
         agent_config.model = Some(crate::runtime::reachable_memory_model(
-            &config.model_provider_id,
+            &config.model_provider,
             config.memories.consolidation_model.as_deref(),
             provider.memory_consolidation_preferred_model(),
             config.model.as_deref(),
