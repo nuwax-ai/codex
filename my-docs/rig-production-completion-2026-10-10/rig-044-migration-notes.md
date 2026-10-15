@@ -478,6 +478,45 @@ during_tool_runs_it_once` 的跨平台夹具适配。
 
 
 
+## 进展（2026-10-15 第十轮：ACP dev 联调 + Guardian 第三方审查修复）
+
+用户授权付费 API 后执行（此前顺延项）。设置：ACP 客户端
+`fork-codex-acp-ts` dev（v1.2.18，`CODEX_PATH` → 候选 `codex` app-server
+二进制，提交点 f6b1ad38f 前重建、sha256 d1f034e5…）；驱动与 MCP 截图
+夹具在 ACP 仓库 `tmp/`（gitignored，可复跑：`bash
+tmp/run-acp-validation.sh`，密钥仅按环境变量名继承自主工作区
+.env.local，不落任何工件）。vendor：MiMo chat wire（mimo-v2.6-flash），
+GLM 对照一轮。
+
+| 场景 | 结果 | 证据 |
+|---|---|---|
+| S1 引导 + MCP server | PASS | session 建立、screenshots server ready |
+| S2 环境变量传递 + 真实付费回合 | PASS | ACP→候选→rig→MiMo 往返 "pong" |
+| S3 截图工具执行 | PASS（实质） | app-server 日志 `take_screenshot status=completed`（修复后连续多轮）；driver 端 ACP 完成事件的 id/title 关联是夹具形状问题，不影响判定 |
+| S3b 真实识图 | PASS | 修复后 MiMo 对纯红 64×64 截图答 "red"/"Red"（修复前同模型答 "gray"/"unknown"——当时工具被拒、模型无图瞎猜） |
+| S4 取消 | PASS | stopReason=cancelled |
+| S5 压缩 + 续轮 | PASS | /compact（compaction_update×2）后 "post-compact-ok" |
+| S6 冷恢复 | PASS | 杀进程→新 agent→loadSession→召回 ACP-COLD-42 |
+
+**发现并修复的候选缺陷**（提交 `f6b1ad38f`）：Guardian 自动审批审查的
+审查模型从内置 OpenAI 目录解析（API-key provider 默认 gpt-5.6-luna），
+但审查请求走当前配置 provider——第三方端点不认 OpenAI 模型名（MiMo
+400 "Unsupported model"、GLM 1211 "模型不存在"）→ 审查必败 → 所有
+走 guardian 审批的 MCP 工具被拒执行（生产 nuwax 用户全部受影响）。
+修复：`resolve_review_model` 在非内置 OpenAI provider 上优先使用当前
+活动模型（provider 唯一确定可服务的 id）；用户显式
+auto_review_model_override 仍然优先；remote-v2 压缩审查同函数同样受益。
+单测钉住两分支；guardian 族 155/155。GLM 修复前对照轮（S1-S6 除识图
+外同样 PASS）保留在 /tmp/acp-val-glm.log。
+
+ACP 侧无独立缺陷：首轮 S6 失败是驱动未先 initialize（调用顺序），
+工具完成事件形状为 SDK 既有行为——均未改动 ACP 仓库（tmp/ 均
+gitignored）。识图此前未证实的主因正是本缺陷（图片从未送达）；修复
+后 MiMo flash 即具备识图能力，与「待指定 vision 模型」的旧结论一并
+更正。
+
+
+
 ## 执行清单
 
 - [x] Phase A 非流部分（12/16 文件）
@@ -493,6 +532,8 @@ during_tool_runs_it_once` 的跨平台夹具适配。
       nuwax env 离线 3/3、Bazel lock 同步沿用复审轮（代码路径未变）。
       —— 三批已收口（第六至九轮）：缺陷修复 + 生命周期证据 + 图片
       入口硬限 + 20 截图 stress；Linux/Windows 定向平台收据见第八/九轮。
-      —— 未闭环：全量 workspace/CI、代理/TLS、ACP dev（付费约束顺延）、
-      interrupt 夹具跨平台适配、真实付费录制与识图。
+      —— 第十轮补齐：ACP dev 联调全场景（含真实识图）+ Guardian 第三方
+      审查缺陷修复（f6b1ad38f）。
+      —— 未闭环：全量 workspace/CI、代理/TLS、interrupt 夹具跨平台适配、
+      付费 LIVE_CASSETTE=record 录制。
 - [x] reasoning v1 旧 DTO 解码保留（v2 写入、v1 解码+转换、rollout 不改写）
