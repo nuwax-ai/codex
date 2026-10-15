@@ -305,8 +305,9 @@ struct LegacyUsage {
     input_tokens: u64,
     #[serde(default)]
     output_tokens: u64,
-    #[serde(default)]
-    total_tokens: u64,
+    // The recorded `total_tokens` is deliberately absent: it predates the
+    // inclusive input, so `into_usage` re-derives it (see below). Serde
+    // ignores the field on decode.
     #[serde(default)]
     cached_input_tokens: u64,
     #[serde(default)]
@@ -318,14 +319,16 @@ struct LegacyUsage {
 impl LegacyUsage {
     /// 0.44 semantics: `input_tokens` includes cached and cache-written
     /// input, and only nonzero legacy counters count as reported (zero was
-    /// the old missing sentinel).
+    /// the old missing sentinel). The legacy `total_tokens` predates the
+    /// inclusive input, so it is re-derived exactly as the live pump's
+    /// wire-counter correction would have recorded it.
     fn into_usage(self) -> RigUsage {
         let reported = |value: u64| (value > 0).then_some(value);
         let input = self.input_tokens + self.cached_input_tokens + self.cache_creation_input_tokens;
         let mut usage = RigUsage::new();
         usage.input_tokens = reported(input);
         usage.output_tokens = reported(self.output_tokens);
-        usage.total_tokens = reported(self.total_tokens);
+        usage.total_tokens = reported(input.saturating_add(self.output_tokens));
         usage.cached_input_tokens = reported(self.cached_input_tokens);
         usage.cache_creation_input_tokens = reported(self.cache_creation_input_tokens);
         usage.reasoning_tokens = reported(self.reasoning_tokens);

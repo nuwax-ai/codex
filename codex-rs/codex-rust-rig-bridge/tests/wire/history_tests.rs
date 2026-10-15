@@ -324,3 +324,171 @@ async fn provider_completion_ids_survive_sdk_normalization() {
         assert_eq!(ids, vec![expected]);
     }
 }
+
+/// Drives one signed-thinking turn and replays it as history under `model`,
+/// returning the second request's serialized body. The origin the bridge
+/// claims for rebuilt turns must satisfy rig 0.44's history adapter for that
+/// model, or the signed thinking degrades to plain text on the wire.
+async fn replay_signed_thinking_under_model(
+    model: &str,
+    tools: Value,
+    leading: Vec<ResponseItem>,
+) -> Value {
+    let mut first_sse = vec![json!({"type":"message_start","message":{
+        "id":"msg-origin","type":"message","role":"assistant","content":[],
+        "model":model,"stop_reason":null,"stop_sequence":null,
+        "usage":{"input_tokens":4,"output_tokens":0}}})];
+    first_sse.extend([
+        json!({"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}),
+        json!({"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"signed thought"}}),
+        json!({"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"SIGNED"}}),
+        json!({"type":"content_block_stop","index":0}),
+        json!({"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call-origin","name":"lookup","input":{}}}),
+        json!({"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{}"}}),
+        json!({"type":"content_block_stop","index":1}),
+        json!({"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":9}}),
+        json!({"type":"message_stop"}),
+    ]);
+    let payload: String = first_sse
+        .into_iter()
+        .map(|frame| {
+            format!(
+                "event: {}\ndata: {frame}\n\n",
+                frame["type"].as_str().unwrap()
+            )
+        })
+        .collect();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let provider = provider(listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        support::serve_payload(&listener, &payload).await;
+        support::serve_payload(&listener, support::ANTHROPIC_SSE).await
+    });
+    let mut input: Vec<Value> = leading
+        .into_iter()
+        .map(|item| serde_json::to_value(&item).unwrap())
+        .collect();
+    input.push(support::user());
+    let mut request = support::request(input);
+    request.model = model.to_string();
+    support::set_tools(&mut request, tools);
+    let auth: SharedAuthProvider = Arc::new(support::DummyAuth);
+    let mut first = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(3),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = first.next().await {
+        if let ResponseEvent::OutputItemDone(item) = event.unwrap() {
+            request.input.push(item);
+        }
+    }
+    request.input.push(
+        serde_json::from_value(json!({
+            "type":"function_call_output","call_id":"call-origin","output":"done"
+        }))
+        .unwrap(),
+    );
+    let mut second = stream_via_rig(
+        &request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        RigProtocol::Anthropic,
+        Duration::from_secs(3),
+    )
+    .await
+    .unwrap();
+    while let Some(event) = second.next().await {
+        event.unwrap();
+    }
+    server.await.unwrap()["body"].clone()
+}
+
+#[tokio::test]
+async fn same_model_origin_fingerprint_covers_system_prompt_and_hosted_tools() {
+    // claude-sonnet-4-5 does not bind its items to the request context, so
+    // rig compares the origin's context fingerprint: sorted tools, the
+    // folded leading system prompt, and the raw hosted tools. A bridge
+    // fingerprint that diverges from rig's private `context_of` downgrades
+    // the turn to cross-model and the signed thinking degrades to text.
+    let body = replay_signed_thinking_under_model(
+        "claude-sonnet-4-5",
+        json!([
+            {"type":"function","name":"lookup","parameters":{"type":"object","properties":{"query":{"type":"string"}}}},
+            {"type":"web_search"}
+        ]),
+        vec![
+            serde_json::from_value(json!({
+                "type":"message","role":"developer",
+                "content":[{"type":"input_text","text":"first instruction"}]
+            }))
+            .unwrap(),
+            serde_json::from_value(json!({
+                "type":"message","role":"developer",
+                "content":[{"type":"input_text","text":"second instruction"}]
+            }))
+            .unwrap(),
+        ],
+    )
+    .await;
+    // Two LEADING system messages stay separate blocks on the wire (only a
+    // mid-conversation system triggers the fold); the context fingerprint
+    // joins them internally, which is what the thinking assertion pins.
+    let system = body["system"].as_array().unwrap();
+    assert_eq!(
+        system,
+        &[
+            json!({"type":"text","text":"first instruction"}),
+            json!({"type":"text","text":"second instruction"}),
+        ]
+    );
+    // The hosted web_search tool rides the serialized tools array (raw
+    // additional_params), which the fingerprint also covers.
+    let tools = body["tools"].as_array().unwrap();
+    assert!(
+        tools.iter().any(|tool| {
+            tool["type"]
+                .as_str()
+                .is_some_and(|kind| kind.starts_with("web_search"))
+                && tool.get("input_schema").is_none()
+        }),
+        "hosted server tool serialized raw (no function schema): {tools:?}"
+    );
+    assert_eq!(
+        body["messages"][1],
+        json!({"role":"assistant","content":[
+            {"type":"thinking","thinking":"signed thought","signature":"SIGNED"},
+            {"type":"tool_use","id":"call-origin","name":"lookup","input":{}}
+        ]}),
+        "signed thinking must survive the same-model fingerprint comparison"
+    );
+}
+
+#[tokio::test]
+async fn binds_context_claude_models_replay_signed_thinking_without_a_fingerprint() {
+    // claude-sonnet-5-5 binds its thinking blocks to the request context:
+    // with adaptive thinking (the request names no `thinking` option), the
+    // driver compares no fingerprint and asks the provider to drop unbound
+    // items instead. The bridge's fingerprint-free origin must satisfy that
+    // branch too — a catalog-driven path with no other offline coverage.
+    let body = replay_signed_thinking_under_model(
+        "claude-sonnet-5-5",
+        json!([{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"query":{"type":"string"}}}}]),
+        Vec::new(),
+    )
+    .await;
+    assert_eq!(
+        body["messages"][1],
+        json!({"role":"assistant","content":[
+            {"type":"thinking","thinking":"signed thought","signature":"SIGNED"},
+            {"type":"tool_use","id":"call-origin","name":"lookup","input":{}}
+        ]}),
+        "signed thinking must survive the context-binding model branch"
+    );
+}

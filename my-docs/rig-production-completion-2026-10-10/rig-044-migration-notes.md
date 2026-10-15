@@ -168,13 +168,56 @@ fixture 接口已随迁）。按 0.44 语义的设计决策与坑：
    的纯历史请求在 wire 测试里显式声明工具（生产恒有工具声明）；opt-out/
    去重尾部等无锚点场景的相邻 user 合并期望改为合并后的形状。
 
+## 进展（2026-10-15 第三轮：回放验证 + 残留收敛）
+
+live-tests 离线回放矩阵全绿（`LIVE_CASSETTE=replay LIVE_VENDORS=mimo,glm,step`
+bridge_live 84/84），修掉回放暴露的三个问题并补齐两条 origin 覆盖：
+
+1. **v1 reasoning DTO serde 形状错误**（回放 panic `invalid legacy reasoning
+   block`）：0.42 的 `ReasoningContent` 是
+   `#[serde(tag="type", content="content", rename_all="snake_case")]` 邻接标记
+   （`{"type":"text","content":{"text":..,"signature":..}}`），不是外标记单键
+   map。已按 0.42 registry 源码核对修正。
+2. **legacy usage 换算的 total 口径**：input 升级为包含式后，记录值里的
+   `total_tokens`（旧口径，不含 cache）必须同步重派生为
+   `inclusive_input + output`，否则违反 total ≥ input+output 不变量
+   （bridge_live tool 场景回放抓到）。与 live pump 的 wire 校正语义一致，
+   单测 `legacy_usage_upgrades_to_inclusive_counters_and_rederives_the_total`
+   钉住算术。
+3. **exec_live 在 replay 下误激活**：exec 级场景起真实 codex 进程打真端点，
+   replay 占位 URL 使其必然失败；matrix 宏统一在 `CassetteMode::Replay` 下
+   跳过（与 bridge_live auth 场景的既有模式一致）。
+4. **origin 覆盖补齐**（上一轮的残留项 2）：
+   `same_model_origin_fingerprint_covers_system_prompt_and_hosted_tools`
+   （claude-sonnet-4-5：非退化指纹输入——双 developer system、function +
+   hosted 工具、raw tools 上 wire；顺带钉住两个前导 system 在 wire 上保持
+   两个块，只有中途 system 才触发合并）与
+   `binds_context_claude_models_replay_signed_thinking_without_a_fingerprint`
+   （claude-sonnet-5-5：目录驱动的无指纹分支）。
+5. **nuwax 离线三件套修复**（startup 工具往返 / budget 恰好覆盖 / budget
+   差一拒绝，3/3 恢复全绿）：loopback 夹具的 `marker_from_prompt` 每条
+   user 消息只看第一个 text 块，而合并后的 codex-core 把 environment_context
+   作为独立 text 块放在真实 prompt 之前——服务器提前 `?` 退出关闭 socket，
+   客户端报 `connection closed before message completed`（看似传输层故障，
+   实为夹具假设过时）。修复 = 遍历全部 text 块（本地副本 +
+   nuwax_loopback_common 共享版）；另给 read_request 的 content-length
+   缺失路径补 headers 上下文便于诊断。排查中重建了 codex-exec（receipt
+   以整树状态为准，任何源改动后都需重建二进制再跑）。
+6. **replay 模式的套件一致性**：nuwax 离线场景入口在 `CassetteMode::Replay`
+   下显式跳过（exec_live matrix 宏同样），使 `LIVE_CASSETTE=replay
+   cargo nextest run -p codex-live-tests` 整 crate 188/188 全绿；nuwax
+   三件套在无 LIVE_CASSETTE 时照常离线运行（loopback，非 replay 路径）。
+7. `just bazel-lock-update` 已跑（Cargo.lock 的 0.44 依赖已同步进
+   MODULE.bazel.lock）。
+
 ### 已知残留（Phase C 复核项）
 - `anthropic_context_fingerprint` 与 `anthropic_history_origin` 镜像 rig 内部
   逻辑，rig 版本升级时需人工核对 `Operation::prepare`/`history::context_of`/
-  `drops_unbound_items` 三处。
-- 绑定上下文的 Claude 模型（binds_context=true）走"无指纹比较"分支，依赖
-  provider 侧 drop_block；该路径无离线测试覆盖（模型目录驱动的行为）。
-- live-tests 仅离线编译验证（recorder/fixture 迁移后），录制/回放轮次未跑。
+  `drops_unbound_items` 三处（非退化输入现已被 wire 测试钉住）。
+- 录制轮次（LIVE_CASSETTE=record，需付费 API）未跑——待用户授权后进行；
+  到时新 fixture 将以 v2 格式写入。
+- resume/compact、app-server env 的 codex-core 级回归待跑（本轮已覆盖：
+  bridge 283/283、live-tests replay 188/188、nuwax 离线 3/3）。
 
 ## 执行清单
 - [x] Phase A 非流部分（12/16 文件）
@@ -183,4 +226,7 @@ fixture 接口已随迁）。按 0.44 语义的设计决策与坑：
 - [ ] Phase C 验证：三 wire 出站、工具配对、终局/迟到 usage、cap、取消、
       retry/idle/HTTP 预算、代理/TLS、signed reasoning 旧会话、resume/compact、
       app-server env、live-tests 离线；`just bazel-lock-update`
+      —— 已完成：bridge 283/283（含 origin 两条 + legacy usage 单测）、
+      live-tests 离线 replay 188/188（bridge_live 84 场景 + nuwax/exec 跳过
+      语义）、nuwax env 离线 3/3、bazel lock 同步
 - [x] reasoning v1 旧 DTO 解码保留（v2 写入、v1 解码+转换、rollout 不改写）

@@ -79,7 +79,7 @@ async fn read_request(socket: &mut TcpStream) -> Result<(String, Value)> {
                 .then(|| value.trim().parse().ok())
         })
         .flatten()
-        .context("content length header")?;
+        .with_context(|| format!("content length header missing; headers: {headers}"))?;
     while data.len() < header_end + length {
         let mut chunk = [0u8; 8192];
         let read = socket.read(&mut chunk).await?;
@@ -100,12 +100,15 @@ fn marker_from_prompt(body: &Value) -> Result<String> {
         .context("messages array")?
         .iter()
         .filter(|&message| message["role"] == "user")
-        .filter_map(|message| match &message["content"] {
-            Value::String(text) => Some(text.clone()),
+        .flat_map(|message| match &message["content"] {
+            Value::String(text) => vec![text.clone()],
+            // The user turn carries several text parts (environment context
+            // first, the actual prompt after); scan every part.
             Value::Array(parts) => parts
                 .iter()
-                .find_map(|part| part["text"].as_str().map(str::to_string)),
-            _ => None,
+                .filter_map(|part| part["text"].as_str().map(str::to_string))
+                .collect(),
+            _ => Vec::new(),
         })
         .find(|text| text.contains("echo "))
         .context("marker prompt with `echo`")?;
@@ -171,6 +174,14 @@ async fn nuwax_env_startup_reaches_rig_with_tool_round_trip_and_no_leak() -> Res
     // Fail fast with the harness's own build instructions when the binary is
     // missing; the manifest receipt inside the scene checks source identity.
     codex_exec_binary()?;
+    // These scenes are offline by construction (loopback server) and run
+    // without LIVE_CASSETTE; under a whole-crate replay invocation they skip
+    // rather than trip the shared replay guard in run_scene.
+    if codex_live_tests::cassette_mode() == codex_live_tests::CassetteMode::Replay {
+        println!("nuwax env scene runs offline without LIVE_CASSETTE — skipping under replay");
+        return Ok(());
+    }
+
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
 

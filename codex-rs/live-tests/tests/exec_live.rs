@@ -29,7 +29,18 @@ macro_rules! exec_matrix {
                 #[tokio::test(flavor = "multi_thread")]
                 async fn [<$vendor _ $suffix>]() -> anyhow::Result<()> {
                     match vendor($vendor) {
-                        Some(cfg) => [<$suffix _scenario>](&cfg).await,
+                        Some(cfg) => {
+                            // Exec-level scenarios spawn the real codex
+                            // binary against a live endpoint; cassettes cover
+                            // only the bridge boundary, so replay mode skips.
+                            if codex_live_tests::cassette_mode()
+                                == codex_live_tests::CassetteMode::Replay
+                            {
+                                println!("exec scenario is live-only — skipping in replay");
+                                return Ok(());
+                            }
+                            [<$suffix _scenario>](&cfg).await
+                        }
                         None => {
                             println!("vendor `{}` not configured — skipping", $vendor);
                             Ok(())

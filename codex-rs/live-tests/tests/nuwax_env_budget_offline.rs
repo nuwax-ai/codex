@@ -50,6 +50,13 @@ fn offline_config(addr: std::net::SocketAddr, vendor: &str) -> LiveConfig {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn budget_exactly_covering_the_round_trip_completes_normally() -> Result<()> {
+    // These scenes are offline by construction (loopback server) and run
+    // without LIVE_CASSETTE; under a whole-crate replay invocation they skip
+    // rather than trip the shared replay guard in run_scene.
+    if codex_live_tests::cassette_mode() == codex_live_tests::CassetteMode::Replay {
+        println!("nuwax env scene runs offline without LIVE_CASSETTE — skipping under replay");
+        return Ok(());
+    }
     codex_exec_binary()?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
@@ -101,6 +108,13 @@ async fn budget_exactly_covering_the_round_trip_completes_normally() -> Result<(
 
 #[tokio::test(flavor = "multi_thread")]
 async fn budget_one_short_refuses_the_continuation_before_any_dispatch() -> Result<()> {
+    // These scenes are offline by construction (loopback server) and run
+    // without LIVE_CASSETTE; under a whole-crate replay invocation they skip
+    // rather than trip the shared replay guard in run_scene.
+    if codex_live_tests::cassette_mode() == codex_live_tests::CassetteMode::Replay {
+        println!("nuwax env scene runs offline without LIVE_CASSETTE — skipping under replay");
+        return Ok(());
+    }
     codex_exec_binary()?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;

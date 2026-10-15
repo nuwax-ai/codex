@@ -26,7 +26,10 @@ pub fn is_replay_envelope(value: &str) -> bool {
 /// The rig 0.42 reasoning block shapes recorded inside v1 envelopes. The
 /// legacy DTO is decode-only: old rollouts are never rewritten in place,
 /// and their blocks convert to the 0.44 `Reasoning` on read.
+/// Pinned rig 0.42 serde shape: adjacently tagged with the payload nested
+/// under `content` (`{"type":"text","content":{"text":..,"signature":..}}`).
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", content = "content", rename_all = "snake_case")]
 enum LegacyReasoningContent {
     Text {
         text: String,

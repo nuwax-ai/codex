@@ -77,3 +77,27 @@ fn replay_does_not_recover_from_a_conversion_error_at_the_terminal() {
     let error = replay_rig_events(&recording, HashSet::from(["custom".into()])).unwrap_err();
     assert!(matches!(error, codex_api::ApiError::Stream(_)));
 }
+
+#[test]
+fn legacy_usage_upgrades_to_inclusive_counters_and_rederives_the_total() {
+    // A recorded 0.42 Final usage: `input_tokens` excluded cache and the
+    // recorded `total_tokens` excluded it too. 0.44 replay upgrades both
+    // exactly as the live pump's wire-counter correction would have
+    // recorded them; the bridge_live fixture replays pin this end-to-end.
+    let usage: LegacyUsage = serde_json::from_value(serde_json::json!({
+        "input_tokens": 131,
+        "output_tokens": 51,
+        "total_tokens": 182,
+        "cached_input_tokens": 128,
+        "cache_creation_input_tokens": 0,
+        "reasoning_tokens": 32,
+    }))
+    .expect("legacy usage");
+    let upgraded = usage.into_usage();
+    assert_eq!(upgraded.input_tokens, Some(259));
+    assert_eq!(upgraded.cached_input_tokens, Some(128));
+    assert_eq!(upgraded.cache_creation_input_tokens, None);
+    assert_eq!(upgraded.output_tokens, Some(51));
+    assert_eq!(upgraded.reasoning_tokens, Some(32));
+    assert_eq!(upgraded.total_tokens, Some(310));
+}

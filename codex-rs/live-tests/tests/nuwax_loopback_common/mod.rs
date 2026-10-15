@@ -69,12 +69,15 @@ pub fn marker_from_prompt(body: &Value) -> Result<String> {
         .context("messages array")?
         .iter()
         .filter(|&message| message["role"] == "user")
-        .filter_map(|message| match &message["content"] {
-            Value::String(text) => Some(text.clone()),
+        .flat_map(|message| match &message["content"] {
+            Value::String(text) => vec![text.clone()],
+            // The user turn carries several text parts (environment context
+            // first, the actual prompt after); scan every part.
             Value::Array(parts) => parts
                 .iter()
-                .find_map(|part| part["text"].as_str().map(str::to_string)),
-            _ => None,
+                .filter_map(|part| part["text"].as_str().map(str::to_string))
+                .collect(),
+            _ => Vec::new(),
         })
         .find(|text| text.contains("echo "))
         .context("marker prompt with `echo`")?;
