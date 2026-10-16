@@ -3,6 +3,7 @@ use app_test_support::MockResponsesConfig;
 use app_test_support::TestAppServer;
 use app_test_support::create_command_execution_sse_response;
 use app_test_support::create_fake_paginated_rollout;
+use app_test_support::create_fake_rollout_with_source;
 use app_test_support::create_fake_rollout_with_text_elements;
 use app_test_support::create_final_assistant_message_sse_response;
 use app_test_support::create_mock_responses_server_repeating_assistant;
@@ -2501,17 +2502,16 @@ async fn thread_items_list_limit_one_pages_slice_between_call_and_result_items()
         full_items,
         expected_sequence
             .iter()
-            .map(|(turn_id, kind, item_id)| {
-                (turn_id.to_string(), *kind, item_id.to_string())
-            })
+            .map(|(turn_id, kind, item_id)| { (turn_id.to_string(), *kind, item_id.to_string()) })
             .collect::<Vec<_>>()
     );
     assert_command_result_retained(&full_thread.turns[0].items);
 
     for direction in [SortDirection::Asc, SortDirection::Desc] {
-        let merged =
-            read_all_item_pages_limited_to_one(&mut mcp, thread_id, /*turn_id*/ None, direction)
-                .await?;
+        let merged = read_all_item_pages_limited_to_one(
+            &mut mcp, thread_id, /*turn_id*/ None, direction,
+        )
+        .await?;
         let mut observed: Vec<(String, &'static str, String)> = merged
             .iter()
             .map(|entry| {
@@ -2544,7 +2544,8 @@ async fn thread_items_list_limit_one_pages_slice_between_call_and_result_items()
                 .position(|id| *id == "call-1")
                 .expect("tool call item in merged pages");
             assert_eq!(
-                merged_ids[call_index + 1], "call-1-output",
+                merged_ids[call_index + 1],
+                "call-1-output",
                 "the call item's result must stay adjacent across page boundaries"
             );
             let ThreadItem::FunctionCallOutput { id, output, .. } = &merged[call_index + 1].item
@@ -2674,13 +2675,18 @@ async fn thread_items_read_validates_ids_before_history_access() -> Result<()> {
     Ok(())
 }
 
-/// A cold reconnect must rebuild the exact history identity the hot connection
-/// observed: turn ids, order, statuses (including the failed turn's error), and
-/// item identities must be identical across a full read, merged pagination, a
-/// hot re-attach through `thread/resume`, and the same views after the
-/// app-server process restarts.
+/// A cold reconnect (and a persisted-history fork) must replay the exact
+/// history the hot connection observed: the FULL ThreadItem payloads — ids,
+/// kinds, ordering, tool outputs, image data, and failure details — must be
+/// identical across a hot full read, a merged limit=1 pagination walk, a hot
+/// re-attach through `thread/resume` followed by another full read, the same
+/// views after the app-server process restarts, and a fork of the thread.
+/// Inline `thread/resume` turns are compared at shell level only, because
+/// that response scopes its items view itself; the full-payload contract is
+/// asserted on the views that load full items.
 #[tokio::test]
-async fn cold_reconnect_replays_identical_history_across_read_resume_and_pagination() -> Result<()> {
+async fn cold_reconnect_replays_identical_history_across_read_resume_and_pagination() -> Result<()>
+{
     let responses = vec![
         create_command_execution_sse_response(
             vec!["echo".to_string(), "tool-ran".to_string()],
@@ -2691,6 +2697,9 @@ async fn cold_reconnect_replays_identical_history_across_read_resume_and_paginat
         create_final_assistant_message_sse_response("tool turn done")?,
         responses::sse_failed("resp-fail", "server_error", "simulated failure"),
         create_final_assistant_message_sse_response("final turn done")?,
+        // Capped turn: ends incomplete on max_output_tokens after partial
+        // streamed text; the failed turn keeps its partial payloads.
+        capped_turn_sse_response(),
     ];
     let server = create_mock_responses_server_sequence(responses).await;
     let codex_home = TempDir::new()?;
@@ -2764,29 +2773,50 @@ async fn cold_reconnect_replays_identical_history_across_read_resume_and_paginat
     .await??;
     assert_eq!(text_turn.turn.status, TurnStatus::Completed);
 
+    // Turn 4: a turn capped on output tokens.
+    let capped_turn = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.start_turn_and_wait_for_completion(TurnStartParams {
+            thread_id: thread.id.clone(),
+            input: vec![UserInput::Text {
+                text: "get cut short".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        }),
+    )
+    .await??;
+    assert_eq!(capped_turn.turn.status, TurnStatus::Failed);
+
     let thread_id = codex_protocol::ThreadId::from_string(&thread.id)?;
 
     // View 1: hot full read.
     let hot_full = read_full_history(&mut mcp, thread_id).await?;
-    assert_eq!(hot_full.len(), 3);
+    assert_eq!(hot_full.len(), 4);
     assert_eq!(
-        hot_full.iter().map(|turn| turn.status.clone()).collect::<Vec<_>>(),
+        hot_full
+            .iter()
+            .map(|turn| turn.status.clone())
+            .collect::<Vec<_>>(),
         vec![
             TurnStatus::Completed,
             TurnStatus::Failed,
-            TurnStatus::Completed
+            TurnStatus::Completed,
+            TurnStatus::Failed
         ]
     );
-    assert!(hot_full[1]
-        .error
-        .as_ref()
-        .is_some_and(|error| error.message.contains("simulated failure")));
+    assert!(
+        hot_full[1]
+            .error
+            .as_ref()
+            .is_some_and(|error| error.message.contains("simulated failure"))
+    );
     assert_command_result_retained(&hot_full[0].items);
 
-    // View 2: hot merged pagination.
+    // View 2: hot merged pagination carrying full item payloads.
     let hot_paged = read_merged_pagination(&mut mcp, thread_id).await?;
 
-    // View 3: hot re-attach through thread/resume.
+    // View 3: hot re-attach through thread/resume, then another full read.
     let hot_resume_id = mcp
         .send_thread_resume_request(ThreadResumeParams {
             thread_id: thread.id.clone(),
@@ -2797,11 +2827,12 @@ async fn cold_reconnect_replays_identical_history_across_read_resume_and_paginat
         thread: hot_resumed,
         ..
     } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(hot_resume_id)).await??;
+    let hot_after_attach = read_full_history(&mut mcp, thread_id).await?;
 
     timeout(DEFAULT_READ_TIMEOUT, mcp.shutdown_gracefully()).await??;
     drop(mcp);
 
-    // View 4: the same three surfaces after a cold restart.
+    // View 4: the same surfaces after a cold restart.
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
         .build_initialized()
@@ -2819,15 +2850,48 @@ async fn cold_reconnect_replays_identical_history_across_read_resume_and_paginat
     let cold_full = read_full_history(&mut mcp, thread_id).await?;
     let cold_paged = read_merged_pagination(&mut mcp, thread_id).await?;
 
-    let expected = turn_fingerprints(&hot_full);
-    assert_eq!(turn_fingerprints(&hot_resumed.turns), expected);
-    assert_eq!(turn_fingerprints(&cold_resumed.turns), expected);
-    assert_eq!(turn_fingerprints(&cold_full), expected);
+    // View 5: fork the persisted history and read the fork back.
+    let fork_id = mcp
+        .send_thread_fork_request(ThreadForkParams {
+            thread_id: thread.id.clone(),
+            ..Default::default()
+        })
+        .await?;
+    let ThreadForkResponse {
+        thread: forked_thread,
+        ..
+    } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(fork_id)).await??;
+    let fork_turns = read_full_history(
+        &mut mcp,
+        codex_protocol::ThreadId::from_string(&forked_thread.id)?,
+    )
+    .await?;
 
-    assert_eq!(hot_paged.turns, cold_paged.turns);
-    assert_eq!(hot_paged.turns, fingerprint_turn_shells(&hot_full));
-    assert_eq!(hot_paged.items, cold_paged.items);
-    assert_eq!(hot_paged.items, flattened_item_identities(&hot_full));
+    // Full-payload contract on every view that loads full items.
+    let expected = canonical_turns(&hot_full);
+    assert_eq!(canonical_turns(&hot_after_attach), expected);
+    assert_eq!(canonical_turns(&cold_full), expected);
+    assert_eq!(canonical_turns(&fork_turns), expected);
+    assert_eq!(hot_paged.items, flattened_full_items(&hot_full));
+    assert_eq!(cold_paged.items, hot_paged.items);
+
+    // Shell-level checks for the views whose items scope is decided by the
+    // response itself (inline resume turns, paginated turn shells).
+    let expected_shells: Vec<TurnShell> = hot_full.iter().map(turn_shell).collect();
+    assert_eq!(
+        hot_resumed.turns.iter().map(turn_shell).collect::<Vec<_>>(),
+        expected_shells
+    );
+    assert_eq!(
+        cold_resumed
+            .turns
+            .iter()
+            .map(turn_shell)
+            .collect::<Vec<_>>(),
+        expected_shells
+    );
+    assert_eq!(hot_paged.turns, expected_shells);
+    assert_eq!(cold_paged.turns, expected_shells);
 
     Ok(())
 }
@@ -3121,14 +3185,12 @@ struct TurnShell {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct TurnFingerprint {
-    shell: TurnShell,
-    items: Vec<(&'static str, String)>,
-}
 
 struct MergedPagination {
     turns: Vec<TurnShell>,
-    items: Vec<(String, &'static str, String)>,
+    /// Every persisted item with its owning turn id, in order — the FULL
+    /// ThreadItem payloads, not identities.
+    items: Vec<(String, ThreadItem)>,
 }
 
 fn turn_shell(turn: &codex_app_server_protocol::Turn) -> TurnShell {
@@ -3139,64 +3201,143 @@ fn turn_shell(turn: &codex_app_server_protocol::Turn) -> TurnShell {
     }
 }
 
-fn turn_fingerprints(turns: &[codex_app_server_protocol::Turn]) -> Vec<TurnFingerprint> {
-    turns
-        .iter()
-        .map(|turn| TurnFingerprint {
-            shell: turn_shell(turn),
-            items: turn
-                .items
-                .iter()
-                .map(|item| (thread_item_kind(item), item.id().to_string()))
-                .collect(),
-        })
-        .collect()
-}
-
-fn fingerprint_turn_shells(turns: &[codex_app_server_protocol::Turn]) -> Vec<TurnShell> {
-    turns.iter().map(turn_shell).collect()
-}
-
-fn flattened_item_identities(
-    turns: &[codex_app_server_protocol::Turn],
-) -> Vec<(String, &'static str, String)> {
-    turns
-        .iter()
-        .flat_map(|turn| {
-            turn.items
-                .iter()
-                .map(|item| {
-                    (
-                        turn.id.clone(),
-                        thread_item_kind(item),
-                        item.id().to_string(),
-                    )
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect()
-}
-
 async fn read_merged_pagination(
     mcp: &mut TestAppServer,
     thread_id: codex_protocol::ThreadId,
 ) -> Result<MergedPagination> {
     let turns = read_all_turn_pages_limited_to_one(mcp, thread_id, SortDirection::Asc).await?;
-    let entries = read_all_item_pages_limited_to_one(mcp, thread_id, None, SortDirection::Asc)
-        .await?;
+    let entries =
+        read_all_item_pages_limited_to_one(mcp, thread_id, None, SortDirection::Asc).await?;
     Ok(MergedPagination {
         turns: turns.iter().map(turn_shell).collect(),
         items: entries
             .iter()
-            .map(|entry| {
-                (
-                    entry.turn_id.clone(),
-                    thread_item_kind(&entry.item),
-                    entry.item.id().to_string(),
-                )
-            })
+            .map(|entry| (entry.turn_id.clone(), entry.item.clone()))
             .collect(),
     })
+}
+
+/// Canonical full-payload view of a turn list for cross-view comparison.
+///
+/// Every ThreadItem payload byte — ids, kinds, ordering, tool outputs, image
+/// data, failure details — must be identical across read paths. Only these
+/// fields are normalized, each because the reader recomputes or scopes it per
+/// response rather than persisting it as item content:
+/// - `startedAt` / `completedAt` / `durationMs`: wall-clock bookkeeping
+///   materialized per read; not part of any ThreadItem payload.
+/// - `itemsView`: how much of `items` THIS response chose to load (full,
+///   summary, not-loaded); the loaded item payloads themselves are compared
+///   byte-for-byte.
+fn canonical_turns(turns: &[codex_app_server_protocol::Turn]) -> serde_json::Value {
+    let value = serde_json::to_value(turns).expect("serialize turns");
+    normalize_turn_list(value)
+}
+
+fn normalize_turn_list(value: serde_json::Value) -> serde_json::Value {
+    let serde_json::Value::Array(turns) = value else {
+        return value;
+    };
+    serde_json::Value::Array(
+        turns
+            .into_iter()
+            .map(|mut turn| {
+                if let serde_json::Value::Object(fields) = &mut turn {
+                    fields.remove("startedAt");
+                    fields.remove("completedAt");
+                    fields.remove("durationMs");
+                    fields.remove("itemsView");
+                }
+                turn
+            })
+            .collect(),
+    )
+}
+
+/// Flattens full-read turns into (turn id, item) pairs with the complete
+/// ThreadItem payloads, for comparison against the paginated item walk.
+fn flattened_full_items(turns: &[codex_app_server_protocol::Turn]) -> Vec<(String, ThreadItem)> {
+    turns
+        .iter()
+        .flat_map(|turn| {
+            turn.items
+                .iter()
+                .map(|item| (turn.id.clone(), item.clone()))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// A cold resume must read a legacy-format rollout written before newer
+/// optional fields existed: turns and user messages come back with the newer
+/// fields materialized as defaults instead of failing the read. (Byte-exact
+/// image payload round-trips are pinned separately: core-level rollout
+/// replay suites and the ACP cold-restart image rounds.)
+#[tokio::test]
+async fn cold_resume_reads_legacy_rollout_without_newer_fields() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("resumed").await;
+    let codex_home = TempDir::new()?;
+    MockResponsesConfig::new(&server.uri()).write(codex_home.path())?;
+    // `create_fake_rollout_with_source` writes the long-standing minimal
+    // field set: no text_elements, no root turn ids, no newer session fields.
+    let conversation_id = create_fake_rollout_with_source(
+        codex_home.path(),
+        "2025-01-06T09-00-00",
+        "2025-01-06T09:00:00Z",
+        "legacy minimal rollout",
+        Some("mock_provider"),
+        /*git_info*/ None,
+        codex_protocol::protocol::SessionSource::Exec,
+    )?;
+    // Append a legacy turn marker pair with only the original fields.
+    let rollout = rollout_path(codex_home.path(), "2025-01-06T09-00-00", &conversation_id);
+    let legacy_lines = [
+        json!({
+            "timestamp": "2025-01-06T09:00:01Z",
+            "type": "event_msg",
+            "payload": {"type": "turn_started", "turn_id": "turn-legacy"}
+        })
+        .to_string(),
+        json!({
+            "timestamp": "2025-01-06T09:00:03Z",
+            "type": "event_msg",
+            "payload": {"type": "turn_complete", "turn_id": "turn-legacy"}
+        })
+        .to_string(),
+    ];
+    let mut contents = std::fs::read_to_string(&rollout)?;
+    for line in legacy_lines {
+        contents.push('\n');
+        contents.push_str(&line);
+    }
+    std::fs::write(&rollout, contents)?;
+
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build_initialized()
+        .await?;
+    let resume_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id: conversation_id.clone(),
+            ..Default::default()
+        })
+        .await?;
+    let _: ThreadResumeResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
+
+    let turns = read_full_history(
+        &mut mcp,
+        codex_protocol::ThreadId::from_string(&conversation_id)?,
+    )
+    .await?;
+    assert_eq!(turns.len(), 2, "legacy turns must all read back: {turns:?}");
+    let legacy_turn = &turns[1];
+    assert_eq!(legacy_turn.id, "turn-legacy");
+    assert_eq!(legacy_turn.status, TurnStatus::Completed);
+    // Newer optional fields materialize as defaults instead of erroring.
+    assert_eq!(legacy_turn.root_turn_id, None);
+    assert_eq!(legacy_turn.items, Vec::new());
+
+    Ok(())
 }
 
 fn thread_item_kind(item: &ThreadItem) -> &'static str {
@@ -3225,6 +3366,28 @@ fn thread_item_kind(item: &ThreadItem) -> &'static str {
 
 /// The correlated call/result pair and the in-flight tool call must retain
 /// their result payloads through every read path.
+/// A responses-wire SSE stream that ends incomplete on max_output_tokens
+/// after partial streamed text, producing a capped (failed) turn.
+fn capped_turn_sse_response() -> String {
+    let frames = [
+        json!({"type": "response.created", "response": {"id": "resp_read_cap"}}),
+        json!({"type": "response.output_item.added", "output_index": 0, "item": {"type": "message", "id": "msg_read_cap", "role": "assistant", "content": []}}),
+        json!({"type": "response.output_text.delta", "item_id": "msg_read_cap", "delta": "cut short mid-answer"}),
+        json!({
+            "type": "response.incomplete",
+            "response": {
+                "id": "resp_read_cap",
+                "incomplete_details": {"reason": "max_output_tokens"},
+                "usage": {"input_tokens": 9, "output_tokens": 5, "total_tokens": 14}
+            }
+        }),
+    ];
+    frames
+        .iter()
+        .map(|frame| format!("data: {frame}\n\n"))
+        .collect()
+}
+
 fn assert_command_result_retained(items: &[ThreadItem]) {
     match items
         .iter()
@@ -3253,10 +3416,7 @@ fn assert_command_result_retained(items: &[ThreadItem]) {
         .find(|item| matches!(item, ThreadItem::McpToolCall { .. }))
     {
         Some(ThreadItem::McpToolCall {
-            id,
-            status,
-            result,
-            ..
+            id, status, result, ..
         }) => {
             assert_eq!(id, "mcp-1");
             assert_eq!(status, &McpToolCallStatus::InProgress);

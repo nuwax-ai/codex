@@ -292,6 +292,24 @@ async fn run_interrupt_case(wire: WireApi, stall: Stall) -> Result<()> {
         .await
         .context("stalled request did not reach the server")?
         .context("stalled-request server stopped before readiness")?;
+    if matches!(stall, Stall::MidDelta) {
+        // Strict stage handshake (the pattern the websocket interrupt family
+        // uses): the interrupt must land only after the client actually
+        // consumed a content delta from THIS turn, otherwise a mid-delta
+        // cancel silently degenerates into a before-headers cancel.
+        let delta = tokio::time::timeout(Duration::from_secs(30), async {
+            core_test_support::wait_for_event(&codex, |event| {
+                matches!(event, EventMsg::AgentMessageContentDelta(_))
+            })
+            .await
+        })
+        .await
+        .context("client never consumed a content delta from the stalled stream")?;
+        anyhow::ensure!(
+            matches!(delta, EventMsg::AgentMessageContentDelta(_)),
+            "expected a consumed content delta before interrupting, got {delta:?}"
+        );
+    }
     codex
         .submit(codex_protocol::protocol::Op::Interrupt)
         .await?;

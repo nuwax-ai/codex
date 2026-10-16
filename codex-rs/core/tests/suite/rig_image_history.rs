@@ -797,14 +797,17 @@ async fn responses_fork_replays_image_history() -> Result<()> {
     image_fork_cell(WireApi::Responses).await
 }
 
-/// Cold recovery without a graceful shutdown. The producing session's image
-/// turn completes, then every handle to it is dropped without `Op::Shutdown`;
-/// its submission loop ends on its own and teardown releases the thread
-/// writer lock — the in-process analogue of a process kill, which leaves only
-/// the per-line rollout writes the recorder already flushed. Resuming from
-/// that rollout must still replay the exact typed image payload alongside the
-/// intact update_plan call/result pair.
-async fn image_kill_resume_cell(wire_api: WireApi) -> Result<()> {
+/// Cold recovery after handle drop WITHOUT `Op::Shutdown`: the producing
+/// session's image turn completes, then every handle to it is dropped; the
+/// submission loop ends on its own and normal teardown releases the thread
+/// writer lock, leaving the per-line rollout writes the recorder already
+/// flushed. Resuming from that rollout must replay the exact typed image
+/// payload alongside the intact update_plan call/result pair.
+///
+/// Naming note: this is a handle-drop with graceful teardown, NOT an OS
+/// SIGKILL — no process is terminated. Process-level hard-kill recovery is
+/// exercised by the ACP stress cold-restart rounds instead.
+async fn image_drop_without_shutdown_resume_cell(wire_api: WireApi) -> Result<()> {
     let server = wiremock::MockServer::start().await;
     let (path, sse_bodies): (&str, Vec<String>) = match wire_api {
         WireApi::Chat => (
@@ -958,21 +961,21 @@ async fn image_kill_resume_cell(wire_api: WireApi) -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn chat_image_history_survives_kill_resume() -> Result<()> {
+async fn chat_image_history_survives_drop_without_shutdown_resume() -> Result<()> {
     skip_if_no_network!(Ok(()));
-    image_kill_resume_cell(WireApi::Chat).await
+    image_drop_without_shutdown_resume_cell(WireApi::Chat).await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn anthropic_image_history_survives_kill_resume() -> Result<()> {
+async fn anthropic_image_history_survives_drop_without_shutdown_resume() -> Result<()> {
     skip_if_no_network!(Ok(()));
-    image_kill_resume_cell(WireApi::Anthropic).await
+    image_drop_without_shutdown_resume_cell(WireApi::Anthropic).await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn responses_image_history_survives_kill_resume() -> Result<()> {
+async fn responses_image_history_survives_drop_without_shutdown_resume() -> Result<()> {
     skip_if_no_network!(Ok(()));
-    image_kill_resume_cell(WireApi::Responses).await
+    image_drop_without_shutdown_resume_cell(WireApi::Responses).await
 }
 
 /// One full turn with a non-PNG attachment: the prepared part keeps the
