@@ -69,6 +69,10 @@ pub use stream::stream_via_rig_with_recording;
 mod stream_contract_tests;
 
 #[cfg(test)]
+#[path = "response_tools_tests.rs"]
+mod response_tools_tests;
+
+#[cfg(test)]
 #[path = "stream_lifecycle_tests.rs"]
 mod stream_lifecycle_tests;
 

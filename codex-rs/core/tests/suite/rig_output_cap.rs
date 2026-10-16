@@ -424,12 +424,13 @@ async fn cap_partial_emits_persists_and_the_rollout_resumes(
         .await;
     // The follow-up turn after resume gets a normal completion. The resumed
     // instance runs the default Responses provider, so the recovery mock
-    // mounts on the Responses path.
+    // mounts on the Responses path. Its usage keeps the ledger cumulative:
+    // the capped sampling's spend stays counted beneath the follow-up's.
     let recovered = responses::sse(vec![
         responses::ev_response_created("resp_recovered"),
         responses::ev_message_item_added("msg_recovered", ""),
         responses::ev_output_text_delta("recovered"),
-        responses::ev_completed("resp_recovered"),
+        responses::ev_completed_with_tokens("resp_recovered", 21),
     ]);
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .and(wiremock::matchers::path("/v1/responses"))
@@ -549,6 +550,33 @@ async fn cap_partial_emits_persists_and_the_rollout_resumes(
     assert!(
         outcome.cap_partials.is_empty(),
         "a normal completion emits no partial"
+    );
+    // The follow-up's usage lands in the same durable ledger, cumulatively
+    // after the capped sampling's record (6 + 64 = 70 from the cap frame).
+    let records = persisted_usage_records(&resumed);
+    assert_eq!(
+        records.len(),
+        2,
+        "the capped sampling and the resumed follow-up each account"
+    );
+    assert_eq!(records[0].usage.total_tokens, 70, "the cap record precedes");
+    let follow_up = &records[1];
+    assert_eq!(follow_up.response_id, "resp_recovered");
+    assert!(
+        follow_up
+            .response_key
+            .as_deref()
+            .is_some_and(|key| key.starts_with("sampling:")),
+        "the follow-up carries its own host key"
+    );
+    assert_eq!(
+        (follow_up.usage.input_tokens, follow_up.usage.total_tokens),
+        (21, 21)
+    );
+    assert_eq!(
+        follow_up.thread_token_usage.total_tokens,
+        70 + 21,
+        "the cap's spend stays counted beneath the resumed follow-up"
     );
 
     // Crash tolerance: a writer killed mid-line leaves a truncated tail.
@@ -1047,6 +1075,59 @@ async fn responses_output_cap_error_is_terminal_without_core_resampling() -> Res
         ),
         (4, 64, 68),
         "the native terminal frame's counters survive the error mapping"
+    );
+    Ok(())
+}
+
+/// The Responses wire spells a truncated tool call as an
+/// `output_item.added` function_call whose `function_call_arguments.delta`
+/// frames stop before any `output_item.done`; the cap terminal that ends the
+/// stream is what explains the cut. The half-streamed tool must never
+/// execute and the turn must fail exactly once with the cap terminal —
+/// mirroring the Chat `truncated_chat_tool_call` contract on this wire.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn responses_cap_with_half_streamed_tool_arguments_never_executes() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    let body = responses::sse(vec![
+        responses::ev_response_created("resp_cap_half_tool"),
+        responses::ev_message_item_added("msg_cap_half_tool", ""),
+        responses::ev_output_text_delta("partial cap answer"),
+        json!({
+            "type": "response.output_item.added",
+            "output_index": 1,
+            "item": {
+                "type": "function_call",
+                "call_id": "call_cap_half_tool",
+                "name": "shell",
+                "arguments": ""
+            }
+        }),
+        json!({
+            "type": "response.function_call_arguments.delta",
+            "item_id": "call_cap_half_tool",
+            "delta": "{\"command\":[\"ech"
+        }),
+        json!({
+            "type": "response.incomplete",
+            "response": {
+                "id": "resp_cap_half_tool",
+                "incomplete_details": {"reason": "max_output_tokens"},
+                "usage": {"input_tokens": 4, "output_tokens": 64, "total_tokens": 68}
+            }
+        }),
+    ]);
+    let log = mount_capturing_response(&server, "/v1/responses", body).await?;
+    let (test, _env) = cap_test_instance(&server.uri(), WireApi::Responses).await?;
+    let outcome = run_turn_until_complete(&test, "cut the tool arguments mid-stream").await?;
+    assert_cap_terminal(&outcome, log.posts(), "partial cap answer");
+    // The cut arguments must not reach history either: the failed sampling
+    // leaves no function_call item behind for the next request to replay.
+    let requests = log.requests();
+    assert_eq!(requests.len(), 1, "the capped sampling is the only request");
+    assert!(
+        !String::from_utf8_lossy(&requests[0].body).contains("call_cap_half_tool"),
+        "a cut tool call must never enter the persisted request history"
     );
     Ok(())
 }

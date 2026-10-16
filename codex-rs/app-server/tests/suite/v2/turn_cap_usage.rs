@@ -50,6 +50,30 @@ fn cap_terminal_sse_response() -> String {
         .collect()
 }
 
+/// The successful turn submitted AFTER the cap: its completed usage installs
+/// the new context baseline while the cap's spend must stay in `total`.
+fn follow_up_sse_response() -> String {
+    let frames = [
+        json!({"type": "response.created", "response": {"id": "resp_followup_v2"}}),
+        json!({"type": "response.output_item.done", "item": {"type": "message", "id": "msg_followup_v2", "role": "assistant", "content": [{"type": "output_text", "text": "warmed continuation"}]}}),
+        json!({
+            "type": "response.completed",
+            "response": {
+                "id": "resp_followup_v2",
+                "usage": {
+                    "input_tokens": 55,
+                    "output_tokens": 8,
+                    "total_tokens": 63
+                }
+            }
+        }),
+    ];
+    frames
+        .iter()
+        .map(|frame| format!("data: {frame}\n\n"))
+        .collect()
+}
+
 #[test_case(0; "without_installed_sampling")]
 #[test_case(33; "after_completed_sampling")]
 #[tokio::test]
@@ -63,6 +87,7 @@ async fn capped_sampling_reports_terminal_usage_over_v2(previous_tokens: i64) ->
         ]));
     }
     sampling_responses.push(cap_terminal_sse_response());
+    sampling_responses.push(follow_up_sse_response());
     let server =
         app_test_support::create_mock_responses_server_sequence_unchecked(sampling_responses).await;
 
@@ -248,6 +273,127 @@ async fn capped_sampling_reports_terminal_usage_over_v2(previous_tokens: i64) ->
     );
     assert_eq!(raw_response_completions, 0, "no completed raw response");
 
+    // Warm continuation on the SAME live thread: a successful follow-up turn
+    // must keep the installed-baseline semantics — its own completed usage
+    // becomes `last`, the earlier cap's spend stays inside `total` (strictly
+    // beyond previous + 14), and the discarded cap partial never reappears
+    // as the context baseline.
+    let followup_turn: TurnStartResponse = mcp
+        .request(|request_id| ClientRequest::TurnStart {
+            request_id,
+            params: TurnStartParams {
+                thread_id: thread.id.clone(),
+                input: vec![V2UserInput::Text {
+                    text: "continue after the cap".to_string(),
+                    text_elements: Vec::new(),
+                }],
+                ..Default::default()
+            },
+        })
+        .await?;
+    let mut followup_usage = None;
+    let mut followup_agent_messages = 0usize;
+    let followup_completed: serde_json::Value = tokio::time::timeout(DEFAULT_READ_TIMEOUT, async {
+        loop {
+            let notification = mcp
+                .read_stream_until_matching_notification(
+                    "follow-up usage or turn completion",
+                    |notification| {
+                        matches!(
+                            notification.method.as_str(),
+                            "thread/tokenUsage/updated" | "turn/completed" | "item/completed"
+                        )
+                    },
+                )
+                .await?;
+            let params = notification
+                .params
+                .as_ref()
+                .context("follow-up notification params")?;
+            let notified_turn_id = if notification.method == "turn/completed" {
+                params["turn"]["id"].as_str()
+            } else {
+                params["turnId"].as_str()
+            }
+            .context("follow-up notification turn id")?;
+            if notified_turn_id != followup_turn.turn.id.as_str() {
+                continue;
+            }
+            match notification.method.as_str() {
+                "thread/tokenUsage/updated" => {
+                    followup_usage = Some(
+                        serde_json::from_value::<ThreadTokenUsageUpdatedNotification>(
+                            notification
+                                .params
+                                .clone()
+                                .context("follow-up token usage params")?,
+                        )
+                        .context("follow-up token usage shape")?,
+                    );
+                }
+                "item/completed" if params["item"]["type"].as_str() == Some("agentMessage") => {
+                    followup_agent_messages += 1;
+                }
+                "turn/completed" => {
+                    return notification
+                        .params
+                        .clone()
+                        .context("follow-up turn completed params");
+                }
+                _ => {}
+            }
+        }
+    })
+    .await
+    .context("timed out waiting for the follow-up turn to complete")??;
+    assert_eq!(
+        (
+            followup_completed["turn"]["status"].as_str(),
+            followup_completed["turn"]["error"].clone(),
+        ),
+        (Some("completed"), serde_json::Value::Null),
+        "the follow-up turn succeeds on the same thread: {followup_completed:?}"
+    );
+    assert_eq!(
+        followup_agent_messages, 1,
+        "the follow-up installs its assistant message normally"
+    );
+    let followup_usage =
+        followup_usage.context("a token usage notification for the follow-up turn")?;
+    assert_eq!(
+        followup_usage.turn_id.as_str(),
+        followup_turn.turn.id.as_str()
+    );
+    assert_eq!(
+        (
+            &followup_usage.token_usage.last,
+            &followup_usage.token_usage.total
+        ),
+        (
+            &TokenUsageBreakdown {
+                input_tokens: 55,
+                cached_input_tokens: 0,
+                cache_write_input_tokens: 0,
+                output_tokens: 8,
+                reasoning_output_tokens: 0,
+                total_tokens: 63,
+            },
+            &TokenUsageBreakdown {
+                input_tokens: previous_tokens + 9 + 55,
+                cached_input_tokens: 0,
+                cache_write_input_tokens: 0,
+                output_tokens: 5 + 8,
+                reasoning_output_tokens: 0,
+                total_tokens: previous_tokens + 14 + 63,
+            }
+        ),
+        "the follow-up's own output becomes `last`; the cap's spend stays in `total`"
+    );
+    assert!(
+        followup_usage.token_usage.total.total_tokens > previous_tokens + 14,
+        "cumulative spend must strictly grow beyond the cap turn's total"
+    );
+
     // A transient notification override would corrupt this baseline on cold
     // reconstruction: TokenCount events are also persisted into the rollout.
     assert!(mcp.shutdown_gracefully().await?.success());
@@ -270,8 +416,8 @@ async fn capped_sampling_reports_terminal_usage_over_v2(previous_tokens: i64) ->
     )
     .await??;
     assert_eq!(
-        replayed, usage,
-        "cold attach restores the same baseline and spending"
+        replayed, followup_usage,
+        "cold attach restores the warm-continued baseline and spending"
     );
     assert!(resumed.shutdown_gracefully().await?.success());
     Ok(())
