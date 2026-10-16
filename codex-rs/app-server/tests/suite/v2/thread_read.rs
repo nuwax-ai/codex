@@ -1,9 +1,12 @@
 use anyhow::Result;
 use app_test_support::MockResponsesConfig;
 use app_test_support::TestAppServer;
+use app_test_support::create_command_execution_sse_response;
 use app_test_support::create_fake_paginated_rollout;
 use app_test_support::create_fake_rollout_with_text_elements;
+use app_test_support::create_final_assistant_message_sse_response;
 use app_test_support::create_mock_responses_server_repeating_assistant;
+use app_test_support::create_mock_responses_server_sequence;
 use app_test_support::rollout_path;
 use app_test_support::test_absolute_path;
 use app_test_support::to_response;
@@ -17,6 +20,7 @@ use codex_app_server_protocol::InitializeCapabilities;
 use codex_app_server_protocol::InitializeParams;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCResponse;
+use codex_app_server_protocol::McpToolCallStatus;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::SessionSource;
 use codex_app_server_protocol::SortDirection;
@@ -63,12 +67,18 @@ use codex_exec_server::EnvironmentManager;
 use codex_feedback::CodexFeedback;
 use codex_protocol::items::AgentMessageContent;
 use codex_protocol::items::AgentMessageItem;
+use codex_protocol::items::CommandExecutionItem;
+use codex_protocol::items::CommandExecutionStatus;
+use codex_protocol::items::FunctionCallOutputItem;
+use codex_protocol::items::McpToolCallItem;
 use codex_protocol::items::TurnItem as CoreTurnItem;
 use codex_protocol::items::UserMessageItem;
 use codex_protocol::models::BaseInstructions;
+use codex_protocol::models::FunctionCallOutputBody;
 use codex_protocol::models::MessagePhase;
 use codex_protocol::protocol::AgentMessageEvent;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::ExecCommandSource;
 use codex_protocol::protocol::ItemCompletedEvent;
 use codex_protocol::protocol::SessionSource as ProtocolSessionSource;
 use codex_protocol::protocol::ThreadMemoryMode;
@@ -89,6 +99,7 @@ use codex_thread_store::ThreadPersistenceMetadata;
 use codex_thread_store::ThreadStore;
 use codex_thread_store::UpdateThreadMetadataParams;
 use codex_utils_absolute_path::test_support::PathExt;
+use codex_utils_path_uri::PathUri;
 use core_test_support::responses;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
@@ -96,6 +107,7 @@ use serde_json::json;
 use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -2290,6 +2302,305 @@ async fn paginated_history_lists_and_legacy_reads_use_projected_turns_and_items(
     Ok(())
 }
 
+/// Pagination must slice at item boundaries without splitting correlated pairs:
+/// a tool call item followed immediately by its result item, plus an in-flight
+/// tool call whose result never arrived, must survive `limit=1` paging in both
+/// directions with no duplication or loss.
+#[tokio::test]
+async fn thread_items_list_limit_one_pages_slice_between_call_and_result_items() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let codex_home = TempDir::new()?;
+    MockResponsesConfig::new(&server.uri()).write(codex_home.path())?;
+    let thread_id = codex_protocol::ThreadId::default();
+    let sqlite = codex_state::SqliteConfig::new_for_testing(codex_home.path().abs());
+    let state_db =
+        codex_state::StateRuntime::init(sqlite.clone(), "mock_provider".to_string()).await?;
+    let store = LocalThreadStore::new(
+        LocalThreadStoreConfig {
+            codex_home: codex_home.path().to_path_buf(),
+            sqlite,
+            default_model_provider_id: "mock_provider".to_string(),
+        },
+        Some(state_db),
+    );
+    store
+        .create_thread(CreateThreadParams {
+            creator_user_id: None,
+            creator_account_id: None,
+            session_id: thread_id.into(),
+            thread_id,
+            extra_config: None,
+            forked_from_id: None,
+            parent_thread_id: None,
+            source: ProtocolSessionSource::Cli,
+            thread_source: None,
+            originator: "test_originator".to_string(),
+            base_instructions: BaseInstructions::default(),
+            dynamic_tools: Vec::new(),
+            selected_capability_roots: Vec::new(),
+            multi_agent_version: None,
+            history_mode: codex_protocol::protocol::ThreadHistoryMode::Paginated,
+            history_base: None,
+            subagent_history_start_ordinal: None,
+            initial_window_id: Uuid::now_v7().to_string(),
+            runtime_workspace_roots: None,
+            metadata: ThreadPersistenceMetadata {
+                cwd: Some(codex_home.path().to_path_buf()),
+                model_provider: "mock_provider".to_string(),
+                memory_mode: ThreadMemoryMode::Enabled,
+            },
+        })
+        .await?;
+    store
+        .persist_thread(thread_id, PersistContext::Standard)
+        .await?;
+    let command_cwd = PathUri::from_abs_path(&codex_home.path().abs());
+    store
+        .append_items(AppendThreadItemsParams {
+            thread_id,
+            items: vec![
+                paginated_turn_started("turn-1"),
+                paginated_completed_item(
+                    thread_id,
+                    "turn-1",
+                    CoreTurnItem::UserMessage(UserMessageItem {
+                        id: "user-1".to_string(),
+                        client_id: None,
+                        content: Vec::new(),
+                    }),
+                ),
+                // A completed tool call whose recorded result travels with it...
+                paginated_completed_item(
+                    thread_id,
+                    "turn-1",
+                    CoreTurnItem::CommandExecution(CommandExecutionItem {
+                        sandbox_type: None,
+                        model_context: None,
+                        id: "call-1".to_string(),
+                        plugin_id: None,
+                        script_path: None,
+                        process_id: None,
+                        command: vec!["echo".to_string(), "tool-ran".to_string()],
+                        cwd: command_cwd.clone(),
+                        parsed_cmd: Vec::new(),
+                        source: ExecCommandSource::Agent,
+                        interaction_input: None,
+                        status: CommandExecutionStatus::Completed,
+                        aggregated_output: Some("tool-ran\n".to_string()),
+                        exit_code: Some(0),
+                        duration: Some(Duration::from_millis(12)),
+                    }),
+                ),
+                // ...immediately followed by its model-visible result item.
+                paginated_completed_item(
+                    thread_id,
+                    "turn-1",
+                    CoreTurnItem::FunctionCallOutput(FunctionCallOutputItem {
+                        id: "call-1-output".to_string(),
+                        name: "shell".to_string(),
+                        namespace: None,
+                        output: FunctionCallOutputBody::Text("tool output".to_string()),
+                    }),
+                ),
+                paginated_completed_item(
+                    thread_id,
+                    "turn-1",
+                    CoreTurnItem::AgentMessage(AgentMessageItem {
+                        id: "agent-1".to_string(),
+                        content: vec![AgentMessageContent::Text {
+                            text: "tool turn done".to_string(),
+                        }],
+                        phase: None,
+                        memory_citation: None,
+                        delivery: None,
+                        questions: None,
+                    }),
+                ),
+                paginated_turn_completed("turn-1"),
+                // An interrupted turn whose tool call never produced a result.
+                paginated_turn_started("turn-2"),
+                paginated_completed_item(
+                    thread_id,
+                    "turn-2",
+                    CoreTurnItem::UserMessage(UserMessageItem {
+                        id: "user-2".to_string(),
+                        client_id: None,
+                        content: Vec::new(),
+                    }),
+                ),
+                paginated_completed_item(
+                    thread_id,
+                    "turn-2",
+                    CoreTurnItem::McpToolCall(McpToolCallItem {
+                        id: "mcp-1".to_string(),
+                        server: "demo".to_string(),
+                        tool: "fetch".to_string(),
+                        arguments: serde_json::json!({"url": "https://example.com"}),
+                        connector_id: None,
+                        mcp_app_resource_uri: None,
+                        mcp_app_ui: None,
+                        link_id: None,
+                        app_name: None,
+                        action_name: None,
+                        plugin_id: None,
+                        read_only_hint: None,
+                        status: codex_protocol::items::McpToolCallStatus::InProgress,
+                        result: None,
+                        error: None,
+                        duration: None,
+                    }),
+                ),
+            ],
+        })
+        .await?;
+    store.shutdown_thread(thread_id).await?;
+
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized()
+        .await?;
+
+    let expected_sequence: Vec<(&str, &str, &str)> = vec![
+        ("turn-1", "userMessage", "user-1"),
+        ("turn-1", "commandExecution", "call-1"),
+        ("turn-1", "functionCallOutput", "call-1-output"),
+        ("turn-1", "agentMessage", "agent-1"),
+        ("turn-2", "userMessage", "user-2"),
+        ("turn-2", "mcpToolCall", "mcp-1"),
+    ];
+
+    // The full read agrees on the exact projection, including result payloads.
+    let read_id = mcp
+        .send_thread_read_request(ThreadReadParams {
+            thread_id: thread_id.to_string(),
+            include_turns: true,
+        })
+        .await?;
+    let ThreadReadResponse {
+        thread: full_thread,
+        ..
+    } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(read_id)).await??;
+    let full_items: Vec<(String, &'static str, String)> = full_thread
+        .turns
+        .iter()
+        .flat_map(|turn| {
+            turn.items
+                .iter()
+                .map(|item| {
+                    (
+                        turn.id.clone(),
+                        thread_item_kind(item),
+                        item.id().to_string(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert_eq!(
+        full_items,
+        expected_sequence
+            .iter()
+            .map(|(turn_id, kind, item_id)| {
+                (turn_id.to_string(), *kind, item_id.to_string())
+            })
+            .collect::<Vec<_>>()
+    );
+    assert_command_result_retained(&full_thread.turns[0].items);
+
+    for direction in [SortDirection::Asc, SortDirection::Desc] {
+        let merged =
+            read_all_item_pages_limited_to_one(&mut mcp, thread_id, /*turn_id*/ None, direction)
+                .await?;
+        let mut observed: Vec<(String, &'static str, String)> = merged
+            .iter()
+            .map(|entry| {
+                (
+                    entry.turn_id.clone(),
+                    thread_item_kind(&entry.item),
+                    entry.item.id().to_string(),
+                )
+            })
+            .collect();
+        if direction == SortDirection::Desc {
+            observed.reverse();
+        }
+        assert_eq!(
+            observed,
+            expected_sequence
+                .iter()
+                .map(|(turn_id, kind, item_id)| {
+                    (turn_id.to_string(), *kind, item_id.to_string())
+                })
+                .collect::<Vec<_>>(),
+            "merged {direction:?} pages must reconstruct the exact item sequence"
+        );
+
+        // No page boundary duplicated or dropped either member of the pair.
+        let merged_ids: Vec<&str> = merged.iter().map(|entry| entry.item.id()).collect();
+        if direction == SortDirection::Asc {
+            let call_index = merged_ids
+                .iter()
+                .position(|id| *id == "call-1")
+                .expect("tool call item in merged pages");
+            assert_eq!(
+                merged_ids[call_index + 1], "call-1-output",
+                "the call item's result must stay adjacent across page boundaries"
+            );
+            let ThreadItem::FunctionCallOutput { id, output, .. } = &merged[call_index + 1].item
+            else {
+                panic!("expected the call's result item to follow it");
+            };
+            assert_eq!(id, "call-1-output");
+            assert_eq!(
+                output,
+                &FunctionCallOutputBody::Text("tool output".to_string())
+            );
+            assert_command_result_retained(
+                &merged
+                    .iter()
+                    .map(|entry| entry.item.clone())
+                    .collect::<Vec<_>>(),
+            );
+        }
+        let mut unique_ids = std::collections::HashSet::new();
+        for id in merged_ids {
+            assert!(
+                unique_ids.insert(id.to_string()),
+                "item {id} appeared in more than one page"
+            );
+        }
+
+        // Full payloads must match the full read's projection item for item.
+        if direction == SortDirection::Asc {
+            let merged_items: Vec<ThreadItem> =
+                merged.into_iter().map(|entry| entry.item).collect();
+            let full_read_items: Vec<ThreadItem> = full_thread
+                .turns
+                .iter()
+                .flat_map(|turn| turn.items.iter().cloned())
+                .collect();
+            assert_eq!(merged_items, full_read_items);
+        }
+    }
+
+    // Turn-level paging with limit=1 keeps the same turn shells.
+    let merged_turns =
+        read_all_turn_pages_limited_to_one(&mut mcp, thread_id, SortDirection::Asc).await?;
+    assert_eq!(
+        merged_turns
+            .iter()
+            .map(|turn| (turn.id.as_str(), turn.status.clone()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("turn-1", TurnStatus::Completed),
+            ("turn-2", TurnStatus::Interrupted),
+        ]
+    );
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn thread_items_read_validates_ids_before_history_access() -> Result<()> {
     let server = create_mock_responses_server_repeating_assistant("Done").await;
@@ -2359,6 +2670,164 @@ async fn thread_items_read_validates_ids_before_history_access() -> Result<()> {
     )
     .await??;
     assert_eq!(max_read_error.error.code, -32601);
+
+    Ok(())
+}
+
+/// A cold reconnect must rebuild the exact history identity the hot connection
+/// observed: turn ids, order, statuses (including the failed turn's error), and
+/// item identities must be identical across a full read, merged pagination, a
+/// hot re-attach through `thread/resume`, and the same views after the
+/// app-server process restarts.
+#[tokio::test]
+async fn cold_reconnect_replays_identical_history_across_read_resume_and_pagination() -> Result<()> {
+    let responses = vec![
+        create_command_execution_sse_response(
+            vec!["echo".to_string(), "tool-ran".to_string()],
+            /*workdir*/ None,
+            Some(5000),
+            "call-1",
+        )?,
+        create_final_assistant_message_sse_response("tool turn done")?,
+        responses::sse_failed("resp-fail", "server_error", "simulated failure"),
+        create_final_assistant_message_sse_response("final turn done")?,
+    ];
+    let server = create_mock_responses_server_sequence(responses).await;
+    let codex_home = TempDir::new()?;
+    MockResponsesConfig::new(&server.uri()).write(codex_home.path())?;
+
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build_initialized()
+        .await?;
+    let start_id = mcp
+        .send_thread_start_request_with_auto_env(ThreadStartParams {
+            model: Some("mock-model".to_string()),
+            history_mode: Some(ThreadHistoryMode::Paginated),
+            ..Default::default()
+        })
+        .await?;
+    let ThreadStartResponse { thread, .. } =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(start_id)).await??;
+
+    // Turn 1: a successful tool call turn whose result is recorded.
+    let tool_turn = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.start_turn_and_wait_for_completion(TurnStartParams {
+            thread_id: thread.id.clone(),
+            input: vec![UserInput::Text {
+                text: "run a command".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        }),
+    )
+    .await??;
+    assert_eq!(tool_turn.turn.status, TurnStatus::Completed);
+
+    // Turn 2: a failed turn that persists its error.
+    let failed_turn = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.start_turn_and_wait_for_completion(TurnStartParams {
+            thread_id: thread.id.clone(),
+            input: vec![UserInput::Text {
+                text: "fail this turn".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        }),
+    )
+    .await??;
+    assert_eq!(failed_turn.turn.status, TurnStatus::Failed);
+    assert!(
+        failed_turn
+            .turn
+            .error
+            .as_ref()
+            .is_some_and(|error| error.message.contains("simulated failure")),
+        "failed turn must carry the provider failure, got {:?}",
+        failed_turn.turn.error
+    );
+
+    // Turn 3: a plain text turn.
+    let text_turn = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.start_turn_and_wait_for_completion(TurnStartParams {
+            thread_id: thread.id.clone(),
+            input: vec![UserInput::Text {
+                text: "plain text turn".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        }),
+    )
+    .await??;
+    assert_eq!(text_turn.turn.status, TurnStatus::Completed);
+
+    let thread_id = codex_protocol::ThreadId::from_string(&thread.id)?;
+
+    // View 1: hot full read.
+    let hot_full = read_full_history(&mut mcp, thread_id).await?;
+    assert_eq!(hot_full.len(), 3);
+    assert_eq!(
+        hot_full.iter().map(|turn| turn.status.clone()).collect::<Vec<_>>(),
+        vec![
+            TurnStatus::Completed,
+            TurnStatus::Failed,
+            TurnStatus::Completed
+        ]
+    );
+    assert!(hot_full[1]
+        .error
+        .as_ref()
+        .is_some_and(|error| error.message.contains("simulated failure")));
+    assert_command_result_retained(&hot_full[0].items);
+
+    // View 2: hot merged pagination.
+    let hot_paged = read_merged_pagination(&mut mcp, thread_id).await?;
+
+    // View 3: hot re-attach through thread/resume.
+    let hot_resume_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id: thread.id.clone(),
+            ..Default::default()
+        })
+        .await?;
+    let ThreadResumeResponse {
+        thread: hot_resumed,
+        ..
+    } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(hot_resume_id)).await??;
+
+    timeout(DEFAULT_READ_TIMEOUT, mcp.shutdown_gracefully()).await??;
+    drop(mcp);
+
+    // View 4: the same three surfaces after a cold restart.
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build_initialized()
+        .await?;
+    let cold_resume_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id: thread.id.clone(),
+            ..Default::default()
+        })
+        .await?;
+    let ThreadResumeResponse {
+        thread: cold_resumed,
+        ..
+    } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(cold_resume_id)).await??;
+    let cold_full = read_full_history(&mut mcp, thread_id).await?;
+    let cold_paged = read_merged_pagination(&mut mcp, thread_id).await?;
+
+    let expected = turn_fingerprints(&hot_full);
+    assert_eq!(turn_fingerprints(&hot_resumed.turns), expected);
+    assert_eq!(turn_fingerprints(&cold_resumed.turns), expected);
+    assert_eq!(turn_fingerprints(&cold_full), expected);
+
+    assert_eq!(hot_paged.turns, cold_paged.turns);
+    assert_eq!(hot_paged.turns, fingerprint_turn_shells(&hot_full));
+    assert_eq!(hot_paged.items, cold_paged.items);
+    assert_eq!(hot_paged.items, flattened_item_identities(&hot_full));
 
     Ok(())
 }
@@ -2548,6 +3017,254 @@ async fn read_items_page(
     )
     .await??;
     to_response(response)
+}
+
+const PAGE_WALK_MAX_PAGES: usize = 50;
+
+async fn read_all_item_pages_limited_to_one(
+    mcp: &mut TestAppServer,
+    thread_id: codex_protocol::ThreadId,
+    turn_id: Option<&str>,
+    sort_direction: SortDirection,
+) -> Result<Vec<ThreadItemEntry>> {
+    let mut cursor = None;
+    let mut entries = Vec::new();
+    for _ in 0..PAGE_WALK_MAX_PAGES {
+        let page = read_items_page(
+            mcp,
+            thread_id,
+            turn_id,
+            cursor.clone(),
+            Some(1),
+            sort_direction,
+        )
+        .await?;
+        assert!(
+            page.data.len() <= 1,
+            "limit=1 item pages must slice at item boundaries, got {} items",
+            page.data.len()
+        );
+        let next_cursor = page.next_cursor;
+        entries.extend(page.data);
+        match next_cursor {
+            Some(next) => {
+                anyhow::ensure!(
+                    cursor.as_deref() != Some(next.as_str()),
+                    "thread/items/list cursor did not advance"
+                );
+                cursor = Some(next);
+            }
+            None => return Ok(entries),
+        }
+    }
+    anyhow::bail!("thread/items/list paging exceeded {PAGE_WALK_MAX_PAGES} pages");
+}
+
+async fn read_all_turn_pages_limited_to_one(
+    mcp: &mut TestAppServer,
+    thread_id: codex_protocol::ThreadId,
+    sort_direction: SortDirection,
+) -> Result<Vec<codex_app_server_protocol::Turn>> {
+    let mut cursor = None;
+    let mut turns = Vec::new();
+    for _ in 0..PAGE_WALK_MAX_PAGES {
+        let page = read_turns_page(
+            mcp,
+            thread_id,
+            cursor.clone(),
+            Some(1),
+            sort_direction,
+            Some(TurnItemsView::NotLoaded),
+        )
+        .await?;
+        assert!(
+            page.data.len() <= 1,
+            "limit=1 turn pages must slice at turn boundaries, got {} turns",
+            page.data.len()
+        );
+        let next_cursor = page.next_cursor;
+        turns.extend(page.data);
+        match next_cursor {
+            Some(next) => {
+                anyhow::ensure!(
+                    cursor.as_deref() != Some(next.as_str()),
+                    "thread/turns/list cursor did not advance"
+                );
+                cursor = Some(next);
+            }
+            None => return Ok(turns),
+        }
+    }
+    anyhow::bail!("thread/turns/list paging exceeded {PAGE_WALK_MAX_PAGES} pages");
+}
+
+async fn read_full_history(
+    mcp: &mut TestAppServer,
+    thread_id: codex_protocol::ThreadId,
+) -> Result<Vec<codex_app_server_protocol::Turn>> {
+    let read_id = mcp
+        .send_thread_read_request(ThreadReadParams {
+            thread_id: thread_id.to_string(),
+            include_turns: true,
+        })
+        .await?;
+    let ThreadReadResponse { thread, .. } =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(read_id)).await??;
+    Ok(thread.turns)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct TurnShell {
+    id: String,
+    status: TurnStatus,
+    error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct TurnFingerprint {
+    shell: TurnShell,
+    items: Vec<(&'static str, String)>,
+}
+
+struct MergedPagination {
+    turns: Vec<TurnShell>,
+    items: Vec<(String, &'static str, String)>,
+}
+
+fn turn_shell(turn: &codex_app_server_protocol::Turn) -> TurnShell {
+    TurnShell {
+        id: turn.id.clone(),
+        status: turn.status.clone(),
+        error: turn.error.as_ref().map(|error| error.message.clone()),
+    }
+}
+
+fn turn_fingerprints(turns: &[codex_app_server_protocol::Turn]) -> Vec<TurnFingerprint> {
+    turns
+        .iter()
+        .map(|turn| TurnFingerprint {
+            shell: turn_shell(turn),
+            items: turn
+                .items
+                .iter()
+                .map(|item| (thread_item_kind(item), item.id().to_string()))
+                .collect(),
+        })
+        .collect()
+}
+
+fn fingerprint_turn_shells(turns: &[codex_app_server_protocol::Turn]) -> Vec<TurnShell> {
+    turns.iter().map(turn_shell).collect()
+}
+
+fn flattened_item_identities(
+    turns: &[codex_app_server_protocol::Turn],
+) -> Vec<(String, &'static str, String)> {
+    turns
+        .iter()
+        .flat_map(|turn| {
+            turn.items
+                .iter()
+                .map(|item| {
+                    (
+                        turn.id.clone(),
+                        thread_item_kind(item),
+                        item.id().to_string(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+async fn read_merged_pagination(
+    mcp: &mut TestAppServer,
+    thread_id: codex_protocol::ThreadId,
+) -> Result<MergedPagination> {
+    let turns = read_all_turn_pages_limited_to_one(mcp, thread_id, SortDirection::Asc).await?;
+    let entries = read_all_item_pages_limited_to_one(mcp, thread_id, None, SortDirection::Asc)
+        .await?;
+    Ok(MergedPagination {
+        turns: turns.iter().map(turn_shell).collect(),
+        items: entries
+            .iter()
+            .map(|entry| {
+                (
+                    entry.turn_id.clone(),
+                    thread_item_kind(&entry.item),
+                    entry.item.id().to_string(),
+                )
+            })
+            .collect(),
+    })
+}
+
+fn thread_item_kind(item: &ThreadItem) -> &'static str {
+    match item {
+        ThreadItem::UserMessage { .. } => "userMessage",
+        ThreadItem::HookPrompt { .. } => "hookPrompt",
+        ThreadItem::AgentMessage { .. } => "agentMessage",
+        ThreadItem::FunctionCallOutput { .. } => "functionCallOutput",
+        ThreadItem::Plan { .. } => "plan",
+        ThreadItem::Reasoning { .. } => "reasoning",
+        ThreadItem::CommandExecution { .. } => "commandExecution",
+        ThreadItem::FileChange { .. } => "fileChange",
+        ThreadItem::McpToolCall { .. } => "mcpToolCall",
+        ThreadItem::DynamicToolCall { .. } => "dynamicToolCall",
+        ThreadItem::CollabAgentToolCall { .. } => "collabAgentToolCall",
+        ThreadItem::SubAgentActivity { .. } => "subAgentActivity",
+        ThreadItem::WebSearch(_) => "webSearch",
+        ThreadItem::ImageView { .. } => "imageView",
+        ThreadItem::Sleep(_) => "sleep",
+        ThreadItem::ImageGeneration(_) => "imageGeneration",
+        ThreadItem::EnteredReviewMode { .. } => "enteredReviewMode",
+        ThreadItem::ExitedReviewMode { .. } => "exitedReviewMode",
+        ThreadItem::ContextCompaction { .. } => "contextCompaction",
+    }
+}
+
+/// The correlated call/result pair and the in-flight tool call must retain
+/// their result payloads through every read path.
+fn assert_command_result_retained(items: &[ThreadItem]) {
+    match items
+        .iter()
+        .find(|item| matches!(item, ThreadItem::CommandExecution { .. }))
+        .expect("command execution item")
+    {
+        ThreadItem::CommandExecution {
+            id,
+            exit_code,
+            aggregated_output,
+            ..
+        } => {
+            assert_eq!(id, "call-1");
+            assert_eq!(*exit_code, Some(0));
+            assert!(
+                aggregated_output
+                    .as_deref()
+                    .is_some_and(|output| output.contains("tool-ran")),
+                "command result output must be retained, got {aggregated_output:?}"
+            );
+        }
+        _ => unreachable!("filtered to command executions"),
+    }
+    match items
+        .iter()
+        .find(|item| matches!(item, ThreadItem::McpToolCall { .. }))
+    {
+        Some(ThreadItem::McpToolCall {
+            id,
+            status,
+            result,
+            ..
+        }) => {
+            assert_eq!(id, "mcp-1");
+            assert_eq!(status, &McpToolCallStatus::InProgress);
+            assert_eq!(result, &None);
+        }
+        Some(_) => unreachable!("filtered to mcp tool calls"),
+        None => {}
+    }
 }
 
 fn paginated_turn_started(turn_id: &str) -> RolloutItem {
