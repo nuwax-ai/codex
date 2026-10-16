@@ -1961,6 +1961,446 @@ async fn responses_websocket_connection_limit_error_reconnects_and_completes() {
     server.shutdown().await;
 }
 
+/// Drives one full turn through the real websocket-backed TestCodex loop,
+/// collecting the cap-terminal contract: exactly-once error, no synthesized
+/// completion, and the turn's terminal.
+struct WsCapObservation {
+    errors: Vec<String>,
+    turn_error: Option<String>,
+    final_agent_message: Option<String>,
+    raw_responses_completed: usize,
+    agent_message_items_completed: usize,
+}
+
+async fn run_ws_turn_until_complete(
+    test: &core_test_support::test_codex::TestCodex,
+) -> WsCapObservation {
+    let mut observation = WsCapObservation {
+        errors: Vec::new(),
+        turn_error: None,
+        final_agent_message: None,
+        raw_responses_completed: 0,
+        agent_message_items_completed: 0,
+    };
+    loop {
+        let event = tokio::time::timeout(Duration::from_secs(60), test.codex.next_event())
+            .await
+            .expect("timed out waiting for a websocket turn event")
+            .expect("event stream ended before TurnComplete");
+        match event.msg {
+            EventMsg::AgentMessage(message) => {
+                observation.final_agent_message = Some(message.message)
+            }
+            EventMsg::Error(error) => observation.errors.push(error.message),
+            EventMsg::RawResponseCompleted(_) => observation.raw_responses_completed += 1,
+            EventMsg::ItemCompleted(item) => {
+                if matches!(item.item, codex_protocol::items::TurnItem::AgentMessage(_)) {
+                    observation.agent_message_items_completed += 1;
+                }
+            }
+            EventMsg::TurnComplete(complete) => {
+                observation.turn_error = complete.error.map(|error| error.message);
+                return observation;
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Reads the durable TokenUsageRecord lines of a test instance's rollout.
+fn ws_persisted_usage_records(
+    test: &core_test_support::test_codex::TestCodex,
+) -> Vec<codex_protocol::protocol::TokenUsageRecord> {
+    let path = test.codex.rollout_path().expect("rollout path");
+    std::fs::read_to_string(&path)
+        .expect("read rollout")
+        .lines()
+        .filter_map(|line| codex_rollout::parse_rollout_line(line).ok())
+        .filter_map(|line| match line.item {
+            codex_history::RolloutItem::TokenUsageRecord(record) => Some(record),
+            _ => None,
+        })
+        .collect()
+}
+
+/// One scripted websocket connection: the prewarm request completes, then
+/// the turn ends in the output-cap terminal with exactly the usage object
+/// under test.
+fn ws_cap_connection(terminal_usage: Option<serde_json::Value>) -> WebSocketConnectionConfig {
+    let mut response = json!({
+        "id": "resp_ws_cap",
+        "incomplete_details": {"reason": "max_output_tokens"},
+    });
+    if let Some(usage) = terminal_usage {
+        response["usage"] = usage;
+    }
+    WebSocketConnectionConfig {
+        requests: vec![
+            vec![
+                ev_response_created("resp_ws_prewarm"),
+                ev_completed("resp_ws_prewarm"),
+            ],
+            vec![
+                ev_response_created("resp_ws_cap"),
+                core_test_support::responses::ev_message_item_added("msg_ws_cap", ""),
+                core_test_support::responses::ev_output_text_delta("partial ws cap answer"),
+                json!({"type": "response.incomplete", "response": response}),
+            ],
+        ],
+        response_headers: Vec::new(),
+        accept_delay: None,
+        close_after_requests: true,
+    }
+}
+
+/// The websocket transport shares the SSE Responses decoder, so the output-cap
+/// terminal must keep its whole contract over WS: the turn fails exactly once
+/// with the cap error, nothing fakes a completion, no resample is paid despite
+/// non-zero retry budgets, and the terminal frame's usage reaches the durable
+/// ledger with the same per-counter presence rules as the SSE matrix
+/// (complete / explicit zero / partially reported / absent).
+#[test_case::test_case(
+    Some(json!({"input_tokens": 4, "output_tokens": 64, "total_tokens": 68})),
+    Some((4, 64, 68));
+    "complete_usage"
+)]
+#[test_case::test_case(
+    Some(json!({"input_tokens": 4, "output_tokens": 0, "total_tokens": 4})),
+    Some((4, 0, 4));
+    "explicit_zero_output"
+)]
+#[test_case::test_case(
+    Some(json!({"input_tokens": 4})),
+    Some((4, 0, 0));
+    "partial_terminal_usage"
+)]
+#[test_case::test_case(None, None; "absent_usage")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn responses_websocket_cap_terminal_fails_once_and_ledgers_usage_presence(
+    terminal_usage: Option<serde_json::Value>,
+    expected_ledger: Option<(i64, i64, i64)>,
+) -> anyhow::Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_websocket_server_with_headers(vec![ws_cap_connection(terminal_usage)]).await;
+    // Retry budgets are deliberately NON-zero: a resample of the budget
+    // terminal would show up as a second websocket request.
+    let mut builder = test_codex().with_config(|config| {
+        config.model_provider.request_max_retries = Some(2);
+        config.model_provider.stream_max_retries = Some(2);
+    });
+    let test = builder
+        .build_with_websocket_server(&server)
+        .await
+        .expect("build websocket codex");
+
+    test.codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: "hit the websocket cap".into(),
+            text_elements: Vec::new(),
+        }]))
+        .await?;
+    let observation = run_ws_turn_until_complete(&test).await;
+
+    let needle = "Output token limit reached";
+    let terminal = observation
+        .turn_error
+        .as_deref()
+        .unwrap_or_else(|| panic!("cap must fail the websocket turn, got success"));
+    assert!(
+        terminal.contains(needle),
+        "terminal error must name the output cap, got: {terminal}"
+    );
+    assert_eq!(
+        observation.errors.len(),
+        1,
+        "exactly one terminal error event: {:?}",
+        observation.errors
+    );
+    assert!(
+        observation
+            .errors
+            .iter()
+            .all(|message| message.contains(needle)),
+        "no other error class may appear"
+    );
+    assert!(
+        observation.final_agent_message.is_none(),
+        "partial output must not become a final AgentMessage"
+    );
+    assert_eq!(
+        (
+            observation.agent_message_items_completed,
+            observation.raw_responses_completed
+        ),
+        (0, 0),
+        "a cap must not complete pending agent items or the response"
+    );
+
+    // Attempt counting: one connection, prewarm plus exactly one turn
+    // request, no resample.
+    let connections = server.connections();
+    assert_eq!(
+        connections.len(),
+        1,
+        "the capped sampling owns exactly one connection: {connections:?}"
+    );
+    let connection = &connections[0];
+    assert_eq!(
+        connection.len(),
+        2,
+        "the prewarm plus the capped turn; core must not resample a budget terminal despite the retry budget"
+    );
+    for request in connection {
+        assert_eq!(
+            request.body_json()["type"],
+            json!("response.create"),
+            "no traffic beyond the connection's own requests"
+        );
+    }
+    let turn_creates = connection
+        .iter()
+        .filter(|request| {
+            request.body_json()["input"]
+                .to_string()
+                .contains("hit the websocket cap")
+        })
+        .count();
+    assert_eq!(
+        turn_creates, 1,
+        "exactly one create carries the turn's input"
+    );
+
+    // Ledger presence rules match the SSE matrix.
+    let records = ws_persisted_usage_records(&test);
+    match expected_ledger {
+        None => assert!(
+            records.is_empty(),
+            "an absent usage object must not fabricate a record: {records:?}"
+        ),
+        Some((input, output, total)) => {
+            assert_eq!(records.len(), 1, "one capped sampling, one record");
+            let record = &records[0];
+            assert_eq!(record.response_id, "resp_ws_cap");
+            assert!(
+                record
+                    .response_key
+                    .as_deref()
+                    .is_some_and(|key| key.starts_with("sampling:")),
+                "the record carries its host sampling key"
+            );
+            assert_eq!(
+                (
+                    record.usage.input_tokens,
+                    record.usage.output_tokens,
+                    record.usage.total_tokens
+                ),
+                (input, output, total),
+                "terminal-frame counters survive the error mapping over WS"
+            );
+        }
+    }
+
+    test.codex.shutdown_and_wait().await?;
+    server.shutdown().await;
+    Ok(())
+}
+
+/// `Op::Interrupt` mid-stream over the websocket transport: after real deltas
+/// were consumed the turn resolves as `TurnAborted` (never a fake
+/// `TurnComplete`), the interrupted connection carries no extra traffic beyond
+/// the turn's own request (no resample, no stray frames), and an immediate
+/// follow-up turn succeeds on a fresh connection — the aborted socket is
+/// retired, mirroring the SSE interrupt contracts in rig_interrupt.rs.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn responses_websocket_interrupt_mid_stream_aborts_and_allows_follow_up() -> anyhow::Result<()>
+{
+    skip_if_no_network!(Ok(()));
+
+    let interrupted = WebSocketConnectionConfig {
+        requests: vec![
+            vec![
+                ev_response_created("resp_ws_prewarm_interrupt"),
+                ev_completed("resp_ws_prewarm_interrupt"),
+            ],
+            vec![
+                ev_response_created("resp_ws_interrupted"),
+                core_test_support::responses::ev_message_item_added("msg_ws_interrupted", ""),
+                core_test_support::responses::ev_output_text_delta("partial ws answer"),
+                // No terminal: the stream stays open until the interrupt aborts it.
+            ],
+        ],
+        response_headers: Vec::new(),
+        accept_delay: None,
+        close_after_requests: true,
+    };
+    // After the abort retires the interrupted socket, the follow-up turn
+    // reconnects on demand: its create is the new connection's first (and
+    // only) request — no fresh prewarm precedes it mid-process.
+    let follow_up = WebSocketConnectionConfig {
+        requests: vec![vec![
+            ev_response_created("resp_ws_follow_up"),
+            ev_assistant_message("msg_ws_follow_up", "follow-up completed"),
+            ev_completed("resp_ws_follow_up"),
+        ]],
+        response_headers: Vec::new(),
+        accept_delay: None,
+        close_after_requests: true,
+    };
+    let server = start_websocket_server_with_headers(vec![interrupted, follow_up]).await;
+    // Non-zero retry budgets: a retryable classification of the interrupt
+    // would surface as an extra websocket request.
+    let mut builder = test_codex().with_config(|config| {
+        config.model_provider.request_max_retries = Some(2);
+        config.model_provider.stream_max_retries = Some(2);
+    });
+    let test = builder
+        .build_with_websocket_server(&server)
+        .await
+        .expect("build websocket codex");
+    let codex = Arc::clone(&test.codex);
+
+    codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: "stall mid-stream".into(),
+            text_elements: Vec::new(),
+        }]))
+        .await?;
+    // Interrupt strictly after the turn consumed real streamed content. The
+    // generous deadline is fixture-robustness only (suite startup competes
+    // with parallel tests); the contracts below stay tight.
+    let delta = core_test_support::wait_for_event_with_timeout(
+        &codex,
+        |event| matches!(event, EventMsg::AgentMessageContentDelta(_)),
+        Duration::from_secs(60),
+    )
+    .await;
+    let EventMsg::AgentMessageContentDelta(delta) = delta else {
+        unreachable!("guarded by the wait predicate");
+    };
+    assert_eq!(delta.delta, "partial ws answer");
+    codex
+        .submit(codex_protocol::protocol::Op::Interrupt)
+        .await?;
+
+    let mut saw_turn_complete = false;
+    let aborted = core_test_support::wait_for_event_with_timeout(
+        &codex,
+        |event| {
+            if matches!(event, EventMsg::TurnComplete(_)) {
+                saw_turn_complete = true;
+            }
+            matches!(event, EventMsg::TurnAborted(_))
+        },
+        Duration::from_secs(60),
+    )
+    .await;
+    assert!(
+        matches!(aborted, EventMsg::TurnAborted(_)),
+        "expected TurnAborted for the interrupted turn, got {aborted:?}"
+    );
+    assert!(
+        !saw_turn_complete,
+        "the interrupted websocket turn must never fake a TurnComplete"
+    );
+
+    // The aborted socket is retired asynchronously; observe its close before
+    // the follow-up so the connection accounting below is deterministic.
+    assert!(
+        server
+            .wait_for_closed_connections(1, Duration::from_secs(10))
+            .await,
+        "the interrupted connection must close"
+    );
+
+    // Immediate follow-up on the same Core client: it reconnects (the aborted
+    // socket was retired) and completes normally.
+    codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: "follow up immediately".into(),
+            text_elements: Vec::new(),
+        }]))
+        .await?;
+    let mut assistant_messages = Vec::new();
+    let completed = core_test_support::wait_for_event_with_timeout(
+        &codex,
+        |event| {
+            if let EventMsg::AgentMessage(message) = event {
+                assistant_messages.push(message.message.clone());
+            }
+            matches!(event, EventMsg::TurnComplete(_))
+        },
+        Duration::from_secs(60),
+    )
+    .await;
+    let EventMsg::TurnComplete(completed) = completed else {
+        unreachable!("guarded by the wait predicate");
+    };
+    assert_eq!(completed.error, None, "the follow-up turn must succeed");
+    assert_eq!(
+        completed.last_agent_message.as_deref(),
+        Some("follow-up completed")
+    );
+    assert_eq!(assistant_messages, vec!["follow-up completed"]);
+
+    // Snapshot the connection log the moment the follow-up completes: a
+    // later background prewarm reconnect must not blur attempt counting.
+    let connections = server.connections();
+
+    assert!(
+        server
+            .wait_for_closed_connections(2, Duration::from_secs(10))
+            .await,
+        "both connections must close"
+    );
+
+    // Attempt counting: the interrupted connection carries its prewarm plus
+    // exactly the one turn request; the follow-up reconnect carries exactly
+    // its turn request — nothing beyond the drain.
+    assert_eq!(
+        connections.len(),
+        2,
+        "one interrupted connection plus one follow-up: {connections:?}"
+    );
+    let expected_requests_per_connection = [2, 1];
+    let expected_turn_texts = ["stall mid-stream", "follow up immediately"];
+    for (index, connection) in connections.iter().enumerate() {
+        assert_eq!(
+            connection.len(),
+            expected_requests_per_connection[index],
+            "connection {index} carries exactly its own requests"
+        );
+        let turn_creates = connection
+            .iter()
+            .filter(|request| {
+                request.body_json()["input"]
+                    .to_string()
+                    .contains(expected_turn_texts[index])
+            })
+            .count();
+        assert_eq!(
+            turn_creates, 1,
+            "connection {index} carries exactly one create for its turn"
+        );
+        for request in connection {
+            let kind = request.body_json()["type"].clone();
+            assert!(
+                kind == json!("response.create") || kind == json!("response.interrupt"),
+                "no traffic beyond the turn's request and the drain frame: {kind}"
+            );
+        }
+    }
+    let total: usize = connections.iter().map(Vec::len).sum();
+    assert_eq!(
+        total, 3,
+        "no resample was paid for the interrupted turn: {connections:?}"
+    );
+
+    test.codex.shutdown_and_wait().await?;
+    server.shutdown().await;
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn responses_websocket_uses_incremental_create_on_prefix() {
     skip_if_no_network!();
