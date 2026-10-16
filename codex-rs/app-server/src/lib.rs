@@ -580,6 +580,7 @@ pub async fn run_main_with_transport_options(
     );
     let mut config_warnings = Vec::new();
     let mut plugin_startup_config = PluginStartupConfig::Current;
+    let mut config_from_defaults = false;
     let config = match config_manager.load_latest_config(startup_cwd).await {
         Ok(config) => config,
         Err(err) if is_unsupported_untrusted_approval_policy_error(&err) => {
@@ -593,6 +594,7 @@ pub async fn run_main_with_transport_options(
             let message = config_warning_from_error("Invalid configuration; using defaults.", &err);
             config_warnings.push(message);
             plugin_startup_config = PluginStartupConfig::Defaults;
+            config_from_defaults = true;
             config_manager.load_default_config().await.map_err(|e| {
                 std::io::Error::new(
                     ErrorKind::InvalidData,
@@ -607,14 +609,37 @@ pub async fn run_main_with_transport_options(
         AuthManager::shared_from_config(&config, /*enable_codex_api_key_env*/ false)
             .await
             .map_err(std::io::Error::other)?;
+    // A defaults fallback discards the user's `chatgpt_base_url` override, but
+    // the bundle loader must keep targeting the base the deployment
+    // configured: re-pointing it at the production default turns every later
+    // bundle fetch — including the startup residency sync below — into an
+    // external dependency that can hang offline or egress-filtered
+    // deployments for the full bundle timeout.
+    let bundle_base_url = if config_from_defaults {
+        bootstrap_config.chatgpt_base_url.clone()
+    } else {
+        config.chatgpt_base_url.clone()
+    };
     config_manager.replace_cloud_config_bundle_loader(
         auth_manager.clone(),
-        config.chatgpt_base_url.clone(),
+        bundle_base_url,
         config.http_client_factory(),
     );
-    config_manager
-        .sync_default_client_residency_requirement()
-        .await;
+    // The residency sync only warns on failure and the bundle refresher keeps
+    // retrying in the background, so startup must not block on it beyond a
+    // short bound even when the configured bundle endpoint is unreachable.
+    if tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        config_manager.sync_default_client_residency_requirement(),
+    )
+    .await
+    .is_err()
+    {
+        warn!(
+            "timed out syncing the default client residency requirement at startup; \
+             the background cloud-config refresher will keep retrying"
+        );
+    }
 
     #[cfg(target_os = "macos")]
     let local_runtime_paths = local_runtime_paths.with_allowed_symlinked_codex_home(

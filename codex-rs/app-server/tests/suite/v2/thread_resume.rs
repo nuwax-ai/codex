@@ -6201,6 +6201,180 @@ async fn thread_resume_surfaces_cloud_config_bundle_load_errors() -> Result<()> 
     Ok(())
 }
 
+/// A proxy that counts (and denies) any connection targeting a host other
+/// than the exempted loopback mocks, so tests can prove the app-server never
+/// dials a production endpoint.
+struct ProductionDialCounter {
+    port: u16,
+    dials: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl ProductionDialCounter {
+    async fn start() -> ProductionDialCounter {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind proxy");
+        let port = listener.local_addr().expect("proxy port").port();
+        let dials = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = std::sync::Arc::clone(&dials);
+        tokio::spawn(async move {
+            loop {
+                let (mut stream, _) = match listener.accept().await {
+                    Ok(value) => value,
+                    Err(_) => return,
+                };
+                let head = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                    use tokio::io::AsyncReadExt as _;
+                    let mut head = vec![0u8; 512];
+                    let read = stream.read(&mut head).await.unwrap_or(0);
+                    head.truncate(read);
+                    head
+                })
+                .await
+                .unwrap_or_default();
+                if head
+                    .windows(b"chatgpt.com".len())
+                    .any(|w| w == b"chatgpt.com")
+                {
+                    counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+                // Deny the tunnel; the client should treat this like an
+                // unreachable endpoint, never a configured one.
+                use tokio::io::AsyncWriteExt as _;
+                let _ = stream.shutdown().await;
+            }
+        });
+        ProductionDialCounter { port, dials }
+    }
+
+    fn count(&self) -> usize {
+        self.dials.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+/// When the startup config load fails and falls back to defaults, the cloud
+/// config bundle loader must keep targeting the deployment's configured
+/// `chatgpt_base_url` instead of the hardcoded production default, and the
+/// startup residency sync must stay bounded.
+///
+/// On the unfixed code the fallback silently re-points the loader at
+/// `https://chatgpt.com/backend-api/`, so the post-fallback bundle fetch
+/// leaves the test's mock and dials production — observable here as a counted
+/// proxy connection even on machines where production is reachable (where the
+/// fetch itself would otherwise succeed fast and hide the defect).
+#[tokio::test]
+async fn startup_config_fallback_keeps_bundle_on_configured_base_url() -> Result<()> {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/backend-api/wham/config/bundle"))
+        .respond_with(
+            ResponseTemplate::new(401)
+                .insert_header("content-type", "text/html")
+                .set_body_string("<html>nope</html>"),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/oauth/token"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(json!({
+            "error": { "code": "refresh_token_invalidated" }
+        })))
+        .mount(&server)
+        .await;
+
+    let proxy = ProductionDialCounter::start().await;
+    let proxy_url = format!("http://127.0.0.1:{}", proxy.port);
+
+    let codex_home = TempDir::new()?;
+    let model_server = create_mock_responses_server_repeating_assistant("Done").await;
+    let chatgpt_base_url = format!("{}/backend-api", server.uri());
+    mock_responses_config(&model_server.uri())
+        .with_root_config(&format!(r#"chatgpt_base_url = "{chatgpt_base_url}""#))
+        .write(codex_home.path())?;
+    write_chatgpt_auth(
+        codex_home.path(),
+        ChatGptAuthFixture::new("chatgpt-token")
+            .refresh_token("stale-refresh-token")
+            .plan_type("business")
+            .chatgpt_user_id("user-123")
+            .chatgpt_account_id("account-123")
+            .account_id("account-123"),
+        AuthCredentialsStoreMode::File,
+    )?;
+    let conversation_id = create_fake_rollout_with_text_elements(
+        codex_home.path(),
+        "2025-01-05T12-00-00",
+        "2025-01-05T12:00:00Z",
+        "Saved user message",
+        Vec::new(),
+        Some("mock_provider"),
+        /*git_info*/ None,
+    )?;
+    let refresh_token_url = format!("{}/oauth/token", server.uri());
+    let started = std::time::Instant::now();
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .with_env_overrides(&[
+            ("OPENAI_API_KEY", None),
+            (
+                REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR,
+                Some(refresh_token_url.as_str()),
+            ),
+            ("HTTPS_PROXY", Some(proxy_url.as_str())),
+            ("https_proxy", Some(proxy_url.as_str())),
+            ("NO_PROXY", Some("localhost,127.0.0.1")),
+            ("no_proxy", Some("localhost,127.0.0.1")),
+        ])
+        .build_initialized()
+        .await?;
+
+    // The fallback must not have dialed any production endpoint: every bundle
+    // request stays on the configured base URL, which the loopback mocks
+    // answer.
+    assert_eq!(
+        proxy.count(),
+        0,
+        "startup dialed a production endpoint after the config fallback"
+    );
+    // The startup residency sync is bounded even when bundle responses are
+    // slow or the endpoint is unreachable.
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "startup took {}s after a config fallback",
+        started.elapsed().as_secs()
+    );
+
+    // The server is functional after the fallback: resuming the thread
+    // surfaces the configured bundle load error from the mock, exactly like
+    // the non-fallback path.
+    let resume_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id: conversation_id,
+            ..Default::default()
+        })
+        .await?;
+    let err: JSONRPCError = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_error_message(RequestId::Integer(resume_id)),
+    )
+    .await??;
+    assert!(
+        err.error.message.contains("failed to load configuration"),
+        "unexpected error message: {}",
+        err.error.message
+    );
+    let data = err.error.data.expect("structured config load error");
+    assert_eq!(data["reason"], json!("cloudConfigBundle"));
+    assert_eq!(data["statusCode"], json!(401));
+    assert_eq!(
+        proxy.count(),
+        0,
+        "resume dialed a production endpoint after the config fallback"
+    );
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn thread_resume_uses_path_over_non_running_thread_id() -> Result<()> {
     let server = create_mock_responses_server_repeating_assistant("Done").await;
