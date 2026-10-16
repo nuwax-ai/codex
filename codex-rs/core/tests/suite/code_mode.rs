@@ -6382,6 +6382,93 @@ text("after");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn code_mode_plain_return_value_emits_no_content() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = responses::start_mock_server().await;
+    let (_test, second_mock) = run_code_mode_turn(
+        &server,
+        "use exec to return a plain value without emitting",
+        r#"
+text("emitted");
+({ answer: 42, note: "return values are not content" });
+"#,
+    )
+    .await?;
+
+    let req = second_mock.single_request();
+    let items = custom_tool_output_items(&req, "call-1");
+    let (output, success) = custom_tool_output_body_and_success(&req, "call-1");
+    assert_ne!(
+        success,
+        Some(false),
+        "plain-return script failed unexpectedly: {output}"
+    );
+    // Contract: a fulfilled script's return value is discarded — only the
+    // status header plus explicitly emitted content reach the model.
+    assert_eq!(
+        items.len(),
+        2,
+        "expected header + emitted text only: {items:?}"
+    );
+    assert_regex_match(
+        concat!(
+            r"(?s)\A",
+            r"Script completed\nWall time \d+\.\d seconds\nOutput:\n\z"
+        ),
+        text_item(&items, /*index*/ 0),
+    );
+    assert_eq!(text_item(&items, /*index*/ 1), "emitted");
+    assert_eq!(output, "emitted");
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn code_mode_base64_text_stays_bounded_text_never_an_image() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    // A data-URL-looking string passed to text() must remain text: helpers
+    // decide typing, payload bytes never do.
+    let payload = "A".repeat(8192);
+    let code = format!(
+        r#"// @exec: {{"max_output_tokens": 8}}
+text("data:image/png;base64,{payload}");
+"#
+    );
+    let server = responses::start_mock_server().await;
+    let (_test, second_mock) =
+        run_code_mode_turn(&server, "emit base64-looking text", &code).await?;
+
+    let req = second_mock.single_request();
+    let items = custom_tool_output_items(&req, "call-1");
+    assert!(
+        items.len() <= 2,
+        "truncated single text emission should be header + one item: {items:?}"
+    );
+    assert!(
+        items
+            .iter()
+            .all(|item| item["type"] != "input_image" && item["type"] != "image"),
+        "a text() payload must never be re-typed as an image: {items:?}"
+    );
+    let truncated = text_item(&items, /*index*/ items.len() - 1);
+    assert!(
+        truncated.starts_with("Warning: truncated output"),
+        "expected the bounded truncation marker, got: {truncated}"
+    );
+    let serialized =
+        serde_json::to_string(&req.custom_tool_call_output("call-1")).unwrap_or_default();
+    assert!(
+        serialized.len() < 2_000,
+        "next-turn serialized output should stay bounded, got {} bytes",
+        serialized.len()
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn code_mode_omits_short_audio_and_preserves_other_output() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
@@ -6612,6 +6699,77 @@ image({{
     );
     assert!(!exec_description.contains("codex/imageDetail"));
     assert!(!exec_description.contains("detail?:"));
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn code_mode_over_budget_images_are_omitted_with_one_marker() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    // MAX_TOOL_OUTPUT_IMAGES caps any single exec output; emitting more
+    // through the real host must yield the bounded consolidated omission
+    // marker, not a giant payload and not silent drops.
+    let image = ImageBuffer::from_pixel(
+        /*width*/ 64,
+        /*height*/ 64,
+        Rgba([120, 30, 30, 255]),
+    );
+    let mut encoded = Cursor::new(Vec::new());
+    DynamicImage::ImageRgba8(image).write_to(&mut encoded, image::ImageFormat::Png)?;
+    let image_data = BASE64_STANDARD.encode(encoded.into_inner());
+    let code = format!(
+        r#"
+const data = {};
+const imageUrl = `data:image/png;base64,${{data}}`;
+for (let i = 0; i < 12; i += 1) {{
+  image(imageUrl);
+}}
+text("twelve emitted");
+"#,
+        serde_json::to_string(&image_data)?
+    );
+
+    let server = responses::start_mock_server().await;
+    let (_test, second_mock) = run_code_mode_turn_with_model_and_config(
+        &server,
+        "emit more images than the output limit allows",
+        &code,
+        "gpt-5.5",
+        |config| {
+            let _ = config.features.enable(Feature::UnifiedImageBudget);
+        },
+    )
+    .await?;
+
+    let request = second_mock.single_request();
+    let items = custom_tool_output_items(&request, "call-1");
+    let kept = items
+        .iter()
+        .filter(|item| item["type"] == "input_image")
+        .count();
+    assert!(
+        kept <= 8,
+        "no more than the per-output image cap may survive: kept {kept} of {items:?}"
+    );
+    let marker = items
+        .iter()
+        .filter_map(|item| item.get("text").and_then(Value::as_str))
+        .find(|text| text.contains("image(s): over the per-output image limits"));
+    let marker = marker.unwrap_or_else(|| {
+        panic!("expected the consolidated omission marker in: {items:?}");
+    });
+    let dropped = 12 - kept;
+    assert!(
+        marker.contains(&format!("[omitted {dropped} image(s)")),
+        "marker should report exactly the dropped count: {marker}"
+    );
+    assert!(
+        items
+            .iter()
+            .any(|item| item.get("text").and_then(Value::as_str) == Some("twelve emitted")),
+        "the emitted text after the image loop must survive: {items:?}"
+    );
 
     Ok(())
 }
