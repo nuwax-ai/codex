@@ -172,7 +172,14 @@ pub async fn run(
         }
     };
 
-    // 9. Hand off completion handling, heartbeats, and baseline reset.
+    // 9. Emit dispatch metrics while the agent runs.
+    let counters = Counters {
+        input: raw_memory_count as i64,
+    };
+    emit_metrics(context.as_ref(), counters);
+
+    // 10. Drive the agent to completion inline, so the tracked startup task
+    //     covers the final claim release on a normal process exit.
     agent::handle(
         Arc::clone(&context),
         claim,
@@ -182,13 +189,8 @@ pub async fn run(
         config.memories.version,
         agent,
         phase_two_e2e_timer,
-    );
-
-    // 10. Emit dispatch metrics.
-    let counters = Counters {
-        input: raw_memory_count as i64,
-    };
-    emit_metrics(context.as_ref(), counters);
+    )
+    .await;
 }
 
 async fn sync_phase2_workspace_inputs(
@@ -395,9 +397,14 @@ mod agent {
         }]
     }
 
-    /// Handle the agent while it is running.
+    /// Drive the agent to completion, including the final claim release.
+    ///
+    /// Runs inline in the caller's task: the startup pipeline task is
+    /// shutdown-bound (see `start_memories_startup_task`), so a normal
+    /// process exit waits for the claim release instead of destroying the
+    /// runtime out from under it.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn handle(
+    pub(super) async fn handle(
         context: Arc<MemoryStartupContext>,
         claim: Claim,
         new_watermark: i64,
@@ -407,56 +414,55 @@ mod agent {
         agent: SpawnedConsolidationAgent,
         phase_two_e2e_timer: Option<codex_otel::Timer>,
     ) {
-        tokio::spawn(async move {
-            let Some(db) = context.memory_store().await else {
-                return;
-            };
-            let SpawnedConsolidationAgent { thread_id, thread } = agent;
+        let Some(db) = context.memory_store().await else {
+            return;
+        };
+        let SpawnedConsolidationAgent { thread_id, thread } = agent;
 
-            // Loop the agent until we have the final status.
-            let final_status =
-                loop_agent(db.clone(), claim.token.clone(), thread_id, &thread).await;
+        // Loop the agent until we have the final status.
+        let final_status = loop_agent(db.clone(), claim.token.clone(), thread_id, &thread).await;
 
-            let agent_completed = matches!(final_status, AgentStatus::Completed(_));
-            // A normal shutdown of the owning session/process is a clean
-            // cancel, not an agent failure.
-            let agent_shutdown_cleanly = matches!(final_status, AgentStatus::Shutdown);
-            if agent_completed
-                && let Some(token_usage) = thread
-                    .token_usage_info()
-                    .await
-                    .map(|info| info.total_token_usage)
-            {
-                emit_token_usage_metrics(context.as_ref(), &token_usage);
-            }
-
-            if let Err(err) = context
-                .shutdown_consolidation_agent(SpawnedConsolidationAgent { thread_id, thread })
+        let agent_completed = matches!(final_status, AgentStatus::Completed(_));
+        // A normal shutdown of the owning session/process is a clean
+        // cancel, not an agent failure — unless the agent already failed
+        // with a real error, which `loop_agent` preserves even when a
+        // later `Shutdown` overwrites the published status.
+        let agent_shutdown_cleanly = matches!(final_status, AgentStatus::Shutdown);
+        if agent_completed
+            && let Some(token_usage) = thread
+                .token_usage_info()
                 .await
-            {
-                warn!("failed to auto-close global memory consolidation agent {thread_id}: {err}");
-                // Keep the existing lease until it expires so another worker cannot race a
-                // consolidation agent whose shutdown has not completed.
-                return;
-            }
+                .map(|info| info.total_token_usage)
+        {
+            emit_token_usage_metrics(context.as_ref(), &token_usage);
+        }
 
-            let artifacts_valid = if agent_completed {
-                match validate_consolidation_artifacts_for_version(&memory_root, version).await {
-                    Ok(()) => true,
-                    Err(err) => {
-                        tracing::error!("memory consolidation artifacts are invalid: {err}");
-                        job::failed(context.as_ref(), &db, &claim, "failed_invalid_artifacts")
-                            .await;
-                        false
-                    }
+        if let Err(err) = context
+            .shutdown_consolidation_agent(SpawnedConsolidationAgent { thread_id, thread })
+            .await
+        {
+            warn!("failed to auto-close global memory consolidation agent {thread_id}: {err}");
+            // Keep the existing lease until it expires so another worker cannot race a
+            // consolidation agent whose shutdown has not completed.
+            return;
+        }
+
+        let artifacts_valid = if agent_completed {
+            match validate_consolidation_artifacts_for_version(&memory_root, version).await {
+                Ok(()) => true,
+                Err(err) => {
+                    tracing::error!("memory consolidation artifacts are invalid: {err}");
+                    job::failed(context.as_ref(), &db, &claim, "failed_invalid_artifacts").await;
+                    false
                 }
-            } else {
-                false
-            };
+            }
+        } else {
+            false
+        };
 
-            if agent_completed && artifacts_valid {
-                // Do not reset the workspace baseline if we lost the lock.
-                let still_owns_lock = match db
+        if agent_completed && artifacts_valid {
+            // Do not reset the workspace baseline if we lost the lock.
+            let still_owns_lock = match db
                     .heartbeat_global_phase2_job(
                         &claim.token,
                         crate::stage_two::JOB_LEASE_SECONDS,
@@ -480,42 +486,48 @@ mod agent {
                         false
                     }
                 };
-                if still_owns_lock {
-                    if let Err(err) = reset_memory_workspace_baseline(&memory_root).await {
-                        tracing::error!("failed resetting memory workspace baseline: {err}");
-                        job::failed(context.as_ref(), &db, &claim, "failed_workspace_commit").await;
-                    } else if !job::succeed(
-                        context.as_ref(),
-                        &db,
-                        &claim,
-                        new_watermark,
-                        &selected_outputs,
-                        "succeeded",
-                    )
-                    .await
-                    {
-                        tracing::error!(
-                            "failed marking global memory consolidation job succeeded after resetting workspace baseline"
-                        );
-                    } else {
-                        drop(phase_two_e2e_timer);
-                        context.record_storage_size(&memory_root).await;
-                    }
-                }
-            } else if !agent_completed {
-                // The run did not complete; drop any partial workspace artifacts.
-                if let Err(err) = remove_memory_symlinks(&memory_root).await {
-                    tracing::error!("failed removing memory workspace symbolic links: {err}");
-                }
-                if agent_shutdown_cleanly {
-                    job::canceled(context.as_ref(), &db, &claim, "canceled_agent_shutdown").await;
+            if still_owns_lock {
+                if let Err(err) = reset_memory_workspace_baseline(&memory_root).await {
+                    tracing::error!("failed resetting memory workspace baseline: {err}");
+                    job::failed(context.as_ref(), &db, &claim, "failed_workspace_commit").await;
+                } else if !job::succeed(
+                    context.as_ref(),
+                    &db,
+                    &claim,
+                    new_watermark,
+                    &selected_outputs,
+                    "succeeded",
+                )
+                .await
+                {
+                    tracing::error!(
+                        "failed marking global memory consolidation job succeeded after resetting workspace baseline"
+                    );
                 } else {
-                    job::failed(context.as_ref(), &db, &claim, "failed_agent").await;
+                    drop(phase_two_e2e_timer);
+                    context.record_storage_size(&memory_root).await;
                 }
             }
-        });
+        } else if !agent_completed {
+            // The run did not complete; drop any partial workspace artifacts.
+            if let Err(err) = remove_memory_symlinks(&memory_root).await {
+                tracing::error!("failed removing memory workspace symbolic links: {err}");
+            }
+            if agent_shutdown_cleanly {
+                job::canceled(context.as_ref(), &db, &claim, "canceled_agent_shutdown").await;
+            } else {
+                job::failed(context.as_ref(), &db, &claim, "failed_agent").await;
+            }
+        }
     }
 
+    /// Waits for the consolidation agent to settle and returns its final status.
+    ///
+    /// The status is observed through a subscription rather than polling, and
+    /// a real failure is sticky: when the owning session shuts the agent down
+    /// right after an error, the later `Shutdown` overwrite must not
+    /// reclassify the run as a clean cancel. A later `Completed` (a successful
+    /// retry) still wins over an earlier `Errored`.
     async fn loop_agent(
         db: MemoryStore,
         token: String,
@@ -525,22 +537,37 @@ mod agent {
         let mut heartbeat_interval =
             tokio::time::interval(Duration::from_secs(crate::stage_two::JOB_HEARTBEAT_SECONDS));
         heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut status_poll_interval = tokio::time::interval(Duration::from_secs(1));
-        status_poll_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut status_rx = thread.subscribe_status();
         let session_termination = thread.wait_until_terminated();
         tokio::pin!(session_termination);
+        let mut last_error: Option<String> = None;
 
         loop {
-            let status = thread.agent_status().await;
+            let status = status_rx.borrow_and_update().clone();
+            if let AgentStatus::Errored(err) = &status {
+                last_error = Some(err.clone());
+            }
             if is_final_agent_status(&status) {
-                break status;
+                break reconcile_overwritten_error(status, last_error);
             }
 
             tokio::select! {
+                changed = status_rx.changed() => {
+                    if changed.is_err() {
+                        // The status publisher is gone; classify from the last observed value.
+                        break reconcile_overwritten_error(
+                            status_rx.borrow_and_update().clone(),
+                            last_error,
+                        );
+                    }
+                }
                 _ = &mut session_termination => {
-                    let status = thread.agent_status().await;
+                    let status = status_rx.borrow_and_update().clone();
+                    if let AgentStatus::Errored(err) = &status {
+                        last_error = Some(err.clone());
+                    }
                     if is_final_agent_status(&status) {
-                        break status;
+                        break reconcile_overwritten_error(status, last_error);
                     }
                     tracing::warn!(
                         "memory consolidation agent {thread_id} exited before final status; last status was {status:?}"
@@ -548,8 +575,6 @@ mod agent {
                     break AgentStatus::Errored(format!(
                         "memory consolidation agent exited before final status: {status:?}"
                     ));
-                }
-                _ = status_poll_interval.tick() => {
                 }
                 _ = heartbeat_interval.tick() => {
                     match db
@@ -580,6 +605,19 @@ mod agent {
                 }
             }
         }
+    }
+}
+
+/// Restores a real failure that a subsequent shutdown overwrote.
+///
+/// A `Shutdown` observed as the final status means the owning process exited
+/// while the agent was still mid-run — a clean cancel — unless the agent had
+/// already failed, in which case the failure (and its budget/backoff) must
+/// survive the overwrite.
+fn reconcile_overwritten_error(status: AgentStatus, last_error: Option<String>) -> AgentStatus {
+    match (status, last_error) {
+        (AgentStatus::Shutdown, Some(err)) => AgentStatus::Errored(err),
+        (status, _) => status,
     }
 }
 

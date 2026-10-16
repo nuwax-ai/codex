@@ -1306,6 +1306,13 @@ impl ThreadRequestProcessor {
         for thread_id in report.timed_out {
             warn!("timed out waiting for thread {thread_id} to shut down");
         }
+        // Detached cleanup work that depends on the threads being down (for
+        // example the memory-consolidation claim release) can only finish
+        // after the shutdown above; wait for it before the runtime is
+        // destroyed by process exit.
+        self.thread_manager
+            .wait_for_shutdown_bound_tasks_bounded(Duration::from_secs(10))
+            .await;
     }
 
     async fn request_trace_context(

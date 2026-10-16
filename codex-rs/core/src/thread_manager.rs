@@ -442,6 +442,7 @@ pub(crate) struct ThreadManagerState {
     session_source: SessionSource,
     installation_id: String,
     analytics_events_client: Option<AnalyticsEventsClient>,
+    shutdown_bound_tasks: tokio_util::task::TaskTracker,
     // Captures submitted ops for testing purpose when test mode is enabled.
     ops_log: Option<SharedCapturedOps>,
 }
@@ -608,6 +609,7 @@ impl ThreadManager {
                 session_source,
                 installation_id,
                 analytics_events_client,
+                shutdown_bound_tasks: tokio_util::task::TaskTracker::new(),
                 ops_log: should_use_test_thread_manager_behavior()
                     .then(|| Arc::new(std::sync::Mutex::new(Vec::new()))),
             }),
@@ -799,6 +801,7 @@ impl ThreadManager {
                 session_source: SessionSource::Exec,
                 installation_id,
                 analytics_events_client: None,
+                shutdown_bound_tasks: tokio_util::task::TaskTracker::new(),
                 ops_log: should_use_test_thread_manager_behavior()
                     .then(|| Arc::new(std::sync::Mutex::new(Vec::new()))),
             }),
@@ -1478,6 +1481,51 @@ impl ThreadManager {
             .timed_out
             .sort_by_key(std::string::ToString::to_string);
         report
+    }
+
+    /// Spawns a detached background task whose completion is part of a clean
+    /// shutdown.
+    ///
+    /// The task runs detached exactly like [`tokio::spawn`], but
+    /// [`ThreadManager::wait_for_shutdown_bound_tasks_bounded`] waits for all
+    /// tracked tasks once the manager's threads were shut down, so cleanup
+    /// work (for example releasing a claimed memory-consolidation job) is not
+    /// destroyed together with the runtime when the process exits. Work that
+    /// can only finish while threads are still alive must not use this.
+    pub fn spawn_shutdown_bound_task<F>(&self, task: F)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let tracker = self.state.shutdown_bound_tasks.clone();
+        if tracker.is_closed() {
+            tracing::warn!(
+                "shutdown-bound task tracker is already closed; spawning the task detached"
+            );
+            tokio::spawn(task);
+            return;
+        }
+        tracker.spawn(task);
+    }
+
+    /// Waits a bounded time for [`ThreadManager::spawn_shutdown_bound_task`]
+    /// tasks to finish. Call this only after the threads those tasks depend on
+    /// were shut down (for example after
+    /// [`ThreadManager::shutdown_all_threads_bounded`]). Tasks that exceed the
+    /// bound are abandoned; state they were responsible for must have its own
+    /// recovery backstop (for example job lease expiry).
+    pub async fn wait_for_shutdown_bound_tasks_bounded(&self, timeout: Duration) -> bool {
+        self.state.shutdown_bound_tasks.close();
+        if tokio::time::timeout(timeout, self.state.shutdown_bound_tasks.wait())
+            .await
+            .is_err()
+        {
+            tracing::warn!(
+                "timed out waiting for shutdown-bound background tasks; proceeding with shutdown"
+            );
+            false
+        } else {
+            true
+        }
     }
 
     /// Captures the parent's current settings for a persisted-history fork.

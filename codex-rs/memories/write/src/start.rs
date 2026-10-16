@@ -57,7 +57,11 @@ pub fn start_memories_startup_task(
             source.clone(),
         ));
         let thread = Arc::clone(&thread);
-        tokio::spawn(async move {
+        // The pipeline task is shutdown-bound: a normal process exit waits
+        // (bounded) for it after threads are shut down, so a claimed phase-2
+        // job is released instead of being destroyed with the runtime and
+        // left to lease expiry.
+        thread_manager.spawn_shutdown_bound_task(async move {
             // Config retains the startup model, while runtime overrides and catalog
             // defaults live in the thread settings. Pin one choice for both phases.
             let mut config = config.as_ref().clone();

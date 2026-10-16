@@ -13,6 +13,7 @@ mod daybreak;
 mod ephemeral;
 mod hooks;
 mod mcp_required_exit;
+mod memory_exit_contract;
 mod nuwax_cross_process_scope;
 mod nuwax_env;
 mod nuwax_env_controls;

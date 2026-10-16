@@ -794,7 +794,13 @@ impl CodexThread {
         self.session.terminate_background_terminal(process_id).await
     }
 
-    pub(crate) fn subscribe_status(&self) -> watch::Receiver<AgentStatus> {
+    /// Subscribes to every future agent-status transition.
+    ///
+    /// Unlike polling [`CodexThread::agent_status`], a subscriber observes each
+    /// published status, so a terminal status that a later shutdown overwrites
+    /// (for example `Errored` followed by `Shutdown` when the owning process
+    /// exits right after a failed run) cannot be missed between polls.
+    pub fn subscribe_status(&self) -> watch::Receiver<AgentStatus> {
         self.io.agent_status.clone()
     }
 
