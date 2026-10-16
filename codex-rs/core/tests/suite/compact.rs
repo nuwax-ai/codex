@@ -5477,7 +5477,7 @@ async fn auto_compact_accounts_for_encrypted_reasoning(first_response_includes_r
 /// instead of silently satisfying the wait while request-shape assertions
 /// inspect a broken exchange.
 async fn wait_image_turn_complete(codex: &codex_core::CodexThread) {
-    let event = wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    let event = wait_for_event(codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
     let EventMsg::TurnComplete(complete) = event else {
         unreachable!("matched TurnComplete");
     };

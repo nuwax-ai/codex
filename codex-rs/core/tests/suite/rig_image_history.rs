@@ -885,7 +885,7 @@ async fn image_kill_resume_cell(wire_api: WireApi) -> Result<()> {
     let exec_server_url = initial
         .executor_environment()
         .exec_server_url()
-        .map(|url| url.to_string());
+        .map(std::string::ToString::to_string);
     drop(initial);
     wait_writer_lock_released(&codex_home, &thread_id).await?;
 
