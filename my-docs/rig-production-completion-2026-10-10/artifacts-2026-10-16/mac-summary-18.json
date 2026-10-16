@@ -1,0 +1,134 @@
+{
+  "codexPath": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex",
+  "codexSha256": "3fe73883561bd42eddda054e466db423d8adfd4408eb333f8af274fe08eb1f96",
+  "executed": 18,
+  "passed": 18,
+  "rows": [
+    {
+      "wire": "chat",
+      "scenario": "S1",
+      "name": "bootstrap",
+      "pass": true,
+      "detail": "session 01a14278-0b61-705a-8c74-032e59bf1099"
+    },
+    {
+      "wire": "chat",
+      "scenario": "S2",
+      "name": "env-passthrough",
+      "pass": true,
+      "detail": "stop=end_turn authOk=true modelOk=true titleModelOk=true httpAttempts=2 text=\"pong\""
+    },
+    {
+      "wire": "chat",
+      "scenario": "S3",
+      "name": "typed-image-delivery",
+      "pass": true,
+      "detail": "stop=end_turn toolCompleted=true imageDelivered=true httpAttempts=3 answer=\"red\""
+    },
+    {
+      "wire": "chat",
+      "scenario": "S4",
+      "name": "cancel",
+      "pass": true,
+      "detail": "stop=cancelled essayRequests=1"
+    },
+    {
+      "wire": "chat",
+      "scenario": "S5",
+      "name": "compaction-continuation",
+      "pass": true,
+      "detail": "compactRequestSeen=true compactUpdates=2 compactStop=end_turn followUp=\"post-compact-ok\""
+    },
+    {
+      "wire": "chat",
+      "scenario": "S6",
+      "name": "cold-resume-recall",
+      "pass": true,
+      "detail": "stop=end_turn tokenInResumedRequest=true recalled=\"ACP-COLD-42\" httpAttempts=1"
+    },
+    {
+      "wire": "responses",
+      "scenario": "S1",
+      "name": "bootstrap",
+      "pass": true,
+      "detail": "session 01a14278-2ce1-726e-a91f-ce64e04a435d"
+    },
+    {
+      "wire": "responses",
+      "scenario": "S2",
+      "name": "env-passthrough",
+      "pass": true,
+      "detail": "stop=end_turn authOk=true modelOk=true titleModelOk=true httpAttempts=2 text=\"pong\""
+    },
+    {
+      "wire": "responses",
+      "scenario": "S3",
+      "name": "typed-image-delivery",
+      "pass": true,
+      "detail": "stop=end_turn toolCompleted=true imageDelivered=true httpAttempts=3 answer=\"red\""
+    },
+    {
+      "wire": "responses",
+      "scenario": "S4",
+      "name": "cancel",
+      "pass": true,
+      "detail": "stop=cancelled essayRequests=1"
+    },
+    {
+      "wire": "responses",
+      "scenario": "S5",
+      "name": "compaction-continuation",
+      "pass": true,
+      "detail": "compactRequestSeen=true compactUpdates=2 compactStop=end_turn followUp=\"Warning: Heads up: Long threads and mult\""
+    },
+    {
+      "wire": "responses",
+      "scenario": "S6",
+      "name": "cold-resume-recall",
+      "pass": true,
+      "detail": "stop=end_turn tokenInResumedRequest=true recalled=\"ACP-COLD-42\" httpAttempts=1"
+    },
+    {
+      "wire": "anthropic",
+      "scenario": "S1",
+      "name": "bootstrap",
+      "pass": true,
+      "detail": "session 01a14278-4e3d-7517-824b-fca4474ff696"
+    },
+    {
+      "wire": "anthropic",
+      "scenario": "S2",
+      "name": "env-passthrough",
+      "pass": true,
+      "detail": "stop=end_turn authOk=true modelOk=true titleModelOk=true httpAttempts=2 text=\"pong\""
+    },
+    {
+      "wire": "anthropic",
+      "scenario": "S3",
+      "name": "typed-image-delivery",
+      "pass": true,
+      "detail": "stop=end_turn toolCompleted=true imageDelivered=true httpAttempts=3 answer=\"red\""
+    },
+    {
+      "wire": "anthropic",
+      "scenario": "S4",
+      "name": "cancel",
+      "pass": true,
+      "detail": "stop=cancelled essayRequests=1"
+    },
+    {
+      "wire": "anthropic",
+      "scenario": "S5",
+      "name": "compaction-continuation",
+      "pass": true,
+      "detail": "compactRequestSeen=true compactUpdates=2 compactStop=end_turn followUp=\"post-compact-ok\""
+    },
+    {
+      "wire": "anthropic",
+      "scenario": "S6",
+      "name": "cold-resume-recall",
+      "pass": true,
+      "detail": "stop=end_turn tokenInResumedRequest=true recalled=\"ACP-COLD-42\" httpAttempts=1"
+    }
+  ]
+}

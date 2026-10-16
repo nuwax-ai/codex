@@ -1,0 +1,134 @@
+{
+  "codexPath": "/tmp/codex-stab-2f2ddc157/codex-rs/target/debug/codex",
+  "codexSha256": "4c2414218aeedb1723ccb8b4682319cc64cda2730f957cc9a530ab860ca4ae99",
+  "executed": 18,
+  "passed": 18,
+  "rows": [
+    {
+      "wire": "chat",
+      "scenario": "S1",
+      "name": "bootstrap",
+      "pass": true,
+      "detail": "session 01a1424d-b702-714c-a0c3-38aa9d3b2b7f"
+    },
+    {
+      "wire": "chat",
+      "scenario": "S2",
+      "name": "env-passthrough",
+      "pass": true,
+      "detail": "stop=end_turn authOk=true modelOk=true titleModelOk=true httpAttempts=2 text=\"pong\""
+    },
+    {
+      "wire": "chat",
+      "scenario": "S3",
+      "name": "typed-image-delivery",
+      "pass": true,
+      "detail": "stop=end_turn toolCompleted=true imageDelivered=true httpAttempts=3 answer=\"red\""
+    },
+    {
+      "wire": "chat",
+      "scenario": "S4",
+      "name": "cancel",
+      "pass": true,
+      "detail": "stop=cancelled essayRequests=1"
+    },
+    {
+      "wire": "chat",
+      "scenario": "S5",
+      "name": "compaction-continuation",
+      "pass": true,
+      "detail": "compactRequestSeen=true compactUpdates=2 compactStop=end_turn followUp=\"Warning: Heads up: Long threads and mult\""
+    },
+    {
+      "wire": "chat",
+      "scenario": "S6",
+      "name": "cold-resume-recall",
+      "pass": true,
+      "detail": "stop=end_turn tokenInResumedRequest=true recalled=\"ACP-COLD-42\" httpAttempts=1"
+    },
+    {
+      "wire": "responses",
+      "scenario": "S1",
+      "name": "bootstrap",
+      "pass": true,
+      "detail": "session 01a1424d-f7d2-71ba-95a0-a623626b4f52"
+    },
+    {
+      "wire": "responses",
+      "scenario": "S2",
+      "name": "env-passthrough",
+      "pass": true,
+      "detail": "stop=end_turn authOk=true modelOk=true titleModelOk=true httpAttempts=2 text=\"pong\""
+    },
+    {
+      "wire": "responses",
+      "scenario": "S3",
+      "name": "typed-image-delivery",
+      "pass": true,
+      "detail": "stop=end_turn toolCompleted=true imageDelivered=true httpAttempts=3 answer=\"red\""
+    },
+    {
+      "wire": "responses",
+      "scenario": "S4",
+      "name": "cancel",
+      "pass": true,
+      "detail": "stop=cancelled essayRequests=1"
+    },
+    {
+      "wire": "responses",
+      "scenario": "S5",
+      "name": "compaction-continuation",
+      "pass": true,
+      "detail": "compactRequestSeen=true compactUpdates=2 compactStop=end_turn followUp=\"post-compact-ok\""
+    },
+    {
+      "wire": "responses",
+      "scenario": "S6",
+      "name": "cold-resume-recall",
+      "pass": true,
+      "detail": "stop=end_turn tokenInResumedRequest=true recalled=\"ACP-COLD-42\" httpAttempts=1"
+    },
+    {
+      "wire": "anthropic",
+      "scenario": "S1",
+      "name": "bootstrap",
+      "pass": true,
+      "detail": "session 01a1424e-381a-75aa-9295-3d9542740f68"
+    },
+    {
+      "wire": "anthropic",
+      "scenario": "S2",
+      "name": "env-passthrough",
+      "pass": true,
+      "detail": "stop=end_turn authOk=true modelOk=true titleModelOk=true httpAttempts=2 text=\"pong\""
+    },
+    {
+      "wire": "anthropic",
+      "scenario": "S3",
+      "name": "typed-image-delivery",
+      "pass": true,
+      "detail": "stop=end_turn toolCompleted=true imageDelivered=true httpAttempts=3 answer=\"red\""
+    },
+    {
+      "wire": "anthropic",
+      "scenario": "S4",
+      "name": "cancel",
+      "pass": true,
+      "detail": "stop=cancelled essayRequests=1"
+    },
+    {
+      "wire": "anthropic",
+      "scenario": "S5",
+      "name": "compaction-continuation",
+      "pass": true,
+      "detail": "compactRequestSeen=true compactUpdates=2 compactStop=end_turn followUp=\"post-compact-ok\""
+    },
+    {
+      "wire": "anthropic",
+      "scenario": "S6",
+      "name": "cold-resume-recall",
+      "pass": true,
+      "detail": "stop=end_turn tokenInResumedRequest=true recalled=\"ACP-COLD-42\" httpAttempts=1"
+    }
+  ]
+}

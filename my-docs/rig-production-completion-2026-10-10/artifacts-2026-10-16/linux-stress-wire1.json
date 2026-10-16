@@ -1,0 +1,546 @@
+{
+  "codexPath": "/tmp/codex-stab-2f2ddc157/codex-rs/target/debug/codex",
+  "codexSha256": "4c2414218aeedb1723ccb8b4682319cc64cda2730f957cc9a530ab860ca4ae99",
+  "valWire": "chat",
+  "roundsPlanned": 17,
+  "roundsRun": 17,
+  "roundsPassed": 17,
+  "cancels": 5,
+  "toolImageRounds": 3,
+  "compactions": 2,
+  "coldRestarts": 2,
+  "shutdownMs": 11,
+  "mockOpenSocketsAfter": 0,
+  "leftoverShotServers": 0,
+  "agentRssSeriesKb": [
+    102112,
+    102132,
+    102160,
+    102196,
+    102260,
+    102280,
+    87992,
+    88464,
+    100276,
+    100316,
+    100360,
+    100428,
+    100460,
+    100480,
+    100616
+  ],
+  "results": [
+    {
+      "round": 0,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 457,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102084,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 314256,
+            "fds": 58
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 102112,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 315764,
+            "fds": 60
+          }
+        ]
+      }
+    },
+    {
+      "round": 1,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 5954,
+      "httpDelta": 3,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102112,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 315764,
+            "fds": 60
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 102132,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 323684,
+            "fds": 61
+          }
+        ]
+      }
+    },
+    {
+      "round": 2,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 395,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102132,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 323684,
+            "fds": 61
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 102160,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 324932,
+            "fds": 61
+          }
+        ]
+      }
+    },
+    {
+      "round": 3,
+      "kind": "cancel-headers",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 3085,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102160,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 324932,
+            "fds": 61
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 102196,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 326188,
+            "fds": 61
+          }
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "kind": "compact",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 679,
+      "httpDelta": 2,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102196,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 326188,
+            "fds": 61
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 102260,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 326680,
+            "fds": 61
+          }
+        ]
+      }
+    },
+    {
+      "round": 5,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 417,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102260,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 326680,
+            "fds": 61
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 102280,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 327440,
+            "fds": 61
+          }
+        ]
+      }
+    },
+    {
+      "round": 6,
+      "kind": "cancel-mid-stream",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 2192,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102280,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 327440,
+            "fds": 61
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 87992,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 327900,
+            "fds": 61
+          }
+        ]
+      }
+    },
+    {
+      "round": 7,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 5918,
+      "httpDelta": 3,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 87992,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 327900,
+            "fds": 61
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 88464,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 331336,
+            "fds": 61
+          }
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "kind": "cold-restart",
+      "pass": true,
+      "ms": 1978,
+      "httpDelta": 1,
+      "openSockets": 0
+    },
+    {
+      "round": 9,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 447,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100228,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 326484,
+            "fds": 59
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 100276,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 328792,
+            "fds": 59
+          }
+        ]
+      }
+    },
+    {
+      "round": 10,
+      "kind": "cancel-headers",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 3115,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100276,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 328792,
+            "fds": 59
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 100316,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 329988,
+            "fds": 59
+          }
+        ]
+      }
+    },
+    {
+      "round": 11,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 5979,
+      "httpDelta": 3,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100316,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 329988,
+            "fds": 59
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 100360,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 335940,
+            "fds": 61
+          }
+        ]
+      }
+    },
+    {
+      "round": 12,
+      "kind": "compact",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 751,
+      "httpDelta": 2,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100360,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 335940,
+            "fds": 61
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 100428,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 336620,
+            "fds": 61
+          }
+        ]
+      }
+    },
+    {
+      "round": 13,
+      "kind": "cancel-mid-stream",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 2233,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100428,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 336620,
+            "fds": 61
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 100460,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 336780,
+            "fds": 61
+          }
+        ]
+      }
+    },
+    {
+      "round": 14,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 452,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100460,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 336780,
+            "fds": 61
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 100480,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 337152,
+            "fds": 61
+          }
+        ]
+      }
+    },
+    {
+      "round": 15,
+      "kind": "cancel-during-tool",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 517,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100480,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 337152,
+            "fds": 61
+          }
+        ]
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 100616,
+          "fds": 24
+        },
+        "children": [
+          {
+            "rssKb": 337928,
+            "fds": 58
+          }
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "kind": "cold-restart",
+      "pass": true,
+      "ms": 2096,
+      "httpDelta": 1,
+      "openSockets": 0
+    }
+  ],
+  "failures": []
+}
