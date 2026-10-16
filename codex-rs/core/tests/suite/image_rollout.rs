@@ -146,6 +146,21 @@ fn write_test_png(path: &Path, color: [u8; 4]) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Waits for TurnComplete and requires it to be error-free: a failed
+/// image-rollout turn must fail the test rather than silently satisfy the
+/// wait while the rollout assertions below inspect a broken turn.
+async fn wait_turn_complete_ok(codex: &codex_core::CodexThread) {
+    let event = wait_for_event(codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+    let EventMsg::TurnComplete(complete) = event else {
+        unreachable!("matched TurnComplete");
+    };
+    assert!(
+        complete.error.is_none(),
+        "image rollout turn completed with an error: {:?}",
+        complete.error
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn copy_paste_local_image_persists_rollout_request_shape() -> anyhow::Result<()> {
     skip_if_no_network!(Ok(()));
@@ -205,7 +220,7 @@ async fn copy_paste_local_image_persists_rollout_request_shape() -> anyhow::Resu
         )
         .await?;
 
-    wait_for_event(&codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+    wait_turn_complete_ok(&codex).await;
     codex.submit(Op::Shutdown).await?;
     wait_for_event(&codex, |event| matches!(event, EventMsg::ShutdownComplete)).await;
 
@@ -305,7 +320,7 @@ async fn drag_drop_image_persists_rollout_request_shape() -> anyhow::Result<()> 
         )
         .await?;
 
-    wait_for_event(&codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+    wait_turn_complete_ok(&codex).await;
     codex.submit(Op::Shutdown).await?;
     wait_for_event(&codex, |event| matches!(event, EventMsg::ShutdownComplete)).await;
 
@@ -369,10 +384,7 @@ async fn file_image_passes_through_request_and_rollout() -> anyhow::Result<()> {
             },
         ]))
         .await?;
-    wait_for_event(&test.codex, |event| {
-        matches!(event, EventMsg::TurnComplete(_))
-    })
-    .await;
+    wait_turn_complete_ok(&test.codex).await;
 
     let request = response_mock.single_request();
     assert!(request.input().iter().any(|item| {
@@ -520,10 +532,7 @@ async fn uploaded_images_preserve_user_message_display_history() -> anyhow::Resu
     assert_eq!(completed.id, started.id);
     assert_eq!(completed.client_id, started.client_id);
     assert_eq!(completed.content, started.content);
-    wait_for_event(&test.codex, |event| {
-        matches!(event, EventMsg::TurnComplete(_))
-    })
-    .await;
+    wait_turn_complete_ok(&test.codex).await;
 
     let request = response_mock.single_request();
     let mut model_file_ids = Vec::new();
@@ -676,10 +685,7 @@ async fn resumed_history_only_emits_resize_notices_for_new_images() -> anyhow::R
             detail: Some(ImageDetail::High),
         }]))
         .await?;
-    wait_for_event(&resumed.codex, |event| {
-        matches!(event, EventMsg::TurnComplete(_))
-    })
-    .await;
+    wait_turn_complete_ok(&resumed.codex).await;
     {
         let uploads = resume_image_store.uploads.lock().expect("uploads lock");
         let [upload] = uploads.as_slice() else {

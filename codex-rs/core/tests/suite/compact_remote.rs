@@ -177,12 +177,20 @@ fn assert_request_contains_custom_realtime_start(
 }
 
 async fn wait_for_turn_complete(codex: &codex_core::CodexThread) {
-    wait_for_event_with_timeout(
+    let event = wait_for_event_with_timeout(
         codex,
         |ev| matches!(ev, EventMsg::TurnComplete(_)),
         REMOTE_COMPACT_TURN_COMPLETE_TIMEOUT,
     )
     .await;
+    let EventMsg::TurnComplete(complete) = event else {
+        unreachable!("matched TurnComplete");
+    };
+    assert!(
+        complete.error.is_none(),
+        "remote-compaction turn completed with an error: {:?}",
+        complete.error
+    );
 }
 
 fn amazon_bedrock_test_codex() -> TestCodexBuilder {
@@ -705,6 +713,13 @@ async fn remote_compact_v2_charges_retained_images_to_token_budget(
         .collect::<Vec<_>>();
     assert_eq!(prepared_images.len(), 7);
 
+    // Every snapshot below must remain a byte-prefix of all later ones: the
+    // retained-image compaction cycles must only append to the rollout, never
+    // rewrite what earlier turns already persisted.
+    let rollout_path = codex.rollout_path().context("rollout path")?;
+    let mut rollout_snapshots = Vec::new();
+    rollout_snapshots.push(fs::read_to_string(&rollout_path)?);
+
     for cycle in 1..=2 {
         let compact_mock = mount_sse_once(
             harness.server(),
@@ -719,6 +734,7 @@ async fn remote_compact_v2_charges_retained_images_to_token_budget(
         .await;
         codex.submit(Op::Compact).await?;
         wait_for_turn_complete(codex).await;
+        rollout_snapshots.push(fs::read_to_string(&rollout_path)?);
         let compact_request = compact_mock.single_request();
         assert_eq!(compact_request.path(), "/v1/responses");
         assert_eq!(
@@ -741,6 +757,7 @@ async fn remote_compact_v2_charges_retained_images_to_token_budget(
             }]))
             .await?;
         wait_for_turn_complete(codex).await;
+        rollout_snapshots.push(fs::read_to_string(&rollout_path)?);
         let follow_up = follow_up_mock.single_request();
         assert_eq!(
             follow_up.inputs_of_type("compaction")[0]["encrypted_content"],
@@ -800,9 +817,26 @@ async fn remote_compact_v2_charges_retained_images_to_token_budget(
                 .start_or_steer_turn(TurnInputRequest::user_input(vec![image_inputs[7].clone()]))
                 .await?;
             wait_for_turn_complete(codex).await;
+            rollout_snapshots.push(fs::read_to_string(&rollout_path)?);
             let _ = append_mock.single_request();
         }
     }
+    assert!(
+        rollout_snapshots
+            .windows(2)
+            .all(|pair| pair[1].starts_with(&pair[0])),
+        "remote compaction with retained images must keep the rollout append-only across cycles"
+    );
+    let first = &rollout_snapshots[0];
+    let last = rollout_snapshots.last().expect("rollout snapshots");
+    assert!(
+        !first.is_empty(),
+        "the initial image turn persisted rollout records"
+    );
+    assert!(
+        last.len() > first.len(),
+        "the compaction cycles appended new rollout records"
+    );
     Ok(())
 }
 

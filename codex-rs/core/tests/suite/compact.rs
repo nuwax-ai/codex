@@ -5472,6 +5472,22 @@ async fn auto_compact_accounts_for_encrypted_reasoning(first_response_includes_r
     );
 }
 
+/// Waits for TurnComplete and requires it to be error-free for the
+/// image-bearing pre-turn compaction turns: a failed turn must fail the test
+/// instead of silently satisfying the wait while request-shape assertions
+/// inspect a broken exchange.
+async fn wait_image_turn_complete(codex: &codex_core::CodexThread) {
+    let event = wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    let EventMsg::TurnComplete(complete) = event else {
+        unreachable!("matched TurnComplete");
+    };
+    assert!(
+        complete.error.is_none(),
+        "image compaction turn completed with an error: {:?}",
+        complete.error
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 // TODO(ccunningham): Update once pre-turn compaction includes incoming user input.
 async fn snapshot_request_shape_pre_turn_compaction_including_incoming_user_message() {
@@ -5518,7 +5534,7 @@ async fn snapshot_request_shape_pre_turn_compaction_including_incoming_user_mess
             }]))
             .await
             .expect("submit user input");
-        wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+        wait_image_turn_complete(&codex).await;
     }
     core_test_support::submit_thread_settings(
         &codex,
@@ -5548,7 +5564,7 @@ async fn snapshot_request_shape_pre_turn_compaction_including_incoming_user_mess
         ]))
         .await
         .expect("submit user input");
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    wait_image_turn_complete(&codex).await;
 
     let requests = request_log.requests();
     assert_eq!(requests.len(), 4, "expected user, user, compact, follow-up");
