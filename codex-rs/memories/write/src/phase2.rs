@@ -272,6 +272,41 @@ mod job {
         }
     }
 
+    /// Releases a claim after a clean cancel (normal agent shutdown).
+    ///
+    /// A normal shutdown is not a failure: the release is strictly
+    /// ownership-checked so a stale worker cannot release a job a newer claim
+    /// already owns, does not consume the failure budget, and preserves the
+    /// input watermark. When the release cannot run (ownership lost or store
+    /// error) the existing lease expiry remains the recovery backstop.
+    pub(super) async fn canceled(
+        context: &MemoryStartupContext,
+        db: &MemoryStore,
+        claim: &Claim,
+        reason: &'static str,
+    ) {
+        context.counter(MEMORY_PHASE_TWO_JOBS, /*inc*/ 1, &[("status", reason)]);
+        match db
+            .release_global_phase2_job(
+                &claim.token,
+                crate::stage_two::JOB_CANCEL_RETRY_DELAY_SECONDS,
+            )
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::warn!(
+                    "global memory consolidation ownership was lost before a clean cancel release"
+                );
+            }
+            Err(err) => {
+                tracing::error!(
+                    "failed releasing global memory consolidation claim after a clean cancel: {err}"
+                );
+            }
+        }
+    }
+
     pub(super) async fn succeed(
         context: &MemoryStartupContext,
         db: &MemoryStore,
@@ -383,6 +418,9 @@ mod agent {
                 loop_agent(db.clone(), claim.token.clone(), thread_id, &thread).await;
 
             let agent_completed = matches!(final_status, AgentStatus::Completed(_));
+            // A normal shutdown of the owning session/process is a clean
+            // cancel, not an agent failure.
+            let agent_shutdown_cleanly = matches!(final_status, AgentStatus::Shutdown);
             if agent_completed
                 && let Some(token_usage) = thread
                     .token_usage_info()
@@ -465,10 +503,15 @@ mod agent {
                     }
                 }
             } else if !agent_completed {
+                // The run did not complete; drop any partial workspace artifacts.
                 if let Err(err) = remove_memory_symlinks(&memory_root).await {
                     tracing::error!("failed removing memory workspace symbolic links: {err}");
                 }
-                job::failed(context.as_ref(), &db, &claim, "failed_agent").await;
+                if agent_shutdown_cleanly {
+                    job::canceled(context.as_ref(), &db, &claim, "canceled_agent_shutdown").await;
+                } else {
+                    job::failed(context.as_ref(), &db, &claim, "failed_agent").await;
+                }
             }
         });
     }

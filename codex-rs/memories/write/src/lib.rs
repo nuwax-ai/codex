@@ -107,6 +107,10 @@ mod stage_two {
     pub(super) const JOB_LEASE_SECONDS: i64 = 3_600;
     pub(super) const JOB_RETRY_DELAY_SECONDS: i64 = 3_600;
     pub(super) const JOB_HEARTBEAT_SECONDS: u64 = 90;
+    /// Re-claim delay after a clean cancel (normal agent shutdown). Unlike a
+    /// failure, a normal shutdown must not delay the next worker by the full
+    /// retry backoff window.
+    pub(super) const JOB_CANCEL_RETRY_DELAY_SECONDS: i64 = 5;
 }
 
 mod workspace_diff {

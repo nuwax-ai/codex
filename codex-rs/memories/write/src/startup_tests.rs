@@ -40,6 +40,7 @@ use core_test_support::responses::ResponsesRequest;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_response_created;
+use core_test_support::responses::mount_response_once;
 use core_test_support::responses::mount_sse_once;
 #[cfg(unix)]
 use core_test_support::responses::mount_sse_once_match;
@@ -58,6 +59,7 @@ use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::time::Duration;
 use tokio::time::Instant;
+use wiremock::ResponseTemplate;
 
 #[path = "startup_dual_write_tests.rs"]
 mod dual_write;
@@ -440,6 +442,78 @@ async fn memories_startup_phase2_tracks_workspace_diff_across_runs() -> anyhow::
     );
 
     shutdown_test_codex(&test).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn phase2_releases_claim_promptly_after_normal_agent_shutdown() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let home = Arc::new(TempDir::new()?);
+    let db = init_state_db(&home).await?;
+    let memory_root = home.path().join("memories");
+
+    let updated_at = chrono::Utc::now();
+    seed_stage1_output(
+        db.as_ref(),
+        home.path(),
+        updated_at,
+        "raw memory",
+        "rollout summary",
+        "normal-shutdown",
+    )
+    .await?;
+    seed_required_memory_artifacts(&memory_root).await?;
+
+    // Keep the consolidation turn in flight so the teardown below interrupts a
+    // claimed, running phase-2 job instead of racing a fast completion.
+    let phase2 = mount_response_once(
+        &server,
+        ResponseTemplate::new(200)
+            .insert_header("content-type", "text/event-stream")
+            .set_delay(Duration::from_secs(120)),
+    )
+    .await;
+
+    let test = build_test_codex(&server, Arc::clone(&home)).await?;
+    trigger_memories_startup(&test).await;
+    wait_for_single_request(&phase2).await;
+
+    // Normal session/process teardown: every managed thread, including the
+    // consolidation agent, is shut down cleanly.
+    test.thread_manager
+        .shutdown_all_threads_bounded(Duration::from_secs(30))
+        .await;
+
+    // The released claim must be re-claimable within seconds instead of the
+    // failure backoff window, and the input watermark must survive the cancel.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let reclaimed = loop {
+        let outcome = db
+            .memories()
+            .try_claim_global_phase2_job(ThreadId::new(), /*lease_seconds*/ 3_600)
+            .await?;
+        if matches!(outcome, Phase2JobClaimOutcome::Claimed { .. }) {
+            break outcome;
+        }
+        anyhow::ensure!(
+            Instant::now() < deadline,
+            "phase-2 job was not promptly re-claimable after a normal consolidation agent shutdown; last outcome: {outcome:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    match reclaimed {
+        Phase2JobClaimOutcome::Claimed {
+            input_watermark, ..
+        } => {
+            assert_eq!(
+                input_watermark,
+                updated_at.timestamp(),
+                "input watermark must be preserved across a clean shutdown cancel"
+            );
+        }
+        other => panic!("unexpected phase-2 reclaim outcome: {other:?}"),
+    }
+
     Ok(())
 }
 

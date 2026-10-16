@@ -1395,6 +1395,48 @@ WHERE kind = ? AND job_key = ?
 
         Ok(rows_affected > 0)
     }
+
+    /// Releases the owned running global phase-2 job after a clean cancel.
+    ///
+    /// Used when a consolidation agent stops because its owning session or
+    /// process shut down normally: nothing failed, so unlike
+    /// [`Self::mark_global_phase2_job_failed`] this transition
+    /// - updates only the owned running singleton global row, so a stale
+    ///   worker cannot release a job a newer claim already owns
+    /// - sets `status='pending'` and clears lease/error bookkeeping
+    /// - schedules a short `retry_at` so a new worker can re-claim promptly
+    /// - leaves `retry_remaining`, `input_watermark`, and
+    ///   `last_success_watermark` untouched
+    pub async fn release_global_phase2_job(
+        &self,
+        ownership_token: &str,
+        retry_delay_seconds: i64,
+    ) -> anyhow::Result<bool> {
+        let now = Utc::now().timestamp();
+        let retry_at = now.saturating_add(retry_delay_seconds.max(0));
+        let rows_affected = sqlx::query(
+            r#"
+UPDATE jobs
+SET
+    status = 'pending',
+    finished_at = NULL,
+    lease_until = NULL,
+    retry_at = ?,
+    last_error = NULL
+WHERE kind = ? AND job_key = ?
+  AND status = 'running' AND ownership_token = ?
+            "#,
+        )
+        .bind(retry_at)
+        .bind(JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL)
+        .bind(MEMORY_CONSOLIDATION_JOB_KEY)
+        .bind(ownership_token)
+        .execute(self.pool.as_ref())
+        .await?
+        .rows_affected();
+
+        Ok(rows_affected > 0)
+    }
 }
 
 async fn mark_global_phase2_job_succeeded_row<'e, E>(
@@ -5462,6 +5504,331 @@ VALUES (?, ?, ?, ?, ?)
             .await
             .expect("claim after fallback failure");
         assert_eq!(claim, Phase2JobClaimOutcome::SkippedRetryUnavailable);
+
+        let _ = tokio::fs::remove_dir_all(codex_home).await;
+    }
+
+    #[tokio::test]
+    async fn phase2_clean_cancel_releases_owned_claim_without_failure_budget() {
+        let codex_home = unique_temp_dir();
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
+
+        runtime
+            .enqueue_global_consolidation(/*input_watermark*/ 700)
+            .await
+            .expect("enqueue global consolidation");
+
+        let owner_a = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner a");
+        let claim = runtime
+            .try_claim_global_phase2_job(owner_a, /*lease_seconds*/ 3_600)
+            .await
+            .expect("claim global consolidation");
+        let token_a = match claim {
+            Phase2JobClaimOutcome::Claimed {
+                ownership_token, ..
+            } => ownership_token,
+            other => panic!("unexpected claim outcome: {other:?}"),
+        };
+
+        assert!(
+            runtime
+                .memories()
+                .release_global_phase2_job(token_a.as_str(), /*retry_delay_seconds*/ 0)
+                .await
+                .expect("release owned global consolidation claim"),
+            "clean cancel should release the owned running claim"
+        );
+
+        let job_row = sqlx::query(
+            "SELECT status, lease_until, retry_at, retry_remaining, last_error, input_watermark \
+             FROM jobs WHERE kind = ? AND job_key = ?",
+        )
+        .bind(JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL)
+        .bind(MEMORY_CONSOLIDATION_JOB_KEY)
+        .fetch_one(memory_pool(&runtime))
+        .await
+        .expect("load phase2 job row after clean cancel");
+        assert_eq!(
+            job_row.try_get::<String, _>("status").expect("status"),
+            "pending",
+            "clean cancel must leave the job pending, not errored"
+        );
+        assert!(
+            job_row
+                .try_get::<Option<i64>, _>("lease_until")
+                .expect("lease_until")
+                .is_none(),
+            "clean cancel must clear the lease"
+        );
+        assert!(
+            job_row
+                .try_get::<Option<String>, _>("last_error")
+                .expect("last_error")
+                .is_none(),
+            "clean cancel must not record an error"
+        );
+        assert_eq!(
+            job_row
+                .try_get::<i64, _>("retry_remaining")
+                .expect("retry_remaining"),
+            3,
+            "clean cancel must not consume the failure budget"
+        );
+        assert_eq!(
+            job_row
+                .try_get::<Option<i64>, _>("input_watermark")
+                .expect("input_watermark"),
+            Some(700),
+            "clean cancel must preserve the input watermark"
+        );
+
+        let owner_b = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner b");
+        let reclaimed = runtime
+            .try_claim_global_phase2_job(owner_b, /*lease_seconds*/ 3_600)
+            .await
+            .expect("re-claim after clean cancel");
+        let token_b = match reclaimed {
+            Phase2JobClaimOutcome::Claimed {
+                ownership_token,
+                input_watermark,
+            } => {
+                assert_eq!(input_watermark, 700);
+                ownership_token
+            }
+            other => panic!("clean-cancelled job should be immediately re-claimable: {other:?}"),
+        };
+
+        // A short re-claim delay must still gate claims without applying the
+        // 3_600-second failure backoff.
+        assert!(
+            runtime
+                .memories()
+                .release_global_phase2_job(token_b.as_str(), /*retry_delay_seconds*/ 5)
+                .await
+                .expect("release with short delay"),
+            "second clean cancel should release the re-claimed job"
+        );
+        let gated_claim = runtime
+            .try_claim_global_phase2_job(ThreadId::new(), /*lease_seconds*/ 3_600)
+            .await
+            .expect("claim during short cancel delay");
+        assert_eq!(gated_claim, Phase2JobClaimOutcome::SkippedRetryUnavailable);
+        let retry_at = sqlx::query("SELECT retry_at FROM jobs WHERE kind = ? AND job_key = ?")
+            .bind(JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL)
+            .bind(MEMORY_CONSOLIDATION_JOB_KEY)
+            .fetch_one(memory_pool(&runtime))
+            .await
+            .expect("load phase2 retry_at after delayed clean cancel")
+            .try_get::<Option<i64>, _>("retry_at")
+            .expect("retry_at")
+            .expect("retry_at should be set during the short delay");
+        let now = Utc::now().timestamp();
+        assert!(
+            retry_at >= now && retry_at <= now + 60,
+            "clean-cancel retry_at {retry_at} should be a short delay, not the failure backoff"
+        );
+
+        let _ = tokio::fs::remove_dir_all(codex_home).await;
+    }
+
+    #[tokio::test]
+    async fn phase2_clean_cancel_requires_current_ownership_token() {
+        let codex_home = unique_temp_dir();
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
+
+        runtime
+            .enqueue_global_consolidation(/*input_watermark*/ 300)
+            .await
+            .expect("enqueue global consolidation");
+
+        let owner_a = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner a");
+        let owner_b = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner b");
+        let initial_claim = runtime
+            .try_claim_global_phase2_job(owner_a, /*lease_seconds*/ 3_600)
+            .await
+            .expect("claim initial global consolidation");
+        let token_a = match initial_claim {
+            Phase2JobClaimOutcome::Claimed {
+                ownership_token, ..
+            } => ownership_token,
+            other => panic!("unexpected initial claim outcome: {other:?}"),
+        };
+
+        sqlx::query("UPDATE jobs SET lease_until = ? WHERE kind = ? AND job_key = ?")
+            .bind(Utc::now().timestamp() - 1)
+            .bind(JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL)
+            .bind(MEMORY_CONSOLIDATION_JOB_KEY)
+            .execute(memory_pool(&runtime))
+            .await
+            .expect("expire global consolidation lease");
+
+        let takeover_claim = runtime
+            .try_claim_global_phase2_job(owner_b, /*lease_seconds*/ 3_600)
+            .await
+            .expect("claim stale global consolidation");
+        let token_b = match takeover_claim {
+            Phase2JobClaimOutcome::Claimed {
+                ownership_token, ..
+            } => ownership_token,
+            other => panic!("unexpected takeover claim outcome: {other:?}"),
+        };
+        assert_ne!(token_a, token_b);
+
+        assert_eq!(
+            runtime
+                .memories()
+                .release_global_phase2_job(token_a.as_str(), /*retry_delay_seconds*/ 0)
+                .await
+                .expect("release with stale ownership token"),
+            false,
+            "a stale worker must not release a job a newer claim owns"
+        );
+
+        let job_row = sqlx::query(
+            "SELECT status, ownership_token, lease_until FROM jobs WHERE kind = ? AND job_key = ?",
+        )
+        .bind(JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL)
+        .bind(MEMORY_CONSOLIDATION_JOB_KEY)
+        .fetch_one(memory_pool(&runtime))
+        .await
+        .expect("load phase2 job row after stale release attempt");
+        assert_eq!(
+            job_row.try_get::<String, _>("status").expect("status"),
+            "running",
+            "stale release must not cancel the new owner's job"
+        );
+        assert_eq!(
+            job_row
+                .try_get::<Option<String>, _>("ownership_token")
+                .expect("ownership_token"),
+            Some(token_b.clone()),
+            "stale release must not change ownership"
+        );
+        assert!(
+            job_row
+                .try_get::<Option<i64>, _>("lease_until")
+                .expect("lease_until")
+                .is_some(),
+            "stale release must not clear the new owner's lease"
+        );
+
+        assert!(
+            runtime
+                .memories()
+                .heartbeat_global_phase2_job(token_b.as_str(), /*lease_seconds*/ 3_600)
+                .await
+                .expect("heartbeat with current ownership token"),
+            "the current owner must still be able to heartbeat after a stale release attempt"
+        );
+        assert!(
+            runtime
+                .mark_global_phase2_job_succeeded(
+                    token_b.as_str(),
+                    /*completed_watermark*/ 300,
+                    &[],
+                )
+                .await
+                .expect("mark takeover owner success after stale release attempt"),
+            "the current owner must still be able to finalize the job"
+        );
+
+        let _ = tokio::fs::remove_dir_all(codex_home).await;
+    }
+
+    #[tokio::test]
+    async fn phase2_failure_path_still_consumes_budget_and_applies_backoff() {
+        let codex_home = unique_temp_dir();
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
+
+        runtime
+            .enqueue_global_consolidation(/*input_watermark*/ 100)
+            .await
+            .expect("enqueue global consolidation");
+
+        let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner");
+        let claim = runtime
+            .try_claim_global_phase2_job(owner, /*lease_seconds*/ 3_600)
+            .await
+            .expect("claim global consolidation");
+        let ownership_token = match claim {
+            Phase2JobClaimOutcome::Claimed {
+                ownership_token, ..
+            } => ownership_token,
+            other => panic!("unexpected claim outcome: {other:?}"),
+        };
+
+        assert!(
+            runtime
+                .mark_global_phase2_job_failed(
+                    ownership_token.as_str(),
+                    "failed_agent",
+                    /*retry_delay_seconds*/ 3_600,
+                )
+                .await
+                .expect("mark phase2 failed"),
+            "real failures must still finalize through the failure path"
+        );
+
+        let job_row = sqlx::query(
+            "SELECT status, retry_remaining, retry_at, last_error \
+             FROM jobs WHERE kind = ? AND job_key = ?",
+        )
+        .bind(JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL)
+        .bind(MEMORY_CONSOLIDATION_JOB_KEY)
+        .fetch_one(memory_pool(&runtime))
+        .await
+        .expect("load phase2 job row after failure");
+        assert_eq!(
+            job_row.try_get::<String, _>("status").expect("status"),
+            "error"
+        );
+        assert_eq!(
+            job_row
+                .try_get::<i64, _>("retry_remaining")
+                .expect("retry_remaining"),
+            2,
+            "real failures must consume the failure budget"
+        );
+        assert_eq!(
+            job_row
+                .try_get::<Option<String>, _>("last_error")
+                .expect("last_error")
+                .as_deref(),
+            Some("failed_agent")
+        );
+        let retry_at = job_row
+            .try_get::<Option<i64>, _>("retry_at")
+            .expect("retry_at")
+            .expect("retry_at should be set after a failure");
+        assert!(
+            retry_at > Utc::now().timestamp() + 3_000,
+            "real failures must keep the long backoff window, retry_at={retry_at}"
+        );
+
+        let claim_after_failure = runtime
+            .try_claim_global_phase2_job(ThreadId::new(), /*lease_seconds*/ 3_600)
+            .await
+            .expect("claim after failure");
+        assert_eq!(
+            claim_after_failure,
+            Phase2JobClaimOutcome::SkippedRetryUnavailable,
+            "real failures must gate re-claims with the backoff window"
+        );
 
         let _ = tokio::fs::remove_dir_all(codex_home).await;
     }
