@@ -1,5 +1,6 @@
 use anyhow::Result;
 use app_test_support::MockResponsesConfig;
+use codex_app_server_protocol::SandboxPolicy as AppSandboxPolicy;
 use app_test_support::TestAppServer;
 use app_test_support::create_command_execution_sse_response;
 use app_test_support::create_fake_paginated_rollout;
@@ -2719,7 +2720,10 @@ async fn cold_reconnect_replays_identical_history_across_read_resume_and_paginat
     let ThreadStartResponse { thread, .. } =
         timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(start_id)).await??;
 
-    // Turn 1: a successful tool call turn whose result is recorded.
+    // Turn 1: a successful tool call turn whose result is recorded. The
+    // command must actually execute on every platform, so the turn opts into
+    // the same full-access sandbox the command_exec suite uses — the default
+    // read-only thread sandbox only happens to admit `echo` on macOS.
     let tool_turn = timeout(
         DEFAULT_READ_TIMEOUT,
         mcp.start_turn_and_wait_for_completion(TurnStartParams {
@@ -2728,6 +2732,7 @@ async fn cold_reconnect_replays_identical_history_across_read_resume_and_paginat
                 text: "run a command".to_string(),
                 text_elements: Vec::new(),
             }],
+            sandbox_policy: Some(AppSandboxPolicy::DangerFullAccess),
             ..Default::default()
         }),
     )
