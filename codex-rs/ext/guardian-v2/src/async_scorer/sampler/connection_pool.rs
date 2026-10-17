@@ -255,7 +255,6 @@ impl ConnectionPool {
         };
         let (connection, thread_id, request_kind) = match connection {
             Some(connection) => {
-                eprintln!("[diag] lease: reusing idle websocket");
                 if self
                     .idle_connections
                     .lock()
