@@ -1039,15 +1039,23 @@ async fn approvals_popup_navigation_skips_disabled() {
     while let Ok(ev) = rx.try_recv() {
         app_events.push(ev);
     }
+    // On Windows, confirming a preset whose profile needs the Windows sandbox
+    // first opens the sandbox enable prompt carrying that preset instead of
+    // dispatching the override immediately; both paths must carry the enabled
+    // (on-request) preset.
+    let enters_enabled_preset = app_events.iter().any(|ev| match ev {
+        AppEvent::OpenWindowsSandboxEnablePrompt { preset, .. } => {
+            preset.approval == AskForApproval::OnRequest.to_core()
+        }
+        AppEvent::CodexOp(Op::OverrideTurnContext {
+            approval_policy: Some(AskForApproval::OnRequest),
+            ..
+        }) => true,
+        _ => false,
+    });
     assert!(
-        app_events.iter().any(|ev| matches!(
-            ev,
-            AppEvent::CodexOp(Op::OverrideTurnContext {
-                approval_policy: Some(AskForApproval::OnRequest),
-                ..
-            })
-        )),
-        "enter should select an enabled preset"
+        enters_enabled_preset,
+        "enter should select an enabled preset: {app_events:?}"
     );
     assert!(
         !app_events.iter().any(|ev| matches!(
