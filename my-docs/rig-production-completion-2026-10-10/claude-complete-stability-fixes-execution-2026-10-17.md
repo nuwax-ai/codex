@@ -301,12 +301,18 @@ personality 未转发到 remote thread params。在 `config_request_overrides_fr
 中 personality 从 SessionFlags 层提取（app_server_session.rs:1950-1967）；需要深入
 Config 层栈在 Windows 上的行为差异。
 
-### pool_pressure（产品缺陷确认）
+### pool_pressure（深定案：需 websocket mock 改造）
 
-`ConnectionPool::open_connection`（connection_pool.rs:455-520）**无条件走 websocket**
-——不检查 `provider_info.supports_websockets`。设置 `supports_websockets = false` 无效
-因为采样路径根本不看它。这是 guardian-v2 Luna 采样器的设计（纯 websocket），但意味着
-不支持 websocket 的 provider 无法使用 guardian v2 评分。decisions_lifecycle_tests
-不走 ConnectionPool（用不同路径），所以它们可以用 HTTP mock。**修法**：pool_pressure
-测试需要用 `start_websocket_server`（与同文件 153/211 行的通过测试一致）；或者产品
-在 ConnectionPool 加 SSE 回退。前者是测试修复，后者是产品加固——都交 Codex 决策。
+connection_pool 有双路径：idle websocket 复用 + 无 idle 时 HTTP fallback（lease() 内联
+创建 HTTP ResponsesClient）。但 `open_connection`（websocket 预热/replenish）不检查
+`supports_websockets`——HTTP mock 上的 websocket upgrade 立刻失败但消耗 prewarm 时
+间和 mock 的序列槽。实测：
+- 设 `supports_websockets=false` 无效（pool 的 lease/open 路径不读它）
+- 设 `websocket_connect_timeout_ms=100` 无效（upgrade 失败快了但 POST 仍只有 3/17）
+- **根因**：websocket prewarm 的 GET 请求虽不匹配 POST matcher，但 3 个失败的
+  upgrade 后 pool 的 `retry_after` backoff 阻断了后续 replenish，而 16 个分类信号量
+  中只有 3 个在 backoff 窗口内通过 HTTP fallback 发出；测试的 30s 预算内其余 14
+  个分类的请求未产生
+- **修法**（交 Codex）：pool_pressure 测试需改为 websocket mock（与同文件 153/211
+  行通过测试同模式：`start_websocket_server` + `proxy_websocket_servers`）；或产品
+  在 open_connection 检查 `supports_websockets` 跳过预热
