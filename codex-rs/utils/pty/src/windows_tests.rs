@@ -443,23 +443,12 @@ async fn conpty_delivers_input_to_foreground_children() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Result<()> {
+    // A failed probe on one Windows build does not establish an OS-wide
+    // capability boundary. Preserve the interrupt contract on every supported
+    // build; session termination has independent descendant-cleanup coverage.
     let Some(program) = find_powershell() else {
         return Ok(());
     };
-    // Windows 11 24H2+ (build 26100 and above) no longer translates a 0x03
-    // byte written to the pseudoconsole input pipe into a console ctrl-c
-    // event. Verified empirically on 2026-10-17 against the product pty path
-    // on build 26200.9711: text input reaches the shell, the same 0x03 write
-    // that interrupts on older builds leaves the foreground child running,
-    // and GenerateConsoleCtrlEvent cannot reach the pseudoconsole's own
-    // console session either, so the session-level kill path is the only
-    // interruption route. Upstream CI shows the same failure on current
-    // windows runners. On affected builds assert the documented degraded
-    // behavior instead of skipping: the pty stays usable for input and the
-    // kill path still terminates the child.
-    const CONPTY_CTRL_C_INPUT_BROKEN_SINCE: u32 = 26_100;
-    let affected_build = crate::win::psuedocon::windows_build_number()
-        .is_some_and(|build| build >= CONPTY_CTRL_C_INPUT_BROKEN_SINCE);
     let args = vec!["-NoLogo".to_string(), "-NoProfile".to_string()];
     let env: HashMap<String, String> = std::env::vars().collect();
     let spawned = spawn_pty_process(
@@ -480,38 +469,12 @@ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Resul
     writer.send(vec![0x03]).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
     writer.send(b"cmd.exe /D /C ver\n".to_vec()).await?;
-    let mut output = match wait_for_output_contains(
+    let mut output = wait_for_output_contains(
         &mut output_rx,
         "Microsoft Windows",
         /*timeout_ms*/ 10_000,
     )
-    .await
-    {
-        Ok(output) => output,
-        Err(wait_error) => {
-            anyhow::ensure!(
-                affected_build,
-                "PowerShell did not resume after Ctrl-C on build \
-                 {:?} (below the documented ConPTY input regression threshold): {wait_error:?}",
-                crate::win::psuedocon::windows_build_number(),
-            );
-            // Degraded-but-documented behavior on affected builds: the shell
-            // never sees the interrupt, so verify the pty still accepts input
-            // (more ping output keeps flowing) and the kill path can still
-            // terminate the child, which is the route the product takes.
-            wait_for_output_contains(&mut output_rx, "TTL=", /*timeout_ms*/ 10_000).await?;
-            session.terminate();
-            let (remaining, code) =
-                collect_output_until_exit(output_rx, exit_rx, /*timeout_ms*/ 10_000).await;
-            let _ = code;
-            let tail = String::from_utf8_lossy(&remaining);
-            anyhow::ensure!(
-                !tail.contains("Microsoft Windows"),
-                "ver output present after all: the interrupt did work on this build"
-            );
-            return Ok(());
-        }
-    };
+    .await?;
 
     writer.send(b"exit 0\n".to_vec()).await?;
     let (remaining, exit_code) =
