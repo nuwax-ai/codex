@@ -1463,3 +1463,102 @@ fn curated_repo_backup_archive_zip_bytes(sha: &str) -> Vec<u8> {
 
     writer.finish().expect("finish zip writer").into_inner()
 }
+
+/// Git children spawned by the startup sync must die with the owning
+/// process even when it is killed outright mid-check: on egress-filtered
+/// hosts the update-check `git ls-remote` hangs on a black-holed connection
+/// and, without the parent-death signal, outlives the killed parent for
+/// minutes as an orphan (observed on the validation host).
+#[cfg(target_os = "linux")]
+#[test]
+fn startup_sync_git_children_die_when_the_owning_process_is_killed() {
+    const CHILD_ROLE: &str = "CODEX_TEST_STARTUP_SYNC_ORPHAN_CHILD";
+    if let Some(port) = std::env::var_os(CHILD_ROLE) {
+        // Child role: run the production git spawn (with the parent-death
+        // signal) against a never-answering local endpoint.
+        let port = port.to_string_lossy().parse::<u16>().unwrap();
+        let mut command = git_command(Path::new("git")).expect("git command");
+        command
+            .arg("ls-remote")
+            .arg(format!("http://127.0.0.1:{port}/repo.git"))
+            .arg("HEAD");
+        // The parent kills this process long before this timeout fires.
+        let _ = run_git_command_with_timeout(
+            &mut command,
+            "orphan probe",
+            std::time::Duration::from_secs(600),
+        );
+        return;
+    }
+
+    let listener =
+        std::net::TcpListener::bind("127.0.0.1:0").expect("bind never-answering endpoint");
+    let port = listener.local_addr().expect("local addr").port();
+    let needle = format!("127.0.0.1:{port}");
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "startup_sync::tests::startup_sync_git_children_die_when_the_owning_process_is_killed",
+            "--nocapture",
+        ])
+        .env(CHILD_ROLE, port.to_string())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn child-role process");
+
+    let git_pids_with_needle = || -> Vec<i32> {
+        let mut found = Vec::new();
+        let Ok(dir) = std::fs::read_dir("/proc") else {
+            return found;
+        };
+        for entry in dir.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Ok(pid) = name.parse::<i32>() else {
+                continue;
+            };
+            let Ok(cmdline) = std::fs::read(entry.path().join("cmdline")) else {
+                continue;
+            };
+            let text = String::from_utf8_lossy(&cmdline).replace('\0', " ");
+            if text.contains(&needle) {
+                found.push(pid);
+            }
+        }
+        found
+    };
+
+    // Wait (bounded) until the child-role has spawned its hanging git probe.
+    let mut seen = Vec::new();
+    for _ in 0..100 {
+        seen = git_pids_with_needle();
+        if !seen.is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    if seen.is_empty() {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("child-role never spawned its git probe");
+    }
+
+    // Kill the owning process outright — harsher than the graceful path.
+    unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGKILL) };
+    let _ = child.wait();
+
+    // The git probe (and its transport helpers) must die with it.
+    let mut gone = false;
+    for _ in 0..50 {
+        if git_pids_with_needle().is_empty() {
+            gone = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert!(
+        gone,
+        "git children survived the owning process being killed"
+    );
+}

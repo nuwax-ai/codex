@@ -677,6 +677,26 @@ fn git_command(git_binary: &Path) -> Result<Command, String> {
         .env_remove("DEVELOPER_DIR")
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("NoDefaultCurrentDirectoryInExePath", "1");
+    // If this process dies before a git child's own timeout fires, the child
+    // must die with it: on egress-filtered hosts an orphaned update-check
+    // `git ls-remote` hangs on a black-holed connection long past the parent
+    // (observed minute-level hangs after the owning app-server was killed
+    // mid-check). Same policy as the shell-tool spawns in core: request
+    // SIGTERM on parent death. prctl(2) is Linux-only; the helper no-ops
+    // elsewhere, where the in-process timeout remains the only mechanism.
+    #[cfg(unix)]
+    unsafe {
+        use std::os::unix::process::CommandExt as _;
+        #[cfg(target_os = "linux")]
+        let parent_pid = libc::getpid();
+        command.pre_exec(move || {
+            #[cfg(target_os = "linux")]
+            {
+                codex_utils_pty::process_group::set_parent_death_signal(parent_pid)?;
+            }
+            Ok(())
+        });
+    }
     Ok(command)
 }
 
