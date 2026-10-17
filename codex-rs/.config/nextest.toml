@@ -26,6 +26,14 @@ slow-timeout = { period = "1m", terminate-after = 3 }
 filter = 'package(codex-cli) & binary(app_server_daemon) & test(packaged_daemon_)'
 slow-timeout = { period = "1m", terminate-after = 2 }
 
+[[profile.default.overrides]]
+# The guardian analytics scenario drives three full review turns whose
+# transcripts keep growing; slower validation hardware legitimately needs
+# more than the default two 30s windows (measured: ~60s on the Linux
+# validation box, ~38-60s on macOS dev machines).
+filter = 'package(codex-app-server) & test(guardian_review_turns_and_tools_reach_analytics)'
+slow-timeout = { period = "1m", terminate-after = 4 }
+
 [profile.default.junit]
 path = "junit.xml"
 
