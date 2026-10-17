@@ -1045,7 +1045,7 @@ async fn approvals_popup_navigation_skips_disabled() {
     // (on-request) preset.
     let enters_enabled_preset = app_events.iter().any(|ev| match ev {
         AppEvent::OpenWindowsSandboxEnablePrompt { preset, .. } => {
-            preset.approval == AskForApproval::OnRequest.to_core()
+            cfg!(target_os = "windows") && preset.approval == AskForApproval::OnRequest.to_core()
         }
         AppEvent::CodexOp(Op::OverrideTurnContext {
             approval_policy: Some(AskForApproval::OnRequest),
@@ -1058,13 +1058,16 @@ async fn approvals_popup_navigation_skips_disabled() {
         "enter should select an enabled preset: {app_events:?}"
     );
     assert!(
-        !app_events.iter().any(|ev| matches!(
-            ev,
+        !app_events.iter().any(|ev| match ev {
+            AppEvent::OpenWindowsSandboxEnablePrompt { preset, .. } => {
+                preset.approval == AskForApproval::Never.to_core()
+            }
             AppEvent::CodexOp(Op::OverrideTurnContext {
                 approval_policy: Some(AskForApproval::Never),
                 ..
-            })
-        )),
+            }) => true,
+            _ => false,
+        }),
         "disabled preset should not be selected"
     );
 }

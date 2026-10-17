@@ -1988,8 +1988,9 @@ fn config_request_overrides_from_config(
     // here: the merged value includes the shared user/project config layers,
     // which the remote daemon already reads itself. Forwarding their opt-out
     // would shadow daemon-side state with this client's copy. The
-    // session-flags extraction above already carries the client-only `-c
-    // personality=none` opt-out.
+    // session-flags extraction above already carries `-c personality=none`;
+    // an explicitly selected profile is projected with the other winning
+    // launch choices below.
     // Fork (nuwax-codex): the context/compact model seeds are per-thread
     // values (possibly env-seeded in this client); project them so a shared
     // daemon thread reproduces this client's window and compaction
@@ -2025,7 +2026,7 @@ fn config_request_overrides_from_config(
             )
         })
     };
-    for key in ["model_reasoning_summary", "model_verbosity"] {
+    for key in ["model_reasoning_summary", "model_verbosity", "personality"] {
         if is_launch(key) {
             overrides.insert(key.to_string(), serde_json::json!(effective[key]));
         }
@@ -3628,7 +3629,7 @@ mod tests {
         let profile = AbsolutePathBuf::from_absolute_path(home.path().join("work.config.toml"))?;
         std::fs::write(
             &profile,
-            "model_reasoning_summary = \"detailed\"\nmodel_verbosity = \"high\"\nweb_search = \"cached\"\n",
+            "model_reasoning_summary = \"detailed\"\nmodel_verbosity = \"high\"\nweb_search = \"cached\"\npersonality = \"none\"\n",
         )?;
         for (selected_profile, project, cli, expected) in [
             (false, false, false, [None, None, None]),
@@ -3661,7 +3662,7 @@ mod tests {
             std::fs::write(
                 workspace.join(".codex/config.toml"),
                 if project {
-                    "model_reasoning_summary = \"concise\"\nmodel_verbosity = \"low\"\nweb_search = \"disabled\"\n"
+                    "model_reasoning_summary = \"concise\"\nmodel_verbosity = \"low\"\nweb_search = \"disabled\"\npersonality = \"friendly\"\n"
                 } else {
                     ""
                 },
@@ -3699,7 +3700,10 @@ mod tests {
                         .get("personality")
                         .and_then(serde_json::Value::as_str),
                 ),
-                (expected, cli.then_some("none")),
+                (
+                    expected,
+                    (cli || (selected_profile && !project)).then_some("none")
+                ),
             );
         }
         Ok(())
