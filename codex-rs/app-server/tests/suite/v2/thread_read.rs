@@ -1,6 +1,5 @@
 use anyhow::Result;
 use app_test_support::MockResponsesConfig;
-use codex_app_server_protocol::SandboxPolicy as AppSandboxPolicy;
 use app_test_support::TestAppServer;
 use app_test_support::create_command_execution_sse_response;
 use app_test_support::create_fake_paginated_rollout;
@@ -24,6 +23,7 @@ use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::McpToolCallStatus;
 use codex_app_server_protocol::RequestId;
+use codex_app_server_protocol::SandboxPolicy as AppSandboxPolicy;
 use codex_app_server_protocol::SessionSource;
 use codex_app_server_protocol::SortDirection;
 use codex_app_server_protocol::ThreadForkParams;
@@ -3277,6 +3277,116 @@ fn flattened_full_items(turns: &[codex_app_server_protocol::Turn]) -> Vec<(Strin
 /// fields materialized as defaults instead of failing the read. (Byte-exact
 /// image payload round-trips are pinned separately: core-level rollout
 /// replay suites and the ACP cold-restart image rounds.)
+
+/// An MCP tool's image result must round-trip every read view byte-for-byte
+/// inside the McpToolCall item: read paths may not strip, re-encode, or drop
+/// image blocks (the residual item-9 gap after the canonical cold-reconnect
+/// comparison covered text tool outputs, failures, and capped turns).
+#[tokio::test]
+async fn mcp_image_tool_payload_round_trips_every_read_view() -> Result<()> {
+    let call_id = "call-mcp-img";
+    let namespace = "mcp__tool_server";
+    // The stdio fixture's `js` tool emits its small PNG only for this code.
+    // The stdio fixture's `image_scenario` tool returns its small PNG for
+    // the image_only scenario.
+    let arguments = r#"{"scenario":"image_only"}"#;
+    let responses = vec![
+        responses::sse(vec![
+            responses::ev_response_created("resp-mcp-img"),
+            responses::ev_function_call_with_namespace(
+                call_id,
+                namespace,
+                "image_scenario",
+                arguments,
+            ),
+            responses::ev_completed("resp-mcp-img"),
+        ]),
+        create_final_assistant_message_sse_response("image captured")?,
+    ];
+    let server = create_mock_responses_server_sequence(responses).await;
+    let codex_home = TempDir::new()?;
+    let stdio_bin = core_test_support::stdio_server_bin()?;
+    MockResponsesConfig::new(&server.uri())
+        .with_provider_config("supports_websockets = false")
+        .with_extra_config(&format!(
+            "[mcp_servers.tool_server]\ncommand = \"{stdio_bin}\""
+        ))
+        .write(codex_home.path())?;
+
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build_initialized()
+        .await?;
+    let start_id = mcp
+        .send_thread_start_request_with_auto_env(ThreadStartParams {
+            model: Some("mock-model".to_string()),
+            ..Default::default()
+        })
+        .await?;
+    let ThreadStartResponse { thread, .. } =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(start_id)).await??;
+
+    let turn = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.start_turn_and_wait_for_completion(TurnStartParams {
+            thread_id: thread.id.clone(),
+            input: vec![UserInput::Text {
+                text: "capture an image".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        }),
+    )
+    .await??;
+    assert_eq!(turn.turn.status, TurnStatus::Completed);
+
+    let thread_id = codex_protocol::ThreadId::from_string(&thread.id)?;
+    let hot = read_full_history(&mut mcp, thread_id).await?;
+    assert_eq!(hot.len(), 1);
+    let serialized = serde_json::to_string(&hot).expect("serialize turns");
+    assert!(
+        serialized.contains("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"),
+        "the MCP image base64 must be present in the hot read: {serialized:.400}"
+    );
+
+    let hot_paged = read_merged_pagination(&mut mcp, thread_id).await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.shutdown_gracefully()).await??;
+    drop(mcp);
+
+    // Cold restart: same thread read back through a fresh app-server.
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build_initialized()
+        .await?;
+    let cold = read_full_history(&mut mcp, thread_id).await?;
+    let cold_paged = read_merged_pagination(&mut mcp, thread_id).await?;
+
+    // Fork of the persisted history.
+    let fork_id = mcp
+        .send_thread_fork_request(ThreadForkParams {
+            thread_id: thread.id.clone(),
+            ..Default::default()
+        })
+        .await?;
+    let ThreadForkResponse {
+        thread: forked_thread,
+        ..
+    } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(fork_id)).await??;
+    let fork_turns = read_full_history(
+        &mut mcp,
+        codex_protocol::ThreadId::from_string(&forked_thread.id)?,
+    )
+    .await?;
+
+    let expected = canonical_turns(&hot);
+    assert_eq!(canonical_turns(&cold), expected);
+    assert_eq!(canonical_turns(&fork_turns), expected);
+    assert_eq!(hot_paged.items, flattened_full_items(&hot));
+    assert_eq!(cold_paged.items, hot_paged.items);
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn cold_resume_reads_legacy_rollout_without_newer_fields() -> Result<()> {
     let server = create_mock_responses_server_repeating_assistant("resumed").await;
