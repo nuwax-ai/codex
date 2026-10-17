@@ -3277,7 +3277,6 @@ fn flattened_full_items(turns: &[codex_app_server_protocol::Turn]) -> Vec<(Strin
 /// fields materialized as defaults instead of failing the read. (Byte-exact
 /// image payload round-trips are pinned separately: core-level rollout
 /// replay suites and the ACP cold-restart image rounds.)
-
 /// An MCP tool's image result must round-trip every read view byte-for-byte
 /// inside the McpToolCall item: read paths may not strip, re-encode, or drop
 /// image blocks (the residual item-9 gap after the canonical cold-reconnect

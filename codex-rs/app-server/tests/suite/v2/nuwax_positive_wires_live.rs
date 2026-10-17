@@ -217,17 +217,6 @@ fn agent_text(completed: &TurnCompletedNotification) -> String {
         .join("\n")
 }
 
-fn command_executed_with_marker(completed: &TurnCompletedNotification, marker: &str) -> bool {
-    completed.turn.items.iter().any(|item| {
-        matches!(
-            item,
-            codex_app_server_protocol::ThreadItem::CommandExecution { .. }
-        ) && serde_json::to_string(item)
-            .map(|text| text.contains(marker))
-            .unwrap_or(false)
-    })
-}
-
 #[tokio::test]
 async fn live_env_tool_round_trip_usage_and_interrupt_with_two_resumes() -> Result<()> {
     let Some(vendor) = live_vendor() else {
