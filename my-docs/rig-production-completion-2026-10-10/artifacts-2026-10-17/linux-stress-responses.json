@@ -1,0 +1,820 @@
+{
+  "codexPath": "/tmp/codex-stab-final/codex-rs/target/debug/codex",
+  "codexSha256": "33a3edfe958a4bd4ae8b7e16e7384288a89201d53c3c1d21a6fff92191ef1511",
+  "valWire": "responses",
+  "roundTable": [
+    "text",
+    "tool-image",
+    "text",
+    "cancel-headers",
+    "compact",
+    "text",
+    "cancel-mid-stream",
+    "tool-image",
+    "cold-restart",
+    "text",
+    "cancel-headers",
+    "tool-image",
+    "compact",
+    "cancel-mid-stream",
+    "text",
+    "tool-image",
+    "cancel-during-tool",
+    "cold-restart"
+  ],
+  "roundsPlanned": 18,
+  "roundsRun": 18,
+  "roundsPassed": 18,
+  "cancels": 5,
+  "toolImageRounds": 4,
+  "verifiedImageRounds": 4,
+  "minVerifiedImageRoundsPerWire": 4,
+  "compactions": 2,
+  "coldRestarts": 2,
+  "auxRequestTotals": {
+    "title": 0,
+    "guardian": 5
+  },
+  "probeFailures": [],
+  "shutdownMs": 172,
+  "mockOpenSocketsAfter": 0,
+  "leftoverShotServers": 0,
+  "agentRssSeriesKb": [
+    102104,
+    102152,
+    102160,
+    102204,
+    102272,
+    102292,
+    87764,
+    88248,
+    100392,
+    100428,
+    100464,
+    100532,
+    100564,
+    100584,
+    85600,
+    85988
+  ],
+  "results": [
+    {
+      "round": 0,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 543,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1985715,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1985729,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1985886,
+          "lstart": "Sat Oct 17 09:10:55 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1986105,
+          "lstart": "Sat Oct 17 09:10:59 2026",
+          "command": "[git] <defunct>",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102068,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 102104,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 1,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 6049,
+      "httpDelta": 3,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1985715,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1985729,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1985886,
+          "lstart": "Sat Oct 17 09:10:55 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102104,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 102152,
+          "fds": 24
+        }
+      },
+      "verifiedImage": true,
+      "groundTruthColor": "red"
+    },
+    {
+      "round": 2,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 594,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1985715,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1985729,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1985886,
+          "lstart": "Sat Oct 17 09:10:55 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102152,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 102160,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 3,
+      "kind": "cancel-headers",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 2148,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1985715,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1985729,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1985886,
+          "lstart": "Sat Oct 17 09:10:55 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102160,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 102204,
+          "fds": 24
+        }
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 4,
+      "kind": "compact",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 843,
+      "httpDelta": 2,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1985715,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1985729,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1985886,
+          "lstart": "Sat Oct 17 09:10:55 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102204,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 102272,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 5,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 551,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1985715,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1985729,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1985886,
+          "lstart": "Sat Oct 17 09:10:55 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102272,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 102292,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 6,
+      "kind": "cancel-mid-stream",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 2331,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1985715,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1985729,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1985886,
+          "lstart": "Sat Oct 17 09:10:55 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 102292,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 87764,
+          "fds": 24
+        }
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 7,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 6075,
+      "httpDelta": 3,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1985715,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1985729,
+          "lstart": "Sat Oct 17 09:10:54 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1985886,
+          "lstart": "Sat Oct 17 09:10:55 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 87764,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 88248,
+          "fds": 24
+        }
+      },
+      "verifiedImage": true,
+      "groundTruthColor": "green"
+    },
+    {
+      "round": 8,
+      "kind": "cold-restart",
+      "pass": true,
+      "ms": 2017,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "coldRestartSurvivors": []
+    },
+    {
+      "round": 9,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 599,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1986817,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1986831,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1987007,
+          "lstart": "Sat Oct 17 09:11:20 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100352,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 100392,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 10,
+      "kind": "cancel-headers",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 2099,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1986817,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1986831,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1987007,
+          "lstart": "Sat Oct 17 09:11:20 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100392,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 100428,
+          "fds": 24
+        }
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 11,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 6080,
+      "httpDelta": 3,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1986817,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1986831,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1987007,
+          "lstart": "Sat Oct 17 09:11:20 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100428,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 100464,
+          "fds": 24
+        }
+      },
+      "verifiedImage": true,
+      "groundTruthColor": "red"
+    },
+    {
+      "round": 12,
+      "kind": "compact",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 880,
+      "httpDelta": 2,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1986817,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1986831,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1987007,
+          "lstart": "Sat Oct 17 09:11:20 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100464,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 100532,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 13,
+      "kind": "cancel-mid-stream",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 2415,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1986817,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1986831,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1987007,
+          "lstart": "Sat Oct 17 09:11:20 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100532,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 100564,
+          "fds": 24
+        }
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 14,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 625,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1986817,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1986831,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1987007,
+          "lstart": "Sat Oct 17 09:11:20 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100564,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 100584,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 15,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 6179,
+      "httpDelta": 3,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1986817,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1986831,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1987007,
+          "lstart": "Sat Oct 17 09:11:20 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 100584,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 85600,
+          "fds": 24
+        }
+      },
+      "verifiedImage": true,
+      "groundTruthColor": "green"
+    },
+    {
+      "round": 16,
+      "kind": "cancel-during-tool",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 2557,
+      "httpDelta": 2,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1986817,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1986831,
+          "lstart": "Sat Oct 17 09:11:19 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1987007,
+          "lstart": "Sat Oct 17 09:11:20 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 85600,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 85988,
+          "fds": 24
+        }
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 17,
+      "kind": "cold-restart",
+      "pass": true,
+      "ms": 2120,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "coldRestartSurvivors": []
+    }
+  ],
+  "failures": []
+}

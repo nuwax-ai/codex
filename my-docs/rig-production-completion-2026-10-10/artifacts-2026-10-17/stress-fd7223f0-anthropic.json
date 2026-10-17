@@ -1,0 +1,743 @@
+{
+  "codexPath": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex",
+  "codexSha256": "fd7223f07c7e8f0ff5006a2b76c058f8161c08da81946178421345a6d415fa57",
+  "valWire": "anthropic",
+  "roundTable": [
+    "text",
+    "tool-image",
+    "text",
+    "cancel-headers",
+    "compact",
+    "text",
+    "cancel-mid-stream",
+    "tool-image",
+    "cold-restart",
+    "text",
+    "cancel-headers",
+    "tool-image",
+    "compact",
+    "cancel-mid-stream",
+    "text",
+    "tool-image",
+    "cancel-during-tool",
+    "cold-restart"
+  ],
+  "roundsPlanned": 18,
+  "roundsRun": 18,
+  "roundsPassed": 18,
+  "cancels": 5,
+  "toolImageRounds": 4,
+  "verifiedImageRounds": 4,
+  "minVerifiedImageRoundsPerWire": 4,
+  "compactions": 2,
+  "coldRestarts": 2,
+  "auxRequestTotals": {
+    "title": 0,
+    "guardian": 5
+  },
+  "probeFailures": [],
+  "shutdownMs": 53,
+  "mockOpenSocketsAfter": 0,
+  "leftoverShotServers": 0,
+  "agentRssSeriesKb": [],
+  "results": [
+    {
+      "round": 0,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 127,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13575,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13576,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13582,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 13665,
+          "lstart": "Sat Oct 17 08:05:45 2026",
+          "command": "(git)",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      }
+    },
+    {
+      "round": 1,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 5236,
+      "httpDelta": 3,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13575,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13576,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13582,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      },
+      "verifiedImage": true,
+      "groundTruthColor": "red"
+    },
+    {
+      "round": 2,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 119,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13575,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13576,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13582,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      }
+    },
+    {
+      "round": 3,
+      "kind": "cancel-headers",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 1667,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13575,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13576,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13582,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 4,
+      "kind": "compact",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 181,
+      "httpDelta": 2,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13575,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13576,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13582,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      }
+    },
+    {
+      "round": 5,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 118,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13575,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13576,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13582,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      }
+    },
+    {
+      "round": 6,
+      "kind": "cancel-mid-stream",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 1986,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13575,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13576,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13582,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 7,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 5248,
+      "httpDelta": 3,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13575,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13576,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13582,
+          "lstart": "Sat Oct 17 08:05:41 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      },
+      "verifiedImage": true,
+      "groundTruthColor": "green"
+    },
+    {
+      "round": 8,
+      "kind": "cold-restart",
+      "pass": true,
+      "ms": 998,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "coldRestartSurvivors": []
+    },
+    {
+      "round": 9,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 134,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13841,
+          "lstart": "Sat Oct 17 08:06:00 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13844,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13845,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Library/Developer/CommandLineTools/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 13850,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 13846,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Library/Developer/CommandLineTools/usr/libexec/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 13847,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Library/Developer/CommandLineTools/usr/libexec/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      }
+    },
+    {
+      "round": 10,
+      "kind": "cancel-headers",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 1684,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13841,
+          "lstart": "Sat Oct 17 08:06:00 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13844,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13845,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Library/Developer/CommandLineTools/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 13850,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 13846,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Library/Developer/CommandLineTools/usr/libexec/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 13847,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Library/Developer/CommandLineTools/usr/libexec/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 11,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 5261,
+      "httpDelta": 3,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13841,
+          "lstart": "Sat Oct 17 08:06:00 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13844,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13850,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      },
+      "verifiedImage": true,
+      "groundTruthColor": "red"
+    },
+    {
+      "round": 12,
+      "kind": "compact",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 169,
+      "httpDelta": 2,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13841,
+          "lstart": "Sat Oct 17 08:06:00 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13844,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13850,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      }
+    },
+    {
+      "round": 13,
+      "kind": "cancel-mid-stream",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 1983,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13841,
+          "lstart": "Sat Oct 17 08:06:00 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13844,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13850,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 14,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 136,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13841,
+          "lstart": "Sat Oct 17 08:06:00 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13844,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13850,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      }
+    },
+    {
+      "round": 15,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 5254,
+      "httpDelta": 3,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13841,
+          "lstart": "Sat Oct 17 08:06:00 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13844,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13850,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      },
+      "verifiedImage": true,
+      "groundTruthColor": "green"
+    },
+    {
+      "round": 16,
+      "kind": "cancel-during-tool",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 1794,
+      "httpDelta": 2,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 13841,
+          "lstart": "Sat Oct 17 08:06:00 2026",
+          "command": "/usr/local/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 13844,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/Volumes/soddy/git_workspace/fork-nuwax-codex/.claude/worktrees/merge-main-20261014/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 13850,
+          "lstart": "Sat Oct 17 08:06:01 2026",
+          "command": "/usr/local/bin/node /Volumes/soddy/git_workspace/fork-codex-acp-ts/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        }
+      ],
+      "metricsBefore": {
+        "agent": null
+      },
+      "metricsAfter": {
+        "agent": null
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 17,
+      "kind": "cold-restart",
+      "pass": true,
+      "ms": 986,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "coldRestartSurvivors": []
+    }
+  ],
+  "failures": []
+}

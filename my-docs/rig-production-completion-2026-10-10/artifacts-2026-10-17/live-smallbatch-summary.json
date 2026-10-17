@@ -1,0 +1,83 @@
+{
+  "attemptsLedger": 44,
+  "budget": 48,
+  "passed": 12,
+  "failed": 0,
+  "totalInputTokens": 162092,
+  "totalOutputTokens": 1733,
+  "rows": [
+    {
+      "ts": "2026-10-17T00:13:13Z",
+      "name": "env-determinism",
+      "pass": 1,
+      "detail": "NUWAX_BASE_URL/WIRE_API steered the endpoint (sink hit at /v1/chat/completions)"
+    },
+    {
+      "ts": "2026-10-17T00:13:14Z",
+      "name": "wire-chat",
+      "pass": 1,
+      "detail": "ok- matched 'pong'"
+    },
+    {
+      "ts": "2026-10-17T00:13:16Z",
+      "name": "wire-anthropic",
+      "pass": 1,
+      "detail": "ok- matched 'pong'"
+    },
+    {
+      "ts": "2026-10-17T00:13:18Z",
+      "name": "wire-responses",
+      "pass": 1,
+      "detail": "ok- matched 'pong'"
+    },
+    {
+      "ts": "2026-10-17T00:13:24Z",
+      "name": "backup-switch-mimo",
+      "pass": 1,
+      "detail": "ok- matched 'pong'"
+    },
+    {
+      "ts": "2026-10-17T00:13:28Z",
+      "name": "main-text",
+      "pass": 1,
+      "detail": "ok- matched 'OK'"
+    },
+    {
+      "ts": "2026-10-17T00:13:30Z",
+      "name": "main-cold-recall",
+      "pass": 1,
+      "detail": "secret recalled across cold process"
+    },
+    {
+      "ts": "2026-10-17T00:13:36Z",
+      "name": "main-tool",
+      "pass": 1,
+      "detail": "real shell tool executed and verified on disk"
+    },
+    {
+      "ts": "2026-10-17T00:21:47Z",
+      "name": "main-cancel",
+      "pass": 1,
+      "detail": "ACP live cancel: cancelled after a real streamed delta"
+    },
+    {
+      "ts": "2026-10-17T00:14:12Z",
+      "name": "main-screenshot",
+      "pass": 1,
+      "detail": "tool ran; model named the true color 'red' (vision confirmed)"
+    },
+    {
+      "ts": "2026-10-17T00:14:33Z",
+      "name": "vision-direct",
+      "pass": 1,
+      "detail": "vision: PASS 3/3 correct (seed 919222744)"
+    },
+    {
+      "ts": "2026-10-17T00:20:07Z",
+      "name": "acp-smoke",
+      "pass": 1,
+      "detail": "SMOKE-PASS acp live: prompt+compact+continuation+load on 01a1473a-ba1d-726d-a286-46160cf7e2a3"
+    }
+  ],
+  "note": "ledger counts conservatively include classes that never reached the wire (env-construction failures, pre-initialize aborts); every real request carried NUWAX_MAX_OUTPUT_TOKENS=2048 and stayed under 32K input."
+}

@@ -1,0 +1,1102 @@
+{
+  "codexPath": "/tmp/codex-stab-final/codex-rs/target/debug/codex",
+  "codexSha256": "33a3edfe958a4bd4ae8b7e16e7384288a89201d53c3c1d21a6fff92191ef1511",
+  "valWire": "anthropic",
+  "roundTable": [
+    "text",
+    "tool-image",
+    "text",
+    "cancel-headers",
+    "compact",
+    "text",
+    "cancel-mid-stream",
+    "tool-image",
+    "cold-restart",
+    "text",
+    "cancel-headers",
+    "tool-image",
+    "compact",
+    "cancel-mid-stream",
+    "text",
+    "tool-image",
+    "cancel-during-tool",
+    "cold-restart"
+  ],
+  "roundsPlanned": 18,
+  "roundsRun": 18,
+  "roundsPassed": 18,
+  "cancels": 5,
+  "toolImageRounds": 4,
+  "verifiedImageRounds": 4,
+  "minVerifiedImageRoundsPerWire": 4,
+  "compactions": 2,
+  "coldRestarts": 2,
+  "auxRequestTotals": {
+    "title": 0,
+    "guardian": 5
+  },
+  "probeFailures": [],
+  "shutdownMs": 164,
+  "mockOpenSocketsAfter": 0,
+  "leftoverShotServers": 0,
+  "agentRssSeriesKb": [
+    99700,
+    99748,
+    99756,
+    99800,
+    99872,
+    99896,
+    85344,
+    85804,
+    99752,
+    99788,
+    99832,
+    99896,
+    99928,
+    99948,
+    85140,
+    85524
+  ],
+  "results": [
+    {
+      "round": 0,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 595,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1997493,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1997500,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1997619,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997667,
+          "lstart": "Sat Oct 17 09:16:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1997623,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997629,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 99668,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 99700,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 1,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 6127,
+      "httpDelta": 3,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1997493,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1997500,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1997619,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997667,
+          "lstart": "Sat Oct 17 09:16:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1997623,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997629,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 99700,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 99748,
+          "fds": 24
+        }
+      },
+      "verifiedImage": true,
+      "groundTruthColor": "red"
+    },
+    {
+      "round": 2,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 585,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1997493,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1997500,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1997619,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997667,
+          "lstart": "Sat Oct 17 09:16:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1997623,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997629,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 99748,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 99756,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 3,
+      "kind": "cancel-headers",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 2145,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1997493,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1997500,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1997619,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997667,
+          "lstart": "Sat Oct 17 09:16:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1997623,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997629,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 99756,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 99800,
+          "fds": 24
+        }
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 4,
+      "kind": "compact",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 876,
+      "httpDelta": 2,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1997493,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1997500,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1997619,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997667,
+          "lstart": "Sat Oct 17 09:16:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1997623,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997629,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 99800,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 99872,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 5,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 592,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1997493,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1997500,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1997619,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997667,
+          "lstart": "Sat Oct 17 09:16:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1997623,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997629,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 99872,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 99896,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 6,
+      "kind": "cancel-mid-stream",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 2338,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1997493,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1997500,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1997619,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997667,
+          "lstart": "Sat Oct 17 09:16:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1997623,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997629,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 86208,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 85344,
+          "fds": 24
+        }
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 7,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 6161,
+      "httpDelta": 3,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1997493,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1997500,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1997619,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997667,
+          "lstart": "Sat Oct 17 09:16:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1997623,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1997629,
+          "lstart": "Sat Oct 17 09:16:01 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 85344,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 85804,
+          "fds": 24
+        }
+      },
+      "verifiedImage": true,
+      "groundTruthColor": "green"
+    },
+    {
+      "round": 8,
+      "kind": "cold-restart",
+      "pass": true,
+      "ms": 38406,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "coldRestartSurvivors": []
+    },
+    {
+      "round": 9,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 602,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1999856,
+          "lstart": "Sat Oct 17 09:17:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1999871,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1999964,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 2000046,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1999969,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1999971,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 99712,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 99752,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 10,
+      "kind": "cancel-headers",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 2183,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1999856,
+          "lstart": "Sat Oct 17 09:17:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1999871,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1999964,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 2000046,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1999969,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1999971,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 99752,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 99788,
+          "fds": 24
+        }
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 11,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 6198,
+      "httpDelta": 3,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1999856,
+          "lstart": "Sat Oct 17 09:17:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1999871,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1999964,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 2000046,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1999969,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1999971,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 99788,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 99832,
+          "fds": 24
+        }
+      },
+      "verifiedImage": true,
+      "groundTruthColor": "red"
+    },
+    {
+      "round": 12,
+      "kind": "compact",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 943,
+      "httpDelta": 2,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1999856,
+          "lstart": "Sat Oct 17 09:17:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1999871,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1999964,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 2000046,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1999969,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1999971,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 99832,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 99896,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 13,
+      "kind": "cancel-mid-stream",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 2392,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1999856,
+          "lstart": "Sat Oct 17 09:17:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1999871,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1999964,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 2000046,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1999969,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1999971,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 99896,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 99928,
+          "fds": 24
+        }
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 14,
+      "kind": "text",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 622,
+      "httpDelta": 1,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 0
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1999856,
+          "lstart": "Sat Oct 17 09:17:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1999871,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1999964,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 2000046,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1999969,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1999971,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 99928,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 99948,
+          "fds": 24
+        }
+      }
+    },
+    {
+      "round": 15,
+      "kind": "tool-image",
+      "pass": true,
+      "stopReason": "end_turn",
+      "ms": 6201,
+      "httpDelta": 3,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1999856,
+          "lstart": "Sat Oct 17 09:17:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1999871,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1999964,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 2000046,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1999969,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1999971,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 99948,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 85140,
+          "fds": 24
+        }
+      },
+      "verifiedImage": true,
+      "groundTruthColor": "green"
+    },
+    {
+      "round": 16,
+      "kind": "cancel-during-tool",
+      "pass": true,
+      "stopReason": "cancelled",
+      "ms": 2546,
+      "httpDelta": 2,
+      "auxRequestCounts": {
+        "title": 0,
+        "guardian": 1
+      },
+      "openSockets": 0,
+      "pidTree": [
+        {
+          "pid": 1999856,
+          "lstart": "Sat Oct 17 09:17:02 2026",
+          "command": "/tmp/codex-stab-node/bin/node --import tsx src/index.ts",
+          "role": "acp-wrapper"
+        },
+        {
+          "pid": 1999871,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-final/codex-rs/target/debug/codex app-server",
+          "role": "app-server"
+        },
+        {
+          "pid": 1999964,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/bin/git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD",
+          "role": "descendant"
+        },
+        {
+          "pid": 2000046,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/tmp/codex-stab-node/bin/node /tmp/codex-stab-acp/scripts/acp-validation/shot-server.mjs",
+          "role": "shot-server"
+        },
+        {
+          "pid": 1999969,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        },
+        {
+          "pid": 1999971,
+          "lstart": "Sat Oct 17 09:17:03 2026",
+          "command": "/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git",
+          "role": "descendant"
+        }
+      ],
+      "metricsBefore": {
+        "agent": {
+          "rssKb": 85140,
+          "fds": 24
+        }
+      },
+      "metricsAfter": {
+        "agent": {
+          "rssKb": 85524,
+          "fds": 24
+        }
+      },
+      "postCancelMainRequests": 0
+    },
+    {
+      "round": 17,
+      "kind": "cold-restart",
+      "pass": true,
+      "ms": 38380,
+      "httpDelta": 1,
+      "openSockets": 0,
+      "coldRestartSurvivors": []
+    }
+  ],
+  "failures": []
+}
