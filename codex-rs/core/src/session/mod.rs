@@ -2573,7 +2573,7 @@ impl Session {
         let status = match turn_context.terminal_error.lock().await.take() {
             Some(error) => {
                 let status = AgentStatus::Errored(error.message);
-                self.agent_status.send_replace(status.clone());
+                self.publish_agent_status(status.clone()).await;
                 status
             }
             None => {
@@ -2747,10 +2747,26 @@ impl Session {
         self.deliver_event_raw(event).await;
     }
 
+    async fn publish_agent_status(&self, status: AgentStatus) {
+        // A watch receiver may skip transitions while its consumer awaits I/O.
+        // Keep the current turn's terminal result at the publisher, before a
+        // subsequent Shutdown replaces the publicly observed lifecycle status.
+        let mut terminal = self.last_terminal_agent_status.lock().await;
+        match &status {
+            AgentStatus::PendingInit | AgentStatus::Running => *terminal = None,
+            AgentStatus::Completed(_) | AgentStatus::Errored(_) => {
+                *terminal = Some(status.clone());
+            }
+            AgentStatus::Interrupted | AgentStatus::Shutdown | AgentStatus::NotFound => {}
+        }
+        drop(terminal);
+        self.agent_status.send_replace(status);
+    }
+
     async fn deliver_event_raw(&self, event: Event) {
         // Record the last known agent status.
         if let Some(status) = agent_status_from_event(&event.msg) {
-            self.agent_status.send_replace(status);
+            self.publish_agent_status(status).await;
         }
         if let Err(e) = self.tx_event.send(event).await {
             debug!("dropping event because channel is closed: {e}");
@@ -5594,3 +5610,7 @@ pub(crate) mod tests;
 #[cfg(test)]
 #[path = "world_state_item_tests.rs"]
 mod world_state_item_tests;
+
+#[cfg(test)]
+#[path = "agent_status_shutdown_tests.rs"]
+mod agent_status_shutdown_tests;

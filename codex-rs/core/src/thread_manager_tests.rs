@@ -3514,3 +3514,6 @@ async fn interrupted_fork_snapshot_uses_persisted_mid_turn_history_without_live_
         1,
     );
 }
+
+#[path = "thread_manager_shutdown_tests.rs"]
+mod shutdown_regression_tests;

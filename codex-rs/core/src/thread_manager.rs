@@ -442,7 +442,7 @@ pub(crate) struct ThreadManagerState {
     session_source: SessionSource,
     installation_id: String,
     analytics_events_client: Option<AnalyticsEventsClient>,
-    shutdown_bound_tasks: tokio_util::task::TaskTracker,
+    shutdown_bound_tasks: std::sync::Mutex<tokio_util::task::TaskTracker>,
     // Captures submitted ops for testing purpose when test mode is enabled.
     ops_log: Option<SharedCapturedOps>,
 }
@@ -609,7 +609,7 @@ impl ThreadManager {
                 session_source,
                 installation_id,
                 analytics_events_client,
-                shutdown_bound_tasks: tokio_util::task::TaskTracker::new(),
+                shutdown_bound_tasks: std::sync::Mutex::new(tokio_util::task::TaskTracker::new()),
                 ops_log: should_use_test_thread_manager_behavior()
                     .then(|| Arc::new(std::sync::Mutex::new(Vec::new()))),
             }),
@@ -801,7 +801,7 @@ impl ThreadManager {
                 session_source: SessionSource::Exec,
                 installation_id,
                 analytics_events_client: None,
-                shutdown_bound_tasks: tokio_util::task::TaskTracker::new(),
+                shutdown_bound_tasks: std::sync::Mutex::new(tokio_util::task::TaskTracker::new()),
                 ops_log: should_use_test_thread_manager_behavior()
                     .then(|| Arc::new(std::sync::Mutex::new(Vec::new()))),
             }),
@@ -1172,6 +1172,11 @@ impl ThreadManager {
         forked_from_thread_id: Option<ThreadId>,
         startup: Option<Arc<crate::session::startup::SessionStartup>>,
     ) -> CodexResult<NewThread> {
+        if self.is_shutting_down() {
+            return Err(CodexErr::InvalidRequest(
+                "thread manager is shutting down".to_owned(),
+            ));
+        }
         let (resumed_session_source, resumed_thread_source) = options
             .initial_history
             .get_resumed_session_sources()
@@ -1433,11 +1438,18 @@ impl ThreadManager {
     }
 
     /// Tries to shut down all tracked threads concurrently within the provided timeout.
-    /// Threads that complete shutdown are removed from the manager; incomplete shutdowns
-    /// remain tracked so callers can retry or inspect them later.
+    /// Fences new thread/task admission permanently. Threads that complete shutdown
+    /// are removed; incomplete shutdowns remain tracked for retries or inspection.
     pub async fn shutdown_all_threads_bounded(&self, timeout: Duration) -> ThreadShutdownReport {
         let threads = {
-            let threads = self.state.threads.read().await;
+            // Fence registration under the same registry lock used by final
+            // startup registration; no thread can appear after this snapshot.
+            let threads = self.state.threads.write().await;
+            self.state
+                .shutdown_bound_tasks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .close();
             threads
                 .iter()
                 .map(|(thread_id, thread)| (*thread_id, Arc::clone(thread)))
@@ -1490,21 +1502,28 @@ impl ThreadManager {
     /// [`ThreadManager::wait_for_shutdown_bound_tasks_bounded`] waits for all
     /// tracked tasks once the manager's threads were shut down, so cleanup
     /// work (for example releasing a claimed memory-consolidation job) is not
-    /// destroyed together with the runtime when the process exits. Work that
+    /// destroyed together with the runtime when the process exits. After the
+    /// shutdown fence, newly submitted work is dropped without being run. Work that
     /// can only finish while threads are still alive must not use this.
     pub fn spawn_shutdown_bound_task<F>(&self, task: F)
     where
         F: std::future::Future<Output = ()> + Send + 'static,
     {
-        let tracker = self.state.shutdown_bound_tasks.clone();
-        if tracker.is_closed() {
-            tracing::warn!(
-                "shutdown-bound task tracker is already closed; spawning the task detached"
-            );
-            tokio::spawn(task);
-            return;
+        // Serialize admission with close: a task arriving after the shutdown
+        // fence must not run detached or outlive a completed tracker wait.
+        let tracker = self
+            .state
+            .shutdown_bound_tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !tracker.is_closed() {
+            tracker.spawn(task);
         }
-        tracker.spawn(task);
+    }
+
+    /// Whether manager-wide shutdown has fenced new threads and startup tasks.
+    pub fn is_shutting_down(&self) -> bool {
+        self.state.is_shutting_down()
     }
 
     /// Waits a bounded time for [`ThreadManager::spawn_shutdown_bound_task`]
@@ -1514,11 +1533,16 @@ impl ThreadManager {
     /// bound are abandoned; state they were responsible for must have its own
     /// recovery backstop (for example job lease expiry).
     pub async fn wait_for_shutdown_bound_tasks_bounded(&self, timeout: Duration) -> bool {
-        self.state.shutdown_bound_tasks.close();
-        if tokio::time::timeout(timeout, self.state.shutdown_bound_tasks.wait())
-            .await
-            .is_err()
-        {
+        let tracker = {
+            let tracker = self
+                .state
+                .shutdown_bound_tasks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            tracker.close();
+            tracker.clone()
+        };
+        if tokio::time::timeout(timeout, tracker.wait()).await.is_err() {
             tracing::warn!(
                 "timed out waiting for shutdown-bound background tasks; proceeding with shutdown"
             );
@@ -1740,6 +1764,13 @@ impl ThreadManager {
 }
 
 impl ThreadManagerState {
+    fn is_shutting_down(&self) -> bool {
+        self.shutdown_bound_tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_closed()
+    }
+
     pub(crate) fn shared_thread_instructions_provider(
         &self,
         root_thread_id: ThreadId,
@@ -2515,9 +2546,11 @@ impl ThreadManagerState {
             }
         };
 
-        {
+        let registration_error = {
             let mut threads = self.threads.write().await;
-            if let std::collections::hash_map::Entry::Vacant(e) = threads.entry(thread_id) {
+            if self.is_shutting_down() {
+                CodexErr::InvalidRequest("thread manager is shutting down".to_owned())
+            } else if let std::collections::hash_map::Entry::Vacant(e) = threads.entry(thread_id) {
                 if let Some(update) = initial_host_config {
                     session
                         .services
@@ -2537,15 +2570,15 @@ impl ThreadManagerState {
                     thread,
                     session_configured,
                 });
+            } else {
+                CodexErr::InvalidRequest(format!("thread {thread_id} is already running"))
             }
-        }
+        };
 
         if let Err(err) = io.shutdown_and_wait().await {
-            warn!("failed to shut down duplicate thread {thread_id}: {err}");
+            warn!("failed to shut down unregistered thread {thread_id}: {err}");
         }
-        Err(CodexErr::InvalidRequest(format!(
-            "thread {thread_id} is already running"
-        )))
+        Err(registration_error)
     }
 
     pub(crate) fn notify_thread_created(&self, thread_id: ThreadId) {

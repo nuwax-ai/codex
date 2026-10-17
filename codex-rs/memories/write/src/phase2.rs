@@ -5,6 +5,7 @@ use crate::metrics::MEMORY_PHASE_TWO_TOKEN_USAGE;
 use crate::prompts::build_consolidation_prompt_for_version;
 use crate::prune_old_extension_resources;
 use crate::rebuild_raw_memories_file_from_memories;
+use crate::runtime::ConsolidationAgentStartError;
 use crate::runtime::MemoryStartupContext;
 use crate::runtime::SpawnedConsolidationAgent;
 use crate::sync_rollout_summaries_from_memories;
@@ -51,6 +52,9 @@ pub async fn run(
     config: Arc<Config>,
     parent_permission_profile: PermissionProfile,
 ) {
+    if context.is_shutting_down() {
+        return;
+    }
     let phase_two_e2e_timer = context.start_timer(MEMORY_PHASE_TWO_E2E_MS);
 
     let Some(db) = context.memory_store().await else {
@@ -158,6 +162,13 @@ pub async fn run(
         return;
     }
 
+    // Shutdown can begin while workspace preparation is in flight. Release an
+    // already-owned claim without starting another agent or charging a retry.
+    if context.is_shutting_down() {
+        job::canceled(context.as_ref(), &db, &claim, "canceled_before_agent_spawn").await;
+        return;
+    }
+
     // 8. Spawn the consolidation agent.
     let prompt = agent::get_prompt(&root, config.memories.version);
     let agent = match context
@@ -165,9 +176,17 @@ pub async fn run(
         .await
     {
         Ok(agent) => agent,
-        Err(err) => {
+        Err(ConsolidationAgentStartError::Canceled) => {
+            job::canceled(context.as_ref(), &db, &claim, "canceled_before_agent_spawn").await;
+            return;
+        }
+        Err(ConsolidationAgentStartError::Failed(err)) => {
             tracing::error!("failed to spawn global memory consolidation agent: {err}");
             job::failed(context.as_ref(), &db, &claim, "failed_spawn_agent").await;
+            return;
+        }
+        Err(ConsolidationAgentStartError::ShutdownUnconfirmed(err)) => {
+            tracing::warn!("consolidation agent shutdown unconfirmed; retaining job lease: {err}");
             return;
         }
     };
@@ -523,11 +542,8 @@ mod agent {
 
     /// Waits for the consolidation agent to settle and returns its final status.
     ///
-    /// The status is observed through a subscription rather than polling, and
-    /// a real failure is sticky: when the owning session shuts the agent down
-    /// right after an error, the later `Shutdown` overwrite must not
-    /// reclassify the run as a clean cancel. A later `Completed` (a successful
-    /// retry) still wins over an earlier `Errored`.
+    /// The subscription wakes promptly but may coalesce transitions. Resolve
+    /// shutdown using the terminal result retained by the status publisher.
     async fn loop_agent(
         db: MemoryStore,
         token: String,
@@ -540,34 +556,25 @@ mod agent {
         let mut status_rx = thread.subscribe_status();
         let session_termination = thread.wait_until_terminated();
         tokio::pin!(session_termination);
-        let mut last_error: Option<String> = None;
 
         loop {
             let status = status_rx.borrow_and_update().clone();
-            if let AgentStatus::Errored(err) = &status {
-                last_error = Some(err.clone());
-            }
             if is_final_agent_status(&status) {
-                break reconcile_overwritten_error(status, last_error);
+                break final_agent_status(status, thread).await;
             }
 
             tokio::select! {
                 changed = status_rx.changed() => {
                     if changed.is_err() {
                         // The status publisher is gone; classify from the last observed value.
-                        break reconcile_overwritten_error(
-                            status_rx.borrow_and_update().clone(),
-                            last_error,
-                        );
+                        let status = status_rx.borrow_and_update().clone();
+                        break final_agent_status(status, thread).await;
                     }
                 }
                 _ = &mut session_termination => {
                     let status = status_rx.borrow_and_update().clone();
-                    if let AgentStatus::Errored(err) = &status {
-                        last_error = Some(err.clone());
-                    }
                     if is_final_agent_status(&status) {
-                        break reconcile_overwritten_error(status, last_error);
+                        break final_agent_status(status, thread).await;
                     }
                     tracing::warn!(
                         "memory consolidation agent {thread_id} exited before final status; last status was {status:?}"
@@ -608,16 +615,13 @@ mod agent {
     }
 }
 
-/// Restores a real failure that a subsequent shutdown overwrote.
-///
-/// A `Shutdown` observed as the final status means the owning process exited
-/// while the agent was still mid-run — a clean cancel — unless the agent had
-/// already failed, in which case the failure (and its budget/backoff) must
-/// survive the overwrite.
-fn reconcile_overwritten_error(status: AgentStatus, last_error: Option<String>) -> AgentStatus {
-    match (status, last_error) {
-        (AgentStatus::Shutdown, Some(err)) => AgentStatus::Errored(err),
-        (status, _) => status,
+/// Uses the publisher's retained turn result when lifecycle shutdown overwrote
+/// the watch value while the consumer was busy (for example in a DB heartbeat).
+async fn final_agent_status(status: AgentStatus, thread: &codex_core::CodexThread) -> AgentStatus {
+    if matches!(status, AgentStatus::Shutdown) {
+        thread.last_terminal_agent_status().await.unwrap_or(status)
+    } else {
+        status
     }
 }
 

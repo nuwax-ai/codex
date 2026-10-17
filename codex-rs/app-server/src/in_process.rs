@@ -104,8 +104,10 @@ mod bootstrap;
 
 const IN_PROCESS_CONNECTION_ID: ConnectionId = ConnectionId(0);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
-// Covers both bounded runtime drains plus the analytics client's 25-second best-effort flush.
-const SHUTDOWN_ACK_TIMEOUT: Duration = Duration::from_secs(35);
+// Processor drain includes thread shutdown and tracked cleanup (10s each).
+const PROCESSOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(25);
+// Covers processor/outbound drains plus the analytics client's 25s flush.
+const SHUTDOWN_ACK_TIMEOUT: Duration = Duration::from_secs(55);
 /// Default bounded channel capacity for in-process runtime queues.
 pub const DEFAULT_IN_PROCESS_CHANNEL_CAPACITY: usize = CHANNEL_CAPACITY;
 
@@ -796,7 +798,7 @@ async fn start_uninitialized(mut args: InProcessStartArgs) -> IoResult<InProcess
             )));
         }
 
-        if let Err(_elapsed) = timeout(SHUTDOWN_TIMEOUT, &mut processor_handle).await {
+        if let Err(_elapsed) = timeout(PROCESSOR_SHUTDOWN_TIMEOUT, &mut processor_handle).await {
             processor_handle.abort();
             let _ = processor_handle.await;
         }
@@ -1015,7 +1017,10 @@ mod tests {
                 Some(InProcessClientMessage::Shutdown { done_tx }) => done_tx,
                 _ => panic!("expected in-process shutdown request"),
             };
-            tokio::time::sleep(SHUTDOWN_TIMEOUT + SHUTDOWN_TIMEOUT + Duration::from_secs(24)).await;
+            tokio::time::sleep(
+                PROCESSOR_SHUTDOWN_TIMEOUT + SHUTDOWN_TIMEOUT + Duration::from_secs(24),
+            )
+            .await;
             runtime_completed.store(true, Ordering::Release);
             let _ = done_tx.send(());
         });

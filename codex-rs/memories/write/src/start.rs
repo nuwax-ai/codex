@@ -95,6 +95,9 @@ pub fn start_memories_startup_task(
                 return;
             }
 
+            if context.is_shutting_down() {
+                return;
+            }
             // Run phase 1.
             phase1::run(Arc::clone(&context), Arc::clone(&config)).await;
             // Run phase 2.

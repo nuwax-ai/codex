@@ -29,12 +29,14 @@ use codex_protocol::MemoryVersion;
 use codex_protocol::SessionId;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ReasoningSummary;
+use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::InternalSessionSource;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::ThreadSource;
 use codex_protocol::protocol::TokenUsage;
+use codex_protocol::turn_input::NotSubmittedReason;
 use codex_protocol::user_input::UserInput;
 use codex_rollout_trace::InferenceTraceContext;
 use codex_state::MemoryStore;
@@ -43,6 +45,13 @@ use futures::StreamExt;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+
+pub(crate) enum ConsolidationAgentStartError {
+    Canceled,
+    Failed(anyhow::Error),
+    // The spawned agent may still be alive. Its job lease must remain owned.
+    ShutdownUnconfirmed(anyhow::Error),
+}
 
 pub(crate) struct SpawnedConsolidationAgent {
     pub(crate) thread_id: ThreadId,
@@ -135,6 +144,10 @@ fn build_session_telemetry(
 }
 
 impl MemoryStartupContext {
+    pub(crate) fn is_shutting_down(&self) -> bool {
+        self.thread_manager.is_shutting_down()
+    }
+
     pub(crate) fn new(
         thread_manager: Arc<ThreadManager>,
         auth_manager: Arc<AuthManager>,
@@ -400,10 +413,8 @@ impl MemoryStartupContext {
         &self,
         config: Config,
         prompt: Vec<UserInput>,
-    ) -> anyhow::Result<SpawnedConsolidationAgent> {
-        let NewThread {
-            thread_id, thread, ..
-        } = self
+    ) -> Result<SpawnedConsolidationAgent, ConsolidationAgentStartError> {
+        let started = self
             .thread_manager
             .start_thread(StartThreadOptions {
                 session_source: Some(SessionSource::Internal(
@@ -412,7 +423,22 @@ impl MemoryStartupContext {
                 thread_source: Some(ThreadSource::MemoryConsolidation),
                 ..StartThreadOptions::new(config)
             })
-            .await?;
+            .await;
+        let NewThread {
+            thread_id, thread, ..
+        } = match started {
+            Ok(started) => started,
+            Err(error)
+                if matches!(
+                    error.details(),
+                    CodexErrorDetails::InvalidRequest(message)
+                        if message == "thread manager is shutting down"
+                ) =>
+            {
+                return Err(ConsolidationAgentStartError::Canceled);
+            }
+            Err(error) => return Err(ConsolidationAgentStartError::Failed(error.into())),
+        };
 
         let agent = SpawnedConsolidationAgent { thread_id, thread };
         let submit_result = match agent
@@ -426,16 +452,29 @@ impl MemoryStartupContext {
             .await
         {
             Ok(StartIfIdleSubmission::Started { .. }) => Ok(()),
-            Ok(submission) => Err(anyhow::anyhow!(
+            Ok(StartIfIdleSubmission::NotSubmitted {
+                reason: NotSubmittedReason::ServerDraining,
+            }) => Err(ConsolidationAgentStartError::Canceled),
+            Ok(submission) => Err(ConsolidationAgentStartError::Failed(anyhow::anyhow!(
                 "memory consolidation input was not started: {submission:?}"
-            )),
-            Err(err) => Err(err.into()),
+            ))),
+            Err(err)
+                if matches!(err.details(), CodexErrorDetails::InternalAgentDied)
+                    && matches!(
+                        agent.thread.agent_status().await,
+                        codex_protocol::protocol::AgentStatus::Shutdown
+                    )
+                    && agent.thread.last_terminal_agent_status().await.is_none() =>
+            {
+                Err(ConsolidationAgentStartError::Canceled)
+            }
+            Err(err) => Err(ConsolidationAgentStartError::Failed(err.into())),
         };
         if let Err(err) = submit_result {
             if let Err(shutdown_err) = self.shutdown_consolidation_agent(agent).await {
-                tracing::warn!(
-                    "failed to shut down consolidation agent after submit error: {shutdown_err}"
-                );
+                return Err(ConsolidationAgentStartError::ShutdownUnconfirmed(
+                    shutdown_err,
+                ));
             }
             return Err(err);
         }

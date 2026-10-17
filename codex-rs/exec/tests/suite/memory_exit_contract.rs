@@ -38,6 +38,12 @@ enum MemoryFault {
     InvalidPrompt,
 }
 
+#[derive(Clone, Copy)]
+enum ForegroundGate {
+    WaitForMemory,
+    Immediate,
+}
+
 struct VendorServer {
     _addr: std::net::SocketAddr,
     memory_arrived: watch::Receiver<bool>,
@@ -45,7 +51,7 @@ struct VendorServer {
 }
 
 impl VendorServer {
-    async fn start(fault: MemoryFault) -> VendorServer {
+    async fn start(fault: MemoryFault, foreground_gate: ForegroundGate) -> VendorServer {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind mock vendor");
@@ -63,7 +69,15 @@ impl VendorServer {
                 let gate = memory_arrived.clone();
                 let mut conn_shutdown = shutdown_rx.clone();
                 tokio::spawn(async move {
-                    handle_connection(stream, fault, memory_tx, gate, &mut conn_shutdown).await;
+                    handle_connection(
+                        stream,
+                        fault,
+                        foreground_gate,
+                        memory_tx,
+                        gate,
+                        &mut conn_shutdown,
+                    )
+                    .await;
                 });
             }
         });
@@ -165,6 +179,7 @@ async fn write_http_response(
 async fn handle_connection(
     mut stream: TcpStream,
     fault: MemoryFault,
+    foreground_gate: ForegroundGate,
     memory_arrived: watch::Sender<bool>,
     mut memory_gate: watch::Receiver<bool>,
     shutdown: &mut watch::Receiver<bool>,
@@ -194,11 +209,13 @@ async fn handle_connection(
 
     // Gate foreground responses on the consolidation request so the job is
     // always claimed before the process begins exiting.
-    let _ = tokio::time::timeout(
-        Duration::from_secs(20),
-        memory_gate.wait_for(|arrived| *arrived),
-    )
-    .await;
+    if matches!(foreground_gate, ForegroundGate::WaitForMemory) {
+        let _ = tokio::time::timeout(
+            Duration::from_secs(20),
+            memory_gate.wait_for(|arrived| *arrived),
+        )
+        .await;
+    }
     let _ = write_http_response(
         &mut stream,
         "200 OK",
@@ -263,31 +280,41 @@ async fn open_pool(home: &Path, read_only: bool) -> Option<sqlx::SqlitePool> {
     None
 }
 
+async fn read_job_row_if_present(home: &Path) -> Option<JobRow> {
+    use sqlx::Row;
+
+    let Some(pool) = open_pool(home, /*read_only*/ true).await else {
+        assert!(
+            !home.join("memories_1.sqlite").exists(),
+            "an existing memory database must be readable by the independent probe",
+        );
+        return None;
+    };
+    let row = sqlx::query(
+        "SELECT status, lease_until, retry_at, retry_remaining, last_error \
+         FROM jobs WHERE kind = 'memory_consolidate_global'",
+    )
+    .fetch_optional(&pool)
+    .await
+    .expect("read consolidation job row");
+    let job = row.map(|row| JobRow {
+        status: row.try_get("status").expect("status column"),
+        lease_until: row.try_get("lease_until").expect("lease_until column"),
+        retry_at: row.try_get("retry_at").expect("retry_at column"),
+        retry_remaining: row
+            .try_get("retry_remaining")
+            .expect("retry_remaining column"),
+        last_error: row.try_get("last_error").expect("last_error column"),
+    });
+    pool.close().await;
+    job
+}
+
 async fn read_job_row(home: &Path) -> JobRow {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
     loop {
-        if let Some(pool) = open_pool(home, /*read_only*/ true).await {
-            if let Ok(Some(row)) = sqlx::query(
-                "SELECT status, lease_until, retry_at, retry_remaining, last_error \
-                 FROM jobs WHERE kind = 'memory_consolidate_global'",
-            )
-            .fetch_optional(&pool)
-            .await
-            {
-                use sqlx::Row;
-                let job = JobRow {
-                    status: row.try_get("status").expect("status column"),
-                    lease_until: row.try_get("lease_until").expect("lease_until column"),
-                    retry_at: row.try_get("retry_at").expect("retry_at column"),
-                    retry_remaining: row
-                        .try_get("retry_remaining")
-                        .expect("retry_remaining column"),
-                    last_error: row.try_get("last_error").expect("last_error column"),
-                };
-                let _ = pool.close().await;
-                return job;
-            }
-            let _ = pool.close().await;
+        if let Some(job) = read_job_row_if_present(home).await {
+            return job;
         }
         assert!(
             tokio::time::Instant::now() < deadline,
@@ -415,7 +442,7 @@ async fn normal_exit_releases_memory_claim_despite_transient_db_write_lock() -> 
     std::fs::create_dir_all(&home)?;
     std::fs::create_dir_all(&cwd)?;
 
-    let server = VendorServer::start(MemoryFault::Hang).await;
+    let server = VendorServer::start(MemoryFault::Hang, ForegroundGate::WaitForMemory).await;
     write_config(&home, server.port())?;
 
     let home_path = home.clone();
@@ -469,7 +496,8 @@ async fn normal_exit_after_real_agent_error_keeps_failure_budget_and_backoff() -
     std::fs::create_dir_all(&home)?;
     std::fs::create_dir_all(&cwd)?;
 
-    let server = VendorServer::start(MemoryFault::InvalidPrompt).await;
+    let server =
+        VendorServer::start(MemoryFault::InvalidPrompt, ForegroundGate::WaitForMemory).await;
     write_config(&home, server.port())?;
 
     let home_path = home.clone();
@@ -516,7 +544,7 @@ async fn normal_exit_stays_bounded_when_cleanup_is_blocked_leaving_lease_backsto
     std::fs::create_dir_all(&home)?;
     std::fs::create_dir_all(&cwd)?;
 
-    let server = VendorServer::start(MemoryFault::Hang).await;
+    let server = VendorServer::start(MemoryFault::Hang, ForegroundGate::WaitForMemory).await;
     write_config(&home, server.port())?;
 
     let home_path = home.clone();
@@ -578,5 +606,37 @@ async fn normal_exit_stays_bounded_when_cleanup_is_blocked_leaving_lease_backsto
     );
     let _ = server.shutdown.send(true);
     let _ = lock_task.await;
+    Ok(())
+}
+
+/// Foreground completion need not wait for the memory startup pipeline. A
+/// shutdown fence must reject a late consolidation start and release any claim
+/// it already owns, rather than waiting for a newly started hung agent.
+#[tokio::test(flavor = "multi_thread")]
+async fn fast_foreground_exit_does_not_leave_a_late_memory_agent_claim() -> Result<()> {
+    let run = TempDir::new()?;
+    let home = run.path().join("home");
+    let cwd = run.path().join("work");
+    std::fs::create_dir_all(&home)?;
+    std::fs::create_dir_all(&cwd)?;
+    let server = VendorServer::start(MemoryFault::Hang, ForegroundGate::Immediate).await;
+    write_config(&home, server.port())?;
+
+    let outcome = run_codex_exec(&home, &cwd, Duration::from_secs(45)).await;
+    assert_eq!(outcome.returncode, 0);
+    // No row is valid when shutdown fences startup before phase2 claims work.
+    // If it has already claimed, normal cancellation must relinquish ownership.
+    if let Some(job) = read_job_row_if_present(&home).await {
+        assert_eq!(
+            (
+                job.status,
+                job.lease_until,
+                job.retry_remaining,
+                job.last_error
+            ),
+            ("pending".to_owned(), None, 3, None),
+        );
+    }
+    let _ = server.shutdown.send(true);
     Ok(())
 }

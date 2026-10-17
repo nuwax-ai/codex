@@ -794,14 +794,16 @@ impl CodexThread {
         self.session.terminate_background_terminal(process_id).await
     }
 
-    /// Subscribes to every future agent-status transition.
-    ///
-    /// Unlike polling [`CodexThread::agent_status`], a subscriber observes each
-    /// published status, so a terminal status that a later shutdown overwrites
-    /// (for example `Errored` followed by `Shutdown` when the owning process
-    /// exits right after a failed run) cannot be missed between polls.
+    /// Subscribes to the latest agent status. Intermediate transitions can be
+    /// coalesced while a receiver is waiting on other work.
     pub fn subscribe_status(&self) -> watch::Receiver<AgentStatus> {
         self.io.agent_status.clone()
+    }
+
+    /// Returns the current turn's latest completion or error, preserved across
+    /// thread shutdown. Starting another turn clears the previous result.
+    pub async fn last_terminal_agent_status(&self) -> Option<AgentStatus> {
+        self.session.last_terminal_agent_status.lock().await.clone()
     }
 
     /// Returns the complete token usage snapshot currently cached for this thread.

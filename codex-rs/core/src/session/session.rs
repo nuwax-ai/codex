@@ -62,6 +62,7 @@ pub(crate) struct Session {
     pub(crate) installation_id: String,
     pub(super) tx_event: Sender<Event>,
     pub(super) agent_status: watch::Sender<AgentStatus>,
+    pub(crate) last_terminal_agent_status: Mutex<Option<AgentStatus>>,
     pub(super) state: Mutex<SessionState>,
     /// Orders accepted settings commits and their persisted events with compaction checkpoints.
     /// Keep this separate from `state` so storage I/O does not block runtime state access.
@@ -1845,6 +1846,7 @@ impl Session {
                 installation_id,
                 tx_event: tx_event.clone(),
                 agent_status,
+                last_terminal_agent_status: Mutex::new(None),
                 state: Mutex::new(state),
                 thread_settings_persistence: Semaphore::new(/*permits*/ 1),
                 code_mode_message_tasks: CodeModeMessageTasks::default(),
