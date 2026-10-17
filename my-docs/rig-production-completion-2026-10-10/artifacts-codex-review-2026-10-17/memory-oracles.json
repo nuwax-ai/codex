@@ -1,0 +1,44 @@
+{
+  "heartbeat": {
+    "returncode": 0,
+    "seconds": 93.487,
+    "rows": [
+      {
+        "status": "error",
+        "lease_until": null,
+        "retry_at": 1792228897,
+        "retry_remaining": 2,
+        "last_error": "failed_agent"
+      }
+    ],
+    "rawRunDir": "/tmp/codex-memory-exit-review-e9ry7o90"
+  },
+  "spawn": {
+    "returncode": 0,
+    "seconds": 0.782,
+    "rows": [
+      {
+        "status": "pending",
+        "lease_until": null,
+        "retry_at": 1792225209,
+        "retry_remaining": 3,
+        "last_error": null
+      }
+    ],
+    "rawRunDir": "/tmp/codex-memory-exit-review-j6cw4l2n"
+  },
+  "one-second-lock": {
+    "returncode": 0,
+    "seconds": 1.717,
+    "rows": [
+      {
+        "status": "pending",
+        "lease_until": null,
+        "retry_at": 1792225209,
+        "retry_remaining": 3,
+        "last_error": null
+      }
+    ],
+    "rawRunDir": "/tmp/codex-memory-exit-review-sc9amkuf"
+  }
+}

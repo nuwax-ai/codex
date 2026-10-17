@@ -1,0 +1,23 @@
+{
+  "codexCommit": "b45fea55e1419d410d998eaf71dea37b4cde10f7",
+  "acpCommit": "6dec6c820d0a34010ecfa21271b5f430b120b8a1",
+  "files": {
+    "codex-rs/app-server/src/in_process.rs": "a38e4ca89052e5883c6b484d75ba085e589c0f9bda29d0d1c1440ae1f84c949f",
+    "codex-rs/core-plugins/Cargo.toml": "0bb8224b2e5ad67133529c67ba742acf3da00d0742487c11fa555fe53708a479",
+    "codex-rs/core-plugins/src/startup_sync.rs": "1f2612e7b6c70c13f7f86edbd3773e86b1c677718878f4fcb12db62bb8bd01ee",
+    "codex-rs/core-plugins/src/startup_sync/linux_process.rs": "f15fdd1ff8426b51b2fe9879228939c537aef82216ac4aeff5f95b4e1b94e68e",
+    "codex-rs/core-plugins/src/startup_sync_tests.rs": "3350be2a386389b796d693933256cde41db8689274fcb0e541d399447403f21c",
+    "codex-rs/core/src/codex_thread.rs": "fdd612a4d0e00da786287a5a95d9801452cf40cadb6dcd723ac8891f2e5594f0",
+    "codex-rs/core/src/session/agent_status_shutdown_tests.rs": "a368ca0550c512d5ab7276b38331b3d8b30da61fbbf850c8d5ceac02eb10dc2b",
+    "codex-rs/core/src/session/mod.rs": "96c6e3a2e2d25f41100807e40b24ec589a787f58fe8b68236217a94352e9d37e",
+    "codex-rs/core/src/session/session.rs": "4f760750545dc7923b3a7802fad885cb659890e0d956085750c0577b9a56ea46",
+    "codex-rs/core/src/session/tests.rs": "07c3a43e6be78c84686cb14d0723a75a299ea367f064fc302f59a4586022eb58",
+    "codex-rs/core/src/thread_manager.rs": "dc048f824bc36478089ee5cf0cd60834df6de84dca961d7b2915e40d91d93220",
+    "codex-rs/core/src/thread_manager_shutdown_tests.rs": "09ad1f627668be0ab5ef71e6f77f3694c8aef862e836540be8b1d54ed3ef07a9",
+    "codex-rs/core/src/thread_manager_tests.rs": "819c4cd173e6cd5d4de41c93f450a962cfb7afd11d4710753bf199aff787d1a2",
+    "codex-rs/exec/tests/suite/memory_exit_contract.rs": "055a991994f23e4e36d951957d882c83a9e9b457efbb01b1e9491caa73710c57",
+    "codex-rs/memories/write/src/phase2.rs": "038d604faa99f72e74c3bfc986f3c69c62033c6aea058e99914868a8dbf24a54",
+    "codex-rs/memories/write/src/runtime.rs": "1f8fef12dab108c6a613f738e19614ec497a0340d66cb87cdbde120e9a6c2f83",
+    "codex-rs/memories/write/src/start.rs": "8a7b4959b33b56ca526f79fb818eecf40fcc56ec721cc5da4fd4d7cf96c31796"
+  }
+}

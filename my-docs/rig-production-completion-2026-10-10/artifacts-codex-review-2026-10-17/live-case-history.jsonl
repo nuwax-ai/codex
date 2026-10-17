@@ -1,0 +1,15 @@
+{"name": "env-determinism", "pass": true, "detail": "real Codex reached exact local NUWAX path/model with dummy auth; no real vendor request", "actualAttempts": 0}
+{"name": "wire-chat", "pass": true, "detail": "passed", "actualAttempts": 1}
+{"name": "wire-anthropic", "pass": false, "detail": "exec exited with status 1", "actualAttempts": 0}
+{"name": "wire-responses", "pass": true, "detail": "passed", "actualAttempts": 1}
+{"name": "main-screenshot", "pass": true, "detail": "one successful typed MCP image; final assistant matched ground truth", "actualAttempts": 2}
+{"name": "main-cancel", "pass": true, "detail": "passed", "actualAttempts": 1}
+{"name": "acp-smoke", "pass": false, "detail": "live helper failed; inspect its log", "actualAttempts": 4}
+{"name": "wire-anthropic", "pass": true, "detail": "passed", "actualAttempts": 1}
+{"name": "backup-switch-mimo", "pass": true, "detail": "passed", "actualAttempts": 1}
+{"name": "main-text", "pass": true, "detail": "passed", "actualAttempts": 1}
+{"name": "main-cold-recall", "pass": true, "detail": "passed", "actualAttempts": 1}
+{"name": "main-tool", "pass": true, "detail": "passed", "actualAttempts": 2}
+{"name": "vision-direct", "pass": false, "detail": "live helper failed; inspect its log", "actualAttempts": 7}
+{"name": "acp-smoke", "pass": true, "detail": "passed", "actualAttempts": 4}
+{"name": "vision-direct", "pass": true, "detail": "passed", "actualAttempts": 7}
