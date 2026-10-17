@@ -272,3 +272,41 @@ live-smallbatch-summary.json、mac/linux summary-18.json、mac 三 wire 压测
 `/c/tmp/codex-stab-2f2ddc157` 的 target（或整树）再继续。
 
 慢性修复的 Windows 交叉验证已在新树完成（triage2 A1：network-proxy + guardian-v2 2/2 过）。
+
+## 11. 第三轮：验机恢复后深分诊
+
+验机 SSH 恢复（ICMP 被防火墙挡，非宕机）。清理增量缓存后 100G 可用。
+
+### conpty_ctrl_c 定案（OS 级限制，非产品缺陷）
+
+用 cmd.exe 替代 PowerShell 的探针证明 Ctrl-C 同样不停 ping——**ConPTY 0x03 管道写入
+→ 控制台事件翻译在旧版 Windows 上不工作**。整个代码库无 `GenerateConsoleCtrlEvent`
+调用，纯管道写入是 portable-pty 标准做法但依赖 OS 的 ConPTY 实现。这不是产品代码
+缺陷，是平台差异：
+- 在支持该翻译的 Windows 构建（CI windows-latest 用较新镜像）上可能同样失败（CI
+  该项也在 FAIL 列表中）
+- 建议处置：测试改用 `GenerateConsoleCtrlEvent` 或按 Windows 版本门控；交 Codex
+  决策（产品是否需要在不支持 0x03 翻译的 ConPTY 上提供替代 Ctrl-C 路径）
+
+### elevated_non_tty_cmd（环境配置）
+
+`CreateProcessWithLogonW failed: 2`（找不到文件）——沙箱用户（CodexSandboxOffline/
+CodexSandboxOnline）的 profile 目录未就绪。沙箱 provision 在跑（防火墙/WFP/ACL 全
+配好）但进程创建时用户 profile 无法解析。**验机环境配置问题**，非产品缺陷。
+
+### TUI config_overrides_forward_explicit（待 Codex）
+
+断言 `personality = Some("none")` 实际 `None`。CLI override 存在时 SessionFlags 层的
+personality 未转发到 remote thread params。在 `config_request_overrides_from_config`
+中 personality 从 SessionFlags 层提取（app_server_session.rs:1950-1967）；需要深入
+Config 层栈在 Windows 上的行为差异。
+
+### pool_pressure（产品缺陷确认）
+
+`ConnectionPool::open_connection`（connection_pool.rs:455-520）**无条件走 websocket**
+——不检查 `provider_info.supports_websockets`。设置 `supports_websockets = false` 无效
+因为采样路径根本不看它。这是 guardian-v2 Luna 采样器的设计（纯 websocket），但意味着
+不支持 websocket 的 provider 无法使用 guardian v2 评分。decisions_lifecycle_tests
+不走 ConnectionPool（用不同路径），所以它们可以用 HTTP mock。**修法**：pool_pressure
+测试需要用 `start_websocket_server`（与同文件 153/211 行的通过测试一致）；或者产品
+在 ConnectionPool 加 SSE 回退。前者是测试修复，后者是产品加固——都交 Codex 决策。
