@@ -29,13 +29,22 @@ pub(crate) fn helper_bin_dir(codex_home: &Path) -> PathBuf {
     sandbox_bin_dir(codex_home)
 }
 
-fn legacy_lookup() -> PathBuf {
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(candidate) = bundled_executable_path_for_exe(&exe, COMMAND_RUNNER_EXE)
-    {
-        return candidate;
+fn legacy_lookup() -> Result<PathBuf> {
+    let exe = std::env::current_exe().context("resolve the current executable path")?;
+    if let Some(candidate) = bundled_executable_path_for_exe(&exe, COMMAND_RUNNER_EXE) {
+        return Ok(candidate);
     }
-    PathBuf::from(COMMAND_RUNNER_EXE)
+    // Never fall back to a bare executable name: CreateProcessWithLogonW
+    // would resolve it against the sandbox account's own search path, so a
+    // missing helper used to surface as the misleading OS error 2 (file not
+    // found) instead of naming the missing file. Fail fast with the searched
+    // locations so operators can stage the helper.
+    Err(anyhow!(
+        "sandbox helper {COMMAND_RUNNER_EXE} was not found next to the current executable ({}) \
+         or under {RESOURCES_DIRNAME}; build or stage it next to the binary before \
+         launching an elevated sandbox session",
+        exe.display()
+    ))
 }
 
 pub(crate) fn resolve_command_runner(codex_home: &Path, log_dir: Option<&Path>) -> Result<PathBuf> {
@@ -64,15 +73,22 @@ pub(crate) fn resolve_command_runner(codex_home: &Path, log_dir: Option<&Path>) 
             path
         }
         Err(err) => {
-            let fallback = legacy_lookup();
-            log_note(
-                &format!(
-                    "helper copy failed for command-runner: {err:#}; falling back to legacy path {}",
-                    fallback.display()
-                ),
-                log_dir,
-            );
-            fallback
+            // Propagate with context instead of continuing: a bare-name
+            // fallback produces the misleading CreateProcessWithLogonW error 2
+            // deep in the spawn path (see legacy_lookup).
+            let fallback = legacy_lookup().map_err(|lookup_error| {
+                lookup_error.context(format!("helper copy failed first: {err:#}"))
+            });
+            if let Ok(path) = &fallback {
+                log_note(
+                    &format!(
+                        "helper copy failed for command-runner: {err:#}; using bundled helper path {}",
+                        path.display()
+                    ),
+                    log_dir,
+                );
+            }
+            fallback?
         }
     })
 }
