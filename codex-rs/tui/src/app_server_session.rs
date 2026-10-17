@@ -137,7 +137,7 @@ use codex_config::ConfigLayerSource;
 use codex_otel::TelemetryAuthMode;
 use codex_protocol::ThreadId;
 use codex_protocol::approvals::GuardianAssessmentEvent;
-use codex_protocol::config_types::Personality;
+
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::models::BaseInstructionsProvenance;
@@ -1938,10 +1938,6 @@ fn approvals_reviewer_override_from_config(
     Some(config.approvals_reviewer.into())
 }
 
-pub(crate) fn personality_opt_out_only(personality: Option<Personality>) -> Option<Personality> {
-    personality.filter(|personality| *personality == Personality::None)
-}
-
 fn config_request_overrides_from_config(
     config: &Config,
     thread_params_mode: ThreadParamsMode,
@@ -1988,10 +1984,12 @@ fn config_request_overrides_from_config(
             .as_ref()
             .map(std::string::ToString::to_string),
     );
-    insert(
-        "personality",
-        personality_opt_out_only(config.personality).map(|personality| personality.to_string()),
-    );
+    // Personality is deliberately NOT inserted from `config.personality`
+    // here: the merged value includes the shared user/project config layers,
+    // which the remote daemon already reads itself. Forwarding their opt-out
+    // would shadow daemon-side state with this client's copy. The
+    // session-flags extraction above already carries the client-only `-c
+    // personality=none` opt-out.
     // Fork (nuwax-codex): the context/compact model seeds are per-thread
     // values (possibly env-seeded in this client); project them so a shared
     // daemon thread reproduces this client's window and compaction
