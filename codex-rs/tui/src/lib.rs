@@ -11,7 +11,6 @@ use crate::legacy_core::config::ConfigTomlLoadResult;
 use crate::legacy_core::config::bootstrap_auth_config;
 use crate::legacy_core::config::edit::ConfigEdit;
 use crate::legacy_core::config::edit::ConfigEditsBuilder;
-use crate::legacy_core::config::load_config_toml_with_layer_stack;
 use crate::legacy_core::config::load_config_toml_with_layer_stack_and_env_seed;
 #[cfg(test)]
 use crate::legacy_core::config::resolve_bootstrap_http_client_factory;
