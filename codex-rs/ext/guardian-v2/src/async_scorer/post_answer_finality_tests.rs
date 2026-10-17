@@ -708,7 +708,16 @@ async fn pool_pressure_cancels_the_oldest_classification_with_a_terminal_outcome
         .with_pre_build_hook(|home| {
             std::fs::write(
                 home.join("config.toml"),
-                "[features.guardianv2]\nenabled = true\n\n[features.guardianv2.review_scope]\ncomputer_use_only = false\n",
+                // Two defaults would defeat this cell before the pool is ever
+                // exercised: score aging (lag 2) supersedes each in-flight
+                // classification once two later tools are observed, and the
+                // conversation backend's MAX_OUTSTANDING reservations cap the
+                // number of concurrently sampled classifications at the pool's
+                // own capacity, so the pressure classification is queued out
+                // instead of evicting the oldest request. Snapshot mode with a
+                // raised lag lets all MAX_CONCURRENT_REQUESTS classifications
+                // plus the replacement reach the pool itself.
+                "[features.guardianv2]\nenabled = true\nasync_classifier_mode = \"snapshot\"\nmax_tool_call_lag = 32\n\n[features.guardianv2.review_scope]\ncomputer_use_only = false\n",
             )
             .expect("Guardian v2 configuration should be written");
         })
@@ -733,6 +742,11 @@ async fn pool_pressure_cancels_the_oldest_classification_with_a_terminal_outcome
     let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("test-api-key"));
     let mut config = test.config.clone();
     config.model_provider = ModelProviderInfo::create_openai_provider(Some(http.uri()));
+    // The mock only speaks HTTP. Declaring the capability asserts the
+    // provider contract, not just fixture convenience: with websocket
+    // support disabled the pool must skip prewarm entirely and serve every
+    // classification through the HTTP fallback path below.
+    config.model_provider.supports_websockets = false;
     config.features.enable(Feature::GuardianV2)?;
     let mut builder = ExtensionRegistryBuilder::new();
     super::super::install(

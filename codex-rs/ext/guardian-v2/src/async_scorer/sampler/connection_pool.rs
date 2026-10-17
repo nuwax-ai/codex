@@ -148,6 +148,14 @@ impl ConnectionPool {
     }
 
     fn start_refill(self: &Arc<Self>, guard: OwnedMutexGuard<()>) -> Option<JoinHandle<()>> {
+        // Honor the provider capability contract: a provider that does not
+        // support websockets must never enter the prewarm path. Attempting
+        // the upgrade anyway fails, and the resulting connect cooldown
+        // throttles replenishment while leases wait, so classification
+        // traffic starves instead of falling back to HTTP promptly.
+        if !self.config.provider.info().supports_websockets {
+            return None;
+        }
         let mut retry_after = self
             .retry_after
             .lock()
@@ -247,6 +255,7 @@ impl ConnectionPool {
         };
         let (connection, thread_id, request_kind) = match connection {
             Some(connection) => {
+                eprintln!("[diag] lease: reusing idle websocket");
                 if self
                     .idle_connections
                     .lock()
