@@ -1479,6 +1479,7 @@ fn startup_sync_git_children_die_when_the_owning_process_is_killed() {
         let port = port.to_string_lossy().parse::<u16>().unwrap();
         let mut command = git_command(Path::new("git")).expect("git command");
         command
+            .args(["-c", "http.proxy="])
             .arg("ls-remote")
             .arg(format!("http://127.0.0.1:{port}/repo.git"))
             .arg("HEAD");
@@ -1493,6 +1494,9 @@ fn startup_sync_git_children_die_when_the_owning_process_is_killed() {
 
     let listener =
         std::net::TcpListener::bind("127.0.0.1:0").expect("bind never-answering endpoint");
+    listener
+        .set_nonblocking(true)
+        .expect("nonblocking listener");
     let port = listener.local_addr().expect("local addr").port();
     let needle = format!("127.0.0.1:{port}");
     let mut child = Command::new(std::env::current_exe().unwrap())
@@ -1510,9 +1514,7 @@ fn startup_sync_git_children_die_when_the_owning_process_is_killed() {
 
     let git_pids_with_needle = || -> Vec<i32> {
         let mut found = Vec::new();
-        let Ok(dir) = std::fs::read_dir("/proc") else {
-            return found;
-        };
+        let dir = std::fs::read_dir("/proc").expect("process probe must be available");
         for entry in dir.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
             let Ok(pid) = name.parse::<i32>() else {
@@ -1529,24 +1531,39 @@ fn startup_sync_git_children_die_when_the_owning_process_is_killed() {
         found
     };
 
-    // Wait (bounded) until the child-role has spawned its hanging git probe.
-    let mut seen = Vec::new();
+    // Seeing the direct Git PID is too early: its transport helper may not
+    // have been spawned yet. Wait for the actual HTTP request, then leave the
+    // connection unanswered while killing the owner.
+    let mut connection = None;
     for _ in 0..100 {
-        seen = git_pids_with_needle();
-        if !seen.is_empty() {
-            break;
+        match listener.accept() {
+            Ok((stream, _)) => {
+                connection = Some(stream);
+                break;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(err) => panic!("failed to accept the Git transport request: {err}"),
         }
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    if seen.is_empty() {
+    let Some(mut connection) = connection else {
         let _ = child.kill();
         let _ = child.wait();
-        panic!("child-role never spawned its git probe");
-    }
+        panic!("child-role never connected its Git transport helper");
+    };
+    connection
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("request read timeout");
+    let mut request = [0; 1024];
+    let read = std::io::Read::read(&mut connection, &mut request);
+    let request_started = read
+        .as_ref()
+        .is_ok_and(|&size| request[..size].starts_with(b"GET "));
 
     // Kill the owning process outright — harsher than the graceful path.
     unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGKILL) };
     let _ = child.wait();
+    assert!(request_started, "Git never sent its HTTP request: {read:?}");
 
     // The git probe (and its transport helpers) must die with it.
     let mut gone = false;
@@ -1557,8 +1574,62 @@ fn startup_sync_git_children_die_when_the_owning_process_is_killed() {
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
+    let survivors = git_pids_with_needle();
+    // Clean only after retaining the failing result, so cleanup cannot turn
+    // this contract green or leave a failed probe hanging on the machine.
+    for pid in &survivors {
+        unsafe { libc::kill(*pid, libc::SIGKILL) };
+    }
     assert!(
         gone,
-        "git children survived the owning process being killed"
+        "Git transport helpers survived owner death: {survivors:?}"
     );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn startup_sync_git_timeout_kills_transport_helpers() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind hanging endpoint");
+    let port = listener.local_addr().expect("local addr").port();
+    listener
+        .set_nonblocking(true)
+        .expect("nonblocking listener");
+    let server = std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(std::time::Instant::now() < deadline, "Git never connected");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(err) => panic!("failed accepting Git request: {err}"),
+            }
+        };
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("request timeout");
+        let mut buffer = [0; 1024];
+        let size = std::io::Read::read(&mut stream, &mut buffer).expect("Git request");
+        assert!(buffer[..size].starts_with(b"GET "));
+        // The timeout must close every writer, including the transport helper,
+        // so EOF arrives without the server returning a response first.
+        loop {
+            match std::io::Read::read(&mut stream, &mut buffer) {
+                Ok(0) => return,
+                Ok(_) => {}
+                Err(err) if err.kind() == std::io::ErrorKind::ConnectionReset => return,
+                result => panic!("Git transport survived command timeout: {result:?}"),
+            }
+        }
+    });
+    let mut command = git_command(Path::new("git")).expect("Git command");
+    command
+        .args(["-c", "http.proxy=", "ls-remote"])
+        .arg(format!("http://127.0.0.1:{port}/repo.git"))
+        .arg("HEAD");
+    let result =
+        run_git_command_with_timeout(&mut command, "transport timeout", Duration::from_secs(1));
+    assert!(result.is_err_and(|err| err.contains("timed out")));
+    server.join().expect("transport server");
 }
