@@ -369,7 +369,11 @@ mod tests {
         assert!(output.contains("a=d,d=I,i=49374,q=2;"));
         assert!(output.contains("\x1b[4;3H"));
         assert!(output.contains("a=T,t=f,f=100,c=4,r=2,q=2,i=49374;"));
-        assert!(!output.contains("cG5n"));
+        // File transmission must not fall back to an inline payload. Check
+        // the transmit type instead of the content base64 marker: the path's
+        // own base64 can contain that marker whenever its length alignment
+        // lands "frame.png" on a 3-byte boundary (observed on Windows).
+        assert!(!output.contains("t=d,"));
         assert!(output.contains("\x1b8"));
     }
 
