@@ -32,8 +32,15 @@ async fn unapproved_hosts_do_not_trigger_dns() {
             "rejecting an unapproved hostname must not disclose it to DNS",
         );
     }
-    // Approval permits DNS, but must still reject private resolution.
-    let state = network_proxy_state_for_policy(NetworkProxyConfig::default());
+    // Approval permits DNS, but must still reject private resolution. The
+    // shared policy helper installs the public-DNS fixture (which maps every
+    // non-local hostname to a fixed public address), so install a fixture
+    // that resolves private to actually exercise the post-approval recheck —
+    // the state fixture takes precedence over the lookup argument by design.
+    let state = network_proxy_state_for_policy(NetworkProxyConfig::default())
+        .with_host_lookup_fixture(Arc::new(|_host: String, _port: u16| {
+            Box::pin(async { Ok(vec!["10.0.0.1:443".parse().unwrap()]) })
+        }));
     let decision = state
         .host_blocked_with_lookup(
             "approved.example",

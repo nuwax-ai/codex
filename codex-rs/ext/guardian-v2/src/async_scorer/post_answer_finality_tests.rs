@@ -410,7 +410,7 @@ async fn unusable_parent_checkpoint_fails_closed_without_sampling() -> Result<()
         recorded_classification_outcomes(&fixture.metrics),
         vec![(
             "failure".to_owned(),
-            Some("parent_compaction_error".to_owned())
+            Some("parent_compaction_unusable".to_owned())
         )]
     );
     assert_eq!(
