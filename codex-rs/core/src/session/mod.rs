@@ -2570,7 +2570,8 @@ impl Session {
         };
 
         let mut error_info = None;
-        let status = match turn_context.terminal_error.lock().await.take() {
+        let terminal_error = turn_context.terminal_error.lock().await.take();
+        let status = match terminal_error {
             Some(error) => {
                 let status = AgentStatus::Errored(error.message);
                 self.publish_agent_status(status.clone()).await;

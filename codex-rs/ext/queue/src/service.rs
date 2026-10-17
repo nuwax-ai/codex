@@ -53,13 +53,19 @@ pub enum QueueServiceError {
     #[error("local queued attachment is invalid: {0}")]
     InvalidAttachment(#[from] std::io::Error),
     #[error("Core failed to submit queued user message: {0}")]
-    CoreSubmissionError(#[from] CodexErr),
+    CoreSubmissionError(#[from] Box<CodexErr>),
     #[error("only user input can be added to the user-message queue")]
     InvalidInput,
     #[error(
         "queued user input exceeds the maximum length of {MAX_USER_INPUT_TEXT_CHARS} characters ({actual_chars} provided)"
     )]
     InputTooLarge { actual_chars: usize },
+}
+
+impl From<CodexErr> for QueueServiceError {
+    fn from(error: CodexErr) -> Self {
+        Self::CoreSubmissionError(Box::new(error))
+    }
 }
 
 #[derive(Clone)]

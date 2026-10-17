@@ -147,7 +147,7 @@ async fn handle_spawn_agent(
                 fork_mode.as_ref(),
                 MultiAgentVersion::V2,
             );
-            collab_spawn_error(err)
+            collab_spawn_error(*err)
         }
     })?;
     let spawned_agent = spawned.agent;

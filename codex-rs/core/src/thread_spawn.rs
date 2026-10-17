@@ -52,7 +52,13 @@ pub(crate) enum ThreadSpawnError {
     #[error("{0}")]
     Preparation(String),
     #[error(transparent)]
-    Backend(#[from] CodexErr),
+    Backend(#[from] Box<CodexErr>),
+}
+
+impl From<CodexErr> for ThreadSpawnError {
+    fn from(error: CodexErr) -> Self {
+        Self::Backend(Box::new(error))
+    }
 }
 
 pub(crate) async fn spawn(
