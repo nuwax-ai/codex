@@ -252,3 +252,23 @@ live-smallbatch-summary.json、mac/linux summary-18.json、mac 三 wire 压测
   17 个分类未发生）。兄弟文件 decisions_lifecycle_tests.rs:34 的 `supports_websockets =
   false` 是既有惯例，该测试漏配。**注意**：这暴露一个待答复的产品问题——WS upgrade 失败
   （mock 返回非 101）后未见回退 SSE POST，是否应有回退需 Codex 定夺。
+
+## 10. 第二轮追加（续）：Windows 新形态深分诊与修复
+
+在验机（真机）复现 CI windows 的 20 个新形态（旧树=CI 同 SHA 2f2ddc157）：
+
+| 组 | 真机结果 | 定性 |
+|---|---|---|
+| unified_exec ×4（CI 红） | **全过**（16/17；唯一红是另一项 `elevated_non_tty_cmd…` FAIL+LEAK 36s） | CI runner 特有 |
+| uds/socket ACL ×2 + private_directory ACL | **10/10 全过** | CI runner 特有（ACL 语义/账户差异） |
+| cur 检测 ×4 | **165/165 全过** | CI runner 特有 |
+| `conpty_ctrl_c_interrupts_powershell_foreground_child` | **3/3 确定性红**（10.8s） | 真缺陷：Ctrl-C(0x03) 写入 conpty 后 `ping -t` 未被中断，后续 `cmd /C ver` 永不执行；输出全为中文 ping 回复（第一段 127.0.0.1 等待可命中，非 locale 问题）。输入层 `WindowsTtyInputNormalizer` 0x03 透传正确、`conpty_delivers_input_to_foreground_children` 过——问题在控制台事件路由。需交互式 Windows 调试（建议探针：裸 cmd.exe 替代 powershell 复现；检查近期 console 抑制类提交 fbc169827/1a89aec96 对 PTY 子进程控制台挂接的影响） |
+| TUI `kitty_local_file_pet_image` | 确定性红（0.03s） | **已修 `26af4d0fb`**：路径 base64 对齐碰撞——canonicalized 路径长度使 "frame.png" 落 3 字节边界时，路径自身编码含内容标记 "cG5n"；改断言 `t=d,`（inline 类型）缺席。mac 验证过；win 复核因验机宕机未完成（见下） |
+| TUI `approvals_popup_navigation_skips_disabled` | 确定性红（0.45s） | 真缺陷/待深查：Enter 后未派发任何 `OverrideTurnContext`（"enter should select an enabled preset"）。交 Codex（TUI 内部） |
+| TUI `config_overrides_forward_explicit_summary_verbosity…` | 确定性红（0.08s） | 同上交 Codex |
+
+**环境事件**：Windows 验机（192.168.32.235）在两棵验证树的 target 目录填满 C: 后失联
+（ping 100% 丢包），后续 win 侧复核中断。恢复后需清理 `/c/tmp/codex-stab-final` 与
+`/c/tmp/codex-stab-2f2ddc157` 的 target（或整树）再继续。
+
+慢性修复的 Windows 交叉验证已在新树完成（triage2 A1：network-proxy + guardian-v2 2/2 过）。
