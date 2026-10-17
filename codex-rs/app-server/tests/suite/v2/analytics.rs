@@ -124,6 +124,38 @@ async fn usage_limit_window_reaches_turn_analytics() -> Result<()> {
     Ok(())
 }
 
+// Inspect the current planned action, never historical tool names or the
+// advertised web_search schema. Those are also present on later reviews.
+fn analytics_review_command(request: &wiremock::Request) -> Option<String> {
+    let body: Value = request.body_json().ok()?;
+    if body["client_metadata"]["x-openai-subagent"] != "guardian" {
+        return None;
+    }
+    for item in body["input"].as_array()?.iter().rev() {
+        if item["role"] != "user" {
+            continue;
+        }
+        let Some(parts) = item["content"].as_array() else {
+            continue;
+        };
+        for pair in parts.windows(2) {
+            if !pair[0]["text"]
+                .as_str()
+                .is_some_and(|text| text.trim() == "Planned action JSON:")
+            {
+                continue;
+            }
+            let action: Value = serde_json::from_str(pair[1]["text"].as_str()?).ok()?;
+            return action["command"]
+                .as_array()?
+                .last()?
+                .as_str()
+                .map(str::to_owned);
+        }
+    }
+    None
+}
+
 #[tokio::test]
 async fn guardian_review_turns_and_tools_reach_analytics() -> Result<()> {
     skip_if_no_network!(Ok(()));
@@ -154,94 +186,84 @@ async fn guardian_review_turns_and_tools_reach_analytics() -> Result<()> {
             responses::ev_completed(id),
         ]))
     };
-    // The review of the first command itself runs a web search, and that
-    // nested tool call triggers a follow-up Guardian sampling request. A
-    // single scripted sequence cannot serve both flows: the continuation
-    // requests arrive at nondeterministic positions and used to consume the
-    // wrong scripted responses, cascading into misrouted turns. Route by
-    // request identity instead of arrival order.
-    let guardian_mark = "\"x-openai-subagent\":\"guardian\"";
-    // Highest priority: continuation reviews of the reviewer's own web search
-    // allow the search so the first review turn keeps its recorded tool call.
-    let continuation_review = responses::sse_response(responses::sse(vec![
-        responses::ev_response_created("guardian-continuation"),
-        responses::ev_assistant_message(
-            "guardian-continuation-answer",
-            &json!({"outcome": "allow", "rationale": "search is read-only"}).to_string(),
-        ),
-        responses::ev_completed("guardian-continuation"),
-    ]));
-    Mock::given(method("POST"))
-        .and(path_regex(".*/responses$"))
-        .and(wiremock::matchers::body_string_contains(guardian_mark))
-        .and(wiremock::matchers::body_string_contains("web_search"))
-        .respond_with(continuation_review)
-        .with_priority(1)
-        .mount(&server)
-        .await;
-    // Reviews of the parent commands follow a causal order (each command is
-    // only attempted after the previous one was reviewed), so a sequence
-    // keyed on the remaining Guardian traffic is deterministic.
-    use std::sync::atomic::AtomicUsize;
-    use std::sync::atomic::Ordering;
-    use wiremock::Respond;
-    struct ReviewSequence {
-        num_calls: AtomicUsize,
-        responses: Vec<wiremock::ResponseTemplate>,
+    // Each approval is identified by its current planned command. A hosted
+    // web search does not create another approval review, and its name in
+    // later history must not divert those reviews into a continuation stub.
+    let review_responses = [
+        responses::sse_response(responses::sse(vec![
+            responses::ev_response_created("guardian-first"),
+            responses::ev_web_search_call_added_partial("guardian-search", "in_progress"),
+            responses::ev_web_search_call_done("guardian-search", "completed", PRIVATE),
+            responses::ev_reasoning_item("guardian-reasoning", &[PRIVATE], &[PRIVATE]),
+            responses::ev_assistant_message(
+                "guardian-answer",
+                &json!({"outcome": "deny", "rationale": PRIVATE}).to_string(),
+            ),
+            responses::ev_completed("guardian-first"),
+        ])),
+        responses::sse_response(responses::sse_failed(
+            "guardian-failed",
+            "invalid_prompt",
+            PRIVATE,
+        )),
+        responses::sse_response(responses::sse(vec![responses::ev_response_created(
+            "guardian-pending",
+        )]))
+        .set_delay(READ_TIMEOUT),
+    ];
+    let parked = std::sync::Arc::new(tokio::sync::Notify::new());
+    for (index, (name, response)) in ["parent-first", "parent-second", "parent-third"]
+        .into_iter()
+        .zip(review_responses)
+        .enumerate()
+    {
+        let command = format!("echo {name} > {name}.txt");
+        let parked = std::sync::Arc::clone(&parked);
+        Mock::given(method("POST"))
+            .and(path_regex(".*/responses$"))
+            .and(move |request: &wiremock::Request| {
+                analytics_review_command(request).as_deref() == Some(command.as_str())
+            })
+            .respond_with(move |_: &wiremock::Request| {
+                if index == 2 {
+                    parked.notify_one();
+                }
+                response.clone()
+            })
+            .expect(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
     }
-    impl Respond for ReviewSequence {
-        fn respond(&self, _: &wiremock::Request) -> wiremock::ResponseTemplate {
-            let call_num = self.num_calls.fetch_add(1, Ordering::SeqCst);
-            self.responses
-                .get(call_num)
-                .expect("missing review response for call")
-                .clone()
-        }
-    }
-    Mock::given(method("POST"))
-        .and(path_regex(".*/responses$"))
-        .and(wiremock::matchers::body_string_contains(guardian_mark))
-        .respond_with(ReviewSequence {
-            num_calls: AtomicUsize::new(0),
-            responses: vec![
-                responses::sse_response(responses::sse(vec![
-                    responses::ev_response_created("guardian-first"),
-                    responses::ev_web_search_call_added_partial("guardian-search", "in_progress"),
-                    responses::ev_web_search_call_done("guardian-search", "completed", PRIVATE),
-                    responses::ev_reasoning_item("guardian-reasoning", &[PRIVATE], &[PRIVATE]),
-                    responses::ev_assistant_message(
-                        "guardian-answer",
-                        &json!({"outcome": "deny", "rationale": PRIVATE}).to_string(),
-                    ),
-                    responses::ev_completed("guardian-first"),
-                ])),
-                responses::sse_response(responses::sse_failed(
-                    "guardian-failed",
-                    "invalid_prompt",
-                    PRIVATE,
-                )),
-                responses::sse_response(responses::sse(vec![responses::ev_response_created(
-                    "guardian-pending",
-                )]))
-                .set_delay(READ_TIMEOUT),
-            ],
-        })
-        .with_priority(2)
-        .mount(&server)
-        .await;
     // Parent-turn requests carry the previously reviewed calls in their
     // history, so later turns are recognized by the most recent command.
     Mock::given(method("POST"))
         .and(path_regex(".*/responses$"))
-        .and(wiremock::matchers::body_string_contains("echo parent-second"))
-        .and(wiremock::matchers::body_string_contains("parent-second.txt"))
+        .and(|request: &wiremock::Request| {
+            request
+                .body_json::<Value>()
+                .is_ok_and(|body| body["client_metadata"]["x-openai-subagent"] != "guardian")
+        })
+        .and(wiremock::matchers::body_string_contains(
+            "echo parent-second",
+        ))
+        .and(wiremock::matchers::body_string_contains(
+            "parent-second.txt",
+        ))
         .respond_with(parent_tool("parent-third"))
         .with_priority(6)
         .mount(&server)
         .await;
     Mock::given(method("POST"))
         .and(path_regex(".*/responses$"))
-        .and(wiremock::matchers::body_string_contains("echo parent-first"))
+        .and(|request: &wiremock::Request| {
+            request
+                .body_json::<Value>()
+                .is_ok_and(|body| body["client_metadata"]["x-openai-subagent"] != "guardian")
+        })
+        .and(wiremock::matchers::body_string_contains(
+            "echo parent-first",
+        ))
         .and(wiremock::matchers::body_string_contains("parent-first.txt"))
         .respond_with(parent_tool("parent-second"))
         .with_priority(7)
@@ -249,6 +271,11 @@ async fn guardian_review_turns_and_tools_reach_analytics() -> Result<()> {
         .await;
     Mock::given(method("POST"))
         .and(path_regex(".*/responses$"))
+        .and(|request: &wiremock::Request| {
+            request
+                .body_json::<Value>()
+                .is_ok_and(|body| body["client_metadata"]["x-openai-subagent"] != "guardian")
+        })
         .respond_with(parent_tool("parent-first"))
         .with_priority(8)
         .mount(&server)
@@ -283,32 +310,32 @@ async fn guardian_review_turns_and_tools_reach_analytics() -> Result<()> {
         .await?;
     let TurnStartResponse { turn } =
         timeout(READ_TIMEOUT, app_server.read_response(request_id)).await??;
-    // Wait until the third command's review is parked on the stalled
-    // response before interrupting the parent turn.
-    timeout(READ_TIMEOUT, async {
-        loop {
-            let main_reviews = server
-                .received_requests()
-                .await
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|request| {
-                    request.url.path().ends_with("/responses")
-                        && std::str::from_utf8(&request.body).is_ok_and(|body| {
-                            body.contains(guardian_mark) && !body.contains("web_search")
-                        })
-                })
-                .count();
-            if main_reviews >= 3 {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
-    })
-    .await?;
+    // The parked review's responder is the handshake: unrelated requests and
+    // historical web-search text cannot make the test interrupt too early.
+    timeout(READ_TIMEOUT, parked.notified()).await?;
+    let parked_turn = server
+        .received_requests()
+        .await
+        .expect("recorded requests")
+        .into_iter()
+        .find(|request| {
+            analytics_review_command(request).as_deref()
+                == Some("echo parent-third > parent-third.txt")
+        })
+        .expect("parked third review request")
+        .body_json::<Value>()?["client_metadata"]["turn_id"]
+        .as_str()
+        .expect("parked review turn id")
+        .to_owned();
     app_server
         .interrupt_turn_and_wait_for_aborted(thread.id.clone(), turn.id, READ_TIMEOUT)
         .await?;
+    // Parent completion precedes the asynchronously cancelled review's final
+    // analytics. Wait for that observable outcome before draining the server.
+    wait_for_matching_analytics_event(&server, READ_TIMEOUT, |event| {
+        event["event_type"] == "codex_turn_event" && event["event_params"]["turn_id"] == parked_turn
+    })
+    .await?;
     timeout(READ_TIMEOUT, app_server.shutdown_gracefully()).await??;
     let events = captured_analytics_events(&server).await;
     assert!(!serde_json::to_string(&events)?.contains(PRIVATE));
@@ -325,31 +352,30 @@ async fn guardian_review_turns_and_tools_reach_analytics() -> Result<()> {
         json!([params["model_slug"], params["reasoning_effort"]]),
         json!(["mock-model", "high"])
     );
-    // Pair Guardian request identities with analytics events by turn and
-    // thread instead of assuming one request per review or a fixed arrival
-    // order: a review turn may sample multiple times, and continuation
-    // reviews of the reviewer's own tools interleave freely.
+    // Pair every analytics event with a review that actually issued a request.
     let guardian_identities = server
         .received_requests()
         .await
-        .unwrap_or_default()
+        .expect("recorded requests")
         .into_iter()
-        .filter(|request| {
-            request.url.path().ends_with("/responses")
-                && std::str::from_utf8(&request.body)
-                    .is_ok_and(|body| body.contains(guardian_mark))
-        })
+        .filter(|request| analytics_review_command(request).is_some())
         .map(|request| {
-            let body: Value = request.body_json().unwrap_or_default();
-            body["client_metadata"].clone()
-        })
-        .map(|metadata| {
+            let body: Value = request.body_json().expect("review JSON");
+            let metadata = &body["client_metadata"];
             (
-                metadata["thread_id"].as_str().expect("thread id").to_owned(),
+                metadata["thread_id"]
+                    .as_str()
+                    .expect("thread id")
+                    .to_owned(),
                 metadata["turn_id"].as_str().expect("turn id").to_owned(),
             )
         })
-        .collect::<Vec<(String, String)>>();
+        .collect::<Vec<_>>();
+    assert_eq!(
+        guardian_identities.len(),
+        3,
+        "three actual approval reviews"
+    );
     let review_thread_of_turn = |turn_id: &str| -> Option<String> {
         guardian_identities
             .iter()
@@ -366,26 +392,28 @@ async fn guardian_review_turns_and_tools_reach_analytics() -> Result<()> {
     );
     for event in &children {
         let params = &event["event_params"];
-        let review_thread = review_thread_of_turn(params["turn_id"].as_str().unwrap_or_default())
-            .unwrap_or_else(|| {
-                // Tool events carry their owning turn's id; both must resolve
-                // to a thread that actually issued a Guardian request.
-                params["thread_id"].as_str().expect("thread id").to_owned()
-            });
         assert_eq!(
             json!([
-                params["thread_id"],
                 params["session_id"],
                 params["parent_thread_id"],
                 params["thread_source"]
             ]),
-            json!([
-                review_thread,
-                thread.session_id,
-                thread.id,
-                "guardian_review"
-            ])
+            json!([thread.session_id, thread.id, "guardian_review"])
         );
+        // Prewarmed reviewer threads can initialize without ever receiving a
+        // turn. Turn/tool events, in contrast, must match an actual request.
+        if event["event_type"] == "codex_thread_initialized" {
+            assert!(
+                params["thread_id"]
+                    .as_str()
+                    .is_some_and(|id| !id.is_empty())
+            );
+        } else {
+            let review_thread =
+                review_thread_of_turn(params["turn_id"].as_str().unwrap_or_default())
+                    .expect("Guardian turn/tool analytics belong to an observed review turn");
+            assert_eq!(params["thread_id"], json!(review_thread));
+        }
     }
     let mut turns = children
         .iter()
@@ -429,36 +457,30 @@ async fn guardian_review_turns_and_tools_reach_analytics() -> Result<()> {
     let completed = find_turn("completed");
     let failed = find_turn("failed");
     let interrupted = find_turn("interrupted");
-    assert_eq!(
-        failed.len(),
-        1,
-        "exactly one review fails: {turns:?}"
-    );
-    assert_eq!(
-        failed[0][3], 0,
-        "failed review has no tool calls"
-    );
+    assert_eq!(failed.len(), 1, "exactly one review fails: {turns:?}");
+    assert_eq!(failed[0][3], 0, "failed review has no tool calls");
     assert_eq!(failed[0][4], 0, "failed review has no web searches");
     assert_eq!(failed[0][2], json!("other"));
     assert!(
-        !interrupted.is_empty(),
-        "the parked review is interrupted: {turns:?}"
+        interrupted.len() == 1,
+        "exactly the parked review is interrupted: {turns:?}"
     );
     for turn in &interrupted {
         assert_eq!(turn[3], 0);
         assert_eq!(turn[4], 0);
         assert_eq!(turn[2], json!(null));
     }
+    assert_eq!(
+        completed.len(),
+        1,
+        "exactly one review completes: {turns:?}"
+    );
     assert!(
         completed
             .iter()
             .any(|turn| turn[3] == 1 && turn[4] == 1 && turn[2].is_null()),
         "one review completes with a single web search: {turns:?}"
     );
-    for turn in &completed {
-        // Continuation reviews complete without tool calls of their own.
-        assert!(turn[4] == 0 || turn[4] == 1, "unexpected search count");
-    }
     let tools = children
         .iter()
         .filter(|event| event["event_type"] == "codex_web_search_event")
