@@ -224,3 +224,31 @@ live-smallbatch-summary.json、mac/linux summary-18.json、mac 三 wire 压测
 3. CI ubuntu 3 新失败（本机绿）与 message_processor::thread_lifecycle 本机预存 TIMEOUT
    的环境定性复核。
 4. 真实 API 剩余预算与未尽项（见 §5 填充）。
+
+## 9. 第二轮继续开发（同日追加：发现问题→修复）
+
+用户指示"继续开发，发现修复的问题"后的追加工作，起点 `dd7221e7f`：
+
+| # | 发现 | 处置 | 提交 |
+|---|---|---|---|
+| 1 | 更新检查孤儿子进程（§8.0 的产品加固项）：app-server 被杀早于自身 30s 界时 `git ls-remote` 成孤儿，黑洞网络悬挂分钟级 | **fixed**：`git_command` 加 PDEATHSIG pre_exec（复用 core/spawn.rs 与 utils-pty 的既有 helper，Linux 生效）；Linux 子进程回归红验证（无修复 6.3s 红 / 有修复绿） | `4097b2d57` |
+| 2 | item 9 残留：v2 级 McpToolCall-图像 canonical 比较缺失 | **executed**：image_scenario 工具图像在热读/limit=1 分页/冷重启/fork 四视图 canonical 全等 + base64 点检；开发中两次红（REPL-only js 工具、空参反序列化失败）证明有牙 | `93cd60142` |
+| 3 | "CI 慢性"4 项在本机 mac 全部复现（此前两轮被误标为 CI 环境性） | 2 修复 + 1 深诊断 + 1 同根因：见下 | `203679e02` |
+| 4 | Windows CI 20 个新形态首批复现（旧树=CI 同 SHA） | unified_exec×4 与 cur 检测×4 在真机全过（CI runner 特有）；`elevated_non_tty_cmd_forwards_env_output_and_exit` FAIL+LEAK 为真机可复现新项（36s，待分诊） | 记录见 §6 |
+
+慢性 4 项明细：
+- `unapproved_hosts_do_not_trigger_dns`：**测试缺陷**——共享策略 helper 装的公网 DNS fixture
+  按设计优先于 lookup 参数，第二段"Approved 解析私网必须拦"从未真正走到。测试改为安装
+  私网解析 fixture，真正驱动审批后私网复查分支。
+- `unusable_parent_checkpoint_fails_closed`：**字面量过期**——枚举早已细分 serialization/
+  oversized/unusable，兄弟测试已用新值。对齐。
+- `guardian_review_turns_and_tools_reach_analytics`：**场景过时（未修，交 Codex）**——固定
+  请求序列假设"3 个 guardian 请求=3 个 review"，但 web-search 的 review 会续采样（一个
+  review 多个请求），实测只有 2 个 review 线程、序列错位级联。需要场景级重设计（按去重
+  线程收集 + 按线程配对状态 + 非到达序断言；本轮已验证嵌套 turn-metadata 提取与排序比较
+  均必要但不充分）。
+- `pool_pressure_cancels_the_oldest`：同 websockets 根因待修——guardian 采样器在 provider
+  默认 `supports_websockets=true` 下走 WS upgrade 撞纯 POST mock（3 次 upgrade 后放弃，
+  17 个分类未发生）。兄弟文件 decisions_lifecycle_tests.rs:34 的 `supports_websockets =
+  false` 是既有惯例，该测试漏配。**注意**：这暴露一个待答复的产品问题——WS upgrade 失败
+  （mock 返回非 101）后未见回退 SSE POST，是否应有回退需 Codex 定夺。
