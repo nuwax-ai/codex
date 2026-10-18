@@ -1438,18 +1438,14 @@ impl ThreadManager {
     }
 
     /// Tries to shut down all tracked threads concurrently within the provided timeout.
-    /// Fences new thread/task admission permanently. Threads that complete shutdown
-    /// are removed; incomplete shutdowns remain tracked for retries or inspection.
+    /// Threads that complete shutdown are removed from the manager; incomplete shutdowns
+    /// remain tracked so callers can retry or inspect them later. This is a reusable
+    /// stop, not a terminal fence: threads may be resumed afterwards. The terminal
+    /// admission fence lives in [`ThreadManager::wait_for_shutdown_bound_tasks_bounded`],
+    /// together with the registration-time re-check in the final startup registration.
     pub async fn shutdown_all_threads_bounded(&self, timeout: Duration) -> ThreadShutdownReport {
         let threads = {
-            // Fence registration under the same registry lock used by final
-            // startup registration; no thread can appear after this snapshot.
             let threads = self.state.threads.write().await;
-            self.state
-                .shutdown_bound_tasks
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .close();
             threads
                 .iter()
                 .map(|(thread_id, thread)| (*thread_id, Arc::clone(thread)))
