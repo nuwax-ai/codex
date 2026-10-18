@@ -62,6 +62,11 @@ zip = { workspace = true }
 codex-utils-pty = { workspace = true }
 libc = { workspace = true }
 
+# The stale-temp-dir unit test is #[cfg(unix)] and drives utimensat on macOS
+# too; the product dependency above stays Linux-only for linux_process.rs.
+[target.'cfg(unix)'.dev-dependencies]
+libc = { workspace = true }
+
 [dev-dependencies]
 codex-exec-server-test-support = { workspace = true }
 codex-utils-cargo-bin = { workspace = true }
