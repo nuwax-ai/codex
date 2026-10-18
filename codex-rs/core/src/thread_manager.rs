@@ -1440,9 +1440,9 @@ impl ThreadManager {
     /// Tries to shut down all tracked threads concurrently within the provided timeout.
     /// Threads that complete shutdown are removed from the manager; incomplete shutdowns
     /// remain tracked so callers can retry or inspect them later. This is a reusable
-    /// stop, not a terminal fence: threads may be resumed afterwards. The terminal
-    /// admission fence lives in [`ThreadManager::wait_for_shutdown_bound_tasks_bounded`],
-    /// together with the registration-time re-check in the final startup registration.
+    /// stop, not a terminal fence: threads may be resumed afterwards. For process
+    /// exit, follow it with [`ThreadManager::wait_for_shutdown_bound_tasks_bounded`],
+    /// which fences admission and stops threads registered after this snapshot.
     pub async fn shutdown_all_threads_bounded(&self, timeout: Duration) -> ThreadShutdownReport {
         let threads = {
             let threads = self.state.threads.write().await;
@@ -1461,22 +1461,33 @@ impl ThreadManager {
                     Ok(Err(_)) => ShutdownOutcome::SubmitFailed,
                     Err(_) => ShutdownOutcome::TimedOut,
                 };
-                (thread_id, outcome)
+                (thread_id, thread, outcome)
             })
             .collect::<FuturesUnordered<_>>();
         let mut report = ThreadShutdownReport::default();
+        let mut completed_threads = Vec::new();
 
-        while let Some((thread_id, outcome)) = shutdowns.next().await {
+        while let Some((thread_id, thread, outcome)) = shutdowns.next().await {
             match outcome {
-                ShutdownOutcome::Complete => report.completed.push(thread_id),
+                ShutdownOutcome::Complete => {
+                    report.completed.push(thread_id);
+                    completed_threads.push((thread_id, thread));
+                }
                 ShutdownOutcome::SubmitFailed => report.submit_failed.push(thread_id),
                 ShutdownOutcome::TimedOut => report.timed_out.push(thread_id),
             }
         }
 
         let mut tracked_threads = self.state.threads.write().await;
-        for thread_id in &report.completed {
-            tracked_threads.remove(thread_id);
+        for (thread_id, stopped) in completed_threads {
+            // A reusable stop may overlap a resume of an already-stopped ID.
+            // Keep a replacement runtime registered for its eventual teardown.
+            if tracked_threads
+                .get(&thread_id)
+                .is_some_and(|current| Arc::ptr_eq(current, &stopped))
+            {
+                tracked_threads.remove(&thread_id);
+            }
         }
 
         report
@@ -1522,12 +1533,14 @@ impl ThreadManager {
         self.state.is_shutting_down()
     }
 
-    /// Waits a bounded time for [`ThreadManager::spawn_shutdown_bound_task`]
-    /// tasks to finish. Call this only after the threads those tasks depend on
-    /// were shut down (for example after
-    /// [`ThreadManager::shutdown_all_threads_bounded`]). Tasks that exceed the
-    /// bound are abandoned; state they were responsible for must have its own
-    /// recovery backstop (for example job lease expiry).
+    /// Permanently fences new work, stops any remaining threads, and waits for
+    /// [`ThreadManager::spawn_shutdown_bound_task`] cleanup within one total bound.
+    ///
+    /// A reusable [`ThreadManager::shutdown_all_threads_bounded`] may have missed
+    /// threads registered while its snapshot was shutting down. Closing admission
+    /// before a final snapshot covers those threads; registration checks the same
+    /// fence before publication. Cleanup that exceeds the bound must retain its
+    /// own recovery backstop (for example job lease expiry).
     pub async fn wait_for_shutdown_bound_tasks_bounded(&self, timeout: Duration) -> bool {
         let tracker = {
             let tracker = self
@@ -1538,13 +1551,29 @@ impl ThreadManager {
             tracker.close();
             tracker.clone()
         };
-        if tokio::time::timeout(timeout, tracker.wait()).await.is_err() {
-            tracing::warn!(
-                "timed out waiting for shutdown-bound background tasks; proceeding with shutdown"
-            );
-            false
-        } else {
-            true
+        // Include the final thread stop and task drain in the same deadline,
+        // rather than giving late thread registration another unbounded wait.
+        match tokio::time::timeout(timeout, async {
+            let report = self.shutdown_all_threads_bounded(timeout).await;
+            let threads_stopped = report.submit_failed.is_empty() && report.timed_out.is_empty();
+            for thread_id in report.submit_failed {
+                tracing::warn!(%thread_id, "failed to stop a thread during final shutdown drain");
+            }
+            for thread_id in report.timed_out {
+                tracing::warn!(%thread_id, "thread exceeded final shutdown drain deadline");
+            }
+            tracker.wait().await;
+            threads_stopped
+        })
+        .await
+        {
+            Ok(stopped) => stopped,
+            Err(_) => {
+                tracing::warn!(
+                    "timed out waiting for final thread and background cleanup; proceeding with shutdown"
+                );
+                false
+            }
         }
     }
 
