@@ -19,6 +19,8 @@ mod hosted_tools_wire_tests;
 mod identity_replay_tests;
 #[path = "wire/max_tokens_tests.rs"]
 mod max_tokens_tests;
+#[path = "wire/mcp_structured_media_tests.rs"]
+mod mcp_structured_media_tests;
 #[path = "wire/pause_turn_tests.rs"]
 mod pause_turn_tests;
 #[path = "wire/request_id_tests.rs"]
@@ -78,7 +80,7 @@ async fn final_chat_request_preserves_url_headers_role_effort_and_request_id() {
     );
     assert_eq!(
         wire["body"]["messages"][0],
-        json!({"role":"system","content":[{"type":"text","text":"developer rule"}]})
+        json!({"role":"system","content":"developer rule"})
     );
     assert_eq!(wire["body"]["reasoning_effort"], "medium");
     assert_eq!(id.as_deref(), Some("req-local"));

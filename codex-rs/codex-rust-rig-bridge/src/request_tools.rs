@@ -47,20 +47,18 @@ pub(crate) fn request_tools(
 ) -> Result<RequestTools, codex_api::ApiError> {
     let mut tools: Vec<Value> = match request.tools.as_ref() {
         None => Vec::new(),
-        // Practically unreachable: the raw tool JSON was already valid and
-        // shallow. A silent empty list would strip every tool from the
-        // request, so surface it loudly in debug builds (only a >128-deep
-        // nested schema can trip serde_json's depth limit).
-        Some(tools) => serde_json::to_value(tools)
-            .ok()
-            .and_then(|value| serde_json::from_value(value).ok())
-            .unwrap_or_else(|| {
-                debug_assert!(
-                    false,
-                    "failed to round-trip request tools into the tool list"
-                );
-                Vec::new()
-            }),
+        Some(tools) => {
+            // Core produces RawValue directly from typed schemas. Valid JSON
+            // can exceed Value's depth or exact integer range; never replace
+            // the entire tool list with empty tools or rounded constraints.
+            let raw = serde_json::to_string(tools).map_err(tool_definition_error)?;
+            if has_out_of_range_integer(&raw) {
+                return Err(codex_api::ApiError::InvalidRequest {
+                    message: "Tool definitions contain an integer outside the exact range supported by the Rig bridge".into(),
+                });
+            }
+            serde_json::from_str(&raw).map_err(tool_definition_error)?
+        }
     };
     for item in &request.input {
         if let ResponseItem::AdditionalTools { tools: extra, .. } = item {
@@ -88,6 +86,63 @@ pub(crate) fn request_tools(
         }
     }
     Ok(selection)
+}
+
+fn tool_definition_error(error: serde_json::Error) -> codex_api::ApiError {
+    // Displaying a serde data error may include a rejected string value.
+    // Keep the diagnostic category and position without copying tool content.
+    codex_api::ApiError::InvalidRequest {
+        message: format!(
+            "Cannot decode tool definitions for the Rig bridge ({:?} error at line {} column {})",
+            error.classify(),
+            error.line(),
+            error.column()
+        ),
+    }
+}
+
+/// Inspect valid raw JSON before Value can round an integer into an f64.
+/// Decimal/exponent numbers already select floating-point semantics; only
+/// integer tokens outside both i64 and u64 need rejection. Quoted strings,
+/// including escaped quotes and backslashes, are never interpreted as numbers.
+fn has_out_of_range_integer(json: &str) -> bool {
+    let bytes = json.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'"' => {
+                index += 1;
+                while index < bytes.len() {
+                    match bytes[index] {
+                        b'\\' => index += 2,
+                        b'"' => {
+                            index += 1;
+                            break;
+                        }
+                        _ => index += 1,
+                    }
+                }
+            }
+            b'-' | b'0'..=b'9' => {
+                let start = index;
+                index += 1;
+                while index < bytes.len()
+                    && matches!(bytes[index], b'0'..=b'9' | b'.' | b'e' | b'E' | b'+' | b'-')
+                {
+                    index += 1;
+                }
+                let token = &json[start..index];
+                if !token.contains(['.', 'e', 'E'])
+                    && token.parse::<i64>().is_err()
+                    && token.parse::<u64>().is_err()
+                {
+                    return true;
+                }
+            }
+            _ => index += 1,
+        }
+    }
+    false
 }
 
 pub(crate) fn parse_tools(tools: &[Value]) -> Result<RequestTools, codex_api::ApiError> {

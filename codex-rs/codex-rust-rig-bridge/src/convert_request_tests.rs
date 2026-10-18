@@ -138,6 +138,188 @@ mod mapping {
     }
 
     #[test]
+    fn raw_tool_schema_conversion_failure_returns_error_without_dropping_tools() {
+        let mut schema = serde_json::json!({"type": "string"});
+        for _ in 0..130 {
+            schema = serde_json::json!({"type": "array", "items": schema});
+        }
+        let tools = serde_json::json!([{
+            "type": "function", "name": "private_schema_canary", "parameters": schema
+        }]);
+        // Core serializes typed schemas directly into RawValue, which accepts
+        // this valid JSON; converting it back into Value has a depth limit.
+        let raw = serde_json::value::to_raw_value(&tools).expect("valid raw schema");
+        let mut request = base_request(vec![user_text("hi")]);
+        request.tools = Some(std::sync::Arc::<serde_json::value::RawValue>::from(raw).into());
+        for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+            let result = super::responses_request_to_completion_request(&request, protocol, "test");
+            let Err(ApiError::InvalidRequest { message }) = result else {
+                panic!("unrepresentable tools must fail the entire request");
+            };
+            assert!(message.contains("tool definitions"));
+            assert!(!message.contains("private_schema_canary"));
+        }
+    }
+
+    #[test]
+    fn raw_tool_shape_failure_does_not_expose_the_raw_value() {
+        let raw = serde_json::value::to_raw_value("private_schema_canary")
+            .expect("valid JSON, invalid tool list");
+        let mut request = base_request(vec![user_text("hi")]);
+        request.tools = Some(std::sync::Arc::<serde_json::value::RawValue>::from(raw).into());
+        for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+            let result = super::responses_request_to_completion_request(&request, protocol, "test");
+            let Err(ApiError::InvalidRequest { message }) = result else {
+                panic!("invalid tool list must fail the entire request");
+            };
+            assert!(message.contains("tool definitions"));
+            assert!(!message.contains("private_schema_canary"));
+        }
+    }
+
+    #[test]
+    fn raw_tool_schema_keeps_normal_names_and_parameters() {
+        let tools = serde_json::json!([{
+            "type": "function", "name": "lookup", "description": "Read a record",
+            "strict": true, "parameters": {
+                "type": "object", "properties": {"key": {"type": "string"}},
+                "required": ["key"], "additionalProperties": false
+            }
+        }]);
+        let raw = serde_json::value::to_raw_value(&tools).expect("valid tools");
+        let mut request = base_request(vec![user_text("hi")]);
+        request.tools = Some(std::sync::Arc::<serde_json::value::RawValue>::from(raw).into());
+        for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+            let (converted, meta) =
+                super::responses_request_to_completion_request(&request, protocol, "test")
+                    .expect("convertible tools");
+            assert_eq!(converted.tools.len(), 1);
+            assert_eq!(converted.tools[0].name.as_str(), "lookup");
+            assert_eq!(converted.tools[0].description, "Read a record");
+            assert_eq!(converted.tools[0].parameters, tools[0]["parameters"]);
+            assert_eq!(meta.strict.get("lookup"), Some(&true));
+        }
+    }
+
+    #[test]
+    fn raw_tool_integer_outside_exact_range_is_rejected_without_disclosing_it() {
+        for integer in ["18446744073709551617", "-9223372036854775809"] {
+            let raw = serde_json::value::RawValue::from_string(format!(
+                r#"[{{"type":"function","name":"lookup","parameters":{{"enum":[{integer}]}}}}]"#
+            ))
+            .expect("valid raw JSON");
+            let mut request = base_request(vec![user_text("hi")]);
+            request.tools = Some(std::sync::Arc::<serde_json::value::RawValue>::from(raw).into());
+            for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+                let result =
+                    super::responses_request_to_completion_request(&request, protocol, "test");
+                let Err(ApiError::InvalidRequest { message }) = result else {
+                    panic!("schema integer must not be rounded to a different value");
+                };
+                assert!(message.contains("integer"));
+                assert!(!message.contains(integer));
+            }
+        }
+    }
+
+    #[test]
+    fn raw_tool_integer_boundaries_and_numbers_in_strings_stay_exact() {
+        let expected = serde_json::json!({"enum": [
+            i64::MIN, u64::MAX, "18446744073709551617", "-9223372036854775809",
+            "quote\" then 18446744073709551617 and slash\\"
+        ]});
+        let raw = serde_json::value::to_raw_value(&serde_json::json!([{
+            "type":"function", "name":"lookup", "parameters":expected
+        }]))
+        .expect("valid tools");
+        let mut request = base_request(vec![user_text("hi")]);
+        request.tools = Some(std::sync::Arc::<serde_json::value::RawValue>::from(raw).into());
+        for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+            let (converted, _) =
+                super::responses_request_to_completion_request(&request, protocol, "test")
+                    .expect("exactly representable tools");
+            assert_eq!(converted.tools[0].parameters, expected);
+        }
+    }
+
+    #[test]
+    fn structured_mcp_image_survives_both_rig_conversion_paths() {
+        let structured = serde_json::json!({"width":640,"height":480});
+        let structured_json = structured.to_string();
+        let output = codex_protocol::mcp::CallToolResult {
+            content: vec![
+                serde_json::json!({"type":"text", "text":"fallback must not duplicate JSON"}),
+                serde_json::json!({"type":"image", "data":"aGVsbG8=", "mimeType":"image/png"}),
+            ],
+            structured_content: Some(structured),
+            is_error: Some(false),
+            meta: None,
+        }
+        .as_function_call_output_payload();
+        let request = base_request(vec![
+            function_call("screenshot-call", "screenshot", "{}"),
+            ResponseItem::FunctionCallOutput {
+                id: None,
+                call_id: Some("screenshot-call".into()),
+                name: None,
+                namespace: None,
+                output,
+                internal_chat_message_metadata_passthrough: None,
+            },
+        ]);
+        for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+            let (converted, _) =
+                super::responses_request_to_completion_request(&request, protocol, "test")
+                    .expect("structured screenshot is convertible");
+            let mut text_count = 0;
+            let mut image_count = 0;
+            for message in &converted.chat_history {
+                let Message::User { content } = message else {
+                    continue;
+                };
+                for part in content {
+                    match part {
+                        UserContent::ToolResult(result) => {
+                            assert!(!result.is_error);
+                            for part in &result.content {
+                                match part {
+                                    ToolResultContent::Text(text) => {
+                                        if text.text == structured_json {
+                                            text_count += 1;
+                                        }
+                                        assert!(!text.text.contains("fallback must not duplicate"));
+                                    }
+                                    ToolResultContent::Image(image) => {
+                                        assert_eq!(
+                                            image.data,
+                                            rig_core::completion::message::DocumentSourceKind::Base64(
+                                                "aGVsbG8=".into()
+                                            )
+                                        );
+                                        image_count += 1;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        UserContent::Image(image) => {
+                            assert_eq!(
+                                image.data,
+                                rig_core::completion::message::DocumentSourceKind::Base64(
+                                    "aGVsbG8=".into()
+                                )
+                            );
+                            image_count += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            assert_eq!((text_count, image_count), (1, 1), "{protocol:?}");
+        }
+    }
+
+    #[test]
     fn system_prompt_becomes_leading_system_message() {
         let (req, _) =
             responses_request_to_completion_request(&base_request(vec![user_text("hi")]))
