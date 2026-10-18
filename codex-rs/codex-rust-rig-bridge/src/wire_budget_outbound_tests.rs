@@ -8,6 +8,7 @@
 use crate::RigProtocol;
 use crate::wire_budget::WireBudget;
 use bytes::Bytes;
+use futures::StreamExt;
 use pretty_assertions::assert_eq;
 use rig_core::http_client::HttpClientExt;
 use serde_json::Value;
@@ -150,6 +151,7 @@ async fn dispatch_with_window(
         wire_budget: WireBudget {
             context_window_tokens: Some(context_window_tokens),
             output_tokens: None,
+            vision_floor_tokens: 0,
         },
         ..Default::default()
     };
@@ -419,6 +421,7 @@ async fn same_image_with_larger_encoding_still_fits_the_window() -> Result<(), T
         wire_budget: WireBudget {
             context_window_tokens: Some(30_000),
             output_tokens: None,
+            vision_floor_tokens: 0,
         },
         ..Default::default()
     };
@@ -465,5 +468,345 @@ async fn same_image_with_larger_encoding_still_fits_the_window() -> Result<(), T
     let bodies = tokio::time::timeout(IO_DEADLINE, server).await???;
     assert_eq!(bodies, expected_bodies, "both payloads reach the socket");
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Pre-conversion vision floor through the real product path: a Codex
+// request carrying an original-detail image is converted (Chat collapses
+// `original` to `high`, Anthropic drops the flag), serialized by the real
+// rig SDK, and measured by the transport — the canonical patch estimate
+// must survive as the outbound floor. These drive
+// `stream_via_rig_with_context` against a local server: no provider, no
+// paid calls.
+// ---------------------------------------------------------------------------
+
+/// A 45-byte PNG whose IHDR declares 2560×2048: 80×64 = 5120 patch tokens
+/// pre-conversion versus the 1844 prepared-image estimate the converted
+/// wire block alone would suggest.
+const ORIGINAL_2560X2048: &str =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAACgAAAAgACAYAAADqy2rxAAAAAElFTkSuQmCC";
+
+const FLOOR_CHAT_SSE: &str = "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"ok\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":1,\"total_tokens\":5}}\n\ndata: [DONE]\n\n";
+const FLOOR_ANTHROPIC_SSE: &str = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"m\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":4,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":1}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+
+struct FloorAuth;
+impl codex_api::AuthProvider for FloorAuth {
+    fn add_auth_headers(&self, headers: &mut http::HeaderMap) {
+        headers.insert(
+            http::header::AUTHORIZATION,
+            http::HeaderValue::from_static("Bearer floor-test-dummy"),
+        );
+    }
+}
+
+fn floor_request(input: Vec<serde_json::Value>, with_tool: bool) -> codex_api::ResponsesApiRequest {
+    let mut request = codex_api::ResponsesApiRequest {
+        model: "floor-model".into(),
+        stream: true,
+        service_tier: None,
+        input: input
+            .into_iter()
+            .map(|item| serde_json::from_value(item).expect("fixture item"))
+            .collect(),
+        tools: None,
+        tool_choice: "auto".into(),
+        parallel_tool_calls: false,
+        max_output_tokens: Some(64),
+        reasoning: None,
+        store: false,
+        stream_options: None,
+        include: Vec::new(),
+        prompt_cache_key: None,
+        text: None,
+        client_metadata: None,
+        access_programs: None,
+    };
+    if with_tool {
+        let raw: Arc<serde_json::value::RawValue> = Arc::from(
+            serde_json::value::to_raw_value(&json!([{
+                "type":"function","name":"view_image","description":"view",
+                "parameters":{"type":"object","properties":{}}
+            }]))
+            .expect("tools"),
+        );
+        request.tools = Some(raw.into());
+    }
+    request
+}
+
+fn floor_user_image_items() -> Vec<serde_json::Value> {
+    vec![json!({
+        "type":"message","role":"user","content":[
+            {"type":"input_text","text":"describe the screenshot"},
+            {"type":"input_image","image_url":ORIGINAL_2560X2048,"detail":"original"}
+        ]
+    })]
+}
+
+fn floor_tool_image_items() -> Vec<serde_json::Value> {
+    vec![
+        json!({"type":"message","role":"user","content":[
+            {"type":"input_text","text":"shoot the page"}
+        ]}),
+        json!({"type":"function_call","name":"view_image","call_id":"c1","arguments":"{}"}),
+        json!({"type":"function_call_output","call_id":"c1","output":[
+            {"type":"input_text","text":"screenshot attached"},
+            {"type":"input_image","image_url":ORIGINAL_2560X2048,"detail":"original"}
+        ]}),
+    ]
+}
+
+fn floor_provider(address: std::net::SocketAddr) -> codex_api::Provider {
+    codex_api::Provider {
+        name: "floor test".into(),
+        base_url: format!("http://{address}/v1"),
+        query_params: None,
+        headers: http::HeaderMap::new(),
+        retry: codex_api::RetryConfig {
+            max_attempts: 1,
+            base_delay: Duration::ZERO,
+            retry_429: false,
+            retry_5xx: false,
+            retry_transport: false,
+        },
+        stream_idle_timeout: Duration::from_secs(3),
+        max_output_tokens: None,
+        hosted_results_replay: None,
+    }
+}
+
+/// Drives the full conversion + SDK + transport path under a context window
+/// and reports exactly what reached the local socket. The server listens for
+/// a 750ms window; a request the bridge rejected before any network IO
+/// counts zero attempts.
+async fn stream_under_window(
+    protocol: RigProtocol,
+    request: &codex_api::ResponsesApiRequest,
+    context_window_tokens: i64,
+) -> Result<OutboundOutcome, TestError> {
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let address = listener.local_addr()?;
+    let payload = match protocol {
+        RigProtocol::Chat => FLOOR_CHAT_SSE,
+        RigProtocol::Anthropic => FLOOR_ANTHROPIC_SSE,
+        RigProtocol::Responses => unreachable!("floor cases cover the converting wires"),
+    }
+    .to_string();
+    let server = tokio::spawn(async move {
+        let mut served = Vec::new();
+        let accepted =
+            match tokio::time::timeout(Duration::from_millis(750), listener.accept()).await {
+                Ok(Ok((socket, _))) => socket,
+                _ => return served,
+            };
+        let mut socket = accepted;
+        if let Ok(body) = read_request_body(&mut socket).await {
+            use tokio::io::AsyncWriteExt;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\n\r\n{payload}",
+                payload.len()
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+            served.push(body);
+        }
+        served
+    });
+    let provider = floor_provider(address);
+    let auth: codex_api::SharedAuthProvider = Arc::new(FloorAuth);
+    let result = crate::stream::stream_via_rig_with_context(
+        request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        protocol,
+        Duration::from_secs(5),
+        crate::RigTurnRecorders::default(),
+        crate::wire_budget::RigCallContext {
+            context_window_tokens: Some(context_window_tokens),
+            ..Default::default()
+        },
+    )
+    .await;
+    let (api_error, dispatched) = match result {
+        Ok((mut stream, _)) => {
+            // Drain the scripted SSE to completion; event payloads are not
+            // under test here — the dispatched bytes are.
+            while let Some(event) = stream.next().await {
+                let _ = event;
+            }
+            (None, server.await?)
+        }
+        Err(error) => (Some(error), server.await?),
+    };
+    let attempts = if dispatched.is_empty() { 0 } else { 1 };
+    Ok(OutboundOutcome {
+        dispatched: dispatched.into_iter().next(),
+        attempts,
+        api_error,
+    })
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn converted_originals_are_rejected_before_http_on_small_windows() -> Result<(), TestError> {
+    // Window 3000: the converted wire block alone suggests 1844 + overhead,
+    // which would fit; the pre-conversion 5120 must reject instead. User and
+    // tool images, Chat and Anthropic.
+    for (protocol, with_tool) in [
+        (RigProtocol::Chat, false),
+        (RigProtocol::Chat, true),
+        (RigProtocol::Anthropic, false),
+        (RigProtocol::Anthropic, true),
+    ] {
+        let request = floor_request(
+            if with_tool {
+                floor_tool_image_items()
+            } else {
+                floor_user_image_items()
+            },
+            with_tool,
+        );
+        let outcome = stream_under_window(protocol, &request, 3_000).await?;
+        assert!(
+            matches!(
+                outcome.api_error,
+                Some(codex_api::ApiError::ContextWindowExceeded)
+            ),
+            "{protocol:?} tool={with_tool}: expected a pre-network context rejection, got {:?}",
+            outcome.api_error
+        );
+        assert_eq!(
+            outcome.dispatched, None,
+            "{protocol:?} tool={with_tool}: rejection must happen before any connection"
+        );
+        assert_eq!(outcome.attempts, 0);
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn converted_originals_reach_the_socket_with_window_room() -> Result<(), TestError> {
+    // Window 8000: the floored estimate (5120 + text + output reserve) fits
+    // and the image itself must arrive on the wire, in full, as the block
+    // its protocol actually uses.
+    for (protocol, with_tool) in [
+        (RigProtocol::Chat, false),
+        (RigProtocol::Chat, true),
+        (RigProtocol::Anthropic, false),
+        (RigProtocol::Anthropic, true),
+    ] {
+        let request = floor_request(
+            if with_tool {
+                floor_tool_image_items()
+            } else {
+                floor_user_image_items()
+            },
+            with_tool,
+        );
+        let outcome = stream_under_window(protocol, &request, 8_000).await?;
+        assert!(
+            outcome.api_error.is_none(),
+            "{protocol:?} tool={with_tool}: a floored-but-legal request must dispatch, got {:?}",
+            outcome.api_error
+        );
+        let body = outcome
+            .dispatched
+            .map(|bytes| serde_json::from_slice::<Value>(&bytes))
+            .transpose()?
+            .expect("dispatched body");
+        // Chat keeps the full data URL; Anthropic splits it into a base64
+        // source, so assert on the payload half both wires carry in full.
+        let image_payload = ORIGINAL_2560X2048
+            .rsplit_once(',')
+            .expect("data URL payload")
+            .1;
+        let encoded = body.to_string();
+        assert!(
+            encoded.contains(image_payload),
+            "{protocol:?} tool={with_tool}: the original image payload must reach the socket in full"
+        );
+        let plain = encoded.replace('\\', "");
+        match protocol {
+            RigProtocol::Chat => {
+                assert!(
+                    plain.contains(r#""detail":"high""#),
+                    "{protocol:?} tool={with_tool}: Chat renders the converted original as high"
+                );
+                assert!(
+                    !plain.contains(r#""detail":"original""#),
+                    "{protocol:?} tool={with_tool}: original detail must not leak to Chat"
+                );
+            }
+            RigProtocol::Anthropic => {
+                assert!(
+                    plain.contains(r#""source":{"type":"base64""#),
+                    "{protocol:?} tool={with_tool}: Anthropic carries the payload as a base64 source"
+                );
+            }
+            RigProtocol::Responses => unreachable!(),
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn multiple_originals_sum_the_floor_and_mixed_text_still_counts() -> Result<(), TestError> {
+    // Two originals plus real text: floor = 2×5120. Window 6000 fits the
+    // naive converted estimate (2×1844 + text) but must reject on the sum;
+    // window 12000 dispatches with both payloads.
+    let items = || {
+        vec![json!({
+            "type":"message","role":"user","content":[
+                {"type":"input_text","text":"compare these two screenshots carefully"},
+                {"type":"input_image","image_url":ORIGINAL_2560X2048,"detail":"original"},
+                {"type":"input_image","image_url":ORIGINAL_2560X2048,"detail":"original"}
+            ]
+        })]
+    };
+    let rejected =
+        stream_under_window(RigProtocol::Chat, &floor_request(items(), false), 6_000).await?;
+    assert!(
+        matches!(
+            rejected.api_error,
+            Some(codex_api::ApiError::ContextWindowExceeded)
+        ),
+        "two originals must sum their canonical estimates, got {:?}",
+        rejected.api_error
+    );
+    assert_eq!(rejected.attempts, 0);
+    let dispatched =
+        stream_under_window(RigProtocol::Chat, &floor_request(items(), false), 12_000).await?;
+    assert!(dispatched.api_error.is_none());
+    let body = dispatched.dispatched.expect("dispatched body");
+    let occurrences = String::from_utf8_lossy(&body)
+        .matches(ORIGINAL_2560X2048)
+        .count();
+    assert_eq!(occurrences, 2, "both images reach the socket");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn compacted_text_only_history_carries_no_vision_floor() -> Result<(), TestError> {
+    // A post-compaction rebuild drops its images: the summary must dispatch
+    // under a window far smaller than any original's floor.
+    let items = vec![json!({
+        "type":"message","role":"user","content":[
+            {"type":"input_text","text":"Compaction summary: the screenshot exchange completed. Reply with exactly: ok"}
+        ]
+    })];
+    let request = floor_request(items, false);
+    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+        let outcome = stream_under_window(protocol, &request, 1_200).await?;
+        assert!(
+            outcome.api_error.is_none(),
+            "{protocol:?}: the compacted turn must dispatch as plain text, got {:?}",
+            outcome.api_error
+        );
+        let body = outcome.dispatched.expect("dispatched body");
+        assert!(
+            String::from_utf8_lossy(&body).contains("Compaction summary"),
+            "{protocol:?}: the compacted text reaches the socket"
+        );
+    }
     Ok(())
 }

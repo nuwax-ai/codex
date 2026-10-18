@@ -370,6 +370,12 @@ fn stream_via_rig_attempt(
             wire_budget: crate::wire_budget::WireBudget {
                 context_window_tokens: context.context_window_tokens,
                 output_tokens: completion_request.max_tokens,
+                // Computed from the request being converted on this attempt
+                // (pause truncation applied), so a post-compaction rebuild or
+                // continuation never reuses a stale floor.
+                vision_floor_tokens: crate::wire_images::canonical_vision_floor(
+                    &conversion_request.input,
+                ),
             },
             anthropic_sse_tee: anthropic_sse_tee.clone(),
             // Official pause recipe: append each complete paused response to

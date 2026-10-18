@@ -181,6 +181,10 @@ async fn stream_responses_via_rig_inner(
         wire_budget: crate::wire_budget::WireBudget {
             context_window_tokens: context.context_window_tokens,
             output_tokens: request.max_output_tokens.or(api_provider.max_output_tokens),
+            // The passthrough serializes Codex's request verbatim, so
+            // `detail: "original"` reaches the wire walk intact and is
+            // already priced there by the same estimator the floor uses.
+            vision_floor_tokens: 0,
         },
         responses_sse_recorder: sse_recorder,
         anthropic_sse_tee: None,

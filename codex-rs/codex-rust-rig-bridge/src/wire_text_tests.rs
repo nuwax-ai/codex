@@ -221,6 +221,7 @@ async fn chat_wire_budget_measures_the_normalized_body() -> Result<(), TestError
         WireBudget {
             context_window_tokens: Some(i64::try_from(window)?),
             output_tokens: Some(4),
+            vision_floor_tokens: 0,
         },
     )
     .await?;
@@ -243,6 +244,7 @@ async fn oversized_normalized_chat_text_is_rejected_before_http() -> Result<(), 
         WireBudget {
             context_window_tokens: Some(64),
             output_tokens: Some(4),
+            vision_floor_tokens: 0,
         },
     )
     .await?;

@@ -11,6 +11,12 @@
 //! as plain text bytes.
 
 use crate::RigProtocol;
+use codex_protocol::models::ContentItem;
+use codex_protocol::models::FunctionCallOutputBody;
+use codex_protocol::models::FunctionCallOutputContentItem;
+use codex_protocol::models::ImageDetail;
+use codex_protocol::models::ImageReference;
+use codex_protocol::models::ResponseItem;
 use serde_json::Value;
 
 /// Model-visible byte estimate for one prepared image, mirroring core's
@@ -203,6 +209,65 @@ fn record_image_reference(url: Option<&str>, detail: Option<&str>, costs: &mut W
 
 fn prepared_image_vision_tokens() -> u64 {
     codex_utils_string::approx_tokens_from_byte_count(PREPARED_IMAGE_BYTES_ESTIMATE)
+}
+
+/// Canonical pre-conversion vision estimate for the images this request
+/// actually carries — the outbound floor on the converting wires. Chat
+/// collapses `original` to `high` and the Messages wire has no detail flag,
+/// so the serialized-body walk above can under-price a retained original
+/// (a 2560×2048 original costs 5120 tokens by patch count but only 1844 as
+/// a prepared image). The transport charges `max(wire walk, this floor)`,
+/// never the sum, and only for images still present in the request being
+/// built, so history that compaction already dropped is not resurrected.
+/// Non-original details cost the same on both sides of the conversion and
+/// contribute nothing here.
+///
+/// The Responses passthrough needs no floor: it serializes Codex's request
+/// verbatim, so its `original` detail reaches `measure` intact and is
+/// already priced by the same estimator this floor uses.
+pub(crate) fn canonical_vision_floor(input: &[ResponseItem]) -> u64 {
+    let mut floor = 0u64;
+    for item in input {
+        match item {
+            ResponseItem::Message { content, .. } => {
+                for part in content {
+                    if let ContentItem::InputImage { image, detail } = part {
+                        floor = floor.saturating_add(original_detail_floor(image, *detail));
+                    }
+                }
+            }
+            ResponseItem::FunctionCallOutput { output, .. } => {
+                if let FunctionCallOutputBody::ContentItems(items) = &output.body {
+                    for part in items {
+                        if let FunctionCallOutputContentItem::InputImage { image, detail } = part {
+                            floor = floor.saturating_add(original_detail_floor(image, *detail));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    floor
+}
+
+/// The exact cost `record_image_reference` charges an original-detail image
+/// on the passthrough wire — the entrance's bounded header estimate, with
+/// the conservative ceiling whenever the reference cannot be priced.
+fn original_detail_floor(image: &ImageReference, detail: Option<ImageDetail>) -> u64 {
+    if detail != Some(ImageDetail::Original) {
+        return 0;
+    }
+    match image {
+        ImageReference::Inline { image_url } => {
+            codex_utils_image::estimate_original_image_tokens(image_url)
+                .and_then(|tokens| u64::try_from(tokens).ok())
+                .unwrap_or(ORIGINAL_DETAIL_PATCH_CEILING)
+        }
+        // Conversion rejects file references on these wires; if one ever
+        // gets this far it must not be under-priced.
+        ImageReference::File { .. } => ORIGINAL_DETAIL_PATCH_CEILING,
+    }
 }
 
 #[cfg(test)]

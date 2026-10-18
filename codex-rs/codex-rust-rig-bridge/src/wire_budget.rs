@@ -14,6 +14,11 @@ pub(crate) struct RigCallContext {
 pub(crate) struct WireBudget {
     pub(crate) context_window_tokens: Option<i64>,
     pub(crate) output_tokens: Option<u64>,
+    /// Canonical pre-conversion vision estimate for this request's images
+    /// (`wire_images::canonical_vision_floor`). Charged as the maximum with
+    /// the wire walk's own vision sum, so cross-protocol detail conversion
+    /// can only raise the final budget, never lower it — and never add.
+    pub(crate) vision_floor_tokens: u64,
 }
 
 #[derive(Debug)]
@@ -61,7 +66,7 @@ impl WireBudget {
             Some(costs) => {
                 let text_bytes = wire_bytes.saturating_sub(costs.inline_payload_bytes);
                 codex_utils_string::approx_tokens_from_byte_count(text_bytes)
-                    .saturating_add(costs.vision_tokens)
+                    .saturating_add(costs.vision_tokens.max(self.vision_floor_tokens))
             }
             None => codex_utils_string::approx_tokens_from_byte_count(wire_bytes),
         };
