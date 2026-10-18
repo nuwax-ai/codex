@@ -2442,7 +2442,7 @@ impl CallToolResult {
     }
 
     pub fn as_function_call_output_payload(&self) -> FunctionCallOutputPayload {
-        let content_items = convert_mcp_content_to_items(&self.content);
+        let mut content_items = convert_mcp_content_to_items(&self.content);
         if content_items
             .iter()
             .any(|item| matches!(item, FunctionCallOutputContentItem::EncryptedContent { .. }))
@@ -2458,8 +2458,29 @@ impl CallToolResult {
         {
             match serde_json::to_string(structured_content) {
                 Ok(serialized_structured_content) => {
+                    // Structured content replaces the textual fallback, but cannot
+                    // represent the typed media needed for screenshot/audio tools.
+                    // Keep media in source order instead of silently discarding it.
+                    content_items.retain(|item| {
+                        matches!(
+                            item,
+                            FunctionCallOutputContentItem::InputImage { .. }
+                                | FunctionCallOutputContentItem::InputAudio { .. }
+                        )
+                    });
+                    let body = if content_items.is_empty() {
+                        FunctionCallOutputBody::Text(serialized_structured_content)
+                    } else {
+                        content_items.insert(
+                            0,
+                            FunctionCallOutputContentItem::InputText {
+                                text: serialized_structured_content,
+                            },
+                        );
+                        FunctionCallOutputBody::ContentItems(content_items)
+                    };
                     return FunctionCallOutputPayload {
-                        body: FunctionCallOutputBody::Text(serialized_structured_content),
+                        body,
                         success: Some(self.success()),
                     };
                 }
@@ -2482,6 +2503,10 @@ impl CallToolResult {
         self.as_function_call_output_payload()
     }
 }
+
+#[cfg(test)]
+#[path = "mcp_structured_media_tests.rs"]
+mod mcp_structured_media_tests;
 
 fn convert_mcp_content_to_items(
     contents: &[serde_json::Value],
