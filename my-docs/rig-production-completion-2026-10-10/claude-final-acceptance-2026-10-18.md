@@ -1,6 +1,10 @@
 # 最终测试验收（2026-10-18，Claude 轮）
 
-> 判决：**核心接入开发收口。** Linux/容器 + ACP 自定义模型（NUWAX 四环境变量 → rig 三协议）
+> 同日 Codex 复审更正：本文件保留原始执行收据。bounded 停机的复用修复仍留下晚到线程漏停、同 ID 恢复实例被旧停机任务移除两处竞态；本轮补最终关闭扫描与实例身份校验。§3.3 图片机制写反：fork 保留工具原图 Inline，不是改成附件；1×1 旧夹具不再产生 opaque File，故未压缩不等于图片漏计。本轮改用真实超窗原图保留严格压缩断言，并独立验证 opaque File 的10k预算。§3.2/§7 的“环境项”也不都是环境问题：hooks共享固定marker，root_metadata的嵌套沙箱权限声明与实际只读挂载不符（CI确已安装bwrap），host_roots夹具依赖全局临时目录无.git；Windows图片回放TOML路径转义、记忆清理writer锁握手也有夹具缺陷。新ACP workflow原先部分断言可能假绿，本轮已加强。以本轮Codex复审记录中的实际验证范围为准。
+
+> Codex修复后实网结果：GLM Chat连续ACP工作流12步及独立压缩smoke通过，正式验收22次上游请求；临时格式改写已关闭。完整修复、验证范围与本地提交见[codex-review-followup-2026-10-18.md](codex-review-followup-2026-10-18.md)，不以旧CI代替新修复树的验证。
+
+> 原始判决：**核心接入开发收口。** Linux/容器 + ACP 自定义模型（NUWAX 四环境变量 → rig 三协议）
 > 主路径可以日常使用。本轮修复了 CI 首轮全量跑出的 4 个真实跨平台问题；剩余项均不阻断核心目标。
 
 ## 0. 仓库终态
@@ -81,9 +85,10 @@ codex-exec `87046f35ebc116a2be390980c273342b4d871131207b386c93c673e1496de4b6`
   定性：**夹具歧义**（"cyan" 实为 RGB(30,200,210) 本身就是 turquoise 系）；修复 = 纯色 (0,255,255)
   （断言不放宽、提示词不含色词的既有合同保留）。新样本重跑 7 attempts 全对（3/3）。
 - 补跑段（--resume）：`acp-smoke` 两连败（post-compact 答 "live-ok" 而非 "post-compact-ok"，
-  run1 同二进制曾过；mock 侧压缩续话 3 wire 确定性全绿）→ 定性为 GLM-Flash 对压缩后精确串
-  指令跟随的**厂商能力波动**，非适配缺陷；首败日志保留。压缩/续话机制由 mock 门与 workflow
-  行为学步骤覆盖。
+  run1 同二进制曾过；mock 侧压缩续话 3 wire 确定性全绿）。当时归为“厂商能力波动”，
+  **这一归因被同日Codex实网对照撤回**：rig将连续user合成多段text数组，供应商原始回复仍为旧串；
+  仅将纯text数组按序连接成字符串后同场景通过。本轮已在桥接层修复这一Chat兼容面，并加入真正
+  经SDK和HTTP传输的回归；mock/cassette绿不能单独证明此出站格式正确。
 - **acp-workflow（新增连续工作流场景，本轮主验证）**：中文对话→文件写/读→shell→MCP 截图
   （真值账本 + 无 base64 文本泄漏）→流中取消→续话 六步实跑通过；/compact 起被共享预算 402
   拒绝（96/96 用尽）——错误以文本清晰上抛、无挂起（失败形态本身为证）。压缩/冷恢复/孤儿进程
@@ -106,9 +111,6 @@ cd /Volumes/soddy/git_workspace/fork-codex-acp-ts && node --import tsx src/index
 - 镜像事故（如实记录）：一次 rsync 以 codex-rs 为 cwd 执行，把 crate 平铺到 /tmp/codex-fa 顶层，
   与旧布局混合；期间 cargo 回退到顶层 workspace（恰好含当期修复，F1/F2 验证有效），已恢复
   正确布局并从最终源码重建。期间发现 astra 快照拷贝路径错误并纠正后复验。
-- mac 本地因 v8 ptrcomp_sandbox 预编译资产缺失无法构建 core 测试目标；盒上以
-  openai/codex release 的配对资产（校验和核对通过）补齐后复跑。
-
 - mac 本地因 v8 ptrcomp_sandbox 预编译资产缺失无法构建 core 测试目标；盒上以
   openai/codex release 的配对资产（校验和核对通过）补齐后复跑。
   （v8 资产留在盒 /tmp/codex-fa2/，RUSTY_V8_ARCHIVE/RUSTY_V8_SRC_BINDING_PATH 方式使用。）

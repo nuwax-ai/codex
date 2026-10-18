@@ -1,0 +1,323 @@
+{
+  "binaryReceipt": {
+    "codexExecSha256": "9a4e173f3bdf9e619794ba90807ca86eade83cf28af83046358b6cd8e704281a",
+    "cases": [
+      "acp-workflow",
+      "acp-smoke"
+    ],
+    "codexSha256": "bb701df3eb56afe6c28f999535171424106caf309940e84f19d2b059b06c12d9"
+  },
+  "liveSummary": {
+    "attemptsUsed": 59,
+    "budget": 96,
+    "budgetDenied": 0,
+    "activeRequests": 0,
+    "passed": 2,
+    "failed": 0,
+    "rows": [
+      {
+        "name": "acp-workflow",
+        "pass": true,
+        "detail": "passed",
+        "actualAttempts": 18
+      },
+      {
+        "name": "acp-smoke",
+        "pass": true,
+        "detail": "passed",
+        "actualAttempts": 4
+      }
+    ],
+    "observedExecUsage": []
+  },
+  "workflow": {
+    "sessionId": "01a14eae-260c-73c8-9035-45b2fcb17ea5",
+    "steps": [
+      {
+        "step": "chat-chinese",
+        "pass": true,
+        "detail": "ok"
+      },
+      {
+        "step": "tool-file-write",
+        "pass": true,
+        "detail": "ok"
+      },
+      {
+        "step": "tool-file-read",
+        "pass": true,
+        "detail": "ok"
+      },
+      {
+        "step": "tool-shell",
+        "pass": true,
+        "detail": "ok"
+      },
+      {
+        "step": "mcp-screenshot",
+        "pass": true,
+        "detail": "ok"
+      },
+      {
+        "step": "interrupt",
+        "pass": true,
+        "detail": "ok"
+      },
+      {
+        "step": "continue-after-cancel",
+        "pass": true,
+        "detail": "ok"
+      },
+      {
+        "step": "compact",
+        "pass": true,
+        "detail": "usage before=10373/258400, after=7583/258400, shrank=true"
+      },
+      {
+        "step": "tool-after-compact",
+        "pass": true,
+        "detail": "ok"
+      },
+      {
+        "step": "shutdown-no-orphans",
+        "pass": true,
+        "detail": "ok"
+      },
+      {
+        "step": "cold-resume-usage",
+        "pass": true,
+        "detail": "ok"
+      },
+      {
+        "step": "tool-after-resume",
+        "pass": true,
+        "detail": "ok"
+      }
+    ]
+  },
+  "phases": [
+    {
+      "phase": "initial",
+      "attempts": [
+        1,
+        15
+      ],
+      "acp": "564b890",
+      "codex": "170de0c0e",
+      "acceptance": false,
+      "result": "MCP raw content missed by new validator; compacted smoke returned old answer"
+    },
+    {
+      "phase": "MCP-validator-fixed",
+      "attempts": [
+        16,
+        33
+      ],
+      "acp": "c2a8ca2",
+      "codex": "170de0c0e",
+      "acceptance": false,
+      "result": "screenshot/cancel passed; new validator incorrectly expected legacy compaction tool; smoke still returned old answer"
+    },
+    {
+      "phase": "temporary-text-shape-control",
+      "attempts": [
+        34,
+        37
+      ],
+      "acp": "958b63f",
+      "codex": "170de0c0e",
+      "wireModifiedByTemporaryProbe": true,
+      "acceptance": false,
+      "result": "smoke passed after joining pure text arrays into strings; this is diagnostic evidence, not fixed-product acceptance"
+    },
+    {
+      "phase": "fixed-product-acceptance",
+      "attempts": [
+        38,
+        59
+      ],
+      "codex": "9b51c6289",
+      "acp": "958b63f",
+      "wireModifiedByTemporaryProbe": false,
+      "acceptance": true,
+      "workflowStepsPassed": 12,
+      "smokePassed": true
+    }
+  ],
+  "wireControl": [
+    {
+      "kind": "smoke_request_contract",
+      "sequence": 1,
+      "lastRole": "user",
+      "lastUserIsFirst": false,
+      "lastUserIsAfter": false,
+      "userHasAfter": false,
+      "privilegedHasOld": false,
+      "userContracts": [
+        {
+          "isArray": true,
+          "parts": [
+            "text",
+            "text"
+          ],
+          "length": 1139,
+          "hasAfter": false,
+          "knownInstructions": [
+            "live-ok"
+          ],
+          "endsWithAfter": false
+        }
+      ],
+      "flattenedMessages": 3
+    },
+    {
+      "kind": "smoke_response_contract",
+      "sequence": 1,
+      "status": 200,
+      "lastUserIsAfter": false,
+      "answerIsOld": true,
+      "answerIsAfter": false,
+      "answerLength": 7
+    },
+    {
+      "kind": "smoke_request_contract",
+      "sequence": 2,
+      "lastRole": "user",
+      "lastUserIsFirst": false,
+      "lastUserIsAfter": false,
+      "userHasAfter": false,
+      "privilegedHasOld": false,
+      "userContracts": [
+        {
+          "isArray": true,
+          "parts": [
+            "text",
+            "text"
+          ],
+          "length": 1139,
+          "hasAfter": false,
+          "knownInstructions": [
+            "live-ok"
+          ],
+          "endsWithAfter": false
+        },
+        {
+          "isArray": false,
+          "parts": [],
+          "length": 426,
+          "hasAfter": false,
+          "knownInstructions": [],
+          "endsWithAfter": false
+        }
+      ],
+      "flattenedMessages": 3
+    },
+    {
+      "kind": "smoke_request_contract",
+      "sequence": 3,
+      "lastRole": "user",
+      "lastUserIsFirst": false,
+      "lastUserIsAfter": false,
+      "userHasAfter": false,
+      "privilegedHasOld": false,
+      "userContracts": [
+        {
+          "isArray": true,
+          "parts": [
+            "text",
+            "text"
+          ],
+          "length": 1064,
+          "hasAfter": false,
+          "knownInstructions": [
+            "live-ok"
+          ],
+          "endsWithAfter": false
+        }
+      ],
+      "flattenedMessages": 3
+    },
+    {
+      "kind": "smoke_response_contract",
+      "sequence": 2,
+      "status": 200,
+      "lastUserIsAfter": false,
+      "answerIsOld": false,
+      "answerIsAfter": false,
+      "answerLength": 784
+    },
+    {
+      "kind": "smoke_request_contract",
+      "sequence": 4,
+      "lastRole": "user",
+      "lastUserIsFirst": false,
+      "lastUserIsAfter": false,
+      "userHasAfter": true,
+      "privilegedHasOld": false,
+      "userContracts": [
+        {
+          "isArray": true,
+          "parts": [
+            "text",
+            "text",
+            "text",
+            "text"
+          ],
+          "length": 2360,
+          "hasAfter": true,
+          "knownInstructions": [
+            "live-ok",
+            "post-compact-ok"
+          ],
+          "endsWithAfter": true
+        }
+      ],
+      "flattenedMessages": 3
+    },
+    {
+      "kind": "smoke_response_contract",
+      "sequence": 4,
+      "status": 200,
+      "lastUserIsAfter": false,
+      "answerIsOld": false,
+      "answerIsAfter": true,
+      "answerLength": 15
+    }
+  ],
+  "date": "2026-10-18",
+  "codexSourceCommit": "9b51c62892038f22d356e7088230bd48d26b61ab",
+  "acpSourceCommit": "958b63fcc996a158b906212101d2aa209e6281ac",
+  "sourceMirrorChecks": {
+    "codex": {
+      "files": 9085,
+      "allMatch": true,
+      "manifestSha256": "0e76416cfeb97f039afde8ad3e9920c753c7ca830e2f3bedcd8199bd8b7fbcfe"
+    },
+    "acp": {
+      "files": 1319,
+      "allMatch": true,
+      "manifestSha256": "26d0bcdd7129b3a5ddab6261408aa9508b002c543b2756003dff9a376db48b5b"
+    }
+  },
+  "credentialScan": {
+    "filesScanned": 11058,
+    "referenceKeys": 3,
+    "matches": 0,
+    "temporaryCredentialFileRemoved": true
+  },
+  "finalAcceptanceUsedTemporaryWireRewrite": false,
+  "validation": {
+    "coreDirected": 19,
+    "nativeIntegration": 18,
+    "hostRootsUnderAncestorMarker": 9,
+    "rootMetadata": 1,
+    "protocolAndBridge": 555,
+    "selectedOfflineUnitAndRigReplay": 95,
+    "nodeContracts": 25,
+    "pythonContracts": 11,
+    "typecheckScopes": 4,
+    "coreLibClippy": true,
+    "bridgeAllTargetsClippy": true,
+    "bazelStrictLockCheck": true
+  }
+}
