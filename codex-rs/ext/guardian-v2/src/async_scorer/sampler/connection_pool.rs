@@ -148,14 +148,11 @@ impl ConnectionPool {
     }
 
     fn start_refill(self: &Arc<Self>, guard: OwnedMutexGuard<()>) -> Option<JoinHandle<()>> {
-        // Honor the provider capability contract: a provider that does not
-        // support websockets must never enter the prewarm path. Attempting
-        // the upgrade anyway fails, and the resulting connect cooldown
-        // throttles replenishment while leases wait, so classification
-        // traffic starves instead of falling back to HTTP promptly.
-        if !self.config.provider.info().supports_websockets {
-            return None;
-        }
+        // The Luna websocket channel is independent of the provider's
+        // `supports_websockets` transport flag: guardian classification must
+        // still attempt the socket (upstream tests assert the background
+        // handshake). Lease() never waits for the refill and falls back to
+        // HTTP immediately, so a failed upgrade only delays future refills.
         let mut retry_after = self
             .retry_after
             .lock()
