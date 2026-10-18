@@ -1,0 +1,196 @@
+{
+  "binaryReceipt": {
+    "codexExecSha256": "e543e2a85725c16302eb0d0201737ac6ff73271c0bd59b05000c04606b2964db",
+    "cases": [
+      "wire-chat",
+      "wire-anthropic",
+      "wire-responses",
+      "backup-switch-mimo",
+      "main-screenshot",
+      "acp-smoke"
+    ],
+    "codexSha256": "cfd5d1eefd940204e87a5b02292b4511d4b17d041ba4bd8202a38a0d2704e06d"
+  },
+  "liveSummary": {
+    "attemptsUsed": 10,
+    "budget": 48,
+    "budgetDenied": 0,
+    "activeRequests": 0,
+    "passed": 6,
+    "failed": 0,
+    "rows": [
+      {
+        "name": "wire-chat",
+        "pass": true,
+        "detail": "passed",
+        "actualAttempts": 1
+      },
+      {
+        "name": "wire-anthropic",
+        "pass": true,
+        "detail": "passed",
+        "actualAttempts": 1
+      },
+      {
+        "name": "wire-responses",
+        "pass": true,
+        "detail": "passed",
+        "actualAttempts": 1
+      },
+      {
+        "name": "backup-switch-mimo",
+        "pass": true,
+        "detail": "passed",
+        "actualAttempts": 1
+      },
+      {
+        "name": "main-screenshot",
+        "pass": true,
+        "detail": "one successful typed MCP image; final assistant matched ground truth",
+        "actualAttempts": 2
+      },
+      {
+        "name": "acp-smoke",
+        "pass": true,
+        "detail": "passed",
+        "actualAttempts": 4
+      }
+    ],
+    "observedExecUsage": [
+      {
+        "case": "wire-chat",
+        "input_tokens": 8192,
+        "cached_input_tokens": 384,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 17,
+        "reasoning_output_tokens": 14
+      },
+      {
+        "case": "wire-anthropic",
+        "input_tokens": 8689,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 19,
+        "reasoning_output_tokens": 0
+      },
+      {
+        "case": "wire-responses",
+        "input_tokens": 8108,
+        "cached_input_tokens": 64,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 3,
+        "reasoning_output_tokens": 0
+      },
+      {
+        "case": "backup-switch-mimo",
+        "input_tokens": 8341,
+        "cached_input_tokens": 1024,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 10,
+        "reasoning_output_tokens": 7
+      },
+      {
+        "case": "main-screenshot",
+        "input_tokens": 17374,
+        "cached_input_tokens": 1408,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 16,
+        "reasoning_output_tokens": 0
+      }
+    ]
+  },
+  "mockSha256": "b9cb255837291909b3fff764a6c4caaf587af76b9ad6ca43b4538af274ac5f56",
+  "date": "2026-10-18",
+  "codexSourceCommit": "309becbe3",
+  "acpSourceCommit": "854f2c3",
+  "sourceMirrorSha256": {
+    "codex-rs/app-server/tests/suite/v2/analytics.rs": "18f50b2465ce420888c9811566a33ef44ca1ee2997ff03e3d157a088b71201b1",
+    "codex-rs/app-server/tests/suite/v2/nuwax_positive_wires_live.rs": "9b7bed609e6eacb768c90020380c15f45fc94ceccfb552891cc1c08fe52bd9cd",
+    "codex-rs/app-server/tests/suite/v2/thread_read.rs": "e26d232029d4b9c5575f8f05dc7e97395838ed5189e5b281a4ae86705704aeb1",
+    "codex-rs/ext/guardian-v2/src/async_scorer/post_answer_finality_tests.rs": "f4cf9a2bcc1aa95b2e8c5ec32ffb3dc23819021a66ffaab7ccf5443a6d6b4d8a",
+    "codex-rs/ext/guardian-v2/src/async_scorer/sampler/connection_pool.rs": "b8259cfecdc7300e131900c9ba3357eabe5b29deda7f50bce0684cc1c038f1b5",
+    "codex-rs/ext/guardian-v2/src/async_scorer/sampler/connection_pool_tests.rs": "e06dc98968e4eb41c7bed4ef35739d145ed181a1aa94a4899752ca4cc4d57de7",
+    "codex-rs/tui/src/app_server_session.rs": "1bfe1482e341482934fc094169a4c6dd512ff57befccfa757594e86534a73ed9",
+    "codex-rs/tui/src/chatwidget/tests/permissions.rs": "6fcdc7b21d872bf1c323057b98d54f9e1f8633de6c01b3869b4126e44bb70ca7",
+    "codex-rs/tui/src/lib.rs": "bd8a1570fac9f239214d077f0c496616056aef7f4181d1a254677f40d875bdbc",
+    "codex-rs/utils/pty/src/windows_tests.rs": "0bef055e99e721e64c8133ed9bf15dc7f49417388f8aafe09ba4fb620dde89fd",
+    "codex-rs/windows-sandbox-rs/src/helper_materialization.rs": "82d5087e52e786ccf100a33e3fc736289bc6ee1a94e3e0ca6810ad153b63e053",
+    "codex-rs/windows-sandbox-rs/tests/support/Cargo.toml": "13bab1b5e8b11397fcc3bcb62b710253e373b861aed26dc5bd12cc0346cbc57f",
+    "codex-rs/windows-sandbox-rs/tests/support/src/lib.rs": "58282f6996ba08135b9bc437485eb58b341db6f085bc52ca8f903b2a1403f229",
+    "codex-rs/windows-sandbox-rs/tests/support/src/staging_tests.rs": "594b8691ccab2b7add54545a10fc65e7e008924881d1dfe437c8717898bf5c68"
+  },
+  "artifactCredentialScan": {
+    "filesScanned": 16799,
+    "realCredentialMatches": 0,
+    "temporaryCredentialFileRemoved": true
+  },
+  "validation": {
+    "guardianAndTuiFocused": {
+      "passed": 7,
+      "failed": 0,
+      "retries": 0
+    },
+    "guardianAnalytics": {
+      "passed": 1,
+      "failed": 0,
+      "seconds": 3.163,
+      "retries": 0
+    },
+    "acpVitest": {
+      "passed": 839,
+      "existingSkipped": 32,
+      "retries": 0
+    },
+    "acpMockContracts": {
+      "passed": 37,
+      "failed": 0
+    },
+    "paidBudgetContracts": {
+      "passed": 12,
+      "failed": 0
+    },
+    "latestBinaryRestoredUsage": {
+      "passed": true,
+      "used": 5,
+      "contextWindow": 258400,
+      "inheritedProviderOverridesRemoved": true
+    },
+    "windowsRunnerStagingStandalone": {
+      "oldPassed": 2,
+      "oldFailed": 1,
+      "newPassed": 3,
+      "newFailed": 0,
+      "fullPackageRun": false
+    },
+    "guardianScopedClippy": {
+      "passed": true,
+      "denyWarnings": true,
+      "workspaceCheck": false
+    },
+    "acpTypecheck": {
+      "passed": true,
+      "scopes": 4
+    }
+  },
+  "acpMirrorSha256": {
+    "scripts/acp-validation/README.md": "9cd28aa1a813f0feb950177b86e9503c3eb3d7c26c4656503eb202b385a776a5",
+    "scripts/acp-validation/acp-mock-validation-driver.ts": "1f5f4806055f074273e979ee67b6f27b384c684d455f8ce9c4a412dfe5079f21",
+    "scripts/acp-validation/mock-vendor-server.mjs": "b9cb255837291909b3fff764a6c4caaf587af76b9ad6ca43b4538af274ac5f56",
+    "scripts/acp-validation/mock-vendor-server.test.mjs": "584b09548cfb1ae20cbffcab2c4acb1a9b52642d3873e2e07b694a967d350fbd",
+    "scripts/acp-validation/restored-usage.ts": "d27416ec4070a5da1d33bf80a5920f5d3a5da3a32fe64fcc6398e8a3e721d247",
+    "scripts/acp-validation/run-long.sh": "235cde76484436990cd0cff6518683f78b1c5d8e4b9562db49d912306cfd78c0",
+    "scripts/acp-validation/run-restored-usage.sh": "5fc02cc53d27cff5ee8e34e175db8ec118a7f8b4fb5978643e410acbd9ab572a",
+    "scripts/acp-validation/run-stress.sh": "3ee90288bf86e29d825f3d1032fae450941d6a6737e9da7c9e88fab24ec2db73",
+    "scripts/acp-validation/stress-50.ts": "b122db9f91fe24f4d3fe26584400f4e1ed705cd5f570b9cd1bf8119e0a287801",
+    "scripts/acp-validation/tsconfig.json": "7ac2a5f42841d264a28cc8976edefa305b182e8a188fd2d0aecb3764b965ad5f",
+    "src/CodexAcpClient.ts": "bbf45cdceece6e11ce8e78ba825dc8f0fca83534d62f1cab2f396f4f90f136e9",
+    "src/CodexAcpServer.ts": "468c847591f4aacf8503ca506f9f4686c4e7ca39753ac4ec30179b0f7169c9b7",
+    "src/CodexEnvConfig.ts": "8745c5f81ecdffe1af023f2df8b7e447f557a81ec1b4d999c5649c5b8870980a",
+    "src/CodexJsonRpcConnection.ts": "66f0a846dca3b536616d7d3535884295015c48041ec754bc42791bb7d71fe5e5",
+    "src/StdUtils.ts": "3723a4c2ae03e61b3af44d50436cb7bc59d3382b5f2869c42e4aa5967473bc6e",
+    "src/__tests__/CodexACPAgent/warm-restored-usage.test.ts": "0fa8326a0a94952a672b6577456f79318601ad1b8f1d1e1fb2698ea69ad5e355",
+    "src/__tests__/credential-logging.test.ts": "0adaceba2cc203dba5795a1a51549423bb7a8877c4a04fe6a1d196940216b710",
+    "src/index.ts": "e5536a9043e32fc4d7b61cdd8dbdb59aff2c48a399d272273eb1d040d6ad2285",
+    "src/login.ts": "7939cd825f3073dfe004ddb05cc99f7a5792ea644eaaec6efa09f9f0b574fc84"
+  }
+}
