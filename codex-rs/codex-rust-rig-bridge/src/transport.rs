@@ -14,6 +14,9 @@ use rig_core::wasm_compat::WasmCompatSend;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+#[path = "wire_text.rs"]
+mod wire_text;
+
 #[derive(Clone, Default)]
 pub(crate) struct RigHttpClient {
     pub(crate) inner: reqwest_rig::Client,
@@ -433,14 +436,19 @@ impl HttpClientExt for RigHttpClient {
             let chat_family_rewrite = rewrite.needed();
             // The context budget needs the parsed body to separate inline
             // image payloads from text (wire_images). Reuse the rewrite's
-            // parse when it runs; otherwise parse only for measurement.
+            // parse when it runs, and normalize Chat text before measurement.
             let budget_measures_body = self.wire_budget.context_window_tokens.is_some();
+            let chat_text_rewrite = self.protocol == crate::RigProtocol::Chat;
             let mut measured_body: Option<serde_json::Value> = None;
-            if chat_family_rewrite || budget_measures_body {
+            if chat_family_rewrite || chat_text_rewrite || budget_measures_body {
                 match serde_json::from_slice(request.body()) {
                     Ok(mut body) => {
                         if chat_family_rewrite {
                             rewrite.apply(&mut body);
+                        }
+                        let text_changed =
+                            chat_text_rewrite && wire_text::normalize_chat_text(&mut body);
+                        if chat_family_rewrite || text_changed {
                             *request.body_mut() = serde_json::to_vec(&body)
                                 .map_err(|error| Error::Instance(error.into()))?
                                 .into();
@@ -448,10 +456,10 @@ impl HttpClientExt for RigHttpClient {
                         }
                         measured_body = Some(body);
                     }
-                    // A rewrite path keeps its hard parse error; a
-                    // measurement-only failure falls back to the legacy
-                    // whole-body estimate rather than rejecting a request
-                    // the provider might accept.
+                    // A required rewrite keeps its hard parse error; an
+                    // optional text/measurement parse failure falls back to
+                    // the legacy whole-body estimate rather than rejecting a
+                    // request the provider might accept.
                     Err(error) if !chat_family_rewrite => {
                         tracing::warn!(
                             ?error,
@@ -604,3 +612,7 @@ fn sanitize_response<U: Send + 'static>(response: Response<LazyBody<U>>) -> Resp
 #[cfg(test)]
 #[path = "transport_rewrite_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "wire_text_tests.rs"]
+mod wire_text_tests;
