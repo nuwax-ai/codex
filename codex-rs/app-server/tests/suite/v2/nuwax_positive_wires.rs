@@ -673,8 +673,11 @@ async fn env_group_stream_interrupt_cancels_the_request_and_two_resumes_continue
             .filter_map(|part| part.as_str().or_else(|| part["text"].as_str()))
             .collect();
         assert!(
-            user_texts.contains(&prompt),
-            "this attempt must carry its initiating prompt: {user_texts:?}"
+            user_texts
+                .iter()
+                .any(|text| text.split("\n\n").any(|segment| segment == prompt)),
+            "this attempt must carry its initiating prompt as an intact user \
+             text segment: {user_texts:?}"
         );
     }
     let persisted = std::fs::read_to_string(rollout_path)?;
