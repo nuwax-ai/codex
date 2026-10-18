@@ -358,3 +358,91 @@ async fn compacted_review_restores_originals_once_and_persists_the_request_prefi
         .unwrap();
     assert_eq!(prompt.input, persisted);
 }
+
+#[tokio::test]
+async fn opaque_original_file_reserves_ten_thousand_tokens_and_exhausts_review_budget() {
+    let (session, mut turn) = crate::session::tests::make_session_and_context().await;
+    Arc::make_mut(&mut turn.config).model_context_window = None;
+    let session = Arc::new(session);
+    let mut step = session
+        .capture_step_context(Arc::new(turn), &tokio_util::sync::CancellationToken::new())
+        .await
+        .unwrap();
+    let model = &mut Arc::get_mut(&mut step)
+        .expect("fresh unshared request step")
+        .settings;
+    let model = Arc::make_mut(&mut Arc::make_mut(model).model_info);
+    model.supports_image_detail_original = true;
+    model.use_responses_lite = false;
+    model.effective_context_window_percent = 100;
+    // A persisted user image can already be a file reference. Its dimensions
+    // are unavailable, so it must keep the conservative original-image cost.
+    // This bypasses tool-result admission, which intentionally omits unknown
+    // original files that cannot fit the shared tool-output limit.
+    let image = ResponseItem::Message {
+        status: None,
+        encrypted_content: None,
+        id: None,
+        role: "user".to_owned(),
+        content: vec![ContentItem::InputImage {
+            image: codex_protocol::models::ImageReference::File {
+                file_id: "opaque-original".to_owned(),
+            },
+            detail: Some(codex_protocol::models::ImageDetail::Original),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    };
+    assert_eq!(
+        crate::context_manager::estimate_item_token_count(&image),
+        10_000
+    );
+    let mut prompt = crate::client_common::Prompt::default();
+    let metadata = session
+        .responses_metadata(&step, CodexResponsesRequestKind::Turn)
+        .await;
+    let baseline = session
+        .services
+        .model_client
+        .build_responses_request(
+            &prompt,
+            &step.settings.model_info,
+            /*effort*/ None,
+            codex_protocol::config_types::ReasoningSummary::None,
+            /*service_tier*/ None,
+            &metadata,
+            /*include_internal*/ true,
+        )
+        .expect("project the empty reviewer request");
+    let window = super::super::request_budget::estimate_request_tokens(&baseline)
+        + super::super::request_budget::INPUT_TOKEN_MARGIN
+        + 1_000;
+    // Leave room for the actual fixed request overhead, while the 10k image
+    // must overflow. Catalog changes must not make the empty baseline fail.
+    let settings = &mut Arc::get_mut(&mut step)
+        .expect("unshared request step")
+        .settings;
+    Arc::make_mut(&mut Arc::make_mut(settings).model_info).context_window =
+        Some(i64::try_from(window).expect("reviewer window fits i64"));
+    super::super::request_budget::prepare_prompt(&session, &mut prompt, &step, &metadata)
+        .await
+        .expect("the request without an image fits the reviewer budget");
+    prompt.input.push(image.clone());
+    let error =
+        super::super::request_budget::prepare_prompt(&session, &mut prompt, &step, &metadata)
+            .await
+            .expect_err("an opaque original image must exceed the reviewer window");
+    assert!(matches!(
+        error.details(),
+        codex_protocol::error::CodexErrorDetails::ContextWindowExceeded
+    ));
+    assert!(matches!(
+        session
+            .services
+            .thread_extension_data
+            .get::<super::super::request_budget::ExhaustedReviewBudget>()
+            .as_deref(),
+        Some(super::super::request_budget::ExhaustedReviewBudget::Detected)
+    ));
+    assert_eq!(prompt.input, vec![image]);
+}

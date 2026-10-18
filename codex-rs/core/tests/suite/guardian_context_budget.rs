@@ -209,7 +209,7 @@ enum ReviewerResponse {
     Decision,
     ToolContinuation,
     CachedCompactionContinuation,
-    FileImageContinuation,
+    OriginalInlineImageContinuation,
     UncompactableContinuation,
     CompactionError,
     NextReview,
@@ -219,7 +219,7 @@ enum ReviewerResponse {
 #[test_case(1, ReviewerResponse::Decision; "required_context_fails_closed")]
 #[test_case(4_500, ReviewerResponse::ToolContinuation; "oversized_tool_continuation_compacts")]
 #[test_case(7_000, ReviewerResponse::CachedCompactionContinuation; "cached_compaction_fits_reviewer_budget")]
-#[test_case(4_500, ReviewerResponse::FileImageContinuation; "uploaded_original_image_history_compacts")]
+#[test_case(4_500, ReviewerResponse::OriginalInlineImageContinuation; "oversized_original_inline_image_history_compacts")]
 #[test_case(5_000, ReviewerResponse::UncompactableContinuation; "ineffective_compaction_fails_closed")]
 #[test_case(5_000, ReviewerResponse::CompactionError; "compaction_service_error_does_not_request_user_approval")]
 #[test_case(6_000, ReviewerResponse::NextReview; "incoming_review_compacts_existing_history")]
@@ -245,7 +245,10 @@ async fn review_respects_complete_context_budget(
         )
         .with_model_info_override("gpt-5.6-luna", move |model| {
             model.context_window = Some(window);
-            if matches!(reviewer_response, ReviewerResponse::FileImageContinuation) {
+            if matches!(
+                reviewer_response,
+                ReviewerResponse::OriginalInlineImageContinuation
+            ) {
                 model.supports_image_detail_original = true;
                 model.use_responses_lite = false;
             }
@@ -287,7 +290,7 @@ async fn review_respects_complete_context_budget(
         reviewer_response,
         ReviewerResponse::ToolContinuation
             | ReviewerResponse::CachedCompactionContinuation
-            | ReviewerResponse::FileImageContinuation
+            | ReviewerResponse::OriginalInlineImageContinuation
             | ReviewerResponse::UncompactableContinuation
             | ReviewerResponse::CompactionError
     ) {
@@ -295,7 +298,10 @@ async fn review_respects_complete_context_budget(
             .with_code_mode_host_program(codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")?);
     }
     let image_store = Arc::new(RecordingFileAttachmentStore::default());
-    if matches!(reviewer_response, ReviewerResponse::FileImageContinuation) {
+    if matches!(
+        reviewer_response,
+        ReviewerResponse::OriginalInlineImageContinuation
+    ) {
         builder = builder.with_image_store(image_store.clone());
     }
     let test = builder.build_with_auto_env(&server).await?;
@@ -350,13 +356,28 @@ async fn review_respects_complete_context_budget(
                         "exec",
                         "text('inspection-output'.repeat(600));",
                     ),
-                    // A tiny inline image fits before upload. Its opaque original-detail file
-                    // reference must reserve 10k tokens in reviewer history and force compaction.
-                    ReviewerResponse::FileImageContinuation => ev_custom_tool_call(
-                        "reviewer-inspect",
-                        "exec",
-                        r#"image("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "original");"#,
-                    ),
+                    // Tool originals stay inline so their known dimensions survive history
+                    // admission. Use 5,120 patches: below the tool limit, above this reviewer's
+                    // 4,500-token window, so real visual cost must still force compaction.
+                    ReviewerResponse::OriginalInlineImageContinuation => {
+                        let mut encoded = std::io::Cursor::new(Vec::new());
+                        image::DynamicImage::new_rgb8(/*width*/ 2_560, /*height*/ 2_048)
+                            .write_to(&mut encoded, image::ImageFormat::Png)?;
+                        let image_url =
+                            codex_utils_image::data_url_from_bytes("image/png", encoded.get_ref());
+                        assert_eq!(
+                            codex_utils_image::estimate_original_image_tokens(&image_url),
+                            Some(5_120)
+                        );
+                        ev_custom_tool_call(
+                            "reviewer-inspect",
+                            "exec",
+                            &format!(
+                                "image({}, \"original\");",
+                                serde_json::to_string(&image_url)?
+                            ),
+                        )
+                    }
                 },
                 ev_completed("review"),
             ]),
@@ -366,7 +387,7 @@ async fn review_respects_complete_context_budget(
         reviewer_response,
         ReviewerResponse::ToolContinuation
             | ReviewerResponse::CachedCompactionContinuation
-            | ReviewerResponse::FileImageContinuation
+            | ReviewerResponse::OriginalInlineImageContinuation
     ) {
         events.insert(
             /*index*/ 2,
@@ -476,26 +497,26 @@ async fn review_respects_complete_context_budget(
             reviewer_response,
             ReviewerResponse::ToolContinuation
                 | ReviewerResponse::CachedCompactionContinuation
-                | ReviewerResponse::FileImageContinuation
+                | ReviewerResponse::OriginalInlineImageContinuation
         );
         assert_eq!(requests.len(), if recovered { 4 } else { 3 });
         assert_eq!(guardian_requests.len(), if recovered { 2 } else { 1 });
         if recovered {
             assert_eq!(compact_requests.len(), 1);
             let compact = &compact_requests[0];
-            if matches!(reviewer_response, ReviewerResponse::FileImageContinuation) {
+            if matches!(
+                reviewer_response,
+                ReviewerResponse::OriginalInlineImageContinuation
+            ) {
                 let uploads = image_store
                     .uploads
                     .lock()
                     .expect("image upload tracker lock is not poisoned");
-                let [upload] = uploads.as_slice() else {
-                    panic!("persistent Guardian should upload one image");
-                };
                 assert!(
-                    !upload.ephemeral,
-                    "persistent Guardian should request durable attachment storage"
+                    uploads.is_empty(),
+                    "original tool images retain inline dimensions instead of uploading"
                 );
-                // The file reservation also protects the compaction request itself: an output
+                // The original image cost protects the compaction request itself: an output
                 // larger than its window is replaced before the summary request is sent.
                 assert_eq!(
                     compact.custom_tool_call_output("reviewer-inspect")["output"],
