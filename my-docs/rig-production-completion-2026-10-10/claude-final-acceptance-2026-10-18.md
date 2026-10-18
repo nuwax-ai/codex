@@ -7,8 +7,8 @@
 
 | 仓 | 分支 | 起点本轮推进到 | 本轮提交 | 状态 |
 |---|---|---|---|---|
-| Codex | codex/rig-044-20261014（worktree；== test@60956fb10 起点） | `60956fb10 → <本文档提交>` | `a0b28cba2`（macOS 测试构建 libc）、`659770c14`（guardian 预热合同）、`35658f7be`（bounded 停机可恢复）、`1f7904544`（astra 快照）+ 本文档 | clean，未 push |
-| ACP | dev | `854f2c3 → 0d4c12d` | `7bfb58a`（连续工作流 live 场景）、`0d4c12d`（纯 cyan 夹具） | clean（vendor/ untracked 照旧），未 push |
+| Codex | codex/rig-044-20261014（worktree；== test@60956fb10 起点） | `60956fb10 → fee6cda7d` | `a0b28cba2`（macOS 测试构建 libc）、`659770c14`（guardian 预热合同）、`35658f7be`（bounded 停机可恢复）、`1f7904544`（astra 快照）、`fee6cda7d`（本文档） | 已推送 origin/test（fast-forward）；本补充提交未随推（避免纯文档触发又一轮 CI） |
+| ACP | dev | `854f2c3 → 0d4c12d` | `7bfb58a`（连续工作流 live 场景）、`0d4c12d`（纯 cyan 夹具） | 已推送 origin/dev |
 
 主 checkout 占用 `test` 分支（同为 `60956fb10`），本轮在 worktree 分支提交；推送后 fast-forward：
 `git -C /Volumes/soddy/git_workspace/fork-nuwax-codex fetch && git -C … checkout test && git -C … merge --ff-only codex/rig-044-20261014`
@@ -108,3 +108,21 @@ cd /Volumes/soddy/git_workspace/fork-codex-acp-ts && node --import tsx src/index
   正确布局并从最终源码重建。期间发现 astra 快照拷贝路径错误并纠正后复验。
 - mac 本地因 v8 ptrcomp_sandbox 预编译资产缺失无法构建 core 测试目标；盒上以
   openai/codex release 的配对资产（校验和核对通过）补齐后复跑。
+
+- mac 本地因 v8 ptrcomp_sandbox 预编译资产缺失无法构建 core 测试目标；盒上以
+  openai/codex release 的配对资产（校验和核对通过）补齐后复跑。
+  （v8 资产留在盒 /tmp/codex-fa2/，RUSTY_V8_ARCHIVE/RUSTY_V8_SRC_BINDING_PATH 方式使用。）
+
+## 7. CI 复跑收据（run 39098893052，test@fee6cda7d，推送触发）
+
+- bazel bridge：✔ success。
+- **macOS：唯一失败 = 开放项 1**（`uploaded_original_image_history_compacts`）；编译修复生效，
+  其余全量测试通过（对照上轮：编译即失败）。
+- **ubuntu：4 个失败** = 开放项 1 + 3 个已登记 CI 环境项（hooks 抖动[盒上同源码绿]、
+  root_metadata bwrap 缺失[runner 环境]、host_roots[上游+分支盒上均绿]）。shell_snapshot 本轮通过
+  （佐证其环境抖动定性）。
+- **windows：16 个失败** = 全部为 §3.2 已登记 windows 专属尾项（unified_exec legacy ×4、cur ×4、
+  uds ACL ×2、conpty、approvals popup 快照、external_agent_config、subagent_notifications、
+  mcp_image_tool_payload、memory_exit_contract）。
+- 本轮 4 项跨平台修复（macOS 编译、guardian ×4、resume ×3、astra）在 ubuntu+windows 双平台
+  全部从失败清单消失。无新增失败家族。
