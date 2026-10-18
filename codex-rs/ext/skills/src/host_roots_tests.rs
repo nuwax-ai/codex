@@ -43,6 +43,7 @@ use crate::loader::load_and_merge_host_skill_roots;
 struct BlockingMetadataFileSystem {
     inner: Arc<dyn ExecutorFileSystem>,
     calls: Arc<BlockingMetadataCalls>,
+    metadata_root: Option<AbsolutePathBuf>,
 }
 
 struct BlockingMetadataCalls {
@@ -115,6 +116,18 @@ impl ExecutorFileSystem for BlockingMetadataFileSystem {
         let Ok(path_abs) = path.to_abs_path() else {
             return self.inner.get_metadata(path, options, sandbox);
         };
+        if self
+            .metadata_root
+            .as_ref()
+            .is_some_and(|root| !path_abs.starts_with(root))
+        {
+            return Box::pin(async {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "outside the test filesystem",
+                ))
+            });
+        }
         let repo_skill_root_suffix = Path::new(".agents").join("skills");
         if !path_abs.ends_with(repo_skill_root_suffix) {
             return self.inner.get_metadata(path, options, sandbox);
@@ -406,7 +419,16 @@ async fn repo_ancestry_without_project_marker_does_not_walk_parents() {
     fs::create_dir_all(outer.join(".agents/skills")).expect("create outer skills");
     fs::create_dir_all(cwd.join(".agents/skills")).expect("create cwd skills");
 
-    let roots = repo_agents_skill_roots(Some(Arc::clone(&LOCAL_FS)), &stack(Vec::new()), &cwd)
+    // The no-marker premise belongs to this fixture, not the process-wide
+    // temp directory: another sandbox test can create /tmp/.git concurrently.
+    let calls = Arc::new(BlockingMetadataCalls::default());
+    calls.release.add_permits(1);
+    let file_system: Arc<dyn ExecutorFileSystem> = Arc::new(BlockingMetadataFileSystem {
+        inner: Arc::clone(&LOCAL_FS),
+        calls,
+        metadata_root: Some(absolute(temp_dir.path())),
+    });
+    let roots = repo_agents_skill_roots(Some(file_system), &stack(Vec::new()), &cwd)
         .await
         .into_iter()
         .map(|root| root.path)
@@ -544,6 +566,7 @@ async fn repo_ancestry_limits_concurrent_probes_and_preserves_order() {
     let file_system: Arc<dyn ExecutorFileSystem> = Arc::new(BlockingMetadataFileSystem {
         inner: Arc::clone(&LOCAL_FS),
         calls: Arc::clone(&calls),
+        metadata_root: None,
     });
 
     let assertions = async {

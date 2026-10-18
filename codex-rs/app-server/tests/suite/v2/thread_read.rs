@@ -3285,7 +3285,6 @@ fn flattened_full_items(turns: &[codex_app_server_protocol::Turn]) -> Vec<(Strin
 async fn mcp_image_tool_payload_round_trips_every_read_view() -> Result<()> {
     let call_id = "call-mcp-img";
     let namespace = "mcp__tool_server";
-    // The stdio fixture's `js` tool emits its small PNG only for this code.
     // The stdio fixture's `image_scenario` tool returns its small PNG for
     // the image_only scenario.
     let arguments = r#"{"scenario":"image_only"}"#;
@@ -3304,12 +3303,10 @@ async fn mcp_image_tool_payload_round_trips_every_read_view() -> Result<()> {
     ];
     let server = create_mock_responses_server_sequence(responses).await;
     let codex_home = TempDir::new()?;
-    let stdio_bin = core_test_support::stdio_server_bin()?;
+    let stdio_bin = toml::Value::String(core_test_support::stdio_server_bin()?);
     MockResponsesConfig::new(&server.uri())
         .with_provider_config("supports_websockets = false")
-        .with_extra_config(&format!(
-            "[mcp_servers.tool_server]\ncommand = \"{stdio_bin}\""
-        ))
+        .with_extra_config(&format!("[mcp_servers.tool_server]\ncommand = {stdio_bin}"))
         .write(codex_home.path())?;
 
     let mut mcp = TestAppServer::builder()

@@ -41,12 +41,14 @@ enum MemoryFault {
 #[derive(Clone, Copy)]
 enum ForegroundGate {
     WaitForMemory,
+    WaitForTest,
     Immediate,
 }
 
 struct VendorServer {
     _addr: std::net::SocketAddr,
     memory_arrived: watch::Receiver<bool>,
+    foreground_release: watch::Sender<bool>,
     shutdown: watch::Sender<bool>,
 }
 
@@ -57,6 +59,7 @@ impl VendorServer {
             .expect("bind mock vendor");
         let addr = listener.local_addr().expect("mock vendor address");
         let (memory_tx, memory_arrived) = watch::channel(false);
+        let (foreground_release, foreground_ready) = watch::channel(false);
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let arrived_handle = memory_arrived.clone();
         tokio::spawn(async move {
@@ -67,6 +70,7 @@ impl VendorServer {
                 };
                 let memory_tx = memory_tx.clone();
                 let gate = memory_arrived.clone();
+                let foreground_ready = foreground_ready.clone();
                 let mut conn_shutdown = shutdown_rx.clone();
                 tokio::spawn(async move {
                     handle_connection(
@@ -75,6 +79,7 @@ impl VendorServer {
                         foreground_gate,
                         memory_tx,
                         gate,
+                        foreground_ready,
                         &mut conn_shutdown,
                     )
                     .await;
@@ -84,6 +89,7 @@ impl VendorServer {
         VendorServer {
             _addr: addr,
             memory_arrived: arrived_handle,
+            foreground_release,
             shutdown: shutdown_tx,
         }
     }
@@ -182,6 +188,7 @@ async fn handle_connection(
     foreground_gate: ForegroundGate,
     memory_arrived: watch::Sender<bool>,
     mut memory_gate: watch::Receiver<bool>,
+    mut foreground_ready: watch::Receiver<bool>,
     shutdown: &mut watch::Receiver<bool>,
 ) {
     let request = match read_http_request(&mut stream).await {
@@ -209,12 +216,30 @@ async fn handle_connection(
 
     // Gate foreground responses on the consolidation request so the job is
     // always claimed before the process begins exiting.
-    if matches!(foreground_gate, ForegroundGate::WaitForMemory) {
-        let _ = tokio::time::timeout(
+    if matches!(
+        foreground_gate,
+        ForegroundGate::WaitForMemory | ForegroundGate::WaitForTest
+    ) && !matches!(
+        tokio::time::timeout(
             Duration::from_secs(20),
             memory_gate.wait_for(|arrived| *arrived),
         )
-        .await;
+        .await,
+        Ok(Ok(_))
+    ) {
+        return;
+    }
+    if matches!(foreground_gate, ForegroundGate::WaitForTest)
+        && !matches!(
+            tokio::time::timeout(
+                Duration::from_secs(20),
+                foreground_ready.wait_for(|ready| *ready),
+            )
+            .await,
+            Ok(Ok(_))
+        )
+    {
+        return;
     }
     let _ = write_http_response(
         &mut stream,
@@ -325,7 +350,11 @@ async fn read_job_row(home: &Path) -> JobRow {
 }
 
 /// Takes a `BEGIN IMMEDIATE` writer lock on the memory database for `hold`.
-async fn hold_memory_db_write_lock(home: &Path, hold: Duration) -> Result<()> {
+async fn hold_memory_db_write_lock(
+    home: &Path,
+    hold: Duration,
+    foreground_release: &watch::Sender<bool>,
+) -> Result<()> {
     let pool = open_pool(home, /*read_only*/ false)
         .await
         .context("memory database with jobs table not found for lock")?;
@@ -333,6 +362,7 @@ async fn hold_memory_db_write_lock(home: &Path, hold: Duration) -> Result<()> {
     sqlx::query("BEGIN IMMEDIATE")
         .execute(&mut *connection)
         .await?;
+    foreground_release.send(true)?;
     tokio::time::sleep(hold).await;
     sqlx::query("ROLLBACK").execute(&mut *connection).await?;
     drop(connection);
@@ -442,7 +472,7 @@ async fn normal_exit_releases_memory_claim_despite_transient_db_write_lock() -> 
     std::fs::create_dir_all(&home)?;
     std::fs::create_dir_all(&cwd)?;
 
-    let server = VendorServer::start(MemoryFault::Hang, ForegroundGate::WaitForMemory).await;
+    let server = VendorServer::start(MemoryFault::Hang, ForegroundGate::WaitForTest).await;
     write_config(&home, server.port())?;
 
     let home_path = home.clone();
@@ -454,7 +484,7 @@ async fn normal_exit_releases_memory_claim_despite_transient_db_write_lock() -> 
     wait_for_memory_request(&server).await;
     // Hold a brief ordinary writer lock exactly like a concurrent writer
     // would; the release must land once the lock goes away, before exit.
-    hold_memory_db_write_lock(&home, Duration::from_secs(1)).await?;
+    hold_memory_db_write_lock(&home, Duration::from_secs(1), &server.foreground_release).await?;
 
     let outcome = exec_task.await.expect("exec task joined");
     assert_eq!(outcome.returncode, 0);
@@ -544,7 +574,7 @@ async fn normal_exit_stays_bounded_when_cleanup_is_blocked_leaving_lease_backsto
     std::fs::create_dir_all(&home)?;
     std::fs::create_dir_all(&cwd)?;
 
-    let server = VendorServer::start(MemoryFault::Hang, ForegroundGate::WaitForMemory).await;
+    let server = VendorServer::start(MemoryFault::Hang, ForegroundGate::WaitForTest).await;
     write_config(&home, server.port())?;
 
     let home_path = home.clone();
@@ -554,11 +584,11 @@ async fn normal_exit_stays_bounded_when_cleanup_is_blocked_leaving_lease_backsto
     });
 
     wait_for_memory_request(&server).await;
-    // Hold the writer lock well beyond every shutdown bound; the process must
-    // exit anyway instead of hanging on cleanup. The holder releases early on
-    // the server shutdown signal so the test does not wait the full hold.
+    // Keep the writer lock until the test has observed process exit. Releasing
+    // it on a wall-clock timer could race slower hosts and hide blocked cleanup.
     let lock_home = home.clone();
     let mut lock_shutdown = server.shutdown.subscribe();
+    let (lock_ready, locked) = tokio::sync::oneshot::channel();
     let lock_task = tokio::spawn(async move {
         let pool = open_pool(&lock_home, /*read_only*/ false)
             .await
@@ -567,16 +597,21 @@ async fn normal_exit_stays_bounded_when_cleanup_is_blocked_leaving_lease_backsto
         sqlx::query("BEGIN IMMEDIATE")
             .execute(&mut *connection)
             .await?;
-        tokio::select! {
-            _ = tokio::time::sleep(Duration::from_secs(20)) => {}
-            _ = lock_shutdown.changed() => {}
-        }
+        let _ = lock_ready.send(());
+        let _ = lock_shutdown.wait_for(|closed| *closed).await;
         sqlx::query("ROLLBACK").execute(&mut *connection).await?;
         drop(connection);
         let _ = pool.close().await;
         Ok::<(), anyhow::Error>(())
     });
 
+    // The memory request alone is not a writer-lock handshake: the child
+    // can otherwise exit and release its claim before this task is polled.
+    tokio::time::timeout(Duration::from_secs(10), locked)
+        .await
+        .context("waiting for the cleanup-blocking writer lock")?
+        .context("writer lock task failed before acquiring the lock")?;
+    server.foreground_release.send(true)?;
     let started = tokio::time::Instant::now();
     let outcome = exec_task.await.expect("exec task joined");
     let elapsed = started.elapsed();
@@ -598,8 +633,8 @@ async fn normal_exit_stays_bounded_when_cleanup_is_blocked_leaving_lease_backsto
         "lease expiry must remain the recovery backstop, got lease_until={:?} now={now}",
         job.lease_until
     );
-    // The lock is still held here (its 20s hold outlives the exit), proving
-    // the exit did not wait for the release to land.
+    // The lock is still held here, proving the exit did not wait for it to
+    // release. Only the explicit signal below ends the blocking transaction.
     assert!(
         !lock_task.is_finished(),
         "the writer lock should still be held right after the bounded exit"

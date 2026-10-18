@@ -54,7 +54,14 @@ async fn root_metadata_symlinks_cannot_reopen_approved_denials() {
         policy
             .entries
             .push(path_entry(denied, FileSystemAccessMode::Deny));
-        policy.for_approved_command(&context)
+        let mut approved = policy.for_approved_command(&context);
+        // Match the outer namespace's read-only /usr mount. Its synthetic
+        // root is owned by uid 0, so without this boundary the executable
+        // trust check correctly treats /usr as replaceable through writable /.
+        approved
+            .entries
+            .push(path_entry("/usr", FileSystemAccessMode::Read));
+        approved
     };
     let run = |policy: &FileSystemSandboxPolicy,
                private_mount: &str,

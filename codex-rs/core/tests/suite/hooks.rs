@@ -2995,8 +2995,14 @@ async fn permission_request_hook_allows_exec_command_without_user_approval() -> 
 
     let server = start_mock_server().await;
     let call_id = "permissionrequest-exec-command";
-    let marker = std::env::temp_dir().join("permissionrequest-exec-command-marker");
-    let command = format!("rm -f {}", marker.display());
+    let marker_dir = TempDir::new()?;
+    let marker = marker_dir
+        .path()
+        .join("permissionrequest-exec-command-marker");
+    let command = format!(
+        "rm -f {}",
+        shlex::try_quote(marker.to_str().context("marker path UTF-8")?)?
+    );
     let args = serde_json::json!({ "cmd": command });
     let responses = mount_sse_sequence(
         &server,
@@ -3288,8 +3294,14 @@ async fn permission_request_hook_sees_raw_exec_command_input() -> Result<()> {
 
     let server = start_mock_server().await;
     let call_id = "permissionrequest-exec-command";
-    let marker = std::env::temp_dir().join("permissionrequest-exec-command-marker");
-    let command = format!("rm -f {}", marker.display());
+    let marker_dir = TempDir::new()?;
+    let marker = marker_dir
+        .path()
+        .join("permissionrequest-exec-command-marker");
+    let command = format!(
+        "rm -f {}",
+        shlex::try_quote(marker.to_str().context("marker path UTF-8")?)?
+    );
     let justification = "remove the temporary marker";
     let args = serde_json::json!({
         "cmd": command,
