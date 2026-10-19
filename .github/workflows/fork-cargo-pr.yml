@@ -31,15 +31,20 @@ jobs:
   test:
     name: nextest (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # The macOS lane needs ~2h28m of wall clock on a good runner; 150 kept
-    # clipping it at the edge (runs 38249075905 and 38268053863 were
-    # cancelled ~2h30m in). Test-level deadlines are unchanged.
-    timeout-minutes: 180
+    # ubuntu fits its 180 with room: measured on run 39286738661, the workspace
+    # test binaries compiled in 17m56s and the run took 35m19s. The macOS lane
+    # cannot: the same tree compiled in 1h32m47s on run 39233543173 (finished
+    # 2h49m27s, 11m of margin) and in 1h50m21s on run 39286738661, whose 180
+    # minutes expired 3m47s after the run phase even started (12699/22877).
+    # Compile is the fixed cost and is not shardable inside one job, so macOS
+    # gets its own number until the archive+shard port lands.
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
+            timeout: 180
             # voice-host pins the gstreamer v1_28 API surface. Ubuntu's apt
             # only ships gstreamer 1.24, so that lane cannot provision the
             # pinned version and excludes the crate; the macOS lane below
@@ -47,6 +52,7 @@ jobs:
             # tests.
             voice_host: exclude
           - os: macos-latest
+            timeout: 330
             voice_host: include
     defaults:
       run:

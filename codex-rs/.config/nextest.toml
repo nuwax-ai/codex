@@ -66,6 +66,10 @@ max-threads = 1
 [test-groups.windows_process_heavy]
 max-threads = 2
 
+[test-groups.cli_daemon_macos]
+# One package copy plus one daemon cold start at a time on the macOS lane.
+max-threads = 1
+
 [[profile.default.overrides]]
 # Do not add new tests here
 filter = 'test(rmcp_client) | test(humanlike_typing_1000_chars_appears_live_no_placeholder)'
@@ -160,6 +164,45 @@ slow-timeout = { period = "45s", terminate-after = 2 }
 platform = 'cfg(windows)'
 filter = 'test(detail_policies_apply_the_expected_budgets) | test(legitimately_large_dimensions_still_decode)'
 slow-timeout = { period = "1m", terminate-after = 2 }
+
+[[profile.default.overrides]]
+# Every leg of this case reads with DEFAULT_READ_TIMEOUT = 60s
+# (app-server/tests/suite/v2/account.rs:74), exactly the default 30s x2 kill
+# window, so the five legs that timed out on ubuntu and macOS could only ever
+# report TIMEOUT with no diagnostics. Let its own deadline fire first and name
+# the leg that hangs.
+filter = 'test(external_auth_refreshes_on_unauthorized::discovery)'
+slow-timeout = { period = "1m", terminate-after = 2 }
+
+[[profile.default.overrides]]
+# The elevated Git-approval leg waits 120s inside the test
+# (core/tests/windows_sandbox.rs:1400), past the default kill and past a 1m x2
+# window. Give that in-test deadline room to fire so a stall reports which
+# event never arrived instead of an unexplained TIMEOUT.
+platform = 'cfg(windows)'
+filter = 'package(codex-core) & binary(windows_sandbox)'
+slow-timeout = { period = "1m", terminate-after = 3 }
+
+[[profile.default.overrides]]
+# Measured 52.614s PASS on the Windows lane one run earlier, i.e. 7s under the
+# default kill, and the case has no in-test deadline at all: a TIMEOUT here can
+# never carry diagnostics. Three retry attempts over >2 MiB of metadata is the
+# cost; the same lane already grants this shape to the other Windows-heavy
+# unit cases.
+platform = 'cfg(windows)'
+filter = 'test(local_compaction_retries_preserve_instructions_and_tool_metadata)'
+slow-timeout = { period = "1m", terminate-after = 2 }
+
+[[profile.default.overrides]]
+# macOS only: these binaries copy a full debug package and cold-start a daemon
+# while the rest of the 315-binary workspace competes for the same four cores.
+# The same legs measured 28.731s and 37.521s in one lane and 46.09s in the next,
+# straddling the 45s in-test deadline at cli/tests/daemon_startup.rs:393, and
+# the 1m x2 / 1m x3 windows above were both consumed without producing a
+# result. Serialize them on macOS; ubuntu keeps its current concurrency.
+platform = 'cfg(target_os = "macos")'
+filter = 'package(codex-cli) & (binary(app_server_daemon) | binary(daemon_startup))'
+test-group = 'cli_daemon_macos'
 
 
 # ─── Fork live-test configuration ─────────────────────────────────────────
