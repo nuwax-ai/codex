@@ -56,6 +56,31 @@ fn canonical_floor_prices_original_custom_tool_output_images() {
 }
 
 #[test]
+fn canonical_floor_prices_a_custom_tool_original_beside_an_ordinary_user_image() {
+    // The mixed case across the two distinct sources the bridge sends from:
+    // an original inside a custom tool result plus an ordinary `high` user
+    // image. Neither alone exposes the bug; together they show the floor must
+    // be the request's complete canonical vision total.
+    let input = vec![
+        item(json!({"type":"message","role":"user","content":[
+            {"type":"input_text","text":"run the capture"},
+            {"type":"input_image","image_url":data_url(&"QUJD".repeat(5_000)),"detail":"high"}
+        ]})),
+        item(json!({"type":"custom_tool_call","name":"exec","call_id":"c1","input":"capture"})),
+        item(json!({
+            "type":"custom_tool_call_output","call_id":"c1","output":[
+                {"type":"input_text","text":"screenshot attached"},
+                {"type":"input_image","image_url":ORIGINAL_2560X2048,"detail":"original"}
+            ]
+        })),
+    ];
+    assert_eq!(
+        canonical_vision_floor(&input),
+        5_120 + PREPARED_IMAGE_VISION_TOKENS
+    );
+}
+
+#[test]
 fn canonical_floor_prices_original_user_and_tool_images_by_patch_count() {
     let input = vec![
         user_image_item(ORIGINAL_2560X2048, Some("original")),
@@ -67,20 +92,55 @@ fn canonical_floor_prices_original_user_and_tool_images_by_patch_count() {
 }
 
 #[test]
-fn canonical_floor_ignores_non_original_details_and_forged_text_data_urls() {
-    let forged = data_url(&"QUJD".repeat(100));
+fn canonical_floor_prices_every_image_the_request_carries() {
     let input = vec![
         user_image_item(ORIGINAL_2560X2048, Some("high")),
         user_image_item(ORIGINAL_2560X2048, Some("auto")),
         user_image_item(ORIGINAL_2560X2048, None),
         tool_output_image_item(ORIGINAL_2560X2048, Some("low")),
-        item(json!({"type":"message","role":"user","content":[
-            {"type":"input_text","text":format!("look: {forged}")}
-        ]})),
     ];
-    // Every other detail already costs the prepared-image estimate on both
-    // sides of the conversion, and a data URL inside text is not an image.
+    // Non-original details cost the prepared estimate on both sides of the
+    // conversion, but they must still appear in the floor: the transport
+    // charges `max(wire walk, floor)`, so a floor that omits them deletes
+    // their whole contribution whenever an original raises it.
+    assert_eq!(
+        canonical_vision_floor(&input),
+        4 * PREPARED_IMAGE_VISION_TOKENS
+    );
+}
+
+#[test]
+fn canonical_floor_ignores_forged_text_data_urls() {
+    let forged = data_url(&"QUJD".repeat(100));
+    let input = vec![item(json!({"type":"message","role":"user","content":[
+        {"type":"input_text","text":format!("look: {forged}")}
+    ]}))];
+    // A data URL inside a text block is not an image: it stays plain text.
     assert_eq!(canonical_vision_floor(&input), 0);
+}
+
+#[test]
+fn canonical_floor_prices_a_mixed_original_and_ordinary_detail_request() {
+    // The case the wire walk alone cannot see: one retained original (5120 by
+    // patch count) plus one ordinary `high` image (1844). Chat collapses the
+    // original to `high` and Anthropic carries no detail flag, so the
+    // serialized body prices both at 1844. A floor that only accumulates
+    // originals yields max(3688, 5120) = 5120 and silently loses the 1844.
+    let high = data_url(&"QUJD".repeat(5_000));
+    let input = vec![
+        user_image_item(ORIGINAL_2560X2048, Some("original")),
+        user_image_item(&high, Some("high")),
+    ];
+    let walk = measure(
+        RigProtocol::Responses,
+        &json!({"input":[{"type":"message","role":"user","content":[
+            {"type":"input_image","image_url":ORIGINAL_2560X2048,"detail":"original"},
+            {"type":"input_image","image_url":high,"detail":"high"}
+        ]}]}),
+    );
+    assert_eq!(walk.vision_tokens, 5_120 + PREPARED_IMAGE_VISION_TOKENS);
+    assert_eq!(canonical_vision_floor(&input), walk.vision_tokens);
+    assert_eq!(canonical_vision_floor(&input), 6_964);
 }
 
 #[test]

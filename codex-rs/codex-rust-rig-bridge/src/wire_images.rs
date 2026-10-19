@@ -211,7 +211,7 @@ fn prepared_image_vision_tokens() -> u64 {
     codex_utils_string::approx_tokens_from_byte_count(PREPARED_IMAGE_BYTES_ESTIMATE)
 }
 
-/// Canonical pre-conversion vision estimate for the images this request
+/// Canonical pre-conversion vision estimate for **every** image this request
 /// actually carries — the outbound floor on the converting wires. Chat
 /// collapses `original` to `high` and the Messages wire has no detail flag,
 /// so the serialized-body walk above can under-price a retained original
@@ -219,8 +219,15 @@ fn prepared_image_vision_tokens() -> u64 {
 /// a prepared image). The transport charges `max(wire walk, this floor)`,
 /// never the sum, and only for images still present in the request being
 /// built, so history that compaction already dropped is not resurrected.
-/// Non-original details cost the same on both sides of the conversion and
-/// contribute nothing here.
+///
+/// Non-original images must be included even though both sides of the
+/// conversion price them identically: because the two totals are compared
+/// with `max`, an original that raises the floor would otherwise replace the
+/// walk wholesale and silently delete every ordinary image's contribution
+/// from the budget (one 5120 original + one 1844 `high` would charge 5120
+/// instead of 6964). Pricing all images here keeps the floor equal to the
+/// walk whenever no original is present, so this only ever raises a charge
+/// that was already too low.
 ///
 /// The Responses passthrough needs no floor: it serializes Codex's request
 /// verbatim, so its `original` detail reaches `measure` intact and is
@@ -232,7 +239,7 @@ pub(crate) fn canonical_vision_floor(input: &[ResponseItem]) -> u64 {
             ResponseItem::Message { content, .. } => {
                 for part in content {
                     if let ContentItem::InputImage { image, detail } = part {
-                        floor = floor.saturating_add(original_detail_floor(image, *detail));
+                        floor = floor.saturating_add(canonical_image_tokens(image, *detail));
                     }
                 }
             }
@@ -243,7 +250,7 @@ pub(crate) fn canonical_vision_floor(input: &[ResponseItem]) -> u64 {
                 if let FunctionCallOutputBody::ContentItems(items) = &output.body {
                     for part in items {
                         if let FunctionCallOutputContentItem::InputImage { image, detail } = part {
-                            floor = floor.saturating_add(original_detail_floor(image, *detail));
+                            floor = floor.saturating_add(canonical_image_tokens(image, *detail));
                         }
                     }
                 }
@@ -254,12 +261,12 @@ pub(crate) fn canonical_vision_floor(input: &[ResponseItem]) -> u64 {
     floor
 }
 
-/// The exact cost `record_image_reference` charges an original-detail image
-/// on the passthrough wire — the entrance's bounded header estimate, with
-/// the conservative ceiling whenever the reference cannot be priced.
-fn original_detail_floor(image: &ImageReference, detail: Option<ImageDetail>) -> u64 {
+/// Canonical cost of one image: the exact tokens `record_image_reference`
+/// charges it on the passthrough wire, so the floor and the walk share one
+/// pricing rule and can be compared without double-counting.
+fn canonical_image_tokens(image: &ImageReference, detail: Option<ImageDetail>) -> u64 {
     if detail != Some(ImageDetail::Original) {
-        return 0;
+        return prepared_image_vision_tokens();
     }
     match image {
         ImageReference::Inline { image_url } => {

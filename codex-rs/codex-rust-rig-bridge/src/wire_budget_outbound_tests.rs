@@ -823,3 +823,124 @@ async fn compacted_text_only_history_carries_no_vision_floor() -> Result<(), Tes
     }
     Ok(())
 }
+
+/// One retained original (5120 by patch count) plus one ordinary `high`
+/// image (1844). Chat collapses the original to `high` and Anthropic carries
+/// no detail flag, so the serialized body prices both at the prepared
+/// estimate: walk = 3688. The complete pre-conversion total is 6964, but a
+/// floor that accumulates originals alone yields `max(3688, 5120)` = 5120 and
+/// deletes the ordinary image's contribution from the budget entirely.
+fn floor_mixed_user_items() -> Vec<serde_json::Value> {
+    vec![json!({
+        "type":"message","role":"user","content":[
+            {"type":"input_text","text":"compare the two screenshots"},
+            {"type":"input_image","image_url":ORIGINAL_2560X2048,"detail":"original"},
+            {"type":"input_image","image_url":mixed_high_image(),"detail":"high"}
+        ]
+    })]
+}
+
+/// The same mix reached through the other source the bridge sends images
+/// from: an ordinary user image plus an original inside a tool result.
+fn floor_mixed_tool_items() -> Vec<serde_json::Value> {
+    vec![
+        json!({"type":"message","role":"user","content":[
+            {"type":"input_text","text":"shoot the page"},
+            {"type":"input_image","image_url":mixed_high_image(),"detail":"high"}
+        ]}),
+        json!({"type":"function_call","name":"view_image","call_id":"c1","arguments":"{}"}),
+        json!({"type":"function_call_output","call_id":"c1","output":[
+            {"type":"input_text","text":"screenshot attached"},
+            {"type":"input_image","image_url":ORIGINAL_2560X2048,"detail":"original"}
+        ]}),
+    ]
+}
+
+fn mixed_high_image() -> String {
+    format!("data:image/png;base64,{}", image_payload(20_000))
+}
+
+/// 5120 (original) + 1844 (ordinary high) = 6964 canonical vision tokens.
+/// A window of 6000 sits above the buggy `max(3688, 5120)` charge — which
+/// also carries the ~100 text tokens and the 64-token output reserve — and
+/// below the correct charge, so the request must be refused pre-network.
+const MIXED_REJECT_WINDOW: i64 = 6_000;
+/// Comfortably above 6964 + text + output reserve.
+const MIXED_DISPATCH_WINDOW: i64 = 12_000;
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mixed_original_and_ordinary_images_reject_before_http() -> Result<(), TestError> {
+    for (protocol, items, source) in [
+        (RigProtocol::Chat, floor_mixed_user_items(), "user"),
+        (RigProtocol::Anthropic, floor_mixed_user_items(), "user"),
+        (RigProtocol::Chat, floor_mixed_tool_items(), "tool"),
+        (RigProtocol::Anthropic, floor_mixed_tool_items(), "tool"),
+    ] {
+        let with_tool = source == "tool";
+        let outcome = stream_under_window(
+            protocol,
+            &floor_request(items, with_tool),
+            MIXED_REJECT_WINDOW,
+            Duration::from_millis(750),
+        )
+        .await?;
+        assert!(
+            matches!(
+                outcome.api_error,
+                Some(codex_api::ApiError::ContextWindowExceeded)
+            ),
+            "{protocol:?} {source}: an original beside an ordinary image must \
+             sum both costs and reject, got {:?}",
+            outcome.api_error
+        );
+        assert_eq!(
+            outcome.dispatched, None,
+            "{protocol:?} {source}: rejection must happen before any connection"
+        );
+        assert_eq!(outcome.attempts, 0);
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mixed_original_and_ordinary_images_reach_the_socket_together() -> Result<(), TestError> {
+    // The fix must not drop, downgrade, or re-encode anything: both images
+    // arrive complete on a window the correct charge fits.
+    let high_payload = image_payload(20_000);
+    let original_payload = ORIGINAL_2560X2048
+        .rsplit_once(',')
+        .expect("data URL payload")
+        .1;
+    for (protocol, items, source) in [
+        (RigProtocol::Chat, floor_mixed_user_items(), "user"),
+        (RigProtocol::Anthropic, floor_mixed_user_items(), "user"),
+        (RigProtocol::Chat, floor_mixed_tool_items(), "tool"),
+        (RigProtocol::Anthropic, floor_mixed_tool_items(), "tool"),
+    ] {
+        let with_tool = source == "tool";
+        let outcome = stream_under_window(
+            protocol,
+            &floor_request(items, with_tool),
+            MIXED_DISPATCH_WINDOW,
+            IO_DEADLINE,
+        )
+        .await?;
+        assert!(
+            outcome.api_error.is_none(),
+            "{protocol:?} {source}: a correctly-priced mix must still dispatch, got {:?}",
+            outcome.api_error
+        );
+        let body = String::from_utf8(outcome.dispatched.expect("dispatched body"))?;
+        assert_eq!(
+            body.matches(&high_payload).count(),
+            1,
+            "{protocol:?} {source}: the ordinary image must reach the socket in full"
+        );
+        assert_eq!(
+            body.matches(original_payload).count(),
+            1,
+            "{protocol:?} {source}: the original image must reach the socket in full"
+        );
+    }
+    Ok(())
+}
