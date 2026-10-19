@@ -499,9 +499,42 @@ vendor 必须先被强制成该形状，标签才能唯一回译。测试里
   取到的包）。
 - **不在本轮擅动的理由**：`npm install` 在配了国内镜像的机器上把 `resolved` 从
   `registry.npmjs.org` 改写成了 `registry.npmmirror.com`。lock 里写死哪个下载域，是喂给
-  用户 npm 发布渠道的供应链决定，不该由一次验证跑的机器配置顺带定下来。要同步请在**确定
-  的 registry** 上显式做（`npm install --package-lock-only`），并核对 `integrity` 字段。
-  本轮只登记，不改。
+  用户 npm 发布渠道的供应链决定，不该由一次验证跑的机器配置顺带定下来。要同步请在
+  **确定的 registry** 上显式做（`npm install --package-lock-only`），并核对 `integrity`
+  字段。本轮只登记，不改。
+- **严重性按实际影响定级（读 workflow 后更正直觉）**：`ci.yml`、`e2e.yml`、
+  `publish.yml`、`publish-beta.yml` 全部用 `npm install`，**没有任何 job 用 `npm ci`**。
+  所以这条陈旧 lock 不会让 CI 变红——它伤害的是"可复现安装"这条路：任何消费者（或将来
+  改成 `npm ci` 的 job）按 lock 装就会直接失败，而 `publish.yml` 是 `npm install` +
+  `npm publish`，实际发布出去的依赖树来自 runner 当场解析、不由这份 lock 约束。登记为
+  **可复现性缺陷 + 误导性的 lock 元数据**，不是当前构建阻断项；是否同步 lock、用哪个
+  registry，交用户决定。
+
+### 9.4 用发布渠道的 Windows 二进制跑通 `env-determinism`（零付费）
+
+`npm install` 的 postinstall 已经把渠道产物取到本地，所以这条不需要源码构建就能验证**
+真实发布出去的二进制**：`vendor/nuwax-codex/0.18.12/nuwax-codex.exe`，
+`codex-cli 0.18.12`，sha256 `9f5d80753d803684b56f083e081b9d38d3fe6d7172a793b3820402b043c32765`。
+
+- 驱动结果：`PASS env-determinism … no real vendor request; actualAttempts=0`，
+  `1 passed / 0 failed`，`denied=0`。零付费成立（凭据文件只写死向 `127.0.0.1` 的假路由，
+  本轮没有向两台实机写入任何真实密钥）。
+- `sink-receipt.json` 的 5 条记录逐条对齐，覆盖三协议与 Anthropic 三种 base URL 形状：
+  `/v1/chat/completions`、`/v1/responses`、`/v1/messages`×3（bare、`/v1`、`/v1/messages`），
+  `model=local-preflight`、`authenticated=True` 全成立。即**windows-msvc 渠道产物的
+  NUWAX 路由路径/模型/鉴权三项决定正确**。
+- 一处渠道一致行为（不是缺陷，但会影响驱动用法）：npm 包只发布单个入口
+  `nuwax-codex(.exe)` + 子命令 `exec`，**没有 `codex-exec` 兄弟二进制**；mac 的
+  `vendor/nuwax-codex/*/` 同样只有一个 `nuwax-codex`。Windows 上因此用 `.cmd` 包装把
+  `exec` 补上，`codexExecSha256=501acbe76dde702e879387a0639c6646678711633b340defd53b23211ebdec80`
+  哈希的是**包装器**、不是二进制，真正的绑定是 `codexSha256`。已把这层写进 ACP
+  `scripts/live-validation/README.md`，避免下一个按 npm 渠道验收的人被
+  "the codex-exec it names is missing" 挡住。
+- 边界：这条证据证明的是 **0.18.12 渠道产物**的三协议路由，不含 `04beac00a` 的视觉
+  floor 修复（该二进制里没有它），也不替代 §9.1 尚未完成的 Linux 实机跑。
+  harness 沿用了既有的 `--dangerously-bypass-approvals-and-sandbox`，但提示词仅为
+  `Reply with exactly: pong`、`CODEX_HOME`/工作目录隔离在 scratch、出站只到 127.0.0.1。
+
 
 
 
