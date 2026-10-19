@@ -236,7 +236,10 @@ pub(crate) fn canonical_vision_floor(input: &[ResponseItem]) -> u64 {
                     }
                 }
             }
-            ResponseItem::FunctionCallOutput { output, .. } => {
+            ResponseItem::FunctionCallOutput { output, .. }
+            | ResponseItem::CustomToolCallOutput { output, .. } => {
+                // Both result shapes share the FunctionCallOutput payload and
+                // the bridge sends images from either on the converting wires.
                 if let FunctionCallOutputBody::ContentItems(items) = &output.body {
                     for part in items {
                         if let FunctionCallOutputContentItem::InputImage { image, detail } = part {

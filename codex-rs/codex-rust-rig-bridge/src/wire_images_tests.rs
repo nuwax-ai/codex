@@ -35,6 +35,27 @@ fn tool_output_image_item(url: &str, detail: Option<&str>) -> ResponseItem {
 }
 
 #[test]
+fn canonical_floor_prices_original_custom_tool_output_images() {
+    // Custom tool results share the FunctionCallOutput payload and the
+    // bridge sends their images on the converting wires, so an original in
+    // a custom result must count toward the floor exactly like a function
+    // result's.
+    let input = vec![
+        item(json!({"type":"message","role":"user","content":[
+            {"type":"input_text","text":"run the capture"}
+        ]})),
+        item(json!({"type":"custom_tool_call","name":"exec","call_id":"c1","input":"capture"})),
+        item(json!({
+            "type":"custom_tool_call_output","call_id":"c1","output":[
+                {"type":"input_text","text":"screenshot attached"},
+                {"type":"input_image","image_url":ORIGINAL_2560X2048,"detail":"original"}
+            ]
+        })),
+    ];
+    assert_eq!(canonical_vision_floor(&input), 5_120);
+}
+
+#[test]
 fn canonical_floor_prices_original_user_and_tool_images_by_patch_count() {
     let input = vec![
         user_image_item(ORIGINAL_2560X2048, Some("original")),
