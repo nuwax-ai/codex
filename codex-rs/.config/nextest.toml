@@ -152,6 +152,15 @@ filter = 'test(suite::resume::) | test(suite::cli_stream::) | test(suite::auth_e
 test-group = 'windows_process_heavy'
 slow-timeout = { period = "45s", terminate-after = 2 }
 
+[[profile.default.overrides]]
+# These two image cases were measured at 45.351s and 47.057s on the Windows
+# full-CI lane (passing, flagged SLOW), so a slightly slower lane pushes them
+# past the default 30s x2 kill. Nothing on their path changed between the two
+# lanes; give them the same window the other Windows-heavy unit cases get.
+platform = 'cfg(windows)'
+filter = 'test(detail_policies_apply_the_expected_budgets) | test(legitimately_large_dimensions_still_decode)'
+slow-timeout = { period = "1m", terminate-after = 2 }
+
 
 # ─── Fork live-test configuration ─────────────────────────────────────────
 # Live tests hit real vendor accounts with hard limits (measured 2026-09-24):
