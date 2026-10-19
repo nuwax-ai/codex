@@ -201,6 +201,21 @@ cd /path/to/fork-codex-acp-ts && node --import tsx src/index.ts
 - 结论：**本轮引入/触及的所有家族在 CI 关闭**；剩余红项全部为已登记开放项或有独立
   抖动证据，与 rig/NUWAX 核心路径无关。
 
+### 6.3 run 39176371908（head `3533bbf4a`，文档提交推送触发；代码与 7fd7a7b1d 一致）
+
+- bazel ✔；三平台 `env_group_stream_interrupt` 保持 PASS。
+- **ubuntu（22921 tests）到达本轮最干净状态：仅剩 2 个登记项**——`external_auth…discovery`
+  超时（§6.1 既有 fork 回归）+ `shell_snapshot…blocked_descriptor`（登记抖动）。
+- windows（21753 tests，22 failed + 8 timed out）：FAILED 18 全部为已登记尾项
+  （unified_exec ×4、cur ×4、uds ACL ×2、windows_elevated ×4、conpty、approvals、
+  external_agent_config、subagent_notifications）；TIMEOUT 除 external_auth 与上轮已判
+  抖动的 compaction metadata_enabled 外，新现 6 个名字（detail_policies、code_mode、
+  compact_remote ×2、windows_elevated git_pull、legitimately_large_dimensions）——
+  本轮树与上轮代码逐字节一致（仅新增文档文件），且这些测试在上两轮（含 c4d08f71b）
+  全部 PASS，判定为 windows runner 60s 界限的平台抖动，非产品回归。
+- macos：连续第三次 3h job 时限取消；取消前仅 external_auth + daemon 饥饿超时族 + 一个
+  hooks 复发（ubuntu 同期绿）。macos 完整化属 CI 基建项（拆分片/提时限）。
+
 ## 7. 提交、推送与工作树状态
 
 - Codex `test`：`fee6cda7d → 7fd7a7b1d` 已推送（fast-forward；本轮两笔：
