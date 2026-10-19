@@ -419,7 +419,10 @@ vendor 必须先被强制成该形状，标签才能唯一回译。测试里
 两台都用独立 scratch 目录，不碰机器上既存的工作副本与容器；凭据只在会话内使用，不写入
 任何文件、提交或记录。
 
-### 9.1 ubuntu 24（`~/rig-verify-20261019`，全新 clone @ `4ee470d5c`）
+### 9.1 ubuntu 24（`~/rig-verify-20261019`，全新 clone）
+
+clone 发生在 `4ee470d5c` 推上 `origin/test` 之后，按推送顺序其 HEAD 应为 `4ee470d5c`，
+但当场没留 `rev-parse` 输出，所以**这条按推断登记，不作为已证事实**。
 
 - **工具链判正**：首轮非交互 SSH 报 `cargo MISSING`，据此写下"这台机器没有 Rust"——
   错。`bash -lc` 探测得到 `1.95.0-x86_64-unknown-linux-gnu` 与已安装的 `cargo-nextest`，
@@ -429,6 +432,11 @@ vendor 必须先被强制成该形状，标签才能唯一回译。测试里
   exit 0**。与 mac 的 712 差 4 项，逐项核对为 `codex-rs/protocol/src/permissions.rs` 中
   4 个 `cfg(target_os = "macos")` 权限测试；rig-bridge 子集两平台同为 **337**。差额解释
   清楚，不是漏跑。
+- 诚实边界：机器在跑完 nextest 后掉线，Linux 那份 clone 的 **HEAD sha 无法复核**
+  （当时没记 `rev-parse` 输出），所以不声称"floor 修复的 5 个新增测试已在 Linux 逐项
+  点名验证"。恢复后要做的就三件事：`git -C ~/rig-verify-20261019/codex rev-parse HEAD`
+  记进收据、`cargo nextest run -E 'test(canonical_floor) or test(reject_before_http)'`
+  点名、release build + `env-determinism`。
 - ACP 驱动套件（@ `0930455`）：python **28/28**、node live **25/25**、stress **4/4**。
   Linux 的 node reporter 是 TAP（`# tests`），不是 mac/Windows 的 `ℹ`，第一次按 `ℹ` grep
   得到空输出，改按 TAP 行确认后计数如上。
