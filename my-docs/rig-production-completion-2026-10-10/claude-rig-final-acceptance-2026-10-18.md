@@ -793,6 +793,24 @@ Windows 数据。命令与 mac 完全同一：ACP `d188807`，`npm test` =
 - **修复后证据**：临时目录里只放 `package.json` + 新 lock，
   `npm ci --ignore-scripts` **exit=0**、日志 0 条 `npm error`，
   `node_modules/nuwax-codex` 实际装成 **0.18.12**（163 个顶层包）。
+- **第二平台复测（这台机器正是当初改写 lock 的那类环境）**：Windows
+  `192.168.32.235` 上 `npm config get registry` = `https://registry.npmmirror.com`
+  ——即 §9.3 里"配了国内镜像"的具体来源。在该机上对**同步后的 lock** 跑
+  `npm ci --dry-run --ignore-scripts` 得 `up to date`、**exit=0**；对**同步前的
+  lock**（`git show 6a76aa7^:package-lock.json`）跑同一命令得
+  `npm error code EUSAGE` +
+  `Invalid: lock file's nuwax-codex@0.18.3 does not satisfy nuwax-codex@0.18.12`、
+  **exit=1**。所以这条陈旧 lock 的阻断在两个平台都实测复现，修复也在两个平台都实测成立。
+  （该 Windows 目录已有 node_modules，`--dry-run` 走的是 `up to date` 快路径，
+  因此这条只证明**lock 与 package.json 的一致性检查**在镜像机上通过，
+  **不**是一次真实下载收据；"下载地址仍钉在 `registry.npmjs.org`"的依据是
+  mac 侧对新 lock 268 条 `resolved` 的逐条统计，见上。）
+- **该 verify 工作副本的收尾**：Windows 上那份被 `npm install` 顺改写成
+  `registry.npmmirror.com` 的本地 lock 没有直接丢弃，先复制到
+  `C:\git-workspace\rig-verify-20261019\package-lock.npmmirror.local.json` 存档，
+  再 `git checkout --` 撤掉本地改动并 `--ff-only` 拉到 `6a76aa7`。该目录现为
+  `6a76aa7`、除既有未跟踪 `vendor/` 与 `scripts/live-validation/__pycache__/` 外干净；
+  我建的 `lockold` 临时目录已删除。存档那份可随时删。
 - **为什么这仍然不是"CI 变绿"类修复**：§9.3 已查实四个 workflow 全用 `npm install`，
   没有 job 用 `npm ci`。这条闭合的是**可复现安装**与**发布渠道不再被一份自相矛盾的 lock
   误导**，不改变任何测试计数。
