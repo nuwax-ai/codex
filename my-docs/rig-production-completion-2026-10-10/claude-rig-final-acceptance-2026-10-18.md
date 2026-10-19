@@ -324,9 +324,12 @@ original→high 塌陷，无少计。
 - 构建位置（影响复现，登记备查）：本轮及后续 cargo 工作在 zhitai 副本，
   `CARGO_TARGET_DIR` 用仓库内 `codex-rs/target`，`CARGO_HOME` 指向
   `/Volumes/zhitai/cargo-home`（由 `~/.cargo` 完整复制，`cargo +1.95.0 metadata
-  --offline` 验证过依赖闭包齐全）。两者都落在项目所在的 4T 外接雷电盘上；系统盘
-  只剩 `~/.cargo`(5.0G) 与 `~/.rustup`(3.6G) 两份旧副本，未被本轮写入，是否清理由
-  用户决定。
+  --offline` 验证过依赖闭包齐全）。**三个变量缺一不可**：实测只设前两个时，一次
+  712 测试的 nextest run 仍吃掉系统盘 3 GiB——Rust `tempfile` 走 `$TMPDIR`，默认落在
+  `/var/folders/…`。因此测试 scratch 也必须显式 `TMPDIR=/Volumes/zhitai/tmp`，并在跑完
+  后 `df -h /` 复查系统盘没有增长。系统盘上另有 `~/.cargo`(5.0G)、`~/.rustup`(3.6G)
+  两份旧副本与 `/var/folders/…/T` 的 23G 遗留测试 scratch（20685 项，跨多套测试），
+  本轮未写入、未清理，是否清理由用户决定。
 - 实网证据对应关系：MiMo Chat / GLM Responses / Step Anthropic 各 12 步、共 54 次上游
   请求（预算 90）绑定 **`c4d08f71b` 构建的二进制**，不覆盖 `52d283204`、`8443539b0`、
   `04beac00a`。任何新收据必须绑定真正使用的源码与二进制。
