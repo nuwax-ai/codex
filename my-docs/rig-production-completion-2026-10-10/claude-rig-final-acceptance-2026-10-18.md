@@ -321,6 +321,11 @@ original→high 塌陷，无少计。
   `cancelled`，mac 整树从未被完整观测过。这轮 `09:54:36Z → 12:44:03Z` 落在时限内，
   所以 mac 的整树结果第一次可以登记（见末条）。但 2h49m27s 距离 3h 上限只剩约 10 分钟
   余量，**一次 runner 变慢就会退回 cancelled**，拆分片仍然是需要做的事。
+  **（此条写于 §6.10 之前，两处过头，按 §6.10 更正：`39205629146` 等四轮被取消是事实，
+  但"mac 整树从未被完整观测过"不成立——同日更早的 run `39098893052`（head `fee6cda7d`）
+  mac 腿 `completed/failure` 并给出完整 `Summary`，交接文档
+  `claude-final-acceptance-2026-10-18.md` §7 已登记过它。本轮的准确口径是
+  "取消四轮之后**重新拿到**一份完整 mac 结果，并且有一份可比基线"。）**
 - **本分叉自有 crate 零失败**：把三平台 FAIL/TERMINATING 名单逐条对照
   `codex-rust-rig-bridge` / `codex-protocol` / `codex-api`，**一个都没有**。
 - **`04beac00a` 的新增测试三平台全 PASS**（逐个点名取状态，非套件级推断）：
@@ -370,7 +375,7 @@ original→high 塌陷，无少计。
     dispatched floor 腿换回 `IO_DEADLINE`）。本轮**不擅自改**：可选处置是给这两条单独放宽
     deadline（动 nextest 配置/属性，属测试配置变更），或承认它们在 Windows runner 上就是
     flaky 并保持观察。交用户决定。
-- **macos（首次完整观测，无基线可比）**：22877 run / 22868 passed（28 slow）/ **3 failed**
+- **macos（原文标签"首次完整观测，无基线可比"按 §6.10 作废）**：22877 run / 22868 passed（28 slow）/ **3 failed**
   / **6 timed out** / 71 skipped。3 failed =
   `suite::v2::guardian_v2::stateful_async::classifier_modes_preserve_approval_matrix::failed`、
   `suite::v2::multi_agent_v2_developer_instructions::cold_resume_preserves_effective_developer_instructions_for_worker::inherits_parent_developer_instructions_without_an_override`、
@@ -379,6 +384,10 @@ original→high 塌陷，无少计。
   （60s/120s/180s 三档界限都出现）。因为 mac 之前四轮全被取消，**这 9 项只能登记为
   "首次观测到"，不得声称是抖动、也不得声称是本轮引入**；唯一有旁证的是前两条落在
   §6.5 已登记过的 app-server/guardian 抖动区域。
+  **（名单与计数不变；"无基线可比 / 首次观测到"这半句按 §6.10 作废——9 项里 3 项在上一手
+  mac 腿 `39098893052` 同样超时（含 `::discovery`），属复现；另外 6 项才是 mac 腿新观测，
+  其中 5 条 daemon 超时能用"mac 腿整体变慢 20–65 % + 期限贴线"量化解释。逐条定性与
+  四分法归类别只看 §6.10。）**
 - **`external_auth_refreshes_on_unauthorized::discovery` 这轮在三平台全部超时**
   （ubuntu / windows / macos 均 `TERMINATING [> 60.000s]`）。未闭合清单第 1 项把它登记为
   "fork 历史回归、不得称纯环境问题"——本轮证据与该判定**一致且更硬**：它不再是 ubuntu
@@ -409,6 +418,12 @@ original→high 塌陷，无少计。
   `16.019s` / `17.304s`，`Summary 1 test run: 1 passed, 20 skipped`。
   即这条测试在快机上只需 1/3 的默认窗口，Windows runner 慢 2.7–2.9 倍是平台差异，
   不是测试本身变重。
+  **口径补一句（§6.10 回读 CI 日志后加的，防止被误读成 mac CI 腿）**：上面这两个数是
+  **本机外接盘上的 scoped nextest**（`-p codex-utils-image`，warm cache），
+  不是 GitHub 的 macos runner。CI mac 腿同一条实测是 `34.707s`（本轮
+  39233543173）与 `50.708s`（上一手 39098893052），`detail_policies_apply_the_expected_budgets`
+  CI mac 腿是 `40.350s`。所以"1/3 默认窗口"只对**本机**成立；CI mac runner 已经贴到
+  60s 界限的 58–85 %，这恰好也是 §6.10 第 2 类"mac 腿整体慢"的同一条证据。
 - **配置验证（不靠"看起来对"）**：因为 `platform = 'cfg(windows)'` 在 mac 上整条 override
   被跳过、filter 不会被求值，我把 `platform` 临时改成 `cfg(unix)` 后重跑上面那条 scoped
   nextest——**nextest 正常启动并按该 filter 选中了目标用例**，证明 filter 语法与本仓库
@@ -457,6 +472,163 @@ original→high 塌陷，无少计。
   request, got …` 还是 `Elapsed`）。每条腿最多多花约 60s，mac 腿余量按 §6.7 是 ~10 分钟，
   可承受。按"不要为了重跑 CI 无意义提交"的约束，**并入下一次真实代码推送**一起做，
   不单独 dispatch。
+
+### 6.10 macOS 那 9 项逐条定性：先纠正"无基线"，再分三类
+
+按用户指令"先追 macos 那 9 项的首次观测定性"。**追的第一步是把"首次观测"这个前提本身
+打掉——它不成立。**
+
+- **前提纠正（有凭据）**：§7 未闭合项 2 写的是"macos 腿前四轮撞 3h 时限被取消、完整
+  macos 验收从未拿到"。逐轮核对 job 结论：`39205629146`、`39176371908`、`39146938516`、
+  `39130433046`、`38824922110` 的 mac 腿确实是 `cancelled`，但更早两轮是**跑完了的**：
+  - run `39098893052`（2026-10-18，head `fee6cda7d`）mac 腿 job `117590909114`
+    `completed/failure`，
+    `Summary [3227.443s] 22840 tests run: 22836 passed (25 slow), 1 failed, 3 timed out`；
+  - run `39081573074`（2026-10-18，head `60956fb10`）mac 腿 `completed/failure`，但**没有
+    测试结果**——它在编译期就断了：`error[E0433]: cannot find module or crate libc`，
+    `could not compile codex-core-plugins (lib test)`，`recipe test failed … exit code 101`。
+  所以本轮 mac 腿**有一份可比的上一手基线**（`fee6cda7d` vs `4ee470d5c`，区间 19 笔提交），
+  "9 项全是无基线首次观测"这个说法作废，下面按"复现"与"新观测"分开定性。
+  取证通道：`gh api --allow-escape-sequences -X GET repos/nuwax-ai/codex/actions/jobs/<id>/logs`。
+  **踩到的坑登记一下**：jobs API 的日志里是**真的 0x1B 转义字节**，与 §6.9 用的
+  `gh run view --log`（日志里是字面 `^[[`）不同，剥离式必须换成
+  `s/\e\[[0-9;]*[a-zA-Z]//g`；用错的那一轮所有正则静默 0 命中，差点被当成"该轮没有失败"。
+- **交接记录本身也有一处漏登（顺手核对，不是本轮引入）**：交接文档
+  `claude-final-acceptance-2026-10-18.md` §7 对同一 run `39098893052` 的 mac 腿写的是
+  "**唯一失败** = 开放项 1（`uploaded_original_image_history_compacts`）"，
+  而该腿日志实际是 `1 failed, 3 timed out`——三条 TIMEOUT（`::discovery`、
+  `managed_starts_ensure_one_updater_and_recover_a_missing_one`、
+  `restart_applies_saved_updater_preference`）没进那份名单。
+  这直接影响本轮定性：正因为它们当时被漏掉，"#2/#3 是复现而不是新观测"这个结论
+  只能从原始日志重读得到。**登记口径按原始日志修正，不沿用二手汇总。**
+
+**九项矩阵**（A=本轮 39233543173 / head `4ee470d5c`；B=上一手 39098893052 / head `fee6cda7d`）
+
+| # | 用例 | mac A | mac B | ubuntu A | windows A |
+|---|---|---|---|---|---|
+| 1 | `external_auth…::discovery` | TIMEOUT 60.012 | TIMEOUT 60.007 | TIMEOUT 60.024 | TIMEOUT 60.028 |
+| 2 | `app_server_daemon managed_starts_ensure_one_updater_and_recover_a_missing_one` | TIMEOUT 60.010 | TIMEOUT 60.007 | PASS 7.342 | 不编译 |
+| 3 | `app_server_daemon restart_applies_saved_updater_preference` | TIMEOUT 60.017 | TIMEOUT 60.008 | PASS 5.959 | 不编译 |
+| 4 | `app_server_daemon explicit_restart_applies_feature_overrides_and_preserves_saved_settings` | TIMEOUT 60.008 | **PASS 54.902** | PASS 6.437 | 不编译 |
+| 5 | `app_server_daemon packaged_daemon_explicit_replacement_migrates_running_legacy` | TIMEOUT 120.008 | **PASS 99.587** | PASS 41.847 | 不编译 |
+| 6 | `app_server_daemon packaged_daemon_start_and_explicit_replacement` | TIMEOUT 180.014 | **PASS 138.699** | PASS 20.139 | 不编译 |
+| 7 | `guardian_v2::stateful_async::classifier_modes_preserve_approval_matrix::failed` | FAIL 34.625 `Error: deadline has elapsed` | PASS 2.408 | PASS 8.315 | PASS 3.840 |
+| 8 | `multi_agent_v2_developer_instructions…inherits_parent_developer_instructions_without_an_override` | FAIL 1.420 `NotLoaded` ≠ `Idle` | PASS 1.503 | PASS 3.419 | PASS 3.085 |
+| 9 | `codex-tui …fresh_startup_falls_back_only_for_unsupported_config_read` | FAIL 16.716 `Error: deadline has elapsed` | PASS 2.940 | PASS 2.373 | PASS 2.509 |
+
+**第 1 类：#1，确定性挂起，跨平台一致——沿用 §6.9 定性，本轮无新证据推翻。**
+四条腿（三平台 + 上一手 mac）超时值 60.007/60.012/60.024/60.028，离散 **21 ms**；
+同参数化的 `::responses` 在两条 mac 腿分别 0.654s / 0.580s **PASS**。这条**不是 mac 慢**，
+是 §6.9 说的"内部 60s 读期限刚起步就撞 harness 60s kill"。归 **真实挂起 / harness 结构
+缺陷待根因**，处置仍按 §6.9：诊断用的 `1m × 2` 单独期限并入下一次真实代码推送。
+
+**第 2 类：#2–#6，mac 腿整体变慢把贴线项推过界——harness 期限窗口，不是功能回归。**
+关键不是"mac 慢"这一句，而是**同一批用例在 mac 上的两次测量能对上**：
+本轮 mac 上仍然 PASS 的同族 daemon 用例，相对上一手 mac 全线变慢 20–65 %——
+`packaged_daemon_bootstrap_seeds_local_package` 68.405→**92.764**（+36 %）、
+`packaged_daemon_restart_seeds_local_package` 61.314→**86.520**（+41 %）、
+`managed_daemon_restarts_from_deleted_working_directory` 46.033→55.313（+20 %）、
+`managed_identity_survives_locale_and_timezone_changes` 46.310→56.309（+22 %）、
+`wall_clock_shift_keeps_server_and_updater_managed` 31.601→52.060（+65 %）。
+同一区间里 ubuntu 侧的 #4/#5/#6 是 6.437 / 41.847 / 20.139s，按上一手 mac 的实测值算
+**mac/ubuntu ≈ 2.4–8.5 倍**（54.902/6.437 = 8.5、138.699/20.139 = 6.9、
+99.587/41.847 = 2.4）（这些用例要复制整个 debug 包再拉起新可执行文件，`cli/tests/app_server_daemon.rs:692`
+`copy_executable(&daemon.codex, &package.join("bin/codex"))?`）。
+于是 #4/#5/#6 上一手在 mac 是 **54.902 / 99.587 / 138.699s 的贴线 PASS**，本轮乘上 20–40 %
+的 runner 变慢就越过 60 / 120 / 180。
+**60s、120s、180s 三个界里，120s 与 180s 是本分叉自己在 `nextest.toml:19-27` 发的**
+（`packaged_daemon_` 前缀 `1m × 2`、`packaged_daemon_start_and_explicit_replacement`
+`1m × 3`），不是上游默认；上一手 mac 用 138.699s 通过，说明该期限当时就只留了 30 % 余量。
+另有一条结构性事实：`cli/tests/app_server_daemon.rs:1` 是 `#![cfg(unix)]`，
+Windows 腿**根本不编译这个 binary**——整条 `app_server_daemon` 家族在 Windows 只有两条：
+`codex-cli::app_server_daemon_windows winget_package_starts_and_reselects_daemon`（PASS 0.031s）
+与 `codex-cli::bin/codex tests::app_server_daemon_subcommands_parse`（PASS 0.081s），
+两者都不复制 debug 包、也不拉起常驻 daemon。
+所以这 5 条在 Windows 上没有任何覆盖，不能拿"windows 也绿"给它们背书。
+归 **harness（期限窗口）+ 同一类内部期限风险**：每个 daemon 用例内部按腿设
+`Instant::now() + Duration::from_secs(30)`（`app_server_daemon.rs:163/317/389/473/633`），
+多条腿串行即可超过 60s 外界，与被杀时**一条用例自身的诊断都不打印**：本轮 5 条里
+`explicit_restart_applies…`、`managed_starts_ensure…`、`restart_applies_saved…` 三条的
+nextest 输出体只有 `running 1 test` + `(test timed out)`，
+`packaged_daemon_explicit_replacement_migrates_running_legacy` 与
+`packaged_daemon_start_and_explicit_replacement` 两条各多一行 libtest 自己的
+`has been running for over 60 seconds`。
+处置：**不改产品代码**；本轮不为此单独 dispatch。要么按 §6.8 的同一形状给 mac 腿单独放宽
+（`platform = 'cfg(unix)'` + 这 5 个用例名），要么把 mac 腿当"慢 runner"另片跑；
+两者都并入下一次真实代码推送，理由同"不要为了重跑 CI 无意义提交"。
+
+**第 3 类：#7–#9，mac 腿真正的首次观测（3 条在上一手 mac 都是 PASS，ubuntu/windows 也都 PASS）。**
+逐条能说到字段级，但**都给不出"分叉造成"的凭据**：
+
+- **#7 `classifier_modes_preserve_approval_matrix::failed`**：`Error: deadline has elapsed`
+  在 34.625s（≈ 启动 ~4.6s + 一条 30s 腿）。期限来自
+  `app-server/tests/suite/v2/guardian_v2.rs:102 const TIMEOUT = Duration::from_secs(30)`，
+  该文件与 `origin/main` **逐字节相同**；用例本身
+  `guardian_stateful_async_tests.rs` 也与 main 相同，它按 `Snapshot`、`Conversation`
+  **两条模式串行**（`:24-39`），每条内部又有多处 `timeout(TIMEOUT, …)`
+  （`guardian_v2.rs:153/164/330/375/386/1009/1050/1115/1211/1241/1603/1671`）——
+  30s 串行腿 vs 60s kill，与 §6.9 完全同一形状。同一参数化家族其余 11 个 case 本轮 mac
+  全 PASS（多数 20.4–21.2s，另两条 `mandatory_review` 1.074s、
+  `authorization_changed_during_classification` 8.320s），只有这一条 34.6s 越线；ubuntu 同一条 8.315s。
+  → **harness/上游测试竞态**，非分叉缺陷。
+- **#8 `…inherits_parent_developer_instructions_without_an_override`**：
+  断言点 `multi_agent_v2_developer_instructions.rs:968` 的
+  `assert_eq!(authority(resumed), authority(expected))`，diff **只有 `status` 一个字段**
+  （实测 `< NotLoaded` / `> Idle`），其余 9 元组成员全等。时序不是它的敌人——
+  本轮 1.420s vs 上一手 PASS 1.503s，**几乎同速**。`expected = baseline`（`:859`）
+  取自"子线程还加载着"时的 `thread/resume`（`:691` 断言 `Idle`），
+  而 `:836` 已断言同一条子线程在 `thread/read` 里是 `NotLoaded`；父线程恢复后再恢复子线程，
+  mac 上状态仍报 `NotLoaded`，即**恢复路径的状态落地在 mac 调度下晚于响应序列化**。
+  分叉归属查证：该测试文件与 main 相同；`app-server/src/request_processors/thread_processor.rs`
+  分叉只有 8 行，两处都不在这条路上——一处是 `has_model_resume_override`
+  里新增 `request_overrides.contains_key("model_provider")`，**对该用例是冗余**
+  （上游已有 `typesafe_overrides.model_provider.is_some()`，而用例传的是**类型化字段**
+  `model_provider: Some("mock_provider")`，`:715-726`，上游就已进入同一分支）；
+  另一处是停机 drain（`:1307-1314`），不在 resume 断言路径上。
+  → **上游测试/实现的竞态，mac 首发**；列为待复现观察，本轮不改。
+- **#9 `fresh_startup_falls_back_only_for_unsupported_config_read`**：
+  `Error: deadline has elapsed` 在 16.716s，命中
+  `tui/src/app/tests/startup_defaults_tests.rs:624`
+  `tokio::time::timeout(Duration::from_secs(/*secs*/ 15), proxy).await???;`。
+  这是 `for capabilities in [ …(-32601), …(-32600) ]` 的**两轮串行**，每轮各带一个 15s 期限，
+  而 15s 那一行与 `origin/main` **逐字节相同**（分叉在该文件的 diff 里 `from_secs` 出现 0 次）。
+  该文件相对 main 只有 **1 行分叉改动**：helper `run_startup_for_test` 里
+  `/*env_seed_overrides*/ Vec::new(),`（补 `App::run` 新形参的空值，语义与上游默认一致），
+  不在这条用例的判定点上。ubuntu 2.373s / windows 2.509s / mac 上一手 2.940s 都 PASS，
+  本轮 mac 16.716s 说明某轮 `proxy` 流在 mac 上 15s 内没走完。
+  → **harness（15s 内部期限）+ 上游用例在 mac 首发**，非分叉缺陷。
+
+**四分法口径与诚实边界**：#1 归"真实挂起（待根因）"，#2–#6 归"harness 期限窗口"，
+#7–#9 归"harness 期限窗口 / 上游竞态，mac 首发"。九项里**没有一项能落到"本分叉造成的
+字段遗漏或桥未实现"**；但反过来说"与分叉无关"同样没有凭据——上面逐条给的是"分叉提交数 0"
+或"分叉 diff 不在该路径"，这只能排除归属，**不能证明无关**。另外：mac 腿一共只跑过两次
+出结果，本轮 mac 与上一手 mac 之间夹了 19 笔提交（含一次 main 合并），
+所以 #7–#9 的"首发"也可能是 runner 侧变化；本轮 mac 全腿 22877 项里 28 项被标 slow，
+而同一对图片用例在 mac CI 腿两次方向相反的摆动——
+`detail_policies_apply_the_expected_budgets` 25.995s → **40.350s**（+55 %）、
+`legitimately_large_dimensions_still_decode` 50.708s → **34.707s**（−32 %）——
+说明 mac runner 的时序方差本身就有 1.5 倍这个量级，贴线用例被推过界不需要任何代码变化。
+
+**顺带抓到一条反向收据（不是本轮修的，但正好对上"第二平台才有结论"）**：上一手 39098893052
+里 `codex-core::all suite::guardian_context_budget::review_respects_complete_context_budget::uploaded_original_image_history_compacts`
+在 **ubuntu FAIL 1.368s、mac FAIL 1.274s**（windows 该用例不出现），本轮 mac/ubuntu 同名族
+全绿。闭合方式是分叉提交 `14a19eefb` 把该 fixture **改名并重写**为
+`oversized_original_inline_image_history_compacts`：旧 fixture 是"1×1 PNG + original 细节"，
+新 fixture 改成真实 `2_560 × 2_048` PNG（5,120 patches，低于工具上限、高于评审 4,500 token
+窗口）。口径要写清：**这条不是产品缺陷被产品修复关掉**，是分叉自有 fixture 的重写；
+本轮真正的视觉 floor 修复是 `c4d08f71b` / `52d283204` / `04beac00a`，两件事不要混。
+
+**风险登记（实测未观测，本轮不修）**：分叉提交 `4d9c62ae6` 在
+`thread_processor.rs:1307-1314` 加了 `wait_for_shutdown_bound_tasks_bounded(Duration::from_secs(10))`，
+实现在 `core/src/thread_manager.rs:1544-1567`——外层 `tokio::time::timeout(10s)` 里又调
+`shutdown_all_threads_bounded(10s)` 再 `tracker.wait()`，即在**已有停机等待之后**再叠一段
+最长 10s 的收尾。而 `multi_agent_v2_developer_instructions.rs:45-47` 的
+`READ_TIMEOUT` 是 **Windows 25s / 非 Windows 10s**，同一用例又在 `:734` 用
+`timeout(READ_TIMEOUT, app_server.shutdown_gracefully())` 包住停机——
+也就是**分叉新增的最长 10s 恰好等于 ubuntu/mac 腿的全部容忍**。
+实测四条腿（本轮 ubuntu/windows/macos + 上一手 mac）里
+`final shutdown drain` / `shutdown_bound_tasks` / `exceeded final` 关键字出现次数**均为 0**，
+所以这只是结构风险，不是已确认缺陷。按本轮范围（只修已确认缺陷）登记不动。
 
 ## 7. 提交、推送与工作树状态
 
@@ -517,6 +689,18 @@ original→high 塌陷，无少计。
      → run 39233543173（§6.7）**第一次跑完**，2h49m27s 完成、结论仍为 failure。剩下的
      是它只带来 9 项**无基线可比**的首次观测（3 failed + 6 timed out，含 5 条
      `codex-cli::app_server_daemon` 超时），以及余量只有约 10 分钟、建议继续拆分片。
+     ~~"第一次跑完"与"无基线可比"两处都不成立，按 §6.10 更正~~：更早的
+     `39098893052`（head `fee6cda7d`，交接文档 §7 已登记）mac 腿跑到终态并给出
+     `22836 passed / 1 failed / 3 timed out`，所以本轮 9 项里 **3 项是复现**
+     （`::discovery`、`managed_starts_ensure_one_updater_and_recover_a_missing_one`、
+     `restart_applies_saved_updater_preference`）、**6 项是 mac 新观测**。
+     9 项已逐条定性完毕（§6.10）：#1 真实挂起待根因，#2–#6 harness 期限窗口
+     （mac 腿整体变慢 20–65 %，且 120s/180s 两档是分叉自己发的；`#![cfg(unix)]` 使
+     Windows 对这 5 条零覆盖），#7–#9 harness 期限 / 上游竞态在 mac 首发。
+     **九项里没有一项能落到分叉造成的字段遗漏或桥未实现**，但也只到"排除归属"为止。
+     本项剩下的不是定性，而是**要不要为 mac 腿单独放宽那 5 条 daemon 期限**——
+     与 §6.9 的诊断期限一起并入下一次真实代码推送，不单独 dispatch。
+     余量只有约 10 分钟、建议继续拆分片这句仍然成立。
   3. windows 尾项家族（ConPTY、unified_exec、uds ACL、elevated runner、cur 检测等）与
      `shell_snapshot…blocked_descriptor` 抖动。
   4. 验机 `swufe@192.168.32.163` 的 rustup 组件安装存在 manifest 损坏；pinned 1.95.0
