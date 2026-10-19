@@ -307,6 +307,86 @@ replay 的图片块由 `ResponseItem::WebSearchCall.wire_blocks` 直接以厂商
 不经 Codex `detail` 语义，因此只由 walk 按 prepared 计费、不进 floor——不存在
 original→high 塌陷，无少计。
 
+### 6.7 run 39233543173（head `4ee470d5c`，`04beac00a` floor 修复 + 文档推送触发）
+
+本 run 由 `4ee470d5c` 触发，代码增量相对 §6.5 只有一笔：`04beac00a`（另两笔
+`a3e5da2f0`、`4ee470d5c` 为文档）。已核对 `04beac00a`、`52d283204`、`8443539b0` 都是
+`4ee470d5c` 的祖先，所以这三笔的代码都在这轮里。
+
+- **整体终态：`completed` / `conclusion=failure`**。job 级：`bazel bridge gate (ubuntu)`
+  ✔；`nextest (ubuntu-latest)` ✘；`nextest (windows)` ✘；`nextest (macos-latest)` ✘。
+  三平台日志均由 `gh run view --log-failed` 取到并存 scratch（未提交），失败全部计入
+  共享预算，没有清空账本。
+- **本轮最有价值的一条：macOS nextest 第一次跑到终态**。§6.1–6.5 连续四轮是 3h
+  `cancelled`，mac 整树从未被完整观测过。这轮 `09:54:36Z → 12:44:03Z` 落在时限内，
+  所以 mac 的整树结果第一次可以登记（见末条）。但 2h49m27s 距离 3h 上限只剩约 10 分钟
+  余量，**一次 runner 变慢就会退回 cancelled**，拆分片仍然是需要做的事。
+- **本分叉自有 crate 零失败**：把三平台 FAIL/TERMINATING 名单逐条对照
+  `codex-rust-rig-bridge` / `codex-protocol` / `codex-api`，**一个都没有**。
+- **`04beac00a` 的新增测试三平台全 PASS**（逐个点名取状态，非套件级推断）：
+  `canonical_floor_prices_every_image_the_request_carries`、
+  `canonical_floor_prices_a_mixed_original_and_ordinary_detail_request`、
+  `canonical_floor_prices_a_custom_tool_original_beside_an_ordinary_user_image`、
+  `canonical_floor_ignores_forged_text_data_urls`（由旧名
+  `…_ignores_non_original_details_and_forged_text_data_urls` 改名）、以及两条出站实跑
+  `mixed_original_and_ordinary_images_reject_before_http`
+  （ubuntu 3.021s / windows 3.045s / macos 3.035s）与
+  `mixed_original_and_ordinary_images_reach_the_socket_together`（0.171/0.083/0.104s）。
+  净新增 5 个（3 + 2），与 §6.6 的 707→712 对账一致。
+  这把 §9.1 里"等机器恢复再点名验证 floor 测试"这项**改由 ubuntu runner 覆盖**——
+  但 ubuntu-latest runner **不等于**用户那台 `192.168.32.117`，那台机器的 HEAD sha、
+  release build 与 `env-determinism` 仍未闭合。
+- **ubuntu**：22927 run / 22925 passed（25 slow）/ **1 failed** / **1 timed out** /
+  48 skipped。两条就是 §6.5 已登记的同一对：FAILED
+  `codex-exec-server::exec_process shell_snapshot::…_keep_independent_readers::blocked_descriptor_path`、
+  TIMEOUT `suite::v2::account::external_auth_refreshes_on_unauthorized::discovery`
+  （`TERMINATING [> 60.000s]`）。**无新增 ubuntu 失败项。**
+- **windows**：21759 run / 21730 passed（21 slow、277 leaky）/ **23 failed** /
+  **6 timed out** / 138 skipped。日志里能点名复原的是 **19 个** failed 名字，与 Summary
+  的 23 差 4 项——nextest 的 compact 进度输出在 CI 日志里把这 4 行覆盖了，**不猜名字**，
+  登记为观测限制。与 §6.5 上一轮 windows 逐项对照：
+  - 两轮都红（稳定复现、非本轮引入，且都在 rig 之外）：`external_agent_config_secondary_source…`、
+    external-agent-migration `detect::sessions::cur` ×4、tui `approvals_selection_popup_snapshot`、
+    `codex-uds` ACL ×2、ConPTY `conpty_ctrl_c_interrupts_powershell_foreground_child`、
+    `codex-windows-sandbox unified_exec::legacy_*` ×3。
+  - **上一轮红、这轮转绿**：`plugin_list…global_remote_catalog_cache_ttl` 与
+    `guardian-v2 post_answer_finality::exhausted_transport_retries_fail_closed_after_bounded_attempts`。
+    §6.5 把这两条判为"单轮抖动"，这轮给出正面证据，判定成立。
+  - 这轮新增红：`codex-core::all suite::auto_review::remote_model_override_uses_catalog_model_for_strict_auto_review`、
+    `codex-core::all suite::subagent_notifications::subagent_stop_replaces_stop_and_skips_internal_subagents`、
+    `codex-core::windows_sandbox windows_elevated_*` ×4、
+    `codex-windows-sandbox unified_exec::legacy_workspace_write_delete_is_limited_to_writable_roots`。
+    均不在 rig/桥路径上。
+  - **超时 2 → 6，其中 2 条需要谨慎对待，登记但不擅动**：老面孔
+    `external_auth…::discovery` 与 `windows_elevated_approved_git_pull_preserves_deny_read`
+    继续超时；新增的 `codex-core image_preparation::tests::detail_policies_apply_the_expected_budgets`
+    与 `codex-utils-image tests::legitimately_large_dimensions_still_decode` 在上一轮是
+    **45.351s / 47.057s PASS 且被标 `SLOW [> 30.000s]`**，这轮越过 60s 界限被判超时。
+    归属查过：两个文件都由本分叉提交改过（`2f048c3b4`、`4a0dd66d5`，后一个名字本身就是
+    `2f048c3b4` 加的），所以**不能说与本轮无关**；但相对上一轮的唯一代码增量 `04beac00a`
+    只动 `wire_images*.rs` 与 `wire_budget_outbound_tests.rs`，不在这两条测试的执行路径上，
+    且同轮 windows 墙钟 1h57m vs 上一轮 1h48m（+9%）。判定为**这两个用例本来就贴着 60s
+    界限跑、runner 一抖就越线**，与 §6.4 里 `8443539b0` 处理的是同一类问题（那一笔把
+    dispatched floor 腿换回 `IO_DEADLINE`）。本轮**不擅自改**：可选处置是给这两条单独放宽
+    deadline（动 nextest 配置/属性，属测试配置变更），或承认它们在 Windows runner 上就是
+    flaky 并保持观察。交用户决定。
+- **macos（首次完整观测，无基线可比）**：22877 run / 22868 passed（28 slow）/ **3 failed**
+  / **6 timed out** / 71 skipped。3 failed =
+  `suite::v2::guardian_v2::stateful_async::classifier_modes_preserve_approval_matrix::failed`、
+  `suite::v2::multi_agent_v2_developer_instructions::cold_resume_preserves_effective_developer_instructions_for_worker::inherits_parent_developer_instructions_without_an_override`、
+  `codex-tui app::tests::session_lifecycle_requests::startup_defaults_tests::fresh_startup_falls_back_only_for_unsupported_config_read`。
+  6 timed out = `external_auth…::discovery` + `codex-cli::app_server_daemon` ×5
+  （60s/120s/180s 三档界限都出现）。因为 mac 之前四轮全被取消，**这 9 项只能登记为
+  "首次观测到"，不得声称是抖动、也不得声称是本轮引入**；唯一有旁证的是前两条落在
+  §6.5 已登记过的 app-server/guardian 抖动区域。
+- **`external_auth_refreshes_on_unauthorized::discovery` 这轮在三平台全部超时**
+  （ubuntu / windows / macos 均 `TERMINATING [> 60.000s]`）。未闭合清单第 1 项把它登记为
+  "fork 历史回归、不得称纯环境问题"——本轮证据与该判定**一致且更硬**：它不再是 ubuntu
+  独有现象，而是三平台复现，所以更不能用"runner 抖动"解释掉。
+- **结论口径**：本轮**没有**让 CI 变绿，也不打算靠重跑凑绿。它证明的是：`04beac00a`
+  的 floor 修复及其 5 个净新增用例在 linux/windows/macos 三个真实 runner 上全绿，且
+  失败集合与本分叉自有 crate 无交集。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -318,11 +398,11 @@ original→high 塌陷，无少计。
   已在本节按复核事实重写。旧 worktree 仍不得当最新源码使用。
 - Codex `test`：`646069aa2`（= 交接时的 `origin/test`）之上本轮新增 `04beac00a` 与本文
   档提交。工作树 clean。
-- ACP `dev`：`19207d3`（= 交接时的 `origin/dev`）之上本轮新增 `0930455` 与 `147280b`
-  （`origin/dev` = `147280b`）；`vendor/` 未跟踪，须保留。本轮对
+- ACP `dev`：`19207d3`（= 交接时的 `origin/dev`）之上本轮新增 `0930455`、`147280b`、
+  `d188807`（`origin/dev` = `d188807`，三笔均已推送）；`vendor/` 未跟踪，须保留。本轮对
   `958b63f..19207d3`（case@VENDOR/wire 路由、共享预算、显式窗口传播）的独立复核抓到
   5 个真实旁路并全部闭合，结论登记在 §8；跨系统实机验证（含 Windows 上确认的第 6 个
-  真实缺陷）登记在 §9。
+  真实缺陷、以及 Windows 上 ACP 产品套件的 3 项分隔符耦合红）登记在 §9。
 - 构建位置（影响复现，登记备查）：本轮及后续 cargo 工作在 zhitai 副本，
   `CARGO_TARGET_DIR` 用仓库内 `codex-rs/target`，`CARGO_HOME` 指向
   `/Volumes/zhitai/cargo-home`（由 `~/.cargo` 完整复制，`cargo +1.95.0 metadata
@@ -342,11 +422,20 @@ original→high 塌陷，无少计。
 - 仍阻断 / 未闭合（不属于 rig 核心路径，独立登记）：
   1. `external_auth_refreshes_on_unauthorized::discovery`——fork 历史回归，ubuntu 表现为
      60s TIMEOUT；上游通过、fork 失败，不得称纯环境问题。
-  2. macos nextest 连续四轮撞 3h job 时限被取消，完整 macos 验收从未拿到（建议拆分片）。
+  2. ~~macos nextest 连续四轮撞 3h job 时限被取消，完整 macos 验收从未拿到~~
+     → run 39233543173（§6.7）**第一次跑完**，2h49m27s 完成、结论仍为 failure。剩下的
+     是它只带来 9 项**无基线可比**的首次观测（3 failed + 6 timed out，含 5 条
+     `codex-cli::app_server_daemon` 超时），以及余量只有约 10 分钟、建议继续拆分片。
   3. windows 尾项家族（ConPTY、unified_exec、uds ACL、elevated runner、cur 检测等）与
      `shell_snapshot…blocked_descriptor` 抖动。
   4. 验机 `swufe@192.168.32.163` 的 rustup 组件安装存在 manifest 损坏；pinned 1.95.0
      的 Clippy 以 mac 结果为准，不擅自改动仓库锁定版本。
+  5. **本分叉自有测试贴线**：windows 上
+     `codex-core image_preparation::tests::detail_policies_apply_the_expected_budgets`
+     与 `codex-utils-image tests::legitimately_large_dimensions_still_decode` 上一轮以
+     45.351s / 47.057s PASS 并被标 SLOW，本轮越过 60s 界限判超时。两条都由本分叉提交
+     改过（`2f048c3b4`、`4a0dd66d5`），处置（单独放宽 deadline / 承认 flaky 继续观察）
+     交用户决定，证据见 §6.7。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
@@ -432,11 +521,12 @@ clone 发生在 `4ee470d5c` 推上 `origin/test` 之后，按推送顺序其 HEA
   exit 0**。与 mac 的 712 差 4 项，逐项核对为 `codex-rs/protocol/src/permissions.rs` 中
   4 个 `cfg(target_os = "macos")` 权限测试；rig-bridge 子集两平台同为 **337**。差额解释
   清楚，不是漏跑。
-- 诚实边界：机器在跑完 nextest 后掉线，Linux 那份 clone 的 **HEAD sha 无法复核**
-  （当时没记 `rev-parse` 输出），所以不声称"floor 修复的 5 个新增测试已在 Linux 逐项
-  点名验证"。恢复后要做的就三件事：`git -C ~/rig-verify-20261019/codex rev-parse HEAD`
-  记进收据、`cargo nextest run -E 'test(canonical_floor) or test(reject_before_http)'`
-  点名、release build + `env-determinism`。
+- 诚实边界：机器在跑完 nextest 后掉线，所以不声称"floor 修复的 5 个新增测试已在**这台
+  机器**上逐项点名验证"。§6.7 之后，"点名验证 floor 测试在 Linux 上为绿"这件事已由
+  `nextest (ubuntu-latest)` 覆盖（5 个净新增用例逐个取到 PASS），所以那台机器恢复后要
+  补的只剩两件：`git -C ~/rig-verify-20261019/codex rev-parse HEAD` 记进收据、
+  release build + 取 sha256 + `env-determinism`。**runner 不等于这台实机**：内核、镜像、
+  凭据环境都不同，不能用 CI 冒充实机产品路径收据。
 - ACP 驱动套件（@ `0930455`）：python **28/28**、node live **25/25**、stress **4/4**。
   Linux 的 node reporter 是 TAP（`# tests`），不是 mac/Windows 的 `ℹ`，第一次按 `ℹ` grep
   得到空输出，改按 TAP 行确认后计数如上。
@@ -447,7 +537,9 @@ clone 发生在 `4ee470d5c` 推上 `origin/test` 之后，按推送顺序其 HEA
   release build → 取 `codex`/`codex-exec` 的 sha256 → 跑 `env-determinism`，并用
   `147280b` 之后的驱动复跑 python 29 / node 26。
 
-### 9.2 Windows（`/c/git-workspace/rig-verify-20261019/acp`，浅 clone @ `0930455`）
+### 9.2 Windows（`/c/git-workspace/rig-verify-20261019/acp`，浅 clone）
+
+clone 初始 HEAD 是 `0930455`，红→绿复跑时 `git pull --ff-only` 到 `147280b`。
 
 - `npm install` 成功，postinstall 从 OSS 发布渠道取到
   **nuwax-codex 0.18.12 windows-msvc**（113 MB zip）——这条是 §9.3 lock 结论的正面证据：
@@ -542,6 +634,55 @@ clone 发生在 `4ee470d5c` 推上 `origin/test` 之后，按推送顺序其 HEA
   floor 修复（该二进制里没有它），也不替代 §9.1 尚未完成的 Linux 实机跑。
   harness 沿用了既有的 `--dangerously-bypass-approvals-and-sandbox`，但提示词仅为
   `Reply with exactly: pong`、`CODEX_HOME`/工作目录隔离在 scratch、出站只到 127.0.0.1。
+
+### 9.5 Windows 上的 ACP **产品**套件（vitest）：3 项红全是断言/快照与 POSIX 分隔符耦合
+
+§9.2 覆盖的是验收驱动；这条是**产品测试套件本身**在非 POSIX 平台上的结果，之前没有
+Windows 数据。命令与 mac 完全同一：ACP `d188807`，`npm test` =
+`vitest run --no-file-parallelism`，日志 `C:\git-workspace\rig-verify-20261019\vitest-win.log`。
+
+- **计数**：Windows `Test Files 2 failed | 62 passed | 7 skipped (71)`、
+  `Tests 3 failed | 835 passed | 33 skipped (871)`；**同一提交同一命令**在 mac 复跑得
+  `65 passed | 6 skipped (71)`、`839 passed | 32 skipped (871)`。
+- **两个平台的差逐项可解释，不是环境吞了用例**：多出的 1 个 skipped 文件是
+  `src/__tests__/CodexACPAgent/process-exit-error.test.ts:14` 的
+  `it.skipIf(process.platform === 'win32')`——该用例的假 codex 写成 `#!/bin/sh` 脚本，
+  作者已显式在 Windows 上跳过。于是 839 = 835 passed + 3 failed + 1 skipped 恰好对齐，
+  文件数 6→7 也恰好对齐。（Windows 墙钟 86.07s vs mac 26.19s，平台速度差异，不影响判定。）
+- **3 项红的来源逐条查实**（两类、三条，都只关乎路径字符串）：
+  1. `CodexAcpClient.test.ts > prefers ACP additional directories over legacy meta roots
+     for new session skill discovery`：`:509` 断言
+     `extraRoots: ["/workspace/extra/.agents/skills"]`，而产品代码
+     `src/CodexAcpClient.ts:934` 是
+     `additionalRoots.map(root => path.join(root, ".agents", "skills"))`，Windows 上
+     `path.join` 合法地产出 `\workspace\extra\.agents\skills`。
+  2. `CodexAcpClient.test.ts > applies ACP additional directories to turn skill discovery
+     and sandbox policy`：`:1100` 同一条期望、同一个成因。
+  3. `load-session.test.ts > should recover response item function calls when app-server
+     history omits tool items`：`:783` 的 `toMatchFileSnapshot` 与
+     `data/load-session-response-item-history-fallback.json:259` 里存死的
+     `Read file '/test/project/src/index.ts'` 不符；标题由
+     `src/CodexToolCallMapper.ts:571` `title: \`Read file '${commandAction.path}'\``
+     原样拼出、无归一化，路径则来自
+     `src/ResponseItemHistoryFallback.ts:1030 return path.join(cwd, targetPath)`。
+- **定性（按"协议不适用 / 桥未实现 / 真实字段遗漏 / harness 问题"四分法）**：这是
+  **测试断言与快照基线跟 POSIX 分隔符耦合**，不是产品缺陷。ACP 代理在 Windows 上
+  spawn 的是同机 Windows 版 codex 进程，`extraRoots`、`additionalDirectories` 和工具
+  标题的消费者都只在本机解释这些字符串，`path.join` 给本机分隔符正是正确形状；协议
+  字段本身对分隔符没有任何约定，所以也谈不上"字段遗漏"或"桥未实现"。
+- **本轮不修，两个理由**：修法只有 (a) 把 3 处期望改成用 `path.join` 构造、并重新生成
+  快照基线，或 (b) 在产品里做分隔符归一化。(b) 会改变发往本地进程的字符串形状，属产品
+  行为变更，超出"只修已确认缺陷"的授权范围；(a) 要动产品测试套件的期望与快照基线，同样
+  不在本轮范围内，而且快照要么按平台各存一份、要么存归一化形式，是个需要用户拍的取舍。
+  登记为**已定性的测试可移植性缺口**。
+- **一处值得留档的真实假设（不在上面 3 项红的范围内，也不是本轮缺陷）**：
+  `ResponseItemHistoryFallback.ts:1030` 用**代理进程所在平台**的语法拼 `cwd`。若将来出现
+  "ACP 代理跑在 Windows、app-server 跑在 Linux 容器"的混合拓扑，这个假设不成立。本轮
+  没有任何证据表明该拓扑属受支持配置，§9.4 的渠道收据也不是它，因此只登记、不处理。
+- **反向证据（排除"Windows 构建/类型层面有问题"）**：同一目录 `npm run typecheck`
+  返回 rc=0（四条 `tsc --noEmit` 全过）。所以这 3 项红纯粹是运行时路径字符串，不是
+  Windows 上的编译或类型差异。
+
 
 
 
