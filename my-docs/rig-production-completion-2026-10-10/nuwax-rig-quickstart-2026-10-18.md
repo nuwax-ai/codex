@@ -22,12 +22,18 @@ export NUWAX_API_KEY='填入自己的Token Plan Key'
 在 `fork-nuwax-codex` 的 `test` 分支源码中构建包含 rig 的 CLI：
 
 ```bash
-cd /Volumes/soddy/git_workspace/fork-nuwax-codex/codex-rs
+cd /Volumes/zhitai/git_workspace/fork-nuwax-codex/codex-rs
 cargo build --release -p codex-cli --features codex-core/rust-rig
-export CODEX_PATH='/Volumes/soddy/git_workspace/fork-nuwax-codex/codex-rs/target/release/codex'
+export CODEX_PATH='/Volumes/zhitai/git_workspace/fork-nuwax-codex/codex-rs/target/release/codex'
 ```
 
-Linux/容器把路径换成相应绝对路径。`CODEX_PATH` 指向 **codex CLI**，ACP 会用它启动 `app-server` 子命令；不要填 codex-exec 或 codex-app-server。切换构建后检查二进制SHA和路径，避免仍运行npm依赖附带的旧版本。
+**构建前先确认你在哪个副本上。** 本机存在两个互相独立的 `nuwax-ai/codex` clone，都在
+`test` 分支：`/Volumes/zhitai/…` 是本轮收口用的工作副本；`/Volumes/soddy/…` 落后于它，
+从那里构建会得到修复前的二进制。`git -C <目录> log --oneline -1` 应当是远端最新提交，
+不要用旧 worktree（`.claude/worktrees/merge-main-20261014`）当源码。切换构建后检查二进制
+SHA 和路径，避免仍运行 npm 依赖附带的旧版本。
+
+Linux/容器把路径换成相应绝对路径。`CODEX_PATH` 指向 **codex CLI**，ACP 会用它启动 `app-server` 子命令；不要填 codex-exec 或 codex-app-server。
 
 先用同一个 CLI 做文字冒烟，再让现有 ACP 宿主启动 `fork-codex-acp-ts` 的 `dev` 分支：
 
