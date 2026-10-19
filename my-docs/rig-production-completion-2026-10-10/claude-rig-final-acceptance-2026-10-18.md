@@ -383,6 +383,9 @@ original→high 塌陷，无少计。
   （ubuntu / windows / macos 均 `TERMINATING [> 60.000s]`）。未闭合清单第 1 项把它登记为
   "fork 历史回归、不得称纯环境问题"——本轮证据与该判定**一致且更硬**：它不再是 ubuntu
   独有现象，而是三平台复现，所以更不能用"runner 抖动"解释掉。
+  **（此处只修正判定的一半，2026-10-20 回读后由 §6.9 改写：三平台复现 + 16 ms 离散度
+  确实把"抖动"解释排除了，但**排除抖动 ≠ 归属分叉**；该归属结论后来被证明拿不出凭据，
+  已撤回。"不能称纯环境问题"这半句仍然成立。）**
 - **结论口径**：本轮**没有**让 CI 变绿，也不打算靠重跑凑绿。它证明的是：`04beac00a`
   的 floor 修复及其 5 个净新增用例在 linux/windows/macos 三个真实 runner 上全绿，且
   失败集合与本分叉自有 crate 无交集。
@@ -419,6 +422,41 @@ original→high 塌陷，无少计。
   由 run **39286738661**（`Fork Cargo PR`，head `7b1a92c6a`，
   `createdAt 2026-10-19T16:35:56Z`，登记时为 `queued`）验证。
   **Windows 腿这两条是否因此转绿，要等该 run 结束再登记，现在不预判。**
+
+### 6.9 回读 §6.7 已下载的三平台日志：`external_auth…::discovery` 的定性要改写
+
+这条是复审 §7 未闭合清单第 1 项时，从**已经在手的** run 39233543173 日志
+（scratch `ci-39233543173/{ubuntu,windows,macos}.log`，未重新下载）里读出来的。结论：
+该项此前的定性**证据不足**，而它一直没被根因有个结构性原因。
+
+- **日志事实（逐条对到时间戳）**：同一测试的两个参数化在三个平台**表现完全分裂**——
+  - `::responses` **PASS**：ubuntu `1.210s`、windows `0.938s`、macos `0.654s`；
+  - `::discovery` 一律 `SLOW [> 30.000s]` → `TERMINATING [> 60.000s]` →
+    `TIMEOUT`：**60.024s / 60.028s / 60.012s**（ubuntu/windows/macos）。
+  三平台的超时值离散度只有 **16 ms**，而 §6.7 里那些"抖动"项的离散度是几十个百分点
+  量级。所以这不是慢，而是**卡在某个等待上直到被杀**——按四分法应归**真实缺陷（挂起）**
+  或 **harness 死锁**，不能再用"runner 抖动"解释。
+- **为什么历来只拿得到一个名字**：`app-server/tests/suite/v2/account.rs:74` 把
+  `DEFAULT_READ_TIMEOUT` 设成 **60s**，而 nextest 默认界限正好是 `30s × 2 = 60s`。
+  也就是说**该用例内部任何一条 `timeout(DEFAULT_READ_TIMEOUT, …)` 腿刚开始等，就正好
+  撞到 harness 的 kill**，它自己的 `Elapsed`/`bail!` 诊断永远来不及打印。同目录另有
+  30s（`account_thread_usage.rs:27`）和 10s（`auto_env.rs:22`）两种写法，60s 不是惯例。
+  这与 `8443539b0` 处理过的是同一类问题（用例自设期限 ≥ 界限 → 只能记成 TIMEOUT）。
+- **归属查证（`git log --no-merges main..test -- <file>` 计数）**：
+  `app-server/src/external_auth.rs`、`core/src/auth.rs`、`backend-client/src/client.rs`
+  三个直接相关文件上的**本分叉提交数均为 0**；用例本身由上游 `0a5b99916`（#46281）加入，
+  60s 常量由上游 `02a720525`（#18161）从 10s 改上来。
+  因此 §7 第 1 项"**上游通过、fork 失败**"缺少任何可出示的凭据，已就地撤回。
+- **但也同样不能宣布"与分叉无关"**：用例配的是自定义
+  `model_providers.routing`（`requires_openai_auth = true` + 指向 mock 的 `base_url`）的
+  出站，而 provider 出站形状正落在本分叉大改的 `codex-api` / rig bridge 射程内。
+  现有证据只支持一个口径：**未定性的确定性挂起，待根因**。
+- **能让 CI 给出根因的最小改动（已想清代价，但本轮不单独为它触发 CI）**：给该用例单独
+  `slow-timeout = { period = "1m", terminate-after = 2 }`（120s），让内部 60s 期限**先**
+  到期，日志里就会出现到底是哪条腿在等（`expected account/chatgptAuthTokens/refresh
+  request, got …` 还是 `Elapsed`）。每条腿最多多花约 60s，mac 腿余量按 §6.7 是 ~10 分钟，
+  可承受。按"不要为了重跑 CI 无意义提交"的约束，**并入下一次真实代码推送**一起做，
+  不单独 dispatch。
 
 ## 7. 提交、推送与工作树状态
 
@@ -466,8 +504,15 @@ original→high 塌陷，无少计。
   合并、停机晚注册线程、同 ID 恢复实例、MCP structuredContent 遮蔽、工具定义失败清空、
   超范围整数近似化。
 - 仍阻断 / 未闭合（不属于 rig 核心路径，独立登记）：
-  1. `external_auth_refreshes_on_unauthorized::discovery`——fork 历史回归，ubuntu 表现为
-     60s TIMEOUT；上游通过、fork 失败，不得称纯环境问题。
+  1. ~~`external_auth_refreshes_on_unauthorized::discovery`——fork 历史回归，ubuntu 表现为
+     60s TIMEOUT；上游通过、fork 失败，不得称纯环境问题。~~
+     → **"fork 历史回归 / 上游通过、fork 失败"这半句拿不出凭据，按 §6.9 撤回**：该用例
+     由上游提交 `0a5b99916`(#46281) 引入，内部 60s 读超时由 `02a720525`(#18161) 从 10s
+     改成 60s，且 `app-server/src/external_auth.rs`、`core/src/auth.rs`、
+     `backend-client/src/client.rs` 三个直接相关文件上的**本分叉提交数为 0**。
+     但也**不能反过来说与分叉无关**：用例配置的是自定义
+     `model_providers.routing` 出站，正落在本分叉改过的 `codex-api` / rig bridge 范围内。
+     现在口径是**未定性、待根因**，并且 §6.9 说明为什么现有 CI 结构上不可能给出诊断。
   2. ~~macos nextest 连续四轮撞 3h job 时限被取消，完整 macos 验收从未拿到~~
      → run 39233543173（§6.7）**第一次跑完**，2h49m27s 完成、结论仍为 failure。剩下的
      是它只带来 9 项**无基线可比**的首次观测（3 failed + 6 timed out，含 5 条
