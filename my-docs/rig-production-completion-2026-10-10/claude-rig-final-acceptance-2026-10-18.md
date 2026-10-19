@@ -450,6 +450,14 @@ original→high 塌陷，无少计。
   后 `df -h /` 复查系统盘没有增长。系统盘上另有 `~/.cargo`(5.0G)、`~/.rustup`(3.6G)
   两份旧副本与 `/var/folders/…/T` 的 23G 遗留测试 scratch（20685 项，跨多套测试），
   本轮未写入、未清理，是否清理由用户决定。
+- **自查抓到的一处同类偏差（§9.6 的副作用，登记并纠正）**：§9.6 那次
+  `npm install --package-lock-only` 虽然在 mac 上执行、且**没有**安装任何依赖，仍然往
+  系统盘的 `~/.npm/_cacache` 写了 **122 个文件 / 3.2 MiB**（packument 与索引条目）。
+  实测方式：`find ~/.npm -type f -newermt '-6 hours'` 计数 + `du -ch` 求和。
+  结论：**"没装依赖"不等于"没写系统盘"**。npm 没有仓库级覆盖变量，只能显式
+  `--cache /Volumes/zhitai/tmp/npm-cache`——§9.6 的 `npm ci` 验证就是这么做的
+  （那份缓存 37 MiB 全在外接盘），只有 lock 同步那一条命令漏了。后续任何 npm 操作
+  一律带 `--cache`。系统盘当前 `df -h /` 余 22 Gi。
 - 实网证据对应关系：MiMo Chat / GLM Responses / Step Anthropic 各 12 步、共 54 次上游
   请求（预算 90）绑定 **`c4d08f71b` 构建的二进制**，不覆盖 `52d283204`、`8443539b0`、
   `04beac00a`。任何新收据必须绑定真正使用的源码与二进制。
