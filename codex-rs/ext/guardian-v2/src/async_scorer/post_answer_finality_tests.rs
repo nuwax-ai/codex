@@ -669,9 +669,11 @@ async fn exhausted_transport_retries_fail_closed_after_bounded_attempts() -> Res
         }
     })
     .await?;
-    // The failure is terminal after the bounded attempts, with no extra waiting.
+    // The sampling task records the terminal failure only after it publishes the
+    // fail-closed score, so the metric needs the same bounded wait as the score.
+    let outcomes = wait_for_outcome(&fixture.metrics, &["failure"]).await?;
     assert_eq!(
-        recorded_classification_outcomes(&fixture.metrics),
+        outcomes,
         vec![("failure".to_owned(), Some("flex_unavailable".to_owned()))]
     );
     assert_eq!(
