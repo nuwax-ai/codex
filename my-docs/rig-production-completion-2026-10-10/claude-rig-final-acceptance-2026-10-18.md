@@ -318,9 +318,11 @@ original→high 塌陷，无少计。
   已在本节按复核事实重写。旧 worktree 仍不得当最新源码使用。
 - Codex `test`：`646069aa2`（= 交接时的 `origin/test`）之上本轮新增 `04beac00a` 与本文
   档提交。工作树 clean。
-- ACP `dev`：`19207d3`（= 交接时的 `origin/dev`）之上本轮新增 `0930455`；`vendor/`
-  未跟踪，须保留。本轮对 `958b63f..19207d3`（case@VENDOR/wire 路由、共享预算、
-  显式窗口传播）的独立复核抓到 5 个真实旁路并全部闭合，结论登记在 §8。
+- ACP `dev`：`19207d3`（= 交接时的 `origin/dev`）之上本轮新增 `0930455` 与 `147280b`
+  （`origin/dev` = `147280b`）；`vendor/` 未跟踪，须保留。本轮对
+  `958b63f..19207d3`（case@VENDOR/wire 路由、共享预算、显式窗口传播）的独立复核抓到
+  5 个真实旁路并全部闭合，结论登记在 §8；跨系统实机验证（含 Windows 上确认的第 6 个
+  真实缺陷）登记在 §9。
 - 构建位置（影响复现，登记备查）：本轮及后续 cargo 工作在 zhitai 副本，
   `CARGO_TARGET_DIR` 用仓库内 `codex-rs/target`，`CARGO_HOME` 指向
   `/Volumes/zhitai/cargo-home`（由 `~/.cargo` 完整复制，`cargo +1.95.0 metadata
@@ -410,5 +412,96 @@ vendor 必须先被强制成该形状，标签才能唯一回译。测试里
 （`test_live_support.py` 的 localhost 网关 + fake exec，零付费请求）。54 次真实上游
 收据仍只绑定 `c4d08f71b` 构建的二进制；`0930455` 之后的驱动若要声称覆盖新二进制，必须
 重跑并另立收据。缺陷 2/3 的付费影响只有实网跑过才会计入真实账单，此处不冒称已量化。
+
+## 9. 跨系统实机验证（ubuntu 24 + Windows，提交 `147280b`）
+
+用户提供两台实机用于验证：`ubuntu 24 / 192.168.32.117` 与 `Windows / 192.168.32.235`。
+两台都用独立 scratch 目录，不碰机器上既存的工作副本与容器；凭据只在会话内使用，不写入
+任何文件、提交或记录。
+
+### 9.1 ubuntu 24（`~/rig-verify-20261019`，全新 clone @ `4ee470d5c`）
+
+- **工具链判正**：首轮非交互 SSH 报 `cargo MISSING`，据此写下"这台机器没有 Rust"——
+  错。`bash -lc` 探测得到 `1.95.0-x86_64-unknown-linux-gnu` 与已安装的 `cargo-nextest`，
+  与 `rust-toolchain.toml` 的 pin 一致。教训登记：任何"环境缺失"结论必须以登录 shell
+  的探测为准，同一类错误还让 `nextest list` 一度返回空。
+- `nextest`（`codex-protocol` + `codex-rust-rig-bridge`，含 rust-rig feature）**708/708，
+  exit 0**。与 mac 的 712 差 4 项，逐项核对为 `codex-rs/protocol/src/permissions.rs` 中
+  4 个 `cfg(target_os = "macos")` 权限测试；rig-bridge 子集两平台同为 **337**。差额解释
+  清楚，不是漏跑。
+- ACP 驱动套件（@ `0930455`）：python **28/28**、node live **25/25**、stress **4/4**。
+  Linux 的 node reporter 是 TAP（`# tests`），不是 mac/Windows 的 `ℹ`，第一次按 `ℹ` grep
+  得到空输出，改按 TAP 行确认后计数如上。
+- **未完成**：`cargo +1.95.0 build --release -p codex-cli --features
+  codex-core/rust-rig` 在 907 行 `Compiling`（已到 app-server）时机器掉线，此后
+  ICMP 100% 丢包、22 端口超时，`env-determinism` 零付费实机用例因此**没有在 Linux 上
+  跑成**。二进制未落盘确认，不声称任何 Linux 实机产品路径收据。机器恢复后需要重跑
+  release build → 取 `codex`/`codex-exec` 的 sha256 → 跑 `env-determinism`，并用
+  `147280b` 之后的驱动复跑 python 29 / node 26。
+
+### 9.2 Windows（`/c/git-workspace/rig-verify-20261019/acp`，浅 clone @ `0930455`）
+
+- `npm install` 成功，postinstall 从 OSS 发布渠道取到
+  **nuwax-codex 0.18.12 windows-msvc**（113 MB zip）——这条是 §9.3 lock 结论的正面证据：
+  渠道上确实有 0.18.12，`package.json` 声明的也是 `^0.18.12`。
+- 首轮 28 项里 **4 项红**，两类原因，都先用探针证实再改：
+  1. **3 项 harness 无法在 Windows 落地**：fake exec 写成 `#!/usr/bin/env python3`
+     脚本，`subprocess` 直接 spawn 得到 `WinError 193`。探针实测：`.cmd` 批处理**可以**
+     被 `subprocess` 直接启动（rc 0、stdout 正确），shebang 脚本不行；且
+     `os.access(path, X_OK)` 在 Windows 对任何存在的文件都返回 True，驱动那道
+     "必须可执行"的闸门在 Windows 上等价于"必须存在"。修法：`write_fake_exec()` 按平台
+     产出 `.cmd`（绝对路径解释器）或 POSIX 脚本，被测代码路径不变。
+  2. **1 项断言写死了 POSIX 分隔符**：`CODEX_HOME` 断言期望 `/isolated/home`，而
+     `str(Path("/isolated/home"))` 在 Windows 合法地给出 `\isolated\home`。改成与传入的
+     同一个 `Path` 比较，仍然校验"驱动没有让父环境的 home 逃出去"。
+- 修完这两类后仍剩 **2 项红**，且都是 `budgetDenied` 少计（`0 not >= 1`、`0 != 3`）。
+  **这两条失败信息是假的**，真实原因用一个保留全部工件的诊断跑（`~/diag-run`）抓到：
+
+  ```
+  === fresh: rc=0        PASS wire-chat; 3/3; denied=0
+  === resume: rc=1       live validation failed: budget gateway could not start
+  === lock exists: True  {"pid":22788,"owner":"cb8f…"}     ← 持有者是已死的第一轮网关
+  === summary: {'attemptsUsed': 3, 'budgetDenied': 0, ...} ← 上一轮的旧 summary.json
+  ```
+
+  即：Windows 的 `terminate()` 是 `TerminateProcess`，node 收不到 SIGTERM，
+  `request-ledger.jsonl.lock` 不会被释放；第二轮 `--resume` / `--only-failed` 在网关
+  启动处**按设计 fail closed**（网关不会自动接管别人的锁，这正是防双倍预算的那条不变量），
+  但驱动没有把这次启动失败写进 summary，而是让调用方读到**上一轮遗留的 summary.json**，
+  于是"预算拒绝少计"这种像是记账漏洞的现象被报了出来。
+- **定性**：这是验收驱动的**真实缺陷**（第 6 个），不是产品 Rust 路径缺陷，也不是
+  "Windows 不支持"。危害在于证据完整性——在 Windows 上任何 resume/fixup 的收据都可能是
+  上一轮的；预算本身没有双倍花费（fail closed 正确）。mac/Linux 靠 SIGTERM 恰好掩盖了它，
+  所以单平台自查看不见。
+- **修复**（`147280b`）：网关新增 token 鉴权的 `POST /control/shutdown`，走与 SIGTERM
+  相同的 `close()`→释放锁→退出路径；驱动先请求协作关闭，只在超时仍存活时才 escalate 到
+  `terminate()`/`kill()`。该路由位于全局鉴权检查之后，未授权调用得到 403 且服务继续，
+  为此补一条 node 契约（新路由不会给外部一个掐掉验收跑的入口）。新增
+  `GatewayShutdownContract` 钉住不变量：一轮正常跑结束后锁必须消失，`--resume` 必须真的
+  连上网关并把耗尽预算的两次请求计为 denial（顺带记正一条口径：
+  `attemptsUsed` 只统计 `admitted`，被拒绝的请求不占"已用"）。
+- **绿**：Windows python **29/29**、node live **26/26**、stress **4/4**；macOS 同步
+  **29/26/4**。红→绿证据即上面的 `lock exists: True` + `could not start`，与修复后同一
+  套件的 lock 断言通过。scratch clone 里 `package-lock.json` 被 `npm install` 改写过，
+  按 §9.3 的结论**未提交**，保留作证据。
+- Windows 侧另一条操作性事实：`live-smallbatch.sh` / `live-fixup.sh` 是 bash 包装，
+  Windows 上直接调 `live-validation.py`；本轮没有为此改动脚本。
+- 一处我自己的误判登记：第一次在 Windows 后台执行复合命令没有建出目录，我先怀疑主机；
+  单独 `mkdir -p` 得到 `rc=0`+可写，说明是**我的命令**问题不是机器问题，随后改前台执行。
+
+### 9.3 `npm ci` 在 `dev` 上失败（跨平台、影响发布渠道，需用户决定）
+
+- macOS 上 `npm ci` 直接失败：`Invalid: lock file's nuwax-codex@0.18.3 does not satisfy
+  nuwax-codex@0.18.12`。Windows 上 `npm install` "成功"，是因为它会**顺手改写 lock**：
+  `1.2.12 → 1.2.18`、`^0.18.3 → ^0.18.12`、`0.18.3 → 0.18.12`。
+- 也就是说 lock 是陈的，`vendor/nuwax-codex` 只是未跟踪的 Rust staging、不是 npm 源，
+  而 0.18.12 在三处一致（`package.json` 声明、mac 本地安装、Windows postinstall 从 OSS
+  取到的包）。
+- **不在本轮擅动的理由**：`npm install` 在配了国内镜像的机器上把 `resolved` 从
+  `registry.npmjs.org` 改写成了 `registry.npmmirror.com`。lock 里写死哪个下载域，是喂给
+  用户 npm 发布渠道的供应链决定，不该由一次验证跑的机器配置顺带定下来。要同步请在**确定
+  的 registry** 上显式做（`npm install --package-lock-only`），并核对 `integrity` 字段。
+  本轮只登记，不改。
+
 
 
