@@ -630,6 +630,39 @@ nextest 输出体只有 `running 1 test` + `(test timed out)`，
 `final shutdown drain` / `shutdown_bound_tasks` / `exceeded final` 关键字出现次数**均为 0**，
 所以这只是结构风险，不是已确认缺陷。按本轮范围（只修已确认缺陷）登记不动。
 
+### 6.11 run 39286738661 收据：`7b1a92c6a` 的 Windows 放宽验证通过，但 mac 腿退回 cancelled
+
+这条 run 是 §6.8 那次真实测试配置变更（`7b1a92c6a`，Windows-only `1m × 2`）触发的，
+2026-10-19T16:35:56Z 起、`completed / conclusion=failure`。三平台 + gate 逐条：
+`bazel bridge gate (ubuntu)` ✔；`nextest (windows)` ✘ `21759 run / 21735 passed
+(24 slow, 244 leaky) / 21 failed / 3 timed out`；`nextest (ubuntu-latest)` ✘
+`22927 run / 22925 passed (13 slow) / 1 failed / 1 timed out`；
+`nextest (macos-latest)` **`cancelled`**（`16:39:21Z → 19:40:15Z`，正好 3h00m54s 撞 job 时限）。
+
+- **§6.8 的放宽**必要且充分，有实测**（这条可以宣布闭合了）：两条用例在 Windows 腿
+  `detail_policies_apply_the_expected_budgets` **PASS 60.423s**、
+  `legitimately_large_dimensions_still_decode` **PASS 63.198s**。
+  两个值都 **> 60s**，也就是**若仍按旧的 `30s × 2` 窗口，本轮这两条还会被判 TIMEOUT**；
+  放宽到 `1m × 2` 之后它们在新窗口 120s 内用完 50–53 % 通过。
+  顺带印证 §6.10 的口径：贴线不是 mac 独有的，Windows runner 上同一对用例也从
+  45.4/47.1 涨到 60.4/63.2（+33 %/+34 %），与 mac 腿 +55 %/−32 % 的摆动是同一量级现象。
+- **失败集合零新增**（这是本轮唯一想要的结论）：把 Windows 21 条 FAIL/3 条 TIMEOUT 逐条
+  与上一手 `4ee470d5c` 的 23 条/6 条对照，
+  **本轮有而上一手没有的：0 条**；上一手有而本轮消失的 4 条 = 上面那两条图片用例
+  （由 `7b1a92c6a` 解释）+ `suite::auto_review::remote_model_override_uses_catalog_model_for_strict_auto_review`
+  + `suite::code_mode::code_mode_excludes_mcp_servers_using_their_configured_identity`
+  （后两条本次改动**碰不到**，只能记抖动，不冒领）。
+- **ubuntu 腿两条不变**：`shell_snapshot…blocked_descriptor_path` FAIL 25.342s
+  （§6.5 已登记的抖动家族）与 `external_auth…::discovery` TIMEOUT **60.012s**。
+  `::discovery` 至此在本分叉已经累计 **5 条腿复现**（上一手三平台 + 本轮 ubuntu/windows，
+  本轮 mac 腿在被取消前未跑到该用例），离散 60.007–60.042。**§6.9 的诊断期限仍未落地**
+  （按约定并入下一次真实代码推送），所以这条继续挂"未定性、待根因"。
+- **需要一处口径升级（§6.10 第 2 类的处置不完整）**：本轮 mac 腿被取消在 12699/22877
+  （55.5 %），说明阻断项是 **3h job 时限本身**，不是那 5 条 daemon 期限。
+  也就是说：即使按 §6.10 给 mac 腿单独放宽那 5 条，mac 腿**仍然跑不完**——
+  放宽只是把"9 项观测"变成"更多项观测"，不解决终态。
+  因此"mac 腿分片"从 §6.7 的建议升格为**待办开发项**（下一步做，见 §7 未闭合项 2）。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -641,8 +674,13 @@ nextest 输出体只有 `running 1 test` + `(test timed out)`，
   已在本节按复核事实重写。旧 worktree 仍不得当最新源码使用。
 - Codex `test`：`646069aa2`（= 交接时的 `origin/test`）之上，本轮新增代码提交
   `04beac00a`（视觉 floor）与 `7b1a92c6a`（两条图片用例的 Windows deadline，§6.8），
-  以及文档提交 `a3e5da2f0`、`4ee470d5c`、`5262eb5e6`、`10b30ecd4`、`c7ece7dcc`、
-  `b636829b5`（均带 `[skip ci]`，实测未触发 CI）。`origin/test` = `7b1a92c6a`，
+  以及文档提交 `a3e5da2f0`、`4ee470d5c`（不带 `[skip ci]`：它们与代码提交 `04beac00a`
+  在同一次推送里，按 GitHub"一次推送只在 tip 触发一轮"的行为，只产生了 §6.7 的
+  run `39233543173`（head `4ee470d5c`）；`39205629146` 是更早、head `646069aa2` 的那轮，
+  不是这两笔触发的）、`5262eb5e6`、`10b30ecd4`、
+  `c7ece7dcc`、`b636829b5`、`0300c3b78`、`1605c3fb6`、`101c73b35`、`3439ae1c1`、
+  `0037503db`（均带 `[skip ci]`，逐笔实测未触发新 run）。
+  `origin/test` = `0037503db`；`7b1a92c6a` 触发的 run `39286738661` 已到终态并登记在 §6.11。
   本节这份文档提交在其后、同样带 `[skip ci]`，不额外占用 CI 预算。工作树 clean。
 - ACP `dev`：`19207d3`（= 交接时的 `origin/dev`）之上本轮新增 `0930455`、`147280b`、
   `d188807`、`59426b6`（三条分隔符耦合断言改平台中立，§9.5.1）、`6a76aa7`
@@ -701,6 +739,11 @@ nextest 输出体只有 `running 1 test` + `(test timed out)`，
      本项剩下的不是定性，而是**要不要为 mac 腿单独放宽那 5 条 daemon 期限**——
      与 §6.9 的诊断期限一起并入下一次真实代码推送，不单独 dispatch。
      余量只有约 10 分钟、建议继续拆分片这句仍然成立。
+     → **按 §6.11 再修正一次口径**：下一手 run `39286738661`（head `7b1a92c6a`）mac 腿
+     又退回 `cancelled`（3h00m54s，只跑到 12699/22877 = 55.5 %）。所以**"单独放宽那 5 条
+     期限"不足以闭合本项**——真正阻断的是 3h job 时限本身。本项现在拆成两个待办：
+     (a) mac 腿**分片**（升格为待开发项），(b) 那 5 条的 unix 期限放宽（仍与下一次代码推送
+     合并做）。定性与终态：定性已完成且结论不变，**mac 完整验收仍为未达成**。
   3. windows 尾项家族（ConPTY、unified_exec、uds ACL、elevated runner、cur 检测等）与
      `shell_snapshot…blocked_descriptor` 抖动。
   4. 验机 `swufe@192.168.32.163` 的 rustup 组件安装存在 manifest 损坏；pinned 1.95.0
@@ -714,6 +757,11 @@ nextest 输出体只有 `running 1 test` + `(test timed out)`，
      → 用户拍定"单独放宽"，已按 §6.8 实现（`7b1a92c6a`，Windows-only，`1m × 2`）。
      **此项在 CI 侧尚未闭合**：run 39286738661 结果待登记，Windows 腿这两条转绿之前
      不得声称已解决。
+     → **已闭合（§6.11）**：run 39286738661 Windows 腿两条 **PASS 60.423s / 63.198s**，
+     且该腿失败集合逐条对照上一手**零新增**，4 项转绿里有 2 项就是这两条（另 2 项与本改动
+     无关，记抖动不冒领）。两个 PASS 值都 > 60s，反证旧窗口本轮仍会判 TIMEOUT，
+     放宽既必要也充分。**注意本项闭合的范围只有"这两条不再被判超时"**：
+     它没有让 CI 变绿，也不覆盖 mac 腿（该 mac 腿同一对用例是 40.350s / 34.707s PASS）。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
