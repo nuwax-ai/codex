@@ -577,13 +577,16 @@ fn floor_provider(address: std::net::SocketAddr) -> codex_api::Provider {
 }
 
 /// Drives the full conversion + SDK + transport path under a context window
-/// and reports exactly what reached the local socket. The server listens for
-/// a 750ms window; a request the bridge rejected before any network IO
-/// counts zero attempts.
+/// and reports exactly what reached the local socket. `accept_window` bounds
+/// how long the server listens: rejections return before any network IO, so
+/// a short window proves zero attempts; dispatched requests need room for
+/// the client's synchronous setup (native trust-store init can be slow on
+/// macOS — see `dispatch_with_window`), so positives pass `IO_DEADLINE`.
 async fn stream_under_window(
     protocol: RigProtocol,
     request: &codex_api::ResponsesApiRequest,
     context_window_tokens: i64,
+    accept_window: Duration,
 ) -> Result<OutboundOutcome, TestError> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
@@ -595,11 +598,10 @@ async fn stream_under_window(
     .to_string();
     let server = tokio::spawn(async move {
         let mut served = Vec::new();
-        let accepted =
-            match tokio::time::timeout(Duration::from_millis(750), listener.accept()).await {
-                Ok(Ok((socket, _))) => socket,
-                _ => return served,
-            };
+        let accepted = match tokio::time::timeout(accept_window, listener.accept()).await {
+            Ok(Ok((socket, _))) => socket,
+            _ => return served,
+        };
         let mut socket = accepted;
         if let Ok(body) = read_request_body(&mut socket).await {
             use tokio::io::AsyncWriteExt;
@@ -666,7 +668,8 @@ async fn converted_originals_are_rejected_before_http_on_small_windows() -> Resu
             },
             with_tool,
         );
-        let outcome = stream_under_window(protocol, &request, 3_000).await?;
+        let outcome =
+            stream_under_window(protocol, &request, 3_000, Duration::from_millis(750)).await?;
         assert!(
             matches!(
                 outcome.api_error,
@@ -703,7 +706,7 @@ async fn converted_originals_reach_the_socket_with_window_room() -> Result<(), T
             },
             with_tool,
         );
-        let outcome = stream_under_window(protocol, &request, 8_000).await?;
+        let outcome = stream_under_window(protocol, &request, 8_000, IO_DEADLINE).await?;
         assert!(
             outcome.api_error.is_none(),
             "{protocol:?} tool={with_tool}: a floored-but-legal request must dispatch, got {:?}",
@@ -763,8 +766,13 @@ async fn multiple_originals_sum_the_floor_and_mixed_text_still_counts() -> Resul
             ]
         })]
     };
-    let rejected =
-        stream_under_window(RigProtocol::Chat, &floor_request(items(), false), 6_000).await?;
+    let rejected = stream_under_window(
+        RigProtocol::Chat,
+        &floor_request(items(), false),
+        6_000,
+        Duration::from_millis(750),
+    )
+    .await?;
     assert!(
         matches!(
             rejected.api_error,
@@ -774,8 +782,13 @@ async fn multiple_originals_sum_the_floor_and_mixed_text_still_counts() -> Resul
         rejected.api_error
     );
     assert_eq!(rejected.attempts, 0);
-    let dispatched =
-        stream_under_window(RigProtocol::Chat, &floor_request(items(), false), 12_000).await?;
+    let dispatched = stream_under_window(
+        RigProtocol::Chat,
+        &floor_request(items(), false),
+        12_000,
+        IO_DEADLINE,
+    )
+    .await?;
     assert!(dispatched.api_error.is_none());
     let body = dispatched.dispatched.expect("dispatched body");
     let occurrences = String::from_utf8_lossy(&body)
@@ -796,7 +809,7 @@ async fn compacted_text_only_history_carries_no_vision_floor() -> Result<(), Tes
     })];
     let request = floor_request(items, false);
     for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
-        let outcome = stream_under_window(protocol, &request, 1_200).await?;
+        let outcome = stream_under_window(protocol, &request, 1_200, IO_DEADLINE).await?;
         assert!(
             outcome.api_error.is_none(),
             "{protocol:?}: the compacted turn must dispatch as plain text, got {:?}",
