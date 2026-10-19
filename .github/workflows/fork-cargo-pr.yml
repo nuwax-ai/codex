@@ -192,10 +192,14 @@ jobs:
       # Native tests create databases and fixture trees in TEMP. The runner's
       # default C: TEMP filled during run 38782462743 while the checkout uses
       # the workspace drive. Keep test data off C: and outside the source tree.
+      # The name must stay dash-free: upstream's decode_cur_project_path only
+      # re-merges one adjacent ancestor pair, so a '-' here makes the four
+      # Cursor project-detection legs undecodable (reproduced off CI by pointing
+      # TMP/TEMP at a sibling codex-test-temp directory).
       - name: Configure Windows test temporary directory
         shell: pwsh
         run: |
-          $testTemp = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) 'codex-test-temp'
+          $testTemp = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) 'codextesttemp'
           New-Item -ItemType Directory -Force -Path $testTemp | Out-Null
           "TEMP=$testTemp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "TMP=$testTemp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
