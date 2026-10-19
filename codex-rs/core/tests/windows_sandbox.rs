@@ -145,6 +145,17 @@ fn stage_windows_sandbox_helpers() -> anyhow::Result<()> {
             if err.kind() == std::io::ErrorKind::PermissionDenied && destination.exists() {
                 continue;
             }
+            // Windows reports the blocked overwrite as ERROR_SHARING_VIOLATION
+            // (os error 32), which std does not decode to PermissionDenied, so
+            // the arm above cannot help a still-mapped image. Compare bytes: an
+            // identical staged image is exactly what this copy would produce.
+            let already_staged = destination.is_file()
+                && std::fs::read(&helper)
+                    .and_then(|source| std::fs::read(&destination).map(|staged| source == staged))
+                    .unwrap_or(false);
+            if already_staged {
+                continue;
+            }
             return Err(err).with_context(|| {
                 format!(
                     "stage Windows sandbox helper {} at {}",
