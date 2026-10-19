@@ -387,6 +387,39 @@ original→high 塌陷，无少计。
   的 floor 修复及其 5 个净新增用例在 linux/windows/macos 三个真实 runner 上全绿，且
   失败集合与本分叉自有 crate 无交集。
 
+### 6.8 用户拍定后的处置：给这两条图片用例单独放宽 Windows deadline（提交 `7b1a92c6a`）
+
+用户决定"可以放宽时间超时时间"，所以 §6.7 登记的第 5 项开放项按**单独放宽**这条路径处理，
+而不是承认 flaky 继续观察。
+
+- **改动**：`codex-rs/.config/nextest.toml` 新增一条 `[[profile.default.overrides]]`，
+  `platform = 'cfg(windows)'`，`filter` 只点名这两条
+  （`test(detail_policies_apply_the_expected_budgets) | test(legitimately_large_dimensions_still_decode)`），
+  `slow-timeout = { period = "1m", terminate-after = 2 }`。其余平台仍是默认 `30s × 2`，
+  其余 Windows 用例不受影响；`1m × 2` 与文件里既有的
+  `start_thread_uses_all_default_environments_from_codex_home` 同档，不是新发明。
+- **为什么是 120s 而不是"再观察一轮"**：Windows 实测是 45.351s / 47.057s（PASS 且标
+  `SLOW [> 30.000s]`），也就是**已经用掉界限的 75–78%**，下一轮 runner 稍慢就越线——
+  §6.7 观察到的正是这次越线。放宽到 120s 后按最差实测算余量约 2.6 倍。
+- **mac 侧对照实测（同一条测试，非 Windows）**：`codex-utils-image
+  tests::legitimately_large_dimensions_still_decode` 两次
+  `16.019s` / `17.304s`，`Summary 1 test run: 1 passed, 20 skipped`。
+  即这条测试在快机上只需 1/3 的默认窗口，Windows runner 慢 2.7–2.9 倍是平台差异，
+  不是测试本身变重。
+- **配置验证（不靠"看起来对"）**：因为 `platform = 'cfg(windows)'` 在 mac 上整条 override
+  被跳过、filter 不会被求值，我把 `platform` 临时改成 `cfg(unix)` 后重跑上面那条 scoped
+  nextest——**nextest 正常启动并按该 filter 选中了目标用例**，证明 filter 语法与本仓库
+  既有 override 的同名写法一致可用；随后把 `platform` 改回 `cfg(windows)`，
+  `diff` 与改动前的备份逐字节相同，`git diff --stat` 仍是干净的 9 行新增。
+- 两个测试名在 workspace 内唯一（`core/src/image_preparation_tests.rs:309`、
+  `utils/image/src/image_tests.rs:517`），所以 `test()` 子串 filter 不会顺带放宽别人。
+- **推送与 CI**：`7b1a92c6a test(rig): give the two measured image tests a
+  Windows-wide deadline` 已推 `origin/test`（`b636829b5..7b1a92c6a`），
+  **不带** `[skip ci]`——这是真实测试配置变更，按"完整 workspace 验证交 CI"的分工，
+  由 run **39286738661**（`Fork Cargo PR`，head `7b1a92c6a`，
+  `createdAt 2026-10-19T16:35:56Z`，登记时为 `queued`）验证。
+  **Windows 腿这两条是否因此转绿，要等该 run 结束再登记，现在不预判。**
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -396,13 +429,18 @@ original→high 塌陷，无少计。
   是接手当天 13:24 从 origin 新建、零自有提交。按用户决定，**本轮及后续代码工作在
   zhitai 副本**；soddy 副本的未推送文档提交不 cherry-pick（会引入分叉历史），其内容
   已在本节按复核事实重写。旧 worktree 仍不得当最新源码使用。
-- Codex `test`：`646069aa2`（= 交接时的 `origin/test`）之上本轮新增 `04beac00a` 与本文
-  档提交。工作树 clean。
+- Codex `test`：`646069aa2`（= 交接时的 `origin/test`）之上，本轮新增代码提交
+  `04beac00a`（视觉 floor）与 `7b1a92c6a`（两条图片用例的 Windows deadline，§6.8），
+  以及文档提交 `a3e5da2f0`、`4ee470d5c`、`5262eb5e6`、`10b30ecd4`、`c7ece7dcc`、
+  `b636829b5`（均带 `[skip ci]`，实测未触发 CI）。`origin/test` = `7b1a92c6a`，
+  本节这份文档提交在其后、同样带 `[skip ci]`，不额外占用 CI 预算。工作树 clean。
 - ACP `dev`：`19207d3`（= 交接时的 `origin/dev`）之上本轮新增 `0930455`、`147280b`、
-  `d188807`（`origin/dev` = `d188807`，三笔均已推送）；`vendor/` 未跟踪，须保留。本轮对
+  `d188807`、`59426b6`（三条分隔符耦合断言改平台中立，§9.5.1）、`6a76aa7`
+  （`package-lock.json` 同步，§9.6）；`origin/dev` = `6a76aa7`，五笔均已推送；
+  `vendor/` 未跟踪，须保留，实测仍在且未受影响。本轮对
   `958b63f..19207d3`（case@VENDOR/wire 路由、共享预算、显式窗口传播）的独立复核抓到
   5 个真实旁路并全部闭合，结论登记在 §8；跨系统实机验证（含 Windows 上确认的第 6 个
-  真实缺陷、以及 Windows 上 ACP 产品套件的 3 项分隔符耦合红）登记在 §9。
+  真实缺陷、以及 Windows 上 ACP 产品套件的 3 项分隔符耦合红**及其转绿收据**）登记在 §9。
 - 构建位置（影响复现，登记备查）：本轮及后续 cargo 工作在 zhitai 副本，
   `CARGO_TARGET_DIR` 用仓库内 `codex-rs/target`，`CARGO_HOME` 指向
   `/Volumes/zhitai/cargo-home`（由 `~/.cargo` 完整复制，`cargo +1.95.0 metadata
@@ -430,12 +468,15 @@ original→high 塌陷，无少计。
      `shell_snapshot…blocked_descriptor` 抖动。
   4. 验机 `swufe@192.168.32.163` 的 rustup 组件安装存在 manifest 损坏；pinned 1.95.0
      的 Clippy 以 mac 结果为准，不擅自改动仓库锁定版本。
-  5. **本分叉自有测试贴线**：windows 上
+  5. ~~**本分叉自有测试贴线**：windows 上
      `codex-core image_preparation::tests::detail_policies_apply_the_expected_budgets`
      与 `codex-utils-image tests::legitimately_large_dimensions_still_decode` 上一轮以
      45.351s / 47.057s PASS 并被标 SLOW，本轮越过 60s 界限判超时。两条都由本分叉提交
      改过（`2f048c3b4`、`4a0dd66d5`），处置（单独放宽 deadline / 承认 flaky 继续观察）
-     交用户决定，证据见 §6.7。
+     交用户决定，证据见 §6.7。~~
+     → 用户拍定"单独放宽"，已按 §6.8 实现（`7b1a92c6a`，Windows-only，`1m × 2`）。
+     **此项在 CI 侧尚未闭合**：run 39286738661 结果待登记，Windows 腿这两条转绿之前
+     不得声称已解决。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
@@ -609,6 +650,9 @@ clone 初始 HEAD 是 `0930455`，红→绿复跑时 `git pull --ff-only` 到 `1
   `npm publish`，实际发布出去的依赖树来自 runner 当场解析、不由这份 lock 约束。登记为
   **可复现性缺陷 + 误导性的 lock 元数据**，不是当前构建阻断项；是否同步 lock、用哪个
   registry，交用户决定。
+- **后续（已按建议闭合，见 §9.6）**：用户拍定"按建议来"，即在
+  **`registry.npmjs.org`** 上显式 `npm install --package-lock-only` 同步并核对 `integrity`。
+  上面"不在本轮擅动"的理由仍然成立，所以本节保留原文，处置与收据登记在 §9.6。
 
 ### 9.4 用发布渠道的 Windows 二进制跑通 `env-determinism`（零付费）
 
@@ -670,11 +714,12 @@ Windows 数据。命令与 mac 完全同一：ACP `d188807`，`npm test` =
   spawn 的是同机 Windows 版 codex 进程，`extraRoots`、`additionalDirectories` 和工具
   标题的消费者都只在本机解释这些字符串，`path.join` 给本机分隔符正是正确形状；协议
   字段本身对分隔符没有任何约定，所以也谈不上"字段遗漏"或"桥未实现"。
-- **本轮不修，两个理由**：修法只有 (a) 把 3 处期望改成用 `path.join` 构造、并重新生成
+- **当时不修的理由（该取舍已由用户拍定并落地，见 §9.5.1；原文保留以便核对定性没有变）**：
+  修法只有 (a) 把 3 处期望改成用 `path.join` 构造、并重新生成
   快照基线，或 (b) 在产品里做分隔符归一化。(b) 会改变发往本地进程的字符串形状，属产品
   行为变更，超出"只修已确认缺陷"的授权范围；(a) 要动产品测试套件的期望与快照基线，同样
   不在本轮范围内，而且快照要么按平台各存一份、要么存归一化形式，是个需要用户拍的取舍。
-  登记为**已定性的测试可移植性缺口**。
+  当时登记为**已定性的测试可移植性缺口**。
 - **一处值得留档的真实假设（不在上面 3 项红的范围内，也不是本轮缺陷）**：
   `ResponseItemHistoryFallback.ts:1030` 用**代理进程所在平台**的语法拼 `cwd`。若将来出现
   "ACP 代理跑在 Windows、app-server 跑在 Linux 容器"的混合拓扑，这个假设不成立。本轮
@@ -682,6 +727,75 @@ Windows 数据。命令与 mac 完全同一：ACP `d188807`，`npm test` =
 - **反向证据（排除"Windows 构建/类型层面有问题"）**：同一目录 `npm run typecheck`
   返回 rc=0（四条 `tsc --noEmit` 全过）。所以这 3 项红纯粹是运行时路径字符串，不是
   Windows 上的编译或类型差异。
+
+#### 9.5.1 修复后收据：Windows 上 3 红 → 0 红（ACP `59426b6`）
+
+用户拍定"按建议来"，即选项 (a)：**只改测试期望与快照比较方式，不动产品代码**。
+修法是把三条断言从 POSIX 分隔符上解绑，`path.join` 的产品行为一个字没改。
+
+- `CodexAcpClient.test.ts`：新增 `posixShape()` 递归归一化 +
+  `extraRootsCalls(spy)`，两处断言由
+  `expect(spy).toHaveBeenCalledWith({...})` 改为
+  `expect(extraRootsCalls(extraRootsSetSpy)).toContainEqual({extraRoots: ["/workspace/extra/.agents/skills"]})`。
+  选 `toContainEqual` 而不是 `lastCall` + `toEqual`，是为了**保住
+  `toHaveBeenCalledWith` 原有的"任意一次调用命中即可"语义**——这是我第一版实现差点改错的
+  地方（`expect(spy.mock.lastCall).toEqual(...)` 会静默收紧成"只看最后一次"）。
+- `load-session.test.ts:783`：`toMatchFileSnapshot` 比的是文本，所以只在**序列化后的
+  dump** 上做 `dump.replace(/\\\\/g, "/")`，把 Windows 上被 `JSON.stringify` 转义成 `\\`
+  的分隔符折回基线形状。**规则刻意只做 `\\` 而不是任意 `\`**：基线里另有 4 处
+  `\n`/`\t` JSON 转义（`data/…json` 的 211/243/280/312 行），若做全量 `\`→`/`，
+  这三处在**每个平台**都会被改坏——那是把一个可移植性修复换成把基线改错。快照基线本身
+  **未重新生成**，仍是一份 POSIX 形状。
+- **首败→修复后（同一台 Windows 实机、同一命令、同一 node_modules）**：
+  - 修复前（`147280b`，即 §9.5 那条）：`Test Files 2 failed | 62 passed | 7 skipped (71)`、
+    `Tests 3 failed | 835 passed | 33 skipped (871)`，失败名逐条为
+    `ACP server test > prefers ACP additional directories over legacy meta roots for new
+    session skill discovery`、`ACP server test > applies ACP additional directories to turn
+    skill discovery and sandbox policy`、`CodexACPAgent - loadSession > should recover
+    response item function calls when app-server history omits tool items`。
+  - 修复后（`59426b6`）：`Test Files 64 passed | 7 skipped (71)`、
+    `Tests 838 passed | 33 skipped (871)`，**0 failed**，`Duration 80.32s`，
+    且 `npm test` **进程退出码实测 0**。修复前那一轮没有单独记录退出码，但同一命令
+    当时报 3 failed，按 vitest 语义必然非 0——这里只把**修复后**记为实测。
+    `CodexAcpClient.test.ts (105 tests) 24519ms` 与 `load-session.test.ts` 均为 `✓`。
+  - **算术闭合**：835 + 3 = 838，总数仍 871、skipped 仍 33，
+    所以转绿的是**那 3 条本身**、不是有用例被跳过或消失；与 mac 的
+    `839 passed | 32 skipped` 差 1，仍是 §9.5 说的 `it.skipIf(win32)` 那一条。
+- **mac 侧没有回归**：同一提交 mac `npm test` =
+  `Test Files 65 passed | 6 skipped (71)`、`Tests 839 passed | 32 skipped (871)`（27.27s），
+  与修复前完全一致；`npm run typecheck` rc=0；两个被改文件单独重跑
+  `Test Files 2 passed (2)`、`Tests 110 passed (110)`。
+- **边界（诚实登记）**：修的是测试可移植性，不是产品缺陷，因此这条**不改变** §9.5 的定性；
+  §9.5 末尾登记的"混合 OS 拓扑假设"仍然存在、本轮仍未处理。Windows 验证用的是
+  既有 node_modules（`npm test` 只跑 vitest），没有重装依赖。
+
+### 9.6 `package-lock.json` 同步收据：`npm ci` 首败 → rc=0（ACP `6a76aa7`）
+
+按 §9.3 的建议路径闭合：在**确定的 registry**（`registry.npmjs.org`，即 mac 的
+`npm config get registry`、也是 lock 里原本全域使用的域）上显式同步，而不是让某台配了
+镜像的机器顺手改写。
+
+- **首败证据（改动前的 lock，原样 `git show HEAD:package-lock.json`）**：
+  `npm ci` **exit=1**，`npm error code EUSAGE` +
+  `Invalid: lock file's nuwax-codex@0.18.3 does not satisfy nuwax-codex@0.18.12`。
+- **改动**：`npm install --package-lock-only --registry=https://registry.npmjs.org`
+  （`--package-lock-only` 保证**不碰工作树里的 node_modules**，测试环境不动）。
+  diff 极小：**6 增 6 删**，只有 `version 1.2.12 → 1.2.18`、根依赖
+  `^0.18.3 → ^0.18.12`、`node_modules/nuwax-codex` 的 version/resolved/integrity 三行。
+- **供应链核对（这是当初把它列为"需用户决定"的那一项）**：
+  - 全部 **268** 条 `resolved` 仍指向 `registry.npmjs.org`，一条都没被换成镜像域；
+    `missing-integrity = 0`（每条都有 `integrity`）。`lockfileVersion` 仍是 3。
+  - 新 `integrity` `sha512-NlHdwGgyi/Pj+36AJWEcckrJ5WFprBQKVW3vvVK/W+3BzjrbsnYcn3GDrPVlLQ0NEQTBVN+js70plyMpX8IgNA==`
+    与 §9.2 里 Windows 那台**经 `registry.npmmirror.com` 解析**时 npm 记下的值**逐字符相同**
+    （`npm view nuwax-codex@0.18.12 dist.integrity --registry=https://registry.npmjs.org`
+    亦给出同值）。两个域给出同一 sha512，说明是**同一份 tarball 字节**，换域没有换产物——
+    这正是当时不能仅凭"装上了"就同步 lock 的原因，也是这次可以安全同步的依据。
+- **修复后证据**：临时目录里只放 `package.json` + 新 lock，
+  `npm ci --ignore-scripts` **exit=0**、日志 0 条 `npm error`，
+  `node_modules/nuwax-codex` 实际装成 **0.18.12**（163 个顶层包）。
+- **为什么这仍然不是"CI 变绿"类修复**：§9.3 已查实四个 workflow 全用 `npm install`，
+  没有 job 用 `npm ci`。这条闭合的是**可复现安装**与**发布渠道不再被一份自相矛盾的 lock
+  误导**，不改变任何测试计数。
 
 
 
