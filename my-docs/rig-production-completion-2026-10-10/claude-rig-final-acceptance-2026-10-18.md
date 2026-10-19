@@ -216,6 +216,20 @@ cd /path/to/fork-codex-acp-ts && node --import tsx src/index.ts
 - macos：连续第三次 3h job 时限取消；取消前仅 external_auth + daemon 饥饿超时族 + 一个
   hooks 复发（ubuntu 同期绿）。macos 完整化属 CI 基建项（拆分片/提时限）。
 
+### 6.4 交叉审查轮自查发现与补修（提交 `52d283204`、`8443539b0`）
+
+- **自查抓到一个真实合同缺口**：`CustomToolCallOutput` 与 `FunctionCallOutput` 共用
+  `FunctionCallOutputPayload` 且桥经同一路径发送其图片，但 floor 遍历只匹配了后者——
+  自定义工具结果里的原图不计入转换前下界。修复为双变体合并匹配；新单元测试在旧实现
+  floor=0 红、修复后 5120 绿；mac 707/707、验机 332/332。
+  （复查同时确认 `ResponseItem` 无其他可携带图片且被桥发送的变体：`McpToolCallOutput`
+  只存在于 wire 输入枚举 `ResponseInputItem`，桥不处理；`ImageGenerationCall` 被转换
+  明确跳过；AgentMessage 仅文本/加密。floor 覆盖集 = Message + 两种工具输出，恰为
+  转换实际发图的全部来源。）
+- 测试加固：floor 出站 e2e 的接受窗口按正/负例分离（负例保留 750ms 零连接证明窗，
+  正例放宽到本文件既有的 IO_DEADLINE，规避文件内已记录的 macOS 慢速信任库初始化）。
+- 推送后 CI 收据见 §6.5。
+
 ## 7. 提交、推送与工作树状态
 
 - Codex `test`：`fee6cda7d → 7fd7a7b1d` 已推送（fast-forward；本轮两笔：
