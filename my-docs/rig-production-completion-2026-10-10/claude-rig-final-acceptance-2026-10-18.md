@@ -1727,6 +1727,196 @@ target(s) in 19m19s`（`CARGO_TARGET_DIR=~/rig-verify-20261019/target-release`�
   ⇒ 两条都是首观、都落在我本轮没碰过的文件里，先按"**未定性，需要第二手**"登记，
   不许写成"与我无关"。
 
+### 6.21 Windows `legacy_` 家族：独占预订被自己的 A/B 证伪，改成放宽三条内部预算
+
+**预订（`8349736da` 的 `threads-required = "num-test-threads"`）确实生效，但没用。**
+两轮 head：无预订 = 39347345560（`6e27a6c11`），有预订 = 39371971338（`55fcee7cb`）。
+
+| 腿 | 无预订 | 有预订 |
+| --- | --- | --- |
+| `legacy_capture_cancellation_terminates_descendants_without_timeout` | 34.563s FAIL | 32.056s FAIL |
+| `legacy_capture_emits_output_and_preserves_descendant_after_normal_exit` | 11.472s FAIL | 12.515s FAIL |
+| `legacy_tty_job_terminates_and_preserves_descendants` | 11.051s FAIL | 14.163s FAIL |
+| `legacy_workspace_write_delete_is_limited_to_writable_roots` | 0.130s FAIL | 0.302s FAIL |
+
+预订生效的直接证据（时间窗比对，不是推断）：
+- 39371971338 里那条 32.056s 腿的窗口 `06:52:02.540–06:52:34.596` 内，全日志只有
+  `codex-windows-sandbox` 自己的判定行，index 21585→21586 相邻，中间没有别的包。
+- 39347345560 里同一条腿的窗口 `01:54:26.154–01:55:00.717` 内，
+  `codex-utils-image legitimately_large_dimensions_still_decode`（36.177s PASS）
+  与一批别的判定行在同窗报出 ⇒ 没预订时确实并发。
+
+⇒ 并发被完全排除之后，四条腿的时长一位数都没变；预订的代价是
+windows `Test (workspace)` Summary 由 **2383.014s 涨到 3014.459s（+631.445s）**。
+机制改判：**hosted runner 上"沙箱孙进程把 pid marker 写出来"的启动成本**，
+不是与其它测试抢 CPU。§6.12 R4 里"争用是充分原因"的口径按本节作废；
+`8349736da` 的注释跟着撤掉。三次连续跑（38824922110 / 39347345560 / 39371971338）
+签名逐字相同、时长彼此接近（32–34.6s / 11.3–12.5s / 10.9–14.2s），
+这也是"确定性环境特征"而不是"抖动"的依据。
+
+**但这三组数字要分清哪些是测量、哪些只是旧上限。** 每条腿都在**自己的**预算耗尽时
+返回，所以：cancellation 腿的 32–34.6s 说明 marker 出现时间 **> 30s**（它撞的是 30s
+capture 上限，`wait_for_process` 把 `timeout_ms` 原样传给 `WaitForSingleObject`，
+`lib.rs:872`）；另两条腿的 11–14s 撞的是它们自己的 10s 上限，**只能证明 > 10s**。
+⇒ CI 历史数据给的是下界，没有上界。60s/90s 是留的余量，不是"实测值的 1.7 倍"这种
+已经量出来的东西；够不够，由本轮 push 触发的 run 来回答（代码注释里按这个口径写，
+不写成测量结论）。panic 现场的对应关系（`w39371.txt` 23808 / 23828 / 23868 行）：
+`tests.rs:710:10` → `read descendant pid: Os { code: 2, kind: NotFound }`，
+`tests.rs:987:5` → `Terminate descendant did not start`，
+`tests.rs:905:5` → `cancellation should end capture before the timeout`。
+`/Volumes/zhitai/tmp/qoder-scratch/w39371.txt` 还确认了超时路径会 `job.terminate()`
+杀掉整棵树（`lib.rs:881-898`），所以"capture 超时 ⇒ marker 读不到"是必然，
+不是另一种故障；而正常退出路径会 `preserve_descendants()`（`lib.rs:899-904`），
+这正是这条腿要断言的行为。
+
+**修复（`windows-sandbox-rs/src/unified_exec/tests.rs` 三处，逐条对准 panic 点）**
+
+| panic 点 | 原因 | 改动 |
+| --- | --- | --- |
+| `tests.rs:905`（cancellation） | `started_at.elapsed() < 10s`，而 capture 只能在 marker 出现后被取消唤醒 | `elapsed` 10s→**60s**，capture `Some(30_000)`→**`Some(90_000)`** |
+| `tests.rs:710`（capture emits output） | capture 10s 超时后立刻 `read descendant pid`，marker 还没写 | capture `Some(10_000)`→**`Some(60_000)`** |
+| `tests.rs:987`（tty job） | `wait_for_path(ready_marker, 10s)` "descendant did not start" | marker 等待 10s→**60s**，spawn `Some(30_000)`→**`Some(60_000)`** |
+
+我自己差点制造的新坑，记下来：**第一版把 capture 抬到 180s**。nextest 默认
+`slow-timeout = { period = "30s", terminate-after = 2 }`（`.config/nextest.toml:5`）
+在 60s 直接杀进程 ⇒ 有诊断的 FAIL 会退化成裸 TIMEOUT，正是 §6.15/§6.19 一路在消灭的形态。
+所以两条一起做：capture 收到 90s，同时给这一族加
+`platform = 'cfg(windows)'` 的 `slow-timeout = { period = "2m", terminate-after = 2 }`
+（kill 在 4m），把"内层预算之和 < 外层窗口"这条一致性约束写进注释。
+
+顺带核了一下方向性风险：`wait_for_process` 的取消路径是**先查 `is_cancelled()` 再等**、
+每轮最多睡 50ms（`windows-sandbox-rs/src/lib.rs:624-644`），所以放宽 capture 超时
+**不会**推迟取消被察觉，也不会把这三条腿推成 §6.14 那条 1s "survived" 竞态。
+
+本地验证边界（诚实）：mac 建不了这个 Windows-only crate，`.235` 上没有 `codex-rs` 克隆，
+所以语义验证只有一条路——按分工交给 CI（本轮由一次真实 push 触发，不重新 dispatch）。
+本轮能做到的门：
+- rustfmt 解析通过且我的改动零格式 diff（`-p codex-windows-sandbox`、`-p codex-core`
+  各 `Diff in` 计数 0）；
+- nextest 配置用 `/opt/homebrew/bin/python3.14 + tomllib` 解析（默认 profile 26 条
+  override），并按"第一条命中生效"逐条模拟了 4 条腿在 windows/ubuntu/macos 三平台上
+  解析到的窗口：`legacy_` 两族 → idx 13 的 2m×2（仅 windows，另两平台仍走默认，
+  因为这条 override 带 `platform = 'cfg(windows)'`）；`code_mode_excludes_mcp…` →
+  idx 20 的 1m×2（三平台一致，且前面没有更早命中的规则）。
+  这条模拟顺带纠正了一次我自己的误判：粗匹配 `package(codex-core)` 时 idx 18 的
+  `binary(windows_sandbox)` 会被漏掉，看上去像是 code_mode 已有 1m×3；补上 `binary`
+  谓词后确认它走的是默认窗口——与 `w39371.txt` 里 `SLOW [> 30.000s]` →
+  `TERMINATING [> 60.000s]` 的实测形状一致。
+- **自己写的 1m×2 被同一套预算检查推翻，改成 2m×2**：一致性约束是
+  "一条腿内层预算之**和** < 外层窗口"，而 `legacy_tty_job_terminates_and_preserves_descendants`
+  是**两个** lifecycle 顺序跑的（`tests.rs:1052-1054`），每个
+  `60s marker + 15s collect + 10s survival + 10s exit` ⇒ 最坏 ≈190s，
+  120s 窗口会在它跑满时把它杀成裸 TIMEOUT——正是本轮要消灭的形态。
+  改成 `period = "2m", terminate-after = 2`（kill 4m）后，最坏 190s 有余量；
+  cancellation 腿 90+10=100s、capture 腿 ≈60s+20s 更不必说。
+  代价核算过：这两族正常只有 10–35s，2m 才报 SLOW，windows 测试阶段 2383s 的量级
+  不受影响；job 上限 150m。
+- `cargo check -p codex-core --tests --offline`（mac，5m07s，rc=0、0 warning，
+  含 `core_test_support`）⇒ §6.22 的 helper 重写是可编译的。
+- 交叉编译这条 Windows-only crate  checked 过但**放弃**：`rustup target add` 只往
+  系统盘 `~/.rustup` 装（用户明确要求构建产物不落系统盘），且会改本地工具链。
+- `threads-required` 现在只剩注释里的文字引用，配置项已撤。
+- 已知紧耦合（登记，不粉饰）：外层窗口是从内层预算**推**出来的，不是量出来的。
+  若某条腿真的需要跑满内层预算（tty 190s / cancellation 100s），它离被外层杀掉
+  只剩 50s / 140s；真出现那种腿，收据的形状仍然会是 TIMEOUT。本轮之后要不要继续
+  按实测重排这两组数字，等 push 触发的 run 说话。
+
+### 6.22 macOS 那 8 条 `timeout waiting for event`：本机不复现，先把诊断做成可归因
+
+受控复跑（`mac-l9.sh` / `mac-l10.sh`，日志
+`/Volumes/zhitai/tmp/qoder-scratch/mac-l9.log`、`mac-l10.log`）：
+
+| 腿集 | M-L9a 空闲 `-j 1` | M-L9b 默认并发 + 同机编译负载 |
+| --- | --- | --- |
+| 5 条 `model_switch_program_pair` + 3 条 `reloaded_*`（共 22 条同名族） | **22/22 PASS**，Summary 43.219s，最慢 4.026s | **22/22 PASS**，Summary 12.216s，最慢 12.184s |
+| M-L10a 同 22 条（helper 已重写后） | **22/22 PASS**，Summary 43.539s | — |
+
+两条必须写清的边界：
+1. **M-L9b 想加的负载没加上。** 我的过滤器
+   `test(/app_server_daemon|daemon_startup/)` 在 `codex-cli` 里只匹配到 1 条
+   0.019s 的 `app_server_daemon_subcommands_parse`（`m-l9b-load.log` 1 条 PASS、
+   `load_rc=0`）。真正压住这 22 条窗口的是 `codex-cli` 的 2m11s rustc 编译。
+   ⇒ "车道被 daemon 腿挤满"这个假设**仍未检验**，§6.20 那条相关性推测不能升格。
+2. 有意义的读数仍然是比值：同 22 条腿从空闲单线程的 0.65–4.03s 涨到并发下的
+   6.08–12.18s，而 CI 失败点是 helper 里**每个事件间隔**的 10s 下限
+   （`core/tests/common/lib.rs:381-401`：`wait_for_event` 用 1s 调它、被 `max(10s)` 抬到 10s）。
+   本机 12 核并发下整腿最慢 12.18s 仍没触发，hosted 4 核 mac 触发了。
+
+一个反直觉但改变判读顺序的实测：**`tokio::time::timeout` 先 poll 未来，再等 deadline**。
+M-L10b 把下限强制改成 `max(Duration::from_nanos(1))`（日志里 `let deadline =
+wait_time.max(Duration::from_nanos(1));` 已确认生效）重跑 `reloaded_root`，
+结果 **1 passed（2.930s）**——事件已在队列里时 1ns 的 deadline 也不会失败。
+⇒ CI 上那 8 条是"下一个事件 10s 真的没到"，不是"并发排队把预算吃光"；
+这既排除了纯排队解释，也让我不能拿"本机不复现"当作产品无关的证据。
+
+处置：只修可归因性，不动任何预算语义。helper 原来两个 `.expect()` 只会留下
+`timeout waiting for event: Elapsed(())`，既不报 deadline 也不报最后一个真正收到的事件。
+改成记录 `deadline`、事件计数与最后一个 `EventMsg` 变体名（`event_msg_name`，
+只在 panic 路径上做一次 `{:?}`，稳态零开销），另加
+`stream ended unexpectedly: {err:?}`。收据：M-L10a 22/22 PASS（编译 + 无回归）、
+M-L10c 逐字节还原后同腿 PASS（`helper_restored=byte_identical`）。
+8 条本身**不追绿**，留待下一轮 CI 用新文案判定"卡在哪个事件"。
+
+### 6.23 Windows 两条新项：一条是长期贴线漂移，一条未定性；顺带查出一个真实的构建机缺陷
+
+**`code_mode_excludes_mcp_servers_using_their_configured_identity`——不是首观缺陷。**
+windows 腿的历史：48.878s PASS（38824922110）→ 51.826s PASS（39347345560）→
+**60.054s TIMEOUT**（39371971338）。同轮 ubuntu 48.768s PASS、macOS 17.717s PASS。
+它一直贴在默认 30s×2 的 kill 线下面 8–11s，这条腿的真实成本就是"启动 MCP 服务器"。
+处置：给它 `slow-timeout = { period = "1m", terminate-after = 2 }`（不加 platform 键，
+因为 ubuntu 也只有 11s 余量），让这条腿在 120s 内跑完并给出自己的断言输出，
+而不是被杀成一个不带诊断的 TIMEOUT——与 §6.15 对 `external_auth…::discovery` 的
+处理同一形态。**2m 是余量、不是量出来的**：那条 TIMEOUT 只把真实成本界定在 >60s，
+没有上界；本轮 push 触发的 run 若仍在 120s 处报 TIMEOUT，就说明 MCP 启动成本又涨了，
+那时才需要去看是哪台服务器停住（这条腿本身不打印 per-server 计时，属于下一手）。
+
+**`spawn_agent_can_fork_parent_thread_history_with_sanitized_items`——未定性，列观察项。**
+windows 3.340s FAIL；同轮 ubuntu 1.499s PASS、macOS 1.598s PASS；同一条 windows 腿
+上一轮（39347345560）PASS。断言是 `control_tests.rs:3139` 的内容比较，diff 里
+**177 行全是 `<`（左多）、0 行 `>`** ⇒ 实际子历史比期望**多出两条上下文消息**：
+一条 `<permissions instructions>`（developer）和一条 `<environment_context>`（user，
+`cwd=D:\a\codex\codex\codex-rs\core`、`shell=powershell`）。
+两轮 head 之间唯一的产品代码 delta 是 `95fb0949d`（rig 传输 pin）——非 Windows 专属，
+也不在这条路径上注入上下文消息；其余全是 docs / nextest 配置。
+机制未证明（子历史为什么会重渲一对上下文而不是与父历史去重），**不写成"与我无关"**，
+也不改断言：下一轮复现再深挖。
+
+**但它那条 `<permissions instructions>` 里带 `\r\n`，顺着查出一个真实跨平台缺陷。**
+CI 日志原文（39371971338，windows）：
+
+```
+text: "<permissions instructions>\nFilesystem sandboxing defines … Network access is restricted.\n# Escalation Requests\r\n\r\nCommands are run outside the sandbox …- Pipes: |\r\n- Logical operators: &&, " <3939 bytes>
+```
+
+同一个 fragment 前半用 `\n`、`# Escalation Requests` 段用 `\r\n`。前半来自 Rust 字面量，
+后半来自 `prompts/templates/permissions/approval_policy/on_request.md`，
+而 `prompts/src/model_messages/permissions.rs:14` 用 `include_str!` 把它**原样**嵌进
+发给模型的指令。GitHub 的 windows runner 默认 `core.autocrlf=true`，检出即 CRLF。
+
+实测链（`mac-l11.sh` / `mac-l11bcd.sh`，日志 `mac-l11.log`、`mac-l11bcd.log`）：
+
+| 步骤 | 结果 |
+| --- | --- |
+| L11a 基线（LF 检出） | `codex-prompts` **41/41 PASS**（0.039s） |
+| L11b 手工把 `on_request.md` 改成 CRLF（57 行带 `\r`） | **41/41 仍 PASS** ⇒ prompts 单测**不覆盖这些字节**，这个缺陷拦不住 |
+| L11c `git checkout` 还原 LF | 0 行带 `\r`，41/41 PASS |
+| L11d 无规则时 `git -c core.autocrlf=true checkout --force` | **57 行带 `\r`** ⇒ runner 机制在本地逐字节复现 |
+| L11e 加规则后同一命令（`on_request.md`、`on_request_rule_request_permission.md`、`compact/prompt.md`） | **0 行带 `\r`**，`git status` 干净 ⇒ 修复有效 |
+
+仓库现状佐证：`git grep -lI $'\r' HEAD -- 'codex-rs/**'` = **0 个文件** ⇒
+blob 里全是 LF，CRLF 只在"检出 + `include_str!`"这一刻产生。也就是说
+**同一份源码在不同构建主机上会产出不同的模型侧指令字节**（Windows 构建多 `\r`，
+token 计数与文本都与其它平台不一致）。这条 fork 恰恰要发 Windows 制品，属于必修。
+
+修复：`.gitattributes` 加一行 `codex-rs/prompts/templates/** text eol=lf`（连注释 7 行），
+与仓库里已有的 `third_party/voice/sources.json text eol=lf` 同一形态。
+分类：**真实跨平台缺陷（构建主机依赖的模型侧字节）**，已修；
+与 §6.12 C 的 TUI 快照问题不是同一个。
+
+遗留同类面（本轮不动，登记）：其它 `include_str!` 文本资产、
+`core/tests/suite/snapshots/*.snap` 同样受检出行尾影响；windows 腿目前绿，
+说明 insta 侧另有归一化，需要时单独核。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -1779,6 +1969,26 @@ target(s) in 19m19s`（`CARGO_TARGET_DIR=~/rig-verify-20261019/target-release`�
   §6.15 的 mac daemon 窗口（18 PASS，最慢 173.300s）、`::discovery` 在 CI ubuntu
   **PASS 1.633s**、`8349736da` 整机独占**没能**改变 `legacy_` 那四条（结论收回，转 task #27）。
   同轮另见 §6.20 的 10 条首观新红（mac 8 + windows 2），按授权**没有补跑第二手**。
+- **本轮（§6.21–§6.23 的处置）开工前的指针状态被用户的 git 整理改写过**：上一段"本地未推
+  10 笔 / `origin/test` = `4d9f30b6f`"已经不作数——`git log` 实测 `test` 与 `origin/test`
+  同为 `250187989`（`gh`/`git rev-list --left-right --count` = `0 0`，即已推平、无本地领先），
+  工作树只剩本轮五个未提交文件。按"用户会在会话中途整理 git"这条，后续每一笔都以
+  当场 `git status` / `git log` 为准，不引用本节早前记录的哈希。
+- **本轮落成四笔代码提交 + 一笔文档提交，逐笔分片**（哈希按 `git log` 实测）：
+  `0541a7eb6` §6.21 的三条 Windows 内部预算、`aca3a703a` §6.21 的 nextest 窗口
+  （撤 `threads-required`、`legacy_` 给 2m×2、`code_mode_excludes_mcp…` 给 1m×2）、
+  `d4d9f943a` §6.22 的 mac helper 可归因化、`38ace3fe1` §6.23 的
+  `.gitattributes` prompt 模板 `text eol=lf`，最后是本笔文档。
+  本轮**没有再 dispatch**：这一手 push 的 tip 提交**不带** `[skip ci]`，正是要让 CI
+  而不是本机来验这五笔（Windows-only crate 在 mac 建不了，见 §6.21 的验证边界）。
+  run id 与三腿终态按收据在下一笔文档提交里登记，不在这里预写。
+- **推送前把两处自己写坏的账改回来了**（如实登记，不留"看起来对"的版本）：
+  ① §6.21 第一版把外层窗口写成 1m×2，但 tty 那条腿是**两个** lifecycle 顺序跑的
+  （`tests.rs:1052-1054`），最坏 190s > 120s，窗口会在跑满时把它杀成裸 TIMEOUT——
+  已改 2m×2，并把"内层预算**之和** < 外层窗口"写成注释里的约束；
+  ② 第一版注释把 60s 说成"实测最坏值的 ~3 倍"，而 CI 历史只给出下界
+  （cancellation >30s、另两条 >10s），没有上界 ⇒ 措辞改为"余量，够不够由本轮收据回答"。
+  `0541a7eb6` 的提交消息也就地改写过一次（本机未推、纯消息、tree 不变）。
 - ACP `dev`：`19207d3`（= 交接时的 `origin/dev`）之上本轮新增 `0930455`、`147280b`、
   `d188807`、`59426b6`（三条分隔符耦合断言改平台中立，§9.5.1）、`6a76aa7`
   （`package-lock.json` 同步，§9.6）；`origin/dev` = `6a76aa7`，五笔均已推送；
