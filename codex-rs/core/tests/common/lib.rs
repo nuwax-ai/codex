@@ -388,16 +388,41 @@ where
 {
     use tokio::time::Duration;
     use tokio::time::timeout;
+    // Allow a bit more time to accommodate async startup work (e.g. config IO, tool discovery)
+    let deadline = wait_time.max(Duration::from_secs(10));
+    let mut last = None;
     loop {
-        // Allow a bit more time to accommodate async startup work (e.g. config IO, tool discovery)
-        let ev = timeout(wait_time.max(Duration::from_secs(10)), codex.next_event())
-            .await
-            .expect("timeout waiting for event")
-            .expect("stream ended unexpectedly");
-        if predicate(&ev.msg) {
-            return ev.msg;
+        match timeout(deadline, codex.next_event()).await {
+            Ok(Ok(ev)) => {
+                if predicate(&ev.msg) {
+                    return ev.msg;
+                }
+                last = Some(ev.msg);
+            }
+            Ok(Err(err)) => panic!("stream ended unexpectedly: {err:?}"),
+            Err(elapsed) => {
+                // A bare `Elapsed(())` cannot say which event never arrived, so every
+                // lane that loses here has to be re-run to learn anything. Name the
+                // last event actually seen instead.
+                let last = last
+                    .as_ref()
+                    .map(event_msg_name)
+                    .unwrap_or_else(|| "<none>".to_string());
+                panic!(
+                    "timeout waiting for event: {elapsed:?} (deadline {deadline:?}, last event: {last})"
+                )
+            }
         }
     }
+}
+
+fn event_msg_name(msg: &codex_protocol::protocol::EventMsg) -> String {
+    let rendered = format!("{msg:?}");
+    rendered
+        .split('(')
+        .next()
+        .unwrap_or(rendered.as_str())
+        .to_string()
 }
 
 pub fn sandbox_env_var() -> &'static str {
