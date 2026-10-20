@@ -663,6 +663,242 @@ nextest 输出体只有 `running 1 test` + `(test timed out)`，
   放宽只是把"9 项观测"变成"更多项观测"，不解决终态。
   因此"mac 腿分片"从 §6.7 的建议升格为**待办开发项**（下一步做，见 §7 未闭合项 2）。
 
+### 6.12 本轮 macOS / Windows 继续处理：实机二测、四类定性与三笔修复
+
+用户指示：linux 腿暂缓（`.117` 不可达，等公司检查 IP/网络后提供机器），继续处理 mac 与
+Windows 的错误。以下所有 Windows 收据都在验证机 `.235`（Windows 11 **26200.9711**，
+即 §6.8/pty 那次"ConPTY 输入回归"探测用的同一台）上取得，scratch 目录
+`~/codex-win-verify`，源码为 `7e1d23695` 的 `git archive` 解包，工具链
+`1.95.0-x86_64-pc-windows-msvc`。全部构建产物落在该机 C: 与本机 4T 外接盘，不占系统盘。
+
+**A. mac 腿按实测改限时（`efc27910b`，与 §6.11 的口径升级配套）**
+度量而不是猜：mac 腿在同一步骤内付 **1h32m47s / 1h50m21s** 编译，run 39286738661 是在
+12699/22877 起跑测试后 3m47s 被 3h 时限切掉。编译是固定成本且**在一个 job 内不可分片**，
+所以同 job 内拆分救不了它。本轮把 `timeout-minutes` 改成 per-matrix（ubuntu 180 /
+macos 330，windows 维持 150），并把上游 `nextest archive` + `--partition hash:N/4` 记为
+持久解（未做：该分片的 target 目录不带 `codex-exec` source-receipt 二进制，需要先出方案）。
+
+**B. Windows elevated 早退的机制级修复（`46971f9ad`）**
+`windows_elevated_*` 5 条里有 4 条在 **0.066–0.072s** 退出。根因不是期限：
+Windows 把被占用镜像的覆盖写报成 `ERROR_SHARING_VIOLATION`（os error 32），而 std 的
+`decode_error_kind`（pin 的 1.95.0 源码
+`library/std/src/sys/io/error/windows.rs:13` 起的表）**没有这一项的映射分支**，
+所以它永远不会变成 `PermissionDenied`，既有那句"保留已 staged 副本"的守卫在这些腿上不可达。改为**字节比较**：源与目标一致时
+按幂等处理跳过（与分叉自身 `tests/support/src/lib.rs` 里 runner 暂存的写法同构）。
+诚实标注验证缺口：该文件整体 `#![cfg(target_os = "windows")]`，本地 cargo **编不到**；
+表达式只在隔离 `rustc` 校验里通过（0 warning），第一条真实收据是 run 39341887096。
+
+**C. 二实机把四族"runner 日志推断"换成了正向收据**
+- `codex-uds`：桌面 **10 passed / 0 failed**，含 CI 上持续红的
+  `private_directory_acl_is_user_only_and_inherited_by_files` 与
+  `socket_validation_rejects_broad_acl_without_repairing_it`。→ runner 侧
+  PowerShell `Microsoft.PowerShell.Security` 自动加载损坏属 **harness 缺陷**；
+  分叉的控制通道 ACL 保证现在是被**实测证明**的，不再是"排除归属"。
+- `external-agent-migration` 的 `cur::tests`：同一测试二进制，默认 TEMP 下
+  **23 passed / 0 failed**；把 `TMP`+`TEMP` 指到一个 `codex-test-temp` 兄弟目录后
+  **恰好是 CI 那 4 条 FAIL**（逐条同名），再换无横线兄弟目录又 **23/23**。
+  → 触发点是**分叉自己的 workflow** 把 Windows 测试 TEMP 命名成带横线的
+  `codex-test-temp`；`decode_cur_project_path`（`cur.rs:100`）只重并**一对相邻祖先**，
+  所以祖先里的 `-` 使整条编码路径无法还原、检测返回空集。该解码器与 4 条用例在
+  `origin/main` 上与本分叉**零 diff**，是上游缺陷：本轮只改 harness（`62568aab3`），
+  不改上游语义，缺陷单独上报。
+- `codex-windows-sandbox` legacy 家族：批内 **22 passed / 1 failed**，其中
+  `legacy_capture_cancellation…`、`legacy_capture_emits_output…`、
+  `legacy_tty_job_terminates…` 三条（CI 上 34.9s / 29.7s / 13.1s FAIL）在桌面 **全部 ok**
+  → 记 runner 争用抖动，不冒领修复。机制也查到了：`unified_exec/tests.rs:905` 是
+  `started_at.elapsed() < 10s` 的**硬墙钟断言**，而这个家族本来就已经在
+  `windows_sandbox_legacy_sessions` 组里串行，所以**放宽 nextest 期限对它们无效**——
+  判负来自机器级争用，不是测试间并发。这解释了为什么本轮没有给它们加窗口。
+- `codex-utils-pty`：**25 passed / 1 failed**，唯一失败仍是
+  `conpty_ctrl_c_interrupts_powershell_foreground_child`，在桌面上同样复现（见 F）。
+
+**D. 两条 subagent 误读的纠正（都影响定性，必须记）**
+1. 时长归属错读：`legacy_workspace_write_delete_is_limited_to_writable_roots` 曾被记成
+   35.770s（实为 **0.139s**），derived 自 awk 字段错切。重做正则后确认。
+2. "需要交互式控制台 runner"：被 `conpty_ctrl_c` 的失败反驳——它在真实桌面上也红。
+   同理，write_delete 单条隔离 `--exact --test-threads=1` 跑 3 次：1 次
+   `STATUS_DLL_INIT_FAILED (0xc0000142)`、2 次同签名 FAIL（`None, false`，helper 只写了
+   `START` 没有 `SUCCESS`），所以它**不是**批内竞态；但测试与文件在上游同名存在、
+   分叉零 diff，且 GH 两次运行一败一过 → 归 **上游既有 + 环境敏感**，本轮不修，只上报。
+   这条同时纠正 §6.10 里我先前"fixture/temp 树生命周期竞态"的猜测：树没提前消失，
+   `assert` 在 `TempDir` drop 之前。
+
+**E. 新确认并修复的真实缺陷：guardian 指标发布顺序竞态（`ffab003d6`）**
+`exhausted_transport_retries_fail_closed_after_bounded_attempts` 在 Windows 腿
+`left == []`、右值 `("failure", Some("flex_unavailable"))`（run 39286738661，
+上一手 39098893052 同条 PASS 0.694s，即抖动而非首现）。机制由源码证实：
+分类任务先 `score_progress.fail_closed()`（`classification.rs:499`）再
+`record_classification()`（`classification.rs:509`），而用例只等缓存分数、
+然后就内联读指标 ⇒ 窗口天然存在。改用本模块已有的 `wait_for_outcome`
+（另两条 sibling 用例已经在用），精确值断言不变，所以写错 `failure_reason` 仍会红。
+macOS 收据：`post_answer_finality` **6 passed / 0 failed**，`cargo fmt --check` 干净。
+
+**F. 三笔待办与一项需要拍的**
+- Windows 腿 `codex-tui` 有 **3 条 ABORT**（`0xc00000fd` 栈溢出），两条 run 同名同态，
+  ubuntu 同 3 条 **PASS** → Windows-only 栈深问题，非分叉引入。已在 `.235` 排入
+  `RUST_MIN_STACK` 8 MiB vs 32 MiB 对照探针（结果待补）。
+  → **已闭环，但两处口径要改**：探针结论是"栈预算不足、16 MiB 全绿"，已提交 `6e27a6c11`；
+  "两条 run 同名同态"与"非分叉引入"都不成立。见 §6.13 R1。
+- `approvals_selection_popup@windows.snap` 过期确认：分叉提交 `280843aae`（D6）加了
+  "Ask" 档并只刷新了非 Windows fixture（`git log` 显示基线 `.snap` 由该提交改、
+  `@windows.snap` 最后改动仍是上游 `00d92ad3e`），CI diff 的 `+new` 侧正是
+  Read Only / Ask for approval / **Ask** / Full Access 四档。已在 `.235` 用
+  `INSTA_UPDATE=always` 真实渲染（`include_read_only = cfg!(windows)`，本地无法渲染），
+  取回后与 CI `+new` 逐字节比对（见 §6.12 补充）。
+  → **已闭环**：`.235` 真实渲染取回后与 CI `+new` 侧重建**逐字节相同**（959 B，`cmp` 通过），
+  已提交 `59f3aa39b`；另外三个 `@windows*` fixture 由 Windows 腿 PASS 证明**不过期**，
+  所以全腿只有这一份过期快照。见 §6.13 R2。
+- ubuntu 独有的 `blocked_descriptor_path`（§6.11 的 B3）现在有了**方向**：失败原文是
+  `exec-server transport disconnected: … WebSocket protocol error: Connection reset
+  without closing handshake; failed to resume exec-server session: recovery timed out
+  after 25s`，即 exec-server 进程在 bwrap 沙箱腿里**直接掉线**，25s 是恢复窗口耗尽而不是
+  快照逻辑超时。mac 同一用例 **0.459–0.511s PASS**（走 Seatbelt，不经 bwrap），
+  Windows 看不见这条，所以**必须等 Linux 实机**。到机器上的定向复现：
+  `bwrap --unshare-user --unshare-net true` 先证实 user namespace 可用，再
+  `RUST_MIN_STACK=8388608 cargo nextest run -p codex-exec-server --test exec_process -E
+  'test(blocked_descriptor_path)' --nocapture`，看 exec-server 是崩在 spawn 还是被
+  deny-fd 快照拖死。
+- ConPTY `0x03` 在 24H2+ 不再生成 ctrl-c 事件：**需要你拍**。`7d9dc6834` 以"单次探测
+  不足以确立 OS 级能力边界"为由撤掉了 `a63c08f0f` 的 build 门控；现在证据是
+  GH runner 两次 + 本机 26200.9711 一次，同一签名。三个选项：
+  (1) 恢复 build 门控（只改测试，Windows 转绿，kill 路径仍被覆盖）；
+  (2) 改产品中断路径（`AttachConsole` + `GenerateConsoleCtrlEvent`，`a63c08f0f`
+      实测从 owning process 走不通，风险高、工作量未估）；
+  (3) 保持这条红（现状，Windows 腿不可能绿）。本轮未动，按你的选择执行。
+
+### 6.13 本轮补充收据：栈预算、快照闭环、TEMP 归因的 CI 原生前后对照
+
+接 §6.12。三笔新提交都已推送（`ffab003d6` + `62568aab3` + `59f3aa39b` + `6e27a6c11`
+一次 push，head `6e27a6c11`，收据 run **39347345560**；在飞的 39341887096 head
+`efc27910b` 是新 head 的**祖先**，其信息被新 run 完整覆盖，故未重复 dispatch）。
+
+**R1. Windows `codex-tui` 三条 ABORT 的机制与修复（`6e27a6c11`）**
+
+先纠正 §6.12 F 的两处口径：
+
+1. "两条 run 同名同态"**不成立**。三条 Windows 腿的 ABORT 集合与时长都随 run 变：
+   run 39098893052 是 **4 条**（多出
+   `app_server_session::rollout_history::tests::remote_resume_restores_saved_server_profile_without_permission_overrides`），
+   39205629146 与 39286738661 是 3 条；同一条腿三次时长分别是
+   1.461s / 1.333s / 1.524s。→ 正确表述是"**栈预算落在阈值边缘，哪几条腿掉进去随 run 变**"，
+   不是"这三个用例坏了"。这也正是栈预算类缺陷的签名。
+2. "非分叉引入"证据不足（排除归属 ≠ 证明无关）。查到的**能查的部分**：三条腿的**用例**
+   都由上游提交引入（`b588812e8` #49472、`ed32158e9` #38894、`4d7a5c7c7` #34199），
+   且 `permission_selection_tests.rs` 对分叉**零 diff**；但 `app_server_session.rs` 有
+   分叉 +36/−4（`config_request_overrides_from_config` 加三个 per-thread insert），
+   `session_lifecycle_requests.rs` 有分叉 +1 行。要真正排除分叉，需要在 Windows 上
+   再建一份 merge-base 构建做同栈对比（本轮成本不做）。修复本身是 **harness 栈预算**，
+   两种归属下都成立，所以不阻塞。
+
+度量（`.235`，同一份 `7e1d23695` 源码、同一 `target/`，先 libtest 再 nextest）：
+
+| 栈预算 | libtest（三条分别） | nextest（CI 实际用的调度器） |
+| --- | --- | --- |
+| 未设置 | —（CI 即此状态：ABORT） | **ABORT**（含 retry，Summary `0 passed, 2 failed`） |
+| 8 MiB | **三条全部 `0xc00000fd`** | **ABORT** |
+| 12 MiB | 3 passed（3.56s / 17.97s / 2.53s） | 未测 |
+| 16 MiB | 3 passed（1.62s / 6.99s / 1.01s） | **3 passed**（2 leaky） |
+| 32 MiB | 3 passed（1.69s / 6.90s / 0.99s） | 未测 |
+
+→ 需求在 8 MiB 与 12 MiB 之间；取 **16 MiB** 留余量。修复只加在 Windows 腿的
+`Test (workspace)` 步骤（`env: RUST_MIN_STACK: 16777216`），ubuntu/mac 腿不动。
+诚实边界：这是 **debug 构建 + MSVC 帧布局**的栈预算，不等于产品运行期会溢出
+（本轮没做 Windows release 侧验证）。
+
+**R2. 快照闭环，并且"只有这一份过期"被证明**
+
+`INSTA_UPDATE=always` 在 `.235` 渲染 → `scp` 取回 959 B → 与 §6.12 里我从 CI diff
+`+new` 侧重建的文件 `cmp` **逐字节相同**；内容 diff 恰好是插入 `3. Ask` 四行说明 +
+`Full Access` 顺延为 `4.`，外加 insta 把头部 `source:` 从 `tests.rs` 写成
+`tests/permissions.rs`（insta 只比内容，头部无害）。过期起点也钉死：`@windows.snap`
+最后一次由上游 `00d92ad3e`（2026-09-22）刷新，"Ask" 文案由分叉 `280843aae`
+（2026-09-27）引入 ⇒ 过期约三周。
+
+另外三个 `@windows*` fixture 用 Windows 腿的 PASS 收据证明**不过期**（三处渲染都在
+`#[cfg(target_os = "windows")]` 分支里，PASS 确实执行了它们）：
+
+- `approvals_selection_popup@windows_degraded` →
+  `approvals_selection_popup_snapshot_windows_degraded_sandbox` PASS 0.092s
+- `permissions_selection_history_full_access_to_default@windows` → 同用例 PASS 0.077s
+- `esc_interrupt_goal_paused_footer@windows` → `esc_interrupt_pauses_active_goal_turn` PASS 0.082s
+
+所以 Windows 腿**唯一**过期快照就是已修的那份；这条预先排除省掉了一次 CI 循环。
+
+**R3. uds 两条的归因翻案，与 cur / external_agent_config 的 CI 原生前后对照**
+
+先记一个方法论坑：日志文件名里的 job id 不含平台信息，`39286738661` 的
+`118175345095` 是 **ubuntu** 腿、`118175345058` 才是 **windows** 腿、`118175344562`
+是 cancelled 的 mac 腿。我一度把 ubuntu 的"0 ABORT / 22925 passed"读成 Windows 腿的
+结果，靠 `gh run view --json jobs` 才纠正。以后一律先映射 job→lane 再读。
+
+拿到映射后做了一次**CI 自己的**前后对照（比桌面推断强）：横线 TEMP 根由
+`8d5650e3d`（2026-10-16，"run 38782462743 把 C: 填满"那次的应对）引入。用它做祖先检查
+选出最近一个**不含**该提交的 run —— **38528171490**（10-14，head `bc4517dad`）：
+
+| 用例族 | 38528171490（无横线根） | 39081573074 之后（有横线根） |
+| --- | --- | --- |
+| `external-agent-migration cur::tests` | **PASS** 0.065–1.725s | **4 条 FAIL** |
+| `external_agent_config_secondary_source_imports_session_and_plugin_end_to_end` | **PASS** 1.954s | **FAIL** 0.502s |
+| `codex-uds lib_tests::socket_validation_rejects_broad_acl_without_repairing_it` | **FAIL 0.812s** | FAIL 0.605s |
+| `codex-uds lib_tests::private_directory_acl_is_user_only_and_inherited_by_files` | **FAIL 1.254s** | FAIL 0.821s |
+
+→ `cur` 4 条 + `external_agent_config` 1 条 = **分叉 harness 自己引入**（横线 TEMP 根），
+与桌面 A/B（4 FAIL vs 23/23）互证，修复 `62568aab3`。
+→ **uds 两条与 TEMP 根无关**：横线根引入前就在红，且时长逐次相同（0.812s / 1.254s，
+确定性而非抖动）。失败原文（`r39286738661` job `118175345058` stderr）是
+
+```
+thread '…socket_validation_rejects_broad_acl_without_repairing_it' panicked at
+uds\src\lib_tests.rs:80:9:
+Get-Acl : The 'Get-Acl' command was found in the module
+'Microsoft.PowerShell.Security', but the module could not be loaded.
+```
+
+`lib_tests.rs:80` 是 `assert!(output.status.success())`，即**用例自带**的 PowerShell
+ACL 探针在 runner 镜像上加载不了 `Microsoft.PowerShell.Security`。这两条用例由上游
+`73e94ee7a`（#42326）引入，探针脚本与产品实现无关。分类：**harness / runner 镜像能力
+边界**，不是协议不适用、不是桥未实现、也不是产品字段遗漏。产品侧保证已被桌面实测证明
+（§6.12 C：`codex-uds` 桌面 10/0）。
+
+本轮**没有**动它，理由是可选的两种改法都无法在 CI 外验证（桌面这台 PowerShell 正常，
+复现不了 runner 的模块加载状态），而它们都要改上游安全用例的断言语义：
+(1) 探针前置 `Import-Module Microsoft.PowerShell.Security` / `-ExecutionPolicy Bypass`；
+(2) 去掉 PowerShell，改 `icacls` 或 Win32 `GetNamedSecurityInfoW` 直接读 ACL。
+run 39347345560 会继续给出这两条的现状（预期仍红）。
+
+**R4. windows-sandbox `legacy_` 家族：0.025s ↔ 12–36s 的落差，"争用"这个说法太粗**
+
+桌面单跑（`.235`，16 逻辑核，机器空闲）：`legacy_capture_cancellation` **0.026s PASS**、
+`legacy_capture_emits_output` **0.024s PASS**、`legacy_tty_job_terminates` **0.025s PASS**，
+整包 22/23。CI（4 核 runner）同三条 **35.770s / 12.634s / 11.919s FAIL**，撞的都是
+`unified_exec/tests.rs:905` 的 `elapsed() < 10s` 硬墙钟断言。
+1400 倍的落差不能用"核少 4 倍"解释，所以 §6.12 C 的"runner 争用抖动"口径需要机制证据。
+判定实验（同一台机器，起 24 个 `yes > /dev/null` 烧核进程后重跑 `test(legacy_)`）：
+
+| 腿 | 空闲 | 24 烧核进程下 |
+| --- | --- | --- |
+| `legacy_capture_emits_output_and_preserves_descendant_after_normal_exit` | 0.024s PASS | 0.104s PASS |
+| `legacy_tty_job_terminates_and_preserves_descendants` | 0.025s PASS | 0.083s PASS |
+| `legacy_non_tty_cmd_emits_output` | （未单列） | **41.033s PASS（标 slow）** |
+| `legacy_workspace_write_delete_is_limited_to_writable_roots` | 0.23s FAIL | 0.44–0.505s FAIL（同签名，非竞态，续 §6.12 D2） |
+
+包 Summary：`22/23 tests run: 21 passed (1 slow), 1 failed`，耗时 46.340s（空闲时 15.845s）。
+
+→ **争用是充分原因**：CPU 过量分配一条腿从 ~0.03s 拉到 **41.033s**，已经是那条 10s 硬
+墙钟断言的 4 倍，与 CI 上 12.634s / 11.919s / 35.770s 的失败形态同类。所以不需要再假设
+runner 有每条腿固定的 spawn 开销。
+→ 由此得出下一步修复（`8349736da`，本地未推）：既有的 `test-group =
+windows_sandbox_legacy_sessions` 只能阻止这个家族**内部**重叠，挡不住其余 315 个 binary
+的测试一起抢 CPU；加 `threads-required = "num-test-threads"` 才是"这条腿跑的时候整机
+独占"。语法按安装版本实证校验过：把值改成非法字符串时 nextest 明确报
+`profile.default.overrides[12].threads-required: invalid value …, expected an integer,
+the string "num-cpus" or the string "num-test-threads"`（源码
+`nextest-runner-0.124.0/src/config/elements/threads_required.rs`），改回
+`"num-test-threads"` 解析通过；只加 `platform = 'cfg(windows)'`，ubuntu/mac 调度不动。
+诚实边界：这台 16 核桌面能证明**争用足以**打爆断言，但不能证明 GH 4 核 runner 上的
+12–36s 全部由此产生；独占调度是否真的让它们转绿，第一条收据只能是 CI。因此这一笔
+**压在 39347345560 出结果之后再推**，保持"一个 run 只有一个可归因 delta"。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
