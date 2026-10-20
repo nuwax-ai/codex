@@ -1870,6 +1870,9 @@ wait_time.max(Duration::from_nanos(1));` 已确认生效）重跑 `reloaded_root
 `stream ended unexpectedly: {err:?}`。收据：M-L10a 22/22 PASS（编译 + 无回归）、
 M-L10c 逐字节还原后同腿 PASS（`helper_restored=byte_identical`）。
 8 条本身**不追绿**，留待下一轮 CI 用新文案判定"卡在哪个事件"。
+→ 补记：**新文案已在本机实测出来过**（§6.25，cap 1ms 触发，
+`last event: ThreadSettingsApplied`），所以本节这笔改动不再是"没跑过的代码"；
+8 条腿自身的定性仍未变，等本轮 CI。
 
 ### 6.23 Windows 两条新项：一条是长期贴线漂移，一条未定性；顺带查出一个真实的构建机缺陷
 
@@ -2006,6 +2009,51 @@ head `de8fdb3f4` 已含 `prompts/templates/**` 钉版（windows 构建机这轮�
   绿只说明这条腿对 head 里的某项扰动敏感，与 §6.23 的时序候选一致。
 两种结果都不改它的分类：**未定性、列观察项，`38ace3fe1` 不承诺让它变绿**。
 
+### 6.25 M-L16：把 §6.22 那条新诊断真的"逼出来跑一遍"，补上 500ms / 1ms 两个读数
+
+`d4d9f943a` 只给 `wait_for_event_with_timeout` 的超时分支加诊断。这类改动有个自身风险：
+**如果新代码自己写坏了，它正好砸在它要救的那类失败上**。所以本轮不等 CI 的 mac 腿
+"顺带"验证，而是在 mac 上把这条分支真逼出来（`mac-l16.sh` + `mac-l16b.sh`，
+日志同名；参数与 CI 同形）。被点的用例是
+`suite::approvals::approving_apply_patch_for_session_skips_future_prompts_for_same_file`
+与 `suite::models_etag_responses::refresh_models_…`，临时改法是把
+`wait_time.max(Duration::from_secs(10))` 就地换成 `wait_time.min(…)`，**只在工作区改、跑完立即
+`git checkout` 还原，没有进入任何提交**。
+
+| 腿 | 设置 | 结果 |
+| --- | --- | --- |
+| L16a | 助手原样（models_etag 用例） | **PASS 0.762s** |
+| L16b | `deadline` cap 到 500ms（同一条用例） | **仍 PASS 0.586s** ⇒ 见"结论二" |
+| L16c | 还原后再跑 | **PASS 0.650s** |
+| L16d | cap 500ms，换成 approval 用例 | **PASS 1.215s** |
+| L16e | cap **1ms**，同一条 approval 用例 | **FAIL rc=100**，panic 原文 `timeout waiting for event: Elapsed(()) (deadline 1ms, last event: ThreadSettingsApplied)` |
+| L16f | `git checkout` 还原，同一条用例复跑 | **PASS 0.617s**，`git status` 只剩本轮文档改动 |
+
+**结论一：诊断确实可用。** 三个字段都渲染出来了，`event_msg_name` 取到的是枚举变体名
+（`ThreadSettingsApplied`），不是整段 Debug；CI 里那八条 mac 红若再遇到，日志会直接说出
+"最后真正看到的事件"和生效的 deadline，不必重跑取信息。
+`{elapsed:?}` 恒为 `Elapsed(())`、信息量全在括号里那两个字段——**不为此再动一次已提交的助手**，
+那是装饰性改动，会让八条腿重新编译一遍而不换来任何判据。
+
+**结论二（给 §6.22 的语义补一个中间读数，并记下我自己那次预期落空）**：
+`deadline` 是**每一次 `next_event()` 拉取**的期限、不是整段等待的期限
+（形状是 `loop { timeout(deadline, codex.next_event()) }`），这一点 §6.22 已经写过
+（"`wait_for_event` 用 1s 调它、被 `max(10s)` 抬到 10s"、"**每个事件间隔**"）。
+本轮新增的是**量**：我原本预期"cap 到 500ms 就会红"，实际 **L16b 与 L16d 在 500ms 下都 PASS**
+（事件连续到达、每条间隔都小于期限），要压到 **1ms** 才红——**这个预期错得有据**，
+错在我把"整腿耗时"当成了"单次拉取的等待"，正是 §6.22 那条语义没被我拿来算的地方。
+⇒ 读数区间从 §6.22 的"1ns 也 PASS"补成"500ms 也 PASS、1ms 才 FAIL"，
+CI 那八条的含义随之钉得更死：**报 `timeout waiting for event` 等于
+"在 `max(wait_time, 10s)` 这段时间里一个事件都没到"**，而不是"想要的那个事件没在 10s 内到"。
+所以搜索面**收窄到"harness 整段停滞"**（配置 IO、tool discovery、线程启动这一段），
+**排除"模型响应慢一些"这一类解释**。
+
+**第二操作系统没有复跑这组，如实登记**：`.41` 上此刻跑着与本项目无关的
+`~/duck-linux` 全 workspace `nextest`（`ps` 实测 `cargo-nextest nextest run --locked --workspace
+--no-fail-fast` 加一批 `rust-lld`，`load average` 154.93 → 177.65），不去挤别人的机器。
+本轮 run 的 ubuntu 腿会编译并运行改过的 helper（等于覆盖"在第二操作系统上不炸"），
+但**超时分支的实测只有 mac 一腿**。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -2095,6 +2143,11 @@ head `de8fdb3f4` 已含 `prompts/templates/**` 钉版（windows 构建机这轮�
   这一笔（文档 + `.gitattributes` 注释）带 `[skip ci]`：它不改变任何规则解析，
   实测五个目录的 `git check-attr eol` 仍是 `lf`、`.gitattributes` 非注释行仍是 9 行、
   五个目录下 HEAD blob 含 CR 的文件数仍是 0。
+- **§6.25（M-L16）这一笔只动文档**：实验用的临时改动（`core/tests/common/lib.rs` 里把
+  `deadline` 就地 cap 成 500ms / 1ms）**没有进入任何提交**——L16c 与 L16f 各是一次
+  `git checkout` 还原后的复跑（PASS 0.650s / 0.617s），脚本末尾的 `git status --porcelain`
+  是空的，这就是"改过又还原干净"的收据。同样带 `[skip ci]`：`d4d9f943a` 已经在
+  `39396134392` 的 head 里，本轮不为一条已经验过的诊断再开一手。
 
 - **推送前把两处自己写坏的账改回来了**（如实登记，不留"看起来对"的版本）：
   ① §6.21 第一版把外层窗口写成 1m×2，但 tty 那条腿是**两个** lifecycle 顺序跑的
