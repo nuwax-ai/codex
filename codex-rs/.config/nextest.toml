@@ -218,12 +218,16 @@ filter = 'package(codex-core) & binary(windows_sandbox)'
 slow-timeout = { period = "1m", terminate-after = 3 }
 
 [[profile.default.overrides]]
-# Measured 52.614s PASS on the Windows lane one run earlier, i.e. 7s under the
-# default kill, and the case has no in-test deadline at all: a TIMEOUT here can
-# never carry diagnostics. Three retry attempts over >2 MiB of metadata is the
-# cost; the same lane already grants this shape to the other Windows-heavy
-# unit cases.
-platform = 'cfg(windows)'
+# This leg carries 300 x ~8 KiB function-call items through three retry attempts
+# (core/src/compact_tests.rs:58), so its cost is data massaging, not I/O - and every
+# lane straddles the default 30s x 2 kill. Measured `metadata_enabled` on the CI lanes:
+#   windows 39.740 / 71.275 / 39.282s   ubuntu 50.876 / 28.858s
+#   macOS   33.103 / 49.548 / TIMEOUT 60.025s (39347345560, 39371971338, 39396134392)
+# The 71.275s Windows pass only exists because this window covered it; macOS was left
+# on the default kill by the `cfg(windows)` filter and lost the lane's only red to a
+# bare TIMEOUT at exactly 60.025s. Same leg, same cause, so the window is for all lanes.
+# Idle on an arm64 Mac the two legs measure 11.094s and 18.150s (M-L17), i.e. the lanes
+# multiply it 2-4x; 2m is headroom over the 71.275s observation, not a measurement.
 filter = 'test(local_compaction_retries_preserve_instructions_and_tool_metadata)'
 slow-timeout = { period = "1m", terminate-after = 2 }
 
