@@ -719,7 +719,8 @@ other non-default provider fields are not supported"
     /// fork's default third-party bridging policy. Unlike `is_openai()`,
     /// this matches on the config key (`provider_id`), not the display
     /// name, so a user-defined provider named "OpenAI" is still routed
-    /// through the bridge.
+    /// through the bridge — except where [`Self::requires_workspace_routing`]
+    /// pins the native transport.
     pub fn is_first_party(&self) -> bool {
         matches!(
             self.provider_id.as_deref(),
@@ -727,6 +728,26 @@ other non-default provider fields are not supported"
                 | Some(AMAZON_BEDROCK_PROVIDER_ID)
                 | Some(AMAZON_BEDROCK_RUNTIME_PROVIDER_ID)
         )
+    }
+
+    /// Providers whose ChatGPT credentials travel the first-party auth path:
+    /// no `env_key`, bearer, command or AWS override of its own.
+    pub fn uses_first_party_auth_path(&self) -> bool {
+        self.requires_openai_auth
+            && self.env_key.is_none()
+            && self.experimental_bearer_token.is_none()
+            && self.auth.is_none()
+            && self.aws.is_none()
+    }
+
+    /// Whether this provider's model requests must carry account workspace
+    /// routing (routed backend origin, residency and routing-override
+    /// headers), and the 401 recovery that discovery on that route performs.
+    /// Discovery lives only in `responses_api_provider`, which the bridge
+    /// path does not call, so a routing-capable entry keeps the native
+    /// Responses transport even when its config key is not first-party.
+    pub fn requires_workspace_routing(&self) -> bool {
+        self.uses_first_party_auth_path() && self.supports_codex_backend_routes()
     }
 
     /// Whether inference is routed through a model bridge under the fork
@@ -740,7 +761,7 @@ other non-default provider fields are not supported"
             WireApi::Responses => match self.experimental_bridge {
                 Some(ChatBridge::Native) => false,
                 Some(ChatBridge::Rig | ChatBridge::Genai) => true,
-                None => !self.is_first_party(),
+                None => !(self.is_first_party() || self.requires_workspace_routing()),
             },
         }
     }

@@ -1913,9 +1913,11 @@ impl ResponsesHttpExecutor<'_> {
         let mut provider_auth_recovery_attempted = false;
         let mut pending_retry = PendingUnauthorizedRetry::default();
         loop {
-            // Bridged providers are always user-configured entries; keep the
-            // pre-refactor behavior of resolving exactly the configured
-            // provider (workspace routing only applies to first-party auth).
+            // Bridged providers are never routing-capable:
+            // `uses_model_bridge()` pins the native transport for entries
+            // whose ChatGPT credentials travel the first-party auth path on
+            // a codex backend route, so resolving exactly the configured
+            // provider here cannot drop workspace routing.
             let client_setup = self
                 .client
                 .current_client_setup(ClientRouting::ConfiguredProvider)

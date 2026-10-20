@@ -325,11 +325,7 @@ pub type ModelProviderFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a
 pub type SharedModelProvider = Arc<dyn ModelProvider>;
 
 fn provider_uses_first_party_auth_path(provider: &ModelProviderInfo) -> bool {
-    provider.requires_openai_auth
-        && provider.env_key.is_none()
-        && provider.experimental_bearer_token.is_none()
-        && provider.auth.is_none()
-        && provider.aws.is_none()
+    provider.uses_first_party_auth_path()
 }
 
 /// Creates the default runtime model provider for configured provider metadata.
