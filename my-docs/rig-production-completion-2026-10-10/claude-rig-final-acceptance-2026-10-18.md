@@ -1645,6 +1645,88 @@ target(s) in 19m19s`（`CARGO_TARGET_DIR=~/rig-verify-20261019/target-release`�
   （需 root、属安全策略变更，**本轮没有在这台机器上改**），要么给容器 `CAP_SYS_ADMIN` 等
   相应权限。这条与 §6.10 的 unix 期限讨论无关，是独立的部署要求。
 
+### 6.20 用户点头的那一轮 dispatch 已跑完：四份收据全部到手，另有 10 条首观新红要单独定性
+
+**run `39371971338`**：event `workflow_dispatch`、head `55fcee7cb`（= `origin/test`）、
+2026-10-20T04:53:38Z → 07:40:43Z（**2h47m05s**）、总 verdict failure。按授权**只发这一手**，
+没有因为看到红而补跑。日志是 run 结束后才允许下载的（在跑的时候
+`gh run view --log-failed` 回 `run … is still in progress`，已实测）。
+
+| 腿 | 预算 / 实耗 | 测试阶段 | 结果 |
+|---|---|---|---|
+| `bazel bridge gate (ubuntu)` | 60m / 29m48s | — | **成功** |
+| `nextest (ubuntu-latest)` | 180m / 1h23m59s | 2861.494s | `22928 run: 22927 passed (24 slow), 1 failed, 48 skipped` |
+| `nextest (windows)` | 150m / 2h00m37s | 3014.459s | `21760 run: 21751 passed (21 slow, 254 leaky), 8 failed, 1 timed out, 138 skipped` |
+| `nextest (macos-latest)` | 330m / 2h46m56s | 3313.645s | `22878 run: 22870 passed (27 slow), 8 failed, 71 skipped` |
+
+三腿都在 `Test (workspace)` 这一步报 failure，**没有 cancelled、没有编译失败**，
+所以红点全部是"可读的用例结果"。
+
+**四份收据逐条结案**
+
+1. **R5（`codex-tui` ABORT）结案**：windows 日志里 `ABORT` 计数 = **0**
+   （`grep -c ABORT`）。基线 `39347345560`（head `6e27a6c11`）的退出块里有 3 条
+   `codex-tui … - with code 0xc00000fd: Recursion too deep; the stack overflowed. (os error 1001)`。
+   ⇒ `6e27a6c11` + `cefb81d57`（把 stack 预算放进真正设置它的那条 recipe）这两笔生效。
+2. **§6.15（mac daemon 窗口）结案**：`codex-cli::app_server_daemon` 在这一腿
+   **18 条 PASS、0 条 FAIL/TIMEOUT**。其中 `packaged_daemon_start_and_explicit_replacement`
+   实测 **PASS 173.300s**，比旧窗口（60s / 120s / 180s 三道 kill）都高，
+   还带一条 `SLOW [>120.000s]` 标记；`981490315` 那条 mac-only `2m × 2` 覆盖规则
+   必须排在两条 `packaged_daemon_` 规则**之前**才有效（first-match-wins），这一点
+   本轮被真实跑到底验证了一次。
+3. **`::discovery` 在 CI 侧转绿**：`PASS [ 1.633s] ( 832/22928)
+   codex-app-server::all suite::v2::account::external_auth_refreshes_on_unauthorized::discovery`
+   （`u39371` 第 5692 行）。同一 runner、一手之隔的基线是
+   `FAIL [ 60.783s] ( 996/22927)`（`u39347`）。windows 与 mac 的失败集里这条也消失了。
+   ⇒ **`95fb0949d` 的 CI 收据到手**，与验证机 L2 的 `PASS 2.695s` 两个独立来源一致。
+4. **`8349736da` 的整机独占没能改变结果——这一半要收回**：四条 `legacy_` 仍全红，
+   且与"没有独占"的基线几乎同形：
+
+   | 用例 | 基线 39347345560 | 本轮 39371971338（已整机独占） |
+   |---|---|---|
+   | `legacy_capture_cancellation_terminates_descendants_without_timeout` | FAIL 34.563s | FAIL **32.056s** |
+   | `legacy_capture_emits_output_and_preserves_descendant_after_normal_exit` | FAIL 11.472s | FAIL **12.515s** |
+   | `legacy_tty_job_terminates_and_preserves_descendants` | FAIL 11.051s | FAIL **14.163s** |
+   | `legacy_workspace_write_delete_is_limited_to_writable_roots` | FAIL 0.130s | FAIL **0.302s** |
+
+   ⇒ 我把"CPU 争用足以 blow 掉 `unified_exec/tests.rs:905` 那条 10s 硬墙钟"写进了
+   `nextest.toml` 的注释，**这个解释在 runner 上被证伪**：`threads-required` 全部保留后
+   前三条反而没有变快。剩下的可能只有"这条 assert 在 windows-latest 上本来就太紧"
+   或"descendant 真的没按预期退出/存活"，两者都是产品/用例侧，不是调度侧
+   （登记为 task #27，注释里那半句错误解释也要跟着改）。
+   `write_delete` 那条 0.3s 失败仍然与 #13 同一族（快速、确定性、语义断言）。
+
+**顺带补一手 ubuntu 侧的既有待办**：这一腿唯一的红就是 `blocked_descriptor_path`，
+本轮 `FAIL [ 25.298s] (11226/22928)`，基线是 `FAIL [  0.346s] (11032/22927)`——
+**同一条用例两次用时差了 73 倍**，而真 Ubuntu 上这个 `test_case` 是 45/45 全绿（L7b）。
+⇒ #23 需要的"runner 侧根因"又多一条形状证据：它不是确定性的快速失败，
+没有第二手 runner 日志不许结案。
+
+**本轮新增的 10 条首观红（都不追绿，先分桶）**
+
+- **mac 8 条**：5 条 `suite::compact::program_tests::model_switch_program_pair::*`
+  + 3 条 `suite::pending_input::queue_only_agent_mail_wakes_sleeping_root_with_previous_turn_context::reloaded_*`。
+  **8 条 panic 点完全相同**：`core/tests/common/lib.rs:395:14`，文本
+  `timeout waiting for event: Elapsed(())`——即 helper 里
+  `timeout(wait_time.max(Duration::from_secs(10)), codex.next_event())` 的 10s 下限被击穿。
+  这 8 条在**同一轮 ubuntu 腿**分别是 17 / 5 条 PASS；两簇时间戳
+  （07:10:25–07:10:47、07:15:58–07:16:09）正好与 `app_server_daemon` 的 173s 腿收尾、
+  以及 `daemon_startup` 一批 20–38s 的腿重叠。
+  ⇒ 归"**期限形状 + 同车道争用**"，但这是相关性、不是证明；要把"我的窗口放宽"与
+  "mac runner 本来就慢"分开，只能靠一次受控复跑（登记为 task #26）。
+- **windows 2 条**：
+  - `codex-core agent::control::tests::spawn_agent_can_fork_parent_thread_history_with_sanitized_items`
+    FAIL 3.340s，panic 在 `core\src\agent\control_tests.rs:3139:5`，diff 是
+    developer / `<managed_developer_instructions>` / `<persistent_mode>` 合并后的历史内容，
+    **不是期限**。ubuntu 同轮 PASS，windows 前两轮（39286738661、39347345560）PASS。
+  - `codex-core::all suite::code_mode::code_mode_excludes_mcp_servers_using_their_configured_identity`
+    `TERMINATING [> 60.000s]` → `TIMEOUT [  60.054s]`，stdout 只有 `(test timed out)`，无诊断。
+    命中的是 nextest **默认**窗口（`.config/nextest.toml:5`
+    `slow-timeout = { period = "30s", terminate-after = 2 }`），不是我加过的任何一条 override；
+    ubuntu 同轮 PASS 1 次。
+  ⇒ 两条都是首观、都落在我本轮没碰过的文件里，先按"**未定性，需要第二手**"登记，
+  不许写成"与我无关"。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -1690,6 +1772,13 @@ target(s) in 19m19s`（`CARGO_TARGET_DIR=~/rig-verify-20261019/target-release`�
   **追加登记**：`0c501eed0..4d9f30b6f`（把 sandbox 探测落成 L8c 收据的那笔）同样带
   `[skip ci]`，实测也没有产生 run；`origin/test` 现在是 `4d9f30b6f`，工作树 clean，
   上面"四件事的 CI 收据"仍未开始产生，dispatch 与下一笔真实代码提交仍等用户点头。
+  **后续（同一轮内）**：用户点头"跑一轮 workflow_dispatch"，于是
+  `gh workflow run "Fork Cargo PR" --ref test` 发出 **run `39371971338`**
+  （head `55fcee7cb`，2026-10-20T04:53:38Z），这一手就是本轮唯一的一次 dispatch。
+  四件事的收据**全部到手并结案于 §6.20**：R5 的 `codex-tui` ABORT 归零、
+  §6.15 的 mac daemon 窗口（18 PASS，最慢 173.300s）、`::discovery` 在 CI ubuntu
+  **PASS 1.633s**、`8349736da` 整机独占**没能**改变 `legacy_` 那四条（结论收回，转 task #27）。
+  同轮另见 §6.20 的 10 条首观新红（mac 8 + windows 2），按授权**没有补跑第二手**。
 - ACP `dev`：`19207d3`（= 交接时的 `origin/dev`）之上本轮新增 `0930455`、`147280b`、
   `d188807`、`59426b6`（三条分隔符耦合断言改平台中立，§9.5.1）、`6a76aa7`
   （`package-lock.json` 同步，§9.6）；`origin/dev` = `6a76aa7`，五笔均已推送；
