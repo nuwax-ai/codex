@@ -2803,7 +2803,9 @@ impl ModelClientSession {
                 // (same-protocol passthrough; hosted-tool capability gaps are
                 // handled by config, not silent protocol conversion).
                 // First-party OpenAI (websocket, hosted tools, ZDR) and Amazon
-                // Bedrock (SigV4) keep the native transport, and
+                // Bedrock (SigV4) keep the native transport, so does any entry
+                // that needs account workspace routing (`requires_workspace_routing`,
+                // because discovery lives on this path), and
                 // `experimental_bridge = "native"` forces it explicitly.
                 #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
                 if info.uses_model_bridge() {
