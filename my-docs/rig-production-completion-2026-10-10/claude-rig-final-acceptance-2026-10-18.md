@@ -739,6 +739,8 @@ macOS 收据：`post_answer_finality` **6 passed / 0 failed**，`cargo fmt --che
   `RUST_MIN_STACK` 8 MiB vs 32 MiB 对照探针（结果待补）。
   → **已闭环，但两处口径要改**：探针结论是"栈预算不足、16 MiB 全绿"，已提交 `6e27a6c11`；
   "两条 run 同名同态"与"非分叉引入"都不成立。见 §6.13 R1。
+  → **R1 的旋钮位置又被推翻一次**：`6e27a6c11` 的步骤 env 被 justfile recipe 覆盖，
+  CI 仍跑 8 MiB；生效的修复是 `cefb81d57`（改 recipe 本身 + 回滚死代码）。见 §6.13 R5。
 - `approvals_selection_popup@windows.snap` 过期确认：分叉提交 `280843aae`（D6）加了
   "Ask" 档并只刷新了非 Windows fixture（`git log` 显示基线 `.snap` 由该提交改、
   `@windows.snap` 最后改动仍是上游 `00d92ad3e`），CI diff 的 `+new` 侧正是
@@ -804,6 +806,8 @@ macOS 收据：`post_answer_finality` **6 passed / 0 failed**，`cargo fmt --che
 `Test (workspace)` 步骤（`env: RUST_MIN_STACK: 16777216`），ubuntu/mac 腿不动。
 诚实边界：这是 **debug 构建 + MSVC 帧布局**的栈预算，不等于产品运行期会溢出
 （本轮没做 Windows release 侧验证）。
+**本段最后一句的落点已作废**：`6e27a6c11` 的步骤 env 会被 justfile 里的 recipe 赋值
+覆盖，实际等于没改；16 MiB 这个数与度量都仍然成立，只是旋钮位置错了，见 **R5**。
 
 **R2. 快照闭环，并且"只有这一份过期"被证明**
 
@@ -842,8 +846,12 @@ macOS 收据：`post_answer_finality` **6 passed / 0 failed**，`cargo fmt --che
 | `codex-uds lib_tests::socket_validation_rejects_broad_acl_without_repairing_it` | **FAIL 0.812s** | FAIL 0.605s |
 | `codex-uds lib_tests::private_directory_acl_is_user_only_and_inherited_by_files` | **FAIL 1.254s** | FAIL 0.821s |
 
-→ `cur` 4 条 + `external_agent_config` 1 条 = **分叉 harness 自己引入**（横线 TEMP 根），
-与桌面 A/B（4 FAIL vs 23/23）互证，修复 `62568aab3`。
+→ `cur` 4 条 + `external_agent_config` 1 条 = **分叉 harness 自己引入**（横线 TEMP 根）。
+两条证据强度不同，分开记：`cur` 4 条既有 CI 前后对照，也有**桌面同二进制 A/B**
+（4 FAIL vs 23/23，§6.12 C）；`external_agent_config` 这条**只有 CI 前后对照**
+（PASS 1.954s → FAIL 0.502s，三条 run 一致），没有做过桌面 A/B，因为要另建
+`codex-app-server` 的测试二进制，成本不付。它读的是同一批 Cursor 会话目录、
+走同一个 `decode_cur_project_path`，机制同源，但这是**推断不是实测**。
 → **uds 两条与 TEMP 根无关**：横线根引入前就在红，且时长逐次相同（0.812s / 1.254s，
 确定性而非抖动）。失败原文（`r39286738661` job `118175345058` stderr）是
 
@@ -899,6 +907,63 @@ the string "num-cpus" or the string "num-test-threads"`（源码
 12–36s 全部由此产生；独占调度是否真的让它们转绿，第一条收据只能是 CI。因此这一笔
 **压在 39347345560 出结果之后再推**，保持"一个 run 只有一个可归因 delta"。
 
+**R5. `6e27a6c11` 的栈预算是死代码：真正生效的旋钮在 justfile（`cefb81d57`）**
+
+复核时发现的**我自己的无效修复**，必须记下来。`justfile:8` 是上游
+`rust_min_stack := "8388608" # 8 MiB`（`e8ba912fc`，2026-04-22，#19067），
+而 `test` 的 unix / windows 两条 recipe 自己写 `RUST_MIN_STACK={{ rust_min_stack }}`
+（`justfile:100` / `:104`）。recipe 内赋值发生在步骤环境之后，所以 workflow 里
+`env: RUST_MIN_STACK: 16777216` 被覆盖掉，**CI 仍然按 8 MiB 跑**——也就是我在桌面上
+实测三条 `codex-tui` 腿全部 `0xc00000fd` 崩溃的那个值。收据：
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 改前的 unix 渲染 | `just -n test`（本机） | `RUST_MIN_STACK=8388608 …`（与上游一致） |
+| 改后的 unix 渲染 | `just -n test` | 同上，**未变**（证明只动 Windows） |
+| 改后的 Windows 渲染 | `ssh -n win 'cd ~/codex-win-verify && just --evaluate stack_for_os'` | `16777216` |
+| 改后的 Windows recipe | 同机 `just -n test` | `$env:RUST_MIN_STACK = "16777216"; …` |
+| 死代码是否清干净 | `git diff 59f3aa39b -- .github/workflows/fork-cargo-pr.yml` | **空**（逐字节回到加 env 之前） |
+| 还有谁在设这个变量 | `grep -rn RUST_MIN_STACK .github/ justfile scripts/` | 只剩 justfile 三处 |
+| Windows 腿是否全走 recipe | `grep -n "cargo nextest\|just test" .github/workflows/*.yml` | p0 三条测试步骤都是 `just test`；唯一裸 `cargo nextest` 是 `live-tests.yml:80` 的 `codex-live-tests`，不含 `codex-tui` 腿 |
+
+Windows 那台需要先装 `just`（`choco`/已有脚本，`just 1.59.0`，INSTALL-RC=0），并且
+新的 justfile 已同步到 `~/codex-win-verify/justfile`；渲染值就是 CI 会用的值。
+
+**副作用（对未来本地复现有用）**：在 mac 上不带 `RUST_MIN_STACK` 直接跑
+`cargo nextest run -p codex-core --test all` 时，
+`subagent_stop_replaces_stop_and_skips_internal_subagents` 两次都在 0.4s
+`has overflowed its stack` / SIGABRT；改用 `just test` 后 **1.225s PASS**。
+所以这个变量在 Unix 腿上同样是承重的，任何"CI 复现"都必须走 recipe 而不是裸 nextest。
+
+对 39347345560 的推论（待该 run 的 Windows 腿证实）：它的 head 是 `6e27a6c11`，
+栈预算**没生效**，所以三条 ABORT 预期仍在原位。这不是"重跑同样内容"——
+`cefb81d57` 携带的是该 run 结构上不可能测到的 delta，因此必须推，而不是重新 dispatch。
+
+**R6. `subagent_stop_replaces_stop_and_skips_internal_subagents`：2s 窗口改成 20s（`c27ec7653`）**
+
+签名（两条 Windows 腿逐字相同）：
+`Error: expected at least 2 entries in subagent_stop_hook_log.jsonl, got 1`。
+同一 run 三条 lane 对照（`r39286738661`，各 log 含 ~378 处 Windows 标记以确证 lane 归属）：
+
+| lane | 结果 | 时长 |
+| --- | --- | --- |
+| ubuntu | PASS | 1.377s |
+| macOS | PASS | 0.814s |
+| windows（39098893052 / 39286738661） | FAIL | 5.986s / 5.624s |
+| windows（另一 run，10-19 05:38） | PASS | 4.643s |
+
+`wait_for_hook_log` 的 `Duration::from_secs(2)`（`subagent_notifications.rs:347`）是
+"第二次 `python3` hook 追加"的等待上限。失败腿总时长 ≈ 断言窗口 + ~3.6s，即窗口耗尽后
+立即报错；而 Windows 也有一条 4.643s 的 PASS ⇒ **间歇且平台独选**，符合 runner 争用下
+追加更慢，不符合"hook 确定性丢失"（那样每次 Windows 都会红）。所以分类是
+**harness 计时窗口**，不是桥未实现也不是产品字段遗漏。
+
+改动只放宽窗口：循环一到期望计数就返回，健康路径零成本；最坏 20 + 3.6 ≈ **24s**，
+仍在 `[profile.default] slow-timeout = { period = "30s", terminate-after = 2 }`
+（60s kill）内，不需要额外 override，也不需要动断言。mac 复跑 **1.225s PASS**，
+`cargo fmt --check` 干净。诚实边界：`.235` 桌面本身复现不了 runner 争用（其他家族在
+桌面上全部转绿），所以这条的 Windows 收据只能是 CI。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -918,6 +983,13 @@ the string "num-cpus" or the string "num-test-threads"`（源码
   `0037503db`（均带 `[skip ci]`，逐笔实测未触发新 run）。
   `origin/test` = `0037503db`；`7b1a92c6a` 触发的 run `39286738661` 已到终态并登记在 §6.11。
   本节这份文档提交在其后、同样带 `[skip ci]`，不额外占用 CI 预算。工作树 clean。
+  **§6.12–§6.13 之后的实际指针状态（本次登记时核实）**：`origin/test` = `6e27a6c11`，
+  本地未推的四笔是 `8349736da`（`legacy_` 整机独占调度）、`0c566acbf`（文档）、
+  `cefb81d57`（R5 栈预算）、`c27ec7653`（R6 hook 窗口）。它们**刻意压在 run
+  `39347345560`（head `6e27a6c11`，三条 lane 均 in_progress）出结果之后**：该 run
+  已经花掉一轮预算，若它的 TEMP 归因或 elevated 修复仍未闭合，下一轮应当把那笔修正
+  一起带上，而不是再单独烧一轮。R5 的推论（该 run 的三条 `codex-tui` ABORT 仍在）
+  也在这笔推送后由下一轮给出收据。
 - ACP `dev`：`19207d3`（= 交接时的 `origin/dev`）之上本轮新增 `0930455`、`147280b`、
   `d188807`、`59426b6`（三条分隔符耦合断言改平台中立，§9.5.1）、`6a76aa7`
   （`package-lock.json` 同步，§9.6）；`origin/dev` = `6a76aa7`，五笔均已推送；
