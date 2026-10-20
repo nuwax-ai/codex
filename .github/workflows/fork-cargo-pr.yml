@@ -231,6 +231,17 @@ jobs:
       # gstreamer Windows installer plus pkg-config wiring, which this lane
       # does not provision; the macOS lane covers that crate's build and unit
       # tests.
+      #
+      # MSVC debug builds put these app/session legs past the default test
+      # thread stack: three codex-tui legs abort with 0xc00000fd
+      # STATUS_STACK_OVERFLOW in every Windows lane (39098893052, 39205629146,
+      # 39286738661) and a fourth joined on 39098893052, while the same legs
+      # pass on ubuntu and macOS. Measured on Windows 11 26200.9711 against this
+      # checkout: 8 MiB still aborts all three, 12 MiB and 16 MiB pass all three,
+      # so 16 MiB leaves headroom over the observed requirement. Harness budget
+      # only — no product code path changed.
       - name: Test (workspace)
         shell: bash
+        env:
+          RUST_MIN_STACK: 16777216
         run: just test --workspace --exclude codex-voice-host --features codex-core/rust-rig,codex-v8-poc/sandbox --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
