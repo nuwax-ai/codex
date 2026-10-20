@@ -6,6 +6,11 @@ set shell := ["python3", "-c", 'import os, runpy; runpy.run_path(os.environ["JUS
 set windows-shell := ["python", "-c", 'import os, runpy; runpy.run_path(os.environ["JUST_SHELL"], run_name="__main__")']
 
 rust_min_stack := "8388608" # 8 MiB
+# MSVC debug frames put three codex-tui app/session legs past upstream's 8 MiB:
+# measured on Windows 11 26200.9711 with the lane's own nextest, 8 MiB aborts all
+# three with 0xc00000fd STATUS_STACK_OVERFLOW and 16 MiB passes all three (12 MiB
+# also passed). Kept Windows-only so the Unix lanes stay on the upstream value.
+stack_for_os := if os_family() == "windows" { "16777216" } else { rust_min_stack }
 python := if os_family() == "windows" { "python" } else { "python3" }
 
 # Display help
@@ -92,11 +97,11 @@ install:
 # there should be no need to add `--all-features`.
 [unix]
 test *args:
-    RUST_MIN_STACK={{ rust_min_stack }} NEXTEST_PROFILE=local cargo nextest run --no-fail-fast "$@"
+    RUST_MIN_STACK={{ stack_for_os }} NEXTEST_PROFILE=local cargo nextest run --no-fail-fast "$@"
 
 [windows]
 test *args:
-    $env:RUST_MIN_STACK = "{{ rust_min_stack }}"; $env:NEXTEST_PROFILE = "local"; cargo nextest run --no-fail-fast @($args | Select-Object -Skip 1)
+    $env:RUST_MIN_STACK = "{{ stack_for_os }}"; $env:NEXTEST_PROFILE = "local"; cargo nextest run --no-fail-fast @($args | Select-Object -Skip 1)
 
 # Run from the repository root so scripts that resolve paths from `cwd` see
 # the same layout they use in GitHub Actions.
