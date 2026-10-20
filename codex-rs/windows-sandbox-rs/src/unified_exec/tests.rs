@@ -702,7 +702,13 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
         ],
         cwd.as_path(),
         HashMap::new(),
-        Some(10_000),
+        // The parent command does not exit until the sandboxed grandchild writes its pid
+        // marker, so this ceiling is what that marker wait gets. Hosted runners needed
+        // more than the old 10s: the capture returned as a timeout and the marker read
+        // then panicked with "read descendant pid: NotFound" at 12.515s / 11.472s /
+        // 11.324s (runs 39371971338, 39347345560, 38824922110). See the measurement in
+        // legacy_capture_cancellation_terminates_descendants_without_timeout.
+        Some(60_000),
         /*cancellation*/ None,
     )
     .expect("run legacy capture powershell");
@@ -897,13 +903,27 @@ fn legacy_capture_cancellation_terminates_descendants_without_timeout() {
         ],
         cwd.as_path(),
         HashMap::new(),
-        Some(30_000),
+        Some(90_000),
         /*cancellation*/ Some(cancellation),
     )
     .expect("run legacy capture powershell with cancellation");
 
+    // The cancellation callback cannot return true until the sandboxed grandchild has
+    // written its pid marker, so this measures hosted-runner grandchild start-up, not
+    // cancellation latency. Three consecutive runs lost the whole leg to the old 30s
+    // capture ceiling: 32.056s / 34.563s / 33.973s (runs 39371971338, 39347345560,
+    // 38824922110 - identical text since 2026-10-15), so start-up on `windows-latest`
+    // is only bounded below at >30s, against 0.024-0.026s on an idle Windows 11 machine.
+    // Reserving every nextest thread for the leg did not change the CI numbers, so this
+    // is runner process start-up cost, not contention with sibling tests. The capture
+    // ceiling is 90s and this assert is the inner 60s so that a slow leg is decided by
+    // These two asserts, not a nextest kill that leaves nothing but TIMEOUT; the worst
+    // case here (90s capture + the 10s exit wait below) fits the 4m window this family
+    // gets in `.config/nextest.toml`, which is sized by the two back-to-back lifecycles
+    // of legacy_tty_job_terminates_and_preserves_descendants. Whether 90s is enough is
+    // answered by the run this push triggers, since the CI data gives no upper bound.
     assert!(
-        started_at.elapsed() < Duration::from_secs(10),
+        started_at.elapsed() < Duration::from_secs(60),
         "cancellation should end capture before the timeout"
     );
     assert!(
@@ -976,7 +996,10 @@ async fn assert_legacy_tty_descendant_lifecycle(
         ],
         cwd.as_path(),
         HashMap::new(),
-        Some(30_000),
+        // Same runner start-up cost as the capture cases above: the ready-marker wait
+        // under this ceiling is what panicked with "Terminate descendant did not start"
+        // at 14.163s / 11.051s / 10.861s (runs 39371971338, 39347345560, 38824922110).
+        Some(60_000),
         &[],
         &[],
         /*tty*/ true,
@@ -985,7 +1008,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
     .await
     .expect("spawn legacy sandbox ConPTY lifecycle test");
     assert!(
-        wait_for_path(&ready_marker, Duration::from_secs(10)),
+        wait_for_path(&ready_marker, Duration::from_secs(60)),
         "{lifecycle:?} descendant did not start"
     );
     let descendant_pid = fs::read_to_string(&ready_marker)
