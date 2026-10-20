@@ -709,3 +709,129 @@ fn orphaned_request_controls_require_the_complete_group() {
     assert!(error.contains("NUWAX_STREAM_IDLE_TIMEOUT_MS"), "{error}");
     assert!(error.contains("NUWAX_BASE_URL"), "{error}");
 }
+
+#[test]
+fn bridge_selection_seeds_the_transport_override() {
+    let responses_group = || {
+        input(
+            Some("m1"),
+            Some("https://gw.example"),
+            Some("responses"),
+            Some("k"),
+        )
+    };
+    for bridge in ["rig", "native", "genai"] {
+        let seeds = nuwax_env_overrides(
+            NuwaxEnvInput {
+                bridge: Some(bridge.into()),
+                ..responses_group()
+            },
+            /*cli_model*/ None,
+            /*cli_provider*/ None,
+            &[],
+        )
+        .expect("valid bridge selection");
+        assert_eq!(
+            seed_provider_table(&seeds).get("experimental_bridge"),
+            Some(&toml::Value::String(bridge.into())),
+            "{bridge}"
+        );
+    }
+
+    // Unset must not seed the key: the fork default (rig for a third-party
+    // Responses provider) has to stay reachable.
+    let seeds = nuwax_env_overrides(
+        responses_group(),
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &[],
+    )
+    .expect("default bridge");
+    assert!(
+        seed_provider_table(&seeds)
+            .get("experimental_bridge")
+            .is_none(),
+        "unset NUWAX_BRIDGE must leave the fork default in place"
+    );
+}
+
+#[test]
+fn native_bridge_requires_the_responses_wire() {
+    for wire_api in ["chat", "anthropic"] {
+        let error = nuwax_env_overrides(
+            NuwaxEnvInput {
+                bridge: Some("native".into()),
+                ..input(
+                    Some("m1"),
+                    Some("https://gw.example"),
+                    Some(wire_api),
+                    Some("k"),
+                )
+            },
+            /*cli_model*/ None,
+            /*cli_provider*/ None,
+            &[],
+        )
+        .expect_err("native is a Responses-transport selection");
+        assert!(
+            error.contains("NUWAX_BRIDGE") && error.contains("NUWAX_WIRE_API"),
+            "{wire_api}: {error}"
+        );
+    }
+}
+
+#[test]
+fn invalid_or_orphaned_bridge_names_the_variable() {
+    for value in ["sidewinder", "   "] {
+        let error = nuwax_env_overrides(
+            NuwaxEnvInput {
+                bridge: Some(value.into()),
+                ..input(
+                    Some("m1"),
+                    Some("https://gw.example"),
+                    Some("responses"),
+                    Some("k"),
+                )
+            },
+            /*cli_model*/ None,
+            /*cli_provider*/ None,
+            &[],
+        )
+        .expect_err("invalid bridge must fail the group");
+        assert!(error.contains("NUWAX_BRIDGE"), "{value:?}: {error}");
+    }
+
+    let error = nuwax_env_overrides(
+        NuwaxEnvInput {
+            bridge: Some("native".into()),
+            ..Default::default()
+        },
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &[],
+    )
+    .expect_err("orphaned bridge fails fast");
+    assert!(error.contains("NUWAX_BRIDGE"), "{error}");
+    assert!(error.contains("NUWAX_BASE_URL"), "{error}");
+}
+
+#[cfg(unix)]
+#[test]
+fn non_unicode_bridge_names_the_variable() {
+    let error = nuwax_env_overrides(
+        NuwaxEnvInput {
+            bridge: Some(non_unicode()),
+            ..input(
+                Some("m1"),
+                Some("https://gw.example"),
+                Some("responses"),
+                Some("k"),
+            )
+        },
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &[],
+    )
+    .expect_err("non-unicode bridge must fail the group");
+    assert!(error.contains("NUWAX_BRIDGE"), "{error}");
+}

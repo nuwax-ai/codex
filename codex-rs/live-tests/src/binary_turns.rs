@@ -509,7 +509,9 @@ async fn run_scene(
                 _ => anyhow::bail!("unsupported live scene wire API"),
             },
             capture_requirement: match startup {
-                // The environment group never sets experimental_bridge, so
+                // This scene cannot select a transport: the variant carries no
+                // bridge, `NUWAX_BRIDGE` is scrubbed from the inherited
+                // environment, and the group default is the rig bridge. So
                 // every attempt goes through rig and must leave a capture.
                 Startup::NuwaxEnv { .. } => capture_validation::CaptureRequirement::Required,
                 Startup::Config {

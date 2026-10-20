@@ -18,7 +18,7 @@ use tokio::io::AsyncWriteExt;
 /// the only live budget on the connection is the idle timeout.
 const TRUNCATED_CHAT_FRAME: &str = "data: {\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"nuwax-controls-model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"par\"},\"finish_reason\":null}]}\n\n";
 
-const CONFIG_ENV_VARIABLES: [&str; 12] = [
+const CONFIG_ENV_VARIABLES: [&str; 13] = [
     "NUWAX_BASE_URL",
     "NUWAX_WIRE_API",
     "NUWAX_API_KEY",
@@ -27,6 +27,7 @@ const CONFIG_ENV_VARIABLES: [&str; 12] = [
     "NUWAX_REQUEST_MAX_RETRIES",
     "NUWAX_STREAM_MAX_RETRIES",
     "NUWAX_STREAM_IDLE_TIMEOUT_MS",
+    "NUWAX_BRIDGE",
     "CODEX_MODEL_REASONING_EFFORT",
     "CODEX_MODEL_CONTEXT_WINDOW",
     "CODEX_AUTO_COMPACT_TOKEN_LIMIT",

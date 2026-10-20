@@ -8,6 +8,11 @@
 //! `NUWAX_MAX_OUTPUT_TOKENS` optionally caps generated output on all three protocols. Credentials
 //! are referenced (`env_key = "NUWAX_API_KEY"`); the raw key never enters a
 //! config value, rollout, or diagnostic.
+//! `NUWAX_BRIDGE` selects the transport for the temporary provider (`rig`,
+//! `native` or `genai`, same values as the provider's `experimental_bridge`
+//! key); unset keeps the fork default. `native` requires
+//! `NUWAX_WIRE_API=responses` and is the only way to reach the upstream
+//! Responses transport from a process environment.
 //!
 //! Precedence falls out of the existing layers: an explicit typed CLI model
 //! (`-m`) or provider selection beats these seeds, and an explicit `-c` key
@@ -36,6 +41,7 @@ const MAX_OUTPUT_TOKENS_ENV: &str = "NUWAX_MAX_OUTPUT_TOKENS";
 const REQUEST_MAX_RETRIES_ENV: &str = "NUWAX_REQUEST_MAX_RETRIES";
 const STREAM_MAX_RETRIES_ENV: &str = "NUWAX_STREAM_MAX_RETRIES";
 const STREAM_IDLE_TIMEOUT_MS_ENV: &str = "NUWAX_STREAM_IDLE_TIMEOUT_MS";
+const BRIDGE_ENV: &str = "NUWAX_BRIDGE";
 
 /// The raw environment inputs, owned so the production reader can move the
 /// `var_os` values. Non-Unicode values surface as a diagnosable error
@@ -51,6 +57,7 @@ pub struct NuwaxEnvInput {
     pub request_max_retries: Option<OsString>,
     pub stream_max_retries: Option<OsString>,
     pub stream_idle_timeout_ms: Option<OsString>,
+    pub bridge: Option<OsString>,
 }
 
 /// Reads the group from the real process environment exactly once per call
@@ -66,6 +73,7 @@ pub fn from_process() -> NuwaxEnvInput {
         request_max_retries: std::env::var_os(REQUEST_MAX_RETRIES_ENV),
         stream_max_retries: std::env::var_os(STREAM_MAX_RETRIES_ENV),
         stream_idle_timeout_ms: std::env::var_os(STREAM_IDLE_TIMEOUT_MS_ENV),
+        bridge: std::env::var_os(BRIDGE_ENV),
     }
 }
 
@@ -135,6 +143,7 @@ pub fn nuwax_env_overrides(
                 .stream_idle_timeout_ms
                 .is_some()
                 .then_some(STREAM_IDLE_TIMEOUT_MS_ENV),
+            input.bridge.is_some().then_some(BRIDGE_ENV),
         ]
         .into_iter()
         .flatten()
@@ -178,6 +187,27 @@ pub fn nuwax_env_overrides(
         ));
     }
     require_non_blank(api_key, API_KEY_ENV)?;
+    let bridge = match unicode(input.bridge.as_deref(), BRIDGE_ENV)? {
+        Some(raw) => {
+            let raw = require_non_blank(Some(raw), BRIDGE_ENV)?;
+            if !matches!(raw, "rig" | "native" | "genai") {
+                return Err(format!(
+                    "Invalid {BRIDGE_ENV} value; expected one of rig, native or genai"
+                ));
+            }
+            // `native` is a Responses-transport selection: on the Chat and
+            // Anthropic wires the policy bridges regardless of the override,
+            // so accepting it there would silently ignore the variable.
+            if raw == "native" && wire_api != "responses" {
+                return Err(format!(
+                    "{BRIDGE_ENV} = \"native\" requires {WIRE_API_ENV} = \"responses\"; \
+                     the chat and anthropic wires are only served by a model bridge"
+                ));
+            }
+            Some(raw)
+        }
+        None => None,
+    };
     let max_output_tokens = match unicode(
         input.max_output_tokens.as_deref(),
         MAX_OUTPUT_TOKENS_ENV,
@@ -234,6 +264,12 @@ pub fn nuwax_env_overrides(
     // fast on) a missing env var at auth time; the key itself is never
     // copied into configuration.
     provider.insert("env_key".into(), Value::String(API_KEY_ENV.into()));
+    if let Some(bridge) = bridge {
+        provider.insert(
+            "experimental_bridge".into(),
+            Value::String(bridge.to_string()),
+        );
+    }
     if let Some(max_output_tokens) = max_output_tokens {
         provider.insert(
             "max_output_tokens".into(),

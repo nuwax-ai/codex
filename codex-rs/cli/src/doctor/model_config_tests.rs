@@ -90,6 +90,74 @@ async fn doctor_resolves_environment_provider_and_reports_scope_aware_compact_li
     }
 }
 
+/// The transport switch is a startup-environment concern: `NUWAX_BRIDGE` must
+/// reach the routing policy, so `doctor` reports the upstream-native transport
+/// instead of the fork's rig default — the only receipt that an env-only
+/// deployment really left the bridge.
+#[tokio::test]
+async fn doctor_reports_the_environment_bridge_switch_as_the_native_transport() -> anyhow::Result<()>
+{
+    for (bridge, expected) in [
+        (None, "bridge: rig (model bridge)"),
+        (Some("native"), "bridge: native transport"),
+    ] {
+        let home = tempfile::tempdir()?;
+        let interactive = TuiCli::parse_from(["codex"]);
+        let launch_overrides = model_cli_overrides(
+            &CliConfigOverrides::default(),
+            &interactive,
+            NuwaxEnvInput {
+                model: Some("relay-model".into()),
+                base_url: Some("https://relay.example/v1".into()),
+                wire_api: Some("responses".into()),
+                api_key: Some("private-key".into()),
+                bridge: bridge.map(std::ffi::OsString::from),
+                ..Default::default()
+            },
+        )
+        .expect("environment group seeds");
+        let config = ConfigBuilder::default()
+            .codex_home(home.path().to_path_buf())
+            .cli_overrides(launch_overrides.cli_overrides)
+            .env_seed_overrides(launch_overrides.env_seed_overrides)
+            .build()
+            .await?;
+        assert_eq!(config.model_provider_id, "nuwax_env");
+        assert_eq!(config.model_provider.wire_api.to_string(), "responses");
+        assert_eq!(
+            config
+                .model_provider
+                .experimental_bridge
+                .map(|value| value.to_string()),
+            bridge.map(String::from)
+        );
+        let report = model_routing::check(
+            &config,
+            /*auth_manager*/ None,
+            &model_routing::ModelRoutingSources {
+                plain_oss: false,
+                provider: model_routing::ProviderSource::NuwaxEnvironmentGroup,
+                model: model_routing::ModelSource::NuwaxModelEnvironment,
+            },
+        )
+        .await;
+        assert!(
+            report.details.iter().any(|detail| detail == expected),
+            "{bridge:?}: {:?}",
+            report.details
+        );
+        assert_eq!(
+            report
+                .details
+                .iter()
+                .any(|detail| detail.starts_with("experimental bridge override:")),
+            bridge.is_some(),
+            "{bridge:?}"
+        );
+    }
+    Ok(())
+}
+
 #[test]
 fn doctor_oss_without_a_provider_ignores_full_and_malformed_environment_groups() {
     let interactive = TuiCli::parse_from(["codex", "--oss"]);

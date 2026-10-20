@@ -100,6 +100,7 @@ fn nuwax_command(
         "NUWAX_REQUEST_MAX_RETRIES",
         "NUWAX_STREAM_MAX_RETRIES",
         "NUWAX_STREAM_IDLE_TIMEOUT_MS",
+        "NUWAX_BRIDGE",
     ] {
         command.env_remove(variable);
     }
@@ -378,6 +379,7 @@ async fn nuwax_env_interrupt_during_retry_backoff_stops_further_attempts() -> Re
         "NUWAX_REQUEST_MAX_RETRIES",
         "NUWAX_STREAM_MAX_RETRIES",
         "NUWAX_STREAM_IDLE_TIMEOUT_MS",
+        "NUWAX_BRIDGE",
     ] {
         command.env_remove(variable);
     }
@@ -685,6 +687,20 @@ async fn nuwax_env_control_values_fail_fast_naming_the_variable() -> Result<()> 
             complete_group: true,
         },
         Case {
+            label: "unknown bridge",
+            variable: "NUWAX_BRIDGE",
+            value: "sidewinder",
+            expected_fragment: "NUWAX_BRIDGE",
+            complete_group: true,
+        },
+        Case {
+            label: "native bridge on the chat wire",
+            variable: "NUWAX_BRIDGE",
+            value: "native",
+            expected_fragment: "requires NUWAX_WIRE_API",
+            complete_group: true,
+        },
+        Case {
             label: "orphaned control",
             variable: "NUWAX_REQUEST_MAX_RETRIES",
             value: "1",
@@ -811,6 +827,7 @@ async fn nuwax_env_invalid_controls_are_ignored_for_explicit_named_provider() ->
         "NUWAX_REQUEST_MAX_RETRIES",
         "NUWAX_STREAM_MAX_RETRIES",
         "NUWAX_STREAM_IDLE_TIMEOUT_MS",
+        "NUWAX_BRIDGE",
     ] {
         command.env_remove(variable);
     }

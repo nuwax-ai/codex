@@ -103,6 +103,9 @@ async fn live_child(
         ("NUWAX_REQUEST_MAX_RETRIES", Some("0")),
         ("NUWAX_STREAM_MAX_RETRIES", Some("0")),
         ("NUWAX_STREAM_IDLE_TIMEOUT_MS", Some("45000")),
+        // The attempt budget and ledger below are the rig bridge's; an
+        // inherited transport switch would dispatch around both.
+        ("NUWAX_BRIDGE", None),
         ("CODEX_RIG_REQUEST_CAPTURE_FILE", Some(ledger_str.as_str())),
         ("CODEX_RIG_MAX_HTTP_ATTEMPTS", Some(budget_str.as_str())),
         // The per-scene output cap (lowered only by the exhaustion case).

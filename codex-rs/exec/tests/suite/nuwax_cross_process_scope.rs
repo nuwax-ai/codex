@@ -19,7 +19,7 @@ use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-const CONFIG_ENV_VARIABLES: [&str; 12] = [
+const CONFIG_ENV_VARIABLES: [&str; 13] = [
     "NUWAX_BASE_URL",
     "NUWAX_WIRE_API",
     "NUWAX_API_KEY",
@@ -28,6 +28,7 @@ const CONFIG_ENV_VARIABLES: [&str; 12] = [
     "NUWAX_REQUEST_MAX_RETRIES",
     "NUWAX_STREAM_MAX_RETRIES",
     "NUWAX_STREAM_IDLE_TIMEOUT_MS",
+    "NUWAX_BRIDGE",
     "CODEX_MODEL_REASONING_EFFORT",
     "CODEX_MODEL_CONTEXT_WINDOW",
     "CODEX_AUTO_COMPACT_TOKEN_LIMIT",

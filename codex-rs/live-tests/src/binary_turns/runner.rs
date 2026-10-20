@@ -78,6 +78,7 @@ impl ExecRunner for ProcessRunner {
             .env_remove("NUWAX_REQUEST_MAX_RETRIES")
             .env_remove("NUWAX_STREAM_MAX_RETRIES")
             .env_remove("NUWAX_STREAM_IDLE_TIMEOUT_MS")
+            .env_remove("NUWAX_BRIDGE")
             .envs(turn.env.iter().map(|(name, value)| (name, value)))
             .current_dir(turn.cwd)
             .stdin(Stdio::null())

@@ -125,6 +125,7 @@ impl PidBackend {
             .env_remove("NUWAX_REQUEST_MAX_RETRIES")
             .env_remove("NUWAX_STREAM_MAX_RETRIES")
             .env_remove("NUWAX_STREAM_IDLE_TIMEOUT_MS")
+            .env_remove("NUWAX_BRIDGE")
             .args(self.command_args().iter().map(std::borrow::Cow::as_ref))
             .stdin(Stdio::null())
             .stdout(Stdio::null())

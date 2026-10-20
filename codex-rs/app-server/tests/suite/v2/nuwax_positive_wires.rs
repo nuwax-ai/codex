@@ -188,6 +188,7 @@ async fn child(
         "NUWAX_REQUEST_MAX_RETRIES",
         "NUWAX_STREAM_MAX_RETRIES",
         "NUWAX_STREAM_IDLE_TIMEOUT_MS",
+        "NUWAX_BRIDGE",
     ]
     .iter()
     .map(|name| (*name, None))
@@ -512,6 +513,64 @@ async fn responses_env_group_executes_a_tool_round_trip_over_the_real_responses_
     assert!(
         output.contains(TOOL_MARKER),
         "the executed call's output returns to the provider: {tool_result}"
+    );
+    Ok(())
+}
+
+/// The transport switch through the REAL child: `NUWAX_BRIDGE = native` keeps
+/// the same endpoint, credential and model contract but leaves the rig bridge,
+/// so no request-capture ledger can exist. The missing ledger is the receipt
+/// that a process environment alone selected the upstream-native transport.
+#[tokio::test]
+async fn native_bridge_env_switch_sends_the_responses_wire_without_the_rig_capture() -> Result<()> {
+    let server = MockServer::start().await;
+    let log = RequestLog::default();
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .and(log.clone())
+        .respond_with(
+            ResponseTemplate::new(200).set_body_raw(responses_final_sse(), "text/event-stream"),
+        )
+        .mount(&server)
+        .await;
+
+    let capture_dir = TempDir::new()?;
+    let ledger = capture_dir.path().join("rig-capture.jsonl");
+    let codex_home = TempDir::new()?;
+    let mut app = child(
+        &codex_home,
+        &server.uri(),
+        "responses",
+        &[
+            ("NUWAX_BRIDGE", "native"),
+            (
+                "CODEX_RIG_REQUEST_CAPTURE_FILE",
+                ledger.to_str().context("utf-8 ledger")?,
+            ),
+        ],
+    )
+    .await?;
+    let thread = app.start_thread(never_approval_thread()).await?.thread;
+    completed_turn(&mut app, &thread.id, "answer once").await?;
+    app.shutdown_gracefully().await?;
+
+    let requests = log.all();
+    assert_eq!(
+        requests.len(),
+        1,
+        "one sampling request on the Responses wire"
+    );
+    let body = assert_common_wire_shape(&requests[0], "/v1/responses")?;
+    assert_eq!(
+        body["max_output_tokens"], 2048,
+        "NUWAX_MAX_OUTPUT_TOKENS seeds the responses cap"
+    );
+    assert!(body["input"].is_array());
+    assert!(body.get("messages").is_none());
+    assert!(
+        !ledger.exists(),
+        "a bridged attempt writes the capture ledger; the native transport must not: {}",
+        std::fs::read_to_string(&ledger).unwrap_or_default()
     );
     Ok(())
 }

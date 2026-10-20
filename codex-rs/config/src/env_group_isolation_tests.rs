@@ -284,3 +284,39 @@ fn environment_output_cap_is_legal_but_foreign_layers_cannot_override_or_add_it(
     .expect_err("absence of an environment cap does not allow a foreign layer to add it");
     assert!(error.to_string().contains("max_output_tokens"));
 }
+
+#[test]
+fn environment_bridge_selection_is_legal_but_foreign_layers_cannot_override_it() {
+    // NUWAX_BRIDGE seeds `experimental_bridge` on the same layer as the rest
+    // of the group; a file or `-c` layer choosing the transport for the
+    // environment credential is exactly the origin confusion isolation exists
+    // to stop.
+    let bridged = format!("{GROUP_SEEDS}\nexperimental_bridge = \"native\"\n");
+    let seed = env_seed_layer(&bridged);
+    assert!(validate_env_group_isolation(&stack(vec![seed]), NUWAX_ENV_PROVIDER_ID).is_ok());
+    for layers in [
+        vec![
+            user_layer("[model_providers.nuwax_env]\nexperimental_bridge = \"rig\""),
+            env_seed_layer(&bridged),
+        ],
+        vec![
+            env_seed_layer(&bridged),
+            session_layer("[model_providers.nuwax_env]\nexperimental_bridge = \"genai\""),
+        ],
+        vec![
+            user_layer("[model_providers.nuwax_env]\nexperimental_bridge = \"native\""),
+            env_seed_layer(GROUP_SEEDS),
+        ],
+    ] {
+        let error = validate_env_group_isolation(&stack(layers), NUWAX_ENV_PROVIDER_ID)
+            .expect_err("a whitelisted key name still needs seed provenance");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("experimental_bridge"));
+        for value in ["native", "rig", "genai"] {
+            assert!(
+                !error.to_string().contains(value),
+                "only field names belong in diagnostics: {error}"
+            );
+        }
+    }
+}

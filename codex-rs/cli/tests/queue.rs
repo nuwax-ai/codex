@@ -541,6 +541,7 @@ async fn queue_uses_default_socket_owner_after_provider_retarget() -> Result<()>
         ("NUWAX_REQUEST_MAX_RETRIES", None),
         ("NUWAX_STREAM_MAX_RETRIES", None),
         ("NUWAX_STREAM_IDLE_TIMEOUT_MS", None),
+        ("NUWAX_BRIDGE", None),
         ("OPENAI_API_KEY", None),
         ("CODEX_API_KEY", None),
         ("CODEX_ACCESS_TOKEN", None),
