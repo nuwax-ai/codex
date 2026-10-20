@@ -341,9 +341,14 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
                 .await?;
             let (output, errors, status, closed) =
                 collect_process_output_from_events(started.process).await?;
+            // The ubuntu-latest runner has failed this leg in every cached
+            // run with an EMPTY output in ~0.35s, while a transport reset
+            // ends it in ~25s. `output` alone cannot tell those apart, so the
+            // runner-side receipt has to carry the process' own diagnostics.
             assert!(
                 output.ends_with(&format!("restored:input-{index}")),
-                "{output:?}"
+                "{shell}#{index}: output={output:?} stderr={errors:?} status={status:?} \
+                 closed={closed:?}"
             );
             if shell == "zsh" {
                 assert!(
