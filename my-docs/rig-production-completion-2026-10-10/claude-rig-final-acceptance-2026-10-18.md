@@ -585,7 +585,8 @@ nextest 输出体只有 `running 1 test` + `(test timed out)`，
   （上游已有 `typesafe_overrides.model_provider.is_some()`，而用例传的是**类型化字段**
   `model_provider: Some("mock_provider")`，`:715-726`，上游就已进入同一分支）；
   另一处是停机 drain（`:1307-1314`），不在 resume 断言路径上。
-  → **上游测试/实现的竞态，mac 首发**；列为待复现观察，本轮不改。
+  → **上游测试/实现的竞态，mac 首发**；列为待复现观察，本轮不改。**（§6.15 C 补测：本机
+  54 跑 0 现，且本机单次比 CI 两个值都快——复现条件仍是 runner 形状，定性不变。）**
 - **#9 `fresh_startup_falls_back_only_for_unsupported_config_read`**：
   `Error: deadline has elapsed` 在 16.716s，命中
   `tui/src/app/tests/startup_defaults_tests.rs:624`
@@ -1029,6 +1030,79 @@ harness 范围，要动 `token.rs`/`acl.rs` 的可观测性甚至授权逻辑。
 `aclprobe.ps1`、`aclstrip1.ps1` 与 `%USERPROFILE%\sb-escape-probe.txt`（实测从未被创建）
 均已清理。
 
+### 6.15 本轮 macOS 收尾：daemon 期限放宽、nextest 优先级陷阱、#8 的 54 跑不复现
+
+对应 §6.10 处置里挂着的那半句"**那 5 条的 unix 期限放宽，与下一次代码推送合并做**"。
+本轮做了，落点提交 `981490315`（未推，压在 in-flight run 之后）。
+
+**A. 先拆一个会静默吞掉修改的陷阱：nextest 的 override 是"逐字段、先匹配者生效"**
+
+这不是猜的，是同一台 mac、同一份 `cargo-nextest 0.9.146` 上四次实测：
+
+| 实验 | 配置形状 | 观测 | 结论 |
+| --- | --- | --- | --- |
+| 1 | 同一 filter 两条 override，前者 `300s`、后者 `1s × 2` | 用例跑满 **15.471s PASS** | 同一字段**先匹配者生效**，后面的被忽略 |
+| 2 | 前者只设 `test-group`，后者设 `1s × 2` | **TIMEOUT 2.008s** | 合并是**逐字段**的：前者没设期限，后者仍生效 |
+| 3 | 把某条 filter 改坏成 `test(((` | `list` 与 `run` **都不报错** | filter 解析是**惰性**的，语法错误不在配置加载时暴露 |
+| 4 | 用真实配置的副本，只把新规则的 period 改成 `1s` | `packaged_daemon_start_and_explicit_replacement` **1.002s TIMEOUT** | 新规则确实命中该用例，且**优先于**它下面那条 `1m × 3` |
+
+实验 2 顺带给出一个反向收据：`:241` 那条 mac 串行 `test-group`（`8349736da` 同族思路的
+unix 版）对**已经被上面期限规则命中**的 daemon 用例仍然有效，不是 R5 那种死代码。
+实验 3 解释了为什么"配置能加载"不能作为证据——所以这条规则的 filter 我用
+`cargo nextest list -p codex-cli -E '<与配置逐字相同的串>'` 单独核对，输出**恰好 5 行**：
+`explicit_restart_applies_feature_overrides_and_preserves_saved_settings`、
+`managed_starts_ensure_one_updater_and_recover_a_missing_one`、
+`packaged_daemon_explicit_replacement_migrates_running_legacy`、
+`packaged_daemon_start_and_explicit_replacement`、
+`restart_applies_saved_updater_preference`，无多无少。
+`filter` 也刻意写成文件里主流的单行形式（不是 `'''` 多行），避免 TOML 多行串的首行换行
+进入表达式——惰性解析意味着这种写法错了也不会在本地报出来。
+
+**B. 为什么放宽到 `2m × 2`（kill 在 4m），以及为什么放在那两条规则上面**
+
+期限数字全部来自 §6.10 那张表，不新造：上一手 mac 的贴线 PASS 是
+54.902 / 99.587 / 138.699 s，对应外界 60 / 120 / 180 s，即只差 **5.1 / 20.4 / 41.3 s**；
+同族本轮仍然 PASS 的 daemon 用例被测出 **20–65 %** 的 lane 变慢。取上界
+138.699 × 1.65 = **228.9 s < 240 s**。
+成本方向要说清：这 5 条在 mac 上被 `:241` 串行化，墙钟时间就是它们的和，
+**一条 90 s 的 PASS 比"60 s kill + 重试 60 s = 120 s"更便宜**，只有真挂起的腿才多花时间
+（最坏 `4m × 2` 次尝试 = 8 min/条）。位置则是硬约束：实验 1 决定了我必须把它插在原
+`packaged_daemon_start_and_explicit_replacement`（`1m × 3`）与 `packaged_daemon_`
+（`1m × 2`）两条**之前**，插在后面就是一条看起来改了、实际没用的 R5。
+覆盖面只给 `cfg(target_os = "macos")`，没按 §6.10 原话给 `cfg(unix)`：ubuntu 这 5 条是
+5.959–41.847 s 的 PASS，给它 4 分钟窗口等于给 ubuntu 的真回归加一层遮蔽。
+`#![cfg(unix)]`（`cli/tests/app_server_daemon.rs:1`）让 Windows 对这 5 条零覆盖，不变。
+
+**诚实边界**：这条**不能**在本机出收据。本机不是 runner，跑不出 20–65 % 那档争用；
+实验 4 只证明"窗口确实被授予了这 5 条"，不证明"放宽后它们会转绿"。后者的收据只能来自
+CI，而且**不是** in-flight 的 `39347345560`（head `6e27a6c11`，不含本条），只能是推送后的下一轮。
+
+**C. 九项里 #8 的本机复现尝试：54 跑 0 现，定性不动，状态改口径**
+
+`multi_agent_v2_developer_instructions…inherits_parent_developer_instructions_without_an_override`
+是九项中唯一"时序不是它的敌人"（FAIL 1.420s vs PASS 1.503s，几乎同速）的一条，
+按理最不该只归给 runner，所以补测：
+
+- 串行 30 跑（`--retries 0`，单条）：**30 PASS**，0.61–0.89 s；
+- 并发加压 24 跑（4 个 worker × 6 跑，同时 24 个 CPU 自旋进程超订 18 核）：**24 PASS**，0.63–1.25 s；
+- 合计 **54 跑，`NotLoaded` 观测 0 次**；本机单次耗时（0.61–1.25 s）**低于 CI 的两个值**，
+  说明这台机器在这条腿上比 mac runner 快，加压也没把它拉到 CI 的量级。
+
+⇒ 结论只能到这里：**本机 54 跑不复现**，既没推翻 §6.10 的"上游测试/实现竞态、mac 首发"，
+也没拿到把它升级成分叉缺陷的证据。缺的条件是 CI 那种"整个 app-server 集成组 4 并发 +
+315 个 binary 抢同一台机"的真实形状；要不要在本机整组复跑（1973 项）等本轮 mac 腿给出
+#8 的第二次观测再定，避免盲目烧几十分钟。
+
+**D. 顺手抓到的一处验证setup缺陷（不是产品问题，登记并改法）**
+
+ACP 的 vitest 套件把自己的 `CODEX_HOME` scratch 建成 `codex-acp-codex-home-*`，落点是
+node 的 `os.tmpdir()`，也就是**系统盘**。实测（本轮，mac）：`/System/Volumes/Data`
+**96 % 满、余 18 Gi**；`/private/var/folders/…/T` 合计 **28 G**，其中该前缀
+**1919 个目录 / 25.4 GiB**；按 mtime 分桶，**24 h 内 676 个 / 10.1 GiB**（本轮产生），
+48 h 内计数相同，96 h 内为全部 1919 个。按 C2 的约定**一个都没删**。
+改法与 cargo 那条"三变量缺一不可"同源：跑 ACP 套件时显式
+`TMPDIR=/Volumes/zhitai/tmp`，否则"我只在验证"这件事本身会把用户的系统盘吃掉 10 Gi/轮。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -1048,13 +1122,15 @@ harness 范围，要动 `token.rs`/`acl.rs` 的可观测性甚至授权逻辑。
   `0037503db`（均带 `[skip ci]`，逐笔实测未触发新 run）。
   `origin/test` = `0037503db`；`7b1a92c6a` 触发的 run `39286738661` 已到终态并登记在 §6.11。
   本节这份文档提交在其后、同样带 `[skip ci]`，不额外占用 CI 预算。工作树 clean。
-  **§6.12–§6.13 之后的实际指针状态（本次登记时核实）**：`origin/test` = `6e27a6c11`，
-  本地未推的四笔是 `8349736da`（`legacy_` 整机独占调度）、`0c566acbf`（文档）、
-  `cefb81d57`（R5 栈预算）、`c27ec7653`（R6 hook 窗口）。它们**刻意压在 run
-  `39347345560`（head `6e27a6c11`，三条 lane 均 in_progress）出结果之后**：该 run
-  已经花掉一轮预算，若它的 TEMP 归因或 elevated 修复仍未闭合，下一轮应当把那笔修正
-  一起带上，而不是再单独烧一轮。R5 的推论（该 run 的三条 `codex-tui` ABORT 仍在）
-  也在这笔推送后由下一轮给出收据。
+  **§6.12–§6.15 之后的实际指针状态（本次登记时核实）**：`origin/test` = `6e27a6c11`，
+  本地未推的是 `8349736da`（`legacy_` 整机独占调度）、`0c566acbf`（文档）、
+  `cefb81d57`（R5 栈预算）、`c27ec7653`（R6 hook 窗口）、`b4be82ca7`（文档）、
+  `7c22bf2ed`（§6.14 文档）、`981490315`（§6.15 mac daemon 期限）与本笔文档提交。
+  它们**刻意压在 run `39347345560`（head `6e27a6c11`，三条 lane 均 in_progress）出结果
+  之后**：该 run 已经花掉一轮预算，若它的 TEMP 归因或 elevated 修复仍未闭合，下一轮应当
+  把那笔修正一起带上，而不是再单独烧一轮。R5 的推论（该 run 的三条 `codex-tui` ABORT
+  仍在）与 §6.15 的 mac 窗口，都只能由这笔推送之后的下一轮给出收据——该 run 的源码里
+  两者都不存在。
 - ACP `dev`：`19207d3`（= 交接时的 `origin/dev`）之上本轮新增 `0930455`、`147280b`、
   `d188807`、`59426b6`（三条分隔符耦合断言改平台中立，§9.5.1）、`6a76aa7`
   （`package-lock.json` 同步，§9.6）；`origin/dev` = `6a76aa7`，五笔均已推送；
@@ -1117,6 +1193,9 @@ harness 范围，要动 `token.rs`/`acl.rs` 的可观测性甚至授权逻辑。
      期限"不足以闭合本项**——真正阻断的是 3h job 时限本身。本项现在拆成两个待办：
      (a) mac 腿**分片**（升格为待开发项），(b) 那 5 条的 unix 期限放宽（仍与下一次代码推送
      合并做）。定性与终态：定性已完成且结论不变，**mac 完整验收仍为未达成**。
+     → **§6.15 关掉 (b) 的开发部分**：`981490315` 给这 5 条发了 mac-only `2m × 2` 窗口，
+     命中与优先级用真实配置副本实测过（本机 1.002s TIMEOUT），但**转绿与否只能由推送后的
+     下一轮给收据**。(a) 分片仍是待开发项，本项整体未闭合。
   3. windows 尾项家族（ConPTY、unified_exec、uds ACL、elevated runner、cur 检测等）与
      `shell_snapshot…blocked_descriptor` 抖动。
   4. 验机 `swufe@192.168.32.163` 的 rustup 组件安装存在 manifest 损坏；pinned 1.95.0
