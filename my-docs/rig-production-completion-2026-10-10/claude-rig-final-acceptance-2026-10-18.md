@@ -1672,6 +1672,15 @@ target(s) in 19m19s`（`CARGO_TARGET_DIR=~/rig-verify-20261019/target-release`�
   Linux L1 `140 passed`、L2 `5 passed`（`::discovery` 2.695s）、
   **L8a `codex-rust-rig-bridge` 337/337**（覆盖视觉 floor 修复）、
   L7b `45 passed`（B3 真机不复现）、L6 release 两枚二进制带 sha256（§6.19）。
+- **推送已执行，但这 11 笔仍未产生 CI 收据（如实登记）**：`git push origin test` 把
+  `6e27a6c11..062f98cfe` 推上去了，`origin/test` = `062f98cfe`、工作树 clean。
+  推送后 `gh run list --branch test` 最新一手**仍是 `39347345560`（head `6e27a6c11`）**，
+  没有新 run——原因是 tip 提交 `062f98cfe` 的消息里带 `[skip ci]`，GitHub 按规则跳过整个
+  push 事件（与 §7 早前"带 `[skip ci]` 的文档提交逐笔实测未触发新 run"同一条行为）。
+  **所以那四件事的 CI 侧收据还没有开始产生**，本轮**没有**擅自 `workflow_dispatch`
+  （workflow 头部注释写明手动 dispatch 是单独的用户授权动作，交接约束也写了
+  "不要重新 dispatch，也不要为了重新跑 CI 无意义地提交"）。要么由用户授权一次 dispatch，
+  要么等下一笔不带 `[skip ci]` 的真实代码提交顺带触发——两条路都只在用户点头后走。
 - ACP `dev`：`19207d3`（= 交接时的 `origin/dev`）之上本轮新增 `0930455`、`147280b`、
   `d188807`、`59426b6`（三条分隔符耦合断言改平台中立，§9.5.1）、`6a76aa7`
   （`package-lock.json` 同步，§9.6）；`origin/dev` = `6a76aa7`，五笔均已推送；
