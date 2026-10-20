@@ -159,18 +159,21 @@ filter = 'package(codex-windows-sandbox) & test(legacy_)'
 test-group = 'windows_sandbox_legacy_sessions'
 
 [[profile.default.overrides]]
-# Same family, and the reason serialization alone is not enough: several of these
-# legs end on a hard in-test wall clock (`started_at.elapsed() < 10s`,
-# unified_exec/tests.rs:905), so a slow leg loses no matter how the deadline is
-# widened. Measured on a 16-core machine: unloaded the legs run in 0.024-0.026s,
-# and with 24 CPU spinners oversubscribing the box one sibling leg stretched to
-# 41.033s — CPU starvation alone is enough to blow the 10s assert, which is what
-# the 12.634s / 11.919s / 35.770s full-CI losses look like. `test-group` only
-# keeps this family from overlapping itself; reserving every slot keeps the rest
-# of the 315-binary workspace off the machine while one of these legs runs.
+# Same family. Its in-test budgets (unified_exec/tests.rs) are now sized to the
+# hosted-runner cost of starting a sandboxed grandchild, so this window has to exceed
+# the worst *sum* of the budgets in a leg, not just the widest: the TTY leg runs two
+# lifecycle checks back to back (60s marker wait + 15s + 10s + 10s each, ~190s), and
+# the cancellation leg is 90s capture + 10s exit wait. Under the default 30s x 2 a slow
+# leg was killed and reported only TIMEOUT, which is the evidence the budgets exist to
+# produce - a window that can't hold its own leg would recreate that failure.
+# This replaces a `threads-required = "num-test-threads"` reservation of the whole
+# machine for these legs. The reservation was honoured but useless: the legs ran
+# 32.056 / 12.515 / 14.163s reserved (39371971338) against 34.563 / 11.472 /
+# 11.051s unreserved (39347345560), while the Windows test phase cost 631s more
+# (2383.014s -> 3014.459s). Contention with sibling tests is not the mechanism.
 platform = 'cfg(windows)'
 filter = 'package(codex-windows-sandbox) & test(legacy_)'
-threads-required = "num-test-threads"
+slow-timeout = { period = "2m", terminate-after = 2 }
 
 [[profile.default.overrides]]
 # This Codex-home startup path still exceeded the broader Windows-heavy ceiling
@@ -222,6 +225,16 @@ slow-timeout = { period = "1m", terminate-after = 3 }
 # unit cases.
 platform = 'cfg(windows)'
 filter = 'test(local_compaction_retries_preserve_instructions_and_tool_metadata)'
+slow-timeout = { period = "1m", terminate-after = 2 }
+
+[[profile.default.overrides]]
+# Its real cost straddles the default kill: 48.878s PASS (38824922110) and
+# 51.826s PASS (39347345560) on the Windows lane, then 60.054s TIMEOUT in
+# 39371971338, where ubuntu needed 48.768s and macOS 17.717s. This leg starts MCP
+# servers, so its duration is their start-up time; under the default 30s x 2 the
+# lane only ever reports TIMEOUT with no diagnostics about which server stalled.
+# 2m is headroom, not a measurement: the killed leg only bounds the cost at >60s.
+filter = 'test(code_mode_excludes_mcp_servers_using_their_configured_identity)'
 slow-timeout = { period = "1m", terminate-after = 2 }
 
 [[profile.default.overrides]]
