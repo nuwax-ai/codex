@@ -344,7 +344,17 @@ async fn wait_for_hook_log(
     filename: &str,
     expected_len: usize,
 ) -> Result<Vec<serde_json::Value>> {
-    let deadline = Instant::now() + Duration::from_secs(2);
+    // Every hook here is `python3 <script>`, so this window has to cover two
+    // interpreter cold starts. Windows alone blew the two-second budget: the same
+    // run put ubuntu at 1.377s PASS and macOS at 0.814s PASS, while legs
+    // 39098893052 and 39286738661 failed at 5.986s and 5.624s with "expected at
+    // least 2 entries in subagent_stop_hook_log.jsonl, got 1", and a third
+    // Windows run passed the same leg in 4.643s. Intermittent and Windows-only,
+    // so a contended runner was slower to append the second entry than a
+    // deterministic missing hook. The loop returns as soon as the count is
+    // reached, so the wider window is free on the healthy path and keeps the
+    // worst case (~24s) inside the 60s nextest kill.
+    let deadline = Instant::now() + Duration::from_secs(20);
     loop {
         let inputs = read_hook_log(home, filename)?;
         if inputs.len() >= expected_len {
