@@ -1607,8 +1607,10 @@ target(s) in 19m19s`（`CARGO_TARGET_DIR=~/rig-verify-20261019/target-release`�
   （L7a 那条 rc=2 是重复 `--locked`，见上。）
 - **L8b = L7c 那 5 条，空闲机重跑**：`Summary [16.532s] 5 tests run: 0 passed, 5 failed`、
   `L8b_rc=100`，结束后 `load after: 2.03 8.35 18.27`。
-  **⇒ "负载/争用"这一半被排除**，剩下的必须是机制。机制在同一次 ssh 里用**系统 bwrap**
-  直接量出来了（不依赖测试框架）：
+  **⇒ "负载/争用"这一半被排除**，剩下的必须是机制。机制用**系统 bwrap / unshare**
+  直接量出来（不依赖测试框架），批 8 之后又单独开一次只读 ssh 复量并落盘
+  `~/rig-verify-20261019/lx-verify-20261020c-probes.log`（L8c，2026-10-20T04:37:09Z），
+  下面每一行都在 L8c 里逐字复现：
 
   ```text
   /proc/sys/kernel/apparmor_restrict_unprivileged_userns = 1     # Ubuntu 24.04 默认
@@ -1619,6 +1621,10 @@ target(s) in 19m19s`（`CARGO_TARGET_DIR=~/rig-verify-20261019/target-release`�
   unshare -Urm true                            -> write failed /proc/self/uid_map: Operation not permitted       (rc=1)
   ```
 
+  L8c 另外把环境本身钉住：`Ubuntu 24.04.4 LTS (noble)`、`Linux 7.0.0-38-generic`、
+  `bubblewrap 0.9.0`、`apparmor 4.0.1really4.0.1-0ubuntu0.24.04.5`、
+  `kernel.unprivileged_userns_clone = 1`（内核允许，挡在前面的是 AppArmor 那条），
+  以及 `unshare -Un /bin/true` **rc=0**（命名空间建得出来，卡在写 `uid_map`）。
   **这台机器的 bwrap 带网络和不带网络都起不来**，根因是
   `apparmor_restrict_unprivileged_userns=1`（Ubuntu 24.04 的默认限制），不是资源不足。
   于是 5 条红全部有了机制：
