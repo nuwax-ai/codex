@@ -1,5 +1,12 @@
 codex-rs/app-server-protocol/schema/** linguist-generated
 codex-rs/hooks/schema/generated/** linguist-generated
 third_party/voice/sources.json text eol=lf
+# These templates are embedded with include_str! and sent to the model verbatim,
+# so their bytes must not depend on how the build host checked them out. A Windows
+# checkout with core.autocrlf=true turns them into \r\n: the windows lane of CI run
+# 39371971338 carried "\r\n# Escalation Requests\r\n\r\n..." inside the rendered
+# <permissions instructions> fragment while ubuntu and macOS rendered the same
+# fragment with \n, and a forced autocrlf=true checkout reproduces it byte for byte.
+codex-rs/prompts/templates/** text eol=lf
 # Raw SSE recordings end with a blank line delimiting the final event.
 codex-rs/live-tests/tests/fixtures/*/responses-sse-*.txt whitespace=-blank-at-eof
