@@ -142,6 +142,20 @@ filter = 'package(codex-windows-sandbox) & test(legacy_)'
 test-group = 'windows_sandbox_legacy_sessions'
 
 [[profile.default.overrides]]
+# Same family, and the reason serialization alone is not enough: several of these
+# legs end on a hard in-test wall clock (`started_at.elapsed() < 10s`,
+# unified_exec/tests.rs:905), so a slow leg loses no matter how the deadline is
+# widened. Measured on a 16-core machine: unloaded the legs run in 0.024-0.026s,
+# and with 24 CPU spinners oversubscribing the box one sibling leg stretched to
+# 41.033s — CPU starvation alone is enough to blow the 10s assert, which is what
+# the 12.634s / 11.919s / 35.770s full-CI losses look like. `test-group` only
+# keeps this family from overlapping itself; reserving every slot keeps the rest
+# of the 315-binary workspace off the machine while one of these legs runs.
+platform = 'cfg(windows)'
+filter = 'package(codex-windows-sandbox) & test(legacy_)'
+threads-required = "num-test-threads"
+
+[[profile.default.overrides]]
 # This Codex-home startup path still exceeded the broader Windows-heavy ceiling
 # in both Windows full-CI lanes after contention was reduced.
 platform = 'cfg(windows)'
