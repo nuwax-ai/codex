@@ -2402,6 +2402,148 @@ NUWAX_BRIDGE=native ⇒ bridge                   native transport
 "env 变量确实切换了传输，且切换后仍满足本 fork 的 provider 契约（凭据、模型、cap、Responses
 形状、用量、取消/压缩走同一套 Core 栈）"。实网那一手留给后续经授权的一轮。
 
+### 6.29 run 39430526421 的终态收据：`a4dfd599f` 的新文本一手没触发，mac 腿再次被取消
+
+四判据（`event=push`、head `a4dfd599f`、13:27:21Z 入队、14:58:46Z 终态 `failure`；日志缓存
+`qoder-scratch/39430526421.failed.txt`）：
+
+| 车道 | 终态 | Summary / 区间 |
+|---|---|---|
+| `nextest (ubuntu-latest)` | failure | `2118.784s` 22928 run: 22927 passed (14 slow), **1 failed**, 48 skipped |
+| `nextest (windows)` | failure | `2373.282s` 21760 run: 21753 passed (13 slow, 317 leaky), **7 failed**, 138 skipped |
+| `nextest (macos-latest)` | **cancelled** | 13:27:21Z → 13:42:24Z ⇒ 本手**零 mac 观测** |
+
+**§6.27 结尾押在这手上的三件事，逐条对上**：
+
+1. **#34 关闭**（compaction 窗口放宽后的跨腿收据，§6.26 欠的那一手）：
+   `codex-core compact::tests::local_compaction_retries_preserve_instructions_and_tool_metadata`
+   两腿 ubuntu `17.292s` / `30.428s`、windows `24.755s` / `41.119s` **全 PASS** ⇒ 上一手
+   "贴到 nextest 窗口"的解释不再是本案原因。mac 腿被取消，所以这条只有两平台各一手。
+2. **#35 关闭**（ubuntu oauth 回调腿的第二手观测）：
+   `suite::v2::account::login_account_chatgpt_uses_oauth_overrides` ubuntu PASS `0.306s`
+   （上一手 u39396 亦绿），顺带拿到 windows 一手 PASS `0.696s`。
+3. **#23 没关闭，且 `a4dfd599f` 这手没被触发**：ubuntu 唯一的红仍是
+   `FAIL [   0.353s] (11036/22928) … shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path`，
+   `panicked at exec-server/tests/exec_process/shell_snapshot.rs:344:13:` + 消息体只有 `""`。
+   ⇒ 那条提交拆出来的三个 recovery 分支文本（`process starts still in flight after 25s` /
+   `no resume attempt finished within 25s (last attempt: X)` / `no resume attempt succeeded …`）
+   属于 **25s 那一形状**，本手走的是 0.35s 形状，一个字都没打印。`a4dfd599f` 到目前为止
+   只有 §6.27 的本机回归对照，**CI 侧既未证实也未证伪**，不能登记成"CI 已验证"。
+
+**六手缓存日志重读，把"每次都红、两种形状"钉成 3+3**（§6.27 只登了三手；本轮补上更早两手的
+原文读数，逐个从缓存文件 grep 出来，不沿用上表记忆）：
+
+| run | head | 该腿用时 | 机制（日志原文可复原的部分） |
+|---|---|---|---|
+| 39233543173 | `4ee470d5c` | `0.314s` | `shell_snapshot.rs:344` 断言，stdout `""` |
+| 39286738661 | `7b1a92c6a` | `25.342s` | `exec-server transport disconnected: … Connection reset without closing handshake` |
+| 39347345560 | `6e27a6c11` | `0.346s` | `:344` 断言，stdout `""` |
+| 39371971338 | `55fcee7cb` | `25.298s` | 同 transport reset |
+| 39396134392 | `de8fdb3f4` | `25.251s` | 同 transport reset |
+| 39430526421 | `a4dfd599f` | `0.353s` | `:344` 断言，stdout `""` |
+
+⇒ 六手六红、读数各聚成两簇（0.314/0.346/0.353 与 25.342/25.298/25.251），**没有一手给出第三种
+读数**；把它们当"一条不稳定用例"仍然是错的。更关键的是：0.35s 那三手里的 runner 收据**不含
+任何可归因字段**（只有 `""`），所以这一形状到目前为止**不可判定**。
+
+**windows 的 7 条是同一批已登记尾项，集合只减不增**：`codex-uds lib_tests::{private_directory_acl_is_user_only_and_inherited_by_files,
+socket_validation_rejects_broad_acl_without_repairing_it}`、
+`codex-utils-pty tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child`、
+`codex-windows-sandbox unified_exec::tests::{legacy_capture_cancellation_terminates_descendants_without_timeout,
+legacy_capture_emits_output_and_preserves_descendant_after_normal_exit,
+legacy_tty_job_terminates_and_preserves_descendants,
+legacy_workspace_write_delete_is_limited_to_writable_roots}`。
+上一手的第 8 条 `suite::v2::config_requirements_exec::managed_unified_exec_disabled_preserves_approved_command_execution`
+（39396 `10.767s` FAIL）本手 ubuntu `0.934s` / windows `2.340s` **转绿** ⇒ 与 §6.21/§6.23 的
+"windows 尾项家族"结论同形，本轮零新增。#13 的 write-delete 腿仍在红：`0.089s`、
+`assertion failed: (left == right): stdout=""`、diff `< None / > Some("outside")`。
+
+**mac 腿再次以 cancelled 收尾，且这次连一个 step 都没有**：`nextest (macos-latest)` 的
+`run_steps = null`、`steps.length = 0`、13:27:21Z → 13:42:24Z ⇒ **在排队阶段就被取消，从未开始执行**
+（§6.11 那手是跑到 12699/22877 之后撞 3h 时限）。仓库的 `fork-cargo-pr.yml` 没有 workflow 级
+`concurrency` 组，本 run 之后也没有更新的 run ⇒ 不是"新 push 顶掉旧 run"这种自我取消形状，
+只能记为 runner 侧容量/取消事件，Annotations 不给原因。⇒ `01cfd6449` 的 `NUWAX_BRIDGE` 代码路径
+**至今没有 CI mac 观测**，它的 mac 一手只有 §6.28 登记的本机收据。这条不影响本轮结论
+（三腿里 mac 只是重复观测），但"mac 腿分片"这项待办（§6.11 升格、§7 未闭合项 2）
+又拿到一手支持它的证据。
+
+**本轮改动（提交 `c387b44dc`）：把 `:344` 那条断言改成能自证的工件**（`shell_snapshot.rs:342-350`）。旧消息
+`"{output:?}"` ⇒ runner 侧只看到一个 `""`，既分不开上面两种形状，也分不开"进程没起来 /
+起来了但 rc 不对 / 输出被谁吞了"：
+
+```rust
+assert!(
+    output.ends_with(&format!("restored:input-{index}")),
+    "{shell}#{index}: output={output:?} stderr={errors:?} status={status:?} \
+     closed={closed:?}"
+);
+```
+
+**本机验证（M-L19，改动后工作树）**：
+`cargo test -p codex-exec-server --test exec_process shell_snapshot_concurrent_replays`
+⇒ `11 passed; 0 failed; 73 filtered out`（`6.85s`，含 `blocked_descriptor_path` 与 mac 专属
+`zsh_*` 变体）⇒ 断言条件、并发形状（8 路）、沙箱策略都没动，只把已有的四个已绑定变量送进消息。
+**下一手 push 之后的 ubuntu 日志将自带这条腿的 stderr/rc**，#23 才有结案材料；这笔改动
+未 push，所以它本身还没有 runner 侧观测。
+
+**第二操作系统（真 Ubuntu，`.41`）的 `NUWAX_BRIDGE` 收据**（分支 `qoder-verify-20261021` @
+`486ed23`，`CARGO_TARGET_DIR` 与 `TMPDIR` 都指该机外接盘，离线、零厂商调用、零 CI 预算；
+`/home/swufe/rig-verify-20261019/lx-verify9.log`，脚本 `qoder-scratch/lx-verify9.sh`）：
+
+| 腿 | selection | 读数 |
+|---|---|---|
+| L9a | `-p codex-utils-cli -p codex-config` | `0.243s` **439 run: 439 passed**, 1 skipped（rc=0） |
+| L9b | `-p codex-app-server-daemon -E 'test(start::tests)'` | `0.430s` 2 run: 2 passed, 80 skipped（rc=0） |
+| L9c | `-p codex-exec --features codex-core/rust-rig -E 'test(nuwax)'` | `12.808s` 20 run: **20 passed**, 162 skipped（rc=0） |
+| ↳ L9c 逐条读数 | | 20 条全部真实执行（`0.038s`–`12.803s`），该 selection 内**不含 `_live` 家族** ⇒ 没有"缺网关即 return"的跳过形状；含三协议出站 `nuwax_env_{chat,responses,anthropic}_wire_reaches_the_*_endpoint`（`0.814s` / `0.842s` / `0.797s`） |
+| L9d | `-p codex-app-server --features codex-core/rust-rig -E 'test(nuwax)'` | `6.481s` 13 run: 11 passed, **2 failed**（rc=100） |
+| L9e | `-p codex-cli --bin codex --features codex-core/rust-rig -E 'test(doctor)'` | `5.300s` **136 run: 136 passed**, 177 skipped（rc=0） |
+
+- **L9d 的 11 条绿要按 §6.27 的规矩拆开读**：其中 3 条是 `suite::v2::nuwax_positive_wires_live::`
+  家族（`live_env_compact_and_post_compact_recall` `0.030s`、
+  `live_env_output_cap_exhaustion_fails_without_resampling` `0.030s`、
+  `live_env_tool_round_trip_usage_and_interrupt_with_two_resumes` `0.034s`），
+  用时只有个位毫秒 ⇒ 是"本轮不跑实网"下没有本地网关时的自动跳过，**不计入执行证据**。
+  真实执行的是 8 条 PASS + 2 条环境红。同 selection 在 mac 本机是 `13 passed; 0 failed`
+  （§6.28 表第 3 行，那 3 条同样为跳过）⇒ 两平台的**执行**集合一致，差异只在沙箱。
+
+- **本轮新增的解析/隔离/端到端腿在 Linux 上是真的执行了，不是跳过式绿**（逐名点名）：
+  `nuwax_env::tests::bridge_selection_seeds_the_transport_override` `0.018s`、
+  `native_bridge_requires_the_responses_wire` `0.012s`、
+  `invalid_or_orphaned_bridge_names_the_variable` `0.013s`、
+  `non_unicode_bridge_names_the_variable` `0.012s`、
+  `env_group_isolation::tests::environment_bridge_selection_is_legal_but_foreign_layers_cannot_override_it` `0.033s`、
+  `config_toml::bridge_config_tests::builtin_bridge_selection_is_accepted_without_overriding_endpoint` `0.019s`、
+  以及新端到端腿 `suite::v2::nuwax_positive_wires::native_bridge_env_switch_sends_the_responses_wire_without_the_rig_capture`
+  **`1.000s` PASS** ⇒ "env 选原生 Responses 传输 + 不产生 rig 账本"这一判据在第二个操作系统上
+  成立，且它**不依赖 bwrap**（只断言 wire 形状与账本文件不存在）。
+- **L9d 的 2 条红 = §6.27 那件环境限制，不是产品缺陷也不是本轮改动**：
+  `chat_env_group_executes_a_tool_round_trip_over_the_real_chat_wire`（`1.307s`，
+  `nuwax_positive_wires.rs:348`）与
+  `responses_env_group_executes_a_tool_round_trip_over_the_real_responses_adapter`（`1.220s`，
+  `:513`）的 panic 载荷都是被 exec 的那条命令自己的输出：
+  `Process exited with code 1 … Output: bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`。
+  读数当场独立复核（不靠推断）：`cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns` = `1`，
+  `bwrap --unshare-user --unshare-net --ro-bind / / /bin/true` 的 stderr 逐字符等于上面那句，
+  而该句正是 `sandboxing/src/bwrap.rs:35-40` 里 `USER_NAMESPACE_FAILURES[0]` 的原文。
+  **与 blocked_descriptor 那条的区别要说清**：那 7 条 guard 靠
+  `system_bwrap_warning` 静默 `return Ok(())`（跳过式绿），这两条是"沙箱里真去 exec、
+  把 bwrap 的失败当业务输出带回来"⇒ 大声红。同一件环境限制两种表现，
+  正是 §6.27 立那条规矩的原因。⇒ 这两条**在 `.41` 上永远不可能绿**，除非机主把该 sysctl 置 0；
+  按 §6.27 的结论，`.41` 仍不能当 bwrap 依赖腿的第二平台，能当的是**不依赖沙箱的**这些腿。
+- **L9d 的两红与本轮改动无因果**（同一 selection 在 mac 本机 `13 passed; 0 failed`，§6.28 表第 3 行；
+  两条失败腿的名字与 `NUWAX_BRIDGE` 无关，走的是 chat / responses 的 rig 桥工具回环）。
+  按"排除归属 ≠ 证明无关"的纪律，这里给的是**正面对照**（同 selection 另一平台全绿 + panic 载荷
+  指向 bwrap），不是仅"我没碰那段代码"。
+- **doctor 的 env 传输诊断腿在 Linux 成立**：L9e 的
+  `doctor::model_config_tests::doctor_reports_the_environment_bridge_switch_as_the_native_transport`
+  **`0.133s` PASS**。这条是 §6.28 那两判据的载体（循环内含 `None` ⇒ `bridge: rig (model bridge)`
+  与 `Some("native")` ⇒ `bridge: native transport` 两侧），所以 Linux 一手同时覆盖了
+  "默认仍走桥"与"显式 `NUWAX_BRIDGE=native` 离开桥"两种诊断输出。L9e 总计 136/136 绿。
+- **`c387b44dc` 的断言改动不在 `.41` 的读数里**：L9 批次不含 `-p codex-exec-server`
+  （那条腿在 `.41` 上按 §6.27 的结论本就不能当第二平台证据），它只有 mac 本机 `11 passed`
+  与下一手 runner 自证两个来源。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -2595,10 +2737,18 @@ NUWAX_BRIDGE=native ⇒ bridge                   native transport
      本项剩下的只有"该腿不再有可归因分叉的失败"，而那取决于第 1 项修复推送后的下一轮。
   3. windows 尾项家族（ConPTY、unified_exec、uds ACL、elevated runner、cur 检测等）与
      ~~`shell_snapshot…blocked_descriptor` 抖动~~
-     → **B3 方向性结案（§6.19 L7b）**：真 Ubuntu 机器上该用例 **PASS 0.085s**（同批 45/45 全绿），
+     → ~~**B3 方向性结案（§6.19 L7b）**：真 Ubuntu 机器上该用例 **PASS 0.085s**（同批 45/45 全绿），
      mac CI 腿 **PASS ×3**，只有 ubuntu CI runner **FAIL 0.346s**。**同 OS 不同机器结果相反**，
      落第 4 类；runner 上的根因仍未取到，所以本项从"待真机复现"改为
-     "**真机不复现、runner 根因未取**"，不再算 Linux 侧待办，留在 windows/CI 环境家族里。
+     "**真机不复现、runner 根因未取**"，不再算 Linux 侧待办，留在 windows/CI 环境家族里。~~
+     → **该结论已被 §6.27 作废**：`.41` 上那条 PASS 是 bwrap guard 的跳过式绿，从未执行；
+     且 §6.29 把六手缓存日志重读后确认 ubuntu CI runner **六手六红、两种形状各三手**
+     （0.314 / 0.346 / 0.353s 的 `:344` 空 stdout，与 25.342 / 25.298 / 25.251s 的 transport reset）。
+     ⇒ 本项现在是**"runner 根因未取，且 0.35s 形状此前无可归因字段"**：`c387b44dc` 已把那条断言
+     改成携带 `{shell}#{index}` / stderr / status / closed，下一手 push 后的 runner 日志才第一次
+     能自证。`a4dfd599f` 分的三个 recovery 分支只覆盖 25s 那一形状，本手没触发，因此它既有
+     一手也没被这轮 CI 证实。mac 侧真实执行仍只有 §6.27/§6.28 的本机收据；`.41` 按 §6.27
+     不能当这条腿的第二平台。
   3b. **本轮新增的 Linux 侧事实（不是缺陷，是能力边界）**：`swufe@192.168.31.41` 上
      `kernel.apparmor_restrict_unprivileged_userns = 1`（Ubuntu 24.04 默认），
      非特权进程**能建 userns、但不能写 `uid_map`**
@@ -2661,6 +2811,16 @@ NUWAX_BRIDGE=native ⇒ bridge                   native transport
   tip 若带 `[skip ci]` 会让整次 push 被跳过，`01cfd6449` 的全量 CI 收据就永远不产生
   （§6.20/§7 已两次实测过这个形状）。**本轮未推送**，`git push` 仍只在用户明确要求时执行。
   离线侧全部收据见 §6.28；工作树在本笔提交后 clean。
+- **§6.29 那一手的提交与推送状态（实测，本机）**：新增一笔测试侧改动
+  `c387b44dc`（`test(exec-server): make the concurrent-replay assertion name its own receipt`，
+  单文件、只扩断言消息，本机 `11 passed; 0 failed; 73 filtered`，`cargo fmt --check` 与
+  `cargo clippy -p codex-exec-server --test exec_process` 干净），其后是本节这份文档提交。
+  **本地未推送的栈现在是三笔**：`01cfd6449` → `486ed23a4` → `c387b44dc`（+ 本笔文档），
+  `origin/test` 仍是 `e43a51da3`。文档笔继续**不带 `[skip ci]`**，理由与上一条相同：按授权
+  推送时 tip 带 `[skip ci]` 会跳过整次 push，`01cfd6449` 与 `c387b44dc` 的 runner 收据就永远
+  不产生。**本轮既不 push 也不 dispatch**，`git push` 仍只在用户明确要求时执行。
+  run 39430526421 是本节最后一次 CI 观测读取；`.41` 上 `lx-verify9` 是本轮唯一的新执行，
+  零 CI 预算、零厂商调用。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
