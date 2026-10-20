@@ -1103,6 +1103,542 @@ node 的 `os.tmpdir()`，也就是**系统盘**。实测（本轮，mac）：`/S
 改法与 cargo 那条"三变量缺一不可"同源：跑 ACP 套件时显式
 `TMPDIR=/Volumes/zhitai/tmp`，否则"我只在验证"这件事本身会把用户的系统盘吃掉 10 Gi/轮。
 
+### 6.16 §7 第 1 项闭合：`::discovery` 的根因是"桥未实现 workspace routing"，已修
+
+**A. 诊断窗口这一步先兑现——三腿第一次打印出自己的诊断（run `39347345560`，head `6e27a6c11`）**
+
+§6.9 说的结构性障碍是：用例自设的 `DEFAULT_READ_TIMEOUT = 60s`
+（`app-server/tests/suite/v2/account.rs:74`）与 nextest 默认界限 `30s × 2 = 60s` 重合，
+内部任何一条 `timeout(60s, …)` 腿刚开始等就正好被 harness 杀掉，所以历来只有 `TIMEOUT`
+一个名字。窗口放宽之后，本轮三腿**第一次**给出同一份诊断：
+
+| 腿 | 结果 | 该腿其余状态 |
+|---|---|---|
+| ubuntu | `FAIL [ 60.783s]` | `Summary [3004.229s] 22927 tests run … 2 failed`（另一条是 `shell_snapshot…blocked_descriptor_path` FAIL 0.346s） |
+| windows | `FAIL [ 60.394s]` | `Summary [2383.014s] 21759 … 11 failed`，**零 TIMEOUT** |
+| macos | `FAIL [ 60.525s]` | `Summary [2646.520s] 22877 tests run: 22876 passed (23 slow), 1 failed`——这条就是唯一失败 |
+
+三值离散度 **0.389 s**，与 §6.9 的 16 ms 同一量级：**仍是"卡到期限"，不是"慢"**。
+panic 文本（wiremock 0.6.5 的 `Mock::expect(n)` 在 `MockServer` **drop 时**才校验，
+所以它排在测试自身失败之后，这一点当初容易被读成"失败原因"）：
+
+```text
+Verifications failed:
+- Mock #2.
+	Expected range of matching incoming requests: == 1
+	Number of matched incoming requests: 0
+```
+
+并且 `Received requests`（11 条）里 `/backend-api/wham/accounts/check` **只出现 1 次**。
+
+**B. 本机确定性复现（不必等 CI）**
+
+`just test -p codex-app-server -E 'test(external_auth_refreshes_on_unauthorized::discovery)'`
+（`TMPDIR=/Volumes/zhitai/tmp`）→ `FAIL [ 60.506s]`、`Summary [ 60.519s] 1 test run: 0 passed,
+1 failed`，同一 panic。加上探针轮一共 6 次：60.506 / 60.620 / 60.633 / 60.563 / 60.708 /
+60.842 s，**全部同形**。所以这条从"CI 上拿得到一个名字"升级成"本机 1 分钟一次、可反复复现、
+带完整诊断"。
+
+**C. 五个探针，每步只排除一个假设**（探针代码已全部 `git checkout --` 回退，工作树不含插桩；
+日志留在外接盘 scratch `discovery-probe{,2..6}.log`）
+
+| # | 假设 | 探针实际打出的东西 | 结论 |
+|---|---|---|---|
+| 1 | mock 路径没对上（重写造出双斜杠） | `resolve provider=http://127.0.0.1:50837/backend-api/codex chatgpt=http://127.0.0.1:50839/backend-api` | **排除**：URL 拼接正确，`accounts/check` 确实以 `/backend-api/wham/accounts/check` 打到 backend |
+| 2 | 用例那次 config.toml 重写是 no-op | `[probe] config.toml after rewrite: ["chatgpt_base_url = \"http://127.0.0.1:55656/backend-api/\""]` | **排除**：重写**生效**，末尾斜杠在（`account.rs:800` 的 `"/backend-api\"` → `"/backend-api/\"`） |
+| 3 | 配置层被缓存，turn 读到的还是旧值 | 每次 `read_account` 都打 `layer User { file: …/.tmpX/config.toml } value=…` | **排除**：`load_user_config_layer`（`config/src/loader/mod.rs`）每次调用重读文件，链路里没有缓存 |
+| 4 | `WorkspaceRoutingKey` 命中旧缓存，所以不发第二次 GET | `read_account request=false → cached_hit=false -> discovery GET`；`read_account request=true → cached_hit=true` | **前提就不成立**：key 含 `effective_chatgpt_base_url`，重写后必 MISS。真实情况是 **turn 之后连一次 `read_account` 都没有**，缓存这条无从谈起 |
+| 5 | 传输选择 | `stream provider_id=Some("routing") name=OpenAI wire_api=Responses bridge=None first_party=false uses_bridge=true` → `-> stream_model_bridge (Responses)` | **命中** |
+
+决定性时间线（探针 1，行号就是日志行号）：`account/login/start` → `:18 read_account
+request=false` → `:19 cached_hit=false -> discovery GET`（**这就是全程唯一那次
+`accounts/check`**）→ `thread/start` → `:28 resolve` + `:29 read_account request=true`
+→ `:30 cached_hit=true`（无 HTTP）→ `:35 writing … turn/start` **之后日志里再没有任何
+`[probe]` 行**。也就是说：turn 从未跑 workspace routing。`:28` 那条 `resolve` 属于
+`thread/start` 而不是 turn——这一段最初被 `[mcp stderr]` 中继行与测试进程自身 `eprintln!`
+的交错顺序误导，改为按 JSON-RPC `writing message to stdin` 时间线重排后才看清（登记为踩坑）。
+
+**D. 根因（一句话）**
+
+分叉默认策略把这条 provider 判给了桥：`provider_id = "routing"` 不是第一方 key
+（`is_first_party() = false`）、`wire_api = Responses` 且 `experimental_bridge` 未设，于是
+`uses_model_bridge()` 返回 true → 走 `stream_model_bridge`。而 **workspace routing 的
+discovery 只存在于原生路径**：`ModelProvider::responses_api_provider()`
+（`model-provider/src/provider.rs:216-251`）是 `auth_manager.workspace_routing(…)` 的
+**唯一调用方**；桥路径 `stream_model_bridge`（`core/src/client.rs:1917` 附近）显式使用
+`ClientRouting::ConfiguredProvider`，既不做 discovery，也不套 `apply_workspace_routing`
+（routed backend origin / residency / routing-override 头），因此永远不会走
+"discovery 拿 401 → `io::ErrorKind::PermissionDenied` → `account/chatgptAuthTokens/refresh`"
+这条恢复（`workspace_routing.rs:181-201`）。用例 `:815 respond_to_refresh_request` 等的正是
+那条 refresh 请求，它按设计不可能到达 → `timeout(60s, read_stream_until_request_message())`
+到点 → FAIL；`Mock #2` 期望的第二次 `accounts/check` 一次没来，drop 时补一个 `matched 0`。
+
+`::responses` 是**同一次构建**的对照组：它的 `base_url` 以 `/v1` 结尾，
+`supports_codex_backend_routes() = false`，401 来自**模型请求本身**，而桥保留了模型请求
+401 → 刷新这条恢复，所以 PASS 0.240s。结论要说准：**桥不是"完全不会刷新"，缺的只有
+workspace routing 这一块**。
+
+**E. 四分法定性，并纠正 §6.9 / §6.10 第 1 类**
+
+- 归类：**桥未实现**（rig 桥未实现 workspace routing）→ **真实功能缺口**。不是"协议不适用"，
+  不是 harness 缺陷，也不是 runner 抖动。
+- 归属：**本分叉造成**。引入点可指到提交：`0f62ba844`
+  （`feat(rig): same-protocol Responses passthrough (phase 1)`，即 `uses_model_bridge()`
+  这套策略本身，`git log -S"uses_model_bridge" main..test` 唯一命中）；而用例文件
+  `app-server/tests/suite/v2/account.rs` 在 `main..test` 上是 **0 笔分叉提交**（实测计数）。
+- 所以 §7 第 1 项被撤回的那半句"**上游通过、fork 失败**"现在**有了凭据**，但凭据的形态要说清：
+  不是去对比上游 CI 的运行结果（那仍然没做过），而是"失败机制整个位于分叉新增的策略函数与
+  桥路径之内，测试文件与三个直接相关文件都未被分叉改过，把策略收窄后用例即通过"。
+  §6.9 当时的撤回**仍然成立**（那时确实无可出示凭据）；本轮是补上凭据，不是推翻它。
+- §6.9 的候选归类"真实缺陷（挂起）或 harness 死锁"、§6.10 第 1 类沿用的"确定性挂起，待根因"
+  **就地作废**：既不是挂起也不是死锁，是**该等的请求在设计上永远不会发出**。
+- 边界：这条**不属于**分叉要支持的国产模型场景，也不是桥"该补的通用能力"——
+  `requires_openai_auth = true` + `…/backend-api/codex` 出站就是 ChatGPT 第一方形态。
+
+**F. 修法：取窄的一侧（把有 routing 能力的 entry 钉回原生传输），不把 routing 移植进桥**
+
+- `model-provider-info/src/lib.rs`：新增 `uses_first_party_auth_path()`
+  （`requires_openai_auth` 且 `env_key` / `experimental_bearer_token` / `auth` / `aws` 全空）
+  与 `requires_workspace_routing()`（前者 ∧ `supports_codex_backend_routes()`），
+  `uses_model_bridge()` 的 `Responses + bridge = None` 分支改为
+  `!(self.is_first_party() || self.requires_workspace_routing())`（`lib.rs:764`）。
+- `model-provider/src/provider.rs:327`：原本私有的同形判断改为委托
+  `provider.uses_first_party_auth_path()`，避免两份定义漂移。
+- `core/src/client.rs:1915-1921`：桥路径补注释，说明"桥永不可能携带 routing 能力，
+  因此在这里固定 `ConfiguredProvider` 不会丢 workspace routing"——这是把上一条不变量写死在
+  它唯一的反例旁边，防止后续有人往 `None` 分支里加东西。
+- 为什么不做另一半：移植 workspace routing 进桥要补 routed backend origin / residency /
+  routing-override 三类头 + discovery 缓存 + 401 恢复，而分叉的桥服务的是**第三方
+  provider**，它们本来就不该携带 ChatGPT 账号路由。钉传输是 3 行，移植是跨模块新功能，
+  还会把"分叉默认策略"和"第一方账号路由"两条语义搅在一起。
+- `experimental_bridge = "native"` 与显式 `Rig`/`Genai` 两条口子**行为不变**：用户仍可强制
+  把这类 entry 拉进桥，代价（丢 workspace routing）此时是显式选择而非默认策略造成。
+
+**G. 验证收据（本机，首败 → 修复后；同一台 mac、同一 target 目录）**
+
+| 相位 | 命令范围 | 修复前 | 修复后 |
+|---|---|---|---|
+| 目标用例 | `just test -p codex-app-server -E 'test(external_auth)'` | `::discovery` **FAIL 60.506s**（§B） | **5/5 全绿**：`::discovery` **PASS 0.660s**（快 **91.7 倍**）、`::responses` PASS 0.247s、另 3 条 `refresh_{error,invalid_access_token,mismatched_workspace}_fails_turn` 0.626–0.672s；`Summary [0.887s] 5 passed` |
+| P1 策略与 provider | `-p codex-model-provider-info -p codex-model-provider` | — | `Summary [10.917s] 140 passed`，含新回归 `bridge_routing_tests::chatgpt_backend_route_keeps_the_native_transport` **PASS 0.014s** |
+| P2 策略另一半消费者 | `-p codex-config`（含 `bridge_config_tests`） | — | `Summary [0.369s] 386 passed` |
+| P5 doctor | `-p codex-cli -E 'test(model_routing) \| test(doctor) \| test(bridge)'` | — | `Summary [16.774s] 149 passed, 405 skipped` |
+
+新回归用例钉住的是"收窄"这个决定本身，而不只是结果：对
+`{name:"OpenAI", provider_id:"routing", base_url:"…/backend-api/codex", requires_openai_auth:true}`
+断言 `requires_workspace_routing() && !uses_model_bridge()`；同时断言 `WireApi::Chat` /
+`Anthropic` 变体仍进桥，以及带 `env_key` / `experimental_bearer_token` / `aws` 任一样的变体
+**仍进桥**（即"任一自有鉴权覆盖都不算第一方 auth path"，防止这条口子扩大到第三方形态）。
+
+**H. 两处必须登记的不成立（都是我这轮的验证 setup 问题，不是产品问题）**
+
+1. **过滤式误伤**：P4 我写成 `-E '… | test(rig)'`，而 nextest 的 `test(...)` 是**正则子串匹配**，
+   `originating` 里就含 `rig`，于是把 9 条 `*originating*` / 图片预算用例一起拉了进来，
+   它们在 0.028–10.287s 内 `deadline has elapsed` 失败。真实原因是我漏了 CI 的
+   `--features codex-core/rust-rig`（`.github/workflows/fork-cargo-pr.yml:149-151` 是这么跑的），
+   **不是分叉缺陷、也不由本轮改动造成**；A/B 与补齐 feature 后的收据见 §6.16.1。
+2. **假绿退出码**：`just test … | tail -40; echo "P4=$?"` 取到的是 `tail` 的退出码，
+   所以那一行的 `P4=0` / `P5=0` / `P6=0` **三个都是假的**（P4 明明有 9 failed）。
+   从 P4b 起改成"nextest 输出重定向到文件、再单独取 rc"。**登记的原因**：这与 §6.15 D
+   是同一类"验证 setup 自己给出不可信结论"的坑，而它差点掩盖了第 1 条。
+
+**边界（不冒领）**：本轮改的是产品策略，**CI 侧"修复后转绿"的收据只能由这笔推送之后的下一轮
+给出**——run `39347345560` 的源码里没有这个修复，它三腿的 FAIL 是**修复前**的证据。
+修复后证据目前只有本机 mac 一条腿的 `PASS 0.660s`。同理，§7 第 2 项 (b) 那 5 条 mac daemon
+期限（`981490315`）的转绿也仍要等同一轮。
+
+#### 6.16.1 A/B 收据：P4 的 9 条与 P6 的 2 条都不是本轮改动造成
+
+- **A/B（决定性）**：把 4 个改动文件回退到修复前
+  （`git checkout 6e27a6c11 -- <4 files>`），跑**同一条** P4b 命令 →
+  `Summary [37.149s] 154 tests run: 145 passed, 9 failed`；修复后（HEAD `95fb0949d`）是
+  `Summary [35.007s] 154 tests run: 145 passed, 9 failed`。两份失败集合**逐条同名**
+  （`guardian_context_budget::…oversized_original_inline_image_history_compacts`、
+  `code_mode::code_mode_resizes_explicit_original_image`、
+  `code_mode::yielded_code_mode_tool_callbacks_keep_their_originating_step`、
+  `code_mode::code_mode_mcp_metadata_keeps_originating_window_after_compaction`、
+  `rmcp_client::stdio_image_responses_preserve_original_detail_metadata`、
+  `rmcp_client::twenty_synthetic_screenshots_trigger_formal_compaction`、
+  `skills_extension::…yielded_skill_read_keeps_originating_turn_metadata`、
+  `step_settings::code_mode_notifications::yielded_notifications_keep_originating_budgets_after_model_switch`、
+  `step_settings::custom_tool_output_replay_preserves_originating_budget`）。
+  跑完立刻 `git checkout HEAD -- <4 files>`，`git status --porcelain -- codex-rs` 为空。
+  **⇒ 这 9 条与本轮改动无关**，§6.16 H 第 1 条的"不是分叉缺陷"这一半现在有了 A/B 凭据。
+- **真实原因（可复现、有文本）**：按 `-p <单个 package>` 过滤跑时，cargo 只构建该 package 的
+  test target，**兄弟 binary 不会被构建**，`assert_cmd` 于是找不到可执行文件：
+  `Error: could not locate binary "codex-code-mode-host"`（3 条）、
+  `"test_stdio_server"`（2 条）；另有 1 条表现为 `Error: deadline has elapsed`——同一根因的
+  另一种形状（spawn 等待超时）。CI 用 `--workspace` 跑，这两个 binary 都在，所以 mac 腿
+  `22876 passed / 1 failed` 里它们是绿的。**四分法归类：第 4 类（harness / 调用方式缺陷），
+  不是产品缺陷。**
+  这与 §6.15 D、§6.16 H 是同一条教训的第三次出现，固化成一条：**单 package 过滤跑出的红，
+  先问"兄弟 binary 在不在"，再谈归属。**
+- **P6 的 2 条逐条**：
+  - `async_scorer::sampler::connection_pool::tests::stalled_handshake_does_not_delay_other_warm_sockets`：
+    单独跑 **3/3 PASS**（0.562 / 0.621 / 0.602 s 三个 `Summary` 里均为那 1 条 passed），
+    只在 492 项并发满负荷时失败 → **并发时序抖动**，登记为抖动，不冒领成"已修"。
+  - `async_scorer::extension::tests::cached_delivery::confirmed_root_delivery_invalidates_root_and_worker_cached_approvals`：
+    单独跑 3/3 FAIL（0.461 / 0.531 / 0.505 s），文本同为
+    `could not locate binary "codex-code-mode-host"` → **同属上面那条调用方式缺陷**，
+    与 guardian 的审批缓存逻辑无关。注意它落在 `async_scorer::extension`——正是
+    `uses_model_bridge()` 的消费者模块，所以一开始被怀疑是本轮改动，A/B 之前不能下结论。
+- **feature 对照**：P7 = `just test -p codex-app-server --features codex-core/rust-rig
+  -E 'test(external_auth)'`（与 CI 同 feature 形状）→ **5/5 全绿**，
+  `::discovery` PASS **0.696s**、`::responses` PASS 0.302s。修复不是只在默认 feature 下成立。
+- **第二真实操作系统（Linux）**：`swufe@192.168.31.41`（Ubuntu 24.04.4，72 核，
+  `CARGO_TARGET_DIR=~/rig-verify-20261019/target`，`NEXTEST_PROFILE=local`、
+  `RUST_MIN_STACK=8388608`、`--locked`、`--retries 0`，源码经 `git bundle` 传到
+  `95fb0949d`）：
+  - **L1** `-p codex-model-provider-info -p codex-model-provider` →
+    `Summary [8.973s] 140 tests run: 140 passed`，与 mac 的 140 项**同集合**，新回归用例在其中。
+  - **L2** `-p codex-app-server --features codex-core/rust-rig -E 'test(external_auth)'` →
+    `Summary [4.492s] 5 tests run: 5 passed`，其中
+    **`::discovery` PASS 2.695s**（同一分支的 CI ubuntu 腿在**不含修复**的源码上是
+    `FAIL 60.783s`）、`::responses` PASS 2.265s、另 3 条 2.178–2.229s。
+    **⇒ 修复在第二个真实操作系统、且在与 CI 相同的 feature 形状下成立**，不是 mac 单腿结论。
+  - L3（core 过滤对照，用来在 Linux 上再证一次"兄弟 binary"结论）与
+    L4（`codex-exec-server` 的 `shell_snapshot…blocked_descriptor_path`，即 B3）
+    的结果与归属逐条登记在 **§6.19**：L3 的 15 条 = 5 条兄弟 binary + 10 条时序形状，
+    后者已用空闲机复跑（L8b）排除负载、并用系统 `bwrap` 量出机制；
+    L4 因我这边的 feature 用法错误没跑成，改由 L7b 完成，**45/45 全绿**——
+    B3 在真 Ubuntu 上不复现。另外 **L8a = `codex-rust-rig-bridge` 337/337 全绿**，
+    这是视觉 floor 修复（`04beac00a`）的第二操作系统收据。
+
+### 6.17 Linux 验机接手：§7 第 4 项（rustup）不是网络损坏，是 toolchain 目录被 rust-installer 写过
+
+这台机器就是交接文档里"ubuntu 24 / 192.168.32.117（不通）"那台换了 IP——
+`~/rig-verify-20261019` 的旧 clone、旧 `target`(15 G) 与旧日志都在，
+`swufe@…` 的授权密钥也早已装好；换的是网段（`32.x` → `31.x`）。
+所以 §9.1 的 ubuntu 通道**可以直接复用**，不需要重新搭。
+
+接手后第一条 Linux 命令就全灭（L1–L4 各 3 秒 `rc=101`），文本：
+
+```text
+info: syncing channel updates for 1.95.0-x86_64-unknown-linux-gnu
+thread 'main' panicked at src/dist/component/transaction.rs:96:9:
+assertion failed: relpath.is_relative()
+info: rolling back changes
+```
+
+- **为什么每次调用都会尝试装组件**：`codex-rs/rust-toolchain.toml` 是
+  `channel = "1.95.0"` + `components = ["clippy", "rustfmt", "rust-src"]`，而这三个组件在
+  `lib/rustlib/components` 里**都不在**（只有 `cargo-x86_64-unknown-linux-gnu`、`rustc`、
+  `cargo`、`rust-std-x86_64-unknown-linux-gnu`）。于是任何在仓库目录里启动的 `cargo` 都会先
+  触发一次组件事务，而该事务必然 panic——**测试根本没开始跑**。
+- **`rustup component add` 给出的另一条线索**：三个组件全部
+  `error: missing manifest in toolchain '1.95.0-x86_64-unknown-linux-gnu'`。
+- **根因（有凭据，不是猜）**：数每个 manifest 里的**绝对路径行数**：
+
+  | manifest | 绝对路径行 | 总行 |
+  |---|---|---|
+  | `manifest-cargo` | 44 | 44 |
+  | `manifest-rustc` | 41 | 41 |
+  | `manifest-rust-std-x86_64-unknown-linux-gnu` | 62 | 62 |
+  | `manifest-cargo-x86_64-unknown-linux-gnu` | 0 | 44 |
+  | `manifest-rust-docs-x86_64-unknown-linux-gnu` | 0 | 1 |
+
+  样例：`file:/home/swufe/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo`。
+  rustup 自己写的 manifest 是**相对路径**，绝对路径是 **rust-installer（`install.sh --prefix=`）**
+  的格式；`lib/rustlib/install.log` 里还有
+  `install: uninstalling component 'rust-std-…'` /
+  `WARNING: supposedly installed file … does not exist!`，`bin/` 里留着一次回滚产生的
+  `cargo.old`。⇒ 这个 toolchain 目录**不是 rustup 装的**（或被独立 installer 覆盖过），
+  所以 rustup 无法管理它的组件；每次事务都在断言处炸。
+- **所以 §7 第 4 项的口径要改**：原先写的是"`swufe@192.168.32.163` 的 rustup 组件安装存在
+  **manifest 损坏**"。本轮测出的形状更准确：不是下载损坏、不是网络问题，是**装机方式**问题；
+  表现是"每个组件操作 100% panic / missing manifest"，而不是偶发失败。
+- **处置（可逆，且没有动仓库锁定版本）**：
+  1. **不删**——把坏目录整段隔离：
+     `mv ~/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu ~/.rustup/quarantine/1.95.0-broken-installer`
+     （1.6 G 原样保留，随时可还原）；
+  2. 用 rustup 正常安装同一 pin：
+     `rustup toolchain install 1.95.0-x86_64-unknown-linux-gnu -c clippy -c rustfmt -c rust-src`
+     → `1.95.0-… installed - rustc 1.95.0 (59807616e 2026-04-14)`，无 panic；
+  3. `rust-toolchain.toml` 未改动，仓库版本仍是 1.95.0（遵守"不擅自修改仓库锁定版本"）。
+- **修完立刻见效**：L1 在 Linux 上跑通并 `140 passed`。
+- **顺带登记的两条环境事实（影响后续 Linux 复跑）**：这台机器**没有装 `just`**
+  （`which just` 空），所以 Linux 侧改用等价
+  `cargo nextest run --locked --no-fail-fast … --retries 0` 并显式导出
+  `NEXTEST_PROFILE=local` + `RUST_MIN_STACK=8388608`——这正是 §6.12 R5 里"just recipe 自己会
+  重发 `RUST_MIN_STACK`，workflow 的 `env:` 是惰性的"那条的镜像问题：**绕过 just 时必须自己
+  把它本来会设的变量补上**，否则跑出来的形状与 CI 不同。
+  `cargo-nextest` 已装在 `~/.cargo/bin`；node v22.23.3 / npm 10.9.9 / python 3.12.3 /
+  docker 均在；`/` 余 1.1 T。
+
+### 6.18 Linux 轮收据：B1 四项里三项已在真机闭合
+
+**A. 环境与源码通道（一条命令可复核）**
+
+Ubuntu 24.04.4（kernel `7.0.0-38-generic`，`swufe-X99`）、**72 核 / 62 G**、`/` 余 1.1 T；
+node v22.23.3、npm 10.9.9、python 3.12.3、git 2.43、docker 在；**`just` 不在**
+（§6.17 末条已登记其后果）。Codex 侧源码通道：本机
+`git bundle create … 4ee470d5c..test`（**86 KB**）→ scp →
+`git fetch <bundle> test` → `qoder-verify-20261020` @ `95fb0949d`；
+不依赖推送、不占用 CI。ACP 侧从 `0930455` 同步到 `origin/dev` = `6a76aa7`，
+未跟踪的 `vendor/` **原样保留**（`git status` 里仍在）。
+
+**B. §7 第 1 项修复的第二操作系统收据**：L1 `140 passed`、L2 `5 passed`
+（`::discovery` PASS **2.695s**），逐条见 §6.16.1。
+
+**C. B1 的 ACP 三项（全部离线，零付费）**
+
+| 相位 | 命令 | 收据 |
+|---|---|---|
+| A1 | `npm ci --no-audit --no-fund --cache ~/rig-verify-20261019/npm-cache` | `added 201 packages in 6s`、**rc=0** ⇒ §9.3 的 `npm ci` 首败在 Linux 上也已闭合（lock 同步即 `6a76aa7`） |
+| A2 | `npm run build` | rc=0 |
+| A3 | `npm test`（vitest，**Linux 第一次跑完整产品套件**） | `Test Files 65 passed \| 6 skipped (71)`、`Tests 839 passed \| 32 skipped (871)`、`Duration 64.42s` |
+| A4 | `npm run test:acp-validation`（**mock vendor server**） | `# tests 37 / # pass 37 / # fail 0` |
+| A5 | `npm run test:live-budget` | `# tests 26 / # pass 26 / # fail 0` ← B1 里记的 "**node 26**" |
+| A6 | `python3 -m unittest discover -s scripts/live-validation -p 'test_*.py'` | `Ran 29 tests in 5.011s — OK` ← B1 里记的 "**python 29**" |
+
+A3 的意义要说准：§9.5 在 Windows 上抓到 3 条与路径分隔符耦合的断言、并在 `59426b6` 改成平台
+中立；Linux 与 mac 用 `/`、Windows 用 `\`，**这条改动的第二个平台形状此前从未被真机覆盖**。
+Linux 839 项全绿说明该修正没有把断言改成"只迁就 Windows"。
+
+**D. 抓到并纠正的第二次"管道吞退出码"**
+
+A6 最初写成 `python3 -m pytest … | tail -10 || python3 -m unittest …`，而这台机器**没装
+pytest**。管道段的退出码是 `tail` 的 0，所以 `||` 回退分支**根本没有执行**，日志里
+`A6_rc=0` 与 `No module named pytest` 并存——一项没跑却被记成通过。改用 `unittest` 显式跑
+才拿到真实的 29 项。这是 §6.16 H 第 2 条的**第二次**命中（第一次差点掩盖 9 条红，这次差点
+伪造 29 条绿）。**固化成一条：带 `||` 回退或带 `| tail` 的命令必须单独取真实 rc；
+验证脚本一律"重定向到文件 + 紧跟一条 rc 打印"。**
+
+**E. 边界（不冒领）**
+
+- A3–A6 都是**离线**套件；`live-validation` 里真正打上游的 workflow **本轮不跑**
+  （遵守"本轮不跑实网"）。所以 B1 的"实网收据"仍不属于本轮，§4 的 54 次上游请求照旧只绑定
+  `c4d08f71b` 的二进制。
+- 写本节时 L3 / L4 / L5 / L6 仍在跑，结果逐条补登（§6.16.1 与 §6.19）。
+
+### 6.19 Linux L3 / L4：两条红都是我这边的调用缺陷，但 L3 剩下的 10 条必须先隔离复跑
+
+**L3（`-p codex-core --features codex-core/rust-rig -E '… | test(rig)'`）**：
+`Summary [19.798s] 158 tests run: 143 passed, 15 failed, 5242 skipped`、`L3_rc=100`。
+
+- **选中 158 条本身是过滤器的错**：`test(rig)` 是**子串正则**，命中
+  `o|rig|inating` 与 `o|rig|inal`，于是把 `code_mode` / `network_approval` /
+  `step_settings` 这些与桥无关的大用例一起拉了进来（§6.16 H 第 3 条那节课的第四次出现）。
+  这不是产品问题，但直接决定了下面的读数范围。
+- **15 条按签名分两组（有文本）**：
+  - **5 条 = 兄弟 binary 缺失**：`could not locate binary "codex-code-mode-host"`（3，
+    `CARGO_BIN_EXE_…` 与 `target/debug/codex-code-mode-host` 两路都落空）、
+    `"test_stdio_server"`（2）。与 §6.16.1 mac A/B 同因，Linux 上再次复现。
+  - **10 条 = 需隔离复跑才能定性**：签名分别是 `expected Guardian approval, got TurnComplete
+    (… "outcome":"allow" …)`、`timed out waiting for both Guardian network reviews`、
+    `deadline has elapsed`、`the live session holds its writer lock at …/thread-writer-locks/….lock`。
+    这些不是 spawn 失败的形状，**不能直接归到"兄弟 binary"那一条**。
+- **必须登记的混淆因素**：这台机器**是共享的**。L3 跑的时刻
+  `uptime` = `load average: 29.22, 29.61, 40.25`（72 核），另一个用户正在同机跑
+  `cargo clippy --workspace --all-targets` + `cargo nextest run`。上面 10 条的签名全部是
+  时序/争用形状，所以**在这台机器上它们既不能算分叉缺陷、也不能算"环境问题"结案**——
+  先按 §6.16.1 的方法做隔离复跑（L3c，`-j 4`，只跑这 10 条），转绿才写"争用抖动"，
+  仍红就回到根因。**在此之前 L3 的定性是"未定性"。**
+- 补跑（L3b）还把 `-p codex-core` 换成
+  `-p codex-core -p codex-code-mode-host -p codex-rmcp-client`（后两个 package 才拥有
+  `codex-code-mode-host` 与 `test_stdio_server`：`code-mode-host/Cargo.toml:2,8`、
+  `rmcp-client/src/bin/test_stdio_server.rs`），这样 5 条已知成因的用例也应转绿。
+
+**L4（`-p codex-exec-server --features codex-core/rust-rig …`）**：`L4_rc=101`，
+**一条测试都没跑**：
+
+```text
+error: the package 'codex-exec-server' does not contain this feature: codex-core/rust-rig
+```
+
+- 这是我脚本的错，不是产品缺陷：`--features pkg/feat` 只在**该 feature 属于被选 package**
+  时合法，CI 那条命令能带它是因为 CI 跑 `--workspace`。B3（`shell_snapshot…blocked_descriptor_path`
+  的真 Linux 复现，`exec-server/tests/exec_process/shell_snapshot.rs:185`）在 §7 第 3 项里
+  一直是"只在 ubuntu 红、没有真机收据"，**这轮第一次真的把它跑起来了**（L4b，去掉该 feature）。
+- 顺带把同一节课写死：**单 package 过滤跑时，feature 与兄弟 binary 都要自己补齐**——
+  缺 feature 会让 cargo 在编译前就退出（rc=101，看起来像"测试失败"），缺 binary 会让用例
+  在运行期报 spawn 失败（看起来像"产品缺陷"）。两者的收据形状不同，但都不是产品缺陷。
+
+**L5（image floor，`-p codex-core -p codex-utils-image`）**：日志里
+`Summary [56.361s] 20 tests run: 17 passed (2 slow), 3 failed` 与 **`L5_rc=0` 并存**。
+
+- **`L5_rc=0` 是假的**：脚本写成 `cargo nextest … 2>&1 | tail -40` 之后
+  `echo "L5_rc=$?"`，拿到的是 `tail` 的退出码。这是 §6.16 H 第 2 条 / §6.18 D 的
+  **第三次命中**，而且这次是"把一条红的记成绿的"。**同一脚本里的 `L6_rc=0` 同样不可信**，
+  L6 只按它自己的证据登记（见下）。（`tail -40` 还把 L5 的逐条失败输出切掉了，
+  只留下 Summary 里的三行名字。）
+
+**L5 那 3 条的归属：已用 mac 的 revert-A/B 定案，不是 `04beac00a` 造成**
+
+同一条过滤（`test(image_preparation) | test(detail_policies) | test(legitimately_large) |
+test(image_budget) | test(view_image_result)`）在 mac 上跑，**修复在树里**与
+**把 `04beac00a` 的 3 个文件回退到 `04beac00a^`** 两次结果**逐条同名**：
+
+| 相位 | 树 | 结果 |
+|---|---|---|
+| M-L5a | `9bad7cca0`（含 floor 修复） | `Summary [20.968s] 21 tests run: 17 passed, 4 failed`、`ML5a_rc=100` |
+| M-L5a-pre | `04beac00a` 的 3 个文件回退 | `Summary [16.206s] 21 tests run: 17 passed, 4 failed`、`ML5apre_rc=100` |
+
+失败集合：`code_mode::code_mode_unified_image_budget_preserves_legacy_contract_for_unsupported_model`、
+`code_mode::code_mode_can_use_view_image_result_with_image_helper::unified_image_budget`、
+`…::legacy_detail`、`code_mode::code_mode_unified_image_budget_accepts_legacy_detail_hints`。
+Linux L5 的 3 条是同一族（Linux 少 1 条只因为 batch 2 的过滤器漏了
+`test(view_image_result)`，那条 `::legacy_detail` 没被选中）。
+⇒ **§7 第 1 项的修复与视觉 floor 修复都不是这族红的原因**；四分法仍落在第 4 类。
+跑完 `git checkout HEAD -- <3 files>`，`git diff HEAD --stat -- codex-rs` 为空（本轮亲自核过）。
+
+**为什么这族在本地"修不好"：off-CI 建不出 `codex-code-mode-host`（机制，不是猜）**
+
+失败文本不是 spawn 错误，而是断言：
+`unexpected code-mode output: [Object {"type": String("input_text"), "text": String("unsupported custom tool call: exec")}]`
+——code-mode 的 custom tool 没有 host。要拿到 host 就得建 `codex-code-mode-host`，而它把
+`v8 v150.4.0` 拉进构建图，build script 要去下载 prebuilt：
+
+```text
+error: failed to run custom build command for `v8 v150.4.0`
+urllib.error.HTTPError: HTTP Error 404: Not Found     # Linux
+response = urlopen(url) -> …                            # mac，同一处
+```
+
+CI 能建是因为 workflow 先跑了
+[.github/actions/setup-rusty-v8/action.yml](../../.github/actions/setup-rusty-v8/action.yml)：
+它按 `.github/scripts/rusty_v8_bazel.py resolved-v8-crate-version` 取 tag，从
+`openai/codex` 的 release 下载 `librusty_v8_ptrcomp_sandbox_<target>.a.gz` +
+`src_binding_ptrcomp_sandbox_<target>.rs` + 校验文件，用仓库里
+`third_party/v8/rusty_v8_150_4_0_release_manifests.sha256` 做信任锚，最后导出
+`RUSTY_V8_ARCHIVE` / `RUSTY_V8_SRC_BINDING_PATH`。**没有这两个变量，本地任何
+`-p …codex-code-mode-host…` 的构建都在编译前失败**。本轮决定不去补这份下载
+（体积大、且 CI 已经覆盖同名用例），把这族红的**权威收据放在 CI 的 `--workspace` 腿**，
+本地只登记机制。**这条同时解释了 §6.16.1 那 9 条 mac 红为什么在 CI 是绿的。**
+
+**批次 3 / 4 / 5 全灭的机制：非登录 ssh 的 PATH（我自己的脚本缺陷）**
+
+`L3b_rc=127`、`L4b_rc=127`、`L5b_rc=127`，文本都是
+`lx-verifyN.sh: line NN: cargo: command not found`。批 1 / 批 2 之所以能跑，是当时经
+`bash -lc` 启动（登录 shell 会 source profile），批 3–5 改成了
+`ssh host 'setsid bash script.sh'`——**非登录、非交互，`~/.cargo/bin` 不在 PATH**。
+修法写进脚本本身，不依赖启动方式：`export PATH="$HOME/.cargo/bin:$PATH"`。
+**推论（登记为口径约束）：这台机器上任何 rc=127 的相位都不产生测试结论**，
+所以 §6.19 上面那三段（L3b/L4b/L5b）当时**一条测试都没跑**，Linux 侧真正的收据只有
+L1 / L2 / L3 / L4 / L5 / L6 + 批次 7。
+
+**L6（release 构建，第二个真实操作系统）**：`Finished release profile [optimized + debuginfo]
+target(s) in 19m19s`（`CARGO_TARGET_DIR=~/rig-verify-20261019/target-release`，9.9 G，
+`--locked`，源码 `95fb0949d`）。产物与哈希：
+
+| 二进制 | sha256 | `--version` |
+|---|---|---|
+| `codex` | `0b3406df1f016702cdf2cc01175287981ae76efa8dcb2d8f71622df59148c5f7` | `codex-cli 0.0.0` |
+| `codex-app-server` | `23664fe9025a3fa646c31bd1ad955e2f7d3c2e301f75a2cf7b96f0cc387b863d` | `codex-app-server 0.0.0` |
+
+（`L6_rc=0` 不可信，见上；这里的凭据是 `Finished` 行 + 两个文件确实存在并能跑 `--version`。）
+`warning: codex-cli (bin "codex") generated 1 warning` —— 只登记，不动它（不是本轮范围）。
+
+**批次 7 / 8（不带 v8 依赖的相位，用来补 L4b/L5b 该给的答案）**：源码仍 `95fb0949d`，
+`export PATH` 已修。三相位各自能证明什么写清楚：
+`L7a` = `-p codex-rust-rig-bridge`（视觉 floor 修复就住在这个 package：
+`wire_images.rs` / `wire_images_tests.rs` / `wire_budget_outbound_tests.rs`，全是 lib 单元测试，
+不需要兄弟 binary）→ **task #5 的第二操作系统收据**；
+`L7b` = `-p codex-exec-server -E 'test(shell_snapshot) | test(blocked_descriptor)'`
+→ **B3 / task #22 第一次在真 Linux 上跑起来**；
+`L7c` = L3 里 mac 基线**没有**的那 6 条（`network_approval` ×4、
+`tools::sandbox_denied_exec_command_returns_original_output`、
+`rig_image_history::anthropic_image_history_survives_drop_without_shutdown_resume`）
+`-j 1` 单跑 → 判"争用 / 环境 / 真实"。同一脚本末尾带 **sandbox 能力探针**
+（`apparmor_restrict_unprivileged_userns`、`unshare -Urm` 的真实 rc、
+`kernel.unprivileged_userns_clone`），因为 `tools::sandbox_denied_*` 这类用例在
+**userns 被 AppArmor 限制的机器上本来就跑不了**，没有这个探针就无法区分"争用抖动"与
+"环境不支持"。L3 跑的时刻该机 `load average: 29.22, 29.61, 40.25`（72 核，另一个用户在
+同机跑 `cargo nextest` + `cargo clippy --workspace`），批次 7 启动时
+`load average: 45.82, 25.48, 26.81`——**共享负载如实登记，不作为已排除因素**。
+
+- **L7a 没跑成**：`error: the argument '--locked' cannot be used multiple times`、`L7a_rc=2`。
+  `run()` helper 已经带 `--locked`，我在参数里又加了一次。第五次自我造成的调用缺陷，
+  与 §6.19 L4 同族（脚本本身的问题，不是产品）。重跑 = L8a。
+- **L7b：45 tests run: 45 passed（`L7b_rc=0`）——B3 方向性结案**。CI ubuntu 那条红在
+  **真 Ubuntu 上不复现**：
+
+  ```text
+  PASS [   0.085s] (15/45) codex-exec-server::exec_process shell_snapshot::
+    shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path
+  ```
+
+  对照三方（同一条 `--workspace`/`--locked` 语义，run `39347345560`，head `6e27a6c11`）：
+
+  | 腿 | 该用例 | 同腿其余 |
+  |---|---|---|
+  | ubuntu CI runner | **FAIL 0.346s**（该腿 2 条红之一，另一条是 `::discovery` 60.783s） | `Summary [3004.229s] 22927 tests run: 22925 passed, 2 failed, 48 skipped` |
+  | macos CI runner | **PASS ×3**（0.310 / 0.223 / 0.295s，含 mac 专属 zsh 两条） | `Summary [2646.520s] 22877 tests run: 22876 passed, 1 failed, 71 skipped` |
+  | 真 Ubuntu 机器（本机，`95fb0949d`） | **PASS 0.085s** | `Summary [11.309s] 45 tests run: 45 passed, 646 skipped` |
+
+  **同 OS、不同机器给出相反结果**，所以这一条既不是 Linux 平台缺陷、也不是分叉造成的
+  字段遗漏，四分法落第 4 类（CI runner 环境 / harness）。但按 §6.9 的纪律说清楚：
+  **这只到"真机不复现"为止**，runner 上的根因（`0.346s` 的快速失败、只在该 runner 出现）
+  仍未取到，不冒领"已修"或"与分叉无关"。§7 第 3 项里 B3 的状态从"待真机复现"改为
+  "真机不复现、runner 根因未取"。
+- **L7c 的读数（`Summary [18.138s] 6 tests run: 1 passed, 5 failed`、`L7c_rc=100`）**：
+  - `rig_image_history::anthropic_image_history_survives_drop_without_shutdown_resume`
+    单跑 **PASS** → L3 里那条是负载/时序形状。
+  - `tools::sandbox_denied_exec_command_returns_original_output` **FAIL**，文本
+    `expected sentinel output from command to reach the model` +
+    `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`。机器能力探针同批给出：
+    `unshare: write failed /proc/self/uid_map: Operation not permitted`（`unshare_rc=1`）、
+    `kernel.unprivileged_userns_clone = 1`。⇒ **这台机器的非特权 userns 被挡，codex 的
+    Linux sandbox 起不来**，而该用例的前提正是"sandbox 拒绝这条命令"。前提不成立的机器上
+    它必红：**环境不支持，不是产品缺陷**。对本 fork 的目标有直接意义，登记为事实：
+    **在没有非特权 userns 的容器/宿主里，`sandbox_denied_*` 这一族用例整体失效**
+    （Linux/容器 app-server 是 fork 的交付面，这条要跟着部署文档看）。
+  - `network_approval::…` **4 条 FAIL**，文本是语义形状而非超时：
+    `assertion failed: (left == right)`（`network_approval.rs:910`、`:2322`）、
+    `expected Guardian approval, got TurnComplete(…"risk_level":"low",
+    "user_authorization":"high","outcome":"allow"…)`（`:995`）、
+    `Error: timed out waiting for both Guardian network reviews`。
+    而 CI ubuntu 腿**这 4 条同名用例全绿**（`background_…::later_turn`、
+    `background_…::same_turn`、`guardian_receives_exact_trigger_for_single_network_request`、
+    `guardian_receives_exact_triggers_for_concurrent_network_requests` 各 1 次 PASS），
+    mac/windows 腿没有这些名字。**⇒ 差异只能来自机器**（sandbox 起不来 / 或负载 45），
+    但 L7c 本身跑在 `load average: 45.82` 下，**"隔离"不等于"空闲"**，所以现在只能记
+    **未定性**。L8b 在 `load1 < 12` 的空闲条件下重跑这 5 条（4 条 `network_approval` +
+    `tools::sandbox_denied_*`）并打印前后负载：
+    转绿 → 归"争用 + sandbox 能力"，登记为环境；仍红 → 回到根因，不许结案。
+
+**批次 8 把上面两个悬念各自结案（真机、空闲、有机制）**
+
+- **L8a = `codex-rust-rig-bridge` 全套，真 Linux**：
+  `Summary [15.489s] 337 tests run: 337 passed, 0 skipped`、`L8a_rc=0`。
+  这个 package 就是视觉 floor 修复 `04beac00a` 的住处（`wire_images.rs` /
+  `wire_images_tests.rs` / `wire_budget_outbound_tests.rs`），也是
+  `uses_model_bridge()` 的下游。**⇒ B1 / task #5 的第二操作系统收据拿到**，
+  与 L1(140) / L2(5) 一起构成"本轮两处改动在第二个真实操作系统上全绿"。
+  （L7a 那条 rc=2 是重复 `--locked`，见上。）
+- **L8b = L7c 那 5 条，空闲机重跑**：`Summary [16.532s] 5 tests run: 0 passed, 5 failed`、
+  `L8b_rc=100`，结束后 `load after: 2.03 8.35 18.27`。
+  **⇒ "负载/争用"这一半被排除**，剩下的必须是机制。机制在同一次 ssh 里用**系统 bwrap**
+  直接量出来了（不依赖测试框架）：
+
+  ```text
+  /proc/sys/kernel/apparmor_restrict_unprivileged_userns = 1     # Ubuntu 24.04 默认
+  /proc/sys/user/max_user_namespaces                = 235952     # 名额不是瓶颈
+  /sys/module/apparmor/parameters/enabled           = Y
+  bwrap --ro-bind / / --unshare-net /bin/true  -> bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted  (rc=1)
+  bwrap --ro-bind / /              /bin/true  -> bwrap: setting up uid map: Permission denied                    (rc=1)
+  unshare -Urm true                            -> write failed /proc/self/uid_map: Operation not permitted       (rc=1)
+  ```
+
+  **这台机器的 bwrap 带网络和不带网络都起不来**，根因是
+  `apparmor_restrict_unprivileged_userns=1`（Ubuntu 24.04 的默认限制），不是资源不足。
+  于是 5 条红全部有了机制：
+  - `tools::sandbox_denied_exec_command_returns_original_output` 期望的"sandbox 拒绝这条
+    命令"根本没机会发生——sandbox 自己在 `RTM_NEWADDR` 处失败，模型收到的是 bwrap 错误文本，
+    于是断言 `expected sentinel output from command to reach the model` 红。
+  - 4 条 `network_approval` 期望"出站网络请求被拦下 → Guardian 触发审批"；network namespace
+    建不起来 ⇒ 请求不被拦 ⇒ Guardian 一次都没被触发（`:2322` 的 `assert_eq!` 比的是触发列表，
+    `:910` / `:995` 看到的是 turn 直接 `Completed`）。**失败文本是语义形状**
+    （`expected Guardian approval, got TurnComplete(…"outcome":"allow"…)`），与超时无关——
+    这正是"sandbox 未生效"的形状。
+
+  **四分法：第 4 类（环境能力），不是产品缺陷**；CI ubuntu runner 上这 4 条全绿
+  （那里 userns 可用）就是反证。
+- **对本 fork 交付面的直接含义（登记为事实，不是待办）**：验证机与目标运行环境必须
+  **允许非特权 userns**，否则 codex 的 Linux sandbox 起不来、`OnRequest` 的网络审批链路
+  整体退化。容器/宿主上要么把 `kernel.apparmor_restrict_unprivileged_userns` 置 0
+  （需 root、属安全策略变更，**本轮没有在这台机器上改**），要么给容器 `CAP_SYS_ADMIN` 等
+  相应权限。这条与 §6.10 的 unix 期限讨论无关，是独立的部署要求。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -1122,15 +1658,20 @@ node 的 `os.tmpdir()`，也就是**系统盘**。实测（本轮，mac）：`/S
   `0037503db`（均带 `[skip ci]`，逐笔实测未触发新 run）。
   `origin/test` = `0037503db`；`7b1a92c6a` 触发的 run `39286738661` 已到终态并登记在 §6.11。
   本节这份文档提交在其后、同样带 `[skip ci]`，不额外占用 CI 预算。工作树 clean。
-  **§6.12–§6.15 之后的实际指针状态（本次登记时核实）**：`origin/test` = `6e27a6c11`，
-  本地未推的是 `8349736da`（`legacy_` 整机独占调度）、`0c566acbf`（文档）、
-  `cefb81d57`（R5 栈预算）、`c27ec7653`（R6 hook 窗口）、`b4be82ca7`（文档）、
-  `7c22bf2ed`（§6.14 文档）、`981490315`（§6.15 mac daemon 期限）与本笔文档提交。
-  它们**刻意压在 run `39347345560`（head `6e27a6c11`，三条 lane 均 in_progress）出结果
-  之后**：该 run 已经花掉一轮预算，若它的 TEMP 归因或 elevated 修复仍未闭合，下一轮应当
-  把那笔修正一起带上，而不是再单独烧一轮。R5 的推论（该 run 的三条 `codex-tui` ABORT
-  仍在）与 §6.15 的 mac 窗口，都只能由这笔推送之后的下一轮给出收据——该 run 的源码里
-  两者都不存在。
+  **本轮登记时的实际指针状态**：`origin/test` = `6e27a6c11`，本地未推的是 `8349736da`
+  （`legacy_` 整机独占调度）、`0c566acbf`（文档）、`cefb81d57`（R5 栈预算）、
+  `c27ec7653`（R6 hook 窗口）、`b4be82ca7`（文档）、`7c22bf2ed`（§6.14 文档）、
+  `981490315`（§6.15 mac daemon 期限）、`d0e822ad9`（文档）、`95fb0949d`
+  （**§6.16 产品修复：workspace-routing entry 钉回原生传输**）与本笔文档提交，共 10 笔。
+  **压在 `39347345560` 之后的理由已经消失**：该 run 三条 lane 均到终态（ubuntu
+  `completed/failure` 2 failed、windows `completed/failure` 11 failed、macos
+  `completed/failure` 1 failed），花掉的预算全部拿到了收据，§7 第 1/2 项也各自得到根因或终态。
+  **下一轮一次带上四件事**：R5 的推论（三条 `codex-tui` ABORT 是否消失——该 run 的源码里
+  没有 `cefb81d57`）、§6.15 的 mac 窗口、§6.16 `::discovery` 的转绿、`8349736da` 的
+  `legacy_` 整机独占。第二操作系统的收据**已全部在推送前拿到**，不在 CI 上赌：
+  Linux L1 `140 passed`、L2 `5 passed`（`::discovery` 2.695s）、
+  **L8a `codex-rust-rig-bridge` 337/337**（覆盖视觉 floor 修复）、
+  L7b `45 passed`（B3 真机不复现）、L6 release 两枚二进制带 sha256（§6.19）。
 - ACP `dev`：`19207d3`（= 交接时的 `origin/dev`）之上本轮新增 `0930455`、`147280b`、
   `d188807`、`59426b6`（三条分隔符耦合断言改平台中立，§9.5.1）、`6a76aa7`
   （`package-lock.json` 同步，§9.6）；`origin/dev` = `6a76aa7`，五笔均已推送；
@@ -1165,13 +1706,23 @@ node 的 `os.tmpdir()`，也就是**系统盘**。实测（本轮，mac）：`/S
 - 仍阻断 / 未闭合（不属于 rig 核心路径，独立登记）：
   1. ~~`external_auth_refreshes_on_unauthorized::discovery`——fork 历史回归，ubuntu 表现为
      60s TIMEOUT；上游通过、fork 失败，不得称纯环境问题。~~
-     → **"fork 历史回归 / 上游通过、fork 失败"这半句拿不出凭据，按 §6.9 撤回**：该用例
-     由上游提交 `0a5b99916`(#46281) 引入，内部 60s 读超时由 `02a720525`(#18161) 从 10s
-     改成 60s，且 `app-server/src/external_auth.rs`、`core/src/auth.rs`、
-     `backend-client/src/client.rs` 三个直接相关文件上的**本分叉提交数为 0**。
-     但也**不能反过来说与分叉无关**：用例配置的是自定义
-     `model_providers.routing` 出站，正落在本分叉改过的 `codex-api` / rig bridge 范围内。
-     现在口径是**未定性、待根因**，并且 §6.9 说明为什么现有 CI 结构上不可能给出诊断。
+     → ~~"fork 历史回归 / 上游通过、fork 失败"这半句拿不出凭据，按 §6.9 撤回~~
+     → **已根因并已修（§6.16，提交 `95fb0949d`）**。定性是**桥未实现 → 真实功能缺口**：
+     分叉默认策略把 `name="OpenAI"` + `…/backend-api/codex` + `requires_openai_auth` 这类
+     entry 判给了桥，而 workspace routing 的 discovery **只在原生路径**
+     （`responses_api_provider` 是 `workspace_routing(…)` 的唯一调用方），桥路径固定
+     `ClientRouting::ConfiguredProvider`，因此那条 discovery-401 → 刷新恢复永远不会发生，
+     用例等的正是它。修法是把有 routing 能力的 entry 钉回原生传输（3 行 + 1 条回归用例），
+     而不是把 routing 移植进桥。
+     **归属凭据**：引入点可指到分叉提交 `0f62ba844`（`uses_model_bridge()` 这套策略本身，
+     `git log -S` 唯一命中）；用例文件与三个直接相关文件在 `main..test` 上**0 笔分叉提交**。
+     §6.9 当时撤回那半句是对的（那时确实无凭据），本轮是**补上凭据**而非推翻。
+     **首败→修复后证据**：CI 三腿 `FAIL 60.783 / 60.394 / 60.525s`（本轮第一次带 wiremock
+     `Mock #2 … matched 0` 诊断）→ 本机 `::discovery` **PASS 0.660s**（默认 feature）与
+     **PASS 0.696s**（CI 的 `codex-core/rust-rig` feature），`::responses` 对照组不受影响；
+     Linux 第二操作系统 L1 `140 passed`。
+     **本项仍未闭合的部分**：只剩"CI 侧转绿的收据"——它只能由这笔推送之后的下一轮给出；
+     run `39347345560` 的源码里没有这个修复。§6.10 第 1 类"确定性挂起待根因"就地作废。
   2. ~~macos nextest 连续四轮撞 3h job 时限被取消，完整 macos 验收从未拿到~~
      → run 39233543173（§6.7）**第一次跑完**，2h49m27s 完成、结论仍为 failure。剩下的
      是它只带来 9 项**无基线可比**的首次观测（3 failed + 6 timed out，含 5 条
@@ -1196,10 +1747,58 @@ node 的 `os.tmpdir()`，也就是**系统盘**。实测（本轮，mac）：`/S
      → **§6.15 关掉 (b) 的开发部分**：`981490315` 给这 5 条发了 mac-only `2m × 2` 窗口，
      命中与优先级用真实配置副本实测过（本机 1.002s TIMEOUT），但**转绿与否只能由推送后的
      下一轮给收据**。(a) 分片仍是待开发项，本项整体未闭合。
+     → **run `39347345560`（head `6e27a6c11`）mac 腿到终态，两条待办都被改写（§6.16）**：
+     job 结论 `completed/failure`，`00:23:32 → 02:11:10` = **1h47m38s**（矩阵里 macos 的
+     `timeout-minutes` 现为 **330**），
+     `Summary [2646.520s] 22877 tests run: 22876 passed (23 slow), 1 failed`——唯一失败就是
+     第 1 项那条 `::discovery`。
+     (a) **分片不再是待开发项**：这一手用 330 分钟预算中的 107 分钟跑完，**余量 3h42m**，
+     "分片是为了救 3h 时限"这个前提被直接打掉；分片降级为"若 mac 编译时长再翻倍"的备选，
+     本期不排。
+     (b) **`981490315` 的口径降级为余量保险**：那 5 条 `codex-cli::app_server_daemon` 在
+     **不含该提交的源码**上就全绿——PASS **44.412 / 44.844 / 51.009 / 72.357 / 124.981s**。
+     所以上一手的 5 条 TIMEOUT 是**负载造成的贴线**，不是窗口不够；这条要如实写，
+     不能把 `981490315` 说成"让 mac 腿转绿"的修复。
+     定性与终态：**mac 完整验收已达成**（第一次拿到跑完且可与上一手逐条对照的 mac 收据）；
+     本项剩下的只有"该腿不再有可归因分叉的失败"，而那取决于第 1 项修复推送后的下一轮。
   3. windows 尾项家族（ConPTY、unified_exec、uds ACL、elevated runner、cur 检测等）与
-     `shell_snapshot…blocked_descriptor` 抖动。
-  4. 验机 `swufe@192.168.32.163` 的 rustup 组件安装存在 manifest 损坏；pinned 1.95.0
-     的 Clippy 以 mac 结果为准，不擅自改动仓库锁定版本。
+     ~~`shell_snapshot…blocked_descriptor` 抖动~~
+     → **B3 方向性结案（§6.19 L7b）**：真 Ubuntu 机器上该用例 **PASS 0.085s**（同批 45/45 全绿），
+     mac CI 腿 **PASS ×3**，只有 ubuntu CI runner **FAIL 0.346s**。**同 OS 不同机器结果相反**，
+     落第 4 类；runner 上的根因仍未取到，所以本项从"待真机复现"改为
+     "**真机不复现、runner 根因未取**"，不再算 Linux 侧待办，留在 windows/CI 环境家族里。
+  3b. **本轮新增的 Linux 侧事实（不是缺陷，是能力边界）**：`swufe@192.168.31.41` 上
+     `kernel.apparmor_restrict_unprivileged_userns = 1`（Ubuntu 24.04 默认），
+     非特权进程**能建 userns、但不能写 `uid_map`**
+     （`unshare -Urm` rc=1 `write failed /proc/self/uid_map: Operation not permitted`，
+     而 `unshare -Un`（不带 `-r`）rc=0），bwrap 需要的正是后者
+     （`bwrap … /bin/true` → `setting up uid map: Permission denied`），
+     因此 codex 的 Linux sandbox 起不来（带 `--unshare-net` 时先在
+     `RTM_NEWADDR` 处失败）。在该机上
+     `tools::sandbox_denied_exec_command_returns_original_output` **必红**，
+     4 条 `network_approval` Guardian 用例的语义也与 CI ubuntu 腿相反（CI 那 4 条全绿）。
+     空闲复跑 L8b（`load after: 2.03`）**仍 5/5 红**，负载已被排除，机制用系统 `bwrap` 直接
+     量出（§6.19 批次 8）：**环境能力，第 4 类**。
+     **交付面相关**：容器/无 userns 宿主里这一族用例整体失效，且 `OnRequest` 的网络审批链路
+     会退化，部署与验收口径都要跟着改；本轮**没有**改那台机器的 sysctl（属安全策略变更）。
+  3c. **验证基础设施缺口（待开发，未开工）**：off-CI 建不出 `codex-code-mode-host`——它把
+     `v8 150.4.0` 拉进构建图，build script 要下载 `ptrcomp_sandbox_release` prebuilt，
+     而这个下载在 CI 外**必然失败**（mac：urlopen 异常；Linux：HTTP 404），因为成对工件是
+     `.github/actions/setup-rusty-v8` 在用 `third_party/v8/rusty_v8_150_4_0_release_manifests.sha256`
+     做信任锚之后注入 `RUSTY_V8_ARCHIVE` / `RUSTY_V8_SRC_BINDING_PATH` 的。后果就是 §6.16.1
+     与 §6.19 里反复出现的"本地单 package 跑出一族 code_mode 红、CI 同族全绿"。
+     本轮**没有**补这份下载（体积大、CI 已覆盖同名用例），只登记机制与复现命令。
+  4. ~~验机 `swufe@192.168.32.163` 的 rustup 组件安装存在 manifest 损坏；pinned 1.95.0
+     的 Clippy 以 mac 结果为准，不擅自改动仓库锁定版本。~~
+     → **按 §6.17 改判并已修**：不是 manifest 下载损坏，是那个 `1.95.0` toolchain 目录被
+     **rust-installer**（`install.sh --prefix=`）写过——三份 manifest 里 **100 %** 的行是
+     绝对路径（`manifest-cargo` 44/44、`manifest-rustc` 41/41、
+     `manifest-rust-std-…` 62/62），rustup 任何组件事务都在 `relpath.is_relative()` 断言处
+     panic，`rustup component add` 则报 `missing manifest`。处置是把坏目录**隔离**
+     （`~/.rustup/quarantine/1.95.0-broken-installer`，1.6 G 原样保留、可随时还原）再用
+     rustup 正常安装**同一个 pin**；`rust-toolchain.toml` 一个字没动。
+     Linux 腿（`swufe@192.168.31.41`，即原来那台换了网段的机器）因此恢复可跑。
+     仍然保留的半句：pinned 1.95.0 的 **Clippy 结果以 mac 为准**（Linux 侧本轮只跑测试）。
   5. ~~**本分叉自有测试贴线**：windows 上
      `codex-core image_preparation::tests::detail_policies_apply_the_expected_budgets`
      与 `codex-utils-image tests::legitimately_large_dimensions_still_decode` 上一轮以
