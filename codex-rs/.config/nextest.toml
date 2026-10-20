@@ -17,6 +17,23 @@ filter = 'package(codex-cli) & binary(daemon_startup) & test(requires_confirmati
 slow-timeout = { period = "1m", terminate-after = 2 }
 
 [[profile.default.overrides]]
+# macOS only, and it has to sit above the two packaged_daemon_ rules below: for
+# slow-timeout the FIRST matching override wins, so a mac window appended after
+# them is inert. Verified against this file — with this window set to 1s in a
+# copy, packaged_daemon_start_and_explicit_replacement died at 1.002 s even
+# though its 1m x 3 rule is still in place below. The lane runs these legs
+# 20-65 % slower run to run while ubuntu finishes the same five in 6-42 s. mac
+# passed three of them the run before at 54.902 / 99.587 / 138.699 s, i.e.
+# within 5-41 s of the 60 / 120 / 180 s kills below, and one slower lane took
+# all five out as TIMEOUT with no diagnostics. Their own 30 s budgets are
+# poll-until-ready loops that each pass, so a leg only ever dies at the outer
+# boundary. 2m x 2 = 4m covers 138.699 s plus the observed 65 % spread; a leg
+# that passes inside it is cheaper than the two kills it replaces.
+platform = 'cfg(target_os = "macos")'
+filter = 'package(codex-cli) & binary(app_server_daemon) & (test(=managed_starts_ensure_one_updater_and_recover_a_missing_one) | test(=restart_applies_saved_updater_preference) | test(=explicit_restart_applies_feature_overrides_and_preserves_saved_settings) | test(=packaged_daemon_explicit_replacement_migrates_running_legacy) | test(=packaged_daemon_start_and_explicit_replacement))'
+slow-timeout = { period = "2m", terminate-after = 2 }
+
+[[profile.default.overrides]]
 # This case validates and copies both the initial and replacement debug package.
 filter = 'package(codex-cli) & binary(app_server_daemon) & test(=packaged_daemon_start_and_explicit_replacement)'
 slow-timeout = { period = "1m", terminate-after = 3 }
