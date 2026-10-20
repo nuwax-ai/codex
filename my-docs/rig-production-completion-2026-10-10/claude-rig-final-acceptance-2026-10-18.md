@@ -2328,11 +2328,12 @@ test(reconnect) | test(disconnect)' --no-fail-fast`）**：
 4 条红**逐名相同**：`remote::noise_tests::reconnect_reuses_registration_until_url_is_rejected`、
 `accepted_websocket_interoperates_and_recovers_with_real_direct_executor::{policy_unavailable,
 transport_disconnect}`、`initialize::discovery_prewarms_before_initialize_and_recovers_without_client_opt_in`
-⇒ 改文本零行为影响。这 4 条是**这台 mac 上的既有红**（wiremock 在 drop 时断言
-`Expected range of matching incoming requests: == 1 / Number of matched: 0`），而 run 39396134392
-三腿全 PASS（mac 6.000 / 2.595 / 5.238 / 0.739s；ubuntu 6.078 / 2.143 / 2.180 / 0.221s；
-windows 5.669 / 0.141 / 0.169 / 0.217s）⇒ 不追绿，只登记一条读收据的规矩：**以后本机
-`-p codex-exec-server` 的绿，要按"这 4 条在本机本来就会红"来读。**
+⇒ 改文本零行为影响。**这 4 条不是"本机既有红"，是争用形状**：同一台机器单跑复验全部转绿
+（M-L19，`-E 'test(accepted_websocket…)'` ⇒ `Summary [10.813s] 2 tests run: 2 passed`；
+另两条单跑 ⇒ `Summary [11.057s] 2 tests run: 2 passed`，11.053s / 5.477s），而 run 39396134392
+三腿在 62-leg 并发下全 PASS（mac 6.000 / 2.595 / 5.238 / 0.739s；ubuntu 6.078 / 2.143 / 2.180 /
+0.221s；windows 5.669 / 0.141 / 0.169 / 0.217s）⇒ 不追绿，只登记一条读收据的规矩：**本机
+`-p codex-exec-server` 并发选择集里出这类红，先单跑复验再定性**，与 §6.25 的 mac 腿争用结论同形。
 
 **下一手 CI 已经是真代码 push**：run **39430526421**（`event=push`、head `a4dfd599f`、13:27:21Z
 入队）。它同时覆盖三件悬着的事——这条腿若再红会直接报出属于哪条分支（并带最后一次 retryable
