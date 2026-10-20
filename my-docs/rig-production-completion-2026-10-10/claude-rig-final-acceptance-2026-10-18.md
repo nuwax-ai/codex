@@ -2284,6 +2284,28 @@ selection 复跑（`--test exec_process -E 'test(shell_snapshot) | test(blocked_
 `--nocapture`，nextest 不打印通过腿的 stdout，所以那行 skip 从未进日志——是我读收据的方式错，
 不是工件缺字段。这条腿现在**没有任何 Linux 真实执行收据**。
 
+**跳过式绿到底有几条（`-j 1 --nocapture` 串行复跑 L7b 的完整 selection，同一克隆 `95fb094`，
+`.41:~/rig-verify-20261019/lx-l7b-nocapture.log`）**：总数与当初完全一致
+（`Summary [ 24.806s] 45 tests run: 45 passed, 646 skipped`），但 45 条里有 **7 条**打印
+`skipping sandbox test` ⇒ 这 7 条从未执行：
+`shell_snapshot_concurrent_replays_keep_independent_readers::{blocked_descriptor_path,
+bash_protected_transport, bash_protected_transport_tty}`、
+`shell_snapshot_v2_capture_failure_falls_back_and_retries::{remote_pipe_recovery,
+remote_tty_recovery, remote_retry_budget_exhausted}`、
+`shell_snapshot_v2_filters_profile_exports_and_stays_in_memory::remote_sandbox`。
+⇒ 那份"45/45 全绿"里有 38 条是真执行、7 条是跳过，而**本案恰好落在跳过的 7 条里**。
+（`START (n/45)` 序号与当初不同，nextest 的启动顺序不保证，不影响结论。）
+
+**更难看的一点，如实登记**：能力证据当时就在同一份日志里——`lx-verify7.log:369-371` 给出
+`unshare: write failed /proc/self/uid_map: Operation not permitted`、`unshare_rc=1`、
+`kernel.unprivileged_userns_clone = 1`。我在**同一批的 L7c** 正是用这三行把
+`tools::sandbox_denied_*` 判成"环境不支持"，却在 500 行之外把 L7b 的 45/45 当成真机复现。
+不对称的根源是：**同一件环境限制，L7c 那族用例会大声红，L7b 这族 guard 静默返回 Ok**。
+⇒ 立一条读收据的规矩，后续所有 Linux 侧沙箱相关用例都按它执行：**凡结果依赖
+`system_bwrap_warning` 保护的用例（`exec-server/tests/exec_process.rs` 的 :215/:391/:608/:761/
+:906/:971/:1045 与 `shell_snapshot.rs:202`，共 9 处 guard，全在 `codex-exec-server` 的
+`exec_process` 这一个 test binary 内），Linux 收据必须带 `--nocapture` 取，否则 PASS 不可解释。**
+
 **并且 `.41` 不能当这条腿的第二操作系统**：CI ubuntu 车道每手先执行
 `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`（39347 00:25:28 / 39371 04:56:26 /
 39396 08:51:06 三手日志都回显 `kernel.apparmor_restrict_unprivileged_userns = 0` 与
