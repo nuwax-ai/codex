@@ -17,6 +17,18 @@ export NUWAX_API_KEY='填入自己的Token Plan Key'
 
 自定义型号还应按平台公布的真实token窗口设置已有的 `CODEX_MODEL_CONTEXT_WINDOW`（正整数），并配置适合该模型的输出上限。未知型号的默认窗口并非自动探测结果，不能用较大的默认值替代真实限制；图片和输出也会消耗窗口。环境值会进入本地压缩和最终请求预算，显式 `-c model_context_window=...` 的优先级更高。
 
+## 可选第五项：NUWAX_BRIDGE（2026-10-20）
+
+`NUWAX_WIRE_API=responses` 默认经 rig 桥访问。如果中转后面其实是官方 GPT 模型，想让请求走上游原生 Codex Responses 传输，再导出一个变量即可：
+
+```bash
+export NUWAX_BRIDGE='native'   # rig（默认）| native | genai
+```
+
+`native` 必须与 `NUWAX_WIRE_API=responses` 同时出现（chat/anthropic 两条线只由桥服务，配 `native` 会在启动时直接报错并说明需要哪个变量）。凭据仍来自 `NUWAX_API_KEY`，不依赖 auth.json 或官方订阅登录；执行记录、取消、压缩、冷恢复与三条线共用同一套协议栈。共享 daemon 与 live 子进程会剥离该变量，不会把某个客户端的传输选择带给其他进程。
+
+验证是否真的离开桥：`codex doctor` 的 model routing 检查会打印 `bridge: native transport` 与 `experimental bridge override: native`；设置 `NUWAX_BRIDGE=rig` 或不设置时打印 `bridge: rig (model bridge)`。
+
 ## 固定实际运行的 Codex
 
 在 `fork-nuwax-codex` 的 `test` 分支源码中构建包含 rig 的 CLI：

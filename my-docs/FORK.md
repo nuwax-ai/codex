@@ -199,6 +199,13 @@ app-server 同语义接线；组激活时共享 daemon 被排除（每进程凭�
 `NUWAX_STREAM_MAX_RETRIES`、`NUWAX_STREAM_IDLE_TIMEOUT_MS`（毫秒）：与组同激活、
 同优先级（typed CLI > 显式 `-c` > env），孤立设置 fail-fast，daemon 子进程启动时
 剥离。握手重试与 Core 采样重试分开计数，无单一总预算。
+2026-10-20 增加 `NUWAX_BRIDGE`（值域同 provider 的 `experimental_bridge`：
+`rig`|`native`|`genai`）：种子层随之写入 `experimental_bridge`，让官方 GPT 经中转
+端点时用上游原生 Responses 传输而不是 rig 桥；`native` 必须配
+`NUWAX_WIRE_API=responses`（chat/anthropic 只由桥服务，接受 `native` 会变成静默
+忽略），未知值与孤立设置同样 fail-fast 报变量名。未设置时仍是 fork 默认 `rig`，
+daemon 子进程同样剥离该变量；doctor 的 `config.model_routing` 收据相应显示
+`bridge: native transport` 并列出 `experimental bridge override:`。
 多进程应分别设置独立 `CODEX_HOME`；参数表、启动示例、远程与会话
 边界见 [容器多进程审查](container-multiprocess-env-review-2026-10-03.md)。
 （ACP-TS 侧另有 `CODEX_BASE_URL`/`CODEX_API_PROTOCOL`/`CODEX_WIRE_API`/

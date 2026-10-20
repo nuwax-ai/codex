@@ -2340,6 +2340,68 @@ transport_disconnect}`、`initialize::discovery_prewarms_before_initialize_and_r
 错误）、§6.26 悬着的 `local_compaction_retries_preserve_instructions_and_tool_metadata` 跨腿窗口
 收据（#34）、ubuntu oauth 回调腿的第二手观测（#35）。本轮不再单独 dispatch。
 
+### 6.28 方案 C 落地：`NUWAX_BRIDGE` 让环境变量能选上游原生 Responses 传输
+
+**用户拍板**："C. 纯 env 的 B" —— 官方 GPT 经中转时，要有一个变量能开启原生 codex
+Responses 请求方式。落地为启动组第 9 个变量 `NUWAX_BRIDGE`（值域同 provider 的
+`experimental_bridge`：`rig`|`native`|`genai`），种子层随之写入该键
+（[nuwax_env.rs:264-275](file:///Volumes/zhitai/git_workspace/fork-nuwax-codex/codex-rs/utils/cli/src/nuwax_env.rs#L264)）。
+
+**语义选择**（避免"静默忽略"这一本轮一直在追的缺陷类）：
+
+| 组合 | 结果 |
+|---|---|
+| `native` + `NUWAX_WIRE_API=responses` | 走上游原生传输；`uses_model_bridge()` 返回 false |
+| `native` + `chat`/`anthropic` | **启动 fail-fast**：`NUWAX_BRIDGE = "native" requires NUWAX_WIRE_API = "responses"`（这两条线只由桥服务，接受即等于吞掉变量） |
+| `rig` / 未设置 | fork 默认（第三方 Responses 经 rig 桥）；未设置时**不写**该键，白名单外的既有行为零变化 |
+| `genai` + `responses` | env 层放行，由 genai 桥运行期明确报错——不在 env 层复制桥的策略知识 |
+| 未知值 / 空白 / 非 Unicode / 孤立设置 | fail-fast 报变量名，不回显值，不发请求 |
+
+**隔离面同步**（新增键不能成为跨层注入的入口）：`ENV_GROUP_SEED_KEYS` 8→9
+（[env_group_isolation.rs:23-33](file:///Volumes/zhitai/git_workspace/fork-nuwax-codex/codex-rs/config/src/env_group_isolation.rs#L23)），逐层来源硬错照旧 —— 新测
+`environment_bridge_selection_is_legal_but_foreign_layers_cannot_override_it` 证明 config
+文件、`-c`/thread-config 层写 `experimental_bridge` 一律失败且只报键名；daemon 与 live 子进程
+启动剥离（[pid_start.rs:128](file:///Volumes/zhitai/git_workspace/fork-nuwax-codex/codex-rs/app-server-daemon/src/backend/pid_start.rs#L128)、
+[live-tests runner.rs:81](file:///Volumes/zhitai/git_workspace/fork-nuwax-codex/codex-rs/live-tests/src/binary_turns/runner.rs#L81)），
+共享守护进程不得继承某个客户端的传输选择。
+
+**首败 → 修复后证据**（本机，离线，`RUST_MIN_STACK=8388608`）：
+
+| 目标 | 首跑 | 修复后 |
+|---|---|---|
+| `-p codex-config --lib env_group` | 11 run 中 **1 FAILED**：`config layers are not in correct precedence order`（我把 user 层排在 EnvSeed 之上，层栈要求低→高） | `11 passed; 0 failed; 376 filtered out` |
+| `-p codex-utils-cli --lib` | — | `59 passed; 0 failed; 1 ignored`（含 4 条新桥测试） |
+| `-p codex-cli --bin codex doctor` | 自查删掉我写坏的一行 `assert_eq!(...wire_api.codex_model_provider_info::WireApi::Responses, ())` 后才编译 | `141 passed; 0 failed; 1 ignored; 184 filtered`，新腿 `doctor_reports_the_environment_bridge_switch_as_the_native_transport` ok |
+| `-p codex-app-server --test all nuwax` | — | `13 passed; 0 failed`（3 条 live 腿自动跳过），含新腿 `native_bridge_env_switch_sends_the_responses_wire_without_the_rig_capture` |
+| `-p codex-exec --test all nuwax` | — | `20 passed; 0 failed; 112 filtered`（fail-fast 矩阵 +2 条：`unknown bridge`、`native bridge on the chat wire`） |
+| `-p codex-app-server-daemon --lib start::tests` | 首次按 `pid_start` 过滤命中 0 条（模块名是 `start`） | `2 passed; 0 failed; 1 ignored`（13 项剥离断言 + 双客户端不串味） |
+| `-p codex-cli` 其他被改测试目标 | — | admin_startup_matrix 6 / queue 9 / queue_owner_matrix 5 / queue_owner_dispatch 3 / queue_writer_lifecycle 2，全 passed |
+| `cargo fmt --all --check`；`clippy -p utils-cli -p config --all-targets`；`clippy -p cli -p app-server -p exec -p app-server-daemon -p live-tests --all-targets` | — | fmt 干净；clippy exit 0，仅两条**既有** warning（`cli/src/cloud_config.rs:39` unused `network_policy`、`app-server/tests/suite/v2/analytics.rs:142` nonminimal_bool），均不在本轮改动文件内 |
+
+**真二进制收据**（debug `codex` 构建，`CODEX_HOME` 用临时目录，base URL 指向
+`127.0.0.1:9` 死端口，凭据是假值，零厂商调用）：
+
+```text
+NUWAX_BRIDGE 未设 ⇒ bridge                   rig (model bridge)
+NUWAX_BRIDGE=native ⇒ bridge                   native transport
+两腿共同：provider source  NUWAX_* environment group（temporary, per-run credentials）
+          model source     NUWAX_MODEL environment
+          endpoint (redacted) http://127.0.0.1:9        （假 key 不出现在任何输出）
+```
+
+**离线端到端为什么可信**：新 app-server 腿跑的是生产二进制子进程 + 本地 wiremock，断言
+`POST /v1/responses`、`Authorization: Bearer <NUWAX_API_KEY 的值>`、`model`、
+`max_output_tokens=2048`、`input` 数组且无 `messages`，并且**捕获账本文件不存在** —— 后者是
+"确实离开 rig 桥"的唯一直接观测量（`CODEX_RIG_REQUEST_CAPTURE_FILE` 只由桥路径写出）。
+
+**ACP 侧无需改动**：agent 用 `env: process.env` 透传（CodexJsonRpcConnection.ts:21），
+`NUWAX_` 前缀天然进入 app-server 子进程；ACP 的 live driver 本来按前缀剥离宿主
+`NUWAX_*`（`scripts/live-validation/live_support.py:123`），新变量自动受同一保护。
+
+**边界**：本轮不跑实网 —— 官方 GPT 中转在 native 传输上的真实厂商收据**未采**；已证的是
+"env 变量确实切换了传输，且切换后仍满足本 fork 的 provider 契约（凭据、模型、cap、Responses
+形状、用量、取消/压缩走同一套 Core 栈）"。实网那一手留给后续经授权的一轮。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -2591,6 +2653,14 @@ transport_disconnect}`、`initialize::discovery_prewarms_before_initialize_and_r
   `[skip ci]` push 不产生 run 构成同一台机器上的正反对照，也说明"代码 push 交 CI"这条分工仍然
   只在真实代码变更时才动用。本节这份文档提交带 `[skip ci]`，且**在 39430526421 在飞时推送**：
   它不该、也不会为该 head 之外新开一手。
+
+- **§6.28 那一手的提交与推送状态（实测，本机）**：代码 `01cfd6449`
+  （`feat(cli): select the native Responses transport with NUWAX_BRIDGE`，19 文件、
+  产品 4 处 + 隔离白名单 + 测试与清理名单，不带 `[skip ci]`），其后是本节这份文档提交。
+  **这笔文档故意不带 `[skip ci]`**：`origin/test` 仍是 `e43a51da3`，一旦按授权推送这两笔，
+  tip 若带 `[skip ci]` 会让整次 push 被跳过，`01cfd6449` 的全量 CI 收据就永远不产生
+  （§6.20/§7 已两次实测过这个形状）。**本轮未推送**，`git push` 仍只在用户明确要求时执行。
+  离线侧全部收据见 §6.28；工作树在本笔提交后 clean。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
