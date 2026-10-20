@@ -2194,8 +2194,8 @@ mac 腿的 Runner Image banner 完全相同（`macos-26-arm64` / `20261013.0424.
   §6.26 里还登记了三件我自己的错：cancellation 夹具那条 30s 内层线卡在自家 30s 睡眠上
   （必然红，已改为等真正的 `assert_ne!`）、`w39347` 日志只枚举到它自己 11 条失败中的 8 条、
   以及本轮"CI 会报出 `last event:`"的预期落空（八条全绿，诊断 0 次触发）。
-- **这两笔还推不出去，阻塞在本机网络上（如实登记，不是仓库或凭据问题）**：
-  `git push origin test` 两条传输都失败——SSH over 443 报
+- **这两笔一度推不出去，阻塞在本机网络上（如实登记，不是仓库或凭据问题）**：
+  第一次 `git push origin test` 两条传输都失败——SSH over 443 报
   `Connection closed by 20.205.243.160 port 443` / 重试时 `Connection timed out during
   banner exchange`，显式走 HTTPS 报 `LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection
   to github.com:443`。同一时刻的只读探针：`gh auth status` 正常（`soddygo`，token 有
@@ -2203,13 +2203,17 @@ mac 腿的 Runner Image banner 完全相同（`macos-26-arm64` / `20261013.0424.
   `api.github.com`、`objects.githubusercontent.com`、`example.com` 全部 `000` 超时；
   默认路由在 **`utun4`**（Surge 的 TUN，fake-IP `198.18.0.1`），github.com 解析到
   `20.205.243.166`、无 AAAA。⇒ 判定是**本机代理隧道部分失效**，与本项目无关，
-  不在这里擅动别人的代理。本地状态：`test` = 本笔、`origin/test` 仍是 `3a68e29ef`，
-  工作树 clean，两笔都在本地等推送。网络恢复后 `git push origin test` 即可；按 §7 早前两次
-  实测（tip 提交消息带 `[skip ci]` 的 push 不产生 run），这一手**预计**不触发 CI——
-  "预计"而非"实测"，因为推送本身没完成，实测随恢复后的那一手一起做。
-- **推送后指针（推送完成后再核对）**：`origin/test` = 本笔，其前依次是 `24878ad8e`（窗口修复）、
-  `3a68e29ef`、`5f69816b4`、`fd0020bb0`、`de8fdb3f4`。tip 是本笔带 `[skip ci]` 的文档提交 ⇒ 整手 push
-  预计不触发 run。ACP 副本本轮未动。
+  因此没有擅动代理状态。**推送后来已完成**：出网恢复后 `api.github.com` 从 `000` 回到
+  200 / 0.41s，`git push origin test` 一次成功（`3a68e29ef..d5ca43484 test -> test`），
+  期间没有调整代理、也没有用重试之外的其他手段。
+- **推送后的指针与 `[skip ci]` 的第三次实测**：`git fetch origin test` 后
+  `origin/test` = **`d5ca43484`**（本笔）、`git rev-list --count origin/test..test` = **0**、
+  工作树 clean，其前依次是 `24878ad8e`（窗口修复）、`3a68e29ef`、`5f69816b4`、`fd0020bb0`、
+  `de8fdb3f4`。`gh run list --branch test` 最新一手仍是 39396134392（head `de8fdb3f4`、
+  08:49:05Z），这手 push **没有产生新 run** ⇒ tip 提交消息带 `[skip ci]` 即跳过整个 push
+  事件，与 §7 早前两次实测同一条行为，这里是**第三次实测**而不是预测。
+  于是 §6.26 那句"CI 级收据留给下一手真实代码 push"继续成立：`24878ad8e` 已在远端，
+  但它是跟着 `[skip ci]` 的 tip 一起推上去的，本身没有换来一次 CI 跑。ACP 副本本轮未动。
 
 ## 7. 提交、推送与工作树状态
 
