@@ -964,6 +964,71 @@ Windows 那台需要先装 `just`（`choco`/已有脚本，`just 1.59.0`，INSTA
 `cargo fmt --check` 干净。诚实边界：`.235` 桌面本身复现不了 runner 争用（其他家族在
 桌面上全部转绿），所以这条的 Windows 收据只能是 CI。
 
+### 6.14 `legacy_workspace_write_delete`：从"环境敏感"改判为"边界确实失守"（未修，待拍）
+
+这条是 §6.12 D2 遗留的 task #13。本轮把它从"上游既有 + 环境敏感"**改判**为
+"Windows workspace-write 边界的真实缺口"。三个旧说法全部被实测推翻，逐个记：
+
+**A. 推翻"helper 只写了 START 没写 SUCCESS"**
+`.235` 上 7 次单跑（`--exact --nocapture`，0.20–0.27s），沙箱日志**每次都有**
+`START:` 和 `SUCCESS:` 两行，cmd 捕获到的 stdout 为**空**——`del /f /q` 失败时 cmd
+会打印错误行到 stdout，空输出说明四条 `del` 与 `rmdir` **全部成功**。
+
+**B. 推翻"是 stat 假象"**
+`fs::read` 给出的是 `Os { code: 2, kind: NotFound }`（父进程未沙箱化，它的视图是权威的），
+且 `outside` 目录 `read_dir` 成功、内容为空 ⇒ 文件是**真被删了**，不是读不到。
+
+**C. 推翻"祖先目录被上一次跑污染"**
+先按此假设做 A/B：`codex-rs`（`sandbox_cwd()`，所有 Windows 沙箱腿共用的祖先）的 DACL
+上确实挂着两条**继承用**的遗留 ACE（`S-1-5-21-2076975351-…`、
+`S-1-5-21-2403252565-…`，均 `Modify, Synchronize` + `(OI)(CI)`）。用 `Set-Acl` 逐条删掉、
+复查只剩 `SYSTEM`/`Administrators`/`soddygo` 之后，**原样（未打补丁的）测试仍 FAILED**。
+⇒ 污染不是原因，这条假设作废。
+
+**D. 实测到的边界行为是"能删不能建"的不对称**
+在 scratch 副本上插桩（只改 `.235` 的那份解包源码，跑完已从 `.wdbak`/`.dbgbak` 还原并重新编译）：
+
+| 观测 | 结果 |
+| --- | --- |
+| `compute_allow_paths_for_permissions` 的 allow 集 | 恰好 `workspace` / `temp` / `tmp` 三个声明根，**没有祖先** |
+| deny 集 | 恰好 `workspace\.git`（`acl.rs` 的 deny mask 含 `DELETE \| FILE_DELETE_CHILD`，设计是对的） |
+| 本轮 mint 的 per-root capability SID | 3 个全新 SID；`workspace` 上确实出现了**本轮**那条非继承 `(OI)(CI)(M)` ACE |
+| ACE 调用是否报错 | 把 `let _ =` 改成打印后：**一条错误都没有** |
+| 沙箱内 `echo > %USERPROFILE%\sb-escape-probe.txt` | **被拒**（父进程复查文件不存在） |
+| 沙箱内 `echo > %OUTSIDE_DIR%\canary-create.txt` | **被拒**（`CREATE-OUTSIDE-DENIED`） |
+| 沙箱内 `del %OUTSIDE_DELETE%` | **成功**（目录清空） |
+| 沙箱内 `rmdir %PROTECTED_GIT_DIR%` | **成功**（事后 `icacls` 报"找不到文件"） |
+
+⇒ 结论：workspace-write 在**新建写入**上是生效的，但在**删除已存在对象**上失效，
+包括被显式列为只读载片的 `.git`。这台机器上确定性复现，CI 的失败签名与这里逐字段相同
+（`(0,false,false,false,None,false)`）。命令实际以持久本地账户
+`CodexSandboxOffline`/`CodexSandboxOnline` 运行（`whoami /groups` 在该 token 下直接崩，
+Git-for-Windows 的 `whoami.exe` 报 `CreateFileMapping … Win32 error 5`——这是 Git 工具的
+兼容问题，不是产品问题，但也意味着我拿不到 token 组成员列表）。
+
+**E. 还差最后一环，且它落在产品侧**
+"创建被拒 / 删除放行"在 WRITE_RESTRICTED 语义下不该同时成立，说明限制 SID 与实际删除
+路径用的 SID 不是我推断的那一组。要把机制钉死，需要在**运行时** dump token 的
+restricting SID 列表（`GetTokenInformation(TokenGroups)` 于沙箱子进程内），这已经超出
+harness 范围，要动 `token.rs`/`acl.rs` 的可观测性甚至授权逻辑。
+
+**F. 需要你拍的三个选项（本轮未动产品代码）**
+1. **fork 侧补授权**：把 deny ACE 的覆盖面从"per-root capability SID"扩到沙箱账户 SID，
+   或在 seed 阶段就把非根目录对象的 DELETE 权限收掉。风险最高，直接改安全边界。
+2. **只上报上游 + 本轮保持红**（我的建议）：这条是上游引入的用例，测试与实现在本分叉
+   **零 diff**，且 Windows 腿的这条红与 rig 集成无关；分叉没有义务在上游 ACL 模型里
+   替它重做授权，但它是**真实可复现的 Windows 沙箱越界**，值得单独一份复现包
+   （本文 A–D 的表 + `.235` 上的确定性步骤）。
+3. **改测试断言**：`legacy_workspace_write_delete` 独红会让 Windows 腿不可能全绿，
+   若只追求绿灯可以放宽那条 tuple——但这是**掩盖**，与"边界失守"的证据冲突，不建议。
+
+**G. 对你机器的两处状态变更（登记）**：`.235` 的 `~/codex-win-verify` 是 scratch 树，
+为做 C 的 A/B，我删除了 `codex-rs` 目录上那两条遗留的继承型 `Modify` ACE（只会收紧权限，
+`SYSTEM`/`Administrators`/`soddygo` 原样保留）；插桩过的两个源文件已还原、测试二进制已
+按还原后的源码重编译；`fixed-del-root`、`token-*.txt`、`acl-*.txt`、`patch_*.py`、
+`aclprobe.ps1`、`aclstrip1.ps1` 与 `%USERPROFILE%\sb-escape-probe.txt`（实测从未被创建）
+均已清理。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
