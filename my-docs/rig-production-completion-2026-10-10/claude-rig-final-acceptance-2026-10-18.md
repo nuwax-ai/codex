@@ -1908,14 +1908,43 @@ blob 里全是 LF，CRLF 只在"检出 + `include_str!`"这一刻产生。也就
 **同一份源码在不同构建主机上会产出不同的模型侧指令字节**（Windows 构建多 `\r`，
 token 计数与文本都与其它平台不一致）。这条 fork 恰恰要发 Windows 制品，属于必修。
 
-修复：`.gitattributes` 加一行 `codex-rs/prompts/templates/** text eol=lf`（连注释 7 行），
+修复：`.gitattributes` 加 `codex-rs/prompts/templates/** text eol=lf`（这一条随
+`38ace3fe1` 进入本轮 CI head），半径量完后另加四条模板目录（见下面的 M-L12–L14），
 与仓库里已有的 `third_party/voice/sources.json text eol=lf` 同一形态。
 分类：**真实跨平台缺陷（构建主机依赖的模型侧字节）**，已修；
 与 §6.12 C 的 TUI 快照问题不是同一个。
 
-遗留同类面（本轮不动，登记）：其它 `include_str!` 文本资产、
-`core/tests/suite/snapshots/*.snap` 同样受检出行尾影响；windows 腿目前绿，
-说明 insta 侧另有归一化，需要时单独核。
+**把这一类的半径量出来，再决定钉到哪里（`mac-l12.sh` / `mac-l13.sh` / `mac-l14.sh`）。**
+一行修复只挡住了一条 CI 证据指向的那个目录，剩下的同类面是"猜"还是"量"，本轮按量处理。
+方法：把 worktree 的 `.gitattributes` 移到一边（此时生效的只有已提交那份规则），
+对 `codex-rs/**/templates/*` 与 `codex-rs/**/assets/*` 共 **106 个受版本控制的文件**
+逐个 `rm` + `git -c core.autocrlf=true checkout --force`，再数带 `\r` 的行。
+
+| 读数 | 内容 |
+| --- | --- |
+| M-L13 暴露面 | **85 / 106** 个文件在强制 autocrlf 检出下变成 CRLF，例如 `memories/write/templates/memories/consolidation.md` 880 行、`stage_one_system.md` 569 行、`ext/memories/templates/memories/read_path.md` 130 行、`collaboration-mode-templates/templates/plan.md` 128 行、`ext/goal/templates/goals/continuation.md` 56 行、`core/assets/consequential_tool_message_templates.json` 962 行 |
+| M-L12 对照 | 同一条命令，`prompts/templates/on_request.md`（已被提交里的规则钉住）= **0 行**，而未钉的 `stage_one_system.md` = **569 行** ⇒ 这条属性是承重的，不是装饰 |
+| M-L14 收口 | 五个目录全部钉上后，34 个模板文件在同样的强制 autocrlf 检出下 **cr_lines=0 / crlf_files=0**，`git check-attr eol` 每目录解析为 `lf`，`git status` 只剩这次改动本身 |
+
+**半径的取舍（写明理由，不靠"顺手"）**：只钉 `include_str!` 真正嵌进二进制的
+**prompt 模板目录**五个——`prompts/templates`、`memories/write/templates`、
+`ext/goal/templates`、`ext/memories/templates`、`collaboration-mode-templates/templates`。
+`codex-rs/core/templates/**` 六个文件同样会变 CRLF，但**全仓库没有任何 Rust 代码
+`include_str!` 或按名字加载它们**（`git grep` 只命中一个无关的测试字符串），
+不属于本轮已确认缺陷，不钉。
+`core/assets/consequential_tool_message_templates.json`（962 行）与
+`skills/src/assets/samples/**`、`login/src/assets/*.html`、`tui/assets/themes/*.tmTheme`
+也**不钉**。JSON 那一条本轮就地判掉了：解析这份 blob（HEAD 版）得到
+**452 个字符串值，其中含裸换行的 0 个**，全文 962 个 `\n` 全在结构空白位置上，
+`\r` 落在结构位置是合法 JSON 空白 ⇒ autocrlf 检出不会改变它的解析结果，也不改变
+提取出来的字符串值，**行为上没有缺陷**，因此不进属性表。
+skills 样例是运行时落盘给用户执行的脚本、html/tmTheme 由浏览器与 plist 解析器消费，
+CRLF 后果不同类，这三处按"遗留同类面"登记，不在收尾轮顺手扩大。
+
+**这条修复与本轮那手 CI 的关系**：正在跑的 run `39396134392` 的 head `de8fdb3f4`
+里只有 `codex-rs/prompts/templates/**` 一条（那正是 windows 证据指向的目录），
+另外四条在它之后、带 `[skip ci]` 推上，不另开一手；它们改变的是 windows 构建机
+读到的模板字节，没有测试断言依赖，所以交给下一次真实代码 push 顺带验证。
 
 ## 7. 提交、推送与工作树状态
 
@@ -1982,6 +2011,13 @@ token 计数与文本都与其它平台不一致）。这条 fork 恰恰要发 W
   本轮**没有再 dispatch**：这一手 push 的 tip 提交**不带** `[skip ci]`，正是要让 CI
   而不是本机来验这五笔（Windows-only crate 在 mac 建不了，见 §6.21 的验证边界）。
   run id 与三腿终态按收据在下一笔文档提交里登记，不在这里预写。
+  **推送之后本轮又量了一次 §6.23 那条缺陷的半径**（M-L12–L14），另加四条模板目录的
+  `text eol=lf`；这第二批 pin 与这段登记落在**同一笔**后续提交里，消息带 `[skip ci]`：
+  它只改 windows 构建机读到的模板字节，没有任何测试断言依赖，为它单开一手 CI 属于
+  "为了重新跑 CI 无意义地提交"，交给下一次真实代码 push 顺带带上。
+  触发 CI 的那一手是 **run `39396134392`**（`gh run list --branch test` 实测
+  `event=push`、`headSha=de8fdb3f4…`、`status=in_progress`），
+  **本轮没有用掉第二次 dispatch**。
 - **推送前把两处自己写坏的账改回来了**（如实登记，不留"看起来对"的版本）：
   ① §6.21 第一版把外层窗口写成 1m×2，但 tty 那条腿是**两个** lifecycle 顺序跑的
   （`tests.rs:1052-1054`），最坏 190s > 120s，窗口会在跑满时把它杀成裸 TIMEOUT——
