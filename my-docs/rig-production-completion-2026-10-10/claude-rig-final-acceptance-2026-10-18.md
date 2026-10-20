@@ -2054,6 +2054,163 @@ CI 那八条的含义随之钉得更死：**报 `timeout waiting for event` 等�
 本轮 run 的 ubuntu 腿会编译并运行改过的 helper（等于覆盖"在第二操作系统上不炸"），
 但**超时分支的实测只有 mac 一腿**。
 
+### 6.26 run 39396134392 的收据：四判据逐条对上，并抓到一处我自己写出来的窗口不对称
+
+**run 与日志**：head `de8fdb3f4`，`event=push`，终态 `failure`（12:05:11Z，mac 腿 196 min）。
+三腿日志 `m39396.txt` / `u39396.txt` / `w39396.txt`（去 ANSI 版同名加尾缀 `c`，在 scratch），
+另两手的 `m39347` / `u39347` / `w39347` / `m39371` / `u39371` / `w39371` 同目录在手；
+`bazel bridge gate (ubuntu)` 绿。**一处工件缺陷先登记**：`w39347` 那份日志只枚举到它自己
+Summary 里 11 条失败中的 8 条（我按 `(N/21759)` 去重实测），所以下表 windows 39347 一栏只引用
+nextest 自己的计数、不引用失败名单。
+
+| 腿 | 39347 | 39371 | 39396 | 本轮一手结论 |
+| --- | --- | --- | --- | --- |
+| macos | `2646.520s` 22876 passed(23 slow) / 1 failed | `3313.645s` 22870(27 slow) / **8 failed** | `3624.486s` 22877(29 slow) / **1 timed out** | §6.22 那八条全绿；新红只有一条压缩腿（已修） |
+| ubuntu | `3004.229s` 22925(27 slow) / 2 failed | `2861.494s` 22927(24 slow) / 1 failed | `2039.363s` 22926(12 slow) / 2 failed | `blocked_descriptor_path` 形状不变；新增一条 ubuntu-only oauth 腿 |
+| windows | `2383.014s` 21748(14 slow, 383 leaky) / 11 failed | `3014.459s` 21751(21 slow, 254 leaky) / 8 failed + 1 timed out | `2102.468s` 21752(12 slow, 266 leaky) / 8 failed | `spawn_agent…` 与 `code_mode…` 转绿；`legacy_` 四条改由自己的断言判出 |
+
+上一手写下的四判据，**四条全部答上**：`legacy_` 四条这次全部由自己的断言判出（无一条裸
+TIMEOUT）；`code_mode_excludes_mcp…` 三腿都在 2m 内跑完；mac 那八条全绿且新文案 `last event:`
+在三腿日志里出现 **0 次**；`legacy_workspace_write_delete…` 形状不变。
+
+**判据一：四条 `legacy_` 全部用自己的断言判定**——这是 `0541a7eb6` + `aca3a703a` 那一手唯一
+要回答的问题，答案是"放宽生效"：
+
+| 腿 | 本轮 wall | 报出的判据（原文） | `tests.rs` 行号 | 上一手对照 |
+| --- | --- | --- | --- | --- |
+| `legacy_capture_cancellation_terminates_descendants_without_timeout` | 45.077s | `assertion \`left != right\` failed  left: 0  right: 0` | 933 | 39371 32.056s / 39347 34.563s 报的是 `cancellation should end capture before the timeout` |
+| `legacy_capture_emits_output_and_preserves_descendant_after_normal_exit` | 60.984s | `read descendant pid: Os { code: 2, kind: NotFound, message: "The system cannot find the file specified." }` | 716 | 同形状（39371 12.515s、39347 11.472s，行号 710） |
+| `legacy_tty_job_terminates_and_preserves_descendants` | 61.160s | `Terminate descendant did not start` | 1010 | 同形状（39371 14.163s、39347 11.051s，行号 987） |
+| `legacy_workspace_write_delete_is_limited_to_writable_roots` | 0.089s | `assertion failed: \`(left == right)\`: stdout=""`，left `… None, false` vs right `… Some("outside")` | 835 | 同形状（39371 0.302s、39347 0.130s，行号 829） |
+
+四处行号位移（710→716、905→933、987→1010、829→835）**全部来自我自己 `0541a7eb6` 在这份文件
+里的 +28/−5**，产品代码没动过。
+
+**顺带查出一处我自己写错的夹具判据（必须登记）**：cancellation 那条腿旧的内层线是 30s，而它的
+夹具把沙箱父进程写成固定 `Start-Sleep -Seconds 30`
+（`codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs:862-870`，孙进程由它派生、pid marker
+由孙进程写）——**30s 的线卡在 30s 的睡眠上，这条腿在任何正常情况下都必然红**，旧那条断言从来没
+测过"取消是否及时"。放宽到 60s 之后它第一次跑到真正的判据（`tests.rs:933` 的
+`assert_ne!(result.exit_code, 0)`，本轮 `left: 0`），于是暴露出真正该测的事实：hosted runner 上
+沙箱内第二个 pwsh 起得比父进程那 30s 睡眠还慢，孙进程没写出 pid marker，父进程正常退出、取消
+从未落地。定性仍是**夹具与 runner 速度耦合，不是产品缺陷**。修法是把父睡眠拉长、让 60s 内层线
+去判"marker 是否在 60s 内出现"（代价 = 一手 CI），本轮**没做**，因为本轮不为一条已定性的腿单开一手。
+
+**判据二：`code_mode_excludes_mcp_servers_using_their_configured_identity` 不再需要放宽**。
+windows 40.070s（39371 是 60.054s TIMEOUT）、ubuntu 29.266s、mac 30.801s 三腿全绿，1m×2 够用。
+撤掉整机预订的收益也在这里：ubuntu 腿墙钟 2861.494 → 2039.363s、windows 3014.459 → 2102.468s，
+SLOW 计数 24 → 12 与 21 → 12。
+
+**判据三：mac 那八条 `timeout waiting for event` 本轮全绿，新诊断一次都没触发**。
+`grep -c "last event:"` 在三腿日志里都是 **0**；八条腿本轮 PASS 且都落到 0.5–2.1s：
+`model_switch_program_pair` 的 incomplete_rollback 10.717→**1.434s**、missing_program
+10.466→**1.199s**、resume 10.452→**2.110s**、rollback 10.511→**2.121s**、standard
+10.514→**1.587s**；`queue_only_agent_mail_wakes_sleeping_root_with_previous_turn_context`
+的 reloaded_root 10.720→**0.789s**、reloaded_delegated 10.678→**1.143s**、reloaded_unknown
+11.619→**0.552s**。⇒ §6.22 的定性不变（本机不复现、CI 也不复现），但"下一手 CI 会报出
+`last event`"这个预期本轮**落空**：`d4d9f943a` 的诊断在 CI 里仍只有编译+运行覆盖，
+唯一实测收据还是 §6.25 的 L16e。
+
+**判据四 → 本轮 mac 唯一那条红，根因是窗口不对称，已修（提交 `24878ad8e`）**：
+`local_compaction_retries_preserve_instructions_and_tool_metadata::metadata_enabled`
+TIMEOUT 60.025s（`TERMINATING [> 60.000s]`）。跨腿把这条腿的历史摊开就看清了：
+
+| 腿 | 39347 | 39371 | 39396 |
+| --- | --- | --- | --- |
+| `metadata_enabled` | windows 39.740 / mac 33.103s | windows **71.275s PASS** / ubuntu **50.876s** / mac 49.548s | windows 39.282 / ubuntu 28.858 / **mac TIMEOUT 60.025s** |
+| `metadata_disabled_after_capture` | windows 23.850 / mac 16.435s | windows 41.256 / ubuntu 30.549 / mac 24.839s | windows 23.186 / ubuntu 16.130 / mac 28.483s |
+
+`.config/nextest.toml` 给这条腿的 1m×2 窗口挂着 `platform = 'cfg(windows)'`（原注释写明它是为
+windows 那条 52.614s 加的），于是 windows 的 71.275s 能过、**mac 与 ubuntu 一直骑在裸默认
+30s×2 上**。这条用例把 300 × ~8 KiB 的工具调用项过三遍重试（`core/src/compact_tests.rs:58`），
+代价是三腿同形，不是 mac 特性——所以修法是删掉那行平台过滤，不是再给 mac 单开一条。
+
+**M-L17：本机把"删过滤到底有没有生效"做成 A/B/C**（`mac-l17.sh` / `mac-l17.log`，参数与
+`just test` 同形：`NEXTEST_PROFILE=local`、`RUST_MIN_STACK=8388608`、
+`--features codex-core/rust-rig`、`--locked`、`--no-fail-fast`）。窗口不对称这种问题不能靠
+"配置读起来对"下结论：
+
+| 腿 | 设置 | 结果 |
+| --- | --- | --- |
+| L17a | 最终文件 + 窗口临时收到 `1s`×1、**无**平台过滤 | 两条腿都 `TRY 2 TMT [1.004s]`、`2 timed out` ⇒ **窗口现在绑定 macOS 了** |
+| L17b | 同样 `1s`×1，把 `platform = 'cfg(windows)'` 加回 | **PASS 10.983s / 19.034s** ⇒ L17a 那两刀只来自"删过滤"这一件事，不是规则顺序或首匹配 |
+| L17c | 最终状态（1m×2、无过滤） | **PASS 11.645s / 18.321s**；`diff -q` 与暂存副本一致，`git status` 只剩这一份 toml |
+
+同一段读数顺带钉住这条腿的独占成本：mac 本机 11.0–11.6s 与 18.1–19.0s（三次独立跑），CI 上
+33–71s ⇒ 整条 lane 的竞争把它乘 2–4 倍，"2m 是余量不是实测"这句仍成立。
+**复现者必须带 `RUST_MIN_STACK=8388608`**：不带它这两条腿直接 `has overflowed its stack` /
+SIGABRT（本机实测 `TRY 2 ABRT [0.967s]`），那是栈预算问题不是速度问题。
+CI 级收据（mac 腿在 >60s 时不再被裸杀）留给下一手真实代码 push——本轮不为一行窗口配置单开一手。
+
+**mac 腿整体变慢只是背景，不是这条红的根因**：同一区间 ubuntu 与 windows 反向变快
+（2861.494→2039.363、3014.459→2102.468s），而我没动过 core 的压缩代码；39347 与 39396 两条
+mac 腿的 Runner Image banner 完全相同（`macos-26-arm64` / `20261013.0424.1`）⇒ **不是 image 变更**。
+
+**三条新首观**：
+
+1. **windows**
+   `suite::v2::config_requirements_exec::managed_unified_exec_disabled_preserves_approved_command_execution`
+   FAIL 10.767s，`app-server\tests\suite\v2\config_requirements_exec_tests.rs:136` 报
+   `(Failed, Some(124))` vs `(Completed, Some(0))`。命令是
+   `"C:\Program Files\PowerShell\7\pwsh.exe" -Command 'echo managed-exec-ok'`，夹具自设
+   `timeout_ms: 10_000`（`:65`）而读超时是 60s（`:36`）——124 就是被它自己的 10s 命令超时杀的，
+   与本轮 pwsh 族（conpty 11.447s、`legacy_` 30–60s）同一机制。**但这条验的正是我们改过的托管
+   exec 路径**，"排除归属 ≠ 证明无关"在这里要写明：判死它需要在 .235 复跑同一条（那台机器 pwsh
+   冷启动 0.024–0.026s），或把 `timeout_ms` 从 10s 放宽；本轮两者都没做，只登记。
+2. **ubuntu** `suite::v2::account::login_account_chatgpt_uses_oauth_overrides` FAIL 0.197s：
+   `error sending request for url (http://127.0.0.1:1455/auth/callback?code=test-code&state=…)`
+   → `client error (Connect)` → `Connection refused (os error 111)`。同一腿本轮 mac 0.269s /
+   windows 0.400s PASS、ubuntu 上一手 0.423s PASS ⇒ ubuntu 首观。
+   0.197s 排除"端口被占"与防火墙：**测试 GET 的 `redirect_uri` 是产品按 `actual_port` 自己报出来的**
+   （`login/src/server.rs:194`），所以它先成功占了 1455、随后 1455 上没人了。代码里能让这件事发生的
+   只有一条路径——`bind_server` 撞 `AddrInUse` 时会向端口上现有的监听者发一条 `GET /cancel`
+   （`login/src/server.rs:620-635`、`:657-666`），而 `/cancel` 的处理是
+   `HandledRequest::ResponseAndExit`（`login/src/server.rs:530`），即**别的进程能把现有持有者的监听器
+   关掉**；CI 用的 `profile.local` 又把 app-server 集成腿的并发放到 4
+   （`codex-rs/.config/nextest.toml:60-61` 与 `:114-118`）。
+   **但本轮日志不支持"确实有兄弟腿并发了"**：紧邻的四条 `login_account_chatgpt_*` 腿在
+   09:16:51.72x 就完成了，而本腿起于 51.728（= 51.925 − 0.197）、止于 51.925，这些数字把它们排除在
+   并发窗口之外。所以这条仍是**未定性（一次观测）**，机制是代码里读出来的候选解释、不是本轮实证。
+   M-L18 本机复跑（`mac-l18.log`）：mac 上按 `profile.local` 并发跑完 `login_account_chatgpt_` 全族
+   10 条，`1.452s` **10/10 全 PASS**、本尊 0.147s ⇒ 本机不复现（与 §6.22 那八条同样的处境）。
+   不改代码、不放宽窗口——这不是速度问题，放宽只会把竞态藏得更深。
+   下一手判据：再红时要拿到那一刻的并发名单（junit 里有起止时间戳），或在 .41 上并发复跑同族；
+   本轮 `.41` 仍被别人的 `duck-linux` 全 workspace 跑占用，不去挤。
+3. **mac** `local_compaction_retries_preserve_instructions_and_tool_metadata::metadata_enabled`
+   ——不是"新红待定性"，就是判据四那条窗口不对称，已修并附 M-L17。
+
+- **§6.26 这一手：CI 收据到手 + 一处我自己写出来的窗口不对称已修**。前面那笔登记的
+  "run id 与三腿终态按收据在下一笔文档提交里登记"在这笔兑现——`39396134392`（head
+  `de8fdb3f4`）三腿终态、四判据逐条答复与三条新首观全部写在 §6.26。本轮唯一的 mac 红
+  根因是 `.config/nextest.toml` 里那条 1m×2 窗口挂着 `platform = 'cfg(windows)'`：同一
+  条腿在 windows 靠它跑到 71.275s PASS，而 mac/ubuntu 一直骑在裸默认 30s×2 上，于是 mac
+  在 60.025s 被裸杀。修法只删那行平台过滤（**代码提交 `24878ad8e`**，1 文件 +10/−6），
+  本机 M-L17 的 A/B/C 证明"生效来自删过滤"这一件事：1s×1 无过滤 → 两条腿 1.004s TMT；
+  1s×1 复原过滤 → PASS 10.983s / 19.034s；最终 1m×2 无过滤 → PASS 11.645s / 18.321s。
+  **CI 级收据仍未到手**（>60s 的 mac 腿能不能跑完，只有 CI 能给），按"本轮不为重新跑 CI
+  而无意义地提交"交给下一次真实代码 push 顺带覆盖。
+  同段另附 M-L18：为 ubuntu 那条 oauth 首观在 mac 上并发跑完 `login_account_chatgpt_` 全族
+  10 条，`1.452s` 10/10 PASS（编译 3m22s，零 CI 预算），故那条仍是未定性一次观测。
+  §6.26 里还登记了三件我自己的错：cancellation 夹具那条 30s 内层线卡在自家 30s 睡眠上
+  （必然红，已改为等真正的 `assert_ne!`）、`w39347` 日志只枚举到它自己 11 条失败中的 8 条、
+  以及本轮"CI 会报出 `last event:`"的预期落空（八条全绿，诊断 0 次触发）。
+- **这两笔还推不出去，阻塞在本机网络上（如实登记，不是仓库或凭据问题）**：
+  `git push origin test` 两条传输都失败——SSH over 443 报
+  `Connection closed by 20.205.243.160 port 443` / 重试时 `Connection timed out during
+  banner exchange`，显式走 HTTPS 报 `LibreSSL SSL_connect: SSL_ERROR_SYSCALL in connection
+  to github.com:443`。同一时刻的只读探针：`gh auth status` 正常（`soddygo`，token 有
+  `repo` 作用域），`curl -4 https://github.com` 得到 **200 / 0.67s**，而 `curl https://github.com`、
+  `api.github.com`、`objects.githubusercontent.com`、`example.com` 全部 `000` 超时；
+  默认路由在 **`utun4`**（Surge 的 TUN，fake-IP `198.18.0.1`），github.com 解析到
+  `20.205.243.166`、无 AAAA。⇒ 判定是**本机代理隧道部分失效**，与本项目无关，
+  不在这里擅动别人的代理。本地状态：`test` = 本笔、`origin/test` 仍是 `3a68e29ef`，
+  工作树 clean，两笔都在本地等推送。网络恢复后 `git push origin test` 即可；按 §7 早前两次
+  实测（tip 提交消息带 `[skip ci]` 的 push 不产生 run），这一手**预计**不触发 CI——
+  "预计"而非"实测"，因为推送本身没完成，实测随恢复后的那一手一起做。
+- **推送后指针（推送完成后再核对）**：`origin/test` = 本笔，其前依次是 `24878ad8e`（窗口修复）、
+  `3a68e29ef`、`5f69816b4`、`fd0020bb0`、`de8fdb3f4`。tip 是本笔带 `[skip ci]` 的文档提交 ⇒ 整手 push
+  预计不触发 run。ACP 副本本轮未动。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
