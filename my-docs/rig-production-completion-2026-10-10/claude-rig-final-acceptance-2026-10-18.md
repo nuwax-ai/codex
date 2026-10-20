@@ -1687,6 +1687,9 @@ target(s) in 19m19s`（`CARGO_TARGET_DIR=~/rig-verify-20261019/target-release`�
   （workflow 头部注释写明手动 dispatch 是单独的用户授权动作，交接约束也写了
   "不要重新 dispatch，也不要为了重新跑 CI 无意义地提交"）。要么由用户授权一次 dispatch，
   要么等下一笔不带 `[skip ci]` 的真实代码提交顺带触发——两条路都只在用户点头后走。
+  **追加登记**：`0c501eed0..4d9f30b6f`（把 sandbox 探测落成 L8c 收据的那笔）同样带
+  `[skip ci]`，实测也没有产生 run；`origin/test` 现在是 `4d9f30b6f`，工作树 clean，
+  上面"四件事的 CI 收据"仍未开始产生，dispatch 与下一笔真实代码提交仍等用户点头。
 - ACP `dev`：`19207d3`（= 交接时的 `origin/dev`）之上本轮新增 `0930455`、`147280b`、
   `d188807`、`59426b6`（三条分隔符耦合断言改平台中立，§9.5.1）、`6a76aa7`
   （`package-lock.json` 同步，§9.6）；`origin/dev` = `6a76aa7`，五笔均已推送；
