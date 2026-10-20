@@ -1566,6 +1566,10 @@ target(s) in 19m19s`（`CARGO_TARGET_DIR=~/rig-verify-20261019/target-release`�
 - **L7b：45 tests run: 45 passed（`L7b_rc=0`）——B3 方向性结案**。CI ubuntu 那条红在
   **真 Ubuntu 上不复现**：
 
+  > **这一条已被 §6.27 作废**：`blocked_descriptor_path` 在 `.41` 上从未执行——bwrap userns
+  > 探测命中 `USER_NAMESPACE_FAILURES[0]`，用例打印 `skipping sandbox test` 后 `return Ok(())`，
+  > nextest 仍记 PASS。下面的"真 Ubuntu 机器 PASS 0.085s"是跳过式绿，不是复现结果。
+
   ```text
   PASS [   0.085s] (15/45) codex-exec-server::exec_process shell_snapshot::
     shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path
@@ -2215,6 +2219,104 @@ mac 腿的 Runner Image banner 完全相同（`macos-26-arm64` / `20261013.0424.
   于是 §6.26 那句"CI 级收据留给下一手真实代码 push"继续成立：`24878ad8e` 已在远端，
   但它是跟着 `[skip ci]` 的 tip 一起推上去的，本身没有换来一次 CI 跑。ACP 副本本轮未动。
 
+### 6.27 把 `blocked_descriptor_path` 拆成两种形状，并作废我自己那条"真 Ubuntu 不复现"收据
+
+**先更正我自己**：§6.26 的三车对照表把这条腿写成"形状不变"，实测是**两种形状**：
+
+| run | 该腿原文（截关键行） | 用时 |
+|---|---|---|
+| 39347345560 | `panicked at exec-server/tests/exec_process/shell_snapshot.rs:344:13:` + `""` | `FAIL [ 0.346s]` |
+| 39371971338 | `Error: exec-server transport disconnected: failed to read websocket JSON-RPC message from exec-server websocket ws://127.0.0.1:45713: WebSocket protocol error: Connection reset without closing handshake; failed to resume exec-server session: recovery timed out after 25s` | `FAIL [25.298s]` |
+| 39396134392 | 同上，端口 `43037` | `FAIL [25.251s]` |
+
+`shell_snapshot.rs:344` 是 8 路并发里的
+`assert!(output.ends_with(&format!("restored:input-{index}")), "{output:?}")`，panic 消息就是 `""`
+⇒ 至少一路 stdout 为空；25s 那两手来自**会话恢复**路径，与"空 stdout"不是同一次失败。四轮里我
+把它们当同一形状登记，是我的错。
+
+**这条腿为什么独享传输族错误**（新事实，此前没登记）：`create_process_context(deny_fd_path)`
+的第二个参数其实是 `use_remote`（exec-server/tests/exec_process.rs:93-107），而
+`shell_snapshot_concurrent_replays_keep_independent_readers` 家族里只有 `DenyFdPath` 传 `true`
+（shell_snapshot.rs:224）——`::bash` / `::bash_tty`（`SnapshotSandbox::None`）与
+`bash_protected_transport*`（`WorkspaceWrite` 自己建 `Environment`）都不起 websocket server。
+⇒ 全家族只有这一条腿带"独立 exec-server 子进程 + 25s 会话恢复"，其余四条在同样三轮里一直
+PASS（0.151 / 0.721 / 0.706 / 0.175s）。
+
+**四轮结不了案的原因，是日志里那句话有三个来源且逐字节相同**（本轮真实修复，提交
+**`a4dfd599f`**）：`client_recovery.rs` 的 `recover()` 里，
+
+1. `wait_for_process_starts()` 25s 没排空 in-flight process start ⇒ 旧文本
+   `…: recovery timed out after 25s`（现 :376）；
+2. 单次 `resume_once` 跑过整个预算 ⇒ **同一文本**（旧 :415，现 :421）；
+3. 预算内所有重连尝试都失败 ⇒ **同一文本**（旧 :429，现 :438）。
+
+而且第 3 类把 retryable 错误本身丢掉（`is_retryable_recovery_error` 判真后不记录），所以
+"服务端已经没了、连不上"与"客户端排空卡住"在 CI 日志里是同一个字符串。修法只分岔文本 +
+记下最后一次 retryable 错误：`:376` → `process starts still in flight after 25s`；
+`:421` → `no resume attempt finished within 25s (last attempt: X)`；
+`:438` → `no resume attempt succeeded within 25s (last attempt: X)`。
+**25s 预算本身不动**：`:60-63` 的注释写明它是给服务端 30s retention 留余量的刻意值，放宽只会把
+等待拉长；`#[cfg(test)]` 那份 500ms 与集成测试无关（集成测试编译到的是 `not(test)` 的 25s）。
+全仓 grep 过：除本文件外没有任何代码、快照或 TS 侧断言这段文本（`my-docs` 里的引用除外）。
+
+**归属**：这条用例由上游带来（`c98e263fb` #48078 引入 unnamed-file 回放、`8f0b05910` #48187 加
+`DenyFdPath` 腿），`wait_for_process_starts` 来自 `cf17e1bc2` #28512，`client_recovery.rs` 的提交
+全部带上游 PR 号。按 §6.9 的纪律说清：这**只排除"分叉新写坏的"**，不证明"与分叉无关"；本轮也没
+宣称根因已修，只把"看不懂"改成"看得懂"。
+
+**作废：L7b 的 `blocked_descriptor_path` 绿是跳过式绿。** 在 `.41` 上带 `--nocapture` 复跑同一条腿
+（同一克隆 `95fb094`、warm target、编译 1.43s）：
+
+```text
+skipping sandbox test: Codex's Linux sandbox uses bubblewrap and needs access to create user namespaces.
+test shell_snapshot::…::blocked_descriptor_path ... ok
+    PASS [   0.090s] (1/1)
+```
+
+机制是确定的：`.41` 上 `bwrap --unshare-user --unshare-net --ro-bind / / /bin/true` 的 stderr 是
+`bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`，正好命中
+`sandboxing/src/bwrap.rs:35-40` 的 `USER_NAMESPACE_FAILURES[0]`，于是 `system_bwrap_warning`
+返回 `Some`，测试在 `shell_snapshot.rs:201-209` 直接 `return Ok(())` ⇒ nextest 记 PASS。同一
+selection 复跑（`--test exec_process -E 'test(shell_snapshot) | test(blocked_descriptor)'`）
+**29 条里有 7 条**打印同样的 skip。
+⇒ §6.14 批次 7 里"B3 在真 Ubuntu 上不复现 ⇒ 四分法落第 4 类（runner 环境 / harness）"的推论
+**作废**：那条件腿当时根本没执行，"同 OS、不同机器给出相反结果"的前提不成立。L7b 没带
+`--nocapture`，nextest 不打印通过腿的 stdout，所以那行 skip 从未进日志——是我读收据的方式错，
+不是工件缺字段。这条腿现在**没有任何 Linux 真实执行收据**。
+
+**并且 `.41` 不能当这条腿的第二操作系统**：CI ubuntu 车道每手先执行
+`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`（39347 00:25:28 / 39371 04:56:26 /
+39396 08:51:06 三手日志都回显 `kernel.apparmor_restrict_unprivileged_userns = 0` 与
+"unprivileged userns re-enabled"），而 `.41` 该值 = 1（`lx-verify-20261020c-probes.log:2`；
+`kernel.unprivileged_userns_clone = 1` 但被 AppArmor 拦）。改那台机器的安全配置不在授权范围内，
+我没有动。⇒ 要拿 Linux 真实执行只剩两条路：CI runner，或请机主临时置 0（要用户去说）。
+
+**mac 侧是真实执行**（非 Linux 的 `system_bwrap_warning` 是 `sandboxing/src/lib.rs:67-73` 的 `None`
+stub，不跳过）：本机 M-L19 在改动后的工作树上跑该 selection ⇒
+`Summary [2.344s] 3 tests run: 3 passed, 81 skipped`（`blocked_descriptor_path` 加 mac 专属 `zsh_*` 两条）。
+
+**改动的回归对照（本机 M-L19，`-p codex-exec-server -E 'test(recover) | test(resume) |
+test(reconnect) | test(disconnect)' --no-fail-fast`）**：
+
+| 版本 | Summary |
+|---|---|
+| 未修改基线（`git stash` 后重跑） | `32.593s` 62 run: 58 passed (1 slow), **4 failed**, 638 skipped |
+| 带改动 `a4dfd599f` | `31.398s` 62 run: 58 passed (1 slow), **4 failed**, 638 skipped |
+
+4 条红**逐名相同**：`remote::noise_tests::reconnect_reuses_registration_until_url_is_rejected`、
+`accepted_websocket_interoperates_and_recovers_with_real_direct_executor::{policy_unavailable,
+transport_disconnect}`、`initialize::discovery_prewarms_before_initialize_and_recovers_without_client_opt_in`
+⇒ 改文本零行为影响。这 4 条是**这台 mac 上的既有红**（wiremock 在 drop 时断言
+`Expected range of matching incoming requests: == 1 / Number of matched: 0`），而 run 39396134392
+三腿全 PASS（mac 6.000 / 2.595 / 5.238 / 0.739s；ubuntu 6.078 / 2.143 / 2.180 / 0.221s；
+windows 5.669 / 0.141 / 0.169 / 0.217s）⇒ 不追绿，只登记一条读收据的规矩：**以后本机
+`-p codex-exec-server` 的绿，要按"这 4 条在本机本来就会红"来读。**
+
+**下一手 CI 已经是真代码 push**：run **39430526421**（`event=push`、head `a4dfd599f`、13:27:21Z
+入队）。它同时覆盖三件悬着的事——这条腿若再红会直接报出属于哪条分支（并带最后一次 retryable
+错误）、§6.26 悬着的 `local_compaction_retries_preserve_instructions_and_tool_metadata` 跨腿窗口
+收据（#34）、ubuntu oauth 回调腿的第二手观测（#35）。本轮不再单独 dispatch。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -2458,6 +2560,14 @@ mac 腿的 Runner Image banner 完全相同（`macos-26-arm64` / `20261013.0424.
      无关，记抖动不冒领）。两个 PASS 值都 > 60s，反证旧窗口本轮仍会判 TIMEOUT，
      放宽既必要也充分。**注意本项闭合的范围只有"这两条不再被判超时"**：
      它没有让 CI 变绿，也不覆盖 mac 腿（该 mac 腿同一对用例是 40.350s / 34.707s PASS）。
+
+- **本轮最后的提交与推送（实测）**：`266a39d73`（文档，`[skip ci]`，实测不产生 run）→
+  **`a4dfd599f`（代码**，`client_recovery.rs` 三个超时分支文本分岔，1 文件 +14/−5，**不带**
+  `[skip ci]`）→ 本节这份文档。`git push origin test` 输出 `266a39d73..a4dfd599f test -> test`，
+  实测产生 run **39430526421**（`event=push`、head `a4dfd599f`、13:27:21Z 入队）——与 §6.26 那手
+  `[skip ci]` push 不产生 run 构成同一台机器上的正反对照，也说明"代码 push 交 CI"这条分工仍然
+  只在真实代码变更时才动用。本节这份文档提交带 `[skip ci]`，且**在 39430526421 在飞时推送**：
+  它不该、也不会为该 head 之外新开一手。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
