@@ -875,6 +875,20 @@ ACL 探针在 runner 镜像上加载不了 `Microsoft.PowerShell.Security`。这
 (2) 去掉 PowerShell，改 `icacls` 或 Win32 `GetNamedSecurityInfoW` 直接读 ACL。
 run 39347345560 会继续给出这两条的现状（预期仍红）。
 
+**处置（task #18，本轮拍定）**：维持"harness / runner 镜像能力边界"这一分类，
+**不动上游那两条用例**。理由补全：`.235` 桌面机 `pwsh` 能正常加载该模块，
+所以两种改法都只能在 runner 上验证；为它们单开一手 CI 就是"为了重新跑 CI
+无意义地提交"，本轮不做。补充一点分类的**边界**（不是"证明无关"）：
+`Import-Module Microsoft.PowerShell.Security` 是本地自动加载（autoloading）路径，
+runner 镜像上失败的正是这一步，而我**没有**在 runner 上直接实测过
+`Get-Module -ListAvailable Microsoft.PowerShell.Security` 是否可见——
+镜像里的模块缺席、还是模块在但 autoloading 被 `PSModuleAnalysisCachePath` /
+受约束运行空间挡住，这两种子情形我用现有日志分不开（原文只到"could not be loaded"）。
+要分开就得在 runner 上跑一条只读探针，属于"需要一次带这行探针的 CI"，
+按同一条理由推后。**下一手判据**：本轮 run 的 windows 腿若仍以同一原文红，
+即确认与 `95fb0949d`/`fd0020bb0` 等改动无关，届时"改探针 + 一手 CI 验证"
+是否需要做，请用户点头。
+
 **R4. windows-sandbox `legacy_` 家族：0.025s ↔ 12–36s 的落差，"争用"这个说法太粗**
 
 桌面单跑（`.235`，16 逻辑核，机器空闲）：`legacy_capture_cancellation` **0.026s PASS**、
@@ -1873,13 +1887,25 @@ windows 腿的历史：48.878s PASS（38824922110）→ 51.826s PASS（393473455
 **`spawn_agent_can_fork_parent_thread_history_with_sanitized_items`——未定性，列观察项。**
 windows 3.340s FAIL；同轮 ubuntu 1.499s PASS、macOS 1.598s PASS；同一条 windows 腿
 上一轮（39347345560）PASS。断言是 `control_tests.rs:3139` 的内容比较，diff 里
-**177 行全是 `<`（左多）、0 行 `>`** ⇒ 实际子历史比期望**多出两条上下文消息**：
-一条 `<permissions instructions>`（developer）和一条 `<environment_context>`（user，
-`cwd=D:\a\codex\codex\codex-rs\core`、`shell=powershell`）。
-两轮 head 之间唯一的产品代码 delta 是 `95fb0949d`（rig 传输 pin）——非 Windows 专属，
-也不在这条路径上注入上下文消息；其余全是 docs / nextest 配置。
-机制未证明（子历史为什么会重渲一对上下文而不是与父历史去重），**不写成"与我无关"**，
-也不改断言：下一轮复现再深挖。
+**177 行全是 `<`（左多）、0 行 `>`** ⇒ 实际子历史比期望**多出四条消息**，
+都带父 `turn_id: 01a157f6-0dd0-75a4-bfb8-69906284c889`，逐条是：
+developer `<permissions instructions>` + `<persistent_mode>…no longer apply`、
+user `<environment_context>`（`cwd=D:\a\codex\codex\codex-rs\core`、`shell=powershell`）、
+developer `<multi_agent_mode>…no longer applies`、
+developer `<managed_developer_instructions>…no longer apply`。
+四条全是父会话启动时注入的那一组初始上下文 / "先前指令已失效"墓碑，**整体追加在尾部**
+⇒ 形状是"父初始上下文在子历史快照之后又落了一次"，指向注入与快照的**先后时序**，
+不是内容比对失手（这里没有 `>` 行，期望侧一条不缺）。
+两轮 head 之间（`6e27a6c11 → 55fcee7cb`）的产品/测试代码 delta 只有三笔：
+`95fb0949d`（rig 传输 pin，改 `core/src/client.rs` 与
+`core/tests/suite/subagent_notifications.rs`）、`c27ec7653`（放宽 subagent hook-log 窗口）、
+`9bad7cca0`（同一处注释）；这条用例自己的文件没动，非 Windows 专属，
+也不在这条路径上注入上下文消息。但同一区间还有一条**调度**改动值得点名：
+`8349736da` 给 windows `legacy_` 家族加了 `threads-required = "num-test-threads"`
+（整机独占式预订，会串行化同批 nextest 线程）。一条对"注入 vs 快照先后"敏感的腿
+被调度扰动翻红，是**候选机制**、不是已证明的因果；`aca3a703a` 已把那条预订删掉，
+所以本轮 run 对这条腿恰好是一次"回到 39347 调度"的对照。
+机制未证明，**不写成"与我无关"**，也不改断言：下一轮复现再深挖。
 
 **但它那条 `<permissions instructions>` 里带 `\r\n`，顺着查出一个真实跨平台缺陷。**
 CI 日志原文（39371971338，windows）：
@@ -1945,6 +1971,40 @@ CRLF 后果不同类，这三处按"遗留同类面"登记，不在收尾轮顺�
 里只有 `codex-rs/prompts/templates/**` 一条（那正是 windows 证据指向的目录），
 另外四条在它之后、带 `[skip ci]` 推上，不另开一手；它们改变的是 windows 构建机
 读到的模板字节，没有测试断言依赖，所以交给下一次真实代码 push 顺带验证。
+
+### 6.24 M-L15：windows `spawn_agent_can_fork…` 的 CRLF 假设——本机证伪成立
+
+§6.23 里那条 windows 红只登记为"未定性"，但它的 diff 里那条 `<permissions instructions>`
+带 `\r\n`，很容易顺手读成"CRLF 让父子历史去重失手"。本轮把这句话当成**可证伪的假设**
+在 mac 上直接测（不占 CI 预算）：`mac-l15.sh`，日志 `mac-l15.log`，参数与 CI 同形
+（`NEXTEST_PROFILE=local`、`RUST_MIN_STACK=8388608`、`--offline --locked --no-fail-fast`、
+`-p codex-core --features codex-core/rust-rig`，过滤到这一条用例）。
+
+| 腿 | 设置 | 结果 |
+| --- | --- | --- |
+| L15a | 模板为 LF（`on_request.md` **0 行**带 `\r`） | **PASS 2.192s**（编译 6m43s） |
+| L15b | `prompts/templates/permissions/**/*.md` 共 **7 个文件**全改成 CRLF（`on_request.md` **57 行**带 `\r`） | `codex-prompts` 与 `codex-core` **确实重编**（`Finished … in 29.58s`，`include_str!` 的依赖指纹被 mtime 打断）⇒ 字节进了二进制，仍然 **PASS 1.686s** |
+| L15c | 还原 LF 再跑 | **PASS 1.674s**，`git status` 只剩这次的文档改动 |
+
+⇒ **假设被证伪**：CRLF 模板字节**不足以**让这条腿变红。L11b 已经证明同一套转换会让
+渲染出来的 fragment 真的带上 `\r\n`（那是 §6.23 里 `on_request.md` → CRLF 的收据），
+所以 L15b 不是"字节没生效"的空转，是产品代码在 CRLF 输入下依然把父子历史处理对了。
+
+因此那行 `\r\n` 改读作 **windows 构建机上的常量、不是这一轮的差异量**：`core.autocrlf=true`
+是 runner 检出期的默认、与具体 run 无关，而 `6e27a6c11 → 55fcee7cb` 之间没有任何改动模板
+处理的提交 ⇒ 上一轮 PASS 的那条 windows 腿**同样**是带着 CRLF fragment 构建的。
+**这条是机制推断、不是日志实证**：六条腿的日志里 `<permissions instructions>` 只在这一条
+失败断言中打印过一次（`grep` 计数 w39371=1、w39347=0、old38824 的 2 次是 windows/ubuntu
+**同一处** insta 快照，只到标签行、不带正文），所以没有"通过的 windows 腿打印同一 fragment"
+的收据可对照。
+
+对下一手的判据（本轮 run `39396134392` 就能读出，它同时改了两件事）：
+head `de8fdb3f4` 已含 `prompts/templates/**` 钉版（windows 构建机这轮读到 LF）、
+也已删掉 `threads-required` 预订（调度回到 39347）。
+- 这条腿**仍红** ⇒ 直接确认 CRLF 与它无关（LF 构建下还红），剩下的候选只有调度/时序；
+- 这条腿**转绿** ⇒ 也不能反过来记成"钉版修好了它"，因为 L15b 已经排除了充分性；
+  绿只说明这条腿对 head 里的某项扰动敏感，与 §6.23 的时序候选一致。
+两种结果都不改它的分类：**未定性、列观察项，`38ace3fe1` 不承诺让它变绿**。
 
 ## 7. 提交、推送与工作树状态
 
@@ -2018,6 +2078,24 @@ CRLF 后果不同类，这三处按"遗留同类面"登记，不在收尾轮顺�
   触发 CI 的那一手是 **run `39396134392`**（`gh run list --branch test` 实测
   `event=push`、`headSha=de8fdb3f4…`、`status=in_progress`），
   **本轮没有用掉第二次 dispatch**。
+- **收据等到手前，先把 §6.23 里那半句"CRLF 可能解释了 windows 那条 spawn 红"拿去证伪**
+  （M-L15，§6.24）：**证伪成立**，mac 上把 7 个 permissions 模板全改成 CRLF、
+  `codex-prompts` / `codex-core` 确实重编之后，该用例仍 **PASS 1.686s**。
+  随这条改了三处已提交的措辞：§6.23 的 diff 形状从"多出两条上下文消息"**改成实测的
+  四条**（developer `permissions+persistent_mode` / user `environment_context` /
+  developer `multi_agent_mode` / developer `managed_developer_instructions`，
+  全部带父 `turn_id 01a157f6…`、全部追加在尾部、`>` 行数 0）；
+  §6.23 的 head delta 清单补上 `8349736da` 那条**调度**改动（`threads-required` 落在
+  PASS 的 `6e27a6c11` 与 FAIL 的 `55fcee7cb` 之间，`aca3a703a` 又删掉它，
+  所以本轮 run 恰好是"回到 39347 调度"的对照），把它列为候选机制而非因果；
+  `.gitattributes` 注释里"ubuntu 与 macOS 渲染同一 fragment 用 `\n`"这句**没有日志实证**
+  （六条腿日志里该 fragment 只打印过一次，就在失败断言里），改写为
+  "同一字符串内 LF/CRLF 混排只能来自 CRLF 检出"+ 本地强制 autocrlf 复现 + mac 检出为 LF，
+  并显式写明这条 CRLF **不是**那条 spawn 红的原因，防止后来者把两件事重新捆在一起。
+  这一笔（文档 + `.gitattributes` 注释）带 `[skip ci]`：它不改变任何规则解析，
+  实测五个目录的 `git check-attr eol` 仍是 `lf`、`.gitattributes` 非注释行仍是 9 行、
+  五个目录下 HEAD blob 含 CR 的文件数仍是 0。
+
 - **推送前把两处自己写坏的账改回来了**（如实登记，不留"看起来对"的版本）：
   ① §6.21 第一版把外层窗口写成 1m×2，但 tty 那条腿是**两个** lifecycle 顺序跑的
   （`tests.rs:1052-1054`），最坏 190s > 120s，窗口会在跑满时把它杀成裸 TIMEOUT——

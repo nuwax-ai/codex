@@ -2,15 +2,19 @@ codex-rs/app-server-protocol/schema/** linguist-generated
 codex-rs/hooks/schema/generated/** linguist-generated
 third_party/voice/sources.json text eol=lf
 # These are prompt texts embedded with include_str! and sent to the model verbatim,
-# so their bytes must not depend on how the build host checked them out. A Windows
-# checkout with core.autocrlf=true turns them into \r\n: the windows lane of CI run
-# 39371971338 carried "\r\n# Escalation Requests\r\n\r\n..." inside the rendered
-# <permissions instructions> fragment while ubuntu and macOS rendered the same
-# fragment with \n, and a forced autocrlf=true checkout reproduces it byte for byte.
-# No HEAD blob under these directories contains a CR, so pinning eol=lf changes
-# nothing that is committed and only constrains the checkout. These five are the
-# template directories that Rust actually embeds with include_str!; codex-rs/core/
-# templates/** is not embedded anywhere and is deliberately left alone.
+# so their bytes must not depend on how the build host checked them out. Evidence:
+# the windows lane of CI run 39371971338 printed a rendered <permissions instructions>
+# fragment whose wrapper lines carry \n (Rust literals) while its template-derived
+# section carries "\r\n# Escalation Requests\r\n\r\n..." - mixed line endings inside
+# one string can only come from a CRLF checkout, and GitHub's windows runners default
+# to core.autocrlf=true. A forced autocrlf=true checkout of the same file reproduces
+# those bytes here, and the checked-out file is LF on a macOS host. No HEAD blob under
+# these directories contains a CR, so pinning eol=lf changes nothing that is committed
+# and only constrains the checkout. These five are the template directories that Rust
+# actually embeds with include_str!; codex-rs/core/templates/** is not embedded anywhere
+# and is deliberately left alone. That CRLF is not what turned
+# spawn_agent_can_fork_parent_thread_history_with_sanitized_items red on the same lane:
+# the same test passes here with every permissions template converted to CRLF.
 codex-rs/prompts/templates/** text eol=lf
 codex-rs/memories/write/templates/** text eol=lf
 codex-rs/ext/goal/templates/** text eol=lf
