@@ -369,8 +369,11 @@ impl Inner {
             .await
             .is_err()
         {
+            // Says "process starts", not "recovery timed out", because all three
+            // timeout branches used to emit identical text and the log could not
+            // tell which phase failed.
             let message = format!(
-                "{disconnect_message}; failed to resume exec-server session: recovery timed out after {SESSION_RECOVERY_TIMEOUT:?}"
+                "{disconnect_message}; failed to resume exec-server session: process starts still in flight after {SESSION_RECOVERY_TIMEOUT:?}"
             );
             self.fail(super::ConnectionFailure::Disconnected(message))
                 .await;
@@ -395,6 +398,7 @@ impl Inner {
             Some(ExecServerReconnectStrategy::NoiseRendezvous { .. })
         );
         let mut registry_retry_attempt = 0;
+        let mut last_retryable_error: Option<String> = None;
         let last_error = loop {
             match timeout_at(deadline, self.resume_once(&session_id)).await {
                 Ok(Ok((rpc_client, _attempt, executor_registration_id))) => {
@@ -410,9 +414,13 @@ impl Inner {
                     if !is_retryable_recovery_error(&error) {
                         break error.to_string();
                     }
+                    last_retryable_error = Some(error.to_string());
                 }
                 Err(_) => {
-                    break format!("recovery timed out after {SESSION_RECOVERY_TIMEOUT:?}");
+                    break format!(
+                        "no resume attempt finished within {SESSION_RECOVERY_TIMEOUT:?} (last attempt: {})",
+                        last_retryable_error.as_deref().unwrap_or("none recorded")
+                    );
                 }
             }
 
@@ -426,7 +434,10 @@ impl Inner {
 
             let now = Instant::now();
             if now >= deadline {
-                break format!("recovery timed out after {SESSION_RECOVERY_TIMEOUT:?}");
+                break format!(
+                    "no resume attempt succeeded within {SESSION_RECOVERY_TIMEOUT:?} (last attempt: {})",
+                    last_retryable_error.as_deref().unwrap_or("none recorded")
+                );
             }
             sleep(retry_delay.min(deadline - now)).await;
         };
