@@ -3689,6 +3689,9 @@ deny mask 组装之后"；本轮实现的是它的**镜像**——掩码搬到 `
   变成"响亮 abort"。方向与 §6.35 的结论一致（fail-closed 且可归因，优于 fail-open 静默放行），
   但本轮**没有**为这一类取一手：`.45` 上没有现成的 binfmt_misc 挂载，造它要动宿主。
   已实测到的护栏是 R1/R2（数字 pid 类，风险面里唯一会常态触发的一支）与全量 237 passed。
+  **本行两点经复核不成立，判据以 §6.45 为准**：`.45` 上 `binfmt_misc` 是现成的（`findmnt` 两层），
+  且它在新 procfs 里**存在**、现在被真正拒绝；而确实会缺席的 `/proc/sys/net/<名>` 那支 abort
+  **两种掩码顺序同现**，不是本手引入的。原样保留不改写。
 
 ### 五条新腿（`codex-rs/linux-sandbox/src/bwrap.rs`，`.45` 一手）
 
@@ -3815,6 +3818,223 @@ stderr: Error: exec-server transport disconnected: failed to read websocket JSON
 `bazel bridge gate (ubuntu)` 已 success。#46 的第三手判据（那条
 `managed_daemon_restarts_from_deleted_working_directory` 应以 `PASS [>60s]` 出现）与
 #47 的 runner 一手（`eff = …` 两张 SID 列表判决）都在这两腿里，未到终态不读成结论。
+
+## 6.45 #45 的第三手：`/proc/sys/net` 的 abort **不是**本手引入的，而我为此做的门控实验已被一手否掉
+
+起因是 §6.43 末尾那条我亲手写下、但**没有一手**的"残留风险面"。这一轮把它证到底：
+先做差集（谁真的在新 procfs 里缺席），再做同掩码换顺序的矩阵，最后回滚我自己的实验。
+
+### 一手 A：宿主 procfs 与新 procfs 逐条目差集（`.45`，`lx45-proc-surface.sh` / `lx45-proc-surface3.sh`）
+
+- 深度 2：宿主 **216** 条、沙箱 **216** 条、host-only **0** 条。
+- 深度 3：宿主 **1408** 条、沙箱 **1406** 条、host-only **2** 条 ——
+  `/proc/sys/net/fan`、`/proc/sys/net/nf_conntrack_max`；sandbox-only **0** 条。
+  （第一次跑用的是不带 `LC_ALL=C` 的 `sort`，`comm` 直接报
+  `file 1 is not in sorted order` ⇒ 那次的差集不作数，重跑才得到上面这 2 条。）
+- **§6.43 点名的例子不成立**：`.45` 上 `/proc/sys/fs/binfmt_misc` 确实是宿主挂进去的
+  （`findmnt` 两层：`autofs` + `binfmt_misc`），但它在沙箱的新 procfs 里**存在**
+  （`rc_exist=0`，`ls -ld` 得 `dr-xr-xr-x 2 nobody nogroup 0 …`，内核建的目录）。
+  真正会缺席的是**按读者 netns 生成**的 `/proc/sys/net/<名>`，与"谁挂进来的"无关。
+
+### 一手 B：committed `0a99662c2` 字节的端到端（`lx45-committed-recheck.sh`）
+
+构建前 MARKER：`md5_bwrap=0838014cab56c731ade218da6afedcd4`（= §6.43 登记的那枚）、
+`gate_tokens=0`、`proc_scoped_args=11`、`rc_build=0`。控制 `k0`＝`SANDBOX_STARTED`；
+`k1`（无 deny）沙箱列 `/proc/sys/net` 为 `bridge core ipv4 ipv6 mptcp netfilter unix`，
+其中**没有** `fan` / `nf_conntrack_max`（两条 `ls` 各报一句
+`ls: cannot access '/proc/sys/net/fan': No such file or directory`）。
+**netns 是真新的**这一条由另一手单独取：门控实验期间的 `lx45-argv-hunt.sh` 在无 deny 沙箱里直读
+`/proc/self/ns/net` = `net:[4026537112]`，同机宿主为 `net:[4026531833]`
+（逐字 `host netns inode=net:[4026531833]`，且同一手的 argv 里
+`unshare_net=--unshare-ipc --unshare-net --unshare-pid --unshare-user`）⇒ 缺席不是"宿主命名空间
+没换"造成的。上面那个 committed 构建的 `k1` 列出的是同一批名字、同样缺这两个，两支互相咬合。
+
+| 腿 | deny 路径 | rc | 输出 | stderr 首行 |
+| --- | --- | --- | --- | --- |
+| n1 | `/proc/sys/net/fan` | **1** | 空 | `bwrap: Can't mkdir /proc/sys/net/fan: No such file or directory` |
+| n2 | `/proc/sys/net/nf_conntrack_max` | **1** | 空 | `bwrap: Can't create file at /proc/sys/net/nf_conntrack_max: No such file or directory` |
+| n3 | `/proc/sys/net/ipv4` | 0 | `SANDBOX_STARTED` + `NOT_READABLE` | — |
+| n4 | `/proc/sys/fs/binfmt_misc` | 0 | `SANDBOX_STARTED` + `NOT_READABLE` | — |
+| n5 | `/proc/sys/net/core/somaxconn` | 0 | `SANDBOX_STARTED` + `NOT_READABLE` | — |
+| n6 | `/proc/sys/net` | 0 | `SANDBOX_STARTED` + `NOT_READABLE` | — |
+| c1 | `/proc/version` | 0 | `NOT_READABLE` | — |
+| c2 | `/proc/1` | 0 | `SANDBOX_STARTED` | — |
+| c3 | `/proc/self/environ` | 0 | **`READABLE`**（R3 残留，未变） | — |
+| c4 | `/proc/partitions` | 0 | `NOT_READABLE` | — |
+| c5 | `/proc/net` | 0 | `SANDBOX_STARTED` + **`READABLE`** | — |
+
+### 一手 C：同一枚掩码只换 `--proc` 前后（raw bwrap，`lx45-netns-order.sh` / `lx45-file-order.sh`）
+
+| 路径 | 掩码在 `--proc` **之前**（＝本手之前的发射顺序） | 掩码在**之后**（＝现在） |
+| --- | --- | --- |
+| `/proc/sys/net/ipv4`（目录） | `rc=0` `READABLE`（fail-open） | `rc=0` `NOT_READABLE` |
+| `/proc/sys/net/fan`（目录） | **`rc=1` `Can't mkdir … No such file or directory`** | **`rc=1` 同一句** |
+| `/proc/sys/net/core/somaxconn`（文件） | `rc=0` `READABLE`（fail-open） | `rc=0` `NOT_READABLE` |
+| `/proc/version`（文件） | `rc=0` `READABLE` | `rc=0` `NOT_READABLE` |
+| `/proc/sys/fs/binfmt_misc`（目录，§6.43 举的那个） | `rc=0` `READABLE` | `rc=0` `DENIED` |
+| `/proc/net/dev`（符号链接之下） | **`rc=1`** `Can't bind mount … Unable to find "/newroot/proc/3005870/net/dev" in mount table` | **`rc=1`** 同形（`/newroot/proc/1/net/dev`） |
+
+再加一手 D（`strace -v -f -s 200000 -e trace=execve` 抓真实 argv）：门控实验期间那条
+`/proc/sys/net/fan` 的 execve 里，`--perms 000 --tmpfs … --remount-ro …` 三段确实落在
+`--proc /proc` **之前**（与 `--unshare-net` 同批），仍然 `rc=1`。
+
+### 结论
+
+1. **归因更正**："`/proc/sys/net/<只在宿主 netns 存在的名>` 的响亮 abort"由
+   `--unshare-net` + procfs 按读者 netns 生成这两件事共同决定，**两种顺序同现**（C 表第 2 行、D 一手），
+   因此它**不是** `0a99662c2` 引入的。§6.43 把它写成"本轮修复带来的风险面、例子是 binfmt_misc /
+   vendor `/proc/driver/...`"两处都不成立 ⇒ 就地更正，原文不改写，判据以本节为准。
+2. **我的门控实验已被一手否掉并全部撤销**。实现过一版"`net_namespace_is_fresh` +
+   `is_net_namespaced_procfs_entry`：名字落在 `/proc/net`、`/proc/sys/net` 之下且 netns 是新的就不搬"，
+   在 `.45` 上门控自己的测试全绿（`rc_legs=0`＋`Summary [0.019s] 9 tests run: 9 passed, 166 skipped`、
+   `rc_full=0`＋`Summary [6.368s] 241 tests run: 241 passed, 3 skipped`（237＋4 条新腿，跳过数不变）、
+   `rc_fmt=0`、`rc_clippy=0`）。但端到端一测就错，两重：
+   - **省不掉它想省的 abort**：n1/n2 那两条在门控下仍 `rc=1`（argv 一手 D 证明掩码已回原位）。
+   - **代价是真的把已修好的退回 fail-open**：C 表显示 netns 里确实存在的
+     `ipv4` / `core/somaxconn` 一旦不搬就 `READABLE`。
+     ⇒ 两个源文件已 `git checkout` 回 `0a99662c2` 字节，`.45` 副本 md5 复核一致；
+     工作树 clean，**本轮代码净变化为 0**，这条实验不留代码、只留判据。
+     （另注：门控那手的 e2e 用 `ls` 探文件，`ls` 对 `----------` 的 0 号掩码文件本就成功，
+     所以那两条 `READABLE` 是探针缺陷、不是 fail-open 证据；证据只有 C 表的 `cat` 版。）
+3. **本手的净收益比 §6.43 记的更宽**：除了 `/proc/version` 一族，
+   `/proc/sys/net/ipv4`、`/proc/sys/net/core/somaxconn`、`/proc/sys/net`、
+   `/proc/sys/fs/binfmt_misc` 四条在修复前都可读（C 表"之前"列），现在 `rc=0` 且拒绝。
+
+### 新的开放项（与 #42 同族，等拍板，本轮不动代码）
+
+- **O3**：deny 一个"只在宿主 netns 存在"的 `/proc/sys/net/*` 名 ⇒ 命令根本起不来
+  （n1/n2）。fail-closed 但不可用，与 `/dev/fd`（#42/O2）是同一件事：**掩码目的地在沙箱里不存在**。
+  需要的仍是那一个能力探测/降级决策。**不要单独给它加特例**——特例版本刚被上面第 2 条证伪。
+- **O4**：`/proc/net` 是指向 `/proc/<pid>/net` 的符号链接：目录版（c5）`READABLE` 静默失效，
+  文件版（C 表最后一行）两种顺序都 `rc=1` 且报 `Unable to find … in mount table`。
+  这是 #42 里"给符号链接一个可用 mask 原语"的第二实例，同一个原语可以一起收掉。
+
+### 状态
+
+`.45` 源码树已回到 committed 字节并重新构建（`rc_build=0`），本轮新增的是一手与脚本，
+`codex-rs/` 零改动。#45 的 ubuntu 收据仍要等推送后的下一手（`0a99662c2` **不在** `1af8b5a70` 里，
+见 §6.46 的祖先核对）。`39562896528` 的 windows 腿终态与它的判决行登记在 §6.46；
+mac 腿在本节写下时仍 `in_progress`。
+
+## 6.46 #47 的 runner 一手：三选一判决落在**第二支**——`outside` 的删除不经过这两张列表的 DACL
+
+`39562896528`（head `1af8b5a704c4b6ba15403a8c2d95867b4e85f665`）的 `nextest (windows)`
+job `119098109141` 到终态 `completed/failure`。祖先核对（逐笔 `git merge-base --is-ancestor … 1af8b5a70`）：
+`9075086b3`（两列表取证）**YES**、`42c5bb5d9`（mac 期限）**YES**、`0a99662c2`（`/proc` 搬迁）**NO**
+⇒ 这一手能判 #47，不能判 #45。日志 `w47-119098109141.raw` 5,199,233 字节，逐字：
+
+```
+Summary [2957.701s] 21769 tests run: 21760 passed (24 slow, 156 leaky), 8 failed, 1 timed out, 138 skipped
+```
+
+红名单（`TIMEOUT` 1 + `FAIL` 8，逐字带时长，crate 前缀保留）：
+`codex-app-server::all suite::v2::account::login_account_chatgpt_uses_oauth_overrides`
+**TIMEOUT [60.023s]** ·
+`codex-app-server::all suite::v2::thread_delete::thread_delete_recovers_only_corrupt_board_with_feature_disabled` 0.648s ·
+`codex-uds lib_tests::private_directory_acl_is_user_only_and_inherited_by_files` 0.864s ·
+`codex-uds lib_tests::socket_validation_rejects_broad_acl_without_repairing_it` 0.525s ·
+`codex-windows-sandbox uninstall_windows::principals::tests::profile_cleanup_preserves_account_until_profile_can_be_deleted` 29.623s ·
+`codex-windows-sandbox unified_exec::tests::legacy_capture_cancellation_terminates_descendants_without_timeout` 59.257s ·
+`codex-windows-sandbox unified_exec::tests::legacy_capture_emits_output_and_preserves_descendant_after_normal_exit` 62.023s ·
+`codex-windows-sandbox unified_exec::tests::legacy_tty_job_terminates_and_preserves_descendants` 61.927s ·
+`codex-windows-sandbox unified_exec::tests::legacy_workspace_write_delete_is_limited_to_writable_roots` 0.206s。
+
+### 判决行第一次在 runner 上落地
+
+`eff = ` 命中 **2** 次（before / after 各一次），标题行逐字
+`eff = (granted to the restricting list) & (granted to the default list)`。两张列表：
+
+- restricting：`[cap#0(S-1-5-21-1653258983-…-1098714417), cap#1(S-1-5-21-2388098972-…-4235907371),
+  cap#2(S-1-5-21-4054846991-…-953592430), logon(S-1-5-5-0-756388), everyone(S-1-1-0)]`
+  ⇒ **没有 user**，与 §6.41 的读码结论同形。
+- default：`[user(S-1-5-21-4159254826-2043646976-2705649753-500), grp#0(…-513), grp#1(S-1-1-0),
+  grp#2(S-1-5-114) deny-only, grp#3(S-1-5-32-544) deny-only, grp#4(S-1-5-32-545), grp#5(S-1-5-4),
+  grp#6(S-1-2-1), grp#7(S-1-5-11), grp#8(S-1-5-15), grp#9(S-1-5-113), logon(S-1-5-5-0-756388),
+  grp#11(S-1-2-0), grp#12(S-1-5-64-10)]`
+  两个 deny-only 组被如实结算（`grp#3 is deny-only, DELETE+FILE_DELETE_CHILD named via ace[8]
+  not counted as a grant`）。**注意 runner 的 user 是 `-500`（内置管理员账户）**，
+  而它这条 `DELETE+FILE_DELETE_CHILD` 在测试根之下的每个物件上都带着
+  `flags=0x10 INHERITED-FROM-ANCESTOR`（before 块的 ace[10]；after 块里被会话加了 ACE 的
+  workspace / temp / tmp 上移成 ace[11]，未动的 `outside` 与 `.tmpJck7Jx` 仍是 ace[10]）⇒ default 一侧在测试根之下
+  到处有权，成败全押在 restricting 一侧。
+  **但这份 dump 在这台 runner 上内部不自洽**：`.tmpJck7Jx` 的父目录
+  `D:\a\codex\codex-rs` 那 15 条 ACE 逐条读下来**没有**这条 `-500`
+  （它自己也是从 `D:\a\codex\codex`、`D:\a\codex`、`D:\a`、`D:\` 四段往上查不到的，
+  那四段各 9 条）。⇒ "继承自哪个祖先"这一环印不出来，是下一步要印的东西之一
+  （`.tmpJck7Jx` 的显式 DACL 与有效 DACL 要分开印）。
+
+会话前六条受试路径的 here/parent **全是** `none (R=[no delete grant] D=[user holds
+DELETE+FILE_DELETE_CHILD via ace[10] | grp#3 is deny-only, … ace[8] not counted as a grant])`
+——这正是 §6.41 第 6 条预告的"before 那半必然 `no delete grant`"，拿它下结论会错。
+
+会话后（路径前缀统一 `D:\a\codex\codex\codex-rs\.tmpJck7Jx`）：
+
+| 受试路径 | here | in parent（逐字压缩，`x` 后 D 半统一为 `D[user holds DELETE+FILE_DELETE_CHILD via ace[11] | grp#3 deny-only, …ace[9] not counted]`） |
+| --- | --- | --- |
+| `workspace\workspace-delete.txt` | **`absent`** | `DELETE via R[cap#2 holds DELETE via ace[0]]` |
+| `temp\temp-delete.txt` | **`absent`** | `DELETE via R[cap#0 holds DELETE via ace[0]]` |
+| `tmp\tmp-delete.txt` | **`absent`** | `DELETE via R[cap#1 holds DELETE via ace[0]]` |
+| `outside\outside-delete.txt` | **`absent`** | **`none (R=[no delete grant] …)`** |
+| `workspace\.git` | **`absent`** | `DELETE via R[cap#2 holds DELETE via ace[0]]` |
+| `workspace\.git\config` | **`absent`** | **`absent`** |
+
+ACE 计数的变化点出"会话到底改了哪三个根"：`workspace` / `temp` / `tmp` 由 `15 ACE(s)` 变
+`16 ACE(s)`，新增的是 `ace[0] allow mask=0x001301bf flags=0x03 inherits-to-children
+sid=S-1-5-21-…-… <-- TOKEN R=cap#N delete-rights=[DELETE]`；
+**`outside` 仍是 15 条，一字未动**。
+
+断言侧（读码 `tests.rs:1474-1492`，元组顺序
+`(exit_code, workspace_file.exists(), temp_file.exists(), tmp_file.exists(), read_to_string(outside_file).ok(), protected_git_dir.is_dir(), protected_git_child.exists())`）：
+diff 逐字为实际 `(0, false, false, false, None, false, false)` 对预期
+`(0, false, false, false, Some("outside"), true, true)`。
+`absent` 这一支来自 `tests.rs:380-382` 的 `if !path.exists()`，不是"读不到 DACL"
+（那会打 `unreadable:`，`tests.rs:385`）⇒ 这些路径是真的没了。
+
+### 三选一落在哪一支
+
+§6.41 预先写死了三种读数。到手的是**第二支**：
+`outside` 的 parent 仍是 `none` 而文件被删 ⇒ **这次越界删除不经过这两张列表的 DACL 交集**，
+"经 restricting 列表落地"这个假设在 runner 上被否。取证本身没有退化：
+两块证据共 390 行（`w47-evidence-block.txt`）里 `token SID lists unavailable` /
+`DACL unreadable` / `unreadable` / `token SID note` 各命中 **0** 次
+（全日志那 19 次 `unreadable` 全是无关用例名，如 `test_unreadable_destinations_still_verify`），
+所以这不是 §6.41 的第 3 支。`eff = ` 2 次、`DELETE via` 4 行、`none (` 7 行、
+`: absent` 6 行——与上表逐格对得上。
+
+**#47 就此达成**：判决行能在 CI 日志点名"删除权来自哪个 SID 的哪条 ACE"，并且第一次把
+`.git` 一族与 `outside` 一条区分开——前者有 DACL 依据（`R[cap#2] × D[user]`），后者没有。
+
+两条要如实说清的**限制**：
+1. **runner 上 `.git` 的 deny 有没有落地，这一手判不了**：`.235` 那手的正例是 `.git` **自己**的
+   DACL 上带 `ace[0] deny mask=0x00130156 … <-- TOKEN R=cap#2`（§6.41 :3549-3557），
+   而 runner 上 `.git` 在 after-dump 之前就被删了（`here=absent`），它的 DACL 已随之消失，
+   只剩父目录的正例 ⇒ 这一手既没确认也没否证"产品把 deny 写到了 `.git`"。
+   能确证的只有一半：before 块里 `.git` 与 `.git\config` 的**自身** DACL 都印到了
+   （`workspace\.git: 15 ACE(s)`、`workspace\.git\config: 12 ACE(s)`），
+   after 块同一对路径是 `absent`；而**两块 390 行里 `deny mask` 命中 0 次**
+   （会话前本来就该没有——deny 是 spawn 路径装的，§6.41 第 6 条）。
+2. **`outside` 被删的机制还没被点名**。最省事的候选是"session 里的 `cmd.exe` 并不带
+   `WRITE_RESTRICTED`（或根本没走子令牌）"：此时 default 一侧单独就够——`outside` 文件自己的
+   DACL 由祖先继承给 `user` 发了 DELETE（before 块印的 `outside\outside-delete.txt: 12 ACE(s)`
+   里 `ace[10] allow mask=0x001f01ff … sid=S-1-5-21-4159254826-…-500 <-- TOKEN D=user
+   delete-rights=[DELETE+FILE_DELETE_CHILD]`，正是 `here=[none … D=[user holds … via ace[10]]]`
+   读到的那半）。判它只要多印一行"沙箱进程自身令牌的 flags"。**本轮不实现**，挂成开放项。
+   注意这一支**不能靠 `.235` 三轮全 `PASS`（§6.32 :2718）来排除**：`.235` 那手的 default 一侧
+   正例点名的是 `grp#7`（Authenticated Users，§6.41 :3545-3551），该机 user 一侧对 outside 有没有
+   同样的删除权**没有被登记**，两台的对照还差这一格。要区分"子令牌没受限"与"交模型漏了另一半"，
+   缺的就是 O5 那一行令牌 flags。
+
+### 新的开放项
+
+- **O5**：runner 上 `outside` 的删除不经 DACL 交集（本节），候选假设是子令牌没带
+  `WRITE_RESTRICTED`；要证它需要在取证的 after 块里再印沙箱进程令牌的
+  `LUA_TOKEN / WRITE_RESTRICTED / DISABLE_MAX_PRIVILEGE` 三个位。这与 O3/O4 一样等拍板，
+  本轮零代码改动。
+
+### 状态
+
+windows 腿终态、#47 结案；mac 腿（#46 判据所在）在本节写下时仍 `in_progress`。
+本轮这一笔只动台账，`codex-rs/` 零改动，不推送（推送等 mac 腿终态，理由见 §7）。
 
 ## 7. 提交、推送与工作树状态
 
@@ -4279,6 +4499,32 @@ stderr: Error: exec-server transport disconnected: failed to read websocket JSON
   `Can't mount` 0 / `transport` 1。改正连同 7 手形状分布表（含两笔祖先列）落在 §6.44 的
   "本笔提交后的复核"小节，原句在正文里**就地标注为错并保留可追溯**，不改写成"一直是对的"。
   前两次是 §6.43 的机制说法与范围说法。
+- **§6.45 与 §6.46 由本笔文档登记，`codex-rs/` 净变化为 0**。§6.45 里那条我自己实现的
+  netns 门控（`net_namespace_is_fresh` + `is_net_namespaced_procfs_entry` + 4 条新腿，
+  当时门控自测 9 passed、全量 241 passed、fmt/clippy 均 0）**已被端到端一手否掉并全部
+  `git checkout` 撤销**：省不掉它想省的 abort，代价是把 `ipv4` / `core/somaxconn` 退回
+  `READABLE`。两个源文件与 `.45` 副本 md5 一致，工作树里只剩这一份 md 被改。
+- **windows 腿终态 ⇒ #47 结案，判据是 §6.46 的第二支**。`39562896528` head `1af8b5a70`
+  含取证笔 `9075086b3`（`git merge-base --is-ancestor` = YES）但不含 `0a99662c2`（NO），
+  所以 #45 的 ubuntu 收据仍只能等下一手。推送时机仍按"等 mac 腿终态"：本手的 mac 腿在
+  写这两节时 `in_progress`，而 §6.44 刚把多种红形状归到 runner 争用——在两腿未终态时
+  再塞一手进去，等于亲手给下一手的读数掺争用。**这一手推送时 tip 不带 `[skip ci]`**，
+  `git push origin test` 自身就会触发覆盖 5 条 `/proc` 腿的那一手；当前指针实测
+  `origin/test` = `1af8b5a70`，本地领先 4 笔（`0a99662c2` + `d84d1a3ca` + `aa3bb4dc6` +
+  `da5335ee8`），`git rev-list --left-right --count origin/test...test` = `0 4`，
+  本笔文档提交后是 `0 5`。
+- **粘贴进来的那份审计报告里有两条前提不成立，实测后按"假"处置，不据此改任何东西**：
+  ① 它说 `scripts/run-linux-unit-tests.sh:106` 有个 `bwrap_version` 前缀谓词"从不作跳过条件"——
+  该文件在仓库与工作区里**不存在**（`grep -rn "run-linux-unit-tests"` 0 命中、
+  `grep -rn "bwrap_version"` 0 命中），与 bwrap 有关的脚本只有
+  `scripts/bwrap_capability_check.sh` 和它的 `scripts/bwrap_capability_check_tests.py`
+  （`git ls-files scripts` 共 69 条）。前者全文只有一处 `exit 77`——`:59-62` 的
+  `uname -s != Linux`；四处 `exit 4`（`:104`/`:114`/`:129`/`:139`）是硬失败不是跳过，
+  选项不兼容那一处在 `:108-116` 的循环里（`:113` 打 `INCOMPATIBLE:`、`:114` `exit 4`）。
+  前提为空，谈不上缺陷。② 它说 §6.41 的机制说法与已提交代码不符——
+  台账 `:3477` 那句 `eff = (授予 restricting 列表的位) ∩ (授予 default 列表的位)` 与
+  `unified_exec/tests.rs:376-393`（`delete_right_verdict` / `let effective = r_held & d_held;`）
+  **逐字一致**，不需要改写。
 
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
