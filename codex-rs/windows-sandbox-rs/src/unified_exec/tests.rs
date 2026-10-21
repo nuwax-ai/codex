@@ -19,6 +19,7 @@ use codex_utils_pty::ProcessSignal;
 use codex_windows_sandbox_test_support::WindowsSandboxAccountTestGuard;
 use pretty_assertions::assert_eq;
 use std::collections::HashMap;
+use std::ffi::c_void;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Seek;
@@ -41,9 +42,22 @@ use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
+use windows_sys::Win32::Foundation::LocalFree;
 use windows_sys::Win32::Foundation::WAIT_FAILED;
 use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
 use windows_sys::Win32::Foundation::WAIT_TIMEOUT;
+use windows_sys::Win32::Security::ACCESS_ALLOWED_ACE;
+use windows_sys::Win32::Security::ACCESS_DENIED_ACE;
+use windows_sys::Win32::Security::ACE_HEADER;
+use windows_sys::Win32::Security::ACL;
+use windows_sys::Win32::Security::ACL_SIZE_INFORMATION;
+use windows_sys::Win32::Security::AclSizeInformation;
+use windows_sys::Win32::Security::EqualSid;
+use windows_sys::Win32::Security::GetAce;
+use windows_sys::Win32::Security::GetAclInformation;
+use windows_sys::Win32::Security::GetLengthSid;
+use windows_sys::Win32::Storage::FileSystem::DELETE;
+use windows_sys::Win32::Storage::FileSystem::FILE_DELETE_CHILD;
 use windows_sys::Win32::System::Threading::OpenProcess;
 use windows_sys::Win32::System::Threading::PROCESS_SYNCHRONIZE;
 use windows_sys::Win32::System::Threading::WaitForSingleObject;
@@ -95,6 +109,274 @@ fn sandbox_log(codex_home: &Path) -> String {
     let log_path = crate::current_log_file_path(&codex_home.join(".sandbox"));
     fs::read_to_string(&log_path)
         .unwrap_or_else(|err| format!("failed to read {}: {err}", log_path.display()))
+}
+
+const ALLOWED_ACE_TYPE: u8 = 0;
+const DENIED_ACE_TYPE: u8 = 1;
+const CONTAINER_INHERIT_ACE_FLAG: u8 = 0x02;
+const INHERITED_ACE_FLAG: u8 = 0x10;
+const INHERIT_ONLY_ACE_FLAG: u8 = 0x08;
+
+/// ACL evidence for the write/delete leg. The verdicts answer the one question the
+/// leg is about — can this session's capability SIDs reach a delete right on this
+/// path — and each probe path then decodes every ACE it holds, inherited entries
+/// included, read through the same handle-based fetch the production ACL code uses,
+/// so every line is an entry the sandbox child's access check actually saw. The
+/// whole text is printed on every run, green included. Derivation failures are
+/// rendered into the report instead of panicking: the evidence must never become
+/// the reason a leg goes red.
+fn write_delete_acl_evidence(
+    permission_profile: &PermissionProfile,
+    workspace: &Path,
+    codex_home: &Path,
+    env_map: &HashMap<String, String>,
+    subjects: &[PathBuf],
+    probe_paths: &[PathBuf],
+) -> String {
+    let mut root_sids: Vec<crate::spawn_prep::RootCapabilitySid> = Vec::new();
+    let mut dump = String::new();
+    match crate::resolved_permissions::ResolvedWindowsSandboxPermissions::try_from_permission_profile_for_workspace_roots(
+        permission_profile,
+        &workspace_roots_for(workspace),
+    ) {
+        Ok(permissions) => {
+            let capability_roots = crate::spawn_prep::legacy_session_capability_roots(
+                &permissions,
+                workspace,
+                env_map,
+                codex_home,
+            );
+            match crate::spawn_prep::root_capability_sids(codex_home, workspace, capability_roots)
+            {
+                Ok(sids) => root_sids = sids,
+                Err(err) => {
+                    dump.push_str(&format!("root capability SIDs failed: {err}\n"));
+                }
+            }
+        }
+        Err(err) => dump.push_str(&format!("permissions failed to resolve: {err}\n")),
+    }
+    let cap_ptrs: Vec<*mut c_void> = root_sids.iter().map(|root| root.sid.as_ptr()).collect();
+    let cap_sid_strings = root_sids
+        .iter()
+        .map(|root| root.sid_str.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut verdicts = format!("writable-root capability SIDs: [{cap_sid_strings}]\n");
+    for subject in subjects {
+        // Deleting a file needs DELETE on the file or FILE_DELETE_CHILD on its parent,
+        // so both halves are reported.
+        let on_file = delete_right_verdict(subject.as_path(), &cap_ptrs);
+        let on_parent = match subject.parent() {
+            Some(parent) => delete_right_verdict(parent, &cap_ptrs),
+            None => "no parent".to_string(),
+        };
+        verdicts.push_str(&format!(
+            "{}: session delete rights here=[{on_file}] in parent=[{on_parent}]\n",
+            subject.display()
+        ));
+    }
+    dump.push_str(&format!(
+        "writable-root capability SIDs: [{cap_sid_strings}]\n{verdicts}"
+    ));
+    for path in probe_paths {
+        dump.push_str(&delete_acl_lines(path, &cap_ptrs));
+        dump.push('\n');
+    }
+    dump
+}
+
+fn delete_right_verdict(path: &Path, cap_ptrs: &[*mut c_void]) -> String {
+    if cap_ptrs.is_empty() {
+        return "capability SIDs unavailable".to_string();
+    }
+    if !path.exists() {
+        return "absent".to_string();
+    }
+    let (allowed, denied) = match unsafe { session_delete_masks(path, cap_ptrs) } {
+        Ok(masks) => masks,
+        Err(err) => return format!("unreadable: {err}"),
+    };
+    let wanted = DELETE | FILE_DELETE_CHILD;
+    let granted = allowed & wanted;
+    let blocked = denied & wanted;
+    let effective = granted & !blocked;
+    if effective != 0 {
+        mask_names(effective)
+    } else if granted != 0 {
+        // The writable-root grant reaches the path, but a deny ACE for the same
+        // principal takes the right back. Reporting only the grant here would read
+        // as "the sandbox can delete this", which the session proves false.
+        format!(
+            "none({} granted, {} denied)",
+            mask_names(granted),
+            mask_names(blocked)
+        )
+    } else {
+        "none".to_string()
+    }
+}
+
+fn mask_names(mask: u32) -> String {
+    [(DELETE, "DELETE"), (FILE_DELETE_CHILD, "FILE_DELETE_CHILD")]
+        .into_iter()
+        .filter(|(bit, _)| mask & bit != 0)
+        .map(|(_, name)| name)
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+/// Delete-right bits this session's capability SIDs hold on `path`, split into the
+/// allow and deny halves. A deny ACE for the same principal takes the right back
+/// wherever it sits in the DACL, and an `INHERIT_ONLY` ACE does not apply to the
+/// object that carries it, so both are accounted for rather than left to whoever
+/// reads the receipt. Generic bits are reported unexpanded: every grant this
+/// sandbox writes is an explicit mask.
+unsafe fn session_delete_masks(
+    path: &Path,
+    cap_ptrs: &[*mut c_void],
+) -> Result<(u32, u32), String> {
+    let (p_dacl, p_sd) = crate::acl::fetch_dacl_handle(path).map_err(|err| err.to_string())?;
+    if p_dacl.is_null() {
+        let _ = LocalFree(p_sd);
+        return Ok((FILE_DELETE_CHILD | DELETE, 0));
+    }
+    let mut info: ACL_SIZE_INFORMATION = std::mem::zeroed();
+    if GetAclInformation(
+        p_dacl as *const ACL,
+        &mut info as *mut _ as *mut c_void,
+        std::mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
+        AclSizeInformation,
+    ) == 0
+    {
+        let err = std::io::Error::last_os_error().to_string();
+        let _ = LocalFree(p_sd);
+        return Err(err);
+    }
+    let (mut allowed, mut denied) = (0u32, 0u32);
+    for index in 0..(info.AceCount as usize) {
+        let mut p_ace: *mut c_void = std::ptr::null_mut();
+        if GetAce(p_dacl as *const ACL, index as u32, &mut p_ace) == 0 {
+            continue;
+        }
+        let header = &*(p_ace as *const ACE_HEADER);
+        if header.AceFlags & INHERIT_ONLY_ACE_FLAG != 0 {
+            continue;
+        }
+        let sid = (p_ace as usize + std::mem::size_of::<ACE_HEADER>() + std::mem::size_of::<u32>())
+            as *mut c_void;
+        if !cap_ptrs.iter().any(|cap| EqualSid(sid, *cap) != 0) {
+            continue;
+        }
+        match header.AceType {
+            ALLOWED_ACE_TYPE => allowed |= (&*(p_ace as *const ACCESS_ALLOWED_ACE)).Mask,
+            DENIED_ACE_TYPE => denied |= (&*(p_ace as *const ACCESS_DENIED_ACE)).Mask,
+            _ => {}
+        }
+    }
+    let _ = LocalFree(p_sd);
+    Ok((allowed, denied))
+}
+
+fn delete_acl_lines(path: &Path, cap_ptrs: &[*mut c_void]) -> String {
+    if !path.exists() {
+        return format!("{}: absent", path.display());
+    }
+    let (p_dacl, p_sd) = match unsafe { crate::acl::fetch_dacl_handle(path) } {
+        Ok(fetched) => fetched,
+        Err(err) => return format!("{}: DACL unreadable: {err}", path.display()),
+    };
+    let lines = unsafe { dacl_aces_text(path, p_dacl, cap_ptrs) };
+    unsafe {
+        let _ = LocalFree(p_sd);
+    }
+    lines
+}
+
+unsafe fn dacl_aces_text(path: &Path, p_dacl: *mut ACL, cap_ptrs: &[*mut c_void]) -> String {
+    if p_dacl.is_null() {
+        return format!(
+            "{}: NULL DACL, so every SID including the sandbox capability holds FILE_ALL_ACCESS",
+            path.display()
+        );
+    }
+    let mut info: ACL_SIZE_INFORMATION = std::mem::zeroed();
+    if GetAclInformation(
+        p_dacl as *const ACL,
+        &mut info as *mut _ as *mut c_void,
+        std::mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
+        AclSizeInformation,
+    ) == 0
+    {
+        return format!(
+            "{}: GetAclInformation failed: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        );
+    }
+    let mut lines = vec![format!(
+        "{}: {} ACE(s)",
+        path.display(),
+        info.AceCount as usize
+    )];
+    for index in 0..(info.AceCount as usize) {
+        let mut p_ace: *mut c_void = std::ptr::null_mut();
+        if GetAce(p_dacl as *const ACL, index as u32, &mut p_ace) == 0 {
+            lines.push(format!("  ace[{index}]: GetAce failed"));
+            continue;
+        }
+        let header = &*(p_ace as *const ACE_HEADER);
+        let (kind, mask) = match header.AceType {
+            ALLOWED_ACE_TYPE => ("allow", (&*(p_ace as *const ACCESS_ALLOWED_ACE)).Mask),
+            DENIED_ACE_TYPE => ("deny", (&*(p_ace as *const ACCESS_DENIED_ACE)).Mask),
+            other => {
+                lines.push(format!("  ace[{index}]: unhandled ACE type {other}"));
+                continue;
+            }
+        };
+        let sid = (p_ace as usize + std::mem::size_of::<ACE_HEADER>() + std::mem::size_of::<u32>())
+            as *mut c_void;
+        let sid_len = GetLengthSid(sid);
+        let sid_text = if sid_len == 0 {
+            "unreadable".to_string()
+        } else {
+            let bytes = std::slice::from_raw_parts(sid as *const u8, sid_len as usize);
+            crate::winutil::string_from_sid_bytes(bytes).unwrap_or_else(|err| format!("<{err}>"))
+        };
+        let is_session_capability = cap_ptrs.iter().any(|cap| EqualSid(sid, *cap) != 0);
+        let delete_rights = mask_names(mask);
+        lines.push(format!(
+            "  ace[{index}] {kind} mask=0x{mask:08x} flags=0x{:02x}{}{} sid={sid_text}{} \
+             delete-rights=[{delete_rights}]",
+            header.AceFlags,
+            if header.AceFlags & CONTAINER_INHERIT_ACE_FLAG != 0 {
+                " inherits-to-children"
+            } else {
+                ""
+            },
+            if header.AceFlags & INHERITED_ACE_FLAG != 0 {
+                " INHERITED-FROM-ANCESTOR"
+            } else {
+                ""
+            },
+            if is_session_capability {
+                " <-- THIS SESSION"
+            } else {
+                ""
+            },
+        ));
+    }
+    lines.join("\n")
+}
+
+fn ancestors_up_to_volume_root(path: &Path) -> Vec<PathBuf> {
+    let mut ancestors = Vec::new();
+    let mut cursor = path.parent();
+    while let Some(parent) = cursor {
+        ancestors.push(parent.to_path_buf());
+        cursor = parent.parent();
+    }
+    ancestors
 }
 
 fn workspace_roots_for(root: &Path) -> Vec<AbsolutePathBuf> {
@@ -756,6 +1038,11 @@ fn legacy_workspace_write_delete_is_limited_to_writable_roots() {
         }
         let protected_git_dir = workspace.join(".git");
         fs::create_dir(&protected_git_dir).expect("create protected .git directory");
+        // The directory surviving `rmdir` cannot show whether the read-only rule reaches
+        // inside it: the writable-root grant is inherited by every descendant, while the
+        // `.git` denial is one path. A child of `.git` is the case that tells them apart.
+        let protected_git_child = protected_git_dir.join("config");
+        fs::write(&protected_git_child, "[core]\n").expect("seed protected .git file");
 
         let workspace_file = workspace.join("workspace-delete.txt");
         let temp_file = temp_root.join("temp-delete.txt");
@@ -775,6 +1062,7 @@ fn legacy_workspace_write_delete_is_limited_to_writable_roots() {
                 "del /f /q \"%TEMP_DELETE%\"\r\n",
                 "del /f /q \"%TMP_DELETE%\"\r\n",
                 "del /f /q \"%OUTSIDE_DELETE%\"\r\n",
+                "del /f /q \"%PROTECTED_GIT_CHILD%\"\r\n",
                 "rmdir \"%PROTECTED_GIT_DIR%\"\r\n",
                 "exit /b 0\r\n",
             ),
@@ -804,9 +1092,45 @@ fn legacy_workspace_write_delete_is_limited_to_writable_roots() {
                 "PROTECTED_GIT_DIR".to_string(),
                 protected_git_dir.to_string_lossy().into_owned(),
             ),
+            (
+                "PROTECTED_GIT_CHILD".to_string(),
+                protected_git_child.to_string_lossy().into_owned(),
+            ),
         ]);
 
         let permission_profile = PermissionProfile::workspace_write();
+        let acl_subjects: Vec<PathBuf> = vec![
+            workspace_file.clone(),
+            temp_file.clone(),
+            tmp_file.clone(),
+            outside_file.clone(),
+            protected_git_dir.clone(),
+            protected_git_child.clone(),
+        ];
+        let mut probe_paths: Vec<PathBuf> = vec![
+            workspace.clone(),
+            temp_root.clone(),
+            tmp_root.clone(),
+            outside_root.clone(),
+            test_root.path().to_path_buf(),
+        ];
+        probe_paths.extend(acl_subjects.iter().cloned());
+        probe_paths.extend(ancestors_up_to_volume_root(test_root.path()));
+        let acl_env_map = env_map.clone();
+        // Taken before the session starts: a file the sandbox must not delete only
+        // has a DACL worth reading while it still exists.
+        let acl_dump_before = write_delete_acl_evidence(
+            &permission_profile,
+            workspace.as_path(),
+            codex_home.path(),
+            &acl_env_map,
+            acl_subjects.as_slice(),
+            probe_paths.as_slice(),
+        );
+        // Printed every run, not only on failure: this leg can go green while the
+        // access check still answers "yes, delete allowed" for a protected path,
+        // and a green run with no ACE text in the log is the blind spot being closed.
+        eprintln!("write/delete ACL evidence before the session:\n{acl_dump_before}");
         let spawned = spawn_windows_sandbox_session_legacy(
             &permission_profile,
             workspace_roots_for(workspace.as_path()).as_slice(),
@@ -831,6 +1155,15 @@ fn legacy_workspace_write_delete_is_limited_to_writable_roots() {
             collect_stdout_and_exit(spawned, codex_home.path(), Duration::from_secs(/*secs*/ 10))
                 .await;
         let stdout = String::from_utf8_lossy(&stdout);
+        let acl_dump_after = write_delete_acl_evidence(
+            &permission_profile,
+            workspace.as_path(),
+            codex_home.path(),
+            &acl_env_map,
+            acl_subjects.as_slice(),
+            probe_paths.as_slice(),
+        );
+        eprintln!("write/delete ACL evidence after the session:\n{acl_dump_after}");
 
         assert_eq!(
             (
@@ -840,10 +1173,20 @@ fn legacy_workspace_write_delete_is_limited_to_writable_roots() {
                 tmp_file.exists(),
                 fs::read_to_string(&outside_file).ok(),
                 protected_git_dir.is_dir(),
+                protected_git_child.exists(),
             ),
-            (0, false, false, false, Some("outside".to_string()), true),
-            "stdout={stdout:?}\n{}",
-            sandbox_log(codex_home.path())
+            (
+                0,
+                false,
+                false,
+                false,
+                Some("outside".to_string()),
+                true,
+                true
+            ),
+            "stdout={stdout:?}\n{}\nThe before/after ACL evidence for this session is \
+             in the captured stderr above.",
+            sandbox_log(codex_home.path()),
         );
     });
 }
