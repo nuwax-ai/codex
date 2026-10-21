@@ -2973,6 +2973,78 @@ exit=0
 
 推荐 **O1 先做**（安全侧、单点、有对照一手），**O2 单独拍**（它是新原语，不是一次顺序调整）。
 
+## 6.36 第一手的 mac 腿到终态：mac 那两条红是 60s 边界，不是产品回归（提交 `42c5bb5d9`）
+
+`39526586631`（head `04623ca2c`）四腿全部终态，run `failure`：
+
+| job | 终态 | 读数 |
+| --- | --- | --- |
+| `nextest (macos-latest)` (118982561683) | failure | `Summary [3648.129s] 22885 tests run: 22883 passed (27 slow), 2 timed out, 71 skipped` |
+| 其余三腿 | 已登记 §6.34 | ubuntu 1 红、windows 8 红、bridge gate success |
+
+mac 的两条红逐字是 `TIMEOUT [  60.012s] ( 4736/22885) codex-cli::app_server_daemon
+managed_daemon_restarts_from_deleted_working_directory` 与
+`TIMEOUT [  60.012s] ( 4770/22885) …::managed_identity_survives_locale_and_timezone_changes`，
+两条都先 `SLOW [> 30.000s]` 再 `TERMINATING [> 60.000s]`，stdout 只有
+`running 1 test` / `(test timed out)`——**没有任何诊断**。除此之外 mac 腿零红。
+
+### 先记一个测量教训：日志尾部静止 30 分钟不等于腿挂了
+
+04:24 我读这腿时，日志尾停在 `7585/22885`（03:59:41），而步骤仍 `in_progress`，
+形态酷似挂死。它 04:35:44 正常收口，水位一次性从 7585 跳到 22883 ⇒ 是托管 runner 的
+日志分块上传滞后。**第二个独立一手同形互证**：`39530269408` 的 mac 腿在 04:31:54
+也把尾停在 `7586/22888`。按既有规矩，"日志没动"不读成结论，这条现在有了两次一手支撑。
+
+顺带一个覆盖交叉核对：两手的 mac 腿测试总数 `22885` vs `22888` 差 **3**，正等于
+`bb2c0f9eb` 加进 `exec/tests/suite/nuwax_env.rs` 的 2 条 `#[tokio::test]` 加上
+`6c176ecec` 加进 `exec-server/tests/exec_process.rs` 的 1 条（两笔各自删掉的 test 属性
+实测为 0）⇒ 这两笔真到了 mac 腿，不是只到了 ubuntu。
+
+### 这两条腿是四手连涨后越过默认 60s，不是本轮改动引入
+
+同一台 mac 腿上同两条腿的历史读数（缓存日志逐字核过名与时长配对）：
+
+| 手 | `managed_daemon_restarts_…deleted_working_directory` | `managed_identity_survives_locale_…` |
+| --- | --- | --- |
+| `39347345560` | PASS 46.008s (4733) | PASS 35.630s (4767) |
+| `39371971338` | PASS 51.222s (4733) | PASS 54.032s (5240) |
+| `39396134392` | PASS 59.604s (4733) | PASS 56.490s (4801) |
+| `39526586631` | **TIMEOUT 60.012s** | **TIMEOUT 60.012s** |
+
+- 归属证据：这两条腿**不在** `nextest.toml` 任何 override 里，走的是
+  `[profile.default] slow-timeout = 30s × terminate-after 2`（= 60s），59.604s 那次
+  距 kill 只差 0.396s。同一手该 job 从 01:19:06 起跑，第一条测试出现在 03:34:56
+  ⇒ 编译 2h16m，而 `39233543173` 同一棵树是 1h32m47s（workflow 注释里的事实）；
+  同手该腿还有 27 条 `SLOW`。**分桶：harness 预算 vs 托管机争用**，与 #19/#26/#27/#32
+  同族；不是"协议不适用"也不是产品缺陷。
+- 为什么这条红特别贵：CI 的调用是 `just test --workspace … --retries 0`
+  （`fork-cargo-pr.yml`），**被 kill 的腿一次机会都没有**；本机用同一 profile 不加
+  该 flag 时，同两条腿在 1s 窗口下确实打出 `RETRY 1`/`RETRY 2`，即重试是被 flag 关掉的，
+  不是 nextest 不重试超时。
+
+### 修复（`42c5bb5d9`）：给这两条腿 mac 专属窗口，并证明这个窗口真的绑上
+
+`[[profile.default.overrides]]` 新增一块，`platform = 'cfg(target_os = "macos")'`、
+`filter` 为 `package(codex-cli) & binary(app_server_daemon)` 上那两条 `test(=…)`、
+`slow-timeout = { period = "1m", terminate-after = 2 }`（2m；59.604s × 1.65 = 98.3s 的
+观测外推，#19 量到的 20–65 % 手间方差）。放在 #19 那块**之后**、`packaged_daemon_`
+两块**之前**——`slow-timeout` 取第一个匹配的 override，位置错了就静默无效。
+
+| 检查 | 读数 |
+| --- | --- |
+| 绑定探针（把新块窗口临时改 1s×1，`NEXTEST_PROFILE=local`，与 CI 同 profile） | 四条 kill 读数 **1.004s / 1.004s / 1.007s / 1.005s**（两条腿各被尝试两次：本地 profile 带着 `retries = 1`，`RETRY 1`/`RETRY 2` 都打出）⇒ 新块确实是这两条腿的第一个匹配 override，没被前面任何规则抢走 |
+| 真实窗口下同一对腿（`NEXTEST_PROFILE=local`，`--no-fail-fast`） | `Summary [50.362s] 2 tests run: 2 passed, 15 skipped`，`PASS [24.413s]` / `PASS [25.943s]`，rc=0 |
+| 默认窗口下同一对腿（本机基线） | `PASS [25.884s]` / `PASS [26.698s]` |
+| ubuntu 腿同两条（`39526586631` job 118982561606 缓存日志） | `PASS [3.746s]` / `PASS [4.351s]` ⇒ 窗口只给 mac，不动其他腿 |
+
+探针用的临时配置只写在 scratch（`nt-probe.toml`），**仓库里那份只含真实窗口**；
+提交前 `git status` 除本节文档外只有 `codex-rs/.config/nextest.toml` 一处改动。
+
+**runner 一手还没拿到**：这条改动只可能由 mac 腿证明，而 mac 腿单手要 ~3h16m 外加
+编译 ~2h。`42c5bb5d9` 与本节这份文档目前**在本地未推**（理由见 §7）；
+`c7590fe24` / `a3b96ae90` 两手仍在跑，它们的 mac 腿按上面的历史**大概率仍会在这两条腿红**——
+那是"修复前"的读数，不能反过来当修复无效的证据。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -3303,6 +3375,23 @@ exit=0
   当作 §6.33 那版修复的验收。
   **本轮 CI 之外的新执行**全部在 `.45` 上完成（strace 与裸 bwrap 对照 + helper 端到端），
   零 CI 预算、零厂商调用。
+
+- **§6.36 那一手（实测，本机，**未推送**）**：一笔 CI 配置改动
+  `42c5bb5d9`（`test(ci): give the two macOS daemon legs the window they straddle`，
+  单文件 `codex-rs/.config/nextest.toml`，只新增一个 mac 专属 override），其后是本节
+  这份文档提交。**两笔都留在本地**：`origin/test` 仍是 `f6f74f484`，本地 `ahead=2`，
+  工作树在本笔提交后 clean。不推的理由是预算而不是完成度——这条改动只能由 mac 腿验收，
+  而 mac 腿当前一手要 ~3h16m 再加 ~2h 编译，且 `39530269408` 的 mac 腿正在跑、
+  `39542266851` / `39543230422` 四腿未终态；此时再开一手会把 mac lane 排到更后。
+  **等这两手落地后一并推**（tip 不带 `[skip ci]`，按实测"一次推送只在 tip 触发一轮"
+  只产生一手），若期间 O1/O2 有指针，也能合进同一手，省下一整手 mac 预算。
+  本轮**零 dispatch**、零厂商调用；所有验收读数来自本机 `cargo nextest`
+  （绑定探针四条 kill 读数 1.004–1.007s、真实窗口 `2 passed` 24.413s/25.943s）
+  与四手缓存 mac/ubuntu 日志的逐字核对。
+  **登记时的四手实况**：`39526586631` 四腿终态 run `failure`（§6.34 + §6.36）；
+  `39530269408` ubuntu/windows/bridge 终态、mac 腿 `in_progress`（04:31:54 尾停
+  `7586/22888`）；`39542266851` 与 `39543230422` 各剩三腿在跑，
+  两者的 `bazel bridge gate (ubuntu)` 已 success。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
