@@ -4226,7 +4226,9 @@ mac 本机把 §6.46 判据那两条腿单独跑了一遍：
   `the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway`。
 - 部分流**有滞后**：10:19Z 取到的最后一行是 `10:10:23Z`（约 9 分钟）。⇒ 可以用它读"nextest 已经打印出来的
   单条 `PASS`/`FAIL`"（判决行不翻案），不能读"这腿会不会绿"，也别把滞后那几分钟读成卡死。
-  **【§6.49 给这条通道划了界：它不通用，ubuntu job 会回 `404 BlobNotFound`】**
+  **【§6.49 给这条通道划了界：它不通用，会回 `404 BlobNotFound`；§6.50 又把这个界改正了一次——
+  404 与平台无关、且是临时的（同一个 ubuntu job 先 404 后给 2 109 918 字节），
+  那句"滞后约 9 分钟"也不是常数（可见部分止于上一次刷块，会连续几分钟一动不动）】**
 
 ### 四、#46 的判决提前到手，但强度差如实登记
 
@@ -4333,6 +4335,8 @@ hermetic-fetch 依赖面，503 发生在它身上。**处置：不重跑、不�
   ——而那个 job 从 `10:29:06Z` 起已经在跑 `Test (workspace)`，不是没开始。同一个 API 在 mac job 上
   给过 2,110,068 字节。⇒ 能不能提前取，取决于**该 job 是否已经往 blob 里刷过日志块**；
   拿不到就回退到终态取证，ubuntu 腿按上一手 `07:34:12 → 08:56:18`＝1h22m 推算约 **11:40Z**。
+  **【§6.50：这条界里"按平台"的那半句是错的归因——同一个 ubuntu job 在 `11:21:01Z` 给了 2 109 918 字节，
+  那一刻 mac 与 windows 两只 job 反而是 404；推算的 11:40Z 偏悲观 6m38s，实际 `11:33:15` 终态。】**
 
 ### 这一手剩下的三条腿都不新增判据
 
@@ -4342,8 +4346,144 @@ hermetic-fetch 依赖面，503 发生在它身上。**处置：不重跑、不�
 
 ### 状态
 
-`39583542510`（head `0ef33716a`）三条 nextest 腿写本节时 `in_progress`；#45 的 ubuntu 判据在那一手。
-#46 至此可标结案。`codex-rs/` 净变化仍为 0。
+`39583542510`（head `0ef33716a`）三条 nextest 腿写本节时 `in_progress`；#45 的 ubuntu 判据在那一手
+**【已到手，见 §6.50】**。#46 至此可标结案。`codex-rs/` 净变化仍为 0。
+
+## 6.50 #45 的 ubuntu 半边到手：五条 `/proc` 搬迁腿全 PASS——同一手里两条取证规矩被实测改写，还揪出我自己的一条空转命令
+
+### 一、判据（`nextest (ubuntu-latest)` job `119166741735`，终态 `completed` / `failure`）
+
+整腿逐字（`u45835b.final.txt:27852`）：
+
+```
+2026-10-21T11:33:11.1328358Z      Summary [2534.687s] 22947 tests run: 22946 passed (20 slow), 1 failed, 48 skipped
+```
+
+`0a99662c2` 新加的那五条，逐字（判决行都落在同一秒 `11:24:09Z`）：
+
+```
+PASS [   0.008s] (12350/22947) codex-linux-sandbox bwrap::tests::denied_proc_file_is_masked_after_the_proc_mount
+PASS [   0.017s] (12351/22947) codex-linux-sandbox bwrap::tests::denied_proc_directory_mask_travels_as_one_group
+PASS [   0.008s] (12353/22947) codex-linux-sandbox bwrap::tests::denied_proc_pid_mask_stays_before_the_proc_mount
+PASS [   0.007s] (12365/22947) codex-linux-sandbox bwrap::tests::only_proc_entries_the_new_procfs_recreates_move_after_the_mount
+PASS [   0.008s] (12368/22947) codex-linux-sandbox bwrap::tests::proc_masks_stay_put_when_the_procfs_is_not_remounted
+```
+
+唯一的红是 §6.44 已经归因在 runner 上的那条，名字、计数器、形状与上一手同格：本手
+`FAIL [  25.231s] (11232/22947) codex-exec-server::exec_process shell_snapshot::shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path`，
+上一手 `FAIL [  25.285s] (11232/22942)` 同一格。日志里 `FAIL` 相关的行一共只有 4 条、
+`test result: FAILED` 只有 1 条、无 retrial 无 leak ⇒ **这一手不新增判据，只补齐 #45 的 ubuntu 半边**。
+`codex-rs/` 净变化 0，本笔零新 CI 手。
+
+### 二、这五条的毫秒级 PASS 为什么算证据：判据是代码里的 assert，不是时长
+
+那条"个位/十位毫秒＝缺前置条件即 return"的规矩若不加区分地套用，会把这五条正确读成"没跑"。
+三条可复核依据：
+
+1. **前置条件全是断言**：`codex-rs/linux-sandbox/src/bwrap.rs:3196-3197`、`:3224-3225`、
+   `:3246-3247`、`:3268-3269` 分别是 `assert!(denied.is_file(), "precondition: …")` 与
+   `assert!(denied.is_dir(), …)`。宿主 procfs 里缺 `/proc/version` / `/proc/sys` / `/proc/1` 时这条腿**红**，
+   不存在"绿着跳过"这条路。
+2. **取位置的工具缺参数即 panic**：`bwrap.rs:3308-3312`
+   `arg_index(…).unwrap_or_else(|| panic!("expected {window:?} in {args:#?}"))` ⇒ `--proc /proc` 或那三段
+   mask 没发射时直接红，没有"找不到就算了"的分支；`bwrap.rs:3206-3210` 的 `assert_eq!(masks.len(), 1, …)`
+   还会抓住"搬迁变成双发射"这种错。
+3. **被测函数本来就只构造 argv**：`denied_proc_args`（`bwrap.rs:3297-3306`）走
+   `create_bwrap_command_args`，不 fork、不 mount，毫秒级是它的正常量纲——上一手同一 crate 那些
+   `bwrap::tests::*` 与 `linux_run_main::tests::*` 也是 0.005–0.010s（逐字见
+   `u-119098108947.txt:17268` 起那批）；同手同 crate 里用时最长的是
+   `codex-linux-sandbox::all suite::managed_proxy::proc_mount_denial_preserves_legacy_fallback_and_explicit_pid_inheritance`
+   的 0.085s，它不在本节五条之内，我没有读它的实现，故不推断它跑不跑 bwrap。
+
+反面仍然成立：`*_live` 家族缺本地网关时是 `if !cond { return }` 早退，缺前置条件照样绿。
+**分辨方法是看前置条件写成 assert 还是 return，不是看时长。**
+
+### 三、"新腿几条"不必数日志：总数差与同计数器两点互相咬合
+
+- 上一手 ubuntu 终态逐字 `Summary [2537.541s] 22942 tests run: 22941 passed (19 slow), 1 failed, 48 skipped`；
+  本手分母 `22947`。22947 − 22942 = **5** ＝上面那五条 ⇒ 没有丢失、改名或被 cfg 排除的腿。
+- 那条红的计数器在两手里都是 `11232`，而它在 `codex-exec-server`；五条新腿全在字母序靠后的
+  `codex-linux-sandbox` ⇒ 插入点确实在 11232 之后，与"只加了五条"自洽。
+
+### 四、SLOW 名单在两手之间漂移，格格都不新增判据
+
+本手 20 slow、上一手 19 slow，交集 17。只在本手出现：`codex-app-server-transport transport::remote_control::tests::retry_tests::websocket_resumes_after_retry_after*`、
+`codex-core::all suite::compact_remote::remote_compact_v2_charges_retained_images_to_token_budget::{default_trims_images, disabled_preserves_images}`；
+只在上一手出现：`codex-cli::app_server_daemon packaged_daemon_explicit_replacement_migrates_running_legacy`、
+`codex-cli::worktree daemon_worktree_start_and_fork_bind_owner_before_turn`。全部 PASS（整腿只有 1 failed），
+且上一手那一格 `SLOW [> 60.000s]` 本手没有再越过 60s；本手 20 条 SLOW 里没有一条属于
+`codex-linux-sandbox`。⇒ 记为漂移，不做归因。
+
+### 五、取证通道：`404 BlobNotFound` 是临时的，我上一手按平台划界是错的归因
+
+- 同一个 job `119166741735`：`10:55:40Z` / `10:56:15Z` 两次回 `gh: HTTP 404` +
+  `<Code>BlobNotFound</Code>`（§6.49 登记的就是这两次），**`11:21:01Z` 同一个 API 给了 2,109,918 字节**；
+  而同一时刻 mac job `119166741803` 与 windows job `119166741846` 反而各回 404
+  （`11:21:42Z`/`11:21:51Z` 与 `11:31:08Z`/`11:31:17Z` 两轮都是）。⇒ 可用性只取决于"这个 job 刷没刷过日志块"，
+  与 ubuntu / mac / windows 无关。§6.48 那句"ubuntu job 会回 404"已就地改成指向本节。
+- **取回的是冻结的块，不滚动**：`11:21:01Z`、`11:25Z` 前后的一次轮询、`11:28:30Z` 三次取回的字节数与进度
+  **完全相同**（`2 109 918` / `( 7750/22947)` / 尾行 `11:09:51Z`），下一次刷块 `11:30:43Z` 一次跳到
+  `4 216 925` 字节 / `(17408/22947)` / 尾行 `11:30:12Z`。⇒ §6.48 写的"滞后约 9 分钟"只是刷块间隔的巧合，
+  正确说法是"可见部分止于上一次刷块，何时再动不可预测"。本节那五条**确实**提前取到了：判决写在
+  `11:24:09Z`，`11:30:43Z` 从部分流里读到，而该腿 `11:33:15Z` 才终态——只差 2m32s，赶在刷块上就赶上了，
+  早一秒就是空手。⇒ 能用，但**不能指望它一定先到**；登记一律以终态日志为准
+  （`u45835b.final.raw` 5 399 663 字节）。
+
+### 六、我自己的一条空转命令：job 级 API 的 ANSI 是**真 ESC**，那条 perl 去色在那儿一条都不匹配
+
+§6.49 之后我沿用记忆里的去色命令 `perl -pe 's/\^\[\[[0-9;]*m//g'`，把 job 级 API 取回的日志当成"控制符被
+渲染成字面 `^[[31;1m` 文本"那类输出来处理。**这个前提在这一手被推翻**，三条实测：
+
+- `u45835b.final.raw`（5 399 663 字节）里 **26 797 行含真 ESC 字节**，而**没有任何**一行是字面 `^[[`
+  四字符文本（`grep -c '\^\[\['`＝0）。那条正则里的 `\^` 匹配的是脱字符 ⇒ **一条都不中，去色完全空转**。
+  铁证：那次"去色后"的文件与 `.raw` **字节数相同**（`2 109 918` 对 `2 109 918`），正确去色后是
+  `1 669 867` 字节。
+- 老缓存 `u-119098108947.txt`（上一手的 ubuntu 腿，4 190 971 字节）里**真 ESC 与字面 `^[[` 都是 0**
+  ——那批文件本来就是无色的。⇒ "必须先去色才能 grep"在旧通道上看像是多余的（`Summary [2537.541s]`、
+  ` SLOW ` 这类跨边界串一直照常命中 1 次／19 次），换到 job 级 API 通道才第一次暴露。记忆里那句
+  "日志里的 ANSI 是字面文本"是按旧通道写的，**不能套到 API 通道**。
+- 空转的代价是**静默失配**，不会报错。色码把判决词整段包住，逐字是
+  `2026-10-21T11:24:09.6733850Z ^[[32;1m        PASS^[[0m [   0.008s] (12350/22947) ^[[35;1mcodex-linux-sandbox^[[0m …`
+  （这里 `^[` 是 `cat -v` 对真 ESC 的渲染）。所以凡跨过 `PASS`/`SLOW`/`FAIL`/`Summary` 与其后 `[` 之间
+  边界的串，在未去色文件里 0 命中、正确去色后才有：`PASS \[   0.008s\]` 0→784、`SLOW \[> 30` 0→20、
+  `Summary \[2534` 0→1、`FAIL \[  25.231s` 0→2、`Nextest run ID` 0→1——最后这条就是我一度以为
+  "部分流里没有 run-ID 锚点行"的原因，差点当成事实登记。反过来**测试名本身是连续的**（色码只在它前面
+  开合），所以本节那五条按名字取全文的 grep 在两种去色下都命中 1 次 ⇒ 第一版登记的判决没读错，
+  读错的只是"某一行不存在"。
+
+⇒ 两种通道两种写法：
+
+- `gh api repos/…/actions/jobs/<id>/logs`：真 ESC ⇒
+  `perl -CSD -pe 's/\e\[[0-9;?]*[a-zA-Z]//g; s/\e\][^\a]*\a//g; s/^\x{feff}//'`。
+- 旧的 `gh run view --log` 那批缓存：本来无色，直接 grep。
+- 两个通道**都带 UTF-8 BOM**（首三字节 `ef bb bf`，实测 `u45835b.final.raw`、`u45835b.partial.raw`、
+  `u-119098108947.txt` 三份都是），所以行首锚点要么去掉，要么像上面那样把 `\x{feff}` 一并吃掉。
+- **自查是否用错**：去色后与 `.raw` 字节数相等＝空转；再用 `grep -c $'\033'` 与 `grep -c '\^\[\['`
+  两个数分清是哪一种编码。本节所有读数都出自正确去色后的文件。
+
+### 七、#45 结案时保留的两条口径
+
+- 这五条是 **argv 顺序**的守卫，不是"denial 咬得住"的执行证据；后者在 §6.45 一手 B
+  （committed `0a99662c2` 字节，构建前 `md5_bwrap=0838014cab56c731ade218da6afedcd4`、`gate_tokens=0`、
+  `proc_scoped_args=11`、`rc_build=0`）里 `c1 /proc/version → NOT_READABLE`。两支合起来才是 #45 的完整判据，
+  本节只补了前一支。
+- "撤掉搬迁这五条会红"是**推导**，不是再跑一手：§6.45 一手 D 用 strace 抓到的真实 argv 里，那三段
+  `--perms 000 --tmpfs … --remount-ro …` 落在 `--proc /proc` **之前**，而 `bwrap.rs:3211-3217` 断言的正是
+  `masks[0] > proc_mount` ⇒ 旧字节下至少红一条。我没有为验证这句话另开 CI 手，也没做变异测试。
+
+### 状态
+
+`39583542510` 四条腿：`bazel bridge gate (ubuntu)` `failure`（§6.48 归因镜像 503，零编译）；
+`nextest (ubuntu-latest)` `completed` / `failure`＝本节；`nextest (macos-latest)`、`nextest (windows)`
+写本节时 `in_progress`。按上一手同腿时长推算：windows `07:34:11 → 09:32:57`＝1h58m46s ⇒ 约 **12:16Z**；
+mac `07:34:18 → 10:48:18`＝3h14m00s ⇒ 约 **13:32Z**。
+
+本手 ubuntu 整腿 `10:17:53 → 11:33:15`＝1h15m22s，比上一手（1h22m06s）短 6m44s；拆开看
+`Test (workspace)` 步骤内编译 `10:29:06 → 10:50:56`＝21m50s，上一手 `07:47:30 → 08:13:57`＝26m27s
+（短 4m37s），测试阶段自报 2534.687s 对 2537.541s（几乎不变，差 2.855s）；余下约 2m 落在编译段之外，
+我没有逐段归因。⇒ §6.49 结尾按"job 起 ＋ 1h22m"推出的 11:40Z **锚点配对是对的**，只是偏悲观 6m38s；
+我一度想说它"用错了锚点"，这句不成立。`codex-rs/` 净变化仍为 0；本笔只动这一份 md，带 `[skip ci]`，
+不新增 CI 手。
 
 ## 7. 提交、推送与工作树状态
 
@@ -4895,6 +5035,24 @@ hermetic-fetch 依赖面，503 发生在它身上。**处置：不重跑、不�
   `:4651`/`:4686`，这一笔又漂了一次，所以不再追数字。指向 §6.x 早段的行号（`:156`–`:3818`）不受影响，
   本笔逐条 `sed -n` 复核过。
 
+- **§6.50 由本笔登记：#45 的 ubuntu 半边到手，五条 `/proc` 搬迁腿全 PASS**。判据手＝`39583542510` 的
+  `nextest (ubuntu-latest)` job `119166741735`，写本节时已 `completed`/`failure`，整腿逐字
+  `Summary [2534.687s] 22947 tests run: 22946 passed (20 slow), 1 failed, 48 skipped`；唯一红＝§6.44 那条
+  `shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path`，计数器 `11232`
+  与上一手同格、25.231s 对 25.285s ⇒ 不新增判据。`codex-rs/` 净变化仍为 0；本笔带 `[skip ci]`，
+  不新增 CI 手（提交后核对 `gh run list` 顶部）。
+  这一笔的主要产出其实是我自己两条规矩的改正：**①** 上一笔写下的"ubuntu job 会回 404"是**按平台归因**，
+  而 `11:21:01Z` 同一个 job 给了 2 109 918 字节、那一刻 mac 与 windows 两只 job 反而是 404 ⇒ 404 只与
+  "这个 job 刷没刷过日志块"有关，且是临时的；**②** 台账与记忆里那条去色命令
+  `s/\^\[\[[0-9;]*m//g` 对 **job 级 API** 取回的日志是**空转**（那里是真 ESC 字节，不是字面 `^[` 文本），
+  铁证是"去色后"与 `.raw` 字节数完全相同，代价是 `grep 'Nextest run ID'` 静默失配——我差点把
+  "部分流里没有 run-ID 锚点行"当成事实登记进去。两处都在 §6.50 第五、六节留下了可复核的原文与正确命令，
+  §6.48 的前向指针与 §6.49 的边界条也已就地改正（原文不改写，只加指针）。
+  #45 结案保留的口径也写进同一节：这五条是 **argv 顺序**守卫，"denial 咬得住"的执行证据仍在 §6.45 一手 B
+  （committed `0a99662c2` 字节、`c1 /proc/version → NOT_READABLE`）；"撤掉搬迁这五条会红"是从一手 D 的
+  strace argv 顺序**推导**的，我没有为验证这句话另开 CI 手，也没做变异测试。
+  待登记：同一 run 的 `nextest (windows)`（按上一手 1h58m46s 推算约 12:16Z）与
+  `nextest (macos-latest)`（按 3h14m00s 推算约 13:32Z）终态。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
