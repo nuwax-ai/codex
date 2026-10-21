@@ -2570,6 +2570,10 @@ bwrap guard 全量、两条 Windows 红、CI 分片与 rusty_v8），先记三�
   台账 `:2088` 记录同一形状在**本机 Windows 11 桌面**单测隔离 2/3 复现。
   ⇒ "只是 runner 环境"这一说被这条反证打掉；缺的那一手是失败时的 `sandbox_log()`
   与 `apply_legacy_session_acl_rules` 是否返回成功。
+  **⚠ 这一条的定性已被 §6.32 撤回**：取证落地后它既没在真机复现（10/10 绿）、也没在
+  托管 runner 复现（同一 job 里 PASS 1.872s），而 `None, false` 那个读数是**我的取证代码**
+  只读 allow ACE、不减 deny 造成的过度报告，不是产品放行删除。原文保留，因为它记录了
+  当时为什么值得升级，结论以 §6.32 为准。
 
 ### A1：native 传输的端到端一手，从 app-server 侧扩到 `codex exec`
 
@@ -2636,9 +2640,11 @@ Windows 腿未接：`system_bwrap_warning` 在非 Linux 直接返回 `None`
 2. **A3 的立场**：`conpty_ctrl_c_interrupts_powershell_foreground_child` 要不要恢复
    `a63c08f0f` 当初加、`7d9dc6834` 删掉的按 build 门（推荐，理由见本节第 2 条推翻项），
    还是继续红着等 Windows 宿主。**这是分叉测试立场的变更，不自作主张。**
+   → 已拍"恢复门"，落地与两手证据见 §6.31。
 3. **A4 的处置**：Windows write-delete 那条按上表定性为 fail-open 且真机可复现，
    第一步只能是"让失败带上 `sandbox_log()` 与 ACL 落地证据"（纯测试侧、Windows-only，
    mac 无法编译验证，只能靠 `.235` 恢复后一手）；分叉内修生产 ACL 不在本轮范围。
+   → 取证已落地（§6.32），但定性与"真机可复现"这两点已被 §6.32 推翻，生产 ACL 无需动。
 4. **A5/A6**：rusty_v8 的 off-CI 配方卡在**下发体积仓内无记录**
    （`.github/actions/setup-rusty-v8/action.yml:28-39` 只从
    `github.com/openai/codex/releases` 取，无 vendored 副本），且已确认
@@ -2646,6 +2652,241 @@ Windows 腿未接：`system_bwrap_warning` 在非 Linux 直接返回 `None`
    （v8 只经 `codex-code-mode-runtime`→`code-mode-host` 与 `v8-poc` 进来），
    所以它的唯一收益是本机建 code-mode-host；CI 分片的阻塞前提已被推翻，
    剩下要拍的是目标是"消掉 mac cancelled"还是"整腿提速"（后者要动三条腿并重建对比基线）。
+
+### 6.31 A3 落地：按 build 号恢复 ConPTY Ctrl-C 那道门，并在真机上取到"首败→修复后"两手
+
+用户拍板选"恢复按 build 号设的门"（`a63c08f0f` 加、`7d9dc6834` 删的那道）。改动三处，全在未提交的
+工作树里：`utils/pty/src/windows_tests.rs:460-462` 恢复 `CONPTY_CTRL_C_INPUT_BROKEN_SINCE = 26_100`
+与 `affected_build`，等待失败分支从裸 `?` 改成 `match`——build 低于门槛才 `anyhow::ensure!`（`:493`）
+直接判红，达到门槛则改走退化契约（`TTL=` 仍在动 → `session.terminate()` → 断言 `ver` 没被打出来）；
+配套把 `win/mod.rs:47` 恢复成 `pub(crate) mod psuedocon;`、`win/psuedocon.rs:104` 恢复成
+`pub(crate) fn windows_build_number()`（`7d9dc6834` 当年把可见性一起收回去了，门要读它就得起回来）。
+
+**首败一手（个人 Windows `192.168.32.235`，`cmd.exe /C ver` = `10.0.26200.9711`，跑的是未门控代码）**：
+`win::psuedocon::tests::windows_build_number_returns_value` PASS 0.020s（`RtlGetVersion` 在这台读得到值，
+门才有得判）；ctrl-c 腿连跑 3 轮、nextest 自带 2 次尝试共 **6 次全 FAIL**，`rc_ctrlc_1/2/3` 都是 100，
+时长 11.819/11.003、11.051/11.080、13.046/12.583s；每次 stderr 逐字同形——
+`Error: timed out waiting for "Microsoft Windows" in PTY output:` 之后正好 **10 条**
+`来自 127.0.0.1 的回复: 字节=32 时间<1ms TTL=128`，即 0x03 写进 pseudoconsole 输入管道后 ping 没断、
+`cmd /C ver` 根本没跑。整腿 `Summary [22.699s] 27 tests run: 26 passed, 1 failed, 0 skipped`
+（`rc_pty_all=100`），`rc_clippy=0`。
+
+**托管 runner 是同形状，不是我这台的个别现象**：run `39396134392` 的 windows 腿
+`FAIL [11.447s] (21382/21760)`，stderr 同样是 10 条 `Reply from 127.0.0.1: bytes=32 time<1ms TTL=128`、
+同样没有 `ver`（缓存 `w39396.txt:25882`、`:25896`）。runner 的 build 号日志里没有，所以这里只主张
+"失败形状逐字一致"，**不**主张"实测同一 build"。
+
+**修复后一手（同一台、同一 build）**：ctrl-c 腿 PASS ×3，rc=0，时长 12.827 / 12.259 / 12.011s。这个 12s
+量级本身就是证据：它等于"等满 10s 超时 → terminate → 收尾"，说明门没有把腿变成静默跳过，而是在执行
+"中断只能靠 terminate"这条替代契约。整腿 `Summary [12.441s] 27 tests run: 27 passed, 0 skipped`，
+`rc_fix2_pty_all=0`、`rc_fix2_clippy=0`。
+
+**这一腿的过程里踩到两个记录坑，都记下来（它们决定收据可不可信）**：
+(1) 前两把误用 `git archive HEAD` 送码，`.235` 上跑的是**已提交**的旧代码——它因此变成"未门控首败"的一手，
+但不是修复后证据；验在途改动必须 `tar` 工作树。
+(2) `tar -xzf` 保留源文件旧 mtime，早于 `target/` 产物时 cargo 判 fresh、静默跑旧二进制；
+必须 `find <crate> -name '*.rs' -exec touch {} +`，并在脚本里 grep 改动标记确认源码到位。
+另外 `cargo nextest --no-run` 第一把 `rc=101 / 0xc0000142 (STATUS_DLL_INIT_FAILED)`，第二把才起来——
+这台的已知瞬时故障，不是代码问题。
+
+**门买到什么、买不到什么（不粉饰）**：买到的是 CI windows 腿不再被一个已知 OS 回归反复判红，且真红的时候
+断言的是实测行为；**买不到的是正向覆盖**——`.235`（26200.9711）与托管 runner 都落在受影响区间，
+所以"0x03 能打断前台子进程"这条契约目前在任何一台跑得动的机器上都没有一手。登记为已知缺口，不当作已解决。
+
+## 6.32 A4 撤回"fail-open"定性：取证落地后，Windows write-delete 那条在真机与托管 runner 上都判"保护模型正确"
+
+用户拍的是"先加诊断取证"。落地范围严格留在测试侧（`windows-sandbox-rs/src/unified_exec/tests.rs`，
+未提交），生产 ACL 一行没动。加了四件东西：
+
+- `session_delete_masks(path)`：分别取"文件自身"与"父目录"两把权限，按
+  `wanted = DELETE | FILE_DELETE_CHILD` 计算 **allow 减 deny** 的有效位
+  （deny ACE 无论 ACE 顺序位置都优先，这是 Windows ACL 的既有语义）；
+  `mask_names` 把有效位渲染成可读串，`delete_right_verdict` 给出"能不能删"的判决。
+- `write_delete_acl_evidence`：**每次运行**（不只失败时）打印 before/after 两组逐路径读数。
+  这是关键改动——原取证只在 panic 路径上打印，于是"红的时候才看得见"，
+  而绿的时候无法证明"绿是因为保护到位"而不是"绿是因为根本没执行"。
+- `PROTECTED_GIT_CHILD`（`.git\config`）：`.git` 目录本身被保护不等于里面的文件被保护，
+  原来只测父目录，这一条把子文件也纳入删除探针。
+- 断言收口成 7 元组（三个可写根内文件 + outside 文件 + `.git` + `.git\config` + 退出码）。
+
+**测试契约本身没被改动过**：`git diff origin/main -- <该文件>` 里没有任何被删除的断言行，
+唯一命中 `assert` 关键词的改动是 deadline 注释（外层 90s 上限、内层 60s 断言，
+目的是让慢腿由断言判红而不是 nextest TIMEOUT）。所以下面这些绿不是"我把断言改松了"换来的。
+
+| 来源 | selection | 读数 |
+| --- | --- | --- |
+| `.235`（Windows 11 `10.0.26200.9711`，A6） | `cargo nextest run -p codex-windows-sandbox --lib -E 'test(legacy_workspace_write_delete_is_limited_to_writable_roots)'` ×3 | 三轮全 `PASS`，0.330 / 0.311 / 0.311s（非个位毫秒 ⇒ 真执行） |
+| `.235`（A7，间歇性判定） | 同一 selection 连跑 **10 次隔离迭代** | `fails=0 of 10`，时长 0.302–0.323s，每次 rc=0 |
+| 托管 runner | run `39526586631` windows 腿（head `04623ca2c`） | `PASS [   1.872s] (21765/21766)`，同 job 总计 21766 run / 8 failed（名单见 §6.34），这条不在其中 |
+
+A6 那三手的逐路径证据（after session，`.235` 上一次真实运行的原文）：
+
+```
+workspace\workspace-delete.txt: here=[absent]  in parent=[DELETE]
+temp\temp-delete.txt:           here=[absent]  in parent=[DELETE]
+tmp\tmp-delete.txt:             here=[absent]  in parent=[DELETE]
+outside\outside-delete.txt:     here=[none]    in parent=[none]
+workspace\.git:                 here=[none(DELETE granted, DELETE+FILE_CHILD denied)] in parent=[DELETE]
+workspace\.git\config:          here=[none(DELETE granted, DELETE+FILE_CHILD denied)] in parent=[none(...denied)]
+```
+
+before session 六行全部 `here=[none] in parent=[none]`。读法：可写根内的三个文件被删掉了
+（`absent` = 策略本来就允许），**不在任何可写根内的 `outside` 文件既没被删也没有删除权**，
+`.git` 与 `.git\config` 都存活且有效位被 deny 明确收回。⇒ 与"左值尾巴 `None, false`
+= 保护失效放行删除"的解读正好相反。
+
+**这条红当初为什么会被读成安全问题**：我第一版取证用 `path_mask_allows` 只查 allow ACE、
+不减 deny，于是"被授予又被沙箱自己的 deny 收回"的权限被打印成"允许删除"。按 allow-minus-deny
+重算后判决翻转。**定性：harness 缺陷（取证代码过度报告），不是产品缺陷。** §6.30 那条
+"A4 的定性要往上调（安全相关）"已在原处标注撤回。
+
+**不粉饰的部分**：加了取证之后这条腿**一次都没再红过**，所以"当年那次 `None, false` 失败时的
+ACL 落地状态"这一手依然缺失，间歇性本身仍未解释（台账 `:2088` 记的"本机 2/3 复现"与
+`.235` 现在 13 次连续绿无法同时成立，两组读数的差异我只能归给未测的宿主时序，不作主张）。
+现在能主张的是两件事：(a) 保护模型在真机与托管 runner 上都有**直接的存活证据**，
+不再依赖"它绿了所以大概没问题"；(b) 若它再次变红，同一份日志能立刻区分
+"能力 ACE 从未落地"（`here=[none]` 且父目录也没 DELETE）与"落地过宽"
+（出现 `granted` 而无 `denied` 尾巴）。取证成本 0.3s 量级，判定收益不对称，保留。
+
+## 6.33 个人 Linux `.45` 上的第四项确认缺陷：`/dev/*` 的 deny mask 让 bwrap 在命令启动前 abort
+
+`.45`（**Ubuntu 26.04.1 LTS**、`uname -r` = `7.0.0-38-generic`、`bubblewrap 0.11.1`、
+`kernel.apparmor_restrict_unprivileged_userns` = **1**、16 核、stable toolchain）是本轮第一台
+bwrap **真跑得起来**的 Linux 机。注意这个 sysctl 读数是 1，却并没有像 `.41` 那样阻断 userns
+（§6.27 那台是 1 且 8 条 guard 腿全部跳过）；差异的机制我没测，只登记读数与结果，
+不编解释。这条主机事实直接决定了此前所有 bwrap 相关结论的证据等级：`.41`/runner 上
+"绿"的八条腿里有多少是真执行，第一次有了可核对的分母。
+
+**#36 一手（修复前基线）**：`-p codex-exec-server --test exec_process` =
+`Summary [12.171s] 60 tests run: 56 passed, 4 failed, 11 skipped`；
+`-p codex-linux-sandbox` = `Summary [6.269s] 228 tests run: 228 passed, 3 skipped`；
+跳过收据文件**未生成** ⇒ 八条 guard 腿在这台全部真执行（这正是 §6.30 A2 机制要读的东西）。
+
+四条红分桶（每桶都要有一手，不接受"大概环境问题"）：
+
+1. **3 条 = 宿主环境噪声**（`shell_snapshot_v2_capture_failure_falls_back_and_retries` 的
+   `remote_pipe_recovery` / `remote_tty_recovery` / `remote_retry_budget_exhausted`）。
+   strace 一手：`execve("/usr/bin/systemd-cat", ["-p","6","-t","im-config", …])`，
+   由沙箱内 login shell 经 `/etc/profile.d` 的 run-parts 触发；`Failed to create stream fd:
+   Operation not permitted` 这句在整个 `codex-rs` 里只有 `systemd-cat` 持有。
+   seccomp + `--unshare-net` 让它的 `socket()` 拿 EPERM ⇒ 快照捕获阶段的非零退出。
+   产品的 fallback 契约本身仍然成立（`exec_process.rs:709` 断言的
+   `("original", "", Some(0), true)` 未变），所以这不是分叉缺陷，是 Ubuntu 桌面包
+   往 profile.d 里塞了个在沙箱里必挂的探针。
+2. **1 条 = 确认的产品缺陷**（`shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path`）。
+   `.45` 上复现的失败与托管 runner 逐字同形（stderr 见 §6.34），strace 抓到的 argv 里
+   这段是根因：`--dev /dev` … `--perms 000 --tmpfs /dev/fd --remount-ro /dev/fd`。
+
+机制（读代码 + vendored 源，不是猜）：`--dev /dev` 在**所有**策略分支都是基线参数
+（`linux-sandbox/src/bwrap.rs:295/535/544/575/676`），而 `vendor/bubblewrap/bubblewrap.c:1387-1412`
+的 `SETUP_MOUNT_DEV` 只按固定节点表 `{null, zero, full, random, urandom, tty}` 建文件、
+再加 `stdin/stdout/stderr` 三个符号链接。⇒ 宿主 `/dev` 下的其它条目（`fd`、`pts`、…）
+在沙箱根里**压根不存在**，于是对 `Deny /dev/fd` 这条策略发出的 `--tmpfs /dev/fd` 找不到挂载点，
+bwrap 直接 abort，**被沙箱包住的命令一次都没启动**。这是 fail-closed 的**功能失效**
+（不是安全放行），后果是任何带 `/dev/*` deny 的策略在该宿主上都不能用；机制与宿主无关，
+这解释了为什么同一腿在 ubuntu runner 上是"亚秒 + 空输出"这个形状。
+
+**第一版方案错了，并且是被自己的实验证伪的**：我先做的是"补一个挂载点"——
+`--perms 000 --dir /dev/fd` 再接 mask。单测全绿，leg 仍红；直接手跑 bwrap 两组对照
+（E1 只 `--dir` → rc=0；E2 `--dir` + `--tmpfs` → 同一句 `Can't mount tmpfs on /newroot/dev/fd:
+No such file or directory`）说明 `--dir`（`SETUP_MAKE_DIR`，client 侧 `ensure_dir`）与
+tmpfs mount（privileged_op，server 侧）不在同一作用域，救不了 `/dev/*` 的 mask。
+那版代码（`needs_synthetic_dev_mount_target` 及其两条测试）已整体删除，不留死代码。
+
+**落地方案**：缺席本身就是拒绝。`append_unreadable_root_args` 在 symlink fail-closed bail
+之后、`!exists()` 分支之前，跳过"合成 `/dev` 本来就不含"的目标；
+`SYNTHETIC_DEV_ENTRIES: [&str; 10]`（6 个节点 + 3 个符号链接 + `--dev` 之外另行 bind 的 `shm`）
+逐项对齐 vendored 那张表，`/dev` 自身与表内节点保持可 mask。三条新腿：
+
+| 腿 | 测的是哪一面 | `.45` 读数 |
+| --- | --- | --- |
+| `only_dev_paths_outside_the_synthetic_set_count_as_absent` | 纯谓词，不碰宿主：`/dev/fd`、`/dev/pts/1` → true；`/dev`、`/dev/null`、`/dev/shm`、`/devfoo`、`/tmp/dev` → false | PASS 0.014s |
+| `denied_dev_path_without_a_mount_point_is_denied_by_absence` | 真 argv：既不发 `--tmpfs/--dir/--remount-ro /dev/fd`，也不发 `--ro-bind-data … /dev/fd` | PASS 0.018s |
+| `denied_synthetic_dev_node_keeps_its_mask` | 反向不退让：`/dev/null` 仍走 `--ro-bind-data`，掩蔽文件数 = 1 | PASS 0.016s |
+
+第二条的前置条件写成响亮 `assert!(denied.is_dir(), "precondition: …")`，
+不是 `if !denied.is_dir() { return; }`——本轮刚花了一整个 A2 把"缺前置即静默绿"变成可 grep 的
+收据，测试自己不能又犯同一个失效模式；宿主 `/dev/fd` 若不存在就该大声红。
+谓词那条是宿主无关的，所以 mac 本机也能给它一手。
+
+**修复后一手（同一台；登记的是收尾后的最后一把，源码 md5 `c2283864…` 与 mac 工作树逐字节相同、
+`deny_is_enforced_by_absent_dev_path` 标记 grep=9 处到位）**：
+`-p codex-linux-sandbox` = `Summary [6.157s] 231 tests run: 231 passed, 3 skipped`
+（228 + 3 条新腿，分母对得上）；
+`blocked_descriptor_path` = `PASS [   0.909s] (1/1) … 1 test run: 1 passed, 70 skipped`
+——0.909s 而不是个位毫秒，配合"未写跳过收据"就是真执行；
+整族回归 `-p codex-exec-server --test exec_process` = `Summary [12.117s] 60 tests run: 57 passed, 3 failed, 11 skipped`，
+剩下的 3 条正是上面第 1 桶那 3 条 im-config/systemd-cat 噪声红，**一条没多**；
+`rc_clippy=0`；`cargo fmt --all --check`（在 `codex-rs` 工作区根）rc=0。
+
+**syscall 一层的补强**（不停在单测断言上）：同一台用 `strace -f -e trace=execve` 跑这一腿，
+`rc_leg=0`、`PASS [1.065s]`，抓到的 **28 次** `execve("/usr/bin/bwrap", …)` 里
+**0 次**带 `"/dev/fd"` 这个参数（前一手同位置的 argv 里是
+`--perms 000 --dir /dev/fd --perms 000 --tmpfs /dev/fd --remount-ro /dev/fd`），
+而 `--dev /dev` 基线仍在原位。⇒ "不再对缺席路径下 mask" 这一条不是只对 fake argv 成立，
+真实子进程就是这样起来的。策略里的 `{"path":"/dev/fd","access":"deny"}` 条目本身保留
+（沙箱内 `/dev/fd` 依然不可读，`</dev/fd/18` 走的是失败分支），改的只是"用什么方式拒绝"。
+
+## 6.34 下一批的两手 CI 收据：`39526586631`（head `04623ca2c`）与 `39530269408`（head `ecb4ba6bb`）
+
+两手里 **ubuntu 腿都已到终态**，mac/windows 仍有 job 在跑。**两手都不含本节要登记的
+bwrap 修复与 A3 门**——那些改动还只在未提交工作树里，所以这两手读的是"修复前"的行为，
+不能拿来证明修复有效（有效性一手在 §6.33）。
+
+取日志的通道这次必须换：run 未终态时 `gh run view --job … --log` 直接拒绝
+（`run 39526586631 is still in progress; logs will be available when it is complete`），
+但**已完成 job 的日志可以单独取**：
+`gh api --allow-escape-sequences repos/nuwax-ai/codex/actions/jobs/<jobId>/logs`
+（不带 `--allow-escape-sequences` 时 gh 会以"响应含终端转义序列"为由拒绝输出）。
+清洗仍用 `perl -pe 's/\e\[[0-9;]*m//g; s/\^\[\[[0-9;]*m//g'`，两种形态都吃掉。
+
+| job | 读数 |
+| --- | --- |
+| `39526586631` / `nextest (windows)` (118982561275) | `Summary [2691.695s] 21766 tests run: 21758 passed (20 slow, 322 leaky), 8 failed, 138 skipped` |
+| `39526586631` / `nextest (ubuntu-latest)` (118982561606) | `Summary [2847.851s] 22935 tests run: 22934 passed (21 slow), 1 failed, 48 skipped` |
+| `39530269408` / `nextest (ubuntu-latest)` (118994304753) | `Summary [2892.564s] 22938 tests run: 22937 passed (22 slow), 1 failed, 48 skipped` |
+| `39526586631` / `bazel bridge gate (ubuntu)` | success（两手的 bridge gate 都 success） |
+
+**ubuntu 那唯一一条红，两手里都是同一条腿、两种表面形状**：
+
+- hand 1 `FAIL [   0.336s]`，`panicked at exec-server/tests/exec_process/shell_snapshot.rs:348:13`，
+  `bash#0: output="" stderr="bwrap: Can't mount tmpfs on /newroot/dev/fd: No such file or directory\n"
+  status=Some(1) closed=true`
+  ⇒ §6.33 的机制**第一次拿到托管 runner 一手**，逐字与 `.45` 复现同形。此前这个根因只有
+  我自己那台机器和代码推断两个来源。
+- hand 2 `FAIL [  25.316s]`，`Error: exec-server transport disconnected: failed to read
+  websocket JSON-RPC message from exec-server websocket ws://127.0.0.1:42967: WebSocket protocol
+  error: Connection reset without closing handshake; failed to resume exec-server session:
+  no resume attempt finished within 25s (last attempt: … Connection refused (os error 111))`
+  ⇒ **这条形状我没有解释**。同一腿、同一策略、无 `bwrap:` stderr，最合理的一致读法是
+  那次 abort 把 exec-server 连接一起带崩、然后按 25s resume 预算耗尽收场，但这只是
+  候选解释。诚实登记：修复直接针对的是 hand-1 形状；含修复的下一手 runner 上若 25.316s
+  这一形状仍在，就必须单独再查，不能算已被 §6.33 覆盖。
+
+**windows 的 8 条红，逐条与已有定性的对应**：
+
+| 腿 | 时长 | 归属 |
+| --- | --- | --- |
+| `codex-uds lib_tests::socket_validation_rejects_broad_acl_without_repairing_it` | 0.540s | §6.x 既有的 uds runner-image 家族（#18 已处置，未新增主张） |
+| `codex-uds lib_tests::private_directory_acl_is_user_only_and_inherited_by_files` | 0.908s | 同上 |
+| `codex-tui app::tests::session_lifecycle_requests::dynamic_tool_requests_ignore_other_namespaces_and_dispatch_tui_namespace` | 2.068s | 本手首次观察，尚未分桶 |
+| `codex-utils-pty tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child` | 12.701s | **A3**，`7d9dc6834` 删门之后必红；§6.31 已量到 runner 与 `.235` 逐字同形，恢复门只修这一条 |
+| `codex-core::all suite::auto_review::remote_model_override_uses_catalog_model_for_strict_auto_review` | 26.531s | 本手首次观察，尚未分桶 |
+| `codex-windows-sandbox unified_exec::tests::legacy_capture_cancellation_terminates_descendants_without_timeout` | 57.340s | `legacy_` 家族（#27 已重分类，deadline 与整机调度那组） |
+| `…::legacy_capture_emits_output_and_preserves_descendant_after_normal_exit` | 61.222s | 同上 |
+| `…::legacy_tty_job_terminates_and_preserves_descendants` | 61.237s | 同上 |
+
+同 job 里 `legacy_workspace_write_delete_is_limited_to_writable_roots` 是 `PASS [   1.872s]`
+⇒ §6.32 的托管 runner 一手。
+
+**跳过收据机制（`6c176ecec`）在 CI 里确实工作**：hand 2 的 ubuntu job 里那个 `if: always()`
+步骤打印 `no skip receipt file: either the suite never ran or no leg skipped`，
+而**同一个 job 确实跑了 `exec_process`**（该腿 FAIL 就是执行证据）⇒ 八条 bwrap guard 腿
+在 `ubuntu-latest` 上**零跳过、全部真执行**。这正是 §6.30 A2 那条边界要买的东西：
+"零收据"与"若干收据"现在可区分了。`#39` 由此可收口。
+
+`39526586631` 的 mac job 与 `39530269408` 的 mac/windows job 在登记时仍 `in_progress`；
+按既有规矩，未到终态的 job 日志不可取，也不把"还在跑"读成任何结论。
 
 ## 7. 提交、推送与工作树状态
 
@@ -2937,6 +3178,29 @@ Windows 腿未接：`system_bwrap_warning` 在非 Linux 直接返回 `None`
   源码经 `git bundle create … 486ed23a4..test`（**14.6 KB**）→ scp →
   `git fetch <bundle> test` → 独立分支 `qoder-verify-20261021b`，旧分支
   `qoder-verify-20261021` @ `486ed23` 原样保留。
+
+- **§6.31–§6.34 这一手的提交与推送（实测，本机）**：三笔代码提交分片落地——
+  `a4c0ff2fa`（§6.33 的产品修复：不再对合成 `/dev` 里本就不存在的 `/dev/*` deny 目标下 mask，
+  单文件 `linux-sandbox/src/bwrap.rs`，含三条新腿）、
+  `8a41ac7d3`（§6.31 的 A3 门：`utils/pty` 三文件，恢复 `psuedocon` 可见性以读 build 号）、
+  `c7590fe24`（§6.32 的 A4 取证：`windows-sandbox-rs/src/unified_exec/tests.rs`，+346/−3，
+  删掉的三行只有旧断言元组与旧 panic 消息，契约语义原样保留并多一项 `.git\config` 探针）。
+  **推送分两步**：先把 `origin/test` 推到 `c7590fe24`（tip 不带 `[skip ci]`，触发本轮唯一
+  一手自动 run，head 含全部三笔），随后本笔文档提交带 `[skip ci]` 单独推上，不产生第二手。
+  这样买到的东西是可核对的：ubuntu 腿能同时判 §6.33 修复是否让
+  `blocked_descriptor_path` 的两种形状（`0.336s` 的 `bwrap:` stderr 与 `25.316s` 的
+  transport 断连）消失，windows 腿能判 A3 那道门在新 head 上是否真的不再红。
+  **第二、第三平台的收据仍全部在推送前拿到，不在 CI 上赌**：`.45` 上
+  231/231、leg `PASS 0.909s`、`exec_process 57 passed/3 failed`、`rc_clippy=0`、
+  strace 28 次 bwrap execve 中 0 次带 `/dev/fd`；`.235` 上 A6 3/3、A7 10/10、
+  §6.31 的门控后三手 PASS。**五个改动文件的 md5 在 mac 工作树、`.45`、`.235` 三处逐字节一致**
+  （`c2283864…`/`aed947d8…`/`92e3e9de…`/`90a3eb4f…`/`57cf44bf…`），
+  所以这些一手确实覆盖即将推送的这份源码，而不是它的前一版。
+  **本轮没有 dispatch**：`39526586631` 的 mac 腿与 `39530269408` 的 mac/windows 腿在登记时
+  仍 `in_progress`，日志未到终态不可取（§6.34）。
+  **仍未闭合的**：#24 rusty_v8 离线配方等范围拍板；A2 覆盖面三处
+  （`codex-linux-sandbox` 32 条 / `codex-exec` 4 条 Landlock / Windows MXC 4 条）未接；
+  ubuntu hand-2 那条 `25.316s` 形状**未被解释**，不能算已被 §6.33 覆盖。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
