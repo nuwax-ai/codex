@@ -1400,6 +1400,10 @@ fn append_unreadable_root_args(
         )));
     }
 
+    if deny_is_enforced_by_absent_dev_path(unreadable_root) {
+        return Ok(());
+    }
+
     if !unreadable_root.exists() {
         if let Some(first_missing_component) = find_first_non_existent_component(unreadable_root)
             && is_within_allowed_write_paths(&first_missing_component, allowed_write_paths)
@@ -1454,6 +1458,33 @@ fn append_existing_unreadable_path_args(
     bwrap_args.args.push("--perms".to_string());
     bwrap_args.args.push("000".to_string());
     append_empty_file_bind_data_args(bwrap_args, unreadable_root)
+}
+
+/// The `/dev` entries that do exist inside bwrap's synthetic device tree
+/// (`bubblewrap.c`, `SETUP_MOUNT_DEV`), plus `/dev/shm`, which this helper binds.
+const SYNTHETIC_DEV_ENTRIES: [&str; 10] = [
+    "null", "zero", "full", "random", "urandom", "tty", "stdin", "stdout", "stderr", "shm",
+];
+
+/// Returns true when a deny rule targets a path the synthetic `/dev` already hides.
+///
+/// `--dev /dev` replaces the host device tree with the fixed entries above, so every
+/// other `/dev/*` path has no mount point inside the sandbox. Masking one makes
+/// bubblewrap abort before the command starts; skipping the mask leaves that path
+/// unreachable, which is the denial the policy asked for.
+fn deny_is_enforced_by_absent_dev_path(path: &Path) -> bool {
+    let Ok(relative) = path.strip_prefix(Path::new("/dev")) else {
+        return false;
+    };
+    let Some(entry) = relative
+        .components()
+        .next()
+        .and_then(|component| component.as_os_str().to_str())
+    else {
+        // `/dev` itself is a mount point bubblewrap creates, so it stays maskable.
+        return false;
+    };
+    !SYNTHETIC_DEV_ENTRIES.contains(&entry)
 }
 
 /// Returns true when `path` is under any allowed writable root.
@@ -2914,6 +2945,99 @@ mod tests {
                 .windows(2)
                 .any(|window| window == ["--remount-ro", blocked_str.as_str()])
         );
+    }
+
+    #[test]
+    fn only_dev_paths_outside_the_synthetic_set_count_as_absent() {
+        assert!(deny_is_enforced_by_absent_dev_path(Path::new("/dev/fd")));
+        assert!(deny_is_enforced_by_absent_dev_path(Path::new("/dev/pts/1")));
+        assert!(!deny_is_enforced_by_absent_dev_path(Path::new("/dev")));
+        assert!(!deny_is_enforced_by_absent_dev_path(Path::new("/dev/null")));
+        assert!(!deny_is_enforced_by_absent_dev_path(Path::new("/dev/shm")));
+        assert!(!deny_is_enforced_by_absent_dev_path(Path::new("/devfoo")));
+        assert!(!deny_is_enforced_by_absent_dev_path(Path::new("/tmp/dev")));
+    }
+
+    #[test]
+    fn denied_dev_path_without_a_mount_point_is_denied_by_absence() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let denied = Path::new("/dev/fd");
+        assert!(
+            denied.is_dir(),
+            "precondition: {denied:?} must resolve to a directory on this host"
+        );
+        let policy = denied_dev_policy(denied);
+
+        let args = create_filesystem_args(&policy, temp_dir.path(), BwrapOptions::default())
+            .expect("filesystem args");
+        let denied_str = path_to_string(denied);
+
+        for mask in [
+            ["--tmpfs", denied_str.as_str()].as_slice(),
+            ["--dir", denied_str.as_str()].as_slice(),
+            ["--remount-ro", denied_str.as_str()].as_slice(),
+        ] {
+            assert!(
+                !args.args.windows(2).any(|window| window == mask),
+                "{mask:?} would abort bwrap: args={:?}",
+                args.args
+            );
+        }
+        assert!(
+            !args
+                .args
+                .windows(3)
+                .any(|window| window[0] == "--ro-bind-data" && window[2] == denied_str),
+            "args={:?}",
+            args.args
+        );
+    }
+
+    #[test]
+    fn denied_synthetic_dev_node_keeps_its_mask() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let denied = Path::new("/dev/null");
+        let policy = denied_dev_policy(denied);
+
+        let args = create_filesystem_args(&policy, temp_dir.path(), BwrapOptions::default())
+            .expect("filesystem args");
+        let denied_str = path_to_string(denied);
+
+        assert!(
+            !args
+                .args
+                .windows(2)
+                .any(|window| window == ["--tmpfs", denied_str.as_str()]),
+            "args={:?}",
+            args.args
+        );
+        assert!(
+            args.args
+                .windows(3)
+                .any(|window| window[0] == "--ro-bind-data" && window[2] == denied_str),
+            "args={:?}",
+            args.args
+        );
+        assert_eq!(args.preserved_files.len(), 1);
+    }
+
+    fn denied_dev_policy(denied: &Path) -> FileSystemSandboxPolicy {
+        FileSystemSandboxPolicy::restricted(vec![
+            FileSystemSandboxEntry {
+                path: FileSystemPath::Special {
+                    value: FileSystemSpecialPath::Root,
+                },
+                access: FileSystemAccessMode::Read,
+                missing_path_behavior: None,
+            },
+            FileSystemSandboxEntry {
+                path: AbsolutePathBuf::from_absolute_path(denied)
+                    .expect("absolute denied path")
+                    .into(),
+                access: FileSystemAccessMode::Deny,
+                missing_path_behavior: None,
+            },
+        ])
     }
 
     #[test]
