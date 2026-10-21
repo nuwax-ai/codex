@@ -3878,6 +3878,42 @@ stderr: Error: exec-server transport disconnected: failed to read websocket JSON
 `/proc/sys/net/fan` 的 execve 里，`--perms 000 --tmpfs … --remount-ro …` 三段确实落在
 `--proc /proc` **之前**（与 `--unshare-net` 同批），仍然 `rc=1`。
 
+### 一手落点（`.45:~/rig-verify-20261021/logs/`，脚本里的 `L=$HOME/rig-verify-20261021/logs`）
+
+上面三张表的全部读数都是远端原始收据，本机不另存副本；本节写下后已按文件名逐条复取一遍，
+前缀↔脚本↔格子的对应关系如下（"复核"列＝复取时读到的原文，不是记忆）：
+
+| 前缀 | 出自脚本 | 覆盖哪几格 | 复核 |
+| --- | --- | --- | --- |
+| `p45s-{host,sandbox,onlyhost}.txt` | `lx45-proc-surface.sh` | 一手 A 的**深度 2** 差集 | `wc -l` = **216 / 216 / 0** |
+| `p45b-{host3,sb3,only3}.txt` 与 `p45c-{host,sb,only}.txt` | `lx45-proc-surface2.sh`（无 `LC_ALL=C`，`comm` 报错那次）与 `lx45-proc-surface3.sh`（重跑） | 一手 A 的**深度 3** 差集 | 两组各 `wc -l` = **1408 / 1406 / 2**；`p45c-only.txt` 逐字两行 `/proc/sys/net/fan`、`/proc/sys/net/nf_conntrack_max` |
+| `p45c-{b1,b2,cf,cd1,cbm}` | `lx45-proc-surface3.sh` | host-only 两条经真实 helper 的 abort、`/proc/net` 与 binfmt_misc 的 deny | `b1` err `Can't mkdir /proc/sys/net/fan`、`b2` err `Can't create file at /proc/sys/ne…`、`cbm`/`cd1` out `SANDBOX_STARTEDNOT_READABLE` |
+| `p45b-exist.out` | `lx45-proc-surface2.sh:29` | 一手 A 第三条（§6.43 举的 binfmt_misc 在新 procfs 里**存在**） | 逐字 `dr-xr-xr-x 2 nobody nogroup 0 Oct 21 17:12 /proc/sys/fs/binfmt_misc`，其后 `grep -c binfmt /proc/mounts` = `2` |
+| `p45c-{pre,post}` | `lx45-proc-surface3.sh`（D 段） | C 表 `/proc/sys/fs/binfmt_misc` 行 | `pre` out `READABLE`、`post` out `DENIED` |
+| `p46f-{s_before,s_after,h_before,h_after,ctrl}` | `lx45-netns-order.sh` | C 表 `/proc/sys/net/ipv4` 行与 `/proc/sys/net/fan` 行 | `s_before` `READABLE` / `s_after` `NOT_READABLE`；`h_before`、`h_after` 同一句 `Can't mkdir /proc/sys/net/fan` |
+| `p46h-before_*` / `p46h-after_*` | `lx45-file-order.sh` | C 表 somaxconn / version / `net/dev` 三行 | somaxconn `READABLE`→`NOT_READABLE`；version 同形；dev 两列各一句 abort，逐字含 `/newroot/proc/3005870/net/dev` 与 `/newroot/proc/1/net/dev` |
+| `p46g-*` + `p46g-build.log` | `lx45-committed-recheck.sh` | 一手 B 的 13 条腿 | `k0` `SANDBOX_STARTED`；`k1` 无 deny 列出 `bridge core ipv4 ipv6 mptcp netfilter unix` 且两句 `No such file or directory`；`n1`/`n2` 空 out + 各自 abort；`n3`–`n6` 均 `SANDBOX_STARTEDNOT_READABLE`；`c1` `NOT_READABLE`、`c2` `SANDBOX_STARTED`、`c3` `READABLE`、`c4` `NOT_READABLE`、`c5` `SANDBOX_STARTEDREADABLE` |
+| `p46d-{a,b,c}.{out,err,strace}` | `lx45-argv-hunt.sh`（门控实验期间） | 一手 D 的 argv，以及"netns 是真新的"那条 | `p46d-a.out` 逐字含 `net:[4026537112]`（沙箱侧）与那批 `bridge core ipv4 …`；`p46d-a.strace` 里 `--unshare` 去重后正是 `--unshare-ipc --unshare-net --unshare-pid --unshare-user`；`p46d-b`＝那条 `/proc/sys/net/fan` 腿，空 out + `Can't mkdir …`；`p46d-c` out `SANDBOX_STARTED4096` |
+
+**唯一一条不在 `logs/` 里**的读数：宿主侧 `netns inode=net:[4026531833]`。它出自
+`lx45-argv-hunt.sh:15` 的 `echo "host netns inode=$(readlink /proc/self/ns/net)"`——打的是脚本
+stdout，没落文件。本节写下后重新直连取了一遍，`readlink /proc/self/ns/net` 现值仍是
+`net:[4026531833]`，与沙箱侧 `4026537112` 不同 ⇒ 这一格从"只有会话记录"变成"可复取的现测"。
+
+三个坑，供下一手少花时间：一是 `n3`–`n6`/`c5` 的探针把 `echo SANDBOX_STARTED` 和可读性判断
+写在同一条 `/bin/sh -c` 里，所以判决**在同一行的后半截**——按 `cut -c1-14` 这类前缀读会只看
+见 `SANDBOX_STARTED`，把 `NOT_READABLE`/`READABLE` 截没（本节的表格读的是整行）。
+二是 `.45` 的 ssh 别名不在这台 mac 的 `~/.ssh/config` 里（其中 `linux`=`192.168.32.117`、
+`win`=`192.168.32.235`，`.45` 属另一网段），`ssh .45` 报 `Could not resolve hostname`，
+要用完整地址直连。
+三是 `p45b-{pre,post}` 与 `p45c-{pre,post}` 是**同一问的两版**，且前版两列都读成
+`NOT_READABLE`。机制是探针自身失效：`surface2.sh:54-60` 的 argv 没有 `--dev /dev`，
+而探针写成 `ls '$BM' >/dev/null 2>&1 && echo READABLE || echo NOT_READABLE`——沙箱里没有
+`/dev/null`，重定向先失败，`&&` 分支根本轮不到，所以两序同印失败分支（连同一 argv 下的
+`pre_ok`/`post_ok` 两条对照也一样废）。`surface3.sh` 的 D 段（注释自陈"fixed (with
+`--dev /dev`, no `/dev/null` dependency)"）才是可用形状，C 表第 5 行读的是它：
+`READABLE` / `DENIED`。**引用这一格必须连前缀一起写**，否则同名 `pre`/`post` 会指到相反的结论。
+
 ### 结论
 
 1. **归因更正**："`/proc/sys/net/<只在宿主 netns 存在的名>` 的响亮 abort"由
@@ -4525,6 +4561,21 @@ windows 腿终态、#47 结案；mac 腿（#46 判据所在）在本节写下时
   台账 `:3477` 那句 `eff = (授予 restricting 列表的位) ∩ (授予 default 列表的位)` 与
   `unified_exec/tests.rs:376-393`（`delete_right_verdict` / `let effective = r_held & d_held;`）
   **逐字一致**，不需要改写。
+- **本笔只做一件事：给 §6.45 的三张表补"一手落点"表**（远端 `.45:~/rig-verify-20261021/logs/`
+  里前缀↔脚本↔格子的对应，加三个坑）。`codex-rs/` 净变化仍为 0，本笔只动这一份 md。
+  补这张表的成本顺带换来一次全表复核：**上一笔登记的读数没有一格需要改**，但过程里自己
+  差点误判一次——`p46g-n3`–`n6`/`c5` 的判决和 `SANDBOX_STARTED` 在同一条 `/bin/sh -c` 的
+  输出里，第一次用 `cut -c1-14` 读只看见前缀、以为登记错了；按整行重读才确认台账是对的。
+  真正的**新发现**只有一条：`p45b-{pre,post,pre_ok,post_ok}` 那四条是探针自身失效
+  （argv 没 `--dev /dev`，`>/dev/null` 先失败）⇒ 它们从来不构成判据，C 表第 5 行依赖的
+  一直是 `p45c-{pre,post}`；已把这条连同"同名前缀两版指向相反结论"写进坑里。
+  另外两处口径修正也在同一张表内完成：深度 2 的 216/216/0 出自 `p45s-*` 而非 `p45c-*`
+  （第一版表把两档差集都记给了 `surface3.sh`，属过度归因，未提交前改掉）；宿主
+  `netns inode` 那一格没有文件收据，已用现测复取成 `net:[4026531833]`。
+  推送前置条件不变：写本笔时 `39562896528` 的 mac 腿仍 `in_progress`（`startedAt` =
+  `2026-10-21T07:34:18Z`，09:55Z 复核时 ubuntu / windows / bazel gate 三腿已终态），
+  本地指针 `origin/test` = `1af8b5a70`、`git rev-list --left-right --count origin/test...test`
+  在本笔后是 `0 6`。
 
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
