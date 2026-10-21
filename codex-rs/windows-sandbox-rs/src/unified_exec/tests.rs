@@ -118,10 +118,11 @@ const INHERITED_ACE_FLAG: u8 = 0x10;
 const INHERIT_ONLY_ACE_FLAG: u8 = 0x08;
 
 /// ACL evidence for the write/delete leg. The verdicts answer the one question the
-/// leg is about — can this session's capability SIDs reach a delete right on this
-/// path — and each probe path then decodes every ACE it holds, inherited entries
-/// included, read through the same handle-based fetch the production ACL code uses,
-/// so every line is an entry the sandbox child's access check actually saw. The
+/// leg is about — can the token this session launches its child with reach a delete right on
+/// this path — and on a `WRITE_RESTRICTED` token that is a two-list question, so both lists are
+/// reported and every verdict is their intersection. Each probe path then decodes every ACE it
+/// holds, inherited entries included, read through the same handle-based fetch the production ACL
+/// code uses, so every line is an entry the sandbox child's access check actually saw. The
 /// whole text is printed on every run, green included. Derivation failures are
 /// rendered into the report instead of panicking: the evidence must never become
 /// the reason a leg goes red.
@@ -156,7 +157,14 @@ fn write_delete_acl_evidence(
         }
         Err(err) => dump.push_str(&format!("permissions failed to resolve: {err}\n")),
     }
-    let cap_ptrs: Vec<*mut c_void> = root_sids.iter().map(|root| root.sid.as_ptr()).collect();
+    let mut restricting = SidList::default();
+    let mut default = SidList::default();
+    for (index, root) in root_sids.iter().enumerate() {
+        restricting.push_ptr(format!("cap#{index}"), root.sid.as_ptr());
+    }
+    for problem in unsafe { push_token_sid_lists(&root_sids, &mut restricting, &mut default) } {
+        dump.push_str(&format!("token SID note: {problem}\n"));
+    }
     let cap_sid_strings = root_sids
         .iter()
         .map(|root| root.sid_str.as_str())
@@ -166,9 +174,9 @@ fn write_delete_acl_evidence(
     for subject in subjects {
         // Deleting a file needs DELETE on the file or FILE_DELETE_CHILD on its parent,
         // so both halves are reported.
-        let on_file = delete_right_verdict(subject.as_path(), &cap_ptrs);
+        let on_file = delete_right_verdict(subject.as_path(), &restricting, &default);
         let on_parent = match subject.parent() {
-            Some(parent) => delete_right_verdict(parent, &cap_ptrs),
+            Some(parent) => delete_right_verdict(parent, &restricting, &default),
             None => "no parent".to_string(),
         };
         verdicts.push_str(&format!(
@@ -177,44 +185,270 @@ fn write_delete_acl_evidence(
         ));
     }
     dump.push_str(&format!(
-        "writable-root capability SIDs: [{cap_sid_strings}]\n{verdicts}"
+        "writable-root capability SIDs: [{cap_sid_strings}]\n\
+         restricting SID list: [{}]\n\
+         default SID list: [{}]\n\
+         eff = (granted to the restricting list) & (granted to the default list)\n\
+         {verdicts}",
+        restricting.summary(),
+        default.summary()
     ));
     for path in probe_paths {
-        dump.push_str(&delete_acl_lines(path, &cap_ptrs));
+        dump.push_str(&delete_acl_lines(path, &restricting, &default));
         dump.push('\n');
     }
     dump
 }
 
-fn delete_right_verdict(path: &Path, cap_ptrs: &[*mut c_void]) -> String {
-    if cap_ptrs.is_empty() {
-        return "capability SIDs unavailable".to_string();
+/// One of the two SID lists a `WRITE_RESTRICTED` token is checked against. A write access request
+/// is granted only when the DACL grants the bit to the restricting list *and* to the default list,
+/// so the two lists are kept apart here rather than merged into "the SIDs this token holds": the
+/// default list is where the job user's groups live, the restricting list is where the writable-root
+/// capability SIDs, the logon SID and Everyone live, and only the intersection is a right.
+#[derive(Default)]
+struct SidList {
+    buffers: Vec<Vec<u8>>,
+    entries: Vec<SidEntry>,
+}
+
+struct SidEntry {
+    /// Short handle used by the verdicts, so a receipt names the principal without reprinting
+    /// a 40-character SID on every line.
+    tag: String,
+    sid: String,
+    ptr: *mut c_void,
+    /// `false` for a deny-only group: LUA puts `Administrators` in the token so its deny ACEs land,
+    /// but a grant naming it never does. Dropping the entry instead would lose the deny half.
+    can_grant: bool,
+}
+
+impl SidList {
+    fn push(&mut self, tag: String, sid: Vec<u8>, can_grant: bool) {
+        let sid_text =
+            crate::winutil::string_from_sid_bytes(&sid).unwrap_or_else(|err| format!("<{err}>"));
+        if self.entries.iter().any(|entry| entry.sid == sid_text) {
+            return;
+        }
+        self.buffers.push(sid);
+        let ptr = self
+            .buffers
+            .last_mut()
+            .expect("sid just pushed")
+            .as_mut_ptr();
+        self.entries.push(SidEntry {
+            tag,
+            sid: sid_text,
+            ptr: ptr as *mut c_void,
+            can_grant,
+        });
+    }
+
+    /// Copies a SID that Windows handed out behind someone else's allocation. The report is built
+    /// over dozens of ACL probes, so an entry that outlived the owner of its buffer would silently
+    /// stop matching and read as "this SID holds no delete right".
+    fn push_ptr(&mut self, tag: String, psid: *mut c_void) {
+        if psid.is_null() {
+            return;
+        }
+        let len = unsafe { GetLengthSid(psid) } as usize;
+        if len == 0 {
+            return;
+        }
+        let bytes = unsafe { std::slice::from_raw_parts(psid as *const u8, len) }.to_vec();
+        self.push(tag, bytes, true);
+    }
+
+    fn summary(&self) -> String {
+        self.entries
+            .iter()
+            .map(|entry| {
+                if entry.can_grant {
+                    format!("{}({})", entry.tag, entry.sid)
+                } else {
+                    format!("{}({}) deny-only", entry.tag, entry.sid)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    fn index_of(&self, sid: *mut c_void) -> Option<usize> {
+        self.entries
+            .iter()
+            .position(|entry| unsafe { EqualSid(sid, entry.ptr) != 0 })
+    }
+}
+
+const TOKEN_GROUPS_MAX_BYTES: u32 = 1 << 20;
+const GROUP_ATTRIBUTE_LOGON: u32 = 0xC000_0000;
+
+/// Reads both lists off the token this leg actually launches the child with, built through the same
+/// production constructor the sandbox uses. The default list is queried rather than assumed because
+/// LUA is what turns `Administrators` deny-only, and only the created token carries that filtering.
+/// The restricting list has no query, so it is rebuilt from the inputs
+/// `create_token_with_caps_from(base, caps, &[])` receives: capabilities, then logon, then Everyone.
+/// The user SID joins that list only on the elevated leg, so counting it as a grant source here
+/// would invent a right this leg never held.
+unsafe fn push_token_sid_lists(
+    root_sids: &[crate::spawn_prep::RootCapabilitySid],
+    restricting: &mut SidList,
+    default: &mut SidList,
+) -> Vec<String> {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::SystemServices::SE_GROUP_ENABLED;
+    use windows_sys::Win32::System::SystemServices::SE_GROUP_USE_FOR_DENY_ONLY;
+
+    let mut notes = Vec::new();
+    if root_sids.is_empty() {
+        notes.push("no writable-root capability SIDs to build the token from".to_string());
+        return notes;
+    }
+    let base = match unsafe { crate::token::get_current_token_for_restriction() } {
+        Ok(handle) => handle,
+        Err(err) => return vec![format!("current token unavailable: {err}")],
+    };
+    let cap_ptrs = root_sids
+        .iter()
+        .map(|root| root.sid.as_ptr())
+        .collect::<Vec<_>>();
+    match unsafe { crate::token::create_workspace_write_token_with_caps_from(base, &cap_ptrs) } {
+        Ok(token) => {
+            // Pushed before the groups so the user always carries the `user` tag: Everyone and the
+            // logon SID also appear as groups, and the first tag seen is the one that sticks.
+            match unsafe { crate::token_user::get_user_sid_bytes(token) } {
+                Ok(user) => default.push("user".to_string(), user, true),
+                Err(err) => notes.push(format!("default user SID unavailable: {err}")),
+            }
+            let groups = match unsafe { crate::token::token_groups(token, TOKEN_GROUPS_MAX_BYTES) }
+            {
+                Ok(groups) => groups,
+                Err(err) => {
+                    notes.push(format!("default SID list unavailable: {err}"));
+                    Vec::new()
+                }
+            };
+            for (index, group) in groups.iter().enumerate() {
+                let enabled = group.attributes & SE_GROUP_ENABLED as u32 != 0;
+                let deny_only = group.attributes & SE_GROUP_USE_FOR_DENY_ONLY as u32 != 0;
+                if !enabled && !deny_only {
+                    continue;
+                }
+                let tag = if group.attributes & GROUP_ATTRIBUTE_LOGON == GROUP_ATTRIBUTE_LOGON {
+                    "logon".to_string()
+                } else {
+                    format!("grp#{index}")
+                };
+                default.push(tag, group.sid.clone(), enabled && !deny_only);
+            }
+            let _ = CloseHandle(token);
+        }
+        Err(err) => notes.push(format!("restricted token unavailable: {err}")),
+    }
+    match unsafe { crate::token::get_logon_sid_bytes(base) } {
+        Ok(logon) => restricting.push("logon".to_string(), logon, true),
+        Err(err) => notes.push(format!("restricting logon SID unavailable: {err}")),
+    }
+    match unsafe { crate::token::world_sid() } {
+        Ok(everyone) => restricting.push("everyone".to_string(), everyone, true),
+        Err(err) => notes.push(format!("restricting Everyone SID unavailable: {err}")),
+    }
+    let _ = CloseHandle(base);
+    notes
+}
+
+/// Delete rights one SID of one of the two lists reaches on a path, kept per SID because that is
+/// how the access check settles them: a deny ACE takes back only the rights of the principal it
+/// names, so a grant held by a second SID survives it. Collapsing every ACE into one mask reports
+/// "none" for a token that still deletes through another principal.
+struct SidRights {
+    tag: String,
+    allowed: u32,
+    denied: u32,
+    can_grant: bool,
+    granted_by: Vec<String>,
+    denied_by: Vec<String>,
+}
+
+/// What the sandbox child can actually delete here: the bit has to be granted on both lists, so
+/// each half is settled separately and then intersected. A bit granted on only one side is the
+/// near-miss worth seeing in the receipt, which is why both sides are printed whenever either one
+/// holds something.
+fn delete_right_verdict(path: &Path, restricting: &SidList, default: &SidList) -> String {
+    if restricting.entries.is_empty() || default.entries.is_empty() {
+        return "token SID lists unavailable".to_string();
     }
     if !path.exists() {
         return "absent".to_string();
     }
-    let (allowed, denied) = match unsafe { session_delete_masks(path, cap_ptrs) } {
+    let (r_rights, d_rights) = match unsafe { delete_rights_on(path, restricting, default) } {
         Ok(masks) => masks,
         Err(err) => return format!("unreadable: {err}"),
     };
     let wanted = DELETE | FILE_DELETE_CHILD;
-    let granted = allowed & wanted;
-    let blocked = denied & wanted;
-    let effective = granted & !blocked;
+    let (r_held, r_notes) = side_held(&r_rights, wanted);
+    let (d_held, d_notes) = side_held(&d_rights, wanted);
+    let effective = r_held & d_held;
     if effective != 0 {
-        mask_names(effective)
-    } else if granted != 0 {
-        // The writable-root grant reaches the path, but a deny ACE for the same
-        // principal takes the right back. Reporting only the grant here would read
-        // as "the sandbox can delete this", which the session proves false.
-        format!(
-            "none({} granted, {} denied)",
-            mask_names(granted),
-            mask_names(blocked)
-        )
-    } else {
-        "none".to_string()
+        return format!(
+            "{eff} via R[{r}] x D[{d}]",
+            eff = mask_names(effective),
+            r = r_notes.join(" | "),
+            d = d_notes.join(" | ")
+        );
     }
+    if r_notes.is_empty() && d_notes.is_empty() {
+        return "none".to_string();
+    }
+    let side = |notes: Vec<String>| {
+        if notes.is_empty() {
+            "no delete grant".to_string()
+        } else {
+            notes.join(" | ")
+        }
+    };
+    format!("none (R=[{}] D=[{}])", side(r_notes), side(d_notes))
+}
+
+/// Settles one SID list against a path's DACL: the mask this list grants, plus a note per principal
+/// that the DACL mentions at all.
+fn side_held(rights: &[SidRights], wanted: u32) -> (u32, Vec<String>) {
+    let mut held = 0;
+    let mut notes = Vec::new();
+    for holder in rights {
+        let granted = holder.allowed & wanted;
+        let blocked = holder.denied & wanted;
+        let reached = granted & !blocked;
+        if !holder.can_grant {
+            if granted != 0 {
+                notes.push(format!(
+                    "{} is deny-only, {} named via {} not counted as a grant",
+                    holder.tag,
+                    mask_names(granted),
+                    holder.granted_by.join("+")
+                ));
+            }
+            continue;
+        }
+        held |= reached;
+        if reached != 0 {
+            notes.push(format!(
+                "{} holds {} via {}",
+                holder.tag,
+                mask_names(reached),
+                holder.granted_by.join("+")
+            ));
+        } else if granted != 0 {
+            notes.push(format!(
+                "{} holds none ({} granted via {}, {} denied via {})",
+                holder.tag,
+                mask_names(granted),
+                holder.granted_by.join("+"),
+                mask_names(blocked),
+                holder.denied_by.join("+")
+            ));
+        }
+    }
+    (held, notes)
 }
 
 fn mask_names(mask: u32) -> String {
@@ -226,20 +460,30 @@ fn mask_names(mask: u32) -> String {
         .join("+")
 }
 
-/// Delete-right bits this session's capability SIDs hold on `path`, split into the
-/// allow and deny halves. A deny ACE for the same principal takes the right back
-/// wherever it sits in the DACL, and an `INHERIT_ONLY` ACE does not apply to the
-/// object that carries it, so both are accounted for rather than left to whoever
-/// reads the receipt. Generic bits are reported unexpanded: every grant this
-/// sandbox writes is an explicit mask.
-unsafe fn session_delete_masks(
+/// Every ACE on `path` that names a SID of either list, bucketed per principal into the allow and
+/// deny halves of the list it belongs to. A deny ACE for the same principal takes the right back
+/// wherever it sits in the DACL, and an `INHERIT_ONLY` ACE does not apply to the object that carries
+/// it, so both are accounted for rather than left to whoever reads the receipt. Generic bits are
+/// reported unexpanded: every grant this sandbox writes is an explicit mask.
+unsafe fn delete_rights_on(
     path: &Path,
-    cap_ptrs: &[*mut c_void],
-) -> Result<(u32, u32), String> {
+    restricting: &SidList,
+    default: &SidList,
+) -> Result<(Vec<SidRights>, Vec<SidRights>), String> {
     let (p_dacl, p_sd) = crate::acl::fetch_dacl_handle(path).map_err(|err| err.to_string())?;
     if p_dacl.is_null() {
         let _ = LocalFree(p_sd);
-        return Ok((FILE_DELETE_CHILD | DELETE, 0));
+        let unrestricted = || {
+            vec![SidRights {
+                tag: "NULL-DACL".to_string(),
+                allowed: FILE_DELETE_CHILD | DELETE,
+                denied: 0,
+                can_grant: true,
+                granted_by: vec!["no DACL".to_string()],
+                denied_by: Vec::new(),
+            }]
+        };
+        return Ok((unrestricted(), unrestricted()));
     }
     let mut info: ACL_SIZE_INFORMATION = std::mem::zeroed();
     if GetAclInformation(
@@ -253,7 +497,22 @@ unsafe fn session_delete_masks(
         let _ = LocalFree(p_sd);
         return Err(err);
     }
-    let (mut allowed, mut denied) = (0u32, 0u32);
+    let bucket = |list: &SidList| -> Vec<SidRights> {
+        list.entries
+            .iter()
+            .map(|entry| SidRights {
+                tag: entry.tag.clone(),
+                allowed: 0,
+                denied: 0,
+                can_grant: entry.can_grant,
+                granted_by: Vec::new(),
+                denied_by: Vec::new(),
+            })
+            .collect()
+    };
+    let mut r_rights = bucket(restricting);
+    let mut d_rights = bucket(default);
+    let wanted = DELETE | FILE_DELETE_CHILD;
     for index in 0..(info.AceCount as usize) {
         let mut p_ace: *mut c_void = std::ptr::null_mut();
         if GetAce(p_dacl as *const ACL, index as u32, &mut p_ace) == 0 {
@@ -265,20 +524,58 @@ unsafe fn session_delete_masks(
         }
         let sid = (p_ace as usize + std::mem::size_of::<ACE_HEADER>() + std::mem::size_of::<u32>())
             as *mut c_void;
-        if !cap_ptrs.iter().any(|cap| EqualSid(sid, *cap) != 0) {
+        let r_slot = restricting.index_of(sid);
+        let d_slot = default.index_of(sid);
+        if r_slot.is_none() && d_slot.is_none() {
             continue;
         }
-        match header.AceType {
-            ALLOWED_ACE_TYPE => allowed |= (&*(p_ace as *const ACCESS_ALLOWED_ACE)).Mask,
-            DENIED_ACE_TYPE => denied |= (&*(p_ace as *const ACCESS_DENIED_ACE)).Mask,
-            _ => {}
+        let mask = match header.AceType {
+            ALLOWED_ACE_TYPE => {
+                let mask = (&*(p_ace as *const ACCESS_ALLOWED_ACE)).Mask;
+                if let Some(slot) = r_slot {
+                    r_rights[slot].allowed |= mask;
+                }
+                if let Some(slot) = d_slot {
+                    d_rights[slot].allowed |= mask;
+                }
+                mask
+            }
+            DENIED_ACE_TYPE => {
+                let mask = (&*(p_ace as *const ACCESS_DENIED_ACE)).Mask;
+                if let Some(slot) = r_slot {
+                    r_rights[slot].denied |= mask;
+                }
+                if let Some(slot) = d_slot {
+                    d_rights[slot].denied |= mask;
+                }
+                mask
+            }
+            _ => 0,
+        };
+        if mask & wanted == 0 {
+            continue;
+        }
+        let who = format!("ace[{index}]");
+        if let Some(slot) = r_slot {
+            match header.AceType {
+                ALLOWED_ACE_TYPE => r_rights[slot].granted_by.push(who.clone()),
+                DENIED_ACE_TYPE => r_rights[slot].denied_by.push(who.clone()),
+                _ => {}
+            }
+        }
+        if let Some(slot) = d_slot {
+            match header.AceType {
+                ALLOWED_ACE_TYPE => d_rights[slot].granted_by.push(who),
+                DENIED_ACE_TYPE => d_rights[slot].denied_by.push(who),
+                _ => {}
+            }
         }
     }
     let _ = LocalFree(p_sd);
-    Ok((allowed, denied))
+    Ok((r_rights, d_rights))
 }
 
-fn delete_acl_lines(path: &Path, cap_ptrs: &[*mut c_void]) -> String {
+fn delete_acl_lines(path: &Path, restricting: &SidList, default: &SidList) -> String {
     if !path.exists() {
         return format!("{}: absent", path.display());
     }
@@ -286,17 +583,23 @@ fn delete_acl_lines(path: &Path, cap_ptrs: &[*mut c_void]) -> String {
         Ok(fetched) => fetched,
         Err(err) => return format!("{}: DACL unreadable: {err}", path.display()),
     };
-    let lines = unsafe { dacl_aces_text(path, p_dacl, cap_ptrs) };
+    let lines = unsafe { dacl_aces_text(path, p_dacl, restricting, default) };
     unsafe {
         let _ = LocalFree(p_sd);
     }
     lines
 }
 
-unsafe fn dacl_aces_text(path: &Path, p_dacl: *mut ACL, cap_ptrs: &[*mut c_void]) -> String {
+unsafe fn dacl_aces_text(
+    path: &Path,
+    p_dacl: *mut ACL,
+    restricting: &SidList,
+    default: &SidList,
+) -> String {
     if p_dacl.is_null() {
         return format!(
-            "{}: NULL DACL, so every SID including the sandbox capability holds FILE_ALL_ACCESS",
+            "{}: NULL DACL, so every SID reaches FILE_ALL_ACCESS on both lists and the \
+             intersection grants the delete",
             path.display()
         );
     }
@@ -343,10 +646,18 @@ unsafe fn dacl_aces_text(path: &Path, p_dacl: *mut ACL, cap_ptrs: &[*mut c_void]
             let bytes = std::slice::from_raw_parts(sid as *const u8, sid_len as usize);
             crate::winutil::string_from_sid_bytes(bytes).unwrap_or_else(|err| format!("<{err}>"))
         };
-        let is_session_capability = cap_ptrs.iter().any(|cap| EqualSid(sid, *cap) != 0);
+        let token_sid = match (restricting.index_of(sid), default.index_of(sid)) {
+            (Some(r), Some(d)) => format!(
+                " <-- TOKEN R={} D={}",
+                restricting.entries[r].tag, default.entries[d].tag
+            ),
+            (Some(r), None) => format!(" <-- TOKEN R={}", restricting.entries[r].tag),
+            (None, Some(d)) => format!(" <-- TOKEN D={}", default.entries[d].tag),
+            (None, None) => String::new(),
+        };
         let delete_rights = mask_names(mask);
         lines.push(format!(
-            "  ace[{index}] {kind} mask=0x{mask:08x} flags=0x{:02x}{}{} sid={sid_text}{} \
+            "  ace[{index}] {kind} mask=0x{mask:08x} flags=0x{:02x}{}{} sid={sid_text}{token_sid} \
              delete-rights=[{delete_rights}]",
             header.AceFlags,
             if header.AceFlags & CONTAINER_INHERIT_ACE_FLAG != 0 {
@@ -356,11 +667,6 @@ unsafe fn dacl_aces_text(path: &Path, p_dacl: *mut ACL, cap_ptrs: &[*mut c_void]
             },
             if header.AceFlags & INHERITED_ACE_FLAG != 0 {
                 " INHERITED-FROM-ANCESTOR"
-            } else {
-                ""
-            },
-            if is_session_capability {
-                " <-- THIS SESSION"
             } else {
                 ""
             },
