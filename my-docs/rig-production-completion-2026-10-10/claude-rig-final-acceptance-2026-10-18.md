@@ -2975,7 +2975,7 @@ exit=0
 
 | 选项 | 买到 | 代价与风险 |
 | --- | --- | --- |
-| **O1** 把 `--proc /proc` 移到 deny mask 组装之后 | `/proc/*` 的 Deny 真正生效（X3 一手已证可行）；顺带让 `/dev` 下穿过 `/proc` 的 mask 至少有一次可判的失败位置 | 全局挂载顺序变动，触及 WSL 腿的**位置断言**：`bwrap_wslg_tests.rs:81/257`、`linux_run_main_tests.rs:227/317` 直接断言 `--proc`/`--tmpfs /proc` 相邻与存在；这些断言要同步改，且执行一手只有 `.45` 能给（`.41` 无 userns） |
+| **O1** 把 `--proc /proc` 移到 deny mask 组装之后 | `/proc/*` 的 Deny 真正生效（X3 一手已证可行）；顺带让 `/dev` 下穿过 `/proc` 的 mask 至少有一次可判的失败位置 | 全局挂载顺序变动，触及 WSL 腿的**位置断言**：`bwrap_wslg_tests.rs:81/257`、`linux_run_main_tests.rs:227/317` 直接断言 `--proc`/`--tmpfs /proc` 相邻与存在；这些断言要同步改，且执行一手只有 `.45` 能给（`.41` 无 userns）。**§6.43 已实现并按此登记一手**；但那两行"触及位置断言"经复核**不成立**（`bwrap_wslg_tests.rs:81` 与 `linux_run_main_tests.rs:226-228/316-317` 都是 `windows(2)` 形状断言，搬 `--proc` 不会让它们变红；257 那行其实是 `["--tmpfs","/proc"]`），真正阻断前移的是 `/newroot/proc` 这个目的地在根绑定之前还不存在。**判据以 §6.43 为准，本行原样保留不改写** |
 | **O2** 再给 `/dev` 符号链接条目一个可用的 mask 原语 | `Deny /dev/fd`、`/dev/core` 既生效又不 abort，`blocked_descriptor_path` 那条腿才可能转绿 | 需要 bwrap 侧能力（`--symlink` 改写或等价），`launcher.rs:206-218` 的能力探测要加一项并按宿主降级；至少三条新腿 + 真机一手 |
 | O3 都不动 | 零风险 | F-A 继续静默放行 `/proc` deny，F-B 继续响亮 abort，`blocked_descriptor_path` 长期红 |
 
@@ -3631,6 +3631,108 @@ TIMEOUT [  60.007s] ( 4722/22888) … deleted_working_directory   （39543230422
 判据仍要推送后的第三手：那一手里这条 leg 应该以 `PASS [>60s]` 出现（像它的兄弟 leg 那样），
 若仍在 120s 界上被 kill，才需要回头查 daemon 本身为什么回不来。
 
+## 6.43 #45 落地（§6.35 的 O1）：`/proc` 下的 deny 掩码搬到 `--proc /proc` 之后，`.45` 端到端一手已取
+
+用户表格第 3 项"缺的是修复后复跑"。代码改一处发射位置，一手在真能跑 bwrap 的 `.45` 上取
+（`7.0.0-38-generic`、`bubblewrap 0.11.1`，验证树 `1af8b5a70` + 两个未提交覆盖文件，
+md5 `0838014cab56c731ade218da6afedcd4` / `bc11224ad0b7fd10101315aef08707a5` 两端逐字一致）。
+**表格里点名的机器是 `.41`，一手取在 `.45`**：`.41` 的
+`apparmor_restrict_unprivileged_userns=1` 让 bwrap 起不了 userns（§6.35 已登记"执行一手只有
+`.45` 能给"），本轮没有去动那台宿主的 AppArmor 配置。
+
+### 机制与落点（不是"把 `--proc` 前移"，而是"把掩码后搬"）
+
+`--proc /proc` 在 `bwrap.rs:457-460` 发射，而策略掩码整批来自 `create_filesystem_args`
+并经 `args.extend(filesystem_args)`（`:430`）落在它**之前** ⇒ 新 procfs 过 mount 把 `/proc`
+下所有掩码盖掉（§6.35 的 X4/X3 顺序对照已证因果）。§6.35 推荐的 O1 登记成"把 `--proc` 移到
+deny mask 组装之后"；本轮实现的是它的**镜像**——掩码搬到 `--proc` 之后。两者要的顺序结果
+同一个（掩码在 mount 之后落地），但只有镜像这一版做得到。表格给的另一个方向"按内核能力跳过 deny"
+**没有采用**：跳过就是明知的 fail-open，而 §6.35 的 X3 已在同一个内核上量到这条 deny 能咬住
+（`Permission denied`），不存在"能力不足"。于是载体只有两种——把掩码搬到 `--proc /proc` 之后，
+或把 `--proc` 前移到掩码之前；后者**做不到**：根绑定本身就在那批参数里（受限策略由
+`create_filesystem_args`（`:504`）在 `:605-607` 发 `--ro-bind / /`，全写策略由
+`create_bwrap_flags_full_filesystem`（`:350`）在 `:354-356` 发 `--bind / /`），
+而 `/newroot/proc` 这个挂载点正是根绑定带进来的 ⇒ 把 `--proc` 挪到 `:430` 之前，就是在
+**尚不存在的目的地上**挂 procfs，正落在 X1 已证的"响亮 abort"那一类。
+本轮因此只做**目的地分流**，`--proc` 的位置一字未动，这段参数序上的形状断言
+（`bwrap_wslg_tests.rs:81`、`linux_run_main_tests.rs:226-228/316-317/336` 的 `windows(2)`，
+`bwrap.rs:1877/1884` 对 `["--bind","/","/"]` 位置的断言）**零改动**通过（见下面全量 237 passed）。
+落点：
+
+- `BwrapArgs` 多两个字段（`bwrap.rs:128-143`）：`proc_scoped_args`（目的地在新 procfs 上的
+  掩码）与 `relocate_proc_destinations`（只在 `options.mount_proc` 为真时置位，`:683`）。
+- `mask_sink(destination)`（`:151`）**每个掩码组取一次**，让 `--perms/--tmpfs/--remount-ro`
+  三段与 `--dir` 挂载点父目录始终整组同去向、相对顺序不变（`:1496-1538`）。
+- 谓词 `mask_lands_on_mounted_procfs = procfs_entry_survives_new_pid_namespace && exists()`
+  （`:166`）。两半都必要：
+  - **不搬 `/proc/<数字pid>`**：`mount_proc = !no_proc && !inherit_pid_namespace`
+    （`linux_run_main.rs:306`）⇒ 挂 `--proc` 的手必然带 `--unshare-pid`，新 procfs 里没有宿主
+    进程。把这种掩码搬过去就是在缺失目的地挂 mount——X1 已证 bwrap 对此**直接 abort**
+    （`Can't mount ...: No such file or directory`）。而"该宿主 pid 在新树里不存在"本身就是这条
+    deny 要的效果，搬不搬都不漏。这一条是本轮唯一把"静默 fail-open"改成"响亮 abort"的风险面，
+    所以专门写了 R1/R2 两条真机护栏。
+  - **`mount_proc=false` 时全都不搬**：该分支没有过 mount 事件；WSL 分支的
+    `--tmpfs /proc` 是空 tmpfs，缺席即拒绝，搬动只会新增 abort 面。
+- 回退分支（`run_bwrap_with_proc_fallback` 撞 preflight 后 `options.mount_proc=false`）自动
+  回到"掩码留在原地"，那条路径上 host procfs 未被重挂，掩码本来就咬得住。
+- **搬的是掩码，没有搬授权**：只读 carveout 的 `--ro-bind <path> <path>` 分支（`:1383-1387`）
+  与 daemon socket 掩码（`append_daemon_socket_masks`，`:671/:678`）仍留在 `args` 里，位置一字未动。
+  一处要说清的口径差别：`mask_sink` 挂在两个叶子 helper
+  （`append_empty_file_bind_data_args`、`append_empty_directory_args`）上，这两个 helper
+  除了 deny 还被 `append_read_only_subpath_args` 用到——但那两处调的是 **missing**
+  （`:1377` → `append_missing_*`）与**瞬时空元数据**（`:1364/:1367`）分支，
+  前者被谓词里的 `destination.exists()` 直接挡回 `args`（不存在的目的地搬过去就是 X1 abort），
+  后者是 `.git` 这类工作区路径，落不进 `/proc` ⇒ 实际会被搬走的只有 deny 掩码。
+- **这条修复剩下的已知风险面**：`exists()` 判的是**宿主** procfs，新 procfs 里未必有同一个条目
+  ——宿主上由别的挂载盖进 `/proc` 的目录（`/proc/sys/fs/binfmt_misc`、vendor 的
+  `/proc/driver/...`）在 `--proc` 重挂后的新树里不存在，这种 deny 规则会从"今天静默空操作"
+  变成"响亮 abort"。方向与 §6.35 的结论一致（fail-closed 且可归因，优于 fail-open 静默放行），
+  但本轮**没有**为这一类取一手：`.45` 上没有现成的 binfmt_misc 挂载，造它要动宿主。
+  已实测到的护栏是 R1/R2（数字 pid 类，风险面里唯一会常态触发的一支）与全量 237 passed。
+
+### 五条新腿（`codex-rs/linux-sandbox/src/bwrap.rs`，`.45` 一手）
+
+`only_proc_entries_the_new_procfs_recreates_move_after_the_mount`（`:3162`）
+`PASS [0.006s]` · `denied_proc_file_is_masked_after_the_proc_mount`（`:3193`）
+`PASS [0.012s]` · `denied_proc_directory_mask_travels_as_one_group`（`:3221`）
+`PASS [0.012s]` · `denied_proc_pid_mask_stays_before_the_proc_mount`（`:3243`）
+`PASS [0.012s]` · `proc_masks_stay_put_when_the_procfs_is_not_remounted`（`:3265`）
+`PASS [0.012s]` ⇒ `rc_legs=0`、`Summary [0.014s] 5 tests run: 5 passed, 166 skipped`。
+**这些个位/十位毫秒的 PASS 在这一族里是可解释的**：它们只构造 argv 不做 mount，且每条都先
+`assert!(denied.is_file()/is_dir(), "precondition…")` 把"缺前置条件即空转"堵死；执行证据不靠它们，
+靠下面那组端到端读数。
+套件全量：`rc_full=0`、`Summary [6.437s] 237 tests run: 237 passed, 3 skipped`
+（232 基线 + 5 条新腿，零红、零新增跳过）；`rc_fmt=0`、`rc_clippy=0`。
+构建前 MARKER 自查：`mask_lands_on_mounted_procfs=2`、`proc_scoped_args=11`、`splice_after_proc=1`
+⇒ 测的是改后的源码，不是上一轮留下的旧二进制。
+
+### 端到端"拒绝仍然咬得住"的一手（`lx45-proc-fix-e2e.sh`，走产品 helper）
+
+| 组 | 策略 | 修复后读数 | 修复前（§6.35 登记） |
+| --- | --- | --- | --- |
+| C0 | 无 deny | `rc=0`、`READABLE` | 同 |
+| C1 | deny 工作区里的普通文件 | `rc=0`、`NOT_READABLE` | 同（对照：非 /proc 的 deny 一直有效） |
+| P1 | deny `/proc/version` | `rc=0`、**`NOT_READABLE`** | `READABLE`（fail-open） |
+| P2 | deny `/proc/version` + `ls -l` | `---------- 0 soddy soddy 0 …  /proc/version` | `-r--r--r-- 1 nobody nogroup 0`（= 新 procfs 里的真文件） |
+| P3 | deny 目录 `/proc/sys` | `rc=0`、**`NOT_READABLE`** | `READABLE` |
+| P4 | deny `/proc/sysrq-trigger` | `rc=0`、**`NOT_READABLE`** | `READABLE` |
+| R1 | deny `/proc/1`（数字 pid，不搬） | `rc=0`、`SANDBOX_STARTED` + `SELF_OK` | `rc=0`（沙箱必须仍然起得来） |
+| R2 | deny `/proc/1/environ` | `rc=0`、`SANDBOX_STARTED` | 同 |
+| R4 | 无 deny，`echo` | `rc=0`、`SANDBOX_STARTED` | 同 |
+
+P2 的属主从 `nobody nogroup` 变成 `soddy soddy`、模式从 `0444` 变成 `000`：这正是"掩码落在了
+userns 里新建的 procfs 上"的形状，而不是宿主 procfs 被改写。R1/R2 是这条修复唯一可能造成的
+回归（把静默失效换成 abort），实测两者都 `rc=0`。
+
+### 顺带量到的另一条、且**本轮没有修**：`/proc/self/...` 的 deny 仍然开放
+
+R3（deny `/proc/self/environ`）修复后仍 `rc=0`、`READABLE`。strace 一手说明这不是"掩码没搬"：
+`"--proc", "/proc"` 在前、`"--ro-bind-data", "3", "/proc/self/environ"` 在后 ⇒ 目的地分流确实
+生效了；仍然开放是因为 `/proc/self` 由内核**按读取进程各自解析**，建会话那一刻的 `self` 与被测
+进程读到的 `self` 不是同一个目录。归因：**真实缺陷、非本轮引入、非本修复的目标**，
+要修得先决定"自指 deny 路径是拒绝表达（响亮报错）还是按 pid 通配展开"——那是策略语义的决定，
+不在"已确认缺陷 + 验证缺口"的范围内，留给下一次拍板。
+
 ## 7. 提交、推送与工作树状态
 
 
@@ -4043,6 +4145,46 @@ TIMEOUT [  60.007s] ( 4722/22888) … deleted_working_directory   （39543230422
   故本轮把 #47 取证 + #46 override + 台账一起推上 `test`，取第三手与 runner 一手。
   推送内容：`42c5bb5d9`（mac override）、`e14d73e76`、`8b6fac76d`、`d918722f2`（三笔文档）
   加上本轮的 #47 代码笔与文档笔。
+- **§6.43（#45）落成两笔：代码笔 `0a99662c2`（`fix(linux-sandbox)`，+280/−26）+ 本台账笔**。一手全部来自 `.45`
+  真机（`7.0.0-38-generic` / `bubblewrap 0.11.1-1ubuntu0.3`，验证树 = `1af8b5a70` + 两个
+  未提交覆盖文件，md5 `0838014cab56c731ade218da6afedcd4` / `bc11224ad0b7fd10101315aef08707a5`
+  两端逐字一致），提交前按"数字要复核"的门槛重新 grep 过远端日志：`rc_legs=0` +
+  `Summary [0.014s] 5 tests run: 5 passed, 166 skipped`、`rc_full=0` +
+  `Summary [6.437s] 237 tests run: 237 passed, 3 skipped`（基线 `232 passed, 3 skipped`
+  是 §6.35 那手实测的，237 = 232 + 5 条新腿、跳过数不变）、`rc_fmt=0`、`rc_clippy=0`、
+  构建前 MARKER 三条齐全、端到端 `P1/P3/P4 NOT_READABLE` + `P2 ---------- 0 soddy soddy 0`
+  + `R1 SANDBOX_STARTED`/`SELF_OK` + `R2`/`R4 SANDBOX_STARTED` + `R3 READABLE`（残留）。
+- **本手内在提交前抓到的两处自己的账**（①"把写坏的机制说法改回来"，②"把过宽的范围说法收窄"）：
+  ①§6.43 初稿把"不搬 `--proc`"的理由写成
+  "会牵动 `bwrap_wslg_tests.rs:81/257`、`linux_run_main_tests.rs:227/317` 的位置断言"。
+  逐条读源码后这句不成立：这些断言全是 `windows(2)` 的**形状**断言（`["--proc","/proc"]`
+  出现或不出现），搬动 `--proc` 不会让它们变红；`bwrap_wslg_tests.rs` 里根本没有第 257 行那种
+  `--proc` 断言（那里是 `["--tmpfs","/proc"]`），`linux_run_main_tests.rs` 的行号是 228/317。
+  真正的机械原因已改写进 §6.43：根绑定本身就在 `args.extend(filesystem_args)` 那批里
+  （受限策略 `create_filesystem_args`（`:504`）在 `:605-607` 发 `--ro-bind / /`，全写策略
+  `create_bwrap_flags_full_filesystem`（`:350`）在 `:354-356` 发 `--bind / /`），`/newroot/proc`
+  这个挂载点是根绑定带进来的 ⇒ 把 `--proc` 前移到 `:430` 之前就是在尚不存在的目的地上挂
+  procfs，正落在 X1 已证的"响亮 abort"那一类。顺带修掉两处行号（`:428`→`:430`、
+  `:457-461`→`:457-460`）。
+  ②初稿那句"**范围只到 deny**"同样过宽：`mask_sink` 挂在两个叶子 helper
+  （`append_empty_file_bind_data_args`、`append_empty_directory_args`）上，
+  `append_read_only_subpath_args` 的瞬时空元数据分支（`:1364/:1367`）走的是同一对 helper，
+  所以严格讲"凡是目的地在新 procfs 上的掩码都可能被搬"。已按代码实际行为改写，并把
+  `exists()` 判的是**宿主** procfs 这一残留风险面写进 §6.43：宿主上由别的挂载带进 `/proc`
+  的条目（`binfmt_misc`、vendor 的 `/proc/driver/...`）在新树里不存在，这类 deny 规则会从
+  "静默空操作"变成"响亮 abort"，而 `.45` 上没有现成的 binfmt_misc 挂载、造它要动宿主
+  ⇒ **这一面本轮没有一手**，如实登记，不含糊过去。
+- **本轮（#45）的推送决定**：两笔先落本地，**等 `39562896528` 到终态再 push**。理由是这一手
+  正在给 #46/#47 出判据（head `1af8b5a70` 已含 `42c5bb5d9` 的 mac override，就是"推送后的
+  第三手"；windows 腿带 #47 的两张 SID 列表取证），登记时三腿仍 `in_progress`；把 #45 推上去
+  会开出第二手并发抢同一批 runner，而本台账已经两次把贴线 TIMEOUT 归到争用（§6.36 与
+  "the four local reds are contention"）。#45 的 ubuntu lane 收据因此在**下一手**取：
+  本手 tip 是**不带** `[skip ci]` 的文档笔，push 本身就足以触发一轮。本轮**零 dispatch**。
+- **§6.43 里那条没修的残留，登记为待拍板而不是待办**：`/proc/self/...` 的 deny 在修复后仍
+  `READABLE`（R3），strace 一手证明分流已生效、开放来自 `/proc/self` 的内核自指语义。
+  修法要在"自指 deny 路径报错"与"按 pid 通配展开"之间选一个策略语义 ⇒ 属产品决策，
+  不在"已确认缺陷 + 验证缺口"范围内，本轮不擅自扩面。
+
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
