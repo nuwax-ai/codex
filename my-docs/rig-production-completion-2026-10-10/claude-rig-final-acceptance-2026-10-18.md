@@ -2866,6 +2866,10 @@ bwrap 修复与 A3 门**——那些改动还只在未提交工作树里，所�
   那次 abort 把 exec-server 连接一起带崩、然后按 25s resume 预算耗尽收场，但这只是
   候选解释。诚实登记：修复直接针对的是 hand-1 形状；含修复的下一手 runner 上若 25.316s
   这一形状仍在，就必须单独再查，不能算已被 §6.33 覆盖。
+  **后续读数（§6.37）**：这个形状已在 `.45` 上用"按时序杀掉 exec-server"逐字复现，
+  它是**服务进程在 session 建立后死亡**的客户端 25s 预算签名；本节那句候选解释
+  （"abort 把连接一起带崩"）被同一台机器 8/8 次的 A 形状推翻。ubuntu 这条腿因此在
+  runner 上不产出 `/dev/fd` 证据，#42 的验收一手只能来自 `.45`。
 
 **windows 的 8 条红，逐条与已有定性的对应**：
 
@@ -3044,6 +3048,219 @@ managed_daemon_restarts_from_deleted_working_directory` 与
 编译 ~2h。`42c5bb5d9` 与本节这份文档目前**在本地未推**（理由见 §7）；
 `c7590fe24` / `a3b96ae90` 两手仍在跑，它们的 mac 腿按上面的历史**大概率仍会在这两条腿红**——
 那是"修复前"的读数，不能反过来当修复无效的证据。
+
+## 6.37 §6.34 那条"没有解释的形状"现在有机制了：25s 是 exec-server 进程死亡的签名，不是 `/dev/fd` 的第二表面
+
+§6.34 把 hand 2 的 `FAIL [  25.316s]` 诚实登记成"这条形状我没有解释"，并留下判据：含修复的
+下一手若这个形状仍在，必须单独再查。这一节把它查到底，用的是一条**零 CI 预算**的通道：在真跑
+bwrap 的 `.45` 上，按时序杀掉这条腿自己 spawn 的 exec-server，看错误原文会不会变成 runner 上
+那一串。
+
+### 一手实验：杀点决定形状，+200ms 那一档逐字命中 runner
+
+这条腿的服务来源是 `codex-rs/exec-server/tests/common/exec_server.rs:81-95`
+（`codex exec-server --listen ws://127.0.0.1:0`，stderr `inherit`，`kill_on_drop(true)` 在 :111）。
+脚本 `~/lx45-kill-server.sh` 每一档重启一次这条腿，在服务进程第一次可见后按 `${d}` 毫秒
+`kill -9`。被测源码 md5 仍是 `65950dd697605817317835b9cf9208c8`（= `a3b96ae90` 的内容），
+脚本打的 `HEAD=ecb4ba6bb` 只是那份检出的分支指针，不改变被测源码。`.config/nextest.toml`
+的 `[profile.default]` 有 `retries = 1`（`local` 只是 `inherits = "default"`），所以每档有
+`TRY 1`（中枪那一跑）与 `TRY 2`（重试，回到未杀的 A 形状）：
+
+| 杀点 | `TRY 1` 时长 | 逐字错误原文 |
+| --- | --- | --- |
+| 不杀（基线） | FAIL 0.718s | 无 `Error:` 行 ⇒ A 形状断言，与下面那 8 次不杀同形 |
+| +0ms | FAIL 0.155s | `Error: exec-server transport disconnected` |
+| +50ms | FAIL 0.145s | 同上（裸形状，**没有** resume 子句） |
+| +100ms | FAIL 0.176s | 同上 |
+| **+200ms** | **FAIL 25.310s** | `Error: exec-server transport disconnected: failed to read websocket JSON-RPC message from exec-server websocket ws://127.0.0.1:43257: WebSocket protocol error: Connection reset without closing handshake; failed to resume exec-server session: no resume attempt finished within 25s (last attempt: failed to connect to exec-server websocket `ws://127.0.0.1:43257`: IO error: Connection refused (os error 111))` |
+| +300ms | FAIL 2.380s | `Error: deadline has elapsed` |
+| +500ms | FAIL 2.387s | 同上 |
+
+runner 那原文（`39530269408`，端口 42967）与 +200ms 这档**除端口号外逐字同形**，
+时长 25.316s vs 25.310s。再叠上此前两手同一形状的 25.298s（`39371971338`）与
+25.251s（`39396134392`），五个读数里的 25s 是**客户端预算常数**（`SESSION_RECOVERY_TIMEOUT`
+= `Duration::from_secs(25)`，`exec-server/src/client_recovery.rs:63`），不是被测耗时。
+
+### 由此得到的三条结论，和被推翻的那条候选解释
+
+1. **B 形状的含义就是"服务进程没了"，而且是在 session 建立之后没的**——早于连接的三档
+   （0/50/100ms）只能产出裸的 `transport disconnected`，不带 resume 子句。§6.34 的候选解释
+   "那次 abort 把 exec-server 连接一起带崩"由此被推翻：同一台机器、同一份检出（两组实验相隔
+   11 分钟，`/tmp/leg{1..8}.txt` 13:06 vs `~/kx-out.txt` 13:17），**8/8 次不杀的 abort 里服务
+   都活着**——16 跑全部 `panicked at exec-server/tests/exec_process/shell_snapshot.rs:352:13`，
+   时长 0.678–0.774s，`Error: exec-server transport disconnected` 出现 **0 次**。
+   **25s 形状不是 `/dev/fd` 缺陷的第二表面。**
+2. **runner 上这条腿不产出任何 `/dev/fd` 证据**：它死在 transport 层（原文那句
+   `failed to read websocket JSON-RPC message`，读事件那一步经 `?` 变成 `Error:`），
+   从未走到 `exec-server/tests/exec_process/shell_snapshot.rs:352` 的断言，所以 `c387b44dc`
+   那份 output/stderr/status/closed 收据在这三手一次也没打印出来。#42 的验收一手只能在
+   "服务活着、断言真 fire"的机器上取——那就是 `.45`（§6.35 的 `FAIL [0.683s]` + 逐字 abort
+   才是这条腿的已知状态）。"`blocked_descriptor_path` 在 ubuntu 腿上红"与"红得有意义"是两件
+   事，本轮把它们分开登记。
+3. **`a4dfd599f` 那次相位命名开始产出区分度**：老两手的 `recovery timed out after 25s` 无法
+   分辨"在飞的 start 没排干"与"连不上端口"；`39530269408` 的
+   `no resume attempt finished within 25s (last attempt: … os error 111)` 把后者钉死。25s 这个
+   窗口本身仍不该动（它对齐服务侧 30s 保留窗，理由写在 `a4dfd599f` 的提交说明里）。
+
+**未闭合的子问题（登记，不追）**：runner 上是谁在 ~0.3s 处杀掉了 exec-server。`SIGKILL` 不留
+stderr，那几手的日志里也确实没有任何服务侧输出；本实验证明"端口未就绪就死"与"session 建立后
+才死"在原文上可分辨，所以再现时缺的是进程死亡原因（OOM / runner 清理），不是更宽的窗口。按本轮
+范围约束（不重开大规模迁移、不改挂载原语），这条不进代码。
+
+### `39530269408` 的 mac / windows 双腿终态（§6.34 登记时仍在跑）
+
+| job | 终态读数 |
+| --- | --- |
+| `nextest (macos-latest)` (118994304630) | `Summary [3480.467s] 22888 tests run: 22886 passed (28 slow), 1 failed, 1 timed out, 71 skipped` |
+| `nextest (windows)` (118994304838) | `Summary [3052.165s] 21769 tests run: 21760 passed (23 slow, 293 leaky), 8 failed, 1 timed out, 138 skipped` |
+
+- mac 的 `TIMEOUT [  60.014s]` 仍是 §6.36 那两条里的
+  `codex-cli::app_server_daemon managed_identity_survives_locale_and_timezone_changes`
+  （`( 4776/22888)`），同手另一条 `managed_daemon_restarts_from_deleted_working_directory` 是
+  `PASS [  50.955s]`——离默认 60s 只剩 9s，趋势与 §6.36 的四手一致。这手 head 是
+  `ecb4ba6bb`，**不含** `42c5bb5d9` ⇒ 它是"修复前"读数，不能反过来读成窗口无效。
+- windows 9 条里 7 条落在已有家族：两条 `codex-uds` ACL（0.570s / 0.969s）、
+  `conpty_ctrl_c_interrupts_powershell_foreground_child`（12.185s）、四条 `legacy_`
+  （49.217s / 61.886s / 61.924s / `legacy_workspace_write_delete_is_limited_to_writable_roots`
+  0.189s）。**A3 的判据这手还没到**：`8a41ac7d3` 那扇门不在 `ecb4ba6bb` 里，所以
+  `conpty_ctrl_c` 在这里必红；能验收它的只有 `39542266851`（head `c7590fe24`，含门）与
+  `39543230422`（head `a3b96ae90`）。
+- `legacy_workspace_write_delete_is_limited_to_writable_roots` 又红（0.189s），而 §6.34 手 1 同一条
+  是 `PASS [   1.872s]` ⇒ #43 的"这条红是间歇"再多一手支撑。
+- §6.34 标"本手首次观察，尚未分桶"的两条——`codex-tui app::tests::session_lifecycle_requests::
+  dynamic_tool_requests_ignore_other_namespaces_and_dispatch_tui_namespace`（2.068s）与
+  `codex-core::all suite::auto_review::remote_model_override_uses_catalog_model_for_strict_auto_review`
+  （26.531s）——在 `39530269408` 全绿（分别 `PASS [  18.221s]` (15975) 与 `PASS [   5.191s]` (7136)）
+  ⇒ 一手一现，改挂"间歇"，不再算未分桶。
+
+### mac 的一条首次观察：`codex-cli::daemon_telemetry` 测的是一条故意尽力而为的遥测路径
+
+逐字：`FAIL [  11.194s] ( 3185/22888) codex-cli::daemon_telemetry
+foreground_update_honors_metrics_exporter_and_reports_unconfirmed`，
+`panicked at cli/tests/daemon_telemetry.rs:55:9`，
+`assert_eq!(requests.len(), usize::from(metrics_enabled))`，Diff `<0 / >1` ⇒ 期望 1 个
+`/metrics` 请求，实到 0 个。
+
+- 基线（缓存日志逐字核对名与时长配对）：mac 历史四手 PASS 7.292s / 14.365s / 0.756s / 9.154s，
+  ubuntu 四手 PASS 1.073s / 1.483s / 0.783s / 1.201s ⇒ 本手 mac **首次红**，ubuntu 未红过。
+- 本地一手：同机 idle 连跑 8 次 **8/8 PASS，0.248–0.320s**（比该手 runner 快 35–45 倍）。
+- 机制（读码，不靠猜）：`cli/src/daemon_telemetry.rs` 这条路径是产品**故意**做成尽力而为的——
+  `timeout(2s, cloud_config::load_config)` 超时就整段 `return`（:18-25，注释原文
+  "Skip telemetry if consent-aware configuration cannot be loaded promptly"）；
+  `build_provider` 包在 `catch_unwind` 里，`Ok(Ok(Some(_)))` 之外的任何形状也 `return`（:36-45）；
+  最后 `shutdown_with_timeout(2s)` 的结果被 `let _ =` 吞掉（:58）。三者任何一个被争用越过，
+  产出的都正好是"0 个请求"。
+- 分桶：**harness 把产品的 best-effort 断言成了保证**；产品行为是有意的（不拖慢 CLI 退出），
+  不是本轮要改的语义。单条首次观察 + 本地不可复现 ⇒ 不动代码，等 `39542266851`/`39543230422`
+  的 mac 腿；若再现再单独拍。
+
+### OAuth 那一对：第二平台再现，但我先试的那个假设被时间线否掉了
+
+windows 这手同现两红：`login_account_chatgpt_uses_oauth_overrides` FAIL 1.251s
+（`app-server/tests/suite/v2/account.rs:2747`，`500` vs `302`）+
+`login_account_chatgpt_redirects_to_hosted_success_page` **TIMEOUT 60.030s**；
+ubuntu `39396134392` 那手前者 FAIL 0.197s，`Connection refused (os error 111)` 打在
+`http://127.0.0.1:1455/auth/callback`。
+
+- 我试的假设是**跨包争抢固定回调端口**。代码侧确实支持它成立的条件：
+  `login/src/server.rs:78/80` 是 `DEFAULT_PORT 1455` / `FALLBACK_PORT 1457`，而 `bind_server`
+  （:637）在 `AddrInUse` 时会**主动向在位者发 cancel**（:662 `send_cancel_request(port)`）再重试，
+  10 次 200ms 之后才落到 1457；`run_login_server` 的调用点包括
+  `app-server/src/request_processors/account_processor.rs:665`、`cli/src/login.rs:167/420` 与
+  `login/tests/suite/login_server_e2e.rs` 的十余条腿。
+- 但**时间线不支持**：该手 `codex-login` 的腿集中在 03:39:10 之后（更早的 02:07:04 / 02:19:42
+  两处提及只是 `Compiling codex-login`），比这次失败（03:05:49）晚 33 分钟；
+  而 `codex-app-server::all` 在 `app_server_integration`（`max-threads = 1`）里本就串行，
+  日志里 03:05:4x 那段是同包同 job 的顺序流（833→859 连续编号）。
+- 基率（只算缓存日志里名与时长都能逐字配对的读数：4 手 `39347345560`/`39371971338`/
+  `39396134392`/`39530269408` × ubuntu/windows = 8 个组合，**15 条 leg 读数**——`39347345560`
+  windows 那份里 `uses_oauth_overrides` 不可读）：**3 条红**，ubuntu 一次
+  （`39396134392` 的 `uses_oauth_overrides` `FAIL [0.197s]`，同手另一条 `PASS [0.295s]`）、
+  windows 一次（`39530269408` 两条同现）。同一条腿在同一平台各只红过一次。
+- 分桶：**间歇、机制未证明**。按"排除归属 ≠ 证明无关"，这两条与 OAuth 回调端口产品路径同族这一
+  点仍然成立，但本轮拿不到 1455 的持有者证据，不改 `nextest.toml` 也不动产品。
+
+### 本轮状态
+
+零 dispatch、零推送。`42c5bb5d9`、`e14d73e76` 与本节文档仍在本地（详见 §7）。
+`39542266851` 与 `39543230422` 的四腿在登记时仍 `in_progress`（两手
+`bazel bridge gate (ubuntu)` 已 success）；前者是**唯一含 A3 门**的手之一，后者是**唯一含
+`a3b96ae90`** 的手，A4/#42 的判据只能在它上面读。`.45` 侧留痕：`~/lx45-kill-server.sh`、
+汇总 `~/kx-out.txt`、逐档原文 `/tmp/kx-{base,0,50,100,200,300,500}.txt`、对照组八连跑
+`/tmp/leg{1..8}.txt`。两手 ubuntu 腿随后落地，读数见 §6.38。
+
+## 6.38 两手 ubuntu 腿落地：同一平台上的 A/B 一手——fail-open 那手把红变成绿，纠正那手恢复"响亮且有收据"的红
+
+登记判据（§6.35/§6.36 写下，逐字复述以免事后修饰）：`blocked_descriptor_path` 在含纠正的手上
+**应继续红**，因为响亮 abort 是已知缺陷的正确形态；**"绿且无收据"才是回归**。两手恰好构成一组
+A/B，因为它们的唯一差异就是那份 `/dev` 名单（`git diff c7590fe24..a3b96ae90` 只动
+`linux-sandbox/src/bwrap.rs` 与文档）。
+
+| 手 / head | ubuntu job | Summary 逐字 | `blocked_descriptor_path` |
+| --- | --- | --- | --- |
+| `39542266851` / `c7590fe24`（含 fail-open 的 `a4c0ff2fa`） | 119032454907 | `Summary [2884.828s] 22941 tests run: 22940 passed (22 slow), 1 failed, 48 skipped` | **`PASS [   0.445s]` (11038/22941)** |
+| `39543230422` / `a3b96ae90`（纠正） | 119035505119 | `Summary [2401.627s] 22942 tests run: 22941 passed (18 slow), 1 failed, 48 skipped` | **`FAIL [   0.304s]` (11037/22942)** + 逐字收据 |
+
+### 一手一：fail-open 不是假设，它已经在托管 runner 上把红变成绿
+
+`c7590fe24` 那手把 `/dev/fd` 判成"缺席"、静默放过 Deny，于是 bwrap 不再拿到 `--tmpfs /dev/fd`、
+不再 abort，快照正常恢复 ⇒ 这条腿**绿**。而这条腿的断言是
+`shell_snapshot.rs:352` `assert!(output.ends_with("restored:input-{index}"))`，
+`SnapshotSandbox::DenyFdPath` 分支下 `source_check` 是空串（:241-245）——**它压根不检查
+`/dev/fd` 是否不可读**。所以这条绿不表达任何拒绝成立；它表达的是"Deny 被丢掉了"。
+这正是"绿且无收据"的形态，本轮把它和 §6.37 的定性接上了：**这条腿的形状本身不是判据，
+收据（`:352` 那句 `output/stderr/status/closed`）才是**。
+
+### 一手二：纠正那手恢复的正是 A4/#42 要的 runner 一手
+
+`a3b96ae90` 的 ubuntu 腿里，`c387b44dc` 那份诊断**第一次由托管 runner 打出来**（逐字）：
+
+```
+panicked at exec-server/tests/exec_process/shell_snapshot.rs:352:13:
+bash#2: output="" stderr="bwrap: Can't mount tmpfs on /newroot/dev/fd: No such file or directory\n" status=Some(1) closed=true
+```
+
+⇒ 缺陷仍开放（O2 未做，`--tmpfs` 遮不住符号链接），但**响亮、可归因、且不需要我再借自己的机器**：
+§6.34 那个"ubuntu 腿上这条红到底有没有意义"的问题现在有了答案——在纠正后的名单下有意义，
+在 fail-open 名单下没有。两手各自的 `exec-server transport disconnected` 出现次数 **0 / 0**
+⇒ §6.37 定性的 25s 服务死亡形状在这两手**一次也没复现**，与"间歇、与 `/dev/fd` 无关"一致。
+`record_test_skip` 收据仍为 `no skip receipt file: either the suite never ran or no leg skipped`
+（每手两次），#39 的"零跳过、全部真执行"继续成立。
+
+### 一手三：harness 曾经把 fail-open 写成一条绿的断言
+
+`c7590fe24` 里 PASS 的是 `codex-linux-sandbox bwrap::tests::only_dev_paths_outside_the_synthetic_set_count_as_absent`
+（`PASS [   0.008s]` 12358/22941）——断言内容就是"`/dev` 下除那 10 项合成节点之外都算缺席"，
+即把 `fd`/`core`/`pts`/`ptmx`/`console` 判成缺席那条**错的规则**钉成了测试。
+`a3b96ae90` 把它改名并收紧为 `only_dev_paths_bwrap_never_creates_count_as_absent`
+（`PASS [   0.005s]` 12359/22942），并新增 `denied_dev_symlink_is_still_masked_rather_than_declared_absent`
+（`PASS [   0.008s]` 12347/22942）——后者断言 `/dev/fd` **仍然**拿到 `--tmpfs`，
+就是防这条 fail-open 再回来的门。两手测试总数 22941→22942 差 1，正等于"改名一条 + 新增一条"的净增。
+
+### `39542266851` 唯一的红：`daemon_startup` 那条腿在 ubuntu 首次红，且 #31 的诊断真的打出来了
+
+逐字：`FAIL [  49.425s] ( 3486/22941) codex-cli::daemon_startup
+discovered_managed_daemon_can_restart_with_auto_start_disabled`，
+stderr `Error: discovered timed out waiting for Server:Localbackgroundserver:` 之后**带出整块
+屏幕内容**（`>_ OpenAI Codex (v0.0.0)` / `/tmp/.tmpowr5Qq` / `Tip: This is a test announcement` /
+`/status` / `GPT-5.6-Terra · … · daemon-restart-test`），`Caused by: deadline has elapsed`。
+
+- 这是**该腿自带的 ~50s 等待预算**到点（49.425s），不是 nextest kill；所以 §6.36 那条
+  "被 kill 的腿零诊断"在这里不成立——#31 加的 `waiting for …: <屏幕>` 诊断按预期渲染了。
+- 基线（6 份缓存 ubuntu 日志逐字配对名与时长）：`PASS 10.950s`（`39347345560`）、
+  `11.683s`（`39371971338`）、`3.944s`（`39396134392`）、`11.297s`（`39530269408`）、
+  `5.354s`（`39543230422`）⇒ ubuntu 六手五绿一红，且**同期另一手同一条腿是 5.354s 绿**。
+- 分桶：与 #26/#19 那族同形（harness 等待预算 vs 整机争用），单条首次观察 + 同期一手绿 ⇒
+  不动代码；若再现，屏幕诊断已经够定位是哪一屏没等到。
+
+### 状态
+
+`39542266851` 与 `39543230422` 的 mac/windows 腿在登记时仍 `in_progress`（两手
+`bazel bridge gate (ubuntu)` 已 success：前者 28m52s）。按既有规矩，未到终态的 job 日志不可取，
+也不把"还在跑"读成结论。A3 的判据（`conpty_ctrl_c` 应不再红）**这两手读得到**——
+`8a41ac7d3` 那扇门是 `c7590fe24` 与 `a3b96ae90` 的共同祖先（`git merge-base --is-ancestor` 实测 YES），
+所以它的终态要看这两手的 windows 腿。#46 的判据这两手**读不到**：`42c5bb5d9` 不是
+`a3b96ae90` 的祖先（实测 NO），它仍未推送，只能由推送后的第三手 mac 腿验收。
 
 ## 7. 提交、推送与工作树状态
 
@@ -3392,6 +3609,23 @@ managed_daemon_restarts_from_deleted_working_directory` 与
   `39530269408` ubuntu/windows/bridge 终态、mac 腿 `in_progress`（04:31:54 尾停
   `7586/22888`）；`39542266851` 与 `39543230422` 各剩三腿在跑，
   两者的 `bazel bridge gate (ubuntu)` 已 success。
+- **§6.37 那一手（实测，本机，**仍未推送**）**：本轮**没有新的代码或配置改动**——全部是
+  零 CI 预算的取证与登记（`.45` 上按时序杀 exec-server 的复现实验、五份缓存 job 日志的逐字
+  核对、本机 mac `daemon_telemetry` 八连跑 8/8 PASS 0.248–0.320s）。栈仍是
+  `42c5bb5d9` + `e14d73e76` + 本笔文档：`origin/test` = `f6f74f484`，本地 `ahead=3`，
+  工作树在本笔提交后 clean。不推的理由与上一条相同（mac 腿预算），判据也相同：#46 只能由 mac 腿
+  验收，而在飞两手里 `39543230422` 是**唯一**含 `a3b96ae90`、因而能读 #42/A4 判据的一手。
+  这两手落地后一并推送；若期间 O1/O2 拿到指针，就合进同一手，省一整手 mac 预算。
+- **§6.38 那一手（两手 ubuntu 腿终态，纯登记）**：`39542266851`（`c7590fe24`）与
+  `39543230422`（`a3b96ae90`）的 ubuntu 腿各自 1 红，构成一组 runner 侧 A/B——
+  fail-open 那手 `blocked_descriptor_path` **`PASS [0.445s]`**（绿而无拒绝），纠正那手
+  **`FAIL [0.304s]`** + 逐字 `bash#2: output="" stderr="bwrap: Can't mount tmpfs on
+  /newroot/dev/fd: …" status=Some(1) closed=true`。A4/#42 要的"响亮且有收据"一手**已到手**，
+  缺陷本身仍开放（O2 未做）。两手 `transport disconnected` 计数 0/0 ⇒ §6.37 的 25s 形状未再现。
+  `39542266851` 另有一条 ubuntu 首次红 `daemon_startup::discovered_managed_daemon_can_restart_with_auto_start_disabled`
+  `FAIL [49.425s]`（该腿自带 ~50s 预算，非 nextest kill；#31 的屏幕诊断已渲染），
+  同期另一手同腿 `PASS [5.354s]` ⇒ 分桶 harness 争用、单条观察、不动代码。
+  本轮同样**零代码/配置改动、零 dispatch、零推送**。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
