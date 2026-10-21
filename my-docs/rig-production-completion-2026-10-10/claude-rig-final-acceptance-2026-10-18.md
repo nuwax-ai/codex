@@ -4137,7 +4137,13 @@ delete-rights=[DELETE+FILE_DELETE_CHILD]`；grp#3 在 runner 上也同样是 den
 现在把 §6.46 那条"最省事的候选"（沙箱里的 `cmd.exe` 不带 `WRITE_RESTRICTED`，于是只看 default 一侧）
 **同时**套到两手：
 
-- runner：default 一侧 `user` 有 DELETE ⇒ 预测删除 ⇒ 与实测一致。
+先把两手的丢失面并排放好（after 块逐格）：`.235` 侧 `here=[absent]` 只有 **3** 格
+——`workspace` / `temp` / `tmp`，且三格的 `in parent=` 都点名了依据（`DELETE via R[cap#0/1/2] × D[grp#7]`），
+这是**该删的**；`outside` / `workspace\.git` / `workspace\.git\config` 三格全留 ⇒ 用例 `PASS`。
+runner 侧 `here=[absent]` 是 **6** 格（§6.46 已登记），比 `.235` 多掉的正是那三格**受保护**的。
+
+- runner：default 一侧 `user` 有 DELETE ⇒ 预测删除 ⇒ 与实测一致（而且对这三格额外还有一条
+  `.git` 的 allow 依据）。
 - `.235`：default 一侧 `grp#7(S-1-5-11)` **同样带 DELETE**（ace[6]），而 grp#7 就在那张 default 名单里 ⇒
   **同一假设预测 `.235` 也会删掉 `outside`** ⇒ 与实测相反。
 
@@ -4682,6 +4688,9 @@ mac 本机把 §6.46 判据那两条腿单独跑了一遍：
   ace[0..2] 那三条我先写成"本机其它 cap"（无凭据的推断），改成"名单里没有 SID 属于这三个 authority"；
   "五个 authority"是错的（该令牌名单里只有 4 个机器 authority），一并删掉。
   推送前置条件与上一笔相同：mac 腿终态；本笔提交后计数是 `0 7`。
+  紧接着同一轮又给 §6.47 补了"两手丢失面并排"那一小段（`.235` 掉 3 格且格格有点名依据、runner 掉
+  6 格、多掉的正是三格受保护的），拆成单独一笔，计数因此是 `0 8`；§6.47 里"runner 与 `.235`
+  的 default 一侧只差一张 user ACE"这句话，是那段补完之后才站得住的。
 
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
