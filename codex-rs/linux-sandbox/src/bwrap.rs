@@ -1460,18 +1460,27 @@ fn append_existing_unreadable_path_args(
     append_empty_file_bind_data_args(bwrap_args, unreadable_root)
 }
 
-/// The `/dev` entries that do exist inside bwrap's synthetic device tree
-/// (`bubblewrap.c`, `SETUP_MOUNT_DEV`), plus `/dev/shm`, which this helper binds.
-const SYNTHETIC_DEV_ENTRIES: [&str; 10] = [
-    "null", "zero", "full", "random", "urandom", "tty", "stdin", "stdout", "stderr", "shm",
+/// Every `/dev` entry bwrap creates for itself (`bubblewrap.c`, `SETUP_MOUNT_DEV`):
+/// the six bound nodes, the `stdin`/`stdout`/`stderr`/`fd`/`core`/`ptmx` symlinks,
+/// the `shm` and `pts` mount points, and `console` (which appears whenever the
+/// sandbox's stdout is a tty).
+const SYNTHETIC_DEV_ENTRIES: [&str; 15] = [
+    "null", "zero", "full", "random", "urandom", "tty", "stdin", "stdout", "stderr", "fd", "core",
+    "pts", "ptmx", "shm", "console",
 ];
 
-/// Returns true when a deny rule targets a path the synthetic `/dev` already hides.
+/// Returns true when a deny rule targets a `/dev` entry bwrap never creates.
 ///
-/// `--dev /dev` replaces the host device tree with the fixed entries above, so every
-/// other `/dev/*` path has no mount point inside the sandbox. Masking one makes
-/// bubblewrap abort before the command starts; skipping the mask leaves that path
-/// unreachable, which is the denial the policy asked for.
+/// `--dev /dev` replaces the host device tree with exactly the entries above, so any
+/// other `/dev/*` path cannot be reached from inside the sandbox at all. Emitting a
+/// mask for one makes bubblewrap abort before the command starts, because there is no
+/// mount point to attach it to; omitting the mask leaves the path absent, which is the
+/// denial the policy asked for.
+///
+/// Entries in the list are still masked. Several of them are symlinks into `/proc`,
+/// which is not mounted yet when the mask arguments are emitted, so their mask can
+/// fail to land — but absence must never be used as the reason a live path goes
+/// unmasked.
 fn deny_is_enforced_by_absent_dev_path(path: &Path) -> bool {
     let Ok(relative) = path.strip_prefix(Path::new("/dev")) else {
         return false;
@@ -2948,12 +2957,38 @@ mod tests {
     }
 
     #[test]
-    fn only_dev_paths_outside_the_synthetic_set_count_as_absent() {
-        assert!(deny_is_enforced_by_absent_dev_path(Path::new("/dev/fd")));
-        assert!(deny_is_enforced_by_absent_dev_path(Path::new("/dev/pts/1")));
-        assert!(!deny_is_enforced_by_absent_dev_path(Path::new("/dev")));
-        assert!(!deny_is_enforced_by_absent_dev_path(Path::new("/dev/null")));
-        assert!(!deny_is_enforced_by_absent_dev_path(Path::new("/dev/shm")));
+    fn only_dev_paths_bwrap_never_creates_count_as_absent() {
+        for absent in ["/dev/kmsg", "/dev/sda", "/dev/net/tun"] {
+            assert!(
+                deny_is_enforced_by_absent_dev_path(Path::new(absent)),
+                "{absent} is not part of the synthetic /dev"
+            );
+        }
+        // Everything bwrap builds itself stays maskable, including the symlinks:
+        // treating them as absent would silently un-enforce a live denial.
+        for present in [
+            "/dev",
+            "/dev/null",
+            "/dev/tty",
+            "/dev/shm",
+            "/dev/pts",
+            "/dev/ptmx",
+            "/dev/fd",
+            "/dev/core",
+            "/dev/stdin",
+            "/dev/console",
+        ] {
+            assert!(
+                !deny_is_enforced_by_absent_dev_path(Path::new(present)),
+                "{present} exists inside the synthetic /dev"
+            );
+        }
+        // The decision is per first component, and only under a real `/dev` prefix.
+        // `/dev/pts/1` stays maskable: bwrap mounts devpts at `/dev/pts`, so a specific
+        // pty is a live path inside the sandbox, not an absent one.
+        assert!(!deny_is_enforced_by_absent_dev_path(Path::new(
+            "/dev/pts/1"
+        )));
         assert!(!deny_is_enforced_by_absent_dev_path(Path::new("/devfoo")));
         assert!(!deny_is_enforced_by_absent_dev_path(Path::new("/tmp/dev")));
     }
@@ -2961,10 +2996,11 @@ mod tests {
     #[test]
     fn denied_dev_path_without_a_mount_point_is_denied_by_absence() {
         let temp_dir = TempDir::new().expect("temp dir");
-        let denied = Path::new("/dev/fd");
+        let denied = Path::new("/dev/kmsg");
         assert!(
-            denied.is_dir(),
-            "precondition: {denied:?} must resolve to a directory on this host"
+            denied.exists(),
+            "precondition: {denied:?} must exist on this host, otherwise this leg would \
+             measure the missing-path branch instead of the synthetic-dev skip"
         );
         let policy = denied_dev_policy(denied);
 
@@ -2989,6 +3025,30 @@ mod tests {
                 .windows(3)
                 .any(|window| window[0] == "--ro-bind-data" && window[2] == denied_str),
             "args={:?}",
+            args.args
+        );
+    }
+
+    #[test]
+    fn denied_dev_symlink_is_still_masked_rather_than_declared_absent() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let denied = Path::new("/dev/fd");
+        assert!(
+            denied.is_dir(),
+            "precondition: {denied:?} must resolve to a directory on this host"
+        );
+        let policy = denied_dev_policy(denied);
+
+        let args = create_filesystem_args(&policy, temp_dir.path(), BwrapOptions::default())
+            .expect("filesystem args");
+        let denied_str = path_to_string(denied);
+
+        assert!(
+            args.args
+                .windows(2)
+                .any(|window| window == ["--tmpfs", denied_str.as_str()]),
+            "/dev/fd is created by bwrap, so a deny rule for it must not be waved through \
+             by absence: args={:?}",
             args.args
         );
     }
