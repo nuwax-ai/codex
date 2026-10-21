@@ -4216,7 +4216,7 @@ mac 本机把 §6.46 判据那两条腿单独跑了一遍：
 
 ### 三、部分日志能取，而且单条判决是终局的
 
-"未到终态的 job 日志不可取"（`:2901`、`:3264`、`:4594` 引用 §6.34）这条规矩的射程要划清：
+"未到终态的 job 日志不可取"（`:2901`、`:3264`、`:4651` 引用 §6.34）这条规矩的射程要划清：
 
 - 取不到的是 `gh run view <id> --log`，对 in_progress 直接给
   `run 39562896528 is still in progress; logs will be available when it is complete`。
@@ -4263,7 +4263,7 @@ job `119166741413` 终态 `failure`，失败步 `Bridge gate`，日志 37,149 �
 - `INFO: Elapsed time: 66.245s, Critical Path: 0.08s`、`INFO: 1 process: 1 internal.` ⇒ **一次编译都没发生**
 
 本轮之前每一手登记的 `bazel bridge gate (ubuntu)` 都是 success（`:156`、`:185`、`:316`、`:638`、`:1675`、
-`:2066`、`:2856`、`:2991`、`:3192`、`:3264`、`:3395`、`:3818`、`:4629`）⇒ 这是第一手红。归因：`rules_rs`
+`:2066`、`:2856`、`:2991`、`:3192`、`:3264`、`:3395`、`:3818`、`:4686`）⇒ 这是第一手红。归因：`rules_rs`
 的 rustc 工具链要到 build 时才去 ubuntu 归档快照拉 `zlib1g` 的 `.deb`，这是一条镜像侧不可控的
 hermetic-fetch 依赖面，503 发生在它身上。**处置：不重跑、不为此单独 push 或 dispatch**（用户已明令），
 #45/#46 的判据都在 nextest 腿里，这一格留给下一手自然覆盖；也不写代码给它加重试——那是未请求的加固。
@@ -4277,7 +4277,64 @@ hermetic-fetch 依赖面，503 发生在它身上。**处置：不重跑、不�
 - `39583542510`：bridge gate 已 `failure`（第五段），三条 nextest 腿写本节时 `in_progress`；
   #45 判据＝ubuntu 腿里那 5 条 `/proc` 腿的 bwrap 收据。
 - `39562896528`：mac 腿 `in_progress`，按第二节推算 ~10:45Z 收尾；#46 的判决已按第四节提前登记。
+  **【§6.49 取到终态：`completed`/`success`，`22888 tests run: 22888 passed`，推算落在 10:46:07Z】**
 - `codex-rs/` 净变化仍为 0。
+
+## 6.49 mac 腿第一次整腿满绿：`22888 tests run: 22888 passed`，#46 的判据因此被更强的一格覆盖
+
+### 终态与逐字读数
+
+`39562896528`（head `1af8b5a70`，含 `42c5bb5d9`）的 `nextest (macos-latest)` job `119098109071`
+终态 **`completed` / `success`**，`07:34:18Z → 10:48:18Z`＝3h14m，远在 matrix 给的 330min 之内。
+终版日志 `/Volumes/zhitai/tmp/qoder-scratch/m39562896528.final.raw` **5,440,998** 字节
+（去 ANSI 副本 `m39562896528.final.txt` 28,419 行；§6.48 第四节用的那份部分流是同一 job 在 10:19Z
+的 2,110,068 字节）。逐字：
+
+- `Summary [3517.860s] 22888 tests run: 22888 passed (30 slow), 71 skipped`
+- `FAIL` 与 `TIMEOUT` 两类行计数各 **0**；`SLOW` 行计数 **30**，与 Summary 括号自洽。
+- 第一条 `PASS`（`1/22888`）在 `09:47:30`，`Summary` 打在 `10:46:07` ⇒ 测试阶段 58m37s；
+  步骤内编译 `07:54:40 → 09:47:30`＝1h52m50s。
+
+### 这一格是本轮 workspace mac 腿第一次满绿
+
+前四手的 Summary 逐字（都取自 scratch 缓存，不凭记忆）：
+
+| hand | 逐字 Summary |
+| --- | --- |
+| `39526586631` | `Summary [3648.129s] 22885 tests run: 22883 passed (27 slow), 2 timed out, 71 skipped` |
+| `39530269408` | `Summary [3480.467s] 22888 tests run: 22886 passed (28 slow), 1 failed, 1 timed out, 71 skipped` |
+| `39542266851` | `Summary [3388.671s] 22888 tests run: 22887 passed (25 slow), 1 timed out, 71 skipped` |
+| `39543230422` | `Summary [3349.727s] 22888 tests run: 22887 passed (28 slow), 1 timed out, 71 skipped` |
+| **`39562896528`** | **`Summary [3517.860s] 22888 tests run: 22888 passed (30 slow), 71 skipped`** |
+
+⇒ 前四手每手至少一条 `timed out`，这一手一条也没有，整腿 `success`。
+
+### #46 结案：判据从"两条穿过窗口"升级成"含修复的手里整腿绿"
+
+§6.48 如实登记的那个强度差**仍然成立、也不需要再补**：那两条腿自己没穿过新的 `1m` 周期
+（56.683s / 48.627s，所以没打 `SLOW`）。但 #46 要修的红是"这两条在 `60.012s` 被杀 ⇒ mac 腿 `failure`"，
+现在这一手里整腿 `success`，两条腿在**终版**日志里的判决行与部分日志**一字不动**
+（时间戳 `10:04:06.0972290` / `10:04:54.7299300` 两枚都对得上）。
+⇒ 结案依据写成"含 `42c5bb5d9` 的手里 mac 整腿绿 + 那两条 PASS"；`>60s` 那两条兄弟腿
+（66.105s / 64.588s）仍是窗口算式的旁证，不是主判据。
+
+### 一次推算被坐实、一次怀疑被证伪
+
+- 坐实：§6.48 第二节按上一手测试阶段 58min 推出的"~10:45Z 收尾"落在 **10:46:07Z**（误差 1 分钟），
+  步骤内编译 1h52m50s 与上一手 1h52m16s 同长 ⇒ "2h20m 还在跑"确实不是异常，是我的量纲错。
+- 坐实（方法）：部分流里读到的单条判决在终版里不翻案 ⇒ `gh api …/actions/jobs/<id>/logs` 可以正式
+  用作**提前取证**通道，前提是只读已打印的单条 `PASS`/`FAIL`，不读整腿结论。
+
+### 这一手剩下的三条腿都不新增判据
+
+`nextest (ubuntu-latest)` `failure`＝§6.44 已登记的那一条（25s 服务死亡形状）；
+`nextest (windows)` `failure`＝§6.46 已登记的 `legacy_workspace_write_delete_is_limited_to_writable_roots`；
+`bazel bridge gate (ubuntu)` `success`。⇒ 整 run `failure`，但没有一条是首观。
+
+### 状态
+
+`39583542510`（head `0ef33716a`）三条 nextest 腿写本节时 `in_progress`；#45 的 ubuntu 判据在那一手。
+#46 至此可标结案。`codex-rs/` 净变化仍为 0。
 
 ## 7. 提交、推送与工作树状态
 
@@ -4808,6 +4865,17 @@ hermetic-fetch 依赖面，503 发生在它身上。**处置：不重跑、不�
   第一次红，cause 是 `snapshot.ubuntu.com` 对 `zlib1g_…_amd64.deb` 回 `503 Service Unavailable`，
   `Elapsed 66.245s / 1 process (internal)` 证明零编译——**按不凑绿的规矩没有为它重跑**，也没有为它
   加任何重试代码。`codex-rs/` 净变化仍为 0。
+- **§6.49 由本笔登记：`39562896528` 的 mac 腿终态 `completed`/`success`，#46 就此结案**。
+  取到的是终版日志（5,440,998 字节，副本 `m39562896528.final.txt`）：`Summary [3517.860s] 22888 tests
+  run: 22888 passed (30 slow), 71 skipped`，`FAIL`/`TIMEOUT` 计数各 0、`SLOW` 计数 30 与括号自洽；
+  本轮前四手逐字每手至少一条 `timed out`，所以这是 workspace mac 腿第一次满绿。
+  两条 #46 腿在终版里的判决行与 §6.48 从部分流读到的**一字不动**（两枚时间戳都对得上），
+  这同时把"部分流可用作提前取证"这条方法坐实了一次。结案判据按更强的"整腿绿"改写，
+  §6.48 那条强度差（那两条自己没穿过 `1m` 周期）保留不改写、只加前向指针。
+  本笔还重算了 §6.48 里**两处指向台账自身**的行号引用：插入新章节会把它们顶下去，
+  `日志未到终态` 那行 `:4594`→`:4651`、`两者的 bazel bridge gate 已 success` 那行 `:4629`→`:4686`，
+  两处已在原文改到位；§6.48/§6.49 之前那批行号（`:156`–`:3818`）不受影响。
+  `codex-rs/` 净变化仍为 0；本笔带 `[skip ci]`，不新增 CI 手。
 
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
