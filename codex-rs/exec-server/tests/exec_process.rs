@@ -217,7 +217,11 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(
             &std::env::current_dir()?,
         )
     {
-        eprintln!("skipping sandbox test: {warning}");
+        crate::common::record_test_skip(
+            "shell_snapshot_v2_filters_profile_exports_and_stays_in_memory",
+            "system_bwrap_warning",
+            &warning,
+        );
         return Ok(());
     }
     let context = create_process_context(use_remote).await?;
@@ -393,7 +397,11 @@ async fn exec_metadata_overrides_policy_and_cached_snapshot(
             &std::env::current_dir()?,
         )
     {
-        eprintln!("skipping sandbox test: {warning}");
+        crate::common::record_test_skip(
+            "exec_metadata_overrides_policy_and_cached_snapshot",
+            "system_bwrap_warning",
+            &warning,
+        );
         return Ok(());
     }
     let context = create_process_context(use_remote).await?;
@@ -610,7 +618,11 @@ async fn shell_snapshot_v2_capture_failure_falls_back_and_retries(
             &std::env::current_dir()?,
         )
     {
-        eprintln!("skipping sandbox test: {warning}");
+        crate::common::record_test_skip(
+            "shell_snapshot_v2_capture_failure_falls_back_and_retries",
+            "system_bwrap_warning",
+            &warning,
+        );
         return Ok(());
     }
     let context = create_process_context(use_remote).await?;
@@ -762,7 +774,11 @@ async fn remote_sandboxed_process_preserves_custom_arg0() -> Result<()> {
         &PermissionProfile::read_only(),
         &std::env::current_dir()?,
     ) {
-        eprintln!("skipping bwrap test: {warning}");
+        crate::common::record_test_skip(
+            "remote_sandboxed_process_preserves_custom_arg0",
+            "system_bwrap_warning",
+            &warning,
+        );
         return Ok(());
     }
 
@@ -907,7 +923,11 @@ async fn remote_process_keeps_sandbox_helper_visible_with_restricted_reads() -> 
         &PermissionProfile::read_only(),
         &std::env::current_dir()?,
     ) {
-        eprintln!("skipping bwrap test: {warning}");
+        crate::common::record_test_skip(
+            "remote_process_keeps_sandbox_helper_visible_with_restricted_reads",
+            "system_bwrap_warning",
+            &warning,
+        );
         return Ok(());
     }
 
@@ -972,7 +992,11 @@ async fn remote_tty_process_uses_configured_sandbox_helper_with_hostile_path() -
         &PermissionProfile::read_only(),
         &std::env::current_dir()?,
     ) {
-        eprintln!("skipping bwrap test: {warning}");
+        crate::common::record_test_skip(
+            "remote_tty_process_uses_configured_sandbox_helper_with_hostile_path",
+            "system_bwrap_warning",
+            &warning,
+        );
         return Ok(());
     }
 
@@ -1046,7 +1070,11 @@ async fn remote_process_preserves_empty_workspace_roots() -> Result<()> {
         &PermissionProfile::read_only(),
         &std::env::current_dir()?,
     ) {
-        eprintln!("skipping bwrap test: {warning}");
+        crate::common::record_test_skip(
+            "remote_process_preserves_empty_workspace_roots",
+            "system_bwrap_warning",
+            &warning,
+        );
         return Ok(());
     }
 
@@ -2064,4 +2092,40 @@ async fn exec_process_signal_terminates_on_windows(use_remote: bool) -> Result<(
 #[serial_test::serial(remote_exec_server)]
 async fn exec_process_preserves_queued_events_before_subscribe(use_remote: bool) -> Result<()> {
     assert_exec_process_preserves_queued_events_before_subscribe(use_remote).await
+}
+
+/// The skip receipt is the only thing that separates an environment skip from
+/// a pass in a nextest log, so its byte format is checked on every platform:
+/// the bwrap guards that consume it only fire on Linux, where a broken writer
+/// would otherwise never be noticed.
+#[tokio::test]
+async fn skip_receipt_names_the_leg_its_guard_and_the_host_reason() -> Result<()> {
+    let dir = TempDir::new()?;
+    let receipt = dir.path().join("skips.jsonl");
+    common::write_skip_receipt(
+        &receipt,
+        "shell_snapshot_concurrent_replays_keep_independent_readers",
+        "system_bwrap_warning",
+        "bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted",
+    );
+    common::write_skip_receipt(
+        &receipt,
+        "remote_process_preserves_empty_workspace_roots",
+        "system_bwrap_warning",
+        "reason with \"quotes\" and a\nnewline",
+    );
+    assert_eq!(
+        std::fs::read_to_string(&receipt)?
+            .lines()
+            .collect::<Vec<_>>(),
+        vec![
+            "{\"test\":\"shell_snapshot_concurrent_replays_keep_independent_readers\",\"\
+             guard\":\"system_bwrap_warning\",\"reason\":\"bwrap: loopback: Failed \
+             RTM_NEWADDR: Operation not permitted\"}",
+            "{\"test\":\"remote_process_preserves_empty_workspace_roots\",\"\
+             guard\":\"system_bwrap_warning\",\"reason\":\"reason with \\\"quotes\\\" and a newline\"}",
+        ],
+        "one JSON object per skipped leg, appended in order"
+    );
+    Ok(())
 }

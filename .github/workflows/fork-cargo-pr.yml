@@ -144,11 +144,32 @@ jobs:
 
       - name: Test (workspace)
         shell: bash
+        env:
+          CODEX_TEST_SKIP_RECEIPT_FILE: ${{ github.workspace }}/codex-rs/target/skip-receipts.jsonl
         run: |
+          # target/ comes back from the cache, so the previous hand's receipts
+          # would otherwise read as evidence for this one.
+          rm -f "$CODEX_TEST_SKIP_RECEIPT_FILE"
           if [[ "${{ matrix.voice_host }}" == "exclude" ]]; then
             just test --workspace --exclude codex-voice-host --features codex-core/rust-rig,codex-v8-poc/sandbox --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
           else
             just test --workspace --features codex-core/rust-rig,codex-v8-poc/sandbox --locked -E 'not binary(exec_live) & not binary(bridge_live)' --retries 0
+          fi
+
+      # nextest captures a passing test's output, so "this leg skipped because
+      # the host cannot sandbox" is otherwise indistinguishable from "this leg
+      # passed". The legs that guard on a capability append to this file.
+      - name: Skip receipts
+        if: always()
+        shell: bash
+        env:
+          CODEX_TEST_SKIP_RECEIPT_FILE: ${{ github.workspace }}/codex-rs/target/skip-receipts.jsonl
+        run: |
+          if [[ -f "$CODEX_TEST_SKIP_RECEIPT_FILE" ]]; then
+            echo "legs skipped for host capability reasons: $(wc -l < "$CODEX_TEST_SKIP_RECEIPT_FILE")"
+            cat "$CODEX_TEST_SKIP_RECEIPT_FILE"
+          else
+            echo "no skip receipt file: either the suite never ran or no leg skipped"
           fi
 
   bazel-bridge-gate:

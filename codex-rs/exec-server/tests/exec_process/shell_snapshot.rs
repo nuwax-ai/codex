@@ -204,7 +204,11 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
             &std::env::current_dir()?,
         )
     {
-        eprintln!("skipping sandbox test: {warning}");
+        crate::common::record_test_skip(
+            "shell_snapshot_concurrent_replays_keep_independent_readers",
+            "system_bwrap_warning",
+            &warning,
+        );
         return Ok(());
     }
     let context = if sandbox_mode == SnapshotSandbox::WorkspaceWrite {

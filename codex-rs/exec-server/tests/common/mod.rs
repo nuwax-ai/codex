@@ -32,6 +32,50 @@ pub(crate) const SYSTEM_PROXY_URL_ENV: &str = "CODEX_EXEC_SERVER_TEST_SYSTEM_PRO
 const CODEX_WINDOWS_SANDBOX_ARG1: &str = "--run-as-windows-sandbox";
 const DELAYED_OUTPUT_AFTER_EXIT_CHILD_ARG: &str = "--codex-test-delayed-output-after-exit-child";
 
+/// nextest captures a passing test's output, so a capability skip that only
+/// `eprintln!`s its reason is indistinguishable from a real pass in the runner
+/// receipt — the only tell left is a single-digit-millisecond duration. With
+/// `CODEX_TEST_SKIP_RECEIPT_FILE` set, every such skip appends one JSON line
+/// naming itself and the host reason instead.
+///
+/// A set-but-unwritable path is a hard error here: silently returning would
+/// reproduce exactly the silent green this exists to remove.
+// Only the exec_process target skips on sandbox capability today.
+#[allow(dead_code)]
+pub(crate) fn record_test_skip(test: &str, guard: &str, reason: &str) {
+    eprintln!("skipping {test} ({guard}): {reason}");
+    let Some(path) = env::var_os("CODEX_TEST_SKIP_RECEIPT_FILE") else {
+        return;
+    };
+    assert!(
+        !path.is_empty(),
+        "CODEX_TEST_SKIP_RECEIPT_FILE must name a file; {test} skipped for: {reason}"
+    );
+    write_skip_receipt(std::path::Path::new(&path), test, guard, reason);
+}
+
+/// Split out so the format is testable without mutating a process-wide
+/// environment variable that other tests in the same process read.
+pub(crate) fn write_skip_receipt(path: &std::path::Path, test: &str, guard: &str, reason: &str) {
+    let reason = reason
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', " ");
+    let line = format!("{{\"test\":\"{test}\",\"guard\":\"{guard}\",\"reason\":\"{reason}\"}}\n");
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(path)
+        .unwrap_or_else(|err| panic!("cannot open {path:?} for the skip receipt of {test}: {err}"));
+    file.write_all(line.as_bytes())
+        .unwrap_or_else(|err| panic!("cannot append the skip receipt of {test}: {err}"));
+}
+
 #[macro_export]
 macro_rules! skip_if_mxc_unavailable {
     ($return_value:expr $(,)?) => {{
