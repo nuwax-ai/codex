@@ -34,6 +34,21 @@ filter = 'package(codex-cli) & binary(app_server_daemon) & (test(=managed_starts
 slow-timeout = { period = "2m", terminate-after = 2 }
 
 [[profile.default.overrides]]
+# macOS only, same family as the block above but these two were left on the
+# default 30s x 2 kill. Both died at exactly 60.012s on 39526586631 after SLOW
+# at 30s. The full-CI lane runs `just test ... --retries 0` (fork-cargo-pr.yml),
+# so a killed leg gets one attempt and reports only TIMEOUT - no diagnostics
+# about which daemon step never came back. Their rise across hands is the lane,
+# not the code: 46.008/35.630s (39347345560), 51.222/54.032s (39371971338),
+# 59.604/56.490s (39396134392), killed (39526586631) - the last of those hands
+# also took 2h15m to compile where 39233543173 needed 1h32m. Idle on an arm64 Mac
+# the two legs measure 25.884s and 26.698s. 1m x 2 = 2m clears the worst observed
+# pass by the 65 % spread quoted above (59.604 x 1.65 = 98.3s).
+platform = 'cfg(target_os = "macos")'
+filter = 'package(codex-cli) & binary(app_server_daemon) & (test(=managed_daemon_restarts_from_deleted_working_directory) | test(=managed_identity_survives_locale_and_timezone_changes))'
+slow-timeout = { period = "1m", terminate-after = 2 }
+
+[[profile.default.overrides]]
 # This case validates and copies both the initial and replacement debug package.
 filter = 'package(codex-cli) & binary(app_server_daemon) & test(=packaged_daemon_start_and_explicit_replacement)'
 slow-timeout = { period = "1m", terminate-after = 3 }
