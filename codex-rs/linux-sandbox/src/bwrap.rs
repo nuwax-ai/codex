@@ -17,6 +17,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::fs;
 use std::fs::File;
@@ -126,9 +127,69 @@ impl BwrapNetworkMode {
 #[derive(Debug)]
 pub(crate) struct BwrapArgs {
     pub args: Vec<String>,
+    /// Mask arguments whose destination lives on the procfs that `args` mounts later.
+    ///
+    /// `create_bwrap_flags` splices these after `--proc /proc`, because the fresh
+    /// procfs replaces everything already mounted under `/proc`.
+    pub proc_scoped_args: Vec<String>,
+    /// Whether `/proc` destinations are collected into `proc_scoped_args`.
+    ///
+    /// Only `--proc /proc` overmounts a mask. Without a fresh procfs the masks stay
+    /// where they were emitted, which is where they already take effect.
+    pub relocate_proc_destinations: bool,
     pub preserved_files: Vec<File>,
     pub synthetic_mount_targets: Vec<SyntheticMountTarget>,
     pub protected_create_targets: Vec<ProtectedCreateTarget>,
+}
+
+impl BwrapArgs {
+    /// The argument list that a mask for `destination` belongs to.
+    ///
+    /// Callers take this once per mask group so every argument of the group, including
+    /// the `--perms`/`--tmpfs`/`--remount-ro` trio and the mount target parents, is
+    /// emitted together and keeps its relative order.
+    fn mask_sink(&mut self, destination: &Path) -> &mut Vec<String> {
+        if self.relocate_proc_destinations && mask_lands_on_mounted_procfs(destination) {
+            &mut self.proc_scoped_args
+        } else {
+            &mut self.args
+        }
+    }
+}
+
+/// Returns true when a mask for `destination` has to be applied to the freshly mounted
+/// procfs rather than to the host `/proc` the argument was written against.
+///
+/// Both halves matter: procfs must re-create the destination once `--proc` replaces
+/// the tree, and the destination must exist to be masked at all. Masking a path the new
+/// procfs does not have makes bubblewrap abort on the missing mount point.
+fn mask_lands_on_mounted_procfs(destination: &Path) -> bool {
+    procfs_entry_survives_new_pid_namespace(destination) && destination.exists()
+}
+
+/// Returns true when `/proc` entries under `destination` still exist after the sandbox
+/// gets its fresh procfs in a fresh PID namespace.
+///
+/// `--proc` is only mounted alongside `--unshare-pid` (see `BwrapOptions::mount_proc`),
+/// so the new tree lists nothing but the sandbox's own processes. A mask for
+/// `/proc/<pid>/...` therefore has no destination to attach to, which is also the
+/// denial the rule asked for: the host process it pointed at is gone.
+fn procfs_entry_survives_new_pid_namespace(destination: &Path) -> bool {
+    let Ok(relative) = destination.strip_prefix(Path::new("/proc")) else {
+        return false;
+    };
+    match relative.components().next() {
+        // `/proc` itself is the mount point, so it always exists in the new tree.
+        None => true,
+        Some(component) => !is_pid_directory_name(component.as_os_str()),
+    }
+}
+
+fn is_pid_directory_name(name: &OsStr) -> bool {
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    !name.is_empty() && name.chars().all(|char| char.is_ascii_digit())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -266,6 +327,8 @@ pub(crate) fn create_bwrap_command_args(
         return if options.network_mode == BwrapNetworkMode::FullAccess {
             Ok(BwrapArgs {
                 args: command,
+                proc_scoped_args: Vec::new(),
+                relocate_proc_destinations: false,
                 preserved_files: Vec::new(),
                 synthetic_mount_targets: Vec::new(),
                 protected_create_targets: Vec::new(),
@@ -319,6 +382,8 @@ fn create_bwrap_flags_full_filesystem(command: Vec<String>, options: BwrapOption
     args.extend(command);
     BwrapArgs {
         args,
+        proc_scoped_args: Vec::new(),
+        relocate_proc_destinations: false,
         preserved_files: Vec::new(),
         synthetic_mount_targets: Vec::new(),
         protected_create_targets: Vec::new(),
@@ -352,9 +417,11 @@ fn create_bwrap_flags(
     }
     let BwrapArgs {
         args: filesystem_args,
+        proc_scoped_args,
         preserved_files,
         synthetic_mount_targets,
         protected_create_targets,
+        ..
     } = create_filesystem_args(file_system_sandbox_policy, sandbox_policy_cwd, options)?;
     let normalized_command_cwd = normalize_command_cwd_for_bwrap(command_cwd);
     let mut args = Vec::new();
@@ -391,6 +458,10 @@ fn create_bwrap_flags(
         args.push("--proc".to_string());
         args.push("/proc".to_string());
     }
+    // bubblewrap walks its arguments in order, so the procfs just mounted replaced
+    // every mask the policy applied to a host /proc path. Re-apply those here, on the
+    // fresh procfs, or a deny rule under /proc silently protects nothing.
+    args.extend(proc_scoped_args);
     if normalized_command_cwd.as_path() != command_cwd {
         // Bubblewrap otherwise inherits the helper's logical cwd, which can be
         // a symlink alias that disappears once the sandbox only mounts
@@ -405,6 +476,8 @@ fn create_bwrap_flags(
     args.extend(command);
     Ok(BwrapArgs {
         args,
+        proc_scoped_args: Vec::new(),
+        relocate_proc_destinations: false,
         preserved_files,
         synthetic_mount_targets,
         protected_create_targets,
@@ -606,6 +679,8 @@ fn create_filesystem_args(
     }
     let mut bwrap_args = BwrapArgs {
         args,
+        proc_scoped_args: Vec::new(),
+        relocate_proc_destinations: options.mount_proc,
         preserved_files: Vec::new(),
         synthetic_mount_targets: Vec::new(),
         protected_create_targets: Vec::new(),
@@ -1318,19 +1393,21 @@ fn append_empty_file_bind_data_args(bwrap_args: &mut BwrapArgs, path: &Path) -> 
     let null_file = File::open("/dev/null")?;
     let null_fd = null_file.as_raw_fd().to_string();
     bwrap_args.preserved_files.push(null_file);
-    bwrap_args.args.push("--ro-bind-data".to_string());
-    bwrap_args.args.push(null_fd);
-    bwrap_args.args.push(path_to_string(path));
+    let mask_args = bwrap_args.mask_sink(path);
+    mask_args.push("--ro-bind-data".to_string());
+    mask_args.push(null_fd);
+    mask_args.push(path_to_string(path));
     Ok(())
 }
 
 fn append_empty_directory_args(bwrap_args: &mut BwrapArgs, path: &Path) {
-    bwrap_args.args.push("--perms".to_string());
-    bwrap_args.args.push("555".to_string());
-    bwrap_args.args.push("--tmpfs".to_string());
-    bwrap_args.args.push(path_to_string(path));
-    bwrap_args.args.push("--remount-ro".to_string());
-    bwrap_args.args.push(path_to_string(path));
+    let mask_args = bwrap_args.mask_sink(path);
+    mask_args.push("--perms".to_string());
+    mask_args.push("555".to_string());
+    mask_args.push("--tmpfs".to_string());
+    mask_args.push(path_to_string(path));
+    mask_args.push("--remount-ro".to_string());
+    mask_args.push(path_to_string(path));
 }
 
 fn append_missing_read_only_subpath_args(bwrap_args: &mut BwrapArgs, path: &Path) -> Result<()> {
@@ -1427,36 +1504,36 @@ fn append_existing_unreadable_path_args(
             .map(PathBuf::as_path)
             .filter(|path| *path != unreadable_root && path.starts_with(unreadable_root))
             .collect();
-        bwrap_args.args.push("--perms".to_string());
+        // One sink for the whole group: the trio and the mount target parents have to
+        // stay together, wherever the denied destination ends up being mounted.
+        let mask_args = bwrap_args.mask_sink(unreadable_root);
+        mask_args.push("--perms".to_string());
         // Execute-only perms let the process traverse into explicitly
         // re-opened writable descendants while still hiding the denied
         // directory contents. Plain denied directories with no writable child
         // mounts stay at `000`.
-        bwrap_args.args.push(if writable_descendants.is_empty() {
+        mask_args.push(if writable_descendants.is_empty() {
             "000".to_string()
         } else {
             "111".to_string()
         });
-        bwrap_args.args.push("--tmpfs".to_string());
-        bwrap_args.args.push(path_to_string(unreadable_root));
+        mask_args.push("--tmpfs".to_string());
+        mask_args.push(path_to_string(unreadable_root));
         // Recreate any writable descendants inside the tmpfs before remounting
         // the denied parent read-only. Otherwise bubblewrap cannot mkdir the
         // nested mount targets after the parent has been frozen.
         writable_descendants.sort_by_key(|path| path_depth(path));
         for writable_descendant in writable_descendants {
-            append_mount_target_parent_dir_args(
-                &mut bwrap_args.args,
-                writable_descendant,
-                unreadable_root,
-            );
+            append_mount_target_parent_dir_args(mask_args, writable_descendant, unreadable_root);
         }
-        bwrap_args.args.push("--remount-ro".to_string());
-        bwrap_args.args.push(path_to_string(unreadable_root));
+        mask_args.push("--remount-ro".to_string());
+        mask_args.push(path_to_string(unreadable_root));
         return Ok(());
     }
 
-    bwrap_args.args.push("--perms".to_string());
-    bwrap_args.args.push("000".to_string());
+    let mask_args = bwrap_args.mask_sink(unreadable_root);
+    mask_args.push("--perms".to_string());
+    mask_args.push("000".to_string());
     append_empty_file_bind_data_args(bwrap_args, unreadable_root)
 }
 
@@ -3002,7 +3079,7 @@ mod tests {
             "precondition: {denied:?} must exist on this host, otherwise this leg would \
              measure the missing-path branch instead of the synthetic-dev skip"
         );
-        let policy = denied_dev_policy(denied);
+        let policy = denied_path_policy(denied);
 
         let args = create_filesystem_args(&policy, temp_dir.path(), BwrapOptions::default())
             .expect("filesystem args");
@@ -3037,7 +3114,7 @@ mod tests {
             denied.is_dir(),
             "precondition: {denied:?} must resolve to a directory on this host"
         );
-        let policy = denied_dev_policy(denied);
+        let policy = denied_path_policy(denied);
 
         let args = create_filesystem_args(&policy, temp_dir.path(), BwrapOptions::default())
             .expect("filesystem args");
@@ -3057,7 +3134,7 @@ mod tests {
     fn denied_synthetic_dev_node_keeps_its_mask() {
         let temp_dir = TempDir::new().expect("temp dir");
         let denied = Path::new("/dev/null");
-        let policy = denied_dev_policy(denied);
+        let policy = denied_path_policy(denied);
 
         let args = create_filesystem_args(&policy, temp_dir.path(), BwrapOptions::default())
             .expect("filesystem args");
@@ -3081,7 +3158,178 @@ mod tests {
         assert_eq!(args.preserved_files.len(), 1);
     }
 
-    fn denied_dev_policy(denied: &Path) -> FileSystemSandboxPolicy {
+    #[test]
+    fn only_proc_entries_the_new_procfs_recreates_move_after_the_mount() {
+        for relocated in [
+            "/proc",
+            "/proc/version",
+            "/proc/self",
+            "/proc/sys",
+            "/proc/cpuinfo",
+        ] {
+            assert!(
+                procfs_entry_survives_new_pid_namespace(Path::new(relocated)),
+                "{relocated} exists in the freshly mounted procfs, so its mask has to \
+                 follow that mount"
+            );
+        }
+        // A host PID is simply gone from the new tree. Masking it where the policy
+        // named it would attach a mount to a procfs entry that does not exist.
+        for left_in_place in [
+            "/proc/1",
+            "/proc/1/root",
+            "/proc/3516382/maps",
+            "/dev/fd",
+            "/tmp/proc/version",
+        ] {
+            assert!(
+                !procfs_entry_survives_new_pid_namespace(Path::new(left_in_place)),
+                "{left_in_place} must keep its mask in the filesystem argument list"
+            );
+        }
+    }
+
+    #[test]
+    fn denied_proc_file_is_masked_after_the_proc_mount() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let denied = Path::new("/proc/version");
+        assert!(
+            denied.is_file(),
+            "precondition: {denied:?} must exist in the host procfs, otherwise this leg \
+             would measure the missing-path branch instead of the overmounted mask"
+        );
+
+        let args = denied_proc_args(denied, temp_dir.path(), BwrapOptions::default()).args;
+        let proc_mount = arg_index(&args, &["--proc", "/proc"]);
+        let masks = file_deny_mask_positions(&args, denied);
+
+        assert_eq!(
+            masks.len(),
+            1,
+            "the deny mask must move after `--proc`, not be emitted twice: {args:#?}"
+        );
+        assert!(
+            masks[0] > proc_mount,
+            "masking {denied:?} before `--proc /proc` protects nothing: the fresh procfs \
+             replaces the mask and the file stays readable. proc_mount={proc_mount} \
+             mask={} {args:#?}",
+            masks[0]
+        );
+    }
+
+    #[test]
+    fn denied_proc_directory_mask_travels_as_one_group() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let denied = Path::new("/proc/sys");
+        assert!(
+            denied.is_dir(),
+            "precondition: {denied:?} must be a directory in the host procfs"
+        );
+
+        let args = denied_proc_args(denied, temp_dir.path(), BwrapOptions::default()).args;
+        let denied_str = path_to_string(denied);
+        let proc_mount = arg_index(&args, &["--proc", "/proc"]);
+        let tmpfs = arg_index(&args, &["--perms", "000", "--tmpfs", denied_str.as_str()]);
+        let remount_ro = arg_index(&args, &["--remount-ro", denied_str.as_str()]);
+
+        assert!(
+            tmpfs > proc_mount && remount_ro > tmpfs,
+            "the whole tmpfs group has to land on the fresh procfs: proc_mount={proc_mount} \
+             tmpfs={tmpfs} remount_ro={remount_ro} {args:#?}"
+        );
+    }
+
+    #[test]
+    fn denied_proc_pid_mask_stays_before_the_proc_mount() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let denied = Path::new("/proc/1");
+        assert!(
+            denied.is_dir(),
+            "precondition: {denied:?} must exist in the host procfs"
+        );
+
+        let args = denied_proc_args(denied, temp_dir.path(), BwrapOptions::default()).args;
+        let denied_str = path_to_string(denied);
+        let proc_mount = arg_index(&args, &["--proc", "/proc"]);
+        let tmpfs = arg_index(&args, &["--perms", "000", "--tmpfs", denied_str.as_str()]);
+
+        assert!(
+            tmpfs < proc_mount,
+            "{denied:?} names a host process that the sandbox's fresh procfs does not \
+             list; mounting the mask after `--proc` would abort bubblewrap on the missing \
+             destination. proc_mount={proc_mount} tmpfs={tmpfs} {args:#?}"
+        );
+    }
+
+    #[test]
+    fn proc_masks_stay_put_when_the_procfs_is_not_remounted() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let denied = Path::new("/proc/version");
+        assert!(
+            denied.is_file(),
+            "precondition: {denied:?} must exist in the host procfs"
+        );
+
+        let args = denied_proc_args(
+            denied,
+            temp_dir.path(),
+            BwrapOptions {
+                mount_proc: false,
+                ..Default::default()
+            },
+        );
+
+        assert!(
+            args.proc_scoped_args.is_empty(),
+            "without `--proc` nothing overmounts the mask, so it must stay in the \
+             filesystem arguments: {:?}",
+            args.proc_scoped_args
+        );
+        assert_eq!(
+            file_deny_mask_positions(&args.args, denied).len(),
+            1,
+            "{:#?}",
+            args.args
+        );
+    }
+
+    /// Final bubblewrap flags for a readable-root policy that denies one `/proc` path.
+    fn denied_proc_args(denied: &Path, cwd: &Path, options: BwrapOptions) -> BwrapArgs {
+        create_bwrap_command_args(
+            vec!["/bin/true".to_string()],
+            &denied_path_policy(denied),
+            cwd,
+            cwd,
+            options,
+        )
+        .expect("bwrap args")
+    }
+
+    fn arg_index(args: &[String], window: &[&str]) -> usize {
+        args.windows(window.len())
+            .position(|candidate| candidate == window)
+            .unwrap_or_else(|| panic!("expected {window:?} in {args:#?}"))
+    }
+
+    /// Positions of the `--perms 000 --ro-bind-data <fd> <denied>` file deny masks.
+    fn file_deny_mask_positions(args: &[String], denied: &Path) -> Vec<usize> {
+        let denied = path_to_string(denied);
+        args.windows(5)
+            .enumerate()
+            .filter(|(_, window)| {
+                window[0] == "--perms"
+                    && window[1] == "000"
+                    && window[2] == "--ro-bind-data"
+                    && window[3].parse::<i32>().is_ok()
+                    && window[4] == denied
+            })
+            .map(|(position, _)| position)
+            .collect()
+    }
+
+    /// Readable-root policy with one carveout denied, the shape a user writes when
+    /// they add `{"path": "...", "access": "deny"}` to the filesystem policy.
+    fn denied_path_policy(denied: &Path) -> FileSystemSandboxPolicy {
         FileSystemSandboxPolicy::restricted(vec![
             FileSystemSandboxEntry {
                 path: FileSystemPath::Special {

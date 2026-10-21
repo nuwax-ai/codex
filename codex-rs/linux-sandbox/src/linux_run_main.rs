@@ -484,6 +484,10 @@ fn build_bwrap_argv(
     argv.extend(bwrap_args.args);
     Ok(crate::bwrap::BwrapArgs {
         args: argv,
+        // create_bwrap_flags already spliced the /proc masks into the final argument
+        // list, in the position they have to hold relative to `--proc`.
+        proc_scoped_args: Vec::new(),
+        relocate_proc_destinations: false,
         preserved_files: bwrap_args.preserved_files,
         synthetic_mount_targets: bwrap_args.synthetic_mount_targets,
         protected_create_targets: bwrap_args.protected_create_targets,
@@ -588,6 +592,7 @@ fn run_bwrap_in_child_with_synthetic_mount_cleanup(bwrap_args: crate::bwrap::Bwr
         preserved_files,
         synthetic_mount_targets,
         protected_create_targets,
+        ..
     } = bwrap_args;
     let setup_signal_mask = ForwardedSignalMask::block();
     let synthetic_mount_registrations = register_synthetic_mount_targets(&synthetic_mount_targets);
@@ -1434,6 +1439,7 @@ fn run_bwrap_in_child_capture_stderr(bwrap_args: crate::bwrap::BwrapArgs) -> Str
         preserved_files,
         synthetic_mount_targets,
         protected_create_targets,
+        ..
     } = bwrap_args;
     let setup_signal_mask = ForwardedSignalMask::block();
     let synthetic_mount_registrations = register_synthetic_mount_targets(&synthetic_mount_targets);
