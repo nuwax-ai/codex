@@ -2798,6 +2798,10 @@ tmpfs mount（privileged_op，server 侧）不在同一作用域，救不了 `/d
 `SYNTHETIC_DEV_ENTRIES: [&str; 10]`（6 个节点 + 3 个符号链接 + `--dev` 之外另行 bind 的 `shm`）
 逐项对齐 vendored 那张表，`/dev` 自身与表内节点保持可 mask。三条新腿：
 
+**⚠ 本节下面这套"落地方案 / 修复后一手 / syscall 补强"记的是 `a4c0ff2fa`，它的名单漏了
+bwrap 自己创建的 5 个条目，因而对这些路径构成 fail-open；纠正与推翻它的一手见 §6.35。**
+下面这张表与"leg 转绿"的读数当时确实成立，但它们现在是被作废的状态，不要按现状引用。
+
 | 腿 | 测的是哪一面 | `.45` 读数 |
 | --- | --- | --- |
 | `only_dev_paths_outside_the_synthetic_set_count_as_absent` | 纯谓词，不碰宿主：`/dev/fd`、`/dev/pts/1` → true；`/dev`、`/dev/null`、`/dev/shm`、`/devfoo`、`/tmp/dev` → false | PASS 0.014s |
@@ -2887,6 +2891,87 @@ bwrap 修复与 A3 门**——那些改动还只在未提交工作树里，所�
 
 `39526586631` 的 mac job 与 `39530269408` 的 mac/windows job 在登记时仍 `in_progress`；
 按既有规矩，未到终态的 job 日志不可取，也不把"还在跑"读成任何结论。
+
+## 6.35 §6.33 那笔修复被我的下一条测量推翻了一半：纠正、以及顺带量到的一个上游 fail-open
+
+登记顺序不修饰：**§6.33 的修复推上去之后我自己接着测，测出它是 fail-open**。
+`a4c0ff2fa` 在 `origin/test` 上存在了 **10 分 25 秒**（两次推送分别产生 run `39542266851`
+@ `2026-10-21T04:07:10Z` 与 `39543230422` @ `04:17:35Z`），随后被 `a3b96ae90` 取代。
+
+### 我那份名单漏了 bwrap 自己创建的 5 个 `/dev` 条目
+
+vendored `bubblewrap.c:1408-1459`（`SETUP_MOUNT_DEV` 从 `:1388` 起，这是紧接我引用过的那
+6 个节点之后的部分）还做：`fd -> /proc/self/fd`（`:1418`）、`core -> /proc/kcore`（`:1422`）、
+`mkdir pts` + **devpts 挂载**、`ptmx -> pts/ptmx`、`mkdir shm`（`:1428` 起），
+以及 stdout 是 tty 时 `console`（`:1444` 起）。
+我的 `SYNTHETIC_DEV_ENTRIES` 只列了 10 项，于是 `fd`/`core`/`pts`/`ptmx`/`console`
+被我判成"缺席"，**对这些路径的 Deny 被静默放行**。
+
+一手（`.45`，直接用产品 helper，策略里带 `{"path":"/dev/fd","access":"deny"}`）：
+
+```
+lr-x------ 1 soddy soddy 64 ... 0 -> pipe:[3516382]
+lr-x------ 1 soddy soddy 64 ... 1 -> pipe:[3529043]
+lr-x------ 1 soddy soddy 64 ... 2 -> pipe:[3529043]
+exit=0
+```
+
+对照：同一条命令在无 deny 的策略下 `ls -l /dev` 显示 `fd -> /proc/self/fd`
+（还有 `core -> /proc/kcore`、`ptmx -> pts/ptmx`、`pts`、`shm`、三个 stdio 符号链接）。
+⇒ **分桶：harness 之外的产品缺陷，且由我引入**——原来的行为是响亮 abort（fail-closed，
+功能不可用），我把它换成了"跑起来了但拒绝没生效"，这一版更坏。已 fix-forward，不掩盖。
+
+### 为什么 `--tmpfs /dev/fd` 挂不上：不是顺序问题
+
+裸 bwrap 四组对照（`.45`，`bubblewrap 0.11.1`、`7.0.0-38-generic`）：
+
+| 组 | 参数顺序 | 读数 |
+| --- | --- | --- |
+| X1 | `--dev /dev --proc /proc … --perms 000 --tmpfs /dev/fd`（mask 在 proc **之后**） | `rc=1`，`Can't mount tmpfs on /newroot/dev/fd: No such file or directory` |
+| X2 | `--dev /dev --perms 000 --tmpfs /dev/fd --proc /proc`（产品今天的顺序） | **同一句 rc=1** |
+
+⇒ 挂载目的要穿过符号链接解析到 `/proc/self/fd`，这条路 bwrap 两种顺序都走不通。
+所以"缺席即拒绝"这个机制**只对 bwrap 从不创建的条目成立**（如 `/dev/kmsg`），
+不能推广到它自己建的那些——这正是我第一版犯的推理错误。
+
+### 纠正后（`a3b96ae90`，名单 15 项 = 6 节点 + 6 符号链接 + `pts`/`shm`/`console`）
+
+| 检查 | 读数 |
+| --- | --- |
+| `-p codex-linux-sandbox` 全量 | `Summary [6.361s] 232 tests run: 232 passed, 3 skipped`（228 基线 + 4 条腿） |
+| 新腿 `denied_dev_symlink_is_still_masked_rather_than_declared_absent` | PASS 0.016s——断言 `/dev/fd` **仍然**拿到 `--tmpfs`，即"缺席"不得作为放过活路径的理由 |
+| 新腿 `only_dev_paths_bwrap_never_creates_count_as_absent` | PASS 0.010s——`/dev/kmsg`、`/dev/sda`、`/dev/net/tun` 判缺席；`/dev`、`/dev/fd`、`/dev/core`、`/dev/pts`、`/dev/ptmx`、`/dev/console`、`/dev/pts/1` 全部保持可 mask |
+| `blocked_descriptor_path` | **回到红**：`FAIL [0.683s]` + 逐字 `bwrap: Can't mount tmpfs on /newroot/dev/fd: No such file or directory` ⇒ 缺陷仍开放，但响亮；这条红**不是**新回归，是恢复已知状态 |
+| 保留那一半的执行一手（`Deny /dev/kmsg`） | `rc_p4=0`、`NOT_READABLE`、`ls: cannot access '/dev/kmsg': No such file or directory` ⇒ 沙箱起得来**且**拒绝成立，不再只有 argv 证据 |
+| `cargo clippy --all-targets` / `cargo fmt --all --check` | rc=0 / rc=0；跳过收据未写 |
+
+### 顺带量到的产品 fail-open：`Deny` 落在 `/proc` 下今天是空操作（与我这笔改动无关）
+
+机制与 F-A 证据（同一台）：
+
+- 真实 argv：`--perms 000 --ro-bind-data 3 /proc/version` 出现在 `--proc /proc` **之前**
+  （strace 一手，`--proc", "/proc` 紧跟其后）。
+- 端到端走产品 helper，策略 `{"path":"/proc/version","access":"deny"}`：
+  P1 `READABLE`；P2 `ls -l /proc/version` → `-r--r--r-- 1 nobody nogroup 0`
+  ⇒ 看到的是新 procfs 里的真文件，mask 被过 mount 盖掉。控制 P0（无 deny）同读数。
+- 裸 bwrap 顺序对照：X4（mask 在 `--proc` 前）`bytes=211`；X3（mask 在后）
+  `cannot open /proc/version: Permission denied`、`bytes=unreadable`；X5 控制 `bytes=211`
+  ⇒ **顺序就是因果**：procfs 挂载晚于 mask，mask 必然被吞。
+- 归属核实：`git diff origin/main..a4c0ff2fa~1 -- codex-rs/linux-sandbox/src/bwrap.rs` **为空**
+  （整个 crate 只有 `tests/suite/root_metadata_tests.rs` 与 main 不同）
+  ⇒ 这是上游既有行为，不是分叉引入；影响面是任何落在 `/proc` 下的 deny 规则
+  （用户可在策略里表达，`--proc` 在所有非禁用分支都是基线）。
+- 这条我**没有**在本轮动代码：改它要动全局挂载参数顺序，不是测试侧改动，见下面选项。
+
+### 待拍板的两个选项（量化后等指针，不自作主张）
+
+| 选项 | 买到 | 代价与风险 |
+| --- | --- | --- |
+| **O1** 把 `--proc /proc` 移到 deny mask 组装之后 | `/proc/*` 的 Deny 真正生效（X3 一手已证可行）；顺带让 `/dev` 下穿过 `/proc` 的 mask 至少有一次可判的失败位置 | 全局挂载顺序变动，触及 WSL 腿的**位置断言**：`bwrap_wslg_tests.rs:81/257`、`linux_run_main_tests.rs:227/317` 直接断言 `--proc`/`--tmpfs /proc` 相邻与存在；这些断言要同步改，且执行一手只有 `.45` 能给（`.41` 无 userns） |
+| **O2** 再给 `/dev` 符号链接条目一个可用的 mask 原语 | `Deny /dev/fd`、`/dev/core` 既生效又不 abort，`blocked_descriptor_path` 那条腿才可能转绿 | 需要 bwrap 侧能力（`--symlink` 改写或等价），`launcher.rs:206-218` 的能力探测要加一项并按宿主降级；至少三条新腿 + 真机一手 |
+| O3 都不动 | 零风险 | F-A 继续静默放行 `/proc` deny，F-B 继续响亮 abort，`blocked_descriptor_path` 长期红 |
+
+推荐 **O1 先做**（安全侧、单点、有对照一手），**O2 单独拍**（它是新原语，不是一次顺序调整）。
 
 ## 7. 提交、推送与工作树状态
 
@@ -3196,11 +3281,28 @@ bwrap 修复与 A3 门**——那些改动还只在未提交工作树里，所�
   §6.31 的门控后三手 PASS。**五个改动文件的 md5 在 mac 工作树、`.45`、`.235` 三处逐字节一致**
   （`c2283864…`/`aed947d8…`/`92e3e9de…`/`90a3eb4f…`/`57cf44bf…`），
   所以这些一手确实覆盖即将推送的这份源码，而不是它的前一版。
+  **⚠ 上面那组 `.45` 读数记的是 `a4c0ff2fa` 那一版，其"leg 转绿/0 次 mask"状态已被 §6.35
+  作废**；`.235` 的 A3/A4 三组一手与 md5 一致性结论不受影响。
   **本轮没有 dispatch**：`39526586631` 的 mac 腿与 `39530269408` 的 mac/windows 腿在登记时
   仍 `in_progress`，日志未到终态不可取（§6.34）。
   **仍未闭合的**：#24 rusty_v8 离线配方等范围拍板；A2 覆盖面三处
   （`codex-linux-sandbox` 32 条 / `codex-exec` 4 条 Landlock / Windows MXC 4 条）未接；
   ubuntu hand-2 那条 `25.316s` 形状**未被解释**，不能算已被 §6.33 覆盖。
+
+- **同一轮内的自我推翻与纠正（实测，本机）**：上面那条把 `a4c0ff2fa` 记成"产品修复"之后，
+  我接着测出的第一件事就是它本身是 fail-open（§6.35），于是 fix-forward：
+  `a3b96ae90`（`fix(linux-sandbox): only wave through /dev denies bwrap never creates`，
+  单文件，名单 10→15 项、新增一条"活符号链接仍必须 mask"的腿、缺席腿改用 `/dev/kmsg`、
+  并修正一条我自己写反的断言——`/dev/pts/1` 应判"可 mask"而不是"缺席"，这条断言在 `.45`
+  上先红了一次才改对）。**推送状态**：代码笔 `a3b96ae90` 已推上 `origin/test` 并产生
+  run `39543230422`；本节这份文档笔带 `[skip ci]` 随后单独推送，不产生第二手。
+  这一笔触发 run **39543230422**；它要读的判据和 39542266851 不同——
+  ubuntu 的 `blocked_descriptor_path` **应当继续红**（响亮 abort 是已知缺陷的正确形态），
+  若它在这一手里变成"绿且无收据"，那才是回归。39542266851（head `c7590fe24`）
+  测的是已被取代的那版 `/dev` 名单，登记时它仍 `queued`，其 ubuntu 腿读数**不能**
+  当作 §6.33 那版修复的验收。
+  **本轮 CI 之外的新执行**全部在 `.45` 上完成（strace 与裸 bwrap 对照 + helper 端到端），
+  零 CI 预算、零厂商调用。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
