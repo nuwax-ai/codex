@@ -4474,8 +4474,9 @@ PASS [   0.008s] (12368/22947) codex-linux-sandbox bwrap::tests::proc_masks_stay
 ### 状态
 
 `39583542510` 四条腿：`bazel bridge gate (ubuntu)` `failure`（§6.48 归因镜像 503，零编译）；
-`nextest (ubuntu-latest)` `completed` / `failure`＝本节；`nextest (macos-latest)`、`nextest (windows)`
-写本节时 `in_progress`。按上一手同腿时长推算：windows `07:34:11 → 09:32:57`＝1h58m46s ⇒ 约 **12:16Z**；
+`nextest (ubuntu-latest)` `completed` / `failure`＝本节；`nextest (windows)` **已到手＝§6.51**；
+`nextest (macos-latest)` 写本节时 `in_progress`。按上一手同腿时长推算：
+windows `07:34:11 → 09:32:57`＝1h58m46s ⇒ 约 **12:16Z**（实测 `12:17:35Z`，见 §6.51 第五节）；
 mac `07:34:18 → 10:48:18`＝3h14m00s ⇒ 约 **13:32Z**。
 
 本手 ubuntu 整腿 `10:17:53 → 11:33:15`＝1h15m22s，比上一手（1h22m06s）短 6m44s；拆开看
@@ -4484,6 +4485,140 @@ mac `07:34:18 → 10:48:18`＝3h14m00s ⇒ 约 **13:32Z**。
 我没有逐段归因。⇒ §6.49 结尾按"job 起 ＋ 1h22m"推出的 11:40Z **锚点配对是对的**，只是偏悲观 6m38s；
 我一度想说它"用错了锚点"，这句不成立。`codex-rs/` 净变化仍为 0；本笔只动这一份 md，带 `[skip ci]`，
 不新增 CI 手。
+
+## 6.51 #47 的第二手：windows 腿在**逐字节相同的取证代码**上再现 §6.46 的第二支，同时三条上一手红自己转了绿
+
+### 一、判据（`nextest (windows)` job `119166741846`，终态 `completed` / `failure`）
+
+整腿逐字（`w45835b.final.txt:26741`）：
+
+```
+Summary [2976.361s] 21769 tests run: 21763 passed (23 slow, 191 leaky), 6 failed, 138 skipped
+```
+
+日志 `w45835b.final.raw` 5,189,120 字节（首三字节 `ef bb bf`；含真 ESC 的行 **25,468**，字面 `^[[`
+文本 **0** 行），按 §6.50 第六节那条 perl 去色后得 `w45835b.final.txt` 4,036,030 字节 / 26,768 行、
+ESC 行 **0** ⇒ 去色**确实执行了**（差 1,153,090 字节，不是空转）。另一路自查同形：
+`.raw` 里 `Summary \[2976` **0 命中**、去色后 1 命中——正是"跨色码边界的串在未去色文件里查不到"。
+
+六条红逐字（`panicked at` 行计数 **6**；`TIMEOUT`、`timed out`、`TERMINATING` 三个串各 **0** 命中，
+与 Summary 的"无 timed out"自洽；计数器与时长都保留）：
+
+| 用例（crate 前缀保留） | 计数器 / 时长 | panic 位置 | 断言逐字 |
+| --- | --- | --- | --- |
+| `codex-uds lib_tests::private_directory_acl_is_user_only_and_inherited_by_files` | 20886 / 0.760s | `uds\src\lib_tests.rs:164:5` | `Get-Acl : The 'Get-Acl' command was found in the module 'Microsoft.PowerShell.Security', but the module could not be loaded.`（`At line:4 char:14`） |
+| `codex-uds lib_tests::socket_validation_rejects_broad_acl_without_repairing_it` | 20895 / 0.502s | `uds\src\lib_tests.rs:80:9` | 同一条 `Get-Acl`（`At line:3 char:8`） |
+| `codex-windows-sandbox unified_exec::tests::legacy_capture_cancellation_terminates_descendants_without_timeout` | 21761 / 47.758s | `tests.rs:1582:5` | `assertion \`left != right\` failed` · `left: 0` · `right: 0` |
+| `codex-windows-sandbox unified_exec::tests::legacy_capture_emits_output_and_preserves_descendant_after_normal_exit` | 21762 / 62.207s | `tests.rs:1304:10` | `read descendant pid: Os { code: 2, kind: NotFound, message: "The system cannot find the file specified." }` |
+| `codex-windows-sandbox unified_exec::tests::legacy_tty_job_terminates_and_preserves_descendants` | 21766 / 62.059s | `tests.rs:1659:5` | `Terminate descendant did not start` |
+| `codex-windows-sandbox unified_exec::tests::legacy_workspace_write_delete_is_limited_to_writable_roots` | 21768 / 0.312s | `tests.rs:1474:9` | `assertion failed: \`(left == right)\`: stdout=""`，Diff 见第四节 |
+
+这六个名字与 §6.46 那"1 TIMEOUT ＋ 8 FAIL"名单里的第 3、4、6、7、8、9 项**逐字同名**（第 3、4 项是
+两条 uds，第 6、7、8 项是三条 `legacy_`，第 9 项是 write-delete）；断言形状与 §6.21（`710` / `987`）、
+§6.26（`933`）、§6.39（`1168`）、§6.13（`Get-Acl`）登记的逐字一致。
+**行号整体下移是取证代码往 `tests.rs` 里加了东西**，不是判据变了：
+`933 → 1582`（cancellation）、`710 → 1304`（emits output）、`987 → 1659`（tty job）、
+`1168 → 1474`（write-delete）。
+
+### 二、这一手与 §6.46 那手持**同一份 windows 字节** ⇒ 它是重复观察，不是新判据
+
+祖先核对（逐笔 `git merge-base --is-ancestor … 0ef33716a`）＋ 逐文件核对
+（`git diff --name-only 1af8b5a70..0ef33716a`）：
+
+- `9075086b3`（两列表取证）YES、`42c5bb5d9`（mac 期限）YES、`0a99662c2`（`/proc` 搬迁）**YES**
+  （§6.46 那手是 NO）。
+- 但两 head 之间改动文件**只有三个**：`codex-rs/linux-sandbox/src/bwrap.rs`、
+  `codex-rs/linux-sandbox/src/linux_run_main.rs`、这一份台账 md。
+  ⇒ `windows-sandbox-rs` 与 `uds` 相对 §6.46 **一个字节都没变**。
+
+⇒ 这一手能判"#47 的判决可重复"，**不能**判任何 `/proc` 相关的事（Linux-only），
+也不能当成"改了什么所以转绿"的证据（windows 侧什么都没改）。
+
+### 三、三条上一手红转绿，且没有可归因的代码改动
+
+| 用例 | §6.46 那手 | 本手逐字 |
+| --- | --- | --- |
+| `codex-app-server::all suite::v2::account::login_account_chatgpt_uses_oauth_overrides` | **TIMEOUT [60.023s]** | `PASS [   0.767s] (  860/21769)` |
+| `codex-app-server::all suite::v2::thread_delete::thread_delete_recovers_only_corrupt_board_with_feature_disabled` | FAIL 0.648s | `PASS [   0.814s] ( 1884/21769)` |
+| `codex-windows-sandbox uninstall_windows::principals::tests::profile_cleanup_preserves_account_until_profile_can_be_deleted` | FAIL 29.623s | `PASS [  20.683s] (21661/21769)` |
+
+windows / uds 代码逐字节相同 ⇒ 这三条转绿**只能落在 runner 侧**。这不是给某条红找台阶，而是一手
+对照：**同一份字节能在两手之间改变判决**——正是 §6.21 / §6.23 把 `legacy_` 家族与 `profile_cleanup`
+归到"贴线漂移"时缺的那种"代码不变、判决变"。反向同样成立：`legacy_workspace_write_delete_…`
+在本地缓存的 CI 整腿日志里共 **14 个判决读数：12 红 ＋ 2 绿**（两个绿是 `21753/21754` 的 `0.127s`
+和 §6.34 登记的 `39526586631` job `118982561275` 的 `PASS [   1.872s] (21765/21766)`）
+⇒ 它**不是**这种漂移。
+
+`slow` 24→23、`leaky` 156→191：台账里 windows 腿已登记 **12 个 `leaky` 读数**，最早 323（§6 前半段），
+其后 277 / 244 / 254 / 383 / 317 / 322 / 293 / 219 / 149 / 156 ⇒ 范围 **149–383**，191 落在带内。
+记为漂移，不做归因。
+
+### 四、#47 的第二支逐字再现：四个计数、六行 after、`cap#N` 分配、`.git` 与 `outside` 的区分全同
+
+两块证据共 387 行（`w45835b.final.txt:26324` 的 `write/delete ACL evidence before the session:`
+到 26710 的证据末行 `ace[8] … D:\`，其后两行空白、26713 才是 panic 行；§6.46 那手 390 行），逐项对得上：
+
+| 计数项 | §6.46（job `119098109141`） | 本手（job `119166741846`） |
+| --- | --- | --- |
+| `eff = ` | 2 | 2 |
+| `DELETE via` | 4 | 4 |
+| `none (` | 7 | 7 |
+| `: absent` | 6 | 6 |
+| `unreadable`（全是无关用例名） | 19 | 19 |
+| `token SID lists unavailable` / `DACL unreadable` | 0 / 0 | 0 / 0 |
+
+after 段六行（前缀统一 `D:\a\codex\codex\codex-rs\.tmpN92qkI`，逐字；`x D[…]` 半只压缩了重复的
+`grp#3 is deny-only` 说明）：
+
+```
+workspace\workspace-delete.txt: here=[absent] in parent=[DELETE via R[cap#2 holds DELETE via ace[0]] x D[user holds DELETE+FILE_DELETE_CHILD via ace[11] | … ace[9] not counted as a grant]]
+temp\temp-delete.txt:           here=[absent] in parent=[DELETE via R[cap#0 holds DELETE via ace[0]] x D[…ace[11]…]]
+tmp\tmp-delete.txt:             here=[absent] in parent=[DELETE via R[cap#1 holds DELETE via ace[0]] x D[…ace[11]…]]
+outside\outside-delete.txt:     here=[absent] in parent=[none (R=[no delete grant] D=[user holds DELETE+FILE_DELETE_CHILD via ace[10] | … ace[8] not counted as a grant])]
+workspace\.git:                 here=[absent] in parent=[DELETE via R[cap#2 holds DELETE via ace[0]] x D[…ace[11]…]]
+workspace\.git\config:          here=[absent] in parent=[absent]
+```
+
+⇒ 判决仍是 §6.41 三选一的**第二支**：`outside` 的父目录两张列表都算不出删除权（`none`）而文件
+`absent`；三个可写根与 `.git` 的父目录却能点名 `R[cap#N] × D[user]`。`cap#N` 落在哪根上与那手同分配
+（workspace＝cap#2、temp＝cap#0、tmp＝cap#1、`.git`＝cap#2）。ACE 条数变化点也同形：
+`workspace` / `temp` / `tmp` 由 15 变 16，`outside` 与 `.tmpN92qkI` 仍 15。
+
+断言侧同样同形（`tests.rs:1474:9`，七元组顺序见 §6.46；原始日志把两个元组交错打在
+`Diff < left / right > :` 之下，`<`＝left、`>`＝right，本节的展开写法与 §6.39 / §6.40 一致）：
+
+```
+assertion failed: `(left == right)`: stdout=""
+left  (actual):   (0, false, false, false, None, false, false)
+right (expected): (0, false, false, false, Some("outside"), true, true)
+```
+
+断言消息里还夹着 helper 自己的两行（逐字）：
+`START: C:\Windows\System32\cmd.exe /d /c D:\a\codex\codex\codex-rs\.tmpN92qkI\workspace\delete-fixtures.cmd`
+与同秒的 `SUCCESS: …` 同一命令 ⇒ 受试命令在沙内**跑成了**（元组第一位 `exit_code=0`），
+越界的删除发生在这条命令之内，不是测试收尾自己动的。
+
+§6.46 那条"这份 dump 在这台 runner 上内部不自洽"**也在同一份字节上再现**：内置管理员 `-500` 的
+`allow mask=0x001f01ff flags=0x10 INHERITED-FROM-ANCESTOR` 在 before 块印在 11 个物件上、after 块印在
+5 个上（全块 `-500` 共 18 行＝2 行 default SID list ＋ 16 行物件 ACE），而四段祖先 dump
+（`codex-rs` 15 ACE、`codex` 9、`a` 9、`D:\` 9）里 `-500` 命中 **0** 次。⇒ "继承自哪个祖先"印不出来
+不是抖动，是取证代码自己的缺口（要把显式 DACL 与有效 DACL 分开印才能补上）。
+
+### 五、时长与锚点
+
+windows job `10:17:53Z → 12:17:35Z`＝**1h59m42s**；拆开 `Build binary-level test executables`
+`10:18:43 → 10:34:53`＝16m10s，`Test (workspace)` `10:34:53 → 12:17:08`＝1h42m15s，nextest 自报
+测试阶段 2976.361s＝49m36s。§6.50 按"上一手同腿 1h58m46s"推的 **12:16Z** 实测落在 `12:17:35Z`，
+误差 **+1m35s**；而 ubuntu 那腿同一锚点偏悲观 6m38s、方向相反。⇒ 这个锚点只能用来安排"什么时候去看"，
+不能用来判"这条腿是不是卡住了"。
+
+### 状态
+
+`39583542510` 四条腿：`bazel bridge gate (ubuntu)` `failure`（§6.48 归因，零编译）、
+`nextest (ubuntu-latest)` `completed`/`failure`＝§6.50、`nextest (windows)` `completed`/`failure`＝本节、
+`nextest (macos-latest)` job `119166741803` 写本节时 `in_progress`（job 起 `10:17:59Z`，
+`Test (workspace)` 步骤起 `10:38:19Z`，本节时点已跑约 1h47m；按 §6.49 那手实测 3h14m00s 推算约
+**13:32Z**）。`codex-rs/` 净变化 0；本笔只动这一份 md，带 `[skip ci]`，不新增 CI 手。
 
 ## 7. 提交、推送与工作树状态
 
@@ -5051,8 +5186,24 @@ mac `07:34:18 → 10:48:18`＝3h14m00s ⇒ 约 **13:32Z**。
   #45 结案保留的口径也写进同一节：这五条是 **argv 顺序**守卫，"denial 咬得住"的执行证据仍在 §6.45 一手 B
   （committed `0a99662c2` 字节、`c1 /proc/version → NOT_READABLE`）；"撤掉搬迁这五条会红"是从一手 D 的
   strace argv 顺序**推导**的，我没有为验证这句话另开 CI 手，也没做变异测试。
-  待登记：同一 run 的 `nextest (windows)`（按上一手 1h58m46s 推算约 12:16Z）与
-  `nextest (macos-latest)`（按 3h14m00s 推算约 13:32Z）终态。
+  待登记：同一 run 的 `nextest (windows)`（按上一手 1h58m46s 推算约 12:16Z）**已到手＝§6.51**
+  （实测 `12:17:35Z`，锚点误差 ＋1m35s）与 `nextest (macos-latest)`（按 3h14m00s 推算约 13:32Z）终态
+  ——前者见下一笔，后者写 §6.51 时仍 `in_progress`。
+
+- **§6.51 由本笔登记：#47 的第二手——windows 腿在与 §6.46 逐字节相同的取证代码上再现第二支**。
+  判据手＝`39583542510` 的 `nextest (windows)` job `119166741846`，`completed`/`failure`，整腿逐字
+  `Summary [2976.361s] 21769 tests run: 21763 passed (23 slow, 191 leaky), 6 failed, 138 skipped`。
+  本节的支点是一条核对而不是判决：`git diff --name-only 1af8b5a70..0ef33716a` **只有三个文件**
+  （`linux-sandbox` 那两个 `.rs` ＋ 这份台账），所以 windows / uds 两侧代码两手完全相同 ⇒
+  （a）#47 的第二支、`cap#N` 分配、`.git` 与 `outside` 的区分、四个计数、那条"dump 内部不自洽"
+  都是**同一份字节上的重复观察**，可当作可复现登记；（b）上一手红的三条
+  （`login_account_chatgpt_uses_oauth_overrides` TIMEOUT、`thread_delete_recovers_…`、
+  `profile_cleanup_preserves_…`）这手全 PASS，**归因只能落在 runner 侧**——这正是 §6.21/§6.23
+  判"贴线漂移"缺的那种"代码不变、判决变"的对照；（c）反例仍成立：
+  `legacy_workspace_write_delete_…` 在缓存的 CI 日志里 14 个读数 12 红 2 绿，不是漂移。
+  另：`gh run list` 顶部实测核对 §6.50 那句 `[skip ci]`——`cedd01a4d` 推送后顶部**仍是
+  `39583542510`（head `0ef33716a`）**，没有新 run ⇒ 该标记在这条 workflow 上生效，那句
+  "提交后核对"从此有了实测结果。`codex-rs/` 净变化仍为 0；本笔带 `[skip ci]`，不新增 CI 手。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
