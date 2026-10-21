@@ -12,6 +12,7 @@ use core_test_support::test_codex_exec::test_codex_exec;
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
 use std::sync::Mutex;
+use tempfile::TempDir;
 use wiremock::Mock;
 use wiremock::ResponseTemplate;
 use wiremock::matchers::method;
@@ -38,6 +39,22 @@ const RESPONSES_SSE: &str = concat!(
     "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}],\"id\":\"o1\"}}\n\n",
     "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",\"usage\":{\"input_tokens\":4,\"output_tokens\":1,\"total_tokens\":5}}}\n\n",
 );
+
+/// The complete startup group. A leg that clears only part of it can be
+/// steered by whatever the developer's own shell exported — most sharply with
+/// `NUWAX_BRIDGE`, which silently changes the transport of every wire test in
+/// this file.
+const NUWAX_ENV_GROUP: [&str; 9] = [
+    "NUWAX_BASE_URL",
+    "NUWAX_WIRE_API",
+    "NUWAX_API_KEY",
+    "NUWAX_MODEL",
+    "NUWAX_MAX_OUTPUT_TOKENS",
+    "NUWAX_REQUEST_MAX_RETRIES",
+    "NUWAX_STREAM_MAX_RETRIES",
+    "NUWAX_STREAM_IDLE_TIMEOUT_MS",
+    "NUWAX_BRIDGE",
+];
 
 /// Captures every matched request. The shared `mount_sse_once_match` helper
 /// hardcodes the `/responses` path, so the chat and anthropic wires need
@@ -102,13 +119,7 @@ async fn run_nuwax_env_turn(
         .await;
 
     let mut command = test.cmd();
-    for variable in [
-        "NUWAX_BASE_URL",
-        "NUWAX_WIRE_API",
-        "NUWAX_API_KEY",
-        "NUWAX_MODEL",
-        "NUWAX_MAX_OUTPUT_TOKENS",
-    ] {
+    for variable in NUWAX_ENV_GROUP {
         command.env_remove(variable);
     }
     command
@@ -410,14 +421,7 @@ async fn nuwax_env_request_retries_reach_the_chat_wire() -> Result<()> {
             .await;
         let repo_root = codex_utils_cargo_bin::repo_root()?;
         let mut command = test.cmd();
-        for variable in [
-            "NUWAX_BASE_URL",
-            "NUWAX_WIRE_API",
-            "NUWAX_API_KEY",
-            "NUWAX_MODEL",
-            "NUWAX_REQUEST_MAX_RETRIES",
-            "NUWAX_MAX_OUTPUT_TOKENS",
-        ] {
+        for variable in NUWAX_ENV_GROUP {
             command.env_remove(variable);
         }
         command
@@ -452,4 +456,114 @@ async fn nuwax_env_request_retries_reach_the_chat_wire() -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// One `codex exec` turn on the Responses wire, with or without
+/// `NUWAX_BRIDGE`, observed through the rig bridge's own capture ledger.
+///
+/// The ledger is written per HTTP attempt by the bridge's transport and by
+/// nothing else, so it is the only observable that separates "the Responses
+/// shape happened to come from the bridge" from "the native transport was
+/// selected". That is why the two legs below share everything except the
+/// switch: the ledgered control is what turns the other leg's missing file
+/// into a receipt instead of an absence of evidence.
+async fn run_nuwax_bridge_ledger_leg(bridge: Option<&str>, expect_ledger: bool) -> Result<()> {
+    let test = test_codex_exec();
+    let server = start_mock_server().await;
+    let log = RequestLog::default();
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .and(log.clone())
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_raw(RESPONSES_SSE.to_string(), "text/event-stream"),
+        )
+        .mount(&server)
+        .await;
+
+    let capture_dir = TempDir::new()?;
+    let ledger = capture_dir.path().join("rig-capture.jsonl");
+    let repo_root = codex_utils_cargo_bin::repo_root()?;
+    let mut command = test.cmd();
+    for variable in NUWAX_ENV_GROUP {
+        command.env_remove(variable);
+    }
+    command
+        .arg("--skip-git-repo-check")
+        .arg("-C")
+        .arg(&repo_root)
+        .arg("reply with ok")
+        .env("NUWAX_BASE_URL", format!("{}/v1", server.uri()))
+        .env("NUWAX_WIRE_API", "responses")
+        .env("NUWAX_API_KEY", "nuwax-bridge-key")
+        .env("NUWAX_MODEL", "nuwax-bridge-model")
+        .env("NUWAX_MAX_OUTPUT_TOKENS", "2048")
+        .env("CODEX_RIG_REQUEST_CAPTURE_FILE", &ledger);
+    if let Some(bridge) = bridge {
+        command.env("NUWAX_BRIDGE", bridge);
+    }
+    let output = tokio::task::spawn_blocking(move || command.output()).await??;
+    assert!(
+        output.status.success(),
+        "bridge={bridge:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let request = log.single();
+    assert_eq!(request.url.path(), "/v1/responses", "bridge={bridge:?}");
+    assert_eq!(
+        request
+            .headers
+            .get("authorization")
+            .and_then(|value| value.to_str().ok()),
+        Some("Bearer nuwax-bridge-key"),
+        "both transports resolve the credential from NUWAX_API_KEY"
+    );
+    let body: serde_json::Value = serde_json::from_slice(&request.body).expect("request body json");
+    assert_eq!(body["model"], "nuwax-bridge-model", "bridge={bridge:?}");
+    assert_eq!(
+        body["max_output_tokens"], 2048,
+        "bridge={bridge:?}: NUWAX_MAX_OUTPUT_TOKENS must reach the provider cap either way"
+    );
+    assert!(body["input"].is_array(), "bridge={bridge:?}");
+    assert!(body.get("messages").is_none(), "bridge={bridge:?}");
+
+    let recorded = std::fs::read_to_string(&ledger);
+    if expect_ledger {
+        let recorded = recorded.unwrap_or_else(|err| {
+            panic!("bridge={bridge:?}: the bridged attempt must record itself in {ledger:?}: {err}")
+        });
+        let first: serde_json::Value = serde_json::from_str(
+            recorded
+                .lines()
+                .next()
+                .unwrap_or_else(|| panic!("the ledger must hold one JSON object per attempt")),
+        )
+        .expect("ledger line json");
+        assert!(
+            first["url"]
+                .as_str()
+                .unwrap_or_default()
+                .ends_with("/v1/responses"),
+            "the ledger records the dispatched attempt: {first}"
+        );
+    } else {
+        assert!(
+            !ledger.exists(),
+            "bridge={bridge:?}: the native transport must not create the bridge's ledger: {}",
+            std::fs::read_to_string(&ledger).unwrap_or_default()
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nuwax_env_default_bridge_records_the_responses_attempt() -> Result<()> {
+    run_nuwax_bridge_ledger_leg(/*bridge*/ None, /*expect_ledger*/ true).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nuwax_env_native_bridge_sends_the_responses_wire_without_the_rig_capture() -> Result<()> {
+    run_nuwax_bridge_ledger_leg(Some("native"), /*expect_ledger*/ false).await
 }
