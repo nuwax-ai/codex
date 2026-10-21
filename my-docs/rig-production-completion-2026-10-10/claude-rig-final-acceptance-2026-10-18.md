@@ -3465,7 +3465,174 @@ after 段六行逐字（temp 根这手是 `.tmpE3kMLq`，上一手是 `.tmp4WwQt
 本轮**零代码/配置改动、零 dispatch、零推送**；`42c5bb5d9`、`e14d73e76`、`8b6fac76d` 起
 仍在本地（`origin/test` = `f6f74f484`）。
 
+## 6.41 #47 落地：写/delete 取证按 `WRITE_RESTRICTED` 的两张 SID 列表求交，`.235` 一手已取
+
+§6.40 把这条腿的机制问题收窄成一个 datum——"那 8 条 allow 里哪个 SID 在沙箱受限令牌的
+restricting SIDs 里"。**读码结论是：现有取证结构性地看不见它**，所以本轮动的是取证
+（#41 那条路的延续），不是产品，也不是宿主 ACL。
+
+### 结论先说，并更正本节先前登记的一处机制错判
+
+取证现在把"删除权从哪来"落成一行判决：
+`eff = (授予 restricting 列表的位) ∩ (授予 default 列表的位)`，两侧各自点名 principal 与 ACE 序号。
+
+**本节先前那一版（未提交）把 `user` SID 当成了 restricting 列表的授予来源，那是错的**，已随本手
+改写。`d918722f2` 版 `unified_exec/tests.rs:268` 只按 caps 求值
+（`if !cap_ptrs.iter().any(|cap| EqualSid(sid, *cap) != 0) { continue; }`，`:346` 的
+` <-- THIS SESSION` 同源），而这条腿的真实组成在 `token.rs`：
+
+- `spawn_prep.rs:160` `get_current_token_for_restriction()` 取**当前进程令牌**作 base；
+- `spawn_prep.rs:165` → `create_workspace_write_token_with_caps_from`（`token.rs:397-402`）
+  = `create_token_with_caps_from(base, caps, &[])`；
+- `create_token_with_caps_from` 在 `:476` 取 base 的 **logon SID**、`:478` 取 **Everyone**
+  (`world_sid()`)，`:481` 注释写死顺序 `Capabilities…, ExtraRestricting…, Logon, Everyone`。
+
+⇒ 这条腿的 **restricting 列表 = caps + logon + everyone，没有 user**；user SID 只由
+`create_token_with_caps_user_and_additional_restrictions_from`（`token.rs:455-466`，
+`:460` 取 `get_user_sid_bytes`、`:463` 入列表）加入，那是 elevated/readonly 后端走的路。
+`WRITE_RESTRICTED`（`token.rs:500` `DISABLE_MAX_PRIVILEGE | LUA_TOKEN | WRITE_RESTRICTED`）
+对写请求是**两张列表各求一次、取交**：restricting 一侧决定"沙箱被允许到哪"，default 一侧决定
+"这个令牌本来能到哪"。所以只报一张列表——无论漏掉 user 还是把 user 错加进 restricting——
+都会虚报权利：前者看不见经由身份 SID 落地的授予，后者会打印出令牌其实拿不到的权利。
+
+### 改了什么（单文件 `codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs`，相对 HEAD +362/−56）
+
+1. `SidList`（restricting / default 各持一份）：caps 走 `push_ptr`（从 `LocalSid` 按
+   `GetLengthSid` 拷成 owned 字节，不让判决依赖别人的分配），按 SID 文本去重，每条带
+   `can_grant`。**`can_grant=false` 的条目不参与授予结算，但仍参与 deny**——这正是
+   deny-only 组的语义，把它们整条丢掉会丢一半证据。
+2. `push_token_sid_lists`：**用生产构造函数** `create_workspace_write_token_with_caps_from`
+   建出子令牌，再从**建出来的那块令牌**上 `crate::token::token_groups` 读 default 列表——
+   `LUA_TOKEN` 把 `BUILTIN\Administrators` 变 deny-only 这件事只有建出来的令牌才带着，
+   读基令牌会读错。tag 为 `user` / `logon` / `grp#N`（user 先入列表，避免它被先出现的同 SID
+   组抢走 tag）。restricting 列表没有查询接口，按 `create_token_with_caps_from(base, caps, &[])`
+   的入参重建：caps → logon → everyone。任何一步取不到就写 `token SID note: …`，不 panic——
+   取证不能自己变成红的原因。
+3. 判决 `delete_right_verdict`：两侧分别 `allow & !deny` 后取交；一侧有权、另一侧没有时，
+   打印 `none (R=[…] D=[…])` 保留"差一半"的形状，而不是只报 `none`。
+4. dump 标注改成区分两列表：` <-- TOKEN R=cap#2` / ` <-- TOKEN D=grp#7`（一条 ACE 同时命中
+   两侧就两个都打）。**口径变化要记住**：` <-- THIS SESSION` 和上一版的 ` <-- TOKEN {tag}`
+   从本手起都不再可比。
+5. NULL DACL 两侧都报 `NULL-DACL`，并在文字里说明"两张列表都到 FILE_ALL_ACCESS，取交后
+   删除是允许的"，不再让"读不到 DACL"被当成"没有权利"。
+6. 取证在 session 前后各跑一遍，两半要分开读：**before 那半必然 `R=[no delete grant]`**，
+   因为 caps 的 ACE 是 spawn 路径装的（`tests.rs:1426` 注释就是为此）。本手实测：
+   before 块 `TOKEN R=` 命中 **0 次**、after 块 **8 次**。这不是缺陷，但拿 before 块下结论会错。
+
+### `.235` 一手（离线、零 CI、零 dispatch、零推送）
+
+- 通道核对：远端 `pty-a3-20261021` 那棵树**没有 `.git`**（tar 送过去的），沿用逐文件比哈希的做法；
+  这次改用 `cat | ssh 'cat > 路径'` 传单文件并在远端 `md5sum` 回比 —— 第一次 `SHIPPED_TESTS=` 里
+  `wc -l` 报 1670、本地 1811，重传后 md5 **全等**（`3a57c21f…`）。**教训**：在同一条 `&&` 里
+  `cat > f && wc -l f` 会读到未落盘的行数，验收要用哈希而不是行数。
+- 脚本 `~/wd47b.sh` 里先 grep 改动标记再构建：
+  `MARKER two-list-evidence=1 old-single-set=0 intersection=1` —— 证明跑的是两列表版，
+  不是上一手那份单集合版（`push_token_identity_sids` 命中 0）。
+- attempt 1 又撞 `0xc0000142 STATUS_DLL_INIT_FAILED`（`cargo test --no-run` 退出码 -1073741502），
+  同命令 attempt 2 过：**`PASS [   0.314s]`、`Summary [   0.321s] 1 test run: 1 passed, 282 skipped`**，
+  `--retries 0`，日志已回读到 mac 缓存 `wd47b-1.log`（331 行）。
+- 两张列表都渲染出来了，且**没有任何 `token SID note`**（0 次）：
+  `restricting SID list: [cap#0(S-1-5-21-1578035584-…-2872830911), cap#1(S-1-5-21-1594489522-…),
+  cap#2(S-1-5-21-130350652-…-1060332426), logon(S-1-5-5-0-3573376961), everyone(S-1-1-0)]`
+  `default SID list: [user(S-1-5-21-536205229-…-1002), grp#0(…-513), grp#1(S-1-1-0),
+  grp#2(S-1-5-114) deny-only, grp#3(S-1-5-32-544) deny-only, grp#4(S-1-5-32-555),
+  grp#5(S-1-5-32-545), grp#6(S-1-5-2), grp#7(S-1-5-11), grp#8(S-1-5-15), grp#9(S-1-5-113),
+  logon(S-1-5-5-0-3573376961), grp#11(S-1-5-64-10)]`
+  ⇒ **`LUA_TOKEN` 把 `BUILTIN\Administrators`(S-1-5-32-544) 与 S-1-5-114 变成 deny-only，这一手
+  正面观测到**，取证按 `can_grant=false` 处理它们：`grp#3 is deny-only, DELETE+FILE_DELETE_CHILD
+  named via ace[6] not counted as a grant`。
+- **判决与断言自洽**（这是本手最有价值的部分）：
+  - 三个应被删除的文件 `here=[absent]`（已被删，DACL 随之消失），其父目录给出**正例**：
+    `workspace`: `DELETE via R[cap#2 holds DELETE via ace[0]] x D[…| grp#7 holds DELETE via ace[7]]`；
+    `temp` 同形用 `cap#0`、`tmp` 同形用 `cap#1` —— 每个可写根各自的 cap SID 各就各位。
+  - 两条必须存活的路径给出**交集为 0**：
+    `.git`: `none (R=[cap#2 holds none (DELETE granted via ace[2], DELETE+FILE_DELETE_CHILD
+    denied via ace[0])] D=[grp#3 is deny-only … | grp#7 holds DELETE via ace[9]])`；
+    `.git\config`: 同形（granted ace[1]、denied ace[0]）。
+    ⇒  **#41 要的"证明 enforce 而不是 argv"这条正面收据到手，而且比上一手更强**：
+    default 一侧确实**有**权利（`grp#7` = Authenticated Users 持 DELETE），是 restricting 一侧被
+    deny 收回才让交集归零——这正是 `WRITE_RESTRICTED` 唯一需要的那一半，也说明"只查身份 SID"的
+    修法是错的。
+  - `.git\config` 的 deny 是 `ace[0] deny mask=0x00130156 flags=0x10 INHERITED-FROM-ANCESTOR`
+    点名 `cap#2` ⇒ deny 沿继承落到了 `.git` 的**后代**，不是只挡在 `.git` 那一层。
+- 上一手登记的"身份 SID 在本机没有正例"这条限制**作废**：after 块 `TOKEN D=` 命中 **46** 次、
+  `deny-only` 结算出现 **7** 次（before 块同样 7 次，全日志 14 次），default 列表的匹配路径被真实执行过。
+- 本机 `outside` 的三条继承 allow 点名的仍是**历史 session 遗留的 cap 形状 SID**
+  （`S-1-5-21-3506322609…`/`…1467988422…`/`…1619863088…`，都不在本令牌两张列表里）；
+  `C:\git-workspace\pty-a3-20261021\codex-rs` 目录本身带着这三条**非继承而来**的 allow
+  （`flags=0x03`）⇒ 共享祖先目录会累积往次 session 的 cap ACE。CI runner 复用工作区时就是这个形状，
+  它是 §6.40 那条"runner 越界删除"候选机制的载体，本手只能把机制**可判决化**，不能替 runner 判决。
+
+⇒ **本手能证明的**：两张列表渲染正确、deny-only 结算正确、交集判决与断言一致、deny 落在 restricting
+半边、deny 随继承到达子路径。**仍不能证明的**：runner 上那条越界删除到底经由哪张列表的哪个 principal
+——这需要下一手的 `eff` 行。
+
+### 下一步要什么
+
+runner 一手（把这笔改动推上 `test` 后）三选一判决：
+`outside` 出现 `DELETE via R[cap#…] x D[…]` 而文件被删 ⇒ 越界删除有 DACL 依据，产品要把 deny
+覆盖到那一侧；`outside` 仍是 `none` 而文件被删 ⇒ 删除不经过 DACL，得换假设；
+出现 `unreadable` / `token SID lists unavailable` / `note` ⇒ 取证在 runner 上退化。
+**这需要把这笔代码提交推上 `test` 触发 CI**。
+
+### 状态
+
+本节 = 一笔代码改动（`unified_exec/tests.rs`，相对 HEAD +362/−56）+ 本节文档，`.235` 一手绿。
+mac 两手的终态登记在 §6.42。推送状态见 §7。
+
+## 6.42 #46：两手 mac 腿全部终态，都是同一条 leg 撞 60s，且两手都不含 `42c5bb5d9`
+
+§6.41 登记时两手的 mac 腿还 `in_progress`；现在都终态，**均为 failure**：
+
+| run | head | mac job | 结果 |
+| --- | --- | --- | --- |
+| `39542266851` | `c7590fe24` | `nextest (macos-latest)` 119032454998 | failure |
+| `39543230422` | `a3b96ae90` | `nextest (macos-latest)` 119035505279 | failure |
+
+### 红的是哪一条，怎么死的
+
+两条手各只有**一个**红，而且是**同一条 leg**：
+`codex-cli::app_server_daemon managed_daemon_restarts_from_deleted_working_directory`
+
+```
+TIMEOUT [  60.008s] ( 4722/22888) … deleted_working_directory   （39542266851）
+ Summary [3388.671s] 22888 tests run: 22887 passed (25 slow), 1 timed out, 71 skipped
+TIMEOUT [  60.007s] ( 4722/22888) … deleted_working_directory   （39543230422）
+ Summary [3349.727s] 22888 tests run: 22887 passed (28 slow), 1 timed out, 71 skipped
+```
+
+`FAIL` 计数在两手里都是 **0**——mac 腿没有断言失败，只有超时被 kill。
+除 `Test (workspace)` 外每一步（Format / Clippy / Build / Skip receipts）都成功，
+没有磁盘、取消、网络类原因。日志已缓存 `m39542266851.raw`/`.txt`、`m39543230422.raw`/`.txt`。
+
+### 60s 这个界是被证明的，不是猜的
+
+- 两个 SHA 上 `codex-rs/.config/nextest.toml` 里**都没有点名这条 leg 的 override**（`grep -c` = 0），
+  于是落到 `[profile.default] slow-timeout = { period = "30s", terminate-after = 2 }` = 60s；
+- lane 用 `NEXTEST_PROFILE=local` + `--retries 0`（一次都不重试，被 kill 只留 `TIMEOUT`）；
+- 同族的兄弟 leg 自带 2m×2，能跑到 `PASS [174.159s]` / `PASS [182.729s]`
+  （`packaged_daemon_start_and_explicit_replacement`）——**只有没被 override 的 leg 才死在 60s**。
+
+### 跨手对比：这条 leg 不是间歇
+
+`46.008/35.630s`（`39347345560`）→ `51.222/54.032s`（`39371971338`）→
+`59.604/56.490s`（`39396134392`）→ 双双 60.012s 被 kill（`39526586631`）→
+本手 `deleted_working_directory` 60.008/60.007s 被 kill。
+另一条 `managed_identity_survives_locale_and_timezone_changes` 这两手回到 `PASS [42.857s]` /
+`PASS [51.549s]`（仍在 60s 内，但 4 手序列里它 35→54→56→51 抖，撞界是它 `39530269408` 那手 60.014s）。
+`daemon_telemetry foreground_update_honors_…` 那条 `39530269408` 的 FAIL 也已回绿
+（`PASS [9.685s]` / `PASS [14.496s]`）。**失败集合是上一手的子集，没有新增项。**
+
+### 这两手不能用来判决 `42c5bb5d9`
+
+`42c5bb5d9`（给这两条 leg 加 1m×2 的 mac-only override）**仍在本地未推送**，
+`origin/test` = `f6f74f484`，而两个 head（`c7590fe24`、`a3b96ae90`）都是 `42c5bb5d9` 的**祖先**
+⇒ 这两手重观测的是"加宽之前"的 60s 界，**不构成"加宽后仍失败"**。
+判据仍要推送后的第三手：那一手里这条 leg 应该以 `PASS [>60s]` 出现（像它的兄弟 leg 那样），
+若仍在 120s 界上被 kill，才需要回头查 daemon 本身为什么回不来。
+
 ## 7. 提交、推送与工作树状态
+
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
   `/Volumes/soddy/…` 与 `/Volumes/zhitai/…` 各有一个**互相独立的 clone**，都在 `test`
@@ -3852,6 +4019,30 @@ after 段六行逐字（temp 根这手是 `.tmpE3kMLq`，上一手是 `.tmp4WwQt
   `codex-tui …dynamic_tool_requests_ignore_other_namespaces…` `FAIL + LEAK 14.026s` 是第二次观察、
   同一行同一文案、不是 kill ⇒ 归因需再加诊断，本轮不擅自扩面。
   两手的 mac 腿在登记时仍 `in_progress`。本轮**零代码/配置改动、零 dispatch、零推送**。
+- **§6.41 那一手（#47 取证改造，一笔代码改动 +362/−56）**：`codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs`
+  把写/delete 取证改成 **`WRITE_RESTRICTED` 两张 SID 列表求交**：`SidList`（restricting / default）
+  + `push_token_sid_lists` 用生产构造函数建出子令牌后从**那块令牌**读 default 列表，
+  判决打印 `eff = (授予 restricting) ∩ (授予 default)`，dump 标注 ` <-- TOKEN R=…` / ` <-- TOKEN D=…`。
+  **本条同时更正本节先前登记的机制说法**：先前那版（未提交）把 `user` 算进 restricting 列表的
+  授予来源；这条腿 `create_token_with_caps_from(base, caps, &[])`（`token.rs:397-402`）的
+  restricting 列表是 **caps + logon + everyone**，user 只在 elevated 后端进入（`token.rs:455-466`）。
+  真机一手在 `.235`：**`PASS 0.314s` / `Summary 0.321s 1 passed, 282 skipped`、`--retries 0`**，
+  `MARKER two-list-evidence=1 old-single-set=0`，零 `token SID note`。
+  观测到的关键三点：(1) `grp#3(S-1-5-32-544)` 与 `grp#2(S-1-5-114)` 以 **deny-only** 出现，
+  取证正确地不计其授予但仍计其 deny；(2) `.git` 与 `.git\config` 判为 `none`，且 default 一侧
+  **确实有** DELETE（`grp#7`），是 restricting 一侧被 `ace[0] deny 0x00130156` 收回才归零
+  ⇒ #41 要的"证明 enforce 而不是 argv"的正面收据，且形状比上一手更强；(3) 三个被删文件
+  `here=[absent]`、父目录给出 `DELETE via R[cap#N holds DELETE via ace[0]] x D[grp#7 …]` 正例。
+  上一手"身份 SID 本机无正例"的限制已作废（after 块 `TOKEN D=` 46 次）。
+- **§6.42 两手 mac 腿终态（#46）**：`39542266851`/`39543230422` 的 mac 腿都 failure，
+  红的是同一条 `app_server_daemon managed_daemon_restarts_from_deleted_working_directory`，
+  `TIMEOUT 60.008s / 60.007s`，`FAIL` 计数 0，其余 22887 通过；失败集合是上一手的子集，无新增。
+  **这两手不构成对 `42c5bb5d9` 的判决**：两个 head 都是它的祖先（该 override 未推送），
+  它们重观测的是加宽前的 60s 界；判据要推送后的第三手。
+- **本轮推送决定**：用户表格第 1、2 行都把缺的 datum 写成"推送后 CI 一手"，
+  故本轮把 #47 取证 + #46 override + 台账一起推上 `test`，取第三手与 runner 一手。
+  推送内容：`42c5bb5d9`（mac override）、`e14d73e76`、`8b6fac76d`、`d918722f2`（三笔文档）
+  加上本轮的 #47 代码笔与文档笔。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
