@@ -44,7 +44,7 @@ use winapi::um::winbase::INFINITE;
 pub(crate) mod conpty;
 mod job;
 mod procthreadattr;
-mod psuedocon;
+pub(crate) mod psuedocon;
 
 pub use conpty::ConPtySystem;
 pub use job::JobObject;

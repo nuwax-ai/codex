@@ -101,7 +101,7 @@ pub fn conpty_supported() -> bool {
     windows_build_number().is_some_and(|build| build >= MIN_CONPTY_BUILD)
 }
 
-fn windows_build_number() -> Option<u32> {
+pub(crate) fn windows_build_number() -> Option<u32> {
     let ntdll = Ntdll::open(Path::new("ntdll.dll")).ok()?;
     let mut info: OSVERSIONINFOW = unsafe { mem::zeroed() };
     info.dwOSVersionInfoSize = mem::size_of::<OSVERSIONINFOW>() as u32;
