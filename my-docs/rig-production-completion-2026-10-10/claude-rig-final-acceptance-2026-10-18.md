@@ -2544,6 +2544,109 @@ assert!(
   （那条腿在 `.41` 上按 §6.27 的结论本就不能当第二平台证据），它只有 mac 本机 `11 passed`
   与下一手 runner 自证两个来源。
 
+## 6.30 A 档第一批实施：exec 侧 native 一手（`bb2c0f9eb`）与跳过式绿的自证工件（`6c176ecec`）
+
+用户要求"分析下看如何实施"，并授权 push。分析派了四个只读取证方向（exec 侧夹具、
+bwrap guard 全量、两条 Windows 红、CI 分片与 rusty_v8），先记三条**被取证推翻的旧前提**，
+因为它们直接改变了该做什么：
+
+- **A6 的阻塞前提不成立**。此前登记"A6 前置：分片 target 目录不带 `codex-exec`
+  source-receipt 二进制"。实际 `codex-rs/exec/build.rs:23-65` 对 `.git` 的
+  HEAD/branch/packed-refs/index 与每个 workspace member 目录都下了 `rerun-if-changed`，
+  checkout 之后这些 mtime 必然新于缓存恢复的产物；而且 CI 本来就显式
+  `cargo build --locked -p codex-exec --bin codex-exec`
+  （`fork-cargo-pr.yml:142-143`、windows 腿 `:248-249`）。⇒ 分片不必先修缓存。
+- **A3 不是产品缺陷，是分叉自己选的测试策略**。`GenerateConsoleCtrlEvent` / `CTRL_C_EVENT`
+  在整个 `codex-rs` 里不存在，0x03→Ctrl-C 由 OS 的 ConPTY 宿主翻译；分叉提交
+  `a63c08f0f` 已在真机 Windows 11 26200.9711 量到该 build 不再翻译 0x03 且上游 CI 同红，
+  随后 `7d9dc6834` **主动删掉**了按 build 号设的门。⇒ `utils/pty` 全 crate 对
+  `origin/main` 的 diff 只有一处句柄类型转换 + 一行注释；这一红只能是测试策略问题。
+- **A4 的定性要往上调**（安全相关）。`legacy_workspace_write_delete_is_limited_to_writable_roots`
+  （`windows-sandbox-rs/src/unified_exec/tests.rs:742-849`）左值尾巴 `None, false`
+  ⇒ 不在任何可写根内的文件被删掉、受保护的 `.git` 也没了，`exit_code 0`，0.089s；
+  生产路径上 `legacy.rs`/`setup.rs`/`acl.rs`/`desktop.rs`/`cap.rs`/
+  `resolved_permissions.rs`/`allow.rs`/`protocol/src/permissions.rs`
+  对 `origin/main` 的 diff **全为空**，测试本身是上游 `#31138` 写的；
+  台账 `:2088` 记录同一形状在**本机 Windows 11 桌面**单测隔离 2/3 复现。
+  ⇒ "只是 runner 环境"这一说被这条反证打掉；缺的那一手是失败时的 `sandbox_log()`
+  与 `apply_legacy_session_acl_rules` 是否返回成功。
+
+### A1：native 传输的端到端一手，从 app-server 侧扩到 `codex exec`
+
+判据是"账本文件"这一唯一可观测量：`CODEX_RIG_REQUEST_CAPTURE_FILE` 只由桥的传输在
+每次 HTTP attempt 后写一行（`codex-rust-rig-bridge/src/request_capture.rs:176-178`
+`to_vec` + `\n`、`:242-251` create+append 0600），原生路径根本不构造 recorder
+（`:45-68` 只在桥侧调用）。此前只有 app-server 一条腿用它做"文件不存在"的断言，
+`codex exec` 侧 8+ 条 nuwax 腿一条都不看账本 ⇒ 那侧的 "Responses 形状" 无法区分
+两种传输。
+
+新两腿共享除 `NUWAX_BRIDGE` 以外的一切，因此"缺失"才成为收据而非证据缺席：
+
+| 来源 | selection | 读数 |
+| --- | --- | --- |
+| mac 本机 | `cargo test -p codex-exec --test all nuwax_env::` | `10 passed; 0 failed; 124 filtered out`，3.62s；新两腿 `nuwax_env_default_bridge_records_the_responses_attempt`（账本存在且首行 `url` 落在 `/v1/responses`）与 `nuwax_env_native_bridge_sends_the_responses_wire_without_the_rig_capture`（账本不存在）均 PASS |
+| mac 本机负向泄漏检查 | 同一 selection，父进程导出 `NUWAX_BRIDGE=native`、`NUWAX_MODEL=leaked-model`、`NUWAX_BASE_URL=https://leaked.invalid/v1` | 仍 `10 passed; 0 failed`，3.19s ⇒ 九变量清空有效 |
+| `.41`（分支 `qoder-verify-20261021b` @ `6c176ec`） | L10c `-p codex-exec --features codex-core/rust-rig -E 'test(nuwax)'` | `Summary [12.881s] 22 tests run: 22 passed, 162 skipped`；新两腿 `PASS 0.829s` / `PASS 0.831s`（非个位毫秒 ⇒ 真实执行） |
+
+顺带补的真实遗漏：`nuwax_env.rs` 原先只 `env_remove` 五个变量（`run_nuwax_env_turn`）
+和六个（重试腿），漏 `NUWAX_BRIDGE` 等 ⇒ 任何导出过该变量的 shell 都会把这三条 wire 腿
+打成红或打成另一种传输。现统一成 `NUWAX_ENV_GROUP: [&str; 9]`。
+`cargo fmt --all --check` rc=0，`cargo clippy --offline -p codex-exec --test all` 干净
+（4m07s Finished）。
+
+### A2：八条 bwrap guard 腿的跳过变成可 grep 的工件
+
+根因确认：nextest 默认不打印通过用例的输出（`codex-rs/.config/nextest.toml` 未设
+`success-output` ⇒ `never`），所以 guard 里那句 `eprintln!("skipping …")` **从来没进过
+runner 日志**；此前只能靠"个位毫秒即返回"猜。新机制：
+`CODEX_TEST_SKIP_RECEIPT_FILE` 每跳过一次追加一行
+`{"test":…,"guard":…,"reason":…}`（`exec-server/tests/common/mod.rs:45-78`），
+变量已设却写不进 = **硬失败**（静默缺收据正是这里要消除的失效模式）。
+ubuntu/mac 腿在 `fork-cargo-pr.yml:145-173` 里先 `rm -f` 再跑、随后一步 `if: always()`
+把收据文件 `cat` 进 job 日志 ⇒ 证据落在与历手同一个 `.raw` 里，不需要新增工件下载通道。
+Windows 腿未接：`system_bwrap_warning` 在非 Linux 直接返回 `None`
+（`sandboxing/src/lib.rs:67-73`），今天不可能有收据；四条 MXC guard 与
+`codex-linux-sandbox` 的 32 条同类 guard 未接，等 §7 的范围拍板。
+
+| 来源 | selection | 读数 |
+| --- | --- | --- |
+| mac 本机 | `-p codex-exec-server --test exec_process skip_receipt` | `1 passed; 0 failed`（逐字节比对两行 JSONL；写失败即 `read_to_string` 报错，不可能静默绿） |
+| mac 本机回归 | 同 target `-E shell_snapshot` | `44 passed; 0 failed; 41 filtered out`，45.75s ⇒ 八处 guard 改写无回归 |
+| `.41` L10a | `-p codex-exec-server -E 'binary(exec_process)'`，收据变量指向 `$BASE/skip-receipts-l10.jsonl` | rc=0，`Starting 60 tests across 1 binary (11 tests … skipped)`；**收据 12 行 / 8 个不同腿名**（`shell_snapshot_v2_capture_failure…` ×3、`shell_snapshot_concurrent_replays…` ×3、其余六条各 1），reason 全部为 `USER_NAMESPACE_WARNING` 那句 |
+| `.41` L10b 负向对照 | 同 target 一条 guard 腿，收据路径指向不存在的目录 | `FAIL [0.066s]`，`panicked at exec-server/tests/common/mod.rs:74:31: cannot open "/nonexistent-dir/r.jsonl" for the skip receipt of remote_process_preserves_empty_workspace_roots: No such file or directory`，rc=100 ⇒ 写不进时**大声红**，不再静默绿 |
+
+`.41` 一手把 §6.27 的"跳过式绿只能靠人工数毫秒"这一状态结束：同一批腿现在自己报名字和
+宿主原因。它同时给出一条**新的、可核对的**分母——`exec_process` 这个 binary 在
+无 userns 能力的宿主上有 12 个实例根本不执行。
+
+**边界**：`ubuntu-latest` 自己在 `fork-cargo-pr.yml:98-107` 尝试把
+`kernel.apparmor_restrict_unprivileged_userns` 置 0，所以下一手的 ubuntu 日志里
+"零收据"与"若干收据"都是合法结果；这一改动买到的是**能区分**这两种结果，
+而不是其中某一种结论。
+
+### A 档剩余四项：等用户拍的范围（未动代码）
+
+1. **A2 的覆盖面**。机制 + 8 条 exec-server guard 已落地；同类静默跳过还有
+   `codex-linux-sandbox` 的 **32 条**（`should_skip_bwrap_tests`，
+   `tests/suite/sandbox.rs:229-250`）、`codex-exec` 的 4 条 Landlock 探针
+   （`tests/suite/sandbox.rs:104-121` + `None => return` 四处）、Windows MXC 4 条
+   （`skip_if_mxc_unavailable`，含 `file_system_windows.rs:407` 的自带写法）。
+   接到 linux-sandbox 需要给那个 crate 加一份共享入口（它的 tests 不引
+   `exec-server/tests/common`），是一次跨 crate 的机械改动。
+2. **A3 的立场**：`conpty_ctrl_c_interrupts_powershell_foreground_child` 要不要恢复
+   `a63c08f0f` 当初加、`7d9dc6834` 删掉的按 build 门（推荐，理由见本节第 2 条推翻项），
+   还是继续红着等 Windows 宿主。**这是分叉测试立场的变更，不自作主张。**
+3. **A4 的处置**：Windows write-delete 那条按上表定性为 fail-open 且真机可复现，
+   第一步只能是"让失败带上 `sandbox_log()` 与 ACL 落地证据"（纯测试侧、Windows-only，
+   mac 无法编译验证，只能靠 `.235` 恢复后一手）；分叉内修生产 ACL 不在本轮范围。
+4. **A5/A6**：rusty_v8 的 off-CI 配方卡在**下发体积仓内无记录**
+   （`.github/actions/setup-rusty-v8/action.yml:28-39` 只从
+   `github.com/openai/codex/releases` 取，无 vendored 副本），且已确认
+   `cargo test -p codex-exec-server` 一类定向测试**根本不建 v8**
+   （v8 只经 `codex-code-mode-runtime`→`code-mode-host` 与 `v8-poc` 进来），
+   所以它的唯一收益是本机建 code-mode-host；CI 分片的阻塞前提已被推翻，
+   剩下要拍的是目标是"消掉 mac cancelled"还是"整腿提速"（后者要动三条腿并重建对比基线）。
+
 ## 7. 提交、推送与工作树状态
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在
@@ -2821,6 +2924,19 @@ assert!(
   不产生。**本轮既不 push 也不 dispatch**，`git push` 仍只在用户明确要求时执行。
   run 39430526421 是本节最后一次 CI 观测读取；`.41` 上 `lx-verify9` 是本轮唯一的新执行，
   零 CI 预算、零厂商调用。
+- **§6.30 那一手：用户明确要求 push，栈已上去（实测，本机）**。`git push origin test` 以
+  `e43a51da3..04623ca2c` 落地，触发 run **39526586631**（`event=push`、head `04623ca2c`、
+  01:18:56Z 入队；四腿 01:19 全部 `in_progress`，本轮 mac 腿**没有**在排队阶段被取消）。
+  这一手含 `c387b44dc` 的新断言文本，是 #23 的第一手 runner 自证。其后本地两笔代码提交
+  `bb2c0f9eb`（A1，单文件 `exec/tests/suite/nuwax_env.rs`）与
+  `6c176ecec`（A2，四文件：`exec-server/tests/common/mod.rs`、
+  `exec-server/tests/exec_process.rs`、`exec-server/tests/exec_process/shell_snapshot.rs`、
+  `.github/workflows/fork-cargo-pr.yml`）+ 本节文档笔，**一并再 push**，
+  使 ubuntu 日志同一手里既有 `c387b44dc` 的自证断言、又有 A2 的收据 census。
+  `.41` 上的 `lx-verify10`（L10a/L10b/L10c）是新执行：零 CI 预算、零厂商调用，
+  源码经 `git bundle create … 486ed23a4..test`（**14.6 KB**）→ scp →
+  `git fetch <bundle> test` → 独立分支 `qoder-verify-20261021b`，旧分支
+  `qoder-verify-20261021` @ `486ed23` 原样保留。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
