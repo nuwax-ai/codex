@@ -4176,6 +4176,109 @@ mac 本机把 §6.46 判据那两条腿单独跑了一遍：
 `codex-rs/` 仍零改动；本轮新增只有这一节与 §6.45 的落点表。§6.46 的 O5 **保持开放**，但按上表改写判据。
 `39562896528` 的 mac 腿写本节时仍 `in_progress`；#46/#45 的终判仍分别是 CI 的 `PASS [>60s]` 与推送后的下一手。
 
+## 6.48 那条"等 mac 腿终态再推"的前置条件是我臆造的；推送之后 #46 的判决从**没跑完的**腿里就读到了
+
+推送前后各取一手，这一节改掉三处我自己登记错的东西：一条不存在的推送前置条件、一段被我读成"异常"
+的正常编译时间、一条射程画错的取日志规矩。零代码改动。
+
+### 一、前置条件证伪：这个 workflow 里没有 concurrency 组
+
+§6.45 与 §6.47 各写过一句"推送前置条件：mac 腿终态"，理由是新 push 事件可能把在跑的 mac 腿取消掉。
+逐字核查落空：
+
+- `grep -rn 'concurrency' .github/workflows/` 全仓只有 **1** 处命中——`python-sdk-cli-release.yml:17`，
+  而它自己 `:19` 就是 `cancel-in-progress: false`。跑这三条 nextest 腿的 `fork-cargo-pr.yml` **没有**
+  `concurrency`（`on:` = `push: branches: [main, test]` / `pull_request` / `workflow_dispatch`，
+  `strategy.fail-fast: false`，`timeout-minutes: ${{ matrix.timeout }}`，matrix ubuntu **180**、macos **330**）。
+- 直接一手：`10:17:49Z` 推送之后，`10:23:23Z` 复查 `39562896528` 的 mac 腿仍 `in_progress` ⇒ 取消没发生。
+
+⇒ 那 2h40m 的等待是纯损失，并且把 #45 的收据一起压住了。账本里那些 mac 腿 `cancelled`
+（`:174`、`:198`、`:216`、`:641`）**全部是撞自己的 `timeout-minutes`**——`:641` 逐字
+"`16:39:21Z → 19:40:15Z`，正好 3h00m54s 撞 job 时限"，那年时限是 180，现在是 330——与并发无关，
+不能从"历史上有腿被杀"外推出"推送会杀腿"。
+
+### 二、"mac 腿 2h20m 还在跑"不是异常：我把两个量纲混了
+
+我当时的读法是"步骤已跑 2h20m vs 先前四手 nextest Summary 只有 3349.7–3648.1s"⇒ 判成异常。
+这个比较不成立：`Summary [ … ]` 只计**测试阶段**，而 mac 的 Test 步骤里还含着一大段编译。同一段内对同一段：
+
+| | 本手 `39562896528`（写本节时 in_progress） | 上一手 `39530269408`（已终态） |
+| --- | --- | --- |
+| `Test (workspace)` 步骤开始 | `07:54:40` | `02:18:31` |
+| 第一条 `PASS`（`1/22888`） | `09:47:30` | `04:10:47` |
+| ⇒ 步骤内编译 | **1h52m50s** | **1h52m16s** |
+| 测试阶段 | 09:47:30 起，10:10:23 读到 `7596/22888` | `Summary [3480.467s]`（04:10:47→05:08:47） |
+
+编译段几乎同长（差 34 秒），静默段也同形：本手 `Compiling codex-cloud-tasks` 08:19:54 → 34 分钟无输出
+→ `warning: unused variable: \`network_policy\`` 08:53:54；`Compiling codex-thread-manager-sample` 08:59:55
+→ 37.5 分钟无输出 → `Compiling codex-utils-readiness` 09:39:27。⇒ 测试阶段按上一手 58min 推算约
+**10:45Z 收尾**，本手不会撞 330min。坑记下来：`Summary [ ]` 与"步骤已跑多久"不是同一个量纲。
+
+### 三、部分日志能取，而且单条判决是终局的
+
+"未到终态的 job 日志不可取"（`:2901`、`:3264`、`:4594` 引用 §6.34）这条规矩的射程要划清：
+
+- 取不到的是 `gh run view <id> --log`，对 in_progress 直接给
+  `run 39562896528 is still in progress; logs will be available when it is complete`。
+- 取得到的是 job 级 API：`gh api repos/nuwax-ai/codex/actions/jobs/119098109071/logs --allow-escape-sequences`，
+  10:19Z 对**在跑**的 mac job 拿到 2,110,068 字节。不带 `--allow-escape-sequences` 时它拒绝输出：
+  `the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway`。
+- 部分流**有滞后**：10:19Z 取到的最后一行是 `10:10:23Z`（约 9 分钟）。⇒ 可以用它读"nextest 已经打印出来的
+  单条 `PASS`/`FAIL`"（判决行不翻案），不能读"这腿会不会绿"，也别把滞后那几分钟读成卡死。
+
+### 四、#46 的判决提前到手，但强度差如实登记
+
+这一手含 `42c5bb5d9`（§6.46 祖先核对已判 YES），那两条腿逐字：
+
+```
+2026-10-21T10:04:06.0972290Z         PASS [  56.683s] ( 4736/22888) codex-cli::app_server_daemon managed_daemon_restarts_from_deleted_working_directory
+2026-10-21T10:04:54.7299300Z         PASS [  48.627s] ( 4771/22888) codex-cli::app_server_daemon managed_identity_survives_locale_and_timezone_changes
+```
+
+⇒ 那条 `60.012s` 的杀招在**含修复**的手里没有再现，#46 要修的红已不存在。
+
+但登记过的判据是"两条以 `PASS [>60s]` 出现"，实情是这两条没穿过窗口：56.683s / 48.627s 都在新的
+`1m` 周期之内，所以连 `SLOW` 都没打（该 binary 里那些 `SLOW [> 30.000s]` 属于默认周期的腿）。
+同一 lane 上把 `1m × 2` 窗口穿过去的是兄弟腿：
+
+- `SLOW [> 60.000s]` 10:07:23 → `PASS [  66.105s] ( 6911/22888) … packaged_daemon_bootstrap_seeds_local_package`
+- `SLOW [> 60.000s]` 10:10:08 → `PASS [  64.588s] ( 7591/22888) … packaged_daemon_restart_seeds_local_package`
+- `PASS [  98.585s] ( 7480/22888) … packaged_daemon_explicit_replacement_migrates_running_legacy`
+  ——这条是 `2m` 周期，所以不打 `SLOW`，与算式自洽。
+
+⇒ 结案依据写成"**红未再现** ＋ **同一窗口算式在同一 lane 上有两条 >60s 存活**"，**不是**"那两条自己穿过 60s"。
+强度差留在账上：再想让那两条本身穿过 60s，只能等 lane 再慢一次，不值得为它单独花一只手。
+
+### 五、桥闸门第一次红，cause 在归档镜像的 503，不在本树
+
+`39583542510`（head `0ef33716a`，10:17:49Z 由本次 push 触发）的 `bazel bridge gate (ubuntu)`
+job `119166741413` 终态 `failure`，失败步 `Bridge gate`，日志 37,149 字节
+（`/Volumes/zhitai/tmp/qoder-scratch/g45835.raw`，去 ANSI 副本 `g45835.txt`）：
+
+- `:387` 逐字 `WARNING: Download from https://snapshot.ubuntu.com/ubuntu/20260801T000000Z/pool/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.1_amd64.deb failed: class java.io.IOException GET returned 503 Service Unavailable`
+- 调用链在 `rules_rs+/rs/private/rustc_repository.bzl`：`_rustc_repository_impl:61` → `_add_linux_zlib:44`
+  → `_extract_deb_payload:25` 的 `rctx.download_and_extract(`
+- `ERROR: no such package '@@rules_rs++toolchains+rustc_linux_x86_64_1_95_0//'`
+  ⇒ `ERROR: Analysis of target '//codex-rs/exec:codex-exec' failed; build aborted: Analysis failed`
+- `INFO: Elapsed time: 66.245s, Critical Path: 0.08s`、`INFO: 1 process: 1 internal.` ⇒ **一次编译都没发生**
+
+本轮之前每一手登记的 `bazel bridge gate (ubuntu)` 都是 success（`:156`、`:185`、`:316`、`:638`、`:1675`、
+`:2066`、`:2856`、`:2991`、`:3192`、`:3264`、`:3395`、`:3818`、`:4629`）⇒ 这是第一手红。归因：`rules_rs`
+的 rustc 工具链要到 build 时才去 ubuntu 归档快照拉 `zlib1g` 的 `.deb`，这是一条镜像侧不可控的
+hermetic-fetch 依赖面，503 发生在它身上。**处置：不重跑、不为此单独 push 或 dispatch**（用户已明令），
+#45/#46 的判据都在 nextest 腿里，这一格留给下一手自然覆盖；也不写代码给它加重试——那是未请求的加固。
+
+### 状态
+
+- push 已完成：`1af8b5a70..0ef33716a`（8 笔），`git rev-list --left-right --count origin/test...test` = `0 0`；
+  tip 不带 `[skip ci]`，事件如期触发 `39583542510`。
+- 祖先核对（`git merge-base --is-ancestor … 0ef33716a`）：`0a99662c2` YES、`42c5bb5d9` YES、`9075086b3` YES
+  ⇒ 这一手同时能判 #45、#46、#47。
+- `39583542510`：bridge gate 已 `failure`（第五段），三条 nextest 腿写本节时 `in_progress`；
+  #45 判据＝ubuntu 腿里那 5 条 `/proc` 腿的 bwrap 收据。
+- `39562896528`：mac 腿 `in_progress`，按第二节推算 ~10:45Z 收尾；#46 的判决已按第四节提前登记。
+- `codex-rs/` 净变化仍为 0。
+
 ## 7. 提交、推送与工作树状态
 
 
@@ -4691,6 +4794,20 @@ mac 本机把 §6.46 判据那两条腿单独跑了一遍：
   紧接着同一轮又给 §6.47 补了"两手丢失面并排"那一小段（`.235` 掉 3 格且格格有点名依据、runner 掉
   6 格、多掉的正是三格受保护的），拆成单独一笔，计数因此是 `0 8`；§6.47 里"runner 与 `.235`
   的 default 一侧只差一张 user ACE"这句话，是那段补完之后才站得住的。
+- **§6.48 由本笔登记，并且它作废了前两笔里我自己写下的那句"推送前置条件：mac 腿终态"**。
+  推送动作本身是 `1af8b5a70..0ef33716a`（8 笔，tip 不带 `[skip ci]`），推送前后各一手：`10:14:20Z`
+  与 `10:23:23Z` 两次读 `39562896528` 的 mac 腿都是 `in_progress`，`10:17:49Z` 的新事件起了
+  `39583542510`——**没有并发取消**，因为 `fork-cargo-pr.yml` 里根本没有 `concurrency` 组
+  （全仓唯一命中在另一个 workflow，且它 `cancel-in-progress: false`）。本笔提交前重新逐格核了一遍
+  §6.47 的读数：md5 四枚、`.235` 侧 `7 ACE(s)` / `147-153` 与 `264-270` 两份 dump、runner 侧
+  `12 ACE(s)`（`:26514`）与 `ace[10] … sid=S-1-5-21-4159254826-…-500 <-- TOKEN D=user`、
+  四个退化串各 0、三格 `here=[absent]` 的 `in parent=` 逐字点到 `R[cap#0/1/2]` × `grp#7 holds DELETE
+  via ace[7]`——**没有一格需要改**。过程里另外两件事是本笔新取得的：其一，job 级 logs API 对
+  in_progress 的腿也能取（`--allow-escape-sequences`，2,110,068 字节、滞后约 9 分钟），#46 的两条
+  判决就是靠它提前读到的，登记规矩的射程已在 §6.48 第三节划清；其二，`bazel bridge gate (ubuntu)`
+  第一次红，cause 是 `snapshot.ubuntu.com` 对 `zlib1g_…_amd64.deb` 回 `503 Service Unavailable`，
+  `Elapsed 66.245s / 1 process (internal)` 证明零编译——**按不凑绿的规矩没有为它重跑**，也没有为它
+  加任何重试代码。`codex-rs/` 净变化仍为 0。
 
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
