@@ -4618,7 +4618,160 @@ windows job `10:17:53Z → 12:17:35Z`＝**1h59m42s**；拆开 `Build binary-leve
 `nextest (ubuntu-latest)` `completed`/`failure`＝§6.50、`nextest (windows)` `completed`/`failure`＝本节、
 `nextest (macos-latest)` job `119166741803` 写本节时 `in_progress`（job 起 `10:17:59Z`，
 `Test (workspace)` 步骤起 `10:38:19Z`，本节时点已跑约 1h47m；按 §6.49 那手实测 3h14m00s 推算约
-**13:32Z**）。`codex-rs/` 净变化 0；本笔只动这一份 md，带 `[skip ci]`，不新增 CI 手。
+**13:32Z**）。**该腿已于 `13:38:36Z` 终态＝`completed`/`failure`，登记在 §6.52**——它**不绿**：唯一一条红是同族
+第三条贴线腿被默认 60s 窗口掐死（这个名字台账里此前 grep 0 命中，原因见 §6.52 二）。
+本节把 mac 腿只写成"写本节时 `in_progress`"、没有对它的判决下预判，这个分寸是对的；
+§6.52 也把本节那句锚点读法（"只够安排什么时候去看"）用第三条腿补齐：mac 与 windows 同向（**估早** 6m37s），
+与 ubuntu 那格（偏悲观 6m38s）反向——两次 404 之外，锚点方向本身也不是稳定量。
+`codex-rs/` 净变化 0；本笔只动这一份 md，带 `[skip ci]`，不新增 CI 手。
+
+## 6.52 mac 腿唯一一条红是同族第三条贴线腿：它前 9 手全绿，这手跨在 60.023s 上被掐死——而 #46 的名单里没有它
+
+### 一、判据（`nextest (macos-latest)` job `119166741803`，终态 `completed` / `failure`）
+
+整腿逐字（`m45835b.final.txt:28158`）：
+
+```
+Summary [3683.468s] 22888 tests run: 22887 passed (27 slow), 1 timed out, 71 skipped
+```
+
+`m45835b.final.raw` 5,420,659 字节（真 ESC 26,876 行、字面 `^[[` 0 行），§6.50 那条 perl 去色后
+`m45835b.final.txt` 4,211,613 字节 / 28,200 行、ESC 行 0（差 1,209,046 字节 ⇒ 去色没空转）。
+**这条腿只有这一条红**，三条判决行逐字（SLOW 在 `12:52:41Z`，后两行同挤在 `12:53:11Z`）：
+
+```
+12:52:41Z  SLOW [> 30.000s] (───────────) codex-cli::app_server_daemon bootstrap_reports_updater_bind_failure
+12:53:11Z  TERMINATING [> 60.000s] (───────────) codex-cli::app_server_daemon bootstrap_reports_updater_bind_failure
+12:53:11Z      TIMEOUT [  60.023s] ( 3343/22888) codex-cli::app_server_daemon bootstrap_reports_updater_bind_failure
+```
+
+- `panicked at` 全日志 **0** 命中，该腿的 stdout 块（`stdout ───` 在 `:8585`）里只有
+  `running 1 test`（`:8587`）与 `(test timed out)`（`:8589`）两行，中间没有任何其它输出
+  ⇒ **被掐时什么都没打印**，这正是 §6.22 那批"只报 TIMEOUT"的形状在同族再现。
+- `SLOW [` 行计数 **28** 对 Summary 的 `27 slow`：差的那一条就是这条腿——它先 SLOW 后 TIMEOUT，
+  不进 slow 计数。28 行按 binary 拆满 28：`codex-cli::app_server_daemon` **8**（含这条）、
+  `codex-app-server::all` 5、`codex-core` 4、`codex-exec::all` 3、`codex-cli::worktree` 2、
+  `codex-cli::daemon_startup` 2、`codex-app-server-transport`、`codex-core::all`、`codex-exec-server`、
+  `codex-utils-image` 各 1。28 个名字互不重复，逐个回查判决行＝**27 条 PASS ＋ 本节这条 TIMEOUT**，
+  与 `27 slow` 对齐；§6.49 那手满绿，`SLOW [` 行 **30** 对 Summary 的 `30 slow`，同一口径自洽。
+- 这条腿的 TIMEOUT 行在日志里**出现两次**：`:8584` 是跑动流里的那一条，`:28159` 紧跟 Summary 之后
+  （下一行就是 `error: test run failed`）是 nextest 的失败回放块，两行逐字相同
+  `[  60.023s] ( 3343/22888)` ⇒ **按 `grep -c TIMEOUT` 数红会数出 2**，判决计数只认 Summary 那一句。
+- `.github/workflows/fork-cargo-pr.yml:154`、`:156`、`:257` 三条 nextest 命令都带 `--retries 0`
+  ⇒ 这条腿**只有一次尝试**，没有第二手兜底。
+- 本节只用终态日志：最后一次部分流尝试落在 **`12:39:08Z`**（`m45835b.partial2.raw` 215 字节，错误体里
+  `<Time:2026-10-21T12:39:08.5218896Z>` 是 API 自己盖的时间）。距 §6.50 登记的上一轮 mac 404（`11:31:17Z`）
+  已过 **1h07m51s**，距该腿终态还有 59m28s，而它 `10:17:59Z` 就起了 ⇒ 到那一刻**跑满 2h21m 仍一个日志块
+  都没刷出来**。这是给 §6.50 那条"可用性只取决于这个 job 刷没刷过块"补的**上界样本**：长腿上"提前取证"
+  不是"等几分钟"的问题，可以整段腿都不给。
+
+### 二、这个名字台账里 grep **0 命中**，但它不是首观异常
+
+0 命中的原因是**前 9 手它都绿**，红名单从来没轮到它写名字。缓存里它的 10 个读数（逐字时长 ＋ 计数器）：
+
+| 手（run / job） | 判决 | 计数器 |
+| --- | --- | --- |
+| job `117590909114`（更早的一手） | PASS 27.380s | 3180/22840 |
+| `39347345560` | PASS 33.042s | 3342/22877 |
+| `39371971338` | PASS 55.687s | 3342/22878 |
+| `39396134392` | PASS 57.280s | 3342/22878 |
+| `39526586631` | PASS 37.385s | 3343/22885 |
+| `39530269408` | PASS 39.684s | 3343/22888 |
+| `39542266851` | PASS 42.545s | 3343/22888 |
+| `39543230422` | PASS 56.083s | 3343/22888 |
+| `39562896528`（§6.49 满绿那手） | PASS 39.001s | 3332/22888 |
+| `39583542510`（本节） | **TIMEOUT 60.023s** | 3343/22888 |
+
+`39430526421` 的 mac 腿被取消（§6.29），缓存里没有它的判决行。⇒ 有 **3 个读数 ≥55.6s**
+（55.687 / 57.280 / 56.083，前两个还是相邻两手）：这条腿早就在 60s 门口，本手只是跨过去。
+**把它读成"首观新红"就错了**，它是 §6.15 / #19 / #46 一路在处理的那条"mac 腿 daemon 家族贴线"的
+同一个面上的一条新暴露。
+
+### 三、#46 放宽的两条本手实测在 60s 之外活着——顺带把"名单少一条"照出来
+
+`codex-rs/.config/nextest.toml:48-49` 的 #46 块逐字：
+
+```
+filter = 'package(codex-cli) & binary(app_server_daemon) & (test(=managed_daemon_restarts_from_deleted_working_directory) | test(=managed_identity_survives_locale_and_timezone_changes))'
+slow-timeout = { period = "1m", terminate-after = 2 }
+```
+
+| 腿 | §6.49 那手（`39562896528`） | 本手 |
+| --- | --- | --- |
+| `managed_daemon_restarts_from_deleted_working_directory` | PASS 56.683s (4736/22888) | **PASS 68.055s** (4736/22888) |
+| `managed_identity_survives_locale_and_timezone_changes` | PASS 48.627s (4771/22888) | **PASS 77.078s** (5206/22888) |
+
+两手的 **SLOW 标记行**把这组对照钉在 runner 上，而不是只靠时长：本手这两条各有一行
+`SLOW [> 60.000s]`（`:9986`→PASS `:9987`、`:10173`→PASS `:10460`），而 §6.49 那手它们
+**没有任何 SLOW 行**，日志里只有 `:9984` 与 `:10021` 两行 PASS。⇒ `period = "1m"` 的 override
+确实被这个 binary 的这个 test 匹配到了（56.683s / 48.627s 都在 60s 之内所以不打印，跨线才打印）。
+本手 SLOW 标记分档：`> 30.000s` **22**、`> 60.000s` **5**、`>120.000s` **1**。
+这 6 条高档标记逐一对得上各自匹配到的 override 的 `period`：`> 60.000s` 是
+`managed_daemon_restarts…`／`managed_identity_survives…`（`:48-49`，#46 那块）、
+`compact::tests::local_compaction_retries_…::metadata_enabled`（`:246-247`，全平台那块）与
+`packaged_daemon_bootstrap_seeds_local_package`／`packaged_daemon_restart_seeds_local_package`
+（`:58-59`）；`>120.000s` 是 `packaged_daemon_start_and_explicit_replacement`，它走
+`:32-34` 的 mac `2m × 2`，**不是** `:53-54` 的 `1m × 3`——正好是 `:19-23` 那条"第一条匹配的 override 生效"
+在 runner 日志里的可见证据。这条不只是推断：它本手 PASS 用时 **183.944s**（`:13357`，计数器 8098/22888），
+已经**越过 `1m × 3`＝180s 的杀线**，若 `:53-54` 那块生效本手它就是第二条红；`:30` 那句
+"2m × 2＝4m 覆盖 138.699s 加实测扩散"（读数本身在 `:26`），这手把上界抬到 183.944s（仍 <240s）。
+
+⇒ #46 的判据在 runner 上兑现了：68.055s 与 77.078s 都**超过旧的 60s 上限**，没有 `nextest.toml:36-49`
+那块（`42c5bb5d9` 加的 15 行）这两条本手就是红。同一份对照也照出缺口：本节被掐死的这条**不在任何 override 里**，
+`bootstrap_updater_is_ready_in_deep_codex_home`（本手 35.900s、那手 32.923s）同样不在，
+于是两者都走 `nextest.toml:5` 的默认 `slow-timeout = { period = "30s", terminate-after = 2 }`＝60s 封顶。
+要动这里得注意文件里已经写明的那条实测：**`slow-timeout` 第一条匹配的 override 生效**
+（`nextest.toml:19-23`，把窗口追加在 `packaged_daemon_` 那几条之后是 inert 的）。
+
+### 四、这手与 §6.49 满绿那手的差只有这一条；mac 腿不携带 #45 的判据
+
+- 分母同为 **22888** ⇒ `0a99662c2` 新加的五条在 mac 上**不存在**：`denied_proc` 在本日志命中 **0**，
+  `codex-linux-sandbox` 只出现 **2** 次且两次都是 `Compiling`（`:4074`、`:5222`）——crate 被编但没有测试
+  进 runner 的清单。⇒ 这正是记忆里"平台门控让本地/别处检查变空转"的同一形状，
+  #45 的 ubuntu 半边（§6.50）与真机半边（§6.45）不能挪用到 mac。
+- Summary 3517.860s → 3683.468s（＋2m45.6s）、`slow` 30 → 27、`skipped` 71 → 71。
+- job `10:17:59Z → 13:38:36Z`＝**3h20m37s**；`Test (workspace)` 步骤 `10:38:19 → 13:38:27`＝3h00m08s，
+  而 Summary 自报 3683.468s＝1h01m23s ⇒ 按 §6.50 与记忆那条量纲规矩，**不拿步骤时长对 Summary**。
+- 三次锚点误差齐了。ubuntu 的锚出自 §6.49 结尾（"job 起 `10:17:53` ＋ 上一手 1h22m"＝`11:39:53Z`），
+  实 `11:33:15Z`，**偏悲观 6m38s** 那格由 §6.50 登记；若按四舍五入的 `11:40Z` 算是 6m45s，
+  台账只认前者，免得同一台账出现两个数。
+  windows 锚 `12:16Z` 实 `12:17:35Z`（**估早 1m35s**，§6.51 五）；
+  mac 锚 `13:32Z`（job 起 `10:17:59Z` ＋ §6.49 那手实测 3h14m00s＝`13:31:59Z`）实 `13:38:36Z`，
+  **估早 6m37s**。三腿腿长分别 1h15m / 1h59m / 3h20m，误差都 <7min 且不随腿长放大
+  ⇒ 这个锚点只够安排"什么时候去看"，判不了"卡没卡"。
+
+### 五、待拍（本轮不擅动）
+
+这条红要不要动配置，是两个成本不同的选项，按规矩交给你挑：
+
+- **A｜并入名单**：把 `bootstrap_reports_updater_bind_failure`（连带同族 35.9s 的
+  `bootstrap_updater_is_ready_in_deep_codex_home`）加进 `nextest.toml:48-49` 那块 `1m × 2` 的列表。
+  代价＝改一行 filter ＋ 一手 CI 复核。位置要先证一句：`:48` 之前的三块 filter（`:11`
+  `precomputed_exports_match_generated`、`:16` `binary(daemon_startup) & test(requires_confirmation_to_disable_)`、
+  `:33` 那五条 `test(=…)` 精确名）**都不匹配这两个名字**，所以追加在这里不会被更早的块遮住——
+  这条"先看前面有没有块遮住"的规矩就是 `:19-23` 写的，`nextest.toml:22-24` 留了它的绑定实测先例
+  （把那块窗口改成 1s，`packaged_daemon_start_and_explicit_replacement` 死在 1.002s，
+  尽管下面 `1m × 3` 那条还在）。收益＝mac 腿回到 §6.49 那种满绿。
+- **B｜只登记不动**：本节就是那张"60s 门口"的登记表。代价＝下一个人 grep 这个名字仍是 0 命中，
+  大概率把"前 9 手全绿、这手跨线"重新归因一遍；而 mac 腿自 §6.49 之后**第一次又不绿**。
+- 判据缺口如实说一句：我**没有**读这条腿为什么需要 55–60s（它做的是 updater bind 失败上报，
+  与 §6.15 那五冷启动条同族），所以"A 是否只是把跨线时间往后推"这句话我没有依据回答，
+  要答得先测它的时间花在哪。
+- A 的窗口够不够，现有读数是够、但是推算不是测量：这条腿前 9 手最高 57.280s，按 `nextest.toml:46`
+  那条 65% 扩散（它自己写的是 `59.604 × 1.65 = 98.3s`）算 ≈94.5s，仍在 `1m × 2`＝120s 之内。
+  同一块 mac 家族本手给出的反例是
+  `packaged_daemon_start_and_explicit_replacement` **183.944s PASS**（`:13357`）——它靠的是
+  `:32-34` 的 `2m × 2`，`1m × 2` 装不下它。⇒ 若把这两条塞进 `2m × 2` 那一块而不是 `:48-49`，
+  是"给到家族里最贵那条的窗口"，我没有读数支持这个选择，按规矩不擅动。
+
+### 状态
+
+`39583542510` 四条腿全终态：`bazel bridge gate (ubuntu)` `failure`（§6.48 归因镜像 503，零编译）、
+`nextest (ubuntu-latest)` `completed`/`failure`＝§6.50、`nextest (windows)` `completed`/`failure`＝§6.51、
+`nextest (macos-latest)` `completed`/`failure`＝本节；run 整体 `completed` / `failure`。
+⇒ `39583542510` 这一手的四条腿已全部登记完（§6.48 / §6.50 / §6.51 / 本节），本轮在它上面**没有待登记项**；
+#45、#46、#47 三条各自的判据在这手里都有读数，其中 #46 由本节拿到 runner 侧的绑定证据。
+`codex-rs/` 净变化 0；本笔只动这一份 md，带 `[skip ci]`，不新增 CI 手。待拍仍只有 §6.52 五的 A/B。
 
 ## 7. 提交、推送与工作树状态
 
@@ -5187,8 +5340,9 @@ windows job `10:17:53Z → 12:17:35Z`＝**1h59m42s**；拆开 `Build binary-leve
   （committed `0a99662c2` 字节、`c1 /proc/version → NOT_READABLE`）；"撤掉搬迁这五条会红"是从一手 D 的
   strace argv 顺序**推导**的，我没有为验证这句话另开 CI 手，也没做变异测试。
   待登记：同一 run 的 `nextest (windows)`（按上一手 1h58m46s 推算约 12:16Z）**已到手＝§6.51**
-  （实测 `12:17:35Z`，锚点误差 ＋1m35s）与 `nextest (macos-latest)`（按 3h14m00s 推算约 13:32Z）终态
-  ——前者见下一笔，后者写 §6.51 时仍 `in_progress`。
+  （实测 `12:17:35Z`，锚点误差 ＋1m35s）与 `nextest (macos-latest)`（按 3h14m00s 推算约 13:32Z）
+  **已到手＝§6.52**（实测 `13:38:36Z`，锚点估早 6m37s；本节写它时该腿仍 `in_progress`，
+  且它**不绿**——见 §6.52 一、二）。
 
 - **§6.51 由本笔登记：#47 的第二手——windows 腿在与 §6.46 逐字节相同的取证代码上再现第二支**。
   判据手＝`39583542510` 的 `nextest (windows)` job `119166741846`，`completed`/`failure`，整腿逐字
@@ -5204,6 +5358,31 @@ windows job `10:17:53Z → 12:17:35Z`＝**1h59m42s**；拆开 `Build binary-leve
   另：`gh run list` 顶部实测核对 §6.50 那句 `[skip ci]`——`cedd01a4d` 推送后顶部**仍是
   `39583542510`（head `0ef33716a`）**，没有新 run ⇒ 该标记在这条 workflow 上生效，那句
   "提交后核对"从此有了实测结果。`codex-rs/` 净变化仍为 0；本笔带 `[skip ci]`，不新增 CI 手。
+
+- **§6.52 由本笔登记：#46 名单外的第三条贴线腿在 60.023s 被掐死——mac 腿自 §6.49 满绿之后第一次又不绿**。
+  判据手＝`39583542510` 的 `nextest (macos-latest)` job `119166741803`，`completed`/`failure`，整腿逐字
+  `Summary [3683.468s] 22888 tests run: 22887 passed (27 slow), 1 timed out, 71 skipped`；唯一红＝
+  `codex-cli::app_server_daemon bootstrap_reports_updater_bind_failure`，`panicked at` 全日志 **0** 命中
+  ⇒ 仍是 §6.22 那种"只报 TIMEOUT、零诊断"的形状。它**不是首观新红**：缓存里前 9 手全 PASS
+  （最高 57.280s，三个读数 ≥55.6s），台账 grep 0 命中的原因就是它从没进过红名单。
+  同一手里 #46 那两条分别用 68.055s / 77.078s PASS——都越过旧的 60s 上限，且这手各带一行
+  `SLOW [> 60.000s]` 而 §6.49 那手**没有任何 SLOW 行** ⇒ `period = "1m"` 在 runner 上真的匹配到了，
+  这条是 #46 的**绑定证据**，比只看时长硬。同族 `packaged_daemon_start_and_explicit_replacement`
+  本手 **183.944s PASS**，只有 `:32-34` 的 `2m × 2` 装得下——顺带把 `:19-23` 那条
+  "第一条匹配的 override 生效"印成了可读日志（`>120.000s` 那档全日志仅此一条）。
+  本节是草稿写完再逐条回查定稿的，改掉 **8 处**：（a）SLOW 按 binary 拆把 `app_server_daemon` 写成 7，
+  回查是 **8**（28 行 28 个不重复名字，27 PASS ＋ 本条 TIMEOUT 才对上 `27 slow`）；（b）把"窗口设成 1s
+  的绑定实测"记到 §6.49 名下，而 §6.49 全节里没有这样一次实测，真实出处是 `nextest.toml:22-24` 的注释；
+  （c）三条判决行写成"同一分钟"，实跨两分钟（SLOW `12:52:41Z`、后两行 `12:53:11Z`）；（d）ubuntu 锚点误差
+  重算成 6m45s，改回沿用已登记的 6m38s 口径并把锚的出处归到 §6.49 结尾；（e）`>120.000s` 那条归给
+  `:53-54` 的 `1m × 3`，实为 `:32-34` 的 `2m × 2`——**且这条不是归位题，183.944s 的 PASS 已经把 `1m × 3`
+  证死**；（f）"那 15 行 toml"改成可核的 `:36-49` ＋ commit 号（15 行是 `42c5bb5d9` 的 diff 行数，
+  块本身占 14 行）；（g）我在 §6.51 状态里一度写入"本节推测的预期满绿"，而 §6.51 通篇没对 mac 下过预判，
+  该句已删；（h）同一处把 mac 的锚点方向写成"与 ubuntu 同向"，实与 windows 同向（都是估早）。
+  另有一条**读日志的坑**值得单列：`grep -c TIMEOUT` 在这份日志数出 **2**，因为失败回放块把同一行重印
+  一次（`:8584` 与 `:28159` 逐字相同），判决计数只认 Summary 那一句。`codex-rs/` 净变化仍为 0；本笔带 `[skip ci]`，不新增 CI 手。
+  待拍：§6.52 五的 A（把这条并入 `:48-49` 的 `1m × 2`）/ B（只登记不动）；本轮不擅动。
+  推送状态：`6a2e15739`（§6.51）与本笔都只在本地，`origin/test` 仍是 `cedd01a4d`——等明确指示才推。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
