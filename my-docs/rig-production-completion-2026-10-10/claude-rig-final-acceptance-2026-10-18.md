@@ -3733,6 +3733,61 @@ R3（deny `/proc/self/environ`）修复后仍 `rc=0`、`READABLE`。strace 一�
 要修得先决定"自指 deny 路径是拒绝表达（响亮报错）还是按 pid 通配展开"——那是策略语义的决定，
 不在"已确认缺陷 + 验证缺口"的范围内，留给下一次拍板。
 
+## 6.44 `39562896528` 的 ubuntu 腿终态：唯一的红仍是那条，但形状换回 25s 服务死亡，且零 bwrap 收据
+
+一手（job `119098108947`，`07:34:12Z → 08:56:18Z`，日志缓存 `u-119098108947.raw/.txt`）：
+
+```
+Summary [2537.541s] 22942 tests run: 22941 passed (19 slow), 1 failed, 48 skipped
+FAIL [  25.285s] (11232/22942) codex-exec-server::exec_process shell_snapshot::
+     shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 70 filtered out; finished in 25.27s
+stderr: Error: exec-server transport disconnected: failed to read websocket JSON-RPC message from
+        exec-server websocket ws://127.0.0.1:44047: WebSocket protocol error: Connection reset
+        without closing handshake; failed to resume exec-server session: no resume attempt finished
+        within 25s (last attempt: failed to connect to exec-server websocket … Connection refused (os error 111))
+```
+
+计数（逐字 grep 去 ANSI 后的整份日志）：`Can't mount` **0**、
+`panicked at exec-server/tests/exec_process/shell_snapshot.rs` **0**、
+`exec-server transport disconnected` **1**。同族另外四条全绿：
+`bash 0.127s` / `bash_protected_transport 0.488s` / `bash_protected_transport_tty 0.469s` /
+`bash_tty 0.117s`。跳过收据仍为 `no skip receipt file: either the suite never ran or no leg skipped`
+⇒ #39 的"零跳过、全部真执行"继续成立。测试总数 22942 与 `39543230422` 相同，且日志里
+**没有** `denied_proc_*` / `proc_masks_*` 这几条腿 ⇒ 这一手不含 §6.43 的修复（head `1af8b5a70`
+是 `0a99662c2` 的父辈），符合预期。
+
+### 这条红这一手**没有**拿到拒绝收据，形状回到 §6.37 定性的"25s 服务死亡"
+
+§6.38 那组 A/B 的一手是：纠正名单那手 `FAIL [0.304s]` + 逐字
+`bwrap: Can't mount tmpfs on /newroot/dev/fd …`，而两手 `exec-server transport disconnected`
+出现次数 **0/0**。这一手同一台平台上那个计数是 **1**，且 bwrap 那句 abort 全文一次也没出现
+⇒ §6.37 那个"25s 是 exec-server 进程死亡的签名"的形状在 runner 上**又回来了**。
+
+**不能把它读成沙箱代码变了**：`git merge-base --is-ancestor a3b96ae90 1af8b5a70` = YES，
+且 `git log a3b96ae90..1af8b5a70 -- codex-rs/linux-sandbox codex-rs/exec-server` = **0 笔**
+（这段区间的 diff 只有 `.config/nextest.toml` +15、`windows-sandbox-rs/src/unified_exec/tests.rs`
+与台账）⇒ 沙箱与 exec-server 的字节与"响亮有收据"那一手完全相同。
+所以结论只能是：**这条腿的红有两种形状，由它能不能跑到 bwrap 那一步决定，而不是由沙箱代码决定**。
+分桶上这仍是同一条已知缺陷（#42 / O2 未做）的第 N 次复现，**不是**新的产品回归；
+但按 §6.38 自己写下的判据——"绿且无收据才是回归"——**红且无收据**这一形态本轮第一次拿到，
+它同样不足以给 O2 提供 runner 侧的拒绝凭据。要让这条腿既响亮又可判，仍然只有 O2 那条路（等拍板）。
+
+### 顺带第二条观察：§6.38 那条 ubuntu 首现红转绿
+
+`codex-cli::daemon_startup discovered_managed_daemon_can_restart_with_auto_start_disabled`
+这一手 **`PASS [   8.485s]`**。把 §6.38 登记的基线接上：`39347345560` 10.950s、
+`39371971338` 11.683s、`39396134392` 3.944s、`39530269408` 11.297s、`39543230422` 5.354s 全绿，
+`39542266851` 红在 49.425s ⇒ 七手六绿一红，且红的那手自带 ~50s 等待预算到点。
+按既有口径维持"单条抖动家族、不动代码"；#31 的屏幕诊断已经足够，若再现可直接读是哪一屏没等到。
+
+### 状态
+
+登记时 `nextest (macos-latest)` 与 `nextest (windows)` 仍 `in_progress`，
+`bazel bridge gate (ubuntu)` 已 success。#46 的第三手判据（那条
+`managed_daemon_restarts_from_deleted_working_directory` 应以 `PASS [>60s]` 出现）与
+#47 的 runner 一手（`eff = …` 两张 SID 列表判决）都在这两腿里，未到终态不读成结论。
+
 ## 7. 提交、推送与工作树状态
 
 
@@ -4184,6 +4239,12 @@ R3（deny `/proc/self/environ`）修复后仍 `rc=0`、`READABLE`。strace 一�
   `READABLE`（R3），strace 一手证明分流已生效、开放来自 `/proc/self` 的内核自指语义。
   修法要在"自指 deny 路径报错"与"按 pid 通配展开"之间选一个策略语义 ⇒ 属产品决策，
   不在"已确认缺陷 + 验证缺口"范围内，本轮不擅自扩面。
+- **`39562896528` 的 ubuntu 腿已到终态并登记为 §6.44**（本台账笔，代码/配置零改动）：
+  `22942 run: 22941 passed (19 slow), 1 failed, 48 skipped`，唯一的红仍是
+  `blocked_descriptor_path`，但形状换回 25s 服务死亡、`Can't mount` 全文 0 次；
+  `git log a3b96ae90..1af8b5a70 -- linux-sandbox exec-server` 实测 **0 笔**，所以这是"同一份
+  沙箱代码两种红形状"的一手，不是新回归。**#45 两笔仍未推送**，push 依旧等这一手的
+  mac/windows 两条腿出终态（#46 的第三手判据、#47 的 runner 一手都在里面）。
 
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
