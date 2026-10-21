@@ -4059,6 +4059,9 @@ diff 逐字为实际 `(0, false, false, false, None, false, false)` 对预期
    正例点名的是 `grp#7`（Authenticated Users，§6.41 :3545-3551），该机 user 一侧对 outside 有没有
    同样的删除权**没有被登记**，两台的对照还差这一格。要区分"子令牌没受限"与"交模型漏了另一半"，
    缺的就是 O5 那一行令牌 flags。
+   **【§6.47 更正这两句】**这一格其实**在**同一份缓存收据里，上一笔没读到；而它读出来之后，
+   "子令牌没受限"这条候选在两台上给出**相反预测**（`.235` 的 default 一侧也有活着的 DELETE 授予，
+   却没删），于是它不再"最省事"。原文按本行指针作废，正文不改写。
 
 ### 新的开放项
 
@@ -4066,11 +4069,106 @@ diff 逐字为实际 `(0, false, false, false, None, false, false)` 对预期
   `WRITE_RESTRICTED`；要证它需要在取证的 after 块里再印沙箱进程令牌的
   `LUA_TOKEN / WRITE_RESTRICTED / DISABLE_MAX_PRIVILEGE` 三个位。这与 O3/O4 一样等拍板，
   本轮零代码改动。
+  **【§6.47 改写判据】**"没请求 `WRITE_RESTRICTED`"这一支已由 `token.rs:500/513` 排除，
+  不需要打印；同一节又用 `.235` 的对照手证明"default 一侧单独就够"在两台上预测相反。
+  所以 O5 要印的那一行仍然要印，但它现在判的是"**两台的生效令牌为什么不同形**"
+  （`-500` 内置管理员 vs `-1002` 过滤令牌），不再是"有没有受限"。
 
 ### 状态
 
 windows 腿终态、#47 结案；mac 腿（#46 判据所在）在本节写下时仍 `in_progress`。
 本轮这一笔只动台账，`codex-rs/` 零改动，不推送（推送等 mac 腿终态，理由见 §7）。
+
+## 6.47 `.235` 的对照手回填了 §6.46 差的那一格，同时把"没带 WRITE_RESTRICTED"这个最省事候选逼到墙角
+
+§6.46 结尾留了一句"要区分『子令牌没受限』与『交模型漏了另一半』，缺的就是 O5 那一行令牌 flags"，
+并且明写 `.235` 那手**没有登记** user 一侧对 `outside` 的删除权。本轮在缓存里把它翻出来重读了——
+那一格其实**在**收据里，只是上一笔没读到；而且它一读出来，§6.46 那条候选就站不住了。
+本节零代码改动，全部读数来自 scratch 已有的 `wd47b-1.log` 与本机 git 对象。
+其中 `wd47b-clean.txt` 是 `wd47b-1.log` 去 ANSI 的副本（`perl -pe 's/\^\[\[[0-9;]*m//g'`，
+与 §6.46 同一手法），行号一律指这份副本；原始日志与副本都在 `/Volumes/zhitai/tmp/qoder-scratch/`。
+
+### 先证两手持同一份字节、同一只用例
+
+- 用例同名：runner 侧红的是 `unified_exec::tests::legacy_workspace_write_delete_is_limited_to_writable_roots`
+  （`w47-119098109141.raw:26373` `... FAILED`，panic 行 `:26772` `tests.rs:1474:9`）；
+  `.235` 侧跑的也是**这一只**（`wd47b-1.log` 末行
+  `Summary [   0.321s] 1 test run: 1 passed, 282 skipped`）。
+- 源码同一：`.235` 的验证树 `/c/git-workspace/pty-a3-20261021/codex-rs` **没有 `.git`**（tar 送源码的后遗症），
+  所以日志里没有 sha——这一格只能靠内容哈希补。`tests.rs` 的原文件 md5 就与 `1af8b5a70` 的 blob 相同
+  （`3a57c21f6d33a640164f0c5c795b8e75`，该文件无 CRLF）；另三个是去掉 `\r` 后相同：
+  `token.rs` `724ac612a855c3858b530dc3fa01e264`、
+  `unified_exec/backends/legacy.rs` `c5ccbcd75cef11a742d72ea303ac8da9`、`acl.rs` `d84f273fe31b1e3fed415e4607652667`。
+  两边都是 118 个 `.rs`（`find windows-sandbox-rs/src -name '*.rs' | wc -l`）。
+- 那手的时间与形状：`=== MARKER two-list-evidence=1 old-single-set=0 intersection=1`、
+  `=== ATTEMPT 1 2026-10-21T15:19:42+08:00`（＝07:19Z）撞到
+  `cargo test --no-run` 以 `-1073741502`（0xC0000142）退出、`CARGO_RC=101`，ATTEMPT 2 才跑成。
+  取证块里 `token SID lists unavailable` / `DACL unreadable` / `token SID note` / `unreadable`
+  四串各命中 **0**（这手只跑 1 只用例，所以连 §6.46 里那 19 次无关用例名也没有）。
+
+### 回填的那一格：`.235` 上 user 对 `outside` **没有**任何 ACE
+
+`outside\outside-delete.txt: 7 ACE(s)` 逐条（`wd47b-clean.txt:147-153`，同一 dump 在 `:264-270` 重复一次）：
+
+| ACE | 类型/掩码 | SID | 在这只手里的身份 |
+| --- | --- | --- | --- |
+| ace[0..2] | allow `0x001301bf` | 三个 authority 为 `…-3506322609-…` / `…-1467988422-…` / `…-1619863088-…` 的 SID | 名单里**没有任何 SID 属于这三个 authority** ⇒ 不匹配 |
+| ace[3] | allow `0x001f01ff` | `S-1-5-32-544` | `<-- TOKEN D=grp#3`，但 grp#3 在该令牌里是 **deny-only** ⇒ 这条 allow 惰性 |
+| ace[4] | allow `0x001f01ff` | `S-1-5-18` | 不在名单 |
+| ace[5] | allow `0x001200a9` | `S-1-5-32-545` | `<-- TOKEN D=grp#5`，`delete-rights=[]` |
+| ace[6] | allow `0x001301bf` | `S-1-5-11`（Authenticated Users） | `<-- TOKEN D=grp#7`，**holds DELETE** |
+
+判决行原文（before 块 `:74`）：`here=[none (R=[no delete grant] D=[grp#3 is deny-only,
+DELETE+FILE_DELETE_CHILD named via ace[3] not counted as a grant | grp#7 holds DELETE via ace[6]])]`，
+`in parent=` 同一串；after 块（`:209`）**同一格仍是这串，文件没被删**（assert 期望
+`read_to_string(outside_file).ok() == Some("outside")`，该手 `PASS`）。
+⇒ **§6.46 说"该机 user 一侧对 outside 有没有同样的删除权没有被登记"这句是错的**：登记了，
+答案是**没有**——`user(S-1-5-21-536205229-…-1002)` 在这 7 条里没有 ACE，default 一侧唯一活着的
+授予是 `grp#7`。
+
+### 于是那条候选假设要付的代价
+
+runner 侧同一只文件是 `12 ACE(s)`，多出来的正是一条**直接给主用户**的 allow：
+`ace[10] allow mask=0x001f01ff … sid=S-1-5-21-4159254826-…-500 <-- TOKEN D=user
+delete-rights=[DELETE+FILE_DELETE_CHILD]`；grp#3 在 runner 上也同样是 deny-only（`ace[8]` 的 allow 惰性）。
+两台的 restricting 名单同形（caps + logon + everyone，**没有 user**），两台的
+`R=[no delete grant]` 同形，两台的判决行同形（`none`）——只有文件被删这件事不同。
+
+现在把 §6.46 那条"最省事的候选"（沙箱里的 `cmd.exe` 不带 `WRITE_RESTRICTED`，于是只看 default 一侧）
+**同时**套到两手：
+
+- runner：default 一侧 `user` 有 DELETE ⇒ 预测删除 ⇒ 与实测一致。
+- `.235`：default 一侧 `grp#7(S-1-5-11)` **同样带 DELETE**（ace[6]），而 grp#7 就在那张 default 名单里 ⇒
+  **同一假设预测 `.235` 也会删掉 `outside`** ⇒ 与实测相反。
+
+⇒ 这条候选在"两台字节相同"的前提下给出**相反预测**，它不再是"最省事"的解释。要在保住它的同时
+解释 `.235`，只剩两条特化：要么 runner 上真正生效的令牌比 `.235` 少了一张 deny-only 组
+（`-500` 内置管理员与 `-1002` 过滤令牌在 `LUA_TOKEN` 语义下本就不同形），要么 `outside` 根本不是
+那只 `cmd.exe` 删的。**这一手没有判掉其中任何一条**——它判掉的是"不用打印令牌 flags 就能省事"这条路。
+
+### 顺带一条可以少跑一手的：`WRITE_RESTRICTED` 在源码层就是请求了的
+
+`token.rs:500` 逐字 `let flags = DISABLE_MAX_PRIVILEGE | LUA_TOKEN | WRITE_RESTRICTED;`，
+`:501` 调 `CreateRestrictedToken`，`:513` 失败即 `Err(anyhow!("CreateRestrictedToken failed: {}", …))`。
+所以"产品忘了请求 WRITE_RESTRICTED"这一支**不需要 O5 那一行打印就能排除**；O5 仍值得做，
+但它要判的是"实际令牌的三位与 deny-only 组"，不是"有没有请求"。
+
+### #46 的本地对照手（同一轮顺手取的，零 CI 预算）
+
+mac 本机把 §6.46 判据那两条腿单独跑了一遍：
+`rc_nexest=0`、`PASS [  27.494s] managed_daemon_restarts_from_deleted_working_directory`、
+`PASS [  29.498s] managed_identity_survives_locale_and_timezone_changes`、
+`Summary [  56.996s] 2 tests run: 2 passed, 15 skipped`（日志
+`/Volumes/zhitai/tmp/qoder-scratch/w46-mac-local.log`）。
+与 `.config/nextest.toml:45` 记的空载值 25.884s / 26.698s 同量级，而 CI 上是
+46.0/35.6 → 59.6/56.5 → 60.012s 被杀。**这只手不能算 #46 的验收**（判据是 CI mac 腿里那两条
+`PASS [>60s]`），它买到的是一句对照：这两只用例在 mac 上本身是健康的，CI 上的时长膨胀属 lane 争用，
+与 §6.44 的 ubuntu 归因同形。
+
+### 状态
+
+`codex-rs/` 仍零改动；本轮新增只有这一节与 §6.45 的落点表。§6.46 的 O5 **保持开放**，但按上表改写判据。
+`39562896528` 的 mac 腿写本节时仍 `in_progress`；#46/#45 的终判仍分别是 CI 的 `PASS [>60s]` 与推送后的下一手。
 
 ## 7. 提交、推送与工作树状态
 
@@ -4576,6 +4674,14 @@ windows 腿终态、#47 结案；mac 腿（#46 判据所在）在本节写下时
   `2026-10-21T07:34:18Z`，09:55Z 复核时 ubuntu / windows / bazel gate 三腿已终态），
   本地指针 `origin/test` = `1af8b5a70`、`git rev-list --left-right --count origin/test...test`
   在本笔后是 `0 6`。
+- **§6.47 由本笔登记，同时作废 §6.46 的两句话**（原文就地加指针、不改写）。这一节是纯证据工作：
+  把 scratch 里 `wd47b-1.log` 那手重读一遍，补上 §6.46 声称"没有登记"的那一格，并用
+  `git show 1af8b5a70:… | tr -d '\r' | md5sum` 与 `.235` 那侧同名文件对哈希，坐实"两台跑的是
+  同一份字节"。`codex-rs/` 净变化仍为 0；本笔也没有新增 CI 手（只多了一次 mac 本地定向
+  `cargo nextest`，2 passed / rc=0，零 CI 预算）。**登记时自己修掉的口误有两处**：
+  ace[0..2] 那三条我先写成"本机其它 cap"（无凭据的推断），改成"名单里没有 SID 属于这三个 authority"；
+  "五个 authority"是错的（该令牌名单里只有 4 个机器 authority），一并删掉。
+  推送前置条件与上一笔相同：mac 腿终态；本笔提交后计数是 `0 7`。
 
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
