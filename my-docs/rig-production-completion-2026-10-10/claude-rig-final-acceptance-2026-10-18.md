@@ -2739,6 +2739,10 @@ before session 六行全部 `here=[none] in parent=[none]`。读法：可写根�
 不减 deny，于是"被授予又被沙箱自己的 deny 收回"的权限被打印成"允许删除"。按 allow-minus-deny
 重算后判决翻转。**定性：harness 缺陷（取证代码过度报告），不是产品缺陷。** §6.30 那条
 "A4 的定性要往上调（安全相关）"已在原处标注撤回。
+**§6.39 的重判**：托管 runner 上拿到了带完整 Diff 的一手——`outside` 文件、`workspace\.git`、
+`.git\config` 三者 session 后全部消失（`None, false, false`），而本地 `.235` 同证据显示三者存活。
+所以"不是产品缺陷"这个定性**在 runner 这一侧不再成立**，改为"越界删除已证实、机制未证"；
+本节的本地读数与"allow-minus-deny 才看得见 deny"这条方法论仍然有效，不动。
 
 **不粉饰的部分**：加了取证之后这条腿**一次都没再红过**，所以"当年那次 `None, false` 失败时的
 ACL 落地状态"这一手依然缺失，间歇性本身仍未解释（台账 `:2088` 记的"本机 2/3 复现"与
@@ -2877,8 +2881,8 @@ bwrap 修复与 A3 门**——那些改动还只在未提交工作树里，所�
 | --- | --- | --- |
 | `codex-uds lib_tests::socket_validation_rejects_broad_acl_without_repairing_it` | 0.540s | §6.x 既有的 uds runner-image 家族（#18 已处置，未新增主张） |
 | `codex-uds lib_tests::private_directory_acl_is_user_only_and_inherited_by_files` | 0.908s | 同上 |
-| `codex-tui app::tests::session_lifecycle_requests::dynamic_tool_requests_ignore_other_namespaces_and_dispatch_tui_namespace` | 2.068s | 本手首次观察，尚未分桶 |
-| `codex-utils-pty tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child` | 12.701s | **A3**，`7d9dc6834` 删门之后必红；§6.31 已量到 runner 与 `.235` 逐字同形，恢复门只修这一条 |
+| `codex-tui app::tests::session_lifecycle_requests::dynamic_tool_requests_ignore_other_namespaces_and_dispatch_tui_namespace` | 2.068s | 本手首次观察，尚未分桶；**§6.40 收到第二次观察 `FAIL + LEAK 14.026s`，panic 行号与文案逐字相同 ⇒ 不是 nextest kill，归因需再加诊断** |
+| `codex-utils-pty tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child` | 12.701s | **A3**，`7d9dc6834` 删门之后必红；§6.31 已量到 runner 与 `.235` 逐字同形，恢复门只修这一条。**§6.39 验收：`a3b96ae90` 手 `PASS [12.071s]`，四红转一绿** |
 | `codex-core::all suite::auto_review::remote_model_override_uses_catalog_model_for_strict_auto_review` | 26.531s | 本手首次观察，尚未分桶 |
 | `codex-windows-sandbox unified_exec::tests::legacy_capture_cancellation_terminates_descendants_without_timeout` | 57.340s | `legacy_` 家族（#27 已重分类，deadline 与整机调度那组） |
 | `…::legacy_capture_emits_output_and_preserves_descendant_after_normal_exit` | 61.222s | 同上 |
@@ -3127,6 +3131,7 @@ stderr，那几手的日志里也确实没有任何服务侧输出；本实验�
   `39543230422`（head `a3b96ae90`）。
 - `legacy_workspace_write_delete_is_limited_to_writable_roots` 又红（0.189s），而 §6.34 手 1 同一条
   是 `PASS [   1.872s]` ⇒ #43 的"这条红是间歇"再多一手支撑。
+  **（前向指针：拿到取证后的两手表决逐字同形，"间歇"这个口径在 §6.40 作废；本条读数不改写。）**
 - §6.34 标"本手首次观察，尚未分桶"的两条——`codex-tui app::tests::session_lifecycle_requests::
   dynamic_tool_requests_ignore_other_namespaces_and_dispatch_tui_namespace`（2.068s）与
   `codex-core::all suite::auto_review::remote_model_override_uses_catalog_model_for_strict_auto_review`
@@ -3261,6 +3266,204 @@ stderr `Error: discovered timed out waiting for Server:Localbackgroundserver:` �
 `8a41ac7d3` 那扇门是 `c7590fe24` 与 `a3b96ae90` 的共同祖先（`git merge-base --is-ancestor` 实测 YES），
 所以它的终态要看这两手的 windows 腿。#46 的判据这两手**读不到**：`42c5bb5d9` 不是
 `a3b96ae90` 的祖先（实测 NO），它仍未推送，只能由推送后的第三手 mac 腿验收。
+
+## 6.39 `39543230422` 的 windows 腿终态：A3 验收到手，同时翻出 Windows 删除边界的一条更重的红
+
+job 119035504947（head `a3b96ae90`）终态 `failure`：
+`Summary [2121.686s] 21769 tests run: 21762 passed (13 slow, 219 leaky), 6 failed, 1 timed out, 138 skipped`。
+7 条红：两条 `codex-uds` ACL（0.568s / 0.341s）、三条 `legacy_`（58.290s / 60.886s / 61.264s）、
+`legacy_workspace_write_delete_is_limited_to_writable_roots`（0.116s）、
+`codex-app-server::all suite::v2::auth_storage_originator::concurrent_connections_export_their_own_storage_originator`
+（**TIMEOUT 60.035s**）。逐条核对上一手（`39530269408` windows 腿 `8 failed, 1 timed out` = 9 条：
+2 条 OAuth（`FAIL 1.251s` + `TIMEOUT 60.030s`）+ 2 条 uds + `conpty_ctrl_c` + 4 条 `codex-windows-sandbox`）：
+那三条转绿使 9→6，但本手**新增**一条首次观察的 `auth_storage_originator` TIMEOUT ⇒ 7 条。
+
+### 一手一：A3 的判据达成——同一台 runner、同一条腿，四红转一绿
+
+`conpty_ctrl_c_interrupts_powershell_foreground_child` **`PASS [  12.071s]` (21391/21769)**，
+而它在缓存的四手上逐字为 `FAIL 12.890s`（`39347345560`）、`11.886s`（`39371971338`）、
+`11.447s`（`39396134392`）、`12.185s`（`39530269408`）。这手是两扇含 `8a41ac7d3` 门的手里
+**第一个到达终态**的（另一手 `39542266851` 见 §6.40；`git merge-base --is-ancestor` 对两手都实测 YES），时长仍 ~12s ⇒ **它没有走跳过分支**，而是在
+build ≥ 26100 上按门里那条"降级契约"断言通过（输入可达、kill 路径是唯一中断路径）。
+本地 `.235` 那三手 3/3 PASS 12.011–12.827s、`27 tests run: 27 passed, 0 skipped` 与此一致。
+⇒ #40 的 runner 一手补齐；另一手 `39542266851` 的 windows 腿作为二次确认当时仍在跑
+（**§6.40 已收到：`PASS [12.738s]`，判决同形再现**）。
+
+### 一手二：`legacy_workspace_write_delete_…` 这次带着完整判决——可写根之外的东西被删了
+
+`FAIL [   0.116s] (21768/21769)`，`panicked at windows-sandbox-rs\src\unified_exec\tests.rs:1168:9`，
+`assertion failed: (left == right): stdout=""`，**Diff 逐字**：
+
+```
+left  (actual):   (0, false, false, false, None, false, false)
+right (expected): (0, false, false, false, Some("outside"), true, true)
+```
+
+七个槽位依次是 `exit_code`、`workspace_file.exists()`、`temp_file.exists()`、`tmp_file.exists()`、
+`fs::read_to_string(outside_file)`、`protected_git_dir.is_dir()`、`protected_git_child.exists()`
+（`tests.rs:1168-1186`）。⇒ 退出码 0、可写根内三个文件如期被删；**但 `outside` 文件读不到、
+`workspace\.git` 不再是目录、`.git\config` 不存在**。
+
+同一次运行里 #41 那份取证确实打了（before/after 两段 + 逐 ACE + `<-- THIS SESSION` 标注），
+after 段的六行逐字：
+
+```
+workspace\workspace-delete.txt: here=[absent] in parent=[DELETE]
+temp\temp-delete.txt:           here=[absent] in parent=[DELETE]
+tmp\tmp-delete.txt:             here=[absent] in parent=[DELETE]
+outside\outside-delete.txt:     here=[absent] in parent=[none]
+workspace\.git:                 here=[absent] in parent=[DELETE]
+workspace\.git\config:          here=[absent] in parent=[absent]
+```
+
+对照本地 `.235` 的同一份证据（§6.32 逐字保留）：`outside` 是 `here=[none]`（**文件还在**）、
+`.git` 与 `.git\config` 是 `here=[none(DELETE granted, DELETE+FILE_CHILD denied)]`
+（**存活，且有效位被沙箱自己的 deny 明确收回**）。
+
+⇒ **这不再能用"间歇"打发**。托管 runner 六手读数：`FAIL 0.130 / 0.302 / 0.089 / 0.189 / 0.116s`
++ 一手 `PASS [1.872s]`（`39526586631`，那手还没有这份取证；`c7590fe24` 不是它的祖先，实测 NO）；
+`.235` 13 次全绿且取证显示保护落地。**（§6.40 又收到一手 `FAIL 0.236s`，判决同形 ⇒ 完整口径以 §6.40 为准。）**
+红的时候有可解释的删除发生，绿的时候（本地）有可解释的 deny 落地——差的是"为什么同一份代码在
+runner 上让 `outside`/`.git` 被删"。§6.32 那句"定性：harness 缺陷，不是产品缺陷"与 #43 的
+"这条红是间歇"在此**标注为待重判**，历史读数不改写。
+
+代码侧能给出的候选机制（读码，不是主张）：
+
+- `.git` 的 deny ACE **只点名 capability SID**（`windows-sandbox-rs/src/acl.rs:834-857`
+  `add_deny_write_ace` → `add_deny_ace`，mask 含 `DELETE | FILE_DELETE_CHILD`）；
+  而受限令牌的 restricting SIDs 里含 **logon SID 与 Everyone**（`src/token.rs:476-479`，
+  `CreateRestrictedToken` 带 `WRITE_RESTRICTED`）⇒ 任何对这两类 SID 授予删除权的 allow ACE
+  都能通过双重检查，而 deny 点名的 SID 不在其列。
+- 句柄式 `SetSecurityInfo`（`acl.rs:961`）**不会把可继承 ACE 推给已存在的子对象**，
+  所以 `.git\config` 的保护全靠父目录那条 `FILE_DELETE_CHILD` deny——一旦父目录 deny 没落地，
+  子对象没有任何独立防线。
+- `src/spawn_prep.rs:291/298/303` 三处 `let _ = add_deny_write_ace(...)` **吞掉并不上报所有 ACL 写失败**；
+  `.git` 是否进入保护集合还取决于 resolve 时的 `is_file()/is_dir()`（`protocol/src/permissions.rs:2369-2371`）
+  与 `dunce::canonicalize` 的静默回退（`src/path_normalization.rs:4-6`、`src/allow.rs:34`）。
+- 这手 `outside` **目录**的 15 条 ACE 里 Users(545) 只有 `0x001200a9`/`0x00000004`/`0x00000002`
+  （无 `FILE_DELETE_CHILD`），目录本身也没有 `S-1-1-0`（全日志仅 `D:\` 有两条 Everyone ACE，
+  mask `0x001200a9`、`delete-rights=[]`）⇒ 删除不是经由"父目录允许删子对象"这条路。
+- **但 session 前那份 ACE dump 里有一条我先前没读到的东西**：`outside\outside-delete.txt`
+  自己带着 12 条 ACE，其中 ace[0]–ace[7] 是 8 条 `S-1-5-21-<机器>-<RID>` 的
+  `allow mask=0x001301bf` **`delete-rights=[DELETE]`**，全部标 `INHERITED-FROM-ANCESTOR`
+  （ace[8]–ace[10] 是 544/18/RID-500 的 `0x001f01ff`，ace[11] 是 Users）。同一份 mask 也出现在
+  `.git`、`.git\config` 的 session 前 dump 里，而 `0x001301bf` **正是沙箱给可写根写授予 ACE 时用的那个
+  mask**（本手 after 段 `workspace`/`temp`/`tmp` 各多出的那条 ` <-- THIS SESSION` 就是它）。
+  ⇒ 删除所需的那个"对象自身可 DELETE"权限，在 runner 上是**宿主祖先天生的 ACL**给的，不是沙箱给的；
+  文件级 `DELETE` 足以删掉该文件，不需要父目录的 `FILE_DELETE_CHILD`。
+- ⇒ 候选机制因此收窄为一条：**这 8 条 allow 里的某个 SID 是否出现在沙箱受限令牌的 restricting SIDs 里**。
+  日志不打印令牌 SID 列表，deny 又只点名 capability SID（`acl.rs:834-857`），所以现有词表到此为止；
+  `.235` 那侧的对照读数是"这三条对象都活着且 `here` 里 deny 明确收回了 DELETE"，差的就是这一步归属。
+- 还有一条只能记为"无法事后归因"的取证局限：`.git` 与 `.git\config` 在 after 段直接是 `absent`，
+  ACL 已经随对象没了 ⇒ 不能从这份日志判断那两条 deny 到底落没落地（before 段 `.git` 的 15 条 ACE 里
+  本来也不含任何 deny，那还是 session 之前的状态）。
+
+**未做的主张**：我没有说过这是产品漏洞——按"排除归属 ≠ 证明无关"，现在的状态是
+**判决已知（越界删除确实发生）、机制未证**。最短的证实/否证路径是本地零 CI 的 A/B：
+在 `.235` 上把 temp 根分别放进"现状祖先 ACL"与"祖先 ACL 里给自己的用户 SID 加
+`(OI)(CI)` 的 `DELETE`（复现 runner 那 8 条 ace[0]–ace[7] 的形状）"两档，各 ≥3 次隔离迭代，
+看 Diff 会不会翻成 `None, false, false`。这一步会改宿主 ACL 与临时目录布局，
+**不在本轮已授权范围内**（`windows-sandbox-rs` 也不在本轮 scope 路径里），等指针。
+
+### 一手三：新的 windows 首次观察是 nextest kill，零诊断
+
+`auth_storage_originator::concurrent_connections_export_their_own_storage_originator`
+`TIMEOUT [  60.035s]`（默认 30s × terminate-after 2）。基线只统计本轮缓存里**不同 job** 的读数
+（名与时长逐字配对）：windows `PASS 0.891s`（`39396134392`）/`1.003s`（`39530269408`），ubuntu
+`0.547s`（`39396134392`）/`1.050s`（`39530269408`）/`0.758s`（`39542266851`）/`0.616s`
+（`39543230422`），mac `0.355s`（`39396134392`）/`0.564s`（`39526586631`）/`0.413s`
+（`39530269408`）⇒ 这 9 条全绿，本手首次红；再往前缓存里更早的手（`0.226`–`1.021s`）同样全绿，
+我不把它们混进这个逐手配对的口径里。
+正常耗时亚秒级，60s 是被 kill ⇒ 按 §6.36 的教训，这条日志里不会有
+任何诊断，只能按"整机争用/harness 预算"分桶，单条观察不动代码。
+
+### 一手四：OAuth 那对第二次没有再现
+
+同手 `login_account_chatgpt_uses_oauth_overrides` `PASS [   0.401s]`、
+`login_account_chatgpt_redirects_to_hosted_success_page` `PASS [   0.303s]`
+⇒ §6.37 的"间歇、机制未证明"分类再多一手支撑（该腿族在 runner 上至今仍是 15 条可读读数里 3 红）。
+
+### 更正我自己在 §6.38 写的一句话
+
+我担心过"带自定义消息的 `assert_eq!` 会吞掉 tuple 值"。**实测否掉**：这份日志里
+`Diff < left / right >` 完整打印了左右两个七元组 ⇒ 这条腿今后每次红都自带失败槽位，
+不需要为了"打印 tuple"再改测试代码。取证侧真正缺的是"删除经由哪条 SID 落地"，属产品/deny 落地问题。
+
+### 状态
+
+`39542266851` 的 windows 腿与两手 mac 腿在登记本节时仍 `in_progress`（`39543230422` 的
+ubuntu/windows 已终态、bridge gate success）。**前向指针：`39542266851` 的 windows 腿已在
+§6.40 落定，其中"越界删除是间歇"的口径在 §6.40 作废。** 本轮**零代码改动、零 dispatch、零推送**；
+`42c5bb5d9`、`e14d73e76`、`8b6fac76d` 与本节文档仍在本地（`origin/test` = `f6f74f484`）。
+
+## 6.40 第二手 `39542266851`（head `c7590fe24`）windows 腿终态：A3 二次确认到手，越界删除逐字再现
+
+job 119032455053 终态 `failure`：
+`Summary [2945.285s] 21769 tests run: 21761 passed (23 slow, 149 leaky), 8 failed, 138 skipped`
+（本手**没有** TIMEOUT）。8 条红：`codex-cli::bin/codex doctor::tests::mcp_http_probe_falls_back_to_get_when_head_times_out`
+`0.098s`、`codex-tui app::tests::session_lifecycle_requests::dynamic_tool_requests_ignore_other_namespaces_and_dispatch_tui_namespace`
+`FAIL + LEAK 14.026s`、两条 `codex-uds` ACL（0.808s / 0.574s）、三条 `legacy_`
+（46.382s / 62.252s / 61.971s）、`legacy_workspace_write_delete_…`（0.236s）。
+
+### 一手一：A3 的二次确认——两扇含门的手都绿了
+
+`conpty_ctrl_c_interrupts_powershell_foreground_child` **`PASS [  12.738s]` (21391/21769)**。
+这一手的 head 就是 `c7590fe24`（写/delete 取证那一手），同样含 `8a41ac7d3` 那扇门。
+⇒ 含门的两手逐字 `PASS 12.071s` / `PASS 12.738s`，删门之后的四手逐字
+`FAIL 12.890 / 11.886 / 11.447 / 12.185s`：**四红转两绿，A3/#40 的 runner 判据闭合**，
+本地 `.235` 的 3/3 绿与 12s 降级契约时长三方一致。
+
+### 一手二：`legacy_workspace_write_delete_…` 的判决在第二手逐字同形
+
+`FAIL [   0.236s] (21768/21769)`，`panicked at windows-sandbox-rs\src\unified_exec\tests.rs:1168:9:
+assertion failed: `(left == right)`: stdout=""`，Diff 与 §6.39 逐字同形：
+
+```
+left  (actual):   (0, false, false, false, None, false, false)
+right (expected): (0, false, false, false, Some("outside"), true, true)
+```
+
+after 段六行逐字（temp 根这手是 `.tmpE3kMLq`，上一手是 `.tmp4WwQtn`）：
+`workspace\workspace-delete.txt: here=[absent] in parent=[DELETE]`、`temp\…: [absent]/[DELETE]`、
+`tmp\…: [absent]/[DELETE]`、**`outside\outside-delete.txt: here=[absent] in parent=[none]`**、
+**`workspace\.git: here=[absent] in parent=[DELETE]`**、**`workspace\.git\config: here=[absent] in parent=[absent]`**。
+`outside` 这手同样**没有**收到 ` <-- THIS SESSION` 那条授予 ACE（两手的 THIS SESSION 计数都是 3：
+`workspace`/`temp`/`tmp`），而 session 前的 dump 里 `outside\outside-delete.txt` 与上一手一样带着
+**8 条 `allow mask=0x001301bf … delete-rights=[DELETE]` 的 `INHERITED-FROM-ANCESTOR` ACE**
+（ace[0]–ace[7]，两手的 SID 各不相同 ⇒ 托管 runner 每个 job 换账号，这正是"本地绿、runner 红"的差量所在）。
+
+⇒ **§6.39 里那个"间歇"的口径到此作废**：带这份取证的 2 手全红、判决逐字同形；把范围放回
+"托管 runner 上这条腿的全部可读读数"，是 `39347345560 0.130s` / `39371971338 0.302s` /
+`39396134392 0.089s` / `39530269408 0.189s` / `39542266851 0.236s` / `39543230422 0.116s` 六红 +
+`39526586631` 一绿（`PASS 1.872s`；`c7590fe24` 不是那手的祖先，实测 NO，所以那手没有取证）。
+同一份代码在同一台 runner 上**六次越界删除、一次没有**，本地 `.235` 13 次全绿。
+机制仍未证（缺的是"那 8 条 allow 里哪个 SID 在沙箱受限令牌的 restricting SIDs 里"，日志不打令牌），
+但候选已经收窄到一条、且有两手独立 ACE dump 支撑 ⇒ D1-A 那个 A/B 现在是"复现 ace[0]–ace[7] 的形状"，
+不再是"随便给点宽权限"。
+
+### 一手三：两条新的/第二次观察，都分桶到 harness
+
+- `codex-cli::bin/codex doctor::tests::mcp_http_probe_falls_back_to_get_when_head_times_out`
+  `FAIL [   0.098s] (3243/21769)`，`panicked at cli\src\doctor.rs:4049:9`，Diff 逐字
+  `Err("HEAD request timed out; GET request timed out")` vs `Ok("HTTP 405")`。读码：这条测试给
+  **整条 HEAD→GET 回退只 `Duration::from_millis(10)`**（`doctor.rs:4042-4045`），HEAD 按设计超时后，
+  GET 还要在同一个 10ms 预算里完成一次本机回环往返。缓存里这条腿除本手外 **18 条不同 job 的读数全绿**
+  （windows 6、ubuntu 7、mac 5，时长 `0.071`–`0.332s`）⇒ **分桶 harness 缺陷（亚阈值超时预算）**，
+  与 #19/#46 同族；单条观察不动代码。
+- `codex-tui …::dynamic_tool_requests_ignore_other_namespaces_and_dispatch_tui_namespace`
+  `FAIL + LEAK [  14.026s]`，`panicked at tui\src\app\tests\session_lifecycle_requests.rs:2407:9:
+  expected follow-up task registration before its next turn`。**这是第二次观察**（首次即 §6.34 表里
+  `39526586631` windows 腿那条 `FAIL 2.068s`，panic 文案与行号逐字相同）；其余 17 条不同 job 的读数
+  （windows 5、ubuntu 7、mac 5）全绿、时长 `9.297`–`18.983s`。注意它**不是** nextest kill，也不是 `?` 那条 5s 超时：
+  走到 else 分支意味着 `events.recv()` 收到了**另一个 `AppEvent` 变体**，而断言不打印收到的是什么
+  ⇒ 现状无法归因，要归因得再往这条腿加诊断。本轮不擅自扩面（#41 那种诊断是用户点名的 A4 才做的）。
+
+### 状态
+
+两手（`39542266851`、`39543230422`）的 ubuntu 与 windows 腿全部终态；两手的 **mac 腿在登记本节时仍
+`in_progress`**（job 119032454998 / 119035505279），#46 的判据仍要等推送后的第三手。
+本轮**零代码/配置改动、零 dispatch、零推送**；`42c5bb5d9`、`e14d73e76`、`8b6fac76d` 起
+仍在本地（`origin/test` = `f6f74f484`）。
 
 ## 7. 提交、推送与工作树状态
 
@@ -3626,6 +3829,29 @@ stderr `Error: discovered timed out waiting for Server:Localbackgroundserver:` �
   `FAIL [49.425s]`（该腿自带 ~50s 预算，非 nextest kill；#31 的屏幕诊断已渲染），
   同期另一手同腿 `PASS [5.354s]` ⇒ 分桶 harness 争用、单条观察、不动代码。
   本轮同样**零代码/配置改动、零 dispatch、零推送**。
+- **§6.39 那一手（`39543230422` windows 腿终态，纯登记）**：A3/#40 的 runner 一手到手
+  （`conpty_ctrl_c` 四红转 `PASS [12.071s]`，仍 ~12s ⇒ 走的是门里的降级契约而非跳过）；
+  同一腿日志翻出更重的一条——`legacy_workspace_write_delete_…` 的完整 Diff
+  `(0,false,false,false,None,false,false)` vs `(0,false,false,false,Some("outside"),true,true)`
+  加 session 后 `outside`/`.git`/`.git\config` 全部 `here=[absent]`，而 `.235` 同证据显示三者存活。
+  ⇒ §6.32 的"不是产品缺陷"与 #43 的"间歇"在 runner 侧改判为**"越界删除已证实、机制未证"**，
+  已在原处加前向指针、不改写历史。证实它的最短路径（`.235` 上两档祖先 ACL 的 A/B）要动宿主 ACL，
+  且 `windows-sandbox-rs` 不在本轮 scope 路径内 ⇒ 等指针，未自行开工。
+  另两条：`auth_storage_originator::concurrent_connections_…` `TIMEOUT [60.035s]` 是本轮缓存 9 条
+  读数全绿后首现的 nextest kill（零诊断，按争用分桶）；OAuth 那对同手全绿。
+  本轮**零代码/配置改动、零 dispatch、零推送**。
+- **§6.40 那一手（`39542266851` windows 腿终态，纯登记）**：A3 的二次确认到手
+  （含门的另一手 `c7590fe24` 也 `PASS [12.738s]` ⇒ 四红转两绿，#40/#44 的 runner 判据闭合）；
+  同一条 `legacy_workspace_write_delete_…` 在这手 **逐字同形再现**（Diff 同、六行 after 同、
+  `outside` 依旧没有 session ACE），且两手 session 前的 dump 都显示 `outside-delete.txt` 自身带着
+  **8 条 `mask=0x001301bf` / `delete-rights=[DELETE]` 的宿主祖先继承 ACE**（两手 SID 集合不同 ⇒
+  runner 每 job 换账号）⇒ "间歇"这个口径作废，机制候选收窄为"那 8 条 allow 里哪个 SID 在受限令牌的
+  restricting SIDs 里"，而这一步日志不打印、只能靠 D1-A 的本地 A/B 或令牌诊断。
+  另两条分桶：`cli doctor::mcp_http_probe_falls_back_to_get_when_head_times_out` `FAIL 0.098s` 是
+  测试只给 HEAD→GET 回退 10ms 预算（`cli/src/doctor.rs:4042-4045`，其余 18 条不同 job 的读数全绿）⇒ harness 缺陷；
+  `codex-tui …dynamic_tool_requests_ignore_other_namespaces…` `FAIL + LEAK 14.026s` 是第二次观察、
+  同一行同一文案、不是 kill ⇒ 归因需再加诊断，本轮不擅自扩面。
+  两手的 mac 腿在登记时仍 `in_progress`。本轮**零代码/配置改动、零 dispatch、零推送**。
 
 ## 8. ACP `958b63f..19207d3` 独立复核（提交 `0930455`）
 
