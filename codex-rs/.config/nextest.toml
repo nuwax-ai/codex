@@ -44,8 +44,18 @@ slow-timeout = { period = "2m", terminate-after = 2 }
 # also took 2h15m to compile where 39233543173 needed 1h32m. Idle on an arm64 Mac
 # the two legs measure 25.884s and 26.698s. 1m x 2 = 2m clears the worst observed
 # pass by the 65 % spread quoted above (59.604 x 1.65 = 98.3s).
+# The two bootstrap_ legs now ride this same window. Their first red was also their
+# first ledger entry - bootstrap_reports_updater_bind_failure passed nine cached hands
+# (max 57.280s) so nothing had ever named it, then died at 60.023s on 39583542510 with
+# an empty stdout and --retries 0. Sibling bootstrap_updater_is_ready_in_deep_codex_home
+# passed that hand at 35.900s after SLOW at 30s, so it is one lane hiccup from the same
+# kill. ubuntu runs the same two in 3.817s / 3.457s, so this family costs the mac lane
+# at least 15x, and windows cannot be affected: cli/tests/app_server_daemon.rs is
+# `#![cfg(unix)]` and that lane only builds app_server_daemon_windows. Appended here
+# rather than to the 2m block above because first-match-wins and these two are not in
+# its test(=) list.
 platform = 'cfg(target_os = "macos")'
-filter = 'package(codex-cli) & binary(app_server_daemon) & (test(=managed_daemon_restarts_from_deleted_working_directory) | test(=managed_identity_survives_locale_and_timezone_changes))'
+filter = 'package(codex-cli) & binary(app_server_daemon) & (test(=managed_daemon_restarts_from_deleted_working_directory) | test(=managed_identity_survives_locale_and_timezone_changes) | test(=bootstrap_reports_updater_bind_failure) | test(=bootstrap_updater_is_ready_in_deep_codex_home))'
 slow-timeout = { period = "1m", terminate-after = 2 }
 
 [[profile.default.overrides]]
