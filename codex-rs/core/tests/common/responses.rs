@@ -480,6 +480,84 @@ mod tests {
     use wiremock::http::HeaderMap;
     use wiremock::http::Method;
 
+    enum OnceMatchResponse {
+        Sse,
+        Plain,
+    }
+
+    async fn assert_once_match_records_only_accepted_requests(response: OnceMatchResponse) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let server = start_mock_server().await;
+            let matcher = wiremock::matchers::header("thread-id", "parent-thread");
+            let mock = match response {
+                OnceMatchResponse::Sse => {
+                    mount_sse_once_match(
+                        &server,
+                        matcher,
+                        sse(vec![ev_completed("accepted-parent-request")]),
+                    )
+                    .await
+                }
+                OnceMatchResponse::Plain => {
+                    mount_response_once_match(
+                        &server,
+                        matcher,
+                        ResponseTemplate::new(200).set_body_string("accepted"),
+                    )
+                    .await
+                }
+            };
+            let url = format!("{}/v1/responses", server.uri());
+            let client = codex_http_client::HttpClientFactory::new(
+                codex_http_client::OutboundProxyPolicy::ReqwestDefault,
+            )
+            .build_client(&url, codex_http_client::ClientRouteClass::Other)
+            .expect("build loopback HTTP client");
+
+            // The route matcher rejects a sibling's request before the parent
+            // request arrives. It must not contaminate this mock's recorder.
+            let rejected = client
+                .post(&url)
+                .header("thread-id", "child-thread")
+                .json(&serde_json::json!({"input": [], "route_probe": "rejected"}))
+                .send()
+                .await
+                .expect("send nonmatching loopback request");
+            assert_eq!(rejected.status().as_u16(), 404);
+            assert!(
+                mock.requests().is_empty(),
+                "a rejected matcher candidate must not be recorded as an accepted request"
+            );
+
+            let accepted = client
+                .post(&url)
+                .header("thread-id", "parent-thread")
+                .json(&serde_json::json!({"input": [], "route_probe": "accepted"}))
+                .send()
+                .await
+                .expect("send matching loopback request");
+            assert_eq!(accepted.status().as_u16(), 200);
+            let request = mock.single_request();
+            assert_eq!(
+                request.header("thread-id"),
+                Some("parent-thread".to_string())
+            );
+            assert_eq!(request.body_json()["route_probe"], "accepted");
+        })
+        .await
+        .expect("matching mock HTTP contract must finish within five seconds");
+    }
+
+    #[tokio::test]
+    async fn mount_sse_once_match_does_not_record_rejected_candidates() {
+        assert_once_match_records_only_accepted_requests(OnceMatchResponse::Sse).await;
+    }
+
+    #[tokio::test]
+    async fn mount_response_once_match_does_not_record_rejected_candidates() {
+        assert_once_match_records_only_accepted_requests(OnceMatchResponse::Plain).await;
+    }
+
     fn request_with_input(input: Value) -> ResponsesRequest {
         ResponsesRequest(wiremock::Request {
             url: "http://localhost/v1/responses"
@@ -1121,9 +1199,8 @@ pub async fn mount_response_once_match<M>(
 where
     M: wiremock::Match + Send + Sync + 'static,
 {
-    let (mock, response_mock) = base_mock();
-    mock.and(matcher)
-        .respond_with(response)
+    let (mock, response_mock) = base_mock_with_matcher(matcher);
+    mock.respond_with(response)
         .up_to_n_times(1)
         .mount(server)
         .await;
@@ -1131,9 +1208,18 @@ where
 }
 
 fn base_mock() -> (MockBuilder, ResponseMock) {
+    base_mock_with_matcher(|_: &wiremock::Request| true)
+}
+
+fn base_mock_with_matcher<M>(matcher: M) -> (MockBuilder, ResponseMock)
+where
+    M: wiremock::Match + Send + Sync + 'static,
+{
     let response_mock = ResponseMock::new();
     let mock = Mock::given(method("POST"))
         .and(path_regex(".*/responses$"))
+        .and(matcher)
+        // Recording has a side effect, so reject other routes/threads first.
         .and(response_mock.clone());
     (mock, response_mock)
 }
@@ -1150,9 +1236,8 @@ pub async fn mount_sse_once_match<M>(server: &MockServer, matcher: M, body: Stri
 where
     M: wiremock::Match + Send + Sync + 'static,
 {
-    let (mock, response_mock) = base_mock();
-    mock.and(matcher)
-        .respond_with(sse_response(body))
+    let (mock, response_mock) = base_mock_with_matcher(matcher);
+    mock.respond_with(sse_response(body))
         .up_to_n_times(1)
         .mount(server)
         .await;

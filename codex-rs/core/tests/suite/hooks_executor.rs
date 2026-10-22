@@ -12,6 +12,7 @@ use codex_features::Feature;
 use codex_protocol::capabilities::CapabilityRootLocation;
 use codex_protocol::capabilities::SelectedCapabilityRoot;
 use codex_protocol::config_types::WindowsSandboxLevel;
+use codex_protocol::mcp::McpServerConnectionStatus;
 use codex_protocol::models::PermissionProfileSnapshot;
 use codex_protocol::protocol::EnvironmentConfigState;
 use codex_protocol::protocol::EventMsg;
@@ -627,6 +628,19 @@ async fn executor_browser_and_computer_use_cleanup_hooks_use_separate_mcp_routes
     )
     .await?;
     if hook_event == "SubagentStop" {
+        // Seed an exact Apps catalog before the child chooses lazy cached startup.
+        let tools = fixture.test.codex.refresh_codex_apps_tools().await?;
+        assert!(
+            tools
+                .tools
+                .iter()
+                .any(|tool| tool.tool.name.as_ref() == "browser.turn_ended")
+        );
+        assert!(
+            !tools
+                .model_visible_tool_names
+                .contains("browser.turn_ended")
+        );
         let child = fixture
             .test
             .thread_manager
@@ -647,7 +661,7 @@ async fn executor_browser_and_computer_use_cleanup_hooks_use_separate_mcp_routes
     }
     fixture.attach().await?;
     if hook_event == "SubagentStop" {
-        // Cached subagent MCP servers start on first use; cleanup must not start them.
+        // Activate both servers explicitly; this test checks cleanup routing for ready clients.
         fixture
             .test
             .codex
@@ -658,7 +672,42 @@ async fn executor_browser_and_computer_use_cleanup_hooks_use_separate_mcp_routes
                 /*meta*/ None,
             )
             .await?;
+        if expected_browser_calls > 0 {
+            // This variant tests routing for two activated servers. Refresh is an
+            // explicit host operation; cleanup itself must not start either server.
+            let tools = fixture.test.codex.refresh_codex_apps_tools().await?;
+            assert!(
+                tools
+                    .tools
+                    .iter()
+                    .any(|tool| tool.tool.name.as_ref() == "browser.turn_ended")
+            );
+            assert!(
+                !tools
+                    .model_visible_tool_names
+                    .contains("browser.turn_ended")
+            );
+        }
     }
+    if hook_event == "SubagentStop" {
+        let (config, _) = fixture
+            .test
+            .codex
+            .current_mcp_config_and_runtime_context()
+            .await;
+        let statuses = fixture.test.codex.mcp_connection_statuses(&config).await;
+        for server in ["node_repl", "codex_apps"] {
+            assert_eq!(
+                statuses.get(server),
+                Some(&McpServerConnectionStatus::Connected),
+                "cleanup routing requires an already connected {server}"
+            );
+        }
+    }
+    assert!(
+        recorded_apps_tool_calls(&apps_server).await.is_empty(),
+        "explicit catalog activation must not call the Browser cleanup tool"
+    );
     if hook_event == "Interrupt" {
         fixture
             .test
