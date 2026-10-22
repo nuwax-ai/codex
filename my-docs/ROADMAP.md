@@ -74,15 +74,19 @@ rig 仍冻结 0.44.0 不动。
 
 ## 3. 独立安全语义：#42 / O2 / O3
 
+**2026-10-22 晚间更新：O2/O3 已实现并实机验收（台账 §6.56）**——deny 命中
+bwrap 自建 `/dev` 符号链接项时切换显式构建（被拒项缺席即拒绝；`blocked_descriptor_path`
+由红转绿，strace 28 次 bwrap execve 零 `/dev/fd`）；宿主专属
+`/proc/sys/net/*/conf/<网卡>` 在 fresh netns 中按缺席拒绝（静态窄名单，宁可漏判
+维持响亮 abort）。已知偏差：`pts` 绑宿主 devpts（无 CLI 私有实例原语）。
+**仍开放**：O4 `/proc/net` 符号链接（目录 deny 静默失效/文件 deny abort）与
+`/proc/self/environ` 可读边界；设计判据见
+[sandbox-o2-o3-design-2026-10-22.md](sandbox-o2-o3-design-2026-10-22.md)。
+
+以下原始边界描述保留作历史：
+
 这些是已知沙箱语义问题，不归为模型厂商限制或随机 CI 波动，也不应通过删断言或
 跳过 deny 让测试变绿。需要单独设计与验收，不在本轮 main 合并中顺手实现。
-
-**2026-10-22 推进**：设计与真实探针已完成，见
-[sandbox-o2-o3-design-2026-10-22.md](sandbox-o2-o3-design-2026-10-22.md)
-（.45 实机 bwrap 0.11.1 三轮探针：`--dev-bind`/`--ro-bind-data`/`--symlink`
-三原语实测可用；O2=手工构建 /dev+缺席即拒绝，O3=netns 必建清单静态分类；
-宿主 pts bind 偏差与开放问题已单列）。**实现与实机 E2E 仍未开始**，`blocked_descriptor_path`
-仍红，下面三条边界原文保留。
 
 - **#42 / O2：符号链接路径的可用 mask 原语。** `/dev/fd`、`/dev/core` 的 tmpfs
   mask 经过符号链接解析后目的地缺失，当前 fail-closed abort；`blocked_descriptor_path`

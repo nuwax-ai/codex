@@ -457,6 +457,8 @@ fn build_bwrap_argv(
         // list, in the position they have to hold relative to `--proc`.
         proc_scoped_args: Vec::new(),
         relocate_proc_destinations: false,
+        denied_dev_symlinks: bwrap_args.denied_dev_symlinks,
+        network_namespace_isolated: bwrap_args.network_namespace_isolated,
         preserved_files: bwrap_args.preserved_files,
         synthetic_mount_targets: bwrap_args.synthetic_mount_targets,
     })

@@ -1,6 +1,9 @@
 # O2/O3 沙箱 deny 原语设计(2026-10-22,探针轮)
 
-状态:**设计 + 真实探针已完成**;实现未开始(按 ROADMAP §3 留专门轮)。
+状态:**O2/O3 已实现并验收(2026-10-22 实现轮,台账 §6.56)**——显式构建 /
+dev、netns sysctl 缺席分类已入库,`.45` 一手:239/239 合同、`blocked_descriptor_path`
+PASS、strace 28 次 bwrap execve 零 `/dev/fd`。**O4(`/proc/net` 符号链接)与
+`/proc/self/environ` 可读边界未收口**,宿主 pts bind 偏差有效(见文末)。
 宿主:192.168.31.45(Ubuntu 26.04.1,内核 7.0.0-38-generic,bwrap 0.11.1,
 `apparmor_restrict_unprivileged_userns=1` 但 bwrap 可用——与 §6.33 同一台)。
 探针脚本:`/tmp/nuwax-o2-probe{2,3,4}.sh`(会话内);本文表格即其输出摘录。

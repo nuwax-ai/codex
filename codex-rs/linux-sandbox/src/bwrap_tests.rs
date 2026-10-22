@@ -1401,12 +1401,14 @@ fn denied_dev_path_without_a_mount_point_is_denied_by_absence() {
 }
 
 #[test]
-fn denied_dev_symlink_is_still_masked_rather_than_declared_absent() {
+fn denied_dev_symlink_switches_to_explicit_construction_without_the_entry() {
     let temp_dir = TempDir::new().expect("temp dir");
     let denied = Path::new("/dev/fd");
     assert!(
         denied.is_dir(),
-        "precondition: {denied:?} must resolve to a directory on this host"
+        "precondition: {denied:?} must resolve to a directory on this host, otherwise \
+         this leg would measure the missing-path branch instead of the explicit \
+         device tree"
     );
     let policy = denied_path_policy(denied);
 
@@ -1414,13 +1416,285 @@ fn denied_dev_symlink_is_still_masked_rather_than_declared_absent() {
         .expect("filesystem args");
     let denied_str = path_to_string(denied);
 
+    // The synthetic `--dev` tree is replaced by an explicit construction…
+    assert!(
+        !args.args.iter().any(|arg| arg == "--dev"),
+        "a denied synthetic symlink must switch the tree away from --dev: args={:?}",
+        args.args
+    );
     assert!(
         args.args
             .windows(2)
-            .any(|window| window == ["--tmpfs", denied_str.as_str()]),
-        "/dev/fd is created by bwrap, so a deny rule for it must not be waved through \
-         by absence: args={:?}",
+            .any(|window| window == ["--tmpfs", "/dev"]),
+        "the explicit tree mounts a fresh /dev: args={:?}",
         args.args
+    );
+    // …which keeps the entries the policy did not deny…
+    assert!(
+        args.args
+            .windows(3)
+            .any(|window| window == ["--dev-bind", "/dev/null", "/dev/null"]),
+        "unddenied device nodes stay bound: args={:?}",
+        args.args
+    );
+    assert!(
+        args.args
+            .windows(3)
+            .any(|window| window == ["--symlink", "/proc/kcore", "/dev/core"]),
+        "unddenied symlinks stay constructed: args={:?}",
+        args.args
+    );
+    // …and omits the denied one, so the denial holds by real absence.
+    assert!(
+        !args
+            .args
+            .windows(3)
+            .any(|window| window[0] == "--symlink" && window[2] == "/dev/fd"),
+        "the denied symlink must not be constructed: args={:?}",
+        args.args
+    );
+    // No mask may be emitted for it either: every mask destination resolves
+    // through the symlink and aborts bwrap before the command starts.
+    for mask in [
+        ["--tmpfs", denied_str.as_str()].as_slice(),
+        ["--dir", denied_str.as_str()].as_slice(),
+        ["--remount-ro", denied_str.as_str()].as_slice(),
+    ] {
+        assert!(
+            !args.args.windows(2).any(|window| window == mask),
+            "{mask:?} would abort bwrap: args={:?}",
+            args.args
+        );
+    }
+    assert!(
+        !args
+            .args
+            .windows(3)
+            .any(|window| window[0] == "--ro-bind-data" && window[2] == denied_str),
+        "args={:?}",
+        args.args
+    );
+}
+
+#[test]
+fn explicit_dev_construction_keeps_undenied_equivalents() {
+    let temp_dir = TempDir::new().expect("temp dir");
+    let denied = Path::new("/dev/stdout");
+    assert!(
+        denied.exists(),
+        "precondition: {denied:?} must exist on this host"
+    );
+    let policy = denied_path_policy(denied);
+
+    let args = create_filesystem_args(&policy, temp_dir.path(), BwrapOptions::default())
+        .expect("filesystem args");
+
+    assert!(
+        args.args
+            .windows(3)
+            .any(|window| window == ["--symlink", "/proc/self/fd", "/dev/fd"]),
+        "unddenied fd stays: args={:?}",
+        args.args
+    );
+    assert!(
+        args.args
+            .windows(3)
+            .any(|window| window == ["--symlink", "pts/ptmx", "/dev/ptmx"]),
+        "unddenied ptmx stays: args={:?}",
+        args.args
+    );
+    assert!(
+        !args
+            .args
+            .windows(3)
+            .any(|window| window == ["--symlink", "/proc/self/fd/1", "/dev/stdout"]),
+        "the denied stdout symlink must not be constructed: args={:?}",
+        args.args
+    );
+    assert!(
+        args.args
+            .windows(2)
+            .any(|window| window == ["--dir", "/dev/shm"]),
+        "the shm directory stays: args={:?}",
+        args.args
+    );
+    assert!(
+        args.args
+            .windows(3)
+            .any(|window| window == ["--bind", "/dev/pts", "/dev/pts"]),
+        "pts stays mounted (host devpts; recorded deviation from the private \
+         instance `--dev` would create): args={:?}",
+        args.args
+    );
+}
+
+#[test]
+fn explicit_dev_construction_still_masks_denied_device_nodes() {
+    let temp_dir = TempDir::new().expect("temp dir");
+    // Deny both a symlink entry and a device node to prove the manual tree
+    // keeps landing masks on the entries it does construct.
+    let policy = FileSystemSandboxPolicy::restricted(vec![
+        FileSystemSandboxEntry {
+            path: FileSystemPath::Special {
+                value: FileSystemSpecialPath::Root,
+            },
+            access: FileSystemAccessMode::Read,
+            missing_path_behavior: None,
+        },
+        FileSystemSandboxEntry {
+            path: AbsolutePathBuf::from_absolute_path("/dev/fd")
+                .expect("absolute denied path")
+                .into(),
+            access: FileSystemAccessMode::Deny,
+            missing_path_behavior: None,
+        },
+        FileSystemSandboxEntry {
+            path: AbsolutePathBuf::from_absolute_path("/dev/null")
+                .expect("absolute denied path")
+                .into(),
+            access: FileSystemAccessMode::Deny,
+            missing_path_behavior: None,
+        },
+    ]);
+
+    let args = create_filesystem_args(&policy, temp_dir.path(), BwrapOptions::default())
+        .expect("filesystem args");
+
+    assert!(
+        !args.args.iter().any(|arg| arg == "--dev"),
+        "the denied /dev/fd still switches the tree: args={:?}",
+        args.args
+    );
+    assert!(
+        args.args
+            .windows(3)
+            .any(|window| window[0] == "--ro-bind-data" && window[2] == "/dev/null"),
+        "the constructed /dev/null node keeps its file mask: args={:?}",
+        args.args
+    );
+    assert_eq!(args.preserved_files.len(), 1);
+}
+
+#[test]
+fn only_synthetic_dev_symlinks_trigger_the_explicit_tree() {
+    assert_eq!(
+        denied_synthetic_dev_symlink_entry(Path::new("/dev/fd")),
+        Some("fd")
+    );
+    assert_eq!(
+        denied_synthetic_dev_symlink_entry(Path::new("/dev/stdout")),
+        Some("stdout")
+    );
+    assert_eq!(
+        denied_synthetic_dev_symlink_entry(Path::new("/dev/console")),
+        Some("console")
+    );
+    assert_eq!(
+        denied_synthetic_dev_symlink_entry(Path::new("/dev/null")),
+        None,
+        "device nodes keep their --dev tree and ro-bind-data mask"
+    );
+    assert_eq!(
+        denied_synthetic_dev_symlink_entry(Path::new("/dev/pts/1")),
+        None,
+        "deeper paths are not symlink entries of the synthetic tree"
+    );
+    assert_eq!(
+        denied_synthetic_dev_symlink_entry(Path::new("/dev/kmsg")),
+        None,
+        "entries bwrap never creates stay denied by the plain absence rule"
+    );
+    assert_eq!(
+        denied_synthetic_dev_symlink_entry(Path::new("/tmp/x")),
+        None
+    );
+}
+
+#[test]
+fn only_host_only_netns_conf_names_are_denied_by_absence() {
+    for absent in [
+        "/proc/sys/net/ipv4/conf/enp3s0",
+        "/proc/sys/net/ipv6/conf/wlan0",
+        "/proc/sys/net/ipv4/conf/enp3s0/accept_local",
+    ] {
+        assert!(
+            deny_is_enforced_by_absent_netns_sysctl(Path::new(absent)),
+            "{absent} cannot exist in a fresh network namespace"
+        );
+    }
+    for survives in [
+        "/proc/sys/net",
+        "/proc/sys/net/ipv4",
+        "/proc/sys/net/ipv4/ip_forward",
+        "/proc/sys/net/ipv4/conf/all",
+        "/proc/sys/net/ipv4/conf/default",
+        "/proc/sys/net/ipv4/conf/lo",
+        "/proc/sys/net/ipv6/conf/lo/accept_ra",
+        "/proc/sys/net/core/somaxconn",
+        "/proc/sys/kernel/hostname",
+        "/proc/sys/netfilter",
+    ] {
+        assert!(
+            !deny_is_enforced_by_absent_netns_sysctl(Path::new(survives)),
+            "{survives} is recreated per network namespace and keeps its mask"
+        );
+    }
+}
+
+#[test]
+fn host_only_netns_sysctl_deny_omits_the_mask_only_in_a_fresh_netns() {
+    let temp_dir = TempDir::new().expect("temp dir");
+    let denied = Path::new("/proc/sys/net/ipv4/conf/lo");
+    // Use a name that is host-only unless this host names an interface `lo`:
+    // `conf/lo` itself survives, so build the host-only case from a synthetic
+    // interface name instead of depending on the host's interfaces.
+    let host_only = Path::new("/proc/sys/net/ipv4/conf/nuwax-probe-host-only");
+    let policy = FileSystemSandboxPolicy::restricted(vec![
+        FileSystemSandboxEntry {
+            path: FileSystemPath::Special {
+                value: FileSystemSpecialPath::Root,
+            },
+            access: FileSystemAccessMode::Read,
+            missing_path_behavior: None,
+        },
+        FileSystemSandboxEntry {
+            path: AbsolutePathBuf::from_absolute_path(host_only)
+                .expect("absolute denied path")
+                .into(),
+            access: FileSystemAccessMode::Deny,
+            missing_path_behavior: None,
+        },
+        FileSystemSandboxEntry {
+            path: AbsolutePathBuf::from_absolute_path(denied)
+                .expect("absolute denied path")
+                .into(),
+            access: FileSystemAccessMode::Deny,
+            missing_path_behavior: None,
+        },
+    ]);
+
+    let options = BwrapOptions {
+        network_mode: BwrapNetworkMode::Isolated,
+        mount_proc: true,
+        ..BwrapOptions::default()
+    };
+    let args = create_filesystem_args(&policy, temp_dir.path(), options).expect("args");
+    assert!(
+        !args
+            .proc_scoped_args
+            .windows(2)
+            .any(|window| window[0] == "--tmpfs" && window[1].contains("nuwax-probe-host-only")),
+        "a fresh netns never creates the host-only conf name, so no mask may be \
+         emitted for it: proc_scoped_args={:?}",
+        args.proc_scoped_args
+    );
+    assert!(
+        args.proc_scoped_args
+            .windows(2)
+            .any(|window| window == ["--tmpfs", "/proc/sys/net/ipv4/conf/lo"]),
+        "conf/lo survives in the fresh netns and keeps its directory mask: \
+         proc_scoped_args={:?}",
+        args.proc_scoped_args
     );
 }
 

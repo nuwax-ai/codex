@@ -5109,6 +5109,40 @@ cap×hook 交界回归、`188d87360` genai 0.7.0、及本节文档提交。第�
 解释的产品失败；字段处置表在册；缺陷最小复现（预算饥饿）已定性并以同断言
 重跑关闭。
 
+## 6.56 O2/O3 实现轮：deny 命中自建 /dev 符号链接改显式构建，宿主专属 netns sysctl 按缺席拒绝（2026-10-22）
+
+接 §6.55 的设计与探针（[sandbox-o2-o3-design-2026-10-22.md](../sandbox-o2-o3-design-2026-10-22.md)）。
+实现全部在 `codex-rs/linux-sandbox`：新增 `SYNTHETIC_DEV_SYMLINK_ENTRIES`
+（stdin/stdout/stderr/fd/core/ptmx/console 七个 `SETUP_MOUNT_DEV` 符号链接项）与
+`append_dev_tree_args`——deny 命中任一项时放弃 `--dev /dev`，按 vendored
+`bubblewrap.c` 的同一形状显式重建（`--tmpfs /dev` + 六节点 `--dev-bind` +
+未拒符号链接 `--symlink` + `--dir /dev/shm` + `--bind /dev/pts`，console 仅在
+stdout 为 tty 时按 `/proc/self/fd/1` 解析绑定），**被拒项不构建=缺席即拒绝**；
+设备节点/shm/pts 的既有掩蔽不变。O3 新增 `deny_is_enforced_by_absent_netns_sysctl`：
+仅 `/proc/sys/net/{ipv4,ipv6}/conf/<非 all/default/lo 名>`（新 netns 只回 lo，Q4 探针）
+判缺席、不发掩蔽；其余 `/proc/sys/net` 保持掩蔽，分类宁可漏判（维持响亮 abort）
+不错判（fail-open）。§6.35 的旧合同测试
+`denied_dev_symlink_is_still_masked_rather_than_declared_absent` 被替换为五条
+新合同（显式构建形状、未拒等价项保留、节点掩蔽仍落地、谓词矩阵、netns 掩蔽省略
+仅在 fresh netns+fresh procfs 生效）——替换理由已入测试注释与本文：旧断言锁定的
+tmpfs 掩蔽正是本轮消除的 abort 源，拒绝强度由"真实不构建"承担，不是放行。
+
+**一手收据（`.45`，bwrap 0.11.1 系、vendored 0.11.2 源码对照）**：
+
+| 证据 | 读数 |
+| --- | --- |
+| 构造+集成合同 | `-p codex-linux-sandbox` **239/239 通过，3 skip**（231 基线 + 7 新增/1 替换）；fmt 0 差异；crate Clippy 无警告 |
+| 产品腿（O2 关闭条件） | `blocked_descriptor_path` **PASS 0.937s**（真执行；修复前=启动前 abort） |
+| 连带损伤核对 | `shell_snapshot` 全族 51 条 = 48 过 + 恰好 3 条已知 im-config/systemd-cat 宿主噪声红（§6.33 第一桶），一条没多 |
+| syscall 级（§6.33 手法） | strace 全程 **28 次** `execve("/usr/bin/bwrap")` 中 `/dev/fd` 参数 **0 次**；argv 即显式构建树（`--tmpfs /dev`、六 `--dev-bind`、`--symlink` 组） |
+
+**已知偏差与未收口项**：① `pts` 改绑宿主 devpts（vendored/0.11.1 均无
+`--devpts` 旗标，SETUP_MOUNT_DEV 的私有实例无法 CLI 复刻）——隔离面变化已单列，
+deny 合同不受影响；② **O4 未动**：`/proc/net` 符号链接（目录 deny 静默失效/
+文件 deny abort）与 `/proc/self/environ` 可读边界仍在，需 per-pid 命名空间枚举
+决策，不能被本轮"缺席"语义顺带覆盖；③ O3 分类是静态窄名单，仅覆盖
+`conf/<宿主网卡>` 这一可证宿主专属类。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-22 当前阶段优先读此条，以下旧指针为历史记录：** 本轮工作仅在

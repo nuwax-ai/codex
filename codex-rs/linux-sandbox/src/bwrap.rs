@@ -137,6 +137,13 @@ pub(crate) struct BwrapArgs {
     /// Only `--proc /proc` overmounts a mask. Without a fresh procfs the masks stay
     /// where they were emitted, which is where they already take effect.
     pub relocate_proc_destinations: bool,
+    /// The `/dev` symlink entries whose deny rules switched the device tree to the
+    /// explicit construction and are omitted from it. Their denies hold by absence.
+    pub denied_dev_symlinks: BTreeSet<&'static str>,
+    /// Whether the sandbox enters a fresh network namespace. Only then do the
+    /// host-only `/proc/sys/net/...` names have no destination to mask, and their
+    /// deny rules hold by absence.
+    pub network_namespace_isolated: bool,
     pub preserved_files: Vec<File>,
     pub synthetic_mount_targets: Vec<SyntheticMountTarget>,
 }
@@ -311,6 +318,8 @@ pub(crate) fn create_bwrap_command_args(
                 args: command,
                 proc_scoped_args: Vec::new(),
                 relocate_proc_destinations: false,
+                denied_dev_symlinks: BTreeSet::new(),
+                network_namespace_isolated: false,
                 preserved_files: Vec::new(),
                 synthetic_mount_targets: Vec::new(),
             })
@@ -365,6 +374,8 @@ fn create_bwrap_flags_full_filesystem(command: Vec<String>, options: BwrapOption
         args,
         proc_scoped_args: Vec::new(),
         relocate_proc_destinations: false,
+        denied_dev_symlinks: BTreeSet::new(),
+        network_namespace_isolated: options.network_mode.should_unshare_network(),
         preserved_files: Vec::new(),
         synthetic_mount_targets: Vec::new(),
     }
@@ -457,6 +468,8 @@ fn create_bwrap_flags(
         args,
         proc_scoped_args: Vec::new(),
         relocate_proc_destinations: false,
+        denied_dev_symlinks: BTreeSet::new(),
+        network_namespace_isolated: options.network_mode.should_unshare_network(),
         preserved_files,
         synthetic_mount_targets,
     })
@@ -573,28 +586,25 @@ fn create_filesystem_args(
     unreadable_roots.sort();
     unreadable_roots.dedup();
 
+    let denied_dev_symlinks: BTreeSet<&'static str> = unreadable_roots
+        .iter()
+        .filter_map(|root| denied_synthetic_dev_symlink_entry(root))
+        .collect();
+
     let mut args = if file_system_sandbox_policy.has_full_disk_read_access() {
         // Read-only root, then mount a minimal device tree.
         // In bubblewrap (`bubblewrap.c`, `SETUP_MOUNT_DEV`), `--dev /dev`
         // creates the standard minimal nodes: null, zero, full, random,
         // urandom, and tty. `/dev` must be mounted before writable roots so
         // explicit `/dev/*` writable binds remain visible.
-        vec![
-            "--ro-bind".to_string(),
-            "/".to_string(),
-            "/".to_string(),
-            "--dev".to_string(),
-            "/dev".to_string(),
-        ]
+        let mut args = vec!["--ro-bind".to_string(), "/".to_string(), "/".to_string()];
+        append_dev_tree_args(&mut args, &denied_dev_symlinks);
+        args
     } else {
         // Start from an empty filesystem and add only the approved readable
         // roots plus a minimal `/dev`.
-        let mut args = vec![
-            "--tmpfs".to_string(),
-            "/".to_string(),
-            "--dev".to_string(),
-            "/dev".to_string(),
-        ];
+        let mut args = vec!["--tmpfs".to_string(), "/".to_string()];
+        append_dev_tree_args(&mut args, &denied_dev_symlinks);
 
         let mut readable_roots: BTreeSet<PathBuf> = file_system_sandbox_policy
             .get_readable_roots_with_cwd(cwd)
@@ -619,13 +629,8 @@ fn create_filesystem_args(
         // the broad read baseline. Explicit unreadable carveouts are
         // re-applied later.
         if readable_roots.iter().any(|root| root == Path::new("/")) {
-            args = vec![
-                "--ro-bind".to_string(),
-                "/".to_string(),
-                "/".to_string(),
-                "--dev".to_string(),
-                "/dev".to_string(),
-            ];
+            args = vec!["--ro-bind".to_string(), "/".to_string(), "/".to_string()];
+            append_dev_tree_args(&mut args, &denied_dev_symlinks);
         } else {
             for root in readable_roots {
                 if !root.exists() {
@@ -659,6 +664,10 @@ fn create_filesystem_args(
         args,
         proc_scoped_args: Vec::new(),
         relocate_proc_destinations: options.mount_proc,
+        // The writable-root rebinds below still consult the set, so hand the
+        // struct a clone and keep the original for the remaining arg building.
+        denied_dev_symlinks: denied_dev_symlinks.clone(),
+        network_namespace_isolated: options.network_mode.should_unshare_network(),
         preserved_files: Vec::new(),
         synthetic_mount_targets: Vec::new(),
     };
@@ -724,9 +733,8 @@ fn create_filesystem_args(
             if mount_root == Path::new("/") {
                 // The root bind shadows the earlier device tree and applies nodev.
                 // Recreate only standard devices before applying explicit deny masks.
+                append_dev_tree_args(&mut bwrap_args.args, &denied_dev_symlinks);
                 bwrap_args.args.extend([
-                    "--dev".to_string(),
-                    "/dev".to_string(),
                     "--bind-try".to_string(),
                     "/dev/shm".to_string(),
                     "/dev/shm".to_string(),
@@ -1428,6 +1436,24 @@ fn append_unreadable_root_args(
         return Ok(());
     }
 
+    // The explicit device tree omits the denied symlink entries, so their
+    // denial holds by absence and no mask may be emitted for them.
+    if let Some(entry) = denied_synthetic_dev_symlink_entry(unreadable_root)
+        && bwrap_args.denied_dev_symlinks.contains(&entry)
+    {
+        return Ok(());
+    }
+
+    // A fresh network namespace never creates the host-only sysctl names under
+    // /proc/sys/net/*/conf, so their masks would have no destination inside
+    // the sandbox; the denial already holds by absence there.
+    if bwrap_args.network_namespace_isolated
+        && bwrap_args.relocate_proc_destinations
+        && deny_is_enforced_by_absent_netns_sysctl(unreadable_root)
+    {
+        return Ok(());
+    }
+
     if !unreadable_root.exists() {
         if let Some(first_missing_component) = find_first_non_existent_component(unreadable_root)
             && is_within_allowed_write_paths(&first_missing_component, allowed_write_paths)
@@ -1518,6 +1544,125 @@ fn deny_is_enforced_by_absent_dev_path(path: &Path) -> bool {
         return false;
     };
     !SYNTHETIC_DEV_ENTRIES.contains(&entry)
+}
+
+/// The `/dev` entries `--dev` creates as symlinks (`bubblewrap.c`,
+/// `SETUP_MOUNT_DEV`). A deny mask for one of them has no mountable
+/// destination: the mount target resolves through the symlink into a procfs
+/// that either is not mounted yet or belongs to a different process, so
+/// bubblewrap aborts before the command starts. Denying any of them switches
+/// the whole device tree to the explicit construction below, which omits the
+/// denied entry — absence is the denial the policy asked for.
+const SYNTHETIC_DEV_SYMLINK_ENTRIES: [&str; 7] =
+    ["stdin", "stdout", "stderr", "fd", "core", "ptmx", "console"];
+
+/// The device nodes `SETUP_MOUNT_DEV` bind-mounts from the host dev tree.
+const SYNTHETIC_DEV_DEVICE_NODES: [&str; 6] = ["null", "zero", "full", "random", "urandom", "tty"];
+
+/// Returns the synthetic-dev symlink entry a deny rule targets, if any.
+fn denied_synthetic_dev_symlink_entry(path: &Path) -> Option<&'static str> {
+    let relative = path.strip_prefix(Path::new("/dev")).ok()?;
+    let entry = relative.components().next()?.as_os_str().to_str()?;
+    SYNTHETIC_DEV_SYMLINK_ENTRIES
+        .iter()
+        .find(|candidate| **candidate == entry)
+        .copied()
+}
+
+/// Appends the `/dev` construction. Without denied symlink entries this stays
+/// with `--dev /dev`, whose `SETUP_MOUNT_DEV` builds the standard tree
+/// (six bound nodes, the stdio/`fd`/`core`/`ptmx` symlinks, the `shm`
+/// directory, a private devpts at `pts`, and `console` on a tty).
+///
+/// Otherwise the tree is rebuilt explicitly in the same shape, omitting the
+/// denied symlinks. Known deviation, recorded with the design: `pts` binds the
+/// host devpts instead of a private instance because bubblewrap exposes no
+/// flag for a fresh one; a deny on `pts`, `shm`, or a device node still lands
+/// its mask on the constructed target.
+fn append_dev_tree_args(args: &mut Vec<String>, denied_symlinks: &BTreeSet<&'static str>) {
+    if denied_symlinks.is_empty() {
+        args.push("--dev".to_string());
+        args.push("/dev".to_string());
+        return;
+    }
+    args.push("--tmpfs".to_string());
+    args.push("/dev".to_string());
+    for node in SYNTHETIC_DEV_DEVICE_NODES {
+        args.push("--dev-bind".to_string());
+        args.push(format!("/dev/{node}"));
+        args.push(format!("/dev/{node}"));
+    }
+    for (entry, target) in [
+        ("stdin", "/proc/self/fd/0"),
+        ("stdout", "/proc/self/fd/1"),
+        ("stderr", "/proc/self/fd/2"),
+        ("fd", "/proc/self/fd"),
+        ("core", "/proc/kcore"),
+    ] {
+        if denied_symlinks.contains(entry) {
+            continue;
+        }
+        args.push("--symlink".to_string());
+        args.push(target.to_string());
+        args.push(format!("/dev/{entry}"));
+    }
+    // `SETUP_MOUNT_DEV` creates the directory without mounting anything on it;
+    // callers bind `/dev/shm` separately when the policy grants it.
+    args.push("--dir".to_string());
+    args.push("/dev/shm".to_string());
+    args.push("--bind".to_string());
+    args.push("/dev/pts".to_string());
+    args.push("/dev/pts".to_string());
+    if !denied_symlinks.contains("ptmx") {
+        args.push("--symlink".to_string());
+        args.push("pts/ptmx".to_string());
+        args.push("/dev/ptmx".to_string());
+    }
+    if !denied_symlinks.contains("console")
+        && let Some(tty_device) = host_stdout_tty_device()
+    {
+        args.push("--dev-bind".to_string());
+        args.push(path_to_string(&tty_device));
+        args.push("/dev/console".to_string());
+    }
+}
+
+/// The tty device backing our stdout, mirroring `SETUP_MOUNT_DEV`'s console
+/// rule: bubblewrap only creates `/dev/console` when its own stdout is a tty,
+/// and points it at that device so `ttyname()` works in the sandbox.
+fn host_stdout_tty_device() -> Option<PathBuf> {
+    use std::io::IsTerminal as _;
+    if !std::io::stdout().is_terminal() {
+        return None;
+    }
+    let target = std::fs::read_link("/proc/self/fd/1").ok()?;
+    (target.is_absolute() && target.starts_with("/dev/")).then_some(target)
+}
+
+/// Returns true for `/proc/sys/net/{ipv4,ipv6}/conf/<iface>` names a fresh
+/// network namespace never creates: it brings up no interfaces besides `lo`,
+/// so `conf` holds only the `all`, `default`, and `lo` classifier entries. A
+/// mask for any other interface name has no destination in the sandbox's
+/// sysctl tree, and the deny holds by absence.
+///
+/// Everything else under `/proc/sys/net` is recreated per-netns and keeps its
+/// mask. The classification is deliberately narrow: an entry it wrongly
+/// classifies as absent would fail open, while anything it misses keeps
+/// today's loud missing-mount-point abort.
+fn deny_is_enforced_by_absent_netns_sysctl(path: &Path) -> bool {
+    let Ok(relative) = path.strip_prefix(Path::new("/proc/sys/net")) else {
+        return false;
+    };
+    let mut components = relative.components();
+    let family = components.next().and_then(|c| c.as_os_str().to_str());
+    let subdirectory = components.next().and_then(|c| c.as_os_str().to_str());
+    let interface = components.next().and_then(|c| c.as_os_str().to_str());
+    match (family, subdirectory, interface) {
+        (Some("ipv4" | "ipv6"), Some("conf"), Some(interface)) => {
+            !matches!(interface, "all" | "default" | "lo")
+        }
+        _ => false,
+    }
 }
 
 /// Returns true when `path` is under any allowed writable root.
