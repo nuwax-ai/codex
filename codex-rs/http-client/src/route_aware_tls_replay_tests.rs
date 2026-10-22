@@ -50,7 +50,9 @@ async fn does_not_replay_a_post_consumed_before_a_tls_protocol_alert() {
     super::warm_secure_transport_once();
     let CertifiedKey { cert, signing_key } =
         generate_simple_self_signed(vec!["127.0.0.1".to_string()]).unwrap();
-    let root = reqwest::Certificate::from_der(cert.der()).unwrap();
+    let tls = HttpClientTlsConfig::default()
+        .with_root_certificate_pem(cert.pem().as_bytes())
+        .unwrap();
     let mut provider = rustls::crypto::aws_lc_rs::default_provider();
     provider.cipher_suites =
         vec![rustls::crypto::aws_lc_rs::cipher_suite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256];
@@ -146,10 +148,7 @@ async fn does_not_replay_a_post_consumed_before_a_tls_protocol_alert() {
     let client = HttpClientBuilder::new().build_with_tls(
         &HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
         ClientRouteClass::Other,
-        HttpClientTlsConfig {
-            root_certificate: Some(root),
-            ..Default::default()
-        },
+        tls,
     );
     let result = client
         .post(format!("https://{address}/mcp"))

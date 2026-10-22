@@ -24,7 +24,8 @@ const MARKER: &str = "CODEX_HTTP_CLIENT_AUTH_WIRE_PROBE";
 #[tokio::test]
 async fn resolved_default_proxy_auth_matches_the_reference_on_the_wire() {
     // (env additions with placeholders, url template, proxy mode)
-    let cases: &[(&[(&str, &str)], &str, &str)] = &[
+    type AuthWireCase<'a> = (&'a [(&'a str, &'a str)], &'a str, &'a str);
+    let cases: &[AuthWireCase<'_>] = &[
         // Plain userinfo: both tracks must send the identical
         // Proxy-Authorization on the absolute-URI request.
         (

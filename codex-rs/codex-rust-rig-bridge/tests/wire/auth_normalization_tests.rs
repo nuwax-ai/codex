@@ -14,8 +14,9 @@ use std::time::Duration;
 
 struct HeaderAuth(HeaderMap);
 impl AuthProvider for HeaderAuth {
-    fn add_auth_headers(&self, headers: &mut HeaderMap) {
+    fn add_auth_headers(&self, headers: &mut HeaderMap) -> Result<(), codex_api::AuthError> {
         headers.extend(self.0.clone());
+        Ok(())
     }
 }
 

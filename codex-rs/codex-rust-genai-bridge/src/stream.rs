@@ -1,4 +1,5 @@
 use codex_api::ApiError;
+use codex_api::AuthError;
 use codex_api::Provider;
 use codex_api::ResponseStream;
 use codex_api::ResponsesApiRequest;
@@ -69,9 +70,9 @@ pub async fn stream_via_genai(
     };
 
     let model = request.model.clone();
-    let chat_options = build_chat_options(request, api_provider, api_auth, extra_headers);
+    let chat_options = build_chat_options(request, api_provider, api_auth, extra_headers)?;
 
-    let genai_client = build_genai_client(api_provider, api_auth, adapter_kind);
+    let genai_client = build_genai_client(api_provider, api_auth, adapter_kind)?;
 
     let msg_count = chat_request.messages.len();
     let system_present = chat_request.system.is_some();
@@ -170,7 +171,7 @@ fn build_chat_options(
     api_provider: &Provider,
     api_auth: &SharedAuthProvider,
     extra_headers: HeaderMap,
-) -> ChatOptions {
+) -> Result<ChatOptions, AuthError> {
     let mut options = ChatOptions {
         capture_usage: Some(true),
         capture_content: Some(true),
@@ -224,9 +225,9 @@ fn build_chat_options(
     }));
 
     // Merge all headers for this request
-    options.extra_headers = Some(build_extra_headers(api_provider, api_auth, &extra_headers));
+    options.extra_headers = Some(build_extra_headers(api_provider, api_auth, &extra_headers)?);
 
-    options
+    Ok(options)
 }
 
 /// Maps a codex `tool_choice` string to a genai `ToolChoice`.

@@ -14,7 +14,9 @@ fn provider() -> ModelProviderInfo {
 
 struct StaticEmpty;
 impl codex_api::AuthProvider for StaticEmpty {
-    fn add_auth_headers(&self, _headers: &mut http::HeaderMap) {}
+    fn add_auth_headers(&self, _headers: &mut http::HeaderMap) -> Result<(), codex_api::AuthError> {
+        Ok(())
+    }
     fn immutable_credential_headers(&self) -> Option<http::HeaderMap> {
         Some(http::HeaderMap::new())
     }
@@ -24,24 +26,26 @@ struct StaticBearer {
     token: &'static str,
 }
 impl codex_api::AuthProvider for StaticBearer {
-    fn add_auth_headers(&self, headers: &mut http::HeaderMap) {
+    fn add_auth_headers(&self, headers: &mut http::HeaderMap) -> Result<(), codex_api::AuthError> {
         headers.insert(
             http::header::AUTHORIZATION,
             http::HeaderValue::from_str(self.token).unwrap(),
         );
+        Ok(())
     }
     fn immutable_credential_headers(&self) -> Option<http::HeaderMap> {
-        Some(codex_api::AuthProvider::to_auth_headers(self))
+        Some(codex_api::AuthProvider::to_auth_headers(self).expect("static bearer headers"))
     }
 }
 
 struct DynamicBearer;
 impl codex_api::AuthProvider for DynamicBearer {
-    fn add_auth_headers(&self, headers: &mut http::HeaderMap) {
+    fn add_auth_headers(&self, headers: &mut http::HeaderMap) -> Result<(), codex_api::AuthError> {
         headers.insert(
             http::header::AUTHORIZATION,
             http::HeaderValue::from_static("Bearer changing"),
         );
+        Ok(())
     }
 }
 

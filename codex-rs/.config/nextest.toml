@@ -49,8 +49,9 @@ slow-timeout = { period = "2m", terminate-after = 2 }
 # (max 57.280s) so nothing had ever named it, then died at 60.023s on 39583542510 with
 # an empty stdout and --retries 0. Sibling bootstrap_updater_is_ready_in_deep_codex_home
 # passed that hand at 35.900s after SLOW at 30s, so it is one lane hiccup from the same
-# kill. ubuntu runs the same two in 3.817s / 3.457s, so this family costs the mac lane
-# at least 15x, and windows cannot be affected: cli/tests/app_server_daemon.rs is
+# kill. ubuntu runs the same two in 3.817s / 3.457s; these are observations from
+# different runs, not a fixed platform speed ratio. Windows cannot be affected:
+# cli/tests/app_server_daemon.rs is
 # `#![cfg(unix)]` and that lane only builds app_server_daemon_windows. Appended here
 # rather than to the 2m block above because first-match-wins and these two are not in
 # its test(=) list.
@@ -60,13 +61,15 @@ slow-timeout = { period = "1m", terminate-after = 2 }
 
 [[profile.default.overrides]]
 # This case validates and copies both the initial and replacement debug package.
-filter = 'package(codex-cli) & binary(app_server_daemon) & test(=packaged_daemon_start_and_explicit_replacement)'
+filter = 'package(codex-cli) & binary(=app_server_daemon_package) & test(=packaged_daemon_start_and_explicit_replacement)'
 slow-timeout = { period = "1m", terminate-after = 3 }
+threads-required = "num-test-threads"
 
 [[profile.default.overrides]]
-# These cases copy a full debug CLI package and launch its new executable.
-filter = 'package(codex-cli) & binary(app_server_daemon) & test(packaged_daemon_)'
+# These copies must not compete with other tests on the same runner.
+filter = 'package(codex-cli) & binary(=app_server_daemon_package)'
 slow-timeout = { period = "1m", terminate-after = 2 }
+threads-required = "num-test-threads"
 
 [profile.default.junit]
 path = "junit.xml"

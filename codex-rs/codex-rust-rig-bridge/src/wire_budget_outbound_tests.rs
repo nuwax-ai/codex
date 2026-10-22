@@ -492,11 +492,12 @@ const FLOOR_ANTHROPIC_SSE: &str = "event: message_start\ndata: {\"type\":\"messa
 
 struct FloorAuth;
 impl codex_api::AuthProvider for FloorAuth {
-    fn add_auth_headers(&self, headers: &mut http::HeaderMap) {
+    fn add_auth_headers(&self, headers: &mut http::HeaderMap) -> Result<(), codex_api::AuthError> {
         headers.insert(
             http::header::AUTHORIZATION,
             http::HeaderValue::from_static("Bearer floor-test-dummy"),
         );
+        Ok(())
     }
 }
 

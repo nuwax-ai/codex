@@ -50,14 +50,18 @@ pub fn set_tools(request: &mut ResponsesApiRequest, tools: Value) {
 pub struct DummyAuth;
 impl AuthProvider for DummyAuth {
     fn immutable_credential_headers(&self) -> Option<http::HeaderMap> {
-        Some(self.to_auth_headers())
+        Some(
+            self.to_auth_headers()
+                .expect("static fixture authentication"),
+        )
     }
 
-    fn add_auth_headers(&self, headers: &mut http::HeaderMap) {
+    fn add_auth_headers(&self, headers: &mut http::HeaderMap) -> Result<(), codex_api::AuthError> {
         let mut value = http::HeaderValue::from_static("Bearer local-test-dummy");
         value.set_sensitive(true);
         headers.insert(http::header::AUTHORIZATION, value.clone());
         headers.insert("x-gateway-auth", value);
+        Ok(())
     }
 }
 

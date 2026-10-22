@@ -978,7 +978,8 @@ mod tests {
                             "strict": false,
                             "parameters": {"type": "object", "properties": {}}
                         }]
-                    })],
+                    })]
+                    .into(),
                 },
                 ResponseItem::Message {
                     id: None,

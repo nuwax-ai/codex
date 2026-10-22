@@ -1,3 +1,4 @@
+use codex_api::AuthError;
 use codex_api::Provider;
 use codex_api::SharedAuthProvider;
 use genai::ServiceTarget;
@@ -15,7 +16,7 @@ pub fn build_genai_client(
     api_provider: &Provider,
     api_auth: &SharedAuthProvider,
     adapter_kind: AdapterKind,
-) -> genai::Client {
+) -> Result<genai::Client, AuthError> {
     let base_url = {
         // Preserve configured query params (api-version, tenant routing, …)
         // on the endpoint the resolver forces.
@@ -41,7 +42,7 @@ pub fn build_genai_client(
     } else {
         format!("{base_url}/")
     };
-    let auth_headers = api_auth.to_auth_headers();
+    let auth_headers = api_auth.to_auth_headers()?;
 
     let has_auth = auth_headers
         .get(http::header::AUTHORIZATION)
@@ -54,7 +55,7 @@ pub fn build_genai_client(
         "Building genai client"
     );
 
-    genai::Client::builder()
+    Ok(genai::Client::builder()
         .with_adapter_kind(adapter_kind)
         .with_auth_resolver_fn(move |_model_iden| {
             let token = auth_headers
@@ -82,7 +83,7 @@ pub fn build_genai_client(
             target.endpoint = Endpoint::from_owned(base_url.clone());
             Ok(target)
         })
-        .build()
+        .build())
 }
 
 /// Builds genai `Headers` from Codex provider, auth, and extra headers.
@@ -90,7 +91,7 @@ pub fn build_extra_headers(
     api_provider: &Provider,
     api_auth: &SharedAuthProvider,
     extra_headers: &HeaderMap,
-) -> genai::Headers {
+) -> Result<genai::Headers, AuthError> {
     let mut headers: Vec<(String, String)> = Vec::new();
 
     // Provider-level headers first
@@ -105,11 +106,8 @@ pub fn build_extra_headers(
     // it triggers 400 rejections from reverse proxies. SECONDARY auth
     // headers (gateway OAuth cookies, api-key variants, …) MUST survive —
     // the adapter only manages the primary header.
-    let primary_authz = api_auth
-        .to_auth_headers()
-        .get(http::header::AUTHORIZATION)
-        .cloned();
-    let auth_headers = api_auth.to_auth_headers();
+    let auth_headers = api_auth.to_auth_headers()?;
+    let primary_authz = auth_headers.get(http::header::AUTHORIZATION).cloned();
     for (key, value) in auth_headers.iter() {
         if Some(value) == primary_authz.as_ref() {
             continue;
@@ -126,5 +124,9 @@ pub fn build_extra_headers(
         }
     }
 
-    headers.into()
+    Ok(headers.into())
 }
+
+#[cfg(test)]
+#[path = "resolver_tests.rs"]
+mod tests;

@@ -29,16 +29,20 @@ struct CountingAuth {
 }
 
 impl AuthProvider for CountingAuth {
-    fn add_auth_headers(&self, headers: &mut http::HeaderMap) {
+    fn add_auth_headers(&self, headers: &mut http::HeaderMap) -> Result<(), codex_api::AuthError> {
         headers.insert(
             http::header::AUTHORIZATION,
             http::HeaderValue::from_static(self.token),
         );
+        Ok(())
     }
 
     fn immutable_credential_headers(&self) -> Option<http::HeaderMap> {
         match self.proof {
-            CredentialProof::Immutable => Some(self.to_auth_headers()),
+            CredentialProof::Immutable => Some(
+                self.to_auth_headers()
+                    .expect("static fixture authentication"),
+            ),
             CredentialProof::Dynamic => None,
         }
     }
@@ -46,7 +50,7 @@ impl AuthProvider for CountingAuth {
     fn resolve_auth_headers(&self) -> codex_api::AuthHeadersFuture<'_> {
         Box::pin(async {
             self.resolutions.fetch_add(1, Ordering::SeqCst);
-            Ok(self.to_auth_headers())
+            self.to_auth_headers()
         })
     }
 }

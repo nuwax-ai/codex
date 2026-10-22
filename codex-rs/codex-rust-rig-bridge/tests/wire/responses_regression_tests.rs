@@ -22,8 +22,9 @@ use std::time::Duration;
 struct HeaderAuth(http::HeaderMap);
 
 impl AuthProvider for HeaderAuth {
-    fn add_auth_headers(&self, headers: &mut http::HeaderMap) {
+    fn add_auth_headers(&self, headers: &mut http::HeaderMap) -> Result<(), codex_api::AuthError> {
         headers.extend(self.0.clone());
+        Ok(())
     }
 }
 

@@ -25,3 +25,25 @@ async fn malformed_bearer_fails_before_send_without_revealing_key() {
     );
     assert!(!error.contains("private-secret"));
 }
+
+#[tokio::test]
+async fn malformed_static_credentials_fail_sync_and_async_without_partial_headers() {
+    for provider in [
+        BearerAuthProvider::new("private-secret\r\nInjected: secret".into()),
+        BearerAuthProvider::for_test(
+            Some("private-secret"),
+            Some("workspace\r\nInjected: secret"),
+        ),
+    ] {
+        let expected = HeaderMap::from_iter([(
+            http::header::USER_AGENT,
+            HeaderValue::from_static("existing-client"),
+        )]);
+        let mut headers = expected.clone();
+        let sync_error = provider.add_auth_headers(&mut headers).unwrap_err();
+        let async_error = provider.resolve_auth_headers().await.unwrap_err();
+        assert_eq!(headers, expected);
+        assert_eq!(sync_error.to_string(), async_error.to_string());
+        assert!(!sync_error.to_string().contains("private-secret"));
+    }
+}

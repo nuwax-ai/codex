@@ -1,0 +1,438 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "status": "local_merge_validation_complete",
+  "source": {
+    "working_tree_state": "final code tested before merge commit; documentation staged afterward; resolve containing commit using merge_identity",
+    "final_source_fingerprint": {
+      "algorithm": "sha256(sorted(kind + NUL + git-tracked relative path + NUL + hex_sha256(contents) + LF)); my-docs/ excluded; symlink content is literal target bytes",
+      "files": 9842,
+      "sha256": "15b95b1926719f99c10c0ec865868d9bc66e973787e1d1485a6c6826b9ae0a55",
+      "scope": "final working-tree contents of tracked non-my-docs files; includes newly staged resolver_tests.rs; excludes ignored caches and external V8 archive"
+    }
+  },
+  "toolchain": {
+    "rust": "1.99.1",
+    "v8": "152.2.0",
+    "rig": "0.44.0"
+  },
+  "current_runtime_final": {
+    "status": "passed",
+    "final_log": "runtime_final_365",
+    "run": 365,
+    "passed": 365,
+    "failed": 0,
+    "filtered_out": 3617,
+    "test_seconds": 30.062,
+    "retries": 0,
+    "profile": "local",
+    "test_threads": 2,
+    "per_package": {
+      "codex-core": 72,
+      "codex-app-server": 1,
+      "codex-exec-server": 17,
+      "codex-thread-store": 275
+    },
+    "unresolved_tests": [],
+    "notes": "Includes original 88 plus two turn-context tests and all 275 ThreadStore lib tests; original stack/timeouts/assertions retained. Historical failures remain in logs."
+  },
+  "logs": [
+    {
+      "id": "contracts_initial_compile",
+      "basename": "zhitai-merge-contract-tests-20261022.log",
+      "sha256": "4d179c889c5b8f15ae1882d247c6853c005b48e9bec0a9eab6cf1483edc8aa27",
+      "scope": "six-package contract compilation",
+      "status": "failed_before_tests",
+      "last_test_summary": null,
+      "notes": "TLS test material type required adaptation; no test Summary."
+    },
+    {
+      "id": "contracts_initial_cli",
+      "basename": "zhitai-merge-contract-tests-cli-usage-20261022.log",
+      "sha256": "9d3b897e8b959ba8448962ae85e424f5ce5d53630f19b7306b8565ebe2f30c42",
+      "scope": "nextest invocation",
+      "status": "failed_before_tests",
+      "last_test_summary": null,
+      "notes": "Duplicate --test-threads argument; no tests executed."
+    },
+    {
+      "id": "contracts_initial_run",
+      "basename": "zhitai-merge-contract-tests-green-20261022.log",
+      "sha256": "6e2c604eca9de13bf973c9aa5c29033b742b03e09e2dbad1b7615ff3a4f94e42",
+      "scope": "six-package contracts",
+      "status": "failed",
+      "last_test_summary": "Summary [ 464.505s] 1350 tests run: 1330 passed (1 slow), 19 failed, 1 timed out, 1 skipped",
+      "notes": "Historical filename contains green; actual result includes 19 failures and 1 timeout. Retained without treating it as pass."
+    },
+    {
+      "id": "contracts_isolated",
+      "basename": "zhitai-merge-isolated-failures-20261022.log",
+      "sha256": "f19003b80f12ae6c4a75383ae6f16d81af687f42dfba0a8dfe32e1adb97b19a8",
+      "scope": "20 previously failed/timed-out contract tests, isolated",
+      "status": "passed_selected_tests",
+      "last_test_summary": "Summary [  31.510s] 20 tests run: 20 passed, 612 skipped",
+      "notes": "612 skipped are outside this selection."
+    },
+    {
+      "id": "contracts_final",
+      "basename": "zhitai-merge-contract-tests-quiet-20261022.log",
+      "sha256": "b59d6d72ed2c0bbae47dda328d21a9002fa2a21ba599963df9a86a29af82b297",
+      "scope": "protocol, rig, genai, http-client, model-provider, app-server-protocol",
+      "status": "passed_selected_tests",
+      "last_test_summary": "Summary [ 236.907s] 1350 tests run: 1350 passed, 1 skipped",
+      "notes": "1350 passed; one schema-writer test skipped, exercised separately. Does not validate final runtime stack edits."
+    },
+    {
+      "id": "runtime_original_83",
+      "basename": "zhitai-merge-runtime-regressions-20261022.log",
+      "sha256": "5515e27dea371055f00c1a7f13ca075e1305088c712246005be9c784d5616f81",
+      "scope": "core/app-server/exec-server original targeted image, projection, cap, guardian, shell-snapshot tests",
+      "status": "passed_selected_tests",
+      "last_test_summary": "Summary [  93.663s] 83 tests run: 83 passed, 3624 skipped",
+      "notes": "Predates later exact shutdown selection and final stack edits; 3624 skipped."
+    },
+    {
+      "id": "v8_real_js_2",
+      "basename": "zhitai-merge-v8-smoke-20261022.log",
+      "sha256": "f539ca159c22776c9dce65471cee7d1425f7a2aa7d768464685fab4393ddaa03",
+      "scope": "Code Mode real JavaScript synchronous exit and execute-to-pending",
+      "status": "passed_selected_tests",
+      "last_test_summary": "Summary [   0.076s] 2 tests run: 2 passed, 79 skipped",
+      "notes": "Only these two paths; 79 skipped."
+    },
+    {
+      "id": "linux_sandbox_check",
+      "basename": "zhitai-linux-sandbox-check-20261022.log",
+      "sha256": "ca38b5642d3fb5be24aaf5a463b156780fc2959b9c45a546b8d09d10f5f513b2",
+      "scope": "Linux sandbox --lib check of captured source snapshot",
+      "status": "completed_check",
+      "last_test_summary": null,
+      "last_build_completion": "Finished `dev` profile [unoptimized + debuginfo] target(s) in 2m 20s",
+      "reported_exit_code": 0,
+      "exit_code_source": "root tool observation",
+      "notes": "No test Summary; build completion is not a test verdict."
+    },
+    {
+      "id": "linux_sandbox_168",
+      "basename": "zhitai-linux-sandbox-lib-green-20261022.log",
+      "sha256": "a6b834ee18cd4332880c8c7bb130697470e1e52c577c02f172c693adb15781c9",
+      "scope": "x86_64 Linux sandbox library tests on captured snapshot",
+      "status": "passed_selected_tests",
+      "last_test_summary": "test result: ok. 168 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s",
+      "notes": "Not real bwrap-denial integration or final merged HEAD."
+    },
+    {
+      "id": "linux_http_model_271",
+      "basename": "zhitai-linux-http-model-lib-20261022.log",
+      "sha256": "a5acc8c51620a7e060f40556d305c2deed1d7f9ddecee471ab244830fe2ab5bd",
+      "scope": "x86_64 Linux http-client/model-provider library tests on captured snapshot",
+      "status": "passed_selected_tests",
+      "last_test_summary": "Summary [  30.324s] 271 tests run: 271 passed, 0 skipped",
+      "notes": "161 http-client + 110 model-provider, retries 0; not final merged HEAD."
+    },
+    {
+      "id": "runtime_check_before_final_stack",
+      "basename": "zhitai-merge-runtime-check-green-20261022.log",
+      "sha256": "daabd63911c3816e036a08e8e010dfbec069ab16a857a168f1ba1d623a53a22a",
+      "scope": "core/app-server/cli all-targets check with core/rust-rig",
+      "status": "completed_check",
+      "last_test_summary": null,
+      "last_build_completion": "Finished `dev` profile [unoptimized + debuginfo] target(s) in 8m 14s",
+      "notes": "Predates final runtime stack fixes. No test Summary; warnings recorded, not a workspace zero-warning claim."
+    },
+    {
+      "id": "clippy_four_packages",
+      "basename": "zhitai-merge-clippy-green-20261022.log",
+      "sha256": "cdab15abd3616e70e20ef9a3e77fd256a4e2b6528a90b74d750a93b7e4584981",
+      "scope": "rig/genai/http-client/model-provider Clippy with -D warnings",
+      "status": "completed_lint",
+      "last_test_summary": null,
+      "last_build_completion": "Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 09s",
+      "notes": "No test Summary; four-package lint only."
+    },
+    {
+      "id": "bazel_mod_deps_update",
+      "basename": "zhitai-merge-bazel-lock-20261022.log",
+      "sha256": "609948ab068a550ba9f0152a25d62fe8e7141bf2b0387d0e000fbaab42a78b95",
+      "scope": "Bazel mod deps with lockfile update",
+      "status": "completed_module_resolution",
+      "last_test_summary": null,
+      "reported_exit_code": 0,
+      "exit_code_source": "root tool observation",
+      "notes": "No test Summary; not a Bazel build or test suite."
+    },
+    {
+      "id": "bazel_mod_deps_strict",
+      "basename": "zhitai-merge-bazel-lock-check-20261022.log",
+      "sha256": "7bf99c3a5a33ddd10aefdf2a7d908572522bf2a8ccada896ff1b0533469f266e",
+      "scope": "Bazel mod deps --lockfile_mode=error",
+      "status": "completed_module_resolution",
+      "last_test_summary": null,
+      "reported_exit_code": 0,
+      "exit_code_source": "root tool observation",
+      "notes": "No test Summary; direct-dependency version warnings remain in log."
+    },
+    {
+      "id": "schema_stable_writer",
+      "basename": "zhitai-merge-schema-stable-20261022.log",
+      "sha256": "263a3e3fcfa32f89ecd20769318bf43062758994751f0882c8d4e412f965fda7",
+      "scope": "official stable schema fixture writer and SDK generation",
+      "status": "passed_selected_writer",
+      "last_test_summary": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 317 filtered out; finished in 7.84s",
+      "reported_exit_code": 0,
+      "exit_code_source": "root tool observation",
+      "notes": "One writer unit test passed; subsequent Python generation completed with format warnings."
+    },
+    {
+      "id": "schema_experimental_writer",
+      "basename": "zhitai-merge-schema-experimental-20261022.log",
+      "sha256": "51b1b10ac66198a22f032e835a0f8adcc94aba8d3041fc8b757db67c8eac04a4",
+      "scope": "official experimental schema fixture writer",
+      "status": "passed_selected_writer",
+      "last_test_summary": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 317 filtered out; finished in 9.76s",
+      "reported_exit_code": 0,
+      "exit_code_source": "root tool observation",
+      "notes": "One writer unit test passed; 317 filtered out."
+    },
+    {
+      "id": "runtime_expanded_88",
+      "basename": "zhitai-merge-runtime-final-20261022.log",
+      "sha256": "bcc2bbee5c24c8e1e4a8fef21f03e2c41addeacac824918e6ab12bc8588c629f",
+      "scope": "expanded core/app-server/exec-server runtime selection",
+      "status": "failed",
+      "last_test_summary": "Summary [  22.947s] 88 tests run: 86 passed, 2 failed, 3619 skipped",
+      "notes": "86 passed, 2 shutdown SIGABRT stack-overflow failures; final repair/validation pending."
+    },
+    {
+      "id": "runtime_resume_helper_5",
+      "basename": "zhitai-merge-resume-stack-20261022.log",
+      "sha256": "70f40c4638c8f96b14d9b135fd43f7079599aac6a56bd030645b19d0fa947a99",
+      "scope": "five exact startup/shutdown tests after resume-boundary change",
+      "status": "failed",
+      "last_test_summary": "Summary [   7.404s] 5 tests run: 3 passed, 2 failed, 3702 skipped",
+      "notes": "3 passed, 2 shutdown SIGABRT stack-overflow failures; 3702 skipped."
+    },
+    {
+      "id": "runtime_spawn_helper_5",
+      "basename": "zhitai-merge-session-init-stack-20261022.log",
+      "sha256": "c36a50204794a2453b51dfd65b3a195f7422ec69182aa343346c5bde940d309a",
+      "scope": "five exact startup/shutdown tests after session-init/spawn-helper change",
+      "status": "failed",
+      "last_test_summary": "Summary [   7.586s] 5 tests run: 3 passed, 2 failed, 3702 skipped",
+      "notes": "3 passed, 2 shutdown SIGABRT stack-overflow failures; 3702 skipped."
+    },
+    {
+      "id": "runtime_session_init_5",
+      "basename": "zhitai-merge-session-init-stack-20261022.log",
+      "sha256": "c36a50204794a2453b51dfd65b3a195f7422ec69182aa343346c5bde940d309a",
+      "scope": "intermediate concrete session-init boundary",
+      "status": "failed",
+      "last_test_summary": "Summary [   7.586s] 5 tests run: 3 passed, 2 failed, 3702 skipped",
+      "observed_exit_code": 100
+    },
+    {
+      "id": "runtime_turn_context_5",
+      "basename": "zhitai-merge-turn-context-stack-20261022.log",
+      "sha256": "9909abe3a164e58a6d54cd7db31e13484c5afbb204974326f2df5b9f4a472b4c",
+      "scope": "intermediate turn-context boundary",
+      "status": "failed",
+      "last_test_summary": "Summary [   6.008s] 5 tests run: 3 passed, 2 failed, 3702 skipped",
+      "observed_exit_code": 100
+    },
+    {
+      "id": "runtime_select_5",
+      "basename": "zhitai-merge-spawn-select-stack-20261022.log",
+      "sha256": "69c347513ae824165a5d4277a318b7646db7c10357554ecbc5ddf2b30483bd6c",
+      "scope": "intermediate startup-select boundary: four passed, one SIGABRT",
+      "status": "failed",
+      "last_test_summary": "Summary [   4.269s] 5 tests run: 4 passed, 1 failed, 3702 skipped",
+      "observed_exit_code": 100
+    },
+    {
+      "id": "runtime_metadata_5",
+      "basename": "zhitai-merge-metadata-stack-20261022.log",
+      "sha256": "267c8ab78ee8f74373f8d0e3c8ce3ff0a2ba317ea54629096255fb1ab8bc0f11",
+      "scope": "four shutdown/resume regressions plus guardian on original stacks",
+      "status": "passed",
+      "last_test_summary": "Summary [   3.814s] 5 tests run: 5 passed, 3702 skipped",
+      "observed_exit_code": 0
+    },
+    {
+      "id": "runtime_final_365",
+      "basename": "zhitai-merge-final-lifecycle-20261022.log",
+      "sha256": "1fbb206b689dd5e81a1f2f45910c9118592c384b68533b2fe9b8bcb9953b1fbd",
+      "scope": "final Core72 + app-server1 + exec-server17 + ThreadStore275",
+      "status": "passed",
+      "last_test_summary": "Summary [  30.062s] 365 tests run: 365 passed, 3617 skipped",
+      "observed_exit_code": 0
+    },
+    {
+      "id": "runtime_check_final",
+      "basename": "zhitai-merge-final-runtime-check-20261022.log",
+      "sha256": "a7f1fab68a02dd8dfc1e1f146cb9b272ce56c4b35786e9b5965f45780255b478",
+      "scope": "final core/app-server/cli/live-tests all targets, core/rust-rig",
+      "status": "check_passed",
+      "last_test_summary": null,
+      "observed_exit_code": 0
+    },
+    {
+      "id": "clippy_core_store_final",
+      "basename": "zhitai-merge-final-core-clippy-20261022.log",
+      "sha256": "55fa418dc453cc7b488348658bcea5fa545a0bc6f3ebbb880bc88b68a6f05f33",
+      "scope": "final Core/ThreadStore lib; both bridge features; -D warnings",
+      "status": "lint_passed",
+      "last_test_summary": null,
+      "observed_exit_code": 0
+    },
+    {
+      "id": "fmt_final",
+      "basename": "zhitai-merge-final-fmt-20261022.log",
+      "sha256": "e1a763a6948be186fd5054e98846993e8096e410f61f90d3d4843dcfb0399e68",
+      "scope": "cargo fmt --all --check; stable nightly-option notices only",
+      "status": "format_check_passed",
+      "last_test_summary": null,
+      "observed_exit_code": 0
+    }
+  ],
+  "additional_checks": [
+    {
+      "name": "rusty_v8_bazel check-module-bazel",
+      "scope": "V8 module consistency only",
+      "status": "completed_consistency_check",
+      "log": null,
+      "last_test_summary": null,
+      "reported_exit_code": 0,
+      "exit_code_source": "root tool observation"
+    },
+    {
+      "id": "staged_diff_whitespace",
+      "status": "passed_with_upstream_fixture_exception",
+      "commands": [
+        "git diff --cached --check -- . :(exclude)codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__hooks_browser_view__tests__hooks_browser_model_requests.snap",
+        "git diff main --check -- . :(exclude)my-docs/"
+      ],
+      "observed_exit_codes": [
+        0,
+        0
+      ],
+      "upstream_fixture_blob": "ee8751bf865a291476c04ad40f5721deac0cd220",
+      "notes": "Only the unchanged upstream fixed-width snapshot produces staged trailing-space diagnostics; working-tree and main blobs match. Historical TSV empty columns relative to main are not this merge delta."
+    }
+  ],
+  "linux_snapshots": [
+    {
+      "basename": "zhitai-linux-source-receipt-20261022.json",
+      "sha256": "8e46c19f8b18c3e019beee40d42234d6aec99dc3e7327b6643c8f15a01435049",
+      "captured_at": "2026-10-22T02:37:58.876628+00:00",
+      "rustc": "1.99.1 (58cf8f9c3 2026-10-13)",
+      "source_state": "uncommitted integration working tree",
+      "git_head": "387914de03ad00763839f67de04fc1e3d1a451fc",
+      "snapshot_summary": {
+        "initial_files_compared": 44,
+        "initial_mismatch_count": 0,
+        "final_files_compared": 45,
+        "final_mismatch_count": 0,
+        "mirror_has_git_metadata": false,
+        "final_comparison_at": "2026-10-22T02:52:31.741686+00:00"
+      },
+      "check": {
+        "command": "cargo check -p codex-linux-sandbox --lib --locked -j 4",
+        "exit_code": 0
+      },
+      "initial_test": {
+        "command": "cargo test -p codex-linux-sandbox --lib --locked -j 4",
+        "exit_code": 101,
+        "tests_executed": 0,
+        "reason": "core unified_exec ToolError::Codex missing Box"
+      },
+      "final_test": {
+        "command": "cargo test -p codex-linux-sandbox --lib --locked -j 4",
+        "exit_code": 0,
+        "passed": 168,
+        "failed": 0,
+        "binary_basename": "codex_linux_sandbox-37e1e8764d80d8ea",
+        "binary_sha256": "a73df2685b7c1db2c283ad65252830d8727a33affc34ff7a1ec418430fdf18ec"
+      },
+      "scope": "Captured Linux sandbox library snapshot; no final-HEAD or real bwrap-denial E2E claim."
+    },
+    {
+      "basename": "zhitai-linux-http-model-source-receipt-20261022.json",
+      "sha256": "f0b5a981e9bace6832afe1fc64ff14ceced26ec921d73bb998139bfa8cf1fb11",
+      "captured_at": "2026-10-22T03:10:15.458734+00:00",
+      "rust_toolchain": "1.99.1-x86_64-unknown-linux-gnu",
+      "nextest_version": "0.9.146",
+      "source_state": "uncommitted integration working tree",
+      "git_head": "387914de03ad00763839f67de04fc1e3d1a451fc",
+      "snapshot_summary": {
+        "files_compared": 10047,
+        "mismatch_count": 0,
+        "final_relevant_files_compared": 267,
+        "final_relevant_changes_since_snapshot": 0
+      },
+      "command": "CARGO_BUILD_JOBS=4 cargo nextest run -p codex-http-client -p codex-model-provider --lib --locked --retries 0 --no-fail-fast --test-threads 2",
+      "exit_code": 0,
+      "passed": 271,
+      "failed": 0,
+      "skipped": 0,
+      "per_package": {
+        "codex-http-client": 161,
+        "codex-model-provider": 110
+      },
+      "binary_sha256": {
+        "codex_http_client-49e93343f86c8626": "4f712c9cc1ba8c0d333a405a4fac06c1c88fa3284a54ede5796ea6dab953f24e",
+        "codex_model_provider-b06714e9c8f4dd85": "e1aa25849bc92ee9a922887ceb687cda5f45a0961686e0dd4fc22b1c4e35250e"
+      },
+      "scope": "Captured Linux library snapshot; 10047 source entries intentionally omitted; no final-HEAD claim."
+    }
+  ],
+  "ci_m1": {
+    "run_id": 39633345230,
+    "attempt": 2,
+    "job_id": 119602236907,
+    "head_sha": "29e7e59d520138107cee2ee18351a88f6995e185",
+    "last_reported_status": "in_progress",
+    "last_reported_step": "Test (workspace)",
+    "status_source": "fresh GitHub jobs API query by parent",
+    "runner_accepted_at": "2026-10-22T02:36:04Z",
+    "authorization": "one macOS job rerun only",
+    "merged_tree_validation": false,
+    "other_legs_rerun": false,
+    "other_legs": [
+      "Ubuntu",
+      "Windows",
+      "Bazel"
+    ],
+    "notes": "Old head uses Rust 1.95/V8 150. Existing completion timestamps for other legs are historical; terminal M1 verdict still pending.",
+    "observed_at_utc": "2026-10-22T04:13:42Z",
+    "runner_name": "GitHub Actions 1000024097",
+    "steps_count": 17,
+    "url": "https://github.com/nuwax-ai/codex/actions/runs/39633345230/job/119602236907",
+    "conclusion": null
+  },
+  "limits": [
+    "Only log metadata, real test summaries and selected source-receipt metadata are included; no environment files, credentials, model prompts or raw test payloads.",
+    "No Summary is represented as null and a limited check/lint/resolution status, never as a passing test.",
+    "No full workspace or full Bazel suite verdict; no merged-tree CI or release claim.",
+    "Final targeted tests, selected checks/lints/fmt and non-doc source fingerprint are complete; full workspace, real-provider/ACP/container acceptance of this merged tree, merged-tree CI, and independent sandbox/Windows items remain outside this receipt."
+  ],
+  "merge_identity": {
+    "fork_parent": "387914de03ad00763839f67de04fc1e3d1a451fc",
+    "main_parent": "342ed69a174c206c1de52a59491b131e0753cfa5",
+    "containing_commit_lookup": "git log -1 --format=%H -- my-docs/rig-production-completion-2026-10-10/receipts/2026-10-22-main-merge.json",
+    "notes": "Resolve the containing commit from Git after commit; embedding its own hash would create a self-reference."
+  },
+  "stack_diagnostics": {
+    "files_changed": 6,
+    "concrete_future_boundaries": 12,
+    "default_stack_contract": "unchanged; no RUST_MIN_STACK override; no detached task replacement",
+    "observations": [
+      {
+        "frame": "Session::spawn select dispatcher",
+        "before_kib_approx": 368.1,
+        "after_kib_approx": 135.5,
+        "measurement": "matching ARM64 binary prologues from successive intermediate builds"
+      }
+    ],
+    "limitations": "Static frames locate excessive wrappers; they are not a total dynamic peak or all-platform bound. CrashReport offsets were matched to each binary UUID. Earlier binaries were not retained."
+  }
+}

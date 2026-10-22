@@ -10,9 +10,10 @@ use std::sync::Arc;
 struct VersionedAuth;
 
 impl AuthProvider for VersionedAuth {
-    fn add_auth_headers(&self, headers: &mut HeaderMap) {
-        support::DummyAuth.add_auth_headers(headers);
+    fn add_auth_headers(&self, headers: &mut HeaderMap) -> Result<(), codex_api::AuthError> {
+        support::DummyAuth.add_auth_headers(headers)?;
         headers.insert("anthropic-version", HeaderValue::from_static("2025-01-01"));
+        Ok(())
     }
 }
 

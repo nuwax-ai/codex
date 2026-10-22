@@ -4956,7 +4956,49 @@ gh run view <runid> --json jobs \
 共 **6 笔**文档。`codex-rs/` 本轮净变化 **0**；
 本笔只动这一份 md，带 `[skip ci]`，不新增 CI 手。待拍＝上面 M1/M2/M3。
 
+## 6.54 Codex 复审：一次 M1 与 main 集成（2026-10-22）
+
+本节接续 §6.53，不改写 attempt1 的历史事实。用户明确授权按推荐选择后，
+Codex 选择 **M1**，只执行一次 POST：
+`repos/nuwax-ai/codex/actions/jobs/119337089947/rerun`，返回 `{}`。
+未重跑 failed jobs、未新 dispatch、未重复 M1。
+
+- 同一 run `39633345230` 进入 **attempt2**，head仍 **29e7e59d5**；
+  新 mac job **119602236907** 于 **02:36:04Z** 被
+  `GitHub Actions 1000024097` 接单，17个步骤，04:13:42Z只读状态为 `Test (workspace)`
+  进行中。因此“从未被runner执行”只描述attempt1，不再描述本次M1。
+- Ubuntu/Windows/Bazel 在attempt2 jobs列表中保留旧 completed_at，不能因job ID
+  改变就算它们又跑了一手。M1仍不验证本轮main合并树。
+- 进行中日志API曾返回404；runner和steps证明已执行，不能套用attempt1
+  “永久没有blob”的解释。终态后才按Summary与具体bootstrap判决读结果。
+  filter/period/terminate-after三项证据不足时继续标开放，不自动增加预算。
+
+**本轮main集成**：以zhitai副本 `test@387914de0` 为fork基线，fetch后核实真正新
+main为 **342ed69a1**（本地旧main原为cb03f28a4），合入其300笔新增提交，保留
+用户原6笔文档。Rust统一1.99.1、V8152.2.0，rig保持0.44.0。
+审查发现的鉴权Result传播、启动配置、Box错误分支、生成物与普通栈问题均按实际
+失败处理，不使用旧二进制/旧收据代替。
+
+本轮完整范围、首红和最终结果见
+[main集成复审记录](codex-main-merge-review-2026-10-22.md)；
+后续优先级已集中到 [ROADMAP](../ROADMAP.md)，执行提示词见
+[Claude下一轮](claude-next-main-merge-2026-10-22.md)。
+协议等六包1350/1350、Linux sandbox168/168及HTTP/model271/271、
+V8真实JS2/2等各自范围不能扩大成新合并树全平台/全workspace通过。
+本节最后的运行时修复与冻结结果以复审记录“最终验收补记”为准：最终365/365、
+Core/app-server/CLI/live-tests all-targets check、Core/ThreadStore Clippy -D warnings、
+fmt及scoped diff-check通过（main原样定宽快照尾空格例外见复审记录）。
+保留原栈/期限/断言，未跑完整workspace。
+
 ## 7. 提交、推送与工作树状态
+
+**2026-10-22 当前阶段优先读此条，以下旧指针为历史记录：** 本轮工作仅在
+`/Volumes/zhitai/git_workspace/fork-nuwax-codex`；main集成输入为387914de0与342ed69a1，
+以test最后一笔merge的两个父提交及复审记录核实阶段结果。原六笔文档保留，
+远端origin/test仍29e7e59d5；本轮没有push合并结果。唯一CI写操作是用户授权的一次
+M1（§6.54），不代表新main已跑完整CI。后续Claude先读ROADMAP与新交接，不再把
+本节旧历史中的“本轮/当前/待拍”直接当作今天状态。
+
 
 
 - **工作副本（接手时核实，与交接文档不一致处以实际为准）**：`nuwax-ai/codex` 在

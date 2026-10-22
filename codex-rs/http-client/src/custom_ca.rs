@@ -6,6 +6,8 @@
 //! `reqwest::ClientBuilder` or rustls client config, layer in custom CA support, and either get
 //! back a configured transport or a user-facing error that explains how to fix a misconfigured CA
 //! bundle.
+//! Websocket native roots retain the fork's bounded-staleness cache. Windows proxy TLS
+//! coalesces only in-flight native-root reads; both paths reread custom CA files on each build.
 //!
 //! The module intentionally has a narrow responsibility:
 //!
@@ -55,6 +57,7 @@ use crate::native_roots_cache::PRODUCTION_NATIVE_ROOTS_CACHE;
 use crate::native_roots_cache::SSL_CERT_DIR_ENV;
 use codex_utils_rustls_provider::ensure_rustls_crypto_provider;
 use rustls::ClientConfig;
+use rustls::RootCertStore;
 use rustls_pki_types::CertificateDer;
 use rustls_pki_types::pem::PemObject;
 use rustls_pki_types::pem::SectionKind;
@@ -271,7 +274,6 @@ fn build_rustls_client_config_with_native_roots(
     cache: &NativeRootsCache,
 ) -> Result<Arc<ClientConfig>, BuildCustomCaTransportError> {
     ensure_rustls_crypto_provider();
-
     let source_key = NativeRootsSourceKey::from_env_values(
         env_source.var_os(SSL_CERT_FILE_ENV),
         env_source.var_os(SSL_CERT_DIR_ENV),
@@ -280,37 +282,53 @@ fn build_rustls_client_config_with_native_roots(
     // they would get from tungstenite's default rustls connector, then layer in the Codex custom
     // CA bundle on top when configured. The bundle extends a private clone, never the cache.
     let native_roots = cache.load(source_key, load_native_roots, now);
-    let root_store = match bundle {
-        None => native_roots,
-        Some(bundle) => {
-            let mut root_store = native_roots.as_ref().clone();
-            let certificates = bundle.load_certificates()?;
-            for (idx, cert) in certificates.into_iter().enumerate() {
-                if let Err(source) = root_store.add(cert) {
-                    warn!(
-                        source_env = bundle.source_env,
-                        ca_path = %bundle.path.display(),
-                        certificate_index = idx + 1,
-                        error = %source,
-                        "failed to register CA certificate in rustls root store"
-                    );
-                    return Err(BuildCustomCaTransportError::RegisterRustlsCertificate {
-                        source_env: bundle.source_env,
-                        path: bundle.path.clone(),
-                        certificate_index: idx + 1,
-                        source,
-                    });
-                }
-            }
-            Arc::new(root_store)
-        }
-    };
-
     Ok(Arc::new(
         ClientConfig::builder()
-            .with_root_certificates(root_store)
+            .with_root_certificates(extend_roots_with_custom_ca(native_roots, bundle)?)
             .with_no_client_auth(),
     ))
+}
+
+#[cfg(windows)]
+pub(crate) fn build_rustls_root_store_with_custom_ca()
+-> Result<RootCertStore, BuildCustomCaTransportError> {
+    // Proxy authentication keeps upstream's fresh-root policy; custom bundles
+    // use the same parse/error/isolation semantics as the cached websocket path.
+    let roots = extend_roots_with_custom_ca(
+        crate::native_roots::load(),
+        ProcessEnv.configured_ca_bundle().as_ref(),
+    )?;
+    Ok(roots.as_ref().clone())
+}
+
+fn extend_roots_with_custom_ca(
+    native_roots: Arc<RootCertStore>,
+    bundle: Option<&ConfiguredCaBundle>,
+) -> Result<Arc<RootCertStore>, BuildCustomCaTransportError> {
+    let Some(bundle) = bundle else {
+        return Ok(native_roots);
+    };
+    let mut root_store = native_roots.as_ref().clone();
+    let certificates = bundle.load_certificates()?;
+    for (idx, cert) in certificates.into_iter().enumerate() {
+        if let Err(source) = root_store.add(cert) {
+            warn!(
+                source_env = bundle.source_env,
+                ca_path = %bundle.path.display(),
+                certificate_index = idx + 1,
+                error = %source,
+                "failed to register CA certificate in rustls root store"
+            );
+            return Err(BuildCustomCaTransportError::RegisterRustlsCertificate {
+                source_env: bundle.source_env,
+                path: bundle.path.clone(),
+                certificate_index: idx + 1,
+                source,
+            });
+        }
+    }
+
+    Ok(Arc::new(root_store))
 }
 
 /// Builds a reqwest client using an injected environment source and reqwest builder.

@@ -15,7 +15,7 @@ struct RefreshingAuth {
 }
 
 impl AuthProvider for RefreshingAuth {
-    fn add_auth_headers(&self, _: &mut HeaderMap) {
+    fn add_auth_headers(&self, _: &mut HeaderMap) -> Result<(), codex_api::AuthError> {
         panic!("outbound requests must use resolved authentication");
     }
 
@@ -71,7 +71,7 @@ struct RotatingAuth {
 }
 
 impl AuthProvider for RotatingAuth {
-    fn add_auth_headers(&self, _: &mut HeaderMap) {
+    fn add_auth_headers(&self, _: &mut HeaderMap) -> Result<(), codex_api::AuthError> {
         panic!("outbound requests must resolve current authentication");
     }
 
@@ -138,7 +138,7 @@ struct GatewayAuth {
 }
 
 impl AuthProvider for GatewayAuth {
-    fn add_auth_headers(&self, headers: &mut HeaderMap) {
+    fn add_auth_headers(&self, headers: &mut HeaderMap) -> Result<(), codex_api::AuthError> {
         headers.insert(
             http::header::AUTHORIZATION,
             HeaderValue::from_static("Basic dummy-gateway"),
@@ -147,6 +147,7 @@ impl AuthProvider for GatewayAuth {
             self.model_key_header,
             HeaderValue::from_static("dummy-model-key"),
         );
+        Ok(())
     }
 }
 
@@ -172,7 +173,7 @@ async fn gateway_authorization_is_preserved_with_separate_model_keys() {
 }
 
 impl AuthProvider for ConflictingAuth {
-    fn add_auth_headers(&self, _: &mut HeaderMap) {
+    fn add_auth_headers(&self, _: &mut HeaderMap) -> Result<(), codex_api::AuthError> {
         panic!("auth errors must not fall back to the synchronous snapshot");
     }
 

@@ -72,7 +72,7 @@ jobs:
 
       # Match codex-rs/rust-toolchain.toml so local receipts and CI use the
       # same compiler instead of silently moving with stable releases.
-      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: dtolnay/rust-toolchain@1.99.1
         with:
           components: rustfmt, clippy
 
@@ -114,11 +114,9 @@ jobs:
         with:
           tool: cargo-nextest,just
 
-      # The pinned v8 150.4.0 requests ptrcomp_sandbox prebuilt archives
-      # that denoland never published for that release; the Codex-built
-      # paired artifacts under this repository's release tags carry the
-      # matching binaries, verified against the in-repo trusted manifest
-      # (third_party/v8/rusty_v8_150_4_0_release_manifests.sha256).
+      # Use the archive/binding pair for the V8 version pinned by Cargo.lock,
+      # verified against the matching trusted release manifest in third_party/v8.
+      # The setup action resolves the version instead of hard-coding a release.
       - name: Setup rusty_v8 paired artifacts
         uses: ./.github/actions/setup-rusty-v8
         with:
@@ -227,7 +225,7 @@ jobs:
           Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free, Root
 
       # Keep this aligned with codex-rs/rust-toolchain.toml and the Unix lane.
-      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: dtolnay/rust-toolchain@1.99.1
 
       - uses: Swatinem/rust-cache@v2
         with:

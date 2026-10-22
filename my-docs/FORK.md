@@ -1,14 +1,28 @@
 # FORK.md — nuwax-codex 与官方 codex 的逻辑差异
 
 维护说明：本文是 fork 行为差异的权威索引。改动 fork 行为时同步更新本文与
-`codex-review-prompt.md`（§二 补丁面清单）。上游基线：`29f056c26`（2026-09-24）。
+`codex-review-prompt.md`（§二 补丁面清单）。2026-10-22 的上游同步目标为
+`main@342ed69a1`，Rust `1.99.1`、V8 `152.2.0`，rig保持`0.44.0`；合并冲突已解，
+阶段合并保存在本地test，定向验收完成；未push，不用旧实网或CI宣称新树全部通过。
+当前优先级与本轮验证快照见 [ROADMAP.md](ROADMAP.md)，
+历史执行证据见 [最新验收台账](rig-production-completion-2026-10-10/claude-rig-final-acceptance-2026-10-18.md)。
 npm 包：`nuwax-codex`（二进制名同）；ACP 侧配套包：`@nuwax-ai/nuwax-codex-acp-ts`。
 
 ## 1. fork 的使命
 
 让 codex 支持中国厂商（GLM / MiMo / StepFun / DeepSeek / Ollama 等）：他们的
 API 是 OpenAI Chat / OpenAI Responses / Anthropic Messages 三种线协议的兼容网关。
-fork 通过"桥"（bridge）层做协议转换，官方 codex 只支持第一方 OpenAI。
+fork 通过 rig 桥统一第三方模型的协议转换、传输与会话生命周期；Responses
+同协议接入保留透传路径。模型的工具、视觉、推理和窗口能力仍需逐项配置。
+
+本轮协议/桥接六包合同1350/1350通过（另1个schema专用跳过）、四包Clippy严格检查
+及最终运行时/存储365/365已有证据；shutdown/startup暴露的SIGABRT已通过具体future
+装箱修复，原默认栈/期限/断言不变。Mac152.2.0配对V8按官方action清单链校验并用于
+构建，Code Mode真实JS2/2通过；最终Core/app-server/CLI/live-tests all-targets check
+也通过。Linux168/271是各自源码快照的定向结果，不是最终HEAD整体/实网验收。
+
+一次获授权的M1只重跑旧head29e7e59d5的mac job，现已接单并进入workspace测试；
+它不能验收新main集成树。本轮阶段保存不包含push、新CI或发布。
 
 ## 2. 配置目录：分层 CODEX_HOME（v0.18.7+）
 
@@ -35,7 +49,7 @@ fork 通过"桥"（bridge）层做协议转换，官方 codex 只支持第一方
 
 ### 3.2 双桥 + 逃生舱
 
-`experimental_bridge`（fork 字段）：`"rig"`（默认，rig-core =0.42.0）/
+`experimental_bridge`（fork 字段）：`"rig"`（默认，rig-core / rig-reqwest `=0.44.0`）/
 `"genai"`（备用，rust-genai 0.6.5）/`"native"`（强制官方原生传输，调试用）。
 
 桥的中立 trait 在 `codex-api/src/bridge.rs`（`ModelBridge` / `ModelWireProtocol`，
@@ -52,7 +66,8 @@ cli/exec/app-server 二进制启用。
 ### 3.4 Responses 同协议透传（rig 桥内）
 
 第三方 Responses wire 不做协议转换：请求类型级 clone（仅跨协议历史投影剥
-reasoning envelope）→ 原样序列化 → rig `post_sse` + `send_streaming`（建流也受
+reasoning envelope）→ 序列化并设置有效输出 cap → 构造 HTTP 请求，经 rig
+`HttpClientExt::send_streaming`（0.44 已无 provider `post_sse` builder；建流也受
 idle timeout 包裹）→ 原始 SSE 进 codex-api 完整解码器，**严格终止策略**
 （`codex-api/src/sse/responses_policy.rs`：顶层 error/failed/incomplete 即停、
 畸形帧报错、[DONE] 容忍）。官方原生路径的宽松策略不变。Authorization 在 rig
@@ -75,7 +90,7 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
   cached → 新增 `ProviderCapabilities.cached_web_search`，默认 cached 在此类线
   上降级为 Disabled（此前字段丢弃翻译会让 GLM 实际执行 live 搜索，与配置模式
   相反）。需要搜索请显式 `web_search = "live"`。
-- 响应侧：rig 0.42 公开流式面不暴露 `server_tool_use`，transport 层 tee 原始
+- 响应侧：当前 rig 0.44 转换路径仍借助 transport 层 tee 原始
   SSE（`anthropic_sse_tee`，eventsource-stream 解帧），流泵在 Completed 前回收
   web-search 块 → `WebSearchCall` 条目（兼容 GLM 的 `web_search_prime` 改名、
   `search_query` 字段、非标准 assistant 侧 `tool_result` 块）。
@@ -108,23 +123,25 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
   阵收敛为 `["glm"]`，网关支持后加回。pause_turn：三家网关均未产生（本轮全
   部 live 日志零命中），覆盖以离线 wire 测试为准。
 
-阶段 D 完整验收和后续任务见 `my-docs/codex-review-2026-10-01.md`；当前不能
-宣称跨厂商搜索载荷兼容、完整暂停保真或混合 server/client 轮全部完成。
+阶段 D 的早期设计与证据见 `my-docs/codex-review-2026-10-01.md`。暂停保真及混合轮
+已有离线 wire 合同，真实厂商支持仍按上述能力边界分别判断；不能把离线通过扩大
+成三家网关都真实产生过 pause_turn。当前版本的字段处置和验收范围以
+[最新台账 §2、§4](rig-production-completion-2026-10-10/claude-rig-final-acceptance-2026-10-18.md) 为准。
 
 设计：`my-docs/anthropic-hosted-tools/`。
-### 三协议字段契约（2026-10-01，R4）
+### 三协议字段契约（2026-10-22 源码核对，合并后验收待补）
 
 fork 明确每个跨协议字段在三条线（Responses passthrough / Chat / Anthropic）
 上的语义，避免"开关在一条线生效、另一条静默丢失"：
 
 | 字段/能力 | Responses passthrough | Chat 桥 | Anthropic 桥 |
 |---|---|---|---|
-| `max_output_tokens` | **忽略**（逐字透传，不注入） | 映射 `max_tokens` | 映射 `max_tokens`；未配置默认 16384 |
+| `max_output_tokens` | 请求值优先，否则采用 provider 值；两者未设则省略 | 映射 `max_tokens`（Rig 可按模型转为 `max_completion_tokens`） | 映射 `max_tokens`；未配置默认 16384 |
 | `hosted_results_replay` | 不适用（无桥回放） | 不适用 | false 时整体关闭回放（含旧格式） |
-| reasoning effort/summary | 原样 | 映射 reasoning_effort（best-effort） | none→`thinking:disabled`；其余映射 effort |
-| structured output | 原样 | `output_config.format` 原样 schema | 同 Chat |
-| usage/缓存计数 | 原样 | usage 映射（无 cache 计数） | 含 cache 计数（首帧/增量语义） |
-| 重试/限流 | codex-api 层 | rig 层 + provider request/stream_max_retries | 同 Chat |
+| reasoning effort/summary | 同协议字段保留 | effort 映射 `reasoning_effort`；summary/context 无等价字段，不转发 | 按 Messages 的 thinking/effort 语义映射；不承诺 OpenAI summary/context |
+| structured output | 同协议字段保留 | `response_format.json_schema` 保留 schema/name/strict | `output_config.format` 保留 schema；无 name/strict 等价字段 |
+| usage/缓存计数 | 同协议解码，保留字段 presence | 保留缺失/部分/显式零及可用 cache 计数 | 保留 start/delta、cache 和显式零语义，避免重复加计 |
+| 重试/限流 | 受 provider 配置及 Core 采样策略约束 | 桥传输/流重试与 Core 采样分层；无统一总尝试数保证 | 同 Chat |
 | web_search 模式 | 原样（含 cached/indexed） | 丢弃声明（无 hosted 概念） | 仅 live；cached/indexed fail-fast |
 | `parallel_tool_calls` | 原样 | 原样 | hosted-only 时还原 tool_choice 并关 parallel |
 
@@ -134,6 +151,21 @@ capability 决定，而 Chat/Anthropic 桥线在请求翻译处 fail-fast。按�
 的精细能力矩阵仍为登记项（R5 追踪），本轮未改默认搜索策略。
 
 
+
+### 图片与附件的边界
+
+MCP typed image、Code Mode `image()` 与用户图片走准备、图文共享预算及最终
+wire 检查，再进入 Chat `image_url`、Responses `input_image` 或 Anthropic
+base64 `source`。编码是图片载荷，不按普通文本逐字符估算，但仍计视觉 token
+与请求字节；把 Base64 塞进 text/JSON 字符串仍按文本处理。工具图有数量/单图/
+聚合上限，完整请求有 32 MiB 上限；视觉估计只是跨模型近似，不是厂商 tokenizer。
+
+默认 AttachmentStore 的 `upload()` 不代表已接入远端 Files API；通用 PDF/Files
+生命周期及输出多模态不是截图支持的完成前提。`structuredContent` 与同结果
+typed 媒体已可并存；原图跨协议转换预算及普通图混合的下界已有定向修复，
+其历史验收不代替本次 main 合并后的复验。详见
+[字段与图片说明](rig-production-completion-2026-10-10/rig-field-image-closure-2026-10-18.md)
+和最新台账。
 
 ## 5. 上下文压缩（compact）
 
@@ -222,21 +254,24 @@ daemon 子进程同样剥离该变量；doctor 的 `config.model_routing` 收据
 
 ## 9. 差异未及之处
 
-除上述外（沙箱、审批、MCP、TUI、profile v2、配置 schema 主体等）行为与官方
-一致。fork 补丁面全景见 `codex-review-prompt.md` §二；设计文档见
+不能再把沙箱、审批、MCP、TUI 等整体标为与官方完全一致：后续已有后台模型选择、
+退出清理、图片入口以及Linux沙箱deny顺序等修复。`/dev`符号链接mask仍有启动abort，
+`/proc/self/environ`及`/proc/net`的已知可读边界仍需独立安全修复，不能归为抖动。
+当前补丁与未闭合安全边界
+见 [ROADMAP.md](ROADMAP.md) 和最新台账；补丁索引仍见 `codex-review-prompt.md` §二。设计文档见
 `my-docs/nuwax-home/`、`my-docs/anthropic-hosted-tools/`、
 `my-docs/rig-responses-phase1|2/`。
 
-## 10. 已知局限（非缺陷，已定位或有规划）
+## 10. 已知限制与历史修复
 
 | 局限 | 坐标/依据 | 状态 |
 |---|---|---|
 | Chat/Anthropic 输出预算可通过 provider.max_output_tokens 配置；Anthropic 未配置时仍默认 16384，Responses typed HTTP/WS、Rig passthrough 与预算已采用该字段 | `codex-rust-rig-bridge/src/stream.rs`、`client.rs` | 三协议已接线；验收见 `provider-request-controls-2026-10-03/tasks.md` |
 | 无 Anthropic prompt caching（`cache_control`） | 桥内零出现（grep 实证） | backlog |
-| 普通 TLS 客户端复用且请求头按轮注入；自定义 CA 仍专用构建 | `codex-rust-rig-bridge/src/client.rs`、`transport.rs` | 已修复全局缓存按每轮 header 永久增长的问题；取消和长会话验收待做 |
-| 搜索原始结果的来源身份、恢复上限、混合轮跨响应配对已加入当前工作树；厂商级全场景验收仍未完成 | `hosted_replay.rs`、`hosted_replay_budget.rs`、`model_output_projection.rs` | 定向与真实请求的范围见 `rig-stability-next/direct-development-2026-10-03-targeted-validation.md` |
+| 普通 TLS 客户端复用且请求头按轮注入；自定义 CA 仍专用构建 | `codex-rust-rig-bridge/src/client.rs`、`transport.rs` | 取消与连续工作流已有定向/实网证据；本次 main 合并后重新验收受影响部分 |
+| 搜索来源身份、恢复上限、混合轮配对已入库；厂商能力仍分别受限 | `hosted_replay.rs`、`hosted_replay_budget.rs`、`model_output_projection.rs` | 离线 wire 与真实厂商证据分开，不能把 GLM 搜索支持扩大至 MiMo/Step |
 | 病态网关"HTTP 200 + 非 SSE JSON 错误体"两线均 EOF 丢体 | `sse.rs` EOF 路径；三家目标厂商 live 未见此行为 | 已知边界（可选加固：EOF 时附 body 摘要） |
-| 测试序列化兜底 `unwrap_or_default()` 仅在工具 schema >128 层嵌套时可达（静默零工具） | `request_tools.rs:41-47`（serde_json 递归深度限制，实测无现实 schema 可触发） | P3 nit（debug_assert） |
+| raw 工具定义转换失败或整数超出精确可表示范围 | `request_tools.rs::request_tools` | 已改为 `InvalidRequest`，不再 panic/清空工具表/近似化整数；不是仍待修的 nit |
 
 阶段 D（搜索结果持久化/pause_turn/混合轮）已立项：Spec 见
 `phase-d-spec.md`，Plan 见 `phase-d-plan.md`（2026-10-01）。

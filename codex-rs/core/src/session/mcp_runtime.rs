@@ -39,6 +39,7 @@ impl Session {
         next: &SessionConfiguration,
     ) -> bool {
         current.cwd() != next.cwd()
+            || current.runtime_workspace_roots != next.runtime_workspace_roots
             || current.step_settings.approval_policy.value()
                 != next.step_settings.approval_policy.value()
             || current.step_settings.approvals_reviewer != next.step_settings.approvals_reviewer
@@ -79,19 +80,9 @@ impl Session {
                 state.active_disabled_plugin_ids.clone(),
             )
         };
-        let cwd = environments
-            .primary()
-            .and_then(|environment| environment.cwd().to_abs_path().ok())
-            .unwrap_or_else(|| session_configuration.cwd().clone());
-        let config = self.build_per_turn_config(
-            &session_configuration,
-            cwd,
-            environments.primary_workspace_roots(),
-        );
-        let local_process_cwd = environments
-            .local_environment_cwd()
-            .unwrap_or_else(|| session_configuration.cwd().clone())
-            .to_path_buf();
+        let config =
+            self.build_per_turn_config(&session_configuration, environments.local_selection());
+        let local_process_cwd = config.cwd.to_path_buf();
 
         McpDesiredState {
             config: Arc::new(config),
@@ -111,19 +102,12 @@ impl Session {
         auth: Option<CodexAuth>,
         mcp_projection: McpRuntimeProjection,
         resolved_environments: &TurnEnvironmentSnapshot,
-        mcp_runtime_cwd: PathBuf,
     ) -> anyhow::Result<()> {
-        let cwd = AbsolutePathBuf::from_absolute_path(mcp_runtime_cwd)
-            .unwrap_or_else(|_| session_configuration.cwd().clone());
         let config = self.build_per_turn_config(
             session_configuration,
-            cwd,
-            resolved_environments.primary_workspace_roots(),
+            resolved_environments.local_selection(),
         );
-        let local_process_cwd = resolved_environments
-            .local_environment_cwd()
-            .unwrap_or_else(|| session_configuration.cwd().clone())
-            .to_path_buf();
+        let local_process_cwd = config.cwd.to_path_buf();
         let desired = McpDesiredState {
             config: Arc::new(config),
             auth,
@@ -134,16 +118,20 @@ impl Session {
             local_process_cwd,
             disabled_plugin_ids: session_configuration.disabled_plugin_ids.clone(),
         };
-        self.publish_mcp_runtime(
-            &desired,
-            mcp_projection,
-            /*ready_selected_capability_roots*/ &[],
-            Some(self.mcp_elicitation_reviewer()),
+        // Publishing carries the MCP replacement state; keep it out of this
+        // startup wrapper's debug poll frame on ordinary executor stacks.
+        Box::pin(
+            self.publish_mcp_runtime(
+                &desired,
+                mcp_projection,
+                /*ready_selected_capability_roots*/ &[],
+                Some(self.mcp_elicitation_reviewer()),
+            )
+            .instrument(info_span!(
+                "session_init.mcp_manager_init",
+                otel.name = "session_init.mcp_manager_init",
+            )),
         )
-        .instrument(info_span!(
-            "session_init.mcp_manager_init",
-            otel.name = "session_init.mcp_manager_init",
-        ))
         .await;
 
         self.services.mcp_runtime.validate_required_servers().await
@@ -157,7 +145,13 @@ impl Session {
         mut projection: McpRuntimeProjection,
     ) -> BoxFuture<'a, McpRuntimeProjection> {
         Box::pin(async move {
-            if self.isolation == codex_extension_api::SessionIsolation::Isolated {
+            if self.isolation == codex_extension_api::SessionIsolation::Isolated
+                || self
+                    .services
+                    .mcp_thread_init
+                    .get::<crate::mcp::McpServersDisabled>()
+                    .is_some()
+            {
                 return projection;
             }
 
@@ -302,9 +296,11 @@ impl Session {
             ready_selected_capability_roots,
             elicitation_reviewer,
         );
-        AuthStorageOriginator::from_client_name(&desired.originator)
-            .scope(self.services.mcp_runtime.replace(input))
-            .await;
+        Box::pin(
+            AuthStorageOriginator::from_client_name(&desired.originator)
+                .scope(self.services.mcp_runtime.replace(input)),
+        )
+        .await;
         self.services.thread_extension_data.insert(selected_plugins);
     }
 

@@ -45,7 +45,9 @@ async fn startup_config_fallback_preserves_environment_provider_seeds() -> Resul
                 .await
                 .is_err()
         );
-        let config = manager.load_startup_config(/*fallback_cwd*/ None).await?;
+        let startup = manager.load_startup_config(/*fallback_cwd*/ None).await?;
+        assert!(startup.used_defaults);
+        let config = startup.config;
         assert_eq!(
             (
                 config.model_provider_id.as_str(),

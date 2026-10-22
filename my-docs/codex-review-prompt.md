@@ -1,15 +1,15 @@
 # Codex Fork 整体 Review 提示词
 
-> 2026-09-25 修复说明：当前字段与验证边界以 [field-mapping-audit.md](field-mapping-audit.md) 为准。Rig-event cassette 仅回放 SDK 中间事件；最终 HTTP 字段另由本地 wire 集成测试验证。
+> 2026-10-22 接手入口：当前状态与优先级以 [ROADMAP.md](ROADMAP.md)、[FORK.md](FORK.md) 和[最新验收台账](rig-production-completion-2026-10-10/claude-rig-final-acceptance-2026-10-18.md) 为准。下文保留历史审查结构，旧测试数字/发布信息不是新 main 合并树的验收结论。Rig-event cassette 仅回放 SDK 中间事件；最终 HTTP 字段另由本地 wire 集成测试验证。
 
 > 用途:交给 AI agent(或新同事)对 nuwax-ai/codex fork 做整体方案与代码审查。
-> 仓库:`/Users/soddy/Documents/git-rust-work/fork-codex`(branch: test,已发布 npm `nuwax-codex@0.17.9`)。
+> 当前仓库：`/Volumes/zhitai/git_workspace/fork-nuwax-codex`，分支 `test`。不使用旧 soddy 卷源码或旧 worktree 作为本轮基线。
 
 ---
 
 ## 一、项目背景与目标
 
-这是 **OpenAI codex CLI 的 fork**(基线:upstream 主线 2026-09-24,commit 29f056c26 附近),
+这是 **OpenAI codex CLI 的 fork**（本轮上游同步目标 `main@342ed69a1`，Rust 1.99.1 / V8 152.2.0），
 核心使命:**让 codex 能接入国内/第三方大模型厂商**(小米 MiMo、智谱 GLM、阶跃 StepFun、
 DeepSeek、Ollama 等),并通过 npm 以 `nuwax-codex` 包名独立发布。
 
@@ -25,7 +25,7 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
 
 | 路径 | 作用 |
 |---|---|
-| `codex-rs/codex-rust-rig-bridge/` | **默认桥**。基于 rig-core =0.42.0(精确锁版本),把 `ResponsesApiRequest` 转成 rig `CompletionRequest`(OpenAI Chat Completions 或 Anthropic Messages),流式转回 codex `ResponseEvent`。核心文件:`convert_request.rs`(请求映射)、`convert_response.rs`(响应/流事件映射)、`stream.rs`(流泵+错误映射)、`client.rs`(rig 客户端构造)、`bridge_impl.rs`(trait 实现) |
+| `codex-rs/codex-rust-rig-bridge/` | **默认桥**。基于 rig-core =0.44.0(精确锁版本),把 `ResponsesApiRequest` 转成 rig `CompletionRequest`(OpenAI Chat Completions 或 Anthropic Messages),流式转回 codex `ResponseEvent`。核心文件:`convert_request.rs`(请求映射)、`convert_response.rs`(响应/流事件映射)、`stream.rs`(流泵+错误映射)、`client.rs`(rig 客户端构造)、`bridge_impl.rs`(trait 实现) |
 | `codex-rs/codex-rust-genai-bridge/` | 备用桥(基于 rust-genai 0.6.5)。**已降级为回退选项**,配置 `experimental_bridge = "genai"` 才启用。结构与 rig 桥同构 |
 | `codex-rs/live-tests/` | 独立集成测试 crate(不耦合业务代码)。三厂商(MiMo/GLM/StepFun)× 两桥 × 多场景的真实模型测试矩阵 + 编译产物 E2E + 录制回放 cassette + A/B diff。凭据从 gitignored 的 `.env.local` 读 |
 
@@ -57,8 +57,8 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
    - `experimental_bridge` 可显式选 `"rig"`(默认)/`"genai"`/`"native"`(强制原生,逃生舱)
 2. **trait 隔离**:`codex-api::ModelBridge` 是唯一契约,两桥以单元结构体实现;
    core 的 `dispatch_model_bridge` 只见 `&dyn ModelBridge`。
-3. **rig 版本策略**:`rig-core = "=0.42.0"` 精确锁定(rig 上游高频 breaking,0.42 之后
-   5 周 44 个破坏性变更);升级只动 rig-bridge 一个 crate。
+3. **rig 版本策略**：`rig-core` / `rig-reqwest = "=0.44.0"` 精确锁定。此次合并保持该版本，
+   SDK 升级须另做协议/历史/最终出站回归，不能以本地 rig checkout 的 HEAD 替代锁定源码。
 4. **双 reqwest 共存**:workspace 其他部分用 reqwest 0.12,rig-bridge 以重命名依赖
    `reqwest_rig`(package = "reqwest", version = "0.13")使用 rig 内嵌的 0.13,类型不跨界。
 5. **事件契约**(桥必须保证,测试断言钉死):`OutputItemAdded` 先于增量;
@@ -66,7 +66,8 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
    工具参数最终值与流式增量拼接**字节一致**;401/5xx 必须以 `Http{status}` **启动错误**
    形态返回(rig 会把 HTTP 失败延迟到流内,桥做了"急切拉取首个流事件"修复,否则
    core 的重登录循环永不触发)。
-6. **字段映射审计**:以 `my-docs/field-mapping-audit.md` 的当前实现表为准。
+6. **字段映射审计**：以最新验收台账 §2 与 [FORK.md](FORK.md) 的当前处置为准；
+   `field-mapping-audit.md` 是旧版历史记录。
    区分协议限制、SDK 归一化损失和桥尚未实现；store、ServerModel、request ID 等
    已能保留，不能再统一归类为 inherent 丢失。旧实施方案 §12 仅作历史记录。
 
@@ -80,17 +81,16 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
 - **cassette**:`LIVE_CASSETTE=record` 录制 fixtures → `replay` 无凭据离线回归(0.1s)
 - **厂商限流实测数据**(并发治理依据):MiMo 账户级**并发≤5**(`concurrency reached,
   current: 6, limit: 5`);GLM coding plan **请求频率配额**(code 1302)。
-  对策:.config/nextest.toml 按厂商分组(`test(~vendor)` 正则——注意 `test(name)` 是
-  精确匹配),组内串行、组间并行,重试 3 次/15s 退避
+  对策:.config/nextest.toml 按厂商分组（`test(~vendor)` 正则，`test(name)` 默认子串匹配，
+  精确匹配使用 `test(=name)`），组内串行、组间并行。真实预算与重试次数以本轮账本为准。
 - 运行:`cargo build -p codex-exec --bin codex-exec && cargo nextest run -p codex-live-tests`
 
 ## 五、审查重点(请重点检查这些)
 
 1. **正确性**:
-   - rig 桥的 convert_request/convert_response 映射是否正确(对照 rig-core 0.42.0 源码,
-     位于 `~/.cargo/registry/src/*/rig-core-0.42.0/`;另有完整 git 克隆在
-     `/Users/soddy/Documents/git-workspace/rig`,但注意其 HEAD 领先 0.42.0 tag 一百多个
-     提交,以 registry 里的 0.42.0 为准)
+   - rig 桥的 convert_request/convert_response 映射是否正确(对照锁定的 rig-core 0.44.0 源码，
+     位于 `~/.cargo/registry/src/*/rig-core-0.44.0/`；参考 checkout 在
+     `/Volumes/soddy/git_workspace/rig`，但以 Cargo.lock 锁定内容为准)
    - 事件契约五条(见三.5)是否有遗漏场景(如:并行工具、流中断、超长参数)
    - `stream_via_rig` 的急切首事件 + mpsc 泵逻辑:`next_event` 预取模式是否有竞态或
      事件丢失/乱序风险;`Created` 合成的位置

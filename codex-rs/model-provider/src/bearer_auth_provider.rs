@@ -57,20 +57,12 @@ impl AuthProvider for BearerAuthProvider {
         })
     }
 
-    fn add_auth_headers(&self, headers: &mut HeaderMap) {
-        if let Some(token) = self.token.as_ref()
-            && let Ok(header) = HeaderValue::from_str(&format!("Bearer {token}"))
-        {
-            let _ = headers.insert(http::header::AUTHORIZATION, header);
-        }
-        if let Some(account_id) = self.account_id.as_ref()
-            && let Ok(header) = HeaderValue::from_str(account_id)
-        {
-            let _ = headers.insert("ChatGPT-Account-ID", header);
-        }
-        if self.is_fedramp_account {
-            let _ = headers.insert("X-OpenAI-Fedramp", HeaderValue::from_static("true"));
-        }
+    fn add_auth_headers(&self, headers: &mut HeaderMap) -> Result<(), codex_api::AuthError> {
+        let resolved = self.immutable_credential_headers().ok_or_else(|| {
+            codex_api::AuthError::Build("invalid bearer authentication header".into())
+        })?;
+        headers.extend(resolved);
+        Ok(())
     }
 }
 
@@ -88,7 +80,7 @@ mod tests {
         };
 
         assert_eq!(
-            codex_api::auth_header_telemetry(&auth),
+            codex_api::auth_header_telemetry(&auth).unwrap(),
             codex_api::AuthHeaderTelemetry {
                 attached: true,
                 name: Some("authorization"),
@@ -101,7 +93,7 @@ mod tests {
         let auth = BearerAuthProvider::for_test(Some("access-token"), Some("workspace-123"));
         let mut headers = HeaderMap::new();
 
-        auth.add_auth_headers(&mut headers);
+        auth.add_auth_headers(&mut headers).unwrap();
 
         assert_eq!(
             headers
@@ -126,7 +118,7 @@ mod tests {
         };
         let mut headers = HeaderMap::new();
 
-        auth.add_auth_headers(&mut headers);
+        auth.add_auth_headers(&mut headers).unwrap();
 
         assert_eq!(
             headers

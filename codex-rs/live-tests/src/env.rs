@@ -26,11 +26,12 @@ pub fn repo_root() -> Option<PathBuf> {
 pub struct StaticBearerAuth(pub String);
 
 impl AuthProvider for StaticBearerAuth {
-    fn add_auth_headers(&self, headers: &mut HeaderMap) {
-        let value = format!("Bearer {}", self.0)
-            .parse()
-            .expect("valid authorization header value");
+    fn add_auth_headers(&self, headers: &mut HeaderMap) -> Result<(), codex_api::AuthError> {
+        let value = format!("Bearer {}", self.0).parse().map_err(|_| {
+            codex_api::AuthError::Build("invalid live-test authorization header".into())
+        })?;
         headers.insert(AUTHORIZATION, value);
+        Ok(())
     }
 }
 

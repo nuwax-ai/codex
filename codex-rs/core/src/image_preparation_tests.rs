@@ -168,6 +168,7 @@ async fn user_original_and_high_tool_images_keep_the_file_store_upload_policy() 
         thread_id: "thread-upload".to_string(),
         ephemeral: false,
         file_name: None,
+        tags: std::collections::HashMap::new(),
         data: bytes,
     };
     assert_eq!(

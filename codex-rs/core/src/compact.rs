@@ -53,7 +53,6 @@ use codex_protocol::models::ContentItemKind;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::EventMsg;
-use codex_protocol::protocol::WarningEvent;
 use codex_protocol::user_input::UserInput;
 use codex_rollout_trace::InferenceTraceContext;
 use codex_utils_output_truncation::approx_token_count;
@@ -455,10 +454,6 @@ async fn run_compact_task_inner_impl(
 
     sess.emit_turn_item_completed(&turn_context, compaction_item)
         .await;
-    let warning = EventMsg::Warning(WarningEvent {
-        message: "Heads up: Long threads and multiple compactions can cause the model to be less accurate. Start a new thread when possible to keep threads small and targeted.".to_string(),
-    });
-    sess.send_event(&turn_context, warning).await;
     Ok(summary_suffix)
 }
 
@@ -848,6 +843,8 @@ async fn drain_to_completed(
     phase: CompactionPhase,
     response_key: &str,
 ) -> CodexResult<CompactionResponse> {
+    sess.set_server_reasoning_included(turn_context.model_info().use_responses_lite)
+        .await;
     let mut stream = client_session
         .stream(
             prompt,
@@ -875,26 +872,8 @@ async fn drain_to_completed(
             ));
         };
         match event {
-            Ok(ResponseEvent::OutputItemDone(item)) => {
-                if matches!(phase, CompactionPhase::PostTurn) {
-                    // Commit post-turn summaries only after success; failures must leave both
-                    // the live history and persisted rollout intact.
-                    output.push(item);
-                } else {
-                    sess.record_annotated_conversation_items(
-                        turn_context,
-                        turn_context.model_info(),
-                        vec![ResponseItemEnvelope {
-                            item,
-                            metadata: Some(CodexHarnessMetadata {
-                                compaction_output: true,
-                                ..Default::default()
-                            }),
-                        }],
-                    )
-                    .await;
-                }
-            }
+            // Keep each attempt isolated until the response completes successfully.
+            Ok(ResponseEvent::OutputItemDone(item)) => output.push(item),
             Ok(ResponseEvent::ServerReasoningIncluded(included)) => {
                 sess.set_server_reasoning_included(included).await;
             }
@@ -907,6 +886,22 @@ async fn drain_to_completed(
                 usage_metadata,
                 ..
             }) => {
+                if !matches!(phase, CompactionPhase::PostTurn) {
+                    for item in std::mem::take(&mut output) {
+                        sess.record_annotated_conversation_items(
+                            turn_context,
+                            turn_context.model_info(),
+                            vec![ResponseItemEnvelope {
+                                item,
+                                metadata: Some(CodexHarnessMetadata {
+                                    compaction_output: true,
+                                    ..Default::default()
+                                }),
+                            }],
+                        )
+                        .await;
+                    }
+                }
                 sess.record_observed_response_completed(
                     turn_context,
                     Some(response_key),

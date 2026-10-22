@@ -119,6 +119,7 @@ mod app_server_session;
 mod approval_events;
 mod async_question_reply;
 mod backend_banners;
+mod backend_id;
 mod bottom_pane;
 mod branch_summary;
 mod chatwidget;
@@ -242,6 +243,7 @@ mod thread_transcript;
 mod token_usage;
 mod tool_output;
 mod tooltips;
+mod transcript_image;
 mod transcript_mode;
 mod transcript_reflow;
 mod transcript_view;
@@ -260,6 +262,7 @@ mod update_versions;
 mod updates;
 #[cfg(any(not(debug_assertions), test))]
 mod updates_cache;
+mod user_prompt;
 mod version;
 mod vim_search;
 mod width;
@@ -342,6 +345,19 @@ pub(crate) enum AppServerTarget {
 }
 
 impl AppServerTarget {
+    fn preserve_selected_backend(&mut self, selection: &resume_picker::SessionSelection) {
+        if matches!(
+            selection,
+            resume_picker::SessionSelection::Resume(_) | resume_picker::SessionSelection::Fork(_)
+        ) && let Self::LocalDaemon {
+            allow_embedded_fallback,
+            ..
+        } = self
+        {
+            *allow_embedded_fallback = false;
+        }
+    }
+
     pub(crate) fn uses_remote_workspace(&self) -> bool {
         matches!(self, Self::Remote { .. })
     }
@@ -626,6 +642,7 @@ async fn start_app_server(
 }
 
 pub(crate) async fn start_app_server_for_picker(
+    backend_id: crate::backend_id::BackendId,
     config: &Config,
     target: &AppServerTarget,
     cli_kv_overrides: Vec<(String, toml::Value)>,
@@ -635,6 +652,14 @@ pub(crate) async fn start_app_server_for_picker(
     environment_manager: Arc<EnvironmentManager>,
 ) -> color_eyre::Result<AppServerSession> {
     let mut target = target.clone();
+    // The picker must connect to the backend that owns the supplied ID.
+    if let AppServerTarget::LocalDaemon {
+        allow_embedded_fallback,
+        ..
+    } = &mut target
+    {
+        *allow_embedded_fallback = false;
+    }
     let mut state_db = state_db;
     let embedded_network_policy =
         codex_app_server_client::EmbeddedNetworkPolicy::load(&loader_overrides).await;
@@ -655,7 +680,7 @@ pub(crate) async fn start_app_server_for_picker(
     )
     .await?;
     Ok(
-        AppServerSession::new(app_server, target.thread_params_mode())
+        AppServerSession::new(backend_id, app_server, target.thread_params_mode())
             .with_local_codex_home(&config.codex_home),
     )
 }
@@ -666,7 +691,8 @@ pub(crate) async fn start_embedded_app_server_for_picker(
 ) -> color_eyre::Result<AppServerSession> {
     let mut target = AppServerTarget::Embedded;
     let mut state_db = init_state_db_for_app_server_target(config, &target).await?;
-    let app_server = start_app_server(
+    // Keep the shared test fixture's frame independent of embedded startup size.
+    let app_server = Box::pin(start_app_server(
         &mut target,
         Arg0DispatchPaths::default(),
         config.clone(),
@@ -680,12 +706,14 @@ pub(crate) async fn start_embedded_app_server_for_picker(
         &mut state_db,
         Arc::new(EnvironmentManager::default_for_tests()),
         Default::default(),
-    )
+    ))
     .await?;
-    Ok(
-        AppServerSession::new(app_server, target.thread_params_mode())
-            .with_local_codex_home(&config.codex_home),
+    Ok(AppServerSession::new(
+        crate::backend_id::BackendId::new(),
+        app_server,
+        target.thread_params_mode(),
     )
+    .with_local_codex_home(&config.codex_home))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -766,10 +794,12 @@ async fn shutdown_startup_session(
 }
 
 fn session_target_from_app_server_thread(
+    backend_id: crate::backend_id::BackendId,
     thread: AppServerThread,
 ) -> Option<resume_picker::SessionTarget> {
     match ThreadId::from_string(&thread.id) {
         Ok(thread_id) => Some(resume_picker::SessionTarget {
+            backend_id,
             path: thread.path,
             thread_id,
             cwd: Some(thread.cwd.to_path_buf()),
@@ -818,7 +848,10 @@ async fn lookup_session_target_with_app_server(
             .thread_read(thread_id, /*include_turns*/ false)
             .await
         {
-            Ok(thread) => Ok(session_target_from_app_server_thread(thread)),
+            Ok(thread) => Ok(session_target_from_app_server_thread(
+                app_server.backend_id(),
+                thread,
+            )),
             Err(err) => {
                 warn!(
                     session = id_or_name,
@@ -844,7 +877,7 @@ async fn lookup_session_target_with_app_server(
         provider_filter,
     )
     .await?
-    .and_then(session_target_from_app_server_thread))
+    .and_then(|thread| session_target_from_app_server_thread(app_server.backend_id(), thread)))
 }
 
 async fn lookup_latest_session_target_with_app_server(
@@ -864,7 +897,6 @@ async fn lookup_latest_session_target_with_app_server(
             .thread_list(latest_session_lookup_params(
                 uses_remote_filesystem,
                 model_provider.clone(),
-                config,
                 cwd_filter,
                 include_non_interactive,
                 lookup_mode,
@@ -874,14 +906,17 @@ async fn lookup_latest_session_target_with_app_server(
             Err(_) if lookup_mode == LatestSessionLookupMode::StateDbOnly => continue,
             response => response?,
         };
-        let target = response
-            .data
-            .into_iter()
-            .find_map(session_target_from_app_server_thread);
-        if target.as_ref().is_some_and(|target| {
-            uses_remote_workspace || target.path.as_deref().is_some_and(std::path::Path::exists)
-        }) {
-            return Ok(target);
+        let target = response.data.into_iter().find_map(|thread| {
+            session_target_from_app_server_thread(app_server.backend_id(), thread)
+        });
+        if let Some(target) = target
+            && (uses_remote_workspace
+                || match target.path.as_deref() {
+                    Some(path) => codex_rollout::existing_rollout_path(path).await.is_some(),
+                    None => false,
+                })
+        {
+            return Ok(Some(target));
         }
     }
     Ok(None)
@@ -896,7 +931,6 @@ enum LatestSessionLookupMode {
 fn latest_session_lookup_params(
     uses_remote_filesystem: bool,
     model_provider: Option<String>,
-    config: &Config,
     cwd_filter: Option<&Path>,
     include_non_interactive: bool,
     lookup_mode: LatestSessionLookupMode,
@@ -915,13 +949,8 @@ fn latest_session_lookup_params(
         project_id: None,
         parent_thread_id: None,
         ancestor_thread_id: None,
-        cwd: cwd_filter.map(|cwd| {
-            resume_picker::repository_cwd_filter(
-                cwd,
-                uses_remote_filesystem,
-                config.features.enabled(codex_features::Feature::Worktrees),
-            )
-        }),
+        cwd: cwd_filter
+            .map(|cwd| resume_picker::repository_cwd_filter(cwd, uses_remote_filesystem)),
         use_state_db_only: match lookup_mode {
             LatestSessionLookupMode::StateDbOnly => true,
             LatestSessionLookupMode::ScanAndRepair => false,
@@ -958,7 +987,12 @@ fn uses_remote_workspace_or_environment(
             .is_some_and(|environment| environment.is_remote())
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "validate selection even after the picker connection is closed"
+)]
 async fn resolve_startup_resume_or_fork_cwd(
+    backend_id: crate::backend_id::BackendId,
     tui: &mut Tui,
     config: &Config,
     app_server: Option<&mut AppServerSession>,
@@ -978,6 +1012,7 @@ async fn resolve_startup_resume_or_fork_cwd(
     }) else {
         return Ok(ResolveCwdOutcome::Continue(None));
     };
+    target_session.ensure_backend(backend_id)?;
     let local_settings = crate::local_settings::LocalSettings::from(config);
     let resume_cwd_mode = effective_resume_cwd_mode(local_settings.tui.resume_cwd, cwd_override);
     if uses_remote_workspace_or_environment
@@ -1075,6 +1110,14 @@ fn app_server_target_for_launch(
         return Ok(AppServerTarget::Embedded);
     }
     Ok(match explicit_remote_endpoint {
+        Some(RemoteAppServerEndpoint::UnixSocket { socket_path })
+            if default_daemon_socket.as_ref() == Some(&socket_path) =>
+        {
+            AppServerTarget::LocalDaemon {
+                endpoint: RemoteAppServerEndpoint::UnixSocket { socket_path },
+                allow_embedded_fallback: false,
+            }
+        }
         Some(endpoint) => AppServerTarget::Remote { endpoint },
         // A shared daemon cannot adopt this invocation's executor selection.
         None if can_reuse_implicit_local_daemon && exec_server_url.is_none() => {
@@ -1198,6 +1241,7 @@ async fn run_ratatui_app(
     >,
     startup_draft: startup_draft::StartupDraft,
 ) -> color_eyre::Result<AppExitInfo> {
+    let backend_id = crate::backend_id::BackendId::new();
     let uses_remote_workspace = app_server_target.uses_remote_workspace();
     let workload_identity_selected = is_workload_identity_selected();
     color_eyre::install()?;
@@ -1266,10 +1310,12 @@ async fn run_ratatui_app(
     tui.terminal_size_tags =
         launch_telemetry.record(&app_server_target, matches!(&startup_app_server, Ok(Ok(_))));
     let mut app_server_session = match startup_app_server {
-        Ok(Ok(app_server)) => {
-            AppServerSession::new(app_server, app_server_target.thread_params_mode())
-                .with_local_codex_home(&initial_config.codex_home)
-        }
+        Ok(Ok(app_server)) => AppServerSession::new(
+            backend_id,
+            app_server,
+            app_server_target.thread_params_mode(),
+        )
+        .with_local_codex_home(&initial_config.codex_home),
         Ok(Err(err)) => {
             terminal_restore_guard.restore_silently();
             session_log::log_session_end();
@@ -1718,6 +1764,7 @@ async fn run_ratatui_app(
 
     let current_cwd = config.cwd.clone();
     let fallback_cwd = match resolve_startup_resume_or_fork_cwd(
+        backend_id,
         &mut tui,
         &config,
         app_server.as_mut(),
@@ -1823,6 +1870,10 @@ async fn run_ratatui_app(
             shutdown_app_server_if_present(app_server.take()).await;
         }
     }
+    // Pinning a selected backend changes fallback eligibility, not the launch network policy.
+    let uses_embedded_network_policy = app_server_target.uses_embedded_network_policy();
+    // A startup picker may consume its connection, but its selection keeps that backend.
+    app_server_target.preserve_selected_backend(&session_selection);
     let mut app_server = match app_server {
         Some(app_server) => app_server,
         None => match startup_draft
@@ -1849,9 +1900,13 @@ async fn run_ratatui_app(
             Ok(Ok(app_server)) => {
                 // A picker can replace the server; account reads belong to their original session.
                 startup_account = None;
-                AppServerSession::new(app_server, app_server_target.thread_params_mode())
-                    .with_local_codex_home(&config.codex_home)
-                    .with_remote_cwd_override(remote_cwd_override.clone())
+                AppServerSession::new(
+                    backend_id,
+                    app_server,
+                    app_server_target.thread_params_mode(),
+                )
+                .with_local_codex_home(&config.codex_home)
+                .with_remote_cwd_override(remote_cwd_override.clone())
             }
             Ok(Err(err)) => {
                 terminal_restore_guard.restore_silently();
@@ -1865,6 +1920,12 @@ async fn run_ratatui_app(
             }
         },
     };
+
+    if let resume_picker::SessionSelection::Resume(target)
+    | resume_picker::SessionSelection::Fork(target) = &session_selection
+    {
+        target.ensure_backend(app_server.backend_id())?;
+    }
 
     if let resume_picker::SessionSelection::Resume(target) = &session_selection {
         let validation = startup_draft
@@ -1882,9 +1943,14 @@ async fn run_ratatui_app(
         }
     }
 
-    // Remote startup keeps its existing explicit --cd trust check. Resolving other
-    // remote folders requires authoritative project-root information from the server.
-    if !uses_remote_workspace || remote_cwd_override.is_some() {
+    // The shared overview does not open a workspace; session selection checks trust when needed.
+    // Embedded fallback cannot show the overview and still needs normal startup initialization.
+    if (!matches!(
+        session_selection,
+        resume_picker::SessionSelection::AgentsOverview
+    ) || matches!(app_server_target, AppServerTarget::Embedded))
+        && (!uses_remote_workspace || remote_cwd_override.is_some())
+    {
         let resumed_thread = if matches!(app_server_target, AppServerTarget::LocalDaemon { .. })
             && let resume_picker::SessionSelection::Resume(target) = &session_selection
         {
@@ -1929,7 +1995,7 @@ async fn run_ratatui_app(
                 managed_worktree.as_ref(),
             )
             .await;
-            if app_server_target.uses_embedded_network_policy() {
+            if uses_embedded_network_policy {
                 embedded_network_policy.bind_config(&mut config);
             }
             if config.model_provider_id != previous_provider
@@ -1952,8 +2018,12 @@ async fn run_ratatui_app(
                     embedded_network_policy.clone(),
                 )
                 .await?;
-                app_server = AppServerSession::new(client, app_server_target.thread_params_mode())
-                    .with_local_codex_home(&config.codex_home);
+                app_server = AppServerSession::new(
+                    backend_id,
+                    client,
+                    app_server_target.thread_params_mode(),
+                )
+                .with_local_codex_home(&config.codex_home);
             }
             #[cfg(target_os = "windows")]
             {
@@ -1990,7 +2060,7 @@ async fn run_ratatui_app(
             startup_draft.update_session_selection(&mut tui, &session_selection)?;
         }
     }
-    if app_server_target.uses_embedded_network_policy() {
+    if uses_embedded_network_policy {
         embedded_network_policy.bind_config(&mut config);
     }
     startup_draft.apply_settings(
@@ -2519,6 +2589,7 @@ requires_openai_auth = {requires_openai_auth}
             )?;
             let server_config = build_config(&home).await?;
             let mut server = AppServerSession::new(
+                crate::backend_id::BackendId::new(),
                 AppServerClient::InProcess(start_test_embedded_app_server(server_config).await?),
                 ThreadParamsMode::Embedded,
             );
@@ -2547,8 +2618,15 @@ requires_openai_auth = {requires_openai_auth}
 
         for (label, config_toml, login_status, target, expected) in [
             (
-                "disabled by default",
+                "enabled by default",
                 "",
+                LoginStatus::NotAuthenticated,
+                AppServerTarget::Embedded,
+                true,
+            ),
+            (
+                "explicitly disabled",
+                "[features]\nbedrock_setup_wizard = false\n",
                 LoginStatus::NotAuthenticated,
                 AppServerTarget::Embedded,
                 false,
@@ -2835,6 +2913,7 @@ requires_openai_auth = {requires_openai_auth}
         let state_db =
             init_state_db_for_app_server_target(&config, &AppServerTarget::Embedded).await?;
         let mut app_server = start_app_server_for_picker(
+            crate::backend_id::BackendId::new(),
             &config,
             &AppServerTarget::Embedded,
             Vec::new(),
@@ -2857,6 +2936,7 @@ requires_openai_auth = {requires_openai_auth}
 
     #[tokio::test]
     async fn startup_resume_and_fork_use_configured_or_explicit_cwd() -> color_eyre::Result<()> {
+        let backend_id = crate::backend_id::BackendId::new();
         for (action, configured_mode, has_explicit_cwd, expected_directory) in [
             (CwdPromptAction::Resume, "current", false, "launch"),
             (CwdPromptAction::Resume, "session", false, "session"),
@@ -2903,6 +2983,7 @@ requires_openai_auth = {requires_openai_auth}
             let state_db =
                 init_state_db_for_app_server_target(&config, &AppServerTarget::Embedded).await?;
             let target_session = resume_picker::SessionTarget {
+                backend_id,
                 path: Some(rollout_path),
                 thread_id,
                 cwd: Some(session_cwd.clone()),
@@ -2915,6 +2996,7 @@ requires_openai_auth = {requires_openai_auth}
             let mut tui = tui::test_support::make_test_tui()?;
 
             let fallback_cwd = match resolve_startup_resume_or_fork_cwd(
+                backend_id,
                 &mut tui,
                 &config,
                 /*app_server*/ None,
@@ -2947,6 +3029,7 @@ requires_openai_auth = {requires_openai_auth}
                 &expected_cwd,
             ));
             let mut app_server = start_app_server_for_picker(
+                crate::backend_id::BackendId::new(),
                 &final_config,
                 &AppServerTarget::Embedded,
                 Vec::new(),
@@ -2990,6 +3073,7 @@ requires_openai_auth = {requires_openai_auth}
 
     #[tokio::test]
     async fn startup_remote_current_cwd_without_override_is_rejected() -> color_eyre::Result<()> {
+        let backend_id = crate::backend_id::BackendId::new();
         let temp_dir = TempDir::new()?;
         std::fs::write(
             temp_dir.path().join("config.toml"),
@@ -3003,10 +3087,12 @@ requires_openai_auth = {requires_openai_auth}
         let mut tui = tui::test_support::make_test_tui()?;
 
         let error = resolve_startup_resume_or_fork_cwd(
+            backend_id,
             &mut tui,
             &config,
             /*app_server*/ None,
             &resume_picker::SessionSelection::Resume(resume_picker::SessionTarget {
+                backend_id,
                 path: None,
                 thread_id: ThreadId::new(),
                 cwd: None,
@@ -3024,10 +3110,12 @@ requires_openai_auth = {requires_openai_auth}
             "`tui.resume_cwd = \"current\"` requires `--cd` when using a remote workspace"
         );
         let explicit = resolve_startup_resume_or_fork_cwd(
+            backend_id,
             &mut tui,
             &config,
             /*app_server*/ None,
             &resume_picker::SessionSelection::Resume(resume_picker::SessionTarget {
+                backend_id,
                 path: None,
                 thread_id: ThreadId::new(),
                 cwd: None,
@@ -3046,6 +3134,7 @@ requires_openai_auth = {requires_openai_auth}
 
     #[tokio::test]
     async fn startup_session_cwd_without_metadata_is_rejected() -> color_eyre::Result<()> {
+        let backend_id = crate::backend_id::BackendId::new();
         let temp_dir = TempDir::new()?;
         std::fs::write(
             temp_dir.path().join("config.toml"),
@@ -3059,10 +3148,12 @@ requires_openai_auth = {requires_openai_auth}
         let mut tui = tui::test_support::make_test_tui()?;
 
         let error = resolve_startup_resume_or_fork_cwd(
+            backend_id,
             &mut tui,
             &config,
             /*app_server*/ None,
             &resume_picker::SessionSelection::Resume(resume_picker::SessionTarget {
+                backend_id,
                 path: None,
                 thread_id: ThreadId::new(),
                 cwd: None,
@@ -3111,6 +3202,7 @@ requires_openai_auth = {requires_openai_auth}
     fn session_target_display_label_falls_back_to_thread_id() {
         let thread_id = ThreadId::new();
         let target = crate::resume_picker::SessionTarget {
+            backend_id: crate::backend_id::BackendId::new(),
             path: None,
             thread_id,
             cwd: None,
@@ -3254,24 +3346,28 @@ requires_openai_auth = {requires_openai_auth}
     fn app_server_target_for_launch_uses_local_daemon_for_default_socket() -> color_eyre::Result<()>
     {
         let socket_path = AbsolutePathBuf::relative_to_current_dir("codex.sock")?;
-        let target = app_server_target_for_launch(
-            /*explicit_remote_endpoint*/ None,
-            Some(socket_path.clone()),
-            /*can_reuse_implicit_local_daemon*/ true,
-            /*workload_identity_selected*/ false,
-            /*exec_server_url*/ None,
-            /*env_seed_overrides*/ &[],
-        )?;
-
-        assert_eq!(
-            target,
-            AppServerTarget::LocalDaemon {
-                allow_embedded_fallback: true,
-                endpoint: RemoteAppServerEndpoint::UnixSocket { socket_path },
-            }
-        );
-        assert!(!target.uses_remote_workspace());
-        assert_eq!(target.thread_params_mode(), ThreadParamsMode::Embedded);
+        let endpoint = RemoteAppServerEndpoint::UnixSocket {
+            socket_path: socket_path.clone(),
+        };
+        for explicit in [false, true] {
+            let target = app_server_target_for_launch(
+                explicit.then_some(endpoint.clone()),
+                Some(socket_path.clone()),
+                /*can_reuse_implicit_local_daemon*/ !explicit,
+                /*workload_identity_selected*/ false,
+                /*exec_server_url*/ None,
+                /*env_seed_overrides*/ &[],
+            )?;
+            assert_eq!(
+                target,
+                AppServerTarget::LocalDaemon {
+                    allow_embedded_fallback: !explicit,
+                    endpoint: endpoint.clone(),
+                }
+            );
+            assert!(!target.uses_remote_workspace());
+            assert_eq!(target.thread_params_mode(), ThreadParamsMode::Embedded);
+        }
         Ok(())
     }
 
@@ -3390,13 +3486,11 @@ requires_openai_auth = {requires_openai_auth}
     async fn latest_session_lookup_params_keep_local_filters_for_embedded_sessions()
     -> std::io::Result<()> {
         let temp_dir = TempDir::new()?;
-        let config = build_config(&temp_dir).await?;
         let cwd = temp_dir.path().join("project");
 
         let params = latest_session_lookup_params(
             /*uses_remote_filesystem*/ false,
             /*model_provider*/ None,
-            &config,
             Some(cwd.as_path()),
             /*include_non_interactive*/ false,
             LatestSessionLookupMode::StateDbOnly,
@@ -3412,7 +3506,6 @@ requires_openai_auth = {requires_openai_auth}
         let scan_params = latest_session_lookup_params(
             /*uses_remote_filesystem*/ false,
             /*model_provider*/ None,
-            &config,
             Some(cwd.as_path()),
             /*include_non_interactive*/ false,
             LatestSessionLookupMode::ScanAndRepair,
@@ -3424,12 +3517,10 @@ requires_openai_auth = {requires_openai_auth}
     #[tokio::test]
     async fn latest_session_lookup_params_honor_explicit_provider() -> color_eyre::Result<()> {
         let temp_dir = TempDir::new()?;
-        let config = build_config(&temp_dir).await?;
         let cwd = temp_dir.path().join("project");
         let params = latest_session_lookup_params(
             /*uses_remote_filesystem*/ false,
             Some("selected-provider".to_string()),
-            &config,
             Some(cwd.as_path()),
             /*include_non_interactive*/ false,
             LatestSessionLookupMode::StateDbOnly,
@@ -3449,13 +3540,9 @@ requires_openai_auth = {requires_openai_auth}
     #[tokio::test]
     async fn latest_session_lookup_params_omit_local_filters_for_remote_sessions()
     -> std::io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let config = build_config(&temp_dir).await?;
-
         let params = latest_session_lookup_params(
             /*uses_remote_filesystem*/ true,
             /*model_provider*/ None,
-            &config,
             /*cwd_filter*/ None,
             /*include_non_interactive*/ false,
             LatestSessionLookupMode::StateDbOnly,
@@ -3469,13 +3556,9 @@ requires_openai_auth = {requires_openai_auth}
     #[tokio::test]
     async fn latest_session_lookup_params_can_include_non_interactive_sources()
     -> std::io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let config = build_config(&temp_dir).await?;
-
         let params = latest_session_lookup_params(
             /*uses_remote_filesystem*/ true,
             /*model_provider*/ None,
-            &config,
             /*cwd_filter*/ None,
             /*include_non_interactive*/ true,
             LatestSessionLookupMode::StateDbOnly,
@@ -3496,14 +3579,11 @@ requires_openai_auth = {requires_openai_auth}
     #[tokio::test]
     async fn latest_session_lookup_params_keep_explicit_cwd_filter_for_remote_sessions()
     -> std::io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let config = build_config(&temp_dir).await?;
         let cwd = Path::new("repo/on/server");
 
         let params = latest_session_lookup_params(
             /*uses_remote_filesystem*/ true,
             /*model_provider*/ None,
-            &config,
             Some(cwd),
             /*include_non_interactive*/ false,
             LatestSessionLookupMode::StateDbOnly,
@@ -3575,7 +3655,7 @@ requires_openai_auth = {requires_openai_auth}
             .await?;
         config
             .features
-            .set_enabled(codex_features::Feature::Worktrees, /*enabled*/ false)?;
+            .enable(codex_features::Feature::LocalThreadStoreCompression)?;
         let model_provider = config.model_provider_id.as_str();
         let project_thread_id = write_session_rollout(
             temp_dir.path(),
@@ -3601,29 +3681,32 @@ requires_openai_auth = {requires_openai_auth}
             model_provider,
             &other_cwd,
         )?;
+        let rollout_paths = [
+            ("2025-01-02T10-00-00", project_thread_id),
+            ("2025-01-02T11-00-00", linked_thread_id),
+            ("2025-01-02T12-00-00", other_thread_id),
+        ]
+        .map(|(timestamp, thread_id)| {
+            app_test_support::rollout_path(temp_dir.path(), timestamp, &thread_id.to_string())
+        });
 
         let mut app_server = AppServerSession::new(
+            crate::backend_id::BackendId::new(),
             codex_app_server_client::AppServerClient::InProcess(
                 start_test_embedded_app_server(config.clone()).await?,
             ),
             ThreadParamsMode::Embedded,
         );
-        let filter_cwd = latest_session_cwd_filter(
-            /*uses_remote_workspace*/ false, /*remote_cwd_override*/ None, &config,
-            /*show_all*/ false,
-        );
-        let disabled_target = lookup_latest_session_target_with_app_server(
-            /*uses_remote_filesystem*/ false,
-            &mut app_server,
-            &config,
-            filter_cwd,
-            /*include_non_interactive*/ false,
-        )
-        .await?
-        .expect("expected current-checkout target with worktrees disabled");
-        config
-            .features
-            .set_enabled(codex_features::Feature::Worktrees, /*enabled*/ true)?;
+        // Exercise the logical .jsonl paths returned by thread/list after startup compression.
+        tokio::time::timeout(std::time::Duration::from_secs(/*secs*/ 30), async {
+            while rollout_paths
+                .iter()
+                .any(|path| path.exists() || !path.with_extension("jsonl.zst").exists())
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(/*millis*/ 10)).await;
+            }
+        })
+        .await?;
         let filter_cwd = latest_session_cwd_filter(
             /*uses_remote_workspace*/ false, /*remote_cwd_override*/ None, &config,
             /*show_all*/ false,
@@ -3652,7 +3735,6 @@ requires_openai_auth = {requires_openai_auth}
         .expect("expected global fork --last target");
         app_server.shutdown().await?;
 
-        assert_eq!(disabled_target.thread_id, project_thread_id);
         assert_eq!(scoped_target.thread_id, linked_thread_id);
         assert_eq!(show_all_target.thread_id, other_thread_id);
         Ok(())
@@ -3673,6 +3755,7 @@ requires_openai_auth = {requires_openai_auth}
             .build()
             .await?;
         let mut app_server = AppServerSession::new(
+            crate::backend_id::BackendId::new(),
             codex_app_server_client::AppServerClient::InProcess(
                 start_test_embedded_app_server(config.clone()).await?,
             ),
@@ -3884,6 +3967,7 @@ requires_openai_auth = {requires_openai_auth}
         config.terminal_resize_reflow.max_rows =
             crate::legacy_core::config::TerminalResizeReflowMaxRows::Limit(2);
         let mut app_server = AppServerSession::new(
+            crate::backend_id::BackendId::new(),
             AppServerClient::InProcess(start_test_embedded_app_server(config.clone()).await?),
             ThreadParamsMode::Embedded,
         );

@@ -22,3 +22,4 @@ codex-rs/ext/memories/templates/** text eol=lf
 codex-rs/collaboration-mode-templates/templates/** text eol=lf
 # Raw SSE recordings end with a blank line delimiting the final event.
 codex-rs/live-tests/tests/fixtures/*/responses-sse-*.txt whitespace=-blank-at-eof
+patches/v8_array_sort_elements_kind.patch text eol=lf
