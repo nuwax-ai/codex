@@ -5264,7 +5264,7 @@ GLM-5.3-Flash原生Responses实网 **4/4**：文本、真实工具、跨进程�
 [完整记录](codex-core-closure-2026-10-22.md)、[机器收据](receipts/2026-10-22-core-closure.json)、
 [当前ROADMAP](../ROADMAP.md)。后续本地文档更新带[skip ci]，不新增第二轮完整CI。
 
-## 6.60 Nuwax Harness 发布候选更替与真实 CI 回归处置（2026-10-22）
+## 6.60 Nuwax Harness 发布候选更替与真实 CI 回归处置（2026-10-22—23）
 
 用户授权环境变量指南、最终主程序改名、独立默认目录及正式 tag/CI/npm 发布。
 主名 `nuwax-harness(.exe)`、npm 包 `nuwax-codex`，旧命令/归档 alias 兼容现有 ACP；
@@ -5275,13 +5275,16 @@ GLM-5.3-Flash原生Responses实网 **4/4**：文本、真实工具、跨进程�
 [Release39779558934](https://github.com/nuwax-ai/codex/actions/runs/39779558934) 已由维护者
 主动取消，Publish to npm 未执行（job 终态 cancelled），**从未发布到 npm**；原 tag 不改写。
 新 `v0.18.14` 绑定 `f82730975`，
-[Release39792664843](https://github.com/nuwax-ai/codex/actions/runs/39792664843) 正在运行，
-尚无最终 npm/安装收据。Rust1.99.1、V8152.2.0、rig0.44.0 保持冻结。
+[Release39792664843](https://github.com/nuwax-ai/codex/actions/runs/39792664843) 目前 Linux/Windows
+五目标成功、macOS 两目标仍运行；npm 尚未发布，尚无最终安装收据。
+Rust1.99.1、V8152.2.0、rig0.44.0 保持冻结。
 
-旧完整 Core CI39774635523（`8ed1cbfbd`）现有 Summary：
+旧完整 Core CI39774635523（`8ed1cbfbd`）已结束：Bazel gate 成功，三条 nextest 均红，
+整体不是全绿。三平台 Summary：
 
 - Ubuntu：`23518 tests run: 23515 passed (16 slow), 3 failed, 49 skipped`。
 - Windows：`22296 tests run: 22286 passed (24 slow, 356 leaky), 9 failed, 1 timed out, 138 skipped`。
+- macOS：`23452 tests run: 23448 passed (30 slow), 3 failed, 1 timed out, 72 skipped`。
 
 Ubuntu 三红分别取证，不能沿用“都在环境名单”结论：
 
@@ -5310,6 +5313,25 @@ Code Mode MCP fixture 将单条 64 组合循环拆为 64 个独立用例，保�
 三条 legacy 尾项保持原断言，
 write-delete 按用户已接受 B+警告明示，其余未定性项不统称环境，也不扩大为平台后端重写。
 
+macOS 四项非通过：
+
+- `daemon_startup::discovered_managed_daemon_can_restart_with_auto_start_disabled`：
+  nextest 外层60.013s超时，内部原因未定，未改期限。
+- board `board_unsubscribe_survives_post_and_resume_until_resubscribed::channels_only`：
+  resubscribed 阶段 FINAL_ANSWER 实际2、期望3。与 main 相同的原 fixture 把 wait_agent
+  任意 mailbox activity 当成终局邮件屏障；pending CHANNEL_POST 可提前返回。
+  test-only `105fb7f9a` 用本轮 child turn ID→idle→父队列空settings ack精确栅栏后再放原gate，
+  完整2vs3及通知断言未改，修后两变体单次2/2（Summary3.778s，retries0/1thread），不消旧CI红。
+- TUI permissions 确认回归：同上述真实产品修复 `15283cc98`，不重新归为环境。
+- PTY `high_stdio_descriptors_use_compatible_fallback`：高fd前置子进程已EMFILE/os24，
+  未到兼容fallback断言；源与main一致。本机原码单条1/1（case0.038s）不能反推host确切cap，
+  也不代验CI失败腿，未改主机策略。
+
+Windows strict auto-review同名用例实际停在TurnComplete的15s等待，最后事件类型
+GuardianAssessment，未执行最后HTTP model/path断言；Ubuntu同手PASS1.121s、当前
+Mac单条PASS4.295s不抵销Win失败，也不支持“Win字段正确/已丢失”的结论。
+阶段审计仅存外盘JSON，不为无证据的主线阻断新开开发。
+
 发布 R2 `f82730975` 修复 runner/资源配方：macOS 改当前标准 runner，musl 编译并行限 2，
 Linux 构建附有界生命周期的内存/磁盘监测。七目标必须精确 checkout tag、可信 V8 配对、
 配套 helper 完整；OSS 全部目标可下载后才发布 npm。当前仍需等待实际制品与安装终态。
@@ -5318,25 +5340,30 @@ Linux 构建附有界生命周期的内存/磁盘监测。七目标必须精确 
 home12/npm12/归档4/改名ACP14，不代验 R2 优化制品。原始日志保留外盘：
 [Ubuntu Summary](/Volumes/zhitai/tmp/codex-core-ci-39774635523/ubuntu-final-summary.json)、
 [Windows Summary](/Volumes/zhitai/tmp/codex-core-ci-39774635523/windows-final-summary.json)、
+[macOS Summary](/Volumes/zhitai/tmp/codex-core-ci-39774635523/macos-final-summary.json)、
 [TUI49](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/tui-permissions-final.log)、
 [recorder首红](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/recorder-negative-both-before.log)、
 [shared54](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/hooks-recorder-rig-final.log)、
 [core6](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/core-six-final.log)、
-[Matrix64+cap1本机65](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/windows-fixture-selected-final.log)。
+[Matrix64+cap1本机65](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/windows-fixture-selected-final.log)、
+[board2](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/mac-board-fenced-final.log)、
+[PTY原码单条](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/mac-pty-high-fd-focused-final.log)、
+[strict模型阶段审计](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/strict-auto-review-focused-audit.json)。
 不复制大日志/敏感工件入库，最终发布与隔离安装收据在发布记录续写。
 
 ## 7. 提交、推送与工作树状态
 
-**2026-10-22 发布 R2 当前状态，以下旧指针为历史记录：** 权威副本在 zhitai，
+**2026-10-23 发布 R2 当前状态，以下旧指针为历史记录：** 权威副本在 zhitai，
 发布源码 `f82730975` 已推送并由 `v0.18.14` 绑定；
-Release run39792664843 运行中，尚未宣称 npm/隔离安装成功。
-本地 `test` 另有 test-only 跟进 `519d43824`，发布 tag 仍指向原 R2 源码。
+Release run39792664843 的 Linux/Windows 五目标成功、macOS 两目标运行中，npm 尚未发布。
+`test` 另有 test-only 跟进 `519d43824`、`105fb7f9a`，发布 tag 仍指向原 R2 源码。
 前候选 `v0.18.13`/`b6080e115` 的 Release39779558934 已主动取消、未发布，tag 保留。
 本轮产品确认回归修复 `15283cc98`、共享测试夹具修复 `5191723db`，后续测试夹具验证
 不重写发布 tag；本节文档更新和最终平台定向结果按各自源码/日志续记。
 ACP dev 的45c78f1、869401b已完成本地验证并推送origin/dev。
 main已以a5b25b043合并，rig冻结；soddy旧Codex源码不用。
-模型接入实网/ACP闭环见§6.59；真实Core CI红项、候选更替见§6.60。
+模型接入实网/ACP闭环见§6.59；完整Core CI已结束（一Bazel绿、三nextest红），
+三平台红项的精确性质、后续窄验收与候选更替见§6.60，不称全绿。
 旧M1成功只覆盖29e7e59d5，旧run39761410573三平台lint/编译失败，均不代验当前制品。
 
 

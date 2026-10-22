@@ -1,4 +1,4 @@
-# 当前收尾路线图（2026-10-22 收尾验收）
+# 当前收尾路线图（2026-10-23 终态回填）
 
 目标：通过环境变量使用国内/自定义模型，支持 OpenAI Chat、OpenAI Responses、
 Anthropic Messages，并保留绕过 rig 的上游原生 Responses 入口。
@@ -44,25 +44,31 @@ main@342ed69a1 已通过 merge a5b25b043 集成并随晚间批次推送。
 3. **GLM原生Responses实网已通过。** 用户选择现有GLM；`GLM-5.3-Flash` 四场景
    **4/4**（文本、真实工具、跨进程恢复、ACP取消后继续），共 **7/16** 次请求，
    denied/active/rig capture均为0，所有owned进程清理通过。未把GLM扩大为官方GPT已验。
-4. **旧 Core CI 已取得 Ubuntu/Windows Summary，保留真实红项。**
+4. **旧 Core CI 已结束，Bazel 成功、三条 nextest 红，保留真实红项。**
    [run39774635523](https://github.com/nuwax-ai/codex/actions/runs/39774635523) 绑定 `8ed1cbfbd`：
    Ubuntu `23518 run / 23515 passed / 3 failed / 49 skipped`；Windows
-   `22296 run / 22286 passed / 9 failed / 1 timed out / 138 skipped`。
+   `22296 run / 22286 passed / 9 failed / 1 timed out / 138 skipped`；macOS
+   `23452 run / 23448 passed (30 slow) / 3 failed / 1 timed out / 72 skipped`。
    TUI 显式无沙箱 profile 绕过确认是真实产品回归，`15283cc98` 修复，权限模块 49/49；
    child 场景的 recorder 污染与 cleanup 缺少 MCP ready 前置由 `5191723db` 修 fixture，
    相关 6/6；共享支持库最终 54/54，后续 Matrix64 + cap1 本机 65/65，无重试。
    本机结果不冒称 Windows Rust 已跑，未把其余 Windows 首败统称环境问题。
-   test-only 跟进 `519d43824` 位于发布 tag 之后，不改变其源码绑定。
-5. **正式交付候选改为 v0.18.14，仍在构建。** 原 v0.18.13 Release 主动取消、从未发布，
+   macOS board 的2vs3是原fixture屏障前提过强，`105fb7f9a`保留原断言加精确栅栏，单次2/2；
+   PTY红停在高fd前置EMFILE，未到fallback断言，原码本机1/1不反推host确切cap；
+   daemon外层60s超时仍未定。strict-review的Win终态等待失败没有执行HTTP模型字段断言，
+   Ubuntu/Mac通过不抵销Win失败。旧CI红不被定向绿覆盖。
+   test-only 跟进 `519d43824`、`105fb7f9a`位于发布tag之后，不改变其源码绑定。
+5. **正式交付候选 v0.18.14 五目标构建成功，macOS 两目标仍在运行。** 原 v0.18.13 Release 主动取消、从未发布，
    tag 保留；新 tag 绑定 `f82730975`，
-   [Release39792664843](https://github.com/nuwax-ai/codex/actions/runs/39792664843) 运行中。
+   [Release39792664843](https://github.com/nuwax-ai/codex/actions/runs/39792664843) 的 Linux/Windows
+   五目标已成功、macOS两目标仍在构建；npm尚未发布。
    macOS runner 与 musl 并行有界修正已进入新候选；七平台归档、OSS、npm 与隔离安装
    仍须最终收据，不能把已打 tag 写成已发布。详见
    [0.18.14 记录](rig-production-completion-2026-10-10/nuwax-harness-release-0.18.14.md)。
 
 详见[收尾记录](rig-production-completion-2026-10-10/codex-core-closure-2026-10-22.md)。
 模型接入能力已经收敛；本轮发现的确认回归已修，不再安排一轮泛化开发。
-剩余是发布制品与隔离安装收据、已登记 Windows 非通过项的有限定向复核；
+剩余是发布制品与隔离安装收据、已登记平台非通过项的有限维护；
 未定性项保持可见，不扩大为重写平台后端。未来换成官方GPT或具体中转站时，用该端点补窄验收，
 无需为尚未提供的端点继续实现一套传输。
 
