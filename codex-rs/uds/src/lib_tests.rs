@@ -87,6 +87,10 @@ async fn socket_validation_rejects_broad_acl_without_repairing_it() {
     let before = inspect(
         r#"
 $ErrorActionPreference = 'Stop'
+# Pin module resolution to this powershell.exe's built-in modules: when the
+# parent environment prepends pwsh7 paths to PSModulePath, auto-load finds an
+# incompatible Microsoft.PowerShell.Security and Get-Acl fails to load it.
+$env:PSModulePath = "$PSHOME\Modules"
 $acl = Get-Acl -LiteralPath $env:CODEX_TEST_DIRECTORY
 $everyone = [System.Security.Principal.SecurityIdentifier]::new('S-1-1-0')
 $rule = [System.Security.AccessControl.FileSystemAccessRule]::new($everyone, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
@@ -111,7 +115,7 @@ Set-Acl -LiteralPath $env:CODEX_TEST_DIRECTORY -AclObject $acl
     assert_eq!(
         before,
         inspect(
-            "$ErrorActionPreference = 'Stop'; (Get-Acl -LiteralPath $env:CODEX_TEST_DIRECTORY).Sddl"
+            "$env:PSModulePath = \"$PSHOME\\Modules\"; $ErrorActionPreference = 'Stop'; (Get-Acl -LiteralPath $env:CODEX_TEST_DIRECTORY).Sddl"
         )
     );
 }
@@ -149,6 +153,7 @@ async fn private_directory_acl_is_user_only_and_inherited_by_files() {
     let output = std::process::Command::new("powershell.exe")
         .args(["-NoProfile", "-NonInteractive", "-Command", r#"
 $ErrorActionPreference = 'Stop'
+$env:PSModulePath = "$PSHOME\Modules"
 $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $directory = Get-Acl -LiteralPath $env:CODEX_TEST_PRIVATE_DIRECTORY
 if (-not $directory.AreAccessRulesProtected) { throw 'directory inherits broad access' }
