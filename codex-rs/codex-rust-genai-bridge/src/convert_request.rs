@@ -407,6 +407,10 @@ fn tool_from_value(v: &Value, name: String) -> Tool {
         schema,
         strict: v.get("strict").and_then(|s| s.as_bool()),
         config: None,
+        // genai 0.7 additions — `None` keeps the previous wire behavior.
+        custom_format: None,
+        cache_control: None,
+        eager_input_streaming: None,
     }
 }
 

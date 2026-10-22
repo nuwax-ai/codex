@@ -257,7 +257,9 @@ fn map_reasoning_effort(
     use codex_protocol::openai_models::ReasoningEffort as Codex;
     use genai::chat::ReasoningEffort;
     match effort {
-        Codex::None => ReasoningEffort::None,
+        // genai 0.7 renamed `ReasoningEffort::None` to `Zero` (canonical
+        // keyword "zero"); codex's `None` effort still maps 1:1 to it.
+        Codex::None => ReasoningEffort::Zero,
         Codex::Minimal => ReasoningEffort::Minimal,
         Codex::Low => ReasoningEffort::Low,
         Codex::Medium => ReasoningEffort::Medium,

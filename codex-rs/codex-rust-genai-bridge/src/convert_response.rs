@@ -113,6 +113,10 @@ pub fn chat_event_to_response_event(
             events
         }
         ChatStreamEvent::End(end) => handle_stream_end(end, pending),
+        // genai 0.7 keep-alive ping ("stream is still active") — no Codex
+        // `ResponseEvent` counterpart; dropping it keeps bridge output
+        // identical to 0.6 for all content-bearing events.
+        ChatStreamEvent::Heartbeat => Vec::new(),
     }
 }
 

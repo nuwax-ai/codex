@@ -392,7 +392,7 @@ file-id = "0.2.3"
 flatbuffers = "25"
 flate2 = "1.1.8"
 futures = { version = "0.3", default-features = false }
-genai = "0.6.5"
+genai = "0.7.0"
 gethostname = "1.1.0"
 gix = { version = "0.89.0", default-features = false, features = ["sha1"] }
 gix-url = "0.40.0"

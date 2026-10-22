@@ -55,7 +55,9 @@ pub fn build_genai_client(
         "Building genai client"
     );
 
-    Ok(genai::Client::builder()
+    // The builder chain already yields `Result<Client, genai::Error>` —
+    // map the error so this function returns `Result<Client, AuthError>`.
+    genai::Client::builder()
         .with_adapter_kind(adapter_kind)
         .with_auth_resolver_fn(move |_model_iden| {
             let token = auth_headers
@@ -83,7 +85,14 @@ pub fn build_genai_client(
             target.endpoint = Endpoint::from_owned(base_url.clone());
             Ok(target)
         })
-        .build())
+        // genai 0.7: `ClientBuilder::build` is fallible (zero-panic HTTP
+        // client init) — surface the failure instead of `unwrap`ing.
+        .build()
+        .map_err(|e| {
+            AuthError::Build(format!(
+                "failed to build genai client for adapter {adapter_kind:?}: {e}"
+            ))
+        })
 }
 
 /// Builds genai `Headers` from Codex provider, auth, and extra headers.
