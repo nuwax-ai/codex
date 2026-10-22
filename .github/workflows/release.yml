@@ -103,10 +103,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-latest
             target: aarch64-apple-darwin
             binary_extension: ""
-          - os: macos-14
+          - os: macos-latest
             target: x86_64-apple-darwin
             binary_extension: ""
           - os: ubuntu-22.04
@@ -154,6 +154,11 @@ jobs:
           echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
           echo "${cargo_home}/bin" >> "$GITHUB_PATH"
           : > "${cargo_home}/config.toml"
+
+      - name: Bound musl compiler concurrency
+        if: ${{ contains(matrix.target, 'unknown-linux-musl') }}
+        shell: bash
+        run: echo "CARGO_BUILD_JOBS=2" >> "$GITHUB_ENV"
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -307,6 +312,18 @@ jobs:
         run: |
           set -euo pipefail
           target="${{ matrix.target }}"
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            # Retain memory/disk evidence if a hosted runner is interrupted.
+            (
+              while sleep 30; do
+                date -u '+%Y-%m-%dT%H:%M:%SZ'
+                awk '/MemTotal:|MemAvailable:|SwapFree:/ { print }' /proc/meminfo
+                df -h .
+              done
+            ) &
+            build_resource_monitor=$!
+            trap 'kill "$build_resource_monitor" 2>/dev/null || true' EXIT
+          fi
           cargo build --target "$target" --release -p codex-cli --bin codex -p codex-code-mode-host --bin codex-code-mode-host
 
       # Windows sandbox helpers must ship with the main exe — a clean

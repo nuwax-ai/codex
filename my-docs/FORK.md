@@ -27,7 +27,7 @@ fork 通过 rig 桥统一第三方模型的协议转换、传输与会话生命�
 三平台workspace测试未运行，Bazel bridge gate通过；本轮已修API和测试适配，
 定向复验及后续CI各自登记，不把旧成功当新树验收。
 
-## 2. 配置目录：Nuwax Harness独立默认（v0.18.13起）
+## 2. 配置目录：Nuwax Harness独立默认（v0.18.14起）
 
 | 优先级 | 来源 | 行为 |
 |---|---|---|
@@ -200,7 +200,7 @@ turn 级超窗处理才会触发（官方代码里这两个机制只认该分类
 ## 6. daemon：npm 安装不自启（v0.18.8）
 
 官方 TUI 默认自启共享 daemon，需要"完整本地包布局"（codex-package.json、
-code-mode-host、rg）。先前fork npm包只发单二进制，自启所需布局不完整；v0.18.13补入Code Mode host，
+code-mode-host、rg）。先前fork npm包只发单二进制，自启所需布局不完整；v0.18.14补入Code Mode host，
 但仍不宣称具备上游完整daemon bundle（如独立rg）
 。fork 在
 `tui/src/daemon_startup.rs::exclusion` 排除 NpmNuwax 安装方式（安装方式参数
