@@ -569,6 +569,10 @@ async fn board_notifications_do_not_reopen_a_final_answer(after_final: bool) -> 
 async fn board_unsubscribe_survives_post_and_resume_until_resubscribed(
     disable_direct_message: bool,
 ) -> anyhow::Result<()> {
+    use codex_extension_api::ExtensionRegistryBuilder;
+    use core_test_support::ThreadIdle;
+    use std::sync::Arc;
+
     let server = responses::start_mock_server().await;
     let root = test_codex()
         .with_config(move |config| {
@@ -687,8 +691,9 @@ async fn board_unsubscribe_survives_post_and_resume_until_resubscribed(
             },
             StreamingSseChunk {
                 gate: Some(gate),
-                // TurnComplete precedes parent notification. Drain the worker's final mail
-                // before advancing phases, and force a follow-up so silence is observable.
+                // A queued channel post can satisfy wait_agent before final mail arrives.
+                // The test fences the child's final delivery before opening this gate;
+                // wait_agent then forces a follow-up so silence is observable.
                 body: tool(&format!("checkpoint-{phase}"), "wait_agent", json!({})),
             },
         ]);
@@ -703,7 +708,10 @@ async fn board_unsubscribe_survives_post_and_resume_until_resubscribed(
     }
     let (streaming, _) = start_streaming_sse_server(streams).await;
     let base_url = format!("{}/v1", streaming.uri());
+    let mut extensions = ExtensionRegistryBuilder::<codex_core::config::Config>::new();
+    extensions.thread_lifecycle_contributor(Arc::new(ThreadIdle));
     let resumed = test_codex()
+        .with_extensions(Arc::new(extensions.build()))
         .with_config(move |config| {
             configure(config);
             config.multi_agent_v2.disable_direct_message = disable_direct_message;
@@ -741,7 +749,17 @@ async fn board_unsubscribe_survives_post_and_resume_until_resubscribed(
     })
     .await;
     let child = resumed.thread_manager.get_thread(child_id).await?;
-    wait_for_event(&child, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+    let child_turn_id = wait_for_event_match(&child, |event| match event {
+        EventMsg::TurnStarted(event) => Some(event.turn_id.clone()),
+        _ => None,
+    })
+    .await;
+    wait_for_event(
+        &child,
+        |event| matches!(event, EventMsg::TurnComplete(event) if event.turn_id == child_turn_id),
+    )
+    .await;
+    ThreadIdle::wait(&child).await;
     assert!(
         streaming
             .requests()
@@ -775,7 +793,23 @@ async fn board_unsubscribe_survives_post_and_resume_until_resubscribed(
                 text_elements: vec![],
             }]))
             .await?;
-        wait_for_event(&child, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+        let child_turn_id = wait_for_event_match(&child, |event| match event {
+            EventMsg::TurnStarted(event) => Some(event.turn_id.clone()),
+            _ => None,
+        })
+        .await;
+        wait_for_event(&child, |event| {
+            matches!(event, EventMsg::TurnComplete(event) if event.turn_id == child_turn_id)
+        })
+        .await;
+        // TurnComplete precedes notification of the parent. Idle confirms that
+        // delivery was submitted; the parent's no-op settings ack fences that
+        // same submission queue before the gated model response can advance.
+        ThreadIdle::wait(&child).await;
+        resumed
+            .codex
+            .update_thread_settings(codex_protocol::protocol::ThreadSettingsOverrides::default())
+            .await?;
         let requests = streaming
             .requests()
             .await
