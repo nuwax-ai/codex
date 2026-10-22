@@ -196,6 +196,64 @@ async fn permissions_command_preserves_full_access_confirmation() {
 }
 
 #[tokio::test]
+async fn permissions_command_with_on_request_still_confirms_full_access() {
+    for (reviewer_arg, expected_reviewer) in [
+        ("user", ApprovalsReviewer::User),
+        ("auto_review", ApprovalsReviewer::AutoReview),
+    ] {
+        let (mut chat, mut events, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+        chat.thread_id = Some(ThreadId::new());
+        chat.set_feature_enabled(Feature::GuardianApproval, /*enabled*/ true);
+        chat.permission_discovery = Some(Discovery::local(&chat.config));
+        chat.local_settings.notices.hide_full_access_warning = Some(true);
+
+        chat.dispatch_command_with_args(
+            SlashCommand::Permissions,
+            format!(
+                "{BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS} --approval-policy=on-request --reviewer={reviewer_arg}"
+            ),
+            Vec::new(),
+        );
+
+        let (preset, return_to_permissions, profile_selection) = assert_matches!(
+            events.try_recv(),
+            Ok(AppEvent::OpenFullAccessConfirmation {
+                preset,
+                return_to_permissions,
+                profile_selection: Some(profile_selection),
+            }) if preset.id == "full-access"
+                && profile_selection.profile_id == BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS
+                && profile_selection.approval_policy == Some(AskForApproval::OnRequest)
+                && profile_selection.approvals_reviewer == Some(expected_reviewer)
+                && profile_selection.display_label == "Full Access"
+                => (preset, return_to_permissions, Some(profile_selection))
+        );
+        assert_matches!(events.try_recv(), Ok(AppEvent::SettingsSelectionClosed));
+        assert!(
+            events.try_recv().is_err(),
+            "the danger profile must not be selected before confirmation"
+        );
+
+        chat.open_full_access_confirmation(preset, return_to_permissions, profile_selection);
+        chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
+
+        assert_matches!(
+            events.try_recv(),
+            Ok(AppEvent::SelectPermissionProfile(PermissionProfileSelection {
+                profile_id,
+                approval_policy: Some(AskForApproval::OnRequest),
+                approvals_reviewer: Some(reviewer),
+                display_label,
+            })) if profile_id == BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS
+                && reviewer == expected_reviewer
+                && display_label == "Full Access"
+        );
+        assert_matches!(events.try_recv(), Ok(AppEvent::SettingsSelectionClosed));
+        assert!(events.try_recv().is_err());
+    }
+}
+
+#[tokio::test]
 async fn permissions_command_rejects_disabled_profile() {
     let (mut chat, mut events, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     let mut discovery = Discovery::local(&chat.config);

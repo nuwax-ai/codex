@@ -82,9 +82,13 @@ impl ChatWidget {
             ));
             return false;
         };
-        let preset = builtin_approval_presets()
-            .into_iter()
-            .find(|preset| preset.active_permission_profile.id == profile_id);
+        let preset = builtin_approval_presets().into_iter().find(|preset| {
+            preset.active_permission_profile.id == profile_id
+                // Ask shares this profile ID, but an explicit danger-profile
+                // command must retain the canonical full-access confirmation.
+                && (profile_id != BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS
+                    || preset.id == "full-access")
+        });
         let approval_policy = requested_approval_policy.or_else(|| {
             preset
                 .as_ref()
