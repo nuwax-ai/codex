@@ -8,12 +8,28 @@
 [验收台账](rig-production-completion-2026-10-10/claude-rig-final-acceptance-2026-10-18.md)。
 本文只保留当前优先级；`#24/#42/#53` 沿用台账中的历史任务编号，不重新编号。
 
-## 1. 最高优先：main 集成后的定向验收
+## 1. 最高优先：main 集成后的定向验收（核心主链已完成，见 §1.1）
 
 同步目标 `main@342ed69a1`，对应 Rust `1.99.1`、V8 `152.2.0`；rig 保持
-`0.44.0`。同步前 `test@387914de0`，保留其6笔本地文档；远端最后代码/配置提交为
-`29e7e59d5`。合并冲突已全部解决，阶段合并保存在本地test；尚未push。
-普通栈回归已修复并通过下列最终定向验收；下一轮验收冻结的二进制与真实使用路径。
+`0.44.0`。合并保存在本地 test（merge commit `a5b25b043`，两父提交
+`387914de0`/`342ed69a1`），尚未 push。§6.54 完成集成与定向修复后，
+§6.55（2026-10-22 下午）完成了冻结二进制的实机/实网/容器验收：
+
+### 1.1 第一批验收结果（台账 §6.55，全绿）
+
+| 证据 | 结果 |
+| --- | --- |
+| 双平台二进制收据 | mac arm64 与 Linux x86_64 的 codex/codex-exec sha256 均登记；Linux 构建经新预取脚本取 V8 资产 |
+| env-determinism（零付费） | Linux 实机 PASS（0 外呼）；rcoder 产品容器内复跑 PASS |
+| 三协议实网最小批 | GLM chat / STEP anthropic / GLM responses 三线 + 工具/取消/冷恢复/typed 图片/ACP 冒烟 9 用例 PASS |
+| acp-workflow 12 步闭环 | 首败=预算饥饿（30/30 耗尽后 2 denied，账本证据）；同断言重跑 **12/12 PASS**，压缩后 usage 收缩可见 |
+| 容器腿 | rcoder 镜像 + 新二进制覆盖挂载，3/3 PASS，收尾无残留进程 |
+| 离线补跑 215/215 | NUWAX/hooks/cap/prompt-cache/增量工具套件三次归因（2MiB 栈→SIGABRT、高负载假红、host/helper 二进制未构建）全部转绿，同断言复验；新增 cap×post-model-hook 交界回归 |
+| 新 API 字段处置表 | 已入台账 §6.55（hooks/鉴权 Result/Arc 工具/ContentItem/Rollout Box/PromptCacheKey/mailbox 三线分类） |
+
+剩余尾项：Windows proxy/TLS 定向编译（实机探测中）；#24 断网暖缓存完整构建
+证明。用户 2026-10-22 追加：genai 备用桥升级 0.7（仅要求编译通过，进行中），
+rig 仍冻结 0.44.0 不动。
 
 - 核对冲突解决保留 NUWAX 环境变量路由、rig 三协议、输出 cap、usage presence、
   工具与图片/推理历史、身份隔离及停机清理等 fork 合同。
@@ -40,16 +56,16 @@
 | Bazel | `mod deps --lockfile_mode=error`及V8 module一致性检查通过 | 不扩大为全量Bazel测试通过。 |
 
 最后的stack修复与365条扩选结果见本轮复审记录及精简JSON收据；旧83条的绿、旧实网
-和M1不能扩大这一步的范围。保存冻结树后，后续验证只安排CLI/app-server启动、ACP/容器
-连接及三协议最小工作流（工具/typed图片、取消、压缩后新指令、冷恢复）。重建最终二进制
-并核对源码/产物指纹；有界使用明确支持相应协议的模型，不伪造端点或借旧收据凑覆盖。
+和M1不能扩大这一步的范围。§1.1 所列的冻结二进制 ACP/容器/三协议最小工作流
+（工具/typed图片、取消、压缩后新指令、冷恢复）已于 §6.55 完成并留有源码/产物
+指纹；后续不再重复该轮验收，除非基线再次移动。
 
 ## 2. 构建与 CI 的有限尾项
 
 | 项目 | 当前状态 | 下一步与关闭条件 |
 | --- | --- | --- |
-| #24：可复现的 rusty_v8 构建配方 | Mac新152.2.0配对资产已按官方action及清单链校验下载，并用于本地构建；“离开CI无料”不再适用于这条Mac路径 | 可继续整理通用预取/离线复用命令及平台参数。旧150.4.0不可替代，不降pin、不跳校验；一次Mac构建不等于全平台离线工具完成。 |
-| #53：两个 macOS bootstrap 测试的120s override | 配置29e7e59d5已入库；attempt 1未执行。用户授权的一次M1现已接单，Test(workspace)进行中（04:13:42Z快照） | run39633345230 attempt 2，mac job119602236907，02:36:04Z接单，runner GitHub Actions1000024097。仍待终态及具体测试判决，不自动重复M1。 |
+| #24：可复现的 rusty_v8 构建配方 | `scripts/prefetch_rusty_v8.sh`（提交 5d91ca221）已落地：仓库内主清单校验、共享缓存复用、离线 fail-closed、篡改即删；缓存命中/篡改/错目标三路径实测，Linux 构建实际使用 | 剩余：`unshare -n` 断网暖缓存完整构建收据、Windows 目标验证、（可选）action 改造为共用脚本。旧150.4.0不可替代，不降pin、不跳校验。 |
+| #53：两个 macOS bootstrap 测试的120s override | **已收口（2026-10-22）**：M1 唯一一次 rerun 的 mac job `119602236907` 于 05:48:01Z `completed/success`，`Test (workspace)` 步 success——两个 bootstrap 腿在该作业内通过，override（`29e7e59d5` 配置）经真实执行验证 | head 仍为 `29e7e59d5`（旧树），只证明该配置的窗口，不覆盖 main 合并树；合并树 CI 需另行授权 |
 | CI证据范围 | attempt 1的Bazel通过，Ubuntu1个已知红、Windows6个已知红；mac容量未接单这一历史已由M1接单推进 | M1 head仍为29e7e59d5，只复验旧树配置，不覆盖main合并树；其余三腿旧完成结果不是新执行。本轮不push，不触发新的合并树CI或发布。 |
 
 #53 的绑定可用已有测试产物与临时配置做确定性核对；不要反复消耗 runner 等一次
@@ -60,6 +76,13 @@
 
 这些是已知沙箱语义问题，不归为模型厂商限制或随机 CI 波动，也不应通过删断言或
 跳过 deny 让测试变绿。需要单独设计与验收，不在本轮 main 合并中顺手实现。
+
+**2026-10-22 推进**：设计与真实探针已完成，见
+[sandbox-o2-o3-design-2026-10-22.md](sandbox-o2-o3-design-2026-10-22.md)
+（.45 实机 bwrap 0.11.1 三轮探针：`--dev-bind`/`--ro-bind-data`/`--symlink`
+三原语实测可用；O2=手工构建 /dev+缺席即拒绝，O3=netns 必建清单静态分类；
+宿主 pts bind 偏差与开放问题已单列）。**实现与实机 E2E 仍未开始**，`blocked_descriptor_path`
+仍红，下面三条边界原文保留。
 
 - **#42 / O2：符号链接路径的可用 mask 原语。** `/dev/fd`、`/dev/core` 的 tmpfs
   mask 经过符号链接解析后目的地缺失，当前 fail-closed abort；`blocked_descriptor_path`

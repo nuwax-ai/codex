@@ -4990,6 +4990,125 @@ Core/app-server/CLI/live-tests all-targets check、Core/ThreadStore Clippy -D wa
 fmt及scoped diff-check通过（main原样定宽快照尾空格例外见复审记录）。
 保留原栈/期限/断言，未跑完整workspace。
 
+## 6.55 第一批验收收口：合并树 ACP/Linux容器 + 三协议最小实网全绿（2026-10-22）
+
+接手基线 `test@a5b25b043`（即 §6.54 的 merge commit），按
+[Claude下一轮](claude-next-main-merge-2026-10-22.md) 第一批执行。
+本轮新增两笔本地提交：`5d91ca221`（rusty_v8 本地预取入口）、
+`05b1abcfb`（cap×post-model-hook 交界回归）。未 push、未新开 CI、未发布。
+用户当轮新授权两台个人实机（Linux 192.168.31.45 / Windows 192.168.32.235）。
+
+### 二进制与工具链收据（源码 `a5b25b043`，Rust 1.99.1，V8 152.2.0，release）
+
+| 平台 | codex sha256 | codex-exec sha256 | 备注 |
+| --- | --- | --- | --- |
+| mac arm64 | `6f2e7204…04c634` | `0df85266…3ccc463f` | 26m18s，桥符号自证 |
+| Linux x86_64 | `19c4a442…baed216` | `f56f91fa…b4218f6` | 18m53s+12m44s，V8 资产经预取脚本获取 |
+
+§9.1 欠的"Linux 实机 release build + sha256 + env-determinism"三件在本轮补齐。
+
+### 实网与容器（凭据只经 LIVE_ENV_FILE 网关注入，收据无凭据）
+
+- **env-determinism（零付费）**：Linux 实机 PASS，实际外呼 0，本地 fixture
+  命中三协议路径/模型/dummy 鉴权。rcoder 产品容器内复跑同样 PASS。
+- **10 用例实网批（GLM chat / STEP anthropic / GLM responses 主链）**：
+  wire-chat、wire-anthropic、wire-responses、main-text、main-tool（真实建文件）、
+  main-cancel、main-cold-recall、main-screenshot（typed MCP 图片+真值比对）、
+  acp-smoke 全 PASS；**acp-workflow 首败**。
+- **acp-workflow 首败归因（保留首败证据）**：`val/20261022-135706`。12 步里
+  前 11 步全 STEP-PASS；第 12 步（冷恢复后再执行一次工具）失败，网关账本显示
+  30/30 预算耗尽后 06:01:12Z 两次 `denied`——模型请求被预算网关拒绝，工具从未
+  获得 successful 请求，`resumed-marker.txt` 不存在。判定为**运行器预算饥饿，
+  非产品缺陷**（进程/通知/执行链各步均有 PASS 证据）。同断言重跑
+  （budget=50，`val/wf-rerun-142019`）：**WORKFLOW-PASS 12/12 步**，18 次尝试
+  0 denied，压缩后 usage 10827→6880 收缩可见。
+- **容器腿（rcoder:latest，bind-mount 覆盖 /usr/local/bin/codex{,-exec}）**：
+  env-determinism + acp-smoke + acp-workflow **3/3 PASS**（21/40 次尝试），
+  收尾进程审计 `no lingering codex processes`（停机有界成立）。
+
+### 离线补跑：合并树上从未跑过的 NUWAX/交界套件 215/215（三次归因，同一断言）
+
+过滤集：`test(nuwax)+test(rig_output_cap)+test(prompt_cache_key)+test(prompt_caching)
++test(scenarios_incremental_tools_resume)+test(suite::hooks::)+test(content_item)`，
+六 crate（core/config/utils-cli/cli/exec/app-server），`--features codex-core/rust-rig`。
+选中名单存 `/tmp/nuwax-gap-selected-list.txt`（215 条）。
+
+1. **首红：默认 2MiB 测试线程栈 SIGABRT 131 条**。按 justfile 的
+   `RUST_MIN_STACK=8388608`（仓库标准测试配方）复跑 → 166 过。
+2. **二红：机器 load>50 时 10s deadline 假红 38+11 条**（本机同时跑其它项目）。
+   低负载串行（`--test-threads 1`）复跑 → 210/215。
+3. **尾项 5 条：构建前置缺失**——`codex-code-mode-host` 二进制未构建（合并后
+   Code Mode 默认进程外 host，`Feature::CodeModeHost` 默认开，availability 检查
+   host 文件存在性；host 构建还需 V8 env，v8 crate 默认去 denoland 拉 OpenAI
+   自建产物会 404）与 `test_stdio_server`。补构建后 5/5 PASS。
+   **结论：全部环境性失败，无产品回归；每次失败都有同断言绿收据。**
+
+新交界回归：`anthropic_cap_terminal_fires_post_model_hook_once_without_resampling`
+（桥 Anthropic cap 终态 → PostModelRequest 恰一次 status=failed 带错误文本、
+1 POST 不重采样）。hooks 套件本就以 `non_openai_model_provider` 跑非第一方线，
+覆盖 Stop/PreToolUse/PostToolUse/SessionStart/PostModelRequest 64 条含重试/usage/
+不可否决；prompt_cache_key 套件锁定 omit/custom/session-derived 三策略下
+session-id/thread-id header 恒定。
+
+### 新 API 字段处置表（三线）
+
+| 新面 | Responses passthrough | Chat 桥 | Anthropic 桥 | 依据 |
+| --- | --- | --- | --- | --- |
+| Pre/PostModelRequest hooks | 全线保留（core 层） | 同 | 同；cap 终态已锁定 | 新回归 + hooks 套件 |
+| 鉴权 Result API | 桥不降级空头；失败关闭 | 同 | 同 | 复审记录 §1 两回归 |
+| Arc 工具容器 | 经 trait 消费，编译+工具往返验证 | 同 | 同 | all-target check + wires 套件 |
+| ContentItem | 文本/typed image 映射保留 | 同 | 同 | content_item 套件 + main-screenshot |
+| Rollout Box 形状 | 持久化 envelope 版本化，thread-store 275 条 | — | — | §6.54 补记 |
+| PromptCacheKey | 原样；header 不变 | 原样 | 原样 | prompt_cache_key 套件 |
+| mailbox/message board | core 内部多智能体协调，不进模型请求（协议不适用） | — | — | 代码检视 |
+
+### #24 进展与边界
+
+`scripts/prefetch_rusty_v8.sh`（提交 `5d91ca221`）：版本解析复用
+rusty_v8_bazel.py，文件校验以仓库内 `rusty_v8_<v>.sha256` 主清单为信任根；
+已验证路径：缓存命中 rc0、篡改 binding → 删除+离线 exit3、未知 target exit4、
+`--list` 八目标。Linux 构建即用它取 x86_64 资产。**未宣称**：断网暖缓存完整
+构建证明（待 `unshare -n` 下增量构建收据）、Windows 目标、action 改造共用。
+
+### 其它
+
+M1 终态（14:5x 只读复查）：job `119602236907` 于 **2026-10-22T05:48:01Z
+`completed` / `success`**，`Test (workspace)` 步 success——两个 macOS bootstrap
+腿在该作业内通过，`29e7e59d5` 配置的窗口经真实执行验证（#53 就此收口，
+ROADMAP 已同步）。head 仍是旧树，不覆盖 main 合并树。第三批（O2/O3 沙箱）本轮完成能力探测与设计：
+三轮 `.45` 实机 bwrap 探针证明 `--dev-bind`/`--ro-bind-data`/`--symlink` 三原语
+可用，O2 设计=deny 命中 bwrap 自建 /dev 项时改手工构建（缺席即拒绝），O3 设计
+=netns 必建清单静态分类；见 [sandbox-o2-o3-design-2026-10-22.md](../sandbox-o2-o3-design-2026-10-22.md)。
+**实现未开始，`blocked_descriptor_path` 仍红**（按 ROADMAP §3 留专门轮）。
+
+用户当轮追加两项并完成：
+- **genai 备用桥升级 0.6.5→0.7.0**（提交 `188d87360`，subagent 并行执行）：
+  四文件机械适配（Tool 新字段置 None、ClientBuilder::build 失败映射
+  AuthError、ReasoningEffort::None→Zero、Heartbeat 事件无内容映射）；
+  check --all-targets（含 --locked）、core+rust-genai feature、fmt、桥自身
+  25/25 nextest 全绿。rig 仍冻结 0.44.0。
+- **#24 断网暖缓存构建证明**（.45）：`unshare -n`（仅 lo DOWN）内
+  `prefetch_rusty_v8.sh --offline` 缓存命中 + `cargo build --release --offline
+  -p codex-cli` **Finished 8m28s**——无网络环境下 V8 资产与注册表缓存可用，
+  "断网≠冷缓存"边界闭合。Windows 目标与 action 改造仍未做。
+
+Windows proxy/TLS 定向编译：源码已推 `192.168.32.235`（~/codex.git →
+~/nuwax-verify-20261022/codex @ 05b1abcfb）；该机 1.99.1-msvc 工具链缺 std
+组件，rustup 官方源 TLS 中断，经 rsproxy 镜像 env 补装（自更新步因 rustup.exe
+文件锁报 os error 5，组件本身已装）；随后 `cargo check -p codex-http-client
+-p codex-model-provider --all-targets --locked` 于 2026-10-22 15:0x 前后
+**Finished 4m23s（exit 0）**——新 main 的 Windows proxy/TLS 分支定向编译通过
+（macOS 绿不能代验的边界就此补上；两 crate 的 Windows 测试未跑，已知 6 红
+在其它 crate 且明确不在本轮范围）。
+
+### 收尾补记（本轮最终状态）
+
+本地 test 分支新增五笔提交（未 push）：`5d91ca221` 预取脚本、`05b1abcfb`
+cap×hook 交界回归、`188d87360` genai 0.7.0、及本节文档提交。第一批完成条件
+达成：合并树主链（ACP/Linux 容器/三协议/取消/压缩/冷恢复/typed 图片）无未
+解释的产品失败；字段处置表在册；缺陷最小复现（预算饥饿）已定性并以同断言
+重跑关闭。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-22 当前阶段优先读此条，以下旧指针为历史记录：** 本轮工作仅在
