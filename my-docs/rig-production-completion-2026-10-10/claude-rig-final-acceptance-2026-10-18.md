@@ -5151,6 +5151,43 @@ helper 进程、任何掩蔽盖不到读者自己的 pid；此前目录 deny 静
 （239+2 新合同），crate Clippy 0 警告；`shell_snapshot` 全族复跑仍 48 过 +
 恰好 3 条已知宿主噪声红，无连带。
 
+## 6.57 Windows 正式支持启动：六尾项实机分诊与 write-delete 根因（2026-10-22 晚）
+
+用户当轮将 Windows 升为正式支持目标。192.168.32.235 实机（cargo 1.99.1-msvc，
+经 rsproxy 镜像补齐 std 组件；源码同步至 `d88ffb3d4`）上的分诊：
+
+### 六条 CI 尾项的真实状态（实机一手）
+
+| 尾项 | 实机读数 | 定性 |
+| --- | --- | --- |
+| `codex-uds` 两条 ACL | **PASS**（10/10 全绿） | CI 红是 runner 的 PSModulePath 污染（pwsh7 路径抢先→`Get-Acl` 模块加载失败）。探针已硬化：三段脚本钉住 `$PSHOME\Modules`（提交 `e7c56d06b`），实机前后都绿；runner 端待下次授权 CI 确认 |
+| 三条 `legacy_*` capture/tty（47-62s 慢腿） | **PASS 且亚秒级** | CI 红/慢是托管 runner 的孙进程启动特性（§6.46 曾按 runner 定容），实机无此形态 |
+| `legacy_workspace_write_delete` | **FAIL（0.3s，与 CI 同形）** | 真问题，根因见下 |
+
+### write-delete 根因：内核级证据链（diag1-7，日志在本机 /tmp）
+
+1. 会话内 cmd 删除 outside 与 .git **全部成功**（无任何 Access Denied）；
+2. 直接构建的令牌 `TokenRestrictedSids=3`（cap+logon+everyone，真受限）；
+3. 最小令牌（仅 Everyone）在 CreateProcessAsUserW 就被拒——**写限制机制在本机有效**；
+4. 用户态 `AccessCheck` 对 outside 文件 DELETE 判 **DENIED**；
+5. 运行中子进程自身令牌 `restricted_sid_count=3`（子进程确实带着受限令牌）；
+6. **同一子进程：outside 新建文件被拒（"拒绝访问"），删除既有文件成功**。
+
+结论：`WRITE_RESTRICTED` 只限制"写类"访问位（FILE_ADD_FILE 等）；**DELETE 权位
+的检查走完整令牌侧**，user 的显式授权放行。⇒ **legacy 后端的 workspace-write
+模型在原理上无法限制既有文件删除**；显式 deny-write 路径不受影响（显式 DENY
+ACE 优先）。这不是回归：CI 缓存里 14 读数 12 红说明上游同样长期红。
+
+### 处置与开放项
+
+- 可强制面：legacy 的"创建限制"（diag6/7 证明有效）与显式 deny-write 删除保护
+  维持；完整删除约束属 elevated 后端（专用账户+ACL 允许列表）的职权。
+- **产品决策待用户拍板**：Windows 正式支持下，删除敏感场景是否强制
+  `WindowsSandboxLevel::Elevated`（服务缺失时 fail-fast），或接受 legacy 回退的
+  删除不设防并写进 FORK 安全边界。legacy write-delete 测试保持红，不放宽。
+- elevated 在该实机：账户/防火墙 provisioning 成功，但 runner pipe-in 15s 超时
+  （两次，27s 仍失败）——交互桌面会话 vs 服务的环境问题，未解，独立开放项。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-22 当前阶段优先读此条，以下旧指针为历史记录：** 本轮工作仅在

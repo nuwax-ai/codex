@@ -105,6 +105,18 @@ deny 由静默可读改为响亮 Fatal（fail-closed）。已知偏差：`pts` �
 
 ## 4. Windows 与交付，按使用范围验收
 
+**2026-10-22 晚更新（Windows 升为正式支持目标后的首轮实机分诊，台账 §6.57）**：
+六条 CI 尾项在用户实机（192.168.32.235）上 5/6 绿——两条 uds ACL 是 runner
+PSModulePath 污染（探针已钉住 `$PSHOME\Modules`，提交 e7c56d06b）；三条
+legacy capture/tty 慢腿实机亚秒级全过；**write-delete 是唯一真问题**，内核级
+证据链证明 `WRITE_RESTRICTED` 不限制既有文件删除（DELETE 走完整令牌侧），
+legacy workspace-write 原理上无法约束删除，完整删除约束属 elevated 后端职权。
+V8 预取脚本 Windows 目标验证通过（x86_64-pc-windows-msvc 双文件清单校验+env 落盘）。
+**待拍板**：删除敏感场景是否强制 Elevated（服务缺失 fail-fast）或接受 legacy
+回退限制并写入 FORK 安全边界；legacy write-delete 测试保持红。**独立开放**：
+elevated 在交互桌面实机的 runner pipe-in 超时（provisioning 本身成功）。
+以下原始边界描述保留作历史：
+
 最新完整 Windows 手仍有两条 UDS ACL、三条 legacy 和一条 write-delete 失败，
 另有 leaky 观测。按各项已有证据继续处理，不把计数简单写成模型桥回归。
 Windows 若作为正式日常路径，需要独立关闭其相关尾项；Linux/ACP 收口无需无限等待。
