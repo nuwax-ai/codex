@@ -29,11 +29,31 @@ export NUWAX_BRIDGE='native'   # rig（默认）| native | genai
 
 验证是否真的离开桥：`codex doctor` 的 model routing 检查会打印 `bridge: native transport` 与 `experimental bridge override: Native`；设置 `NUWAX_BRIDGE=rig` 或不设置时打印 `bridge: rig (model bridge)`。genai选择现也按实际桥名报告。
 
-**ACP的另一套环境入口不能混用理解。** 若宿主设置CODEX_BASE_URL等CODEX_*变量，
-ACP会显式配置custom-gateway；当前其EnvGatewayConfig尚无桥选择映射，单加
-NUWAX_BRIDGE不能覆盖已显式选择的provider。直接使用Codex NUWAX入口或明确配置
-provider.experimental_bridge=native已可用；沿用ACP自有CODEX_*入口时应先补该小映射。
-原生fixture已经通过，实际GPT/中转端点仍需用其真实模型和凭据做一次窄验收。
+## ACP宿主的CODEX环境入口
+
+使用ACP自有网关时，把下列变量放进**ACP agent进程**的环境：
+
+```bash
+export CODEX_BASE_URL='https://your-provider.example/v1'
+export CODEX_API_PROTOCOL='openai'
+export CODEX_WIRE_API='chat'
+export CODEX_BRIDGE='rig'
+export CODEX_MODEL='平台实际模型名'
+# 从你的受保护环境注入CODEX_API_KEY，不写入仓库。
+# CODEX_PATH使用下方同一构建的Codex CLI绝对路径。
+```
+
+- Anthropic Messages：`CODEX_API_PROTOCOL=anthropic`、`CODEX_BRIDGE=rig`，
+  换成该平台Anthropic基址；可unset CODEX_WIRE_API。
+- 原生Responses：`CODEX_API_PROTOCOL=openai`、`CODEX_WIRE_API=responses`、
+  `CODEX_BRIDGE=native`；换成对应Responses基址。
+- 不设置CODEX_BRIDGE时保留Codex默认桥；native与Chat/Anthropic组合会启动失败。
+
+该入口显式选择custom-gateway，NUWAX_BRIDGE不能覆盖它。环境网关无需再发
+显式authenticate；宿主若发providers/set或任何authenticate（API-key/ChatGPT/gateway），
+会按既有优先级替换/清除环境网关及其桥选择。不要混用两套入口来表达同一次选择。
+自动标题线程与主线程继承同一provider定义；三协议及native子进程对照28/28，
+GLM native实网4/4。真实官方GPT/其他中转站尚未在本轮测试，换端点后补短验收即可。
 
 ## 固定实际运行的 Codex
 
@@ -76,7 +96,7 @@ cd /Volumes/soddy/git_workspace/fork-codex-acp-ts
 node --import tsx src/index.ts
 ```
 
-ACP 使用stdio协议，由现有ACP宿主完成初始化/认证/会话请求。宿主的启动命令使用 `node --import tsx src/index.ts`，工作目录设为ACP仓库；若使用npm则需 `npm --silent start`，避免npm启动横幅污染协议stdout。确保 `CODEX_PATH` 和四个 `NUWAX_*` 同时进入 **ACP agent进程环境**，其子进程才能继承。沿用你当前宿主的API-key认证配置。
+ACP 使用stdio协议，由现有ACP宿主完成初始化/认证/会话请求。宿主的启动命令使用 `node --import tsx src/index.ts`，工作目录设为ACP仓库；若使用npm则需 `npm --silent start`，避免npm启动横幅污染协议stdout。选择NUWAX入口时，确保 `CODEX_PATH` 和四个 `NUWAX_*` 同时进入 **ACP agent进程环境**；选择上方CODEX入口时则注入该组CODEX_*，环境网关无需额外authenticate。
 
 ## 本次收口范围
 

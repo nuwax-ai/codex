@@ -1,4 +1,4 @@
-# 当前收尾路线图（2026-10-22 晚复审）
+# 当前收尾路线图（2026-10-22 收尾验收）
 
 目标：通过环境变量使用国内/自定义模型，支持 OpenAI Chat、OpenAI Responses、
 Anthropic Messages，并保留绕过 rig 的上游原生 Responses 入口。
@@ -32,23 +32,26 @@ main@342ed69a1 已通过 merge a5b25b043 集成并随晚间批次推送。
 前轮1350协议等合同、365运行时/存储、晚间215定向合同分别以各自源码/参数为准。
 215轮使用 justfile 的Unix 8MiB测试栈，不能把标准配方复跑写成默认2MiB也全过。
 
-## 2. 当前必须闭合的有限尾项
+## 2. 收尾验收状态
 
-1. **本轮缺陷修正已阶段完成。** doctor桥名、V8共享缓存/路径、备用genai query/header、
-   Rust1.99 CI lint、TUI旧测试接口，以及/dev隔离退化均有定向结果；139/139合同、
-   doctor五案、TUI兼容选集、Linux真实helper、Windows原生类型检查见晚间复审记录。
-   TUI额外七例首轮6过1EOF超时，补取消完成握手后该单例通过；首红和调度长尾边界
-   保留，下一次CI仍观察，不把一次通过当成所有负载上界证明。阶段提交不自动push。
-2. **修复提交的CI收据。** run39761410573 head=c17b8675b：Ubuntu/macOS在
-   Clippy阶段因fetch_update弃用失败；Windows在TUI测试编译阶段报7处接口遗漏，
-   三个平台workspace测试均未执行。Bazel bridge gate通过。不能按旧红名单宣称通过。新修复的完整CI需后续推送触发；本轮只本地commit。
-3. **实际GPT/中转端点的native短验收。** 已有fixture证明开关与出站请求；现有实网
-   Responses主角是GLM且默认rig，没有本轮官方GPT/native中转实网收据。
-   选定真实端点和相应凭据后，少量文本+工具+取消/恢复验收即可，不重做整个模型矩阵。
-4. **ACP自有环境入口的native选择。** ACP的CODEX_BASE_URL/CODEX_WIRE_API会
-   显式选择custom-gateway，目前EnvGatewayConfig没有experimental_bridge字段。
-   此时单独设置NUWAX_BRIDGE不能覆盖显式provider；若正式部署用此入口，补桥选择
-   映射与端到端对照是一个小任务。Codex内核的NUWAX原生入口已经完成，二者分开。
+1. **Codex复审修复已推送。** `8ed1cbfbd` 修正provider字段、doctor、V8缓存、
+   Linux隔离退化、Rust1.99 lint及TUI旧接口。定向证据见晚间复审记录，不再安排同一轮开发。
+2. **ACP部署入口已补齐并验收。** `CODEX_BRIDGE=rig|native|genai` 进入实际provider
+   config；默认仍由Codex选择rig。标题隐藏线程遗漏provider定义的真实缺陷已修，
+   保留wire/bridge/headers/query及活动模型。四组真实ACP子进程fixture **28/28**，
+   包括三协议默认rig及native Responses；每组标题、工具图片、usage、取消、压缩、冷恢复通过。
+   三rig组各9条capture与实际HTTP body逐字节相等，native组9次HTTP/0条rig capture。
+3. **GLM原生Responses实网已通过。** 用户选择现有GLM；`GLM-5.3-Flash` 四场景
+   **4/4**（文本、真实工具、跨进程恢复、ACP取消后继续），共 **7/16** 次请求，
+   denied/active/rig capture均为0，所有owned进程清理通过。未把GLM扩大为官方GPT已验。
+4. **修后完整CI仍运行。** [run39774635523](https://github.com/nuwax-ai/codex/actions/runs/39774635523)
+   绑定`8ed1cbfbd`。Ubuntu/macOS已越过上一轮Clippy首败，三平台进入二进制构建；
+   尚无workspace Summary，不能宣称完整CI通过。只按该head实际终态判新回归。
+
+详见[收尾记录](rig-production-completion-2026-10-10/codex-core-closure-2026-10-22.md)。
+没有新的模型接入功能阻断，不再给Claude派一轮泛化开发。剩余工作是本手CI终态核对；
+若出现新的明确回归则定向修复。未来换成官方GPT或具体中转站时，用该端点补窄验收，
+无需为尚未提供的端点继续实现一套传输。
 
 ## 3. 构建与平台边界
 
@@ -70,6 +73,6 @@ main@342ed69a1 已通过 merge a5b25b043 集成并随晚间批次推送。
 
 ## 4. 收工条件
 
-核心模型能力无需再大规模开发。关闭本轮确定的回归，取得修后CI与实际部署入口的
-短验收，保留明确的Windows/协议限制，即可进入正常使用与按复现修bug的维护阶段。
+核心模型能力与实际部署入口短验收已完成，可以开始正常使用。修后完整CI的终态仍需
+如实核对；保留明确的Windows/协议限制，后续按真实复现维护。
 不把缓存优化、尚无需求的供应商扩展或已接受的平台局限重新包装为一长串必做任务。

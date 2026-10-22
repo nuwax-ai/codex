@@ -1,0 +1,401 @@
+{
+  "date": "2026-10-22",
+  "scope": "model routing closure; not full workspace CI verdict",
+  "codexCodeHead": "8ed1cbfbd0c74c22c1fceb99a7bc495d2c713564",
+  "acpHead": "869401beab73be2e4b12828314eea769ed6c0c67",
+  "acpCommits": [
+    "45c78f1",
+    "869401b"
+  ],
+  "binaryReceipt": {
+    "sourceHead": "8ed1cbfbd0c74c22c1fceb99a7bc495d2c713564",
+    "binaries": {
+      "codex": {
+        "path": "/Volumes/zhitai/git_workspace/fork-nuwax-codex/codex-rs/target/debug/codex",
+        "sha256": "2a654f596dcc812268159e8500365e42d38e6f56948dd8939a532262f6afb539"
+      },
+      "codex-exec": {
+        "path": "/Volumes/zhitai/git_workspace/fork-nuwax-codex/codex-rs/target/debug/codex-exec",
+        "sha256": "8d70482bd9a5ab604e0c3a7669eebd9d620f8a679fa5909ac112b9b1620542f8"
+      },
+      "codex-code-mode-host": {
+        "path": "/Volumes/zhitai/git_workspace/fork-nuwax-codex/codex-rs/target/debug/codex-code-mode-host",
+        "sha256": "935cb49bb589f8617aa5e47b3c9549ac54ba2e861282d323a80f46015b8d57a7"
+      }
+    },
+    "execBuildReceipt": {
+      "format": "codex-exec-build-receipt",
+      "version": 1,
+      "git_sha": "8ed1cbfbd0c74c22c1fceb99a7bc495d2c713564",
+      "git_dirty": "clean",
+      "source": {
+        "algorithm": "git-build-input-content-sha256-v1",
+        "sha256": "30a8d3e3f7068ffbcda487eef74183bfbcab075b477d8d215f42e2cd1c891e0e"
+      },
+      "tree_status": {
+        "entries": 0,
+        "head": [],
+        "truncated_entries": 0,
+        "omitted_entries": 0
+      },
+      "target": "aarch64-apple-darwin",
+      "profile": "debug",
+      "features": {
+        "scope": "codex-exec",
+        "enabled": []
+      },
+      "dependency_features": {
+        "status": "unknown",
+        "reason": "cargo_build_script_has_no_resolved_dependency_feature_graph"
+      }
+    },
+    "buildCommand": "cargo build --locked -p codex-cli --bin codex -p codex-exec --bin codex-exec -p codex-code-mode-host --bin codex-code-mode-host",
+    "warnings": [
+      "macOS ld __eh_frame >16MiB; compact unwind encoding warning",
+      "cli/cloud_config.rs unused network_policy present before this closure build"
+    ]
+  },
+  "tests": {
+    "vitest": {
+      "passed": 870,
+      "skipped": 32,
+      "failed": 0,
+      "seconds": 31.52
+    },
+    "typecheck": {
+      "projects": 4,
+      "passed": true
+    },
+    "acpMockContracts": {
+      "passed": 41,
+      "failed": 0
+    },
+    "pythonContracts": {
+      "passed": 39,
+      "failed": 0,
+      "nativeAcceptanceSubset": 10
+    },
+    "liveBudgetContracts": {
+      "passed": 26,
+      "failed": 0
+    },
+    "cancelContracts": {
+      "passed": 4,
+      "failed": 0
+    },
+    "fixture": {
+      "pass": true,
+      "rows": [
+        {
+          "name": "chat",
+          "exitCode": 0,
+          "sourceUnchanged": true,
+          "results": [
+            {
+              "step": "S1 bootstrap",
+              "pass": true,
+              "detail": "session 01a1637f-1ace-73d0-b31b-fd99c9d9cb40"
+            },
+            {
+              "step": "S2 env passthrough + first turn",
+              "pass": true,
+              "detail": "stop=end_turn authOk=true modelOk=true titleModelOk=true usageOk=true httpAttempts=2 text=\"pong\""
+            },
+            {
+              "step": "S3 screenshot typed-image delivery",
+              "pass": true,
+              "detail": "stop=end_turn toolCompleted=true imageDelivered=true httpAttempts=3 answer=\"red\""
+            },
+            {
+              "step": "S4 cancel",
+              "pass": true,
+              "detail": "stop=cancelled essayRequests=1"
+            },
+            {
+              "step": "S5 compaction + continuation",
+              "pass": true,
+              "detail": "compactRequestSeen=true compactUpdates=2 compactStop=end_turn followUp=\"post-compact-ok\""
+            },
+            {
+              "step": "S6 cold resume recall",
+              "pass": true,
+              "detail": "stop=end_turn restoredUsageOk=true tokenInResumedRequest=true recalled=\"ACP-COLD-42\" httpAttempts=1"
+            },
+            {
+              "step": "S7 bridge routing + exact path",
+              "pass": true,
+              "detail": "entry=CODEX_* bridge=default requests=9 rigCapture=9 expectedPath=/v1/chat/completions"
+            }
+          ],
+          "rigCaptureCount": 9
+        },
+        {
+          "name": "anthropic",
+          "exitCode": 0,
+          "sourceUnchanged": true,
+          "results": [
+            {
+              "step": "S1 bootstrap",
+              "pass": true,
+              "detail": "session 01a1637f-41ea-77a2-9ad2-21ce9afd1aeb"
+            },
+            {
+              "step": "S2 env passthrough + first turn",
+              "pass": true,
+              "detail": "stop=end_turn authOk=true modelOk=true titleModelOk=true usageOk=true httpAttempts=2 text=\"pong\""
+            },
+            {
+              "step": "S3 screenshot typed-image delivery",
+              "pass": true,
+              "detail": "stop=end_turn toolCompleted=true imageDelivered=true httpAttempts=3 answer=\"red\""
+            },
+            {
+              "step": "S4 cancel",
+              "pass": true,
+              "detail": "stop=cancelled essayRequests=1"
+            },
+            {
+              "step": "S5 compaction + continuation",
+              "pass": true,
+              "detail": "compactRequestSeen=true compactUpdates=2 compactStop=end_turn followUp=\"post-compact-ok\""
+            },
+            {
+              "step": "S6 cold resume recall",
+              "pass": true,
+              "detail": "stop=end_turn restoredUsageOk=true tokenInResumedRequest=true recalled=\"ACP-COLD-42\" httpAttempts=1"
+            },
+            {
+              "step": "S7 bridge routing + exact path",
+              "pass": true,
+              "detail": "entry=CODEX_* bridge=default requests=9 rigCapture=9 expectedPath=/v1/messages"
+            }
+          ],
+          "rigCaptureCount": 9
+        },
+        {
+          "name": "responses-rig",
+          "exitCode": 0,
+          "sourceUnchanged": true,
+          "results": [
+            {
+              "step": "S1 bootstrap",
+              "pass": true,
+              "detail": "session 01a1637f-6962-77ca-87db-a5051ee6408d"
+            },
+            {
+              "step": "S2 env passthrough + first turn",
+              "pass": true,
+              "detail": "stop=end_turn authOk=true modelOk=true titleModelOk=true usageOk=true httpAttempts=2 text=\"pong\""
+            },
+            {
+              "step": "S3 screenshot typed-image delivery",
+              "pass": true,
+              "detail": "stop=end_turn toolCompleted=true imageDelivered=true httpAttempts=3 answer=\"red\""
+            },
+            {
+              "step": "S4 cancel",
+              "pass": true,
+              "detail": "stop=cancelled essayRequests=1"
+            },
+            {
+              "step": "S5 compaction + continuation",
+              "pass": true,
+              "detail": "compactRequestSeen=true compactUpdates=2 compactStop=end_turn followUp=\"post-compact-ok\""
+            },
+            {
+              "step": "S6 cold resume recall",
+              "pass": true,
+              "detail": "stop=end_turn restoredUsageOk=true tokenInResumedRequest=true recalled=\"ACP-COLD-42\" httpAttempts=1"
+            },
+            {
+              "step": "S7 bridge routing + exact path",
+              "pass": true,
+              "detail": "entry=CODEX_* bridge=default requests=9 rigCapture=9 expectedPath=/v1/responses"
+            }
+          ],
+          "rigCaptureCount": 9
+        },
+        {
+          "name": "responses-native",
+          "exitCode": 0,
+          "sourceUnchanged": true,
+          "results": [
+            {
+              "step": "S1 bootstrap",
+              "pass": true,
+              "detail": "session 01a1637f-9096-711c-8c6b-738195e775ab"
+            },
+            {
+              "step": "S2 env passthrough + first turn",
+              "pass": true,
+              "detail": "stop=end_turn authOk=true modelOk=true titleModelOk=true usageOk=true httpAttempts=2 text=\"pong\""
+            },
+            {
+              "step": "S3 screenshot typed-image delivery",
+              "pass": true,
+              "detail": "stop=end_turn toolCompleted=true imageDelivered=true httpAttempts=3 answer=\"red\""
+            },
+            {
+              "step": "S4 cancel",
+              "pass": true,
+              "detail": "stop=cancelled essayRequests=1"
+            },
+            {
+              "step": "S5 compaction + continuation",
+              "pass": true,
+              "detail": "compactRequestSeen=true compactUpdates=2 compactStop=end_turn followUp=\"post-compact-ok\""
+            },
+            {
+              "step": "S6 cold resume recall",
+              "pass": true,
+              "detail": "stop=end_turn restoredUsageOk=true tokenInResumedRequest=true recalled=\"ACP-COLD-42\" httpAttempts=1"
+            },
+            {
+              "step": "S7 bridge routing + exact path",
+              "pass": true,
+              "detail": "entry=CODEX_* bridge=native requests=9 rigCapture=0 expectedPath=/v1/responses"
+            }
+          ],
+          "rigCaptureCount": 0
+        }
+      ],
+      "productionAndDriverSha256": "fa71dea86a3dd4e8b2a64ff438b07b1deecb2ca1ade04e5bcd71feadeebb1364"
+    },
+    "fixtureSourceReceipt": {
+      "acpHead": "6a76aa79ea06d0e72259204c9fb91c2453f8caf8",
+      "productionAndDriverSha256": "fa71dea86a3dd4e8b2a64ff438b07b1deecb2ca1ade04e5bcd71feadeebb1364",
+      "codexHead": "8ed1cbfbd",
+      "codexSha256": "2a654f596dcc812268159e8500365e42d38e6f56948dd8939a532262f6afb539",
+      "execSha256": "8d70482bd9a5ab604e0c3a7669eebd9d620f8a679fa5909ac112b9b1620542f8",
+      "codeModeHostSha256": "935cb49bb589f8617aa5e47b3c9549ac54ba2e861282d323a80f46015b8d57a7"
+    },
+    "glmNative": {
+      "pass": true,
+      "provider": "GLM",
+      "model": "GLM-5.3-Flash",
+      "wire": "responses",
+      "bridge": "native",
+      "officialGptVerified": false,
+      "sourceHead": "8ed1cbfbd0c74c22c1fceb99a7bc495d2c713564",
+      "rows": [
+        {
+          "name": "text",
+          "pass": true,
+          "usage": [
+            {
+              "input_tokens": 9020,
+              "cached_input_tokens": 0,
+              "cache_write_input_tokens": 0,
+              "output_tokens": 32,
+              "reasoning_output_tokens": 29
+            }
+          ],
+          "detail": "passed",
+          "ownedProcessGroupGone": true,
+          "actualAttempts": 1
+        },
+        {
+          "name": "tool",
+          "pass": true,
+          "usage": [
+            {
+              "input_tokens": 27507,
+              "cached_input_tokens": 10048,
+              "cache_write_input_tokens": 0,
+              "output_tokens": 286,
+              "reasoning_output_tokens": 191
+            }
+          ],
+          "detail": "passed",
+          "ownedProcessGroupGone": true,
+          "actualAttempts": 2
+        },
+        {
+          "name": "cold-resume",
+          "pass": true,
+          "usage": [
+            {
+              "input_tokens": 36925,
+              "cached_input_tokens": 19392,
+              "cache_write_input_tokens": 0,
+              "output_tokens": 338,
+              "reasoning_output_tokens": 228
+            }
+          ],
+          "detail": "passed",
+          "ownedProcessGroupGone": true,
+          "actualAttempts": 1
+        },
+        {
+          "name": "acp-cancel-continuation",
+          "pass": true,
+          "detail": "passed",
+          "ownedProcessGroupGone": true,
+          "actualAttempts": 3
+        }
+      ],
+      "fatal": null,
+      "gateway": {
+        "limit": 16,
+        "used": 7,
+        "denied": 0,
+        "active": 0,
+        "remaining": 9,
+        "maxOutputTokens": 2048
+      },
+      "cleanupErrors": [],
+      "evidenceError": null,
+      "rigCaptureEntries": 0,
+      "gatewayExited": true,
+      "routeVerified": true
+    },
+    "credentialScan": {
+      "scannedFiles": 5628,
+      "secretValuesChecked": 3,
+      "leaks": [],
+      "credentialFileReadOnly": true
+    }
+  },
+  "acpFileSha256": {
+    "README.md": "353dc66aa64b44fb70d4552475e73126b4a912c1aae1bdcc87d6fcdb396dfc74",
+    "package.json": "1e855a621fa47dbb052f4dbee2ae7189bcd1389d7f7a79b8fa19ea42394901e5",
+    "scripts/acp-validation/README.md": "43be9146119bf81591b8c3afb333133202103316f88ea866b198a0659cccd5f9",
+    "scripts/acp-validation/acp-mock-validation-driver.ts": "4de634117ea8ad853ea1016e679d4e2e28681841915a2671b6f2f478e565b318",
+    "scripts/acp-validation/bridge-routing-contract.test.mjs": "87ed38ac8127991385fe00602122d267c41e7b39ec02512dc0050915d765f97f",
+    "scripts/acp-validation/bridge-routing-contract.ts": "03621a735dac16435bce26b1e4cc5ca1f6ed779224f91bb4a884561bc1c88c35",
+    "scripts/acp-validation/mock-vendor-server.mjs": "bcbf5be6258a58df50926f9c4f9c25a66a56f3456bbfc19d30b933b8f3e45662",
+    "scripts/acp-validation/run-acp-mock-validation.sh": "a4277485d111c237326fd29398773fbdf065c8a2b2148774b0d47e3502762e8d",
+    "scripts/live-validation/README.md": "6c186e3c921df6f827974df3d0c751d06022cad330e9baa405e31410fcbd1c50",
+    "scripts/live-validation/acp-live-cancel.test.mjs": "b90797e6dc0510eab836a096062e89a54c14bdcb8bb3d16c17013eb5abd93df6",
+    "scripts/live-validation/acp-live-cancel.ts": "b97c98cb09effa35e7828cd8175e2015f775fd6da50e1d88f8ea9b4b6c62c9d0",
+    "scripts/live-validation/live_support.py": "c83e324bd04ca17a36123a2785cd6f269f59fd182335766455d80674b8bcb41a",
+    "scripts/live-validation/native-responses-acceptance.py": "1a8b83a70daf0a46b14fdeec58aafa7790c4d5032fb4d4d55aa79416f21e3b18",
+    "scripts/live-validation/test_live_support.py": "9f07a3ab098f8270fe6b96382aed67f55de72abc51f9c6b63d04894d9e0d5a28",
+    "scripts/live-validation/test_native_responses_acceptance.py": "28c5c774ac4015cd4b5a46b8b8e520e9e82b5cede61975ac7847bccfd25e4c84",
+    "src/CodexAcpClient.ts": "b33a1d22c29dc4f4224eb6db020ac5909bc53858f032c97ffd2f80a9d22ea0eb",
+    "src/CodexAcpServer.ts": "1b905d28785ea07381ad792800805a30a0927ab456d9312c74e9387076e33e6e",
+    "src/CodexEnvConfig.ts": "d697be7de997cc075da7ae7ecad035ede139bff849aa92c1a9c43d0009f259e6",
+    "src/TitleGenerator.ts": "1882c7bf60e7bf3b4d9c478e70d9a31f8620bf0da452f02aeef854501c541d26",
+    "src/__tests__/CodexACPAgent/env-bridge.test.ts": "f002f3030e3853019e7d07538c37da686ae6ae8077b7adeecf5be561618dfd06",
+    "src/__tests__/CodexEnvConfig.test.ts": "4cac675724d184447abadd358211eb4ec6d79d71f1b362e0f5c0458c3fdde53e",
+    "src/__tests__/TitleGenerator.test.ts": "9d60e4cf1f54779e728860fa4e361916b608e397477426973c34bebe7472893e"
+  },
+  "rawArtifacts": {
+    "local": "/Volumes/zhitai/tmp/codex-final-closure-20261022",
+    "fixture": "/Volumes/zhitai/codex-validation/acp-bridge-final-20261022-1f7vk2tn",
+    "firstTitleFailure": "/Volumes/zhitai/codex-validation/acp-bridge-closure-20261022-104t89pg"
+  },
+  "ci": {
+    "runId": 39774635523,
+    "head": "8ed1cbfbd0c74c22c1fceb99a7bc495d2c713564",
+    "status": "in_progress",
+    "workspaceSummaryObserved": false,
+    "manualDispatch": false
+  },
+  "limits": [
+    "No official GPT or arbitrary relay endpoint was tested; user selected GLM",
+    "No release/tag/npm publishing",
+    "Known Windows legacy write-delete limitation retained, no assertion relaxed",
+    "Previous Linux/container live receipts retain their original source/binary scope"
+  ]
+}

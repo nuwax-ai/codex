@@ -244,17 +244,19 @@ app-server 同语义接线；组激活时共享 daemon 被排除（每进程凭�
 2026-10-20 增加 `NUWAX_BRIDGE`（值域同 provider 的 `experimental_bridge`：
 `rig`|`native`|`genai`）：种子层随之写入 `experimental_bridge`，让官方 GPT 经中转
 端点时用上游原生 Responses 传输而不是 rig 桥；`native` 必须配
-`NUWAX_WIRE_API=responses`（chat/anthropic 只由桥服务，接受 `native` 会变成静默
-忽略），未知值与孤立设置同样 fail-fast 报变量名。未设置时仍是 fork 默认 `rig`，
+`NUWAX_WIRE_API=responses`（chat/anthropic组合明确报错，不静默忽略），未知值与孤立设置同样 fail-fast 报变量名。未设置时仍是 fork 默认 `rig`，
 daemon 子进程同样剥离该变量；doctor 的 `config.model_routing` 收据相应显示
 `bridge: native transport` 并列出 `experimental bridge override:`。
 多进程应分别设置独立 `CODEX_HOME`；参数表、启动示例、远程与会话
 边界见 [容器多进程审查](container-multiprocess-env-review-2026-10-03.md)。
 （ACP-TS 侧另有 `CODEX_BASE_URL`/`CODEX_API_PROTOCOL`/`CODEX_WIRE_API`/
 `INITIAL_AGENT_MODE` 等，见该仓库。）
-ACP的CODEX_*入口显式选择custom-gateway，目前没有桥选择字段；不能仅增加
-NUWAX_BRIDGE就覆盖该provider。原生开关的已验证范围是Codex的NUWAX临时provider
-及显式配置experimental_bridge=native；ACP入口如需同等选择应补独立映射回归。
+ACP的CODEX_*入口显式选择custom-gateway，现支持独立`CODEX_BRIDGE=rig|native|genai`
+映射；NUWAX_BRIDGE不覆盖这个显式provider。native仅允许OpenAI Responses，非法组合
+启动失败。环境网关已授权，无需显式authenticate；显式providers/set或任何authenticate
+请求按既有优先级替换/清除该环境配置。隐藏标题线程复制完整活动provider定义，防止
+遗漏bridge/headers/query或回退到固定官方模型。28/28子进程fixture与GLM原生实网4/4
+见[收尾记录](rig-production-completion-2026-10-10/codex-core-closure-2026-10-22.md)。
 
 ## 8. 版本与发布
 

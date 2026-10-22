@@ -5242,16 +5242,37 @@ Linux lib178/178、定向76/76、最终3实命令集成3/3、旧blocked_descript
 ROADMAP已收敛为：修后CI、ACP环境桥选择映射、指定GPT/native端点短验收；
 已接受Windows legacy删除限制不重新立项，冻结main/rig，不追加泛化功能。
 
+## 6.59 核心接入收尾：ACP环境桥选择、隐藏标题配置与GLM原生实网（2026-10-22）
+
+用户要求有限尾项直接开发测试，并选择GLM验原生。Codex 8ed1cbfbd已推，触发
+run39774635523；ACP dev新增45c78f1（产品）与869401b（验收）。main不重复合并，rig冻结。
+
+CODEX_BRIDGE映射实际provider experimental_bridge，非法组合启动失败；显式auth/provider
+优先级保持。首轮真实子进程发现title隐藏线程遗漏provider定义，主链成功但titleModelOk=false；
+两个标题入口修为异步前复制完整选定provider，保留活动模型/bridge/auth/query/headers。
+原首红保留，最终四组CODEX_* fixture **28/28**，三rig组各9HTTP/9逐字节capture，
+native Responses组9HTTP/0rig capture；标题、typed图片、usage、取消、压缩、冷恢复均过。
+
+GLM-5.3-Flash原生Responses实网 **4/4**：文本、真实工具、跨进程恢复、ACP取消后继续；
+实际 **7/16** 次请求，无自动重试场景，denied/active/rig capture均0，owned进程清理通过。
+3真实Key值扫描5628工件文件无命中。不是官方GPT/中转站端点实测。
+最终ACP全量870passed/32skipped；四组tsc通过；mock合同41、Python39（含native10）、
+预算/工作流26、cancel4均过，数量不重复相加。无个人Windows全workspace、无发布。
+
+当前完整CI尚在运行，三平台已进入binary构建，workspace Summary未出，不称CI全绿。
+旧CI首败与本手运行分开。核心可使用，剩余只核对本手终态；不再安排泛化开发。
+[完整记录](codex-core-closure-2026-10-22.md)、[机器收据](receipts/2026-10-22-core-closure.json)、
+[当前ROADMAP](../ROADMAP.md)。后续本地文档更新带[skip ci]，不新增第二轮完整CI。
+
 ## 7. 提交、推送与工作树状态
 
-**2026-10-22 晚复审时的当前状态，以下旧指针为历史记录：** 工作仅在
-`/Volumes/zhitai/git_workspace/fork-nuwax-codex`；main已以a5b25b043合并，原六笔文档
-保留。晚间批次已推至origin/test=850a87390（本轮复审输入，接手时本地一致且clean）。
-新合并树CI run39761410573 head=c17b8675b已结束：Bazel通过；Ubuntu/macOS在
-严格Clippy阶段失败，Windows在TUI测试编译阶段失败，三平台workspace测试未跑，
-不是旧红名单的复现。
-本轮修复和定向收据接续§6.58；本轮仅本地commit、不push/dispatch/发布。
-旧M1（§6.54）mac成功只覆盖29e7e59d5，不覆盖本轮源码。
+**2026-10-22 收尾验收当前状态，以下旧指针为历史记录：** Codex代码8ed1cbfbd
+已从test推送，完整CI run39774635523运行中；本节后续为纯文档/收据[skip ci]提交。
+ACP dev的45c78f1、869401b已完成本地验证并推送origin/dev。
+main已以a5b25b043合并，不重复同步；工作只在zhitai副本，soddy旧Codex源码不用。
+本轮真实GLM、ACP入口和标题缺口闭环见§6.59；全平台workspace终态尚未取得。
+旧M1成功只覆盖29e7e59d5，旧run39761410573三平台在lint/编译失败，均不代验本手。
+
 
 
 
