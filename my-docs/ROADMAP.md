@@ -44,13 +44,26 @@ main@342ed69a1 已通过 merge a5b25b043 集成并随晚间批次推送。
 3. **GLM原生Responses实网已通过。** 用户选择现有GLM；`GLM-5.3-Flash` 四场景
    **4/4**（文本、真实工具、跨进程恢复、ACP取消后继续），共 **7/16** 次请求，
    denied/active/rig capture均为0，所有owned进程清理通过。未把GLM扩大为官方GPT已验。
-4. **修后完整CI仍运行。** [run39774635523](https://github.com/nuwax-ai/codex/actions/runs/39774635523)
-   绑定`8ed1cbfbd`。Ubuntu/macOS已越过上一轮Clippy首败，三平台进入二进制构建；
-   尚无workspace Summary，不能宣称完整CI通过。只按该head实际终态判新回归。
+4. **旧 Core CI 已取得 Ubuntu/Windows Summary，保留真实红项。**
+   [run39774635523](https://github.com/nuwax-ai/codex/actions/runs/39774635523) 绑定 `8ed1cbfbd`：
+   Ubuntu `23518 run / 23515 passed / 3 failed / 49 skipped`；Windows
+   `22296 run / 22286 passed / 9 failed / 1 timed out / 138 skipped`。
+   TUI 显式无沙箱 profile 绕过确认是真实产品回归，`15283cc98` 修复，权限模块 49/49；
+   child 场景的 recorder 污染与 cleanup 缺少 MCP ready 前置由 `5191723db` 修 fixture，
+   相关 6/6；共享支持库最终 54/54，后续 Matrix64 + cap1 本机 65/65，无重试。
+   本机结果不冒称 Windows Rust 已跑，未把其余 Windows 首败统称环境问题。
+   test-only 跟进 `519d43824` 位于发布 tag 之后，不改变其源码绑定。
+5. **正式交付候选改为 v0.18.14，仍在构建。** 原 v0.18.13 Release 主动取消、从未发布，
+   tag 保留；新 tag 绑定 `f82730975`，
+   [Release39792664843](https://github.com/nuwax-ai/codex/actions/runs/39792664843) 运行中。
+   macOS runner 与 musl 并行有界修正已进入新候选；七平台归档、OSS、npm 与隔离安装
+   仍须最终收据，不能把已打 tag 写成已发布。详见
+   [0.18.14 记录](rig-production-completion-2026-10-10/nuwax-harness-release-0.18.14.md)。
 
 详见[收尾记录](rig-production-completion-2026-10-10/codex-core-closure-2026-10-22.md)。
-没有新的模型接入功能阻断，不再给Claude派一轮泛化开发。剩余工作是本手CI终态核对；
-若出现新的明确回归则定向修复。未来换成官方GPT或具体中转站时，用该端点补窄验收，
+模型接入能力已经收敛；本轮发现的确认回归已修，不再安排一轮泛化开发。
+剩余是发布制品与隔离安装收据、已登记 Windows 非通过项的有限定向复核；
+未定性项保持可见，不扩大为重写平台后端。未来换成官方GPT或具体中转站时，用该端点补窄验收，
 无需为尚未提供的端点继续实现一套传输。
 
 ## 3. 构建与平台边界
@@ -68,7 +81,8 @@ main@342ed69a1 已通过 merge a5b25b043 集成并随晚间批次推送。
   普通私有PTY与授权shm写入仍可用；不能沿用“241/241所以安全等价”的旧理由。
 - **Windows**：proxy/TLS两包及本轮TUI测试接口定向编译已通过；UDS实机10/10，runner需后续CI。
   三个legacy慢腿实机亚秒级通过。write-delete限制已接受并加WARNING，测试保持红，
-  不放宽断言；elevated runner pipe没有解决，但按用户范围不继续扩修。禁止Windows全workspace测试。
+  不放宽断言；elevated runner pipe没有解决，但按用户范围不继续扩修。
+  本手 hosted CI 的十项非通过见发布记录；不在个人 Windows 验机追加全 workspace 测试。
 - 用户已于2026-10-22授权正式tag/CI/npm发布；本次交付主名nuwax-harness、
   默认数据.nuwax-harness（无旧目录兼容/迁移），npm包名保留nuwax-codex。
   发布前home12/12、npm安装合同12/12、七目标打包合同4/4、改名后ACP14/14通过，
@@ -77,6 +91,7 @@ main@342ed69a1 已通过 merge a5b25b043 集成并随晚间批次推送。
 
 ## 4. 收工条件
 
-核心模型能力与实际部署入口短验收已完成，可以开始正常使用。修后完整CI的终态仍需
-如实核对；保留明确的Windows/协议限制，后续按真实复现维护。
+核心模型能力与实际部署入口短验收已完成。新交付候选 v0.18.14 仍在发布 CI，
+等七平台归档、OSS、npm registry 和隔离安装核验后再宣布发布完成。
+完整 workspace 未全绿的事实与 Windows/协议限制继续明示，后续按真实复现维护。
 不把缓存优化、尚无需求的供应商扩展或已接受的平台局限重新包装为一长串必做任务。

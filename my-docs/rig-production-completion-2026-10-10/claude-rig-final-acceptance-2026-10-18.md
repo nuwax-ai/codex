@@ -5264,14 +5264,80 @@ GLM-5.3-Flash原生Responses实网 **4/4**：文本、真实工具、跨进程�
 [完整记录](codex-core-closure-2026-10-22.md)、[机器收据](receipts/2026-10-22-core-closure.json)、
 [当前ROADMAP](../ROADMAP.md)。后续本地文档更新带[skip ci]，不新增第二轮完整CI。
 
+## 6.60 Nuwax Harness 发布候选更替与真实 CI 回归处置（2026-10-22）
+
+用户授权环境变量指南、最终主程序改名、独立默认目录及正式 tag/CI/npm 发布。
+主名 `nuwax-harness(.exe)`、npm 包 `nuwax-codex`，旧命令/归档 alias 兼容现有 ACP；
+用户级默认 `~/.nuwax-harness`，`CODEX_HOME` 优先，旧目录不迁移、不回退、不删除。
+项目级 `.codex/` 的加载规则与用户级目录改名分开。
+
+**候选状态必须分开：** `v0.18.13` 绑定 `b6080e115`，
+[Release39779558934](https://github.com/nuwax-ai/codex/actions/runs/39779558934) 已由维护者
+主动取消，Publish to npm 未执行（job 终态 cancelled），**从未发布到 npm**；原 tag 不改写。
+新 `v0.18.14` 绑定 `f82730975`，
+[Release39792664843](https://github.com/nuwax-ai/codex/actions/runs/39792664843) 正在运行，
+尚无最终 npm/安装收据。Rust1.99.1、V8152.2.0、rig0.44.0 保持冻结。
+
+旧完整 Core CI39774635523（`8ed1cbfbd`）现有 Summary：
+
+- Ubuntu：`23518 tests run: 23515 passed (16 slow), 3 failed, 49 skipped`。
+- Windows：`22296 tests run: 22286 passed (24 slow, 356 leaky), 9 failed, 1 timed out, 138 skipped`。
+
+Ubuntu 三红分别取证，不能沿用“都在环境名单”结论：
+
+1. TUI 的 `permissions_command_preserves_full_access_confirmation` 为真实产品回归：
+   fork Ask 与 full-access 共用 `:danger-full-access`，新上游按 profile id 的首项匹配
+   错选 Ask，绕过 full-access 确认。`15283cc98` 限定显式危险 profile 的 canonical preset，
+   保留原断言与 Ask 菜单语义；新增实际 on-request + user/auto_review 合同，最终 **49/49**。
+2. child-completion 首败是 `expected 1 request, got 2`；共享 mock 在自定义 matcher
+   拒绝别的线程请求前就记账。双 HTTP 负控 **0/2 首红**后由 `5191723db` 修正 recorder。
+3. cleanup 子代理路由 fixture 没有保证被测 MCP ready；同提交明确 ready 前置，
+   不改变 cleanup 产品行为。cleanup 五变体 + child 原场景最终 **6/6**。
+
+共享支持库原 **53/53**；补跨平台 hook shell 合同后，带 rust-rig 的最终 **54/54**。
+这些选集前后重叠，不相加。一次额外 unused-server 探针 **6/7、1 failed** 推翻的是
+它自己的未启动前提，未提交变体已撤，首败保留，不冒充新增产品保证。
+
+Windows 十项非通过完整名单见[0.18.14 发布记录](nuwax-harness-release-0.18.14.md)。
+其中 TUI 为上述同一产品修复；Anthropic cap 的共享 hook fixture 原写 POSIX 命令，
+Windows 默认 cmd.exe 下日志不存在，真实 cmd 首红后改 PowerShell 编码命令，
+UTF-8 无 BOM/中文单引号路径/全部 stdin 字段/stdout JSON 的两次追加通过；
+macOS shell 同样 2/2。Rust shell 合同计入 54/54，但不冒称 Windows cap 原用例已经重跑。
+Code Mode MCP fixture 将单条 64 组合循环拆为 64 个独立用例，保留既有就绪握手；
+独立 list 证实 Matrix64 + 原 cap1 为 65 条，
+本机 macOS 最终 **65/65**（95.890s，retries0/test-threads2，2667为选择器过滤），
+不冒称 Windows Rust 已执行；这两处 test-only 跟进已提交 `519d43824`，不重写 R2 tag。
+三条 legacy 尾项保持原断言，
+write-delete 按用户已接受 B+警告明示，其余未定性项不统称环境，也不扩大为平台后端重写。
+
+发布 R2 `f82730975` 修复 runner/资源配方：macOS 改当前标准 runner，musl 编译并行限 2，
+Linux 构建附有界生命周期的内存/磁盘监测。七目标必须精确 checkout tag、可信 V8 配对、
+配套 helper 完整；OSS 全部目标可下载后才发布 npm。当前仍需等待实际制品与安装终态。
+
+[前置机器收据](receipts/2026-10-22-harness-release-preflight.json)保留 b608 debug probe 与
+home12/npm12/归档4/改名ACP14，不代验 R2 优化制品。原始日志保留外盘：
+[Ubuntu Summary](/Volumes/zhitai/tmp/codex-core-ci-39774635523/ubuntu-final-summary.json)、
+[Windows Summary](/Volumes/zhitai/tmp/codex-core-ci-39774635523/windows-final-summary.json)、
+[TUI49](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/tui-permissions-final.log)、
+[recorder首红](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/recorder-negative-both-before.log)、
+[shared54](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/hooks-recorder-rig-final.log)、
+[core6](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/core-six-final.log)、
+[Matrix64+cap1本机65](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/windows-fixture-selected-final.log)。
+不复制大日志/敏感工件入库，最终发布与隔离安装收据在发布记录续写。
+
 ## 7. 提交、推送与工作树状态
 
-**2026-10-22 收尾验收当前状态，以下旧指针为历史记录：** Codex代码8ed1cbfbd
-已从test推送，完整CI run39774635523运行中；本节后续为纯文档/收据[skip ci]提交。
-ACP dev的45c78f1、869401b已完成本地验证并推送origin/dev。
-main已以a5b25b043合并，不重复同步；工作只在zhitai副本，soddy旧Codex源码不用。
-本轮真实GLM、ACP入口和标题缺口闭环见§6.59；全平台workspace终态尚未取得。
-旧M1成功只覆盖29e7e59d5，旧run39761410573三平台在lint/编译失败，均不代验本手。
+**2026-10-22 发布 R2 当前状态，以下旧指针为历史记录：** 权威副本在 zhitai，
+发布源码 `f82730975` 已推送并由 `v0.18.14` 绑定；
+Release run39792664843 运行中，尚未宣称 npm/隔离安装成功。
+本地 `test` 另有 test-only 跟进 `519d43824`，发布 tag 仍指向原 R2 源码。
+前候选 `v0.18.13`/`b6080e115` 的 Release39779558934 已主动取消、未发布，tag 保留。
+本轮产品确认回归修复 `15283cc98`、共享测试夹具修复 `5191723db`，后续测试夹具验证
+不重写发布 tag；本节文档更新和最终平台定向结果按各自源码/日志续记。
+ACP dev 的45c78f1、869401b已完成本地验证并推送origin/dev。
+main已以a5b25b043合并，rig冻结；soddy旧Codex源码不用。
+模型接入实网/ACP闭环见§6.59；真实Core CI红项、候选更替见§6.60。
+旧M1成功只覆盖29e7e59d5，旧run39761410573三平台lint/编译失败，均不代验当前制品。
 
 
 

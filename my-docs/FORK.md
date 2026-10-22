@@ -7,7 +7,8 @@ main集成与晚间批次已推送，复审输入origin/test=850a87390；备用g
 不同源码的实网、fixture与CI证据分开，不宣称全部厂商/全部平台已通过。
 当前优先级与本轮验证快照见 [ROADMAP.md](ROADMAP.md)，
 历史执行证据见 [最新验收台账](rig-production-completion-2026-10-10/claude-rig-final-acceptance-2026-10-18.md)。
-npm 包：`nuwax-codex`（二进制名同）；ACP 侧配套包：`@nuwax-ai/nuwax-codex-acp-ts`。
+npm 包：`nuwax-codex`；发布主二进制/主命令：`nuwax-harness`，保留旧命令兼容入口。
+ACP 侧配套包：`@nuwax-ai/nuwax-codex-acp-ts`。
 
 ## 1. fork 的使命
 
@@ -260,6 +261,14 @@ ACP的CODEX_*入口显式选择custom-gateway，现支持独立`CODEX_BRIDGE=rig
 
 ## 8. 版本与发布
 
+当前候选为 `v0.18.14` → `f82730975`，
+[Release39792664843](https://github.com/nuwax-ai/codex/actions/runs/39792664843) 仍运行。
+`v0.18.13` 的前一 Release 已主动取消、从未发布 npm，原 tag 保留不改写。
+macOS 使用当前标准 runner，musl 编译并行限制为 2；Rust/V8 继续从仓库固定版本与
+可信配对清单读取。最终 npm/安装状态见
+[发布记录](rig-production-completion-2026-10-10/nuwax-harness-release-0.18.14.md)，
+不把打 tag 或某一平台构建成功写成全平台交付完成。
+
 - workspace 版本恒为占位 `0.0.0`；npm 版本号来自 git tag（`v*` → release.yml，
   7 平台构建 → 阿里云 OSS 二进制 → npm publish；cargo bin 名保持官方 `codex`，
   npm 打包时主程序改名 `nuwax-harness`，保留旧命令兼容入口，postinstall 从 OSS 下载平台二进制到
@@ -282,6 +291,7 @@ ACP的CODEX_*入口显式选择custom-gateway，现支持独立`CODEX_BRIDGE=rig
 
 | 局限 | 坐标/依据 | 状态 |
 |---|---|---|
+| 显式 `:danger-full-access` 命令曾被同 profile ID 的 Ask preset 抢先匹配，跳过确认 | `tui/src/chatwidget/permissions_menu.rs`；`15283cc98` | 已修：profile-id 入口选 canonical full-access，显式 on-request 与两 reviewer 仍先确认；Ask 菜单既有语义保留，权限模块 49/49 |
 | Windows legacy 沙箱 workspace-write **不约束既有文件删除**（内核 WRITE_RESTRICTED 不覆盖 DELETE 权位，diag1-7 证据链见台账 §6.57；显式 deny-write 路径有 DENY ACE、删除受保护）。运行时降级有 WARNING 日志；完整删除约束需 elevated 后端 | `windows-sandbox-rs/src/unified_exec/backends/legacy.rs`、台账 §6.57 | 用户决策 B+警告（2026-10-22），上游继承问题不再扩fork补丁面 |
 | Chat/Anthropic 输出预算可通过 provider.max_output_tokens 配置；Anthropic 未配置时仍默认 16384，Responses typed HTTP/WS、Rig passthrough 与预算已采用该字段 | `codex-rust-rig-bridge/src/stream.rs`、`client.rs` | 三协议已接线；验收见 `provider-request-controls-2026-10-03/tasks.md` |
 | 无 Anthropic prompt caching（`cache_control`） | 桥内零出现（grep 实证） | backlog |

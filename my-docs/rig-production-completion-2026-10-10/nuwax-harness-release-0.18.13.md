@@ -1,5 +1,9 @@
 # Nuwax Harness 0.18.13 发布记录
 
+**状态更正（2026-10-22）：此候选的 Release 已由维护者主动取消，从未发布到 npm。**
+原 `v0.18.13` tag 保留、不改写；后续改为 [v0.18.14 发布记录](nuwax-harness-release-0.18.14.md)。
+下面保留该候选的前置验证，不能作为已发布收据。
+
 用户授权：新增环境变量指南，将最终主二进制命名nuwax-harness，默认数据目录改为
 ~/.nuwax-harness，无旧目录兼容/迁移；验证后打tag并触发正式npm发布。
 
@@ -22,6 +26,7 @@ home lib12/12；npm安装合同12/12（含实际并发修复与恶意ZIP负控�
 所有七目标带Code Mode host，Linux带bwrap、Windows带双sandbox helper；精确checkout tag；
 OSS全部目标可下载后才发布npm（beta也修正旧的先publish后上传顺序）。
 
-当前Release正在运行，npm0.18.13尚未宣称发布。已有完整core CI39774635523（head8ed1cbfbd）
-仍在跑，Bazel已通过；其余Summary尚未取得，后续终态单独回填。
-本次纯收据文档使用[skip ci]并推进test，不额外启动重复workspace CI，tag的Release仍跟原tag SHA。
+Release 39779558934 当前为 cancelled，Publish to npm 未执行（job 终态 cancelled），npm 0.18.13 未发布。
+机器收据中的 in_progress 是原打 tag 时快照；本段按实际取消结果更正。
+Core CI39774635523 的 Ubuntu/Windows Summary 已取得，新回归与后续修复见
+[0.18.14 记录](nuwax-harness-release-0.18.14.md)。原 tag 仍绑定 b6080e115，不改写历史。

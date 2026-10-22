@@ -21,7 +21,8 @@ Rust crate、源码构建目标和 `codex-code-mode-host` 等辅助程序保持�
 
 默认数据目录是 **`~/.nuwax-harness`**，保存配置、会话与本地状态；显式 `CODEX_HOME`
 优先；显式设置的路径须预先 `mkdir -p` 创建，可将它设到外接盘。
-此版本不读取、迁移或删除旧 `.codex-nuwax`、`.nuwax-codex` 或 `.codex` 默认目录。
+此版本不读取、迁移或删除旧用户级 `.codex-nuwax`、`.nuwax-codex` 或 `.codex` 默认目录。
+项目中的 `.codex/` 属于项目级配置/资源入口，仍按既有规则加载，与上述用户级默认目录改名分开。
 npm 下载缓存是 **`~/.nuwax-harness-cache`**，用于保存
 对应版本和平台的主程序及辅助程序，与会话数据目录分开。
 
