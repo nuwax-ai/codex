@@ -1,0 +1,141 @@
+{
+  "releaseTag": "v0.18.13",
+  "releaseSource": "b6080e11531c1a62d273cd81c49c8c1b119857cd",
+  "releaseRun": 39779558934,
+  "releaseStatus": "in_progress",
+  "npmPackage": "nuwax-codex",
+  "npmVersion": "0.18.13",
+  "nativeMain": "nuwax-harness",
+  "defaultHome": ".nuwax-harness",
+  "defaultHomeCompatibility": false,
+  "tests": {
+    "homeLibPassed": 12,
+    "npmInstallContractsPassed": 12,
+    "archiveContractsPassed": 4,
+    "archiveTargetCount": 7,
+    "renamedAcpCasesPassed": 14
+  },
+  "brandedProbe": {
+    "binary": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/branded-probe/nuwax-harness",
+    "sha256": "1deb1026ce7b8da2102450682c3cf0ead2858e9c1abf817c85bc53c02ef6c6c0",
+    "hostSha256": "d9daa38074053038f3c15003d043a7e6f38cb0ca97c4289b027e1072d091c10a",
+    "cases": [
+      {
+        "case": "legacy-only-home",
+        "exitCode": 0,
+        "selectedHome": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/branded-probe/legacy-only-home/.nuwax-harness",
+        "oldInvalidConfigIgnored": true
+      },
+      {
+        "case": "explicit-home-parent",
+        "exitCode": 0,
+        "selectedHome": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/branded-probe/explicit-home-parent/selected-state",
+        "oldInvalidConfigIgnored": true
+      }
+    ],
+    "paidRequests": 0
+  },
+  "fixtures": {
+    "acp-chat": {
+      "codexPath": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/branded-probe/nuwax-harness",
+      "codexSha256": "1deb1026ce7b8da2102450682c3cf0ead2858e9c1abf817c85bc53c02ef6c6c0",
+      "valModel": "acp-val-mock-model",
+      "valBaseUrl": "http://127.0.0.1:52490/v1",
+      "valWire": "chat",
+      "bridge": "default",
+      "gatewayEnv": true,
+      "rigCaptureCount": 9,
+      "envKeyName": "ACP_VAL_MOCK_API_KEY",
+      "results": [
+        {
+          "step": "S1 bootstrap",
+          "pass": true,
+          "detail": "session 01a16398-6624-7247-a53b-1faa9c2b4234"
+        },
+        {
+          "step": "S2 env passthrough + first turn",
+          "pass": true,
+          "detail": "stop=end_turn authOk=true modelOk=true titleModelOk=true usageOk=true httpAttempts=2 text=\"pong\""
+        },
+        {
+          "step": "S3 screenshot typed-image delivery",
+          "pass": true,
+          "detail": "stop=end_turn toolCompleted=true imageDelivered=true httpAttempts=3 answer=\"red\""
+        },
+        {
+          "step": "S4 cancel",
+          "pass": true,
+          "detail": "stop=cancelled essayRequests=1"
+        },
+        {
+          "step": "S5 compaction + continuation",
+          "pass": true,
+          "detail": "compactRequestSeen=true compactUpdates=2 compactStop=end_turn followUp=\"post-compact-ok\""
+        },
+        {
+          "step": "S6 cold resume recall",
+          "pass": true,
+          "detail": "stop=end_turn restoredUsageOk=true tokenInResumedRequest=true recalled=\"ACP-COLD-42\" httpAttempts=1"
+        },
+        {
+          "step": "S7 bridge routing + exact path",
+          "pass": true,
+          "detail": "entry=CODEX_* bridge=default requests=9 rigCapture=9 expectedPath=/v1/chat/completions"
+        }
+      ]
+    },
+    "acp-native": {
+      "codexPath": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/branded-probe/nuwax-harness",
+      "codexSha256": "1deb1026ce7b8da2102450682c3cf0ead2858e9c1abf817c85bc53c02ef6c6c0",
+      "valModel": "acp-val-mock-model",
+      "valBaseUrl": "http://127.0.0.1:52589/v1",
+      "valWire": "responses",
+      "bridge": "native",
+      "gatewayEnv": true,
+      "rigCaptureCount": 0,
+      "envKeyName": "ACP_VAL_MOCK_API_KEY",
+      "results": [
+        {
+          "step": "S1 bootstrap",
+          "pass": true,
+          "detail": "session 01a16398-897b-7177-a46f-86fecdf20be1"
+        },
+        {
+          "step": "S2 env passthrough + first turn",
+          "pass": true,
+          "detail": "stop=end_turn authOk=true modelOk=true titleModelOk=true usageOk=true httpAttempts=2 text=\"pong\""
+        },
+        {
+          "step": "S3 screenshot typed-image delivery",
+          "pass": true,
+          "detail": "stop=end_turn toolCompleted=true imageDelivered=true httpAttempts=3 answer=\"red\""
+        },
+        {
+          "step": "S4 cancel",
+          "pass": true,
+          "detail": "stop=cancelled essayRequests=1"
+        },
+        {
+          "step": "S5 compaction + continuation",
+          "pass": true,
+          "detail": "compactRequestSeen=true compactUpdates=2 compactStop=end_turn followUp=\"post-compact-ok\""
+        },
+        {
+          "step": "S6 cold resume recall",
+          "pass": true,
+          "detail": "stop=end_turn restoredUsageOk=true tokenInResumedRequest=true recalled=\"ACP-COLD-42\" httpAttempts=1"
+        },
+        {
+          "step": "S7 bridge routing + exact path",
+          "pass": true,
+          "detail": "entry=CODEX_* bridge=native requests=9 rigCapture=0 expectedPath=/v1/responses"
+        }
+      ]
+    }
+  },
+  "limits": [
+    "Debug local binary with working-tree home patch, not the final optimized release artifact",
+    "Windows ZIP extraction tested through platform simulation, not Windows native execution",
+    "Full core CI39774635523 still pending; never claim full suite success from these tests"
+  ]
+}
