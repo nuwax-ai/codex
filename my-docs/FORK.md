@@ -261,13 +261,16 @@ ACP的CODEX_*入口显式选择custom-gateway，现支持独立`CODEX_BRIDGE=rig
 
 ## 8. 版本与发布
 
-当前候选为 `v0.18.14` → `f82730975`，
-[Release39792664843](https://github.com/nuwax-ai/codex/actions/runs/39792664843) 仍运行。
+正式版本 `v0.18.14` → `f82730975` 已发布（2026-10-23）：
+[Release39792664843](https://github.com/nuwax-ai/codex/actions/runs/39792664843) attempt1、10/10 jobs success，
+GitHub七个平台归档公开、OSS7/7、npm `nuwax-codex@0.18.14` / latest 已实际查询与隔离安装。
+Mac ARM默认/显式home、Linux/Windows显式CODEX_HOME的实际初始化与metadata通过，正式Mac host stdio1/1、
+正式制品ACP四组28/28；Intel CI制品经Apple Silicon上的Rosetta实际运行验证，不冒称物理Intel宿主。
 `v0.18.13` 的前一 Release 已主动取消、从未发布 npm，原 tag 保留不改写。
 macOS 使用当前标准 runner，musl 编译并行限制为 2；Rust/V8 继续从仓库固定版本与
-可信配对清单读取。最终 npm/安装状态见
-[发布记录](rig-production-completion-2026-10-10/nuwax-harness-release-0.18.14.md)，
-不把打 tag 或某一平台构建成功写成全平台交付完成。
+可信配对清单读取。完整制品、首败与执行边界见
+[发布记录](rig-production-completion-2026-10-10/nuwax-harness-release-0.18.14.md)。
+Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§10维护，主线已收口。
 
 - workspace 版本恒为占位 `0.0.0`；npm 版本号来自 git tag（`v*` → release.yml，
   7 平台构建 → 阿里云 OSS 二进制 → npm publish；cargo bin 名保持官方 `codex`，

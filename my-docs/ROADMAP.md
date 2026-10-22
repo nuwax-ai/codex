@@ -1,4 +1,4 @@
-# 当前收尾路线图（2026-10-23 终态回填）
+# 当前收尾路线图（2026-10-23 正式发布收口）
 
 目标：通过环境变量使用国内/自定义模型，支持 OpenAI Chat、OpenAI Responses、
 Anthropic Messages，并保留绕过 rig 的上游原生 Responses 入口。
@@ -53,22 +53,25 @@ main@342ed69a1 已通过 merge a5b25b043 集成并随晚间批次推送。
    child 场景的 recorder 污染与 cleanup 缺少 MCP ready 前置由 `5191723db` 修 fixture，
    相关 6/6；共享支持库最终 54/54，后续 Matrix64 + cap1 本机 65/65，无重试。
    本机结果不冒称 Windows Rust 已跑，未把其余 Windows 首败统称环境问题。
-   macOS board 的2vs3是原fixture屏障前提过强，`105fb7f9a`保留原断言加精确栅栏，单次2/2；
+   macOS board 的2vs3与原fixture缺少final处理屏障一致，`105fb7f9a`保留原断言加精确栅栏，单次2/2；
    PTY红停在高fd前置EMFILE，未到fallback断言，原码本机1/1不反推host确切cap；
    daemon外层60s超时仍未定。strict-review的Win终态等待失败没有执行HTTP模型字段断言，
    Ubuntu/Mac通过不抵销Win失败。旧CI红不被定向绿覆盖。
    test-only 跟进 `519d43824`、`105fb7f9a`位于发布tag之后，不改变其源码绑定。
-5. **正式交付候选 v0.18.14 五目标构建成功，macOS 两目标仍在运行。** 原 v0.18.13 Release 主动取消、从未发布，
-   tag 保留；新 tag 绑定 `f82730975`，
-   [Release39792664843](https://github.com/nuwax-ai/codex/actions/runs/39792664843) 的 Linux/Windows
-   五目标已成功、macOS两目标仍在构建；npm尚未发布。
-   macOS runner 与 musl 并行有界修正已进入新候选；七平台归档、OSS、npm 与隔离安装
-   仍须最终收据，不能把已打 tag 写成已发布。详见
-   [0.18.14 记录](rig-production-completion-2026-10-10/nuwax-harness-release-0.18.14.md)。
+5. **v0.18.14 已正式发布。** 原 v0.18.13 Release 主动取消、从未发布，tag 保留；
+   正式 tag 绑定 `f82730975`，
+   [Release39792664843](https://github.com/nuwax-ai/codex/actions/runs/39792664843) attempt1 **10/10 jobs success**。
+   GitHub 七归档公开、OSS7/7、npm `nuwax-codex@0.18.14` / latest 均已验证。
+   Mac ARM默认/显式home、Linux和Windows显式CODEX_HOME的隔离安装与实际App Server RPC通过；
+   Intel CI制品经
+   Rosetta实际V8/stdio/home RPC通过，不冒称物理Intel宿主。Mac正式host stdio1/1，
+   正式npm主程序绑定的ACP四协议/桥路径 **28/28**。
+   完整制品/首败边界见[0.18.14记录](rig-production-completion-2026-10-10/nuwax-harness-release-0.18.14.md)。
+   [最终机器收据](rig-production-completion-2026-10-10/receipts/2026-10-23-harness-release.json)保留各平台范围与实际绑定。
 
 详见[收尾记录](rig-production-completion-2026-10-10/codex-core-closure-2026-10-22.md)。
 模型接入能力已经收敛；本轮发现的确认回归已修，不再安排一轮泛化开发。
-剩余是发布制品与隔离安装收据、已登记平台非通过项的有限维护；
+正式交付已完成，剩余仅按真实需求维护已登记的平台边界；
 未定性项保持可见，不扩大为重写平台后端。未来换成官方GPT或具体中转站时，用该端点补窄验收，
 无需为尚未提供的端点继续实现一套传输。
 
@@ -97,7 +100,7 @@ main@342ed69a1 已通过 merge a5b25b043 集成并随晚间批次推送。
 
 ## 4. 收工条件
 
-核心模型能力与实际部署入口短验收已完成。新交付候选 v0.18.14 仍在发布 CI，
-等七平台归档、OSS、npm registry 和隔离安装核验后再宣布发布完成。
-完整 workspace 未全绿的事实与 Windows/协议限制继续明示，后续按真实复现维护。
+核心模型能力、实际部署入口与 v0.18.14 正式发布均已完成；公开包已在 Mac ARM、Linux、
+Windows 隔离安装并执行真实初始化，发布制品ACP28/28。达到本轮交付收工条件，不再安排新一轮主线开发。
+旧完整 workspace 三条 nextest 未全绿与 Windows/协议限制继续明示，后续按真实复现维护。
 不把缓存优化、尚无需求的供应商扩展或已接受的平台局限重新包装为一长串必做任务。

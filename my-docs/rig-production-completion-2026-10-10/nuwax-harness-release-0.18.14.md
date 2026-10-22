@@ -1,6 +1,6 @@
 # Nuwax Harness 0.18.14 发布与验收记录
 
-更新日期：2026-10-23。**v0.18.14 已推送；Linux/Windows 五目标成功，macOS 两目标仍在构建，npm 尚未发布。**
+更新日期：2026-10-23。**v0.18.14 已正式发布，npm `nuwax-codex@0.18.14` 为 latest；Mac ARM、Linux、Windows 隔离安装及真实 App Server 初始化验收通过。**
 前一候选 v0.18.13 的 Release 由维护者主动取消，从未发布到 npm；原 tag 保留，不覆盖或改写。
 
 ## 当前交付坐标
@@ -10,8 +10,8 @@
 | 权威工作副本 | `/Volumes/zhitai/git_workspace/fork-nuwax-codex`，`test` 分支 |
 | 当前发布 tag | `v0.18.14` |
 | tag 对应源码 | `f8273097515a97dea54d4ffe4e7a37e51bd30de1` |
-| Release CI | [run 39792664843](https://github.com/nuwax-ai/codex/actions/runs/39792664843)，五目标成功、macOS 两目标运行中 |
-| npm 包 / 目标版本 | `nuwax-codex` / `0.18.14`；实际 registry 发布结果待回填 |
+| Release CI | [run 39792664843](https://github.com/nuwax-ai/codex/actions/runs/39792664843)，attempt 1、exact `f82730975`、10/10 jobs success |
+| npm 包 / 版本 | [`nuwax-codex@0.18.14`](https://www.npmjs.com/package/nuwax-codex/v/0.18.14)，registry 与 latest 均已实际查询，公开包安装通过 |
 | 主二进制 / 主命令 | `nuwax-harness`，Windows 为 `nuwax-harness.exe` |
 | 兼容入口 | 保留 `nuwax-codex` npm 命令与归档内同内容别名，供现有 ACP 使用 |
 | 默认数据目录 | `~/.nuwax-harness`；显式 `CODEX_HOME` 优先，显式路径须预先创建 |
@@ -19,6 +19,19 @@
 
 用户级旧目录不做兼容、迁移或删除。项目级 `.codex/` 仍属于项目配置/资源加载规则，
 与用户级默认目录改名分开。入口与示例见[环境变量指南](../../docs/nuwax-harness/README.md)。
+最终汇总见[机器收据](receipts/2026-10-23-harness-release.json)，区分发布结果、各平台实测和未代验范围。
+
+## 安装正式版本
+
+```bash
+npm install -g nuwax-codex@0.18.14
+nuwax-harness --version
+```
+
+版本输出保留 Rust 内部名称 `codex-cli 0.18.14`；主程序/命令名称已是 `nuwax-harness`。
+[GitHub Release](https://github.com/nuwax-ai/codex/releases/tag/v0.18.14) 公开七个平台归档，
+OSS 对应资源 **7/7** 可下载，随后发布 npm。此处的 Release CI 成功表示构建、打包、
+上传和发布通过；不能改写后文旧完整 Core CI 的三条 nextest 红。
 
 ## 候选替换与本轮修复
 
@@ -124,6 +137,9 @@ PTY 原码未改，本机单条 **1/1**（case 0.038s、Summary 0.040s）通过�
 断言尚未执行。Ubuntu 同手 PASS 1.121s，当前 macOS 单条 PASS 4.295s；不拿后两者覆盖
 Windows 首败，也没有可证实的模型字段丢失结论，不因此新开主线开发。
 
+原 fixture 的屏障不足由调用链确认；本机未复现 CI 的特定调度，
+不把补屏障后的定向通过写成该次失败的唯一根因已获动态实证。
+
 ## 收据位置与剩余发布动作
 
 - [前置打包与改名验收](receipts/2026-10-22-harness-release-preflight.json)：home 12、npm 合同 12、
@@ -152,8 +168,56 @@ Windows 首败，也没有可证实的模型字段丢失结论，不因此新开
 外盘链接用于本机溯源，不把大体积或敏感工件复制入库。版本 tag、实际构建源码和最终安装
 二进制必须分别绑定；R2 之后的测试夹具验证不修改既有 tag。
 
-本次发布剩余 macOS 两目标完成、总计七目标归档与 OSS 可下载校验、npm registry
-版本/别名、隔离安装及 `nuwax-harness --version`/helper 短验收的终态回填。
-当前 Linux/Windows 五目标已构建成功，npm 尚未发布；后续结果在本节续写。
-模型接入主线不再扩展泛化平台维护：冻结 main、rig 与现有协议范围，Windows 已接受限制
-继续明示；未定性失败保留，不以“环境”一词消账。
+## 正式发布终态与公开包验收
+
+Release39792664843 的 exact source 为 `f8273097515a97dea54d4ffe4e7a37e51bd30de1`，
+**attempt 1、10/10 jobs success**：版本预检、七平台构建、GitHub Release、npm 发布全部完成。
+GitHub 七个正式归档已公开，OSS **7/7** 检查通过；实际 npm registry 返回 `version=0.18.14`、
+`latest=0.18.14`，包内 `gitHead` 与发布 source 对齐。
+
+| 制品与执行环境 | 实际验收与边界 |
+| --- | --- |
+| Mac ARM，公开 npm 包 | 首次真实隔离安装成功；双命令版本/完整 manifest、默认 home 真实 RPC（旧目录故意坏配置被忽略）、显式 CODEX_HOME 与 npm wrapper RPC 均通过；实际正式 Code Mode host stdio 合同 1/1 |
+| Mac Intel CI 制品，Rosetta | manifest、双入口版本、实际 V8 host stdio 1/1、默认 home 真实 initialize/thread-start/read 均通过；是 Apple Silicon 上 Rosetta 执行，不能称物理 Intel 宿主验收 |
+| Linux x86_64 GNU，公开 npm 包 | 隔离安装 7 个命令均 exit0，主程序/alias/host/bwrap 四项 manifest SHA 匹配；真实 App Server metadata 与显式 CODEX_HOME、五个非空 SQLite DB、0 provider HTTP/0 model POST、EOF exit0；当次大文件临时安装已清理 |
+| Windows x86_64 MSVC，公开 npm 包 | SCP 脚本交付校准后的实际隔离安装 7 个命令均 exit0，主程序/alias/host/双 sandbox helper 五项 manifest SHA 匹配；真实 App Server metadata 与显式 CODEX_HOME、五个非空 SQLite DB、0 provider HTTP/0 model POST、EOF exit0；未修改主机执行策略或使用 Bypass，临时安装已清理 |
+
+home 选择证据来自实际 `initialize → thread/start(ephemeral:false) → thread/read` 返回的
+配置和路径；没有 prompt，所以首次 user 消息前 rollout 可以尚未 materialize。
+`--print-startup-config` 只用于版本/requirements 检查，不把诊断旗标或 arg0 alias 的建目录
+副作用当作 home 选择证据。Mac Intel x86_64 工件保持 unsigned，实际运行已过；
+不把错误的额外签名要求写成产品执行失败。
+
+公开 npm 安装的 Mac ARM 主程序 SHA-256：
+`253552cb698d927e4bdee74b5c549aed779eb15fa3073916d34ec0469580586d`。
+四组发布制品 ACP 验收都绑定此 SHA：Chat 默认 rig、Anthropic 默认 rig、Responses 默认 rig、
+Responses native 各 **7/7**，合计 **28/28**。每组覆盖环境模型/标题、typed 图片、usage、
+取消、压缩后继续、冷恢复和桥路由；三 rig 组各 9 HTTP/9 capture，native 9 HTTP/0 rig capture。
+这是正式制品对本地协议 fixture 的验收，不冒称本轮重新向各真实厂商发付费请求。
+
+保留首败与校准边界：
+
+- 发布约 28 秒后的首次 npm 版本查询得到 E404，命令尚未进入安装阶段；之后直接版本路由
+  已返回 200，在 fresh root 才执行第一次真实 Mac 安装并成功，不能写成“安装失败重试转绿”。
+- Intel 验证器先额外要求 x86_64 签名，随后又把 dry startup 旗标当作 home 建目录保证；
+  两次 verifier 错误均保留，实际 manifest/运行/V8/RPC 验证另有成功收据。
+- Windows 第一轮 SSH 返回 255，长脚本尚未进入实际安装，未见 owned 安装目录或产品 receipt；
+  该驱动传输失败保留，后续 SCP/-File 校准后才开始并完成实际安装，不称全程首绿。
+
+收据入口：
+
+- [Release 最终 10/10](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/release14-final-status.json)、
+  [七个公开归档](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/release14-final-assets.json)。
+- [Mac ARM 公开包安装](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/published-install-0.18.14-attempt2/receipt.json)、
+  [正式 host stdio](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/published-install-0.18.14-attempt2/published-host-stdio.json)、
+  [npm wrapper RPC](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/published-install-0.18.14-attempt2/wrapper-rpc/receipt.json)。
+- [Intel CI 制品](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/intel-release-artifact/receipt.json)、
+  [Intel 实际 home RPC](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/intel-release-artifact/home-rpc/receipt.json)。
+- [正式制品 ACP 四组](/Volumes/zhitai/tmp/nuwax-harness-release-20261022/published-acp-0.18.14/summary.json)，
+  每组完整 results.json 与原 stdout/stderr 同目录留存。
+- [Linux 公开包验收](/Volumes/zhitai/tmp/codex-core-ci-39774635523/npm-0.18.14-linux.json)、
+  [Windows 公开包验收](/Volumes/zhitai/tmp/codex-core-ci-39774635523/npm-0.18.14-windows.json)。
+
+**本轮主线与正式发布已收口。** main、rig 与协议范围保持冻结，不再安排一轮主线开发。
+旧完整 Core CI 的三条 nextest 红、已接受的 Windows legacy 限制及其他未定性平台项
+继续明示，按真实需求维护；不以 Release CI 成功消除旧红，也不把它们扩成一轮泛化平台重写。

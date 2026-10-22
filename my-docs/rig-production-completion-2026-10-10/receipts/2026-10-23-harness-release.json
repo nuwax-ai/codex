@@ -1,0 +1,326 @@
+{
+  "verifiedAtUtc": "2026-10-22T18:30:29.624696+00:00",
+  "version": "0.18.14",
+  "tag": "v0.18.14",
+  "sourceCommit": "f8273097515a97dea54d4ffe4e7a37e51bd30de1",
+  "npm": {
+    "package": "nuwax-codex",
+    "version": "0.18.14",
+    "gitHead": "f8273097515a97dea54d4ffe4e7a37e51bd30de1",
+    "latest": "0.18.14",
+    "bin": {
+      "nuwax-codex": "bin/nuwax-codex.js",
+      "nuwax-harness": "bin/nuwax-harness.js"
+    },
+    "integrity": "sha512-TafsS/+zdbCCBcGm/k9CgpPQSfOlGBNEvug0/kD9OGSzBV5xpDy82nglkwSnoV87NDzGJounqJheZPmeyrnWBw=="
+  },
+  "releaseCi": {
+    "runId": 39792664843,
+    "url": "https://github.com/nuwax-ai/codex/actions/runs/39792664843",
+    "conclusion": "success",
+    "attempt": 1,
+    "jobsSucceeded": 10,
+    "buildTargetsSucceeded": 7
+  },
+  "githubRelease": {
+    "url": "https://github.com/nuwax-ai/codex/releases/tag/v0.18.14",
+    "assets": [
+      {
+        "name": "nuwax-codex-0.18.14-aarch64-apple-darwin.tar.gz",
+        "bytes": 129410485,
+        "digest": "sha256:d3f91a44d31b6885c6a5195dd90be58057635ea5b0835204d56d529d27e97553"
+      },
+      {
+        "name": "nuwax-codex-0.18.14-aarch64-pc-windows-msvc.zip",
+        "bytes": 262879748,
+        "digest": "sha256:8321a0b6db95bf70d2aef4f8d4449114be19087ca42abc25a23f0efdd81ecf5f"
+      },
+      {
+        "name": "nuwax-codex-0.18.14-aarch64-unknown-linux-musl.tar.gz",
+        "bytes": 137826130,
+        "digest": "sha256:50a96e80c51fdc85f8c26be68eb809948d7228bbd4c2da5a6616a441084b15b5"
+      },
+      {
+        "name": "nuwax-codex-0.18.14-x86_64-apple-darwin.tar.gz",
+        "bytes": 137369218,
+        "digest": "sha256:d17046a50cdef9b68adbd407f00869ae2012b91329615eb19298d88966756191"
+      },
+      {
+        "name": "nuwax-codex-0.18.14-x86_64-pc-windows-msvc.zip",
+        "bytes": 284256992,
+        "digest": "sha256:795de8cb74a0ac31ed6d03f89ebeba4b6240980624f58c975a2b93ee89176325"
+      },
+      {
+        "name": "nuwax-codex-0.18.14-x86_64-unknown-linux-gnu.tar.gz",
+        "bytes": 141582689,
+        "digest": "sha256:7c2e12a4542f397ef37b1ed9e0a45fafac108e25110b49a26b81a533bf9af15d"
+      },
+      {
+        "name": "nuwax-codex-0.18.14-x86_64-unknown-linux-musl.tar.gz",
+        "bytes": 146972563,
+        "digest": "sha256:de6db1e88dc397952eeae74a833e678478e0b7780ac82f95cde7c2eecf00d368"
+      }
+    ]
+  },
+  "homePolicy": {
+    "default": "~/.nuwax-harness",
+    "explicitCodexHomeHasPriority": true,
+    "legacyHomeFallback": false,
+    "automaticMigration": false,
+    "downloadCache": "~/.nuwax-harness-cache",
+    "legacyInvalidConfigsIgnoredByActualDefaultHomeRpc": true,
+    "windowsDefaultKnownFolderNotOverriddenInTests": true
+  },
+  "macArmNpmInstall": {
+    "passed": true,
+    "target": "aarch64-apple-darwin",
+    "versions": {
+      "nuwax-harness": "codex-cli 0.18.14",
+      "nuwax-codex": "codex-cli 0.18.14"
+    },
+    "fileChecksums": [
+      {
+        "name": "nuwax-harness",
+        "sha256": "253552cb698d927e4bdee74b5c549aed779eb15fa3073916d34ec0469580586d"
+      },
+      {
+        "name": "nuwax-codex",
+        "sha256": "253552cb698d927e4bdee74b5c549aed779eb15fa3073916d34ec0469580586d"
+      },
+      {
+        "name": "codex-code-mode-host",
+        "sha256": "e1912fb03503688ce9f748aa48e2e1376deff0a4b9e6e380d7005feecde5e435"
+      }
+    ],
+    "defaultHomeAndLegacyExclusionVerified": true,
+    "explicitHomePriorityVerified": true,
+    "npmWrapperActualRpcPassed": true,
+    "codeModeHostActualStdioCase": "remote_session_persists_values_forwards_delegates_and_controls_cells",
+    "modelRequestsForHomeProbes": 0,
+    "evidence": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/published-install-0.18.14-attempt2/receipt.json"
+  },
+  "remoteNpmInstalls": [
+    {
+      "platform": "linux",
+      "target": "x86_64-unknown-linux-gnu",
+      "passed": true,
+      "commandsVerified": 7,
+      "fileChecksums": [
+        {
+          "name": "nuwax-harness",
+          "sha256": "cd0b7decddf83e85d96bbf001f021f4271d3833090eaf47677914f5cbbd0ca13"
+        },
+        {
+          "name": "nuwax-codex",
+          "sha256": "cd0b7decddf83e85d96bbf001f021f4271d3833090eaf47677914f5cbbd0ca13"
+        },
+        {
+          "name": "codex-code-mode-host",
+          "sha256": "6941868c828ecb17a22f2c44d7f96f032a2dc1d6cb8c5c53913e6b542625264e"
+        },
+        {
+          "name": "codex-resources/bwrap",
+          "sha256": "94a9c9d4e3fff7db1874a9b6f6c08b2fca9e299ef733fa48ff7454f9a34be414"
+        }
+      ],
+      "provider": "nuwax_env",
+      "model": "artifact-probe",
+      "homeSelection": "explicit CODEX_HOME verified via initialize/thread/start/thread/read",
+      "databaseFiles": [
+        {
+          "path": "queue_1.sqlite",
+          "bytes": 4096
+        },
+        {
+          "path": "memories_1.sqlite",
+          "bytes": 4096
+        },
+        {
+          "path": "goals_1.sqlite",
+          "bytes": 4096
+        },
+        {
+          "path": "state_5.sqlite",
+          "bytes": 4096
+        },
+        {
+          "path": "logs_2.sqlite",
+          "bytes": 49152
+        }
+      ],
+      "modelRequests": 0,
+      "gracefulEof": true,
+      "temporaryInstallationCleaned": true,
+      "evidence": "/Volumes/zhitai/tmp/codex-core-ci-39774635523/npm-0.18.14-linux.json"
+    },
+    {
+      "platform": "windows",
+      "target": "x86_64-pc-windows-msvc",
+      "passed": true,
+      "commandsVerified": 7,
+      "fileChecksums": [
+        {
+          "name": "nuwax-harness.exe",
+          "sha256": "30514ec6f796daaa388998afa245223c1b0a2813369027256760ab89be3d16f0"
+        },
+        {
+          "name": "nuwax-codex.exe",
+          "sha256": "30514ec6f796daaa388998afa245223c1b0a2813369027256760ab89be3d16f0"
+        },
+        {
+          "name": "codex-code-mode-host.exe",
+          "sha256": "f171ac11b896e75a03fdfb2c475776ec256e4260d2a7d2020397155e19a37bbe"
+        },
+        {
+          "name": "codex-windows-sandbox-setup.exe",
+          "sha256": "24326817a40bdb04cd1f4698c7178f709282e58f9c227987250fabc926a0288c"
+        },
+        {
+          "name": "codex-command-runner.exe",
+          "sha256": "c4c2fc5f6382894bffc381535e7dd5a76eed64a531af889db387973fcf7a65e3"
+        }
+      ],
+      "provider": "nuwax_env",
+      "model": "artifact-probe",
+      "homeSelection": "explicit CODEX_HOME verified via initialize/thread/start/thread/read",
+      "databaseFiles": [
+        {
+          "path": "goals_1.sqlite",
+          "bytes": 4096
+        },
+        {
+          "path": "logs_2.sqlite",
+          "bytes": 49152
+        },
+        {
+          "path": "memories_1.sqlite",
+          "bytes": 4096
+        },
+        {
+          "path": "queue_1.sqlite",
+          "bytes": 4096
+        },
+        {
+          "path": "state_5.sqlite",
+          "bytes": 4096
+        }
+      ],
+      "modelRequests": 0,
+      "gracefulEof": true,
+      "temporaryInstallationCleaned": true,
+      "evidence": "/Volumes/zhitai/tmp/codex-core-ci-39774635523/npm-0.18.14-windows.json"
+    }
+  ],
+  "macIntelCiArtifact": {
+    "passed": true,
+    "execution": "x86_64 under Rosetta on Apple Silicon; not a physical Intel host",
+    "checksumsVerified": true,
+    "codeModeHostStdioPassed": true,
+    "defaultHomeActualRpcPassed": true,
+    "unsignedIntelBinaryWasExecutedUnmodified": true,
+    "evidence": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/intel-release-artifact/receipt.json"
+  },
+  "publishedAcp": {
+    "passed": 28,
+    "groups": [
+      {
+        "mode": "chat-default-rig",
+        "passed": 7,
+        "rigCaptureCount": 9,
+        "binarySha256": "253552cb698d927e4bdee74b5c549aed779eb15fa3073916d34ec0469580586d",
+        "evidence": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/published-acp-0.18.14/chat-default-rig/results.json"
+      },
+      {
+        "mode": "anthropic-default-rig",
+        "passed": 7,
+        "rigCaptureCount": 9,
+        "binarySha256": "253552cb698d927e4bdee74b5c549aed779eb15fa3073916d34ec0469580586d",
+        "evidence": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/published-acp-0.18.14/anthropic-default-rig/results.json"
+      },
+      {
+        "mode": "responses-default-rig",
+        "passed": 7,
+        "rigCaptureCount": 9,
+        "binarySha256": "253552cb698d927e4bdee74b5c549aed779eb15fa3073916d34ec0469580586d",
+        "evidence": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/published-acp-0.18.14/responses-default-rig/results.json"
+      },
+      {
+        "mode": "responses-native",
+        "passed": 7,
+        "rigCaptureCount": 0,
+        "binarySha256": "253552cb698d927e4bdee74b5c549aed779eb15fa3073916d34ec0469580586d",
+        "evidence": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/published-acp-0.18.14/responses-native/results.json"
+      }
+    ],
+    "coverage": [
+      "environment gateway and title model",
+      "typed screenshot delivery",
+      "usage",
+      "cancel",
+      "compaction and continuation",
+      "cold resume",
+      "exact bridge and HTTP path"
+    ]
+  },
+  "localTargetedTests": {
+    "tuiPermissions": 49,
+    "coreTestSupportIncludingPortableHook": 54,
+    "hooksAndChildCompletion": 6,
+    "mcpMatrixAndAnthropicCap": 65,
+    "boardFinalDeliveryBarrier": 2,
+    "strictAutoReview": 1,
+    "macHighFdOriginal": 1,
+    "rustMinStackBytes": 8388608,
+    "retries": 0,
+    "notACombinedUniqueTestTotal": true
+  },
+  "postTagTestOnlyCommits": [
+    "519d43824",
+    "105fb7f9a"
+  ],
+  "olderFullWorkspaceCi": {
+    "sourceCommit": "8ed1cbfbd",
+    "runId": 39774635523,
+    "conclusion": "failure",
+    "notOverriddenByLocalPasses": true,
+    "summaries": {
+      "ubuntu": [
+        "2026-10-22T13:17:47.9091537Z      Summary [2455.387s] 23518 tests run: 23515 passed (16 slow), 3 failed, 49 skipped"
+      ],
+      "windows": [
+        "2026-10-22T14:06:56.2956478Z      Summary [3309.142s] 22296 tests run: 22286 passed (24 slow, 356 leaky), 9 failed, 1 timed out, 138 skipped"
+      ],
+      "macos": [
+        "2026-10-22T15:50:22.5005940Z      Summary [4382.726s] 23452 tests run: 23448 passed (30 slow), 3 failed, 1 timed out, 72 skipped"
+      ]
+    }
+  },
+  "retainedFirstFailures": [
+    {
+      "kind": "registry lookup",
+      "detail": "The first npm-view request after publication returned E404; the direct version document was then 200 and a fresh verification root completed the first actual Mac install. Original lookup logs retained.",
+      "evidence": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/published-install-0.18.14/registry.stderr"
+    },
+    {
+      "kind": "Intel verifier assumption",
+      "detail": "An extra strict-signature check rejected an unsigned x86_64 artifact. Original bytes then executed successfully; no binary was patched or signed.",
+      "evidence": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/intel-artifact-verification.stderr"
+    },
+    {
+      "kind": "home verifier assumption",
+      "detail": "The dry startup-config diagnostic does not guarantee directory creation; actual RPC now verifies selected home, provider/model and state.",
+      "evidence": "/Volumes/zhitai/tmp/nuwax-harness-release-20261022/intel-artifact-runtime-verification.stderr"
+    },
+    {
+      "kind": "Windows transport",
+      "detail": "First SSH stdin script transport returned 255 before any installation receipt/directory. SCP script delivery under existing RemoteSigned policy then passed; no execution policy bypass.",
+      "evidence": "/Volumes/zhitai/tmp/codex-core-ci-39774635523/npm-0.18.14-windows.stderr"
+    }
+  ],
+  "paidModelApiCallsForThisPackagingAcceptance": 0,
+  "boundaries": [
+    "Mock ACP validates published bytes but is not a new live vendor API run. Earlier live GLM/vendor receipts retain their own source binding.",
+    "Seven build targets do not mean seven physical machines were tested. Actual default-home and legacy-exclusion RPC ran on macOS; Linux/Windows installation RPC used explicit CODEX_HOME. Intel execution used Rosetta, not a physical Intel Mac.",
+    "Known platform test failures and the accepted Windows legacy deletion limitation remain recorded in ROADMAP."
+  ]
+}
