@@ -232,8 +232,11 @@ async fn environment_provider_is_explicit_in_remote_start_fork_resume_and_histor
         Default::default(),
     )
     .await?;
-    let mut server =
-        AppServerSession::new(AppServerClient::InProcess(client), ThreadParamsMode::Remote);
+    let mut server = AppServerSession::new(
+        crate::backend_id::BackendId::new(),
+        AppServerClient::InProcess(client),
+        ThreadParamsMode::Remote,
+    );
     assert_eq!(
         server.history_model_provider(&client_config).await?,
         Some("nuwax_env".into()),

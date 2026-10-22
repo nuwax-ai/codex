@@ -13,7 +13,7 @@ export NUWAX_MODEL='GLM-5.3-Flash'
 export NUWAX_API_KEY='填入自己的Token Plan Key'
 ```
 
-`NUWAX_WIRE_API` 可选 `chat`、`responses`、`anthropic`。换供应商时替换这四项即可；Base URL 使用对应协议的基址。BASE_URL、WIRE_API、API_KEY 需成组提供。显式 CLI/provider 覆盖的优先级高于环境变量，排查时也要检查宿主的 `CODEX_CONFIG`、`MODEL_PROVIDER` 和启动参数。
+`NUWAX_WIRE_API` 可选 `chat`、`responses`、`anthropic`。换供应商时替换这四项；若此前设过NUWAX_BRIDGE=native，切回Chat/Anthropic须unset该变量或设为rig。genai备用桥只支持Chat/Anthropic，不支持Responses。Base URL 使用对应协议的基址。BASE_URL、WIRE_API、API_KEY 需成组提供。显式 CLI/provider 覆盖的优先级高于环境变量，排查时也要检查宿主的 `CODEX_CONFIG`、`MODEL_PROVIDER` 和启动参数。
 
 自定义型号还应按平台公布的真实token窗口设置已有的 `CODEX_MODEL_CONTEXT_WINDOW`（正整数），并配置适合该模型的输出上限。未知型号的默认窗口并非自动探测结果，不能用较大的默认值替代真实限制；图片和输出也会消耗窗口。环境值会进入本地压缩和最终请求预算，显式 `-c model_context_window=...` 的优先级更高。
 
@@ -27,15 +27,32 @@ export NUWAX_BRIDGE='native'   # rig（默认）| native | genai
 
 `native` 必须与 `NUWAX_WIRE_API=responses` 同时出现（chat/anthropic 两条线只由桥服务，配 `native` 会在启动时直接报错并说明需要哪个变量）。凭据仍来自 `NUWAX_API_KEY`，不依赖 auth.json 或官方订阅登录；执行记录、取消、压缩、冷恢复与三条线共用同一套协议栈。共享 daemon 与 live 子进程会剥离该变量，不会把某个客户端的传输选择带给其他进程。
 
-验证是否真的离开桥：`codex doctor` 的 model routing 检查会打印 `bridge: native transport` 与 `experimental bridge override: native`；设置 `NUWAX_BRIDGE=rig` 或不设置时打印 `bridge: rig (model bridge)`。
+验证是否真的离开桥：`codex doctor` 的 model routing 检查会打印 `bridge: native transport` 与 `experimental bridge override: Native`；设置 `NUWAX_BRIDGE=rig` 或不设置时打印 `bridge: rig (model bridge)`。genai选择现也按实际桥名报告。
+
+**ACP的另一套环境入口不能混用理解。** 若宿主设置CODEX_BASE_URL等CODEX_*变量，
+ACP会显式配置custom-gateway；当前其EnvGatewayConfig尚无桥选择映射，单加
+NUWAX_BRIDGE不能覆盖已显式选择的provider。直接使用Codex NUWAX入口或明确配置
+provider.experimental_bridge=native已可用；沿用ACP自有CODEX_*入口时应先补该小映射。
+原生fixture已经通过，实际GPT/中转端点仍需用其真实模型和凭据做一次窄验收。
 
 ## 固定实际运行的 Codex
 
 在 `fork-nuwax-codex` 的 `test` 分支源码中构建包含 rig 的 CLI：
 
 ```bash
-cd /Volumes/zhitai/git_workspace/fork-nuwax-codex/codex-rs
-cargo build --release -p codex-cli --features codex-core/rust-rig
+cd /Volumes/zhitai/git_workspace/fork-nuwax-codex
+export CARGO_HOME=/Volumes/zhitai/cargo-home
+export TMPDIR=/Volumes/zhitai/tmp
+mkdir -p codex-rs/target
+scripts/prefetch_rusty_v8.sh \
+  --cache-dir /Volumes/zhitai/codex-build-cache/rusty_v8 \
+  --env-file codex-rs/target/nuwax-v8.env
+set -a
+source codex-rs/target/nuwax-v8.env
+set +a
+cd codex-rs
+cargo build --locked --release -p codex-cli -p codex-code-mode-host \
+  --features codex-core/rust-rig
 export CODEX_PATH='/Volumes/zhitai/git_workspace/fork-nuwax-codex/codex-rs/target/release/codex'
 ```
 
@@ -44,6 +61,10 @@ export CODEX_PATH='/Volumes/zhitai/git_workspace/fork-nuwax-codex/codex-rs/targe
 从那里构建会得到修复前的二进制。`git -C <目录> log --oneline -1` 应当是远端最新提交，
 不要用旧 worktree（`.claude/worktrees/merge-main-20261014`）当源码。切换构建后检查二进制
 SHA 和路径，避免仍运行 npm 依赖附带的旧版本。
+
+上述外接盘cache/tmp目录应已存在；其它机器替换为自己的缓存路径。预取后可用
+--offline复验暖缓存，冷缓存断网不能获取未提供制品。Code Mode默认启用时同时保留
+同一构建的codex-code-mode-host，不以旧helper混配。
 
 Linux/容器把路径换成相应绝对路径。`CODEX_PATH` 指向 **codex CLI**，ACP 会用它启动 `app-server` 子命令；不要填 codex-exec 或 codex-app-server。
 

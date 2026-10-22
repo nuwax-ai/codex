@@ -26,7 +26,7 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
 | 路径 | 作用 |
 |---|---|
 | `codex-rs/codex-rust-rig-bridge/` | **默认桥**。基于 rig-core =0.44.0(精确锁版本),把 `ResponsesApiRequest` 转成 rig `CompletionRequest`(OpenAI Chat Completions 或 Anthropic Messages),流式转回 codex `ResponseEvent`。核心文件:`convert_request.rs`(请求映射)、`convert_response.rs`(响应/流事件映射)、`stream.rs`(流泵+错误映射)、`client.rs`(rig 客户端构造)、`bridge_impl.rs`(trait 实现) |
-| `codex-rs/codex-rust-genai-bridge/` | 备用桥(基于 rust-genai 0.6.5)。**已降级为回退选项**,配置 `experimental_bridge = "genai"` 才启用。结构与 rig 桥同构 |
+| `codex-rs/codex-rust-genai-bridge/` | 备用桥(基于 rust-genai 0.7.0)。**已降级为回退选项**,配置 `experimental_bridge = "genai"` 才启用。结构与 rig 桥同构 |
 | `codex-rs/live-tests/` | 独立集成测试 crate(不耦合业务代码)。三厂商(MiMo/GLM/StepFun)× 两桥 × 多场景的真实模型测试矩阵 + 编译产物 E2E + 录制回放 cassette + A/B diff。凭据从 gitignored 的 `.env.local` 读 |
 
 ### 对上游文件的侵入式修改(fork 补丁面,合并冲突高发区)

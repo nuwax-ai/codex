@@ -17,31 +17,30 @@ pub fn build_genai_client(
     api_auth: &SharedAuthProvider,
     adapter_kind: AdapterKind,
 ) -> Result<genai::Client, AuthError> {
-    let base_url = {
-        // Preserve configured query params (api-version, tenant routing, …)
-        // on the endpoint the resolver forces.
-        let base = api_provider.base_url.clone();
-        match &api_provider.query_params {
-            Some(params) if !params.is_empty() => {
-                let qs = params
-                    .iter()
-                    .map(|(k, v)| format!("{k}={v}"))
-                    .collect::<Vec<_>>()
-                    .join("&");
-                let sep = if base.contains('?') { '&' } else { '?' };
-                format!("{base}{sep}{qs}")
-            }
-            _ => base,
-        }
-    };
-    // Ensure trailing slash so reqwest::Url::join appends rather than
-    // replaces the last path segment (e.g. /v1 + chat/completions
-    // -> /v1/chat/completions, not /chat/completions).
-    let base_url = if base_url.ends_with('/') {
-        base_url
-    } else {
-        format!("{base_url}/")
-    };
+    let mut base_url = reqwest::Url::parse(&api_provider.base_url)
+        .map_err(|error| AuthError::Build(format!("invalid genai endpoint URL: {error}")))?;
+    // Normalize the path before appending query parameters. Appending '/' to
+    // the serialized URL would alter the last query value and leave /v1
+    // vulnerable to replacement by OpenAI's Url::join("chat/completions").
+    if !base_url.path().ends_with('/') {
+        base_url.set_path(&format!("{}/", base_url.path()));
+    }
+    if let Some(params) = &api_provider.query_params
+        && !params.is_empty()
+    {
+        base_url.query_pairs_mut().extend_pairs(params);
+    }
+    let has_endpoint_query = base_url.query().is_some();
+    if adapter_kind == AdapterKind::Anthropic && has_endpoint_query {
+        // genai's Anthropic adapter concatenates "messages" to the endpoint
+        // string rather than joining a URL. Reject unsupported routing instead
+        // of silently absorbing the suffix into a query value.
+        return Err(AuthError::Build(
+            "the genai Anthropic bridge does not support endpoint query parameters; use the rig bridge"
+                .into(),
+        ));
+    }
+    let base_url = base_url.to_string();
     let auth_headers = api_auth.to_auth_headers()?;
 
     let has_auth = auth_headers
@@ -49,7 +48,7 @@ pub fn build_genai_client(
         .and_then(|v| v.to_str().ok())
         .is_some();
     tracing::info!(
-        base_url = %base_url,
+        has_endpoint_query,
         adapter = ?adapter_kind,
         has_authorization_header = has_auth,
         "Building genai client"
@@ -103,33 +102,34 @@ pub fn build_extra_headers(
 ) -> Result<genai::Headers, AuthError> {
     let mut headers: Vec<(String, String)> = Vec::new();
 
-    // Provider-level headers first
-    for (key, value) in api_provider.headers.iter() {
-        if let Ok(v) = value.to_str() {
-            headers.push((key.as_str().to_string(), v.to_string()));
-        }
-    }
-
     // The PRIMARY Authorization header is intentionally NOT forwarded:
     // the genai adapter rebuilds it via the auth resolver, and duplicating
     // it triggers 400 rejections from reverse proxies. SECONDARY auth
     // headers (gateway OAuth cookies, api-key variants, …) MUST survive —
     // the adapter only manages the primary header.
     let auth_headers = api_auth.to_auth_headers()?;
-    let primary_authz = auth_headers.get(http::header::AUTHORIZATION).cloned();
-    for (key, value) in auth_headers.iter() {
-        if Some(value) == primary_authz.as_ref() {
-            continue;
-        }
-        if let Ok(v) = value.to_str() {
-            headers.push((key.as_str().to_string(), v.to_string()));
-        }
-    }
-
-    // Extra headers take top precedence
-    for (key, value) in extra_headers.iter() {
-        if let Ok(v) = value.to_str() {
-            headers.push((key.as_str().to_string(), v.to_string()));
+    // genai stores one String per header name. Reject unrepresentable values
+    // and repeated names within one layer instead of silently dropping data.
+    // Repeated names across layers remain intentional overrides, in order:
+    // provider -> auth -> extra headers.
+    for (layer, skip_primary_auth) in [
+        (&api_provider.headers, false),
+        (&auth_headers, true),
+        (extra_headers, false),
+    ] {
+        for (key, value) in layer.iter() {
+            if layer.get_all(key).iter().nth(1).is_some() {
+                return Err(AuthError::Build(
+                    "the genai bridge cannot represent multiple values for one header name".into(),
+                ));
+            }
+            let value = value.to_str().map_err(|_| {
+                AuthError::Build("the genai bridge cannot represent a non-text header value".into())
+            })?;
+            if skip_primary_auth && key == http::header::AUTHORIZATION {
+                continue;
+            }
+            headers.push((key.as_str().to_string(), value.to_string()));
         }
     }
 

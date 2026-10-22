@@ -25,6 +25,7 @@
 #                and where they would come from.
 #   --env-file   Additionally write a sourceable env file (RUSTY_V8_ARCHIVE=...,
 #                RUSTY_V8_SRC_BINDING_PATH=...), matching the action's exports.
+#                Load for Cargo with: set -a; source <path>; set +a
 #   --list       Print the targets the trusted manifest covers; no downloads.
 #
 # Exit codes: 0 success (cache hit or verified download) · 2 checksum mismatch
@@ -104,6 +105,8 @@ fi
 BINDING_NAME="src_binding_${PROFILE}_${TARGET}.rs"
 
 [[ -z "${CACHE_DIR}" ]] && CACHE_DIR="${HOME}/.cache/nuwax/rusty_v8"
+# Keep exports valid after changing from the checkout root into codex-rs.
+CACHE_DIR="$(python3 -c 'import os, sys; print(os.path.abspath(sys.argv[1]))' "${CACHE_DIR}")"
 DEST_DIR="${CACHE_DIR}/${VERSION}/${TARGET}"
 RELEASE_TAG="rusty-v8-v${VERSION}"
 BASE_URL="https://github.com/openai/codex/releases/download/${RELEASE_TAG}"
@@ -112,6 +115,16 @@ for name in "${ARCHIVE_NAME}" "${BINDING_NAME}"; do
   expected_checksum "${name}" >/dev/null || {
     echo "the trusted manifest has no unique entry for ${name}; wrong target or stale manifest" >&2; exit 4; }
 done
+
+DOWNLOAD_TMP=""
+cleanup_download() {
+  if [[ -n "${DOWNLOAD_TMP}" ]]; then
+    rm -f -- "${DOWNLOAD_TMP}"
+  fi
+}
+trap cleanup_download EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Cache reuse requires re-verification: a cached file passes only if its bytes
 # still match the committed manifest, so a corrupted or swapped cache never
@@ -135,7 +148,10 @@ fetch_file() {
     return 0
   fi
   mkdir -p "${DEST_DIR}"
-  local tmp="${dest}.part"
+  # Concurrent checkouts must never write, verify, or remove one another's
+  # partial download. Publish only this invocation's verified file atomically.
+  DOWNLOAD_TMP="$(mktemp "${dest}.part.XXXXXXXX")"
+  local tmp="${DOWNLOAD_TMP}"
   echo "downloading ${BASE_URL}/${name}" >&2
   curl -fsSL --retry 2 "${BASE_URL}/${name}" -o "${tmp}" || { rm -f "${tmp}"; echo "download failed: ${name}" >&2; exit 3; }
   if ! echo "${expected}  ${tmp}" | "${checksum_command[@]}" --check - >/dev/null 2>&1; then
@@ -144,6 +160,7 @@ fetch_file() {
     exit 2
   fi
   mv "${tmp}" "${dest}"
+  DOWNLOAD_TMP=""
 }
 
 MISSING=0
@@ -157,15 +174,14 @@ fi
 ARCHIVE_PATH="${DEST_DIR}/${ARCHIVE_NAME}"
 BINDING_PATH="${DEST_DIR}/${BINDING_NAME}"
 
+write_shell_env() {
+  printf 'RUSTY_V8_ARCHIVE=%q\n' "${ARCHIVE_PATH}"
+  printf 'RUSTY_V8_SRC_BINDING_PATH=%q\n' "${BINDING_PATH}"
+}
+
 if [[ -n "${ENV_FILE}" ]]; then
-  cat > "${ENV_FILE}" <<EOF
-RUSTY_V8_ARCHIVE=${ARCHIVE_PATH}
-RUSTY_V8_SRC_BINDING_PATH=${BINDING_PATH}
-EOF
+  write_shell_env > "${ENV_FILE}"
   echo "env file written: ${ENV_FILE}" >&2
 fi
 
-cat <<EOF
-RUSTY_V8_ARCHIVE=${ARCHIVE_PATH}
-RUSTY_V8_SRC_BINDING_PATH=${BINDING_PATH}
-EOF
+write_shell_env

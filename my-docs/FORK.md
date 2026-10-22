@@ -3,7 +3,8 @@
 维护说明：本文是 fork 行为差异的权威索引。改动 fork 行为时同步更新本文与
 `codex-review-prompt.md`（§二 补丁面清单）。2026-10-22 的上游同步目标为
 `main@342ed69a1`，Rust `1.99.1`、V8 `152.2.0`，rig保持`0.44.0`；合并冲突已解，
-阶段合并保存在本地test，定向验收完成；未push，不用旧实网或CI宣称新树全部通过。
+main集成与晚间批次已推送，复审输入origin/test=850a87390；备用genai现为0.7.0。
+不同源码的实网、fixture与CI证据分开，不宣称全部厂商/全部平台已通过。
 当前优先级与本轮验证快照见 [ROADMAP.md](ROADMAP.md)，
 历史执行证据见 [最新验收台账](rig-production-completion-2026-10-10/claude-rig-final-acceptance-2026-10-18.md)。
 npm 包：`nuwax-codex`（二进制名同）；ACP 侧配套包：`@nuwax-ai/nuwax-codex-acp-ts`。
@@ -21,8 +22,10 @@ fork 通过 rig 桥统一第三方模型的协议转换、传输与会话生命�
 构建，Code Mode真实JS2/2通过；最终Core/app-server/CLI/live-tests all-targets check
 也通过。Linux168/271是各自源码快照的定向结果，不是最终HEAD整体/实网验收。
 
-一次获授权的M1只重跑旧head29e7e59d5的mac job，现已接单并进入workspace测试；
-它不能验收新main集成树。本轮阶段保存不包含push、新CI或发布。
+旧head29e7e59d5的M1 mac job已于05:48:01Z成功。新合并树CI run39761410573
+的Ubuntu/macOS在弃用API的严格lint阶段失败，Windows在TUI测试编译阶段失败，
+三平台workspace测试未运行，Bazel bridge gate通过；本轮已修API和测试适配，
+定向复验及后续CI各自登记，不把旧成功当新树验收。
 
 ## 2. 配置目录：分层 CODEX_HOME（v0.18.7+）
 
@@ -50,7 +53,7 @@ fork 通过 rig 桥统一第三方模型的协议转换、传输与会话生命�
 ### 3.2 双桥 + 逃生舱
 
 `experimental_bridge`（fork 字段）：`"rig"`（默认，rig-core / rig-reqwest `=0.44.0`）/
-`"genai"`（备用，rust-genai 0.6.5）/`"native"`（强制官方原生传输，调试用）。
+`"genai"`（备用，rust-genai 0.7.0）/`"native"`（显式选择上游原生Responses传输）。
 
 桥的中立 trait 在 `codex-api/src/bridge.rs`（`ModelBridge` / `ModelWireProtocol`，
 含 `ModelBridgeOptions`：extra_headers、协议、idle timeout、x-codex-turn-state 回传）。
@@ -72,6 +75,12 @@ idle timeout 包裹）→ 原始 SSE 进 codex-api 完整解码器，**严格终
 （`codex-api/src/sse/responses_policy.rs`：顶层 error/failed/incomplete 即停、
 畸形帧报错、[DONE] 容忍）。官方原生路径的宽松策略不变。Authorization 在 rig
 自动合成 Bearer 后**精确恢复**（api-key-only/无鉴权网关不被改写）。
+
+备用genai0.7与主rig不承诺完全等价：Responses不支持；OpenAI端点的path/query已
+修正并有真实loopback合同；Anthropic endpoint携带query时明确拒绝，可改用rig，
+不能静默吞参数。主rig的严格usage presence与身份合同不能从备用桥编译通过推导。备用桥的header按名称
+排除主Authorization、保留同值secondary；不可表达的非文本/同层多值头明确报错，
+provider/auth/extra跨层覆盖顺序保留。
 
 ## 4. hosted（服务端）工具翻译（v0.18.8+）
 
@@ -129,7 +138,7 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
 [最新台账 §2、§4](rig-production-completion-2026-10-10/claude-rig-final-acceptance-2026-10-18.md) 为准。
 
 设计：`my-docs/anthropic-hosted-tools/`。
-### 三协议字段契约（2026-10-22 源码核对，合并后验收待补）
+### 三协议字段契约（2026-10-22，验收分别绑定源码与二进制）
 
 fork 明确每个跨协议字段在三条线（Responses passthrough / Chat / Anthropic）
 上的语义，避免"开关在一条线生效、另一条静默丢失"：
@@ -146,8 +155,9 @@ fork 明确每个跨协议字段在三条线（Responses passthrough / Chat / An
 | `parallel_tool_calls` | 原样 | 原样 | hosted-only 时还原 tool_choice 并关 parallel |
 
 `cached_web_search` 能力当前按 `native_transport` 绑定（model-provider
-`provider.rs`）：Rig Responses 线同 native 一样默认 Cached→Disabled 由
-capability 决定，而 Chat/Anthropic 桥线在请求翻译处 fail-fast。按协议×厂商
+`capabilities.rs`）：native Responses为true，可保留cached；Rig Responses桥为false，
+Core默认Cached据此降级Disabled。手工构造Responses请求的同协议字段透传是另一层，
+不应与Core默认能力混同。Chat/Anthropic桥收到无法表达的cached/indexed请求时fail-fast。按协议×厂商
 的精细能力矩阵仍为登记项（R5 追踪），本轮未改默认搜索策略。
 
 
@@ -242,6 +252,9 @@ daemon 子进程同样剥离该变量；doctor 的 `config.model_routing` 收据
 边界见 [容器多进程审查](container-multiprocess-env-review-2026-10-03.md)。
 （ACP-TS 侧另有 `CODEX_BASE_URL`/`CODEX_API_PROTOCOL`/`CODEX_WIRE_API`/
 `INITIAL_AGENT_MODE` 等，见该仓库。）
+ACP的CODEX_*入口显式选择custom-gateway，目前没有桥选择字段；不能仅增加
+NUWAX_BRIDGE就覆盖该provider。原生开关的已验证范围是Codex的NUWAX临时provider
+及显式配置experimental_bridge=native；ACP入口如需同等选择应补独立映射回归。
 
 ## 8. 版本与发布
 
@@ -255,8 +268,9 @@ daemon 子进程同样剥离该变量；doctor 的 `config.model_routing` 收据
 ## 9. 差异未及之处
 
 不能再把沙箱、审批、MCP、TUI 等整体标为与官方完全一致：后续已有后台模型选择、
-退出清理、图片入口以及Linux沙箱deny顺序等修复。`/dev`符号链接mask仍有启动abort，
-`/proc/self/environ`及`/proc/net`的已知可读边界仍需独立安全修复，不能归为抖动。
+退出清理、图片入口以及Linux沙箱deny等修复。self/thread-self/net家族deny现已
+明确Fatal（不再静默失效），并不承诺可运行地拒绝任意per-pid视角。显式/dev分支
+的初始缺席不等于不可重建，晚间复审的隔离修正与限定能力见最新复审记录。
 当前补丁与未闭合安全边界
 见 [ROADMAP.md](ROADMAP.md) 和最新台账；补丁索引仍见 `codex-review-prompt.md` §二。设计文档见
 `my-docs/nuwax-home/`、`my-docs/anthropic-hosted-tools/`、

@@ -5041,7 +5041,9 @@ fmt及scoped diff-check通过（main原样定宽快照尾空格例外见复审�
    Code Mode 默认进程外 host，`Feature::CodeModeHost` 默认开，availability 检查
    host 文件存在性；host 构建还需 V8 env，v8 crate 默认去 denoland 拉 OpenAI
    自建产物会 404）与 `test_stdio_server`。补构建后 5/5 PASS。
-   **结论：全部环境性失败，无产品回归；每次失败都有同断言绿收据。**
+   **证据范围：按仓库justfile标准Unix 8MiB测试栈、低负载及完整helper前置后
+   215/215通过。初始默认2MiB与后续参数不同，不能用8MiB通过反证默认2MiB
+   无栈问题；本收据不承诺所有debug路径支持默认2MiB，也不据此覆盖专门栈合同。**
 
 新交界回归：`anthropic_cap_terminal_fires_post_model_hook_once_without_resampling`
 （桥 Anthropic cap 终态 → PostModelRequest 恰一次 status=failed 带错误文本、
@@ -5110,6 +5112,12 @@ cap×hook 交界回归、`188d87360` genai 0.7.0、及本节文档提交。第�
 重跑关闭。
 
 ## 6.56 O2/O3 实现轮：deny 命中自建 /dev 符号链接改显式构建，宿主专属 netns sysctl 按缺席拒绝（2026-10-22）
+
+**后续修订说明**：本节是9b92ff4e4/bb6312cde时期的顺序收据。d88ffb3d4随后将
+self/thread-self/net及后代deny全部Fatal，本节后面的“environ未动/文件保持mask”
+不再描述最终代码。独立复审又实际复现O2可重建、读重绑覆盖与hostPTY暴露，
+撤回“初始缺席等于完备拒绝/hostpts不影响隔离”的结论，修复及真实生产探针见§6.58。
+原239/241计数只是当时的用例结果，不替代后续恶意路径验收。
 
 接 §6.55 的设计与探针（[sandbox-o2-o3-design-2026-10-22.md](../sandbox-o2-o3-design-2026-10-22.md)）。
 实现全部在 `codex-rs/linux-sandbox`：新增 `SYNTHETIC_DEV_SYMLINK_ENTRIES`
@@ -5190,14 +5198,60 @@ ACE 优先）。这不是回归：CI 缓存里 14 读数 12 红说明上游同�
 - elevated 在该实机：账户/防火墙 provisioning 成功，但 runner pipe-in 15s 超时
   （两次，27s 仍失败）——交互桌面会话 vs 服务的环境问题，未解，独立开放项。
 
+## 6.58 晚间批次独立复审：接入路径确认、实际CI阻断与最小修复（2026-10-22）
+
+接手时test=origin/test=850a87390且clean。新增11笔用首父范围
+`a5b25b043..c17b8675b`核对；旧`29e7e59d5..c17b8675b`还含main300祖先和原6文档，
+不能与11笔表逐项等同。本轮仅本地commit，未push/dispatch/发布、无真实模型调用。
+
+**用户目标已具备的部分**：国内/自定义Chat、Responses、Anthropic默认rig；
+NUWAX_WIRE_API=responses + NUWAX_BRIDGE=native已真实绕过桥，exec/app-server
+子进程fixture在册，不再当新功能开发。实际GPT/native中转端点尚无当轮实网收据；
+ACP dev@6a76aa7的CODEX_* custom-gateway入口没有桥选择映射，这才是剩余小开发。
+
+**新CI真实终态**：run39761410573 head=c17b8675b，Bazel bridge gate成功；
+Ubuntu/macOS严格Clippy因fetch_update弃用失败，Windows因七处TUI测试旧接口
+编译失败；三平台没有workspace测试Summary。因此不能称旧红已复验或新树全绿。
+七处适配也影响Mac，只是被更早lint截断，不当成原Windows六红的一部分。
+
+**实际修复**：
+- 共享source_identity改try_update，保留-Dwarnings；doctor按选中的rig/genai/native报告。
+- V8预取修并发.part、相对cache路径、sourceable env转义；校验/离线仍失败关闭。
+- 备用genai已有path/query损坏：OpenAI按URL编码保留，Anthropic query明确拒绝而不吞；
+  移除raw URL日志。按header名字排除主Authorization，保留同值secondary；不可表达的
+  非文本/同层多值明确报错，跨层覆盖保留。不是0.7新引入，也不等同主rig全字段合同。
+- O2原初始缺席结论不充分：真实helper复现可重建fd、Read/dev覆盖、宿主PTY节点
+  元数据可见。本轮最终只读封闭filtered dev、防后续冲突绑定，特殊deny分支空pts/无ptmx，
+  普通策略仍私有PTY且可新分配，独立授权shm仍可写。未读取其它终端或宣称其数据可读。
+- TUI测试补env_seed/BackendId，废弃server_features断言改到真实compatibility RPC。
+  原多后端关闭用例补取消完成握手，原EOF5s保留、原取消断言前移、无产品后端改动。
+
+**验证**：最终环境/路由/genai/身份收据lib集139/139（genai31，retries0），doctor五案
+1/1，TUI新兼容2/2；扩选旧7条首轮6过1EOF失败，补握手最终单例1/1（28.292s）。
+加握手首手仍有60s harness超时，保留首红，不声称所有调度长尾已解决。阶段探针测得
+cancel析构约2.446s，join后约1.47ms即Disconnected/EOF，未发现产品sender泄漏证据。
+预取脚本8/8（旧脚本同组3红），最终CI范围+genai all-targets Clippy-Dwarnings通过。
+Linux lib178/178、定向76/76、最终3实命令集成3/3、旧blocked_descriptor1/1均绿，
+这些是重叠选集，不相加；crate范围--no-deps严格Clippy通过，未改history依赖large_enum
+首红仍保留。Windows原生TUI --tests check 8m15 + 最终增量40.86s通过，7文件SHA匹配，
+只作类型检查；未构建TUI测试EXE、未跑Windows运行时/全workspace。fmt/diff-check通过。
+
+完整审查与收据：[晚间独立复审](codex-review-2026-10-22-late-audit.md)、
+[Linux](receipts/2026-10-22-linux-dev-audit.md)、
+[Windows](receipts/2026-10-22-windows-tui-audit.md)。
+ROADMAP已收敛为：修后CI、ACP环境桥选择映射、指定GPT/native端点短验收；
+已接受Windows legacy删除限制不重新立项，冻结main/rig，不追加泛化功能。
+
 ## 7. 提交、推送与工作树状态
 
-**2026-10-22 当前阶段优先读此条，以下旧指针为历史记录：** 本轮工作仅在
-`/Volumes/zhitai/git_workspace/fork-nuwax-codex`；main集成输入为387914de0与342ed69a1，
-以test最后一笔merge的两个父提交及复审记录核实阶段结果。原六笔文档保留，
-远端origin/test仍29e7e59d5；本轮没有push合并结果。唯一CI写操作是用户授权的一次
-M1（§6.54），不代表新main已跑完整CI。后续Claude先读ROADMAP与新交接，不再把
-本节旧历史中的“本轮/当前/待拍”直接当作今天状态。
+**2026-10-22 晚复审时的当前状态，以下旧指针为历史记录：** 工作仅在
+`/Volumes/zhitai/git_workspace/fork-nuwax-codex`；main已以a5b25b043合并，原六笔文档
+保留。晚间批次已推至origin/test=850a87390（本轮复审输入，接手时本地一致且clean）。
+新合并树CI run39761410573 head=c17b8675b已结束：Bazel通过；Ubuntu/macOS在
+严格Clippy阶段失败，Windows在TUI测试编译阶段失败，三平台workspace测试未跑，
+不是旧红名单的复现。
+本轮修复和定向收据接续§6.58；本轮仅本地commit、不push/dispatch/发布。
+旧M1（§6.54）mac成功只覆盖29e7e59d5，不覆盖本轮源码。
 
 
 

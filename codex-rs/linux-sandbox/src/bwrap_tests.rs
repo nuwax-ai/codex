@@ -1497,10 +1497,8 @@ fn explicit_dev_construction_keeps_undenied_equivalents() {
         args.args
     );
     assert!(
-        args.args
-            .windows(3)
-            .any(|window| window == ["--symlink", "pts/ptmx", "/dev/ptmx"]),
-        "unddenied ptmx stays: args={:?}",
+        !args.args.iter().any(|arg| arg == "/dev/ptmx"),
+        "the restricted tree cannot allocate PTYs without a private devpts instance: args={:?}",
         args.args
     );
     assert!(
@@ -1520,11 +1518,107 @@ fn explicit_dev_construction_keeps_undenied_equivalents() {
     );
     assert!(
         args.args
-            .windows(3)
-            .any(|window| window == ["--bind", "/dev/pts", "/dev/pts"]),
-        "pts stays mounted (host devpts; recorded deviation from the private \
-         instance `--dev` would create): args={:?}",
+            .windows(2)
+            .any(|window| window == ["--dir", "/dev/pts"]),
+        "pts stays empty instead of exposing the host's terminals: args={:?}",
         args.args
+    );
+    assert!(
+        !args.args.windows(3).any(|window| {
+            matches!(window[0].as_str(), "--bind" | "--ro-bind" | "--dev-bind")
+                && window[2] == "/dev/pts"
+        }),
+        "a host devpts bind is not a private instance: args={:?}",
+        args.args
+    );
+    assert!(
+        args.args
+            .ends_with(&["--remount-ro".to_string(), "/dev".to_string()])
+    );
+}
+
+#[test]
+fn explicit_dev_read_grant_does_not_restore_omitted_symlinks() {
+    let temp_dir = TempDir::new().expect("temp dir");
+    let policy = FileSystemSandboxPolicy::restricted(vec![
+        FileSystemSandboxEntry::new(
+            AbsolutePathBuf::from_absolute_path("/dev")
+                .expect("absolute device directory")
+                .into(),
+            FileSystemAccessMode::Read,
+        ),
+        FileSystemSandboxEntry::new(
+            AbsolutePathBuf::from_absolute_path("/dev/fd")
+                .expect("absolute denied path")
+                .into(),
+            FileSystemAccessMode::Deny,
+        ),
+    ]);
+    let args = create_filesystem_args(&policy, temp_dir.path(), BwrapOptions::default())
+        .expect("minimal device tree remains enforceable");
+    assert!(
+        !args
+            .args
+            .windows(3)
+            .any(|window| window == ["--ro-bind", "/dev", "/dev"])
+    );
+    assert!(
+        args.args
+            .ends_with(&["--remount-ro".to_string(), "/dev".to_string()])
+    );
+}
+
+#[test]
+fn explicit_dev_rejects_bind_destinations_that_restore_denied_entries_or_host_ptys() {
+    let denied = BTreeSet::from(["fd"]);
+    for conflicting in [
+        "/dev",
+        "/dev/fd",
+        "/dev/fd/3",
+        "/dev/pts",
+        "/dev/pts/1",
+        "/dev/ptmx",
+    ] {
+        let error = ensure_explicit_dev_bind_preserves_denies(Path::new(conflicting), &denied)
+            .expect_err("a later conflicting bind must not undo the restricted tree");
+        assert!(
+            error
+                .to_string()
+                .contains("cannot enforce sandbox device deny")
+        );
+    }
+    for allowed in ["/", "/dev/null", "/dev/shm", "/tmp/device-fixture"] {
+        ensure_explicit_dev_bind_preserves_denies(Path::new(allowed), &denied)
+            .expect("non-conflicting binds stay supported");
+    }
+    ensure_explicit_dev_bind_preserves_denies(Path::new("/dev/pts"), &BTreeSet::new())
+        .expect("ordinary device-tree behavior is unchanged");
+}
+
+#[test]
+fn explicit_dev_parent_is_sealed_after_writable_shm_bind() {
+    let temp_dir = TempDir::new().expect("temp dir");
+    assert!(
+        Path::new("/dev/shm").is_dir(),
+        "precondition: shared memory is available"
+    );
+    let mut policy = denied_path_policy(Path::new("/dev/fd"));
+    policy.entries.push(FileSystemSandboxEntry::new(
+        AbsolutePathBuf::from_absolute_path("/dev/shm")
+            .expect("absolute shared-memory directory")
+            .into(),
+        FileSystemAccessMode::Write,
+    ));
+    let args = create_filesystem_args(&policy, temp_dir.path(), BwrapOptions::default())
+        .expect("writable shm remains representable");
+    assert!(
+        args.args
+            .windows(3)
+            .any(|window| window == ["--bind", "/dev/shm", "/dev/shm"])
+    );
+    assert!(
+        args.args
+            .ends_with(&["--remount-ro".to_string(), "/dev".to_string()])
     );
 }
 

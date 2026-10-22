@@ -670,6 +670,13 @@ fn create_filesystem_args(
                 } else {
                     root
                 };
+                if !denied_dev_symlinks.is_empty() && mount_root == Path::new("/dev") {
+                    // Keep the minimal tree just constructed, as a full-root read
+                    // grant does. Rebinding the host device directory here would
+                    // restore the symlinks whose absence enforces the denies.
+                    continue;
+                }
+                ensure_explicit_dev_bind_preserves_denies(&mount_root, &denied_dev_symlinks)?;
                 args.push("--ro-bind".to_string());
                 args.push(path_to_string(&mount_root));
                 args.push(path_to_string(&mount_root));
@@ -744,6 +751,8 @@ fn create_filesystem_args(
         }
 
         let mount_root = symlink_target.as_deref().unwrap_or(root);
+        ensure_explicit_dev_bind_preserves_denies(root, &denied_dev_symlinks)?;
+        ensure_explicit_dev_bind_preserves_denies(mount_root, &denied_dev_symlinks)?;
         // Rebinding a root alias would also undo masks already applied to `/`.
         // The physical root is already writable; only the alias's carveouts remain.
         let redundant_root_alias =
@@ -898,6 +907,14 @@ fn create_filesystem_args(
             "--remount-ro".to_string(),
             WSLG_DISTRO_ROOT.to_string(),
         ]);
+    }
+
+    if !denied_dev_symlinks.is_empty() {
+        // Absence only enforces a deny while the payload cannot recreate the
+        // omitted name. Seal the parent after every bind/mask; this remount is
+        // non-recursive so separately granted writable devices and shm survive.
+        bwrap_args.args.push("--remount-ro".to_string());
+        bwrap_args.args.push("/dev".to_string());
     }
 
     Ok(bwrap_args)
@@ -1615,10 +1632,11 @@ fn denied_synthetic_dev_symlink_entry(path: &Path) -> Option<&'static str> {
 /// directory, a private devpts at `pts`, and `console` on a tty).
 ///
 /// Otherwise the tree is rebuilt explicitly in the same shape, omitting the
-/// denied symlinks. Known deviation, recorded with the design: `pts` binds the
-/// host devpts instead of a private instance because bubblewrap exposes no
-/// flag for a fresh one; a deny on `pts`, `shm`, or a device node still lands
-/// its mask on the constructed target.
+/// denied symlinks. Bubblewrap has no standalone private-devpts flag, so this
+/// restricted branch leaves `pts` empty and omits `ptmx`: allocating new PTYs
+/// is unavailable, while inherited stdio and its optional console still work.
+/// It must never bind the host devpts as a substitute for a private instance.
+/// The parent is sealed read-only after all policy mounts are constructed.
 fn append_dev_tree_args(args: &mut Vec<String>, denied_symlinks: &BTreeSet<&'static str>) {
     if denied_symlinks.is_empty() {
         args.push("--dev".to_string());
@@ -1650,14 +1668,8 @@ fn append_dev_tree_args(args: &mut Vec<String>, denied_symlinks: &BTreeSet<&'sta
     // callers bind `/dev/shm` separately when the policy grants it.
     args.push("--dir".to_string());
     args.push("/dev/shm".to_string());
-    args.push("--bind".to_string());
+    args.push("--dir".to_string());
     args.push("/dev/pts".to_string());
-    args.push("/dev/pts".to_string());
-    if !denied_symlinks.contains("ptmx") {
-        args.push("--symlink".to_string());
-        args.push("pts/ptmx".to_string());
-        args.push("/dev/ptmx".to_string());
-    }
     if !denied_symlinks.contains("console")
         && let Some(tty_device) = host_stdout_tty_device()
     {
@@ -1665,6 +1677,34 @@ fn append_dev_tree_args(args: &mut Vec<String>, denied_symlinks: &BTreeSet<&'sta
         args.push(path_to_string(&tty_device));
         args.push("/dev/console".to_string());
     }
+}
+
+/// A later device bind must not undo omission-based denies or replace the empty
+/// PTY directory with the host's terminals. The full-root bind is handled by
+/// rebuilding the device tree immediately afterwards; a read-only `/dev` grant
+/// is handled by retaining that minimal tree. Other conflicting grants cannot
+/// be represented safely by this restricted construction.
+fn ensure_explicit_dev_bind_preserves_denies(
+    path: &Path,
+    denied_symlinks: &BTreeSet<&'static str>,
+) -> Result<()> {
+    if denied_symlinks.is_empty() || path == Path::new("/") {
+        return Ok(());
+    }
+    let conflicts_with_omitted_entry = denied_symlinks.iter().any(|entry| {
+        let omitted = Path::new("/dev").join(entry);
+        path.starts_with(&omitted) || omitted.starts_with(path)
+    });
+    if conflicts_with_omitted_entry
+        || path.starts_with("/dev/pts")
+        || path == Path::new("/dev/ptmx")
+    {
+        return Err(CodexErr::Fatal(format!(
+            "cannot enforce sandbox device deny with bind destination {}: the restricted device tree must preserve omitted entries and cannot expose host PTYs",
+            path.display()
+        )));
+    }
+    Ok(())
 }
 
 /// The tty device backing our stdout, mirroring `SETUP_MOUNT_DEV`'s console

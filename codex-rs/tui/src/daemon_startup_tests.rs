@@ -62,7 +62,7 @@ fn feature_overrides_allow_daemon_without_allowing_arbitrary_config() {
 }
 
 #[test]
-fn monorepo_wrapper_overrides_are_eligible_and_select_only_server_features() {
+fn monorepo_wrapper_overrides_are_eligible_for_daemon_compatibility_checks() {
     let overrides = codex_utils_cli::CliConfigOverrides {
         raw_overrides: [
             "model_reasoning_effort=none",
@@ -96,34 +96,11 @@ fn monorepo_wrapper_overrides_are_eligible_and_select_only_server_features() {
         ),
         None
     );
-    assert_eq!(
-        daemon_startup::server_features(&overrides),
-        std::collections::BTreeMap::from([
-            ("api_key_model_discovery".to_string(), true),
-            ("auth_elicitation".to_string(), true),
-            ("code_mode_host".to_string(), true),
-            ("mcp_oauth_refresh_coordination".to_string(), true),
-        ])
-    );
 }
 
-#[test]
-fn daemon_features_follow_cli_table_replacement_and_last_value() {
-    let overrides = codex_utils_cli::CliConfigOverrides {
-        raw_overrides: [
-            "features.api_key_model_discovery=true",
-            "features={code_mode_host=false}",
-            "features.code_mode_host=true",
-        ]
-        .map(str::to_string)
-        .to_vec(),
-    }
-    .parse_overrides()
-    .unwrap();
-    assert_eq!(
-        daemon_startup::server_features(&overrides),
-        std::collections::BTreeMap::from([("code_mode_host".to_string(), true),])
-    );
+#[tokio::test]
+async fn daemon_features_follow_cli_table_replacement_and_last_value() -> color_eyre::Result<()> {
+    run_daemon_feature_compatibility_scenarios(&["table replacement"]).await
 }
 
 #[test]
@@ -149,6 +126,24 @@ fn daemon_launch_telemetry_records_once_on_connection_or_early_return() {
 #[tokio::test]
 async fn daemon_feature_compatibility_respects_required_and_optional_attachment()
 -> color_eyre::Result<()> {
+    run_daemon_feature_compatibility_scenarios(&[
+        "matching",
+        "unreachable daemon",
+        "conflicting client",
+        "explicit enable",
+        "mixed flags",
+        "missing enabled",
+        "managed",
+        "legacy managed",
+        "old requirements server",
+        "unsupported RPC",
+    ])
+    .await
+}
+
+async fn run_daemon_feature_compatibility_scenarios(
+    scenarios: &[&'static str],
+) -> color_eyre::Result<()> {
     use codex_app_server_protocol::JSONRPCMessage;
     use futures::SinkExt;
     use futures::StreamExt;
@@ -156,18 +151,7 @@ async fn daemon_feature_compatibility_respects_required_and_optional_attachment(
     use tokio_tungstenite::tungstenite::Message;
 
     for allow_embedded_fallback in [false, true] {
-        for scenario in [
-            "matching",
-            "unreachable daemon",
-            "conflicting client",
-            "explicit enable",
-            "mixed flags",
-            "missing enabled",
-            "managed",
-            "legacy managed",
-            "old requirements server",
-            "unsupported RPC",
-        ] {
+        for &scenario in scenarios {
             let cli_overrides = codex_utils_cli::CliConfigOverrides {
                 raw_overrides: match scenario {
                     "matching" => vec![
@@ -181,6 +165,11 @@ async fn daemon_feature_compatibility_respects_required_and_optional_attachment(
                     "mixed flags" => vec![
                         "features.zz_overridden=true",
                         "features={api_key_model_discovery=false,code_mode_host=false,instant_interrupt=true}",
+                        "features.code_mode_host=true",
+                    ],
+                    "table replacement" => vec![
+                        "features.api_key_model_discovery=true",
+                        "features={code_mode_host=false}",
                         "features.code_mode_host=true",
                     ],
                     "missing enabled" => vec!["features.zz_missing=true"],
@@ -281,6 +270,7 @@ async fn daemon_feature_compatibility_respects_required_and_optional_attachment(
                     "This session requires api_key_model_discovery to be disabled"
                 }
                 "missing enabled" => "This session requires zz_missing to be enabled",
+                "table replacement" => "This session requires code_mode_host to be enabled",
                 "unsupported RPC" => "Experimental feature request failed",
                 _ => unreachable!(),
             };
@@ -301,6 +291,15 @@ async fn daemon_feature_compatibility_respects_required_and_optional_attachment(
                             ("api_key_model_discovery".to_string(), false),
                             ("code_mode_host".to_string(), true),
                         ]))
+                    );
+                }
+                if scenario == "table replacement" {
+                    assert_eq!(
+                        error.restart_features,
+                        Some(std::collections::BTreeMap::from([(
+                            "code_mode_host".to_string(),
+                            true,
+                        )]))
                     );
                 }
                 let error = error.to_string();

@@ -62,6 +62,12 @@ async fn backend_sessions_poll_three_sources_and_isolate_closed_or_paused_stream
             .is_none()
     );
     proxies[0].abort();
+    assert!(
+        time::timeout(Duration::from_secs(5), &mut proxies[0])
+            .await?
+            .unwrap_err()
+            .is_cancelled()
+    );
     loop {
         let (owner, event) = time::timeout(
             Duration::from_secs(5),
@@ -114,6 +120,7 @@ async fn backend_sessions_poll_three_sources_and_isolate_closed_or_paused_stream
         &app.config,
         &AppServerTarget::Embedded,
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         LoaderOverrides::without_managed_config_for_tests(),
         /*state_db*/ None,
         Arc::clone(&app.environment_manager),
@@ -146,9 +153,7 @@ async fn backend_sessions_poll_three_sources_and_isolate_closed_or_paused_stream
     }
     backends.shutdown().await?;
     for (index, proxy) in proxies.into_iter().enumerate() {
-        if index == 0 {
-            assert!(proxy.await.unwrap_err().is_cancelled());
-        } else {
+        if index != 0 {
             proxy.await??;
         }
     }

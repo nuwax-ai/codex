@@ -1,9 +1,12 @@
 # O2/O3 沙箱 deny 原语设计(2026-10-22,探针轮)
 
-状态:**O2/O3 已实现并验收(2026-10-22 实现轮,台账 §6.56)**——显式构建 /
-dev、netns sysctl 缺席分类已入库,`.45` 一手:239/239 合同、`blocked_descriptor_path`
-PASS、strace 28 次 bwrap execve 零 `/dev/fd`。**O4(`/proc/net` 符号链接)与
-`/proc/self/environ` 可读边界未收口**,宿主 pts bind 偏差有效(见文末)。
+状态:**晚间独立复审已推翻原O2“初始缺席即完整拒绝”的验收结论**。
+真实生产helper证明/dev/fd可重建、Read/dev重绑恢复deny项、宿主PTY sentinel可见。
+本轮修正为最终只读封闭的filtered /dev，拒绝覆盖其根的写授权并跳过宿主/dev读重绑；
+去掉host devpts，只在该特殊deny分支禁用新PTY分配，普通--dev路径保留private devpts。
+复验范围与结果见台账§6.58及晚间复审记录。以下原探针/设计保留作历史，R3/R4只测
+启动与初始缺席，不能再称隔离等价。
+O3窄分类仍有效；d88ffb3d4已将self/thread-self/net家族deny统一Fatal，不再是“未动”。
 宿主:192.168.31.45(Ubuntu 26.04.1,内核 7.0.0-38-generic,bwrap 0.11.1,
 `apparmor_restrict_unprivileged_userns=1` 但 bwrap 可用——与 §6.33 同一台)。
 探针脚本:`/tmp/nuwax-o2-probe{2,3,4}.sh`(会话内);本文表格即其输出摘录。
@@ -36,7 +39,7 @@ PASS、strace 28 次 bwrap execve 零 `/dev/fd`。**O4(`/proc/net` 符号链接)
 
 ## 设计
 
-### O2:deny 命中 bwrap 自建 /dev 条目时,改为显式构建 /dev
+### O2原始设计（晚间复审已修订，以下非最终安全合同）
 
 - 触发条件:denied 集合与 §6.35 的 15 项清单(`fd`/`core`/`pts`/`ptmx`/
   `console`/stdio 链/`shm` 等 bwrap 自建项)相交时,放弃 `--dev /dev`,改发:

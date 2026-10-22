@@ -15,12 +15,145 @@ use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_cargo_bin::write_executable;
 use pretty_assertions::assert_eq;
+use std::os::fd::AsRawFd;
+use std::os::fd::FromRawFd;
+use std::os::fd::OwnedFd;
 
 enum DeniedFileRules {
     ExactPaths,
     Globs,
     GlobsWithProtectedRg,
     GlobsWithNativeFallback,
+}
+
+#[test_case::test_case(false, false; "root_read")]
+#[test_case::test_case(true, false; "explicit_device_read")]
+#[test_case::test_case(false, true; "writable_shm")]
+#[tokio::test]
+async fn denied_dev_symlink_cannot_be_recreated_or_expose_host_ptys(
+    read_dev: bool,
+    write_shm: bool,
+) {
+    assert!(
+        !should_skip_bwrap_tests().await,
+        "precondition: this device-isolation contract requires a working bubblewrap sandbox"
+    );
+    let temp = tempfile::tempdir().expect("workspace");
+    let workspace = AbsolutePathBuf::try_from(temp.path()).expect("absolute workspace");
+    let helper = codex_linux_sandbox_exe();
+    let helper_dir = AbsolutePathBuf::try_from(helper.parent().expect("helper directory"))
+        .expect("absolute helper directory");
+    let mut entries = vec![
+        FileSystemSandboxEntry::new(
+            FileSystemPath::Special {
+                value: if read_dev {
+                    FileSystemSpecialPath::Minimal
+                } else {
+                    FileSystemSpecialPath::Root
+                },
+            },
+            FileSystemAccessMode::Read,
+        ),
+        FileSystemSandboxEntry::new(helper_dir.into(), FileSystemAccessMode::Read),
+        FileSystemSandboxEntry::new(workspace.clone().into(), FileSystemAccessMode::Read),
+        FileSystemSandboxEntry::new(
+            AbsolutePathBuf::from_absolute_path("/dev/fd")
+                .expect("absolute denied device path")
+                .into(),
+            FileSystemAccessMode::Deny,
+        ),
+    ];
+    if read_dev {
+        entries.push(FileSystemSandboxEntry::new(
+            AbsolutePathBuf::from_absolute_path("/dev")
+                .expect("absolute device directory")
+                .into(),
+            FileSystemAccessMode::Read,
+        ));
+    }
+    let shm_file = write_shm.then(|| {
+        entries.push(FileSystemSandboxEntry::new(
+            AbsolutePathBuf::from_absolute_path("/dev/shm")
+                .expect("absolute shared-memory directory")
+                .into(),
+            FileSystemAccessMode::Write,
+        ));
+        tempfile::NamedTempFile::new_in("/dev/shm").expect("shared-memory fixture")
+    });
+
+    // Compare only a PTY owned by this test. Do not inspect any other terminal.
+    let mut master = -1;
+    let mut slave = -1;
+    // SAFETY: the fd output pointers are valid; null optional pointers request
+    // the platform defaults. The successful descriptors are immediately owned.
+    let result = unsafe {
+        libc::openpty(
+            &mut master,
+            &mut slave,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            std::ptr::null(),
+        )
+    };
+    assert_eq!(result, 0, "precondition: create a task-owned host PTY");
+    // SAFETY: a successful openpty returned these two uniquely owned fds.
+    let (master, slave) = unsafe { (OwnedFd::from_raw_fd(master), OwnedFd::from_raw_fd(slave)) };
+    for fd in [&master, &slave] {
+        rustix::io::fcntl_setfd(fd, rustix::io::FdFlags::CLOEXEC)
+            .expect("keep the host PTY sentinel out of the sandbox's inherited descriptors");
+    }
+    let sentinel = std::fs::read_link(format!("/proc/self/fd/{}", slave.as_raw_fd()))
+        .expect("task-owned host PTY name");
+    assert!(sentinel.exists(), "precondition: host PTY sentinel exists");
+    let mut env = create_env_from_core_vars();
+    env.insert("LC_ALL".to_string(), "C".to_string());
+    env.insert(
+        "CODEX_TEST_HOST_PTY_SENTINEL".to_string(),
+        sentinel.to_str().expect("UTF-8 PTY name").to_string(),
+    );
+    if let Some(file) = &shm_file {
+        env.insert(
+            "CODEX_TEST_WRITABLE_SHM".to_string(),
+            file.path().to_str().expect("UTF-8 shm path").to_string(),
+        );
+    }
+    let output = run_cmd_result_with_permission_profile_for_cwd(
+        &[
+            "/bin/sh",
+            "-c",
+            r#"set -eu
+test ! -e /dev/fd && test ! -L /dev/fd
+if ln -s /proc/self/fd /dev/fd; then exit 73; fi
+test ! -e /dev/fd && test ! -L /dev/fd
+test ! -e "$CODEX_TEST_HOST_PTY_SENTINEL"
+test ! -e /dev/ptmx && test ! -L /dev/ptmx
+printf 'standard device works' > /dev/null
+if test -n "${CODEX_TEST_WRITABLE_SHM:-}"; then
+    printf 'writable shm survives' > "$CODEX_TEST_WRITABLE_SHM"
+fi
+printf 'restricted-dev-runtime-ok\n'
+"#,
+        ],
+        workspace,
+        PermissionProfile::from_runtime_permissions(
+            &FileSystemSandboxPolicy::restricted(entries),
+            NetworkSandboxPolicy::Enabled,
+        ),
+        env,
+        LONG_TIMEOUT_MS,
+        /*use_legacy_landlock*/ false,
+    )
+    .await
+    .expect("the restricted device tree must still execute the command");
+    assert_eq!(output.exit_code, 0, "sandbox output: {output:?}");
+    assert_eq!(output.stdout.text, "restricted-dev-runtime-ok\n");
+    assert!(output.stderr.text.contains("Read-only file system"));
+    if let Some(file) = &shm_file {
+        assert_eq!(
+            std::fs::read_to_string(file.path()).expect("read shared-memory fixture"),
+            "writable shm survives"
+        );
+    }
 }
 
 #[test_case::test_case(DeniedFileRules::ExactPaths; "exact_paths")]

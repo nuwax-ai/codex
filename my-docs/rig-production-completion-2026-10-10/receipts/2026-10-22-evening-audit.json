@@ -1,0 +1,240 @@
+{
+  "date": "2026-10-22",
+  "recorded_at": "2026-10-22T19:34:17.993310+08:00",
+  "review_base": "850a87390",
+  "prior_merge": "a5b25b043",
+  "reviewed_batch": "a5b25b043..c17b8675b (11 first-parent commits)",
+  "commit_lookup": "git log -1 --format=%H -- my-docs/rig-production-completion-2026-10-10/receipts/2026-10-22-evening-audit.json",
+  "source_fingerprint": {
+    "algorithm": "sha256(sorted(kind + NUL + tracked relative path + NUL + hex_sha256(content) + LF)); excludes my-docs; symlinks use literal target",
+    "files": 9844,
+    "sha256": "672f358b20a60ba89c233e9ab9ada3e6a3a28fed997f34a80e5351e819ce485b"
+  },
+  "toolchain": {
+    "rust": "1.99.1",
+    "v8": "152.2.0",
+    "rig": "0.44.0",
+    "genai": "0.7.0"
+  },
+  "logs": [
+    {
+      "id": "ci_scope_clippy_initial",
+      "file": "/Volumes/zhitai/tmp/codex-evening-review-20261022/clippy-ci-scope.log",
+      "sha256": "69603ee5133591556f809e1c76c56cc755142a4d2ee33e94811014364df936bc",
+      "status": "passed",
+      "scope": "CI four-package all-targets -D warnings; before final genai changes",
+      "summaries": []
+    },
+    {
+      "id": "ci_scope_clippy_final",
+      "file": "/Volumes/zhitai/tmp/codex-evening-review-20261022/clippy-final.log",
+      "sha256": "65665ed413a06a29c5f4cc4746027192ca9017dd90a56cad65ec74d810f2dabb",
+      "status": "passed",
+      "scope": "CI four packages plus genai all-targets -D warnings; final provider source",
+      "summaries": []
+    },
+    {
+      "id": "contracts_initial",
+      "file": "/Volumes/zhitai/tmp/codex-evening-review-20261022/targeted-contracts.log",
+      "sha256": "c0d4b6bbee89913f3d98100e1bc32b4e251b6d386932125c97bba110e1ab810f",
+      "status": "passed",
+      "scope": "136 selected lib tests including genai28",
+      "summaries": [
+        "Summary [   3.622s] 136 tests run: 136 passed, 41 skipped"
+      ]
+    },
+    {
+      "id": "contracts_final",
+      "file": "/Volumes/zhitai/tmp/codex-evening-review-20261022/targeted-contracts-final.log",
+      "sha256": "045bc176208224f22bb6319d26f822d22d4899a715beb1504663061d0fa140b7",
+      "status": "passed",
+      "scope": "139 selected lib tests including genai31",
+      "summaries": [
+        "Summary [   4.131s] 139 tests run: 139 passed, 41 skipped"
+      ]
+    },
+    {
+      "id": "doctor",
+      "file": "/Volumes/zhitai/tmp/codex-evening-review-20261022/doctor-routing.log",
+      "sha256": "444702b2ce2ffde55c880b60bd9a4d8d254d34c8262a1ed8124d2ab370b1770a",
+      "status": "passed",
+      "scope": "one test loops five routing configurations",
+      "summaries": [
+        "Summary [   2.335s] 1 test run: 1 passed, 332 skipped"
+      ]
+    },
+    {
+      "id": "tui_daemon_contracts",
+      "file": "/Volumes/zhitai/tmp/codex-evening-review-20261022/tui-compatibility.log",
+      "sha256": "adb0cd14d89a0293a7fffeaf72af752d4e414814f0604f25fea1b031e607be2b",
+      "status": "passed",
+      "scope": "two daemon compatibility tests; TUI lib-test compilation",
+      "summaries": [
+        "Summary [   0.165s] 2 tests run: 2 passed, 5836 skipped"
+      ]
+    },
+    {
+      "id": "tui_extra_first",
+      "file": "/Volumes/zhitai/tmp/codex-evening-review-20261022/tui-adapter-regressions.log",
+      "sha256": "c4074dff4fe3572876e538318bf650afb56853f4c1ea3149590f191f14723316",
+      "status": "failed",
+      "scope": "seven selected: six passed, backend EOF deadline failed",
+      "summaries": [
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5837 filtered out; finished in 52.30s",
+        "Summary [  80.583s] 7 tests run: 6 passed, 1 failed, 5831 skipped"
+      ]
+    },
+    {
+      "id": "tui_cancel_handshake_first",
+      "file": "/Volumes/zhitai/tmp/codex-evening-review-20261022/tui-backend-eof-handshake.log",
+      "sha256": "c1d3c9294ba1d176a643c4c540c2b3e613901a59b7a1ebc649cbef111a24ee18",
+      "status": "timed_out",
+      "scope": "one test timed out at 60s; not relabeled as resolved scheduling cause",
+      "summaries": [
+        "Summary [  60.056s] 1 test run: 0 passed, 1 timed out, 5837 skipped"
+      ]
+    },
+    {
+      "id": "tui_cancel_handshake_final",
+      "file": "/Volumes/zhitai/tmp/codex-evening-review-20261022/tui-backend-eof-final.log",
+      "sha256": "0deefadfd46441bbd8a569081e4e1814a72f60eff9ab08d95866de42e5df46f9",
+      "status": "passed",
+      "scope": "final no-diagnostic single test, EOF deadline unchanged",
+      "summaries": [
+        "Summary [  28.333s] 1 test run: 1 passed, 5837 skipped"
+      ]
+    },
+    {
+      "id": "prefetch",
+      "file": "/Volumes/zhitai/tmp/codex-evening-review-20261022/prefetch-tests.log",
+      "sha256": "aaea2228bfe54b09d7542daa40aaba79d2bd38b3c4a0eaee6ff5f812f13a692c",
+      "status": "passed",
+      "scope": "8 hermetic tests; no network",
+      "summaries": [
+        "Ran 8 tests in 0.782s",
+        "OK"
+      ]
+    },
+    {
+      "id": "prefetch_baseline",
+      "file": "/Volumes/zhitai/tmp/prefetch-review-20261022/before.log",
+      "sha256": "e6d71699f6748671ae5116c976f3899bba99855a7409584aa85b4871e9a4216b",
+      "status": "failed",
+      "scope": "same eight tests against original script: three failures",
+      "summaries": [
+        "Ran 8 tests in 0.490s",
+        "FAILED (failures=3)"
+      ]
+    },
+    {
+      "id": "linux_selected",
+      "file": "/Volumes/zhitai/tmp/codex-sandbox-review-20261022/tests.log",
+      "sha256": "503156ea8764c82cd439a56ddfe313193f6fa17d66e1105a89a82033ceac2cb2",
+      "status": "passed",
+      "scope": "76 selected construction and runtime tests",
+      "summaries": [
+        "Summary [   1.399s] 76 tests run: 76 passed, 174 skipped"
+      ]
+    },
+    {
+      "id": "linux_lib",
+      "file": "/Volumes/zhitai/tmp/codex-sandbox-review-20261022/lib-tests.log",
+      "sha256": "5efdbcc74a1c0f1a820b5e474a37968c66c0d1ba8a0c984c18e59f9d863ffc95",
+      "status": "passed",
+      "scope": "178 lib tests",
+      "summaries": [
+        "Summary [   0.785s] 178 tests run: 178 passed, 0 skipped"
+      ]
+    },
+    {
+      "id": "linux_blocked_descriptor",
+      "file": "/Volumes/zhitai/tmp/codex-sandbox-review-20261022/blocked-descriptor.log",
+      "sha256": "659fb64c03335554fee015f00aadc5e423806ead5fed98b60360d09659f317c0",
+      "status": "passed",
+      "scope": "original exec-server blocked descriptor test",
+      "summaries": [
+        "Summary [   1.136s] 1 test run: 1 passed, 76 skipped"
+      ]
+    },
+    {
+      "id": "fmt_final",
+      "file": "/Volumes/zhitai/tmp/codex-evening-review-20261022/fmt-final.log",
+      "sha256": "e1a763a6948be186fd5054e98846993e8096e410f61f90d3d4843dcfb0399e68",
+      "status": "passed",
+      "scope": "cargo fmt --all --check; stable nightly-option notices",
+      "summaries": []
+    }
+  ],
+  "ci": {
+    "run": 39761410573,
+    "head": "c17b8675b7a5c625c8a13c070aa08059ec0759c1",
+    "status": "completed",
+    "conclusion": "failure",
+    "jobs": [
+      {
+        "job": 119766223411,
+        "name": "ubuntu",
+        "conclusion": "failure",
+        "stage": "Clippy; deprecated fetch_update",
+        "workspace_tests_executed": false
+      },
+      {
+        "job": 119766223380,
+        "name": "macos",
+        "conclusion": "failure",
+        "stage": "Clippy; deprecated fetch_update",
+        "workspace_tests_executed": false
+      },
+      {
+        "job": 119766223198,
+        "name": "windows",
+        "conclusion": "failure",
+        "stage": "TUI test compilation; seven E0425/E0061 errors",
+        "workspace_tests_executed": false
+      },
+      {
+        "job": 119766223370,
+        "name": "bazel bridge gate",
+        "conclusion": "success"
+      }
+    ],
+    "raw_logs": [
+      {
+        "platform": "ubuntu",
+        "sha256": "8f810e70ee743237c482d2f687484aaf6ba47d0442ad19186994667fb0c3bb5a"
+      },
+      {
+        "platform": "macos",
+        "sha256": "f99aecf77027fcd8d350e70132acaa23243917d71f40ecce60ad301e3aa7f468"
+      },
+      {
+        "platform": "windows",
+        "sha256": "2953e26529320c559481f6e514ffa3a9ecc70ad07da7b0520ffea5a590b68a98"
+      }
+    ]
+  },
+  "windows": {
+    "receipt": "2026-10-22-windows-tui-audit.json",
+    "final_source_hashes_verified_locally": true,
+    "runtime_tests_executed": false
+  },
+  "linux": {
+    "receipt": "2026-10-22-linux-dev-audit.md",
+    "scope": "850 baseline task mirror plus three matching Linux source files",
+    "ordinary_private_pty_allocation_verified": true,
+    "special_dev_deny_new_pty_allocation": false,
+    "dependency_wide_clippy": "failed in unchanged history large_enum_variant; crate no-deps strict check passed"
+  },
+  "remaining": [
+    "CI on the new fixes after a separately authorized push",
+    "ACP CODEX_* gateway bridge-selection mapping if this deployment entry is used",
+    "short real native GPT/relay acceptance with a selected endpoint/model and matching credentials"
+  ],
+  "limits": [
+    "No complete local workspace test or merged-fix CI run",
+    "No push, dispatch, release or paid model request in this review",
+    "Final EOF single-test pass does not prove all scheduling tails solved; first failure and timeout retained",
+    "Counts overlap and excluded/filtered tests are not counted as passed",
+    "Review proof is targeted source scope; old live workflows bound to a5b25b043 are not final-tree live receipts"
+  ]
+}

@@ -191,6 +191,7 @@ jobs:
           python3 -m unittest discover -s scripts -p '*gate_tests.py' -v
           python3 -m unittest discover -s scripts -p 'd4*tests.py' -v
           python3 -m unittest discover -s scripts -p 'nextest_log_summary_tests.py' -v
+          python3 -m unittest discover -s scripts -p 'test_prefetch_rusty_v8.py' -v
 
       # Runs the REAL nuwax_env three-wire matrix against Bazel-built
       # binaries (path/credential/model/cap/single-POST/config-bytes) and the

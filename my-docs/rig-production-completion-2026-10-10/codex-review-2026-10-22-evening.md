@@ -2,13 +2,17 @@
 
 你接手检查 nuwax fork `test` 分支今日全部产出。唯一源码仓库
 `/Volumes/zhitai/git_workspace/fork-nuwax-codex`;**已 push**:
-`origin/test@5c2976e6b`(= c17b8675b + 本文档提交;推送区间
+`origin/test@850a87390`(复审接手时核实;代码区间
 `29e7e59d5..c17b8675b`,含 main 集成 merge `a5b25b043` 与其后 11 笔提交)。
 
 权威索引:台账 `claude-rig-final-acceptance-2026-10-18.md` §6.54-§6.57;
 路线图 `my-docs/ROADMAP.md`;fork 边界 `my-docs/FORK.md`。
 
-## 状态快照
+> 后续独立复审：本页是推送时交接。run39761410573现已结束，三平台在lint/测试编译
+> 阶段失败（无workspace测试计数），Bazel通过；修复及最终证据以
+> [晚间复审](codex-review-2026-10-22-late-audit.md)、台账§6.58与ROADMAP为准。
+
+## 原推送时状态快照
 
 - **主线(国内模型接入:OpenAI Chat/Responses/Anthropic 三协议)全绿**:三协议
   实网 9 用例 + acp-workflow 12/12(首败=预算饥饿,已同断言重跑关闭)、rcoder
@@ -40,7 +44,8 @@
 
 ## 检查建议入口
 
-1. `git log --oneline 29e7e59d5..c17b8675b` 与上表逐一核对;
+1. 新增11笔用 `git log --first-parent --oneline a5b25b043..c17b8675b` 与上表核对;
+   `29e7e59d5..c17b8675b` 另含main的300笔祖先及原6笔文档，不应与11笔表逐项等同;
    `git diff a5b25b043..c17b8675b --stat` 看补丁面是否符合"最小改动"。
 2. 源码级重点:`linux-sandbox/src/bwrap.rs`(显式 /dev 构建+SYNTHETIC_DEV 清单
    对齐 vendored SETUP_MOUNT_DEV;self 家族 Fatal)、

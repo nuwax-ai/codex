@@ -91,15 +91,16 @@ async fn doctor_resolves_environment_provider_and_reports_scope_aware_compact_li
 }
 
 /// The transport switch is a startup-environment concern: `NUWAX_BRIDGE` must
-/// reach the routing policy, so `doctor` reports the upstream-native transport
-/// instead of the fork's rig default — the only receipt that an env-only
-/// deployment really left the bridge.
+/// reach the routing policy, so `doctor` reports the selected bridge or the
+/// upstream-native transport instead of always reporting the fork's rig default.
 #[tokio::test]
-async fn doctor_reports_the_environment_bridge_switch_as_the_native_transport() -> anyhow::Result<()>
-{
-    for (bridge, expected) in [
-        (None, "bridge: rig (model bridge)"),
-        (Some("native"), "bridge: native transport"),
+async fn doctor_reports_the_environment_bridge_selection() -> anyhow::Result<()> {
+    for (bridge, wire_api, expected) in [
+        (None, "responses", "bridge: rig (model bridge)"),
+        (Some("rig"), "responses", "bridge: rig (model bridge)"),
+        (Some("native"), "responses", "bridge: native transport"),
+        (Some("genai"), "chat", "bridge: genai (model bridge)"),
+        (Some("genai"), "anthropic", "bridge: genai (model bridge)"),
     ] {
         let home = tempfile::tempdir()?;
         let interactive = TuiCli::parse_from(["codex"]);
@@ -109,7 +110,7 @@ async fn doctor_reports_the_environment_bridge_switch_as_the_native_transport() 
             NuwaxEnvInput {
                 model: Some("relay-model".into()),
                 base_url: Some("https://relay.example/v1".into()),
-                wire_api: Some("responses".into()),
+                wire_api: Some(wire_api.into()),
                 api_key: Some("private-key".into()),
                 bridge: bridge.map(std::ffi::OsString::from),
                 ..Default::default()
@@ -123,7 +124,7 @@ async fn doctor_reports_the_environment_bridge_switch_as_the_native_transport() 
             .build()
             .await?;
         assert_eq!(config.model_provider_id, "nuwax_env");
-        assert_eq!(config.model_provider.wire_api.to_string(), "responses");
+        assert_eq!(config.model_provider.wire_api.to_string(), wire_api);
         assert_eq!(
             config
                 .model_provider

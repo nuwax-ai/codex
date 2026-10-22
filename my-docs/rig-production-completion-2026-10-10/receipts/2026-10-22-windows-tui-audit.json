@@ -1,0 +1,87 @@
+{
+  "platform": "x86_64-pc-windows-msvc",
+  "rustc": "1.99.1 (58cf8f9c3 2026-10-13)",
+  "scope": "codex-tui tests typecheck, not workspace or runtime test execution",
+  "input": {
+    "base": "850a87390",
+    "files": [
+      {
+        "path": "codex-rs/tui/src/daemon_startup_tests.rs",
+        "sha256": "a86a137bd7fe9f76fa356096ced5adb7655b287cb97e2f74bd2eb6e8bb0f1f23"
+      },
+      {
+        "path": "codex-rs/tui/src/app/tests/backend_sessions_tests.rs",
+        "sha256": "29decf0307340b355640fae57644aa19eac2a1e68d87e360d9746b74c44ad155"
+      },
+      {
+        "path": "codex-rs/tui/src/app/tests/backend_ownership_tests.rs",
+        "sha256": "7b004cd3af825640ce63133dc4c5f6ec1203b5f22d37f78d7247d0aced5d2b0b"
+      },
+      {
+        "path": "codex-rs/tui/src/app_server_session/provider_selection_tests.rs",
+        "sha256": "608f48a0d21bd5a7d8e92d29b084b2b8adbd72f4a05f7487d0a867f0bdddf8a7"
+      },
+      {
+        "path": "codex-rs/exec/src/build_source_identity.rs",
+        "sha256": "de587d6d3923e110376c4592c3c9d2d89c0ae316be43947cca2c1c8f2bf774de"
+      },
+      {
+        "path": "codex-rs/codex-rust-genai-bridge/src/resolver.rs",
+        "sha256": "9c2fa201c8e967e5d37c57488fb16139aab4826f117c76781959d06f8356d883"
+      },
+      {
+        "path": "codex-rs/codex-rust-genai-bridge/src/resolver_tests.rs",
+        "sha256": "986597890db0d8a9c74b22d90aa539f9ed89003370ca6e5de6ac68d4868db8b6"
+      }
+    ]
+  },
+  "check": {
+    "command": "cargo +1.99.1 check -p codex-tui --tests --locked",
+    "exit_code": 0,
+    "started_utc": "2026-10-22T11:26:37.4363988Z",
+    "completed_utc": "2026-10-22T11:27:18.6926010Z",
+    "source_base": "850a87390",
+    "repo": "C:\\Users\\soddygo\\nuwax-tui-review-20261022\\repo",
+    "target_cache": "C:\\Users\\soddygo\\nuwax-verify-20261022\\codex\\codex-rs\\target",
+    "v8_archive": "C:\\Users\\soddygo\\.cache\\nuwax\\rusty_v8\\152.2.0\\x86_64-pc-windows-msvc\\rusty_v8_ptrcomp_sandbox_release_x86_64-pc-windows-msvc.lib.gz",
+    "v8_binding": "C:\\Users\\soddygo\\.cache\\nuwax\\rusty_v8\\152.2.0\\x86_64-pc-windows-msvc\\src_binding_ptrcomp_sandbox_release_x86_64-pc-windows-msvc.rs"
+  },
+  "check_log_sha256": "705d32516d83cf48949dcbe0e7a74f8904828c2bc70026fae7273614c7f36212",
+  "v8_verified_cached_files": {
+    "rusty_v8_ptrcomp_sandbox_release_x86_64-pc-windows-msvc.lib.gz": "cd829415695b30ad61b306b23a381e11276f14bb0b46815ac5ed8b96711d002d",
+    "src_binding_ptrcomp_sandbox_release_x86_64-pc-windows-msvc.rs": "572ed16ff09bb7944f4b35c659ff62dcd3faf43a0351e3f94f011e01b2f92a62"
+  },
+  "v8_execution_verified": false,
+  "warnings": "six pre-existing codex-http-client dead_code warnings in unchanged Windows dependency source",
+  "runtime_tests_executed": 0,
+  "cached_tui_test_executables": 0,
+  "original_checkout_reset_or_modified": false,
+  "existing_target_build_cache_reused": true,
+  "push_or_ci_triggered": false,
+  "check_log_file": "tui-check-final.log",
+  "previous_check_history": [
+    {
+      "receipt_file": "validation-receipt-initial.json",
+      "check": {
+        "command": "cargo +1.99.1 check -p codex-tui --tests --locked",
+        "exit_code": 0,
+        "started_utc": "2026-10-22T11:07:51.5124244Z",
+        "completed_utc": "2026-10-22T11:16:07.8922291Z",
+        "source_base": "850a87390",
+        "repo": "C:\\Users\\soddygo\\nuwax-tui-review-20261022\\repo",
+        "target_cache": "C:\\Users\\soddygo\\nuwax-verify-20261022\\codex\\codex-rs\\target",
+        "v8_archive": "C:\\Users\\soddygo\\.cache\\nuwax\\rusty_v8\\152.2.0\\x86_64-pc-windows-msvc\\rusty_v8_ptrcomp_sandbox_release_x86_64-pc-windows-msvc.lib.gz",
+        "v8_binding": "C:\\Users\\soddygo\\.cache\\nuwax\\rusty_v8\\152.2.0\\x86_64-pc-windows-msvc\\src_binding_ptrcomp_sandbox_release_x86_64-pc-windows-msvc.rs"
+      },
+      "check_log_sha256": "46c6acfa2776c7d1206fb65f4647d9c0c743406e18e4cbb3c710f9b4f8bf2ac2",
+      "source_manifest_file": "source-manifest.json",
+      "duration": "8m 15s"
+    }
+  ],
+  "final_changed_file": {
+    "path": "codex-rs/tui/src/app/tests/backend_sessions_tests.rs",
+    "sha256": "29decf0307340b355640fae57644aa19eac2a1e68d87e360d9746b74c44ad155",
+    "change": "confirm proxy task cancellation inside existing five-second bound before existing EOF bound; no product change"
+  },
+  "final_duration": "40.86s"
+}

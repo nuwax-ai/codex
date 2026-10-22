@@ -28,7 +28,7 @@ impl PipeReaderLease {
     fn reserve() -> Result<Self, String> {
         use std::sync::atomic::Ordering;
         PIPE_READERS
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |count| {
                 (count < MAX_PIPE_READERS).then_some(count + 1)
             })
             .map(|_| Self)

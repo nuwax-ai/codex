@@ -72,14 +72,15 @@ pub(super) async fn check(
     ));
     details.push(format!("wire api: {}", provider.wire_api));
     let bridged = provider.uses_model_bridge();
-    details.push(format!(
-        "bridge: {}",
-        if bridged {
-            "rig (model bridge)"
-        } else {
-            "native transport"
-        }
-    ));
+    let bridge = if bridged {
+        format!(
+            "{} (model bridge)",
+            provider.experimental_bridge.unwrap_or_default()
+        )
+    } else {
+        "native transport".to_string()
+    };
+    details.push(format!("bridge: {bridge}"));
     details.push(format!(
         "endpoint (redacted): {}",
         redacted_endpoint(provider.base_url.as_deref())
