@@ -22,10 +22,7 @@ pub fn write_lifecycle_hooks(home: &Path, events: &[&str]) -> Result<()> {
     let mut hooks = serde_json::Map::new();
     for event in events {
         let log = home.join(format!("{event}.jsonl"));
-        let command = format!(
-            "cat >> '{log}'; echo >> '{log}'; printf '%s' '{{\"continue\":false,\"decision\":\"block\",\"reason\":\"ignored-observer-control\"}}'",
-            log = log.display(),
-        );
+        let command = lifecycle_hook_command(&log);
         hooks.insert(
             (*event).into(),
             json!([{"hooks": [{"type": "command", "command": command}]}]),
@@ -33,6 +30,34 @@ pub fn write_lifecycle_hooks(home: &Path, events: &[&str]) -> Result<()> {
     }
     fs::write(home.join("hooks.json"), json!({"hooks": hooks}).to_string())?;
     Ok(())
+}
+
+const OBSERVER_CONTROL: &str =
+    r#"{"continue":false,"decision":"block","reason":"ignored-observer-control"}"#;
+
+#[cfg(windows)]
+fn lifecycle_hook_command(log: &Path) -> String {
+    use base64::Engine;
+
+    // The hook runtime uses COMSPEC on Windows. Encode the PowerShell source
+    // so cmd.exe does not reinterpret its syntax or Unicode paths.
+    let log = log.display().to_string().replace('\'', "''");
+    let script = format!(
+        "$ErrorActionPreference = 'Stop'; [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false); $input_json = [Console]::In.ReadToEnd(); [System.IO.File]::AppendAllText('{log}', $input_json + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false)); [Console]::Out.Write('{OBSERVER_CONTROL}');"
+    );
+    let encoded = base64::engine::general_purpose::STANDARD.encode(
+        script
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect::<Vec<_>>(),
+    );
+    format!("powershell.exe -NoProfile -NonInteractive -EncodedCommand {encoded}")
+}
+
+#[cfg(not(windows))]
+fn lifecycle_hook_command(log: &Path) -> String {
+    let log = log.display().to_string().replace('\'', "'\\''");
+    format!("cat >> '{log}'; echo >> '{log}'; printf '%s' '{OBSERVER_CONTROL}'")
 }
 
 pub async fn wait_for_hook_inputs(home: &Path, event: &str, count: usize) -> Result<Vec<Value>> {
@@ -118,4 +143,80 @@ pub fn trusted_config_layer_stack(
     config_layer_stack
         .with_user_config(&codex_home.join(CONFIG_TOML_FILE), user_config)
         .expect("hook user config should be valid")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Stdio;
+    use tokio::io::AsyncWriteExt;
+
+    #[tokio::test]
+    async fn lifecycle_hook_shell_preserves_utf8_jsonl_and_observer_control() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let home = root.path().join("space 中文 O'Brien");
+        fs::create_dir(&home)?;
+        write_lifecycle_hooks(&home, &["PostModel"])?;
+        let config: Value = serde_json::from_slice(&fs::read(home.join("hooks.json"))?)?;
+        let command = config["hooks"]["PostModel"][0]["hooks"][0]["command"]
+            .as_str()
+            .expect("logging hook command");
+        let inputs = vec![
+            json!({
+                "hook_event_name": "PostModel",
+                "cwd": home.display().to_string(),
+                "prompt": "中文, apostrophe ', double quote \", newline\nnext line",
+                "nested": {"ok": true, "tokens": 7, "items": [null, "工具"]},
+            }),
+            json!({"hook_event_name": "PostModel", "input": "第二行", "attempt": 2}),
+        ];
+        for input in &inputs {
+            #[cfg(windows)]
+            let mut process = {
+                use std::os::windows::process::CommandExt;
+
+                let shell = std::env::var_os("COMSPEC").unwrap_or_else(|| "cmd.exe".into());
+                let mut process = tokio::process::Command::new(shell);
+                process.arg("/C");
+                process.as_std_mut().raw_arg(format!(r#""{command}""#));
+                process
+            };
+            #[cfg(not(windows))]
+            let mut process = {
+                let mut process = tokio::process::Command::new("/bin/sh");
+                process.arg("-lc").arg(command);
+                process
+            };
+            let mut child = process
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()?;
+            let output = timeout(Duration::from_secs(10), async {
+                let mut stdin = child.stdin.take().expect("piped hook stdin");
+                stdin.write_all(&serde_json::to_vec(input)?).await?;
+                drop(stdin);
+                child.wait_with_output().await.map_err(anyhow::Error::from)
+            })
+            .await??;
+            assert!(
+                output.status.success(),
+                "logging hook failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(
+                serde_json::from_slice::<Value>(&output.stdout)?,
+                json!({
+                    "continue": false,
+                    "decision": "block",
+                    "reason": "ignored-observer-control",
+                })
+            );
+        }
+        let log = home.join("PostModel.jsonl");
+        assert!(!fs::read(&log)?.starts_with(&[0xef, 0xbb, 0xbf]));
+        assert_eq!(read_hook_inputs_from_log(&log)?, inputs);
+        Ok(())
+    }
 }
