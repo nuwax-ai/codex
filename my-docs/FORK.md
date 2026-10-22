@@ -27,18 +27,17 @@ fork 通过 rig 桥统一第三方模型的协议转换、传输与会话生命�
 三平台workspace测试未运行，Bazel bridge gate通过；本轮已修API和测试适配，
 定向复验及后续CI各自登记，不把旧成功当新树验收。
 
-## 2. 配置目录：分层 CODEX_HOME（v0.18.7+）
+## 2. 配置目录：Nuwax Harness独立默认（v0.18.13起）
 
 | 优先级 | 来源 | 行为 |
 |---|---|---|
-| 1 | `CODEX_HOME` 环境变量 | 与官方一致（必须存在、canonicalize） |
-| 2 | `~/.codex-nuwax` 存在时 | **fork 独有**：config/auth/sessions/log 全隔离 |
-| 3 | `~/.codex` | 官方默认（兼容回落） |
+| 1 | `CODEX_HOME` 环境变量 | 必须是已存在目录，canonicalize；可选外接盘 |
+| 2 | `~/.nuwax-harness` | 默认配置、认证、会话与日志位置；不存在时允许初始化 |
 
-官方 codex 完全不感知 `.codex-nuwax`，两边可并存互不干扰。fork 专属配置字段
-（`experimental_bearer_token`、`wire_api="anthropic"` 等）只应写进隔离目录——
-写进共享 `~/.codex` 会被官方严格校验拒绝（2026-09-28 事故）。设计：
-`my-docs/nuwax-home/`。
+用户明确当前开发阶段无需兼容/迁移旧目录，不再自动回落到`.codex-nuwax`、
+`.nuwax-codex`或官方`.codex`，也不删除旧数据。已存在的新路径若是文件/坏symlink则报错，
+有效目录symlink保留路径语义。官方Codex不受影响；fork专属配置写在新的隔离目录。
+环境变量启动指南与模板见[docs/nuwax-harness](../docs/nuwax-harness/README.md)。
 
 ## 3. 模型协议与路由
 
@@ -201,14 +200,15 @@ turn 级超窗处理才会触发（官方代码里这两个机制只认该分类
 ## 6. daemon：npm 安装不自启（v0.18.8）
 
 官方 TUI 默认自启共享 daemon，需要"完整本地包布局"（codex-package.json、
-code-mode-host、rg）。fork 的 npm 包只发单二进制 → 自启必失败
-（"this CLI has no complete local package"）。fork 在
+code-mode-host、rg）。先前fork npm包只发单二进制，自启所需布局不完整；v0.18.13补入Code Mode host，
+但仍不宣称具备上游完整daemon bundle（如独立rg）
+。fork 在
 `tui/src/daemon_startup.rs::exclusion` 排除 NpmNuwax 安装方式（安装方式参数
 注入，hermetic 可测），TUI 走内嵌 app-server；显式 `app-server daemon` 命令不受影响。
 
 ## 7. fork 专属字段与环境变量总表
 
-**config.toml 键**（官方 schema 不认识，只写 `~/.codex-nuwax`）：
+**config.toml 键**（官方 schema 不认识，只写 `~/.nuwax-harness`）：
 `model_providers.*.wire_api = "chat"|"anthropic"`、`experimental_bridge`、
 `experimental_bearer_token`、`model_auto_compact_ratio`。
 
@@ -262,8 +262,8 @@ ACP的CODEX_*入口显式选择custom-gateway，现支持独立`CODEX_BRIDGE=rig
 
 - workspace 版本恒为占位 `0.0.0`；npm 版本号来自 git tag（`v*` → release.yml，
   7 平台构建 → 阿里云 OSS 二进制 → npm publish；cargo bin 名保持官方 `codex`，
-  npm 打包时改名 `nuwax-codex`，postinstall 从 OSS 下载平台二进制到
-  `~/.nuwax-codex-cache`）。
+  npm 打包时主程序改名 `nuwax-harness`，保留旧命令兼容入口，postinstall 从 OSS 下载平台二进制到
+  `~/.nuwax-harness-cache`）。
 - live-tests crate（`LIVE_VENDORS` + `.env.local` 凭据）按 厂商×桥×场景 矩阵跑
   真实请求；compact 场景已入 exec 矩阵（三线）。
 

@@ -2,19 +2,18 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use dirs::home_dir;
 use std::path::PathBuf;
 
-// Fork (nuwax-codex): layered default home resolution.
+// Fork: isolated default home resolution.
 mod nuwax_default;
 
 /// Returns the path to the Codex configuration directory, which can be
 /// specified by the `CODEX_HOME` environment variable. If not set, defaults to
-/// `~/.codex-nuwax` when that directory exists (the nuwax-codex isolated
-/// home), otherwise `~/.codex`.
+/// `~/.nuwax-harness` regardless of any legacy Codex home directories.
 ///
 /// - If `CODEX_HOME` is set, the value must exist and be a directory. The
 ///   value will be canonicalized and this function will Err otherwise.
-/// - If `CODEX_HOME` is not set, this function does not verify that the
-///   fallback directory exists. A `~/.codex-nuwax` that exists but is not a
-///   usable directory (regular file, dangling symlink) is an error.
+/// - If `CODEX_HOME` is not set, the default directory need not exist yet.
+///   An existing file or unusable symlink is an error. A usable directory
+///   symlink is returned without canonicalization.
 pub fn find_codex_home() -> std::io::Result<AbsolutePathBuf> {
     let codex_home_env = std::env::var("CODEX_HOME")
         .ok()
@@ -61,8 +60,7 @@ fn find_codex_home_from_env(codex_home_env: Option<&str>) -> std::io::Result<Abs
                     "Could not find home directory",
                 )
             })?;
-            // Fork: prefer the nuwax-codex isolated home (~/.codex-nuwax)
-            // when present; fall back to the upstream ~/.codex default.
+            // Fork: use the isolated default even when an older Codex home exists.
             nuwax_default::find_default_codex_home(&user_home)
         }
     }
@@ -112,7 +110,7 @@ mod tests {
     }
 
     #[test]
-    fn find_codex_home_env_valid_directory_canonicalizes() {
+    fn explicit_codex_home_overrides_the_fork_default_and_canonicalizes() {
         let temp_home = TempDir::new().expect("temp home");
         let temp_str = temp_home
             .path()
@@ -128,11 +126,8 @@ mod tests {
         assert_eq!(resolved, expected);
     }
 
-    // Fork: the no-env default consults the filesystem under the real user
-    // home (`~/.codex-nuwax` may exist), so the upstream `~/.codex` contract
-    // is asserted against the pure seam in nuwax_default_tests.rs. This test
-    // only pins the delegation, staying valid on machines that do have a
-    // `~/.codex-nuwax`.
+    // Keep the no-env delegation covered separately from the hermetic
+    // filesystem cases in nuwax_default_tests.rs.
     #[test]
     fn find_codex_home_without_env_delegates_to_fork_default() {
         let resolved =

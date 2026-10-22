@@ -1,6 +1,6 @@
 //! Hermetic tests for the fork default home resolution. The user home is a
 //! temp dir, so results never depend on the developer machine's
-//! `~/.codex-nuwax` state.
+//! `~/.nuwax-harness` state.
 
 use super::find_default_codex_home;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -25,18 +25,22 @@ fn create_dir_symlink(target: &Path, link: &Path) {
 }
 
 #[test]
-fn without_nuwax_home_falls_back_to_codex_dir() {
+fn missing_nuwax_home_returns_the_new_default_without_creating_it() {
     let user_home = TempDir::new().expect("temp user home");
 
     let resolved = find_default_codex_home(user_home.path()).expect("default home");
 
-    assert_eq!(resolved, absolute(&user_home.path().join(".codex")));
+    assert_eq!(resolved, absolute(&user_home.path().join(".nuwax-harness")));
+    assert!(
+        !resolved.exists(),
+        "resolution must not initialize the home"
+    );
 }
 
 #[test]
 fn nuwax_home_directory_is_selected_without_canonicalization() {
     let user_home = TempDir::new().expect("temp user home");
-    let nuwax_home = user_home.path().join(".codex-nuwax");
+    let nuwax_home = user_home.path().join(".nuwax-harness");
     fs::create_dir(&nuwax_home).expect("create nuwax home");
 
     let resolved = find_default_codex_home(user_home.path()).expect("default home");
@@ -47,23 +51,42 @@ fn nuwax_home_directory_is_selected_without_canonicalization() {
 #[test]
 fn nuwax_home_regular_file_is_fatal() {
     let user_home = TempDir::new().expect("temp user home");
-    let nuwax_home = user_home.path().join(".codex-nuwax");
+    let nuwax_home = user_home.path().join(".nuwax-harness");
     fs::write(&nuwax_home, "not a directory").expect("write regular file");
 
     let err = find_default_codex_home(user_home.path()).expect_err("file nuwax home");
 
     assert_eq!(err.kind(), ErrorKind::InvalidInput);
     assert!(
-        err.to_string().contains(".codex-nuwax"),
+        err.to_string().contains(".nuwax-harness"),
         "unexpected error: {err}"
     );
 }
 
 #[test]
-fn nuwax_home_wins_over_codex_dir() {
+fn legacy_directories_do_not_replace_the_missing_new_default() {
     let user_home = TempDir::new().expect("temp user home");
-    fs::create_dir(user_home.path().join(".codex")).expect("create codex dir");
-    let nuwax_home = user_home.path().join(".codex-nuwax");
+    for legacy in [".codex", ".codex-nuwax", ".nuwax-codex"] {
+        fs::create_dir(user_home.path().join(legacy)).expect("create legacy home");
+    }
+    let nuwax_home = user_home.path().join(".nuwax-harness");
+
+    let resolved = find_default_codex_home(user_home.path()).expect("default home");
+
+    assert_eq!(resolved, absolute(&nuwax_home));
+    assert!(!nuwax_home.exists());
+    for legacy in [".codex", ".codex-nuwax", ".nuwax-codex"] {
+        assert!(user_home.path().join(legacy).is_dir());
+    }
+}
+
+#[test]
+fn new_default_wins_over_legacy_directories() {
+    let user_home = TempDir::new().expect("temp user home");
+    for legacy in [".codex", ".codex-nuwax", ".nuwax-codex"] {
+        fs::create_dir(user_home.path().join(legacy)).expect("create legacy home");
+    }
+    let nuwax_home = user_home.path().join(".nuwax-harness");
     fs::create_dir(&nuwax_home).expect("create nuwax home");
 
     let resolved = find_default_codex_home(user_home.path()).expect("default home");
@@ -76,7 +99,7 @@ fn nuwax_home_symlink_to_directory_is_selected_as_the_link_path() {
     let user_home = TempDir::new().expect("temp user home");
     let target = user_home.path().join("actual-home");
     fs::create_dir(&target).expect("create symlink target dir");
-    let nuwax_home = user_home.path().join(".codex-nuwax");
+    let nuwax_home = user_home.path().join(".nuwax-harness");
     create_dir_symlink(&target, &nuwax_home);
 
     let resolved = find_default_codex_home(user_home.path()).expect("default home");
@@ -87,13 +110,28 @@ fn nuwax_home_symlink_to_directory_is_selected_as_the_link_path() {
 #[test]
 fn nuwax_home_dangling_symlink_is_fatal() {
     let user_home = TempDir::new().expect("temp user home");
-    let nuwax_home = user_home.path().join(".codex-nuwax");
+    let nuwax_home = user_home.path().join(".nuwax-harness");
     create_dir_symlink(&user_home.path().join("missing-target"), &nuwax_home);
 
     let err = find_default_codex_home(user_home.path()).expect_err("dangling nuwax home");
 
     assert!(
-        err.to_string().contains(".codex-nuwax"),
+        err.to_string().contains(".nuwax-harness"),
         "unexpected error: {err}"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn nuwax_home_symlink_to_file_is_fatal() {
+    let user_home = TempDir::new().expect("temp user home");
+    let target = user_home.path().join("not-a-directory");
+    fs::write(&target, "file target").expect("write symlink target file");
+    let nuwax_home = user_home.path().join(".nuwax-harness");
+    std::os::unix::fs::symlink(&target, &nuwax_home).expect("create file symlink");
+
+    let err = find_default_codex_home(user_home.path()).expect_err("file symlink home");
+
+    assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    assert!(err.to_string().contains(".nuwax-harness"));
 }

@@ -1,7 +1,7 @@
 # Build and publish a beta release of the `nuwax-codex` npm package.
 # Triggered by pushing a `v*beta*` tag (e.g. v0.1.0-beta.1) or manually via
-# workflow_dispatch. Builds the `nuwax-codex` binary (+ bundled `bwrap` on Linux)
-# for 8 targets, ships them as npm platform subpackages, and publishes the
+# workflow_dispatch. Builds the `nuwax-harness` binary (+ bundled `bwrap` on Linux)
+# for 7 targets, uploads them to the release/CDN, and publishes the
 # `nuwax-codex` umbrella package to the npm `beta` dist-tag.
 name: Release Beta
 
@@ -21,6 +21,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: "4"
   # Use the system `git` CLI (Homebrew git on macOS) instead of libgit2 to fetch
   # git dependencies. macOS runners fail intermittently with "SecureTransport
   # error" when libgit2 fetches the libwebrtc -> libyuv submodule from
@@ -37,6 +38,32 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Release packaging contracts
+        run: python3 -m unittest discover -s .github/scripts -p 'test_package_nuwax_release.py'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: npm launcher and installation contracts
+        env:
+          NUWAX_NPM_TEST_NODE_MODULES: ${{ runner.temp }}/nuwax-npm-contracts/node_modules
+          NUWAX_NPM_TEST_TMPDIR: ${{ runner.temp }}
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync } from "node:fs";
+          import { spawnSync } from "node:child_process";
+          const dependencies = JSON.parse(readFileSync("npm/package.json", "utf8")).dependencies;
+          const packages = Object.entries(dependencies).map(([name, version]) => `${name}@${version}`);
+          const result = spawnSync("npm", ["install", "--prefix", `${process.env.RUNNER_TEMP}/nuwax-npm-contracts`, "--ignore-scripts", "--no-audit", "--no-fund", ...packages], { stdio: "inherit" });
+          process.exit(result.status ?? 1);
+          JS
+          node --test scripts/test_nuwax_npm_package.mjs
 
       - name: Get version from tag
         id: get_version
@@ -90,12 +117,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.get-version.outputs.tag_name }}
 
-      - name: Install Rust toolchain (1.95.0)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install pinned Rust toolchain
         shell: bash
         run: |
-          rustup toolchain install 1.95.0 --target ${{ matrix.target }} --profile minimal --no-self-update
-          rustup default 1.95.0
+          set -euo pipefail
+          toolchain="$(python3 -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("rust-toolchain.toml").read_text())["toolchain"]["channel"])')"
+          rustup toolchain install "$toolchain" --target ${{ matrix.target }} --profile minimal --no-self-update
+          rustup default "$toolchain"
 
       - if: ${{ contains(matrix.target, 'unknown-linux-musl') }}
         name: Use hermetic Cargo home (musl)
@@ -168,29 +203,10 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
 
-      - if: ${{ contains(matrix.target, 'unknown-linux-musl') }}
-        name: Configure musl rusty_v8 artifact overrides
-        env:
-          TARGET: ${{ matrix.target }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          version=$(python3 -c "
-          import tomllib, pathlib
-          lock = tomllib.loads(pathlib.Path('Cargo.lock').read_text())
-          vs = [p['version'] for p in lock['package'] if p['name'] == 'v8']
-          assert len(vs) == 1, f'expected 1 v8 version, got {vs}'
-          print(vs[0])
-          ")
-          release_tag="rusty-v8-v${version}"
-          base_url="https://github.com/openai/codex/releases/download/${release_tag}"
-          archive="${base_url}/librusty_v8_release_${TARGET}.a.gz"
-          binding_dir="${RUNNER_TEMP}/rusty_v8"
-          binding_path="${binding_dir}/src_binding_release_${TARGET}.rs"
-          mkdir -p "${binding_dir}"
-          curl -fsSL "${base_url}/src_binding_release_${TARGET}.rs" -o "${binding_path}"
-          echo "RUSTY_V8_ARCHIVE=${archive}" >> "$GITHUB_ENV"
-          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "$GITHUB_ENV"
+      - name: Setup paired and verified rusty_v8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
 
       - if: ${{ contains(matrix.target, 'unknown-linux-musl') }}
         name: Configure rustc UBSan wrapper (musl host)
@@ -276,12 +292,20 @@ jobs:
           rm -f Cargo.toml.bak
           echo "Stamped workspace version: $(grep -m1 -E '^version = "' Cargo.toml)"
 
-      - name: Build nuwax-codex binary
+      - name: Build main binary and Code Mode host
         shell: bash
         run: |
           set -euo pipefail
           target="${{ matrix.target }}"
-          cargo build --target "$target" --release --bin codex
+          cargo build --target "$target" --release -p codex-cli --bin codex -p codex-code-mode-host --bin codex-code-mode-host
+
+      - name: Build Windows sandbox helpers
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --target "${{ matrix.target }}" --release \
+            -p codex-windows-sandbox --bin codex-windows-sandbox-setup --bin codex-command-runner
 
       # profile.release keeps strip=false so local builds stay symbolicateable;
       # strip here (just before packaging) to shrink the published binary. The
@@ -295,53 +319,29 @@ jobs:
         run: |
           set -euo pipefail
           target="${{ matrix.target }}"
-          bin="target/${target}/release/codex"
-          before=$(stat -f%z "$bin" 2>/dev/null || stat -c%s "$bin")
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            strip "$bin"
-          else
-            # macOS: strip local + debug symbols.
-            strip -x "$bin"
-          fi
-          after=$(stat -f%z "$bin" 2>/dev/null || stat -c%s "$bin")
-          echo "Stripped $bin: $before -> $after bytes"
+          for name in codex codex-code-mode-host; do
+            bin="target/${target}/release/${name}"
+            before=$(stat -f%z "$bin" 2>/dev/null || stat -c%s "$bin")
+            if [[ "${{ runner.os }}" == "Linux" ]]; then
+              strip "$bin"
+            else
+              strip -x "$bin"
+            fi
+            after=$(stat -f%z "$bin" 2>/dev/null || stat -c%s "$bin")
+            echo "Stripped $bin: $before -> $after bytes"
+          done
 
       - name: Create archive
         id: create_archive
         shell: bash
         run: |
           set -euo pipefail
-          BINARY_NAME="nuwax-codex${{ matrix.binary_extension }}"
-          ARCHIVE_NAME="nuwax-codex-${{ needs.get-version.outputs.version }}-${{ matrix.target }}"
-
-          cd target/${{ matrix.target }}/release
-
-          # The cargo bin keeps the upstream name (`codex`); the npm
-          # product name is applied when packaging.
-          mv "codex${{ matrix.binary_extension }}" "${BINARY_NAME}"
-
-          # 注意：本 job 设了 defaults.run.working-directory: codex-rs，所以
-          # CWD 起点是 <workspace>/codex-rs。cd 到 release 目录后需要回退 4 级
-          # 才能回到仓库根（GITHUB_WORKSPACE），archive 留在仓库根供 upload-artifact
-          # （它的 path 相对 GITHUB_WORKSPACE 解析）使用。
-          if [ "${{ matrix.os }}" = "windows-latest" ] || [ "${{ matrix.os }}" = "windows-11-arm" ]; then
-            7z a -tzip "${ARCHIVE_NAME}.zip" "${BINARY_NAME}"
-            echo "archive_path=${ARCHIVE_NAME}.zip" >> $GITHUB_OUTPUT
-            echo "archive_name=${ARCHIVE_NAME}.zip" >> $GITHUB_OUTPUT
-            mv "${ARCHIVE_NAME}.zip" ../../../../
-          else
-            archive_items=("${BINARY_NAME}")
-            if [[ "${{ runner.os }}" == "Linux" ]]; then
-              mkdir -p codex-resources
-              cp bwrap codex-resources/bwrap
-              chmod 0755 codex-resources/bwrap
-              archive_items+=(codex-resources/bwrap)
-            fi
-            tar czf "${ARCHIVE_NAME}.tar.gz" "${archive_items[@]}"
-            echo "archive_path=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_OUTPUT
-            echo "archive_name=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_OUTPUT
-            mv "${ARCHIVE_NAME}.tar.gz" ../../../../
-          fi
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/package_nuwax_release.py" \
+            --build-dir "${GITHUB_WORKSPACE}/codex-rs/target/${{ matrix.target }}/release" \
+            --output-dir "${GITHUB_WORKSPACE}" \
+            --version "${{ needs.get-version.outputs.version }}" \
+            --target "${{ matrix.target }}" \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -357,6 +357,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.get-version.outputs.tag_name }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -388,6 +390,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.get-version.outputs.tag_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -405,13 +409,6 @@ jobs:
           VERSION: ${{ needs.get-version.outputs.version }}
         run: |
           bash npm/publish/update-base-package.sh "$VERSION"
-
-      - name: Publish main package to npm (@beta)
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          cd npm
-          npm publish --access public --tag beta
 
       - name: Install ossutil
         if: success()
@@ -446,3 +443,21 @@ jobs:
               --access-key-id "$OSS_ACCESS_KEY_ID" \
               --access-key-secret "$OSS_ACCESS_KEY_SECRET"
           done
+
+      - name: Verify all release assets are downloadable
+        env:
+          VERSION: ${{ needs.get-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-pc-windows-msvc aarch64-pc-windows-msvc; do
+            ext="tar.gz"; [[ "$target" == *windows* ]] && ext="zip"
+            curl --connect-timeout 15 --max-time 30 --fail --silent --show-error --head \
+              "https://nuwa-packages.oss-rg-china-mainland.aliyuncs.com/nuwax-codex/${{ needs.get-version.outputs.tag_name }}/nuwax-codex-${VERSION}-${target}.${ext}"
+          done
+
+      - name: Publish main package to npm (@beta)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd npm
+          npm publish --access public --tag beta

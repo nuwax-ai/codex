@@ -69,7 +69,11 @@ main@342ed69a1 已通过 merge a5b25b043 集成并随晚间批次推送。
 - **Windows**：proxy/TLS两包及本轮TUI测试接口定向编译已通过；UDS实机10/10，runner需后续CI。
   三个legacy慢腿实机亚秒级通过。write-delete限制已接受并加WARNING，测试保持红，
   不放宽断言；elevated runner pipe没有解决，但按用户范围不继续扩修。禁止Windows全workspace测试。
-- 发布/tag/npm未授权；不为收尾新增Files/PDF、多模态输出或泛化厂商私有API支持。
+- 用户已于2026-10-22授权正式tag/CI/npm发布；本次交付主名nuwax-harness、
+  默认数据.nuwax-harness（无旧目录兼容/迁移），npm包名保留nuwax-codex。
+  发布前home12/12、npm安装合同12/12、七目标打包合同4/4、改名后ACP14/14通过，
+  最终发布状态以tag/Release工作流/npm registry实际结果为准。
+  不为收尾新增Files/PDF、多模态输出或泛化厂商私有API支持。
 
 ## 4. 收工条件
 

@@ -2,7 +2,7 @@
   "name": "nuwax-codex",
   "version": "0.17.7",
   "type": "module",
-  "description": "Fork of OpenAI Codex CLI with domestic (Chinese) LLM support via genai",
+  "description": "Nuwax Harness: Codex agent with custom OpenAI and Anthropic models via rig",
   "license": "Apache-2.0",
   "author": "soddygo <soddygo@qq.com>",
   "homepage": "https://github.com/nuwax-ai/codex",
@@ -20,12 +20,15 @@
     "ai",
     "assistant",
     "llm",
-    "genai"
+    "rig",
+    "anthropic",
+    "openai"
   ],
   "scripts": {
     "postinstall": "node bin/postinstall.js"
   },
   "bin": {
+    "nuwax-harness": "bin/nuwax-harness.js",
     "nuwax-codex": "bin/nuwax-codex.js"
   },
   "files": [

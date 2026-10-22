@@ -1,7 +1,7 @@
 {
   "name": "${PACKAGE_NAME}",
   "version": "${VERSION}",
-  "description": "Fork of OpenAI Codex CLI - ${OS} ${ARCH} binary",
+  "description": "Nuwax Harness with custom models via rig - ${OS} ${ARCH} binaries",
   "license": "Apache-2.0",
   "author": "soddygo <soddygo@qq.com>",
   "homepage": "https://github.com/nuwax-ai/codex",

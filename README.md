@@ -73,6 +73,7 @@ You can also use Codex with an API key, but this requires [additional setup](htt
 
 ## Docs
 
+- [**Nuwax Harness：环境变量与 ACP 启动指南**](./docs/nuwax-harness/README.md)
 - [**Codex Documentation**](https://developers.openai.com/codex)
 - [**Contributing**](./docs/contributing.md)
 - [**Installing & building**](./docs/install.md)
