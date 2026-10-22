@@ -47,8 +47,8 @@ use codex_protocol::user_input::UserInput;
 use codex_thread_store::InMemoryThreadStore;
 use core_test_support::TestTargetOs;
 use core_test_support::fs_wait;
-use core_test_support::hooks::trust_discovered_hooks;
 use core_test_support::hooks::read_hook_inputs_from_log;
+use core_test_support::hooks::trust_discovered_hooks;
 use core_test_support::hooks::wait_for_hook_inputs;
 use core_test_support::hooks::write_lifecycle_hooks;
 use core_test_support::managed_network_requirements_loader;
@@ -4236,7 +4236,10 @@ try {{
     assert_eq!(requests.len(), 2);
     let output_item = requests[1].custom_tool_call_output(call_id);
     let output = code_mode_custom_tool_output_text(&output_item);
-    assert!(output.contains(r#""kind":"caught""#), "code mode output was: {output}");
+    assert!(
+        output.contains(r#""kind":"caught""#),
+        "code mode output was: {output}"
+    );
     assert!(output.contains(reason));
     assert!(!output.contains("unexpected-success"));
     assert!(
@@ -4315,7 +4318,10 @@ try {{
     assert_eq!(requests.len(), 2);
     let output_item = requests[1].custom_tool_call_output(&call_id);
     let output = code_mode_custom_tool_output_text(&output_item);
-    assert!(output.contains(r#""kind":"caught""#), "code mode output was: {output}");
+    assert!(
+        output.contains(r#""kind":"caught""#),
+        "code mode output was: {output}"
+    );
     assert!(output.contains(reason));
     assert!(!output.contains("unexpected-success"));
     assert!(
