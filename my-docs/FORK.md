@@ -266,6 +266,7 @@ daemon 子进程同样剥离该变量；doctor 的 `config.model_routing` 收据
 
 | 局限 | 坐标/依据 | 状态 |
 |---|---|---|
+| Windows legacy 沙箱 workspace-write **不约束既有文件删除**（内核 WRITE_RESTRICTED 不覆盖 DELETE 权位，diag1-7 证据链见台账 §6.57；显式 deny-write 路径有 DENY ACE、删除受保护）。运行时降级有 WARNING 日志；完整删除约束需 elevated 后端 | `windows-sandbox-rs/src/unified_exec/backends/legacy.rs`、台账 §6.57 | 用户决策 B+警告（2026-10-22），上游继承问题不再扩fork补丁面 |
 | Chat/Anthropic 输出预算可通过 provider.max_output_tokens 配置；Anthropic 未配置时仍默认 16384，Responses typed HTTP/WS、Rig passthrough 与预算已采用该字段 | `codex-rust-rig-bridge/src/stream.rs`、`client.rs` | 三协议已接线；验收见 `provider-request-controls-2026-10-03/tasks.md` |
 | 无 Anthropic prompt caching（`cache_control`） | 桥内零出现（grep 实证） | backlog |
 | 普通 TLS 客户端复用且请求头按轮注入；自定义 CA 仍专用构建 | `codex-rust-rig-bridge/src/client.rs`、`transport.rs` | 取消与连续工作流已有定向/实网证据；本次 main 合并后重新验收受影响部分 |

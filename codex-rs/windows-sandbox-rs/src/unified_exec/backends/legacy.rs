@@ -379,6 +379,19 @@ pub(crate) async fn spawn_windows_sandbox_session_legacy(
         cwd,
         capability_roots,
     )?;
+    if common.uses_write_capabilities {
+        // Windows write-restricted tokens cannot confine deletion of existing
+        // files: the DELETE right is checked against the full token side, so
+        // this backend's workspace-write promise covers creation and
+        // modification only. The elevated backend enforces the full contract;
+        // the fallback stays loud instead of silently weaker.
+        log_note(
+            "WARNING: legacy Windows sandbox confines file creation/modification to \
+             writable roots but cannot block deleting existing files outside them; \
+             configure the elevated sandbox backend for delete confinement",
+            common.logs_base_dir.as_deref(),
+        );
+    }
     allow_null_device_for_workspace_write(common.uses_write_capabilities);
 
     apply_legacy_session_acl_rules(

@@ -5182,9 +5182,11 @@ ACE 优先）。这不是回归：CI 缓存里 14 读数 12 红说明上游同�
 
 - 可强制面：legacy 的"创建限制"（diag6/7 证明有效）与显式 deny-write 删除保护
   维持；完整删除约束属 elevated 后端（专用账户+ACL 允许列表）的职权。
-- **产品决策待用户拍板**：Windows 正式支持下，删除敏感场景是否强制
-  `WindowsSandboxLevel::Elevated`（服务缺失时 fail-fast），或接受 legacy 回退的
-  删除不设防并写进 FORK 安全边界。legacy write-delete 测试保持红，不放宽。
+- **产品决策已由用户拍板（2026-10-22）：方案 B+警告**。legacy 降级路径加入
+  WARNING 日志（`legacy.rs`，workspace-write 模式每次会话记录），边界写入
+  FORK.md §10；不再为该上游继承问题扩大 fork 补丁面——fork 主线保持国内
+  模型接入（OpenAI/Anthropic 协议），Windows 平台内部问题以文档+警告收口。
+  legacy write-delete 测试维持红（上游继承的已知红），不放宽也不追修。
 - elevated 在该实机：账户/防火墙 provisioning 成功，但 runner pipe-in 15s 超时
   （两次，27s 仍失败）——交互桌面会话 vs 服务的环境问题，未解，独立开放项。
 
