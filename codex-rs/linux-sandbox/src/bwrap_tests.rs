@@ -2141,26 +2141,36 @@ fn synthetic_mount_target_paths(args: &BwrapArgs) -> Vec<PathBuf> {
 }
 
 #[test]
-fn proc_net_directory_denies_fail_closed_with_a_diagnostic() {
+fn proc_self_family_denies_fail_closed_with_a_diagnostic() {
     let temp_dir = TempDir::new().expect("temp dir");
-    for unmaskable in ["/proc/net", "/proc/self/net"] {
+    // Every path resolving through the reader's own pid silently protects
+    // nothing today; each must fail closed naming the unmaskability.
+    for unmaskable in [
+        "/proc/net",
+        "/proc/self/net",
+        "/proc/net/dev",
+        "/proc/self",
+        "/proc/self/environ",
+        "/proc/self/fd/3",
+        "/proc/thread-self/environ",
+    ] {
         let policy = denied_path_policy(Path::new(unmaskable));
         let error = create_filesystem_args(&policy, temp_dir.path(), BwrapOptions::default())
-            .expect_err("the unmaskable procfs symlink deny must fail closed")
+            .expect_err("the self-resolving procfs deny must fail closed")
             .to_string();
         assert!(
             error.contains("no mount-time mask can cover"),
-            "the diagnostic must name the unmaskability: {error}"
+            "the diagnostic for {unmaskable} must name the unmaskability: {error}"
         );
     }
 }
 
 #[test]
-fn proc_net_file_and_pid_named_denies_keep_their_masks() {
+fn numeric_pid_named_proc_denies_keep_their_masks() {
     let temp_dir = TempDir::new().expect("temp dir");
-    // A file under /proc/net and a pid-named net path have concrete
-    // destinations; they keep today's behavior instead of the O4 bail.
-    for masked in ["/proc/1/net", "/proc/net/dev"] {
+    // A numeric pid-named path has a concrete destination in the fresh
+    // pid namespace; it keeps today's mask behavior instead of the bail.
+    for masked in ["/proc/1/net", "/proc/1/environ"] {
         let policy = denied_path_policy(Path::new(masked));
         let args = create_filesystem_args(&policy, temp_dir.path(), BwrapOptions::default())
             .expect("concrete proc destinations stay maskable");

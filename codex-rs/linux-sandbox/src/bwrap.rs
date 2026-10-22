@@ -198,12 +198,26 @@ fn is_pid_directory_name(name: &OsStr) -> bool {
     !name.is_empty() && name.chars().all(|char| char.is_ascii_digit())
 }
 
-/// The procfs symlinks that resolve through the reading process's own pid.
-/// A mount-time mask for one of these names resolves through the privileged
-/// setup process instead and lands where no sandboxed reader ever looks, so
-/// the deny would silently protect nothing (O4 in the sandbox ledger).
-fn deny_target_is_unmaskable_proc_net_symlink(path: &Path) -> bool {
-    path == Path::new("/proc/net") || path == Path::new("/proc/self/net")
+/// The procfs paths that resolve through the reading process's own pid:
+/// anything under `/proc/self`, `/proc/thread-self`, or `/proc/net` (a
+/// symlink to `self/net`). A mount-time mask for such a path resolves
+/// through bubblewrap's setup process instead and lands where no sandboxed
+/// reader ever looks, so the deny would silently protect nothing (O4 in the
+/// sandbox ledger; the payload's pid in the fresh pid namespace is not 1, so
+/// no numeric translation can target it either).
+fn deny_target_traverses_proc_self(path: &Path) -> bool {
+    let Ok(relative) = path.strip_prefix(Path::new("/proc")) else {
+        return false;
+    };
+    let Some(first) = relative
+        .components()
+        .next()
+        .and_then(|component| component.as_os_str().to_str())
+    else {
+        // `/proc` itself is the mount point; it stays maskable.
+        return false;
+    };
+    matches!(first, "self" | "thread-self" | "net")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1444,15 +1458,17 @@ fn append_unreadable_root_args(
         return Ok(());
     }
 
-    if deny_target_is_unmaskable_proc_net_symlink(unreadable_root) {
+    if deny_target_traverses_proc_self(unreadable_root) {
         /*
-         * /proc/net and /proc/self/net resolve through the reading process's
-         * own pid, while every mount-time mask resolves through the privileged
-         * setup process (measured on the design probes: self-directed mounts
-         * land nowhere the sandboxed reader ever sees). The directory deny
-         * would therefore silently protect nothing; fail closed instead. A
-         * deny naming /proc/1/net or a file under /proc/net keeps today's
-         * behavior: those destinations are concrete and already fail loudly.
+         * Paths through the magic /proc/self, /proc/thread-self, and /proc/net
+         * symlinks resolve through the READING process's own pid, while every
+         * mount-time mask resolves through bubblewrap's setup process. The
+         * design probes measured both halves: self-directed mounts land where
+         * no sandboxed reader looks, and the payload's pid in the fresh pid
+         * namespace is not 1 (bubblewrap keeps its own process chain), so not
+         * even a numeric translation can target it. Such a deny would silently
+         * protect nothing; fail closed instead. Numeric /proc/<pid> denies keep
+         * their existing behavior.
          */
         return Err(CodexErr::Fatal(format!(
             "cannot enforce sandbox deny-read path {}: it resolves through the reader's own pid in procfs, which no mount-time mask can cover",
