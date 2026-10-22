@@ -5138,10 +5138,18 @@ tmpfs 掩蔽正是本轮消除的 abort 源，拒绝强度由"真实不构建"�
 
 **已知偏差与未收口项**：① `pts` 改绑宿主 devpts（vendored/0.11.1 均无
 `--devpts` 旗标，SETUP_MOUNT_DEV 的私有实例无法 CLI 复刻）——隔离面变化已单列，
-deny 合同不受影响；② **O4 未动**：`/proc/net` 符号链接（目录 deny 静默失效/
-文件 deny abort）与 `/proc/self/environ` 可读边界仍在，需 per-pid 命名空间枚举
-决策，不能被本轮"缺席"语义顺带覆盖；③ O3 分类是静态窄名单，仅覆盖
+deny 合同不受影响；② **O4 同轮收了"目录 deny 静默失效"这半**：`/proc/net` 与
+`/proc/self/net` 的 deny 现在响亮 Fatal（探针证明挂载期 self 解析落在特权
+helper 进程、任何掩蔽盖不到读者自己的 pid；此前目录 deny 静默可读=fail-open，
+文件 deny 本就响亮 abort）。`/proc/1/net` 与 `/proc/net/<file>` 保持原掩蔽行为
+（落点断言入合同）。**per-pid 视角的完备拒绝仍未收口**：pid≠1 子进程的
+`/proc/self/net` 依旧可读，需要 per-pid 枚举或 seccomp 级决策，留下一轮；
+③ `/proc/self/environ` 可读边界未动；④ O3 分类是静态窄名单，仅覆盖
 `conf/<宿主网卡>` 这一可证宿主专属类。
+
+**O4 一手**：上述改动后 `-p codex-linux-sandbox` **241/241 通过，3 skip**
+（239+2 新合同），crate Clippy 0 警告；`shell_snapshot` 全族复跑仍 48 过 +
+恰好 3 条已知宿主噪声红，无连带。
 
 ## 7. 提交、推送与工作树状态
 

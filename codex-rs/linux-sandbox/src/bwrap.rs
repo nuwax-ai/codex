@@ -198,6 +198,14 @@ fn is_pid_directory_name(name: &OsStr) -> bool {
     !name.is_empty() && name.chars().all(|char| char.is_ascii_digit())
 }
 
+/// The procfs symlinks that resolve through the reading process's own pid.
+/// A mount-time mask for one of these names resolves through the privileged
+/// setup process instead and lands where no sandboxed reader ever looks, so
+/// the deny would silently protect nothing (O4 in the sandbox ledger).
+fn deny_target_is_unmaskable_proc_net_symlink(path: &Path) -> bool {
+    path == Path::new("/proc/net") || path == Path::new("/proc/self/net")
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct FileIdentity {
     dev: u64,
@@ -1434,6 +1442,22 @@ fn append_unreadable_root_args(
 
     if deny_is_enforced_by_absent_dev_path(unreadable_root) {
         return Ok(());
+    }
+
+    if deny_target_is_unmaskable_proc_net_symlink(unreadable_root) {
+        /*
+         * /proc/net and /proc/self/net resolve through the reading process's
+         * own pid, while every mount-time mask resolves through the privileged
+         * setup process (measured on the design probes: self-directed mounts
+         * land nowhere the sandboxed reader ever sees). The directory deny
+         * would therefore silently protect nothing; fail closed instead. A
+         * deny naming /proc/1/net or a file under /proc/net keeps today's
+         * behavior: those destinations are concrete and already fail loudly.
+         */
+        return Err(CodexErr::Fatal(format!(
+            "cannot enforce sandbox deny-read path {}: it resolves through the reader's own pid in procfs, which no mount-time mask can cover",
+            unreadable_root.display()
+        )));
     }
 
     // The explicit device tree omits the denied symlink entries, so their

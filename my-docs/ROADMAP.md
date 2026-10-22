@@ -78,9 +78,11 @@ rig 仍冻结 0.44.0 不动。
 bwrap 自建 `/dev` 符号链接项时切换显式构建（被拒项缺席即拒绝；`blocked_descriptor_path`
 由红转绿，strace 28 次 bwrap execve 零 `/dev/fd`）；宿主专属
 `/proc/sys/net/*/conf/<网卡>` 在 fresh netns 中按缺席拒绝（静态窄名单，宁可漏判
-维持响亮 abort）。已知偏差：`pts` 绑宿主 devpts（无 CLI 私有实例原语）。
-**仍开放**：O4 `/proc/net` 符号链接（目录 deny 静默失效/文件 deny abort）与
-`/proc/self/environ` 可读边界；设计判据见
+维持响亮 abort）。O4 的目录 deny 半边同轮收口：`/proc/net`/`/proc/self/net`
+deny 由静默可读改为响亮 Fatal（fail-closed）。已知偏差：`pts` 绑宿主 devpts
+（无 CLI 私有实例原语）。
+**仍开放**：pid≠1 子进程的 `/proc/self/net` 可读（需 per-pid 枚举/seccomp 决策）、
+`/proc/self/environ` 可读边界；判据见
 [sandbox-o2-o3-design-2026-10-22.md](sandbox-o2-o3-design-2026-10-22.md)。
 
 以下原始边界描述保留作历史：
