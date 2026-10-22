@@ -5,6 +5,58 @@ use codex_core::config::Config;
 use codex_features::Feature;
 use codex_hooks::HookListEntry;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use std::fs;
+use std::path::Path;
+
+use anyhow::Context;
+use anyhow::Result;
+use serde_json::Value;
+use serde_json::json;
+use std::time::Duration;
+use tokio::time::sleep;
+use tokio::time::timeout;
+
+/// Writes one logging command hook per listed event into `hooks.json`; each
+/// invocation appends its stdin (the hook input JSON) to `<event>.jsonl`.
+pub fn write_lifecycle_hooks(home: &Path, events: &[&str]) -> Result<()> {
+    let mut hooks = serde_json::Map::new();
+    for event in events {
+        let log = home.join(format!("{event}.jsonl"));
+        let command = format!(
+            "cat >> '{log}'; echo >> '{log}'; printf '%s' '{{\"continue\":false,\"decision\":\"block\",\"reason\":\"ignored-observer-control\"}}'",
+            log = log.display(),
+        );
+        hooks.insert(
+            (*event).into(),
+            json!([{"hooks": [{"type": "command", "command": command}]}]),
+        );
+    }
+    fs::write(home.join("hooks.json"), json!({"hooks": hooks}).to_string())?;
+    Ok(())
+}
+
+pub async fn wait_for_hook_inputs(home: &Path, event: &str, count: usize) -> Result<Vec<Value>> {
+    timeout(Duration::from_secs(10), async {
+        loop {
+            if let Ok(inputs) = read_hook_inputs_from_log(&home.join(format!("{event}.jsonl")))
+                && inputs.len() >= count
+            {
+                return Ok(inputs);
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await?
+}
+
+pub fn read_hook_inputs_from_log(log_path: &Path) -> Result<Vec<Value>> {
+    fs::read_to_string(log_path)
+        .with_context(|| format!("read hook log {}", log_path.display()))?
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| serde_json::from_str(line).context("parse hook log line"))
+        .collect()
+}
 
 pub fn trust_discovered_hooks(config: &mut Config) {
     config

@@ -1838,3 +1838,72 @@ async fn anthropic_cap_stop_reason_without_message_stop_is_retryable_truncation(
     );
     Ok(())
 }
+
+/// Cap terminal × post-model hook junction (2026-10-22 acceptance): a bridged
+/// Anthropic provider whose turn exhausts the output cap must fire
+/// PostModelRequest exactly once with the failure status and the cap error
+/// text, while the non-zero retry budgets pay for no second sample. The
+/// hooks suite covers PostModelRequest on the native Responses wire; this
+/// pins the same contract on the bridge cap path.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anthropic_cap_terminal_fires_post_model_hook_once_without_resampling() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
+    let body = format!(
+        "{}{}{}{}",
+        anthropic_frame(
+            "message_start",
+            json!({"message": {"id": "msg_cap_hook", "type": "message", "role": "assistant", "content": [], "model": "cap-test", "stop_reason": null, "usage": {"input_tokens": 4, "output_tokens": 0}}})
+        ),
+        anthropic_frame(
+            "content_block_start",
+            json!({"index": 0, "content_block": {"type": "text", "text": ""}})
+        ),
+        anthropic_frame(
+            "content_block_delta",
+            json!({"index": 0, "delta": {"type": "text_delta", "text": "partial cap answer"}})
+        ),
+        anthropic_frame(
+            "message_delta",
+            json!({"delta": {"stop_reason": "max_tokens", "stop_sequence": null}, "usage": {"output_tokens": 64}})
+        ),
+    ) + "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+    let log = mount_capturing_response(&server, "/v1/messages", body).await?;
+    let provider = output_cap_provider(&server.uri(), WireApi::Anthropic);
+    let test = test_codex()
+        .with_pre_build_hook(|home| {
+            core_test_support::hooks::write_lifecycle_hooks(
+                home,
+                &["PreModelRequest", "PostModelRequest"],
+            )
+            .expect("write lifecycle hooks");
+        })
+        .with_auth_manager(codex_login::test_support::auth_manager_from_optional_auth(
+            /*auth*/ None,
+        ))
+        .with_config(move |config| {
+            config.model_provider = provider;
+            core_test_support::hooks::trust_discovered_hooks(config);
+        })
+        .build_with_auto_env(&server)
+        .await?;
+    let outcome = run_turn_until_complete(&test, "hit the cap with hooks installed").await?;
+    assert_cap_terminal(&outcome, log.posts(), "partial cap answer");
+    assert_eq!(log.first_body()["max_tokens"], json!(64));
+    let post = core_test_support::hooks::wait_for_hook_inputs(
+        test.codex_home_path(),
+        "PostModelRequest",
+        /*count*/ 1,
+    )
+    .await?;
+    assert_eq!(post.len(), 1, "the cap terminal reports one model request");
+    assert_eq!(post[0]["status"], "failed");
+    let error = post[0]["error"]
+        .as_str()
+        .context("the cap error reaches the hook")?;
+    assert!(
+        error.contains("Output token limit reached"),
+        "unexpected hook error: {error}"
+    );
+    Ok(())
+}

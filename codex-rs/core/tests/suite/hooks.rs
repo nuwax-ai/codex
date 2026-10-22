@@ -48,6 +48,9 @@ use codex_thread_store::InMemoryThreadStore;
 use core_test_support::TestTargetOs;
 use core_test_support::fs_wait;
 use core_test_support::hooks::trust_discovered_hooks;
+use core_test_support::hooks::read_hook_inputs_from_log;
+use core_test_support::hooks::wait_for_hook_inputs;
+use core_test_support::hooks::write_lifecycle_hooks;
 use core_test_support::managed_network_requirements_loader;
 use core_test_support::responses;
 use core_test_support::responses::ev_apply_patch_custom_tool_call;
@@ -1231,15 +1234,6 @@ fn assert_single_permission_request_hook_input_for_tool(
 
 fn read_post_tool_use_hook_inputs(home: &Path) -> Result<Vec<serde_json::Value>> {
     read_hook_inputs_from_log(home.join("post_tool_use_hook_log.jsonl").as_path())
-}
-
-fn read_hook_inputs_from_log(log_path: &Path) -> Result<Vec<serde_json::Value>> {
-    fs::read_to_string(log_path)
-        .with_context(|| format!("read hook log {}", log_path.display()))?
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| serde_json::from_str(line).context("parse hook log line"))
-        .collect()
 }
 
 fn read_session_start_hook_inputs(home: &Path) -> Result<Vec<serde_json::Value>> {
@@ -4242,7 +4236,7 @@ try {{
     assert_eq!(requests.len(), 2);
     let output_item = requests[1].custom_tool_call_output(call_id);
     let output = code_mode_custom_tool_output_text(&output_item);
-    assert!(output.contains(r#""kind":"caught""#));
+    assert!(output.contains(r#""kind":"caught""#), "code mode output was: {output}");
     assert!(output.contains(reason));
     assert!(!output.contains("unexpected-success"));
     assert!(
@@ -4321,7 +4315,7 @@ try {{
     assert_eq!(requests.len(), 2);
     let output_item = requests[1].custom_tool_call_output(&call_id);
     let output = code_mode_custom_tool_output_text(&output_item);
-    assert!(output.contains(r#""kind":"caught""#));
+    assert!(output.contains(r#""kind":"caught""#), "code mode output was: {output}");
     assert!(output.contains(reason));
     assert!(!output.contains("unexpected-success"));
     assert!(
@@ -5997,37 +5991,6 @@ async fn post_tool_use_records_apply_patch_context_with_edit_alias() -> Result<(
     assert_eq!(hook_inputs[0]["tool_input"]["command"], patch);
 
     Ok(())
-}
-
-fn write_lifecycle_hooks(home: &Path, events: &[&str]) -> Result<()> {
-    let mut hooks = serde_json::Map::new();
-    for event in events {
-        let log = home.join(format!("{event}.jsonl"));
-        let command = format!(
-            "cat >> '{log}'; echo >> '{log}'; printf '%s' '{{\"continue\":false,\"decision\":\"block\",\"reason\":\"ignored-observer-control\"}}'",
-            log = log.display(),
-        );
-        hooks.insert(
-            (*event).into(),
-            json!([{"hooks": [{"type": "command", "command": command}]}]),
-        );
-    }
-    fs::write(home.join("hooks.json"), json!({"hooks": hooks}).to_string())?;
-    Ok(())
-}
-
-async fn wait_for_hook_inputs(home: &Path, event: &str, count: usize) -> Result<Vec<Value>> {
-    timeout(Duration::from_secs(10), async {
-        loop {
-            if let Ok(inputs) = read_hook_inputs_from_log(&home.join(format!("{event}.jsonl")))
-                && inputs.len() >= count
-            {
-                return Ok(inputs);
-            }
-            sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await?
 }
 
 #[tokio::test]
