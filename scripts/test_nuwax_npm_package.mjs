@@ -299,9 +299,11 @@ test("real ZIP archives with traversal, absolute, drive or backslash entries fai
   await assert.rejects(readFile(absoluteEscape), { code: "ENOENT" });
 });
 
-test("npm pack includes both public commands, shared runtime and postinstall without changing the package name", async () => {
-  assert.equal(metadata.name, "nuwax-codex");
-  assert.deepEqual(metadata.bin, { "nuwax-harness": "bin/nuwax-harness.js", "nuwax-codex": "bin/nuwax-codex.js" });
+test("npm pack exposes the scoped harness command with shared runtime and postinstall", async () => {
+  assert.equal(metadata.name, "@nuwax-ai/nuwax-harness");
+  assert.deepEqual(metadata.bin, { "nuwax-harness": "bin/nuwax-harness.js" });
+  assert.equal(metadata.publishConfig.access, "public");
+  assert.equal(metadata.publishConfig.registry, "https://registry.npmjs.org");
   const { stdout } = await execute("npm", ["pack", "--dry-run", "--ignore-scripts", "--json", "--cache", join(scratch, "npm-cache")], {
     cwd: packageRoot,
     env: { ...process.env, HOME: scratch, USERPROFILE: scratch },
@@ -312,6 +314,6 @@ test("npm pack includes both public commands, shared runtime and postinstall wit
   for (const expected of ["bin/nuwax-harness.js", "bin/nuwax-codex.js", "bin/postinstall.js", "bin/runtime.js"]) {
     assert.ok(packed.files.some((file) => file.path === expected), `${expected} missing from npm package`);
   }
-  assert.equal(packed.name, "nuwax-codex");
+  assert.equal(packed.name, "@nuwax-ai/nuwax-harness");
   assert.ok(packed.files.every((file) => !file.path.includes("node_modules")));
 });

@@ -4,12 +4,13 @@
 默认使用 rig，也可选择上游原生 Responses 通路。
 
 ```bash
-npm install -g nuwax-codex@latest
+npm install -g @nuwax-ai/nuwax-harness@latest
 nuwax-harness --version
 ```
 
-npm 包名保留 `nuwax-codex`，主命令和下载的主二进制为 `nuwax-harness`。
-旧 `nuwax-codex` 命令继续作为兼容入口；Rust 内部程序名保持不变。
+npm 包名为 `@nuwax-ai/nuwax-harness`，主命令和下载的主二进制为 `nuwax-harness`。
+该组织包只导出 `nuwax-harness` 命令；Rust 内部程序名保持不变。
+
 
 ```bash
 export NUWAX_BASE_URL='https://your-provider.example/v1'

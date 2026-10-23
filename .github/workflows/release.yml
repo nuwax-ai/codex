@@ -1,8 +1,8 @@
-# Build and publish a stable release of the `nuwax-codex` npm package.
+# Build and publish a stable release of the `@nuwax-ai/nuwax-harness` npm package.
 # Triggered by pushing a `v*.*.*` tag (e.g. v0.16.1) or manually via
 # workflow_dispatch. Builds the `nuwax-harness` binary (+ bundled `bwrap` on Linux)
 # for 7 targets, uploads them to the release/CDN, and publishes the
-# `nuwax-codex` umbrella package to the npm `latest` dist-tag.
+# `@nuwax-ai/nuwax-harness` umbrella package to the npm `latest` dist-tag.
 #
 # Pre-release tags (containing "beta" or "alpha") are rejected; use
 # release-beta.yml for those instead.
@@ -18,6 +18,11 @@ on:
         description: "Tag name for release (e.g. v0.16.1)"
         required: false
         type: string
+      npm_only:
+        description: "Publish npm packaging using an existing verified release (no native rebuild)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -70,12 +75,16 @@ jobs:
 
       - name: Get version from tag
         id: get_version
+        env:
+          REQUESTED_TAG: ${{ github.event.inputs.tag_name }}
         run: |
-          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
-            TAG_NAME="${{ github.event.inputs.tag_name }}"
+          set -euo pipefail
+          if [ -n "${REQUESTED_TAG:-}" ]; then
+            TAG_NAME="$REQUESTED_TAG"
           else
             TAG_NAME="${GITHUB_REF#refs/tags/}"
           fi
+          [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid stable release tag" >&2; exit 1; }
           # Strip leading v to get a valid npm semver
           VERSION="${TAG_NAME#v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -93,6 +102,7 @@ jobs:
           TAG_NAME: ${{ steps.get_version.outputs.tag_name }}
 
   build:
+    if: ${{ !inputs.npm_only }}
     name: Build - ${{ matrix.target }}
     needs: get-version
     # Rust workspace root is codex-rs/; all cargo/shell steps run there.
@@ -374,6 +384,7 @@ jobs:
           retention-days: 1
 
   create-release:
+    if: ${{ !inputs.npm_only }}
     name: Create GitHub Release
     needs: [get-version, build]
     runs-on: ubuntu-latest
@@ -411,19 +422,44 @@ jobs:
 
   publish-npm:
     name: Publish to npm (latest)
+    if: ${{ !cancelled() && needs.get-version.result == 'success' && (inputs.npm_only || needs.create-release.result == 'success') }}
     needs: [get-version, create-release]
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.get-version.outputs.tag_name }}
+          ref: ${{ inputs.npm_only && github.sha || needs.get-version.outputs.tag_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify existing native release for npm-only publishing
+        if: ${{ inputs.npm_only }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.get-version.outputs.tag_name }}
+          VERSION: ${{ needs.get-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid stable version" >&2; exit 1; }
+          [[ "$TAG" == "v$VERSION" ]] || { echo "Native tag must match version" >&2; exit 1; }
+          gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets > "$RUNNER_TEMP/native-release.json"
+          node --input-type=module <<'JS'
+          import { readFileSync } from "node:fs";
+          const release = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/native-release.json`, "utf8"));
+          const targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"];
+          if (release.isDraft || release.isPrerelease || release.tagName !== process.env.TAG) throw new Error("A public stable native release is required");
+          for (const target of targets) {
+            const name = `nuwax-codex-${process.env.VERSION}-${target}.${target.includes("windows") ? "zip" : "tar.gz"}`;
+            if (!release.assets.some(asset => asset.name === name && asset.size > 0)) throw new Error(`Missing native asset: ${name}`);
+          }
+          JS
+          native_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)"
+          echo "Native source: $TAG @ $native_sha; npm packaging: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install envsubst
         run: |
@@ -437,7 +473,7 @@ jobs:
           bash npm/publish/update-base-package.sh "$VERSION"
 
       - name: Install ossutil
-        if: success()
+        if: ${{ success() && !inputs.npm_only }}
         run: |
           curl -fSL -o /tmp/ossutil.zip \
             "https://gosspublic.alicdn.com/ossutil/v2/2.2.0/ossutil-2.2.0-linux-amd64.zip"
@@ -446,13 +482,13 @@ jobs:
           ossutil version
 
       - name: Download release assets for OSS
-        if: success()
+        if: ${{ success() && !inputs.npm_only }}
         uses: actions/download-artifact@v4
         with:
           path: oss_assets
 
       - name: Upload binaries to OSS
-        if: success()
+        if: ${{ success() && !inputs.npm_only }}
         env:
           OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}

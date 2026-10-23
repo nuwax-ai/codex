@@ -8,14 +8,14 @@
 ## 1. 安装与名称
 
 ```bash
-npm install -g nuwax-codex@latest
+npm install -g @nuwax-ai/nuwax-harness@latest
 command -v nuwax-harness
 nuwax-harness --version
 ```
 
-npm 包名继续是 **`nuwax-codex`**，新主命令和发布归档内的主二进制叫
-**`nuwax-harness`**（Windows 为 `nuwax-harness.exe`）。旧的 `nuwax-codex`
-命令保留为 npm 兼容别名，便于现有 ACP 和脚本继续运行。
+npm 组织包名是 **`@nuwax-ai/nuwax-harness`**，主命令和发布归档内的主二进制叫
+**`nuwax-harness`**（Windows 为 `nuwax-harness.exe`）。该组织包只导出新主命令。
+ACP 的 `CODEX_PATH` 使用 `command -v nuwax-harness` 返回的绝对路径。
 Rust crate、源码构建目标和 `codex-code-mode-host` 等辅助程序保持内部名称；
 发布包会处理主程序改名，请完整安装同一版本，保留其配套辅助程序。
 

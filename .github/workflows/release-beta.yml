@@ -1,8 +1,8 @@
-# Build and publish a beta release of the `nuwax-codex` npm package.
+# Build and publish a beta release of the `@nuwax-ai/nuwax-harness` npm package.
 # Triggered by pushing a `v*beta*` tag (e.g. v0.1.0-beta.1) or manually via
 # workflow_dispatch. Builds the `nuwax-harness` binary (+ bundled `bwrap` on Linux)
 # for 7 targets, uploads them to the release/CDN, and publishes the
-# `nuwax-codex` umbrella package to the npm `beta` dist-tag.
+# `@nuwax-ai/nuwax-harness` umbrella package to the npm `beta` dist-tag.
 name: Release Beta
 
 on:

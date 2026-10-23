@@ -1,6 +1,6 @@
 {
-  "name": "nuwax-codex",
-  "version": "0.17.7",
+  "name": "@nuwax-ai/nuwax-harness",
+  "version": "0.18.14",
   "type": "module",
   "description": "Nuwax Harness: Codex agent with custom OpenAI and Anthropic models via rig",
   "license": "Apache-2.0",
@@ -28,8 +28,7 @@
     "postinstall": "node bin/postinstall.js"
   },
   "bin": {
-    "nuwax-harness": "bin/nuwax-harness.js",
-    "nuwax-codex": "bin/nuwax-codex.js"
+    "nuwax-harness": "bin/nuwax-harness.js"
   },
   "files": [
     "bin"
@@ -41,5 +40,9 @@
     "detect-libc": "^2.0.0",
     "tar": "^7.0.0",
     "yauzl": "^3.1.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   }
 }

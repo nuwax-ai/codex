@@ -10,6 +10,9 @@ Anthropic Messages，并保留绕过 rig 的上游原生 Responses 入口。
 本轮复审：[晚间复审](rig-production-completion-2026-10-10/codex-review-2026-10-22-late-audit.md)。
 此表取代旧路线图中“尚未push/进行中/待拍板”等过期状态，历史收据仍保留。
 
+组织包安装入口：`npm install -g @nuwax-ai/nuwax-harness`；当前包装调整复用已验收的
+原生 v0.18.14 制品，发布及新包实际安装结果另行登记。开发阶段不安排旧包卸载/迁移。
+
 ## 1. 已完成的核心能力
 
 | 使用路径 | 配置 | 状态 |
@@ -93,7 +96,7 @@ main@342ed69a1 已通过 merge a5b25b043 集成并随晚间批次推送。
   不放宽断言；elevated runner pipe没有解决，但按用户范围不继续扩修。
   本手 hosted CI 的十项非通过见发布记录；不在个人 Windows 验机追加全 workspace 测试。
 - 用户已于2026-10-22授权正式tag/CI/npm发布；本次交付主名nuwax-harness、
-  默认数据.nuwax-harness（无旧目录兼容/迁移），npm包名保留nuwax-codex。
+  默认数据.nuwax-harness（无旧目录兼容/迁移），npm组织包改为@nuwax-ai/nuwax-harness。
   发布前home12/12、npm安装合同12/12、七目标打包合同4/4、改名后ACP14/14通过，
   最终发布状态以tag/Release工作流/npm registry实际结果为准。
   不为收尾新增Files/PDF、多模态输出或泛化厂商私有API支持。

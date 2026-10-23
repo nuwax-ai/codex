@@ -7,7 +7,8 @@ main集成与晚间批次已推送，复审输入origin/test=850a87390；备用g
 不同源码的实网、fixture与CI证据分开，不宣称全部厂商/全部平台已通过。
 当前优先级与本轮验证快照见 [ROADMAP.md](ROADMAP.md)，
 历史执行证据见 [最新验收台账](rig-production-completion-2026-10-10/claude-rig-final-acceptance-2026-10-18.md)。
-npm 包：`nuwax-codex`；发布主二进制/主命令：`nuwax-harness`，保留旧命令兼容入口。
+npm 组织包：`@nuwax-ai/nuwax-harness`；发布主二进制/主命令：`nuwax-harness`。
+2026-10-23 改为组织包发布，原生 0.18.14 制品保持不变；不提供旧包卸载或迁移流程。
 ACP 侧配套包：`@nuwax-ai/nuwax-codex-acp-ts`。
 
 ## 1. fork 的使命
