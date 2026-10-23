@@ -120,7 +120,10 @@ use codex_terminal_detection::TerminalName;
 #[derive(Debug, Parser)]
 #[clap(
     author,
-    version,
+    // clap's auto version flag renders "<crate name> <version>" ("codex-cli …"),
+    // but the published binary is `nuwax-harness`; the manual `version` field
+    // below prints only the version.
+    disable_version_flag = true,
     // If a sub‑command is given, ignore requirements of the default args.
     subcommand_negates_reqs = true,
     // The executable is sometimes invoked via a platform‑specific name like
@@ -141,6 +144,10 @@ struct MultitoolCli {
 
     #[clap(flatten)]
     interactive: TuiCli,
+
+    /// Print the version and exit.
+    #[arg(short = 'V', long)]
+    version: bool,
 
     #[clap(subcommand)]
     subcommand: Option<Subcommand>,
@@ -1059,9 +1066,14 @@ async fn cli_main(
         feature_toggles,
         remote,
         mut interactive,
+        version,
         subcommand,
     } = config_override_args::try_parse_from(std::env::args_os())
         .unwrap_or_else(|error| error.exit());
+    if version {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
     // Retain the launch target through TUI exit, even if a launcher changes selection.
     let daemon_cli_executable = arg0_paths
         .codex_self_exe
@@ -2827,6 +2839,15 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     #[test]
+    fn version_flag_parses_from_long_and_short_forms() {
+        let cli = MultitoolCli::try_parse_from(["codex", "--version"]).expect("parse --version");
+        assert!(cli.version);
+
+        let cli = MultitoolCli::try_parse_from(["codex", "-V"]).expect("parse -V");
+        assert!(cli.version);
+    }
+
+    #[test]
     fn interactive_tui_future_stays_bounded() {
         let future = run_interactive_tui(
             TuiCli::parse_from(["codex"]),
@@ -3027,6 +3048,7 @@ enabled = true
             subcommand,
             feature_toggles: _,
             remote: _,
+            version: _,
         } = cli;
         interactive
             .shared
@@ -3064,6 +3086,7 @@ enabled = true
             subcommand,
             feature_toggles: _,
             remote: _,
+            version: _,
         } = cli;
         interactive
             .shared
@@ -3108,6 +3131,7 @@ enabled = true
             subcommand,
             feature_toggles: _,
             remote: _,
+            version: _,
         } = cli;
 
         let Subcommand::Archive(SessionArchiveCommand {
@@ -3137,6 +3161,7 @@ enabled = true
             subcommand,
             feature_toggles: _,
             remote: _,
+            version: _,
         } = cli;
         let archive_cli = match subcommand.expect("archive-family subcommand") {
             Subcommand::Archive(SessionArchiveCommand {

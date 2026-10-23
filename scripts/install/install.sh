@@ -937,7 +937,10 @@ version_from_binary() {
     return 1
   fi
 
-  "$codex_path" --version 2>/dev/null | sed -n 's/.* \([0-9][0-9A-Za-z.+-]*\)$/\1/p' | head -n 1
+  # Newer binaries print only the version; older ones prefix it ("codex-cli X.Y.Z").
+  "$codex_path" --version 2>/dev/null \
+    | sed -n -e 's/^\([0-9][0-9A-Za-z.+-]*\)$/\1/p' -e 's/.* \([0-9][0-9A-Za-z.+-]*\)$/\1/p' \
+    | head -n 1
 }
 
 current_installed_version() {

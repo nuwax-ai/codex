@@ -277,6 +277,8 @@ Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§
   7 平台构建 → 阿里云 OSS 二进制 → npm publish；cargo bin 名保持官方 `codex`，
   npm 打包时主程序改名 `nuwax-harness`，保留旧命令兼容入口，postinstall 从 OSS 下载平台二进制到
   `~/.nuwax-harness-cache`）。
+- 主程序 `--version`/`-V` 只输出版本号本身（如 `0.18.14`），不带官方的
+  `codex-cli` 前缀；tarball 安装脚本 `install.sh` 的版本探测兼容新旧两种输出。
 - live-tests crate（`LIVE_VENDORS` + `.env.local` 凭据）按 厂商×桥×场景 矩阵跑
   真实请求；compact 场景已入 exec 矩阵（三线）。
 
