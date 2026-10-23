@@ -5421,6 +5421,17 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   由后续 tag(v0.18.17 正式 + 下一 beta)supersede;不以 0.18.16 冒称托管守护安装可用。
 - 2cab1f686 的 CI run(39926185885)被 d25311302 的 run(39932338039)取代并手动取消,
   避免双跑制造负载噪声。
+- **d25311302 的 CI(run 39932338039)已终判,红项全部收敛到登记集**:
+  Ubuntu 23590 跑/3红 = subagent_notifications×2(登记)+ turn_input_submission::
+  recovery_preserves_durable_turn_attribution::automation 单例(本机定向 5/5 全过,
+  判负载抖动);macOS 23524 跑/3红 = subagent_notifications×2 + high_stdio(§6.60 登记),
+  零超时;Windows 本轮通过编译(无 OOM),可见红 = subagent×2 + legacy unified_exec×4
+  (含按 B+警告决策保持红的 write-delete 腿;legacy 家族实机绿、hosted CI 红为 §6.57/§3
+  登记形态);bazel 门绿。**三组修复(sandbox_cloud_config、daemon_package、prompt_cache_key)
+  在全部跑到的平台转绿,零超时**——上一轮的 60s 超时家族确认与负载相关,已消失。
+  依据本机红转绿证据未等该 CI,先行 tag v0.18.17/v0.18.18-beta.1(均指 71ef5d9c0);
+  tag push 事件通道异常未触发工作流,改 workflow_dispatch 触发
+  (run 39941503415 正式 / 39941584042 beta)。
 
 ## 7. 提交、推送与工作树状态
 
