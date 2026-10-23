@@ -5432,6 +5432,12 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   依据本机红转绿证据未等该 CI,先行 tag v0.18.17/v0.18.18-beta.1(均指 71ef5d9c0);
   tag push 事件通道异常未触发工作流,改 workflow_dispatch 触发
   (run 39941503415 正式 / 39941584042 beta)。
+- **双通道终收据(2026-10-23)**:v0.18.17 Release 10/10 成功(run 39941503415),
+  npm `latest`→0.18.17;v0.18.18-beta.1 Release Beta 8/8 成功(run 39941584042),
+  npm `beta`→0.18.18-beta.1。两者隔离安装实测 `--version`/`-V` 均裸输出版本号
+  (0.18.17 / 0.18.18-beta.1,registry 直查+官方源安装;npm view 的 CDN 滞后以
+  registry API 为准)。0.18.16/0.18.17-beta.1 的托管守护缺陷由 0.18.17 修复取代,
+  0.18.16 不再是 latest。npm 侧 dist-tag 变更后传播约 1-2 分钟属正常。
 
 ## 7. 提交、推送与工作树状态
 
