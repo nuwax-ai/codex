@@ -28,7 +28,8 @@ Mac ARM64 全新 prefix/cache/HOME 的实际 scoped npm 安装通过，只导出
 [组织包机器收据](receipts/2026-10-23-harness-scoped-npm.json) 记录包装 gitHead 与原生 f827 的不同绑定。
 
 检查又发现原生 TUI/doctor 的版本查询和自动更新命令写死旧包名，已同步源码地址与提示。
-此原生改动不能通过 npm 包装覆盖，将随 v0.18.15 构建交付；模型/协议实现未改。
+此原生改动不能通过 npm 包装覆盖，已提交 `2d216c175` 并打 `v0.18.15`，
+[Release39890467055](https://github.com/nuwax-ai/codex/actions/runs/39890467055) 正在构建；模型/协议实现未改。
 更新动作、registry metadata、doctor 更新标签及 daemon 安装提示的定向测试 **15/15**（无重试）；
 两个实际 registry 地址均读取成功。已有 CLI test 的 cloud_config unused-variable 与 macOS大unwind警告保留，非本轮引入。
 0.18.14 组织包已可正常安装启动，但其原生更新检查仍是旧通道，不把源码修正冒称已进入旧二进制。

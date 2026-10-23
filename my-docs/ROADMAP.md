@@ -10,8 +10,10 @@ Anthropic Messages，并保留绕过 rig 的上游原生 Responses 入口。
 本轮复审：[晚间复审](rig-production-completion-2026-10-10/codex-review-2026-10-22-late-audit.md)。
 此表取代旧路线图中“尚未push/进行中/待拍板”等过期状态，历史收据仍保留。
 
-组织包安装入口：`npm install -g @nuwax-ai/nuwax-harness`；当前包装调整复用已验收的
-原生 v0.18.14 制品，发布及新包实际安装结果另行登记。开发阶段不安排旧包卸载/迁移。
+组织包安装入口：`npm install -g @nuwax-ai/nuwax-harness`；组织包 0.18.14 已发布并完成
+干净安装及实际 wrapper RPC 验证，原生字节与已验收 v0.18.14 相同。原生更新检查地址/命令
+同步修正于 2d216c175（定向15/15），v0.18.15 构建中，未将源码修正冒称进入旧制品。
+[组织包记录](rig-production-completion-2026-10-10/nuwax-harness-npm-scope-2026-10-23.md)。
 
 ## 1. 已完成的核心能力
 
