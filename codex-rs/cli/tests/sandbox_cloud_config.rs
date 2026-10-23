@@ -139,8 +139,10 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
         stderr,
     );
     if !nested_macos_sandbox_unavailable {
+        // --version prints only the version (no "codex-cli" prefix); the nested
+        // binary is this same codex-cli build.
         assert!(
-            String::from_utf8(output.stdout)?.starts_with("codex"),
+            String::from_utf8(output.stdout)?.starts_with(env!("CARGO_PKG_VERSION")),
             "expected the sandboxed Codex version command to run",
         );
     }
