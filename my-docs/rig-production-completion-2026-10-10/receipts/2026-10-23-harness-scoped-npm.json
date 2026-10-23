@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "package": "@nuwax-ai/nuwax-harness",
+  "version": "0.18.14",
+  "npmPackagingGitHead": "ba4881edcbc2c8ec9a34d9f378d03d7817d30ca9",
+  "registryIntegrity": "sha512-QhHmJl/qdzMOjS2I3rjRLEbDj3u3P+EZR33DzU4Iezhjd4tHIGHH4wUW2cgkcaLwrydFrarOcjwHIQztSsv7mA==",
+  "bin": {
+    "nuwax-harness": "bin/nuwax-harness.js"
+  },
+  "installedVersionOutput": "codex-cli 0.18.14",
+  "nativeReleaseTag": "v0.18.14",
+  "nativeSourceCommit": "f8273097515a97dea54d4ffe4e7a37e51bd30de1",
+  "nativeSha256": "253552cb698d927e4bdee74b5c549aed779eb15fa3073916d34ec0469580586d",
+  "nativeBytesMatchPriorValidatedRelease": true,
+  "checksums": {
+    "nuwax-harness": "253552cb698d927e4bdee74b5c549aed779eb15fa3073916d34ec0469580586d",
+    "nuwax-codex": "253552cb698d927e4bdee74b5c549aed779eb15fa3073916d34ec0469580586d",
+    "codex-code-mode-host": "e1912fb03503688ce9f748aa48e2e1376deff0a4b9e6e380d7005feecde5e435"
+  },
+  "actualNpmWrapperRpc": {
+    "passed": true,
+    "provider": "nuwax_env",
+    "model": "artifact-probe",
+    "selectedExplicitHome": true,
+    "normalEof": true,
+    "modelRequests": 0
+  },
+  "historicalPackageOperations": false,
+  "releaseCi": {
+    "runId": 39888836661,
+    "url": "https://github.com/nuwax-ai/codex/actions/runs/39888836661",
+    "mode": "npm_only",
+    "nativeBuildsReused": true
+  },
+  "latest": "0.18.14",
+  "verification": "Actual fresh scoped-package npm installation and real wrapper App Server RPC on macOS ARM64; original native bytes match the previously validated release."
+}

@@ -22,6 +22,15 @@
 
 ## 发布与安装结果
 
-待实际 CI 发布、registry 元数据以及新组织包隔离安装验证回填。
+组织包 `@nuwax-ai/nuwax-harness@0.18.14` 已发布，latest=0.18.14；
+[package-only CI39888836661](https://github.com/nuwax-ai/codex/actions/runs/39888836661) 成功，原生构建与 GitHub release 创建按设计跳过。
+Mac ARM64 全新 prefix/cache/HOME 的实际 scoped npm 安装通过，只导出新命令；版本、全部文件校验和、真实 wrapper App Server initialize/thread-start/read/EOF、nuwax_env/artifact-probe 和零模型请求均通过。
+[组织包机器收据](receipts/2026-10-23-harness-scoped-npm.json) 记录包装 gitHead 与原生 f827 的不同绑定。
+
+检查又发现原生 TUI/doctor 的版本查询和自动更新命令写死旧包名，已同步源码地址与提示。
+此原生改动不能通过 npm 包装覆盖，将随 v0.18.15 构建交付；模型/协议实现未改。
+更新动作、registry metadata、doctor 更新标签及 daemon 安装提示的定向测试 **15/15**（无重试）；
+两个实际 registry 地址均读取成功。已有 CLI test 的 cloud_config unused-variable 与 macOS大unwind警告保留，非本轮引入。
+0.18.14 组织包已可正常安装启动，但其原生更新检查仍是旧通道，不把源码修正冒称已进入旧二进制。
 原生制品验收与三平台安装、四路径 ACP 28/28 见
 [原生 0.18.14 收据](receipts/2026-10-23-harness-release.json)；不能将旧包安装直接称为新包已安装。

@@ -95,7 +95,7 @@ async fn check_for_update(
             version
         }
         Some(UpdateAction::NpmNuwaxLatest) => {
-            // Fork channel: the nuwax-codex npm registry is the authoritative
+            // Fork channel: the @nuwax-ai/nuwax-harness npm registry is the authoritative
             // latest-version source; still verify the version has dist
             // metadata so a broken publish never becomes an update target.
             let package_info = client_pool

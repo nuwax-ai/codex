@@ -35,9 +35,10 @@ const MAX_VERSION_RESPONSE_BYTES: usize = 1024 * 1024;
 const VERSION_FILE_NAME: &str = "version.json";
 const GITHUB_LATEST_RELEASE_URL: &str = "https://api.github.com/repos/openai/codex/releases/latest";
 const HOMEBREW_CASK_API_URL: &str = "https://formulae.brew.sh/api/cask/codex.json";
-/// Fork channel: the nuwax-codex npm dist-tags are the authoritative
+/// Fork channel: the @nuwax-ai/nuwax-harness npm dist-tags are the authoritative
 /// latest-version source (no GitHub-release cross-check).
-const NPM_NUWAX_DIST_TAGS_URL: &str = "https://registry.npmjs.org/-/package/nuwax-codex/dist-tags";
+const NPM_NUWAX_DIST_TAGS_URL: &str =
+    "https://registry.npmjs.org/-/package/@nuwax-ai%2Fnuwax-harness/dist-tags";
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 const DESKTOP_UPDATE_URL: &str = "https://persistent.oaistatic.com/codex-app-prod/appcast-x64.xml";
 #[cfg(all(target_os = "macos", not(target_arch = "x86_64")))]
@@ -393,7 +394,7 @@ fn push_cached_version_details(details: &mut Vec<String>, version_file: &Path) {
 fn update_action_label(context: &InstallContext) -> &'static str {
     match &context.method {
         InstallMethod::Npm => "npm install -g @openai/codex",
-        InstallMethod::NpmNuwax => "npm install -g nuwax-codex@latest",
+        InstallMethod::NpmNuwax => "npm install -g @nuwax-ai/nuwax-harness@latest",
         InstallMethod::Bun => "bun install -g @openai/codex",
         InstallMethod::VitePlus => "vp install -g @openai/codex",
         InstallMethod::Pnpm => "pnpm add -g @openai/codex",
@@ -419,7 +420,7 @@ async fn fetch_latest_version(
     }
 }
 
-/// Resolves the fork's latest version from the nuwax-codex npm dist-tags.
+/// Resolves the fork's latest version from the @nuwax-ai/nuwax-harness npm dist-tags.
 async fn fetch_nuwax_npm_version(client: &RouteAwareClientPool) -> Result<String, String> {
     #[derive(Deserialize)]
     struct DistTags {
@@ -701,6 +702,13 @@ mod tests {
 
     #[test]
     fn update_action_labels_install_contexts() {
+        assert_eq!(
+            update_action_label(&InstallContext {
+                method: InstallMethod::NpmNuwax,
+                package_layout: None,
+            }),
+            "npm install -g @nuwax-ai/nuwax-harness@latest"
+        );
         assert_eq!(
             update_action_label(&InstallContext {
                 method: InstallMethod::Npm,

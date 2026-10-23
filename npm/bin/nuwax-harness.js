@@ -7,7 +7,7 @@ try {
   const result = spawnSync(binaryPath, process.argv.slice(2), {
     stdio: "inherit",
     windowsHide: true,
-    // Internal install detection and updates continue targeting nuwax-codex.
+    // Keep the internal install-channel marker understood by the native updater.
     env: { ...process.env, CODEX_INSTALL_SOURCE: "npm_nuwax" },
   });
   if (result.error) throw result.error;

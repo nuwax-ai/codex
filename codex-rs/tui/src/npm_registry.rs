@@ -4,10 +4,10 @@ use std::collections::HashMap;
 #[cfg(not(debug_assertions))]
 pub(crate) const PACKAGE_URL: &str = "https://registry.npmjs.org/@openai%2fcodex";
 
-/// Fork channel: `nuwax-codex` on npm. Unlike the OpenAI flow there is no
+/// Fork channel: `@nuwax-ai/nuwax-harness` on npm. Unlike the OpenAI flow there is no
 /// GitHub-release cross-check — this registry IS the authoritative source.
 #[cfg(not(debug_assertions))]
-pub(crate) const NUWAX_PACKAGE_URL: &str = "https://registry.npmjs.org/nuwax-codex";
+pub(crate) const NUWAX_PACKAGE_URL: &str = "https://registry.npmjs.org/@nuwax-ai%2Fnuwax-harness";
 
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct NpmPackageInfo {

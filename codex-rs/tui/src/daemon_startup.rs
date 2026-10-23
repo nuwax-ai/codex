@@ -67,7 +67,7 @@ pub(super) fn exclusion(
     exec_server_url: Option<&std::ffi::OsStr>,
     install_method: &codex_install_context::InstallMethod,
 ) -> Option<&'static str> {
-    // Fork: the nuwax-codex npm package ships a single binary without the
+    // Fork: the @nuwax-ai/nuwax-harness npm package ships a single binary without the
     // complete package layout (`codex-package.json`, `codex-code-mode-host`,
     // `codex-path/rg`) that daemon installation requires, so auto-starting or
     // implicitly reusing the daemon would always fail at startup. Run the
@@ -77,7 +77,7 @@ pub(super) fn exclusion(
         install_method,
         codex_install_context::InstallMethod::NpmNuwax
     ) {
-        Some("npm single-binary install (nuwax-codex)")
+        Some("npm single-binary install (@nuwax-ai/nuwax-harness)")
     } else if cli.no_daemon {
         Some("--no-daemon")
     } else if nuwax_env_provider_seed_active(env_seed_overrides) {

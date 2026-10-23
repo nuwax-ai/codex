@@ -469,7 +469,7 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
         ),
         Some("NUWAX environment provider (per-run credentials)")
     );
-    // Fork: the nuwax-codex npm package ships a single binary without a
+    // Fork: the @nuwax-ai/nuwax-harness npm package ships a single binary without a
     // complete local package, so the daemon is never auto-started or reused.
     let npm_cli = Cli::parse_from(["codex"]);
     assert_eq!(
@@ -482,7 +482,7 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
             /*exec_server_url*/ None,
             &codex_install_context::InstallMethod::NpmNuwax
         ),
-        Some("npm single-binary install (nuwax-codex)")
+        Some("npm single-binary install (@nuwax-ai/nuwax-harness)")
     );
     let mut cli = Cli::parse_from(["codex"]);
     let overrides = vec![("web_search".into(), toml::Value::String("live".into()))];
