@@ -13,8 +13,18 @@ fn parses_codex_cli_version_output() {
 }
 
 #[test]
+fn parses_bare_version_output() {
+    assert_eq!(
+        parse_codex_version("0.18.16\n").expect("version"),
+        "0.18.16"
+    );
+}
+
+#[test]
 fn rejects_malformed_codex_cli_version_output() {
     assert!(parse_codex_version("codex\n").is_err());
+    assert!(parse_codex_version("\n").is_err());
+    assert!(parse_codex_version("codex latest\n").is_err());
 }
 
 #[tokio::test]

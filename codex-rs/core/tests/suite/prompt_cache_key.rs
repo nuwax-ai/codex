@@ -128,7 +128,12 @@ async fn api_key_subagent_inherits_prompt_cache_key_policy(policy: PromptCacheKe
     let child_request = mount_sse_once_match(
         &server,
         |request: &wiremock::Request| {
-            body_contains(request, CHILD_TASK) && !body_contains(request, SPAWN_CALL_ID)
+            // The multi-agent v2 child inherits the full parent history (root
+            // prompt and the spawn call), so content exclusion cannot pick it
+            // out; the inter-agent envelope addressed to the spawned worker
+            // only travels root -> child.
+            body_contains(request, CHILD_TASK)
+                && body_contains(request, "\"recipient\":\"/root/worker\"")
         },
         sse(vec![
             ev_response_created("child-response"),
@@ -139,7 +144,10 @@ async fn api_key_subagent_inherits_prompt_cache_key_policy(policy: PromptCacheKe
     .await;
     mount_sse_once_match(
         &server,
-        |request: &wiremock::Request| body_contains(request, SPAWN_CALL_ID),
+        |request: &wiremock::Request| {
+            body_contains(request, SPAWN_CALL_ID)
+                && !body_contains(request, "\"recipient\":\"/root/worker\"")
+        },
         sse(vec![
             ev_response_created("root-response-2"),
             ev_assistant_message("root-message", "worker finished"),

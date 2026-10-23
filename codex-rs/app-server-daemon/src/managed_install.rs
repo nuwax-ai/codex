@@ -244,10 +244,13 @@ fn managed_codex_file_name() -> &'static str {
 }
 
 fn parse_codex_version(output: &str) -> Result<String> {
+    // --version prints only the version since 1f4693238; older managed
+    // binaries prefix it ("codex-cli 1.2.3"). Take the last whitespace token
+    // and require it to start like a version, so a bare name stays malformed.
     let version = output
         .split_whitespace()
-        .nth(1)
-        .filter(|version| !version.is_empty())
+        .next_back()
+        .filter(|token| token.starts_with(|c: char| c.is_ascii_digit()))
         .ok_or_else(|| anyhow!("managed Codex version output was malformed"))?;
     Ok(version.to_string())
 }
