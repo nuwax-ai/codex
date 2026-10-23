@@ -74,6 +74,16 @@ main@342ed69a1 已通过 merge a5b25b043 集成并随晚间批次推送。
    完整制品/首败边界见[0.18.14记录](rig-production-completion-2026-10-10/nuwax-harness-release-0.18.14.md)。
    [最终机器收据](rig-production-completion-2026-10-10/receipts/2026-10-23-harness-release.json)保留各平台范围与实际绑定。
 
+6. **v0.18.16/v0.18.17-beta.1 与 --version 消费方回归已分诊修复(2026-10-23)。**
+   用户指令 `--version` 只输出裸版本号后,tag v0.18.16/v0.18.17-beta.1 指向 `1f4693238`。
+   CI run `39907762742` 分诊:断言回归与 daemon `parse_codex_version` 由
+   `2cab1f686`/`d25311302` 修复(sandbox_cloud_config、app_server_daemon_package 4腿、
+   prompt_cache_key 2腿,均有本机红转绿收据);subagent_notifications 2腿为 5191723db
+   记录隔离暴露的存量 masked matcher(v1 命名空间无收件信封,内容判别不可行),
+   登记为已知红待 fixture 原语;Windows 腿为 rustc 编译期 OOM,非测试红。
+   **0.18.16/0.18.17-beta.1 制品的托管守护安装路径已知失败**(裸版本号+旧解析器),
+   TUI 自启守护不受影响;由含 `d25311302` 的后续 tag supersede。详见台账 §6.61。
+
 详见[收尾记录](rig-production-completion-2026-10-10/codex-core-closure-2026-10-22.md)。
 模型接入能力已经收敛；本轮发现的确认回归已修，不再安排一轮泛化开发。
 正式交付已完成，剩余仅按真实需求维护已登记的平台边界；

@@ -5383,6 +5383,45 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
 主线与正式发布收口；旧完整Core CI三条nextest红及已接受平台限制仍按原读数保留，
 不再安排一轮泛化主线开发。
 
+## 6.61 v0.18.16/beta.1 发布与 --version 消费方回归分诊(2026-10-23)
+
+- 用户指令:`--version` 只输出裸版本号(去掉 codex-cli 前缀),npm 正式+beta 双通道发布。
+  `1f4693238` 改 cli 手写 -V/--version;`2cab1f686` 适配 sandbox_cloud_config 断言
+  (沙箱内嵌套 codex --version 的 starts_with("codex") 旧断言,双平台红,已修)。
+  install.sh 的 version_from_binary 同轮兼容裸格式(1f4693238 内)。
+- 同轮 tag:v0.18.16(正式)、v0.18.17-beta.1(beta),均指 1f4693238;beta tag 触发的
+  stable run 在 Get Version 按设计秒拒(22s,fail by design)。
+- CI run `39907762742`(1f4693238)三腿分诊,首败证据与处置:
+  - Windows 腿 rustc 编译期 alloc error(rustc_middle mono_checks),基础设施级,
+    无 workspace 测试计数;
+  - Ubuntu 9红+1超时 / macOS 11红+1超时,跨平台同集拆解:
+    1. sandbox_cloud_config(双平台)——本轮断言回归,`2cab1f686` 修;
+       基线 39774635523 通过在案。
+    2. app_server_daemon_package×4(bootstrap/restart/explicit_replacement/
+       start_and_explicit,双平台秒级确定性)——`parse_codex_version` 取第 2 分词,
+       裸格式解析失败("managed Codex version output was malformed");本机复现+修复
+       (`d25311302`:取末分词且要求数字开头,旧格式兼容;单测 5/5、集成 4/4 红转绿)。
+    3. prompt_cache_key×2(omitted/session_derived,双平台确定性 "timed out waiting
+       for the child request")——5191723db 记录隔离暴露的存量 masked matcher:
+       v2 子代理继承全父历史(含 spawn call),旧 matcher 的 ¬SPAWN_CALL_ID 永不匹配,
+       旧"记录一切"副作用一直掩盖;修复:按发往 /root/worker 的 agent_message 信封路由
+       (`d25311302`;2/2 红转绿,子代理首次真正收到脚本应答而非 404 重试 6 次)。
+    4. subagent_notifications×2(spawned_multi_agent_v2_child_inherits_parent_developer_
+       context、skills_toggle_skips_instructions_for_parent_and_spawned_child)——同
+       masked 形态但 spawn 走 v1 命名空间、无 worker 收件信封,内容判别法不可行;
+       需线程身份感知的 fixture 原语,登记为已知红,不视为产品缺陷(子代理继承上下文的
+       产品行为另有独立断言)。本地 A/B 实验证明与 --version 格式无关。
+    5. high_stdio_descriptors(macOS)——§6.60 已知未修,不变。
+    6. daemon_startup discovered_managed_daemon TO(macOS 60s)、auth_storage_originator
+       TO(ubuntu 60s)及看板类单例——负载超时家族(两条 release 全量构建并行挤占 runner),
+       与 nextest.toml 已登记的 mac daemon 慢腿模式一致,单测定向重跑通过。
+- **v0.18.16/v0.18.17-beta.1 制品含已知缺陷**:裸 --version + 旧 parse_codex_version ⇒
+  托管守护安装路径(`app-server daemon install` 类)在该两个版本二进制上失败;
+  NpmNuwax 安装方式的 TUI 自启守护按 FORK §6 排除、不受影响。修复在 `d25311302`,
+  由后续 tag(v0.18.17 正式 + 下一 beta)supersede;不以 0.18.16 冒称托管守护安装可用。
+- 2cab1f686 的 CI run(39926185885)被 d25311302 的 run(39932338039)取代并手动取消,
+  避免双跑制造负载噪声。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-23 发布 R2 当前状态，以下旧指针为历史记录：** 权威副本在 zhitai，
