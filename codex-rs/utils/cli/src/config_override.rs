@@ -93,6 +93,7 @@ impl CliConfigOverrides {
             std::env::var_os(AUTO_COMPACT_TOKEN_LIMIT_ENV).as_deref(),
             std::env::var_os(AUTO_COMPACT_RATIO_ENV).as_deref(),
         )?;
+        seed_env_tool_search(&mut overrides, std::env::var_os(TOOL_SEARCH_ENV).as_deref())?;
         Ok(overrides)
     }
 }
@@ -112,6 +113,14 @@ const MODEL_REASONING_EFFORT_ENV: &str = "CODEX_MODEL_REASONING_EFFORT";
 const MODEL_CONTEXT_WINDOW_ENV: &str = "CODEX_MODEL_CONTEXT_WINDOW";
 const AUTO_COMPACT_TOKEN_LIMIT_ENV: &str = "CODEX_AUTO_COMPACT_TOKEN_LIMIT";
 const AUTO_COMPACT_RATIO_ENV: &str = "CODEX_AUTO_COMPACT_RATIO";
+
+/// Fork: `CODEX_TOOL_SEARCH=false` seeds `tools.tool_search`, forcing MCP
+/// tools to be advertised directly instead of deferred behind `tool_search`
+/// (see FORK.md §7.1). Same precedence as the other seeds: explicit `-c`
+/// wins, config.toml loses; anything other than `true`/`false`
+/// (case-insensitive) errors here instead of silently half-applying.
+const TOOL_SEARCH_ENV: &str = "CODEX_TOOL_SEARCH";
+const TOOL_SEARCH_CONFIG_KEY: &str = "tools.tool_search";
 
 fn apply_env_context_seeds(
     overrides: &mut Vec<(String, Value)>,
@@ -137,6 +146,28 @@ fn apply_env_context_seeds(
         "model_auto_compact_ratio",
         ratio,
     )?;
+    Ok(())
+}
+
+fn seed_env_tool_search(
+    overrides: &mut Vec<(String, Value)>,
+    value: Option<&OsStr>,
+) -> Result<(), String> {
+    let Some(raw) = env_override_text(overrides, TOOL_SEARCH_CONFIG_KEY, TOOL_SEARCH_ENV, value)?
+    else {
+        return Ok(());
+    };
+    let canonical = raw.to_ascii_lowercase();
+    let parsed = match canonical.as_str() {
+        "true" => true,
+        "false" => false,
+        _ => {
+            return Err(format!(
+                "Invalid {TOOL_SEARCH_ENV} value {raw:?}; expected true or false"
+            ));
+        }
+    };
+    overrides.push((TOOL_SEARCH_CONFIG_KEY.into(), Value::Boolean(parsed)));
     Ok(())
 }
 
@@ -329,3 +360,7 @@ mod env_effort_tests;
 #[cfg(test)]
 #[path = "env_context_seeds_tests.rs"]
 mod env_context_seeds_tests;
+
+#[cfg(test)]
+#[path = "env_tool_search_seed_tests.rs"]
+mod env_tool_search_seed_tests;

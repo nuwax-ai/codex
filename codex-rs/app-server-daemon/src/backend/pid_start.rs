@@ -116,6 +116,7 @@ impl PidBackend {
             .env_remove("CODEX_MODEL_CONTEXT_WINDOW")
             .env_remove("CODEX_AUTO_COMPACT_TOKEN_LIMIT")
             .env_remove("CODEX_AUTO_COMPACT_RATIO")
+            .env_remove("CODEX_TOOL_SEARCH")
             // The temporary provider and its credentials belong to the foreground client.
             .env_remove("NUWAX_MODEL")
             .env_remove("NUWAX_BASE_URL")

@@ -221,7 +221,8 @@ cache_control 断点，rig 0.45 原语，5m TTL；远程 thread config 无该字
 
 **环境变量**：`CODEX_INSTALL_SOURCE=npm_nuwax`（launcher 设置，install-context
 识别 NpmNuwax）、`CODEX_MODEL_REASONING_EFFORT`、`CODEX_MODEL_CONTEXT_WINDOW`、
-`CODEX_AUTO_COMPACT_TOKEN_LIMIT`、`CODEX_AUTO_COMPACT_RATIO`。
+`CODEX_AUTO_COMPACT_TOKEN_LIMIT`、`CODEX_AUTO_COMPACT_RATIO`、
+`CODEX_TOOL_SEARCH=false|true`（2026-10-26 起：种 `[tools] tool_search`，见 §7.1）。
 
 **provider 级输出预算**（2026-10-01 起）：`model_providers.*.max_output_tokens`
 （正整数）→ 桥线输出 cap（Anthropic `max_tokens` 覆盖默认 16384；Chat 可选，
@@ -282,8 +283,10 @@ tool_search = false   # MCP 工具在首个请求全量直出，不注册 tool_s
 ```
 
 `true`/不设 = 官方默认（跟随模型目录的 `supports_search_tool`）。profile 同样生效：
-`[profiles.<name>.tools] tool_search = false`。**无环境变量入口**（与
-`CODEX_AUTO_COMPACT_*` 一组不同）。
+`[profiles.<name>.tools] tool_search = false`。环境变量
+`CODEX_TOOL_SEARCH=false|true`（2026-10-26 起，与其他 `CODEX_*` 种子同优先级：
+显式 `-c tools.tool_search=…` > env > config.toml；仅接受大小写不敏感的
+`true`/`false`，其他值带变量名 fail-fast；daemon 子进程启动时剥离）。
 
 **实现**（`8c6a60193`，与官方差异的完整链路）：
 
