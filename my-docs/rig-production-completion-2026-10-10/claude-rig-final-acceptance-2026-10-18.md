@@ -5480,6 +5480,19 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   curl 直探与 codex 线体收据在 /tmp/nuwax-glmtest(会话内)。model-provider 的
   models_endpoint 7 个测试在本机为访问 OpenAI 托管端点的环境红(超时),非本轮改动;
   CI 美国 Runner 预期绿。
+- **v0.18.19/v0.18.20-beta.1 发布与发布制品疑案(2026-10-27)**:两 release 全作业成功;
+  v0.18.19 已 latest 并隔离安装实测裸版本号;v0.18.20-beta.1 的 publish 被 npm 接受
+  (`+ @nuwax-ai/nuwax-harness@0.18.20-beta.1`),入库处理超常等待中。**发布二进制的
+  GLM 缓存命中疑案**:debug 构建 GLM 三次全命中(cached=11,008),npm release 构建三次
+  全零——mock 捕获证明两二进制的 turn-1/turn-2 请求体**逐字节相同**(content-length
+  一致、字段哈希全同、4 断点同位),全部请求头仅差逐会话必变的遥测 ID(session/
+  window/turn UUID 与时间戳;debug 自身跨会话命中证明 GLM 不按它们分桶),
+  `CODEX_INSTALL_SOURCE=npm_nuwax` 注入 debug 后仍命中,亦排除。可观察面穷尽,
+  归因收敛到 GLM 侧对传输层不可见特征(连接/HTTP2 行为)的分桶差异或网关侧非确定路由。
+  诚实登记:发布制品功能齐全(断点字节级在),GLM 实网命中以 debug 构建三连命中为证,
+  release 构建命中未复现;开关默认关,不影响默认面。
+- CI run 40341849982 红为并行 codex 的 tool_search 半成品(thread-manager-sample 漏
+  `tool_search_enabled` 字段),其正在迭代修复,本轮不介入。
 
 ## 7. 提交、推送与工作树状态
 
