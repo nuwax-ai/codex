@@ -85,6 +85,7 @@ mod tests {
             provider_id: None,
             max_output_tokens: None,
             hosted_results_replay: None,
+            anthropic_prompt_caching: None,
         };
 
         let telemetry =

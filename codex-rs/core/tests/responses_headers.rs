@@ -99,6 +99,7 @@ async fn responses_stream_includes_subagent_header_on_review() {
         include_internal_metadata: false,
         max_output_tokens: None,
         hosted_results_replay: None,
+        anthropic_prompt_caching: None,
     };
 
     let codex_home = TempDir::new().expect("failed to create TempDir");
@@ -250,6 +251,7 @@ async fn responses_stream_includes_subagent_header_on_other() {
         include_internal_metadata: false,
         max_output_tokens: None,
         hosted_results_replay: None,
+        anthropic_prompt_caching: None,
     };
 
     let codex_home = TempDir::new().expect("failed to create TempDir");
@@ -382,6 +384,7 @@ async fn responses_respects_model_info_overrides_from_config() {
         include_internal_metadata: false,
         max_output_tokens: None,
         hosted_results_replay: None,
+        anthropic_prompt_caching: None,
     };
 
     let codex_home = TempDir::new().expect("failed to create TempDir");

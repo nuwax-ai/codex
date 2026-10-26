@@ -445,8 +445,13 @@ fn stream_via_rig_attempt(
                 chat_model.stream(completion_request)
             }
             RigProtocol::Anthropic => {
-                let anthropic_model =
-                    crate::client::build_anthropic_model(&model, &base_url, &headers, http)?;
+                let anthropic_model = crate::client::build_anthropic_model(
+                    &model,
+                    &base_url,
+                    &headers,
+                    http,
+                    api_provider.anthropic_prompt_caching.unwrap_or(false),
+                )?;
                 anthropic_model.stream(completion_request)
             }
             // Unreachable: rejected at the top of this function.

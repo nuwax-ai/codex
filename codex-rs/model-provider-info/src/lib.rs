@@ -263,6 +263,13 @@ pub struct ModelProviderInfo {
     /// encrypted content) into follow-up requests. Default true; set false
     /// to fall back to dropping search history (the pre-D2 behavior).
     pub hosted_results_replay: Option<bool>,
+    /// Fork (nuwax-codex): opt-in for Anthropic prompt caching. When true the
+    /// rig bridge places `cache_control` breakpoints (system tail, final
+    /// non-deferred tool, conversation tail) with Anthropic's 5-minute TTL;
+    /// `cache_read_input_tokens`/`cache_creation_input_tokens` usage already
+    /// flow back. Default off: only enable for gateways that accept
+    /// Anthropic cache markers.
+    pub anthropic_prompt_caching: Option<bool>,
     /// Number of times to retry reconnecting a dropped streaming response before failing.
     pub stream_max_retries: Option<u64>,
     /// Idle timeout (in milliseconds) to wait for activity on a streaming response before treating
@@ -558,6 +565,7 @@ other non-default provider fields are not supported"
             stream_idle_timeout: self.stream_idle_timeout(),
             max_output_tokens: self.max_output_tokens,
             hosted_results_replay: self.hosted_results_replay,
+            anthropic_prompt_caching: self.anthropic_prompt_caching,
         })
     }
 
@@ -645,6 +653,7 @@ other non-default provider fields are not supported"
             request_max_retries: None,
             max_output_tokens: None,
             hosted_results_replay: None,
+            anthropic_prompt_caching: None,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -689,6 +698,7 @@ other non-default provider fields are not supported"
             request_max_retries: None,
             max_output_tokens: None,
             hosted_results_replay: None,
+            anthropic_prompt_caching: None,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -952,6 +962,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         request_max_retries: None,
         max_output_tokens: None,
         hosted_results_replay: None,
+        anthropic_prompt_caching: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
         websocket_connect_timeout_ms: None,

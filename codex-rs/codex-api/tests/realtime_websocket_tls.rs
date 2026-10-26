@@ -132,6 +132,7 @@ async fn check_connection(address: String) {
             stream_idle_timeout: Duration::from_secs(/*secs*/ 5),
             max_output_tokens: None,
             hosted_results_replay: None,
+            anthropic_prompt_caching: None,
         },
         HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
     );

@@ -206,6 +206,7 @@ fn model_provider_from_proto(
         request_max_retries: provider.request_max_retries,
         max_output_tokens: provider.max_output_tokens,
         hosted_results_replay: provider.hosted_results_replay,
+        anthropic_prompt_caching: None,
         stream_max_retries: provider.stream_max_retries,
         stream_idle_timeout_ms: provider.stream_idle_timeout_ms,
         websocket_connect_timeout_ms: provider.websocket_connect_timeout_ms,
@@ -242,6 +243,9 @@ fn model_provider_to_proto(
         request_max_retries,
         max_output_tokens,
         hosted_results_replay,
+        // Fork field without a remote thread-config wire format yet, like
+        // `max_output_tokens` once was: dropped on remote sync.
+        anthropic_prompt_caching: _,
         stream_max_retries,
         stream_idle_timeout_ms,
         websocket_connect_timeout_ms,
@@ -624,6 +628,7 @@ mod tests {
             // must survive the remote thread config.
             max_output_tokens: Some(16_384),
             hosted_results_replay: Some(false),
+            anthropic_prompt_caching: None,
         }
     }
 

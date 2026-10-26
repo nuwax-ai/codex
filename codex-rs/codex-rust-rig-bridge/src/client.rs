@@ -293,6 +293,7 @@ pub(crate) fn build_anthropic_model(
     base_url: &str,
     headers: &HeaderMap,
     mut http: crate::transport::RigHttpClient,
+    prompt_caching: bool,
 ) -> Result<RigAnthropicModel, codex_api::ApiError> {
     let (api_key, wire_auth) =
         crate::wire_auth::resolved_sdk_auth(headers, RigProtocol::Anthropic)?;
@@ -311,7 +312,10 @@ pub(crate) fn build_anthropic_model(
         provider: config,
         model: model_name.to_string(),
         default_max_tokens: None,
-        prompt_caching: false,
+        // Provider-level opt-in (`model_providers.*.anthropic_prompt_caching`):
+        // rig places the `cache_control` breakpoints (system tail, final
+        // non-deferred tool, conversation tail) with the 5-minute TTL.
+        prompt_caching,
         static_prefix_cache_ttl: None,
         strict_tools: false,
         // 0.42 wire parity: no per-tool `eager_input_streaming` flag. The

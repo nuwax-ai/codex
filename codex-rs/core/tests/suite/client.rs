@@ -1723,6 +1723,7 @@ async fn send_provider_auth_request(server: &MockServer, auth: ModelProviderAuth
         include_internal_metadata: false,
         max_output_tokens: None,
         hosted_results_replay: None,
+        anthropic_prompt_caching: None,
     };
 
     send_request_with_provider(provider).await;
@@ -3234,6 +3235,7 @@ async fn azure_responses_request_does_not_store_and_preserves_prefixed_item_ids(
         include_internal_metadata: false,
         max_output_tokens: None,
         hosted_results_replay: None,
+        anthropic_prompt_caching: None,
     };
 
     let codex_home = TempDir::new().unwrap();
@@ -4087,6 +4089,7 @@ async fn azure_overrides_assign_properties_used_for_responses_url() {
         include_internal_metadata: false,
         max_output_tokens: None,
         hosted_results_replay: None,
+        anthropic_prompt_caching: None,
     };
 
     // Init session
@@ -4179,6 +4182,7 @@ async fn env_var_overrides_loaded_auth() {
         include_internal_metadata: false,
         max_output_tokens: None,
         hosted_results_replay: None,
+        anthropic_prompt_caching: None,
     };
 
     // Init session

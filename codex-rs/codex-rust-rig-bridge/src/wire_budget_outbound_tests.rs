@@ -574,6 +574,7 @@ fn floor_provider(address: std::net::SocketAddr) -> codex_api::Provider {
         stream_idle_timeout: Duration::from_secs(3),
         max_output_tokens: None,
         hosted_results_replay: None,
+        anthropic_prompt_caching: None,
     }
 }
 
@@ -588,6 +589,7 @@ async fn stream_under_window(
     request: &codex_api::ResponsesApiRequest,
     context_window_tokens: i64,
     accept_window: Duration,
+    provider_builder: impl FnOnce(std::net::SocketAddr) -> codex_api::Provider,
 ) -> Result<OutboundOutcome, TestError> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
@@ -615,7 +617,7 @@ async fn stream_under_window(
         }
         served
     });
-    let provider = floor_provider(address);
+    let provider = provider_builder(address);
     let auth: codex_api::SharedAuthProvider = Arc::new(FloorAuth);
     let result = crate::stream::stream_via_rig_with_context(
         request,
@@ -670,7 +672,7 @@ async fn converted_originals_are_rejected_before_http_on_small_windows() -> Resu
             with_tool,
         );
         let outcome =
-            stream_under_window(protocol, &request, 3_000, Duration::from_millis(750)).await?;
+            stream_under_window(protocol, &request, 3_000, Duration::from_millis(750), floor_provider).await?;
         assert!(
             matches!(
                 outcome.api_error,
@@ -707,7 +709,7 @@ async fn converted_originals_reach_the_socket_with_window_room() -> Result<(), T
             },
             with_tool,
         );
-        let outcome = stream_under_window(protocol, &request, 8_000, IO_DEADLINE).await?;
+        let outcome = stream_under_window(protocol, &request, 8_000, IO_DEADLINE, floor_provider).await?;
         assert!(
             outcome.api_error.is_none(),
             "{protocol:?} tool={with_tool}: a floored-but-legal request must dispatch, got {:?}",
@@ -754,6 +756,52 @@ async fn converted_originals_reach_the_socket_with_window_room() -> Result<(), T
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anthropic_prompt_caching_markers_follow_the_provider_switch() -> Result<(), TestError> {
+    // Provider-level opt-in (`model_providers.*.anthropic_prompt_caching`):
+    // the same request must reach the socket with zero cache markers when
+    // off, and with rig's ephemeral breakpoints (final tool definition and
+    // the conversation tail) when on.
+    fn caching_provider(address: std::net::SocketAddr) -> codex_api::Provider {
+        let mut provider = floor_provider(address);
+        provider.anthropic_prompt_caching = Some(true);
+        provider
+    }
+    let request = floor_request(floor_tool_image_items(), true);
+    for (label, markers_expected, builder) in [
+        ("off", false, floor_provider as fn(std::net::SocketAddr) -> codex_api::Provider),
+        ("on", true, caching_provider as fn(std::net::SocketAddr) -> codex_api::Provider),
+    ] {
+        let outcome =
+            stream_under_window(RigProtocol::Anthropic, &request, 8_000, IO_DEADLINE, builder)
+                .await?;
+        assert!(
+            outcome.api_error.is_none(),
+            "{label}: the request must dispatch, got {:?}",
+            outcome.api_error
+        );
+        let body = String::from_utf8(outcome.dispatched.expect("dispatched body"))?;
+        let plain = body.replace('\\', "");
+        let occurrences = plain.matches(r#""cache_control""#).count();
+        if markers_expected {
+            assert!(
+                plain.contains(r#""type":"ephemeral""#),
+                "{label}: markers must be ephemeral: {plain}"
+            );
+            assert!(
+                occurrences >= 2,
+                "{label}: tool and conversation breakpoints expected, got {occurrences}: {plain}"
+            );
+        } else {
+            assert_eq!(
+                occurrences, 0,
+                "{label}: default must not place any cache marker: {plain}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn multiple_originals_sum_the_floor_and_mixed_text_still_counts() -> Result<(), TestError> {
     // Two originals plus real text: floor = 2×5120. Window 6000 fits the
     // naive converted estimate (2×1844 + text) but must reject on the sum;
@@ -772,6 +820,7 @@ async fn multiple_originals_sum_the_floor_and_mixed_text_still_counts() -> Resul
         &floor_request(items(), false),
         6_000,
         Duration::from_millis(750),
+        floor_provider,
     )
     .await?;
     assert!(
@@ -788,6 +837,7 @@ async fn multiple_originals_sum_the_floor_and_mixed_text_still_counts() -> Resul
         &floor_request(items(), false),
         12_000,
         IO_DEADLINE,
+        floor_provider,
     )
     .await?;
     assert!(dispatched.api_error.is_none());
@@ -810,7 +860,7 @@ async fn compacted_text_only_history_carries_no_vision_floor() -> Result<(), Tes
     })];
     let request = floor_request(items, false);
     for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
-        let outcome = stream_under_window(protocol, &request, 1_200, IO_DEADLINE).await?;
+        let outcome = stream_under_window(protocol, &request, 1_200, IO_DEADLINE, floor_provider).await?;
         assert!(
             outcome.api_error.is_none(),
             "{protocol:?}: the compacted turn must dispatch as plain text, got {:?}",
@@ -883,6 +933,7 @@ async fn mixed_original_and_ordinary_images_reject_before_http() -> Result<(), T
             &floor_request(items, with_tool),
             MIXED_REJECT_WINDOW,
             Duration::from_millis(750),
+            floor_provider,
         )
         .await?;
         assert!(
@@ -924,6 +975,7 @@ async fn mixed_original_and_ordinary_images_reach_the_socket_together() -> Resul
             &floor_request(items, with_tool),
             MIXED_DISPATCH_WINDOW,
             IO_DEADLINE,
+            floor_provider,
         )
         .await?;
         assert!(

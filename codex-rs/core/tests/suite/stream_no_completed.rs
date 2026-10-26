@@ -77,6 +77,7 @@ async fn retries_on_early_close() {
         include_internal_metadata: false,
         max_output_tokens: None,
         hosted_results_replay: None,
+        anthropic_prompt_caching: None,
     };
 
     let TestCodex { codex, .. } = test_codex()

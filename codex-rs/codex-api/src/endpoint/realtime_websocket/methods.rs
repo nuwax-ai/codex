@@ -2510,6 +2510,7 @@ mod tests {
             stream_idle_timeout: Duration::from_secs(5),
             max_output_tokens: None,
             hosted_results_replay: None,
+            anthropic_prompt_caching: None,
         });
 
         let url = client
@@ -2708,6 +2709,7 @@ mod tests {
             stream_idle_timeout: Duration::from_secs(5),
             max_output_tokens: None,
             hosted_results_replay: None,
+            anthropic_prompt_caching: None,
         };
         let client = test_client(provider);
         let connection = client
@@ -3036,6 +3038,7 @@ mod tests {
             stream_idle_timeout: Duration::from_secs(5),
             max_output_tokens: None,
             hosted_results_replay: None,
+            anthropic_prompt_caching: None,
         };
         let client = test_client(provider);
         let connection = client
@@ -3165,6 +3168,7 @@ mod tests {
             stream_idle_timeout: Duration::from_secs(5),
             max_output_tokens: None,
             hosted_results_replay: None,
+            anthropic_prompt_caching: None,
         };
         let client = test_client(provider);
         let connection = client
@@ -3273,6 +3277,7 @@ mod tests {
             stream_idle_timeout: Duration::from_secs(5),
             max_output_tokens: None,
             hosted_results_replay: None,
+            anthropic_prompt_caching: None,
         };
         let client = test_client(provider);
         let connection = client
@@ -3367,6 +3372,7 @@ mod tests {
             stream_idle_timeout: Duration::from_secs(5),
             max_output_tokens: None,
             hosted_results_replay: None,
+            anthropic_prompt_caching: None,
         };
         let client = test_client(provider);
         let connection = client

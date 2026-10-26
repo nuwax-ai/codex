@@ -146,6 +146,7 @@ pub async fn capture_with_auth(
         stream_idle_timeout: Duration::from_secs(3),
         max_output_tokens: None,
         hosted_results_replay: None,
+        anthropic_prompt_caching: None,
     };
     let mut stream = stream_via_rig(
         request,

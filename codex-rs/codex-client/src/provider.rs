@@ -56,6 +56,11 @@ pub struct Provider {
     /// Fork (nuwax-codex): whether the Anthropic bridge replays persisted
     /// web-search wire blocks into follow-up requests (default true).
     pub hosted_results_replay: Option<bool>,
+    /// Fork (nuwax-codex): opt-in for Anthropic prompt caching. When true the
+    /// rig bridge places `cache_control` breakpoints (system tail, final
+    /// tool, conversation tail) with the 5-minute TTL. Default off so
+    /// gateways that reject the markers stay unaffected.
+    pub anthropic_prompt_caching: Option<bool>,
 }
 
 impl Provider {
