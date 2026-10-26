@@ -216,7 +216,8 @@ code-mode-host、rg）。先前fork npm包只发单二进制，自启所需布�
 `experimental_bearer_token`、`model_auto_compact_ratio`、
 `model_providers.*.anthropic_prompt_caching`（2026-10-26 起：Anthropic 线 opt-in
 cache_control 断点，rig 0.45 原语，5m TTL；远程 thread config 无该字段线格式，
-同步时丢弃、恢复为 None，同 `max_output_tokens` 的既有边界）。
+同步时丢弃、恢复为 None，同 `max_output_tokens` 的既有边界）、
+`[tools] tool_search = false`（2026-10-26 起：MCP 工具全量直出开关，见 §7.1）。
 
 **环境变量**：`CODEX_INSTALL_SOURCE=npm_nuwax`（launcher 设置，install-context
 识别 NpmNuwax）、`CODEX_MODEL_REASONING_EFFORT`、`CODEX_MODEL_CONTEXT_WINDOW`、
@@ -263,6 +264,48 @@ ACP的CODEX_*入口显式选择custom-gateway，现支持独立`CODEX_BRIDGE=rig
 请求按既有优先级替换/清除该环境配置。隐藏标题线程复制完整活动provider定义，防止
 遗漏bridge/headers/query或回退到固定官方模型。28/28子进程fixture与GLM原生实网4/4
 见[收尾记录](rig-production-completion-2026-10-10/codex-core-closure-2026-10-22.md)。
+
+### 7.1 `[tools] tool_search`——MCP 工具全量直出开关（2026-10-26）
+
+**背景**：官方 codex 对支持 Responses search-tool 能力的模型默认启用 MCP 懒加载——
+MCP 工具注册为 Deferred、不进首个请求的工具列表，模型经 `tool_search`（BM25 检索，
+默认 limit 8）按需取回 schema；另有连接级懒启动（`LazyWhenCached`，仅 SubAgent）。
+自托管/第三方网关常需工具全量直出（网关不识别 `tool_search` 线格式、或部署侧要
+确定性工具表），官方无任何开关（`features.tool_search` 已 `Stage::Removed`，无
+环境变量），fork 增设配置键。
+
+**用法**（config.toml 或 profile）：
+
+```toml
+[tools]
+tool_search = false   # MCP 工具在首个请求全量直出，不注册 tool_search
+```
+
+`true`/不设 = 官方默认（跟随模型目录的 `supports_search_tool`）。profile 同样生效：
+`[profiles.<name>.tools] tool_search = false`。**无环境变量入口**（与
+`CODEX_AUTO_COMPACT_*` 一组不同）。
+
+**实现**（`8c6a60193`，与官方差异的完整链路）：
+
+- 唯一判据：`ModelInfo.supports_search_tool`。core `spec_plan.rs` 的 5 个分支
+  （MCP 注册 Deferred/Direct、exposure 策略裁剪、`tool_search` 注册、deferred
+  指引文案、扩展工具 exposure）全部由它派生，翻转它即可整体关闭懒加载，无旁路。
+- 单点收口：models-manager `model_info.rs::with_config_overrides`——远程目录与
+  fallback 两条模型元数据路径的公共终点（`construct_model_info`），未来上游新增
+  的 `supports_search_tool` 分支自动跟随。只允许强制 OFF（`Some(false)` 才翻转），
+  不会给不支持 wire 特性的模型强制 ON。
+- 管线：`[tools].tool_search` → `Config.tool_search_enabled`（默认 true）→
+  `ModelsManagerConfig.tool_search_enabled: Option<bool>`（禁用时 `Some(false)`，
+  否则 `None`）→ `ModelInfoOverrides` 双向携带（首轮/resume/切模型不丢，同
+  `model_auto_compact_ratio` 的既有约束）。所有生产 `get_model_info` 调用点
+  （review/child/guardian/doctor 等 11 处）均经 `to_models_manager_config()`，
+  子代理/审查会话自动继承。
+- schema：fork 的 `core/config.schema.json` 已含该键（官方 schema 无）；顺带修复
+  了 fixture 此前漏随 `anthropic_prompt_caching` 更新的 drift。
+- 测试：收口单测（强制 OFF/OFF-only/None 不动）、`ModelInfoOverrides` round-trip
+  端到端（StaticModelsManager 解析后 `supports_search_tool=false`）、config 解析
+  传播三例；行为层由既有 `suite::search_tool` 覆盖（`supports_search_tool=false`
+  → 无 `tool_search`、MCP Direct 路径已验证）。
 
 ## 8. 版本与发布
 
