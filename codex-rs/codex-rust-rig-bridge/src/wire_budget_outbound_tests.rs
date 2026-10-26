@@ -802,6 +802,69 @@ async fn anthropic_prompt_caching_markers_follow_the_provider_switch() -> Result
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anthropic_prompt_caching_marks_the_previous_turn_on_multi_turn() -> Result<(), TestError> {
+    // The agent-pattern cache point: with caching on, a multi-turn request
+    // carries a cache_control marker on the END of the previous turn (a
+    // message that is not the last one), which the next request repeats —
+    // that is what makes the conversation prefix cacheable across turns.
+    fn caching_provider(address: std::net::SocketAddr) -> codex_api::Provider {
+        let mut provider = floor_provider(address);
+        provider.anthropic_prompt_caching = Some(true);
+        provider
+    }
+    let input = vec![
+        json!({
+            "type":"message","role":"user",
+            "content":[{"type":"input_text","text":"first question"}]
+        }),
+        json!({
+            "type":"message","role":"assistant",
+            "content":[{"type":"output_text","text":"first answer"}]
+        }),
+        json!({
+            "type":"message","role":"user",
+            "content":[{"type":"input_text","text":"second question"}]
+        }),
+    ];
+    let request = floor_request(input, true);
+    let outcome =
+        stream_under_window(RigProtocol::Anthropic, &request, 200_000, IO_DEADLINE, caching_provider)
+            .await?;
+    assert!(
+        outcome.api_error.is_none(),
+        "must dispatch, got {:?}",
+        outcome.api_error
+    );
+    let body = String::from_utf8(outcome.dispatched.expect("dispatched body"))?;
+    let parsed: Value = serde_json::from_str(&body)?;
+    let messages = parsed["messages"].as_array().expect("messages array");
+    let marked: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter(|(_, message)| {
+            message["content"]
+                .as_array()
+                .is_some_and(|blocks| blocks.iter().any(|b| b.get("cache_control").is_some()))
+        })
+        .map(|(index, _)| index)
+        .collect();
+    assert!(
+        marked.iter().any(|index| *index + 1 < messages.len()),
+        "a cache marker must sit on a non-last message (previous turn end); marked={marked:?} of {} messages",
+        messages.len()
+    );
+    assert!(
+        marked.contains(&(messages.len() - 1)),
+        "manual caching still marks the last message; marked={marked:?}"
+    );
+    assert!(
+        body.replace('\\', "").contains(r#""type":"ephemeral""#),
+        "markers must be ephemeral"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn multiple_originals_sum_the_floor_and_mixed_text_still_counts() -> Result<(), TestError> {
     // Two originals plus real text: floor = 2×5120. Window 6000 fits the
     // naive converted estimate (2×1844 + text) but must reject on the sum;

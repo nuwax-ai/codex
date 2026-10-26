@@ -329,6 +329,29 @@ pub(crate) fn anthropic_service_tier(request: &ResponsesApiRequest) -> Option<St
     }
 }
 
+/// Adds the agent-pattern cache point for Anthropic prompt caching: mark
+/// where the PREVIOUS turn ended, so the next request repeats the same
+/// boundary and the whole conversation prefix stays cacheable. Manual
+/// caching's tool/system/last-message markers leave exactly one of
+/// Anthropic's four markers for this point. No-op on single-turn requests.
+pub(crate) fn add_agent_cache_point(request: &mut CompletionRequest) {
+    let turns = request
+        .chat_history
+        .iter()
+        .filter(|message| {
+            !matches!(
+                message.as_ref(),
+                rig_core::completion::message::Message::System { .. }
+            )
+        })
+        .count();
+    if turns >= 2 {
+        request
+            .cache_points
+            .push(rig_core::completion::CachePoint::Messages(turns - 1));
+    }
+}
+
 #[cfg(test)]
 #[path = "convert_request_tests.rs"]
 mod tests;

@@ -438,6 +438,17 @@ fn stream_via_rig_attempt(
             "Dispatching chat stream via rig"
         );
 
+        // Anthropic agent-pattern cache point: with prompt caching on, every
+        // request after the first marks where the PREVIOUS turn ended. The
+        // manual tool/system/last-message markers leave exactly one of
+        // Anthropic's four markers for it, and the next request repeats the
+        // same boundary, so the whole history prefix stays cacheable.
+        if protocol == RigProtocol::Anthropic
+            && api_provider.anthropic_prompt_caching.unwrap_or(false)
+        {
+            crate::convert_request::add_agent_cache_point(&mut completion_request);
+        }
+
         let stream_response = match protocol {
             RigProtocol::Chat => {
                 let chat_model =

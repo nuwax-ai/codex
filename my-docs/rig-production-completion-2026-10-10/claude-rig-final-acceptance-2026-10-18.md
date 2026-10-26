@@ -5471,11 +5471,15 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   真实两轮(exec + resume --last,11k/22k token)turn2 cache_read=0、input 全额重读。
   候选根因:rig 手动三断点中稳定可命中的只有 tools/system 前缀(消息尾断点随轮移动
   永不重复),GLM 对该形态未命中(或最小前缀/断点语义与 Anthropic 有差);
-  **跟进设计**:启用时给 `CompletionRequest.cache_points` 加 Messages(倒数第二轮)点,
-  每轮把"上一轮结束处"标为断点(Anthropic agent 推荐形态,大前缀稳定命中),
-  实现于 convert_request,再做 GLM 复验。curl 直探与 codex 线体收据在
-  /tmp/nuwax-glmtest(会话内)。model-provider 的 models_endpoint 7 个测试在本机为
-  访问 OpenAI 托管端点的环境红(超时),非本轮改动;CI 美国 Runner 预期绿。
+  **跟进已实施并实网复验通过(同日)**:`add_agent_cache_point`——启用缓存且≥2轮时给请求加
+  `CachePoint::Messages(倒数第二条非 system 消息)`,每轮标记"上一轮结束处",下一轮该处前缀
+  完全相同;rig 预算内手动三标记(末工具/system 尾/末消息)恰好留 1 个名额给该点。单测
+  (单轮无点/多轮 Messages(2))+线上多轮测试(断点必须落在非末条消息,TRY2 过、TRY1 为
+  本机负载抖动家族)在案。**GLM 实网两轮复验:turn2 `cached_input_tokens=11008`**
+  (修复前 0、input 全额 22k 重读;修复后 input 11,053=45 新 + 11,008 命中,前缀整体缓存)。
+  curl 直探与 codex 线体收据在 /tmp/nuwax-glmtest(会话内)。model-provider 的
+  models_endpoint 7 个测试在本机为访问 OpenAI 托管端点的环境红(超时),非本轮改动;
+  CI 美国 Runner 预期绿。
 
 ## 7. 提交、推送与工作树状态
 

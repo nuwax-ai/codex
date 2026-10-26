@@ -1152,3 +1152,71 @@ mod custom_tool_tests {
         assert_eq!(schema["required"][0], "input");
     }
 }
+
+#[test]
+fn agent_cache_point_marks_the_previous_turn_boundary() {
+    use codex_protocol::models::ContentItem;
+    use codex_protocol::models::ResponseItem;
+    use rig_core::completion::CachePoint;
+
+    fn item(role: &str, text: &str) -> ResponseItem {
+        ResponseItem::Message {
+            id: None,
+            role: role.into(),
+            content: vec![ContentItem::InputText { text: text.into() }],
+            status: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+            phase: None,
+        }
+    }
+    fn request(input: Vec<ResponseItem>) -> ResponsesApiRequest {
+        ResponsesApiRequest {
+            model: "test-model".into(),
+            stream: true,
+            service_tier: None,
+            input,
+            tools: None,
+            tool_choice: "auto".into(),
+            parallel_tool_calls: false,
+            max_output_tokens: Some(64),
+            reasoning: None,
+            store: false,
+            stream_options: None,
+            include: Vec::new(),
+            prompt_cache_key: None,
+            text: None,
+            client_metadata: None,
+            access_programs: None,
+        }
+    }
+
+    // Single turn: the manual markers already cover the request; no point.
+    let (mut single, _) =
+        super::responses_request_to_completion_request(&request(vec![item("user", "hi")]), RigProtocol::Anthropic, "test")
+            .expect("convertible");
+    super::add_agent_cache_point(&mut single);
+    assert!(
+        single.cache_points.is_empty(),
+        "single-turn requests take no agent cache point"
+    );
+
+    // user/assistant/user: the point lands after the second user-and-assistant
+    // message — the end of the previous turn, before the new prompt.
+    let (mut multi, _) = super::responses_request_to_completion_request(
+        &request(vec![
+            item("user", "first question"),
+            item("assistant", "first answer"),
+            item("user", "second question"),
+        ]),
+        RigProtocol::Anthropic,
+        "test",
+    )
+    .expect("convertible");
+    super::add_agent_cache_point(&mut multi);
+    assert_eq!(
+        multi.cache_points,
+        vec![CachePoint::Messages(2)],
+        "the point must land after the previous turn, before the new prompt"
+    );
+}
