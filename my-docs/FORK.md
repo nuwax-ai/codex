@@ -213,7 +213,10 @@ code-mode-host、rg）。先前fork npm包只发单二进制，自启所需布�
 
 **config.toml 键**（官方 schema 不认识，只写 `~/.nuwax-harness`）：
 `model_providers.*.wire_api = "chat"|"anthropic"`、`experimental_bridge`、
-`experimental_bearer_token`、`model_auto_compact_ratio`。
+`experimental_bearer_token`、`model_auto_compact_ratio`、
+`model_providers.*.anthropic_prompt_caching`（2026-10-26 起：Anthropic 线 opt-in
+cache_control 断点，rig 0.45 原语，5m TTL；远程 thread config 无该字段线格式，
+同步时丢弃、恢复为 None，同 `max_output_tokens` 的既有边界）。
 
 **环境变量**：`CODEX_INSTALL_SOURCE=npm_nuwax`（launcher 设置，install-context
 识别 NpmNuwax）、`CODEX_MODEL_REASONING_EFFORT`、`CODEX_MODEL_CONTEXT_WINDOW`、
@@ -301,7 +304,7 @@ Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§
 | 显式 `:danger-full-access` 命令曾被同 profile ID 的 Ask preset 抢先匹配，跳过确认 | `tui/src/chatwidget/permissions_menu.rs`；`15283cc98` | 已修：profile-id 入口选 canonical full-access，显式 on-request 与两 reviewer 仍先确认；Ask 菜单既有语义保留，权限模块 49/49 |
 | Windows legacy 沙箱 workspace-write **不约束既有文件删除**（内核 WRITE_RESTRICTED 不覆盖 DELETE 权位，diag1-7 证据链见台账 §6.57；显式 deny-write 路径有 DENY ACE、删除受保护）。运行时降级有 WARNING 日志；完整删除约束需 elevated 后端 | `windows-sandbox-rs/src/unified_exec/backends/legacy.rs`、台账 §6.57 | 用户决策 B+警告（2026-10-22），上游继承问题不再扩fork补丁面 |
 | Chat/Anthropic 输出预算可通过 provider.max_output_tokens 配置；Anthropic 未配置时仍默认 16384，Responses typed HTTP/WS、Rig passthrough 与预算已采用该字段 | `codex-rust-rig-bridge/src/stream.rs`、`client.rs` | 三协议已接线；验收见 `provider-request-controls-2026-10-03/tasks.md` |
-| 无 Anthropic prompt caching（`cache_control`） | 桥内零出现（grep 实证）；rig 0.45 的 Messages wire 已带 `prompt_caching`/`static_prefix_cache_ttl` 原语，桥仍未启用 | backlog（0.45 起具备实施条件，需 provider 级设计与实网验收） |
+| 无 Anthropic prompt caching（`cache_control`） | 已实施（2026-10-26）：provider 级 `anthropic_prompt_caching` opt-in，rig 0.45 断点原语（末工具/system 尾/会话尾，5m TTL，4 点预算与 TTL 冲突校验）；默认关、字节不变；cache usage 计数既有链路回传 | 开关在架；GLM 等 Anthropic 网关实网计数验收待做，通过前不向任何厂商默认推荐 |
 | 普通 TLS 客户端复用且请求头按轮注入；自定义 CA 仍专用构建 | `codex-rust-rig-bridge/src/client.rs`、`transport.rs` | 取消与连续工作流已有定向/实网证据；本次 main 合并后重新验收受影响部分 |
 | 搜索来源身份、恢复上限、混合轮配对已入库；厂商能力仍分别受限 | `hosted_replay.rs`、`hosted_replay_budget.rs`、`model_output_projection.rs` | 离线 wire 与真实厂商证据分开，不能把 GLM 搜索支持扩大至 MiMo/Step |
 | 病态网关"HTTP 200 + 非 SSE JSON 错误体"两线均 EOF 丢体 | `sse.rs` EOF 路径；三家目标厂商 live 未见此行为 | 已知边界（可选加固：EOF 时附 body 摘要） |

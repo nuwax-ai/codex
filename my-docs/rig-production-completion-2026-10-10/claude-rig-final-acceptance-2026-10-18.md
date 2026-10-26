@@ -5439,6 +5439,31 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   registry API 为准)。0.18.16/0.18.17-beta.1 的托管守护缺陷由 0.18.17 修复取代,
   0.18.16 不再是 latest。npm 侧 dist-tag 变更后传播约 1-2 分钟属正常。
 
+## 6.62 rig 0.45 升级、Anthropic prompt caching opt-in 与图片历史自动压缩用例(2026-10-26)
+
+- **rig 0.44.0→0.45.0**(用户解除冻结,`d74692d33`):Model 私有 prepared→`Model::new`、
+  wire 增必填 `facts`(default=内置目录)、chat_history/tools 变 Arc、ToolDefinition 增
+  `annotations`(宿主元数据,不发给模型,暂默认空)、http_client::Error 非穷尽→通配归
+  不可重试;dev-dep `reqwest012` 误升 0.13 已回退(双重命名冲突);live-tests 钉版同步,
+  MODULE.bazel.lock 再生。验证:桥 337 测试 334 绿 + 3 个 wire_budget 外发负载抖动
+  (0.44 A/B 同形失败,TRY-1 5.15s,与版本无关);live-tests 离线 196/196(陈旧 codex-exec
+  夹具重建后);clippy -D warnings/fmt/bazel 锁校验通过。
+- **Anthropic prompt caching opt-in**(`a829956f6`):provider 新字段
+  `anthropic_prompt_caching`(默认关),经 ModelProviderInfo→codex-client Provider→
+  build_anthropic_model 打开 rig 断点(末非 defer 工具/system 尾/会话尾,ephemeral 5m,
+  4 点预算+TTL 冲突校验);远程 thread config 无线格式,同 max_output_tokens 边界
+  (同步丢弃/恢复 None);51 处夹具补 None。验证:全桥 338/338(低并发,默认关字节不变),
+  新外发测试同请求正反对照(关=零 cache_control,开=ephemeral 断点≥2 处)。
+  cache_read/creation usage 计数既有链路回传;GLM 实网计数验收待做。
+- **图片历史自动压缩集成用例**(用户点名场景,新增于 compact 套件):两轮带真实
+  合成 PNG 的用户轮把 token 推过 200k 限额,自动压缩恰好一次(第 3 请求),压缩请求
+  携带完整历史含图(模型总结图片),压缩后续轮=摘要+保留文本消息+新消息、零图片载荷、
+  任务正常 TurnComplete;compact 模块 79/79。合同修正:压缩"请求"带图是正确行为,
+  丢弃发生在替代历史(compact.rs InputImage 排除+保留消息仅纯文本原样)。
+- v0.18.18(正式)/v0.18.19-beta.1(beta)tag 指 `d74692d33` 发布中;本轮 tag push 事件
+  恢复触发,与 dispatch 双跑去重各留一;`d74692d33` 的 fork-cargo-pr run(40285821806)
+  53 分钟后被不明取消(bazel 已绿,nextest 被取消,无新 push 取代),由本轮推送的新 CI 覆盖。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-23 发布 R2 当前状态，以下旧指针为历史记录：** 权威副本在 zhitai，

@@ -2439,6 +2439,158 @@ async fn auto_compact_runs_after_token_limit_hit() {
     );
 }
 
+// Agent-style flow with image-bearing history: two image turns push token
+// usage over the auto-compact limit, compaction runs, and the task continues
+// on the compacted thread. Images reach the wire before compaction; the
+// summarization material and the compacted follow-up history carry none
+// (compact.rs drops InputImage from summary material and strips images from
+// retained user messages, keeping their text as annotated parts).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auto_compact_with_image_history_drops_images_and_continues_the_task() {
+    skip_if_no_network!();
+
+    let server = start_mock_server().await;
+
+    let sse1 = sse(vec![
+        ev_assistant_message("m1", FIRST_REPLY),
+        ev_completed_with_tokens("r1", /*total_tokens*/ 70_000),
+    ]);
+    let sse2 = sse(vec![
+        ev_assistant_message("m2", "SECOND_REPLY"),
+        ev_completed_with_tokens("r2", /*total_tokens*/ 330_000),
+    ]);
+    let sse3 = sse(vec![
+        ev_assistant_message("m3", AUTO_SUMMARY_TEXT),
+        ev_completed_with_tokens("r3", /*total_tokens*/ 200),
+    ]);
+    let sse4 = sse(vec![
+        ev_assistant_message("m4", FINAL_REPLY),
+        ev_completed_with_tokens("r4", /*total_tokens*/ 120),
+    ]);
+
+    let request_log = mount_sse_sequence(&server, vec![sse1, sse2, sse3, sse4]).await;
+
+    let model_provider = non_openai_model_provider(&server);
+
+    let image_dir = tempfile::tempdir().expect("image directory");
+    let write_test_png = |name: &str, color: [u8; 4]| {
+        let path = image_dir.path().join(name);
+        image::ImageBuffer::from_pixel(4, 4, image::Rgba(color))
+            .save(&path)
+            .expect("synthetic fixture image");
+        path
+    };
+    let first_image = write_test_png("turn1.png", [200, 30, 30, 255]);
+    let second_image = write_test_png("turn2.png", [30, 30, 200, 255]);
+
+    let mut builder = test_codex().with_config(move |config| {
+        config.model_provider = model_provider;
+        set_test_compact_prompt(config);
+        config.model_auto_compact_token_limit = Some(200_000);
+    });
+    let codex = builder.build(&server).await.unwrap().codex;
+
+    codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![
+            UserInput::LocalImage {
+                path: first_image,
+                detail: None,
+            },
+            UserInput::Text {
+                text: FIRST_AUTO_MSG.into(),
+                text_elements: Vec::new(),
+            },
+        ]))
+        .await
+        .unwrap();
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![
+            UserInput::LocalImage {
+                path: second_image,
+                detail: None,
+            },
+            UserInput::Text {
+                text: SECOND_AUTO_MSG.into(),
+                text_elements: Vec::new(),
+            },
+        ]))
+        .await
+        .unwrap();
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: POST_AUTO_USER_MSG.into(),
+            text_elements: Vec::new(),
+        }]))
+        .await
+        .unwrap();
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    let requests = request_log.requests();
+    let request_bodies: Vec<String> = requests
+        .iter()
+        .map(|request| request.body_json().to_string())
+        .collect();
+    assert_eq!(
+        request_bodies.len(),
+        4,
+        "expected two image turns, one compaction request, and the follow-up; got {}",
+        request_bodies.len()
+    );
+    let compact_index = request_bodies
+        .iter()
+        .enumerate()
+        .find_map(|(idx, body)| body_contains_text(body, SUMMARIZATION_PROMPT).then_some(idx))
+        .expect("auto compact request missing");
+    assert_eq!(compact_index, 2, "auto compact should be the third request");
+
+    // The images reached the model before compaction, and the compaction
+    // request itself carries the full current history (the model summarizes
+    // the images too), so images legitimately appear in requests 0-2.
+    assert!(
+        request_bodies[0].contains("input_image"),
+        "turn one must carry its image on the wire"
+    );
+    assert!(
+        request_bodies[1].contains("input_image"),
+        "turn two must carry its image on the wire"
+    );
+    assert!(
+        request_bodies[2].contains("input_image"),
+        "the compaction request summarizes the full history, images included"
+    );
+    // The compacted follow-up history is text-only by contract (summary plus
+    // retained text user messages): no image payload survives compaction.
+    assert!(
+        !request_bodies[3].contains("input_image"),
+        "the compacted follow-up must not carry image payloads"
+    );
+    // The task continued on the compacted thread: new user message and the
+    // summary are the follow-up's history.
+    let follow_up_body = requests[3].body_json();
+    let follow_up_texts: Vec<&str> = follow_up_body["input"]
+        .as_array()
+        .expect("follow-up input array")
+        .iter()
+        .filter_map(|item| item["content"].as_array())
+        .flatten()
+        .filter_map(|part| part["text"].as_str())
+        .collect();
+    assert!(
+        follow_up_texts.iter().any(|text| *text == POST_AUTO_USER_MSG),
+        "the follow-up request must include the new user message"
+    );
+    assert!(
+        follow_up_texts
+            .iter()
+            .any(|text| text.contains(AUTO_SUMMARY_TEXT)),
+        "the follow-up request must include the compaction summary"
+    );
+}
+
 // Windows CI only: bump to 4 workers to prevent SSE/event starvation and test timeouts.
 #[cfg_attr(windows, tokio::test(flavor = "multi_thread", worker_threads = 4))]
 #[cfg_attr(not(windows), tokio::test(flavor = "multi_thread", worker_threads = 2))]
