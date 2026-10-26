@@ -1192,9 +1192,12 @@ fn agent_cache_point_marks_the_previous_turn_boundary() {
     }
 
     // Single turn: the manual markers already cover the request; no point.
-    let (mut single, _) =
-        super::responses_request_to_completion_request(&request(vec![item("user", "hi")]), RigProtocol::Anthropic, "test")
-            .expect("convertible");
+    let (mut single, _) = super::responses_request_to_completion_request(
+        &request(vec![item("user", "hi")]),
+        RigProtocol::Anthropic,
+        "test",
+    )
+    .expect("convertible");
     super::add_agent_cache_point(&mut single);
     assert!(
         single.cache_points.is_empty(),

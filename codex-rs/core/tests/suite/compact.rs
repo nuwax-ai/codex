@@ -2580,7 +2580,9 @@ async fn auto_compact_with_image_history_drops_images_and_continues_the_task() {
         .filter_map(|part| part["text"].as_str())
         .collect();
     assert!(
-        follow_up_texts.iter().any(|text| *text == POST_AUTO_USER_MSG),
+        follow_up_texts
+            .iter()
+            .any(|text| *text == POST_AUTO_USER_MSG),
         "the follow-up request must include the new user message"
     );
     assert!(

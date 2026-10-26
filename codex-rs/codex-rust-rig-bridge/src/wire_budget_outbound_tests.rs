@@ -671,8 +671,14 @@ async fn converted_originals_are_rejected_before_http_on_small_windows() -> Resu
             },
             with_tool,
         );
-        let outcome =
-            stream_under_window(protocol, &request, 3_000, Duration::from_millis(750), floor_provider).await?;
+        let outcome = stream_under_window(
+            protocol,
+            &request,
+            3_000,
+            Duration::from_millis(750),
+            floor_provider,
+        )
+        .await?;
         assert!(
             matches!(
                 outcome.api_error,
@@ -709,7 +715,8 @@ async fn converted_originals_reach_the_socket_with_window_room() -> Result<(), T
             },
             with_tool,
         );
-        let outcome = stream_under_window(protocol, &request, 8_000, IO_DEADLINE, floor_provider).await?;
+        let outcome =
+            stream_under_window(protocol, &request, 8_000, IO_DEADLINE, floor_provider).await?;
         assert!(
             outcome.api_error.is_none(),
             "{protocol:?} tool={with_tool}: a floored-but-legal request must dispatch, got {:?}",
@@ -768,12 +775,25 @@ async fn anthropic_prompt_caching_markers_follow_the_provider_switch() -> Result
     }
     let request = floor_request(floor_tool_image_items(), true);
     for (label, markers_expected, builder) in [
-        ("off", false, floor_provider as fn(std::net::SocketAddr) -> codex_api::Provider),
-        ("on", true, caching_provider as fn(std::net::SocketAddr) -> codex_api::Provider),
+        (
+            "off",
+            false,
+            floor_provider as fn(std::net::SocketAddr) -> codex_api::Provider,
+        ),
+        (
+            "on",
+            true,
+            caching_provider as fn(std::net::SocketAddr) -> codex_api::Provider,
+        ),
     ] {
-        let outcome =
-            stream_under_window(RigProtocol::Anthropic, &request, 8_000, IO_DEADLINE, builder)
-                .await?;
+        let outcome = stream_under_window(
+            RigProtocol::Anthropic,
+            &request,
+            8_000,
+            IO_DEADLINE,
+            builder,
+        )
+        .await?;
         assert!(
             outcome.api_error.is_none(),
             "{label}: the request must dispatch, got {:?}",
@@ -827,9 +847,14 @@ async fn anthropic_prompt_caching_marks_the_previous_turn_on_multi_turn() -> Res
         }),
     ];
     let request = floor_request(input, true);
-    let outcome =
-        stream_under_window(RigProtocol::Anthropic, &request, 200_000, IO_DEADLINE, caching_provider)
-            .await?;
+    let outcome = stream_under_window(
+        RigProtocol::Anthropic,
+        &request,
+        200_000,
+        IO_DEADLINE,
+        caching_provider,
+    )
+    .await?;
     assert!(
         outcome.api_error.is_none(),
         "must dispatch, got {:?}",
@@ -923,7 +948,8 @@ async fn compacted_text_only_history_carries_no_vision_floor() -> Result<(), Tes
     })];
     let request = floor_request(items, false);
     for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
-        let outcome = stream_under_window(protocol, &request, 1_200, IO_DEADLINE, floor_provider).await?;
+        let outcome =
+            stream_under_window(protocol, &request, 1_200, IO_DEADLINE, floor_provider).await?;
         assert!(
             outcome.api_error.is_none(),
             "{protocol:?}: the compacted turn must dispatch as plain text, got {:?}",
