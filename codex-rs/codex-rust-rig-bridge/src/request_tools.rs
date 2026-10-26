@@ -243,6 +243,9 @@ fn append_tool(
             .unwrap_or(fallback_description)
             .to_string(),
         parameters,
+        // Host-policy metadata (never sent to the model). The wire tool JSON
+        // carries no annotations today; keep them empty until a source exists.
+        annotations: rig_core::completion::ToolAnnotations::default(),
     });
     Ok(())
 }

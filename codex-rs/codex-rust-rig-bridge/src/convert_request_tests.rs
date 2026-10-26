@@ -274,7 +274,7 @@ mod mapping {
             let mut text_count = 0;
             let mut image_count = 0;
             for message in &converted.chat_history {
-                let Message::User { content } = message else {
+                let Message::User { content } = message.as_ref() else {
                     continue;
                 };
                 for part in content {
@@ -327,7 +327,7 @@ mod mapping {
         assert_eq!(req.chat_history.len(), 2);
         assert!(matches!(
             req.chat_history.first(),
-            Some(Message::System { content }) if content == "be helpful"
+            Some(msg) if matches!(msg.as_ref(), Message::System { content } if content == "be helpful")
         ));
     }
 
@@ -340,7 +340,8 @@ mod mapping {
         .expect("convertible");
         // system + one assistant message carrying text AND reasoning
         assert_eq!(req.chat_history.len(), 2);
-        let Message::Assistant(assistant) = req.chat_history.last().expect("assistant") else {
+        let Message::Assistant(assistant) = req.chat_history.last().expect("assistant").as_ref()
+        else {
             panic!("expected assistant message");
         };
         let content = &assistant.content;
@@ -357,7 +358,8 @@ mod mapping {
             function_call("call_1", "get_weather", r#"{"city":"北京"}"#),
         ]))
         .expect("convertible");
-        let Message::Assistant(assistant) = req.chat_history.last().expect("assistant") else {
+        let Message::Assistant(assistant) = req.chat_history.last().expect("assistant").as_ref()
+        else {
             panic!("expected assistant message");
         };
         let content = &assistant.content;
@@ -373,7 +375,7 @@ mod mapping {
             tool_output("call_1", "sunny"),
         ]))
         .expect("convertible");
-        let Message::User { content } = req.chat_history.last().expect("user") else {
+        let Message::User { content } = req.chat_history.last().expect("user").as_ref() else {
             panic!("expected user message");
         };
         let UserContent::ToolResult(result) = content.last().expect("tool result") else {
@@ -970,13 +972,14 @@ mod review_fix_tests {
         let assistant_count = req
             .chat_history
             .iter()
-            .filter(|m| matches!(m, Message::Assistant { .. }))
+            .filter(|m| matches!(m.as_ref(), Message::Assistant { .. }))
             .count();
         assert_eq!(
             assistant_count, 1,
             "reasoning+text+tool call must be ONE assistant message"
         );
-        let Message::Assistant(assistant) = req.chat_history.last().expect("assistant") else {
+        let Message::Assistant(assistant) = req.chat_history.last().expect("assistant").as_ref()
+        else {
             panic!()
         };
         let content = &assistant.content;
@@ -1006,7 +1009,8 @@ mod review_fix_tests {
             },
         ]))
         .expect("convertible");
-        let Message::Assistant(assistant) = req.chat_history.last().expect("assistant") else {
+        let Message::Assistant(assistant) = req.chat_history.last().expect("assistant").as_ref()
+        else {
             panic!("expected assistant message");
         };
         let content = &assistant.content;
@@ -1044,7 +1048,7 @@ mod review_fix_tests {
             },
         ]))
         .expect("convertible");
-        let Message::User { content } = req.chat_history.last().expect("user") else {
+        let Message::User { content } = req.chat_history.last().expect("user").as_ref() else {
             panic!()
         };
         assert!(matches!(content.first(), Some(UserContent::ToolResult(_))));
@@ -1075,7 +1079,7 @@ mod review_fix_tests {
                 status: None,
             }]))
             .expect("convertible");
-        let Message::User { content } = req.chat_history.last().expect("user") else {
+        let Message::User { content } = req.chat_history.last().expect("user").as_ref() else {
             panic!()
         };
         assert!(matches!(

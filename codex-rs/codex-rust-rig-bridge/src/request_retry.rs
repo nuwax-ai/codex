@@ -93,6 +93,10 @@ fn classify(error: &Error) -> Option<TransportError> {
         | Error::NoHeaders
         | Error::StreamEnded
         | Error::InvalidContentType(_) => None,
+        // `http_client::Error` is `#[non_exhaustive]` since rig 0.45. Unknown
+        // variants stay non-retryable: retrying an unclassified failure would
+        // hide it behind the retry budget instead of failing fast.
+        _ => None,
     }
 }
 

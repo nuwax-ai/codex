@@ -2,7 +2,8 @@
 
 维护说明：本文是 fork 行为差异的权威索引。改动 fork 行为时同步更新本文与
 `codex-review-prompt.md`（§二 补丁面清单）。2026-10-22 的上游同步目标为
-`main@342ed69a1`，Rust `1.99.1`、V8 `152.2.0`，rig保持`0.44.0`；合并冲突已解，
+`main@342ed69a1`，Rust `1.99.1`、V8 `152.2.0`，rig 升至 `0.45.0`（2026-10-26，用户解除
+0.44 冻结；桥机械适配 Model 构造器/Arc 消息与非穷尽错误，行为合同不变）；合并冲突已解，
 main集成与晚间批次已推送，复审输入origin/test=850a87390；备用genai现为0.7.0。
 不同源码的实网、fixture与CI证据分开，不宣称全部厂商/全部平台已通过。
 当前优先级与本轮验证快照见 [ROADMAP.md](ROADMAP.md)，
@@ -53,7 +54,7 @@ fork 通过 rig 桥统一第三方模型的协议转换、传输与会话生命�
 
 ### 3.2 双桥 + 逃生舱
 
-`experimental_bridge`（fork 字段）：`"rig"`（默认，rig-core / rig-reqwest `=0.44.0`）/
+`experimental_bridge`（fork 字段）：`"rig"`（默认，rig-core / rig-reqwest `=0.45.0`）/
 `"genai"`（备用，rust-genai 0.7.0）/`"native"`（显式选择上游原生Responses传输）。
 
 桥的中立 trait 在 `codex-api/src/bridge.rs`（`ModelBridge` / `ModelWireProtocol`，
@@ -71,7 +72,7 @@ cli/exec/app-server 二进制启用。
 
 第三方 Responses wire 不做协议转换：请求类型级 clone（仅跨协议历史投影剥
 reasoning envelope）→ 序列化并设置有效输出 cap → 构造 HTTP 请求，经 rig
-`HttpClientExt::send_streaming`（0.44 已无 provider `post_sse` builder；建流也受
+`HttpClientExt::send_streaming`（0.44 起无 provider `post_sse` builder；建流也受
 idle timeout 包裹）→ 原始 SSE 进 codex-api 完整解码器，**严格终止策略**
 （`codex-api/src/sse/responses_policy.rs`：顶层 error/failed/incomplete 即停、
 畸形帧报错、[DONE] 容忍）。官方原生路径的宽松策略不变。Authorization 在 rig
@@ -100,7 +101,7 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
   cached → 新增 `ProviderCapabilities.cached_web_search`，默认 cached 在此类线
   上降级为 Disabled（此前字段丢弃翻译会让 GLM 实际执行 live 搜索，与配置模式
   相反）。需要搜索请显式 `web_search = "live"`。
-- 响应侧：当前 rig 0.44 转换路径仍借助 transport 层 tee 原始
+- 响应侧：当前 rig 0.45 转换路径仍借助 transport 层 tee 原始
   SSE（`anthropic_sse_tee`，eventsource-stream 解帧），流泵在 Completed 前回收
   web-search 块 → `WebSearchCall` 条目（兼容 GLM 的 `web_search_prime` 改名、
   `search_query` 字段、非标准 assistant 侧 `tool_result` 块）。
@@ -300,7 +301,7 @@ Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§
 | 显式 `:danger-full-access` 命令曾被同 profile ID 的 Ask preset 抢先匹配，跳过确认 | `tui/src/chatwidget/permissions_menu.rs`；`15283cc98` | 已修：profile-id 入口选 canonical full-access，显式 on-request 与两 reviewer 仍先确认；Ask 菜单既有语义保留，权限模块 49/49 |
 | Windows legacy 沙箱 workspace-write **不约束既有文件删除**（内核 WRITE_RESTRICTED 不覆盖 DELETE 权位，diag1-7 证据链见台账 §6.57；显式 deny-write 路径有 DENY ACE、删除受保护）。运行时降级有 WARNING 日志；完整删除约束需 elevated 后端 | `windows-sandbox-rs/src/unified_exec/backends/legacy.rs`、台账 §6.57 | 用户决策 B+警告（2026-10-22），上游继承问题不再扩fork补丁面 |
 | Chat/Anthropic 输出预算可通过 provider.max_output_tokens 配置；Anthropic 未配置时仍默认 16384，Responses typed HTTP/WS、Rig passthrough 与预算已采用该字段 | `codex-rust-rig-bridge/src/stream.rs`、`client.rs` | 三协议已接线；验收见 `provider-request-controls-2026-10-03/tasks.md` |
-| 无 Anthropic prompt caching（`cache_control`） | 桥内零出现（grep 实证） | backlog |
+| 无 Anthropic prompt caching（`cache_control`） | 桥内零出现（grep 实证）；rig 0.45 的 Messages wire 已带 `prompt_caching`/`static_prefix_cache_ttl` 原语，桥仍未启用 | backlog（0.45 起具备实施条件，需 provider 级设计与实网验收） |
 | 普通 TLS 客户端复用且请求头按轮注入；自定义 CA 仍专用构建 | `codex-rust-rig-bridge/src/client.rs`、`transport.rs` | 取消与连续工作流已有定向/实网证据；本次 main 合并后重新验收受影响部分 |
 | 搜索来源身份、恢复上限、混合轮配对已入库；厂商能力仍分别受限 | `hosted_replay.rs`、`hosted_replay_budget.rs`、`model_output_projection.rs` | 离线 wire 与真实厂商证据分开，不能把 GLM 搜索支持扩大至 MiMo/Step |
 | 病态网关"HTTP 200 + 非 SSE JSON 错误体"两线均 EOF 丢体 | `sse.rs` EOF 路径；三家目标厂商 live 未见此行为 | 已知边界（可选加固：EOF 时附 body 摘要） |

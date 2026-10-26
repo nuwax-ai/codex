@@ -182,10 +182,18 @@ pub(crate) fn responses_request_to_completion_request(
         message: "No convertible messages in request".into(),
     })?;
     let mut completion = CompletionRequest::new(prompt);
-    chat_history.extend(std::mem::take(&mut completion.chat_history));
-    completion.chat_history = chat_history;
+    // rig 0.45 stores history and tools as `Arc`-shared entries; the freshly
+    // built values are unique, so wrapping and `Arc::make_mut` never clone.
+    let mut history: Vec<std::sync::Arc<_>> =
+        chat_history.into_iter().map(std::sync::Arc::new).collect();
+    history.extend(std::mem::take(&mut completion.chat_history));
+    completion.chat_history = history;
     completion.model = Some(request.model.clone());
-    completion.tools = selection.definitions;
+    completion.tools = selection
+        .definitions
+        .into_iter()
+        .map(std::sync::Arc::new)
+        .collect();
     completion.max_tokens =
         (protocol == RigProtocol::Anthropic).then_some(crate::client::DEFAULT_ANTHROPIC_MAX_TOKENS);
     completion.tool_choice = map_tool_choice(&request.tool_choice)?;
@@ -211,7 +219,9 @@ pub(crate) fn responses_request_to_completion_request(
     };
     let origin = rig_core::completion::message::Origin::new(api, provider, &request.model);
     for message in &mut completion.chat_history {
-        if let rig_core::completion::message::Message::Assistant(turn) = message {
+        if let rig_core::completion::message::Message::Assistant(turn) =
+            std::sync::Arc::make_mut(message)
+        {
             turn.origin = Some(origin.clone());
         }
     }

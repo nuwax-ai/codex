@@ -153,7 +153,9 @@ fn model_via_bridge<W>(
     wire: W,
     transport: crate::transport::RigHttpClient,
 ) -> rig_core::driver::Model<W, crate::transport::RigHttpClient> {
-    rig_core::driver::Model { wire, transport }
+    // 0.45 made `prepared` private state; the constructor starts it fresh,
+    // which is what the direct struct literal expressed before.
+    rig_core::driver::Model::new(wire, transport)
 }
 
 /// The SDK appends an endpoint by string concatenation. Remove query/fragment
@@ -257,6 +259,10 @@ pub(crate) fn build_chat_model(
         model: model_name.to_string(),
         strict_tools: false,
         tool_result_array_content: false,
+        // Unbound facts: rig answers model questions from its builtin
+        // catalog, exactly as its own default construction does. The bridge
+        // sets max_tokens itself, so no fact-driven default kicks in.
+        facts: rig_core::catalog::ModelFacts::default(),
     };
     Ok(model_via_bridge(wire, http))
 }
@@ -311,6 +317,7 @@ pub(crate) fn build_anthropic_model(
         // 0.42 wire parity: no per-tool `eager_input_streaming` flag. The
         // provider streams tool input as it chooses (rig's `Off`).
         tool_input_streaming: rig_core::providers::anthropic::wire::ToolInputStreaming::Off,
+        facts: rig_core::catalog::ModelFacts::default(),
     };
     Ok(model_via_bridge(wire, http))
 }
