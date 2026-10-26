@@ -5463,6 +5463,19 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
 - v0.18.18(正式)/v0.18.19-beta.1(beta)tag 指 `d74692d33` 发布中;本轮 tag push 事件
   恢复触发,与 dispatch 双跑去重各留一;`d74692d33` 的 fork-cargo-pr run(40285821806)
   53 分钟后被不明取消(bazel 已绿,nextest 被取消,无新 push 取代),由本轮推送的新 CI 覆盖。
+- **GLM prompt caching 实网验收(用户提供凭据,2026-10-26)部分通过、根因待闭**:
+  开关→线证据链闭合(eprintln 运行时探针=true;本地 mock 捕获真实 exec 请求体,
+  首轮与 resume 轮均含 **3 个 ephemeral 断点**:末工具/system 尾/末消息;早前"零标记"
+  结论系 mock 只记元数据的测量假象,已纠正);GLM 网关侧裸 curl 两轮同 system 断点
+  **cache_read=1856 命中**(网关支持且只在 read 侧回报,无 creation 字段)。但 codex
+  真实两轮(exec + resume --last,11k/22k token)turn2 cache_read=0、input 全额重读。
+  候选根因:rig 手动三断点中稳定可命中的只有 tools/system 前缀(消息尾断点随轮移动
+  永不重复),GLM 对该形态未命中(或最小前缀/断点语义与 Anthropic 有差);
+  **跟进设计**:启用时给 `CompletionRequest.cache_points` 加 Messages(倒数第二轮)点,
+  每轮把"上一轮结束处"标为断点(Anthropic agent 推荐形态,大前缀稳定命中),
+  实现于 convert_request,再做 GLM 复验。curl 直探与 codex 线体收据在
+  /tmp/nuwax-glmtest(会话内)。model-provider 的 models_endpoint 7 个测试在本机为
+  访问 OpenAI 托管端点的环境红(超时),非本轮改动;CI 美国 Runner 预期绿。
 
 ## 7. 提交、推送与工作树状态
 

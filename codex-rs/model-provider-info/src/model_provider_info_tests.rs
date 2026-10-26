@@ -946,3 +946,21 @@ env_key = "KEY"
     .unwrap();
     assert_eq!(provider.max_output_tokens, None);
 }
+
+#[test]
+fn parses_and_maps_anthropic_prompt_caching() {
+    let info: super::ModelProviderInfo = toml::from_str(
+        r#"
+        name = "cache-probe"
+        base_url = "http://127.0.0.1:1"
+        anthropic_prompt_caching = true
+        "#,
+    )
+    .expect("parse provider");
+    assert_eq!(info.anthropic_prompt_caching, Some(true));
+    let api = info.to_api_provider(None).expect("map");
+    assert_eq!(
+        api.anthropic_prompt_caching, Some(true),
+        "to_api_provider must carry the caching switch"
+    );
+}

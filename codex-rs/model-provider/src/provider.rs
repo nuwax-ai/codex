@@ -664,6 +664,7 @@ mod tests {
             include_internal_metadata: false,
             max_output_tokens: None,
             hosted_results_replay: None,
+            anthropic_prompt_caching: None,
         }
     }
 
