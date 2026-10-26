@@ -71,6 +71,15 @@ pub fn with_config_overrides(mut model: ModelInfo, config: &ModelsManagerConfig)
         };
     }
 
+    // Fork (nuwax-codex): `[tools] tool_search = false` advertises this model
+    // as lacking the search-tool capability, which routes MCP tools directly
+    // into the initial tool list instead of deferring them behind tool_search.
+    // Only forced OFF: forcing it ON for a model without wire support would
+    // emit a tool the backend cannot answer.
+    if config.tool_search_enabled == Some(false) {
+        model.supports_search_tool = false;
+    }
+
     if let Some(base_instructions) = &config.base_instructions {
         let model_messages = model.model_messages.get_or_insert_default();
         model_messages.instructions_template = Some(base_instructions.clone());

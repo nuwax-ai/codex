@@ -713,6 +713,10 @@ pub struct ToolsToml {
     pub web_search: Option<WebSearchToolConfig>,
     pub experimental_request_user_input: Option<ExperimentalRequestUserInput>,
     pub update_plan: Option<UpdatePlanToolConfig>,
+    /// Fork (nuwax-codex): set to `false` to expose MCP tools directly in the
+    /// initial tool list instead of lazy-loading them through `tool_search`.
+    /// `true` and unset keep the model catalog's own behavior.
+    pub tool_search: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]

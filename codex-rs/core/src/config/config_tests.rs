@@ -462,6 +462,7 @@ web_search = true
             web_search: None,
             experimental_request_user_input: None,
             update_plan: None,
+            tool_search: None,
         })
     );
 }
@@ -482,6 +483,7 @@ web_search = false
             web_search: None,
             experimental_request_user_input: None,
             update_plan: None,
+            tool_search: None,
         })
     );
 }
@@ -501,6 +503,7 @@ fn tools_experimental_request_user_input_defaults_to_enabled() {
             web_search: None,
             experimental_request_user_input: Some(ExperimentalRequestUserInput { enabled: true }),
             update_plan: None,
+            tool_search: None,
         })
     );
 }
@@ -521,6 +524,7 @@ enabled = false
             web_search: None,
             experimental_request_user_input: Some(ExperimentalRequestUserInput { enabled: false }),
             update_plan: None,
+            tool_search: None,
         })
     );
 }
@@ -536,6 +540,7 @@ async fn load_config_resolves_experimental_request_user_input_enabled() -> std::
                     enabled: false,
                 }),
                 update_plan: None,
+                tool_search: None,
             }),
             ..ConfigToml::default()
         },
@@ -9998,6 +10003,45 @@ async fn model_catalog_json_loads_from_path() -> std::io::Result<()> {
     .await?;
 
     assert_eq!(config.model_catalog, Some(catalog));
+    Ok(())
+}
+
+// Fork (nuwax-codex): `[tools] tool_search = false` must resolve to a
+// disabled capability override on the models-manager config; unset keeps the
+// default-enabled behavior.
+#[tokio::test]
+async fn tools_tool_search_false_propagates_to_models_manager() -> std::io::Result<()> {
+    let disabled = Config::load_from_base_config_with_overrides(
+        ConfigToml {
+            tools: Some(ToolsToml {
+                tool_search: Some(false),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        ConfigOverrides::default(),
+        TempDir::new()?.abs(),
+    )
+    .await?;
+    assert!(!disabled.tool_search_enabled);
+    assert_eq!(
+        disabled.to_models_manager_config().tool_search_enabled,
+        Some(false)
+    );
+
+    let default_enabled = Config::load_from_base_config_with_overrides(
+        ConfigToml::default(),
+        ConfigOverrides::default(),
+        TempDir::new()?.abs(),
+    )
+    .await?;
+    assert!(default_enabled.tool_search_enabled);
+    assert_eq!(
+        default_enabled
+            .to_models_manager_config()
+            .tool_search_enabled,
+        None
+    );
     Ok(())
 }
 

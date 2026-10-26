@@ -2930,6 +2930,10 @@
       "additionalProperties": false,
       "description": "Serializable representation of a provider definition.",
       "properties": {
+        "anthropic_prompt_caching": {
+          "description": "Fork (nuwax-codex): opt-in for Anthropic prompt caching. When true the rig bridge places `cache_control` breakpoints (system tail, final non-deferred tool, conversation tail) with Anthropic's 5-minute TTL; `cache_read_input_tokens`/`cache_creation_input_tokens` usage already flow back. Default off: only enable for gateways that accept Anthropic cache markers.",
+          "type": "boolean"
+        },
         "auth": {
           "allOf": [
             {
@@ -4832,6 +4836,10 @@
       "properties": {
         "experimental_request_user_input": {
           "$ref": "#/definitions/ExperimentalRequestUserInput"
+        },
+        "tool_search": {
+          "description": "Fork (nuwax-codex): set to `false` to expose MCP tools directly in the initial tool list instead of lazy-loading them through `tool_search`. `true` and unset keep the model catalog's own behavior.",
+          "type": "boolean"
         },
         "update_plan": {
           "$ref": "#/definitions/UpdatePlanToolConfig"

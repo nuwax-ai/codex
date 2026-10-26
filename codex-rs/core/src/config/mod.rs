@@ -1125,6 +1125,10 @@ pub struct Config {
     /// Whether to register the update_plan tool.
     pub update_plan_enabled: bool,
 
+    /// Fork (nuwax-codex): when `false`, MCP tools are advertised directly in
+    /// the initial tool list instead of being deferred behind `tool_search`.
+    pub tool_search_enabled: bool,
+
     /// Policy for collecting and validating tool runtimes.
     pub tool_registry: ToolRegistryConfig,
 
@@ -1768,6 +1772,7 @@ impl Config {
             model_auto_compact_token_limit: self.model_auto_compact_token_limit,
             model_auto_compact_ratio: self.model_auto_compact_ratio,
             tool_output_token_limit: self.tool_output_token_limit,
+            tool_search_enabled: (!self.tool_search_enabled).then_some(false),
             base_instructions: self.base_instructions.clone().filter(|_| {
                 !matches!(
                     self.base_instructions_provenance,
@@ -2844,6 +2849,14 @@ fn resolve_update_plan_enabled(config_toml: &ConfigToml) -> bool {
         .as_ref()
         .and_then(|tools| tools.update_plan.as_ref())
         .is_some_and(|config| config.enabled)
+}
+
+fn resolve_tool_search_enabled(config_toml: &ConfigToml) -> bool {
+    config_toml
+        .tools
+        .as_ref()
+        .and_then(|tools| tools.tool_search)
+        .unwrap_or(true)
 }
 
 fn resolve_feature_enabled(feature: Option<&codex_config::config_toml::FeatureToggleToml>) -> bool {
@@ -3988,6 +4001,7 @@ impl Config {
         let experimental_request_user_input_enabled =
             resolve_experimental_request_user_input_enabled(&cfg);
         let update_plan_enabled = resolve_update_plan_enabled(&cfg);
+        let tool_search_enabled = resolve_tool_search_enabled(&cfg);
         let tool_registry = ToolRegistryConfig {
             error_on_tool_collisions: cfg
                 .features
@@ -4699,6 +4713,7 @@ impl Config {
             web_search_config,
             experimental_request_user_input_enabled,
             update_plan_enabled,
+            tool_search_enabled,
             tool_registry,
             code_mode,
             background_terminal_max_timeout,

@@ -183,6 +183,10 @@ pub(crate) struct ModelInfoOverrides {
     /// `models_manager_config`) silently loses the configuration.
     pub(crate) auto_compact_ratio: Option<f64>,
     pub(crate) tool_output_token_limit: Option<usize>,
+    /// Fork (nuwax-codex): explicit `[tools] tool_search = false` reaches the
+    /// models manager as `Some(false)`; must survive the round-trip below or
+    /// resume/model switches silently restore catalog-driven deferral.
+    pub(crate) tool_search_enabled: Option<bool>,
     pub(crate) base_instructions: Option<String>,
 }
 
@@ -193,6 +197,7 @@ impl From<ModelsManagerConfig> for ModelInfoOverrides {
             auto_compact_token_limit: config.model_auto_compact_token_limit,
             auto_compact_ratio: config.model_auto_compact_ratio,
             tool_output_token_limit: config.tool_output_token_limit,
+            tool_search_enabled: config.tool_search_enabled,
             base_instructions: config.base_instructions,
         }
     }
@@ -208,6 +213,7 @@ impl ModelInfoOverrides {
             model_auto_compact_token_limit: self.auto_compact_token_limit,
             model_auto_compact_ratio: self.auto_compact_ratio,
             tool_output_token_limit: self.tool_output_token_limit,
+            tool_search_enabled: self.tool_search_enabled,
             base_instructions: self.base_instructions.clone(),
             personality,
             // The models manager already owns its catalog.

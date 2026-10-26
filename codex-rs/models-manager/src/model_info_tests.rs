@@ -337,3 +337,38 @@ fn tiny_auto_compact_ratio_deriving_zero_keeps_the_model_limit() {
     let updated = with_config_overrides(model, &config);
     assert_eq!(updated.auto_compact_token_limit, Some(900));
 }
+
+// Fork (nuwax-codex): `[tools] tool_search = false` strips the search-tool
+// capability so MCP tools are advertised directly; an unset config must leave
+// the catalog value untouched, and `Some(true)` must never force it ON for a
+// model whose catalog says it lacks wire support.
+#[test]
+fn tool_search_false_override_strips_search_tool_capability() {
+    let mut model = model_info_from_slug("unknown-model");
+    model.supports_search_tool = true;
+
+    let disabled = with_config_overrides(
+        model.clone(),
+        &ModelsManagerConfig {
+            tool_search_enabled: Some(false),
+            ..Default::default()
+        },
+    );
+    assert!(!disabled.supports_search_tool);
+
+    // A catalog that says the model lacks wire support stays false even when
+    // the config carries `Some(true)`: the override never forces it ON.
+    let mut wire_unsupported = model_info_from_slug("unknown-model");
+    wire_unsupported.supports_search_tool = false;
+    let forced_on_ignored = with_config_overrides(
+        wire_unsupported,
+        &ModelsManagerConfig {
+            tool_search_enabled: Some(true),
+            ..Default::default()
+        },
+    );
+    assert!(!forced_on_ignored.supports_search_tool);
+
+    let untouched = with_config_overrides(model, &ModelsManagerConfig::default());
+    assert!(untouched.supports_search_tool);
+}

@@ -527,3 +527,51 @@ async fn ratio_only_compact_threshold_survives_override_resolution() {
     assert_eq!(resolved.context_window, Some(60_000));
     assert_eq!(resolved.auto_compact_token_limit, Some(30_000));
 }
+
+// Fork (nuwax-codex): `[tools] tool_search = false` must survive the
+// ModelInfoOverrides round-trip (first turn, resume, and every model switch
+// rebuild model info through it), or those paths silently fall back to
+// catalog-driven deferral behind tool_search.
+#[tokio::test]
+async fn tool_search_disabled_config_survives_override_resolution() {
+    let mut model = model_info_from_slug("model-b");
+    model.supports_search_tool = true;
+    let catalog = ModelsResponse {
+        models: vec![model],
+    };
+    let models_manager = StaticModelsManager::new(/*auth_manager*/ None, catalog.clone());
+
+    let mut settings = configured_settings();
+    settings.collaboration_mode = settings.collaboration_mode.with_updates(
+        Some("model-b".to_string()),
+        /*effort*/ None,
+        /*developer_instructions*/ None,
+    );
+
+    let mut config = test_config().await;
+    config.model = Some("model-b".to_string());
+    config.model_catalog = Some(catalog);
+    config.tool_search_enabled = false;
+
+    let overrides = ModelInfoOverrides::from(config.to_models_manager_config());
+    assert_eq!(overrides.tool_search_enabled, Some(false));
+    let resolved = settings
+        .resolve_model_info(&models_manager, &overrides)
+        .await;
+    assert!(
+        !resolved.supports_search_tool,
+        "a disabled [tools] tool_search must strip the capability end to end"
+    );
+
+    let mut config = test_config().await;
+    config.model = Some("model-b".to_string());
+    let overrides = ModelInfoOverrides::from(config.to_models_manager_config());
+    assert_eq!(overrides.tool_search_enabled, None);
+    let resolved = settings
+        .resolve_model_info(&models_manager, &overrides)
+        .await;
+    assert!(
+        resolved.supports_search_tool,
+        "an unset [tools] tool_search keeps the catalog value"
+    );
+}
