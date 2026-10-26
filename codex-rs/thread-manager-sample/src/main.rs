@@ -246,6 +246,8 @@ async fn new_config(
         daybreak_enabled: false,
         service_tier: None,
         review_model: None,
+        // The resolved default of `[tools] tool_search` (unset -> true).
+        tool_search_enabled: true,
         model_context_window: None,
         model_auto_compact_token_limit: None,
         model_auto_compact_ratio: None,
