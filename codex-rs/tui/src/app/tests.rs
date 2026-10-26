@@ -64,7 +64,7 @@ pub(super) fn canonicalize_elapsed_frames(text: impl Into<String>) -> String {
         }
     };
     text.split('\n')
-        .map(|line| canonicalize(line))
+        .map(canonicalize)
         .collect::<Vec<_>>()
         .join("\n")
 }
