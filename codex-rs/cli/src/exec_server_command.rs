@@ -35,7 +35,7 @@ pub(super) struct ExecServerCommand {
     #[command(subcommand)]
     pub(super) command: Option<ExecServerSubcommand>,
 
-    /// Error out when config.toml contains fields that are not recognized by this version of Codex.
+    /// Error out when config.toml contains fields that are not recognized by this version of nuwax-harness.
     #[arg(
         id = "exec_server_strict_config",
         long = "strict-config",

@@ -21,7 +21,7 @@ pub(crate) struct SandboxSetupCommand {
     #[arg(long = "elevated", action = ArgAction::SetTrue)]
     elevated_sandbox_level: bool,
 
-    /// Windows user that will run Codex after managed deployment.
+    /// Windows user that will run nuwax-harness after managed deployment.
     #[arg(
         long = "user",
         value_name = "USER",
@@ -30,7 +30,7 @@ pub(crate) struct SandboxSetupCommand {
     )]
     user: Option<String>,
 
-    /// Use the current Windows user as the Codex user.
+    /// Use the current Windows user as the nuwax-harness user.
     #[arg(
         long = "current-user",
         default_value_t = false,

@@ -1,11 +1,12 @@
 ---
 source: tui/src/app/tests/fresh_sparkle_tests.rs
+assertion_line: 731
 expression: "snapshots.join(\"\\n\\n\")"
 ---
 untouched:
                             ⠈     ⢀     ⠁                 ⠂
-›⠁Ask Codex to do anything         ⠈      ⠁
+›⠁Ask nuwax-harness to do anything ⠈      ⠁
        ⢀            ⠠     ⠄         ⠠          ⢀    ⠠     ⡀
 
 typed then erased:
-› Ask Codex to do anything
+› Ask nuwax-harness to do anything
