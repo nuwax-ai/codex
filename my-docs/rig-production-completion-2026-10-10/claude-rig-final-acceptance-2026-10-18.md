@@ -5617,8 +5617,11 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
 - **验证**:utils-cli+home-dir+config 479/479、daemon 88/88、python 双迭代
   复现 PASS×2、clippy 净(cli 的 cloud_config.rs unused-variable 为上游既有、
   不在 CI 四包门内,同 codex-history 先例登记)。文档:README §2/§3 别名
-  说明、FORK.md §7。ACP 侧(fork-codex-acp-ts)12 个网关变量的 NUWAX 别名
-  为另案待做(方案已给用户:同规则、仓库在本地)。
+  说明、FORK.md §7。ACP 侧（fork-codex-acp-ts `7e65bde`，2026-10-28 同日完成）：
+  12 个网关 CODEX_* 变量全部加 NUWAX_* 别名（同规则；错误不回显值，凭据链
+  NUWAX_API_KEY>CODEX_API_KEY>OPENAI_API_KEY 保留链式不报冲突）；消费掉的
+  别名从子进程剥离，废止"NUWAX_BRIDGE 刻意忽略"旧规并为 env-bridge/
+  CodexEnvConfig 测试锁定新语义；135 文件/1981 测试全绿。
 
 ## 7. 提交、推送与工作树状态
 
