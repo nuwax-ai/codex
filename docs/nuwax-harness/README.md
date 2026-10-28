@@ -13,6 +13,27 @@ command -v nuwax-harness
 nuwax-harness --version
 ```
 
+### 源码安装(开发与日常 dogfood)
+
+改完代码一条命令更新本地 `nuwax-harness`,不必等 npm 发布:
+
+```bash
+cd <仓库>/codex-rs && set -a && source <V8 env 文件> && set +a && \
+  CARGO_TARGET_DIR=~/.nuwax-cargo-target \
+  cargo install --path cli --bin codex --root ~/.nuwax-cargo --locked --force
+ln -sf ~/.nuwax-cargo/bin/codex ~/.cargo/bin/nuwax-harness
+```
+
+- 源码构建版本号恒为 `0.0.0`,可用来区分 npm 版;workspace 版本恒占位,
+  因此每次重装都需要 `--force`。`CARGO_TARGET_DIR` 固定后后续重装走增量编译。
+- V8 env 文件由 `scripts/prefetch_rusty_v8.sh` 生成;不 source 它构建会失败。
+- 安装到独立 root 再软链,**不要**把 fork 的 `codex` 装进 `~/.cargo/bin`,
+  避免与官方 codex(如 homebrew 的 `/opt/homebrew/bin/codex`)冲突。
+- 源码二进制运行 TUI 前需设 `CODEX_INSTALL_SOURCE=npm_nuwax`(可放进下文的
+  环境变量文件),否则会尝试自启共享 daemon(需要完整 npm 包布局,必失败);
+  设置后走内嵌 app-server,与 npm 制品行为一致。
+
+
 npm 组织包名是 **`@nuwax-ai/nuwax-harness`**，主命令和发布归档内的主二进制叫
 **`nuwax-harness`**（Windows 为 `nuwax-harness.exe`）。该组织包只导出新主命令。
 ACP 的 `CODEX_PATH` 使用 `command -v nuwax-harness` 返回的绝对路径。
@@ -146,6 +167,20 @@ export CODEX_AUTO_COMPACT_RATIO='0.8'
 | `CODEX_AUTO_COMPACT_RATIO` | 可选 `(0, 1]` 小数，未设置显式 token 阈值时按有效窗口比例触发压缩 |
 | `CODEX_MODEL_REASONING_EFFORT` | 可选：`none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`、`persistent`；具体模型/协议须支持该值 |
 
+窗口与压缩种子的行为（2026-10-28 起）：
+
+- 不在模型目录中的**自定义模型**，`model_context_window` 显式覆盖**全额
+  生效**（不再被未知模型 272k 占位上限钳制）：大窗口厂商（如 GLM-5.3-Flash
+  的 1M）按真实窗口使用，压缩阈值随真实窗口派生。
+- 配大了自愈：桥线厂商的超窗错误被识别为 `ContextWindowExceeded`，自动触发
+  "删最旧条目重试"压缩兜底，不会卡死会话；目录内官方模型（gpt-\*）仍按
+  目录权威上限钳制。
+- `model_context_window` 与 `model_auto_compact_token_limit` 为 0/负数时
+  config 加载即报错（`must be a positive token count`），环境变量入口同样拒绝。
+- 对应 config.toml 键与上述环境变量同名（`model_context_window`、
+  `model_auto_compact_token_limit`、`model_auto_compact_ratio`），优先级为
+  显式 `-c` > 环境变量 > config.toml。
+
 这些 `CODEX_*` 也是 Rust 程序自身支持的通用变量，与下节 ACP 专有网关变量含义不同。
 显式 `-c model_context_window=...` 等对应配置覆盖这些环境种子。
 输出、文本和图片都占窗口；增大配置数字不会扩大服务端的实际能力。
@@ -272,6 +307,10 @@ MCP 工具应返回 image 内容块，Code Mode 使用图片输出接口。图�
 3. `nuwax-harness doctor --json` 的 provider、wire 和 bridge 是否符合选择。
 4. 是否有 CLI `-c`、本地配置或 ACP 的显式 provider/auth 选择覆盖了环境入口。
 5. 上下文窗口、输出上限和模型实际能力是否一致。
+
+自定义/未知模型收到的身份声明会注入**实际模型名**（"You are the {模型} model
+… running in nuwax-harness"），因此询问"你是什么模型"应回答真实型号与
+nuwax-harness；目录内官方模型（gpt-\*）保持上游身份声明。
 
 不要用 `set -x`、`env` 全量转储或提交受保护环境文件来排查凭据。
 `doctor` 验证配置与路由，不代表实际端点已经完成模型调用；用短文本和真实工具各验一轮。
