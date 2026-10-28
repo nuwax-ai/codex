@@ -5563,6 +5563,36 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   更新为渲染形态并修正 String 借用,登记为死测试代码现状。
 - 本机二进制增量重装后 GLM 实网身份问答复验见会话记录。
 
+## 6.65 品牌清查第二轮:exec/CLI/提示词/消息全面去 Codex 化(`25343cac5`)
+
+- **起因**:用户要求再仔细检查遗漏。系统清查五面(全部提示词 md、exec/CLI 可见
+  输出、TUI 残留文案、BASE_INSTRUCTIONS 消费方、`{{model}}` 泄漏面)。
+- **修复**:exec 回复标签 `codex`→`nuwax-harness`(2 处);CLI
+  `bin_name`/`override_usage`/补全生成名 + 约 20 处子命令帮助文案(顺带修 mcp
+  add 帮助里 `~/.codex/config.toml`→`~/.nuwax-harness` 的路径错误,5 个 Usage
+  断言同步);TUI 输入占位符 "Ask nuwax-harness to do anything"(生产 3 处);
+  **模型可见字符串**:`USER_MESSAGE_BEGIN` 权威常量(protocol.rs,"## My
+  request for nuwax-harness:",tui 本地重复常量与 async_question_reply 反向
+  解析器同步,state/app-server 测试引用常量自动跟随)、task_mentions
+  "## Referenced chats with nuwax-harness:"、dynamic_tools 10 处工具描述、
+  memories/consolidation 3 处自指;错误/警告消息自指与可操作命令引用
+  (`codex doctor/unarchive/logout/fork/app`→`nuwax-harness ...`,否则用户照
+  敲会命中官方 codex 二进制):log_write_warning、session_rollout_init_error
+  ×4、config_manager、app-server lib 数据库消息、bedrock_setup、
+  codex_delegate、thread_processor/thread_queue/session_start 匹配器同步。
+- **有意保留(登记)**:目录 gpt-* 指令、Codex Cloud/Desktop/Apps 产品专名、
+  realtime/guardian 上游专用提示词(guardian 涉安全语义,单独评估)、TUI
+  daemon 版本通知(fork 内嵌不可达)、memories `api.openai.org` 脱敏示例
+  (数据必须保留)、约 200 处测试夹具占位符字符串(不用户可见)。
+- **验证与快照治理**:exec 199/199、memories-write 58/58(需 RUST_MIN_STACK,
+  ABRT 为环境)、cli 定向 1/1、protocol 376/376、tui 全量 5861(5770 过,
+  7 败=品牌快照已接受,84 TMT=本机负载——最重 7 个空闲复跑 7/7 过 29s,
+  之前串行 45-48s 通过顶到 60s 上限)。快照甄别:INSTA_FORCE_UPDATE 宽过滤
+  曾刷 200+ 无关快照(动画/时序),按 diff 含品牌串保留 90+31、回滚 99,
+  另 10 处换行/截断拆开品牌串的快照逐一人工核对接受;`.pending-snap`/
+  `.snap.new` 临时文件全清。教训:INSTA_FORCE_UPDATE 必须配最窄过滤器,或
+  事后按 diff 甄别。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-23 发布 R2 当前状态，以下旧指针为历史记录：** 权威副本在 zhitai，
