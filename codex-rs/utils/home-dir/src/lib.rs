@@ -5,49 +5,57 @@ use std::path::PathBuf;
 // Fork: isolated default home resolution.
 mod nuwax_default;
 
+// Fork: NUWAX_* aliases for user-facing CODEX_* environment variables.
+pub mod env_alias;
+
 /// Returns the path to the Codex configuration directory, which can be
-/// specified by the `CODEX_HOME` environment variable. If not set, defaults to
+/// specified by the `CODEX_HOME` environment variable (or its `NUWAX_HOME`
+/// alias; see [`env_alias`]). If neither is set, defaults to
 /// `~/.nuwax-harness` regardless of any legacy Codex home directories.
 ///
-/// - If `CODEX_HOME` is set, the value must exist and be a directory. The
+/// - If a home variable is set, the value must exist and be a directory. The
 ///   value will be canonicalized and this function will Err otherwise.
-/// - If `CODEX_HOME` is not set, the default directory need not exist yet.
+/// - If no home variable is set, the default directory need not exist yet.
 ///   An existing file or unusable symlink is an error. A usable directory
 ///   symlink is returned without canonicalization.
 pub fn find_codex_home() -> std::io::Result<AbsolutePathBuf> {
-    let codex_home_env = std::env::var("CODEX_HOME")
-        .ok()
-        .filter(|val| !val.is_empty());
+    let codex_home_env = env_alias::resolve_env_alias("NUWAX_HOME", "CODEX_HOME")
+        .map_err(std::io::Error::other)?
+        .and_then(|(value, _from_nuwax)| value.into_string().ok());
     find_codex_home_from_env(codex_home_env.as_deref())
 }
 
 fn find_codex_home_from_env(codex_home_env: Option<&str>) -> std::io::Result<AbsolutePathBuf> {
-    // Honor the `CODEX_HOME` environment variable when it is set to allow users
-    // (and tests) to override the default location.
+    // Honor the `CODEX_HOME`/`NUWAX_HOME` environment variables when set to
+    // allow users (and tests) to override the default location.
     match codex_home_env {
         Some(val) => {
             let path = PathBuf::from(val);
             let metadata = std::fs::metadata(&path).map_err(|err| match err.kind() {
                 std::io::ErrorKind::NotFound => std::io::Error::new(
                     std::io::ErrorKind::NotFound,
-                    format!("CODEX_HOME points to {val:?}, but that path does not exist"),
+                    format!(
+                        "CODEX_HOME/NUWAX_HOME points to {val:?}, but that path does not exist"
+                    ),
                 ),
                 _ => std::io::Error::new(
                     err.kind(),
-                    format!("failed to read CODEX_HOME {val:?}: {err}"),
+                    format!("failed to read CODEX_HOME/NUWAX_HOME {val:?}: {err}"),
                 ),
             })?;
 
             if !metadata.is_dir() {
                 Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    format!("CODEX_HOME points to {val:?}, but that path is not a directory"),
+                    format!(
+                        "CODEX_HOME/NUWAX_HOME points to {val:?}, but that path is not a directory"
+                    ),
                 ))
             } else {
                 let canonical = path.canonicalize().map_err(|err| {
                     std::io::Error::new(
                         err.kind(),
-                        format!("failed to canonicalize CODEX_HOME {val:?}: {err}"),
+                        format!("failed to canonicalize CODEX_HOME/NUWAX_HOME {val:?}: {err}"),
                     )
                 })?;
                 AbsolutePathBuf::from_absolute_path(canonical)

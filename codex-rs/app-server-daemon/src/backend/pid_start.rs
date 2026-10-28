@@ -117,6 +117,14 @@ impl PidBackend {
             .env_remove("CODEX_AUTO_COMPACT_TOKEN_LIMIT")
             .env_remove("CODEX_AUTO_COMPACT_RATIO")
             .env_remove("CODEX_TOOL_SEARCH")
+            // Fork (nuwax-codex): the NUWAX_-prefixed aliases of the seeds
+            // above carry the same per-client semantics and must be stripped
+            // together with them.
+            .env_remove("NUWAX_MODEL_REASONING_EFFORT")
+            .env_remove("NUWAX_MODEL_CONTEXT_WINDOW")
+            .env_remove("NUWAX_AUTO_COMPACT_TOKEN_LIMIT")
+            .env_remove("NUWAX_AUTO_COMPACT_RATIO")
+            .env_remove("NUWAX_TOOL_SEARCH")
             // The temporary provider and its credentials belong to the foreground client.
             .env_remove("NUWAX_MODEL")
             .env_remove("NUWAX_BASE_URL")

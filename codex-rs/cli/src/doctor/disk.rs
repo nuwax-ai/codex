@@ -16,7 +16,15 @@ pub(super) fn check(config: Option<&Config>, cwd: &Path) -> DoctorCheck {
     let home = config
         .map(|config| config.codex_home.as_path().to_path_buf())
         .or_else(|| find_codex_home().ok().map(Into::into))
-        .or_else(|| std::env::var_os("CODEX_HOME").map(Into::into));
+        .or_else(|| {
+            // Last-resort fallback mirrors find_codex_home's alias rules; a
+            // conflicting NUWAX_HOME/CODEX_HOME pair has already failed the
+            // startup path loudly, so treat it as unknown here.
+            codex_utils_home_dir::env_alias::resolve_env_alias("NUWAX_HOME", "CODEX_HOME")
+                .ok()
+                .flatten()
+                .map(|(path, _)| path.into())
+        });
 
     check_with_paths(home.as_deref(), cwd, available_space)
 }

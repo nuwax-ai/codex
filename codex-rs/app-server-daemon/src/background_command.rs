@@ -13,8 +13,9 @@ pub(crate) fn set_working_directory(command: &mut Command, state_dir: &Path) -> 
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => true,
         Err(err) => return Err(err.into()),
     };
-    if let Ok(value) = std::env::var("CODEX_HOME")
-        && !value.is_empty()
+    if let Some((value, _)) =
+        codex_utils_home_dir::env_alias::resolve_env_alias("NUWAX_HOME", "CODEX_HOME")
+            .map_err(std::io::Error::other)?
     {
         let home = codex_utils_home_dir::find_codex_home()?;
         // Remove parent components without discarding a valid configured symlink alias.

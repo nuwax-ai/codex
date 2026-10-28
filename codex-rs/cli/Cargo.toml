@@ -27,6 +27,7 @@ doctest = false
 workspace = true
 
 [dependencies]
+codex-utils-home-dir = { workspace = true }
 codex-utils-process = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }

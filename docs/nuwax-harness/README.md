@@ -138,7 +138,7 @@ nuwax-harness doctor --json
 | `NUWAX_REQUEST_MAX_RETRIES` | 可选非负整数，HTTP 请求重试次数，`0` 表示本层仅发一次 |
 | `NUWAX_STREAM_MAX_RETRIES` | 可选非负整数，流恢复/采样重试预算，`0` 禁用本层重试 |
 | `NUWAX_STREAM_IDLE_TIMEOUT_MS` | 可选正整数，流空闲超时，单位毫秒；不是整轮总时限 |
-| `CODEX_HOME` | 会话、配置、状态目录；不设时为 `~/.nuwax-harness`，可覆盖为外接盘或持久化卷绝对路径 |
+| `CODEX_HOME` | 会话、配置、状态目录；不设时为 `~/.nuwax-harness`，可覆盖为外接盘或持久化卷绝对路径。同义别名 `NUWAX_HOME`（同时设置且值相同视为迁移期写法；值不同则启动报错，两个变量名都会出现在错误里） |
 
 `NUWAX_BRIDGE`、输出上限和重试变量必须随完整启动组使用，孤立设置会报错。
 仅单独设置 `NUWAX_MODEL` 可以选择既有 provider 的模型，并不会自动切换端点。
@@ -183,6 +183,9 @@ export CODEX_AUTO_COMPACT_RATIO='0.8'
 
 这些 `CODEX_*` 也是 Rust 程序自身支持的通用变量，与下节 ACP 专有网关变量含义不同。
 显式 `-c model_context_window=...` 等对应配置覆盖这些环境种子。
+每个 `CODEX_*` 种子都有同义 `NUWAX_*` 别名（如 `NUWAX_MODEL_CONTEXT_WINDOW`）：
+仅设其一即生效，`NUWAX_*` 是推荐写法；两者同设且值相同视为迁移期写法，
+值不同则启动报错并点名两个变量。
 输出、文本和图片都占窗口；增大配置数字不会扩大服务端的实际能力。
 
 ## 4. 通过 ACP agent 使用：`CODEX_*`

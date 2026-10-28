@@ -11,6 +11,7 @@ use clap::ArgAction;
 use clap::Parser;
 use serde::de::Error as SerdeError;
 use std::ffi::OsStr;
+use std::ffi::OsString;
 use toml::Value;
 
 /// CLI option that captures arbitrary configuration overrides specified as
@@ -85,24 +86,51 @@ impl CliConfigOverrides {
             .collect::<Result<Vec<_>, String>>()?;
         apply_env_effort_override(
             &mut overrides,
-            std::env::var_os(MODEL_REASONING_EFFORT_ENV).as_deref(),
+            resolve_seed_alias(NUWAX_MODEL_REASONING_EFFORT_ENV, MODEL_REASONING_EFFORT_ENV)?,
         )?;
         apply_env_context_seeds(
             &mut overrides,
-            std::env::var_os(MODEL_CONTEXT_WINDOW_ENV).as_deref(),
-            std::env::var_os(AUTO_COMPACT_TOKEN_LIMIT_ENV).as_deref(),
-            std::env::var_os(AUTO_COMPACT_RATIO_ENV).as_deref(),
+            resolve_seed_alias(NUWAX_MODEL_CONTEXT_WINDOW_ENV, MODEL_CONTEXT_WINDOW_ENV)?,
+            resolve_seed_alias(
+                NUWAX_AUTO_COMPACT_TOKEN_LIMIT_ENV,
+                AUTO_COMPACT_TOKEN_LIMIT_ENV,
+            )?,
+            resolve_seed_alias(NUWAX_AUTO_COMPACT_RATIO_ENV, AUTO_COMPACT_RATIO_ENV)?,
         )?;
-        seed_env_tool_search(&mut overrides, std::env::var_os(TOOL_SEARCH_ENV).as_deref())?;
+        seed_env_tool_search(
+            &mut overrides,
+            resolve_seed_alias(NUWAX_TOOL_SEARCH_ENV, TOOL_SEARCH_ENV)?,
+        )?;
         Ok(overrides)
     }
 }
 
-/// Fork: `CODEX_MODEL_REASONING_EFFORT` seeds `model_reasoning_effort` at a
-/// precedence between config.toml and an explicit `-c` override. Values are
-/// validated against the canonical effort levels — an unknown value errors
-/// here instead of silently becoming a Custom effort that some wires drop.
+/// Fork (nuwax-codex): every user-facing CODEX_* seed also accepts a
+/// NUWAX_-prefixed alias. `NUWAX_*` wins; both set to the same value is
+/// fine; both set with differing values errors naming both variables (see
+/// `codex_utils_home_dir::env_alias`). Returns the winning value plus the
+/// variable name that provided it, so seed validation errors name the
+/// variable the user actually set.
+fn resolve_seed_alias(
+    nuwax_name: &'static str,
+    codex_name: &'static str,
+) -> Result<(Option<OsString>, &'static str), String> {
+    match codex_utils_home_dir::env_alias::resolve_env_alias(nuwax_name, codex_name)? {
+        Some((value, from_nuwax)) => Ok((
+            Some(value),
+            if from_nuwax { nuwax_name } else { codex_name },
+        )),
+        None => Ok((None, codex_name)),
+    }
+}
+
+/// Fork: `CODEX_MODEL_REASONING_EFFORT` (alias `NUWAX_MODEL_REASONING_EFFORT`)
+/// seeds `model_reasoning_effort` at a precedence between config.toml and an
+/// explicit `-c` override. Values are validated against the canonical effort
+/// levels — an unknown value errors here instead of silently becoming a
+/// Custom effort that some wires drop.
 const MODEL_REASONING_EFFORT_ENV: &str = "CODEX_MODEL_REASONING_EFFORT";
+const NUWAX_MODEL_REASONING_EFFORT_ENV: &str = "NUWAX_MODEL_REASONING_EFFORT";
 
 /// Fork: `CODEX_MODEL_CONTEXT_WINDOW` seeds `model_context_window`,
 /// `CODEX_AUTO_COMPACT_TOKEN_LIMIT` seeds `model_auto_compact_token_limit`,
@@ -113,6 +141,9 @@ const MODEL_REASONING_EFFORT_ENV: &str = "CODEX_MODEL_REASONING_EFFORT";
 const MODEL_CONTEXT_WINDOW_ENV: &str = "CODEX_MODEL_CONTEXT_WINDOW";
 const AUTO_COMPACT_TOKEN_LIMIT_ENV: &str = "CODEX_AUTO_COMPACT_TOKEN_LIMIT";
 const AUTO_COMPACT_RATIO_ENV: &str = "CODEX_AUTO_COMPACT_RATIO";
+const NUWAX_MODEL_CONTEXT_WINDOW_ENV: &str = "NUWAX_MODEL_CONTEXT_WINDOW";
+const NUWAX_AUTO_COMPACT_TOKEN_LIMIT_ENV: &str = "NUWAX_AUTO_COMPACT_TOKEN_LIMIT";
+const NUWAX_AUTO_COMPACT_RATIO_ENV: &str = "NUWAX_AUTO_COMPACT_RATIO";
 
 /// Fork: `CODEX_TOOL_SEARCH=false` seeds `tools.tool_search`, forcing MCP
 /// tools to be advertised directly instead of deferred behind `tool_search`
@@ -120,40 +151,50 @@ const AUTO_COMPACT_RATIO_ENV: &str = "CODEX_AUTO_COMPACT_RATIO";
 /// wins, config.toml loses; anything other than `true`/`false`
 /// (case-insensitive) errors here instead of silently half-applying.
 const TOOL_SEARCH_ENV: &str = "CODEX_TOOL_SEARCH";
+const NUWAX_TOOL_SEARCH_ENV: &str = "NUWAX_TOOL_SEARCH";
 const TOOL_SEARCH_CONFIG_KEY: &str = "tools.tool_search";
 
 fn apply_env_context_seeds(
     overrides: &mut Vec<(String, Value)>,
-    context_window: Option<&OsStr>,
-    token_limit: Option<&OsStr>,
-    ratio: Option<&OsStr>,
+    context_window: (Option<OsString>, &'static str),
+    token_limit: (Option<OsString>, &'static str),
+    ratio: (Option<OsString>, &'static str),
 ) -> Result<(), String> {
+    let (value, env_name) = context_window;
     seed_env_integer(
         overrides,
-        MODEL_CONTEXT_WINDOW_ENV,
+        env_name,
         "model_context_window",
-        context_window,
+        value.as_deref(),
     )?;
+    let (value, env_name) = token_limit;
     seed_env_integer(
         overrides,
-        AUTO_COMPACT_TOKEN_LIMIT_ENV,
+        env_name,
         "model_auto_compact_token_limit",
-        token_limit,
+        value.as_deref(),
     )?;
+    let (value, env_name) = ratio;
     seed_env_ratio(
         overrides,
-        AUTO_COMPACT_RATIO_ENV,
+        env_name,
         "model_auto_compact_ratio",
-        ratio,
+        value.as_deref(),
     )?;
     Ok(())
 }
 
 fn seed_env_tool_search(
     overrides: &mut Vec<(String, Value)>,
-    value: Option<&OsStr>,
+    seed: (Option<OsString>, &'static str),
 ) -> Result<(), String> {
-    let Some(raw) = env_override_text(overrides, TOOL_SEARCH_CONFIG_KEY, TOOL_SEARCH_ENV, value)?
+    let (value, env_name) = seed;
+    let Some(raw) = env_override_text(
+        overrides,
+        TOOL_SEARCH_CONFIG_KEY,
+        env_name,
+        value.as_deref(),
+    )?
     else {
         return Ok(());
     };
@@ -163,7 +204,7 @@ fn seed_env_tool_search(
         "false" => false,
         _ => {
             return Err(format!(
-                "Invalid {TOOL_SEARCH_ENV} value {raw:?}; expected true or false"
+                "Invalid {env_name} value {raw:?}; expected true or false"
             ));
         }
     };
@@ -235,13 +276,14 @@ fn seed_env_ratio(
 
 fn apply_env_effort_override(
     overrides: &mut Vec<(String, Value)>,
-    env_value: Option<&OsStr>,
+    seed: (Option<OsString>, &'static str),
 ) -> Result<(), String> {
+    let (env_value, env_name) = seed;
     let Some(text) = env_override_text(
         overrides,
         "model_reasoning_effort",
-        MODEL_REASONING_EFFORT_ENV,
-        env_value,
+        env_name,
+        env_value.as_deref(),
     )?
     else {
         return Ok(());
@@ -260,7 +302,7 @@ fn apply_env_effort_override(
     ];
     if !VALID.contains(&canonical.as_str()) {
         return Err(format!(
-            "Invalid {MODEL_REASONING_EFFORT_ENV} value {text:?}; expected one of {}",
+            "Invalid {env_name} value {text:?}; expected one of {}",
             VALID.join("/")
         ));
     }
@@ -351,6 +393,13 @@ mod tests {
         assert_eq!(tbl.get("a").unwrap().as_integer(), Some(1));
         assert_eq!(tbl.get("b").unwrap().as_integer(), Some(2));
     }
+}
+
+#[cfg(test)]
+/// Test-only constructor for the `(value, env_name)` seed pairs; production
+/// callers get them from `resolve_seed_alias`.
+fn seed_env(value: Option<&str>, name: &'static str) -> (Option<OsString>, &'static str) {
+    (value.map(OsString::from), name)
 }
 
 #[cfg(test)]

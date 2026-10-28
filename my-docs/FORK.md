@@ -236,6 +236,18 @@ cache_control 断点，rig 0.45 原语，5m TTL；远程 thread config 无该字
 识别 NpmNuwax）、`CODEX_MODEL_REASONING_EFFORT`、`CODEX_MODEL_CONTEXT_WINDOW`、
 `CODEX_AUTO_COMPACT_TOKEN_LIMIT`、`CODEX_AUTO_COMPACT_RATIO`、
 `CODEX_TOOL_SEARCH=false|true`（2026-10-26 起：种 `[tools] tool_search`，见 §7.1）。
+**NUWAX_ 前缀别名**（2026-10-28 起）：用户可设的 `CODEX_*` 变量均接受同义
+`NUWAX_*`——`NUWAX_HOME`、`NUWAX_MODEL_REASONING_EFFORT`、
+`NUWAX_MODEL_CONTEXT_WINDOW`、`NUWAX_AUTO_COMPACT_TOKEN_LIMIT`、
+`NUWAX_AUTO_COMPACT_RATIO`、`NUWAX_TOOL_SEARCH`。解析规则统一在
+`utils/home-dir/src/env_alias.rs`（NUWAX 优先；同值幂等；异值 fail-fast 报双
+变量名——脑裂配置不得静默选边）；值为 OsString 直通，Unicode 校验留在各消费点
+既有边界（种子层显式 `-c` 优先检查仍先于 env 校验，非 Unicode 值仅在真正被
+使用时报错；home 解析沿用忽略非 Unicode 值的旧行为）；`find_codex_home`、全部 CODEX_HOME 散读点
+（config symlink/doctor disk/daemon background_command/Windows provisioning）、
+种子层（utils/cli）与 daemon 子进程剥离名单（NUWAX 种子随 CODEX 种子一并剥）
+均已接线；launcher 注入的 `CODEX_INSTALL_SOURCE`、包管理器 shim 的
+`CODEX_MANAGED_BY_*` 与程序间传信变量不加别名（非用户配置面）。
 
 **provider 级输出预算**（2026-10-01 起）：`model_providers.*.max_output_tokens`
 （正整数）→ 桥线输出 cap（Anthropic `max_tokens` 覆盖默认 16384；Chat 可选，
@@ -368,7 +380,7 @@ Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§
 | 搜索来源身份、恢复上限、混合轮配对已入库；厂商能力仍分别受限 | `hosted_replay.rs`、`hosted_replay_budget.rs`、`model_output_projection.rs` | 离线 wire 与真实厂商证据分开，不能把 GLM 搜索支持扩大至 MiMo/Step |
 | 病态网关"HTTP 200 + 非 SSE JSON 错误体"两线均 EOF 丢体 | `sse.rs` EOF 路径；三家目标厂商 live 未见此行为 | 已知边界（可选加固：EOF 时附 body 摘要） |
 | raw 工具定义转换失败或整数超出精确可表示范围 | `request_tools.rs::request_tools` | 已改为 `InvalidRequest`，不再 panic/清空工具表/近似化整数；不是仍待修的 nit |
-| TUI 标题与 fallback 指令身份显示 "OpenAI Codex"、指令声明"OpenAI 主导"（厂商模型自述会沿用该身份幻觉成 GPT） | `tui/src/history_cell/session.rs`、`models-manager/prompt.md`、`protocol/src/prompts/base_instructions/default.md` | 已修（2026-10-28）：TUI 品牌改 "Nuwax Harness"；fallback 模板身份行渲染实际 slug（"You are the {slug} model ... in nuwax-harness"，`{{model}}` 占位符 + `local_model_messages(slug)`），厂商模型自述真实身份；protocol 静态默认同步中性化（无占位符）；快照归一化改 `is_fallback_model_instructions` 认任意渲染形态；目录内 gpt-* 模型保持上游指令原文 |
+| TUI 标题与 fallback 指令身份显示 "OpenAI Codex"、指令声明"OpenAI 主导"（厂商模型自述会沿用该身份幻觉成 GPT） | `tui/src/history_cell/session.rs`、`models-manager/prompt.md`、`protocol/src/prompts/base_instructions/default.md` | 已修（2026-10-28，两轮清查）：fallback 模板身份行渲染实际 slug（"You are the {slug} model ... in nuwax-harness"，`{{model}}` 占位符 + `local_model_messages(slug)`）；protocol 静态默认同步中性化；快照归一化改 `is_fallback_model_instructions`（拒绝花括号，防未替换占位符自匹配）；目录内 gpt-\* 保持上游指令。第二轮遗漏清查补齐：TUI 品牌/输入占位符（"Ask nuwax-harness to do anything"）、**exec 回复标签**、CLI `bin_name`/usage/补全名与全部子命令帮助文案（含 `mcp add` 帮助里 `~/.codex`→`~/.nuwax-harness` 路径纠错）、**模型可见字符串**（`USER_MESSAGE_BEGIN` 权威常量"## My request for nuwax-harness:"、task_mentions 标题/引用块、dynamic_tools 工具描述、memories 整合提示词自指）、错误/警告消息中的自指与可操作命令引用（`codex doctor/unarchive/logout/fork/app`→`nuwax-harness ...`）。有意保留：目录 gpt-\* 指令、Codex Cloud/Desktop/Apps 产品专名、realtime/guardian 上游专用提示词（vendor 不走或涉安全语义，登记待评估）、TUI daemon 版本通知（fork 内嵌模式不可达）、memories 中 `api.openai.org` 脱敏示例（数据必须保留）、约 200 处测试夹具内占位符字符串（不用户可见，改动徒增快照翻新） |
 
 阶段 D（搜索结果持久化/pause_turn/混合轮）已立项：Spec 见
 `phase-d-spec.md`，Plan 见 `phase-d-plan.md`（2026-10-01）。

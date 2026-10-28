@@ -4,7 +4,11 @@ use pretty_assertions::assert_eq;
 #[test]
 fn env_effort_seeds_when_not_explicitly_overridden() {
     let mut overrides = vec![("model".to_string(), Value::String("x".into()))];
-    apply_env_effort_override(&mut overrides, Some(OsStr::new(" NONE "))).expect("valid");
+    apply_env_effort_override(
+        &mut overrides,
+        seed_env(Some(" NONE "), MODEL_REASONING_EFFORT_ENV),
+    )
+    .expect("valid");
     assert_eq!(
         overrides,
         vec![
@@ -25,7 +29,11 @@ fn env_effort_yields_to_explicit_override() {
     )];
     for raw in ["none", "invalid"] {
         let mut overrides = expected.clone();
-        apply_env_effort_override(&mut overrides, Some(OsStr::new(raw))).expect("explicit wins");
+        apply_env_effort_override(
+            &mut overrides,
+            seed_env(Some(raw), MODEL_REASONING_EFFORT_ENV),
+        )
+        .expect("explicit wins");
         assert_eq!(overrides, expected);
     }
 }
@@ -33,8 +41,11 @@ fn env_effort_yields_to_explicit_override() {
 #[test]
 fn env_effort_rejects_unknown_values_with_the_valid_list() {
     let mut overrides = vec![];
-    let error = apply_env_effort_override(&mut overrides, Some(OsStr::new("hight")))
-        .expect_err("typo must fail fast");
+    let error = apply_env_effort_override(
+        &mut overrides,
+        seed_env(Some("hight"), MODEL_REASONING_EFFORT_ENV),
+    )
+    .expect_err("typo must fail fast");
     assert!(
         error.contains("hight") && error.contains("none/minimal"),
         "{error}"
@@ -45,8 +56,13 @@ fn env_effort_rejects_unknown_values_with_the_valid_list() {
 #[test]
 fn env_effort_ignores_unset_or_blank() {
     let mut overrides = vec![];
-    apply_env_effort_override(&mut overrides, /*env_value*/ None).expect("unset is a no-op");
-    apply_env_effort_override(&mut overrides, Some(OsStr::new("   "))).expect("blank is a no-op");
+    apply_env_effort_override(&mut overrides, seed_env(None, MODEL_REASONING_EFFORT_ENV))
+        .expect("unset is a no-op");
+    apply_env_effort_override(
+        &mut overrides,
+        seed_env(Some("   "), MODEL_REASONING_EFFORT_ENV),
+    )
+    .expect("blank is a no-op");
     assert!(overrides.is_empty());
 }
 

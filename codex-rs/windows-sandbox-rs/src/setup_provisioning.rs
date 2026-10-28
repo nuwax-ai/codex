@@ -482,7 +482,11 @@ pub fn main() -> Result<()> {
     let ret = real_main(&mut setup_mode);
     if let Err(e) = &ret {
         // Best-effort: log unexpected top-level errors.
-        if let Ok(codex_home) = std::env::var("CODEX_HOME") {
+        if let Some((codex_home, _)) =
+            codex_utils_home_dir::env_alias::resolve_env_alias("NUWAX_HOME", "CODEX_HOME")
+                .ok()
+                .flatten()
+        {
             let sbx_dir = sandbox_dir(Path::new(&codex_home));
             let _ = std::fs::create_dir_all(&sbx_dir);
             // An unparsed payload must not enable writes to an existing log.
