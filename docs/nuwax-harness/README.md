@@ -1,9 +1,10 @@
-# Nuwax Harness：环境变量启动指南
+# Nuwax Harness：配置与启动指南
 
-本目录面向日常使用：配置自定义模型，然后启动命令行、App Server 或 ACP agent。
-兼容 OpenAI Chat Completions、OpenAI Responses 和 Anthropic Messages；默认通过 rig。
-原生 Responses 是可选通路，适合需要上游传输的 GPT 或兼容中转站。
-模型仍需具备相应的工具调用或视觉能力，选择协议不会补足模型自身缺失的能力。
+本目录面向日常使用：配置自定义模型（临时环境变量或持久 config.toml），然后启动
+命令行、App Server 或 ACP agent。兼容 OpenAI Chat Completions、OpenAI Responses
+和 Anthropic Messages；默认通过 rig。原生 Responses 是可选通路，适合需要上游传输
+的 GPT 或兼容中转站。模型仍需具备相应的工具调用或视觉能力，选择协议不会补足
+模型自身缺失的能力。
 
 ## 1. 安装与名称
 
@@ -40,8 +41,9 @@ ACP 的 `CODEX_PATH` 使用 `command -v nuwax-harness` 返回的绝对路径。
 Rust crate、源码构建目标和 `codex-code-mode-host` 等辅助程序保持内部名称；
 发布包会处理主程序改名，请完整安装同一版本，保留其配套辅助程序。
 
-默认数据目录是 **`~/.nuwax-harness`**，保存配置、会话与本地状态；显式 `CODEX_HOME`
-优先；显式设置的路径须预先 `mkdir -p` 创建，可将它设到外接盘。
+默认数据目录是 **`~/.nuwax-harness`**，保存配置、会话与本地状态；显式
+`CODEX_HOME`（同义别名 `NUWAX_HOME`）优先；显式设置的路径须预先 `mkdir -p`
+创建，可将它设到外接盘。两者同时设置且值不同会在启动时报错并点名两个变量。
 此版本不读取、迁移或删除旧用户级 `.codex-nuwax`、`.nuwax-codex` 或 `.codex` 默认目录。
 项目中的 `.codex/` 属于项目级配置/资源入口，仍按既有规则加载，与上述用户级默认目录改名分开。
 npm 下载缓存是 **`~/.nuwax-harness-cache`**，用于保存
@@ -149,7 +151,75 @@ nuwax-harness doctor --json
 配置文件。显式选择其他 provider 时，整组 `NUWAX_*` 不参与该次运行。
 临时 provider ID `nuwax_env` 是保留名称，不要在配置文件里手工定义同名 provider。
 
-## 3. 上下文、输出与压缩
+## 3. 持久配置：config.toml（日常推荐）
+
+环境变量组适合一次性对比；日常长期使用建议把 provider 写进
+`~/.nuwax-harness/config.toml`（目录可用 `CODEX_HOME`/`NUWAX_HOME` 改）。
+**API Key 不写进配置文件**，用 `env_key` 引用环境变量名。
+
+以 GLM Coding Plan（Anthropic 线，本项目实网验证最充分的线）为例：
+
+```toml
+# ~/.nuwax-harness/config.toml
+model = "GLM-5.3-Flash"
+model_provider = "glm"
+
+# 按平台规格填真实窗口；自定义模型的显式覆盖全额生效（见 §4）
+model_context_window = 1000000
+
+[model_providers.glm]
+name = "GLM Coding Plan (Anthropic)"
+base_url = "https://open.bigmodel.cn/api/anthropic"
+env_key = "GLM_API_KEY"          # Key 从该环境变量读取，不落盘
+wire_api = "anthropic"           # responses | chat | anthropic
+anthropic_prompt_caching = true  # 可选：Anthropic 线 prompt 缓存（opt-in，5 分钟 TTL）
+# max_output_tokens = 8192       # 可选：输出上限；Anthropic 线不设时默认 16384
+```
+
+Key 放进受保护环境文件（沿用 §2 的 agent.env 模式，`chmod 600`）：
+
+```bash
+echo "export GLM_API_KEY='<你的key>'" >> "$HOME/.config/nuwax-harness/agent.env"
+```
+
+想对比多条协议线，用 profile 追加 provider：
+
+```toml
+[profiles.glm-chat]
+model = "GLM-5.3-Flash"
+model_provider = "glm-chat"
+
+[model_providers.glm-chat]
+name = "GLM Coding Plan (OpenAI Chat)"
+base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
+env_key = "GLM_API_KEY"
+wire_api = "chat"
+```
+
+启动：`nuwax-harness --profile glm-chat`，或临时 `nuwax-harness -c model_provider=glm-chat`。
+三条线都经 rig 桥（Responses 线为同协议透传）。
+
+provider 常用字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `base_url` | 平台**协议基址**，不要自行拼接 `/chat/completions` 等路径 |
+| `env_key` | 存 Key 的环境变量名；Key 永不落盘 |
+| `wire_api` | `responses` / `chat` / `anthropic`（后两者为 fork 扩展） |
+| `anthropic_prompt_caching` | 可选；Anthropic 线 `cache_control` 断点，默认关 |
+| `max_output_tokens` | 可选；每次生成的输出上限 |
+| `request_max_retries` / `stream_max_retries` / `stream_idle_timeout_ms` | 可选；重试与流空闲超时 |
+
+其他常用顶层键：`model_auto_compact_ratio` / `model_auto_compact_token_limit`（见 §4）、
+`[tools] tool_search = false`（MCP 工具全量直出，见 FORK.md §7.1）。
+
+要点：自定义 provider 不弹官方登录界面，Key 在环境变量里即可直接进 TUI/exec；
+优先级为显式 CLI（`-m`/`-c`）> 环境种子（`NUWAX_*`/`CODEX_*`）> config.toml；
+`nuwax_env` 是保留 provider ID，不要在配置文件里手工定义。验证配置：
+`nuwax-harness doctor --json`，看 `config.model_routing` 的 provider/wire/bridge/
+effective context window 是否符合预期。
+
+## 4. 上下文、输出与压缩
 
 自定义模型的真实上下文窗口不能靠名称自动可靠推断，应按平台规格设置。
 以下数字只展示写法，不能直接当作所有模型的能力：
@@ -188,7 +258,7 @@ export CODEX_AUTO_COMPACT_RATIO='0.8'
 值不同则启动报错并点名两个变量。
 输出、文本和图片都占窗口；增大配置数字不会扩大服务端的实际能力。
 
-## 4. 通过 ACP agent 使用：`CODEX_*`
+## 5. 通过 ACP agent 使用：`CODEX_*`
 
 你目前的使用路径是 `fork-codex-acp-ts` 的 **`dev` 分支**启动本 fork 的 App Server。
 以下网关变量应放入 **ACP agent 进程**的环境，不是仅放在其外层交互终端。
@@ -269,7 +339,7 @@ ACP 三种常用配置：
 若采用 ACP 透传 `NUWAX_*` 的另一种部署方式，须保持 `CODEX_BASE_URL`、`MODEL_PROVIDER`
 及宿主显式 provider/auth 配置不与之冲突；日常使用优先选上面的 ACP `CODEX_*` 入口。
 
-## 5. Linux / 容器与 Windows
+## 6. Linux / 容器与 Windows
 
 Linux 服务和容器同样要求变量进入实际 agent 进程。为独立服务实例设置各自的
 `CODEX_HOME`，放在可写的持久化目录；使用不同凭据的实例分别启动，不复用共享 daemon
@@ -305,7 +375,7 @@ $env:NUWAX_MODEL = 'your-model-id'
 Windows 的发布主程序名是 `nuwax-harness.exe`；ACP 的 `CODEX_PATH` 相应填该绝对路径。
 已接受的 Windows 沙箱/终端平台限制不等于模型接入未实现，验收边界见项目 ROADMAP。
 
-## 6. 图片与排查
+## 7. 图片与排查
 
 本地图片通过结构化图片块发送：Chat 使用 `image_url`，Responses 使用 `input_image`，
 Anthropic 使用 `image` 的 Base64 source。无法提供服务端可访问的 URL 时，内联数据是正常
@@ -328,3 +398,30 @@ nuwax-harness；目录内官方模型（gpt-\*）保持上游身份声明。
 不要用 `set -x`、`env` 全量转储或提交受保护环境文件来排查凭据。
 `doctor` 验证配置与路由，不代表实际端点已经完成模型调用；用短文本和真实工具各验一轮。
 进一步的实现状态见 [ROADMAP](../../my-docs/ROADMAP.md)。
+
+## 8. 附录：环境变量速查
+
+**NUWAX_* 直接启动组**（§2；三件套 `NUWAX_BASE_URL`+`NUWAX_WIRE_API`+
+`NUWAX_API_KEY` 成组激活临时 provider `nuwax_env`；其余须随组使用）：
+`NUWAX_MODEL`、`NUWAX_BRIDGE`、`NUWAX_MAX_OUTPUT_TOKENS`、
+`NUWAX_REQUEST_MAX_RETRIES`、`NUWAX_STREAM_MAX_RETRIES`、
+`NUWAX_STREAM_IDLE_TIMEOUT_MS`。
+
+**NUWAX_\* 别名**（每个都有等价 `CODEX_*` 拼写并永久兼容：仅设其一即生效、
+同值幂等、异值启动报错点名两个变量）：
+
+- 引擎侧（Rust 二进制读取）：`NUWAX_HOME`、`NUWAX_MODEL_CONTEXT_WINDOW`、
+  `NUWAX_AUTO_COMPACT_TOKEN_LIMIT`、`NUWAX_AUTO_COMPACT_RATIO`、
+  `NUWAX_MODEL_REASONING_EFFORT`、`NUWAX_TOOL_SEARCH`。
+- ACP 适配层（fork-codex-acp-ts 读取）：`NUWAX_PATH`、`NUWAX_BASE_URL`、
+  `NUWAX_API_KEY`、`NUWAX_API_PROTOCOL`、`NUWAX_WIRE_API`、`NUWAX_BRIDGE`、
+  `NUWAX_MODEL`、`NUWAX_MODEL_CONTEXT_WINDOW`、`NUWAX_PROVIDER_ID`、
+  `NUWAX_PROVIDER_NAME`、`NUWAX_CONFIG`、`NUWAX_LOG_DIR`。注意
+  `NUWAX_BASE_URL/WIRE_API/API_KEY/BRIDGE` 在两层语义相同（配置活动厂商），
+  ACP 消费后会从 app-server 子进程剥离，不会触发引擎侧的孤儿检测。
+
+**不设别名**（非 codex 命名空间或行业标准名）：`OPENAI_API_KEY`、
+`MODEL_PROVIDER`、`INITIAL_AGENT_MODE`、`NO_BROWSER`、`APP_SERVER_LOGS`。
+
+launcher/shim 管道变量（`CODEX_INSTALL_SOURCE`、`CODEX_MANAGED_BY_*`）由
+程序注入，不是用户配置面，同样不设别名。
