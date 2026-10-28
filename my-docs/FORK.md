@@ -202,7 +202,13 @@ turn 级超窗处理才会触发（官方代码里这两个机制只认该分类
   抬高 max（大窗口厂商如 GLM-5.3-Flash 1M 可按真实窗口使用，压缩阈值随真实
   窗口派生）。配大了自愈：桥线厂商超窗 400 映射 `ContextWindowExceeded` →
   删旧压缩重试；非正数覆盖忽略并告警。判据 `used_fallback_model_metadata`
-  （models-manager `model_info.rs::with_config_overrides` 单点）。
+  （models-manager `model_info.rs::with_config_overrides` 单点）。同轮补齐
+  非正数输入的两层拒绝（复查发现）：`model_context_window` 与
+  `model_auto_compact_token_limit` 为 0/负时 config 加载 fail-fast
+  （TOML/-c 路径，此前仅 env 入有校验；0/负限额会每轮触发压缩——含
+  BodyAfterPrefix 作用域直读原始 config 值的路径），models-manager 层再
+  兜底丢弃（app-server 直构 ModelsManagerConfig 的路径），丢弃后 ratio
+  仍可派生。
 - 环境变量（优先级：显式 `-c` > env > config.toml；非法值带变量名报错）：
   `CODEX_MODEL_CONTEXT_WINDOW` / `CODEX_AUTO_COMPACT_TOKEN_LIMIT` /
   `CODEX_AUTO_COMPACT_RATIO`。同类先行：`CODEX_MODEL_REASONING_EFFORT`。

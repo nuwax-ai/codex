@@ -46,7 +46,22 @@ pub fn with_config_overrides(mut model: ModelInfo, config: &ModelsManagerConfig)
             );
         }
     }
-    if let Some(auto_compact_token_limit) = config.model_auto_compact_token_limit {
+    // Fork (nuwax-codex): a non-positive absolute limit would force compaction
+    // every turn; ignore it with a warning (config load already rejects these
+    // for the TOML/-c path, but ModelsManagerConfig can be constructed
+    // directly by app-server paths). With the invalid value dropped, a
+    // configured ratio still derives the limit.
+    let absolute_compact_limit = match config.model_auto_compact_token_limit {
+        Some(limit) if limit <= 0 => {
+            tracing::warn!(
+                limit,
+                "model_auto_compact_token_limit must be a positive token count; ignoring it"
+            );
+            None
+        }
+        other => other,
+    };
+    if let Some(auto_compact_token_limit) = absolute_compact_limit {
         model.auto_compact_token_limit = Some(auto_compact_token_limit);
     } else if let Some(ratio) = config.model_auto_compact_ratio {
         // Fork (nuwax-codex): ratio-based threshold derives from the

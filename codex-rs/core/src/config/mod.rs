@@ -4524,6 +4524,28 @@ impl Config {
         )
         .map_err(std::io::Error::from)?;
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
+        // Fork (nuwax-codex): fail fast on non-positive window/compact seeds.
+        // A zero-or-negative `model_auto_compact_token_limit` would force
+        // compaction every turn (including the raw BodyAfterPrefix read in
+        // `session/context_window.rs`), and a non-positive context window
+        // breaks token budgeting. Env seeding already rejects these values;
+        // the TOML / `-c` path previously passed them through.
+        if let Some(window) = cfg.model_context_window
+            && window <= 0
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "model_context_window must be a positive token count",
+            ));
+        }
+        if let Some(limit) = cfg.model_auto_compact_token_limit
+            && limit <= 0
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "model_auto_compact_token_limit must be a positive token count",
+            ));
+        }
         let mut config = Self {
             plugins: cfg.plugins,
             prefer_mxc,

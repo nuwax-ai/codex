@@ -281,7 +281,7 @@ fn fallback_model_context_window_override_applies_in_full() {
 }
 
 #[test]
-fn fallback_model_context_window_override_clamp_still_applies_below_placeholder() {
+fn fallback_model_context_window_override_below_placeholder_applies_in_full() {
     // A below-placeholder override also applies in full — the placeholder was
     // never a real bound for this model.
     let model = model_info_from_slug("unknown-model");
@@ -308,6 +308,39 @@ fn non_positive_context_window_override_is_ignored() {
         let updated = with_config_overrides(model.clone(), &config);
         assert_eq!(updated.context_window, Some(273_000), "override {invalid}");
     }
+}
+
+// Fork (nuwax-codex): a non-positive absolute limit would compact every turn
+// (`min(0, 90% window)` in `ModelInfo::auto_compact_token_limit`), the exact
+// hazard the ratio guard exists for. Invalid values are dropped here so a
+// configured ratio still derives the limit.
+#[test]
+fn non_positive_auto_compact_token_limit_is_ignored() {
+    let mut model = model_info_from_slug("unknown-model");
+    model.context_window = Some(100_000);
+
+    // Dropped, and the ratio still derives the limit from the window.
+    for invalid in [0, -5] {
+        let config = ModelsManagerConfig {
+            model_auto_compact_token_limit: Some(invalid),
+            model_auto_compact_ratio: Some(0.5),
+            ..Default::default()
+        };
+        let updated = with_config_overrides(model.clone(), &config);
+        assert_eq!(
+            updated.auto_compact_token_limit,
+            Some(50_000),
+            "limit {invalid}"
+        );
+    }
+
+    // Dropped without a ratio, the model's own limit (None here) is kept.
+    let config = ModelsManagerConfig {
+        model_auto_compact_token_limit: Some(0),
+        ..Default::default()
+    };
+    let updated = with_config_overrides(model, &config);
+    assert_eq!(updated.auto_compact_token_limit, None);
 }
 
 #[test]

@@ -867,6 +867,38 @@ async fn load_config_rejects_non_positive_auto_compact_fallback_buffer() -> std:
     Ok(())
 }
 
+// Fork (nuwax-codex): a zero-or-negative auto-compact limit forces compaction
+// every turn and a non-positive context window breaks token budgeting; both
+// previously passed through the TOML path unvalidated (env seeding rejected
+// them, and models-manager now also drops them defensively).
+#[tokio::test]
+async fn load_config_rejects_non_positive_model_context_seeds() -> std::io::Result<()> {
+    for (key, value) in [
+        ("model_context_window", -1),
+        ("model_context_window", 0),
+        ("model_auto_compact_token_limit", -1),
+        ("model_auto_compact_token_limit", 0),
+    ] {
+        let codex_home = tempdir()?;
+        let config_toml =
+            toml::from_str(&format!("{key} = {value}\n")).expect("TOML should deserialize");
+        let error = Config::load_from_base_config_with_overrides(
+            config_toml,
+            ConfigOverrides::default(),
+            codex_home.abs(),
+        )
+        .await
+        .expect_err("non-positive seed should be rejected");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(
+            error.to_string(),
+            format!("{key} must be a positive token count")
+        );
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn load_config_rejects_missing_auto_compact_fallback_buffer() -> std::io::Result<()> {
     let codex_home = tempdir()?;
