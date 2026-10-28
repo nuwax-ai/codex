@@ -5593,6 +5593,33 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   `.snap.new` 临时文件全清。教训:INSTA_FORCE_UPDATE 必须配最窄过滤器,或
   事后按 diff 甄别。
 
+## 6.66 用户可设 CODEX_* 环境变量的 NUWAX_ 前缀别名(`dd8562f96`)
+
+- **起因**:用户提出 fork 自身环境面统一 NUWAX 前缀。全仓盘点:ACP 网关的
+  CODEX_* 变量全在 fork-codex-acp-ts 消费(Rust 零命中,另案);Rust 侧用户
+  可设的 CODEX_ 前缀变量为 CODEX_HOME 与 5 个种子(effort/context-window/
+  compact-limit/ratio/tool-search)。launcher/shim 管道变量
+  (CODEX_INSTALL_SOURCE、CODEX_MANAGED_BY_*)与程序间传信变量不加别名。
+- **实现**:通用解析器 `utils/home-dir/src/env_alias.rs`——NUWAX 优先、CODEX
+  永久兼容、双设同值幂等、**双设异值 fail-fast 报双变量名**(脑裂配置不得
+  静默选边)。接线:`find_codex_home`、全部 CODEX_HOME 散读点(config
+  symlink/doctor disk/daemon background_command/Windows provisioning)、种子
+  层(utils/cli `resolve_seed_alias`,错误信息跟随实际生效变量名)、daemon
+  子进程剥离名单(NUWAX 种子随 CODEX 种子一并剥)。config/cli/windows-
+  sandbox 补 home-dir 依赖。
+- **过程回归与修复(测试抓住)**:第一版在别名层用 var() 读值,非 Unicode 值
+  被静默当未设置(丢掉种子层原有 fail-fast);改为 var_os+提前 Unicode 报错
+  后又引入**优先级回归**——env 校验先于"显式 -c 已覆盖"检查,`-c 已设 +
+  env 恰好非 Unicode` 的无关场景变硬错误,被既有非 Unicode 子进程测试第二
+  迭代抓出(手动单迭代复现不现,python 双迭代复现定位)。终版:解析器
+  OsString 直通,Unicode 校验留在各消费点既有边界(-c 优先序保持;home
+  沿用忽略非 Unicode 旧行为)。
+- **验证**:utils-cli+home-dir+config 479/479、daemon 88/88、python 双迭代
+  复现 PASS×2、clippy 净(cli 的 cloud_config.rs unused-variable 为上游既有、
+  不在 CI 四包门内,同 codex-history 先例登记)。文档:README §2/§3 别名
+  说明、FORK.md §7。ACP 侧(fork-codex-acp-ts)12 个网关变量的 NUWAX 别名
+  为另案待做(方案已给用户:同规则、仓库在本地)。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-23 发布 R2 当前状态，以下旧指针为历史记录：** 权威副本在 zhitai，
