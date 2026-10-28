@@ -5494,6 +5494,45 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
 - CI run 40341849982 红为并行 codex 的 tool_search 半成品(thread-manager-sample 漏
   `tool_search_enabled` 字段),其正在迭代修复,本轮不介入。
 
+## 6.63 本机源码 dogfood 环境、fallback 窗口钳制放开与非正数种子拒绝(2026-10-28)
+
+- **本机源码 dogfood 环境(用户 Mac)**:`cargo install --path cli --bin codex
+  --root ~/.nuwax-cargo --locked --force`(V8 env 先行),软链
+  `~/.cargo/bin/nuwax-harness`;官方 homebrew codex(/opt/homebrew)不受影响;
+  源码构建版本号恒 `0.0.0`(区分 npm 版)。`~/.config/nuwax-harness/agent.env`
+  (600)载 `CODEX_INSTALL_SOURCE=npm_nuwax`(源码二进制否则尝试自启共享 daemon
+  必失败;亦与 npm 制品行为一致)+`GLM_API_KEY`,zshrc source。
+  `~/.nuwax-harness/config.toml` 默认 GLM-5.3-Flash/Anthropic 线
+  (anthropic_prompt_caching=true),profiles glm-chat/glm-responses 对比另两线。
+  首次 doctor 25 项 24 绿(唯一 warning 为 chatgpt CDN 不可达,本机无代理,无关);
+  exec 两轮真实对话+resume 续接正常(GLM 逐字引用首轮原话);release 构建
+  `cached_input_tokens=0` 与 §6.62 登记的 release 异常一致,非新回归。
+  后续重装用 `CARGO_TARGET_DIR=~/.nuwax-cargo-target` 增量。
+- **fallback 窗口钳制放开(`24b041845`)**:用户显式配置
+  `model_context_window=1000000` 被未知模型 fallback 的合成
+  `max_context_window=272000` 钳制(doctor 实证:override=1M/effective=272k,
+  ≤272k 生效、>272k 压回)。修复:`with_config_overrides` 以
+  `used_fallback_model_metadata` 为判据——fallback 元数据(占位上限非厂商知识)
+  的显式覆盖全额生效并同步抬高 max;目录内模型钳制保留(目录权威)。配大的
+  自愈路径:桥线超窗 400→`ContextWindowExceeded`→删旧压缩重试。doctor 复验:
+  effective 1,000,000/full usable 950,000/压缩阈值 900,000。models-manager
+  64/64(新增 fallback 全额生效+ratio 派生 900k、低于占位也全额、目录钳制保留
+  三例,原两例钳制用例显式改目录模型语义)。
+- **复查与非正数种子拒绝(`f054548ea`)**:仔细复查 `24b041845`——原改动经查
+  无误(全仓唯一钳制点;`construct_model_info` 每次从原始元数据出发无缓存
+  棘轮;`resolved_context_window=context.or(max)` 语义一致;fallback 构造器无
+  旁路;CI 四包 clippy 门不含 history/models-manager,本地所见 codex-history
+  variant 尺寸 lint 为上游合并既有、不在门内)。发现真相邻缺陷:
+  `model_auto_compact_token_limit=0/负` 从 TOML/-c 无校验直达→每轮压缩
+  (BodyAfterPrefix 作用域直读原始 config 值绕过模型层守卫;
+  `auto_compact_token_limit()=min(限额,90%窗口)`),`model_context_window`
+  非正数同病。两层拒绝:config 加载 fail-fast(与 env 入对齐,错误消息
+  "`<键>` must be a positive token count")+ models-manager 兜底丢弃
+  (app-server 直构路径;丢弃后 ratio 仍派生)。测试:models-manager 65/65
+  (+1 非正限额忽略/ratio 回退/无 ratio 保持 None)、core 定向
+  `load_config_rejects_non_positive_model_context_seeds` 1/1(仿
+  token_budget 既有模式);fmt/clippy(--no-deps)净;本机二进制增量重装复验。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-23 发布 R2 当前状态，以下旧指针为历史记录：** 权威副本在 zhitai，
