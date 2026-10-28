@@ -118,7 +118,12 @@ async fn unknown_model_sends_builtin_instructions() -> Result<()> {
     test.submit_turn("use fallback model metadata").await?;
 
     let request = response.single_request();
-    assert_eq!(request.instructions_text(), BASE_INSTRUCTIONS);
+    // Fork (nuwax-codex): the fallback template renders the model's own slug
+    // in the identity line.
+    assert_eq!(
+        request.instructions_text(),
+        BASE_INSTRUCTIONS.replace("{{model}}", "future-custom-model")
+    );
     let body = request.body_json();
     let tools = body["tools"]
         .as_array()

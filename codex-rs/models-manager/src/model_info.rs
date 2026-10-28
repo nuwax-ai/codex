@@ -185,7 +185,7 @@ pub fn model_info_from_slug(slug: &str) -> ModelInfo {
         available_access_programs: None,
         availability_nux: None,
         upgrade: None,
-        model_messages: Some(local_model_messages()),
+        model_messages: Some(local_model_messages(slug)),
         include_skills_usage_instructions: false,
         include_plugin_usage_instructions: false,
         include_apps_usage_instructions: false,
@@ -220,11 +220,39 @@ pub fn model_info_from_slug(slug: &str) -> ModelInfo {
     }
 }
 
-fn local_model_messages() -> ModelMessages {
+/// Fork (nuwax-codex): unknown models render the bundled template with their
+/// own slug in the identity line, so the model reports what it actually is
+/// (e.g. "GLM-5.3-Flash running in nuwax-harness") instead of inheriting the
+/// upstream Codex/OpenAI identity, which third-party vendor models were never
+/// told apart from and would happily claim as their own.
+fn local_model_messages(slug: &str) -> ModelMessages {
     ModelMessages {
-        instructions_template: Some(BASE_INSTRUCTIONS.to_string()),
+        instructions_template: Some(fallback_instructions_template(slug)),
         ..Default::default()
     }
+}
+
+/// Renders [`BASE_INSTRUCTIONS`] with the `{{model}}` identity placeholder
+/// replaced by the model's slug. The placeholder appears exactly once, in the
+/// first line.
+fn fallback_instructions_template(slug: &str) -> String {
+    BASE_INSTRUCTIONS.replace("{{model}}", slug)
+}
+
+/// True when `text` is [`BASE_INSTRUCTIONS`] rendered for some slug. Used by
+/// test-snapshot normalization to recognize fallback instructions without
+/// knowing the slug. The placeholder occupies the first line, so the rendered
+/// slug must be non-empty and newline-free; braces are rejected so the
+/// unreplaced `{{model}}` literal itself does not count as a slug.
+pub fn is_fallback_model_instructions(text: &str) -> bool {
+    let Some((prefix, suffix)) = BASE_INSTRUCTIONS.split_once("{{model}}") else {
+        return false;
+    };
+    if !text.starts_with(prefix) || !text.ends_with(suffix) {
+        return false;
+    }
+    let slug = &text[prefix.len()..text.len() - suffix.len()];
+    !slug.is_empty() && !slug.contains(['{', '}', '\n'])
 }
 
 #[cfg(test)]

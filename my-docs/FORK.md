@@ -368,6 +368,7 @@ Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§
 | 搜索来源身份、恢复上限、混合轮配对已入库；厂商能力仍分别受限 | `hosted_replay.rs`、`hosted_replay_budget.rs`、`model_output_projection.rs` | 离线 wire 与真实厂商证据分开，不能把 GLM 搜索支持扩大至 MiMo/Step |
 | 病态网关"HTTP 200 + 非 SSE JSON 错误体"两线均 EOF 丢体 | `sse.rs` EOF 路径；三家目标厂商 live 未见此行为 | 已知边界（可选加固：EOF 时附 body 摘要） |
 | raw 工具定义转换失败或整数超出精确可表示范围 | `request_tools.rs::request_tools` | 已改为 `InvalidRequest`，不再 panic/清空工具表/近似化整数；不是仍待修的 nit |
+| TUI 标题与 fallback 指令身份显示 "OpenAI Codex"、指令声明"OpenAI 主导"（厂商模型自述会沿用该身份幻觉成 GPT） | `tui/src/history_cell/session.rs`、`models-manager/prompt.md`、`protocol/src/prompts/base_instructions/default.md` | 已修（2026-10-28）：TUI 品牌改 "Nuwax Harness"；fallback 模板身份行渲染实际 slug（"You are the {slug} model ... in nuwax-harness"，`{{model}}` 占位符 + `local_model_messages(slug)`），厂商模型自述真实身份；protocol 静态默认同步中性化（无占位符）；快照归一化改 `is_fallback_model_instructions` 认任意渲染形态；目录内 gpt-* 模型保持上游指令原文 |
 
 阶段 D（搜索结果持久化/pause_turn/混合轮）已立项：Spec 见
 `phase-d-spec.md`，Plan 见 `phase-d-plan.md`（2026-10-01）。

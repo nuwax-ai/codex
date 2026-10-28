@@ -469,7 +469,11 @@ fn base_instructions_use_the_same_mode_in_settings_and_annotated_developer_conte
     let unmarked = captured(&json!({"input": [plain]}));
     assert!(unmarked.contains("A rule below the prefix"));
 
-    let catalog_prompt = codex_models_manager::model_info::BASE_INSTRUCTIONS;
+    // Fork (nuwax-codex): fallback instructions always appear rendered with a
+    // model slug in the identity line; the raw `{{model}}` template never
+    // reaches the wire.
+    let catalog_prompt = codex_models_manager::model_info::BASE_INSTRUCTIONS
+        .replace("{{model}}", "future-custom-model");
     let lite = |prompt: &str| {
         json!({"input": [
             {"type": "additional_tools", "role": "developer", "tools": []},
@@ -484,16 +488,16 @@ fn base_instructions_use_the_same_mode_in_settings_and_annotated_developer_conte
             &ContextSnapshotOptions::default().rewrite_known_segments(),
         )
     };
-    let known = rewrite(&lite(catalog_prompt));
+    let known = rewrite(&lite(&catalog_prompt));
     assert_eq!(known.matches("<MODEL_INSTRUCTIONS>").count(), 1);
     let custom = rewrite(&lite(&format!("{catalog_prompt}\nKeep this line")));
     assert!(!custom.contains("<MODEL_INSTRUCTIONS>"));
     assert!(custom.contains("Keep this line"));
-    let mut annotated_other = lite(catalog_prompt);
+    let mut annotated_other = lite(&catalog_prompt);
     annotated_other["input"][1]["internal_chat_message_metadata_passthrough"] =
         json!({"content_item_kinds": ["developer_instructions"]});
     assert!(!rewrite(&annotated_other).contains("<MODEL_INSTRUCTIONS>"));
-    let mut multipart = lite(catalog_prompt);
+    let mut multipart = lite(&catalog_prompt);
     multipart["input"][1]["content"]
         .as_array_mut()
         .unwrap()

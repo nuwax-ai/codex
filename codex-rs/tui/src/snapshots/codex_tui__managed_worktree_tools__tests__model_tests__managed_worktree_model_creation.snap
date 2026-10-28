@@ -21,7 +21,7 @@ Settings:
       - function/list_worktrees
 -- request 1 (request) --
 00:message/developer:
-    You are a coding agent running in the Codex CLI, a terminal-based coding assistant. Codex CLI is an open...I. You are expected to be precise, safe, and helpful. [hash=5125daec1ed78d99]
+    You are the mock-model model, running as a coding agent in nuwax-harness, a terminal-based coding assistant. You are expected to be precise, safe, and helpful.
 
     Your capabilities:
 
@@ -29,7 +29,7 @@ Settings:
     - Communicate with the user by streaming thinking & responses, and by making & updating plans.
     - Emit function calls to run terminal commands and apply patches. Depending on how this specific run is ... More on this in the "Sandbox and approvals" section. [hash=31cf026fa7b25d6d]
 
-    <OMITTED 180 LINES; ~3987 TOKENS; hash=dd34d4527287c62a>
+    <OMITTED 178 LINES; ~3954 TOKENS; hash=5ca789f6b4867985>
     ## Shell commands
 
     When using the shell, you must adhere to the following guidelines:

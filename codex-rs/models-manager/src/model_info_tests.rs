@@ -233,8 +233,28 @@ fn explicit_empty_base_instructions_stay_empty_with_personality_none() {
 fn unknown_model_uses_builtin_instruction_template() {
     let model = model_info_from_slug("unknown-model");
 
-    assert_eq!(render_model_instructions(&model), BASE_INSTRUCTIONS);
+    // Fork (nuwax-codex): the identity placeholder renders the model's own
+    // slug, so vendor models report what they actually are instead of the
+    // upstream Codex/OpenAI identity.
+    assert_eq!(
+        render_model_instructions(&model),
+        BASE_INSTRUCTIONS.replace("{{model}}", "unknown-model")
+    );
     assert!(model.used_fallback_model_metadata);
+}
+
+#[test]
+fn fallback_instructions_recognize_any_rendered_slug() {
+    let glm = model_info_from_slug("GLM-5.3-Flash");
+    assert!(super::is_fallback_model_instructions(
+        &render_model_instructions(&glm)
+    ));
+
+    // The raw template (placeholder unreplaced) and unrelated text do not match.
+    assert!(!super::is_fallback_model_instructions(BASE_INSTRUCTIONS));
+    assert!(!super::is_fallback_model_instructions(
+        "You are GPT-5, honestly."
+    ));
 }
 
 // Fork (nuwax-codex): catalog-backed models keep the catalog clamp — the

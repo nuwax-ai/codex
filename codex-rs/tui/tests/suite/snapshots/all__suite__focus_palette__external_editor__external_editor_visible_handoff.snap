@@ -1,6 +1,5 @@
 ---
 source: tui/tests/suite/external_editor_tests.rs
-assertion_line: 89
 expression: visible
 ---
 › initial draft

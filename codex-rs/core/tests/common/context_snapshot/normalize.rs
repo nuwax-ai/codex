@@ -527,7 +527,10 @@ pub(super) fn portable_tool_schema(tool: &Value) -> Value {
 
 pub(super) fn is_bundled_model_instructions(text: &str) -> bool {
     static PROMPTS: OnceLock<Vec<String>> = OnceLock::new();
-    text == codex_models_manager::model_info::BASE_INSTRUCTIONS
+    // Fork (nuwax-codex): fallback instructions render with the model slug in
+    // the identity line, so exact equality with the raw template no longer
+    // matches them; recognize any rendered form instead.
+    codex_models_manager::model_info::is_fallback_model_instructions(text)
         || PROMPTS
             .get_or_init(|| {
                 codex_models_manager::bundled_models_response()
