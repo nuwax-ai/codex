@@ -5533,6 +5533,36 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   `load_config_rejects_non_positive_model_context_seeds` 1/1(仿
   token_budget 既有模式);fmt/clippy(--no-deps)净;本机二进制增量重装复验。
 
+## 6.64 fallback 模型身份声明中性化与 TUI 品牌(2026-10-28)
+
+- **起因(用户 dogfood 实测)**:TUI 问"你是什么模型?",GLM-5.3-Flash 答
+  "我是 Codex,底层由 OpenAI 的 GPT-5 模型驱动"。会话收据证明路由正确
+  (turn_context model=GLM-5.3-Flash,该轮还命中 cached_input_tokens=4288,
+  佐证 §6.62 的 release 缓存异常是网关侧非确定行为);自述错位源于 fallback
+  模板第一行"You are a coding agent running in the Codex CLI ... led by
+  OpenAI"——厂商模型被告知 Codex/OpenAI 身份后照单自报。用户指令:提示词
+  不要说 codex,应为 nuwax-harness;身份用实际模型名。
+- **实施(`ea4e33046`+`07845c46d`)**:`models-manager/prompt.md` 身份行改
+  `You are the {{model}} model, running as a coding agent in nuwax-harness...`,
+  删除两处 OpenAI/Codex 句;`local_model_messages(slug)` 渲染时注入实际 slug
+  (GLM-5.3-Flash 将被告知自己是 GLM-5.3-Flash、运行于 nuwax-harness);
+  protocol 持久化默认副本同步中性化(无占位符——该层无 slug 上下文);
+  目录内 gpt-* 模型保持上游指令原文。TUI 品牌两处(session 头/状态卡)
+  "OpenAI Codex"→"Nuwax Harness",7 个测试文件同步。快照归一化新增
+  `is_fallback_model_instructions`(前缀+后缀夹逼,slug 非空、无换行、
+  **无花括号**——首版漏了花括号检查,未替换的 `{{model}}` 字面量本身被当成
+  合法 slug,自测抓出后修正)。
+- **验证**:models-manager 66/66+clippy 净、protocol 376/376、core
+  `unknown_model_sends_builtin_instructions` 断言渲染形态通过、tui 定向
+  143/143(首两轮 core/tui ABRT 为本机 RUST_MIN_STACK 环境问题,非回归);
+  4 个 insta 快照重生成(managed_worktree 快照实证 "You are the mock-model
+  model ... in nuwax-harness")。首次 INSTA_FORCE_UPDATE 中止运行遗留 5 个
+  `.pending-snap` 临时文件误入 `ea4e33046`,已由 `07845c46d` 清除。发现
+  `context_snapshot_tests.rs` 的 `#[cfg(test)]` 测试不在任何 nextest 目标
+  (common 作为依赖编译,cfg(test) 永假,上游即如此),其 fixture 已同步
+  更新为渲染形态并修正 String 借用,登记为死测试代码现状。
+- 本机二进制增量重装后 GLM 实网身份问答复验见会话记录。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-23 发布 R2 当前状态，以下旧指针为历史记录：** 权威副本在 zhitai，
