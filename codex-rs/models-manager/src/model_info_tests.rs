@@ -237,11 +237,15 @@ fn unknown_model_uses_builtin_instruction_template() {
     assert!(model.used_fallback_model_metadata);
 }
 
+// Fork (nuwax-codex): catalog-backed models keep the catalog clamp — the
+// catalog is authoritative. `used_fallback_model_metadata = false` simulates
+// one here (the fallback constructor is only a convenient ModelInfo builder).
 #[test]
 fn model_context_window_override_clamps_to_max_context_window() {
     let mut model = model_info_from_slug("unknown-model");
     model.context_window = Some(273_000);
     model.max_context_window = Some(400_000);
+    model.used_fallback_model_metadata = false;
     let config = ModelsManagerConfig {
         model_context_window: Some(500_000),
         ..Default::default()
@@ -252,6 +256,58 @@ fn model_context_window_override_clamps_to_max_context_window() {
     expected.context_window = Some(400_000);
 
     assert_eq!(updated, expected);
+}
+
+// Fork (nuwax-codex): unknown models get synthetic fallback metadata whose
+// 272k ceiling is a placeholder, not vendor knowledge. An explicit override
+// applies in full (and raises the ceiling) so big-window vendors (GLM-5.3-Flash
+// 1M) can actually use their window; an over-large value self-heals through
+// the ContextWindowExceeded → drop-oldest compact retry.
+#[test]
+fn fallback_model_context_window_override_applies_in_full() {
+    let model = model_info_from_slug("unknown-model");
+    let config = ModelsManagerConfig {
+        model_context_window: Some(1_000_000),
+        model_auto_compact_ratio: Some(0.9),
+        ..Default::default()
+    };
+
+    let updated = with_config_overrides(model, &config);
+
+    assert_eq!(updated.context_window, Some(1_000_000));
+    assert_eq!(updated.max_context_window, Some(1_000_000));
+    // The ratio derives from the unclamped window.
+    assert_eq!(updated.auto_compact_token_limit, Some(900_000));
+}
+
+#[test]
+fn fallback_model_context_window_override_clamp_still_applies_below_placeholder() {
+    // A below-placeholder override also applies in full — the placeholder was
+    // never a real bound for this model.
+    let model = model_info_from_slug("unknown-model");
+    let config = ModelsManagerConfig {
+        model_context_window: Some(60_000),
+        ..Default::default()
+    };
+
+    let updated = with_config_overrides(model, &config);
+
+    assert_eq!(updated.context_window, Some(60_000));
+    assert_eq!(updated.max_context_window, Some(60_000));
+}
+
+#[test]
+fn non_positive_context_window_override_is_ignored() {
+    let mut model = model_info_from_slug("unknown-model");
+    model.context_window = Some(273_000);
+    for invalid in [0, -5] {
+        let config = ModelsManagerConfig {
+            model_context_window: Some(invalid),
+            ..Default::default()
+        };
+        let updated = with_config_overrides(model.clone(), &config);
+        assert_eq!(updated.context_window, Some(273_000), "override {invalid}");
+    }
 }
 
 #[test]
@@ -282,9 +338,11 @@ fn auto_compact_ratio_derives_limit_from_the_effective_window() {
 #[test]
 fn auto_compact_ratio_respects_window_overrides_and_absolute_limits() {
     // The context-window override applies first; the ratio uses it.
+    // Catalog-backed model (see the clamp test above for the flag).
     let mut model = model_info_from_slug("unknown-model");
     model.context_window = Some(100_000);
     model.max_context_window = Some(60_000);
+    model.used_fallback_model_metadata = false;
     let config = ModelsManagerConfig {
         model_context_window: Some(200_000),
         model_auto_compact_ratio: Some(0.5),

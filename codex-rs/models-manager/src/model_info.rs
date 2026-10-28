@@ -18,13 +18,33 @@ const PERSONALITY_SECTION_HEADER: &str = "# Personality";
 
 pub fn with_config_overrides(mut model: ModelInfo, config: &ModelsManagerConfig) -> ModelInfo {
     if let Some(context_window) = config.model_context_window {
-        model.context_window = Some(
-            model
-                .max_context_window
-                .map_or(context_window, |max_context_window| {
-                    context_window.min(max_context_window)
-                }),
-        );
+        if context_window <= 0 {
+            tracing::warn!(
+                context_window,
+                "model_context_window must be a positive token count; ignoring it"
+            );
+        } else if model.used_fallback_model_metadata {
+            // Fork (nuwax-codex): fallback metadata for unknown models carries
+            // a synthetic 272k `max_context_window` placeholder, not vendor
+            // knowledge. An explicit override is the best information
+            // available for such models (e.g. GLM-5.3-Flash's 1M window), so
+            // it applies in full and also raises the ceiling; catalog-backed
+            // models keep the catalog clamp below, where the catalog is
+            // authoritative. An over-large override self-heals: bridge vendors
+            // report the over-window error as `ContextWindowExceeded`, which
+            // drives the drop-oldest compact retry instead of wedging the
+            // session.
+            model.context_window = Some(context_window);
+            model.max_context_window = Some(context_window);
+        } else {
+            model.context_window = Some(
+                model
+                    .max_context_window
+                    .map_or(context_window, |max_context_window| {
+                        context_window.min(max_context_window)
+                    }),
+            );
+        }
     }
     if let Some(auto_compact_token_limit) = config.model_auto_compact_token_limit {
         model.auto_compact_token_limit = Some(auto_compact_token_limit);

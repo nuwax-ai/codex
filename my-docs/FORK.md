@@ -196,6 +196,13 @@ turn 级超窗处理才会触发（官方代码里这两个机制只认该分类
   上阈值是 30000 而非 100000）；ratio 经 `ModelInfoOverrides` 全链保持（首轮/
   resume/切模型不丢）；越界（负数/0/>1/NaN）或取整为 0 时忽略并告警（0 阈值
   会导致每轮压缩）。三个键均可由环境变量注入并按 thread 投影到共享 daemon。
+- `model_context_window` 显式覆盖的钳制语义（2026-10-28 起）：目录内模型仍被
+  目录 `max_context_window` 钳制（目录是权威）；**未知模型的 fallback 元数据
+  不再钳制**——其合成 272k 上限是占位值而非厂商知识，显式覆盖全额生效并同步
+  抬高 max（大窗口厂商如 GLM-5.3-Flash 1M 可按真实窗口使用，压缩阈值随真实
+  窗口派生）。配大了自愈：桥线厂商超窗 400 映射 `ContextWindowExceeded` →
+  删旧压缩重试；非正数覆盖忽略并告警。判据 `used_fallback_model_metadata`
+  （models-manager `model_info.rs::with_config_overrides` 单点）。
 - 环境变量（优先级：显式 `-c` > env > config.toml；非法值带变量名报错）：
   `CODEX_MODEL_CONTEXT_WINDOW` / `CODEX_AUTO_COMPACT_TOKEN_LIMIT` /
   `CODEX_AUTO_COMPACT_RATIO`。同类先行：`CODEX_MODEL_REASONING_EFFORT`。
