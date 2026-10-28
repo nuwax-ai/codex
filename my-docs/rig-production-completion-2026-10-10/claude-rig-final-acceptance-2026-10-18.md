@@ -5644,7 +5644,7 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   （无认证 API 轮询，2-3 分钟间隔）。
 - **ACP v1.2.21**（`7651682`）：手工版本递增（version-bump.yml 不在默认分支、
   dispatch 404），harness 依赖 0.18.17→0.18.21 精确钉版（历史惯例无 ^ 前缀），
-  tag push 正常触发 publish run 40699898795。并行 agent 同日将 ACP 包改名
+  tag push 正常触发 publish run 40699898795，completed/success，npm latest=1.2.21（入库延迟约 1 分钟）。并行 agent 同日将 ACP 包改名
   `@nuwax-ai/nuwax-harness-acp-ts` 并发布 1.2.20（含 7e65bde 主别名、不含
   0b2a4bb 崩溃别名）。
 
