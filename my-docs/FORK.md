@@ -284,8 +284,11 @@ daemon 子进程同样剥离该变量；doctor 的 `config.model_routing` 收据
 边界见 [容器多进程审查](container-multiprocess-env-review-2026-10-03.md)。
 （ACP-TS 侧另有 `CODEX_BASE_URL`/`CODEX_API_PROTOCOL`/`CODEX_WIRE_API`/
 `INITIAL_AGENT_MODE` 等，见该仓库。）
-ACP的CODEX_*入口显式选择custom-gateway，现支持独立`CODEX_BRIDGE=rig|native|genai`
-映射；NUWAX_BRIDGE不覆盖这个显式provider。native仅允许OpenAI Responses，非法组合
+ACP的CODEX_*入口显式选择custom-gateway；自 2026-10-28（fork-codex-acp-ts
+`7e65bde`）每个网关 CODEX_* 变量均接受同义 NUWAX_* 别名（解析规则同引擎
+env_alias：NUWAX 优先/同值幂等/异值报双变量名；错误不回显值），消费掉的
+别名从 app-server 子进程环境剥离，故引擎 NUWAX_* 启动组不受孤儿影响——
+原先"NUWAX_BRIDGE 刻意不做别名"的规则由此废止并为测试锁定新语义。native仅允许OpenAI Responses，非法组合
 启动失败。环境网关已授权，无需显式authenticate；显式providers/set或任何authenticate
 请求按既有优先级替换/清除该环境配置。隐藏标题线程复制完整活动provider定义，防止
 遗漏bridge/headers/query或回退到固定官方模型。28/28子进程fixture与GLM原生实网4/4

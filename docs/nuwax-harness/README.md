@@ -192,6 +192,16 @@ export CODEX_AUTO_COMPACT_RATIO='0.8'
 
 你目前的使用路径是 `fork-codex-acp-ts` 的 **`dev` 分支**启动本 fork 的 App Server。
 以下网关变量应放入 **ACP agent 进程**的环境，不是仅放在其外层交互终端。
+**每个 `CODEX_*` 网关变量都有同义 `NUWAX_*` 别名**（`NUWAX_PATH`、`NUWAX_BASE_URL`、
+`NUWAX_API_KEY`、`NUWAX_API_PROTOCOL`、`NUWAX_WIRE_API`、`NUWAX_BRIDGE`、
+`NUWAX_MODEL`、`NUWAX_MODEL_CONTEXT_WINDOW`、`NUWAX_PROVIDER_ID/NAME`、
+`NUWAX_CONFIG`、`NUWAX_LOG_DIR`）：仅设其一即生效，`NUWAX_*` 是推荐写法；
+两者同设且值相同视为迁移期写法，值不同则 ACP 启动报错并点名两个变量。
+适配器消费掉的别名（BASE_URL/API_PROTOCOL/WIRE_API/API_KEY/BRIDGE/
+MAX_OUTPUT_TOKENS）不会透传给 app-server 子进程，因此引擎自身的
+`NUWAX_*` 启动组不会看到孤儿变量。无前缀的 `MODEL_PROVIDER`、
+`INITIAL_AGENT_MODE`、`NO_BROWSER`、`APP_SERVER_LOGS` 不设别名（非 codex
+命名空间）。
 
 ```bash
 export CODEX_PATH='/absolute/path/to/nuwax-harness'
