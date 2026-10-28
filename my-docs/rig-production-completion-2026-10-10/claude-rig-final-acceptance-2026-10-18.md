@@ -5623,6 +5623,31 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   别名从子进程剥离，废止"NUWAX_BRIDGE 刻意忽略"旧规并为 env-bridge/
   CodexEnvConfig 测试锁定新语义；135 文件/1981 测试全绿。
 
+## 6.67 崩溃参数别名补齐、v0.18.21 与 ACP 1.2.21 发布（2026-10-28）
+
+- **全量环境变量审计复核（用户提供并行 agent 审计，逐条验证）**：审计称 4 处
+  遗漏——其中 `CODEX_LOG_DIR` 审计有误（`7e65bde` 已别名化，Logger.ts:13 实证，
+  审计基于旧代码）；`DISABLE_MCP_CONFIG_FILTERING` 无 codex 前缀（归类不当）；
+  **真遗漏为崩溃参数对**（AppServerRecovery 直读）。补齐
+  （fork-codex-acp-ts `0b2a4bb`）：`NUWAX_ACP_APP_SERVER_CRASH_LIMIT/
+  _CRASH_WINDOW_MS` 经 env 参数化 `resolveEnvAliasFrom`（保持该函数注 env 可测
+  设计）接入统一别名规则，4 个新单测，recovery 60/60、全量 1985 绿；命名保持
+  CODEX_→NUWAX_ 机械前缀替换（含 ACP 段）。至此 readme-dev"每个用户可设
+  CODEX_* 都有别名"的承诺与实现闭环（ACP 15 个）。
+- **v0.18.21 发布**：v0.18.20 tag 已烧毁（指向 6b576b2fb 且其 release run 失败、
+  npm 无 0.18.20），按 v0.18.13 先例顺延。tag 指 `9c51238ee`（含 1M 窗口放开、
+  种子校验、品牌去 Codex 化、引擎侧 NUWAX 别名、文档）。tag push 未触发（老
+  问题），workflow_dispatch 后备启动 run 40660840012；**x86_64-apple-darwin 腿
+  构建耗时 ~5.5h**（Intel runner+冷 cargo 缓存，其余 7 job 正常），最终 8/8
+  success；npm latest=0.18.21，隔离安装 `--version` 裸版本号冒烟通过。期间本机
+  到 api.github.com 网络中断，监控全程改由 192.168.31.23 Linux 机器代理
+  （无认证 API 轮询，2-3 分钟间隔）。
+- **ACP v1.2.21**（`7651682`）：手工版本递增（version-bump.yml 不在默认分支、
+  dispatch 404），harness 依赖 0.18.17→0.18.21 精确钉版（历史惯例无 ^ 前缀），
+  tag push 正常触发 publish run 40699898795。并行 agent 同日将 ACP 包改名
+  `@nuwax-ai/nuwax-harness-acp-ts` 并发布 1.2.20（含 7e65bde 主别名、不含
+  0b2a4bb 崩溃别名）。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-23 发布 R2 当前状态，以下旧指针为历史记录：** 权威副本在 zhitai，
