@@ -225,17 +225,17 @@ effective context window 是否符合预期。
 以下数字只展示写法，不能直接当作所有模型的能力：
 
 ```bash
-export CODEX_MODEL_CONTEXT_WINDOW='128000'
+export NUWAX_MODEL_CONTEXT_WINDOW='128000'   # 同义 CODEX_MODEL_CONTEXT_WINDOW 永久兼容
 export NUWAX_MAX_OUTPUT_TOKENS='4096'
-export CODEX_AUTO_COMPACT_RATIO='0.8'
+export NUWAX_AUTO_COMPACT_RATIO='0.8'
 ```
 
-| 变量 | 用途 |
+| 变量（`NUWAX_*` 别名同名去前缀） | 用途 |
 | --- | --- |
-| `CODEX_MODEL_CONTEXT_WINDOW` | 正整数 token 数，告诉本地预算和压缩逻辑模型窗口大小 |
-| `CODEX_AUTO_COMPACT_TOKEN_LIMIT` | 可选正整数，指定触发自动压缩的 token 阈值 |
-| `CODEX_AUTO_COMPACT_RATIO` | 可选 `(0, 1]` 小数，未设置显式 token 阈值时按有效窗口比例触发压缩 |
-| `CODEX_MODEL_REASONING_EFFORT` | 可选：`none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`、`persistent`；具体模型/协议须支持该值 |
+| `CODEX_MODEL_CONTEXT_WINDOW`（`NUWAX_MODEL_CONTEXT_WINDOW`） | 正整数 token 数，告诉本地预算和压缩逻辑模型窗口大小 |
+| `CODEX_AUTO_COMPACT_TOKEN_LIMIT`（`NUWAX_AUTO_COMPACT_TOKEN_LIMIT`） | 可选正整数，指定触发自动压缩的 token 阈值 |
+| `CODEX_AUTO_COMPACT_RATIO`（`NUWAX_AUTO_COMPACT_RATIO`） | 可选 `(0, 1]` 小数，未设置显式 token 阈值时按有效窗口比例触发压缩 |
+| `CODEX_MODEL_REASONING_EFFORT`（`NUWAX_MODEL_REASONING_EFFORT`） | 可选：`none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`、`persistent`；具体模型/协议须支持该值 |
 
 窗口与压缩种子的行为（2026-10-28 起）：
 
