@@ -5723,6 +5723,10 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   `generate-types` 零 diff（桥改动在引擎内部，app-server wire schema 无变化）；
   typecheck 通过、全量 **1985 passed | 36 skipped**（与 1.2.21 基线一致）。
   tag push 触发 publish run `40858712230`。
+- **ACP publish 结果**：run `40858712230` completed/success（verify / publish-to-npm /
+  create-release 三 job 全绿）；npm dist-tag latest=1.2.22（零延迟已在库）；
+  隔离目录安装冒烟 `nuwax-harness-acp-ts --version` 输出 `1.2.22`，
+  bin 含 `nuwax-harness-acp-ts` 与 `nuwax-codex-acp-ts`。
 
 ## 7. 提交、推送与工作树状态
 
