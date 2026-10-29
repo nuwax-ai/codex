@@ -5703,6 +5703,27 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   本轮使用已有 `/Users/soddy/.cargo` 依赖缓存并加 offline/locked，目标与 scratch 在外盘，
   没有为旧的缺失 v8.env 重新下载制品；bridge 编译不需要该环境文件。
 
+## 6.70 v0.18.22 与 ACP 1.2.22 发布（2026-10-29）
+
+- **内容**：今日三轮提交 `b68b281d4`（grammar 注入 description、namespace 描述转发、
+  无名/空白声明 fail-fast、Chat 线 hosted 丢弃告警）、`cf46b6e9f`（FORK.md 字段表 +
+  台账 §6.68）、`9a2036bbd`（codex 复审补修：展平前拒绝空白工具名、grammar 提示区分外层
+  JSON 参数与 input 原文、usage 文档按 `Usage::is_reported()` 纠正）。
+- **harness v0.18.22**：tag 指 `9a2036bbd`，tag push 正常触发 release run `40829785801`
+  （10/10 job success：取版本 + 7 平台构建 + Create GitHub Release + Publish to npm；
+  x86_64-apple-darwin 3h04m、aarch64-apple-darwin 3h55m 为最长腿，全部绿）。
+  npm dist-tag latest=0.18.22（入库延迟约 1–2 分钟，与既往一致）；隔离目录安装冒烟
+  `nuwax-harness --version` 输出裸 `0.18.22`。
+- **本机源码安装**：`cargo install --path cli --bin codex --root ~/.nuwax-cargo --locked
+  --force`（V8 缓存离线命中 `~/.cache/nuwax/rusty_v8/152.2.0/aarch64-apple-darwin`），
+  软链 `~/.cargo/bin/nuwax-harness` 不变；源码构建版本恒 `0.0.0`，与 homebrew 官方
+  `codex` 并存是设计行为。
+- **ACP v1.2.22**（fork-codex-acp-ts `047a3dd`）：纯 harness 依赖升级 0.18.21→0.18.22
+  （精确钉版无 `^`，沿用历史惯例），`npm install` 更新 lockfile 指向 npmjs 直连；
+  `generate-types` 零 diff（桥改动在引擎内部，app-server wire schema 无变化）；
+  typecheck 通过、全量 **1985 passed | 36 skipped**（与 1.2.21 基线一致）。
+  tag push 触发 publish run `40858712230`。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-29 本轮复审状态：** `b68b281d4`、`cf46b6e9f` 的复审补修见§6.69，
