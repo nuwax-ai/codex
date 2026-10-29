@@ -439,6 +439,77 @@ mod mapping {
     }
 
     #[test]
+    fn blank_namespace_declarations_fail_before_flattening() {
+        for name in ["", " \t"] {
+            let tool = json!({"type":"namespace", "name":name, "tools":[]});
+            assert!(
+                matches!(
+                    parse_tools(&[tool]),
+                    Err(codex_api::ApiError::InvalidRequest { .. })
+                ),
+                "blank namespace must not be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn blank_tool_names_cannot_be_hidden_by_namespace_flattening() {
+        for kind in ["function", "custom"] {
+            for name in ["", " \t"] {
+                let child = json!({"type":kind, "name":name});
+                for tool in [
+                    child.clone(),
+                    json!({"type":"namespace", "name":"group", "tools":[child]}),
+                ] {
+                    assert!(
+                        matches!(
+                            parse_tools(std::slice::from_ref(&tool)),
+                            Err(codex_api::ApiError::InvalidRequest { .. })
+                        ),
+                        "blank local tool name must be rejected: {tool}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn typed_custom_json_grammar_keeps_the_outer_wrapper_distinct() {
+        let definition = r#"\{"ok":true\}"#;
+        let spec = codex_tools::ToolSpec::Namespace(codex_tools::ResponsesApiNamespace {
+            name: "documents".into(),
+            description: "Emit JSON documents.".into(),
+            tools: vec![codex_tools::ResponsesApiNamespaceTool::Custom(
+                codex_tools::FreeformTool {
+                    name: "emit".into(),
+                    description: "Generate JSON text.".into(),
+                    defer_loading: None,
+                    format: codex_tools::FreeformToolFormat {
+                        r#type: "grammar".into(),
+                        syntax: "regex".into(),
+                        definition: definition.into(),
+                    },
+                },
+            )],
+        });
+        let tool = serde_json::to_value(spec).expect("serialize real ToolSpec");
+        assert_eq!(tool["tools"][0]["type"], "custom");
+        assert_eq!(tool["tools"][0]["format"]["definition"], definition);
+        let parsed = parse_tools(&[tool]).expect("valid typed custom tool");
+        assert!(parsed.meta.custom_names.contains("documents__emit"));
+        let tool = &parsed.definitions[0];
+        assert_eq!(tool.parameters["properties"]["input"]["type"], "string");
+        assert!(tool.description.contains("Emit JSON documents."));
+        assert!(tool.description.contains(definition));
+        assert!(
+            !tool.description.contains("NOT JSON"),
+            "a JSON-text grammar must not receive a contradictory ban: {}",
+            tool.description
+        );
+        assert!(tool.description.contains("outer tool arguments are JSON"));
+    }
+
+    #[test]
     fn custom_tool_grammar_rides_the_description() {
         let tools_json = r#"[{"type": "custom", "name": "apply_patch", "description": "Edit files.",
             "format": {"type": "grammar", "syntax": "lark", "definition": "start: WORD"}}]"#;
@@ -447,11 +518,17 @@ mod mapping {
         assert_eq!(parsed.len(), 1);
         let description = &parsed[0].description;
         assert!(description.starts_with("Edit files."), "{description}");
-        assert!(description.contains("NOT JSON"), "{description}");
+        assert!(
+            description.contains("outer tool arguments are JSON"),
+            "{description}"
+        );
         assert!(description.contains("this lark grammar"), "{description}");
         assert!(description.contains("start: WORD"), "{description}");
         // The wrapper schema still declares the single text input.
-        assert_eq!(parsed[0].parameters["properties"]["input"]["type"], "string");
+        assert_eq!(
+            parsed[0].parameters["properties"]["input"]["type"],
+            "string"
+        );
     }
 
     #[test]
@@ -491,10 +568,7 @@ mod mapping {
             Err(error) => error,
             Ok(selection) => panic!("expected an error, got tools: {:?}", selection.definitions),
         };
-        assert!(
-            format!("{error}").contains("has no name"),
-            "{error}"
-        );
+        assert!(format!("{error}").contains("has no name"), "{error}");
     }
 
     #[test]

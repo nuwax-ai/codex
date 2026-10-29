@@ -152,11 +152,12 @@ pub(crate) fn parse_tools(tools: &[Value]) -> Result<RequestTools, codex_api::Ap
     let mut hosted_tools = Vec::new();
     for tool in tools {
         if tool["type"] == "namespace" {
-            let (Some(namespace), Some(children)) =
-                (tool["name"].as_str(), tool["tools"].as_array())
-            else {
+            let (Some(namespace), Some(children)) = (
+                tool["name"].as_str().filter(|name| !name.trim().is_empty()),
+                tool["tools"].as_array(),
+            ) else {
                 return Err(codex_api::ApiError::InvalidRequest {
-                    message: "Namespace tool declaration requires a name and a tools array"
+                    message: "Namespace tool declaration requires a name and a tools array; the name must not be blank"
                         .into(),
                 });
             };
@@ -217,11 +218,11 @@ fn append_tool(
         hosted_tools.push(tool.clone());
         return Ok(());
     }
-    let Some(name) = tool["name"].as_str() else {
+    let Some(name) = tool["name"].as_str().filter(|name| !name.trim().is_empty()) else {
         let kind = tool["type"].as_str().unwrap_or("tool");
         return Err(codex_api::ApiError::InvalidRequest {
             message: format!(
-                "Tool declaration of type {kind:?} has no name; the Rig bridge cannot advertise it"
+                "Tool declaration of type {kind:?} has no name (or a blank name); the Rig bridge cannot advertise it"
             ),
         });
     };
@@ -260,13 +261,9 @@ fn append_tool(
         if !description.is_empty() {
             description.push_str("\n\n");
         }
-        description.push_str(&format!(
-            "Part of the `{namespace}` tool group: {group}"
-        ));
+        description.push_str(&format!("Part of the `{namespace}` tool group: {group}"));
     }
-    if is_custom
-        && let Some(grammar) = custom_grammar_note(tool)?
-    {
+    if is_custom && let Some(grammar) = custom_grammar_note(tool)? {
         if !description.is_empty() {
             description.push_str("\n\n");
         }
@@ -322,7 +319,7 @@ fn custom_grammar_note(tool: &Value) -> Result<Option<String>, codex_api::ApiErr
         });
     }
     Ok(Some(format!(
-        "The `input` value is NOT JSON: it is raw text that must satisfy this {syntax} grammar:\n\n{definition}"
+        "The outer tool arguments are JSON with a single `input` string. Put the raw tool input text in that string without adding another JSON-encoded wrapper. The raw text must satisfy this {syntax} grammar:\n\n{definition}"
     )))
 }
 

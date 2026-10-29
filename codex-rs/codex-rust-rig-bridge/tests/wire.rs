@@ -301,3 +301,32 @@ async fn namespaced_additional_custom_tools_keep_wrapper_and_history_name() {
             .collect()
     );
 }
+
+#[tokio::test]
+async fn custom_grammar_and_namespace_contract_reach_both_provider_wires() {
+    let definition = r#"\{"ok":true\}"#;
+    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+        let mut request = request(vec![user()]);
+        set_tools(
+            &mut request,
+            json!([{"type":"namespace","name":"documents","description":"Emit JSON documents.","tools":[
+                {"type":"custom","name":"emit","description":"Generate JSON text.",
+                 "format":{"type":"grammar","syntax":"regex","definition":definition}}
+            ]}]),
+        );
+        let (wire, _, _) = capture(&request, protocol).await;
+        let (tool, schema_key) = match protocol {
+            RigProtocol::Chat => (&wire["body"]["tools"][0]["function"], "parameters"),
+            RigProtocol::Anthropic => (&wire["body"]["tools"][0], "input_schema"),
+            RigProtocol::Responses => unreachable!("same-protocol passthrough is separate"),
+        };
+        assert_eq!(tool["name"], "documents__emit");
+        assert_eq!(tool[schema_key]["properties"]["input"]["type"], "string");
+        let description = tool["description"].as_str().expect("wire tool description");
+        assert!(description.starts_with("Generate JSON text."));
+        assert!(description.contains("Part of the `documents` tool group: Emit JSON documents."));
+        assert!(description.contains("outer tool arguments are JSON"));
+        assert!(description.ends_with(definition));
+        assert!(!description.contains("NOT JSON"));
+    }
+}

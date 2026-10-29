@@ -5676,7 +5676,38 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   严格检查零告警。未采纳审计的"custom fail-fast"原始建议（展平现状可用，
   fail-fast 会破坏可用场景，注入 description 是无损改进）。
 
+## 6.69 Codex 复审 grammar/namespace 补丁（2026-10-29）
+
+复审范围 `b68b281d4`、`cf46b6e9f`；§6.68 中的“input 非 JSON”和“无损”措辞由本节更正。
+
+- **空名字展平旁路**：namespace 子工具 `name=""` 会先变成 `group__`，从而通过 Rig
+  ToolName 的非空校验；空白 namespace 及只有空白的工具名也能逃过原检查。
+  在展平前校验原始 namespace/局部 name，拒绝空白，不裁剪或改写合法名字；hosted 分支保持不变。
+- **grammar 不是 JSON 禁令**：合法的 regex grammar 可以要求 `{"ok":true}` 这样的 JSON 文本。
+  原声明再追加“input NOT JSON”与该契约矛盾。现在明确外层是单 input 字符串的 JSON 参数，
+  input 内保持原始文本并服从原 grammar，不再次添加 JSON 包装。真实 ToolSpec 序列化的组合
+  用例同时覆盖 custom 内联标签、顶层 format、namespace description 与 custom_names 恢复标记。
+- **合同表纠错**：ChatUsage::observe 对缺席/null usage 返回 Ok，不是流错误；Anthropic
+  要求 message_start/message_delta 帧内的 usage 对象存在。成功终态按 Rig Usage::is_reported()
+  判定 Some/None，不以 usage 对象是否出现判定；0.45 的 cost 等非计数内容也会影响该谓词。
+  只改 FORK.md，不改计量行为。
+- **能力边界**：description 保留 grammar 文本是软提示，不等于提供端强制 grammar 解码。
+  注入文本对同一声明确定性生成，也未移动 cache-control 选择逻辑；工具描述改变可能使旧前缀
+  缓存失效，本轮没有宣称实网缓存命中率不变。
+- **首红**：新增三个测试在修复前 0/3（空 namespace、namespace 子工具空 name、JSON-text grammar），
+  原始日志保留 `/Volumes/zhitai/tmp/codex-review-grammar-20261029/before.log`。
+- **验证**：bridge 全量 **349/349**（retries0，test-threads2，123.168s）；随后新增真实
+  Chat/Anthropic 出站描述与 wrapper schema 合同 **1/1**（两协议，0.640s），原生 Responses
+  不走本次转换。clippy --all-targets -D warnings、fmt/diff-check 均通过，
+  不把两次执行冒称单轮350；最终日志同 before.log 所在外盘目录。
+  本轮使用已有 `/Users/soddy/.cargo` 依赖缓存并加 offline/locked，目标与 scratch 在外盘，
+  没有为旧的缺失 v8.env 重新下载制品；bridge 编译不需要该环境文件。
+
 ## 7. 提交、推送与工作树状态
+
+**2026-10-29 本轮复审状态：** `b68b281d4`、`cf46b6e9f` 的复审补修见§6.69，
+仅本地阶段提交；本轮未 push、未打 tag、未触发 CI、未发布，也未调用真实模型 API。
+以下为按各自日期保留的历史发布/分支状态。
 
 **2026-10-23 发布 R2 当前状态，以下旧指针为历史记录：** 权威副本在 zhitai，
 发布源码 `f82730975` 已推送并由 `v0.18.14` 绑定；

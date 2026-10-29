@@ -152,9 +152,9 @@ fork 明确每个跨协议字段在三条线（Responses passthrough / Chat / An
 | `hosted_results_replay` | 不适用（无桥回放） | 不适用 | false 时整体关闭回放（含旧格式） |
 | reasoning effort/summary | 同协议字段保留 | effort 映射 `reasoning_effort`；summary/context 无等价字段，不转发 | 按 Messages 的 thinking/effort 语义映射；不承诺 OpenAI summary/context |
 | structured output | 同协议字段保留 | `response_format.json_schema` 保留 schema/name/strict | `output_config.format` 保留 schema；无 name/strict 等价字段 |
-| custom/freeform 工具 | `format` 原样透传 | grammar（syntax+definition）注入 tool description 并声明"input 非 JSON"；声明 grammar 但缺 syntax/definition、或无名声明均 fail-fast | 同 Chat 注入（Messages 线同样无 grammar 通道） |
-| namespace 声明 | 原样透传 | 展平子工具名；namespace description 追加到每个子工具 description；缺 name/tools 的坏声明 fail-fast | 同 Chat |
-| usage/缓存计数 | 同协议解码，保留字段 presence | wire 观察器按 presence 保留缺失/部分/显式零（缺 usage 帧即流错误）；CapExhausted 错误终态与回放记录携带 `ReportedResponseUsage`；成功终态的 `TokenUsage` 是无 Option 的聚合结构，未上报 counter 以 0 呈现、整份 usage 缺席则为 None | 同 Chat；Anthropic 侧观察器跨 message_start/delta 累积后同样按 presence 快照 |
+| custom/freeform 工具 | `format` 原样透传 | grammar（syntax+definition）保留到 tool description，区分外层 JSON 参数与 input 原始文本；仅为模型提示，不等价于服务端 grammar 强约束；声明 grammar 但缺 syntax/definition、或空白工具名均 fail-fast | 同 Chat 注入（Messages 线同样无 grammar 通道） |
+| namespace 声明 | 原样透传 | 展平子工具名；namespace description 追加到每个子工具 description；缺 name/tools 或空白 namespace 的坏声明 fail-fast | 同 Chat |
+| usage/缓存计数 | 同协议解码，保留字段 presence | wire 观察器按 presence 保留缺失/部分/显式零，缺失或 null usage 合法；非法 counter 报错；CapExhausted 与回放携带 `ReportedResponseUsage`；成功终态按 Rig `Usage::is_reported()` 决定 `TokenUsage` 的 Some/None（不是按 usage 对象是否出现），已映射的缺失 token counter 呈现为 0 | message_start/delta 中的 usage 对象必需，内部 counter 可缺席；跨帧累积且显式零覆盖；错误/回放保留 presence，成功终态聚合规则同 Chat |
 | 重试/限流 | 受 provider 配置及 Core 采样策略约束 | 桥传输/流重试与 Core 采样分层；无统一总尝试数保证 | 同 Chat |
 | web_search 模式 | 原样（含 cached/indexed） | 丢弃声明并 warn（无 hosted 概念，不再静默） | 仅 live；cached/indexed fail-fast |
 | `parallel_tool_calls` | 原样 | 原样 | hosted-only 时还原 tool_choice 并关 parallel |
