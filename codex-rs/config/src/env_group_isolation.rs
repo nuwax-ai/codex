@@ -20,7 +20,12 @@ use toml::Value as TomlValue;
 
 /// The only keys the environment group itself seeds; a defensive backstop on
 /// the merged table — the authoritative check is per-layer provenance.
-const ENV_GROUP_SEED_KEYS: [&str; 9] = [
+///
+/// A key the group seeds must be listed here or loading fails while the group
+/// is active, which is the shape a newly added seed takes when this list is
+/// forgotten: the isolated smoke test in `cli/tests` catches it, since no unit
+/// test exercises the full load path with the reserved provider selected.
+const ENV_GROUP_SEED_KEYS: [&str; 10] = [
     "name",
     "base_url",
     "wire_api",
@@ -30,6 +35,7 @@ const ENV_GROUP_SEED_KEYS: [&str; 9] = [
     "request_max_retries",
     "stream_max_retries",
     "stream_idle_timeout_ms",
+    "reasoning_effort_levels",
 ];
 
 /// Validates the reserved provider's origin using the caller's final

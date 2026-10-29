@@ -207,7 +207,7 @@ fn model_provider_from_proto(
         max_output_tokens: provider.max_output_tokens,
         hosted_results_replay: provider.hosted_results_replay,
         anthropic_prompt_caching: None,
-            reasoning_effort_levels: None,
+        reasoning_effort_levels: None,
         stream_max_retries: provider.stream_max_retries,
         stream_idle_timeout_ms: provider.stream_idle_timeout_ms,
         websocket_connect_timeout_ms: provider.websocket_connect_timeout_ms,

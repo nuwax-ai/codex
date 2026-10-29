@@ -49,6 +49,7 @@ name = "nuwax env provider"
 base_url = "https://gateway.example/v1"
 wire_api = "chat"
 env_key = "NUWAX_API_KEY"
+reasoning_effort_levels = ["low", "high", "max"]
 "#;
 
 #[test]
@@ -60,6 +61,27 @@ fn seed_layer_passes_when_selected() {
         )
         .is_ok()
     );
+}
+
+/// Every key `nuwax_env.rs` seeds must be in `ENV_GROUP_SEED_KEYS`, or loading
+/// fails while the group is active — the shape a newly added seed takes when
+/// that list is forgotten. No unit test catches it, because none of them runs
+/// the full load path with the reserved provider selected; the isolated smoke
+/// test in `cli/tests` does.
+#[test]
+fn every_seeded_key_is_whitelisted() {
+    let seeds: toml::Value = toml::from_str(GROUP_SEEDS).expect("seed toml");
+    let table = seeds
+        .get("model_providers")
+        .and_then(|providers| providers.get(NUWAX_ENV_PROVIDER_ID))
+        .and_then(toml::Value::as_table)
+        .expect("the reserved provider's table");
+    for key in table.keys() {
+        assert!(
+            ENV_GROUP_SEED_KEYS.contains(&key.as_str()),
+            "`{key}` is seeded by the group but missing from ENV_GROUP_SEED_KEYS"
+        );
+    }
 }
 
 #[test]
