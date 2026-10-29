@@ -1,4 +1,5 @@
-//! Deterministic surface projection and Braille rasterization of the Codex logo morph.
+//! Deterministic surface projection and Braille rasterization of the Nuwax
+//! mark morph: the gradient pebble blooming into the white spark.
 //!
 //! Fields and depth use Float32 sampling; all other math uses Float64.
 
@@ -9,6 +10,8 @@ use super::geometry::FIELDS;
 use super::geometry::GRID;
 use super::geometry::STEP;
 use super::lighting::Lighting;
+use super::lighting::brand_hue;
+use super::lighting::toward_core;
 
 pub(super) const MAX_COLUMNS: u16 = 60;
 pub(super) const MAX_ROWS: u16 = 24;
@@ -110,10 +113,15 @@ impl Renderer {
             let ny2 = ny * cx - nz1 * sx;
             let nz2 = ny * sx + nz1 * cx;
             self.depth[i] = z2 as f32;
+            // The gradient is read off the mark's own surface, so it rotates
+            // with the mark like a texture. As the morph reaches the spark the
+            // hue fades toward the icon's solid core, matching the shape change.
+            let hue = toward_core(brand_hue(x / EXTENT, y / EXTENT), light.core(), blend);
             self.colors[i] = light.shade(
                 [nx1 * cz - ny2 * sz, nx1 * sz + ny2 * cz, nz2],
                 z2,
                 (x * 23.0 + y * 19.0 + GRAIN_PHASE).sin() * 0.01,
+                hue,
             );
         };
         for row in 1..GRID - 1 {

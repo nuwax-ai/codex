@@ -1,4 +1,4 @@
-//! The blossom welcome animation for onboarding, with a full-color final pose.
+//! The Nuwax mark welcome animation for onboarding, with a full-color final pose.
 //! Visible time pauses while hidden. Fresh conversations start settled and can replay on a click.
 
 mod geometry;
