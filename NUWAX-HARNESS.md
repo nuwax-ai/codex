@@ -1,10 +1,15 @@
 # Nuwax Harness：配置与启动指南
 
-本目录面向日常使用：配置自定义模型（临时环境变量或持久 config.toml），然后启动
-命令行、App Server 或 ACP agent。兼容 OpenAI Chat Completions、OpenAI Responses
-和 Anthropic Messages；默认通过 rig。原生 Responses 是可选通路，适合需要上游传输
+本文是 fork 的**使用侧权威文档**：装什么、怎么配自定义模型(临时环境变量或持久
+`config.toml`)、`NUWAX_*` 与 `CODEX_*` 两套环境变量怎么用，以及启动命令行、
+App Server 或 ACP agent。兼容 OpenAI Chat Completions、OpenAI Responses 和
+Anthropic Messages;默认通过 rig。原生 Responses 是可选通路，适合需要上游传输
 的 GPT 或兼容中转站。模型仍需具备相应的工具调用或视觉能力，选择协议不会补足
 模型自身缺失的能力。
+
+**fork 的行为差异**(协议路由、窗口语义、压缩、品牌)见 [FORK.md](FORK.md);
+无凭据环境变量模板见 [nuwax.env.example](nuwax.env.example)(harness CLI)与
+[acp.env.example](acp.env.example)(ACP agent)。
 
 ## 1. 安装与名称
 
@@ -42,7 +47,7 @@ Rust crate、源码构建目标和 `codex-code-mode-host` 等辅助程序保持�
 发布包会处理主程序改名，请完整安装同一版本，保留其配套辅助程序。
 
 默认数据目录是 **`~/.nuwax-harness`**，保存配置、会话与本地状态；显式
-`CODEX_HOME`（同义别名 `NUWAX_HOME`）优先；显式设置的路径须预先 `mkdir -p`
+`NUWAX_HOME`（同义别名 `CODEX_HOME`）优先；显式设置的路径须预先 `mkdir -p`
 创建，可将它设到外接盘。两者同时设置且值不同会在启动时报错并点名两个变量。
 此版本不读取、迁移或删除旧用户级 `.codex-nuwax`、`.nuwax-codex` 或 `.codex` 默认目录。
 项目中的 `.codex/` 属于项目级配置/资源入口，仍按既有规则加载，与上述用户级默认目录改名分开。
@@ -82,11 +87,11 @@ nuwax-harness app-server --stdio
 
 ```bash
 mkdir -p "$HOME/.config/nuwax-harness"
-cp docs/nuwax-harness/nuwax.env.example "$HOME/.config/nuwax-harness/agent.env"
+cp nuwax.env.example "$HOME/.config/nuwax-harness/agent.env"
 chmod 600 "$HOME/.config/nuwax-harness/agent.env"
 # 先通过你的密钥管理方式导出 NUWAX_API_KEY，再加载；模板不会保存真实 Key。
 . "$HOME/.config/nuwax-harness/agent.env"
-mkdir -p "${CODEX_HOME:-$HOME/.nuwax-harness}"
+mkdir -p "${NUWAX_HOME:-$HOME/.nuwax-harness}"
 nuwax-harness doctor --json
 nuwax-harness exec '请只回复 OK'
 ```
@@ -232,10 +237,10 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
 
 | 变量（`NUWAX_*` 别名同名去前缀） | 用途 |
 | --- | --- |
-| `CODEX_MODEL_CONTEXT_WINDOW`（`NUWAX_MODEL_CONTEXT_WINDOW`） | 正整数 token 数，告诉本地预算和压缩逻辑模型窗口大小 |
-| `CODEX_AUTO_COMPACT_TOKEN_LIMIT`（`NUWAX_AUTO_COMPACT_TOKEN_LIMIT`） | 可选正整数，指定触发自动压缩的 token 阈值 |
-| `CODEX_AUTO_COMPACT_RATIO`（`NUWAX_AUTO_COMPACT_RATIO`） | 可选 `(0, 1]` 小数，未设置显式 token 阈值时按有效窗口比例触发压缩 |
-| `CODEX_MODEL_REASONING_EFFORT`（`NUWAX_MODEL_REASONING_EFFORT`） | 可选：`none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`、`persistent`；具体模型/协议须支持该值 |
+| `NUWAX_MODEL_CONTEXT_WINDOW`（同义 `CODEX_MODEL_CONTEXT_WINDOW`） | 正整数 token 数，告诉本地预算和压缩逻辑模型窗口大小 |
+| `NUWAX_AUTO_COMPACT_TOKEN_LIMIT`（同义 `CODEX_AUTO_COMPACT_TOKEN_LIMIT`） | 可选正整数，指定触发自动压缩的 token 阈值 |
+| `NUWAX_AUTO_COMPACT_RATIO`（同义 `CODEX_AUTO_COMPACT_RATIO`） | 可选 `(0, 1]` 小数，未设置显式 token 阈值时按有效窗口比例触发压缩 |
+| `NUWAX_MODEL_REASONING_EFFORT`（同义 `CODEX_MODEL_REASONING_EFFORT`） | 可选：`none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`、`persistent`；具体模型/协议须支持该值 |
 
 窗口与压缩种子的行为（2026-10-28 起）：
 
@@ -278,10 +283,10 @@ export CODEX_PATH='/absolute/path/to/nuwax-harness'
 export CODEX_BASE_URL='https://your-provider.example/v1'
 export CODEX_API_PROTOCOL='openai'
 export CODEX_WIRE_API='chat'
-export CODEX_BRIDGE='rig'
-export CODEX_MODEL='your-model-id'
-# 从受保护环境注入 CODEX_API_KEY。
-export CODEX_MODEL_CONTEXT_WINDOW='128000'  # 替换为该模型的真实窗口
+export NUWAX_BRIDGE='rig'
+export NUWAX_MODEL='your-model-id'
+# 从受保护环境注入 NUWAX_API_KEY。
+export NUWAX_MODEL_CONTEXT_WINDOW='128000'  # 替换为该模型的真实窗口
 export INITIAL_AGENT_MODE='workspace-write'
 
 cd /absolute/path/to/fork-codex-acp-ts
@@ -309,7 +314,7 @@ ACP 是 stdio 协议服务，由 ACP 宿主配置上述命令、工作目录和�
 | `CODEX_WIRE_API` | OpenAI 协议族下为 `responses`（默认）或 `chat`；Anthropic 时无需设置 |
 | `CODEX_BRIDGE` | `rig`、`native`、`genai`；不设则让实际 Codex 二进制保留默认桥 |
 | `CODEX_MODEL` | 活动网关使用的平台模型 ID |
-| `CODEX_MODEL_CONTEXT_WINDOW` | 活动网关的真实上下文窗口，正整数 token 数 |
+| `NUWAX_MODEL_CONTEXT_WINDOW`（同义 `CODEX_MODEL_CONTEXT_WINDOW`） | 活动网关的真实上下文窗口，正整数 token 数 |
 | `CODEX_PROVIDER_ID` / `CODEX_PROVIDER_NAME` | 可选 provider ID / 展示名，不需要时不设 |
 | `CODEX_CONFIG` | 可选 JSON 对象，传入会话配置；高级配置需核对网关覆盖优先级 |
 | `MODEL_PROVIDER` | 无活动网关时可选的 provider 选择；不要用它与环境网关表达矛盾选择 |
@@ -397,7 +402,7 @@ nuwax-harness；目录内官方模型（gpt-\*）保持上游身份声明。
 
 不要用 `set -x`、`env` 全量转储或提交受保护环境文件来排查凭据。
 `doctor` 验证配置与路由，不代表实际端点已经完成模型调用；用短文本和真实工具各验一轮。
-进一步的实现状态见 [ROADMAP](../../my-docs/ROADMAP.md)。
+进一步的实现状态见 [ROADMAP](my-docs/ROADMAP.md)。
 
 ## 8. 附录：环境变量速查
 

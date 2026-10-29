@@ -73,7 +73,9 @@ You can also use Codex with an API key, but this requires [additional setup](htt
 
 ## Docs
 
-- [**Nuwax Harness：环境变量与 ACP 启动指南**](./docs/nuwax-harness/README.md)
+- [**Nuwax Harness：配置与启动指南**](./NUWAX-HARNESS.md) — 安装、自定义模型、`NUWAX_*` 环境变量、config.toml、ACP 启动
+- [**FORK.md**](./FORK.md) — 本 fork 与官方 codex 的行为差异(协议路由、窗口语义、压缩、已知限制)
+- [**AGENTS.md**](./AGENTS.md) — 给 AI agent 的仓库入口与工作约定
 - [**Codex Documentation**](https://developers.openai.com/codex)
 - [**Contributing**](./docs/contributing.md)
 - [**Installing & building**](./docs/install.md)

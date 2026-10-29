@@ -29,4 +29,4 @@ Anthropic 使用 `NUWAX_WIRE_API=anthropic`；原生 Responses 使用
 请勿只复制主二进制而丢弃 helper。
 
 完整参数、ACP 启动、Linux/容器、Windows 与排查示例见
-[环境变量启动指南](https://github.com/nuwax-ai/codex/tree/test/docs/nuwax-harness)。
+[环境变量启动指南](https://github.com/nuwax-ai/codex/tree/test#nuwax-harness)。

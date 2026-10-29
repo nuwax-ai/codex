@@ -423,7 +423,7 @@ pause_turn 实施形态、顺序保真范围、上限执行点与度量、开关
 ### 16 开始工作前的阅读顺序
 
 1. 根 AGENTS.md、相关子目录 AGENTS.md 和本文件。
-2. `my-docs/FORK.md`、`my-docs/rig-responses-review-2026-09-28.md`、`my-docs/field-mapping-audit.md`。
+2. `../FORK.md`、`my-docs/rig-responses-review-2026-09-28.md`、`my-docs/field-mapping-audit.md`。
 3. `my-docs/anthropic-hosted-tools/`、`my-docs/nuwax-home/`、`my-docs/claude-rig-full-validation.md`。
 4. 按本轮修改实际需要阅读源码和锁定 Rig registry 源码；历史 rebuttal 只是待核对证据，不是免审结论。
 

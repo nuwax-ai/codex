@@ -1,13 +1,13 @@
 # FORK.md — nuwax-codex 与官方 codex 的逻辑差异
 
 维护说明：本文是 fork 行为差异的权威索引。改动 fork 行为时同步更新本文与
-`codex-review-prompt.md`（§二 补丁面清单）。2026-10-22 的上游同步目标为
+`my-docs/codex-review-prompt.md`（§二 补丁面清单）。2026-10-22 的上游同步目标为
 `main@342ed69a1`，Rust `1.99.1`、V8 `152.2.0`，rig 升至 `0.45.0`（2026-10-26，用户解除
 0.44 冻结；桥机械适配 Model 构造器/Arc 消息与非穷尽错误，行为合同不变）；合并冲突已解，
 main集成与晚间批次已推送，复审输入origin/test=850a87390；备用genai现为0.7.0。
 不同源码的实网、fixture与CI证据分开，不宣称全部厂商/全部平台已通过。
-当前优先级与本轮验证快照见 [ROADMAP.md](ROADMAP.md)，
-历史执行证据见 [最新验收台账](rig-production-completion-2026-10-10/claude-rig-final-acceptance-2026-10-18.md)。
+当前优先级与本轮验证快照见 [ROADMAP.md](my-docs/ROADMAP.md)，
+历史执行证据见 [最新验收台账](my-docs/rig-production-completion-2026-10-10/claude-rig-final-acceptance-2026-10-18.md)。
 npm 组织包：`@nuwax-ai/nuwax-harness`；发布主二进制/主命令：`nuwax-harness`。
 2026-10-23 改为组织包发布，原生 0.18.14 制品保持不变；不提供旧包卸载或迁移流程。
 ACP 侧配套包：`@nuwax-ai/nuwax-codex-acp-ts`。
@@ -40,7 +40,7 @@ fork 通过 rig 桥统一第三方模型的协议转换、传输与会话生命�
 用户明确当前开发阶段无需兼容/迁移旧目录，不再自动回落到`.codex-nuwax`、
 `.nuwax-codex`或官方`.codex`，也不删除旧数据。已存在的新路径若是文件/坏symlink则报错，
 有效目录symlink保留路径语义。官方Codex不受影响；fork专属配置写在新的隔离目录。
-环境变量启动指南与模板见[docs/nuwax-harness](../docs/nuwax-harness/README.md)。
+环境变量启动指南与模板见[NUWAX-HARNESS](NUWAX-HARNESS.md)。
 
 ## 3. 模型协议与路由
 
@@ -138,7 +138,7 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
 阶段 D 的早期设计与证据见 `my-docs/codex-review-2026-10-01.md`。暂停保真及混合轮
 已有离线 wire 合同，真实厂商支持仍按上述能力边界分别判断；不能把离线通过扩大
 成三家网关都真实产生过 pause_turn。当前版本的字段处置和验收范围以
-[最新台账 §2、§4](rig-production-completion-2026-10-10/claude-rig-final-acceptance-2026-10-18.md) 为准。
+[最新台账 §2、§4](my-docs/rig-production-completion-2026-10-10/claude-rig-final-acceptance-2026-10-18.md) 为准。
 
 设计：`my-docs/anthropic-hosted-tools/`。
 ### 三协议字段契约（2026-10-22，验收分别绑定源码与二进制）
@@ -179,7 +179,7 @@ base64 `source`。编码是图片载荷，不按普通文本逐字符估算，�
 生命周期及输出多模态不是截图支持的完成前提。`structuredContent` 与同结果
 typed 媒体已可并存；原图跨协议转换预算及普通图混合的下界已有定向修复，
 其历史验收不代替本次 main 合并后的复验。详见
-[字段与图片说明](rig-production-completion-2026-10-10/rig-field-image-closure-2026-10-18.md)
+[字段与图片说明](my-docs/rig-production-completion-2026-10-10/rig-field-image-closure-2026-10-18.md)
 和最新台账。
 
 ## 5. 上下文压缩（compact）
@@ -284,7 +284,7 @@ app-server 同语义接线；组激活时共享 daemon 被排除（每进程凭�
 daemon 子进程同样剥离该变量；doctor 的 `config.model_routing` 收据相应显示
 `bridge: native transport` 并列出 `experimental bridge override:`。
 多进程应分别设置独立 `CODEX_HOME`；参数表、启动示例、远程与会话
-边界见 [容器多进程审查](container-multiprocess-env-review-2026-10-03.md)。
+边界见 [容器多进程审查](my-docs/container-multiprocess-env-review-2026-10-03.md)。
 （ACP-TS 侧另有 `CODEX_BASE_URL`/`CODEX_API_PROTOCOL`/`CODEX_WIRE_API`/
 `INITIAL_AGENT_MODE` 等，见该仓库。）
 ACP的CODEX_*入口显式选择custom-gateway；自 2026-10-28（fork-codex-acp-ts
@@ -295,7 +295,7 @@ env_alias：NUWAX 优先/同值幂等/异值报双变量名；错误不回显值
 启动失败。环境网关已授权，无需显式authenticate；显式providers/set或任何authenticate
 请求按既有优先级替换/清除该环境配置。隐藏标题线程复制完整活动provider定义，防止
 遗漏bridge/headers/query或回退到固定官方模型。28/28子进程fixture与GLM原生实网4/4
-见[收尾记录](rig-production-completion-2026-10-10/codex-core-closure-2026-10-22.md)。
+见[收尾记录](my-docs/rig-production-completion-2026-10-10/codex-core-closure-2026-10-22.md)。
 
 ### 7.1 `[tools] tool_search`——MCP 工具全量直出开关（2026-10-26）
 
@@ -351,7 +351,7 @@ Mac ARM默认/显式home、Linux/Windows显式CODEX_HOME的实际初始化与met
 `v0.18.13` 的前一 Release 已主动取消、从未发布 npm，原 tag 保留不改写。
 macOS 使用当前标准 runner，musl 编译并行限制为 2；Rust/V8 继续从仓库固定版本与
 可信配对清单读取。完整制品、首败与执行边界见
-[发布记录](rig-production-completion-2026-10-10/nuwax-harness-release-0.18.14.md)。
+[发布记录](my-docs/rig-production-completion-2026-10-10/nuwax-harness-release-0.18.14.md)。
 Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§10维护，主线已收口。
 
 - workspace 版本恒为占位 `0.0.0`；npm 版本号来自 git tag（`v*` → release.yml，
@@ -370,7 +370,7 @@ Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§
 明确Fatal（不再静默失效），并不承诺可运行地拒绝任意per-pid视角。显式/dev分支
 的初始缺席不等于不可重建，晚间复审的隔离修正与限定能力见最新复审记录。
 当前补丁与未闭合安全边界
-见 [ROADMAP.md](ROADMAP.md) 和最新台账；补丁索引仍见 `codex-review-prompt.md` §二。设计文档见
+见 [ROADMAP.md](my-docs/ROADMAP.md) 和最新台账；补丁索引仍见 `my-docs/codex-review-prompt.md` §二。设计文档见
 `my-docs/nuwax-home/`、`my-docs/anthropic-hosted-tools/`、
 `my-docs/rig-responses-phase1|2/`。
 
@@ -390,4 +390,4 @@ Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§
 | TUI 标题与 fallback 指令身份显示 "OpenAI Codex"、指令声明"OpenAI 主导"（厂商模型自述会沿用该身份幻觉成 GPT） | `tui/src/history_cell/session.rs`、`models-manager/prompt.md`、`protocol/src/prompts/base_instructions/default.md` | 已修（2026-10-28，两轮清查）：fallback 模板身份行渲染实际 slug（"You are the {slug} model ... in nuwax-harness"，`{{model}}` 占位符 + `local_model_messages(slug)`）；protocol 静态默认同步中性化；快照归一化改 `is_fallback_model_instructions`（拒绝花括号，防未替换占位符自匹配）；目录内 gpt-\* 保持上游指令。第二轮遗漏清查补齐：TUI 品牌/输入占位符（"Ask nuwax-harness to do anything"）、**exec 回复标签**、CLI `bin_name`/usage/补全名与全部子命令帮助文案（含 `mcp add` 帮助里 `~/.codex`→`~/.nuwax-harness` 路径纠错）、**模型可见字符串**（`USER_MESSAGE_BEGIN` 权威常量"## My request for nuwax-harness:"、task_mentions 标题/引用块、dynamic_tools 工具描述、memories 整合提示词自指）、错误/警告消息中的自指与可操作命令引用（`codex doctor/unarchive/logout/fork/app`→`nuwax-harness ...`）。有意保留：目录 gpt-\* 指令、Codex Cloud/Desktop/Apps 产品专名、realtime/guardian 上游专用提示词（vendor 不走或涉安全语义，登记待评估）、TUI daemon 版本通知（fork 内嵌模式不可达）、memories 中 `api.openai.org` 脱敏示例（数据必须保留）、约 200 处测试夹具内占位符字符串（不用户可见，改动徒增快照翻新） |
 
 阶段 D（搜索结果持久化/pause_turn/混合轮）已立项：Spec 见
-`phase-d-spec.md`，Plan 见 `phase-d-plan.md`（2026-10-01）。
+`my-docs/phase-d-spec.md`，Plan 见 `my-docs/phase-d-plan.md`（2026-10-01）。

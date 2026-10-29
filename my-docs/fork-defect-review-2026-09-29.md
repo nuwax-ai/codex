@@ -4,7 +4,7 @@
 > 待证伪假设，不是结论**。每条都给了代码坐标，请自行打开文件验证；若判断我错了，
 > 直接推翻并说明依据。我不确定的地方已显式标注"需 live 验证"。
 >
-> 复核范围：`codex-rs/codex-rust-rig-bridge/`（rig 桥）、`my-docs/FORK.md`（权威索引）、
+> 复核范围：`codex-rs/codex-rust-rig-bridge/`（rig 桥）、`../FORK.md`（权威索引）、
 > 以及 `core/src/client.rs` 的桥路由。上游基线见 FORK.md 头部。
 
 ## 0. 背景（事实，非判断）

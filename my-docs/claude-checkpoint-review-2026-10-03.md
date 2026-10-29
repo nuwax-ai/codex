@@ -18,7 +18,7 @@
 3. `my-docs/rig-stability-next/direct-development-2026-10-03-{spec,plan,tasks,targeted-validation}.md`。
 4. `my-docs/container-multiprocess-env-review-2026-10-03.md`。
 5. `my-docs/provider-request-controls-2026-10-03/{spec,plan,tasks}.md`。
-6. `my-docs/field-mapping-audit.md`、`my-docs/FORK.md`，核对其现状是否准确。
+6. `my-docs/field-mapping-audit.md`、`../FORK.md`，核对其现状是否准确。
 
 这是多轮相互依赖修改的 checkpoint，不是全面功能/平台验收完成的声明。
 

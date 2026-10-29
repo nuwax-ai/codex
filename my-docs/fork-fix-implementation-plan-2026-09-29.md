@@ -49,7 +49,7 @@
 ## Batch 1 — P2 文档 + 仓库卫生（低风险，第一个提交）
 
 ### 1.1 A1 错名/旧符号改正（4 文件）
-- `my-docs/FORK.md:50`：`responses_routes_via_chat_bridge` → 改为引用真实机制
+- `../FORK.md:50`：`responses_routes_via_chat_bridge` → 改为引用真实机制
   （`uses_model_bridge()` 判定 + `dispatch_model_bridge` 分派）。
 - `my-docs/codex-review-prompt.md:37` 与 `:97`：同上；并把 `dispatch_chat_bridge()`→
   `dispatch_model_bridge()`、`&dyn ChatModelBridge`→`&dyn ModelBridge`。

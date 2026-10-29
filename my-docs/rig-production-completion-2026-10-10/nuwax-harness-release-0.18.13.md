@@ -12,7 +12,7 @@
 - npm包名保留nuwax-codex，新主命令nuwax-harness，旧命令/归档文件别名兼容已有ACP。
 - 数据：默认~/.nuwax-harness，CODEX_HOME仍优先且显式路径必须存在；不读取或迁移旧目录。
 - 缓存：~/.nuwax-harness-cache；主程序、Code Mode host与平台helper齐全后才认为安装完成。
-- 文档：[环境变量指南](../../docs/nuwax-harness/README.md)，附NUWAX与ACP两套无凭据模板。
+- 文档：[环境变量指南](../../NUWAX-HARNESS.md)，附NUWAX与ACP两套无凭据模板。
 
 ## 发布前验证
 

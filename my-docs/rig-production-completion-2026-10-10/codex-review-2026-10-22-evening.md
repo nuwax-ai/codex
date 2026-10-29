@@ -6,7 +6,7 @@
 `29e7e59d5..c17b8675b`,含 main 集成 merge `a5b25b043` 与其后 11 笔提交)。
 
 权威索引:台账 `claude-rig-final-acceptance-2026-10-18.md` §6.54-§6.57;
-路线图 `my-docs/ROADMAP.md`;fork 边界 `my-docs/FORK.md`。
+路线图 `my-docs/ROADMAP.md`;fork 边界 `../../FORK.md`。
 
 > 后续独立复审：本页是推送时交接。run39761410573现已结束，三平台在lint/测试编译
 > 阶段失败（无workspace测试计数），Bazel通过；修复及最终证据以

@@ -10,7 +10,7 @@
    先核对 clean、HEAD、父提交与 origin 关系。最近一笔是 main 集成，父提交应是
    `387914de0` 与 `342ed69a1`。前者包含用户原来六笔未推送文档，不可丢弃。
    `/Volumes/soddy/git_workspace/fork-nuwax-codex` 和它的旧 worktree 禁作最新源码。
-2. 先读 `my-docs/ROADMAP.md`、`my-docs/FORK.md`、本目录
+2. 先读 `my-docs/ROADMAP.md`、`../../FORK.md`、本目录
    `codex-main-merge-review-2026-10-22.md` 及其 JSON 收据。
    历史台账 `claude-rig-final-acceptance-2026-10-18.md` 从最新 §6.54 接续，
    §7 最新状态优先于旧历史段落；不要拿几周前绿收据覆盖新 main。
