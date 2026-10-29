@@ -5728,6 +5728,41 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   隔离目录安装冒烟 `nuwax-harness-acp-ts --version` 输出 `1.2.22`，
   bin 含 `nuwax-harness-acp-ts` 与 `nuwax-codex-acp-ts`。
 
+## 6.71 GLM effort=medium 报 1210 的实测归因，与 TUI 品牌标记替换（2026-10-29）
+
+- **背景**：用户报告 harness 在 GLM Anthropic 协议上 `effort=medium` 报
+  `1210 该模型始终思考，不支持关闭思考；请使用 low、high 或 max`；并行 agent
+  抓包 claude-code 后归因为"medium 不被接受"，并把适配器兜底改成 low。
+- **实测（用户授权使用 GLM 付费 API，官方端点 open.bigmodel.cn/api/anthropic）**：
+  - `output_config.effort` 取 low/medium/high/xhigh/max/minimal/ultra **全部 200**；
+  - 不带 effort、`thinking:{"type":"disabled"}`、顶层 effort、`effort:"none"`、
+    `thinking:{"type":"adaptive"}`、`?beta=true`，以及换 GLM-5 / GLM-5.1 / GLM-4.6，
+    **全部 200**；
+  - 用桥自带 `CODEX_RIG_REQUEST_CAPTURE_FILE` 捕获我们 medium 下的真实请求
+    （41,230 字节，含 system/tools），harness 实跑 200，curl 字节级重放亦 200。
+- **结论**：我们 medium 的字段处理**正确**——`output_config.effort` 正是 Anthropic
+  官方指定位置，medium 是合法值（Anthropic 现行契约 low/medium/high/xhigh/max）。
+  **1210 用我们的请求形态在该官方端点复现不了**；agent 的"medium 被拒"归因与实测
+  矛盾，疑为其代理（8791）上游不是该端点，或其捕获与实际发出不一致。
+- **发现的真问题（非 GLM）**：`transport.rs:254` 在 `effort=none` 时发送
+  `thinking:{"type":"disabled"}`，而 Anthropic 现行契约在 Opus 5.5 / Sonnet 5.5 上
+  对该值一律 400（Opus 5 仅 effort≤high 接受）；GLM 的 1210 文案描述的正是这类拒绝，
+  在更严格端点上我们这条路径才会踩中。
+- **用户决策**：**不在引擎里静默改写**。正解是省略 `thinking` 并把 effort 降到 `low`，
+  但这类跨网关差异应由**环境变量显式设置**（计划 `NUWAX_ANTHROPIC_THINKING_MODE`，
+  取值 omit/disabled，未实现），而不是桥在背后黑盒兼容——静默改写会让"用户配了什么"
+  与"线上发了什么"不一致，问题只能从抓包反推。已记入 FORK.md §10 已知限制表。
+- **TUI 品牌标记替换**（`416d5aa85`）：empty-state 与 onboarding 动画原本在 OpenAI
+  knot 与 Codex 圆之间 morph，现换成应用图标自己的两个标记——`PEBBLE`（渐变 pebble，
+  有机不对称）与 `SPARK`（四角星，图标白色核心），共享同一 bounds 使星保持图标内嵌比例；
+  morph 语义变为"pebble 绽放成星芒"，静止态为白色星芒。品牌渐变（左下青绿/顶蓝/右玫红）
+  从标记自身表面取样并随标记旋转，光照数学未改、仅 palette 改由该 hue 推导；morph 到星时
+  hue 淡到实心白；亮色主题压低 hue 并用墨色核心保对比。onboarding 欢迎语同步去 Codex。
+  4 个 logo 快照重拍通过；动画 8 个行为测试与形状无关、原样通过。
+- **既有失败定性**（stash 对照验证，非本次引入）：3 个快照仍是 `Ask Codex`
+  （`25343cac5` 品牌清扫漏修，已在 `d9a2317ea` 修）、1 个缺 `codex` bin
+  （独立 CARGO_TARGET_DIR 环境问题）、3 个 daemon 集成测试干净树上同样败。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-29 本轮复审状态：** `b68b281d4`、`cf46b6e9f` 的复审补修见§6.69，
