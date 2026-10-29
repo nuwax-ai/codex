@@ -152,23 +152,35 @@ pub(crate) fn parse_tools(tools: &[Value]) -> Result<RequestTools, codex_api::Ap
     let mut hosted_tools = Vec::new();
     for tool in tools {
         if tool["type"] == "namespace" {
-            if let (Some(namespace), Some(children)) =
+            let (Some(namespace), Some(children)) =
                 (tool["name"].as_str(), tool["tools"].as_array())
-            {
-                for child in children {
-                    append_tool(
-                        child,
-                        Some(namespace),
-                        &mut definitions,
-                        &mut custom,
-                        &mut strict,
-                        &mut hosted_tools,
-                    )?;
-                }
+            else {
+                return Err(codex_api::ApiError::InvalidRequest {
+                    message: "Namespace tool declaration requires a name and a tools array"
+                        .into(),
+                });
+            };
+            // The namespace description documents the group's shared calling
+            // conventions. Flattening discards the grouping, so it rides each
+            // child tool's description instead of vanishing with the wrapper.
+            let namespace_description = tool["description"]
+                .as_str()
+                .filter(|description| !description.is_empty());
+            for child in children {
+                append_tool(
+                    child,
+                    Some(namespace),
+                    namespace_description,
+                    &mut definitions,
+                    &mut custom,
+                    &mut strict,
+                    &mut hosted_tools,
+                )?;
             }
         } else {
             append_tool(
                 tool,
+                None,
                 None,
                 &mut definitions,
                 &mut custom,
@@ -192,6 +204,7 @@ pub(crate) fn parse_tools(tools: &[Value]) -> Result<RequestTools, codex_api::Ap
 fn append_tool(
     tool: &Value,
     namespace: Option<&str>,
+    namespace_description: Option<&str>,
     definitions: &mut Vec<ToolDefinition>,
     custom: &mut HashSet<String>,
     strict: &mut HashMap<String, bool>,
@@ -205,8 +218,14 @@ fn append_tool(
         return Ok(());
     }
     let Some(name) = tool["name"].as_str() else {
-        return Ok(());
+        let kind = tool["type"].as_str().unwrap_or("tool");
+        return Err(codex_api::ApiError::InvalidRequest {
+            message: format!(
+                "Tool declaration of type {kind:?} has no name; the Rig bridge cannot advertise it"
+            ),
+        });
     };
+    let is_custom = tool["type"].as_str() == Some("custom");
     let name = flat_name(name, namespace);
     let parameters = match tool["type"].as_str() {
         Some("custom") => {
@@ -225,11 +244,34 @@ fn append_tool(
     }
     // Custom tools carry their contract in the wrapper schema; a missing
     // description still needs to tell the model how to use the input field.
-    let fallback_description = if tool["type"].as_str() == Some("custom") {
+    let fallback_description = if is_custom {
         "Custom tool; pass the complete tool input text in the `input` field."
     } else {
         ""
     };
+    let mut description = tool["description"]
+        .as_str()
+        .filter(|description| !description.is_empty())
+        .unwrap_or(fallback_description)
+        .to_owned();
+    if let Some(group) = namespace_description
+        && let Some(namespace) = namespace
+    {
+        if !description.is_empty() {
+            description.push_str("\n\n");
+        }
+        description.push_str(&format!(
+            "Part of the `{namespace}` tool group: {group}"
+        ));
+    }
+    if is_custom
+        && let Some(grammar) = custom_grammar_note(tool)?
+    {
+        if !description.is_empty() {
+            description.push_str("\n\n");
+        }
+        description.push_str(&grammar);
+    }
     let tool_name = rig_core::completion::message::ToolName::new(name.clone()).map_err(|_| {
         codex_api::ApiError::InvalidRequest {
             message: format!("Tool name {name:?} must not be empty"),
@@ -237,17 +279,51 @@ fn append_tool(
     })?;
     definitions.push(ToolDefinition {
         name: tool_name,
-        description: tool["description"]
-            .as_str()
-            .filter(|description| !description.is_empty())
-            .unwrap_or(fallback_description)
-            .to_string(),
+        description,
         parameters,
         // Host-policy metadata (never sent to the model). The wire tool JSON
         // carries no annotations today; keep them empty until a source exists.
         annotations: rig_core::completion::ToolAnnotations::default(),
     });
     Ok(())
+}
+
+/// The Chat/Anthropic wires have no channel for a custom tool's grammar: the
+/// wrapper schema can only say the input is text, so the format contract
+/// would vanish. Ride the declaration's grammar in the description instead.
+///
+/// Only the documented `grammar` format is injected. A different format type
+/// degrades to a warning (forward compatibility), while a `grammar` format
+/// missing its syntax or definition strings is malformed and fails fast —
+/// the declaration promises a contract the request could no longer honor.
+fn custom_grammar_note(tool: &Value) -> Result<Option<String>, codex_api::ApiError> {
+    let Some(format) = tool.get("format").filter(|format| !format.is_null()) else {
+        return Ok(None);
+    };
+    if format["type"].as_str() != Some("grammar") {
+        tracing::warn!(
+            r#type = ?format["type"].as_str(),
+            "Custom tool format has no Rig wire equivalent; the description keeps only the text-input contract"
+        );
+        return Ok(None);
+    }
+    let (Some(syntax), Some(definition)) =
+        (format["syntax"].as_str(), format["definition"].as_str())
+    else {
+        return Err(codex_api::ApiError::InvalidRequest {
+            message: "Custom tool declares a grammar format without syntax or definition strings"
+                .into(),
+        });
+    };
+    if syntax.is_empty() || definition.is_empty() {
+        return Err(codex_api::ApiError::InvalidRequest {
+            message: "Custom tool declares a grammar format with an empty syntax or definition"
+                .into(),
+        });
+    }
+    Ok(Some(format!(
+        "The `input` value is NOT JSON: it is raw text that must satisfy this {syntax} grammar:\n\n{definition}"
+    )))
 }
 
 /// A history tool call's flat wire name as a `ToolName`.

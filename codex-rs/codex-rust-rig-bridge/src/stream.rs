@@ -318,6 +318,15 @@ fn stream_via_rig_attempt(
         let anthropic_server_tools = if protocol == RigProtocol::Anthropic {
             crate::hosted_tools::translate_anthropic_server_tools(&tool_meta.hosted_tools)?
         } else {
+            if !tool_meta.hosted_tools.is_empty() {
+                // Loud, not silent: a request that asked for hosted tools and
+                // lost them must be visible in logs (the Responses passthrough
+                // keeps them verbatim and never reaches this branch).
+                tracing::warn!(
+                    count = tool_meta.hosted_tools.len(),
+                    "Chat Completions has no hosted-tool concept; dropping the hosted tool declarations (the Anthropic wire translates web_search)"
+                );
+            }
             Vec::new()
         };
 

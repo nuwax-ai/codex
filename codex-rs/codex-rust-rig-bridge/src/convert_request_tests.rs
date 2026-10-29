@@ -439,6 +439,101 @@ mod mapping {
     }
 
     #[test]
+    fn custom_tool_grammar_rides_the_description() {
+        let tools_json = r#"[{"type": "custom", "name": "apply_patch", "description": "Edit files.",
+            "format": {"type": "grammar", "syntax": "lark", "definition": "start: WORD"}}]"#;
+        let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
+        let parsed = parse_tools(&tools).unwrap().definitions;
+        assert_eq!(parsed.len(), 1);
+        let description = &parsed[0].description;
+        assert!(description.starts_with("Edit files."), "{description}");
+        assert!(description.contains("NOT JSON"), "{description}");
+        assert!(description.contains("this lark grammar"), "{description}");
+        assert!(description.contains("start: WORD"), "{description}");
+        // The wrapper schema still declares the single text input.
+        assert_eq!(parsed[0].parameters["properties"]["input"]["type"], "string");
+    }
+
+    #[test]
+    fn custom_tool_grammar_without_description_combines_fallback() {
+        let tools_json = r#"[{"type": "custom", "name": "apply_patch",
+            "format": {"type": "grammar", "syntax": "lark", "definition": "start: WORD"}}]"#;
+        let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
+        let parsed = parse_tools(&tools).unwrap().definitions;
+        let description = &parsed[0].description;
+        assert!(
+            description.starts_with("Custom tool; pass the complete tool input text"),
+            "{description}"
+        );
+        assert!(description.contains("start: WORD"), "{description}");
+    }
+
+    #[test]
+    fn custom_tool_with_malformed_grammar_fails_fast() {
+        let tools_json =
+            r#"[{"type": "custom", "name": "t", "format": {"type": "grammar", "syntax": "lark"}}]"#;
+        let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
+        let error = match parse_tools(&tools) {
+            Err(error) => error,
+            Ok(selection) => panic!("expected an error, got tools: {:?}", selection.definitions),
+        };
+        assert!(
+            format!("{error}").contains("grammar format without syntax or definition"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn nameless_tool_declaration_fails_fast() {
+        let tools_json = r#"[{"type": "function", "description": "d", "parameters": {}}]"#;
+        let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
+        let error = match parse_tools(&tools) {
+            Err(error) => error,
+            Ok(selection) => panic!("expected an error, got tools: {:?}", selection.definitions),
+        };
+        assert!(
+            format!("{error}").contains("has no name"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn malformed_namespace_declaration_fails_fast() {
+        let tools_json = r#"[{"type": "namespace", "tools": []}]"#;
+        let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
+        let error = match parse_tools(&tools) {
+            Err(error) => error,
+            Ok(selection) => panic!("expected an error, got tools: {:?}", selection.definitions),
+        };
+        assert!(
+            format!("{error}").contains("requires a name and a tools array"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn namespace_description_rides_child_tools() {
+        let tools_json = r#"[{
+            "type": "namespace",
+            "name": "mcp__memory",
+            "description": "Shared conventions for memory tools.",
+            "tools": [
+                {"type": "function", "name": "create_entities", "description": "d",
+                 "parameters": {"type": "object"}},
+                {"type": "function", "name": "delete_all", "description": "",
+                 "parameters": {"type": "object"}}
+            ]
+        }]"#;
+        let tools: Vec<Value> = serde_json::from_str(tools_json).expect("json");
+        let parsed = parse_tools(&tools).unwrap().definitions;
+        assert_eq!(parsed.len(), 2);
+        let note = "Part of the `mcp__memory` tool group: Shared conventions for memory tools.";
+        assert_eq!(parsed[0].description, format!("d\n\n{note}"));
+        // A child without its own description gets only the group note.
+        assert_eq!(parsed[1].description, note);
+    }
+
+    #[test]
     fn tool_choice_maps_known_values() {
         use rig_core::completion::message::ToolChoice;
         assert!(matches!(
