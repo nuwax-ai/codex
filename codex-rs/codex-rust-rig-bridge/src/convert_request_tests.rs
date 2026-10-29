@@ -712,9 +712,33 @@ mod mapping {
             summary: None,
             context: None,
         });
+        // The Anthropic wire carries it on rig's typed channel, so a tier the
+        // model does not take is refused before anything is sent.
+        let (req, _) = super::responses_request_to_completion_request(
+            &request,
+            RigProtocol::Anthropic,
+            "test",
+        )
+        .expect("convertible");
+        assert_eq!(
+            req.options.reasoning,
+            Some(rig_core::completion::Reasoning::Effort(
+                rig_core::completion::Effort::XHigh
+            )),
+            "the level must cross unclamped"
+        );
+        if let Some(params) = &req.additional_params {
+            assert!(
+                params.get("reasoning_effort").is_none(),
+                "the Anthropic wire must not inject reasoning_effort: {params}"
+            );
+        }
+        // Chat keeps its own raw spelling; the typed channel is not a drop-in
+        // there (see the note in `convert_request.rs`).
         let (req, _) = responses_request_to_completion_request(&request).expect("convertible");
         let params = req.additional_params.expect("params present");
         assert_eq!(params["reasoning_effort"], "xhigh");
+        assert!(req.options.reasoning.is_none());
     }
 
     // ─── Robustness fixes (2026-09-25 review round 2) ────────────────

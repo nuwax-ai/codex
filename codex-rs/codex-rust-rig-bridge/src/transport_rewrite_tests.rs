@@ -19,12 +19,10 @@ fn rewrite<'a>(
         protocol,
         websearch_replay: &[],
         disable_anthropic_parallel: false,
-        disable_anthropic_thinking: false,
         tool_strict,
         tool_result_errors,
         anthropic_server_tools,
         anthropic_tool_choice,
-        anthropic_effort: None,
         anthropic_service_tier: None,
         chat_drop_orphan_tool_choice: false,
     }
@@ -136,12 +134,10 @@ fn chat_dangling_tool_choice_is_dropped_when_no_tools_are_advertised() {
 }
 
 #[test]
-fn strict_flags_and_effort_merge_survive_the_extraction() {
+fn strict_flags_and_service_tier_survive_the_extraction() {
     let strict = HashMap::from([("shell".to_string(), true)]);
     let result_errors = HashMap::new();
     let mut rewrite = rewrite(RigProtocol::Anthropic, &strict, &result_errors, &[], None);
-    let effort = "low".to_string();
-    rewrite.anthropic_effort = Some(&effort);
     let tier = "standard_only".to_string();
     rewrite.anthropic_service_tier = Some(&tier);
     let mut body = json!({
@@ -152,11 +148,19 @@ fn strict_flags_and_effort_merge_survive_the_extraction() {
     });
     rewrite.apply(&mut body);
     assert_eq!(body["tools"][0]["strict"], json!(true));
-    assert_eq!(body["output_config"]["effort"], json!("low"));
+    // Effort no longer lands here: it rides rig's typed channel
+    // (`reasoning_effort`), which refuses a tier the model does not take
+    // before the body is serialized. What is left must not disturb rig's own
+    // `output_config`.
+    assert!(
+        body["output_config"].get("effort").is_none(),
+        "the body rewrite must not carry effort any more: {}",
+        body["output_config"]
+    );
     assert_eq!(
         body["output_config"]["format"]["type"],
         json!("json_schema"),
-        "the effort merge must keep rig's serialized output_config.format"
+        "the rewrite must keep rig's serialized output_config.format"
     );
     assert_eq!(body["service_tier"], json!("standard_only"));
 }

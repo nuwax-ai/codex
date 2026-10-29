@@ -52,6 +52,8 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 use support::IMAGE;
 use support::capture;
+use support::capture_refusal;
+use support::capture_with_levels;
 use support::request;
 use support::set_tools;
 use support::user;
@@ -165,6 +167,9 @@ async fn anthropic_wire_carries_effort_and_service_tier_where_they_overlap() {
             summary: None,
             context: None,
         });
+        // No declared tiers: rig answers from its own catalog, which lists
+        // nothing for a gateway model, so the wire stays permissive and the
+        // level goes out as asked.
         let (wire, _, _) = capture(&req, RigProtocol::Anthropic).await;
         assert_eq!(
             wire["body"]["output_config"]["effort"], expected,
@@ -206,6 +211,213 @@ async fn anthropic_wire_carries_effort_and_service_tier_where_they_overlap() {
     let (wire, _, _) = capture(&req, RigProtocol::Chat).await;
     assert_eq!(wire["body"]["reasoning_effort"], "high");
     assert!(wire["body"].get("output_config").is_none());
+    // Chat carries the level alone and keeps the legacy output-cap spelling,
+    // which is what a compatible gateway reads. Both are why Chat cannot take
+    // rig's typed channel — see the note in `convert_request.rs`.
+    assert!(
+        wire["body"].get("thinking").is_none(),
+        "the Chat wire carries the level alone: {}",
+        wire["body"]
+    );
+    assert!(
+        wire["body"].get("max_completion_tokens").is_none(),
+        "the Chat wire must keep the legacy output-cap spelling: {}",
+        wire["body"]
+    );
+}
+
+/// The Chat wire's own gate. rig's Chat dialect couples "may I validate this
+/// effort" to "rename the output cap", so the tier rule is the bridge's — but
+/// it is the same rule, in the same vocabulary, refusing at the same point:
+/// before the wire is built.
+#[tokio::test]
+async fn a_declared_tier_list_gates_the_chat_wire() {
+    let declared = Some(vec!["low".to_owned(), "high".to_owned(), "max".to_owned()]);
+    // A declared tier is sent, and the body is untouched by having declared it.
+    let mut req = request(vec![user()]);
+    req.reasoning = Some(Reasoning {
+        effort: Some(ReasoningEffort::High),
+        summary: None,
+        context: None,
+    });
+    let (wire, _, _) = capture_with_levels(&req, RigProtocol::Chat, declared.clone()).await;
+    assert_eq!(wire["body"]["reasoning_effort"], "high");
+    assert!(wire["body"].get("max_completion_tokens").is_none());
+
+    // A tier the model lacks is refused before anything is sent.
+    let mut req = request(vec![user()]);
+    req.reasoning = Some(Reasoning {
+        effort: Some(ReasoningEffort::Medium),
+        summary: None,
+        context: None,
+    });
+    let (refusal, saw_request) = capture_refusal(&req, RigProtocol::Chat, declared.clone()).await;
+    assert!(
+        refusal.contains("`medium`") && refusal.contains("`max`"),
+        "the missing tier and the ones the model takes must both be named: {refusal}"
+    );
+    assert!(
+        !saw_request,
+        "the refusal must happen before anything is sent: {refusal}"
+    );
+
+    // So is turning reasoning off, on an always-thinking gateway.
+    let mut req = request(vec![user()]);
+    req.reasoning = Some(Reasoning {
+        effort: Some(ReasoningEffort::None),
+        summary: None,
+        context: None,
+    });
+    let (refusal, saw_request) = capture_refusal(&req, RigProtocol::Chat, declared).await;
+    assert!(
+        refusal.contains("always think"),
+        "turning thinking off must be refused saying why: {refusal}"
+    );
+    assert!(!saw_request, "the refusal must happen before sending");
+}
+
+/// A tier word rig does not spell fails before the wire is built on either
+/// protocol, naming the knob and rig's own vocabulary.
+#[tokio::test]
+async fn an_undeclared_tier_word_is_refused_on_both_wires() {
+    for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
+        let mut req = request(vec![user()]);
+        req.reasoning = Some(Reasoning {
+            effort: Some(ReasoningEffort::High),
+            summary: None,
+            context: None,
+        });
+        let (refusal, saw_request) = capture_refusal(
+            &req,
+            protocol,
+            Some(vec!["low".to_owned(), "hih".to_owned()]),
+        )
+        .await;
+        assert!(
+            refusal.contains("`hih`") && refusal.contains("`xhigh`"),
+            "{protocol:?}: the offending word and rig's accepted words must both be named: {refusal}"
+        );
+        assert!(
+            !saw_request,
+            "{protocol:?}: a bad tier word must fail before sending"
+        );
+    }
+}
+
+/// GLM-5.3-Flash takes `low`, `high` and `max` and nothing else, per Zhipu's
+/// own tier table. Declaring that must stop `medium` and a disabled-thinking
+/// request *before* the wire is built — the failure that used to surface only
+/// as low-effort output after the gateway silently remapped the level.
+#[tokio::test]
+async fn a_declared_tier_list_gates_effort_before_the_request_is_sent() {
+    let declared = Some(vec!["low".to_owned(), "high".to_owned(), "max".to_owned()]);
+    for (effort, expected) in [
+        (ReasoningEffort::Low, "low"),
+        (ReasoningEffort::High, "high"),
+        (ReasoningEffort::Max, "max"),
+    ] {
+        let mut req = request(vec![user()]);
+        req.reasoning = Some(Reasoning {
+            effort: Some(effort),
+            summary: None,
+            context: None,
+        });
+        let (wire, _, _) =
+            capture_with_levels(&req, RigProtocol::Anthropic, declared.clone()).await;
+        assert_eq!(wire["body"]["output_config"]["effort"], expected);
+        // No `thinking` sibling: rig sends one for an Anthropic-dialect model
+        // it does not list, which a GLM or MiMo endpoint does not take. The
+        // bound spec must keep the gateway's own shape whether or not tiers
+        // are declared.
+        assert!(
+            wire["body"].get("thinking").is_none(),
+            "a gateway model sends the effort alone: {}",
+            wire["body"]
+        );
+    }
+    // The tiers the model lacks are refused, and never reach the gateway.
+    for effort in [ReasoningEffort::Medium, ReasoningEffort::XHigh] {
+        let mut req = request(vec![user()]);
+        req.reasoning = Some(Reasoning {
+            effort: Some(effort.clone()),
+            summary: None,
+            context: None,
+        });
+        let (refusal, saw_request) =
+            capture_refusal(&req, RigProtocol::Anthropic, declared.clone()).await;
+        assert!(
+            refusal.contains(&format!("no `{}` effort level", effort_wire_word(&effort))),
+            "{effort:?} must be refused naming the missing level: {refusal}"
+        );
+        assert!(
+            !saw_request,
+            "{effort:?} must be refused before anything is sent: {refusal}"
+        );
+    }
+    // An always-thinking model refuses a request that turns reasoning off.
+    let mut req = request(vec![user()]);
+    req.reasoning = Some(Reasoning {
+        effort: Some(ReasoningEffort::None),
+        summary: None,
+        context: None,
+    });
+    let (refusal, saw_request) =
+        capture_refusal(&req, RigProtocol::Anthropic, declared.clone()).await;
+    assert!(
+        refusal.contains("cannot be turned off") || refusal.contains("cannot be disabled"),
+        "turning thinking off must be refused: {refusal}"
+    );
+    assert!(
+        !saw_request,
+        "turning thinking off must be refused before anything is sent: {refusal}"
+    );
+}
+
+/// Binding a spec for its effort tiers must not cost the request anything
+/// else. Images are the case that would fail silently: rig reads a bound
+/// spec's modalities to decide whether to drop image blocks, so a spec that
+/// claimed text-only would strip every attachment with no error.
+#[tokio::test]
+async fn declaring_effort_tiers_does_not_drop_images() {
+    let mut req = request(vec![json!({
+        "type": "message",
+        "role": "user",
+        "content": [
+            {"type": "input_text", "text": "what is in this image?"},
+            {"type": "input_image", "image_url": IMAGE},
+        ],
+    })]);
+    req.reasoning = Some(Reasoning {
+        effort: Some(ReasoningEffort::High),
+        summary: None,
+        context: None,
+    });
+    let (wire, _, _) = capture_with_levels(
+        &req,
+        RigProtocol::Anthropic,
+        Some(vec!["low".to_owned(), "high".to_owned(), "max".to_owned()]),
+    )
+    .await;
+    let blocks = wire["body"]["messages"][0]["content"]
+        .as_array()
+        .expect("content blocks");
+    assert!(
+        blocks
+            .iter()
+            .any(|block| block["type"] == "image" && block["source"]["data"] == "aGVsbG8="),
+        "the image block must survive the bound spec: {blocks:?}"
+    );
+}
+
+fn effort_wire_word(effort: &ReasoningEffort) -> &'static str {
+    match effort {
+        ReasoningEffort::Minimal | ReasoningEffort::Low => "low",
+        ReasoningEffort::Medium => "medium",
+        ReasoningEffort::High => "high",
+        ReasoningEffort::XHigh => "xhigh",
+        ReasoningEffort::Max | ReasoningEffort::Ultra => "max",
+        ReasoningEffort::None | ReasoningEffort::Persistent | ReasoningEffort::Custom(_) => "off",
+    }
 }
 
 #[tokio::test]

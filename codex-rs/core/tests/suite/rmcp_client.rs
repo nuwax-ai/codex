@@ -5447,6 +5447,7 @@ async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Res
         max_output_tokens: Some(1_024),
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
+            reasoning_effort_levels: None,
     };
     let server_name = "rmcp";
     let command = remote_aware_stdio_server_bin()?;

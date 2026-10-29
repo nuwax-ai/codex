@@ -166,8 +166,6 @@ async fn stream_responses_via_rig_inner(
         protocol: crate::RigProtocol::Responses,
         // Chat/Anthropic-only knobs; all empty on the Responses wire.
         disable_anthropic_parallel: false,
-        disable_anthropic_thinking: false,
-        anthropic_effort: None,
         anthropic_service_tier: None,
         anthropic_tool_choice: None,
         chat_drop_orphan_tool_choice: false,

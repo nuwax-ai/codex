@@ -394,15 +394,6 @@ fn stream_via_rig_attempt(
                 .map(|replay| replay.messages.clone()),
             tool_strict: tool_meta.strict,
             tool_result_errors: tool_meta.result_errors,
-            disable_anthropic_thinking: protocol == RigProtocol::Anthropic
-                && request
-                    .reasoning
-                    .as_ref()
-                    .and_then(|value| value.effort.as_ref())
-                    == Some(&codex_protocol::openai_models::ReasoningEffort::None),
-            anthropic_effort: (protocol == RigProtocol::Anthropic)
-                .then(|| crate::convert_request::anthropic_effort(request))
-                .flatten(),
             anthropic_service_tier: (protocol == RigProtocol::Anthropic)
                 .then(|| crate::convert_request::anthropic_service_tier(request))
                 .flatten(),
@@ -458,6 +449,27 @@ fn stream_via_rig_attempt(
             crate::convert_request::add_agent_cache_point(&mut completion_request);
         }
 
+        // The declared tiers gate the effort on both converting wires, and the
+        // refusal happens here — before either model is built, so before any
+        // bytes leave. Anthropic hands them to rig's typed channel; Chat
+        // checks them itself, because rig's Chat dialect would rename the
+        // output cap in exchange (`reasoning_effort`). Parsed once, and a word
+        // rig does not spell fails whichever wire was about to use it.
+        let tiers_source = format!(
+            "the effort tiers declared for model `{model}` \
+             (model_providers.<id>.reasoning_effort_levels)"
+        );
+        let declared_levels = crate::reasoning_effort::parse_levels(
+            &tiers_source,
+            api_provider.reasoning_effort_levels.as_deref(),
+        )?;
+        if protocol == RigProtocol::Chat {
+            crate::reasoning_effort::check_declared(
+                &tiers_source,
+                &declared_levels,
+                request.reasoning.as_ref().and_then(|r| r.effort.as_ref()),
+            )?;
+        }
         let stream_response = match protocol {
             RigProtocol::Chat => {
                 let chat_model =
@@ -471,6 +483,7 @@ fn stream_via_rig_attempt(
                     &headers,
                     http,
                     api_provider.anthropic_prompt_caching.unwrap_or(false),
+                    &declared_levels,
                 )?;
                 anthropic_model.stream(completion_request)
             }
@@ -651,6 +664,16 @@ pub(crate) fn map_provider_error(e: rig_core::error::ProviderError) -> ApiError 
     match e {
         ProviderError::Request(_) | ProviderError::Url(_) => ApiError::InvalidRequest {
             message: format!("rig request failed: {e}"),
+        },
+        // rig refused an option the wire or model cannot take — a tier the
+        // model does not have, or turning reasoning off on one that cannot.
+        // This is the fail-fast the typed channel exists to produce, so it
+        // must stay a non-retryable invalid request: `TransportError::Network`
+        // is retried whenever `retry_transport` is on, which would spend N
+        // paid attempts on a misconfiguration and then report a network
+        // failure instead of naming the tier and the knob to fix.
+        ProviderError::UnsupportedOption(refusal) => ApiError::InvalidRequest {
+            message: format!("rig refused the request: {refusal}"),
         },
         _ => ApiError::Transport(TransportError::Network(format!("rig error: {e}"))),
     }

@@ -29,10 +29,6 @@ pub(crate) struct RigHttpClient {
     pub(crate) disable_anthropic_parallel: bool,
     pub(crate) tool_strict: std::collections::HashMap<String, bool>,
     pub(crate) tool_result_errors: std::collections::HashMap<String, bool>,
-    pub(crate) disable_anthropic_thinking: bool,
-    /// Anthropic `output_config.effort`, mapped from codex reasoning effort
-    /// where the scales overlap. `None` leaves the field untouched.
-    pub(crate) anthropic_effort: Option<String>,
     /// Anthropic `service_tier`, mapped from the two semantically matching
     /// OpenAI values. `None` leaves the field untouched.
     pub(crate) anthropic_service_tier: Option<String>,
@@ -135,12 +131,10 @@ impl RigHttpClient {
             websearch_replay: &self.anthropic_websearch_replay,
             anthropic_pause_raw_content: self.anthropic_pause_raw_content.as_deref(),
             disable_anthropic_parallel: self.disable_anthropic_parallel,
-            disable_anthropic_thinking: self.disable_anthropic_thinking,
             tool_strict: &self.tool_strict,
             tool_result_errors: &self.tool_result_errors,
             anthropic_server_tools: &self.anthropic_server_tools,
             anthropic_tool_choice: self.anthropic_tool_choice.as_ref(),
-            anthropic_effort: self.anthropic_effort.as_ref(),
             anthropic_service_tier: self.anthropic_service_tier.as_ref(),
             chat_drop_orphan_tool_choice: self.chat_drop_orphan_tool_choice,
         }
@@ -156,12 +150,10 @@ struct ChatFamilyRewrite<'a> {
     /// Complete paused assistant responses appended after the original input.
     anthropic_pause_raw_content: Option<&'a [Vec<serde_json::Value>]>,
     disable_anthropic_parallel: bool,
-    disable_anthropic_thinking: bool,
     tool_strict: &'a std::collections::HashMap<String, bool>,
     tool_result_errors: &'a std::collections::HashMap<String, bool>,
     anthropic_server_tools: &'a [serde_json::Value],
     anthropic_tool_choice: Option<&'a serde_json::Value>,
-    anthropic_effort: Option<&'a String>,
     anthropic_service_tier: Option<&'a String>,
     chat_drop_orphan_tool_choice: bool,
 }
@@ -175,11 +167,9 @@ impl ChatFamilyRewrite<'_> {
             crate::RigProtocol::Anthropic => true,
             crate::RigProtocol::Chat => {
                 self.disable_anthropic_parallel
-                    || self.disable_anthropic_thinking
                     || self.chat_drop_orphan_tool_choice
                     || !self.tool_strict.is_empty()
                     || !self.websearch_replay.is_empty()
-                    || self.anthropic_effort.is_some()
                     || self.anthropic_service_tier.is_some()
             }
         }
@@ -250,23 +240,10 @@ impl ChatFamilyRewrite<'_> {
                 }
             }
         }
-        if let Some(body_map) = body.as_object_mut() {
-            if self.disable_anthropic_thinking {
-                body_map.insert("thinking".into(), serde_json::json!({"type":"disabled"}));
-            }
-            if let Some(effort) = self.anthropic_effort {
-                // Merge into any existing output_config (rig may have
-                // serialized output_config.format from output_schema).
-                let config = body_map
-                    .entry("output_config")
-                    .or_insert_with(|| serde_json::json!({}));
-                if let Some(config) = config.as_object_mut() {
-                    config.insert("effort".into(), (*effort).clone().into());
-                }
-            }
-            if let Some(tier) = self.anthropic_service_tier {
-                body_map.insert("service_tier".into(), (*tier).clone().into());
-            }
+        if let Some(tier) = self.anthropic_service_tier
+            && let Some(body_map) = body.as_object_mut()
+        {
+            body_map.insert("service_tier".into(), (*tier).clone().into());
         }
         if self.protocol == crate::RigProtocol::Anthropic
             && let Some(messages) = body

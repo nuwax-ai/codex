@@ -19,6 +19,7 @@ mod hosted_replay_budget;
 mod hosted_tools;
 mod hosted_tools_capture;
 mod reasoning;
+mod reasoning_effort;
 mod request_capture;
 mod request_content;
 mod request_messages;

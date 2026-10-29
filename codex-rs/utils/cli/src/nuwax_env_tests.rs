@@ -835,3 +835,165 @@ fn non_unicode_bridge_names_the_variable() {
     .expect_err("non-unicode bridge must fail the group");
     assert!(error.contains("NUWAX_BRIDGE"), "{error}");
 }
+
+/// A `NuwaxEnvInput` carrying `levels` as `NUWAX_REASONING_EFFORT_LEVELS`.
+fn with_levels(levels: &str) -> NuwaxEnvInput {
+    NuwaxEnvInput {
+        reasoning_effort_levels: Some(levels.to_string().into()),
+        ..Default::default()
+    }
+}
+
+fn kv(pairs: &[(&str, Value)]) -> Vec<(String, Value)> {
+    pairs
+        .iter()
+        .map(|(key, value)| ((*key).to_string(), value.clone()))
+        .collect()
+}
+
+#[test]
+fn the_full_group_seeds_the_declared_tiers_into_its_temporary_provider() {
+    let seeds = nuwax_env_overrides(
+        NuwaxEnvInput {
+            reasoning_effort_levels: Some("low, high ,max".to_string().into()),
+            ..full_group_input()
+        },
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &[],
+    )
+    .expect("full group with tiers");
+    let table = seed_provider_table(&seeds);
+    assert_eq!(
+        table.get("reasoning_effort_levels"),
+        Some(&Value::Array(vec![
+            Value::String("low".into()),
+            Value::String("high".into()),
+            Value::String("max".into()),
+        ])),
+        "the tiers ride the temporary provider, normalized"
+    );
+}
+
+#[test]
+fn the_declared_tiers_seed_onto_the_provider_dash_c_selected() {
+    let existing = kv(&[("model_provider", Value::String("glm".into()))]);
+    let seeds = nuwax_env_overrides(
+        with_levels("low,high,max"),
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &existing,
+    )
+    .expect("tiers seed onto the selected provider");
+    assert_eq!(
+        seeds,
+        kv(&[(
+            "model_providers.glm.reasoning_effort_levels",
+            Value::Array(vec![
+                Value::String("low".into()),
+                Value::String("high".into()),
+                Value::String("max".into()),
+            ])
+        )])
+    );
+}
+
+#[test]
+fn an_explicit_dash_c_list_wins_over_the_env_tiers() {
+    let existing = kv(&[
+        ("model_provider", Value::String("glm".into())),
+        (
+            "model_providers.glm.reasoning_effort_levels",
+            Value::Array(vec![Value::String("high".into())]),
+        ),
+    ]);
+    let seeds = nuwax_env_overrides(
+        with_levels("low,high,max"),
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &existing,
+    )
+    .expect("an explicit list is not overridden");
+    assert!(
+        seeds.is_empty(),
+        "the -c list already says what to use: {seeds:?}"
+    );
+}
+
+/// The silent drop this guards against: a provider chosen by `config.toml` is
+/// not visible to this layer, so the tiers cannot be attached — and attaching
+/// nothing would leave the operator believing they are checked.
+#[test]
+fn the_declared_tiers_without_a_selectable_provider_fail_naming_the_variable() {
+    let error = nuwax_env_overrides(
+        with_levels("low,high,max"),
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &[],
+    )
+    .expect_err("tiers with no provider must not be dropped");
+    assert!(
+        error.contains("NUWAX_REASONING_EFFORT_LEVELS")
+            && error.contains("model_provider")
+            && error.contains("config.toml"),
+        "the message must name the variable and both ways to attach it: {error}"
+    );
+}
+
+#[test]
+fn the_declared_tiers_with_a_typed_provider_selection_fail_rather_than_drop() {
+    let error = nuwax_env_overrides(
+        with_levels("low,high,max"),
+        /*cli_model*/ None,
+        /*cli_provider*/ Some("ollama"),
+        &[],
+    )
+    .expect_err("tiers cannot attach to a typed provider selection");
+    assert!(
+        error.contains("NUWAX_REASONING_EFFORT_LEVELS") && error.contains("config.toml"),
+        "the message must name the variable and where to set it: {error}"
+    );
+}
+
+/// Which words *are* tiers is rig's to answer, not this layer's to copy: the
+/// value is passed through and the bridge refuses a word rig does not spell
+/// before a request is built. Asserted end to end in the bridge's own suite
+/// (`reasoning_effort` and the `wire` tests); here it only has to survive.
+#[test]
+fn a_tier_word_is_passed_through_for_rig_to_judge() {
+    let existing = kv(&[("model_provider", Value::String("glm".into()))]);
+    let seeds = nuwax_env_overrides(
+        with_levels("low,ultra-high"),
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &existing,
+    )
+    .expect("the shape is this layer's only concern");
+    assert_eq!(
+        seeds,
+        kv(&[(
+            "model_providers.glm.reasoning_effort_levels",
+            Value::Array(vec![
+                Value::String("low".into()),
+                Value::String("ultra-high".into()),
+            ])
+        )])
+    );
+}
+
+#[test]
+fn an_empty_tier_list_is_refused_rather_than_meaning_no_tiers() {
+    for value in ["", "   ", ",", " , ,"] {
+        let error = nuwax_env_overrides(
+            with_levels(value),
+            /*cli_model*/ None,
+            /*cli_provider*/ Some("ollama"),
+            &[],
+        )
+        .expect_err("an empty list must fail the variable");
+        assert!(
+            error.contains("NUWAX_REASONING_EFFORT_LEVELS"),
+            "{value:?} must be refused naming the variable: {error}"
+        );
+    }
+}

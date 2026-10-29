@@ -262,6 +262,20 @@ pub(crate) fn build_chat_model(
         // Unbound facts: rig answers model questions from its builtin
         // catalog, exactly as its own default construction does. The bridge
         // sets max_tokens itself, so no fact-driven default kicks in.
+        //
+        // Binding a spec here is not harmless. rig's
+        // `Rewrite::OutputCapRename` renames `max_tokens` to
+        // `max_completion_tokens` when `reasons(facts, model)` answers
+        // `Some(true)`, and a bound spec makes it answer that for every model
+        // — an OpenAI-only spelling a compatible gateway ignores, so the
+        // configured output cap would silently stop applying. rig scopes the
+        // rename to the model precisely because this wire reaches compatible
+        // servers; leaving the facts unbound is what keeps it scoped.
+        //
+        // So the declared tiers do not reach rig on this wire: the caller
+        // checks them itself (`reasoning_effort::check_declared`) and keeps the
+        // effort as a raw body key. Same rule, same refusal point, same
+        // vocabulary — FORK.md §10.
         facts: rig_core::catalog::ModelFacts::default(),
     };
     Ok(model_via_bridge(wire, http))
@@ -288,12 +302,45 @@ pub(crate) fn build_responses_client(
     Ok(http)
 }
 
+/// The facts the Anthropic wire answers model questions from.
+///
+/// Always bound, never `ModelFacts::default()`: an unbound wire answers from
+/// rig's catalog, and for a model it does not list that is the *newest*
+/// models' shape — `thinking: {"type": "adaptive"}` beside the effort, which a
+/// GLM or MiMo endpoint does not take. Binding a spec that starts from the
+/// catalog row keeps a listed model's own facts and gives a gateway's model
+/// its own shape, so the request does not change form depending on whether the
+/// operator declared tiers.
+///
+/// `declared` is the parsed tier list; empty means the provider declares
+/// nothing, and the spec stays permissive, as rig is for a model it does not
+/// list. The Chat wire deliberately does not come here — see
+/// [`build_chat_model`].
+fn rig_facts(
+    protocol: RigProtocol,
+    model_name: &str,
+    declared: &[rig_core::completion::Effort],
+) -> rig_core::catalog::ModelFacts {
+    let vendor = match protocol {
+        RigProtocol::Anthropic => rig_core::providers::anthropic::PROVIDER_NAME,
+        RigProtocol::Chat | RigProtocol::Responses => {
+            return rig_core::catalog::ModelFacts::default();
+        }
+    };
+    // A refused vendor name leaves the wire unbound rather than panicking; a
+    // literal vendor name cannot be refused.
+    crate::reasoning_effort::effort_spec(vendor, model_name, declared)
+        .map(rig_core::catalog::ModelFacts::new)
+        .unwrap_or_default()
+}
+
 pub(crate) fn build_anthropic_model(
     model_name: &str,
     base_url: &str,
     headers: &HeaderMap,
     mut http: crate::transport::RigHttpClient,
     prompt_caching: bool,
+    declared_levels: &[rig_core::completion::Effort],
 ) -> Result<RigAnthropicModel, codex_api::ApiError> {
     let (api_key, wire_auth) =
         crate::wire_auth::resolved_sdk_auth(headers, RigProtocol::Anthropic)?;
@@ -308,6 +355,10 @@ pub(crate) fn build_anthropic_model(
             })?;
         config.version = version.to_string();
     }
+    // The tiers this provider declares are bound to the model, so rig refuses
+    // one the gateway would silently remap. They arrive parsed — the caller
+    // refuses a word rig does not spell before either model is built.
+    let facts = rig_facts(RigProtocol::Anthropic, model_name, declared_levels);
     let wire = rig_core::providers::anthropic::wire::Messages {
         provider: config,
         model: model_name.to_string(),
@@ -321,7 +372,7 @@ pub(crate) fn build_anthropic_model(
         // 0.42 wire parity: no per-tool `eager_input_streaming` flag. The
         // provider streams tool input as it chooses (rig's `Off`).
         tool_input_streaming: rig_core::providers::anthropic::wire::ToolInputStreaming::Off,
-        facts: rig_core::catalog::ModelFacts::default(),
+        facts,
     };
     Ok(model_via_bridge(wire, http))
 }

@@ -270,6 +270,27 @@ pub struct ModelProviderInfo {
     /// flow back. Default off: only enable for gateways that accept
     /// Anthropic cache markers.
     pub anthropic_prompt_caching: Option<bool>,
+    /// Fork (nuwax-codex): the reasoning-effort tiers this provider's models
+    /// actually take, in rig's own vocabulary (e.g. GLM-5.3-Flash is
+    /// `["low", "high", "max"]`). The Anthropic bridge answers rig's typed
+    /// `Reasoning` from this list, so a request naming a tier the model does
+    /// not have fails before anything is sent — instead of the gateway
+    /// accepting the value and silently applying a different tier. Unset
+    /// leaves the wire permissive (rig's default for a model its catalog does
+    /// not list), which is how `medium` once reached GLM-5.3-Flash unnoticed.
+    ///
+    /// The words are read through rig's `Effort` deserializer, so the accepted
+    /// vocabulary is rig's and is never a copy kept in step by hand; a word rig
+    /// does not spell fails naming the variable and rig's own list. `none` and
+    /// `off` are not tiers — they say whether thinking can be turned off,
+    /// which these always-thinking gateways refuse. Unset leaves the wire
+    /// permissive; a list that is set but names no tier is refused rather than
+    /// read as "takes none", which would refuse every effort.
+    ///
+    /// Gates both rig wires. Anthropic hands the list to rig's typed channel;
+    /// Chat checks it in the bridge, because rig's Chat dialect would rename
+    /// the output cap in exchange (FORK.md §10).
+    pub reasoning_effort_levels: Option<Vec<String>>,
     /// Number of times to retry reconnecting a dropped streaming response before failing.
     pub stream_max_retries: Option<u64>,
     /// Idle timeout (in milliseconds) to wait for activity on a streaming response before treating
@@ -566,6 +587,7 @@ other non-default provider fields are not supported"
             max_output_tokens: self.max_output_tokens,
             hosted_results_replay: self.hosted_results_replay,
             anthropic_prompt_caching: self.anthropic_prompt_caching,
+            reasoning_effort_levels: self.reasoning_effort_levels.clone(),
         })
     }
 
@@ -654,6 +676,7 @@ other non-default provider fields are not supported"
             max_output_tokens: None,
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
+            reasoning_effort_levels: None,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -699,6 +722,7 @@ other non-default provider fields are not supported"
             max_output_tokens: None,
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
+            reasoning_effort_levels: None,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -963,6 +987,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         max_output_tokens: None,
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
+        reasoning_effort_levels: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
         websocket_connect_timeout_ms: None,

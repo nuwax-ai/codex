@@ -125,6 +125,15 @@ pub(crate) fn responses_request_to_completion_request(
             {
                 params.insert("verbosity".into(), json!(verbosity));
             }
+            // Chat keeps its effort as a raw body key. Routing it through rig's
+            // typed channel is not a drop-in: binding a spec makes
+            // `reasons(facts, model)` answer `Some(true)`, and rig's
+            // `Rewrite::OutputCapRename` then renames `max_tokens` to
+            // `max_completion_tokens` — an OpenAI-only spelling a compatible
+            // gateway ignores, so the configured output cap would silently stop
+            // applying. rig scopes that rename to the model precisely because
+            // this wire reaches compatible servers; an unbound wire is what
+            // keeps it scoped. See FORK.md §10.
             if let Some(effort) = request
                 .reasoning
                 .as_ref()
@@ -196,6 +205,21 @@ pub(crate) fn responses_request_to_completion_request(
         .collect();
     completion.max_tokens =
         (protocol == RigProtocol::Anthropic).then_some(crate::client::DEFAULT_ANTHROPIC_MAX_TOKENS);
+    // Reasoning rides rig's typed channel on the Anthropic wire, never a body
+    // injection: rig answers it from the model's declared tiers
+    // (`reasoning_effort`), so a level the model does not take — or turning
+    // thinking off on one that cannot — fails the request build here rather
+    // than reaching the gateway, which accepts anything and may apply a
+    // different tier than the one asked for. Chat cannot take the same route;
+    // see the note where its raw key is set.
+    if protocol == RigProtocol::Anthropic {
+        completion.options.reasoning = crate::reasoning_effort::rig_reasoning(
+            request
+                .reasoning
+                .as_ref()
+                .and_then(|reasoning| reasoning.effort.as_ref()),
+        );
+    }
     completion.tool_choice = map_tool_choice(&request.tool_choice)?;
     completion.additional_params = (!params.is_empty()).then_some(Value::Object(params));
     completion.output_schema = output_schema;
@@ -286,33 +310,6 @@ pub(crate) fn anthropic_tool_choice(
         "required" => json!({"type": "any"}),
         name => json!({"type": "tool", "name": name}),
     })
-}
-
-/// Maps a codex reasoning effort onto Anthropic's `output_config.effort`
-/// scale (low/medium/high/xhigh/max). Values with no Anthropic counterpart
-/// (`persistent`, unknown customs) stay unset. Explicit `none` disables
-/// thinking separately; effort itself does not enable thinking.
-pub(crate) fn anthropic_effort(request: &ResponsesApiRequest) -> Option<String> {
-    use codex_protocol::openai_models::ReasoningEffort;
-    let effort = request.reasoning.as_ref()?.effort.as_ref()?;
-    match effort {
-        ReasoningEffort::Minimal | ReasoningEffort::Low => Some("low".into()),
-        ReasoningEffort::Medium => Some("medium".into()),
-        ReasoningEffort::High => Some("high".into()),
-        ReasoningEffort::XHigh => Some("xhigh".into()),
-        ReasoningEffort::Max => Some("max".into()),
-        ReasoningEffort::Ultra => {
-            tracing::warn!("reasoning effort `ultra` has no Anthropic level; clamping to `max`");
-            Some("max".into())
-        }
-        ReasoningEffort::None => None,
-        ReasoningEffort::Persistent | ReasoningEffort::Custom(_) => {
-            tracing::warn!(
-                "Requested reasoning effort has no Anthropic equivalent; omitting effort"
-            );
-            None
-        }
-    }
 }
 
 /// Only the semantically matching OpenAI tiers cross over; `flex` and

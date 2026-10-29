@@ -42,6 +42,11 @@ const REQUEST_MAX_RETRIES_ENV: &str = "NUWAX_REQUEST_MAX_RETRIES";
 const STREAM_MAX_RETRIES_ENV: &str = "NUWAX_STREAM_MAX_RETRIES";
 const STREAM_IDLE_TIMEOUT_MS_ENV: &str = "NUWAX_STREAM_IDLE_TIMEOUT_MS";
 const BRIDGE_ENV: &str = "NUWAX_BRIDGE";
+/// The effort tiers the gateway's model actually takes, in its own
+/// vocabulary. A fork variable with no legacy `CODEX_*` spelling to stay
+/// compatible with, so the `NUWAX_` name is the only one. Which words are
+/// tiers is rig's to answer — see `parse_effort_levels`.
+const REASONING_EFFORT_LEVELS_ENV: &str = "NUWAX_REASONING_EFFORT_LEVELS";
 
 /// The raw environment inputs, owned so the production reader can move the
 /// `var_os` values. Non-Unicode values surface as a diagnosable error
@@ -58,6 +63,7 @@ pub struct NuwaxEnvInput {
     pub stream_max_retries: Option<OsString>,
     pub stream_idle_timeout_ms: Option<OsString>,
     pub bridge: Option<OsString>,
+    pub reasoning_effort_levels: Option<OsString>,
 }
 
 /// Reads the group from the real process environment exactly once per call
@@ -74,6 +80,7 @@ pub fn from_process() -> NuwaxEnvInput {
         stream_max_retries: std::env::var_os(STREAM_MAX_RETRIES_ENV),
         stream_idle_timeout_ms: std::env::var_os(STREAM_IDLE_TIMEOUT_MS_ENV),
         bridge: std::env::var_os(BRIDGE_ENV),
+        reasoning_effort_levels: std::env::var_os(REASONING_EFFORT_LEVELS_ENV),
     }
 }
 
@@ -93,7 +100,22 @@ pub fn nuwax_env_overrides(
     cli_provider: Option<&str>,
     existing: &[(String, Value)],
 ) -> Result<Vec<(String, Value)>, String> {
+    // The declared tier list belongs to whichever provider serves the session,
+    // not to the gateway group, so it is resolved before the group's own exits
+    // below: an explicit provider selection makes the group irrelevant, but the
+    // tiers still describe the provider that was selected.
+    let reasoning_effort_levels = parse_effort_levels(
+        input.reasoning_effort_levels.as_deref(),
+        REASONING_EFFORT_LEVELS_ENV,
+    )?;
     if cli_provider.is_some() {
+        if reasoning_effort_levels.is_some() {
+            return Err(format!(
+                "{REASONING_EFFORT_LEVELS_ENV} cannot be attached to an explicit \
+                 provider selection; set `reasoning_effort_levels` on that provider \
+                 in config.toml instead"
+            ));
+        }
         // The group is unused; §5.2 forbids failing a valid CLI config on
         // unadopted env values.
         return Ok(Vec::new());
@@ -102,7 +124,8 @@ pub fn nuwax_env_overrides(
     if has_existing("model_provider") {
         // An explicit -c provider selection is treated like a typed one.
         // Selecting the reserved id uses the full group (below); anything
-        // else makes it irrelevant.
+        // else makes it irrelevant — except the declared tiers, which still
+        // describe the provider that was selected.
         let selected = existing
             .iter()
             .rev()
@@ -110,7 +133,7 @@ pub fn nuwax_env_overrides(
             .and_then(|(_, value)| value.as_str())
             .unwrap_or_default();
         if selected != NUWAX_ENV_PROVIDER_ID {
-            return Ok(Vec::new());
+            return reasoning_effort_levels_seeds(reasoning_effort_levels.as_deref(), existing);
         }
     }
     // Do not validate an environment model that an explicit selection replaces.
@@ -157,8 +180,14 @@ pub fn nuwax_env_overrides(
         }
         // Group inactive: NUWAX_MODEL may still select an existing
         // provider's model, at env precedence (below explicit -c and the
-        // typed CLI flag).
-        return seed_model_only(model);
+        // typed CLI flag). A declared tier list is independent of the group
+        // and applies to whichever provider ends up selected.
+        let mut seeds = seed_model_only(model)?;
+        seeds.extend(reasoning_effort_levels_seeds(
+            reasoning_effort_levels.as_deref(),
+            existing,
+        )?);
+        return Ok(seeds);
     }
     if set_count < 3 {
         let missing = [
@@ -294,6 +323,12 @@ pub fn nuwax_env_overrides(
             Value::Integer(stream_idle_timeout_ms),
         );
     }
+    if let Some(levels) = reasoning_effort_levels {
+        provider.insert(
+            "reasoning_effort_levels".into(),
+            Value::Array(levels.into_iter().map(Value::String).collect()),
+        );
+    }
     seeds.push((
         format!("model_providers.{NUWAX_ENV_PROVIDER_ID}"),
         Value::Table(provider),
@@ -325,6 +360,87 @@ fn seed_model_only(model: Option<&str>) -> Result<Vec<(String, Value)>, String> 
     };
     let model = require_non_blank(Some(model), MODEL_ENV)?;
     Ok(vec![("model".into(), Value::String(model.to_string()))])
+}
+
+/// Seeds the declared tier list onto the provider `-c` selected, addressed by
+/// its config key so the loader merges it. An explicit `-c` list on the same
+/// provider wins, so an unused value never overrides configuration.
+///
+/// A list with no provider to attach to is an error, not a no-op: the only way
+/// to reach that is a provider chosen by `config.toml`, which this layer has
+/// not read yet, and dropping the value would leave the operator believing the
+/// tiers are checked when nothing checks them.
+fn reasoning_effort_levels_seeds(
+    levels: Option<&[String]>,
+    existing: &[(String, Value)],
+) -> Result<Vec<(String, Value)>, String> {
+    let Some(levels) = levels else {
+        return Ok(Vec::new());
+    };
+    let provider = existing
+        .iter()
+        .rev()
+        .find(|(key, _)| key == "model_provider")
+        .and_then(|(_, value)| value.as_str())
+        .map(str::to_owned)
+        .or_else(|| {
+            existing.iter().rev().find_map(|(key, value)| {
+                key.strip_prefix("model_providers.")
+                    .filter(|_| value.get("base_url").is_some())
+                    .map(str::to_owned)
+            })
+        });
+    let Some(provider) = provider else {
+        return Err(format!(
+            "{REASONING_EFFORT_LEVELS_ENV} names effort tiers but no provider was \
+             selected here; pass `-c model_provider=<id>` for the provider it \
+             describes, or set `reasoning_effort_levels` on that provider in \
+             config.toml"
+        ));
+    };
+    if existing
+        .iter()
+        .any(|(key, _)| key == &format!("model_providers.{provider}.reasoning_effort_levels"))
+    {
+        return Ok(Vec::new());
+    }
+    Ok(vec![(
+        format!("model_providers.{provider}.reasoning_effort_levels"),
+        Value::Array(levels.iter().cloned().map(Value::String).collect()),
+    )])
+}
+
+/// The comma-separated tier list, normalized to lower case with blanks and
+/// repeats dropped, so a trailing comma is harmless.
+///
+/// Which words *are* tiers is rig's to answer, not ours to keep a copy of: the
+/// bridge reads each one through rig's own `Effort` deserializer and refuses a
+/// word rig does not spell before a request is built
+/// (`codex-rust-rig-bridge::reasoning_effort`). Only the shape is checked
+/// here, where the value is read. An empty list is refused rather than passed
+/// on, because it would mean "takes no effort tier at all" — the opposite of
+/// leaving the variable unset, which keeps the wire permissive.
+fn parse_effort_levels(
+    value: Option<&std::ffi::OsStr>,
+    name: &str,
+) -> Result<Option<Vec<String>>, String> {
+    let Some(raw) = unicode(value, name)? else {
+        return Ok(None);
+    };
+    let raw = require_non_blank(Some(raw), name)?;
+    let mut levels = Vec::new();
+    for token in raw.split(',') {
+        let normalized = token.trim().to_ascii_lowercase();
+        if !normalized.is_empty() && !levels.contains(&normalized) {
+            levels.push(normalized);
+        }
+    }
+    if levels.is_empty() {
+        return Err(format!(
+            "Invalid {name}: expected a comma-separated list of effort tiers, such as `low,high,max`"
+        ));
+    }
+    Ok(Some(levels))
 }
 
 /// Converts one variable to `&str`, mapping non-Unicode to an error that

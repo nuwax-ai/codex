@@ -61,6 +61,9 @@ pub struct Provider {
     /// tool, conversation tail) with the 5-minute TTL. Default off so
     /// gateways that reject the markers stay unaffected.
     pub anthropic_prompt_caching: Option<bool>,
+    /// The reasoning-effort tiers this provider's models take (fork
+    /// extension). See `ModelProviderInfo::reasoning_effort_levels`.
+    pub reasoning_effort_levels: Option<Vec<String>>,
 }
 
 impl Provider {

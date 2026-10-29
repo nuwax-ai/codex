@@ -3031,6 +3031,13 @@
           "description": "Optional query parameters to append to the base URL.",
           "type": "object"
         },
+        "reasoning_effort_levels": {
+          "description": "Fork (nuwax-codex): the reasoning-effort tiers this provider's models actually take, in rig's own vocabulary (e.g. GLM-5.3-Flash is `[\"low\", \"high\", \"max\"]`). The Anthropic bridge answers rig's typed `Reasoning` from this list, so a request naming a tier the model does not have fails before anything is sent — instead of the gateway accepting the value and silently applying a different tier. Unset leaves the wire permissive (rig's default for a model its catalog does not list), which is how `medium` once reached GLM-5.3-Flash unnoticed.\n\nThe words are read through rig's `Effort` deserializer, so the accepted vocabulary is rig's and is never a copy kept in step by hand; a word rig does not spell fails naming the variable and rig's own list. `none` and `off` are not tiers — they say whether thinking can be turned off, which these always-thinking gateways refuse. Unset leaves the wire permissive; a list that is set but names no tier is refused rather than read as \"takes none\", which would refuse every effort.\n\nGates both rig wires. Anthropic hands the list to rig's typed channel; Chat checks it in the bridge, because rig's Chat dialect would rename the output cap in exchange (FORK.md §10).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "request_max_retries": {
           "description": "Maximum number of times to retry a failed HTTP request to this provider.",
           "format": "uint64",

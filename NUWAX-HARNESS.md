@@ -214,6 +214,7 @@ provider 常用字段：
 | `anthropic_prompt_caching` | 可选；Anthropic 线 `cache_control` 断点，默认关 |
 | `max_output_tokens` | 可选；每次生成的输出上限 |
 | `request_max_retries` / `stream_max_retries` / `stream_idle_timeout_ms` | 可选；重试与流空闲超时 |
+| `reasoning_effort_levels` | 可选；该网关的模型真实接受的 effort 档位(如 `["low","high","max"]`)，见 §4 |
 
 其他常用顶层键：`model_auto_compact_ratio` / `model_auto_compact_token_limit`（见 §4）、
 `[tools] tool_search = false`（MCP 工具全量直出，见 FORK.md §7.1）。
@@ -280,6 +281,38 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
 因此：**用 GLM-5.3-Flash 时请显式设 `max`/`high`/`low`**,不要依赖默认映射;
 换模型前先查它的档位表。这类跨网关差异由环境变量显式控制,引擎不在背后静默改写
 (设计决定见 [FORK.md §10](FORK.md))。
+
+### 声明模型真实档位：`NUWAX_REASONING_EFFORT_LEVELS`
+
+上面那个"200 不代表被采纳"的坑，根源是引擎不校验档位。现在可以显式声明：
+
+```bash
+# GLM-5.3 / GLM-5.3-FLASH / GLM-5.3-FLASHX：官方文档仅 low / high / max
+export NUWAX_REASONING_EFFORT_LEVELS='low,high,max'
+```
+
+- 取值是**逗号分隔的 rig 档位词**：`minimal`/`low`/`medium`/`high`/`xhigh`/`max`。
+  词表由 rig 的 `Effort` 枚举定义，我们不再自己维护一份；写错的词会在启动后
+  第一次请求前就报错，**点名该变量、出错的词、以及 rig 接受的全部档位**。
+- 声明之后：选了模型没有的档位(如对 GLM-5.3-Flash 用 `medium`)，以及
+  `NUWAX_MODEL_REASONING_EFFORT=none`(这些网关始终思考)，都会在**请求发出前**
+  失败，不会再出现"发了 medium、拿到 low 的输出"这种静默偏差。
+- **不能写 `none`/`off`**：它们表示"能否关闭思考"，是另一个轴，不是档位；
+  写进去会被拒绝并说明原因。
+- 不设置时保持宽松——沿用 rig 对未收录模型的默认，不校验档位(即修复前的行为)。
+- config.toml 的对应键是 `model_providers.<id>.reasoning_effort_levels`，
+  与该环境变量同义；显式 `-c` 优先。空列表与"不设置"含义不同(空列表表示
+  "不接受任何档位")，因此空值会被拒绝。
+- **该变量必须能附着到一个 provider**：随完整 `NUWAX_` 启动组使用，或配合
+  `-c model_provider=<id>`。两者都没有时(例如只靠 config.toml 的
+  `model_provider` 选 provider)会在启动时报错并点名该变量——静默丢掉比报错
+  更糟，那会让你以为档位在校查，其实没有。用 `--oss` 等显式 provider 选择时
+  同理，请把 `reasoning_effort_levels` 直接写进那个 provider 表。
+
+两条经 rig 的线(Chat 与 Anthropic)都受这道门约束，原生 Responses 透传不经过
+rig，档位由上游自己校验。两条线的实现方式不同(Anthropic 交给 rig 的类型化通道，
+Chat 由桥自己校验)，但对你是同一件事：**配了档位表，选了表里没有的档就在发出前
+报错**；没配则保持宽松。原因见 [FORK.md §10](FORK.md)。
 
 显式 `-c model_context_window=...` 等对应配置覆盖这些环境种子。
 每个 `CODEX_*` 种子都有同义 `NUWAX_*` 别名（如 `NUWAX_MODEL_CONTEXT_WINDOW`）：
@@ -434,7 +467,7 @@ nuwax-harness；目录内官方模型（gpt-\*）保持上游身份声明。
 `NUWAX_API_KEY` 成组激活临时 provider `nuwax_env`；其余须随组使用）：
 `NUWAX_MODEL`、`NUWAX_BRIDGE`、`NUWAX_MAX_OUTPUT_TOKENS`、
 `NUWAX_REQUEST_MAX_RETRIES`、`NUWAX_STREAM_MAX_RETRIES`、
-`NUWAX_STREAM_IDLE_TIMEOUT_MS`。
+`NUWAX_STREAM_IDLE_TIMEOUT_MS`、`NUWAX_REASONING_EFFORT_LEVELS`。
 
 **NUWAX_\* 别名**（每个都有等价 `CODEX_*` 拼写并永久兼容：仅设其一即生效、
 同值幂等、异值启动报错点名两个变量）：

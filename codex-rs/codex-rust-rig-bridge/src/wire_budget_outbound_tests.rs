@@ -575,6 +575,7 @@ fn floor_provider(address: std::net::SocketAddr) -> codex_api::Provider {
         max_output_tokens: None,
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
+        reasoning_effort_levels: None,
     }
 }
 

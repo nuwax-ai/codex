@@ -661,6 +661,7 @@ mod thread_processor_behavior_tests {
             max_output_tokens: None,
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
+            reasoning_effort_levels: None,
         };
         let config_manager = ConfigManager::new(
             temp_dir.path().to_path_buf(),

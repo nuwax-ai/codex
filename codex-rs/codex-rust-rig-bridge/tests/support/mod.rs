@@ -110,10 +110,29 @@ pub async fn capture(
     capture_with_auth(request, protocol, Arc::new(DummyAuth)).await
 }
 
+/// Capture with the provider declaring `effort_levels`, so the Anthropic wire
+/// binds them to its model and rig gates the effort against them.
+pub async fn capture_with_levels(
+    request: &ResponsesApiRequest,
+    protocol: RigProtocol,
+    effort_levels: Option<Vec<String>>,
+) -> (Value, Vec<codex_api::ResponseEvent>, Option<String>) {
+    capture_full(request, protocol, Arc::new(DummyAuth), effort_levels).await
+}
+
 pub async fn capture_with_auth(
     request: &ResponsesApiRequest,
     protocol: RigProtocol,
     auth: SharedAuthProvider,
+) -> (Value, Vec<codex_api::ResponseEvent>, Option<String>) {
+    capture_full(request, protocol, auth, None).await
+}
+
+async fn capture_full(
+    request: &ResponsesApiRequest,
+    protocol: RigProtocol,
+    auth: SharedAuthProvider,
+    effort_levels: Option<Vec<String>>,
 ) -> (Value, Vec<codex_api::ResponseEvent>, Option<String>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -127,27 +146,7 @@ pub async fn capture_with_auth(
         };
         serve_payload(&listener, payload).await
     });
-    let provider = Provider {
-        name: "local test".into(),
-        base_url: format!("http://{address}/v1?existing=a%26b"),
-        query_params: Some(
-            [("api-version".into(), "version with & spaces".into())]
-                .into_iter()
-                .collect(),
-        ),
-        headers: http::HeaderMap::new(),
-        retry: RetryConfig {
-            max_attempts: 1,
-            base_delay: Duration::ZERO,
-            retry_429: false,
-            retry_5xx: false,
-            retry_transport: false,
-        },
-        stream_idle_timeout: Duration::from_secs(3),
-        max_output_tokens: None,
-        hosted_results_replay: None,
-        anthropic_prompt_caching: None,
-    };
+    let provider = local_provider(address, effort_levels);
     let mut stream = stream_via_rig(
         request,
         &provider,
@@ -168,6 +167,96 @@ pub async fn capture_with_auth(
         .expect("server timeout")
         .expect("server task");
     (wire, events, request_id)
+}
+
+fn local_provider(address: std::net::SocketAddr, effort_levels: Option<Vec<String>>) -> Provider {
+    Provider {
+        name: "local test".into(),
+        base_url: format!("http://{address}/v1?existing=a%26b"),
+        query_params: Some(
+            [("api-version".into(), "version with & spaces".into())]
+                .into_iter()
+                .collect(),
+        ),
+        headers: http::HeaderMap::new(),
+        retry: RetryConfig {
+            max_attempts: 1,
+            base_delay: Duration::ZERO,
+            retry_429: false,
+            retry_5xx: false,
+            retry_transport: false,
+        },
+        stream_idle_timeout: Duration::from_secs(3),
+        max_output_tokens: None,
+        hosted_results_replay: None,
+        anthropic_prompt_caching: None,
+        reasoning_effort_levels: effort_levels,
+    }
+}
+
+/// Drives one turn expected to be refused. Returns the refusal message and
+/// whether the loopback server saw a request at all: a refusal that only
+/// happened once the wire was built would still reach it, which is exactly
+/// what this distinguishes.
+pub async fn capture_refusal(
+    request: &ResponsesApiRequest,
+    protocol: RigProtocol,
+    effort_levels: Option<Vec<String>>,
+) -> (String, bool) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind loopback");
+    let address = listener.local_addr().expect("address");
+    let server = tokio::spawn(async move {
+        let accepted = tokio::time::timeout(Duration::from_millis(500), listener.accept()).await;
+        let Ok(Ok((mut socket, _))) = accepted else {
+            return false;
+        };
+        // Answer whatever arrived so a client that did send is not left
+        // hanging on the read.
+        let payload = match protocol {
+            RigProtocol::Responses => RESPONSES_SSE,
+            RigProtocol::Chat => CHAT_SSE,
+            RigProtocol::Anthropic => ANTHROPIC_SSE,
+        };
+        let _ = read_request(&mut socket).await;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+            payload.len()
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+        true
+    });
+    let provider = local_provider(address, effort_levels);
+    let auth: SharedAuthProvider = Arc::new(DummyAuth);
+    let started = stream_via_rig(
+        request,
+        &provider,
+        &auth,
+        http::HeaderMap::new(),
+        protocol,
+        Duration::from_secs(3),
+    )
+    .await;
+    let refusal = match started {
+        Err(error) => error.to_string(),
+        Ok(mut stream) => {
+            let mut refusal = None;
+            while let Some(event) = stream.next().await {
+                if let Err(error) = event {
+                    refusal = Some(error.to_string());
+                    break;
+                }
+            }
+            refusal
+                .unwrap_or_else(|| panic!("the turn was expected to be refused, but it completed"))
+        }
+    };
+    let saw_request = tokio::time::timeout(Duration::from_secs(3), server)
+        .await
+        .expect("server timeout")
+        .expect("server task");
+    (refusal, saw_request)
 }
 
 /// Capture one actual SDK request and reply with scripted provider SSE.
