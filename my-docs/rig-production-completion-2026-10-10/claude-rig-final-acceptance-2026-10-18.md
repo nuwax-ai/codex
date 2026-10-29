@@ -5648,6 +5648,34 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   `@nuwax-ai/nuwax-harness-acp-ts` 并发布 1.2.20（含 7e65bde 主别名、不含
   0b2a4bb 崩溃别名）。
 
+## 6.68 跨协议字段丢失审计复核与三处修复（2026-10-29，`b68b281d4`）
+
+- **审计逐条核实**：用户提供并行 agent 的字段转换丢失审计（14 项论断）。
+  12 项完全属实（行号、行为均对）；2 项属实但定性修正——usage"合同不一致"实为
+  presence 在 wire 观察器/CapExhausted 错误终态/回放记录三层保留、仅成功终态的
+  `TokenUsage`（无 Option 的聚合结构）无法表达"未上报"；ultra clamp 与 custom
+  effort 丢弃本就带 warn，summary/context 省略有 debug 日志。
+- **修复一（最高优先级）custom/freeform grammar**：此前 custom 工具被静默压成
+  `{"input": string}` 包装 schema，`format.syntax/definition`（apply_patch 的
+  lark 文法即此路径，578 字节）完全不可见。现在 grammar 注入 tool description
+  （含"input 非 JSON"显式声明）；声明 grammar 却缺 syntax/definition、或无名
+  function/custom 声明、或缺 name/tools 的坏 namespace 声明，均 fail-fast
+  （此前静默跳过）。非 grammar 的未知 format 类型降级为 warn（前向兼容）。
+  注入文本由声明确定性生成，不随轮次变化，不影响 Anthropic prompt caching 断点。
+- **修复二 namespace description**：展平时追加 `Part of the \`{ns}\` tool group: …`
+  到每个子工具 description（`ResponsesApiNamespace.description` 此前随分组丢弃）。
+- **修复三 Chat 线 hosted tool 告警**：stream.rs 在 Chat 线丢弃 hosted 声明时
+  warn（此前零日志；Anthropic 线本就翻译或 fail-fast）。
+- **文档措辞**：FORK.md 字段表 usage 行改为精确合同（wire/错误/回放层按 presence
+  保留；成功终态 TokenUsage 缺失 counter 以 0 呈现、整份缺席为 None）；新增
+  custom 工具与 namespace 两行；web_search 行 Chat 列标注"丢弃并 warn"。决定
+  **不**把 ReportedResponseUsage 塞进 `usage_metadata`（该字段是 OpenAI 计费
+  amount 通道，语义错用）。
+- **验证**：bridge crate 346/346 nextest 全绿（新增 6 测：grammar 注入×2、坏
+  grammar/无名/坏 namespace fail-fast×3、namespace description 附带×1）、clippy
+  严格检查零告警。未采纳审计的"custom fail-fast"原始建议（展平现状可用，
+  fail-fast 会破坏可用场景，注入 description 是无损改进）。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-23 发布 R2 当前状态，以下旧指针为历史记录：** 权威副本在 zhitai，

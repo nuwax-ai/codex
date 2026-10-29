@@ -92,7 +92,8 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
 - 请求侧：`web_search` → Anthropic `web_search_20250305` 服务端工具（GLM 网关
   实测接受）；`filters.allowed_domains`、`user_location` 等可表达约束随翻译保留
   （域名格式/地点字段前置校验），cached/indexed 模式在发请求前显式报错（不静默
-  放宽为 live）；无对应物的工具仍丢弃并告警。新工具 = 加表项。
+  放宽为 live）；无对应物的工具仍丢弃并告警。新工具 = 加表项。Chat 线无 hosted
+  概念，声明整体丢弃并 warn（`stream.rs`，2026-10-29 起不再静默）。
 - hosted-only 请求的 tool_choice：rig 流式路径在 typed 工具为空时丢弃
   tool_choice，transport 注入服务端工具后恢复请求值（none/any/tool 原语义，
   禁并行标志随恢复生效；required/指定工具在无函数工具时前置报错；Chat 线无
@@ -151,9 +152,11 @@ fork 明确每个跨协议字段在三条线（Responses passthrough / Chat / An
 | `hosted_results_replay` | 不适用（无桥回放） | 不适用 | false 时整体关闭回放（含旧格式） |
 | reasoning effort/summary | 同协议字段保留 | effort 映射 `reasoning_effort`；summary/context 无等价字段，不转发 | 按 Messages 的 thinking/effort 语义映射；不承诺 OpenAI summary/context |
 | structured output | 同协议字段保留 | `response_format.json_schema` 保留 schema/name/strict | `output_config.format` 保留 schema；无 name/strict 等价字段 |
-| usage/缓存计数 | 同协议解码，保留字段 presence | 保留缺失/部分/显式零及可用 cache 计数 | 保留 start/delta、cache 和显式零语义，避免重复加计 |
+| custom/freeform 工具 | `format` 原样透传 | grammar（syntax+definition）注入 tool description 并声明"input 非 JSON"；声明 grammar 但缺 syntax/definition、或无名声明均 fail-fast | 同 Chat 注入（Messages 线同样无 grammar 通道） |
+| namespace 声明 | 原样透传 | 展平子工具名；namespace description 追加到每个子工具 description；缺 name/tools 的坏声明 fail-fast | 同 Chat |
+| usage/缓存计数 | 同协议解码，保留字段 presence | wire 观察器按 presence 保留缺失/部分/显式零（缺 usage 帧即流错误）；CapExhausted 错误终态与回放记录携带 `ReportedResponseUsage`；成功终态的 `TokenUsage` 是无 Option 的聚合结构，未上报 counter 以 0 呈现、整份 usage 缺席则为 None | 同 Chat；Anthropic 侧观察器跨 message_start/delta 累积后同样按 presence 快照 |
 | 重试/限流 | 受 provider 配置及 Core 采样策略约束 | 桥传输/流重试与 Core 采样分层；无统一总尝试数保证 | 同 Chat |
-| web_search 模式 | 原样（含 cached/indexed） | 丢弃声明（无 hosted 概念） | 仅 live；cached/indexed fail-fast |
+| web_search 模式 | 原样（含 cached/indexed） | 丢弃声明并 warn（无 hosted 概念，不再静默） | 仅 live；cached/indexed fail-fast |
 | `parallel_tool_calls` | 原样 | 原样 | hosted-only 时还原 tool_choice 并关 parallel |
 
 `cached_web_search` 能力当前按 `native_transport` 绑定（model-provider
