@@ -257,6 +257,30 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
   显式 `-c` > 环境变量 > config.toml。
 
 这些 `CODEX_*` 也是 Rust 程序自身支持的通用变量，与下节 ACP 专有网关变量含义不同。
+
+### reasoning effort 档位：选模型真实存在的档
+
+`NUWAX_MODEL_REASONING_EFFORT` 接受 `none`/`minimal`/`low`/`medium`/`high`/
+`xhigh`/`max`/`ultra`/`persistent`,但**目标模型支不支持是另一回事**。智谱官方文档
+([concept-param#reasoning_effort](https://docs.bigmodel.cn/cn/guide/start/concept-param#reasoning_effort))：
+
+| 模型 | 支持档位 | 非支持值的处理 |
+|---|---|---|
+| GLM-5.3 / GLM-5.3-FLASH / GLM-5.3-FLASHX | **仅 `max` / `high` / `low`** | 文档未说明 |
+| GLM-5.2 | `max`/`xhigh`/`high`/`medium`/`low`/`minimal`/`none` | `low`/`medium` → 映射为 `high`;`xhigh` → `max`;`none`/`minimal` → 放弃思考 |
+
+**重要：200 不代表档位被采纳。** 2026-10-29 在官方 Anthropic 端点实测,
+`output_config.effort` 传 `low`/`medium`/`high`/`xhigh`/`max`/`minimal`/`ultra`/
+`none` **全部返回 200**——包括任何 GLM 档位表里都没有的 `minimal` 和 `ultra`。
+也就是说该端点**不校验 effort 取值**：请求被接受，但档位可能被映射、被忽略，
+或落到默认档。我们桥把 Codex `medium` 映射为 Anthropic `medium`
+(`codex-rust-rig-bridge/src/convert_request.rs:295`),对 GLM-5.3-Flash
+**本就不是真实档位**。
+
+因此：**用 GLM-5.3-Flash 时请显式设 `max`/`high`/`low`**,不要依赖默认映射;
+换模型前先查它的档位表。这类跨网关差异由环境变量显式控制,引擎不在背后静默改写
+(设计决定见 [FORK.md §10](FORK.md))。
+
 显式 `-c model_context_window=...` 等对应配置覆盖这些环境种子。
 每个 `CODEX_*` 种子都有同义 `NUWAX_*` 别名（如 `NUWAX_MODEL_CONTEXT_WINDOW`）：
 仅设其一即生效，`NUWAX_*` 是推荐写法；两者同设且值相同视为迁移期写法，

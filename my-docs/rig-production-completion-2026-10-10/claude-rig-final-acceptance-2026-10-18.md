@@ -5740,6 +5740,7 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
     **全部 200**；
   - 用桥自带 `CODEX_RIG_REQUEST_CAPTURE_FILE` 捕获我们 medium 下的真实请求
     （41,230 字节，含 system/tools），harness 实跑 200，curl 字节级重放亦 200。
+- **官方文档补充（用户提供，2026-10-29）**：智谱 [concept-param#reasoning_effort](https://docs.bigmodel.cn/cn/guide/start/concept-param#reasoning_effort) 写明 `GLM-5.3`/`GLM-5.3-FLASH`/`GLM-5.3-FLASHX` **仅支持 `max`/`high`/`low`**;`GLM-5.2` 支持七档，且 `low`/`medium` 映射为 `high`、`xhigh` 映射为 `max`、`none`/`minimal` 放弃思考。**这修正了上一段的结论**：我们 medium 的字段位置（`output_config.effort`）对，但 `medium` 对 GLM-5.3-Flash **不是真实档位**——结合实测"任何值都返回 200（含档位表里没有的 minimal/ultra）"可知该端点不校验取值，**200 只说明被接受、不说明档位被采纳**。所以"发了 medium 却拿到 high/默认档"这种静默语义偏差是真实存在的，只是它不表现为 1210 报错。已写入 FORK.md §10 两行与 NUWAX-HARNESS.md 的档位表（建议 GLM-5.3-Flash 显式用 max/high/low）。
 - **结论**：我们 medium 的字段处理**正确**——`output_config.effort` 正是 Anthropic
   官方指定位置，medium 是合法值（Anthropic 现行契约 low/medium/high/xhigh/max）。
   **1210 用我们的请求形态在该官方端点复现不了**；agent 的"medium 被拒"归因与实测
