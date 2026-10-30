@@ -314,6 +314,40 @@ rig，档位由上游自己校验。两条线的实现方式不同(Anthropic 交
 Chat 由桥自己校验)，但对你是同一件事：**配了档位表，选了表里没有的档就在发出前
 报错**；没配则保持宽松。原因见 [FORK.md §10](FORK.md)。
 
+### GLM-5.3-Flash 的推荐配置
+
+引擎在 Default 模式**并不发送 effort**：网关模型对内置模型目录是陌生 slug，
+`default_reasoning_level` 为 `None`（[model_info.rs:170](codex-rs/models-manager/src/model_info.rs:170)），
+effort 整个字段都不上線，档位由网关自己定。真正固定发 `medium` 的是 **TUI 的 Plan
+模式预设**（`collaboration_mode_presets.rs` 的 Plan mask 钉死 `medium`，且按上游设计
+`model_reasoning_effort` 不影响 Plan 模式——见 `chatwidget/settings.rs` 的
+"Plan reasoning is controlled exclusively by the Plan preset"）。
+
+```bash
+export NUWAX_REASONING_EFFORT_LEVELS='low,high,max'   # 选错档在发出前就报错
+export NUWAX_MODEL_REASONING_EFFORT='high'            # 落在一个真实档位
+```
+
+这两个变量在 **ACP 路径**（§5）下已经覆盖 Default 与 Plan 两种模式：适配器的
+`CollaborationModeConfig.ts` 自己拼 collaboration mode，effort 取自 `ModelId`，
+而 `ModelId` 的 effort 优先取 `NUWAX_MODEL_REASONING_EFFORT`，不经过引擎的 Plan 预设。
+
+**只有直接跑 TUI** 才需要第三处配置，否则一进 Plan 模式档位门就会按 `medium`
+拒绝请求（这是 0.18.24 之后的预期行为，修复前它会静默把 `medium` 发出去）：
+
+```toml
+# config.toml；该键没有环境变量别名，且只有 TUI 会应用它
+plan_mode_reasoning_effort = "high"
+```
+
+档位表见[智谱 concept-param#reasoning_effort](https://docs.bigmodel.cn/cn/guide/start/concept-param#reasoning_effort)：
+GLM-5.3 全系仅 `max`/`high`/`low`，GLM-5.2 为七档（`low`/`medium` 均映射为 `high`）。
+
+**默认值保持 `medium` 不动**（与上游一致）。改成 `high` 只是把不兼容从 `medium`
+挪到另一个词上，还会盖掉上面那道事前警报；`high` 也并非对所有网关都安全
+（DeepSeek/MiMo/StepFun/Ollama 的档位表各不相同，本仓库因此不随包内置任何档位
+声明）。要对某个部署改默认，用上面的环境变量，不要改引擎。
+
 显式 `-c model_context_window=...` 等对应配置覆盖这些环境种子。
 每个 `CODEX_*` 种子都有同义 `NUWAX_*` 别名（如 `NUWAX_MODEL_CONTEXT_WINDOW`）：
 仅设其一即生效，`NUWAX_*` 是推荐写法；两者同设且值相同视为迁移期写法，
@@ -327,8 +361,10 @@ Chat 由桥自己校验)，但对你是同一件事：**配了档位表，选了
 **每个 `CODEX_*` 网关变量都有同义 `NUWAX_*` 别名**（`NUWAX_PATH`、`NUWAX_BASE_URL`、
 `NUWAX_API_KEY`、`NUWAX_API_PROTOCOL`、`NUWAX_WIRE_API`、`NUWAX_BRIDGE`、
 `NUWAX_MODEL`、`NUWAX_MODEL_CONTEXT_WINDOW`、`NUWAX_PROVIDER_ID/NAME`、
-`NUWAX_CONFIG`、`NUWAX_LOG_DIR`）：仅设其一即生效，`NUWAX_*` 是推荐写法；
-两者同设且值相同视为迁移期写法，值不同则 ACP 启动报错并点名两个变量。
+`NUWAX_CONFIG`、`NUWAX_LOG_DIR`、`NUWAX_MODEL_REASONING_EFFORT`）：仅设其一即生效，
+`NUWAX_*` 是推荐写法；两者同设且值相同视为迁移期写法，值不同则 ACP 启动报错并
+点名两个变量。**例外**：`NUWAX_REASONING_EFFORT_LEVELS` 没有 `CODEX_` 同义名
+（非上游 codex 变量，见 §4）。
 适配器消费掉的别名（BASE_URL/API_PROTOCOL/WIRE_API/API_KEY/BRIDGE/
 MAX_OUTPUT_TOKENS）不会透传给 app-server 子进程，因此引擎自身的
 `NUWAX_*` 启动组不会看到孤儿变量。无前缀的 `MODEL_PROVIDER`、
@@ -372,6 +408,8 @@ ACP 是 stdio 协议服务，由 ACP 宿主配置上述命令、工作目录和�
 | `CODEX_BRIDGE` | `rig`、`native`、`genai`；不设则让实际 Codex 二进制保留默认桥 |
 | `CODEX_MODEL` | 活动网关使用的平台模型 ID |
 | `NUWAX_MODEL_CONTEXT_WINDOW`（同义 `CODEX_MODEL_CONTEXT_WINDOW`） | 活动网关的真实上下文窗口，正整数 token 数 |
+| `NUWAX_MODEL_REASONING_EFFORT`（同义 `CODEX_MODEL_REASONING_EFFORT`） | 可选：Default 模式使用的 effort 档位；不设则不发送，由网关自定。**不影响 Plan 模式**（见 §4） |
+| `NUWAX_REASONING_EFFORT_LEVELS` | 可选：逗号分隔的 rig 档位词，声明后选表外档位在请求发出前报错。**无 `CODEX_` 同义名**（非上游 codex 变量）；适配器只做形状解析，不消费该变量 |
 | `CODEX_PROVIDER_ID` / `CODEX_PROVIDER_NAME` | 可选 provider ID / 展示名，不需要时不设 |
 | `CODEX_CONFIG` | 可选 JSON 对象，传入会话配置；高级配置需核对网关覆盖优先级 |
 | `MODEL_PROVIDER` | 无活动网关时可选的 provider 选择；不要用它与环境网关表达矛盾选择 |
