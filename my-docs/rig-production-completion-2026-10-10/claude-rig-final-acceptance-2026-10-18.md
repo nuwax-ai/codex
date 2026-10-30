@@ -5764,6 +5764,74 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   （`25343cac5` 品牌清扫漏修，已在 `d9a2317ea` 修）、1 个缺 `codex` bin
   （独立 CARGO_TARGET_DIR 环境问题）、3 个 daemon 集成测试干净树上同样败。
 
+## 6.72 effort 档位门与三连发布：v0.18.23（带缺陷）→ v0.18.24、ACP 1.2.23 → 1.2.24（2026-10-30）
+
+- **修复内容（`ee6a906e8`，tag v0.18.23）**：把 §6.71 定性的 GLM effort 静默语义偏差
+  修成发送前的显式失败。
+  - 新增 `codex-rs/codex-rust-rig-bridge/src/reasoning_effort.rs`：档位词表**直接用
+    rig 自己的 `Effort` 反序列化器读**（rig 读厂商目录 `catalog/row.rs` 就是这么做的），
+    不自维护副本；`none`/`off` 报错点名它们属于 `can_disable` 轴、不是档位。
+  - **Anthropic 线走 rig 类型化通道**：`convert_request.rs` 改设
+    `completion.options.reasoning`；`client.rs::build_anthropic_model` 按 provider
+    声明的档位绑 `ModelSpec`（catalog 有行用行，否则 `ModelSpec::new`，provider=
+    `nuwax`，`reasoning=Listed{can_disable:false}`）。绑 spec 后 rig 默认
+    `input.image=false` 本会丢图，但 Anthropic 线图片命名规则为 `None`
+    （`is_none_or` 短路）不读 spec modalities——已用测试钉住带图请求仍完整到达。
+  - **Chat 线刻意不走类型化通道**：rig 的 `Rewrite::OutputCapRename`
+    （`completion/options/merge.rs`）在 `reasons()==Some(true)` 时把 `max_tokens`
+    改名 OpenAI 专有的 `max_completion_tokens`，兼容网关不认、输出上限静默失效；
+    未绑 facts 时 `reasons()` 回落按模型名判断、对网关模型返回 `None` 不改名。档位门
+    由桥自己做（`check_declared`），拒绝点仍在请求构建前。已测：声明档位后 Chat 选
+    `medium` 被拒且本地服务器零请求；合法档位 body 与未声明时逐字节一致。
+  - `transport.rs` 删除 `disable_anthropic_thinking`/`anthropic_effort` 两处裸注入；
+    rig 拒绝映射为**不可重试**的 `InvalidRequest`（`stream.rs::map_provider_error`）。
+  - 新配置 `model_providers.<id>.reasoning_effort_levels` + 新环境变量
+    `NUWAX_REASONING_EFFORT_LEVELS`（逗号分隔；`nuwax_env` 侧仅形状校验，词表归
+    rig；set-but-empty 报错；`-c model_provider=` 与之并用报错）。
+- **质量门**：fmt clean；clippy 0 错误；codex-config / codex-utils-cli /
+  codex-rust-rig-bridge / codex-cli 四 crate **836 tests 全过**；本地 debug 构建验证
+  四行为（Anthropic+声明档位+medium 发送前拒；声明 high/low/max 过门；未声明宽松；
+  Chat+声明档位+medium 拒）。codex-core 424 失败经 stash 干净树对照（426 失败）定性为
+  环境性（code-mode-host V8 本地无法构建），非回归。
+- **v0.18.23 生产事故**：tag 指 `ee6a906e8`，release run `40924476463` 10/10 success
+  （aarch64-apple-darwin 4h38m 为最长腿）、npm latest=0.18.23，但**隔离 smoke 当场
+  翻车**：`model_providers.nuwax_env is reserved for the NUWAX_* environment
+  provider; the effective table also sets [reasoning_effort_levels]`——
+  `config/src/env_group_isolation.rs` 的 `ENV_GROUP_SEED_KEYS` 白名单漏了新种子键，
+  NUWAX_* 组一激活（设了 tiers 变量）每次加载必败。根因：没有任何单测把**真实种子
+  生产函数**喂给**真实校验器**。
+- **修复与 v0.18.24（`18c325d7a`）**：白名单 9→10 键；新增
+  `cli/tests/nuwax_env_group_isolation.rs` 集成测试（二进制同款 `nuwax_env_overrides`
+  产种 → 同款 `validate_env_group_isolation` 校验，回退白名单可逐字复现该错误）；
+  `env_group_isolation_tests.rs` 加 `every_seeded_key_is_whitelisted`。release run
+  `40968779911` 8/8 success（aarch64-apple-darwin 22:50→02:53 约 4h03m 最长腿）；
+  npm **latest=0.18.24**（registry 直查；本地 npm 元数据缓存会短暂显示旧值，验库以
+  `--prefer-online` 或 curl 直查 registry 为准）。**隔离 smoke 全过**：npm 装 0.18.24，
+  `NUWAX_REASONING_EFFORT_LEVELS=low,high,max` + `NUWAX_MODEL_REASONING_EFFORT=medium`
+  → 发送前拒 `rig refused the request: … this model has no 'medium' effort level`
+  （0.18.23 的白名单报错消失）；同配置改 `high` → 过门并真实尝试连接 127.0.0.1:1
+  （Reconnecting 5/5 后 HttpError，符合设计）。
+- **ACP 1.2.23（`231d272` + `3fcc7fb`）**：`CodexEnvConfig.ts` 读
+  `NUWAX_MODEL_REASONING_EFFORT`/`CODEX_MODEL_REASONING_EFFORT`/
+  `NUWAX_REASONING_EFFORT_LEVELS`（形状校验、set-but-empty 抛错；levels **刻意不进**
+  `CONSUMED_NUWAX_ENV_VARS`，透传给引擎）；`CodexAcpClient.fallbackEffort()` 优先
+  操作者显式 effort，其次声明档位第一个，兜底 medium。usage-guide.md 三表两行更新。
+  run `40925079620` success，npm latest=1.2.23，`--version` 冒烟 1.2.23。
+- **ACP 1.2.24（`5d6d31a`）——修正 1.2.23 的隐性未交付**：复核发现 `3fcc7fb` 提交信息
+  写 "(nuwax-harness 0.18.23)"，但 package.json 的 pin **实际未动、仍钉 0.18.22**，
+  发布提交只升了自身版本号——1.2.23 因此只有 ACP 侧读变量的代码，引擎 pin 没有
+  档位功能（也因此没踩 0.18.23 白名单坑：tiers 变量被旧引擎静默忽略）。1.2.24 把
+  pin 直升 **0.18.24**（跳过缺陷版 0.18.23），lockfile 刷新（resolved 指向
+  registry.npmjs.org 直连）、typecheck 通过、vitest 全量 **1996 passed | 36 skipped**
+  （比 1.2.23 基线多 11 个即 `231d272` 新增 env 用例）。tag v1.2.24 → run
+  `40995537371` 三 job success（verify / publish-to-npm / create-release）；npm
+  **latest=1.2.24**，发布 tarball 内 pin harness **0.18.24**（registry 版本页确认）；
+  隔离安装冒烟 `--version` 1.2.24、引擎包实际装到 0.18.24。npm 发布后入库延迟约
+  1–2 分钟，与既往一致。
+- **发布链事实**：v0.18.23 tag=`ee6a906e8`、v0.18.24 tag=`18c325d7a`（均在 `test`
+  分支）；ACP tag=v1.2.23 指 `3fcc7fb`、v1.2.24 指 `5d6d31a`（`dev` 分支）。
+  0.18.23 → 0.18.24 之间仅一笔提交（白名单修复），档位功能本体在 0.18.23 已进。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-29 本轮复审状态：** `b68b281d4`、`cf46b6e9f` 的复审补修见§6.69，
