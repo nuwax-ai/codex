@@ -527,16 +527,22 @@ impl ModelInfo {
     }
 
     pub fn auto_compact_token_limit(&self) -> Option<i64> {
-        let context_limit = self
-            .resolved_context_window()
-            .map(|context_window| (context_window * 9) / 10);
-        let config_limit = self.auto_compact_token_limit;
-        if let Some(context_limit) = context_limit {
-            return Some(
-                config_limit.map_or(context_limit, |limit| std::cmp::min(limit, context_limit)),
-            );
+        // Fork (nuwax-codex): the derived default is 80% of the resolved
+        // window, not upstream's 90%. Third-party gateways reserve part of the
+        // window for output (probe 2026-11-02: a 1M-window gateway rejected at
+        // ~950-980k), and the compaction request itself carries the full
+        // history, so a 90% trigger leaves too little room for either — the
+        // probe's compaction request was rejected and had to shed history. An
+        // explicit limit — catalog or user configuration — is authoritative
+        // and no longer capped by the derived ratio: silently clamping a
+        // configured 950k to 900k contradicted fail-fast, and every catalog
+        // value is at or below 90%, so official models keep their behavior.
+        match self.auto_compact_token_limit {
+            Some(explicit) => Some(explicit),
+            None => self
+                .resolved_context_window()
+                .map(|context_window| (context_window * 8) / 10),
         }
-        config_limit
     }
 }
 
@@ -1878,7 +1884,40 @@ mod tests {
 
         assert_eq!(model.resolved_context_window(), Some(400_000));
         assert_eq!(model.usable_context_window(), Some(380_000));
-        assert_eq!(model.auto_compact_token_limit(), Some(360_000));
+        // Fork: the derived default compacts at 80% of the resolved window.
+        assert_eq!(model.auto_compact_token_limit(), Some(320_000));
+    }
+
+    #[test]
+    fn auto_compact_derived_default_is_eighty_percent_of_the_window() {
+        // Fork probe context: a 1M-window gateway rejects at ~950-980k, so the
+        // derived trigger must leave room for both the gateway's output
+        // reserve and the compaction request's own full-history payload.
+        let model = ModelInfo {
+            context_window: Some(1_000_000),
+            ..test_model(/*spec*/ None)
+        };
+        assert_eq!(model.auto_compact_token_limit(), Some(800_000));
+    }
+
+    #[test]
+    fn auto_compact_explicit_limits_are_authoritative_and_uncapped() {
+        // A catalog value at or below 90% keeps upstream behavior...
+        let at_ninety = ModelInfo {
+            context_window: Some(400_000),
+            auto_compact_token_limit: Some(360_000),
+            ..test_model(/*spec*/ None)
+        };
+        assert_eq!(at_ninety.auto_compact_token_limit(), Some(360_000));
+
+        // ...and a value above 90% — previously clamped to 90% of the window —
+        // now applies as configured (fail-fast: no silent clamping).
+        let above = ModelInfo {
+            context_window: Some(1_000_000),
+            auto_compact_token_limit: Some(950_000),
+            ..test_model(/*spec*/ None)
+        };
+        assert_eq!(above.auto_compact_token_limit(), Some(950_000));
     }
 
     #[test]
@@ -1895,9 +1934,11 @@ mod tests {
             (
                 model.resolved_context_window(),
                 model.usable_context_window(),
+                // Fork: the explicit limit is authoritative — upstream's
+                // min(explicit, 90%-of-window) clamp used to return 244_800.
                 model.auto_compact_token_limit(),
             ),
-            (Some(272_000), Some(258_400), Some(244_800))
+            (Some(272_000), Some(258_400), Some(250_000))
         );
     }
 

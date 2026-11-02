@@ -62,6 +62,25 @@ pub fn with_config_overrides(mut model: ModelInfo, config: &ModelsManagerConfig)
         other => other,
     };
     if let Some(auto_compact_token_limit) = absolute_compact_limit {
+        // Fork (nuwax-codex): an explicit limit is authoritative — it is not
+        // capped by the derived ratio anymore — so surface, rather than clamp,
+        // a value that reaches the full-window compaction line: routine
+        // auto-compaction would never fire before the full-window backstop.
+        if let Some(context_window) = model.context_window {
+            let percent = i64::from(model.effective_context_window_percent.clamp(0, 100));
+            let full_window_line = context_window.saturating_mul(percent) / 100;
+            if auto_compact_token_limit >= full_window_line {
+                tracing::warn!(
+                    auto_compact_token_limit,
+                    context_window,
+                    effective_context_window_percent = percent,
+                    full_window_line,
+                    "model_auto_compact_token_limit reaches the model's full-window \
+                     compaction line; routine auto-compaction will not trigger before \
+                     the full-window backstop"
+                );
+            }
+        }
         model.auto_compact_token_limit = Some(auto_compact_token_limit);
     } else if let Some(ratio) = config.model_auto_compact_ratio {
         // Fork (nuwax-codex): ratio-based threshold derives from the

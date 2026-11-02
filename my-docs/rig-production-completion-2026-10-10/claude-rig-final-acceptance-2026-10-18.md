@@ -5882,6 +5882,35 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
 - **发布**:harness v0.18.25;ACP v1.2.25(纯 pin 升级)。usage-guide 的 GLM 窗口
   示例(128000→1000000)、排查行(新增 "ran out of room" 行为说明)已随本轮更新。
 
+## 6.74 旁路外联审计收敛与压缩阈值 80%(2026-11-02)
+
+- **旁路外联审计(企业向,用户要求"模型网关之外零额外外网请求")**:逐域核实后
+  三类处置——
+  ①**遥测默认关**:upstream release 构建默认经 Statsig 向
+  `https://ab.chatgpt.com/otlp/v1/metrics` 发指标(硬编码 key,`otel/src/config.rs`),
+  且 exec 的 `DEFAULT_ANALYTICS_ENABLED=true`、metrics 默认 exporter=statsig——
+  即每次 `nuwax-harness exec` 都向 OpenAI 遥测端点外发。fork 改为:
+  metrics_exporter 默认 `none`、Statsig 解析为 None(常量/key 删除)、exec 默认
+  analytics=false;企业可显式配 OTLP 收集器。②**更新检查全收敛到 nuwax 通道**:
+  doctor 的桌面 appcast(`persistent.oaistatic.com`+`chatgpt.com/backend-api`)
+  检查删除;doctor 全部安装上下文统一查 `@nuwax-ai/nuwax-harness` npm dist-tags
+  (删 GitHub releases/Homebrew cask fetch);TUI 版本提醒仅 nuwax 通道检查,
+  其余动作跳过联网(删 `@openai/codex` 包常量与 GitHub fetch);doctor 的
+  update 建议文案统一指向 nuwax 通道。③**查证后无需改**:Cyber/Bio Policy
+  "道德审查"为纯服务端错误码映射,本地零外发;viewer 的 CDN CSP 白名单仅在
+  模型生成的可视化拉取时触达(模型驱动,文档注明可收紧);chatgpt/openai 域
+  仅 ChatGPT 登录与官方 provider 路径可达(API-key + 自定义网关不触发)。
+- **自动压缩阈值 90%→80% + 显式值解封**(方案 `autocompact-threshold-plan-2026-11-02.md`,
+  用户拍板方案 B):派生默认 80%(两个实测依据:GLM 1M 窗口 ~95-98 万拒、压缩
+  请求带全量历史在 90% 触发时被 1261 拒);显式值不再被 `min(显式,90%×窗口)`
+  封顶(官方目录模型显式值均 ≤90%,行为零变化;用户 >90% 配置从静默钳制变生效);
+  显式值越过 full-window 线时 warn 一次。顺手修掉"设 950k 被静默钳到 900k"暗病。
+- **测试**:protocol 378/378(新增 80% 派生/解封两用例,更新一个依赖旧封顶的
+  断言)、models-manager 66/66、cli doctor 19/19、compact 套件下 5 个既有环境性
+  失败单跑全过(与阈值无关);clippy 0 错误。
+- **文档**:FORK.md 两行(遥测收敛、阈值)、NUWAX-HARNESS.md(默认 80% 与
+  显式不封顶)、两份 Plan 文档、usage-guide 同步。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-29 本轮复审状态：** `b68b281d4`、`cf46b6e9f` 的复审补修见§6.69，
