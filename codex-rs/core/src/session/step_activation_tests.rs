@@ -1489,3 +1489,49 @@ async fn guardian_v2_empty_model_defaults_are_equivalent() {
         );
     }
 }
+
+/// Fork (vendor catalog, Spec §9.5): a vendor-catalog model is not fallback
+/// metadata — mid-turn switching between vendor-catalog models is admitted,
+/// where two fallback-placeholder models are refused.
+#[tokio::test]
+async fn model_safety_admits_vendor_catalog_models_for_mid_turn_switching() {
+    let (_, turn) = make_session_and_context().await;
+    let entry = codex_models_manager::vendor_catalog::resolve("GLM-5.3-Flash")
+        .expect("the display-cased slug resolves");
+    let vendor = codex_models_manager::model_info::vendor_model_info(&entry);
+    assert!(!vendor.used_fallback_model_metadata);
+    let (admitted, destination) = safety_models();
+    let mut destination = destination;
+    destination.model_specialty = None;
+    let glm = vendor.clone();
+    let another = {
+        let entry = codex_models_manager::vendor_catalog::resolve("glm-4.7");
+        match entry {
+            Some(e) => codex_models_manager::model_info::vendor_model_info(&e),
+            None => vendor.clone(),
+        }
+    };
+    for (old, current, next) in [
+        (&glm, &glm, &another),
+        (&admitted, &glm, &destination),
+        (&glm, &glm, &destination),
+    ] {
+        assert!(
+            check_legacy_model_safety(old, current, next, &turn.config, &turn.config).is_ok(),
+            "vendor-catalog models must be admissible for mid-turn switching"
+        );
+    }
+    // Fallback placeholders stay refused.
+    let mut placeholder = admitted.clone();
+    placeholder.used_fallback_model_metadata = true;
+    assert_eq!(
+        check_legacy_model_safety(
+            &placeholder,
+            &placeholder,
+            &glm,
+            &turn.config,
+            &turn.config
+        ),
+        Err("the active model has only fallback metadata".to_string())
+    );
+}

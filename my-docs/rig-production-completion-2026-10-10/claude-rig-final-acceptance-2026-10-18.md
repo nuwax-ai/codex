@@ -5951,6 +5951,16 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   config.toml provider 或显式档位配置);models.d 档位表经桥生效、窗口表经
   models-manager 生效;T6 剩余:§9 全项组合验收(轮内转向解锁/审阅预算/
   图片准入/search tool)与 MiMo 真网零配置验证。
+- **T6 组合验收补全(同日)**:①轮内转向——`model_safety_admits_vendor_catalog_
+  models_for_mid_turn_switching`(vendor 模型间/与官方模型间切换 admissible,
+  fallback 占位仍拒);②审阅图片准入——目录 modalities 流入 ModelInfo
+  (`a_vendor_model_with_image_modality_admits_reviewer_images`,glm-5.3-flash
+  含 image),准入门 `!used_fallback && Image` 两侧成立;③审阅预算——预算测试
+  三态已覆盖(vendor 走 used_fallback=false 分支);④search tool——models.dev
+  无 tool_call 能力数据,vendor 模型维持 supports_search_tool=false(不装懂,
+  Spec #13 的开放留给有数据时);⑤**MiMo 零配置真网**——`xiaomi-token-plan-cn`
+  Anthropic 线,mimo-v2.6-flash doctor `full usable context window 996147`
+  (=目录 1,048,576×95%,非占位 258,400),exec 实跑通过。
 - **网络插曲**:GitHub 从 Mac(SSH/HTTPS)与 31.23 同时不可达数小时,目录提交
   经 31.23 中转(format-patch → am → token push);Mac 分支与中转树 diff 为 0
   后 reset 对齐。

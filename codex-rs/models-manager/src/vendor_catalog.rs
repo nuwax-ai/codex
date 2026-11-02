@@ -140,7 +140,7 @@ struct CatalogFile {
 /// One model entry from the catalog, exposing only the fields the fork uses.
 /// Unknown or malformed fields read as `None`/defaults.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct VendorModel {
+pub struct VendorModel {
     pub provider: String,
     pub slug: String,
     pub display_name: Option<String>,
@@ -301,7 +301,7 @@ pub(crate) fn resolve_with(slug: &str, user: Option<&Overlay>) -> Option<VendorM
 }
 
 /// Resolves with the committed overlay alone.
-pub(crate) fn resolve(slug: &str) -> Option<VendorModel> {
+pub fn resolve(slug: &str) -> Option<VendorModel> {
     resolve_with(slug, None)
 }
 

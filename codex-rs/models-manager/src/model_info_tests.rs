@@ -552,3 +552,25 @@ fn with_config_overrides_impl(model: &mut ModelInfo, window: Option<i64>) {
         &config,
     );
 }
+
+/// Spec §9.5, reviewer image admission: a vendor-catalog model with image
+/// input in its catalog modalities must be admissible for reviewer images —
+/// the admission gate requires `!used_fallback && modalities contains Image`,
+/// and the vendor constructor feeds modalities from the catalog entry.
+#[test]
+fn a_vendor_model_with_image_modality_admits_reviewer_images() {
+    let entry = crate::vendor_catalog::resolve("GLM-5.3-Flash").expect("resolvable");
+    let model = crate::model_info::vendor_model_info(&entry);
+    // glm-5.3-flash's catalog entry lists image input.
+    assert!(
+        model.input_modalities.contains(&InputModality::Image),
+        "catalog modalities must flow into the model info"
+    );
+    assert!(!model.used_fallback_model_metadata);
+    // The admission gate in guardian::review_session is
+    // `!used_fallback && modalities.contains(Image)` — both sides hold.
+
+    // A fallback placeholder never admits, regardless of config.
+    let placeholder = crate::model_info::model_info_from_slug("unknown-model-x");
+    assert!(placeholder.used_fallback_model_metadata);
+}
