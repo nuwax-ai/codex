@@ -104,3 +104,13 @@ fn the_overlay_parses_its_effort_and_alias_tables() {
         Some("zai-coding-plan")
     );
 }
+
+#[test]
+fn the_users_display_casing_resolves_the_same_as_the_lowercase_key() {
+    // Operators configure `GLM-5.3-Flash`; models.dev keys are lowercase.
+    let lower = super::resolve("glm-5.3-flash").expect("lowercase resolves");
+    let display = super::resolve("GLM-5.3-Flash").expect("display casing resolves");
+    assert_eq!(lower.provider, display.provider);
+    assert_eq!(display.provider, "zai-coding-plan");
+    assert_eq!(display.context_limit, Some(1_000_000));
+}

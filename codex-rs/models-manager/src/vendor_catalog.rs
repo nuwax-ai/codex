@@ -176,9 +176,18 @@ impl VendorCatalog {
     /// lexicographic provider order. Callers resolve duplicates with the
     /// overlay's aliases first (see `disambiguate` in later work).
     pub(crate) fn entries_for_slug(&self, slug: &str) -> Vec<VendorModel> {
+        // models.dev keys are lowercase while operators configure the vendor's
+        // display casing (`GLM-5.3-Flash`); the parse-time lowercase index
+        // carries both shapes.
         let mut entries = Vec::new();
-        for (provider, payload) in &self.providers {
-            let Some(model) = payload.get("models").and_then(|models| models.get(slug)) else {
+        for (provider, original) in self
+            .by_lowercase_slug
+            .get(&slug.to_ascii_lowercase())
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+        {
+            let payload = &self.providers[provider];
+            let Some(model) = payload.get("models").and_then(|m| m.get(original)) else {
                 continue;
             };
             entries.push(VendorModel {
