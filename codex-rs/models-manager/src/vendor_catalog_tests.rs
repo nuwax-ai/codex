@@ -114,3 +114,21 @@ fn the_users_display_casing_resolves_the_same_as_the_lowercase_key() {
     assert_eq!(display.provider, "zai-coding-plan");
     assert_eq!(display.context_limit, Some(1_000_000));
 }
+
+#[test]
+fn the_overlay_alias_matches_display_casing_too() {
+    // The same lowercase-index rule as the catalog itself: an operator may
+    // configure `GLM-5.3-Flash` while the alias key is lowercase.
+    let display = super::resolve_with("GLM-5.3-Flash", None).expect("display resolves");
+    assert_eq!(display.provider, "zai-coding-plan");
+    // A user overlay alias pinned by display casing also wins.
+    let mut user = super::Overlay::default();
+    user.alias.insert(
+        "GLM-5.3-Flash".to_string(),
+        super::Alias {
+            provider: "zai".to_string(),
+        },
+    );
+    let pinned = super::resolve_with("glm-5.3-flash", Some(&user)).expect("resolves");
+    assert_eq!(pinned.provider, "zai");
+}

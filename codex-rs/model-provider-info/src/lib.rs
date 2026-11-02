@@ -1017,6 +1017,7 @@ mod tests;
 mod bridge_routing_tests;
 
 
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde passes a reference")]
 fn is_false(value: &bool) -> bool {
     !*value
 }

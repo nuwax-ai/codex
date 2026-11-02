@@ -262,7 +262,8 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
   的 `reasoning_effort_levels` 覆盖目录档位；`model_providers.<id>.
   ignore_catalog_effort_levels = true` 可按 provider 关闭目录档位回退宽松。未收录
   模型走 fallback 占位（272k）并告警点名应设的配置项。`$NUWAX_HOME/models.d/
-  *.toml` 可自行扩展（逐字段深合并，坏文件启动即报错点名）。目录命中与否、来源
+  *.toml` 可自行扩展（逐字段深合并，坏文件启动即报错点名；窗口/百分比生效，
+  档位表暂不进请求期档位门——档位请用 provider 的 `reasoning_effort_levels`）。目录命中与否、来源
   与双侧数值，`doctor` 的 model_routing 一眼可见。
 - 配大了自愈（2026-11-02 起两面齐备）：**事前**，轮前压缩判定把本轮待加入
   输入的估算计入阈值（单轮大输入不会再一步跨过阈值与网关真实上限）；**事后**，

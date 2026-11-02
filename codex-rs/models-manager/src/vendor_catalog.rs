@@ -55,15 +55,48 @@ pub struct ProviderTuning {
 /// The committed overlay.
 pub(crate) fn overlay() -> &'static Overlay {
     static OVERLAY: OnceLock<Overlay> = OnceLock::new();
-    OVERLAY.get_or_init(|| toml::from_str(OVERLAY_TOML).unwrap_or_default())
+    OVERLAY.get_or_init(|| {
+        toml::from_str::<Overlay>(OVERLAY_TOML)
+            .unwrap_or_default()
+            .normalized()
+    })
 }
 
 impl Overlay {
+    /// Lowercases every table key. Overlay keys are model slugs and provider
+    /// names whose meaningful comparison is case-insensitive (operators write
+    /// `GLM-5.3-Flash`, the committed overlay writes `glm-5.3-flash`); without
+    /// normalization a merged map would carry both variants and whichever the
+    /// exact lookup hits first silently shadows the other.
+    fn normalized(self) -> Overlay {
+        let lower = |map: &BTreeMap<String, EffortTable>| {
+            map.iter()
+                .map(|(key, table)| (key.to_ascii_lowercase(), table.clone()))
+                .collect::<BTreeMap<_, _>>()
+        };
+        let lower_alias = |map: &BTreeMap<String, Alias>| {
+            map.iter()
+                .map(|(key, alias)| (key.to_ascii_lowercase(), alias.clone()))
+                .collect::<BTreeMap<_, _>>()
+        };
+        let lower_provider = |map: &BTreeMap<String, ProviderTuning>| {
+            map.iter()
+                .map(|(key, tuning)| (key.to_ascii_lowercase(), tuning.clone()))
+                .collect::<BTreeMap<_, _>>()
+        };
+        Overlay {
+            effort: lower(&self.effort),
+            alias: lower_alias(&self.alias),
+            provider: lower_provider(&self.provider),
+        }
+    }
+
     /// Field-by-field deep merge (Spec §11 decision): every table merges
     /// per key, and within a key each present field wins — an unset field
     /// keeps the base value. `self` is the base, `overlay` overlays it.
     pub fn merged_with(&self, overlay: &Overlay) -> Overlay {
         let mut merged = self.clone();
+        let overlay = &overlay.clone().normalized();
         for (slug, table) in &overlay.effort {
             match merged.effort.get_mut(slug) {
                 Some(base) => {
@@ -102,7 +135,9 @@ impl Overlay {
 /// Parses a user overlay document (models.d file). Formatting errors fail
 /// fast with the file's name expected from the caller's context.
 pub fn parse_user_overlay(text: &str) -> Result<Overlay, String> {
-    toml::from_str(text).map_err(|error| error.to_string())
+    toml::from_str::<Overlay>(text)
+        .map(Overlay::normalized)
+        .map_err(|error| error.to_string())
 }
 
 /// The committed overlay merged with an optional user overlay (models.d).
@@ -116,17 +151,9 @@ pub(crate) fn overlay_with(user: Option<&Overlay>) -> Overlay {
 /// The effective effort-tier table for a model slug, after merging the
 /// user overlay: the tier gate's catalog default (Spec §5.1).
 pub fn effort_table_for(slug: &str, user: Option<&Overlay>) -> Option<EffortTable> {
-    let merged = overlay_with(user);
-    merged
+    overlay_with(user)
         .effort
-        .get(slug)
-        .or_else(|| {
-            merged
-                .effort
-                .iter()
-                .find(|(key, _)| key.eq_ignore_ascii_case(slug))
-                .map(|(_, table)| table)
-        })
+        .get(&slug.to_ascii_lowercase())
         .cloned()
 }
 
@@ -256,7 +283,11 @@ pub(crate) fn resolve_with(slug: &str, user: Option<&Overlay>) -> Option<VendorM
     if entries.is_empty() {
         return None;
     }
-    if let Some(alias) = overlay_with(user).alias.get(slug) {
+    let merged_overlay = overlay_with(user);
+    // Alias keys are lowercase in the committed overlay while operators may
+    // configure the vendor's display casing — match like every other table.
+    let alias = merged_overlay.alias.get(&slug.to_ascii_lowercase());
+    if let Some(alias) = alias {
         if let Some(entry) = entries.iter().find(|e| e.provider == alias.provider) {
             return Some(entry.clone());
         }
@@ -273,6 +304,20 @@ pub(crate) fn resolve_with(slug: &str, user: Option<&Overlay>) -> Option<VendorM
             .find(|e| e.provider.contains("coding-plan") || e.provider.contains("token-plan"))
     }
     if let Some(entry) = pick_plan_entry(&entries) {
+        let plan_entries: Vec<&str> = entries
+            .iter()
+            .filter(|e| e.provider.contains("coding-plan") || e.provider.contains("token-plan"))
+            .map(|e| e.provider.as_str())
+            .collect();
+        if plan_entries.len() > 1 {
+            tracing::warn!(
+                slug,
+                chosen = %entry.provider,
+                candidates = ?plan_entries,
+                "model slug appears under several plan-style vendors; chose the first \
+                 in provider order — add an overlay alias to pin it explicitly"
+            );
+        }
         return Some(entry.clone());
     }
     let mut best: Option<&VendorModel> = None;

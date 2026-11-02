@@ -458,7 +458,8 @@ fn stream_via_rig_attempt(
         // Fork: when the provider declares nothing, the vendor catalog's probed
         // tier table (models-manager overlay) is the default — unless the
         // provider opts out with `ignore_catalog_effort_levels`.
-        let catalog_levels = (!api_provider.ignore_catalog_effort_levels)
+        let catalog_levels = (api_provider.reasoning_effort_levels.is_none()
+            && !api_provider.ignore_catalog_effort_levels)
             .then(|| {
                 codex_models_manager::vendor_catalog::effort_table_for(model.as_str(), None)
                     .map(|table| table.levels)
