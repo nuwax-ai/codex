@@ -6,30 +6,21 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use serde::Deserialize;
 use serde::Serialize;
 
-pub(crate) const STATSIG_OTLP_HTTP_ENDPOINT: &str = "https://ab.chatgpt.com/otlp/v1/metrics";
-pub(crate) const STATSIG_API_KEY_HEADER: &str = "statsig-api-key";
-pub(crate) const STATSIG_API_KEY: &str = "client-MkRuleRQBd6qakfnDYqJVR9JuXcY57Ljly3vi5JVUIO";
-
+/// Fork (nuwax-codex): the built-in Statsig exporter shipped no destination of
+/// the fork's own — it posted metrics to an OpenAI endpoint with a hardcoded
+/// key on every release build that did not explicitly disable analytics.
+/// Enterprise deployments expect zero side-channel requests beyond the
+/// configured model gateway, so the fork resolves `statsig` to `none` and
+/// carries no endpoint or key. An operator who wants metrics configures
+/// `otel.metrics_exporter` to their own OTLP collector explicitly.
 pub(crate) fn resolve_exporter(exporter: &OtelExporter) -> OtelExporter {
     match exporter {
         OtelExporter::Statsig => {
-            // Keep the built-in Statsig default off in debug builds so
-            // incremental local development and test runs do not emit
-            // best-effort OTEL traffic unless a test or binary opts into an
-            // explicit exporter configuration.
-            if cfg!(debug_assertions) {
-                return OtelExporter::None;
-            }
-
-            OtelExporter::OtlpHttp {
-                endpoint: STATSIG_OTLP_HTTP_ENDPOINT.to_string(),
-                headers: HashMap::from([(
-                    STATSIG_API_KEY_HEADER.to_string(),
-                    STATSIG_API_KEY.to_string(),
-                )]),
-                protocol: OtelHttpProtocol::Json,
-                tls: None,
-            }
+            tracing::debug!(
+                "the built-in statsig exporter is disabled in nuwax-harness; \
+                 configure otel.metrics_exporter with your own OTLP endpoint instead"
+            );
+            OtelExporter::None
         }
         _ => exporter.clone(),
     }

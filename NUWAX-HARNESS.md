@@ -243,8 +243,15 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
 | `NUWAX_AUTO_COMPACT_RATIO`（同义 `CODEX_AUTO_COMPACT_RATIO`） | 可选 `(0, 1]` 小数，未设置显式 token 阈值时按有效窗口比例触发压缩 |
 | `NUWAX_MODEL_REASONING_EFFORT`（同义 `CODEX_MODEL_REASONING_EFFORT`） | 可选：`none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`、`persistent`；具体模型/协议须支持该值 |
 
-窗口与压缩种子的行为（2026-10-28 起）：
+窗口与压缩种子的行为（2026-10-28 起；压缩默认 2026-11-02 调整为 80%）：
 
+- **未显式配置压缩阈值时，按有效窗口的 80% 触发自动压缩**（2026-11-02 起，
+  原 90%）。原因：三方网关普遍为输出留预留（实测 GLM 1M 窗口在 ~95-98 万
+  拒绝），且压缩请求自身携带全量历史，90% 触发线余量不足。显式阈值
+  （`NUWAX_AUTO_COMPACT_TOKEN_LIMIT` / config 同名键）**直接生效、不再被
+  90% 封顶**——配置 95 万就是 95 万（以前会被静默钳到 90 万）；越过窗口
+  满载线（窗口×有效百分比）时启动告警提示。`NUWAX_AUTO_COMPACT_RATIO`
+  语义不变（未设显式阈值时按比例派生）。
 - 不在模型目录中的**自定义模型**，`model_context_window` 显式覆盖**全额
   生效**（不再被未知模型 272k 占位上限钳制）：大窗口厂商（如 GLM-5.3-Flash
   的 1M）按真实窗口使用，压缩阈值随真实窗口派生。

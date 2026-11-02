@@ -2,8 +2,6 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 #[cfg(not(debug_assertions))]
-pub(crate) const PACKAGE_URL: &str = "https://registry.npmjs.org/@openai%2fcodex";
-
 /// Fork channel: `@nuwax-ai/nuwax-harness` on npm. Unlike the OpenAI flow there is no
 /// GitHub-release cross-check — this registry IS the authoritative source.
 #[cfg(not(debug_assertions))]
@@ -25,36 +23,6 @@ struct NpmPackageVersionInfo {
 struct NpmPackageDist {
     tarball: Option<String>,
     integrity: Option<String>,
-}
-
-pub(crate) fn ensure_version_ready(
-    package_info: &NpmPackageInfo,
-    version: &str,
-) -> anyhow::Result<()> {
-    let version = version.trim();
-
-    match package_info.dist_tags.get("latest").map(String::as_str) {
-        Some(latest) if latest == version => {}
-        Some(latest) => anyhow::bail!(
-            "npm latest dist-tag points to {latest}, expected GitHub release {version}"
-        ),
-        None => anyhow::bail!("npm package is missing latest dist-tag"),
-    }
-
-    version_info_with_dist(package_info, version)?;
-    Ok(())
-}
-
-/// The package's `latest` dist-tag — the fork's update channel resolves the
-/// newest version directly from npm instead of cross-checking GitHub.
-pub(crate) fn latest_version(package_info: &NpmPackageInfo) -> anyhow::Result<String> {
-    let latest = package_info
-        .dist_tags
-        .get("latest")
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("npm package is missing latest dist-tag"))?;
-    version_info_with_dist(package_info, &latest)?;
-    Ok(latest)
 }
 
 fn version_info_with_dist<'a>(
@@ -85,6 +53,18 @@ fn version_info_with_dist<'a>(
     Ok(info)
 }
 
+/// The package's `latest` dist-tag — the fork's update channel resolves the
+/// newest version directly from npm instead of cross-checking GitHub.
+pub(crate) fn latest_version(package_info: &NpmPackageInfo) -> anyhow::Result<String> {
+    let latest = package_info
+        .dist_tags
+        .get("latest")
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("npm package is missing latest dist-tag"))?;
+    version_info_with_dist(package_info, &latest)?;
+    Ok(latest)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,42 +87,6 @@ mod tests {
             "versions": serde_json::Value::Object(versions),
         }))
         .expect("valid npm package metadata")
-    }
-
-    #[test]
-    fn ready_version_requires_latest_dist_tag_and_root_dist() {
-        let latest = "1.2.3";
-        let package_info = package_info(latest, latest);
-
-        ensure_version_ready(&package_info, latest).expect("npm package is ready");
-    }
-
-    #[test]
-    fn ready_version_rejects_stale_latest_dist_tag() {
-        let package_info = package_info("1.2.3", "1.2.2");
-
-        let err = ensure_version_ready(&package_info, "1.2.3")
-            .expect_err("npm latest dist-tag must match GitHub latest");
-        assert!(
-            err.to_string().contains("latest dist-tag"),
-            "error should name stale latest dist-tag: {err}"
-        );
-    }
-
-    #[test]
-    fn ready_version_rejects_missing_root_dist() {
-        let package_info: NpmPackageInfo = serde_json::from_value(serde_json::json!({
-            "dist-tags": { "latest": "1.2.3" },
-            "versions": { "1.2.3": {} },
-        }))
-        .expect("valid npm package metadata");
-
-        let err = ensure_version_ready(&package_info, "1.2.3")
-            .expect_err("root package must have dist metadata");
-        assert!(
-            err.to_string().contains("missing dist metadata"),
-            "error should name missing dist metadata: {err}"
-        );
     }
 
     #[test]

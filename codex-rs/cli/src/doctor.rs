@@ -610,12 +610,11 @@ async fn build_report(
     }
 
     progress.begin("desktop");
+    // Fork: the desktop-application update probe is intentionally gone — it
+    // queried OpenAI's appcast feeds (persistent.oaistatic.com, a chatgpt.com
+    // backend), which are no channel of this fork and an outbound request
+    // enterprise deployments do not expect. Local desktop detection remains.
     if let Some(desktop) = desktop::collect().await {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        if let Some(application) = desktop.application.as_ref() {
-            updates::append_desktop_update(&mut checks, config_result.as_ref().ok(), application)
-                .await;
-        }
         progress.finish("desktop", overall_status(&desktop.checks));
         checks.extend(desktop.checks);
     }

@@ -57,20 +57,6 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
     })
 }
 
-// We use the latest version from the cask if installation is via homebrew - homebrew does not immediately pick up the latest release and can lag behind.
-const HOMEBREW_CASK_API_URL: &str = "https://formulae.brew.sh/api/cask/codex.json";
-const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/openai/codex/releases/latest";
-
-#[derive(Deserialize, Debug, Clone)]
-struct ReleaseInfo {
-    tag_name: String,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct HomebrewCaskInfo {
-    version: String,
-}
-
 async fn check_for_update(
     version_file: &Path,
     action: Option<UpdateAction>,
@@ -83,17 +69,11 @@ async fn check_for_update(
     .with_legacy_custom_ca_fallback();
     let latest_version = match action {
         Some(UpdateAction::Daemon(_)) => return Ok(()),
-        Some(UpdateAction::BrewUpgrade) => {
-            let HomebrewCaskInfo { version } = client_pool
-                .get(HOMEBREW_CASK_API_URL)
-                .headers(default_headers())
-                .send()
-                .await?
-                .error_for_status()?
-                .json::<HomebrewCaskInfo>()
-                .await?;
-            version
-        }
+        // Fork: nuwax-harness is distributed only through the @nuwax-ai npm
+        // channel, so every other detected install action has no version feed
+        // of its own to check — skip instead of querying upstream GitHub
+        // releases or the @openai npm package.
+        Some(UpdateAction::BrewUpgrade) => return Ok(()),
         Some(UpdateAction::NpmNuwaxLatest) => {
             // Fork channel: the @nuwax-ai/nuwax-harness npm registry is the authoritative
             // latest-version source; still verify the version has dist
@@ -111,21 +91,11 @@ async fn check_for_update(
         Some(UpdateAction::NpmGlobalLatest)
         | Some(UpdateAction::BunGlobalLatest)
         | Some(UpdateAction::VitePlusGlobalLatest)
-        | Some(UpdateAction::PnpmGlobalLatest) => {
-            let latest_version = fetch_latest_github_release_version(&client_pool).await?;
-            let package_info = client_pool
-                .get(npm_registry::PACKAGE_URL)
-                .headers(default_headers())
-                .send()
-                .await?
-                .error_for_status()?
-                .json::<NpmPackageInfo>()
-                .await?;
-            npm_registry::ensure_version_ready(&package_info, &latest_version)?;
-            latest_version
-        }
+        | Some(UpdateAction::PnpmGlobalLatest) => return Ok(()),
+        // Fork: standalone/unknown installs have no fork version feed to
+        // check either; skip rather than query upstream GitHub releases.
         Some(UpdateAction::StandaloneUnix) | Some(UpdateAction::StandaloneWindows) | None => {
-            fetch_latest_github_release_version(&client_pool).await?
+            return Ok(());
         }
     };
 
@@ -143,22 +113,6 @@ async fn check_for_update(
     }
     tokio::fs::write(version_file, json_line).await?;
     Ok(())
-}
-
-async fn fetch_latest_github_release_version(
-    client_pool: &RouteAwareClientPool,
-) -> anyhow::Result<String> {
-    let ReleaseInfo {
-        tag_name: latest_tag_name,
-    } = client_pool
-        .get(LATEST_RELEASE_URL)
-        .headers(default_headers())
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<ReleaseInfo>()
-        .await?;
-    extract_version_from_latest_tag(&latest_tag_name)
 }
 
 /// Returns the latest version to show in a popup, if it should be shown.

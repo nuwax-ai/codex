@@ -176,7 +176,10 @@ use uuid::Uuid;
 use crate::cli::Command as ExecCommand;
 use crate::event_processor::EventProcessor;
 
-const DEFAULT_ANALYTICS_ENABLED: bool = true;
+// Fork (nuwax-codex): analytics consent must be explicit. The upstream default
+// of `true` made every release-build `exec` emit metrics unless the operator
+// knew to opt out — the opposite of what enterprise deployments expect.
+const DEFAULT_ANALYTICS_ENABLED: bool = false;
 const EXEC_DEFAULT_LOG_FILTER: &str = "error,opentelemetry_sdk=off,opentelemetry_otlp=off";
 
 enum InitialOperation {
