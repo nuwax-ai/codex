@@ -255,6 +255,15 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
 - 不在模型目录中的**自定义模型**，`model_context_window` 显式覆盖**全额
   生效**（不再被未知模型 272k 占位上限钳制）：大窗口厂商（如 GLM-5.3-Flash
   的 1M）按真实窗口使用，压缩阈值随真实窗口派生。
+- **厂商模型目录（2026-11-02 起）**：GLM/MiMo/Step/DeepSeek/MiniMax 等主流厂商的
+  模型元数据来自内置目录（models.dev 快照 + fork 实证 overlay），**零配置即得
+  真实窗口与档位门**——如 GLM-5.3-Flash 自动 1M 窗口、`medium` 会在发送前被拒
+  （真实档位 low/high/max）。显式配置仍然优先：窗口向上覆盖生效且告警；provider
+  的 `reasoning_effort_levels` 覆盖目录档位；`model_providers.<id>.
+  ignore_catalog_effort_levels = true` 可按 provider 关闭目录档位回退宽松。未收录
+  模型走 fallback 占位（272k）并告警点名应设的配置项。`$NUWAX_HOME/models.d/
+  *.toml` 可自行扩展（逐字段深合并，坏文件启动即报错点名）。目录命中与否、来源
+  与双侧数值，`doctor` 的 model_routing 一眼可见。
 - 配大了自愈（2026-11-02 起两面齐备）：**事前**，轮前压缩判定把本轮待加入
   输入的估算计入阈值（单轮大输入不会再一步跨过阈值与网关真实上限）；**事后**，
   采样阶段收到超窗错误——网关拒绝体（如 GLM `1261 prompt is too long`）或本地
