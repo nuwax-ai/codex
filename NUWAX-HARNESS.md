@@ -248,9 +248,12 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
 - 不在模型目录中的**自定义模型**，`model_context_window` 显式覆盖**全额
   生效**（不再被未知模型 272k 占位上限钳制）：大窗口厂商（如 GLM-5.3-Flash
   的 1M）按真实窗口使用，压缩阈值随真实窗口派生。
-- 配大了自愈：桥线厂商的超窗错误被识别为 `ContextWindowExceeded`，自动触发
-  "删最旧条目重试"压缩兜底，不会卡死会话；目录内官方模型（gpt-\*）仍按
-  目录权威上限钳制。
+- 配大了自愈（2026-11-02 起两面齐备）：**事前**，轮前压缩判定把本轮待加入
+  输入的估算计入阈值（单轮大输入不会再一步跨过阈值与网关真实上限）；**事后**，
+  采样阶段收到超窗错误——网关拒绝体（如 GLM `1261 prompt is too long`）或本地
+  预算闸门——自动"压缩一次、重试一次"恢复（有界：每步一次，压缩被禁用或
+  无可压缩历史时才硬报错）；压缩请求自身被拒时按"删最旧条目重试"兜底。
+  目录内官方模型（gpt-\*）仍按目录权威上限钳制。
 - `model_context_window` 与 `model_auto_compact_token_limit` 为 0/负数时
   config 加载即报错（`must be a positive token count`），环境变量入口同样拒绝。
 - 对应 config.toml 键与上述环境变量同名（`model_context_window`、

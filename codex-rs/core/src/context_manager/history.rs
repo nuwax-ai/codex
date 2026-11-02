@@ -61,6 +61,7 @@ use codex_protocol::protocol::TokenUsage;
 use codex_protocol::protocol::TokenUsageInfo;
 use codex_protocol::protocol::TurnContextItem;
 use codex_protocol::protocol::WorldStateItem;
+use codex_protocol::user_input::UserInput;
 use codex_utils_audio::estimate_audio_token_count;
 use codex_utils_cache::BlockingLruCache;
 use codex_utils_cache::sha1_digest;
@@ -1073,6 +1074,26 @@ fn estimate_encrypted_function_output_length(encoded_len: usize) -> usize {
 /// Original-detail file images use the maximum patch count.
 pub(crate) fn estimate_item_token_count(item: &ResponseItem) -> i64 {
     let model_visible_bytes = estimate_response_item_model_visible_bytes(item);
+    approx_tokens_from_byte_count_i64(model_visible_bytes)
+}
+
+/// The same coarse estimate for one pending user input, before it is recorded
+/// into history. Used by the pre-turn compaction check to charge this turn's
+/// incoming items, which it otherwise cannot see.
+pub(crate) fn estimate_user_input_token_count(user_input: &UserInput) -> i64 {
+    let model_visible_bytes = match user_input {
+        UserInput::Text { text, .. } => text_bytes(text),
+        UserInput::Image { image, detail } => estimate_image_reference_bytes(image, *detail),
+        // Local files become inline payloads at serialization; their size is
+        // not known here, so charge the resized-image floor.
+        UserInput::LocalImage { .. } => RESIZED_IMAGE_BYTES_ESTIMATE,
+        UserInput::Audio { audio_url } => estimate_audio_bytes(audio_url),
+        // Converted to file content later; charging zero keeps this estimate
+        // honest about what it knows rather than guessing at payload sizes.
+        // The wildcard also covers future `#[non_exhaustive]` variants.
+        UserInput::LocalAudio { .. } | UserInput::Skill { .. } | UserInput::Mention { .. } => 0,
+        _ => 0,
+    };
     approx_tokens_from_byte_count_i64(model_visible_bytes)
 }
 

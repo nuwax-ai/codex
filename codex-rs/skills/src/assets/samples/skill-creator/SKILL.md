@@ -1,17 +1,17 @@
 ---
 name: skill-creator
-description: Create or update a Codex skill with appropriately scoped instructions and any needed supporting resources.
+description: Create or update a nuwax-harness skill with appropriately scoped instructions and any needed supporting resources.
 metadata:
   short-description: Create or update a skill
 ---
 
 # Skill Creator
 
-Create skills that give Codex useful, non-obvious guidance without constraining unrelated work.
+Create skills that give nuwax-harness useful, non-obvious guidance without constraining unrelated work.
 
 ## Core Principles
 
-**Assume Codex is already capable.** Include only information that changes its decisions or improves its work. Remove generic advice, repeated instructions, speculative edge cases, and examples that do not materially clarify the task.
+**Assume nuwax-harness is already capable.** Include only information that changes its decisions or improves its work. Remove generic advice, repeated instructions, speculative edge cases, and examples that do not materially clarify the task.
 
 **Preserve user intent and scope.** A skill should support the requested task, not replace the user's chosen product, expand the assignment, modify unrelated configuration, or imply permission for additional external actions. Do not turn a particular example, past failure, or personal preference into a universal requirement.
 
@@ -178,8 +178,8 @@ scripts/init_skill.py <skill-name> --path <output-directory> [--resources script
 For example:
 
 ```bash
-scripts/init_skill.py my-skill --path "${CODEX_HOME:-$HOME/.codex}/skills"
-scripts/init_skill.py my-skill --path "${CODEX_HOME:-$HOME/.codex}/skills" --resources references
+scripts/init_skill.py my-skill --path "${CODEX_HOME:-$HOME/.nuwax-harness}/skills"
+scripts/init_skill.py my-skill --path "${CODEX_HOME:-$HOME/.nuwax-harness}/skills" --resources references
 ```
 
 Request only the resource directories the skill needs. Use `--examples` only when concrete placeholders would help, and replace or remove them before finishing. Do not initialize an existing skill again.
@@ -198,7 +198,7 @@ description: Create or edit Word documents when formatting, tracked changes, or 
 
 Put detailed workflows, tool choices, examples, and operating modes in the body or relevant references rather than listing them all in the description. Preserve supported optional frontmatter, such as existing `metadata`, when appropriate.
 
-Write only the instructions needed for another Codex instance to perform the task well. State the desired outcome, non-obvious context, real constraints, and relevant references or tools. Preserve the user's explicit choices and existing authorization boundaries. Avoid prescribing a fixed structure, process, or number of steps when the task does not require one.
+Write only the instructions needed for another nuwax-harness instance to perform the task well. State the desired outcome, non-obvious context, real constraints, and relevant references or tools. Preserve the user's explicit choices and existing authorization boundaries. Avoid prescribing a fixed structure, process, or number of steps when the task does not require one.
 
 ### Validate and Iterate
 

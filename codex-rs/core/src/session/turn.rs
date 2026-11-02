@@ -206,6 +206,7 @@ pub(crate) async fn run_turn(
             &turn_context,
             &mut client_session,
             &cancellation_token,
+            estimate_pending_input_tokens(&input),
         ))
         .await
     {
@@ -865,6 +866,36 @@ pub(crate) async fn run_turn(
                 can_drain_pending_input = false;
                 continue;
             }
+            // Fork (nuwax-codex): an overflow reported by the gateway or the
+            // bridge's wire budget carries no Guardian marker, and for a fork
+            // user on a third-party model those are the *expected* sources —
+            // there is no first-party model whose catalog the local gates can
+            // trust to fire first. The same remedy as the arm above: compact
+            // once, retry once, bounded.
+            Err(err)
+                if auto_summarization_enabled
+                    && matches!(err.details(), CodexErrorDetails::ContextWindowExceeded)
+                    && !guardian_budget_compacted
+                    && sess
+                        .services
+                        .thread_extension_data
+                        .get::<crate::guardian::ExhaustedReviewBudget>()
+                        .is_none() =>
+            {
+                guardian_budget_compacted = true;
+                Box::pin(run_auto_compact(
+                    &sess,
+                    Arc::clone(&step_context),
+                    Arc::clone(&step_context),
+                    &mut client_session,
+                    CompactionReason::ContextLimit,
+                    CompactionPhase::MidTurn,
+                    /*candidate*/ None,
+                ))
+                .await?;
+                can_drain_pending_input = false;
+                continue;
+            }
             Err(err) if matches!(err.details(), CodexErrorDetails::TurnAborted) => {
                 return Err(err);
             }
@@ -1378,11 +1409,36 @@ async fn track_turn_resolved_config_analytics(
 }
 
 #[instrument(level = "trace", skip_all)]
+/// Coarse token estimate for this turn's pending inputs — the items that
+/// `run_hooks_and_record_inputs` will record into history only after the
+/// pre-turn compaction check has decided. Charging them into that decision is
+/// what keeps a single large paste from stepping over the threshold in one
+/// turn; the sampling-stage overflow recovery below is the net beneath any
+/// estimate drift.
+fn estimate_pending_input_tokens(input: &[TurnInput]) -> i64 {
+    input
+        .iter()
+        .map(|turn_input| match turn_input {
+            TurnInput::UserInput { content, .. } => content
+                .iter()
+                .map(crate::context_manager::estimate_user_input_token_count)
+                .sum(),
+            TurnInput::ResponseItem(envelope) | TurnInput::FunctionCallOutput(envelope) => {
+                crate::context_manager::estimate_item_token_count(&envelope.item)
+            }
+            // Agent-to-agent hand-offs are summarized by their own paths; a
+            // zero charge keeps this estimate honest about what it measures.
+            TurnInput::InterAgentCommunication(_) => 0,
+        })
+        .sum()
+}
+
 async fn run_pre_sampling_compact(
     sess: &Arc<Session>,
     turn_context: &Arc<TurnContext>,
     client_session: &mut ModelClientSession,
     cancellation_token: &CancellationToken,
+    pending_input_tokens: i64,
 ) -> CodexResult<()> {
     maybe_run_previous_model_inline_compact(sess, turn_context, client_session, cancellation_token)
         .await?;
@@ -1390,8 +1446,13 @@ async fn run_pre_sampling_compact(
         super::context_window::context_window_token_status(sess.as_ref(), turn_context.as_ref())
             .await;
     let candidate = super::async_compaction::take_ready(sess, turn_context).await;
-    // Compact if the configured auto-compaction budget or usable context window is exhausted.
-    if token_status.token_limit_reached || candidate.is_some() {
+    // Compact if the configured auto-compaction budget or usable context window is
+    // exhausted — including by this turn's pending inputs, which land only after
+    // this decision (see `estimate_pending_input_tokens`).
+    if token_status.token_limit_reached
+        || token_status.pending_input_reaches_limit(pending_input_tokens)
+        || candidate.is_some()
+    {
         // Pre-turn compaction runs before run_turn creates the normal sampling step.
         let step_context = sess
             .capture_step_context(Arc::clone(turn_context), cancellation_token)

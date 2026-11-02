@@ -19,6 +19,36 @@ pub(crate) struct ContextWindowTokenStatus {
     pub(crate) turn_end_compaction_threshold_reached: bool,
 }
 
+impl ContextWindowTokenStatus {
+    /// True when this turn's pending inputs — items that will be recorded into
+    /// history only after the pre-turn compaction check has decided — once
+    /// charged would reach the model's full context window.
+    ///
+    /// The per-turn check otherwise sees only the previous turn's reported
+    /// usage, so a single large paste can step from below every threshold over
+    /// the gateway's real limit in one turn (fork probe 2026-11-02: 815,786
+    /// reported usage plus ~163k pending input against a 900k full-window
+    /// limit on a 1M-window gateway, rejected upstream with `1261 prompt is
+    /// too long`). Reported usage itself stays untouched; this is only the
+    /// compaction trigger's view of what is about to land.
+    ///
+    /// Only the full window is charged, never the operator's auto-compact
+    /// threshold: stepping over that softer line just delays compaction to
+    /// the next turn-boundary check, while stepping over the model's real
+    /// window is what gets the request rejected. The derived auto-compact
+    /// scope equals the full window whenever no explicit threshold narrows
+    /// it, so the common configuration keeps both guards.
+    pub(crate) fn pending_input_reaches_limit(&self, pending_input_tokens: i64) -> bool {
+        if pending_input_tokens <= 0 {
+            return false;
+        }
+        let full_projected = self.active_context_tokens.checked_add(pending_input_tokens);
+        self.full_context_window_limit
+            .zip(full_projected)
+            .is_some_and(|(limit, projected)| projected >= limit)
+    }
+}
+
 fn tokens_remaining(limit: Option<i64>, used: i64) -> Option<i64> {
     limit.map(|limit| limit.saturating_sub(used).max(0))
 }
@@ -126,5 +156,69 @@ async fn context_window_token_status_with_config(
         full_context_window_limit_reached,
         token_limit_reached,
         turn_end_compaction_threshold_reached,
+    }
+}
+
+#[cfg(test)]
+mod pending_input_tests {
+    use super::*;
+
+    fn status(
+        active_context_tokens: i64,
+        auto_compact_scope_limit: Option<i64>,
+        full_context_window_limit: Option<i64>,
+    ) -> ContextWindowTokenStatus {
+        ContextWindowTokenStatus {
+            active_context_tokens,
+            auto_compact_scope_tokens: active_context_tokens,
+            auto_compact_scope_limit,
+            full_context_window_limit,
+            base_window_tokens_remaining: None,
+            auto_compact_window_prefill_tokens: None,
+            full_context_window_limit_reached: false,
+            token_limit_reached: false,
+            turn_end_compaction_threshold_reached: false,
+        }
+    }
+
+    #[test]
+    fn pending_input_crossing_the_full_window_is_reached() {
+        // The fork probe's shape: 815,786 reported usage, ~163k pending input,
+        // a 900k full-window limit (90% of the configured 1M) — below on its
+        // own, over once charged.
+        let status = status(815_786, Some(900_000), Some(900_000));
+        assert!(status.pending_input_reaches_limit(163_000));
+    }
+
+    #[test]
+    fn pending_input_below_the_window_is_not_reached() {
+        let status = status(880_000, Some(900_000), Some(900_000));
+        assert!(!status.pending_input_reaches_limit(15_000));
+    }
+
+    #[test]
+    fn no_pending_input_decides_nothing() {
+        let status = status(895_000, Some(900_000), Some(900_000));
+        assert!(!status.pending_input_reaches_limit(0));
+        assert!(!status.pending_input_reaches_limit(-1));
+    }
+
+    #[test]
+    fn a_soft_auto_compact_threshold_alone_does_not_charge_pending() {
+        // Stepping over the operator's comfort threshold only delays
+        // compaction to the next turn boundary; the full window is what the
+        // pending charge guards. Here usage + pending crosses the 900k scope
+        // limit but sits far below the model's 1.9M full window.
+        let status = status(880_000, Some(900_000), Some(1_900_000));
+        assert!(!status.pending_input_reaches_limit(50_000));
+    }
+
+    #[test]
+    fn the_full_window_limits_even_without_a_compact_limit() {
+        // An unknown model with no configured auto-compact limit still has the
+        // hard window: charging pending input past it must reach.
+        let status = status(870_000, None, Some(900_000));
+        assert!(status.pending_input_reaches_limit(40_000));
+        assert!(!status.pending_input_reaches_limit(15_000));
     }
 }

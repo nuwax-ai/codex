@@ -5832,6 +5832,56 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
   分支）；ACP tag=v1.2.23 指 `3fcc7fb`、v1.2.24 指 `5d6d31a`（`dev` 分支）。
   0.18.23 → 0.18.24 之间仅一笔提交（白名单修复），档位功能本体在 0.18.23 已进。
 
+## 6.73 上下文溢出两面修复与请求线品牌清扫（2026-11-02）
+
+- **用户报障**：长会话报 `Codex ran out of room in the model's context window`,
+  无自动压缩、会话废掉。方案文档 `my-docs/overflow-autocompact-plan-2026-11-02.md`
+  （用户评审后拍板两面一起做,并把品牌替换并入本轮）。
+- **实证（本机 nuwax-harness + GLM 实网,多轮堆叠每轮 ~104 万字符 ≈ 16.3 万 token）**:
+  累计 81.6 万 token 通过、~98 万被网关拒,原始错误体
+  `{"code":"1261","message":"[1261][prompt is too long]"}`——**GLM-5.3-Flash 真实
+  有效窗口 ≈ 1M**,用户 `model_context_window=1000000` 配置正确(usage-guide 的
+  128000 示例已改为 1000000)。根因两层:轮前压缩判断只看上一轮已报用量,单轮
+  16.3 万一步跨过 90 万阈值与网关真实上限;采样阶段的溢出恢复臂要求 guardian
+  本地检查才插的 `ExhaustedReviewBudget` 标记,网关映射与桥层 `wire_budget` 闸门
+  都不带 → 硬报错。upstream 在 `turn.rs:199` 自留 TODO 承认前一层。
+- **修复(两面)**:①`turn.rs` 新增恢复臂——无 marker 的采样阶段 `ContextWindowExceeded`
+  同样压缩一次重试一次(复用 `guardian_budget_compacted` 每步一次标志,压缩失败
+  即原样报错,`AutoCompactionDisabled`/TokenBudget 开启时维持硬报错);②轮前
+  `run_pre_sampling_compact` 接入 `estimate_pending_input_tokens`(用户输入逐项过
+  `estimate_user_input_token_count`,guardian 闸门同款粗估、图片按 resized 地板),
+  `ContextWindowTokenStatus::pending_input_reaches_limit` 判定。**设计收敛(测试
+  反馈后修订)**:pending 只对齐**完整窗口上限**、不叠加操作者软阈值——软阈值
+  被跨过只延迟一轮边界检查,真实窗口被跨过才致死;未显式设软阈值时派生阈值
+  =完整窗口,常见配置两道同守;该收敛免掉了对既有迷你阈值测试的全量翻新。
+- **品牌替换(请求线与用户可见面,实测抓包驱动)**:body 里模型可见的 "Codex"
+  自称全部替换为 nuwax-harness——内置示例技能 imagegen/skill-creator/skill-installer
+  的 description 与正文(含 imagegen 的 `references/codex-network.md`),技能示例里
+  `~/.codex` 回退路径改为 `~/.nuwax-harness`;错误消息 `Codex ran out of room` →
+  `nuwax-harness ran out of room`(iOS 前缀分类注释一并更新,fork 无 iOS 客户端)。
+  **刻意保留**:openai-docs 技能 4 处 "Codex"(OpenAI 产品专名,查的就是该产品
+  文档)、`$CODEX_HOME` 等环境变量字面量、请求头 `originator`/UA(`codex_cli_rs`
+  参与 OpenAI 第一方判定,收益仅网关日志观感)。修复后抓包复验:body 仅剩
+  openai-docs 产品专名 4 处。受影响快照 1 个
+  (app-server thread_sample,窄过滤器刷新,顺带吸收了既有的 skills 根布局漂移)。
+- **测试**:新增 3 个集成场景(GLM 400 体拒一次→压缩→重试成功;持续拒绝→有界
+  报错,新 helper `mount_response_sequence_open_ended` 解决 wiremock drop 时
+  expect 精确计数的问题;pending 触发预轮压缩先于采样,880k 用量 + 5.1 万估算
+  对 90 万完整窗口线)+ 5 个判定单测 + 1 个估算单测;compact 全套 104 个
+  **`-j 8` 下 104/104 全过**(全并行默认并发下 ~20 个 11-12s 超时失败,与改动
+  无关——A/B 两轮(改动前后语义)重叠 19 个同签名失败,单跑全过,定性资源争抢,
+  与台账既有环境性失败一致;lib 全量 2886 中唯一失败是 code_mode_host 已知
+  环境项)。clippy 0 错误;`cargo fmt` 顺带修复上轮 effort 字段在 10 个测试
+  文件里的缩进违规。
+- **真网验收(修复后 debug 二进制 + GLM 实网,8 轮堆叠)**:全部成功、零 1261、
+  用户无感;输出痕迹链完整:压缩请求自身溢出 → `compacting; removing oldest
+  history item. Error: nuwax-harness ran out of room...`(upstream trim 自愈 +
+  新品牌文案同时在线上验证)→ 重试成功。**观察到待查项**:exec 首轮带大 stdin
+  时 payload 偶发丢失(本轮与实验 B 各一次,turn 0 用量 2.2 万 vs 预期 17 万,
+  后续轮正常)——独立小缺陷,后续排查。
+- **发布**:harness v0.18.25;ACP v1.2.25(纯 pin 升级)。usage-guide 的 GLM 窗口
+  示例(128000→1000000)、排查行(新增 "ran out of room" 行为说明)已随本轮更新。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-29 本轮复审状态：** `b68b281d4`、`cf46b6e9f` 的复审补修见§6.69，

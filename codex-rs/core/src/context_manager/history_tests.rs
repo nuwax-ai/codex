@@ -3594,3 +3594,32 @@ fn text_only_items_count_decoded_content() {
 
     assert_eq!(estimated, "Hello, \"world\"!\nこんにちは".len() as i64);
 }
+
+#[test]
+fn user_input_token_estimate_counts_text_and_charges_the_image_floor() {
+    // The same 4-bytes-per-token heuristic as recorded history: 400 ASCII
+    // characters estimate to 100 tokens.
+    let text = UserInput::Text {
+        text: "a".repeat(400),
+        text_elements: Vec::new(),
+    };
+    assert_eq!(estimate_user_input_token_count(&text), 100);
+
+    // A local image path is not readable here; the estimate charges the
+    // resized-image floor rather than guessing at the file.
+    let local_image = UserInput::LocalImage {
+        path: std::path::PathBuf::from("/tmp/does-not-need-to-exist.png"),
+        detail: None,
+    };
+    assert_eq!(
+        estimate_user_input_token_count(&local_image),
+        approx_tokens_from_byte_count_i64(RESIZED_IMAGE_BYTES_ESTIMATE)
+    );
+
+    // Skill and mention selections carry no payload of their own.
+    let skill = UserInput::Skill {
+        name: "name".to_string(),
+        path: std::path::PathBuf::from("/skills/x/SKILL.md"),
+    };
+    assert_eq!(estimate_user_input_token_count(&skill), 0);
+}

@@ -6580,5 +6580,281 @@ async fn auto_compact_recovers_from_http_context_window_rejection_by_trimming() 
     );
 }
 
+// Fork (nuwax-codex): overflow recovery for a third-party gateway. When the
+// gateway rejects an oversized *sampling* request with an HTTP body the
+// bridge maps to a context-window error (GLM `1261 prompt is too long`), the
+// turn used to die with a hard error: the existing recovery arm requires a
+// Guardian marker that only the local budget check inserts. These tests pin
+// the fork's two-sided fix — recover by compacting once and retrying, and
+// charge the turn's pending input into the pre-turn compaction decision so a
+// single large paste cannot step over the threshold in one turn.
+
+fn glm_prompt_too_long_rejection() -> wiremock::ResponseTemplate {
+    wiremock::ResponseTemplate::new(/*status*/ 400).set_body_json(json!({
+        "type": "error",
+        "error": {
+            "type": "invalid_request_error",
+            "code": "1261",
+            "message": "[1261][prompt is too long][20261102overflowprobe]"
+        }
+    }))
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gateway_context_rejection_compacts_once_and_retries_the_turn() {
+    skip_if_no_network!();
+
+    let server = start_mock_server().await;
+
+    let sse1 = sse(vec![
+        ev_assistant_message("m1", FIRST_REPLY),
+        ev_completed_with_tokens("r1", /*total_tokens*/ 70_000),
+    ]);
+    let compact_ok = sse(vec![
+        ev_assistant_message("m2", AUTO_SUMMARY_TEXT),
+        ev_completed_with_tokens("r2", /*total_tokens*/ 200),
+    ]);
+    let retry_ok = sse(vec![
+        ev_assistant_message("m3", FINAL_REPLY),
+        ev_completed_with_tokens("r3", /*total_tokens*/ 120),
+    ]);
+    let request_log = mount_response_sequence(
+        &server,
+        vec![
+            sse_response(sse1),
+            glm_prompt_too_long_rejection(),
+            sse_response(compact_ok),
+            sse_response(retry_ok),
+        ],
+    )
+    .await;
+
+    let model_provider = non_openai_model_provider(&server);
+    let codex = test_codex()
+        .with_config(move |config| {
+            config.model_provider = model_provider;
+            set_test_compact_prompt(config);
+        })
+        .build(&server)
+        .await
+        .expect("build codex")
+        .codex;
+
+    codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: FIRST_AUTO_MSG.to_string(),
+            text_elements: Vec::new(),
+        }]))
+        .await
+        .expect("submit first user");
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: SECOND_AUTO_MSG.to_string(),
+            text_elements: Vec::new(),
+        }]))
+        .await
+        .expect("submit second user");
+    let final_reply = wait_for_event_match(&codex, |event| match event {
+        EventMsg::ItemCompleted(ItemCompletedEvent {
+            item: TurnItem::AgentMessage(message),
+            ..
+        }) => message
+            .content
+            .iter()
+            .map(|part| match part {
+                codex_protocol::items::AgentMessageContent::Text { text } => text.clone(),
+            })
+            .filter(|text| text.contains(FINAL_REPLY))
+            .next()
+            .map(|_| FINAL_REPLY.to_string()),
+        _ => None,
+    })
+    .await;
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    assert_eq!(final_reply, FINAL_REPLY, "the retried turn must complete");
+
+    let requests = request_log.requests();
+    let bodies: Vec<String> = requests
+        .iter()
+        .map(|request| request.body_json().to_string())
+        .collect();
+    assert_eq!(
+        bodies.len(),
+        4,
+        "expected the first turn, the rejected sampling, one compaction, and the retry"
+    );
+    assert!(
+        body_contains_text(&bodies[2], SUMMARIZATION_PROMPT),
+        "the recovery must compact exactly once before retrying"
+    );
+    assert!(
+        bodies[3].contains(SECOND_AUTO_MSG)
+            && !body_contains_text(&bodies[3], SUMMARIZATION_PROMPT),
+        "the retry must carry the turn's user message, not another compaction"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn persistent_context_rejection_surfaces_the_error_after_bounded_attempts() {
+    skip_if_no_network!();
+
+    let server = start_mock_server().await;
+
+    let sse1 = sse(vec![
+        ev_assistant_message("m1", FIRST_REPLY),
+        ev_completed_with_tokens("r1", /*total_tokens*/ 70_000),
+    ]);
+    // Every later request — the turn's sampling and each trimmed compaction —
+    // is rejected; recovery must stay bounded and surface the error. The trim
+    // loop sheds one history item per attempt and the compaction prompt also
+    // carries injected context items, so mount generously: an unbounded loop
+    // would exhaust these and fail on the unmatched request.
+    let rejections: Vec<wiremock::ResponseTemplate> =
+        (0..24).map(|_| glm_prompt_too_long_rejection()).collect();
+    let mut responses = vec![sse_response(sse1)];
+    responses.extend(rejections);
+    // Open-ended: the bounded-recovery loop sends fewer requests than mounted,
+    // and wiremock would otherwise fail the exact-count expectation on drop.
+    let request_log = responses::mount_response_sequence_open_ended(&server, responses).await;
+
+    let mut model_provider = non_openai_model_provider(&server);
+    model_provider.stream_max_retries = Some(0);
+    let codex = test_codex()
+        .with_config(move |config| {
+            config.model_provider = model_provider;
+            set_test_compact_prompt(config);
+        })
+        .build(&server)
+        .await
+        .expect("build codex")
+        .codex;
+
+    codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: FIRST_AUTO_MSG.to_string(),
+            text_elements: Vec::new(),
+        }]))
+        .await
+        .expect("submit first user");
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: SECOND_AUTO_MSG.to_string(),
+            text_elements: Vec::new(),
+        }]))
+        .await
+        .expect("submit second user");
+    let error_message = wait_for_event_match(&codex, |event| match event {
+        EventMsg::Error(err) => Some(err.message.clone()),
+        _ => None,
+    })
+    .await;
+    assert!(
+        error_message.contains("ran out of room in the model's context window"),
+        "expected the context-window error to surface, got {error_message}"
+    );
+
+    let requests = request_log.requests();
+    assert!(
+        requests.len() >= 3,
+        "the sampling rejection must trigger at least one compaction attempt, got {}",
+        requests.len()
+    );
+    assert!(
+        requests.len() <= 24,
+        "recovery must stay bounded instead of looping, got {}",
+        requests.len()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pre_turn_compaction_charges_the_pending_user_input() {
+    skip_if_no_network!();
+
+    let server = start_mock_server().await;
+
+    // 880k reported usage sits below the 900k full-window limit (90% of the
+    // configured 1M); the second turn's pending input (~50k estimated tokens
+    // of text) pushes the projection over it, so compaction must run *before*
+    // the turn is sampled.
+    let big_pending_input = "pending input token filler line. ".repeat(6_400);
+    let sse1 = sse(vec![
+        ev_assistant_message("m1", FIRST_REPLY),
+        ev_completed_with_usage("r1", 880_000, 0),
+    ]);
+    let compact_ok = sse(vec![
+        ev_assistant_message("m2", AUTO_SUMMARY_TEXT),
+        ev_completed_with_tokens("r2", /*total_tokens*/ 200),
+    ]);
+    let turn2_ok = sse(vec![
+        ev_assistant_message("m3", FINAL_REPLY),
+        ev_completed_with_tokens("r3", /*total_tokens*/ 120),
+    ]);
+    let request_log = mount_response_sequence(
+        &server,
+        vec![
+            sse_response(sse1),
+            sse_response(compact_ok),
+            sse_response(turn2_ok),
+        ],
+    )
+    .await;
+
+    let model_provider = non_openai_model_provider(&server);
+    let codex = test_codex()
+        .with_config(move |config| {
+            config.model_provider = model_provider;
+            set_test_compact_prompt(config);
+            // The pending charge guards the model's full window (90% of the
+            // configured 1M), not an operator's soft threshold.
+            config.model_context_window = Some(1_000_000);
+        })
+        .build(&server)
+        .await
+        .expect("build codex")
+        .codex;
+
+    codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: FIRST_AUTO_MSG.to_string(),
+            text_elements: Vec::new(),
+        }]))
+        .await
+        .expect("submit first user");
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: big_pending_input,
+            text_elements: Vec::new(),
+        }]))
+        .await
+        .expect("submit second user");
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+
+    let requests = request_log.requests();
+    let bodies: Vec<String> = requests
+        .iter()
+        .map(|request| request.body_json().to_string())
+        .collect();
+    assert_eq!(
+        bodies.len(),
+        3,
+        "expected the first turn, the pre-turn compaction, and the compacted second turn"
+    );
+    assert!(
+        body_contains_text(&bodies[1], SUMMARIZATION_PROMPT),
+        "the pending input must trigger compaction before the turn is sampled; \
+         the reported usage alone (880k of a 900k full-window limit) would not have"
+    );
+    assert!(
+        bodies[2].contains("pending input token filler"),
+        "the second turn must sample after compaction, carrying its user message"
+    );
+}
+
 #[path = "compact_program_tests.rs"]
 mod program_tests;

@@ -1669,6 +1669,41 @@ pub async fn mount_response_sequence(
     response_mock
 }
 
+/// Like [`mount_response_sequence`], but without the exact-count expectation:
+/// once the mounted responses are consumed, every further request keeps
+/// receiving the last template. Use for bounded-recovery tests that must mount
+/// more responses than the engine is expected to send — wiremock verifies
+/// `expect` on server drop, so an exact count would fail on the unused tail.
+pub async fn mount_response_sequence_open_ended(
+    server: &MockServer,
+    responses: Vec<ResponseTemplate>,
+) -> ResponseMock {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
+    struct OpenEndedResponder {
+        num_calls: AtomicUsize,
+        responses: Vec<ResponseTemplate>,
+    }
+
+    impl Respond for OpenEndedResponder {
+        fn respond(&self, _: &wiremock::Request) -> ResponseTemplate {
+            let call_num = self.num_calls.fetch_add(1, Ordering::SeqCst);
+            let index = call_num.min(self.responses.len() - 1);
+            self.responses[index].clone()
+        }
+    }
+
+    let responder = OpenEndedResponder {
+        num_calls: AtomicUsize::new(0),
+        responses,
+    };
+
+    let (mock, response_mock) = base_mock();
+    mock.respond_with(responder).mount(server).await;
+    response_mock
+}
+
 /// Validate invariants on the request body sent to `/v1/responses`.
 ///
 /// - A `function_call_output` with missing/empty `call_id` must have a nonempty `name`.

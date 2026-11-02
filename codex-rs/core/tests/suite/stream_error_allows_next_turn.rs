@@ -92,7 +92,7 @@ async fn continue_after_stream_error() {
         max_output_tokens: None,
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
-            reasoning_effort_levels: None,
+        reasoning_effort_levels: None,
     };
 
     let TestCodex { codex, .. } = test_codex()
