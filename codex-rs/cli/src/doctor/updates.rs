@@ -18,7 +18,6 @@ use super::CheckStatus;
 use super::DoctorCheck;
 use super::doctor_install_context;
 use super::doctor_managed_by_npm;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 
 const MAX_VERSION_RESPONSE_BYTES: usize = 1024 * 1024;
 
