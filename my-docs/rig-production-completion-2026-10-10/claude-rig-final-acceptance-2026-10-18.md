@@ -5911,6 +5911,50 @@ SCP/-File校准后真实安装PASS，无Bypass或主机策略变更，不能写�
 - **文档**:FORK.md 两行(遥测收敛、阈值)、NUWAX-HARNESS.md(默认 80% 与
   显式不封顶)、两份 Plan 文档、usage-guide 同步。
 
+## 6.75 厂商模型元数据目录实施(T1-T5 + e2e,2026-11-02)
+
+- **实施**(Spec 四项决策基线;实施 Plan `vendor-model-catalog-implementation-plan-2026-11-02.md`):
+  - T1(WS-A):`effective_input_token_limit` 的 128k 钳制仅在"fallback 且无显式窗口"
+    时生效;fallback 占位 272k 按 slug 去重告警点名 `model_context_window`。
+  - T2:快照 `models-manager/vendor/catalog.json`(白名单 15 厂商,compact 165KB
+    ≤200KB),`scripts/refresh_vendor_catalog.py`(幂等生成+锚点+体积校验),
+    overlay 骨架(实证档位表 glm-5.3-flash low/high/max + 别名);Rust 侧
+    `vendor_catalog.rs` 锚点测试 4 项(1M GLM 窗口等)。
+  - T3:解析链插入(官方目录 → vendor 目录 → fallback);`vendor_model_info`
+    构造完整 ModelInfo(`used_fallback=false`,目录待遇);同 slug 消解
+    (overlay 别名 > 套餐条目 > 最大窗口+warn);**解析期小写索引**(用户配置
+    显示拼写 GLM-5.3-Flash 与 models.dev 小写键同命中——e2e 首验失败后补,
+    已钉测试);`MetadataSource` 枚举(protocol,serde skip)。
+  - T4:窗口覆盖按来源四态(vendor/fallback 显式全额生效,vendor 向上告警;
+    官方维持 upstream min 钳制;fallback 不告警);doctor model_routing 窗口行
+    标注来源与提示(placeholder 行点名配置项)。
+  - T5:`$NUWAX_HOME/models.d/*.toml` 逐字段深合并(Overlay::merged_with,
+    加载期 fail-fast 点名文件);档位目录默认接进桥(provider 未声明
+    `reasoning_effort_levels` 时回落目录表,与现有档位门同机制);逃生口
+    `model_providers.<id>.ignore_catalog_effort_levels`(serde 默认 false 不
+    序列化,避免 thread-config 层表 wire 变化)。
+- **e2e 实证(本机 debug 构建 + GLM 实网)**:①零配置(仅 env 组,无窗口变量)
+  exec 通过且 doctor 显示 `effective context window 1000000 [source: vendor
+  catalog (zai-coding-plan)]`、usable 950000;②零配置 + `medium` → 发送前被
+  拒 `this model has no 'medium' effort level`(目录档位门默认生效,原需手配);
+  ③逃生口 true + medium → 通过(回退宽松);④models.d 坏文件 → doctor 报
+  invalid data(good file 正常)。
+- **测试与质量**:workspace --all-targets 0 错误(期间错误驱动的字面构造补齐
+  横跨 12 文件,含 genai-bridge/live-tests/sample);protocol 378、
+  models-manager 77、config 397、guardian-context/bridge 全过;bridge 368/368
+  (-j4,全并行仍环境性超时);core lib 快败项全修(feedback_config 显式窗口
+  872k→828400 按新语义、step_activation 217600 按 80%、config schema 重生成),
+  慢败项均为已知环境签名;clippy 0。**期间修了两笔既有 bug**:孤儿 cfg 属性
+  (Linux 上藏掉版本响应上限,Mac 编译不可见)与 lighting.rs 无关 fmt 噪音
+  (revert)。
+- **已知边界(记入 FORK.md)**:NUWAX_* 环境组的逃生口暂无 env 种子(现状用
+  config.toml provider 或显式档位配置);models.d 档位表经桥生效、窗口表经
+  models-manager 生效;T6 剩余:§9 全项组合验收(轮内转向解锁/审阅预算/
+  图片准入/search tool)与 MiMo 真网零配置验证。
+- **网络插曲**:GitHub 从 Mac(SSH/HTTPS)与 31.23 同时不可达数小时,目录提交
+  经 31.23 中转(format-patch → am → token push);Mac 分支与中转树 diff 为 0
+  后 reset 对齐。
+
 ## 7. 提交、推送与工作树状态
 
 **2026-10-29 本轮复审状态：** `b68b281d4`、`cf46b6e9f` 的复审补修见§6.69，
