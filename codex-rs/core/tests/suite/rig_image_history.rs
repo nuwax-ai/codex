@@ -42,6 +42,7 @@ fn rig_image_provider(base_url: &str, wire_api: WireApi) -> ModelProviderInfo {
         WireApi::Anthropic => "anthropic",
     };
     ModelProviderInfo {
+        ignore_catalog_effort_levels: false,
         capabilities: None,
         name: format!("rig-image-{protocol}"),
         base_url: Some(format!("{base_url}/v1")),

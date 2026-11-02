@@ -174,6 +174,7 @@ fn model_provider_from_proto(
         }
     };
     let info = ModelProviderInfo {
+        ignore_catalog_effort_levels: false,
         name: provider.name,
         base_url: provider.base_url,
         model_catalog_url: provider.model_catalog_url.map(Into::into),
@@ -228,6 +229,7 @@ fn model_provider_to_proto(
     let ModelProviderInfo {
         name,
         base_url,
+        ignore_catalog_effort_levels: _,
         model_catalog_url,
         env_key,
         env_key_instructions,
@@ -593,6 +595,7 @@ mod tests {
 
     fn expected_provider() -> ModelProviderInfo {
         ModelProviderInfo {
+            ignore_catalog_effort_levels: false,
             name: "Local".to_string(),
             base_url: Some("http://127.0.0.1:8061/api/codex".to_string()),
             model_catalog_url: Some("http://127.0.0.1:8061/api/codex/models".into()),

@@ -710,8 +710,8 @@ async fn submitted_sparse_updates_preserve_captured_steps_and_ordering() {
             )
         }),
         [
-            (Some(272_000), Some(258_400), Some(244_800)),
-            (Some(272_000), Some(258_400), Some(244_800)),
+            (Some(272_000), Some(258_400), Some(217_600)),
+            (Some(272_000), Some(258_400), Some(217_600)),
             (Some(190_000), Some(152_000), Some(150_000)),
         ]
     );

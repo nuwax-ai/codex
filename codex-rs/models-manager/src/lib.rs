@@ -5,6 +5,7 @@ pub mod manager;
 pub mod model_info;
 pub mod model_presets;
 pub mod test_support;
+pub mod vendor_catalog;
 
 pub use codex_protocol::auth::AuthMode;
 pub use config::ModelsManagerConfig;

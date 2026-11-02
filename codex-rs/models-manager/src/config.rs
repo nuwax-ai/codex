@@ -16,4 +16,7 @@ pub struct ModelsManagerConfig {
     pub base_instructions: Option<String>,
     pub personality: Option<Personality>,
     pub model_catalog: Option<ModelsResponse>,
+    /// Fork (nuwax-codex): parsed `$CODEX_HOME/models.d/*.toml` documents,
+    /// merged field-by-field over the committed overlay (Spec §7).
+    pub user_overlay: Option<crate::vendor_catalog::Overlay>,
 }

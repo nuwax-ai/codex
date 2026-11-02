@@ -92,7 +92,12 @@ pub fn effective_input_token_limit(
     let supported = model
         .resolved_context_window()
         .unwrap_or(DEFAULT_MAX_INPUT_TOKENS as i64);
-    let supported = if model.used_fallback_model_metadata {
+    // Fork (nuwax-codex): the 128k safety clamp exists for a model whose only
+    // metadata is the fallback placeholder — an operator who explicitly
+    // configured the real window holds the best information about the model
+    // (2026-10-28 decision: explicit windows apply in full), so the clamp must
+    // not second-guess it and silently shrink review budgets.
+    let supported = if model.used_fallback_model_metadata && configured_window.is_none() {
         supported.min(DEFAULT_MAX_INPUT_TOKENS as i64)
     } else {
         supported

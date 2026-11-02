@@ -59,6 +59,7 @@ mod tests {
     #[test]
     fn collect_auth_env_telemetry_buckets_provider_env_key_name() {
         let provider = ModelProviderInfo {
+            ignore_catalog_effort_levels: false,
             name: "Custom".to_string(),
             base_url: None,
             model_catalog_url: None,

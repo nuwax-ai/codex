@@ -3552,6 +3552,7 @@ async fn stdio_image_responses_are_sanitized_for_text_only_model() -> anyhow::Re
         &server,
         ModelsResponse {
             models: vec![ModelInfo {
+                metadata_source: codex_protocol::openai_models::MetadataSource::Official,
                 slug: text_only_model_slug.to_string(),
                 display_name: "RMCP Text Only".to_string(),
                 description: Some("Test model without image input support".to_string()),
@@ -5418,6 +5419,7 @@ async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Res
     }
 
     let stress_provider = ModelProviderInfo {
+        ignore_catalog_effort_levels: false,
         capabilities: None,
         name: "rig-chat-stress".into(),
         base_url: Some(format!("{}/v1", server.uri())),

@@ -948,8 +948,13 @@ fn construct_model_info(
         ModelInfo {
             slug: model.to_string(),
             used_fallback_model_metadata: false,
+            metadata_source: codex_protocol::openai_models::MetadataSource::Official,
             ..remote
         }
+    } else if let Some(entry) = crate::vendor_catalog::resolve(model) {
+        // Fork: the bundled vendor catalog sits between the official catalog
+        // and the fallback placeholder — a hit behaves like a cataloged model.
+        model_info::vendor_model_info(&entry)
     } else {
         model_info::model_info_from_slug(model)
     };

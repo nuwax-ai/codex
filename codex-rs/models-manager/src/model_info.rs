@@ -1,6 +1,7 @@
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ReasoningSummary;
 use codex_protocol::openai_models::ConfigShellToolType;
+use codex_protocol::openai_models::InputModality;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ModelMessages;
 use codex_protocol::openai_models::ModelVisibility;
@@ -23,17 +24,38 @@ pub fn with_config_overrides(mut model: ModelInfo, config: &ModelsManagerConfig)
                 context_window,
                 "model_context_window must be a positive token count; ignoring it"
             );
-        } else if model.used_fallback_model_metadata {
-            // Fork (nuwax-codex): fallback metadata for unknown models carries
-            // a synthetic 272k `max_context_window` placeholder, not vendor
-            // knowledge. An explicit override is the best information
-            // available for such models (e.g. GLM-5.3-Flash's 1M window), so
-            // it applies in full and also raises the ceiling; catalog-backed
-            // models keep the catalog clamp below, where the catalog is
-            // authoritative. An over-large override self-heals: bridge vendors
-            // report the over-window error as `ContextWindowExceeded`, which
-            // drives the drop-oldest compact retry instead of wedging the
-            // session.
+        } else if model.used_fallback_model_metadata
+            || matches!(
+                model.metadata_source,
+                codex_protocol::openai_models::MetadataSource::Vendor { .. }
+            )
+        {
+            // Fork (nuwax-codex): fallback and vendor-catalog models both take
+            // an explicit override in full. Fallback metadata carries only a
+            // synthetic 272k placeholder, not vendor knowledge; a vendor
+            // catalog entry is a *default*, while the operator may hold newer
+            // facts (configurable-window deployments, e.g. a server-side 1M
+            // upgrade on a catalog-listed 131k model). Raising above the
+            // catalog value warns — it is never silently clamped. Official
+            // catalog models keep the upstream clamp below. An over-large
+            // override self-heals: bridge vendors report the over-window
+            // error as `ContextWindowExceeded`, which drives the drop-oldest
+            // compact retry instead of wedging the session.
+            if let Some(catalog_window) = model.max_context_window
+                && catalog_window > 0
+                && context_window > catalog_window
+                && matches!(
+                    model.metadata_source,
+                    codex_protocol::openai_models::MetadataSource::Vendor { .. }
+                )
+            {
+                tracing::warn!(
+                    model = %model.slug,
+                    configured = context_window,
+                    catalog_window,
+                    "model_context_window exceeds the vendor catalog value; applying                      the configured window — verify the model really accepts it"
+                );
+            }
             model.context_window = Some(context_window);
             model.max_context_window = Some(context_window);
         } else {
@@ -186,7 +208,108 @@ fn is_h1_heading(line: &str) -> bool {
 }
 
 /// Build a minimal fallback model descriptor for missing/unknown slugs.
+/// Builds full `ModelInfo` from a vendor-catalog entry: the model behaves
+/// like a cataloged one (`used_fallback_model_metadata = false`), so every
+/// fallback-keyed behavior — review budgets, mid-turn model switching,
+/// reviewer image admission, tool face — treats it as a known model.
+pub fn vendor_model_info(entry: &crate::vendor_catalog::VendorModel) -> ModelInfo {
+    let overlay = crate::vendor_catalog::overlay();
+    let percent = overlay
+        .provider
+        .get(&entry.provider)
+        .and_then(|tuning| tuning.effective_context_window_percent)
+        .unwrap_or(95);
+    let input_modalities = entry
+        .modalities
+        .iter()
+        .filter_map(|m| match m.as_str() {
+            "text" => Some(InputModality::Text),
+            "image" => Some(InputModality::Image),
+            "audio" => Some(InputModality::Audio),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    // models.dev carries no tool-call capability flag, so the search tool
+    // stays off — the fork does not pretend to know what it cannot see.
+    ModelInfo {
+        slug: entry.slug.clone(),
+        display_name: entry
+            .display_name
+            .clone()
+            .unwrap_or_else(|| entry.slug.clone()),
+        description: None,
+        default_reasoning_level: None,
+        // Effort tiers reach the engine as provider-level defaults (see the
+        // catalog plan §5); a models.dev `reasoning: true` boolean invents
+        // no tiers here.
+        supported_reasoning_levels: Vec::new(),
+        shell_type: ConfigShellToolType::UnifiedExec,
+        visibility: ModelVisibility::None,
+        supported_in_api: true,
+        priority: 99,
+        additional_speed_tiers: Vec::new(),
+        service_tiers: Vec::new(),
+        default_service_tier: None,
+        available_access_programs: None,
+        availability_nux: None,
+        upgrade: None,
+        model_messages: Some(local_model_messages(&entry.slug)),
+        include_skills_usage_instructions: false,
+        include_plugin_usage_instructions: false,
+        include_apps_usage_instructions: false,
+        supports_reasoning_summary_parameter: true,
+        default_reasoning_summary: ReasoningSummary::Auto,
+        support_verbosity: false,
+        default_verbosity: None,
+        apply_patch_tool_type: None,
+        web_search_tool_type: WebSearchToolType::Text,
+        truncation_policy: TruncationPolicyConfig::bytes(/*limit*/ 10_000),
+        supports_image_detail_original: entry.modalities.iter().any(|m| m == "image"),
+        context_window: entry.context_limit,
+        max_context_window: entry.context_limit,
+        auto_compact_token_limit: None,
+        comp_hash: None,
+        effective_context_window_percent: percent,
+        experimental_supported_tools: Vec::new(),
+        input_modalities,
+        used_fallback_model_metadata: false,
+        metadata_source: codex_protocol::openai_models::MetadataSource::Vendor {
+            provider: entry.provider.clone().into_boxed_str(),
+        },
+        supports_search_tool: false,
+        supports_experimental_context: false,
+        use_responses_lite: false,
+        supports_reasoning_effort_updates: false,
+        guardian: None,
+        node_repl_auto_review_required: false,
+        node_repl_disabled: false,
+        auto_review_model_override: None,
+        model_specialty: None,
+        tool_mode: None,
+        multi_agent_version: None,
+        multi_agent_reasoning_effort: None,
+    }
+}
+
+/// Warns, once per process per slug, that a model resolved to fallback
+/// placeholder metadata. The placeholder window (272k) silently budgeting a
+/// session was invisible to users; the warning names the knob to set.
 pub fn model_info_from_slug(slug: &str) -> ModelInfo {
+    static WARNED_SLUGS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+        std::sync::OnceLock::new();
+    let warned = WARNED_SLUGS.get_or_init(Default::default);
+    if let Ok(mut seen) = warned.lock()
+        && seen.insert(slug.to_string())
+    {
+        tracing::warn!(
+            slug,
+            placeholder_context_window = 272_000,
+            "model `{slug}` is not in any catalog; using fallback placeholder \
+             metadata with a 272,000-token context window — set \
+             `model_context_window` (or NUWAX_MODEL_CONTEXT_WINDOW) to the \
+             model's real window so budgets and compaction are derived from it"
+        );
+    }
     debug!("Unknown model {slug} is used. This will use fallback model metadata.");
     ModelInfo {
         slug: slug.to_string(),
@@ -224,6 +347,7 @@ pub fn model_info_from_slug(slug: &str) -> ModelInfo {
         experimental_supported_tools: Vec::new(),
         input_modalities: default_input_modalities(),
         used_fallback_model_metadata: true, // this is the fallback model metadata
+        metadata_source: codex_protocol::openai_models::MetadataSource::Fallback,
         supports_search_tool: false,
         supports_experimental_context: false,
         use_responses_lite: false,

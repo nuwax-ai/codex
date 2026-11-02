@@ -1057,6 +1057,9 @@ pub struct Config {
     /// using the Responses API. When unset, the model catalog default is used.
     pub model_reasoning_summary: Option<ReasoningSummary>,
 
+    /// Fork (nuwax-codex): `$CODEX_HOME/models.d/*.toml` merged user overlay,
+    /// loaded (and validated) at config load time.
+    pub user_overlay: Option<codex_models_manager::vendor_catalog::Overlay>,
     /// Optional full model catalog loaded from `model_catalog_json`.
     /// When set, this replaces the bundled catalog for the current process.
     pub model_catalog: Option<ModelsResponse>,
@@ -1781,6 +1784,7 @@ impl Config {
             }),
             personality: self.personality,
             model_catalog: self.model_catalog.clone(),
+            user_overlay: self.user_overlay.clone(),
         }
     }
 
@@ -2288,6 +2292,49 @@ fn load_catalog_json(path: &AbsolutePathBuf) -> std::io::Result<ModelsResponse> 
         ));
     }
     Ok(catalog)
+}
+
+/// Fork (nuwax-codex): reads `$CODEX_HOME/models.d/*.toml` user overlay
+/// documents (Spec §7). Every file must parse — a malformed file fails fast
+/// naming the file and field — and files merge field-by-field in sorted
+/// filename order over the committed overlay.
+fn load_user_models_overlay(
+    codex_home: &AbsolutePathBuf,
+) -> std::io::Result<Option<codex_models_manager::vendor_catalog::Overlay>> {
+    let dir = codex_home.join("models.d");
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Ok(None);
+    };
+    let mut merged: Option<codex_models_manager::vendor_catalog::Overlay> = None;
+    let mut names: Vec<std::path::PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "toml"))
+        .collect();
+    names.sort();
+    for path in names {
+        let text = std::fs::read_to_string(&path).map_err(|error| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "models.d file `{}` could not be read: {error}",
+                    path.display()
+                ),
+            )
+        })?;
+        let parsed =
+            codex_models_manager::vendor_catalog::parse_user_overlay(&text).map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("models.d file `{}` is invalid: {error}", path.display()),
+                )
+            })?;
+        merged = Some(match merged {
+            Some(base) => base.merged_with(&parsed),
+            None => parsed,
+        });
+    }
+    Ok(merged)
 }
 
 fn load_model_catalog(
@@ -4317,6 +4364,7 @@ impl Config {
 
         let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(true);
         let model_catalog = load_model_catalog(cfg.model_catalog_json.clone())?;
+        let user_overlay = load_user_models_overlay(&codex_home)?;
 
         let log_dir = cfg
             .log_dir
@@ -4696,6 +4744,7 @@ impl Config {
             plan_mode_reasoning_effort: cfg.plan_mode_reasoning_effort,
             model_reasoning_summary: cfg.model_reasoning_summary,
             model_catalog,
+            user_overlay,
             model_verbosity: cfg.model_verbosity,
             chatgpt_base_url: cfg
                 .chatgpt_base_url

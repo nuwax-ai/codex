@@ -252,6 +252,7 @@ async fn responses_wire_reasoning_and_parallel_tool_calls_keep_ids_and_order() {
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
         reasoning_effort_levels: None,
+        ignore_catalog_effort_levels: false,
     };
     let auth: codex_api::SharedAuthProvider = std::sync::Arc::new(support::DummyAuth);
     let mut stream = codex_rust_rig_bridge::stream_via_rig(
@@ -366,6 +367,7 @@ async fn responses_wire_tolerates_trailing_done_sentinel() {
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
         reasoning_effort_levels: None,
+        ignore_catalog_effort_levels: false,
     };
     let auth: codex_api::SharedAuthProvider = std::sync::Arc::new(support::DummyAuth);
     let mut stream = codex_rust_rig_bridge::stream_via_rig(

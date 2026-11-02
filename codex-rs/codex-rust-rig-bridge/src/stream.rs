@@ -455,14 +455,40 @@ fn stream_via_rig_attempt(
         // checks them itself, because rig's Chat dialect would rename the
         // output cap in exchange (`reasoning_effort`). Parsed once, and a word
         // rig does not spell fails whichever wire was about to use it.
-        let tiers_source = format!(
-            "the effort tiers declared for model `{model}` \
-             (model_providers.<id>.reasoning_effort_levels)"
-        );
-        let declared_levels = crate::reasoning_effort::parse_levels(
-            &tiers_source,
-            api_provider.reasoning_effort_levels.as_deref(),
-        )?;
+        // Fork: when the provider declares nothing, the vendor catalog's probed
+        // tier table (models-manager overlay) is the default — unless the
+        // provider opts out with `ignore_catalog_effort_levels`.
+        let catalog_levels = (!api_provider.ignore_catalog_effort_levels)
+            .then(|| {
+                codex_models_manager::vendor_catalog::effort_table_for(model.as_str(), None)
+                    .map(|table| table.levels)
+            })
+            .flatten();
+        let (declared_words, tiers_source) = match api_provider.reasoning_effort_levels.as_deref() {
+            Some(words) => (
+                words,
+                format!(
+                    "the effort tiers declared for model `{model}` \
+                     (model_providers.<id>.reasoning_effort_levels)"
+                ),
+            ),
+            None => match catalog_levels.as_ref() {
+                Some(levels) => (
+                    levels.as_slice(),
+                    format!(
+                        "the effort tiers declared for model `{model}` \
+                         (vendor catalog overlay; provider may override or set \
+                         ignore_catalog_effort_levels)"
+                    ),
+                ),
+                None => ([].as_slice(), String::new()),
+            },
+        };
+        let declared_levels = if tiers_source.is_empty() {
+            Vec::new()
+        } else {
+            crate::reasoning_effort::parse_levels(&tiers_source, Some(declared_words))?
+        };
         if protocol == RigProtocol::Chat {
             crate::reasoning_effort::check_declared(
                 &tiers_source,

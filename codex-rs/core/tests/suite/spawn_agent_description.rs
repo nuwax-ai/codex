@@ -81,6 +81,7 @@ fn test_model_info(
     service_tiers: Vec<ModelServiceTier>,
 ) -> ModelInfo {
     ModelInfo {
+        metadata_source: codex_protocol::openai_models::MetadataSource::Official,
         slug: slug.to_string(),
         display_name: display_name.to_string(),
         description: Some(description.to_string()),

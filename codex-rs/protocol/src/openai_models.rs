@@ -403,6 +403,24 @@ const fn is_true(value: &bool) -> bool {
     *value
 }
 
+/// Fork (nuwax-codex): where a model's metadata came from. Drives the fork's
+/// window-override policy (explicit windows apply in full for vendor and
+/// fallback models; official catalog models keep the upstream clamp) and
+/// doctor's source labels. Internal-only, like `used_fallback_model_metadata`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum MetadataSource {
+    /// The built-in official catalog (gpt-* and friends): upstream behavior.
+    #[default]
+    Official,
+    /// The fork's bundled vendor catalog (models.dev snapshot + overlay).
+    Vendor {
+        /// The winning provider entry, e.g. `zai-coding-plan`.
+        provider: Box<str>,
+    },
+    /// Placeholder metadata for an unknown slug.
+    Fallback,
+}
+
 /// Model metadata returned by the Codex backend `/models` endpoint.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, TS, JsonSchema)]
 pub struct ModelInfo {
@@ -478,6 +496,11 @@ pub struct ModelInfo {
     #[schemars(skip)]
     #[ts(skip)]
     pub used_fallback_model_metadata: bool,
+    /// Fork (nuwax-codex): metadata provenance; see [`MetadataSource`].
+    #[serde(skip)]
+    #[schemars(skip)]
+    #[ts(skip)]
+    pub metadata_source: MetadataSource,
     #[serde(default)]
     pub supports_search_tool: bool,
     /// Whether experimental context management may be activated at session startup.
@@ -1078,6 +1101,7 @@ mod tests {
 
     pub(super) fn test_model(spec: Option<ModelMessages>) -> ModelInfo {
         ModelInfo {
+            metadata_source: MetadataSource::Official,
             slug: "test-model".to_string(),
             display_name: "Test Model".to_string(),
             description: None,

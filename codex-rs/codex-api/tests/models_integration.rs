@@ -50,7 +50,8 @@ fn provider(base_url: &str) -> Provider {
         max_output_tokens: None,
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
-            reasoning_effort_levels: None,
+        reasoning_effort_levels: None,
+        ignore_catalog_effort_levels: false,
     }
 }
 
@@ -114,6 +115,7 @@ async fn models_client_hits_models_endpoint() {
 
     let response = ModelsResponse {
         models: vec![ModelInfo {
+            metadata_source: codex_protocol::openai_models::MetadataSource::Official,
             slug: "gpt-test".to_string(),
             display_name: "gpt-test".to_string(),
             description: Some("desc".to_string()),

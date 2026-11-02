@@ -9,6 +9,7 @@ use pretty_assertions::assert_eq;
 
 fn test_model(model_messages: Option<ModelMessages>) -> ModelInfo {
     ModelInfo {
+        metadata_source: codex_protocol::openai_models::MetadataSource::Official,
         slug: "test-model".to_string(),
         display_name: "Test Model".to_string(),
         description: None,

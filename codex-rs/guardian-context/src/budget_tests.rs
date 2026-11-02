@@ -175,3 +175,66 @@ fn section_estimate_bounds_the_delivered_message() {
         }
     }
 }
+
+// Fork (nuwax-codex): the fallback clamp must honor an explicitly configured
+// window (Spec §6.1) — an operator who set the real window owns the best
+// information about the model.
+mod effective_input_token_limit_tests {
+    use crate::budget::effective_input_token_limit;
+    use codex_protocol::openai_models::ModelInfo;
+    use serde_json::json;
+
+    fn model_info(window: Option<i64>, fallback: bool, percent: i64) -> ModelInfo {
+        let mut value = json!({
+            "slug": "test-model",
+            "display_name": "Test Model",
+            "supported_reasoning_levels": [],
+            "shell_type": "unified_exec",
+            "visibility": "none",
+            "supported_in_api": true,
+            "priority": 99, "experimental_supported_tools": [], "support_verbosity": false,
+            "additional_speed_tiers": [],
+            "service_tiers": [],
+            "default_reasoning_summary": "auto",
+            "web_search_tool_type": "text",
+            "truncation_policy": {"mode": "bytes", "limit": 10000},
+        });
+        if let Some(window) = window {
+            value["context_window"] = json!(window);
+            value["max_context_window"] = json!(window);
+        }
+        value["effective_context_window_percent"] = json!(percent);
+        let mut model: ModelInfo =
+            serde_json::from_value(value).expect("a ModelInfo from partial JSON");
+        // Internal-only marker: skipped by serde, set directly.
+        model.used_fallback_model_metadata = fallback;
+        model
+    }
+
+    #[test]
+    fn a_fallback_model_without_a_configured_window_is_clamped() {
+        let model = model_info(Some(1_000_000), /*fallback*/ true, 100);
+        assert_eq!(
+            effective_input_token_limit(&model, /*configured*/ None),
+            128_000
+        );
+    }
+
+    #[test]
+    fn a_fallback_model_with_an_explicit_window_uses_it_in_full() {
+        let model = model_info(Some(1_000_000), /*fallback*/ true, 95);
+        assert_eq!(
+            effective_input_token_limit(&model, Some(1_000_000)),
+            950_000
+        );
+    }
+
+    #[test]
+    fn a_cataloged_model_is_never_clamped_by_the_fallback_guard() {
+        let model = model_info(Some(400_000), /*fallback*/ false, 95);
+        assert_eq!(
+            effective_input_token_limit(&model, /*configured*/ None),
+            380_000
+        );
+    }
+}

@@ -12,6 +12,7 @@ use std::path::Path;
 /// Convert a ModelPreset to ModelInfo for cache storage.
 fn preset_to_info(preset: &ModelPreset, priority: i32) -> ModelInfo {
     ModelInfo {
+        metadata_source: codex_protocol::openai_models::MetadataSource::Official,
         slug: preset.id.clone(),
         display_name: preset.display_name.clone(),
         description: Some(preset.description.clone()),

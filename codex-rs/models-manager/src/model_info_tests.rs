@@ -483,3 +483,72 @@ fn tool_search_false_override_strips_search_tool_capability() {
     let untouched = with_config_overrides(model, &ModelsManagerConfig::default());
     assert!(untouched.supports_search_tool);
 }
+
+#[test]
+fn a_vendor_catalog_hit_behaves_like_a_cataloged_model() {
+    let entry = crate::vendor_catalog::resolve("glm-5.3-flash").expect("resolvable");
+    let model = crate::model_info::vendor_model_info(&entry);
+    assert_eq!(model.slug, "glm-5.3-flash");
+    assert_eq!(model.context_window, Some(1_000_000));
+    assert!(!model.used_fallback_model_metadata);
+    assert_eq!(
+        model.metadata_source,
+        codex_protocol::openai_models::MetadataSource::Vendor {
+            provider: "zai-coding-plan".into()
+        }
+    );
+    // The 80% auto-compact derivation now runs against the real window.
+    assert_eq!(model.auto_compact_token_limit(), Some(800_000));
+    // Modalities come from the entry, not the text-only placeholder.
+    assert!(
+        model
+            .input_modalities
+            .contains(&codex_protocol::openai_models::InputModality::Text)
+    );
+}
+
+#[test]
+fn explicit_windows_apply_in_full_for_vendor_models_with_an_upward_warning_boundary() {
+    fn vendor_model(window: i64) -> ModelInfo {
+        let entry = crate::vendor_catalog::resolve("glm-5.3-flash").expect("resolvable");
+        let mut model = crate::model_info::vendor_model_info(&entry);
+        model.context_window = Some(window);
+        model.max_context_window = Some(window);
+        model
+    }
+
+    // Downward override: applies in full (rate-limit / cost control).
+    let mut model = vendor_model(1_000_000);
+    with_config_overrides_impl(&mut model, Some(200_000));
+    assert_eq!(model.context_window, Some(200_000));
+    assert_eq!(model.max_context_window, Some(200_000));
+
+    // Upward override: also applies in full (configurable-window models);
+    // the warning itself is a tracing side effect the policy comment covers.
+    let mut model = vendor_model(131_000);
+    with_config_overrides_impl(&mut model, Some(1_000_000));
+    assert_eq!(model.context_window, Some(1_000_000));
+    assert_eq!(model.max_context_window, Some(1_000_000));
+}
+
+#[test]
+fn official_catalog_models_keep_the_upstream_clamp() {
+    let mut model = crate::model_info::vendor_model_info(
+        &crate::vendor_catalog::resolve("glm-5.3-flash").expect("resolvable"),
+    );
+    model.metadata_source = codex_protocol::openai_models::MetadataSource::Official;
+    model.max_context_window = Some(400_000);
+    with_config_overrides_impl(&mut model, Some(500_000));
+    assert_eq!(model.context_window, Some(400_000));
+}
+
+fn with_config_overrides_impl(model: &mut ModelInfo, window: Option<i64>) {
+    let config = crate::config::ModelsManagerConfig {
+        model_context_window: window,
+        ..Default::default()
+    };
+    *model = crate::model_info::with_config_overrides(
+        std::mem::replace(model, crate::model_info::model_info_from_slug("x")),
+        &config,
+    );
+}

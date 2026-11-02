@@ -4220,6 +4220,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "toml 0.9.11+spec-1.1.0",
  "tracing",
 ]
 
@@ -4706,6 +4707,7 @@ dependencies = [
  "codex-api",
  "codex-client",
  "codex-http-client",
+ "codex-models-manager",
  "codex-protocol",
  "codex-tools",
  "codex-utils-image",

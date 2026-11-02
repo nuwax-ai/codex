@@ -147,12 +147,34 @@ pub(super) async fn check(
                     .model_auto_compact_token_limit
                     .or_else(|| model_info.auto_compact_token_limit()),
             };
+            // The catalog is only a default: name both sides when an explicit
+            // override moved the effective window.
+            let window_label = match &model_info.metadata_source {
+                codex_protocol::openai_models::MetadataSource::Official => {
+                    "official catalog".to_string()
+                }
+                codex_protocol::openai_models::MetadataSource::Vendor { provider } => {
+                    if config.model_context_window.is_some() {
+                        format!("vendor catalog ({provider}; explicit override applied)")
+                    } else {
+                        format!("vendor catalog ({provider})")
+                    }
+                }
+                codex_protocol::openai_models::MetadataSource::Fallback => {
+                    if config.model_context_window.is_some() {
+                        "explicit override (placeholder metadata)".to_string()
+                    } else {
+                        "placeholder 272k — set model_context_window to the real window".to_string()
+                    }
+                }
+            };
             details.push(format!(
-                "effective context window: {}",
+                "effective context window: {} [source: {}]",
                 model_info
                     .resolved_context_window()
                     .map(|window| window.to_string())
-                    .unwrap_or_else(|| "<unknown>".into())
+                    .unwrap_or_else(|| "<unknown>".into()),
+                window_label,
             ));
             details.push(format!(
                 "full usable context window: {}",

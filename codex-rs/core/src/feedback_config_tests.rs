@@ -22,7 +22,10 @@ async fn configured_and_effective_context_are_distinct_and_unset_is_explicit() {
             tags["model_context_window_effective"].as_str(),
             tags["service_tier"].as_str(),
         ],
-        ["872000", "true", "380000", "priority"]
+        // Fork: an explicit window on a fallback model applies in full and
+        // raises the ceiling (2026-10-28 decision), so the effective window is
+        // the configured 872k × 95%, not the placeholder-derived 380k.
+        ["872000", "true", "828400", "priority"]
     );
 
     config.model_context_window = None;

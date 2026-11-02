@@ -186,7 +186,8 @@ async fn remote_models_get_model_info_uses_longest_matching_prefix() -> Result<(
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
-        capabilities: None,
+
+        ignore_catalog_effort_levels: false,        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -573,6 +574,7 @@ async fn remote_models_remote_model_uses_unified_exec() -> Result<()> {
         .await;
 
     let remote_model = ModelInfo {
+        metadata_source: codex_protocol::openai_models::MetadataSource::Official,
         slug: REMOTE_MODEL_SLUG.to_string(),
         display_name: "Remote Test".to_string(),
         description: Some("A remote model that requires the test shell".to_string()),
@@ -848,6 +850,7 @@ async fn remote_models_apply_legacy_instructions(auth: CodexAuth) -> Result<()> 
 
     let remote_instructions = "Use the remote instructions template only.";
     let remote_model = ModelInfo {
+        metadata_source: codex_protocol::openai_models::MetadataSource::Official,
         slug: model.to_string(),
         display_name: "Parallel Remote".to_string(),
         description: Some("A remote model with custom instructions".to_string()),
@@ -1051,7 +1054,8 @@ async fn remote_models_do_not_append_removed_builtin_presets() -> Result<()> {
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
-        capabilities: None,
+
+        ignore_catalog_effort_levels: false,        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1118,7 +1122,8 @@ async fn remote_models_merge_adds_new_high_priority_first() -> Result<()> {
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
-        capabilities: None,
+
+        ignore_catalog_effort_levels: false,        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1171,7 +1176,8 @@ async fn remote_models_merge_replaces_overlapping_model() -> Result<()> {
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
-        capabilities: None,
+
+        ignore_catalog_effort_levels: false,        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1221,7 +1227,8 @@ async fn remote_models_merge_preserves_bundled_models_on_empty_response() -> Res
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
-        capabilities: None,
+
+        ignore_catalog_effort_levels: false,        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1269,7 +1276,8 @@ async fn remote_models_request_times_out_after_5s() -> Result<()> {
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
-        capabilities: None,
+
+        ignore_catalog_effort_levels: false,        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1345,7 +1353,8 @@ async fn remote_models_hide_picker_only_models() -> Result<()> {
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
     let provider = ModelProviderInfo {
-        capabilities: None,
+
+        ignore_catalog_effort_levels: false,        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1443,6 +1452,7 @@ fn test_remote_model_with_policy(
     truncation_policy: TruncationPolicyConfig,
 ) -> ModelInfo {
     ModelInfo {
+        metadata_source: codex_protocol::openai_models::MetadataSource::Official,
         slug: slug.to_string(),
         display_name: format!("{slug} display"),
         description: Some(format!("{slug} description")),

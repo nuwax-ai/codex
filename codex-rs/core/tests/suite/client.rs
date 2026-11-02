@@ -1697,6 +1697,7 @@ async fn amazon_bedrock_proxy_uses_command_auth_and_custom_headers() {
 /// reaches `Completed` without surfacing an auth or transport error to the client.
 async fn send_provider_auth_request(server: &MockServer, auth: ModelProviderAuthInfo) {
     let provider = ModelProviderInfo {
+        ignore_catalog_effort_levels: false,
         name: "corp".into(),
         base_url: Some(format!("{}/v1", server.uri())),
         model_catalog_url: None,
@@ -1973,7 +1974,8 @@ async fn prefers_apikey_when_config_prefers_apikey_even_with_chatgpt_tokens() {
         .await;
 
     let model_provider = ModelProviderInfo {
-        capabilities: None,
+
+        ignore_catalog_effort_levels: false,        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         supports_websockets: false,
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
@@ -3238,6 +3240,7 @@ async fn azure_responses_request_does_not_store_and_preserves_prefixed_item_ids(
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
         reasoning_effort_levels: None,
+        ignore_catalog_effort_levels: false,
     };
 
     let codex_home = TempDir::new().unwrap();
@@ -4093,6 +4096,7 @@ async fn azure_overrides_assign_properties_used_for_responses_url() {
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
         reasoning_effort_levels: None,
+        ignore_catalog_effort_levels: false,
     };
 
     // Init session
@@ -4187,6 +4191,7 @@ async fn env_var_overrides_loaded_auth() {
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
         reasoning_effort_levels: None,
+        ignore_catalog_effort_levels: false,
     };
 
     // Init session

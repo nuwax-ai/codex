@@ -3009,6 +3009,10 @@
           "description": "Additional HTTP headers to include in requests to this provider where the (key, value) pairs are the header name and value.",
           "type": "object"
         },
+        "ignore_catalog_effort_levels": {
+          "description": "Fork (nuwax-codex): skip the vendor-catalog effort-tier default for this provider — the escape hatch that restores permissive behavior when a catalog tier table is wrong (Spec §5.3).",
+          "type": "boolean"
+        },
         "max_output_tokens": {
           "description": "Fork (nuwax-codex): optional output budget for this provider. The chat bridge maps it to the wire `max_tokens` (required by Anthropic, optional for Chat) instead of its built-in default; the Responses passthrough sends requests verbatim and ignores it.",
           "format": "uint64",
@@ -3667,7 +3671,7 @@
               "$ref": "#/definitions/OtelExporterKind"
             }
           ],
-          "description": "Metrics exporter. Defaults to `statsig`, which follows `analytics.enabled`. Custom OTLP exporters are independent of `analytics.enabled`; `none` disables metrics export."
+          "description": "Metrics exporter. Defaults to `none`: the fork ships no built-in telemetry destination, so a release build must not silently emit metrics to any endpoint. Enterprises can point `metrics_exporter` at their own OTLP collector explicitly."
         },
         "span_attributes": {
           "additionalProperties": {

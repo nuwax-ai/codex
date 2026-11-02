@@ -1,0 +1,23 @@
+# nuwax-harness vendor catalog overlay.
+#
+# Supplements the bundled models.dev snapshot (vendor/catalog.json) with facts
+# models.dev does not carry. Values here are fork-verified only — never copied
+# from vendor docs without a probe (the "don't pretend to know" rule).
+# Precedence: provider config > user models.d > this overlay > catalog.
+
+_version = 1
+
+# Reasoning effort tiers, verified by probe (see ledger §6.71/§6.73). Only
+# models we have probed get a table; everything else stays permissive.
+[effort."glm-5.3-flash"]
+levels = ["low", "high", "max"]
+default = "high"
+
+# Explicit disambiguation for slugs that appear under several providers:
+# the named provider entry wins without consulting the fallback ordering.
+[alias."glm-5.3-flash"]
+provider = "zai-coding-plan"
+
+# Per-provider effective context window percent (defaults to 95 when absent).
+# [provider."zhipuai"]
+# effective_context_window_percent = 95
