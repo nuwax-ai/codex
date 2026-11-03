@@ -425,6 +425,9 @@ fn test_create_amazon_bedrock_provider() {
 fn test_create_amazon_bedrock_runtime_provider() {
     let mut expected = ModelProviderInfo::create_amazon_bedrock_provider(/*aws*/ None);
     expected.name = "Amazon Bedrock Runtime".to_string();
+    // Fork pins the runtime provider id; the mantle header stays set
+    // (upstream behavior).
+    expected.provider_id = Some(AMAZON_BEDROCK_RUNTIME_PROVIDER_ID.to_string());
 
     assert_eq!(
         ModelProviderInfo::create_amazon_bedrock_runtime_provider(/*aws*/ None),
@@ -549,7 +552,10 @@ fn test_merge_configured_model_providers_adds_custom_provider() {
         std::collections::HashMap::from([("custom".to_string(), custom_provider.clone())]);
 
     let mut expected = built_in_model_providers(/*openai_base_url*/ None);
-    expected.insert("custom".to_string(), custom_provider);
+    // The merge stamps every entry with its config key.
+    let mut stamped = custom_provider.clone();
+    stamped.provider_id = Some("custom".to_string());
+    expected.insert("custom".to_string(), stamped);
 
     assert_eq!(
         merge_configured_model_providers(
@@ -1075,7 +1081,10 @@ fn builtin_openai_catalog_rejects_untrusted_destinations() {
             "model_providers.openai.model_catalog_url must use an allowed ChatGPT host. If you need to use a 3rd party host, configure a custom model_provider",
         );
         let mut expected = built_in_model_providers(/*openai_base_url*/ None);
-        expected.insert("custom".into(), provider.clone());
+        // The merge stamps every entry with its config key.
+        let mut stamped = provider.clone();
+        stamped.provider_id = Some("custom".to_string());
+        expected.insert("custom".into(), stamped);
         assert_eq!(
             merge_configured_model_providers(
                 built_in_model_providers(/*openai_base_url*/ None),

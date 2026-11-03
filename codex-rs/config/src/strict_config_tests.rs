@@ -320,7 +320,7 @@ fn managed_network_unknown_fields_are_reported_for_each_spelling() {
         assert_eq!(
             ignored_config_warning(&config, &[requirements]),
             Some(format!(
-                "Codex is ignoring 2 unrecognized configuration settings. Check for typos or deprecated settings.\n  requirements (<unspecified>): `{table}.enabld` is ignored.\n  requirements (<unspecified>): `{table}.header_injections.0.unknown` is ignored."
+                "Nuwax Harness is ignoring 2 unrecognized configuration settings. Check for typos or deprecated settings.\n  requirements (<unspecified>): `{table}.enabld` is ignored.\n  requirements (<unspecified>): `{table}.header_injections.0.unknown` is ignored."
             )),
             "{table}"
         );

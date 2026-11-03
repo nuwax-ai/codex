@@ -907,7 +907,10 @@ async fn token_budget_reminder_emits_after_crossing_compaction_threshold() -> Re
         vec![
             sse(vec![
                 ev_response_created("resp-1"),
-                ev_completed_with_tokens("resp-1", /*total_tokens*/ 8_000),
+                // Fork: the derived auto-compact line is 80% of the window
+                // (8_000 here), so report 7_000 used — 1_000 below the line,
+                // still inside the 2_000 reminder threshold.
+                ev_completed_with_tokens("resp-1", /*total_tokens*/ 7_000),
             ]),
             sse(vec![ev_response_created("resp-2"), ev_completed("resp-2")]),
         ],

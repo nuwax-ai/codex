@@ -2157,7 +2157,7 @@ impl ResponsesHttpExecutor<'_> {
                 responses_metadata,
                 include_internal,
             )?;
-            // Match the native Responses transport: outbound items never
+                        // Match the native Responses transport: outbound items never
             // carry legacy non-prefixed ids, so the bridge wire is identical
             // to what stream_responses_api would have sent for them.
             self.client
@@ -2365,7 +2365,7 @@ impl ResponsesHttpExecutor<'_> {
                 responses_metadata,
                 include_internal,
             )?;
-            self.client.set_guardian_metadata(
+                        self.client.set_guardian_metadata(
                 &mut request.client_metadata,
                 responses_metadata.parent_response_id.as_deref(),
                 client_setup.auth.as_ref(),
@@ -2420,6 +2420,12 @@ impl ResponsesHttpExecutor<'_> {
 
             match stream_result {
                 Ok(stream) => {
+                    // Fork: record the wire source this request settled on so
+                    // later turns can project opaque history (compaction
+                    // checkpoints) against it.
+                    if let Ok(mut slot) = output_provenance.lock() {
+                        *slot = Some(producing_source);
+                    }
                     return Ok(map_response_stream(
                         stream,
                         request_session_telemetry,
@@ -2575,7 +2581,7 @@ impl ModelClientSession {
                 responses_metadata,
                 include_internal,
             )?;
-            if is_guardian_reviewer(&responses_headers) {
+                        if is_guardian_reviewer(&responses_headers) {
                 request.service_tier = None;
             }
             request.access_programs = cyber_access_program::for_auth(

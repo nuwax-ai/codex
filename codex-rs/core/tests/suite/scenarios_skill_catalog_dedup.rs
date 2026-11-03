@@ -11,6 +11,7 @@ use codex_features::Feature;
 use codex_login::CodexAuth;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::Op;
+use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_skills_extension::HostSkillProvider;
 use codex_skills_extension::SkillProviders;
 use codex_skills_extension::SkillsExtensionConfig;
@@ -220,9 +221,22 @@ async fn skill_catalog_deltas_survive_resume_and_rebuild_after_compaction() -> R
         },
     );
     let extensions = Arc::new(extensions.build());
+    // Hermetic user-scope skills: without this the service reads the real
+    // user home, leaking the developer's own ~/.agents/skills into the
+    // snapshot (same seam the other scenarios use).
+    let skill_user_home = Arc::new(AbsolutePathBuf::from_absolute_path(home.path())?);
     let builder = || {
         test_codex()
             .with_home(Arc::clone(&home))
+            .with_thread_manager({
+                let skill_user_home = Arc::clone(&skill_user_home);
+                move |manager| {
+                    manager
+                        .skills_service()
+                        .set_user_home((*skill_user_home).clone());
+                    manager
+                }
+            })
             .with_extensions(Arc::clone(&extensions))
             .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
             .with_model_info_override("gpt-6-astra", |model| {

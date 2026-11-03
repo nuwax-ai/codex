@@ -986,7 +986,12 @@ pub fn built_in_model_providers(
         ),
     ]
     .into_iter()
-    .map(|(k, v)| (k.to_string(), v))
+    .map(|(k, mut v)| {
+        // Fork: pin the runtime provider id on every built-in entry so
+        // identity checks match on the config key, not the display name.
+        v.provider_id = Some(k.to_string());
+        (k.to_string(), v)
+    })
     .collect()
 }
 

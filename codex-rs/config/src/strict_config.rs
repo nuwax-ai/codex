@@ -75,9 +75,15 @@ fn config_error_from_ignored_toml_value_fields_for_source<T: DeserializeOwned + 
     } else {
         Vec::new()
     };
+    let unknown_provider_paths = if TypeId::of::<T>() == TypeId::of::<ConfigToml>() {
+        unknown_model_provider_toml_value_path(&value)
+    } else {
+        Vec::new()
+    };
     match ignored_toml_value_fields::<T>(value) {
         Ok(ignored_paths) => unknown_field_error_from_paths(source, contents, ignored_paths)
             .or_else(|| unknown_field_error_from_paths(source, contents, unknown_tui_paths))
+            .or_else(|| unknown_field_error_from_paths(source, contents, unknown_provider_paths))
             .or_else(|| unknown_field_error_from_paths(source, contents, unknown_feature_paths)),
         Err(err) => {
             let path_hint = err.path().clone();
@@ -116,6 +122,44 @@ pub(crate) fn unknown_tui_toml_value_path(value: &TomlValue) -> Vec<Vec<String>>
         .filter(|key| !serialized_tui.contains_key(*key))
         .map(|key| vec!["tui".to_string(), key.clone()])
         .collect()
+}
+
+pub(crate) fn unknown_model_provider_toml_value_path(value: &TomlValue) -> Vec<Vec<String>> {
+    // `serde_ignored` cannot observe keys inside provider tables: the fork's
+    // `ignore_catalog_effort_levels` extraction round-trips them through
+    // `toml::Value` first. Round-trip a default provider so accepted input
+    // keys stay derived from `ModelProviderInfo` itself, and keep the
+    // escape-hatch key as explicitly accepted.
+    let Some(providers) = value
+        .as_table()
+        .and_then(|root| root.get("model_providers"))
+        .and_then(|providers| providers.as_table())
+    else {
+        return Vec::new();
+    };
+    // The accepted-key set comes from the generated schema: it lists every
+    // deserializable field regardless of `skip_serializing_if` round-trips.
+    let schema = schemars::schema_for!(codex_model_provider_info::ModelProviderInfo);
+    let Some(serialized_provider) = schema.schema.object.as_ref().map(|object| &object.properties)
+    else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (provider, table) in providers {
+        let Some(table) = table.as_table() else {
+            continue;
+        };
+        for key in table.keys() {
+            if key != "ignore_catalog_effort_levels" && !serialized_provider.contains_key(key) {
+                out.push(vec![
+                    "model_providers".to_string(),
+                    provider.clone(),
+                    key.clone(),
+                ]);
+            }
+        }
+    }
+    out
 }
 
 pub(crate) fn ignored_toml_value_fields<T: DeserializeOwned>(
@@ -235,10 +279,12 @@ pub(crate) fn ignored_config_warning(
     // override) do not hide diagnostics.
     let effective = config.effective_config();
     let unknown_features = unknown_feature_toml_value_path(&effective);
+    let unknown_providers = unknown_model_provider_toml_value_path(&effective);
     for path in ignored_toml_value_fields::<ConfigToml>(effective)
         .unwrap_or_default()
         .into_iter()
         .chain(unknown_features)
+        .chain(unknown_providers)
     {
         // Origins only track leaf values; an ignored field can be a whole table.
         for layer in config.layers_high_to_low().filter(|layer| {
