@@ -4707,6 +4707,7 @@ dependencies = [
  "codex-api",
  "codex-client",
  "codex-http-client",
+ "codex-model-provider-info",
  "codex-models-manager",
  "codex-protocol",
  "codex-tools",

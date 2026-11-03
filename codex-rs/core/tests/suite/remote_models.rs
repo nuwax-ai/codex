@@ -185,9 +185,7 @@ async fn remote_models_get_model_info_uses_longest_matching_prefix() -> Result<(
     let config = load_default_config_for_test(&codex_home).await;
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
-    let provider = ModelProviderInfo {
-
-        ignore_catalog_effort_levels: false,        capabilities: None,
+    let provider = ModelProviderInfo {        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1053,9 +1051,7 @@ async fn remote_models_do_not_append_removed_builtin_presets() -> Result<()> {
     let codex_home = TempDir::new()?;
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
-    let provider = ModelProviderInfo {
-
-        ignore_catalog_effort_levels: false,        capabilities: None,
+    let provider = ModelProviderInfo {        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1121,9 +1117,7 @@ async fn remote_models_merge_adds_new_high_priority_first() -> Result<()> {
     let codex_home = TempDir::new()?;
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
-    let provider = ModelProviderInfo {
-
-        ignore_catalog_effort_levels: false,        capabilities: None,
+    let provider = ModelProviderInfo {        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1175,9 +1169,7 @@ async fn remote_models_merge_replaces_overlapping_model() -> Result<()> {
     let codex_home = TempDir::new()?;
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
-    let provider = ModelProviderInfo {
-
-        ignore_catalog_effort_levels: false,        capabilities: None,
+    let provider = ModelProviderInfo {        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1226,9 +1218,7 @@ async fn remote_models_merge_preserves_bundled_models_on_empty_response() -> Res
     let codex_home = TempDir::new()?;
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
-    let provider = ModelProviderInfo {
-
-        ignore_catalog_effort_levels: false,        capabilities: None,
+    let provider = ModelProviderInfo {        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1275,9 +1265,7 @@ async fn remote_models_request_times_out_after_5s() -> Result<()> {
     let codex_home = TempDir::new()?;
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
-    let provider = ModelProviderInfo {
-
-        ignore_catalog_effort_levels: false,        capabilities: None,
+    let provider = ModelProviderInfo {        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };
@@ -1352,9 +1340,7 @@ async fn remote_models_hide_picker_only_models() -> Result<()> {
     let codex_home = TempDir::new()?;
 
     let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();
-    let provider = ModelProviderInfo {
-
-        ignore_catalog_effort_levels: false,        capabilities: None,
+    let provider = ModelProviderInfo {        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()
     };

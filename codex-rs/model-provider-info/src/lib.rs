@@ -32,6 +32,10 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 mod capabilities;
+mod catalog_overrides;
+
+pub use catalog_overrides::ignores_catalog_defaults;
+pub use catalog_overrides::set_ignores_catalog_defaults;
 mod gateway_oauth;
 mod oauth_session;
 pub use capabilities::ModelProviderCapabilities;
@@ -291,11 +295,6 @@ pub struct ModelProviderInfo {
     /// Chat checks it in the bridge, because rig's Chat dialect would rename
     /// the output cap in exchange (FORK.md §10).
     pub reasoning_effort_levels: Option<Vec<String>>,
-    /// Fork (nuwax-codex): skip the vendor-catalog effort-tier default for
-    /// this provider — the escape hatch that restores permissive behavior
-    /// when a catalog tier table is wrong (Spec §5.3).
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub ignore_catalog_effort_levels: bool,
     /// Number of times to retry reconnecting a dropped streaming response before failing.
     pub stream_max_retries: Option<u64>,
     /// Idle timeout (in milliseconds) to wait for activity on a streaming response before treating
@@ -593,7 +592,6 @@ other non-default provider fields are not supported"
             hosted_results_replay: self.hosted_results_replay,
             anthropic_prompt_caching: self.anthropic_prompt_caching,
             reasoning_effort_levels: self.reasoning_effort_levels.clone(),
-            ignore_catalog_effort_levels: self.ignore_catalog_effort_levels,
         })
     }
 
@@ -683,7 +681,6 @@ other non-default provider fields are not supported"
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
             reasoning_effort_levels: None,
-            ignore_catalog_effort_levels: false,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -730,7 +727,6 @@ other non-default provider fields are not supported"
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
             reasoning_effort_levels: None,
-            ignore_catalog_effort_levels: false,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -996,7 +992,6 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
         reasoning_effort_levels: None,
-        ignore_catalog_effort_levels: false,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
         websocket_connect_timeout_ms: None,
@@ -1015,9 +1010,3 @@ mod tests;
 #[cfg(test)]
 #[path = "bridge_routing_tests.rs"]
 mod bridge_routing_tests;
-
-
-#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde passes a reference")]
-fn is_false(value: &bool) -> bool {
-    !*value
-}

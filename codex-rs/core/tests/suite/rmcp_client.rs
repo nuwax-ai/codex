@@ -5419,7 +5419,6 @@ async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Res
     }
 
     let stress_provider = ModelProviderInfo {
-        ignore_catalog_effort_levels: false,
         capabilities: None,
         name: "rig-chat-stress".into(),
         base_url: Some(format!("{}/v1", server.uri())),

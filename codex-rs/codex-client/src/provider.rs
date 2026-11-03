@@ -64,10 +64,6 @@ pub struct Provider {
     /// The reasoning-effort tiers this provider's models take (fork
     /// extension). See `ModelProviderInfo::reasoning_effort_levels`.
     pub reasoning_effort_levels: Option<Vec<String>>,
-    /// Fork (nuwax-codex): skip the vendor-catalog effort-tier default for
-    /// this provider — the escape hatch that restores permissive behavior
-    /// when a catalog tier table is wrong (Spec §5.3).
-    pub ignore_catalog_effort_levels: bool,
 }
 
 impl Provider {

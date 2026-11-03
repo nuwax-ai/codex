@@ -638,7 +638,6 @@ mod tests {
 
     fn provider_for(base_url: String) -> ModelProviderInfo {
         ModelProviderInfo {
-            ignore_catalog_effort_levels: false,
             name: "mock".into(),
             experimental_bridge: None,
             provider_id: None,

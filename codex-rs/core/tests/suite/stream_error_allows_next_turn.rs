@@ -65,7 +65,6 @@ async fn continue_after_stream_error() {
     // server. Use an existing env var (PATH) to satisfy the auth plumbing
     // without requiring a real secret.
     let provider = ModelProviderInfo {
-        ignore_catalog_effort_levels: false,
         name: "mock-openai".into(),
         base_url: Some(format!("{}/v1", server.uri())),
         model_catalog_url: None,

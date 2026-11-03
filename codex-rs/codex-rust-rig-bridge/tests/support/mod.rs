@@ -191,7 +191,6 @@ fn local_provider(address: std::net::SocketAddr, effort_levels: Option<Vec<Strin
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
         reasoning_effort_levels: effort_levels,
-        ignore_catalog_effort_levels: false,
     }
 }
 

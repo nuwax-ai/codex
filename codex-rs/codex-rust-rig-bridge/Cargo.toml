@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+codex-model-provider-info = { path = "../model-provider-info" }
 codex-models-manager = { path = "../models-manager" }
 # Pinned exactly: rig's post-0.42 main carries frequent breaking changes; see
 # my-docs/rig-bridge-implementation-plan.md before upgrading.

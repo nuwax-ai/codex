@@ -459,7 +459,7 @@ fn stream_via_rig_attempt(
         // tier table (models-manager overlay) is the default — unless the
         // provider opts out with `ignore_catalog_effort_levels`.
         let catalog_levels = (api_provider.reasoning_effort_levels.is_none()
-            && !api_provider.ignore_catalog_effort_levels)
+            && !codex_model_provider_info::ignores_catalog_defaults(&api_provider.name))
             .then(|| {
                 codex_models_manager::vendor_catalog::effort_table_for(model.as_str(), None)
                     .map(|table| table.levels)
@@ -479,7 +479,7 @@ fn stream_via_rig_attempt(
                     format!(
                         "the effort tiers declared for model `{model}` \
                          (vendor catalog overlay; provider may override or set \
-                         ignore_catalog_effort_levels)"
+                         ignore_catalog_effort_levels = true)"
                     ),
                 ),
                 None => ([].as_slice(), String::new()),
