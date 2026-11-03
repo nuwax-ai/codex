@@ -278,7 +278,7 @@ impl AdditionalPermissionProfile {
 )]
 #[serde(rename_all = "snake_case")]
 pub enum SandboxEnforcement {
-    /// Codex owns sandbox construction for this profile.
+    /// Nuwax Harness owns sandbox construction for this profile.
     #[default]
     Managed,
     /// No outer filesystem sandbox should be applied.
@@ -297,7 +297,7 @@ impl SandboxEnforcement {
     }
 }
 
-/// Filesystem permissions for profiles where Codex owns sandbox construction.
+/// Filesystem permissions for profiles where Nuwax Harness owns sandbox construction.
 #[derive(Debug, Clone, Eq, PartialEq, JsonSchema, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[ts(tag = "type")]
@@ -424,7 +424,7 @@ pub const BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS: &str = ":danger-full-a
 #[serde(tag = "type", rename_all = "snake_case")]
 #[ts(tag = "type")]
 pub enum PermissionProfile {
-    /// Codex owns sandbox construction for this profile.
+    /// Nuwax Harness owns sandbox construction for this profile.
     #[serde(rename_all = "snake_case")]
     #[ts(rename_all = "snake_case")]
     Managed {
@@ -1810,7 +1810,7 @@ fn local_media_error_placeholder(
     let media_name = media_kind.name();
     let path = path.display();
     ContentItem::InputText {
-        text: format!("Codex could not read the local {media_name} at `{path}`: {error}"),
+        text: format!("Nuwax Harness could not read the local {media_name} at `{path}`: {error}"),
     }
 }
 
@@ -1913,7 +1913,7 @@ fn invalid_image_error_placeholder(
 fn unsupported_image_error_placeholder(path: &std::path::Path, mime: &str) -> ContentItem {
     ContentItem::InputText {
         text: format!(
-            "Codex cannot attach image at `{}`: unsupported image `{}`.",
+            "Nuwax Harness cannot attach image at `{}`: unsupported image `{}`.",
             path.display(),
             mime
         ),
@@ -1970,7 +1970,7 @@ pub enum LocalImagePreparation {
 fn unsupported_audio_error_placeholder(path: &std::path::Path) -> ContentItem {
     ContentItem::InputText {
         text: format!(
-            "Codex cannot attach audio at `{}`: unsupported audio format; use wav, mp3, m4a, webm, or ogg.",
+            "Nuwax Harness cannot attach audio at `{}`: unsupported audio format; use wav, mp3, m4a, webm, or ogg.",
             path.display()
         ),
     }
@@ -4271,7 +4271,7 @@ mod tests {
                 role: "user".to_string(),
                 content: vec![ContentItem::InputText {
                     text: format!(
-                        "Codex cannot attach audio at `{}`: unsupported audio format; use wav, mp3, m4a, webm, or ogg.",
+                        "Nuwax Harness cannot attach audio at `{}`: unsupported audio format; use wav, mp3, m4a, webm, or ogg.",
                         audio_path.display()
                     ),
                 }],
@@ -4295,7 +4295,7 @@ mod tests {
             panic!("expected local audio error placeholder");
         };
         assert!(
-            text.starts_with("Codex could not read the local audio at `missing.wav`: "),
+            text.starts_with("Nuwax Harness could not read the local audio at `missing.wav`: "),
             "unexpected placeholder: {text}"
         );
     }
@@ -4775,7 +4775,7 @@ mod tests {
             ResponseInputItem::Message { content, .. } => {
                 assert_eq!(content.len(), 1);
                 let expected = format!(
-                    "Codex cannot attach image at `{}`: unsupported image `image/svg+xml`.",
+                    "Nuwax Harness cannot attach image at `{}`: unsupported image `image/svg+xml`.",
                     svg_path.display()
                 );
                 match &content[0] {

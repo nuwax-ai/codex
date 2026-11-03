@@ -60,7 +60,7 @@ pub(crate) async fn run(
         eprintln!("{warning}");
     }
     eprintln!(
-        "Stop all Codex instances on every host that uses these databases.\nKeep them stopped until the migration completes successfully."
+        "Stop all Nuwax Harness instances on every host that uses these databases.\nKeep them stopped until the migration completes successfully."
     );
     ensure!(
         crate::confirm("Continue? [y/N]:")?,
@@ -99,11 +99,11 @@ pub(crate) async fn run(
             continue;
         }
         migrate(&database.path, &command.staging_dir).await.with_context(|| format!(
-            "migration failed for {}. Keep all Codex instances stopped. Correct the error and rerun codex migrate-nfs-db",
+            "migration failed for {}. Keep all Nuwax Harness instances stopped. Correct the error and rerun nuwax-harness migrate-nfs-db",
             database.path.display()
         ))?;
     }
-    println!("Migration completed successfully. You can restart Codex.");
+    println!("Migration completed successfully. You can restart Nuwax Harness.");
     Ok(())
 }
 

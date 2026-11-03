@@ -353,7 +353,7 @@ impl AccountRequestProcessor {
             } => {
                 let login_success_page = if use_hosted_login_success_page {
                     let app_brand = match app_brand.unwrap_or_default() {
-                        LoginAppBrand::Codex => LoginSuccessPageBrand::Codex,
+                        LoginAppBrand::Codex => LoginSuccessPageBrand::NuwaxHarness,
                         LoginAppBrand::Chatgpt => LoginSuccessPageBrand::Chatgpt,
                     };
                     LoginSuccessPage::Hosted {

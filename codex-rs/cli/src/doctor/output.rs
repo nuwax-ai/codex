@@ -79,7 +79,7 @@ pub(super) fn render_human_report(report: &DoctorReport, options: HumanOutputOpt
     let _ = writeln!(
         out,
         "{} {}",
-        bold("Codex Doctor", options),
+        bold("Nuwax Harness Doctor", options),
         dim(&header_suffix(report), options)
     );
     out.push('\n');
@@ -464,7 +464,7 @@ fn write_footer(out: &mut String, options: HumanOutputOptions) {
             out,
             "{}",
             dim(
-                "Run codex doctor without --summary for detailed diagnostics.",
+                "Run nuwax-harness doctor without --summary for detailed diagnostics.",
                 options
             )
         );
@@ -1294,7 +1294,7 @@ mod tests {
             )
             .detail("terminal title source: default")
             .detail("terminal title items: activity, project-name")
-            .detail("terminal title project value: codex"),
+            .detail("terminal title project value: nuwax-harness"),
             DoctorCheck::new(
                 "state.paths",
                 "state",
@@ -1308,7 +1308,7 @@ mod tests {
                 "token expired",
             )
             .detail("OPENAI_API_KEY: present")
-            .remediation("Run `codex login`."),
+            .remediation("Run `nuwax-harness login`."),
             DoctorCheck::new(
                 "updates.status",
                 "updates",
@@ -1354,11 +1354,11 @@ mod tests {
         let rendered = render_human_report(&sample_report(), detailed_no_color_unicode_options());
         let expected = format!(
             "\
-Codex Doctor v0.0.0
+Nuwax Harness Doctor v0.0.0
 
 Notes
    ⚠ terminal     narrow terminal
-   ✗ auth         token expired - Run `codex login`.
+   ✗ auth         token expired - Run `nuwax-harness login`.
 ─────────────────────────────────────────────────────────────
 
 Environment
@@ -1380,14 +1380,14 @@ Environment
       version                  git version 2.54.0
       repo detected            true
   ⚠ terminal     narrow terminal
-  ✓ title        default · project codex
+  ✓ title        default · project nuwax-harness
       title source             default
       title items              activity, project-name
-      project value            codex
+      project value            nuwax-harness
   ✓ state        state paths inspectable
 
 Configuration
-  ✗ auth         token expired — Run `codex login`.
+  ✗ auth         token expired — Run `nuwax-harness login`.
       OPENAI_API_KEY           present
 
 Updates
@@ -1444,7 +1444,7 @@ Background Server
             .iter_mut()
             .find(|detail| detail.starts_with("exclusion targets: "))
             .expect("endpoint security check should include exclusion targets");
-        *targets = "exclusion targets: verified Codex app and required helpers".into();
+        *targets = "exclusion targets: verified Nuwax Harness app and required helpers".into();
         report.checks.push(security);
         report.checks.extend([
             DoctorCheck::new(
@@ -1489,11 +1489,11 @@ Background Server
         let rendered = render_human_report(&sample_report(), summary_no_color_unicode_options());
         let expected = format!(
             "\
-Codex Doctor v0.0.0
+Nuwax Harness Doctor v0.0.0
 
 Notes
    ⚠ terminal     narrow terminal
-   ✗ auth         token expired - Run `codex login`.
+   ✗ auth         token expired - Run `nuwax-harness login`.
 ─────────────────────────────────────────────────────────────
 
 Environment
@@ -1503,11 +1503,11 @@ Environment
   ✓ search       search is OK (bundled)
   ✓ git          git version 2.54.0
   ⚠ terminal     narrow terminal
-  ✓ title        default · project codex
+  ✓ title        default · project nuwax-harness
   ✓ state        state paths inspectable
 
 Configuration
-  ✗ auth         token expired — Run `codex login`.
+  ✗ auth         token expired — Run `nuwax-harness login`.
 
 Updates
   ✓ updates      update configuration is locally consistent
@@ -1523,7 +1523,7 @@ Background Server
 {}
 12 ok · 2 notes · 1 warn · 1 fail failed
 
-Run codex doctor without --summary for detailed diagnostics.
+Run nuwax-harness doctor without --summary for detailed diagnostics.
 --all expand truncated lists       --json redacted report
 ",
             "─".repeat(SEPARATOR_WIDTH)
@@ -1597,11 +1597,11 @@ Run codex doctor without --summary for detailed diagnostics.
         );
         let expected = format!(
             "\
-Codex Doctor v0.0.0
+Nuwax Harness Doctor v0.0.0
 
 Notes
    [!!] terminal     narrow terminal
-   [XX] auth         token expired - Run `codex login`.
+   [XX] auth         token expired - Run `nuwax-harness login`.
 -------------------------------------------------------------
 
 Environment
@@ -1611,11 +1611,11 @@ Environment
   [ok] search       search is OK (bundled)
   [ok] git          git version 2.54.0
   [!!] terminal     narrow terminal
-  [ok] title        default | project codex
+  [ok] title        default | project nuwax-harness
   [ok] state        state paths inspectable
 
 Configuration
-  [XX] auth         token expired - Run `codex login`.
+  [XX] auth         token expired - Run `nuwax-harness login`.
 
 Updates
   [ok] updates      update configuration is locally consistent
@@ -1631,7 +1631,7 @@ Background Server
 {}
 12 ok | 2 notes | 1 warn | 1 fail failed
 
-Run codex doctor without --summary for detailed diagnostics.
+Run nuwax-harness doctor without --summary for detailed diagnostics.
 --all expand truncated lists       --json redacted report
 ",
             "-".repeat(SEPARATOR_WIDTH)
@@ -1802,7 +1802,7 @@ Run codex doctor without --summary for detailed diagnostics.
     #[test]
     fn detail_value_colors_inline_statuses_and_low_signal_values() {
         let rendered = detail_value(
-            "npm: no · commit unknown · integrity ok · ~/code/codex/target/debug/codex · <redacted>",
+            "npm: no · commit unknown · integrity ok · ~/code/nuwax-harness/target/debug/nuwax-harness · <redacted>",
             DisplayStatus::Ok,
             detailed_color_unicode_options(),
         );
@@ -1810,7 +1810,7 @@ Run codex doctor without --summary for detailed diagnostics.
         assert!(rendered.contains("npm: \u{1b}[38;5;240mno"));
         assert!(rendered.contains("\u{1b}[38;5;240munknown"));
         assert!(rendered.contains("\u{1b}[38;5;10mok"));
-        assert!(rendered.contains("\u{1b}[38;5;117m~/code/codex/target/debug/codex"));
+        assert!(rendered.contains("\u{1b}[38;5;117m~/code/nuwax-harness/target/debug/nuwax-harness"));
         assert!(rendered.contains("\u{1b}[38;5;244m"));
     }
 
@@ -1972,8 +1972,8 @@ Run codex doctor without --summary for detailed diagnostics.
     #[test]
     fn copyable_items_use_check_status() {
         let description =
-            "/tmp/logs_2.sqlite, ~/goals_1.sqlite integrity check; try --summary or `codex doctor`";
-        let details = r"see ./logs, ../goals. C:\logs, D:/goals. c:\logs, \\server\share\logs, \\?\C:\logs, \\?\UNC\server\share\logs, \\.\pipe\codex, \??\C:\logs, \DosDevices\C:\logs, \rooted. http://localhost:8080: https://example.com; wss://example.com) and `/tmp/my data/logs_2.sqlite`";
+            "/tmp/logs_2.sqlite, ~/goals_1.sqlite integrity check; try --summary or `nuwax-harness doctor`";
+        let details = r"see ./logs, ../goals. C:\logs, D:/goals. c:\logs, \\server\share\logs, \\?\C:\logs, \\?\UNC\server\share\logs, \\.\pipe\nuwax-harness, \??\C:\logs, \DosDevices\C:\logs, \rooted. http://localhost:8080: https://example.com; wss://example.com) and `/tmp/my data/logs_2.sqlite`";
         let mut rendered = String::new();
 
         for status in [CheckStatus::Ok, CheckStatus::Warning, CheckStatus::Fail] {

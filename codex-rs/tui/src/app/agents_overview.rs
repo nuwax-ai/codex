@@ -115,7 +115,7 @@ impl App {
                     (!workload_identity_selected).then(|| SelectionItem {
                         name: "Start background server".to_string(),
                         description: Some(
-                            "Open `codex agents` in another terminal afterward".to_string(),
+                            "Open `nuwax-harness agents` in another terminal afterward".to_string(),
                         ),
                         actions: vec![Box::new(|tx| tx.send(AppEvent::StartAgentsDaemon))],
                         dismiss_on_select: true,
@@ -1187,7 +1187,7 @@ impl App {
                     current_executable.with_file_name(if cfg!(windows) {
                         "codex.exe"
                     } else {
-                        "codex"
+                        "nuwax-harness"
                     })
                 } else {
                     current_executable

@@ -123,7 +123,7 @@ pub(super) async fn run_main_inner(
     let codex_home = match find_codex_home() {
         Ok(codex_home) => codex_home.to_path_buf(),
         Err(err) => {
-            eprintln!("Error finding codex home: {err}");
+            eprintln!("Error finding nuwax-harness home: {err}");
             std::process::exit(1);
         }
     };
@@ -809,7 +809,7 @@ pub(super) async fn run_main_inner(
             ("terminal_name", terminal_name),
             ("multiplexer", multiplexer),
         ]);
-        let _ = metrics.counter("codex.tui.start", /*inc*/ 1, &launch_tags);
+        let _ = metrics.counter("nuwax-harness.tui.start", /*inc*/ 1, &launch_tags);
         launch_tags.retain(|(key, _)| !matches!(*key, "terminal_columns" | "terminal_rows"));
         launch_tags
     };
@@ -1016,7 +1016,7 @@ pub(super) async fn run_main_inner(
             ),
             ("outcome", "handoff_requested"),
         ]);
-        let _ = metrics.counter("codex.daemon.update", /*inc*/ 1, &tags);
+        let _ = metrics.counter("nuwax-harness.daemon.update", /*inc*/ 1, &tags);
     }
 
     if let Some(otel) = otel

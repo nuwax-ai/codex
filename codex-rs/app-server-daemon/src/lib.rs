@@ -330,7 +330,7 @@ fn ensure_supported_platform() -> Result<()> {
 #[cfg(not(any(unix, windows)))]
 fn ensure_supported_platform() -> Result<()> {
     Err(anyhow!(
-        "codex app-server daemon lifecycle is only supported on Unix and Windows platforms"
+        "nuwax-harness app-server daemon lifecycle is only supported on Unix and Windows platforms"
     ))
 }
 
@@ -386,7 +386,7 @@ impl Daemon {
             self.settings_file
                 .parent()
                 .and_then(Path::parent)
-                .context("daemon settings path has no Codex home")?,
+                .context("daemon settings path has no Nuwax Harness home")?,
         ))
     }
 
@@ -398,7 +398,7 @@ impl Daemon {
             .settings_file
             .parent()
             .and_then(Path::parent)
-            .context("daemon settings path has no Codex home")?;
+            .context("daemon settings path has no Nuwax Harness home")?;
         let (pid, updater) = if managed_codex_bin.starts_with(home.join("packages/standalone")) {
             (LEGACY_PID_FILE_NAME, LEGACY_UPDATE_PID_FILE_NAME)
         } else {
@@ -493,7 +493,7 @@ impl Daemon {
             && self.running_backend(&settings).await?.is_none()
         {
             return Err(anyhow!(
-                "app server is running but is not managed by codex app-server daemon"
+                "app server is running but is not managed by nuwax-harness app-server daemon"
             ));
         }
         prepare_install::prepare(self, &settings).await?;
@@ -622,7 +622,7 @@ impl Daemon {
             }
         } else if client::probe(&self.socket_path).await.is_ok() {
             return Err(anyhow!(
-                "app server is running but is not managed by codex app-server daemon"
+                "app server is running but is not managed by nuwax-harness app-server daemon"
             ));
         } else {
             diagnostics::event("daemon_not_running", ());
@@ -673,7 +673,7 @@ impl Daemon {
 
         if client::probe(&self.socket_path).await.is_ok() {
             return Err(anyhow!(
-                "app server is running but is not managed by codex app-server daemon"
+                "app server is running but is not managed by nuwax-harness app-server daemon"
             ));
         }
 
@@ -791,7 +791,7 @@ impl Daemon {
 
         if backend.is_none() && client::probe(&self.socket_path).await.is_ok() {
             return Err(anyhow!(
-                "app server is running but is not managed by codex app-server daemon"
+                "app server is running but is not managed by nuwax-harness app-server daemon"
             ));
         }
 
@@ -861,7 +861,7 @@ impl Daemon {
             && self.running_backend(&settings).await?.is_none()
         {
             return Err(anyhow!(
-                "app server is running but is not managed by codex app-server daemon"
+                "app server is running but is not managed by nuwax-harness app-server daemon"
             ));
         }
         prepare_install::prepare(self, &settings).await?;
@@ -1030,7 +1030,7 @@ impl Daemon {
             .settings_file
             .parent()
             .and_then(Path::parent)
-            .context("daemon settings path has no Codex home")?;
+            .context("daemon settings path has no Nuwax Harness home")?;
         Ok(managed_install::is_stable_standalone_release(
             codex_home,
             &self.current_managed_codex_bin()?,
@@ -1043,7 +1043,7 @@ impl Daemon {
             .settings_file
             .parent()
             .and_then(Path::parent)
-            .context("daemon settings path has no Codex home")?;
+            .context("daemon settings path has no Nuwax Harness home")?;
         Ok(managed_install::managed_codex_bin(home))
     }
 
@@ -1078,7 +1078,7 @@ impl Daemon {
 
         let managed_codex_path = self.managed_codex_bin.display();
         Err(anyhow!(
-            "daemon executable not found at {managed_codex_path}; repair the existing installation, or run `codex app-server daemon start` to install a missing daemon"
+            "daemon executable not found at {managed_codex_path}; repair the existing installation, or run `nuwax-harness app-server daemon start` to install a missing daemon"
         ))
     }
 
@@ -1323,7 +1323,7 @@ mod tests {
             status: LifecycleStatus::AlreadyRunning,
             backend: Some(BackendKind::Pid),
             pid: None,
-            managed_codex_path: "codex".into(),
+            managed_codex_path: "nuwax-harness".into(),
             managed_codex_version: Some("1.2.3".to_string()),
             socket_path: "codex.sock".into(),
             cli_version: Some("1.2.3".to_string()),
@@ -1336,7 +1336,7 @@ mod tests {
             serde_json::json!({
                 "status": "alreadyRunning",
                 "backend": "pid",
-                "managedCodexPath": "codex",
+                "managedCodexPath": "nuwax-harness",
                 "managedCodexVersion": "1.2.3",
                 "socketPath": "codex.sock",
                 "cliVersion": "1.2.3",
@@ -1353,7 +1353,7 @@ mod tests {
             backend: BackendKind::Pid,
             auto_update_enabled: true,
             remote_control_enabled: true,
-            managed_codex_path: "codex".into(),
+            managed_codex_path: "nuwax-harness".into(),
             managed_codex_version: Some("1.2.3".to_string()),
             socket_path: "codex.sock".into(),
             cli_version: "1.2.3".to_string(),
@@ -1368,7 +1368,7 @@ mod tests {
                 "backend": "pid",
                 "autoUpdateEnabled": true,
                 "remoteControlEnabled": true,
-                "managedCodexPath": "codex",
+                "managedCodexPath": "nuwax-harness",
                 "managedCodexVersion": "1.2.3",
                 "socketPath": "codex.sock",
                 "cliVersion": "1.2.3",
@@ -1454,7 +1454,7 @@ mod tests {
             update_pid_file: state.join("updater.pid"),
             operation_lock_file: state.join("daemon.lock"),
             settings_file: state.join("settings.json"),
-            managed_codex_bin: home.path().join("codex"),
+            managed_codex_bin: home.path().join("nuwax-harness"),
         };
         codex_app_server_transport::daemon_recovery::write_candidates(
             &daemon.recovery_file().expect("recovery path"),

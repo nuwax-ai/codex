@@ -1,4 +1,4 @@
-//! Command-line startup for `codex exec-server`.
+//! Command-line startup for `nuwax-harness exec-server`.
 //!
 //! Transport, configuration, authentication, and shutdown are kept together.
 
@@ -183,7 +183,7 @@ impl ExecServerCommand {
         let codex_self_exe = arg0_paths
             .codex_self_exe
             .clone()
-            .ok_or_else(|| anyhow::anyhow!("Codex executable path is not configured"))?;
+            .ok_or_else(|| anyhow::anyhow!("Nuwax Harness executable path is not configured"))?;
         let mut runtime_paths = ExecServerRuntimeOptions::new(
             codex_self_exe,
             arg0_paths.codex_linux_sandbox_exe.clone(),
@@ -417,7 +417,7 @@ async fn load_exec_server_remote_auth_provider(
 
     let (auth_manager, auth) = load_exec_server_remote_auth(
         config,
-        "remote exec-server registration requires ChatGPT authentication or API key authentication; run `codex login` or set CODEX_API_KEY",
+        "remote exec-server registration requires ChatGPT authentication or API key authentication; run `nuwax-harness login` or set CODEX_API_KEY",
     )
     .await?;
 
