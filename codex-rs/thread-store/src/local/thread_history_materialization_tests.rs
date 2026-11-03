@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use codex_app_server_protocol::McpToolCallResult;
-use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadItemPayload;
 use codex_protocol::ThreadId;
 use codex_protocol::items::AgentMessageContent;
 use codex_protocol::items::AgentMessageItem;
@@ -499,9 +499,9 @@ async fn paginated_command_history_caps_aggregated_output() {
     .fetch_one(&pool)
     .await
     .expect("read projected command");
-    let projected: ThreadItem =
+    let projected: ThreadItemPayload =
         serde_json::from_str(&item_json).expect("deserialize projected command");
-    let ThreadItem::CommandExecution {
+    let ThreadItemPayload::CommandExecution {
         aggregated_output: Some(output),
         ..
     } = projected
@@ -573,9 +573,9 @@ async fn paginated_mcp_history_caps_large_results() {
     .fetch_one(&pool)
     .await
     .expect("read projected MCP tool call");
-    let projected: ThreadItem =
+    let projected: ThreadItemPayload =
         serde_json::from_str(&item_json).expect("deserialize projected MCP tool call");
-    let ThreadItem::McpToolCall {
+    let ThreadItemPayload::McpToolCall {
         arguments: projected_arguments,
         result: Some(result),
         ..
@@ -754,6 +754,7 @@ async fn paginated_realtime_items_materialize_separately_in_rollout_order() {
     let legacy_thread_id = ThreadId::new();
     store
         .create_thread(CreateThreadParams {
+            attached_thread: false,
             creator_user_id: None,
             creator_account_id: None,
             session_id: legacy_thread_id.into(),
@@ -1572,6 +1573,7 @@ async fn projection_preserves_exact_lifecycle_timestamps() {
     for (index, (started_at_ms, completed_at_ms)) in timestamps.iter().enumerate() {
         items.push(RolloutItem::EventMsg(EventMsg::ItemCompleted(
             ItemCompletedEvent {
+                content_token_count: None,
                 thread_id,
                 turn_id: "turn-1".to_string(),
                 item: TurnItem::UserMessage(UserMessageItem {
@@ -1677,8 +1679,8 @@ WHERE thread_id = ? AND turn_id = ? AND item_id = ?
     .expect("read projected item");
     assert_eq!((item.0, item.1, item.2), (2, 3, first_created_at_ms));
     assert_eq!(
-        serde_json::from_str::<ThreadItem>(item.3.as_str()).expect("parse projected item"),
-        ThreadItem::UserMessage {
+        serde_json::from_str::<ThreadItemPayload>(item.3.as_str()).expect("parse projected item"),
+        ThreadItemPayload::UserMessage {
             id: "user-1".to_string(),
             client_id: Some("updated".to_string()),
             content: Vec::new(),
@@ -2523,7 +2525,10 @@ async fn paused_projection_releases_writer_and_retains_progress_when_stopped() {
             rollout_line_byte_offsets(rollout_path.as_path(), /*ordinal*/ 1);
         let (sender, receiver) = tokio::sync::mpsc::channel(2);
         super::read_projection_batches(
-            rollout_path.as_path(),
+            &super::ProjectionRollout {
+                path: rollout_path.clone(),
+                reads: Default::default(),
+            },
             before.0 as u64,
             before.1 as u64,
             thread_id,
@@ -2717,7 +2722,10 @@ async fn blank_and_rejected_rollout_lines_advance_projection() {
     let checks = Cell::new(0);
     assert!(
         super::read_projection_batches(
-            rollout_path.as_path(),
+            &super::ProjectionRollout {
+                path: rollout_path.clone(),
+                reads: Default::default(),
+            },
             /*start_offset*/ 0,
             /*expected_ordinal*/ 0,
             thread_id,
@@ -3144,6 +3152,7 @@ async fn create_paginated_subagent_thread(
 ) {
     store
         .create_thread(CreateThreadParams {
+            attached_thread: false,
             creator_user_id: None,
             creator_account_id: None,
             session_id: thread_id.into(),
@@ -3239,6 +3248,7 @@ fn contains_user_message(items: &[RolloutItem], expected: &str) -> bool {
 
 fn completed_item(thread_id: ThreadId, turn_id: &str, item: TurnItem) -> RolloutItem {
     RolloutItem::EventMsg(EventMsg::ItemCompleted(ItemCompletedEvent {
+        content_token_count: None,
         thread_id,
         turn_id: turn_id.to_string(),
         item,

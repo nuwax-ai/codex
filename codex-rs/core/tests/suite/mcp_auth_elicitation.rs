@@ -4,6 +4,7 @@ use anyhow::Result;
 use codex_analytics::AnalyticsEventsClient;
 use codex_analytics::AppServerRpcTransport;
 use codex_app_server_protocol as app;
+use codex_core::RestrictRootCapabilities;
 use codex_core::StartThreadOptions;
 use codex_core::TurnInputRequest;
 use codex_core::TurnInputSubmission;
@@ -14,7 +15,8 @@ use codex_extension_api::ToolLifecycleContributor;
 use codex_extension_api::ToolLifecycleFuture;
 use codex_features::Feature;
 use codex_login::CodexAuth;
-use codex_mcp::NUWAX_APPS_MCP_SERVER_NAME;
+use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
+use codex_protocol::SessionId;
 use codex_protocol::approvals::ElicitationRequest;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::items::McpToolCallStatus;
@@ -309,7 +311,7 @@ approvals_reviewer = "user"
                         assert_eq!(event_turn_id, turn_id);
                         assert_eq!(item_thread_id, &session.thread_id);
                         assert_eq!(item_turn_id, &turn_id);
-                        assert_eq!(item.server, NUWAX_APPS_MCP_SERVER_NAME);
+                        assert_eq!(item.server, CODEX_APPS_MCP_SERVER_NAME);
                         assert_eq!(item.connector_id.as_deref(), Some("calendar"));
                         target_lifecycle[usize::from(completed)] += 1;
                     }
@@ -336,7 +338,7 @@ approvals_reviewer = "user"
                         .await?;
                 }
                 EventMsg::ElicitationRequest(request) => {
-                    assert_eq!(request.server_name, NUWAX_APPS_MCP_SERVER_NAME);
+                    assert_eq!(request.server_name, CODEX_APPS_MCP_SERVER_NAME);
                     let action = match &request.request {
                         ElicitationRequest::UserVerification { .. } => {
                             unreachable!("unexpected verification")
@@ -522,15 +524,17 @@ enum SubagentRequestKind {
     ConnectorAuth(AuthFailureFormat),
 }
 
-#[test_case(SubagentRequestKind::ToolApproval, ElicitationAction::Accept; "child_tool_approval_waits_for_user_before_execution")]
-#[test_case(SubagentRequestKind::LegacyToolApproval, ElicitationAction::Accept; "child_legacy_tool_approval_is_rejected_before_execution")]
-#[test_case(SubagentRequestKind::ConnectorAuth(AuthFailureFormat::Text), ElicitationAction::Accept; "child_connector_auth_accepts_text_failure")]
-#[test_case(SubagentRequestKind::ConnectorAuth(AuthFailureFormat::Structured), ElicitationAction::Accept; "child_connector_auth_accepts_structured_failure")]
-#[test_case(SubagentRequestKind::ConnectorAuth(AuthFailureFormat::Structured), ElicitationAction::Decline; "child_declined_connector_auth_preserves_original_failure")]
+#[test_case(SubagentRequestKind::ToolApproval, ElicitationAction::Accept, false; "child_tool_approval_waits_for_user_before_execution")]
+#[test_case(SubagentRequestKind::LegacyToolApproval, ElicitationAction::Accept, false; "child_legacy_tool_approval_is_rejected_before_execution")]
+#[test_case(SubagentRequestKind::ConnectorAuth(AuthFailureFormat::Text), ElicitationAction::Accept, false; "child_connector_auth_accepts_text_failure")]
+#[test_case(SubagentRequestKind::ConnectorAuth(AuthFailureFormat::Structured), ElicitationAction::Accept, false; "child_connector_auth_accepts_structured_failure")]
+#[test_case(SubagentRequestKind::ConnectorAuth(AuthFailureFormat::Structured), ElicitationAction::Decline, false; "child_declined_connector_auth_preserves_original_failure")]
+#[test_case(SubagentRequestKind::LegacyToolApproval, ElicitationAction::Accept, true; "restricted_standalone_legacy_tool_approval_is_rejected_before_execution")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn core_generated_mcp_elicitations_support_subagents(
+async fn core_generated_mcp_elicitations_support_restricted_threads(
     kind: SubagentRequestKind,
     decision: ElicitationAction,
+    restrict_root_capabilities: bool,
 ) -> Result<()> {
     skip_if_no_network!(Ok(()));
     let server = responses::start_mock_server().await;
@@ -585,22 +589,39 @@ approvals_reviewer = "user"
         })
         .build_with_auto_env(&server)
         .await?;
-    let child = test
-        .thread_manager
-        .start_thread(StartThreadOptions {
-            session_source: Some(SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
-                parent_thread_id: test.session_configured.thread_id,
-                depth: 1,
-                agent_path: None,
-                agent_nickname: None,
-                agent_role: None,
-            })),
-            environments: Some(vec![test.executor_environment().request()]),
-            ..StartThreadOptions::new(test.config.clone())
+    let session_source = if restrict_root_capabilities {
+        SessionSource::Custom("host".to_string())
+    } else {
+        SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+            parent_thread_id: test.session_configured.thread_id,
+            depth: 1,
+            agent_path: None,
+            agent_nickname: None,
+            agent_role: None,
         })
-        .await?
-        .thread;
-    wait_for_mcp_server(&child, NUWAX_APPS_MCP_SERVER_NAME).await?;
+    };
+    let mut options = StartThreadOptions {
+        session_source: Some(session_source),
+        environments: Some(vec![test.executor_environment().request()]),
+        ..StartThreadOptions::new(test.config.clone())
+    };
+    if restrict_root_capabilities {
+        options
+            .thread_extension_init
+            .insert(RestrictRootCapabilities);
+    }
+    let child = test.thread_manager.start_thread(options).await?;
+    if restrict_root_capabilities {
+        assert_eq!(
+            (
+                child.session_configured.parent_thread_id,
+                child.session_configured.session_id
+            ),
+            (None, SessionId::from(child.thread_id)),
+        );
+    }
+    let child = child.thread;
+    wait_for_mcp_server(&child, CODEX_APPS_MCP_SERVER_NAME).await?;
     responses::mount_sse_once(
         &server,
         responses::sse(vec![
@@ -655,7 +676,7 @@ approvals_reviewer = "user"
         };
         assert_eq!(prompts, 0, "one tool call must not prompt twice");
         prompts += 1;
-        assert_eq!(request.server_name, NUWAX_APPS_MCP_SERVER_NAME);
+        assert_eq!(request.server_name, CODEX_APPS_MCP_SERVER_NAME);
         assert!(
             follow_up.requests().is_empty(),
             "the tool must wait for input"

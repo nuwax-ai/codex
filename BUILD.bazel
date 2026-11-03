@@ -1,12 +1,4 @@
 load("@apple_support//xcode:xcode_config.bzl", "xcode_config")
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-
-# Set for builds that need custom V8 C++ flags or source instrumentation.
-bool_flag(
-    name = "rusty_v8_from_source",
-    build_setting_default = False,
-    visibility = ["//visibility:public"],
-)
 
 # Gates the rig/genai model bridges in codex-core's compiled feature set.
 # Public binaries must keep this ON: turning it off makes third-party model

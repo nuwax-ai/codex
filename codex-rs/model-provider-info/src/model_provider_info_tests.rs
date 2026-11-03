@@ -86,16 +86,10 @@ base_url = "http://localhost:11434/v1"
         gateway_oauth: None,
         aws: None,
         wire_api: WireApi::Responses,
-        experimental_bridge: None,
-        provider_id: None,
         query_params: None,
         http_headers: None,
         env_http_headers: None,
         request_max_retries: None,
-        max_output_tokens: None,
-        hosted_results_replay: None,
-        anthropic_prompt_caching: None,
-        reasoning_effort_levels: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
         websocket_connect_timeout_ms: None,
@@ -103,6 +97,9 @@ base_url = "http://localhost:11434/v1"
         supports_websockets: false,
         supports_standalone_web_search: false,
         capabilities: None,
+        project_id: None,
+        location: None,
+        credential_file: None,
         include_internal_metadata: false,
     };
 
@@ -129,18 +126,12 @@ query_params = { api-version = "2025-04-01-preview" }
         gateway_oauth: None,
         aws: None,
         wire_api: WireApi::Responses,
-        experimental_bridge: None,
-        provider_id: None,
         query_params: Some(maplit::hashmap! {
             "api-version".to_string() => "2025-04-01-preview".into(),
         }),
         http_headers: None,
         env_http_headers: None,
         request_max_retries: None,
-        max_output_tokens: None,
-        hosted_results_replay: None,
-        anthropic_prompt_caching: None,
-        reasoning_effort_levels: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
         websocket_connect_timeout_ms: None,
@@ -148,6 +139,9 @@ query_params = { api-version = "2025-04-01-preview" }
         supports_websockets: false,
         supports_standalone_web_search: false,
         capabilities: None,
+        project_id: None,
+        location: None,
+        credential_file: None,
         include_internal_metadata: false,
     };
 
@@ -176,8 +170,6 @@ supports_standalone_web_search = true
         gateway_oauth: None,
         aws: None,
         wire_api: WireApi::Responses,
-        experimental_bridge: None,
-        provider_id: None,
         query_params: None,
         http_headers: Some(maplit::hashmap! {
             "X-Example-Header".to_string() => "example-value".into(),
@@ -186,10 +178,6 @@ supports_standalone_web_search = true
             "X-Example-Env-Header".to_string() => "EXAMPLE_ENV_VAR".to_string(),
         }),
         request_max_retries: None,
-        max_output_tokens: None,
-        hosted_results_replay: None,
-        anthropic_prompt_caching: None,
-        reasoning_effort_levels: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
         websocket_connect_timeout_ms: None,
@@ -197,6 +185,9 @@ supports_standalone_web_search = true
         supports_websockets: false,
         supports_standalone_web_search: true,
         capabilities: None,
+        project_id: None,
+        location: None,
+        credential_file: None,
         include_internal_metadata: false,
     };
 
@@ -205,10 +196,7 @@ supports_standalone_web_search = true
 }
 
 #[test]
-fn test_deserialize_chat_wire_api() {
-    // This fork re-enables `wire_api = "chat"` (Chat Completions protocol via
-    // codex-rust-genai-bridge), so it must deserialize successfully instead of
-    // being rejected like upstream.
+fn test_deserialize_chat_wire_api_shows_helpful_error() {
     let provider_toml = r#"
 name = "OpenAI using Chat Completions"
 base_url = "https://api.openai.com/v1"
@@ -216,8 +204,8 @@ env_key = "OPENAI_API_KEY"
 wire_api = "chat"
         "#;
 
-    let provider: ModelProviderInfo = toml::from_str(provider_toml).unwrap();
-    assert_eq!(provider.wire_api, WireApi::Chat);
+    let err = toml::from_str::<ModelProviderInfo>(provider_toml).unwrap_err();
+    assert!(err.to_string().contains(CHAT_WIRE_API_REMOVED_ERROR));
 }
 
 #[test]
@@ -257,6 +245,8 @@ fn codex_backend_routes_require_codex_base_url() {
         (None, true),
         (Some(CHATGPT_CODEX_BASE_URL), true),
         (Some("https://chatgpt-staging.com/backend-api/codex/"), true),
+        (Some("https://backend.example.com/api/codex"), false),
+        (Some("https://backend.example.com/api/codex/"), false),
         (Some("https://proxy.example.com/v1"), false),
     ] {
         let provider = ModelProviderInfo::create_openai_provider(base_url.map(str::to_owned));
@@ -376,8 +366,6 @@ fn test_create_amazon_bedrock_provider() {
                 auth_refresh: None,
             }),
             wire_api: WireApi::Responses,
-            experimental_bridge: None,
-            provider_id: Some(AMAZON_BEDROCK_PROVIDER_ID.to_string()),
             query_params: None,
             http_headers: Some(maplit::hashmap! {
                 AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER.to_string() =>
@@ -385,10 +373,6 @@ fn test_create_amazon_bedrock_provider() {
             }),
             env_http_headers: None,
             request_max_retries: None,
-            max_output_tokens: None,
-            hosted_results_replay: None,
-            anthropic_prompt_caching: None,
-            reasoning_effort_levels: None,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -396,6 +380,9 @@ fn test_create_amazon_bedrock_provider() {
             supports_websockets: false,
             supports_standalone_web_search: false,
             capabilities: None,
+            project_id: None,
+            location: None,
+            credential_file: None,
             include_internal_metadata: false,
         }
     );
@@ -405,9 +392,6 @@ fn test_create_amazon_bedrock_provider() {
 fn test_create_amazon_bedrock_runtime_provider() {
     let mut expected = ModelProviderInfo::create_amazon_bedrock_provider(/*aws*/ None);
     expected.name = "Amazon Bedrock Runtime".to_string();
-    // Fork pins the runtime provider id; the mantle header stays set
-    // (upstream behavior).
-    expected.provider_id = Some(AMAZON_BEDROCK_RUNTIME_PROVIDER_ID.to_string());
 
     assert_eq!(
         ModelProviderInfo::create_amazon_bedrock_runtime_provider(/*aws*/ None),
@@ -525,7 +509,6 @@ fn test_built_in_model_providers_include_amazon_bedrock_runtime() {
 fn test_merge_configured_model_providers_adds_custom_provider() {
     let custom_provider = ModelProviderInfo {
         name: "Custom".to_string(),
-        provider_id: Some("custom".to_string()),
         base_url: Some("https://example.com/v1".to_string()),
         ..ModelProviderInfo::default()
     };
@@ -669,6 +652,103 @@ fn test_merge_configured_model_providers_applies_amazon_bedrock_transport_overri
 }
 
 #[test]
+fn test_merge_configured_model_providers_applies_gcp_transport_overrides() {
+    let auth = provider_auth_for_test();
+    let credential_file = std::env::current_dir().unwrap().join("adc.json");
+    let configured_model_providers = std::collections::HashMap::from([(
+        GCP_PROVIDER_ID.to_string(),
+        ModelProviderInfo {
+            base_url: Some("https://vertex.example.com/v1".to_string()),
+            project_id: Some("configured-project".to_string()),
+            location: Some("us-east4".to_string()),
+            auth: Some(auth.clone()),
+            credential_file: Some(credential_file.clone()),
+            http_headers: Some(maplit::hashmap! {
+                "x-example-header".to_string() => "value".into(),
+            }),
+            ..ModelProviderInfo::default()
+        },
+    )]);
+
+    let mut expected = built_in_model_providers(/*openai_base_url*/ None);
+    let provider = expected
+        .get_mut(GCP_PROVIDER_ID)
+        .expect("GCP provider should be built in");
+    provider.base_url = Some("https://vertex.example.com/v1".to_string());
+    provider.project_id = Some("configured-project".to_string());
+    provider.location = Some("us-east4".to_string());
+    provider.auth = Some(auth);
+    provider.credential_file = Some(credential_file);
+    provider.http_headers = Some(maplit::hashmap! {
+        "x-example-header".to_string() => "value".into(),
+    });
+
+    assert_eq!(
+        merge_configured_model_providers(
+            built_in_model_providers(/*openai_base_url*/ None),
+            configured_model_providers,
+        ),
+        Ok(expected)
+    );
+}
+
+#[test]
+fn test_merge_configured_model_providers_applies_gcp_endpoint_override() {
+    let configured_model_providers = std::collections::HashMap::from([(
+        GCP_PROVIDER_ID.to_string(),
+        ModelProviderInfo {
+            base_url: Some("https://vertex.example.com/v1".to_string()),
+            ..ModelProviderInfo::default()
+        },
+    )]);
+    let mut expected = built_in_model_providers(/*openai_base_url*/ None);
+    expected
+        .get_mut(GCP_PROVIDER_ID)
+        .expect("GCP provider should be built in")
+        .base_url = Some("https://vertex.example.com/v1".to_string());
+
+    assert_eq!(
+        merge_configured_model_providers(
+            built_in_model_providers(/*openai_base_url*/ None),
+            configured_model_providers,
+        ),
+        Ok(expected)
+    );
+}
+
+#[test]
+fn test_merge_configured_gcp_rejects_relative_credential_file() {
+    for credential_file in ["", "adc.json", "../adc.json"] {
+        let provider = ModelProviderInfo {
+            credential_file: Some(credential_file.into()),
+            ..ModelProviderInfo::create_gcp_provider()
+        };
+        assert_eq!(
+            provider.validate(),
+            Err("provider credential_file must be an absolute path".to_string()),
+        );
+
+        let overrides = HashMap::from([(
+            GCP_PROVIDER_ID.to_string(),
+            ModelProviderInfo {
+                credential_file: Some(credential_file.into()),
+                ..Default::default()
+            },
+        )]);
+
+        assert_eq!(
+            merge_configured_model_providers(
+                built_in_model_providers(/*openai_base_url*/ None),
+                overrides,
+            ),
+            Err(
+                "model_providers.gcp provider credential_file must be an absolute path".to_string()
+            ),
+        );
+    }
+}
+
+#[test]
 fn test_merge_configured_model_providers_rejects_amazon_bedrock_non_default_fields() {
     let configured_model_providers = std::collections::HashMap::from([(
         AMAZON_BEDROCK_PROVIDER_ID.to_string(),
@@ -708,8 +788,6 @@ fn test_merge_configured_model_providers_allows_amazon_bedrock_default_fields() 
                 auth_refresh: None,
             }),
             wire_api: WireApi::Responses,
-            experimental_bridge: None,
-            provider_id: None,
             ..ModelProviderInfo::default()
         },
     )]);
@@ -916,56 +994,118 @@ model_catalog_url = "https://gateway.example/codex/catalog?token=catalog-secret"
     );
 }
 
-// Fork (nuwax-codex): the provider-level output budget flows into the api
-// Provider for the chat bridge to map onto the wire `max_tokens`.
 #[test]
-fn max_output_budget_parses_and_flows_into_the_api_provider() {
-    let provider: ModelProviderInfo = toml::from_str(
-        r#"
-name = "budgeted"
-base_url = "https://gateway.example/v1"
-wire_api = "anthropic"
-env_key = "BUDGET_KEY"
-max_output_tokens = 4096
-"#,
-    )
-    .unwrap();
-    assert_eq!(provider.max_output_tokens, Some(4096));
-    assert_eq!(
-        provider
-            .to_api_provider(Some(AuthMode::ApiKey))
-            .unwrap()
-            .max_output_tokens,
-        Some(4096)
-    );
-    // Omitted stays unset (the bridge default applies).
-    let provider: ModelProviderInfo = toml::from_str(
-        r#"
-name = "default"
-base_url = "https://gateway.example/v1"
-wire_api = "chat"
-env_key = "KEY"
-"#,
-    )
-    .unwrap();
-    assert_eq!(provider.max_output_tokens, None);
+fn builtin_openai_catalog_override_preserves_inference_and_identity() {
+    for inference_url in [None, Some("https://us.api.openai.com/v1")] {
+        for catalog_url in [None, Some("https://chatgpt.com/backend-api/codex/models")] {
+            let configured: ModelProviderInfo = toml::from_str(&format!(
+                "name = \"Ignored name\"\nbase_url = \"https://ignored.example/v1\"\nrequires_openai_auth = false\n{}",
+                catalog_url.map(|url| format!("model_catalog_url = {url:?}")).unwrap_or_default()
+            )).unwrap();
+            let builtins = built_in_model_providers(inference_url.map(str::to_owned));
+            let mut expected = builtins.clone();
+            expected.get_mut("openai").unwrap().model_catalog_url = catalog_url.map(Into::into);
+            assert_eq!(
+                merge_configured_model_providers(
+                    builtins,
+                    HashMap::from([("openai".to_string(), configured)]),
+                )
+                .unwrap(),
+                expected,
+            );
+        }
+    }
 }
 
 #[test]
-fn parses_and_maps_anthropic_prompt_caching() {
-    let info: super::ModelProviderInfo = toml::from_str(
-        r#"
-        name = "cache-probe"
-        base_url = "http://127.0.0.1:1"
-        anthropic_prompt_caching = true
-        "#,
-    )
-    .expect("parse provider");
-    assert_eq!(info.anthropic_prompt_caching, Some(true));
-    let api = info.to_api_provider(None).expect("map");
-    assert_eq!(
-        api.anthropic_prompt_caching,
-        Some(true),
-        "to_api_provider must carry the caching switch"
-    );
+fn builtin_openai_catalog_rejects_untrusted_destinations() {
+    for url in [
+        "http://chatgpt.com/backend-api/codex/models",
+        "https://chatgpt.com.evil.example/models",
+        "https://evilchatgpt.com/models",
+        "https://api.openai.com/v1/models",
+        "https://example.com/models?secret=do-not-log",
+        "https://user:secret@chatgpt.com/models",
+        "/models",
+        "not a URL",
+    ] {
+        let provider = ModelProviderInfo {
+            model_catalog_url: Some(url.into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            merge_configured_model_providers(
+                built_in_model_providers(/*openai_base_url*/ None),
+                HashMap::from([("openai".to_string(), provider.clone())]),
+            )
+            .unwrap_err(),
+            "model_providers.openai.model_catalog_url must use an allowed ChatGPT host. If you need to use a 3rd party host, configure a custom model_provider",
+        );
+        let mut expected = built_in_model_providers(/*openai_base_url*/ None);
+        expected.insert("custom".into(), provider.clone());
+        assert_eq!(
+            merge_configured_model_providers(
+                built_in_model_providers(/*openai_base_url*/ None),
+                HashMap::from([("custom".into(), provider)]),
+            )
+            .unwrap(),
+            expected,
+        );
+    }
+}
+
+#[test]
+fn builtin_openai_catalog_accepts_existing_chatgpt_hosts() {
+    for host in [
+        "chatgpt.com",
+        "gov.chatgpt.com",
+        "chat.openai.com",
+        "chatgpt-staging.com",
+        "api.chatgpt-staging.com",
+        "CHATGPT.COM",
+    ] {
+        let url = format!("https://{host}/backend-api/codex/models");
+        let provider = ModelProviderInfo {
+            model_catalog_url: Some(url.clone().into()),
+            ..Default::default()
+        };
+        let mut expected = built_in_model_providers(/*openai_base_url*/ None);
+        expected.get_mut("openai").unwrap().model_catalog_url = Some(url.into());
+        assert_eq!(
+            merge_configured_model_providers(
+                built_in_model_providers(/*openai_base_url*/ None),
+                HashMap::from([("openai".into(), provider)]),
+            )
+            .unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn cyber_access_program_capability_uses_provider_identity_and_explicit_overrides() {
+    for provider_id in [
+        OPENAI_PROVIDER_ID,
+        "proxy",
+        AMAZON_BEDROCK_PROVIDER_ID,
+        GCP_PROVIDER_ID,
+    ] {
+        for configured in [None, Some(false), Some(true)] {
+            // A custom provider cannot gain the default by copying OpenAI's display name.
+            let config = match configured {
+                Some(enabled) => format!(
+                    "name = \"OpenAI\"\n[capabilities]\ncyber_access_programs = {enabled}\n"
+                ),
+                None => "name = \"OpenAI\"\n".to_owned(),
+            };
+            let provider: ModelProviderInfo = toml::from_str(&config).unwrap();
+            assert_eq!(
+                provider.supports_cyber_access_programs(provider_id),
+                configured.unwrap_or(provider_id == OPENAI_PROVIDER_ID),
+            );
+            let round_trip: ModelProviderInfo =
+                toml::from_str(&toml::to_string(&provider).unwrap()).unwrap();
+            assert_eq!(round_trip, provider);
+        }
+    }
 }

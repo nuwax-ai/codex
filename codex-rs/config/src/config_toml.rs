@@ -35,6 +35,7 @@ use crate::types::WindowsToml;
 use codex_features::FeaturesToml;
 use codex_model_provider_info::AMAZON_BEDROCK_PROVIDER_ID;
 use codex_model_provider_info::AMAZON_BEDROCK_RUNTIME_PROVIDER_ID;
+use codex_model_provider_info::GCP_PROVIDER_ID;
 use codex_model_provider_info::LEGACY_OLLAMA_CHAT_PROVIDER_ID;
 use codex_model_provider_info::LMSTUDIO_OSS_PROVIDER_ID;
 use codex_model_provider_info::ModelProviderInfo;
@@ -64,9 +65,10 @@ use serde::Serialize;
 use serde::de::Error as SerdeError;
 use serde_json::Value as JsonValue;
 
-const RESERVED_MODEL_PROVIDER_IDS: [&str; 5] = [
+const RESERVED_MODEL_PROVIDER_IDS: [&str; 6] = [
     AMAZON_BEDROCK_PROVIDER_ID,
     AMAZON_BEDROCK_RUNTIME_PROVIDER_ID,
+    GCP_PROVIDER_ID,
     OPENAI_PROVIDER_ID,
     OLLAMA_OSS_PROVIDER_ID,
     LMSTUDIO_OSS_PROVIDER_ID,
@@ -179,12 +181,6 @@ pub struct ConfigToml {
 
     /// Token usage threshold triggering auto-compaction of conversation history.
     pub model_auto_compact_token_limit: Option<i64>,
-
-    /// Fork (nuwax-codex): fraction of the effective context window that
-    /// triggers auto-compaction (e.g. `0.8`). Only consulted when
-    /// `model_auto_compact_token_limit` is unset; keeps deployments from
-    /// hardcoding absolute token counts per vendor.
-    pub model_auto_compact_ratio: Option<f64>,
 
     /// Controls whether the auto-compaction limit applies to the full context or
     /// only to tokens after the carried prefix in the current compaction window.
@@ -353,7 +349,7 @@ pub struct ConfigToml {
     pub background_terminal_max_timeout: Option<u64>,
 
     /// Seconds a thread must have no subscribers and no activity before app-server
-    /// unloads it. Defaults to 1800 (30 minutes); zero unloads immediately.
+    /// unloads it. Defaults to 60 (1 minute); zero unloads immediately.
     /// Resolved when each thread is loaded; request config overrides apply per thread.
     pub thread_unload_delay_secs: Option<u64>,
 
@@ -585,6 +581,10 @@ pub enum ThreadStoreToml {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
 pub struct AutoReviewToml {
+    /// Overall Guardian review budget in milliseconds, including setup and retries.
+    /// Defaults to 90,000. Set to 0 to wait without a review deadline; cancellation
+    /// and independent transport timeouts still apply.
+    pub timeout_ms: Option<u32>,
     /// Controls whether circuit-breaker interruptions include a structured error.
     /// Strict mode writes structured errors that older clients may not
     /// recognize when reading shared history. Defaults to `default`.
@@ -706,6 +706,8 @@ pub struct RealtimeAudioToml {
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct ToolsToml {
+    /// Client provider preference when the model does not select a provider.
+    pub client_search_provider: Option<codex_protocol::openai_models::WebSearchProvider>,
     #[serde(
         default,
         deserialize_with = "deserialize_optional_web_search_tool_config"
@@ -713,10 +715,6 @@ pub struct ToolsToml {
     pub web_search: Option<WebSearchToolConfig>,
     pub experimental_request_user_input: Option<ExperimentalRequestUserInput>,
     pub update_plan: Option<UpdatePlanToolConfig>,
-    /// Fork (nuwax-codex): set to `false` to expose MCP tools directly in the
-    /// initial tool list instead of lazy-loading them through `tool_search`.
-    /// `true` and unset keep the model catalog's own behavior.
-    pub tool_search: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
@@ -850,6 +848,16 @@ pub fn effective_sandbox_mode(
     }
 }
 
+impl TryFrom<toml::Value> for ConfigToml {
+    type Error = toml::de::Error;
+
+    // Keep the generated TOML deserializer in this crate, shared by all callers.
+    #[inline(never)]
+    fn try_from(value: toml::Value) -> Result<Self, Self::Error> {
+        value.try_into()
+    }
+}
+
 impl ConfigToml {
     /// Derive the effective permission profile from sandbox config.
     ///
@@ -942,16 +950,22 @@ pub fn validate_reserved_model_provider_ids(
     model_providers: &HashMap<String, ModelProviderInfo>,
 ) -> Result<(), String> {
     let mut conflicts = model_providers
-        .iter()
-        .filter(|(key, provider)| {
-            !provider.is_builtin_bridge_override()
-                && !matches!(
-                    key.as_str(),
-                    AMAZON_BEDROCK_PROVIDER_ID | AMAZON_BEDROCK_RUNTIME_PROVIDER_ID
-                )
-                && RESERVED_MODEL_PROVIDER_IDS.contains(&key.as_str())
+        .keys()
+        .filter(|key| {
+            if key.as_str() == "openai" {
+                let provider = &model_providers[*key];
+                return provider
+                    != &ModelProviderInfo {
+                        model_catalog_url: provider.model_catalog_url.clone(),
+                        ..Default::default()
+                    };
+            }
+            !matches!(
+                key.as_str(),
+                AMAZON_BEDROCK_PROVIDER_ID | AMAZON_BEDROCK_RUNTIME_PROVIDER_ID | GCP_PROVIDER_ID
+            ) && RESERVED_MODEL_PROVIDER_IDS.contains(&key.as_str())
         })
-        .map(|(key, _)| format!("`{key}`"))
+        .map(|key| format!("`{key}`"))
         .collect::<Vec<_>>();
     conflicts.sort_unstable();
     if conflicts.is_empty() {
@@ -977,21 +991,26 @@ pub fn validate_model_providers(
             provider
                 .validate_bedrock_override()
                 .map_err(|message| format!("model_providers.{key} {message}"))?;
-        } else {
-            if provider.aws.is_some() {
-                return Err(format!(
-                    "model_providers.{key}: provider aws is only supported for \
+        } else if provider.aws.is_some() {
+            return Err(format!(
+                "model_providers.{key}: provider aws is only supported for \
 `{AMAZON_BEDROCK_PROVIDER_ID}` or `{AMAZON_BEDROCK_RUNTIME_PROVIDER_ID}`"
-                ));
-            }
-            if provider.name.trim().is_empty()
-                && !(RESERVED_MODEL_PROVIDER_IDS.contains(&key.as_str())
-                    && provider.is_builtin_bridge_override())
-            {
-                return Err(format!(
-                    "model_providers.{key}: provider name must not be empty"
-                ));
-            }
+            ));
+        }
+        if !matches!(
+            key.as_str(),
+            AMAZON_BEDROCK_PROVIDER_ID | AMAZON_BEDROCK_RUNTIME_PROVIDER_ID | GCP_PROVIDER_ID
+        ) && key != "openai"
+            && provider.name.trim().is_empty()
+        {
+            return Err(format!(
+                "model_providers.{key}: provider name must not be empty"
+            ));
+        }
+        if key == GCP_PROVIDER_ID {
+            provider
+                .validate_gcp_credential_file()
+                .map_err(|message| format!("model_providers.{key}: {message}"))?;
         }
         provider
             .validate()
@@ -1006,45 +1025,8 @@ fn deserialize_model_providers<'de, D>(
 where
     D: serde::Deserializer<'de>,
 {
-    // Fork: intercept as raw tables first — the fork-owned
-    // `ignore_catalog_effort_levels` escape hatch (Spec §5.3) lives in a
-    // side table, not a struct field, so it is extracted here at load time
-    // and never reaches (or breaks) the upstream struct.
-    let mut raw = HashMap::<String, toml::Value>::deserialize(deserializer)?;
-    let mut model_providers = HashMap::with_capacity(raw.len());
-    for (key, value) in raw.iter_mut() {
-        if let Some(table) = value.as_table_mut() {
-            if let Some(flag) = table.remove("ignore_catalog_effort_levels") {
-                match flag.as_bool() {
-                    Some(true) => {
-                        // Register under the config key; the display name is
-                        // added after parsing below (the wire Provider carries
-                        // only the display name).
-                        codex_model_provider_info::set_ignores_catalog_defaults(key)
-                    }
-                    Some(false) => {}
-                    None => {
-                        return Err(serde::de::Error::custom(format!(
-                            "model_providers.{key}.ignore_catalog_effort_levels \
-                             must be a boolean"
-                        )));
-                    }
-                }
-            }
-        }
-        let provider: ModelProviderInfo =
-            value.clone().try_into().map_err(serde::de::Error::custom)?;
-        if codex_model_provider_info::ignores_catalog_defaults(key) {
-            codex_model_provider_info::set_ignores_catalog_defaults(&provider.name);
-        }
-        model_providers.insert(key.clone(), provider);
-    }
+    let model_providers = HashMap::<String, ModelProviderInfo>::deserialize(deserializer)?;
     validate_model_providers(&model_providers).map_err(serde::de::Error::custom)?;
-    // Fork: stamp each entry with its config key so identity checks
-    // (`is_first_party`) match on the key, not the display name.
-    for (key, provider) in model_providers.iter_mut() {
-        provider.provider_id = Some(key.clone());
-    }
     Ok(model_providers)
 }
 
@@ -1177,8 +1159,47 @@ command = "   "
             )
         );
     }
-}
 
-#[cfg(test)]
-#[path = "bridge_config_tests.rs"]
-mod bridge_config_tests;
+    #[test]
+    fn gcp_provider_accepts_partial_endpoint_and_auth_overrides() {
+        let config = toml::from_str::<ConfigToml>(
+            r#"
+[model_providers.gcp]
+base_url = "https://vertex.example.com/v1"
+
+[model_providers.gcp.auth]
+command = "print-token"
+"#,
+        )
+        .expect("partial GCP provider overrides should deserialize");
+
+        let provider = config
+            .model_providers
+            .get(GCP_PROVIDER_ID)
+            .expect("GCP overrides should be retained");
+        assert_eq!(
+            (
+                provider.base_url.as_deref(),
+                provider.auth.as_ref().map(|auth| auth.command.as_str()),
+            ),
+            (Some("https://vertex.example.com/v1"), Some("print-token"))
+        );
+    }
+
+    #[test]
+    fn gcp_provider_rejects_relative_credential_file() {
+        for credential_file in ["", "adc.json", "../adc.json"] {
+            let error = toml::from_str::<ConfigToml>(&format!(
+                r#"
+[model_providers.gcp]
+credential_file = "{credential_file}"
+"#,
+            ))
+            .expect_err("GCP overrides must validate credential paths before merging defaults");
+
+            assert!(error.to_string().contains(
+                "model_providers.gcp: provider credential_file must be an absolute path"
+            ));
+        }
+    }
+}

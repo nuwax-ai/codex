@@ -19,7 +19,6 @@ use crate::ClientRouteClass;
 use crate::HttpClient;
 use crate::HttpClientFactory;
 use crate::HttpClientTlsConfig;
-use crate::OutboundProxyPolicy;
 use crate::OutboundProxyRoute;
 use crate::chatgpt_cloudflare_cookies::ChatGptCookieStore;
 use crate::client::HttpClientBackend;
@@ -173,8 +172,6 @@ impl HttpClientBuilder {
     /// This is the preferred terminal method for product traffic. The request URL is used to
     /// resolve a concrete direct or proxy route when the factory is configured with
     /// [`crate::OutboundProxyPolicy::RespectSystemProxy`].
-    /// [`crate::OutboundProxyPolicy::ResolvedDefault`] uses the existing route-aware pool so every
-    /// request and redirect destination gets its own proxy and NO_PROXY decision.
     pub fn build_respecting_outbound_proxy_policy(
         mut self,
         http_client_factory: &HttpClientFactory,
@@ -182,7 +179,7 @@ impl HttpClientBuilder {
         route_class: ClientRouteClass,
     ) -> Result<HttpClient, BuildRouteAwareHttpClientError> {
         if http_client_factory.network_policy().is_managed()
-            || http_client_factory.outbound_proxy_policy() == OutboundProxyPolicy::ResolvedDefault
+            || http_client_factory.protects_sensitive_headers()
         {
             return Ok(crate::RouteAwareClientPool::with_builder(
                 http_client_factory.clone(),
@@ -453,7 +450,3 @@ pub(crate) enum ProxyRouting {
 #[cfg(test)]
 #[path = "client_builder_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "resolved_default_factory_tests.rs"]
-mod resolved_default_factory_tests;

@@ -7,6 +7,7 @@ codex_rust_crate(
     # the build script, not merely ship as runfiles.
     build_script_srcs_extra = ["src/build_source_identity.rs"],
     crate_name = "codex_exec",
+    integration_compile_data_extra = ["tests/fixtures/apply_patch_freeform_final.txt"],
     test_shard_counts = {
         "exec-all-test": 8,
     },

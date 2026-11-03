@@ -3,9 +3,11 @@ use crate::ModelsManagerConfig;
 use codex_prompts::render_model_instructions;
 use codex_protocol::config_types::Personality;
 use codex_protocol::openai_models::ApprovalMessages;
+use codex_protocol::openai_models::AppsMessages;
 use codex_protocol::openai_models::AutoReviewMessages;
 use codex_protocol::openai_models::CollaborationModeMessages;
 use codex_protocol::openai_models::ConfirmationPolicies;
+use codex_protocol::openai_models::GranularApprovalMessages;
 use codex_protocol::openai_models::GuardianV2ModelConfig;
 use codex_protocol::openai_models::ModelTokenBudgetConfig;
 use codex_protocol::openai_models::MultiAgentMessages;
@@ -35,6 +37,12 @@ fn base_instruction_override_is_literal_and_preserves_catalog_messages() {
         on_request_auto_review: Some("auto approvals".to_string()),
         never: Some("never approvals".to_string()),
         unless_trusted: Some("unless-trusted approvals".to_string()),
+        granular: Some(GranularApprovalMessages {
+            intro: Some("Catalog: {{ policy }}".to_string()),
+            prompted_categories: Some("Allowed: {{ categories }}".to_string()),
+            rejected_categories: Some("Denied: {{ categories }}".to_string()),
+        }),
+        ..Default::default()
     };
     let collaboration_modes = CollaborationModeMessages {
         default: Some("default instructions".to_string()),
@@ -52,6 +60,7 @@ fn base_instruction_override_is_literal_and_preserves_catalog_messages() {
         workspace_write: Some(String::new()),
         read_only: None,
         approved_prefixes: None,
+        ..PermissionMessages::default()
     };
     let multi_agent = MultiAgentMessages {
         role: Some(MultiAgentRoleMessages {
@@ -82,6 +91,10 @@ fn base_instruction_override_is_literal_and_preserves_catalog_messages() {
         computer_use: Some("  # Native policy\r\n\n${native_markdown}\n".to_string()),
     };
     let mut messages = ModelMessages {
+        apps: Some(AppsMessages {
+            usage_instructions: Some("Catalog Apps instructions.".to_string()),
+        }),
+        plugins: None,
         content_filter_guidance: None,
         persistent_instructions: Some(persistent_instructions.to_string()),
         tools: Some(ToolMessages {
@@ -166,6 +179,8 @@ fn personality_none_strips_catalog_instruction_sources_through_the_next_h1() {
                 on_request_auto_review: None,
                 never: None,
                 unless_trusted: None,
+                granular: None,
+                ..Default::default()
             }),
             ..Default::default()
         };
@@ -233,39 +248,14 @@ fn explicit_empty_base_instructions_stay_empty_with_personality_none() {
 fn unknown_model_uses_builtin_instruction_template() {
     let model = model_info_from_slug("unknown-model");
 
-    // Fork (nuwax-codex): the identity placeholder renders the model's own
-    // slug, so vendor models report what they actually are instead of the
-    // upstream Codex/OpenAI identity.
-    assert_eq!(
-        render_model_instructions(&model),
-        BASE_INSTRUCTIONS.replace("{{model}}", "unknown-model")
-    );
-    assert!(model.used_fallback_model_metadata);
+    assert_eq!(render_model_instructions(&model), BASE_INSTRUCTIONS);
 }
 
-#[test]
-fn fallback_instructions_recognize_any_rendered_slug() {
-    let glm = model_info_from_slug("GLM-5.3-Flash");
-    assert!(super::is_fallback_model_instructions(
-        &render_model_instructions(&glm)
-    ));
-
-    // The raw template (placeholder unreplaced) and unrelated text do not match.
-    assert!(!super::is_fallback_model_instructions(BASE_INSTRUCTIONS));
-    assert!(!super::is_fallback_model_instructions(
-        "You are GPT-5, honestly."
-    ));
-}
-
-// Fork (nuwax-codex): catalog-backed models keep the catalog clamp — the
-// catalog is authoritative. `used_fallback_model_metadata = false` simulates
-// one here (the fallback constructor is only a convenient ModelInfo builder).
 #[test]
 fn model_context_window_override_clamps_to_max_context_window() {
     let mut model = model_info_from_slug("unknown-model");
     model.context_window = Some(273_000);
     model.max_context_window = Some(400_000);
-    model.used_fallback_model_metadata = false;
     let config = ModelsManagerConfig {
         model_context_window: Some(500_000),
         ..Default::default()
@@ -278,91 +268,6 @@ fn model_context_window_override_clamps_to_max_context_window() {
     assert_eq!(updated, expected);
 }
 
-// Fork (nuwax-codex): unknown models get synthetic fallback metadata whose
-// 272k ceiling is a placeholder, not vendor knowledge. An explicit override
-// applies in full (and raises the ceiling) so big-window vendors (GLM-5.3-Flash
-// 1M) can actually use their window; an over-large value self-heals through
-// the ContextWindowExceeded → drop-oldest compact retry.
-#[test]
-fn fallback_model_context_window_override_applies_in_full() {
-    let model = model_info_from_slug("unknown-model");
-    let config = ModelsManagerConfig {
-        model_context_window: Some(1_000_000),
-        model_auto_compact_ratio: Some(0.9),
-        ..Default::default()
-    };
-
-    let updated = with_config_overrides(model, &config);
-
-    assert_eq!(updated.context_window, Some(1_000_000));
-    assert_eq!(updated.max_context_window, Some(1_000_000));
-    // The ratio derives from the unclamped window.
-    assert_eq!(updated.auto_compact_token_limit, Some(900_000));
-}
-
-#[test]
-fn fallback_model_context_window_override_below_placeholder_applies_in_full() {
-    // A below-placeholder override also applies in full — the placeholder was
-    // never a real bound for this model.
-    let model = model_info_from_slug("unknown-model");
-    let config = ModelsManagerConfig {
-        model_context_window: Some(60_000),
-        ..Default::default()
-    };
-
-    let updated = with_config_overrides(model, &config);
-
-    assert_eq!(updated.context_window, Some(60_000));
-    assert_eq!(updated.max_context_window, Some(60_000));
-}
-
-#[test]
-fn non_positive_context_window_override_is_ignored() {
-    let mut model = model_info_from_slug("unknown-model");
-    model.context_window = Some(273_000);
-    for invalid in [0, -5] {
-        let config = ModelsManagerConfig {
-            model_context_window: Some(invalid),
-            ..Default::default()
-        };
-        let updated = with_config_overrides(model.clone(), &config);
-        assert_eq!(updated.context_window, Some(273_000), "override {invalid}");
-    }
-}
-
-// Fork (nuwax-codex): a non-positive absolute limit would compact every turn
-// (`min(0, 90% window)` in `ModelInfo::auto_compact_token_limit`), the exact
-// hazard the ratio guard exists for. Invalid values are dropped here so a
-// configured ratio still derives the limit.
-#[test]
-fn non_positive_auto_compact_token_limit_is_ignored() {
-    let mut model = model_info_from_slug("unknown-model");
-    model.context_window = Some(100_000);
-
-    // Dropped, and the ratio still derives the limit from the window.
-    for invalid in [0, -5] {
-        let config = ModelsManagerConfig {
-            model_auto_compact_token_limit: Some(invalid),
-            model_auto_compact_ratio: Some(0.5),
-            ..Default::default()
-        };
-        let updated = with_config_overrides(model.clone(), &config);
-        assert_eq!(
-            updated.auto_compact_token_limit,
-            Some(50_000),
-            "limit {invalid}"
-        );
-    }
-
-    // Dropped without a ratio, the model's own limit (None here) is kept.
-    let config = ModelsManagerConfig {
-        model_auto_compact_token_limit: Some(0),
-        ..Default::default()
-    };
-    let updated = with_config_overrides(model, &config);
-    assert_eq!(updated.auto_compact_token_limit, None);
-}
-
 #[test]
 fn model_context_window_uses_model_value_without_override() {
     let mut model = model_info_from_slug("unknown-model");
@@ -373,204 +278,4 @@ fn model_context_window_uses_model_value_without_override() {
     let updated = with_config_overrides(model.clone(), &config);
 
     assert_eq!(updated, model);
-}
-
-// Fork (nuwax-codex): ratio-derived auto-compact thresholds.
-#[test]
-fn auto_compact_ratio_derives_limit_from_the_effective_window() {
-    let mut model = model_info_from_slug("unknown-model");
-    model.context_window = Some(100_000);
-    let config = ModelsManagerConfig {
-        model_auto_compact_ratio: Some(0.8),
-        ..Default::default()
-    };
-    let updated = with_config_overrides(model, &config);
-    assert_eq!(updated.auto_compact_token_limit, Some(80_000));
-}
-
-#[test]
-fn auto_compact_ratio_respects_window_overrides_and_absolute_limits() {
-    // The context-window override applies first; the ratio uses it.
-    // Catalog-backed model (see the clamp test above for the flag).
-    let mut model = model_info_from_slug("unknown-model");
-    model.context_window = Some(100_000);
-    model.max_context_window = Some(60_000);
-    model.used_fallback_model_metadata = false;
-    let config = ModelsManagerConfig {
-        model_context_window: Some(200_000),
-        model_auto_compact_ratio: Some(0.5),
-        ..Default::default()
-    };
-    let updated = with_config_overrides(model, &config);
-    // min(200_000, max_context_window 60_000) * 0.5
-    assert_eq!(updated.auto_compact_token_limit, Some(30_000));
-
-    // An explicit absolute limit always wins over the ratio.
-    let mut model = model_info_from_slug("unknown-model");
-    model.context_window = Some(100_000);
-    let config = ModelsManagerConfig {
-        model_auto_compact_token_limit: Some(12_345),
-        model_auto_compact_ratio: Some(0.8),
-        ..Default::default()
-    };
-    let updated = with_config_overrides(model, &config);
-    assert_eq!(updated.auto_compact_token_limit, Some(12_345));
-}
-
-#[test]
-fn out_of_range_auto_compact_ratio_is_ignored_with_a_warning() {
-    let mut model = model_info_from_slug("unknown-model");
-    model.context_window = Some(100_000);
-    for ratio in [0.0, -0.5, 1.5] {
-        let config = ModelsManagerConfig {
-            model_auto_compact_ratio: Some(ratio),
-            ..Default::default()
-        };
-        let updated = with_config_overrides(model_info_from_slug("unknown-model"), &config);
-        assert_eq!(
-            updated.auto_compact_token_limit, None,
-            "ratio {ratio} must not derive a limit"
-        );
-    }
-}
-
-// A ratio so small it rounds to zero must not become a zero threshold —
-// that would compact on every turn. The model's own limit survives instead.
-#[test]
-fn tiny_auto_compact_ratio_deriving_zero_keeps_the_model_limit() {
-    let mut model = model_info_from_slug("unknown-model");
-    model.context_window = Some(1_000);
-    model.auto_compact_token_limit = Some(900);
-    let config = ModelsManagerConfig {
-        model_auto_compact_ratio: Some(0.0001), // 1_000 * 0.0001 rounds to 0
-        ..Default::default()
-    };
-    let updated = with_config_overrides(model, &config);
-    assert_eq!(updated.auto_compact_token_limit, Some(900));
-}
-
-// Fork (nuwax-codex): `[tools] tool_search = false` strips the search-tool
-// capability so MCP tools are advertised directly; an unset config must leave
-// the catalog value untouched, and `Some(true)` must never force it ON for a
-// model whose catalog says it lacks wire support.
-#[test]
-fn tool_search_false_override_strips_search_tool_capability() {
-    let mut model = model_info_from_slug("unknown-model");
-    model.supports_search_tool = true;
-
-    let disabled = with_config_overrides(
-        model.clone(),
-        &ModelsManagerConfig {
-            tool_search_enabled: Some(false),
-            ..Default::default()
-        },
-    );
-    assert!(!disabled.supports_search_tool);
-
-    // A catalog that says the model lacks wire support stays false even when
-    // the config carries `Some(true)`: the override never forces it ON.
-    let mut wire_unsupported = model_info_from_slug("unknown-model");
-    wire_unsupported.supports_search_tool = false;
-    let forced_on_ignored = with_config_overrides(
-        wire_unsupported,
-        &ModelsManagerConfig {
-            tool_search_enabled: Some(true),
-            ..Default::default()
-        },
-    );
-    assert!(!forced_on_ignored.supports_search_tool);
-
-    let untouched = with_config_overrides(model, &ModelsManagerConfig::default());
-    assert!(untouched.supports_search_tool);
-}
-
-#[test]
-fn a_vendor_catalog_hit_behaves_like_a_cataloged_model() {
-    let entry = crate::vendor_catalog::resolve("glm-5.3-flash").expect("resolvable");
-    let model = crate::vendor_catalog::vendor_model_info(&entry);
-    assert_eq!(model.slug, "glm-5.3-flash");
-    assert_eq!(model.context_window, Some(1_000_000));
-    assert!(!model.used_fallback_model_metadata);
-    assert_eq!(
-        model.metadata_source,
-        codex_protocol::openai_models::MetadataSource::Vendor {
-            provider: "zai-coding-plan".into()
-        }
-    );
-    // The 80% auto-compact derivation now runs against the real window.
-    assert_eq!(model.auto_compact_token_limit(), Some(800_000));
-    // Modalities come from the entry, not the text-only placeholder.
-    assert!(
-        model
-            .input_modalities
-            .contains(&codex_protocol::openai_models::InputModality::Text)
-    );
-}
-
-#[test]
-fn explicit_windows_apply_in_full_for_vendor_models_with_an_upward_warning_boundary() {
-    fn vendor_model(window: i64) -> ModelInfo {
-        let entry = crate::vendor_catalog::resolve("glm-5.3-flash").expect("resolvable");
-        let mut model = crate::vendor_catalog::vendor_model_info(&entry);
-        model.context_window = Some(window);
-        model.max_context_window = Some(window);
-        model
-    }
-
-    // Downward override: applies in full (rate-limit / cost control).
-    let mut model = vendor_model(1_000_000);
-    with_config_overrides_impl(&mut model, Some(200_000));
-    assert_eq!(model.context_window, Some(200_000));
-    assert_eq!(model.max_context_window, Some(200_000));
-
-    // Upward override: also applies in full (configurable-window models);
-    // the warning itself is a tracing side effect the policy comment covers.
-    let mut model = vendor_model(131_000);
-    with_config_overrides_impl(&mut model, Some(1_000_000));
-    assert_eq!(model.context_window, Some(1_000_000));
-    assert_eq!(model.max_context_window, Some(1_000_000));
-}
-
-#[test]
-fn official_catalog_models_keep_the_upstream_clamp() {
-    let mut model = crate::vendor_catalog::vendor_model_info(
-        &crate::vendor_catalog::resolve("glm-5.3-flash").expect("resolvable"),
-    );
-    model.metadata_source = codex_protocol::openai_models::MetadataSource::Official;
-    model.max_context_window = Some(400_000);
-    with_config_overrides_impl(&mut model, Some(500_000));
-    assert_eq!(model.context_window, Some(400_000));
-}
-
-fn with_config_overrides_impl(model: &mut ModelInfo, window: Option<i64>) {
-    let config = crate::config::ModelsManagerConfig {
-        model_context_window: window,
-        ..Default::default()
-    };
-    *model = crate::model_info::with_config_overrides(
-        std::mem::replace(model, crate::model_info::model_info_from_slug("x")),
-        &config,
-    );
-}
-
-/// Spec §9.5, reviewer image admission: a vendor-catalog model with image
-/// input in its catalog modalities must be admissible for reviewer images —
-/// the admission gate requires `!used_fallback && modalities contains Image`,
-/// and the vendor constructor feeds modalities from the catalog entry.
-#[test]
-fn a_vendor_model_with_image_modality_admits_reviewer_images() {
-    let entry = crate::vendor_catalog::resolve("GLM-5.3-Flash").expect("resolvable");
-    let model = crate::vendor_catalog::vendor_model_info(&entry);
-    // glm-5.3-flash's catalog entry lists image input.
-    assert!(
-        model.input_modalities.contains(&InputModality::Image),
-        "catalog modalities must flow into the model info"
-    );
-    assert!(!model.used_fallback_model_metadata);
-    // The admission gate in guardian::review_session is
-    // `!used_fallback && modalities.contains(Image)` — both sides hold.
-
-    // A fallback placeholder never admits, regardless of config.
-    let placeholder = crate::model_info::model_info_from_slug("unknown-model-x");
-    assert!(placeholder.used_fallback_model_metadata);
 }

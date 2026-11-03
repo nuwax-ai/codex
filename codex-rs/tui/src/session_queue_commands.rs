@@ -9,6 +9,9 @@ use codex_app_server_client::TypedRequestError;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::ThreadQueueAddParams;
 use codex_app_server_protocol::ThreadQueueAddResponse;
+use codex_app_server_protocol::ThreadReadParams;
+use codex_app_server_protocol::ThreadResumeParams;
+use codex_app_server_protocol::ThreadStatus;
 use codex_app_server_protocol::UserInput;
 use codex_app_server_protocol::experimental_required_message;
 use codex_protocol::ThreadId;
@@ -17,6 +20,9 @@ use color_eyre::Report;
 use color_eyre::eyre::Result;
 use color_eyre::eyre::WrapErr;
 use color_eyre::eyre::eyre;
+use serde::Deserialize;
+use serde::de::IgnoredAny;
+use std::io::Write;
 use std::path::Path;
 use uuid::Uuid;
 
@@ -27,21 +33,18 @@ const THREAD_QUEUE_ADD_METHOD: &str = "thread/queue/add";
 pub async fn run_session_queue_command(
     target: String,
     message: String,
+    resume: bool,
     options: SessionArchiveCommandOptions,
 ) -> Result<String> {
     if options.cli.no_daemon && options.explicit_remote_endpoint.is_none() {
         return Err(eyre!(
-            "--no-daemon cannot be used with nuwax-harness queue. Queuing must discover the shared server to avoid writing through a separate server."
+            "--no-daemon cannot be used with codex queue. Queuing must discover the shared server to avoid writing through a separate server."
         ));
     }
-    let codex_home = find_codex_home().wrap_err("failed to find Nuwax Harness home")?;
+    let codex_home = find_codex_home().wrap_err("failed to find Codex home")?;
     let explicit_remote = options.explicit_remote_endpoint.is_some();
-    let mut app_server = start_app_server_for_session_command(
-        options,
-        codex_home.to_path_buf(),
-        crate::session_startup_policy::SessionCommandPurpose::Queue,
-    )
-    .await?;
+    let mut app_server =
+        start_app_server_for_session_command(options, codex_home.to_path_buf()).await?;
     if !explicit_remote
         && app_server.uses_embedded_app_server()
         && super::maybe_probe_default_daemon_socket(codex_home.as_path())
@@ -78,6 +81,12 @@ pub async fn run_session_queue_command(
         }
         result => result?,
     };
+    if resume && let Err(err) = resume_if_unloaded(&mut app_server, thread_id).await {
+        let _ = writeln!(
+            std::io::stderr().lock(),
+            "Warning: message was queued, but could not resume thread {thread_id}: {err:#}"
+        );
+    }
 
     Ok(format!(
         "Queued message {} for thread {}.",
@@ -105,18 +114,13 @@ pub(super) async fn run_session_queue_action_with_app_server(
                 // An empty filter includes Atlas/ChatGPT sessions.
                 Vec::new(),
             ],
-            // Queue resolves the target across providers; enqueueing goes
-            // through the owner server either way.
-            super::named_session_lookup::ProviderFilter::All,
+            /*model_providers*/ None,
         )
         .await?
         .ok_or_else(|| eyre!("No active session found matching '{target}'."))?;
         ThreadId::from_string(&thread.id)
             .wrap_err_with(|| format!("app server returned invalid session id `{}`", thread.id))?
     };
-    // Enqueue through the selected owner without inferring its model capabilities
-    // from creation-time rollout metadata. Resume and execution validate the
-    // owner's current thread configuration when they need the provider.
     let request_id = app_server.next_request_id();
     let response = app_server
         .request_handle()
@@ -134,6 +138,50 @@ pub(super) async fn run_session_queue_action_with_app_server(
         .await
         .wrap_err("failed to queue session message")?;
     Ok((thread_id, response))
+}
+
+async fn resume_if_unloaded(app_server: &mut AppServerSession, thread_id: ThreadId) -> Result<()> {
+    if app_server.uses_embedded_app_server() {
+        return Err(eyre!(
+            "start a local daemon or specify a server with --remote"
+        ));
+    }
+    // Only decode the status: remote thread metadata can contain paths from another OS.
+    #[derive(Deserialize)]
+    struct ReadResponse {
+        thread: Status,
+    }
+    #[derive(Deserialize)]
+    struct Status {
+        status: ThreadStatus,
+    }
+
+    let handle = app_server.request_handle();
+    let response: ReadResponse = handle
+        .request_typed(ClientRequest::ThreadRead {
+            request_id: app_server.next_request_id(),
+            params: ThreadReadParams {
+                thread_id: thread_id.to_string(),
+                include_turns: false,
+            },
+        })
+        .await
+        .wrap_err_with(|| format!("failed to read thread {thread_id}"))?;
+    if response.thread.status != ThreadStatus::NotLoaded {
+        // A fresh loaded thread can accept input before it has any history to resume.
+        return Ok(());
+    }
+    handle
+        .request_typed::<IgnoredAny>(ClientRequest::ThreadResume {
+            request_id: app_server.next_request_id(),
+            params: ThreadResumeParams {
+                thread_id: thread_id.to_string(),
+                exclude_turns: true,
+                ..Default::default()
+            },
+        })
+        .await?;
+    Ok(())
 }
 
 fn is_unsupported_queue_error(error: &Report) -> bool {

@@ -110,13 +110,6 @@ impl RouteAwareRequestError {
         if self.status() == Some(StatusCode::PROXY_AUTHENTICATION_REQUIRED) {
             return Some(RouteFailureClass::ProxyAuthenticationRequired);
         }
-        if let Self::Route(RouteAwareClientPoolError::Resolve(error)) = self
-            && let Some(source) = error.get_ref()
-            && source.is::<rustls::Error>()
-        {
-            return Some(RouteFailureClass::TlsError);
-        }
-
         let mut source: Option<&(dyn std::error::Error + 'static)> = Some(self);
         while let Some(error) = source {
             if crate::outbound_proxy::chain_carries_tls_error(error) {
@@ -125,7 +118,14 @@ impl RouteAwareRequestError {
             if error.to_string() == "tunnel error: proxy authorization required" {
                 return Some(RouteFailureClass::ProxyAuthenticationRequired);
             }
-            source = error.source();
+            // io::Error::source skips its inner error, which may itself be the TLS error.
+            source = match error
+                .downcast_ref::<io::Error>()
+                .and_then(io::Error::get_ref)
+            {
+                Some(inner) => Some(inner),
+                None => error.source(),
+            };
         }
 
         match self {
@@ -581,6 +581,7 @@ impl RouteAwareClientPool {
                 || self.http_client_factory.outbound_proxy_policy()
                     == OutboundProxyPolicy::ResolvedDefault
                 || self.http_client_factory.network_policy().is_managed()
+                || self.http_client_factory.protects_sensitive_headers()
                 || self.rustls_clients.is_some())
     }
 

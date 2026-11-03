@@ -19,19 +19,6 @@ pub(super) enum SessionCollection {
     Archived,
 }
 
-/// How a lookup constrains the provider dimension of `thread/list`.
-pub(super) enum ProviderFilter<'a> {
-    /// Every provider's sessions match: administrative lookups must not
-    /// depend on the invoking client's current model provider. Sent as an
-    /// explicit empty list so the server skips its default-provider filter.
-    All,
-    /// Let the server apply its current default provider filter (the resume
-    /// picker behavior when no provider context is available).
-    ServerDefault,
-    /// Constrain matches to one provider id.
-    Only(&'a str),
-}
-
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AmbiguousSessionName {
     #[error(
@@ -64,7 +51,7 @@ pub(super) async fn lookup(
     name: &str,
     collections: &[SessionCollection],
     source_kind_filters: &[Vec<ThreadSourceKind>],
-    provider_filter: ProviderFilter<'_>,
+    model_providers: Option<Vec<String>>,
 ) -> Result<Option<Thread>> {
     if name.trim().is_empty() {
         return Ok(None);
@@ -77,18 +64,16 @@ pub(super) async fn lookup(
             loop {
                 let response = app_server
                     .thread_list(ThreadListParams {
+                        current_account_only: false,
                         excluded_thread_ids: None,
+                        attached_to_thread_id: None,
                         originators: None,
                         cursor,
                         limit: Some(100),
                         // Activity must not move an unread thread ahead of the cursor.
                         sort_key: Some(ThreadSortKey::CreatedAt),
                         sort_direction: None,
-                        model_providers: match &provider_filter {
-                            ProviderFilter::All => Some(Vec::new()),
-                            ProviderFilter::ServerDefault => None,
-                            ProviderFilter::Only(provider) => Some(vec![provider.to_string()]),
-                        },
+                        model_providers: model_providers.clone(),
                         source_kinds: Some(source_kinds.clone()),
                         archived: Some(matches!(collection, SessionCollection::Archived)),
                         section_id: None,

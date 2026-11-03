@@ -29,6 +29,7 @@ use codex_app_server_protocol::DeprecationNoticeNotification;
 use codex_app_server_protocol::FileChangeApprovalDecision;
 use codex_app_server_protocol::FileChangeRequestApprovalResponse;
 use codex_app_server_protocol::GeneratedImageRef;
+use codex_app_server_protocol::ItemCompletedNotification;
 use codex_app_server_protocol::ItemStartedNotification;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCErrorError;
@@ -52,7 +53,7 @@ use codex_app_server_protocol::ThreadGoalGetResponse;
 use codex_app_server_protocol::ThreadGoalSetResponse;
 use codex_app_server_protocol::ThreadGoalStatus;
 use codex_app_server_protocol::ThreadHistoryMode;
-use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::ThreadListResponse;
 use codex_app_server_protocol::ThreadLoadedListParams;
 use codex_app_server_protocol::ThreadLoadedListResponse;
@@ -73,8 +74,6 @@ use codex_app_server_protocol::ThreadStatusChangedNotification;
 use codex_app_server_protocol::ThreadTurnsListParams;
 use codex_app_server_protocol::ThreadTurnsListResponse;
 use codex_app_server_protocol::ThreadUnsubscribeParams;
-use codex_app_server_protocol::ThreadUnsubscribeResponse;
-use codex_app_server_protocol::ThreadUnsubscribeStatus;
 use codex_app_server_protocol::TurnEnvironmentParams;
 use codex_app_server_protocol::TurnItemsView;
 use codex_app_server_protocol::TurnStartParams;
@@ -158,6 +157,9 @@ use super::analytics::thread_initialized_event;
 use super::analytics::wait_for_analytics_payload;
 use super::analytics::wait_for_goal_event;
 use super::analytics::wait_for_matching_analytics_event;
+
+#[path = "thread_resume_account_tests.rs"]
+mod account_tests;
 
 #[cfg(target_os = "linux")]
 #[path = "thread_resume_network_tests.rs"]
@@ -256,6 +258,14 @@ async fn thread_resume_paginated_model_context_preserves_original_metadata() -> 
     )
     .await??;
     timeout(DEFAULT_READ_TIMEOUT, primary.shutdown_gracefully()).await??;
+
+    assert!(
+        !codex_rollout::read_session_meta_line(&path)
+            .await?
+            .meta
+            .account_scoped,
+        "resuming legacy history must keep its cross-account visibility"
+    );
 
     let mut secondary = TestAppServer::builder()
         .with_codex_home(codex_home.path())
@@ -1020,6 +1030,82 @@ sandbox = "unelevated"
 }
 
 #[tokio::test]
+async fn resume_and_fork_restore_unnamed_permissions_from_a_legacy_update() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let codex_home = TempDir::new()?;
+    MockResponsesConfig::new(&server.uri())
+        .with_sandbox_mode("workspace-write")
+        .write(codex_home.path())?;
+    let stamp = "2025-01-05T12-00-00";
+    let thread_id = create_fake_rollout(
+        codex_home.path(),
+        stamp,
+        "2025-01-05T12:00:00Z",
+        "Unnamed permissions",
+        Some("mock_provider"),
+        /*git_info*/ None,
+    )?;
+    let path = rollout_path(codex_home.path(), stamp, &thread_id);
+    let owned: ThreadSettingsAppliedEvent = serde_json::from_value(json!({
+        "thread_id": thread_id,
+        "thread_settings": {
+            "model": "gpt-5.5",
+            "model_provider_id": "mock_provider",
+            "cwd": normalized_existing_path(codex_home.path())?,
+            "approval_policy": "never",
+            "approvals_reviewer": "user",
+            "permission_profile": PermissionProfile::workspace_write(),
+            "collaboration_mode": {"mode": "default", "settings": {"model": "gpt-5.5"}},
+        },
+    }))?;
+    let mut legacy = owned.clone();
+    legacy.thread_id = None;
+    legacy.thread_settings.permission_profile = PermissionProfile::read_only();
+    for event in [owned, legacy] {
+        append_rollout_item_to_path(
+            &path,
+            &RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)),
+        )
+        .await?;
+    }
+
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_managed_config()
+        .build_initialized()
+        .await?;
+    // Fork first so it reads the original history before resume writes a checkpoint.
+    let fork_id = mcp
+        .send_thread_fork_request(ThreadForkParams {
+            thread_id: thread_id.clone(),
+            ..Default::default()
+        })
+        .await?;
+    let fork: ThreadForkResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(fork_id)).await??;
+    let resume_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id,
+            ..Default::default()
+        })
+        .await?;
+    let resumed: ThreadResumeResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
+    let expected = (
+        AppSandboxPolicy::ReadOnly {
+            network_access: false,
+        },
+        None,
+    );
+    assert_eq!(
+        (resumed.sandbox, resumed.active_permission_profile),
+        expected
+    );
+    assert_eq!((fork.sandbox, fork.active_permission_profile), expected);
+    Ok(())
+}
+
+#[tokio::test]
 async fn cold_resume_workspace_roots_validate_foreign_startup_paths() -> Result<()> {
     let server = create_mock_responses_server_repeating_assistant("Done").await;
     let codex_home = TempDir::new()?;
@@ -1475,6 +1561,9 @@ async fn thread_resume_preserves_acknowledged_model_effort_and_approvals_reviewe
             .send_thread_start_request_with_auto_env(ThreadStartParams {
                 model: Some("gpt-5.4".to_string()),
                 history_mode: Some(ThreadHistoryMode::Legacy),
+                approval_policy: Some(AskForApproval::Never),
+                approvals_reviewer: Some(ApprovalsReviewer::User),
+                permissions: Some(":workspace".to_string()),
                 ..Default::default()
             })
             .await?;
@@ -1517,7 +1606,9 @@ async fn thread_resume_preserves_acknowledged_model_effort_and_approvals_reviewe
                 thread_id: thread.id.clone(),
                 model: Some("gpt-5.2-codex".to_string()),
                 effort: Some(ReasoningEffort::Ultra),
+                approval_policy: Some(AskForApproval::OnRequest),
                 approvals_reviewer: Some(ApprovalsReviewer::AutoReview),
+                permissions: Some(":read-only".to_string()),
                 cwd: Some(persisted_cwd.clone()),
                 ..Default::default()
             })
@@ -1608,7 +1699,7 @@ async fn thread_resume_preserves_acknowledged_model_effort_and_approvals_reviewe
     .await??;
     timeout(DEFAULT_READ_TIMEOUT, mcp.shutdown_gracefully()).await??;
 
-    // Older rollouts can retain a frozen turn context after an accepted settings update.
+    // A running turn can record its original permissions after the thread accepts an update.
     let (items, _, _) = RolloutRecorder::load_rollout_items(&rollout_path).await?;
     let frozen_context = items
         .into_iter()
@@ -1620,6 +1711,21 @@ async fn thread_resume_preserves_acknowledged_model_effort_and_approvals_reviewe
         .with_codex_home(codex_home.path())
         .build_initialized()
         .await?;
+    let fork_id = mcp
+        .send_thread_fork_request(ThreadForkParams {
+            thread_id: thread_id.clone(),
+            ..Default::default()
+        })
+        .await?;
+    let fork: ThreadForkResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(fork_id)).await??;
+    assert_eq!(fork.approval_policy, AskForApproval::OnRequest);
+    assert_eq!(fork.approvals_reviewer, ApprovalsReviewer::AutoReview);
+    assert_eq!(
+        fork.active_permission_profile,
+        Some(ActivePermissionProfile::new(":read-only"))
+    );
+
     let resume_id = mcp
         .send_thread_resume_request(ThreadResumeParams {
             thread_id: thread_id.clone(),
@@ -1631,10 +1737,25 @@ async fn thread_resume_preserves_acknowledged_model_effort_and_approvals_reviewe
         cwd,
         reasoning_effort,
         collaboration_mode,
+        approval_policy,
+        approvals_reviewer,
+        active_permission_profile,
         ..
     } = timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
     assert_eq!(reasoning_effort, Some(ReasoningEffort::High));
     assert_eq!(cwd.as_path(), persisted_cwd);
+    assert_eq!(
+        (
+            approval_policy,
+            approvals_reviewer,
+            active_permission_profile
+        ),
+        (
+            AskForApproval::OnRequest,
+            ApprovalsReviewer::AutoReview,
+            Some(ActivePermissionProfile::new(":read-only")),
+        )
+    );
     let (items, _, _) = RolloutRecorder::load_rollout_items(&rollout_path).await?;
     let mode = items.iter().rev().find_map(|item| match item {
         RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event))
@@ -2738,8 +2859,8 @@ async fn thread_resume_returns_rollout_history() -> Result<()> {
     let turn = &thread.turns[0];
     assert_eq!(turn.status, TurnStatus::Completed);
     assert_eq!(turn.items.len(), 1, "expected user message item");
-    match &turn.items[0] {
-        ThreadItem::UserMessage { content, .. } => {
+    match &turn.items[0].payload {
+        ThreadItemPayload::UserMessage { content, .. } => {
             assert_eq!(
                 content,
                 &vec![UserInput::Text {
@@ -2774,16 +2895,16 @@ async fn thread_resume_redacts_payloads_for_chatgpt_remote_clients() -> Result<(
             let remote_mcp_item = remote_turn
                 .items
                 .iter()
-                .find(|item| matches!(item, ThreadItem::McpToolCall { .. }))
+                .find(|item| matches!(&item.payload, ThreadItemPayload::McpToolCall { .. }))
                 .expect("remote resume should include redacted MCP item");
-            let ThreadItem::McpToolCall {
+            let ThreadItemPayload::McpToolCall {
                 arguments,
                 app_context,
                 read_only_hint,
                 result,
                 error,
                 ..
-            } = remote_mcp_item
+            } = &remote_mcp_item.payload
             else {
                 unreachable!("matched MCP item");
             };
@@ -2814,7 +2935,7 @@ async fn thread_resume_redacts_payloads_for_chatgpt_remote_clients() -> Result<(
                 !remote_turn
                     .items
                     .iter()
-                    .any(|item| matches!(item, ThreadItem::ImageGeneration(_))),
+                    .any(|item| matches!(&item.payload, ThreadItemPayload::ImageGeneration(_))),
                 "remote resume should drop image generation items for {client_name}"
             );
         }
@@ -2829,15 +2950,15 @@ async fn thread_resume_redacts_payloads_for_chatgpt_remote_clients() -> Result<(
     let normal_mcp_item = normal_turn
         .items
         .iter()
-        .find(|item| matches!(item, ThreadItem::McpToolCall { .. }))
+        .find(|item| matches!(&item.payload, ThreadItemPayload::McpToolCall { .. }))
         .expect("normal resume should include MCP item");
-    let ThreadItem::McpToolCall {
+    let ThreadItemPayload::McpToolCall {
         arguments,
         app_context,
         read_only_hint,
         result,
         ..
-    } = normal_mcp_item
+    } = &normal_mcp_item.payload
     else {
         unreachable!("matched MCP item");
     };
@@ -2868,8 +2989,8 @@ async fn thread_resume_redacts_payloads_for_chatgpt_remote_clients() -> Result<(
     assert_eq!(result.meta, Some(json!({"secret":"meta"})));
     assert!(
         normal_turn.items.iter().any(|item| matches!(
-            item,
-            ThreadItem::ImageGeneration(item)
+            &item.payload,
+            ThreadItemPayload::ImageGeneration(item)
                 if matches!(
                     &item.image,
                     GeneratedImageRef::Inline { result }
@@ -2989,6 +3110,7 @@ fn append_resume_redaction_history(
             failure: None,
             saved_path: Some(test_absolute_path("/tmp/ig-1.png")),
             input_images: Vec::new(),
+            generation_id: None,
         }),
     ]
     .into_iter()
@@ -4139,6 +4261,7 @@ async fn cold_paginated_resume_restores_usage_without_loading_turns() -> Result<
                     total_tokens: 150,
                     ..Default::default()
                 },
+                last_usage_includes_reasoning: None,
                 last_token_usage: TokenUsage {
                     input_tokens: 70,
                     output_tokens: 20,
@@ -4192,6 +4315,38 @@ async fn cold_paginated_resume_restores_usage_without_loading_turns() -> Result<
         timeout(DEFAULT_READ_TIMEOUT, app_server.read_response(turns_id)).await??;
     assert_eq!(notification.turn_id, turns.data[0].id);
 
+    let id = app_server
+        .send_raw_request(
+            "thread/fork",
+            Some(json!({"threadId": notification.thread_id, "attachToSource": true})),
+        )
+        .await?;
+    let child: ThreadForkResponse = app_server.read_response(id).await?;
+    app_server.shutdown_gracefully().await?;
+
+    let mut app_server = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build_initialized()
+        .await?;
+    for (method, params) in [
+        ("thread/resume", json!({"threadId": child.thread.id})),
+        ("thread/resume", json!({"threadId": child.thread.id})),
+        ("thread/fork", json!({"threadId": child.thread.id})),
+    ] {
+        let id = app_server.send_raw_request(method, Some(params)).await?;
+        let _: serde_json::Value = app_server.read_response(id).await?;
+    }
+    app_server
+        .read_stream_until_notification_message("thread/started")
+        .await?;
+    assert!(
+        app_server
+            .pending_notification_methods()
+            .iter()
+            .all(|method| method != "thread/tokenUsage/updated"),
+        "an empty attached thread must not replay its parent's usage"
+    );
+
     Ok(())
 }
 
@@ -4218,6 +4373,7 @@ async fn cold_paginated_resume_omits_usage_when_its_turn_is_ambiguous() -> Resul
                     total_tokens: 150,
                     ..Default::default()
                 },
+                last_usage_includes_reasoning: None,
                 last_token_usage: TokenUsage {
                     total_tokens: 90,
                     ..Default::default()
@@ -4502,6 +4658,7 @@ async fn thread_resume_token_usage_replay_can_belong_to_interrupted_turn() -> Re
                         total_tokens: 230,
                         codex_rollout_budget_units: None,
                     },
+                    last_usage_includes_reasoning: None,
                     last_token_usage: TokenUsage {
                         input_tokens: 90,
                         cached_input_tokens: 30,
@@ -4644,6 +4801,8 @@ async fn thread_resume_prefers_persisted_git_metadata_for_local_threads() -> Res
     let rollout_dir = rollout_path.parent().expect("rollout parent directory");
     std::fs::create_dir_all(rollout_dir)?;
     let session_meta = SessionMeta {
+        account_scoped: false,
+        attached_thread: false,
         creator_user_id: None,
         creator_account_id: None,
         session_id: conversation_id.into(),
@@ -5365,6 +5524,10 @@ async fn thread_resume_rejoins_running_paginated_thread_with_initial_page() -> R
                 gate: None,
                 body: responses::sse(vec![
                     responses::ev_response_created("resp-2"),
+                    responses::ev_message_item_added("earlier", ""),
+                    responses::ev_assistant_message("earlier", "First progress update"),
+                    responses::ev_message_item_added("progress", ""),
+                    responses::ev_assistant_message("progress", "Checking"),
                     responses::ev_message_item_added("msg-2", ""),
                 ]),
             },
@@ -5439,20 +5602,18 @@ async fn thread_resume_rejoins_running_paginated_thread_with_initial_page() -> R
         primary.read_stream_until_notification_message("turn/started"),
     )
     .await??;
-    // An assistant item starts after the user message has reached live history.
-    // The gated remainder of the response keeps the turn running during resume.
-    timeout(DEFAULT_READ_TIMEOUT, async {
-        loop {
-            let started: ItemStartedNotification =
-                primary.read_notification("item/started").await?;
-            if started.turn_id == running_turn.id
-                && matches!(started.item, ThreadItem::AgentMessage { .. })
-            {
-                return Ok::<(), anyhow::Error>(());
-            }
-        }
-    })
-    .await??;
+    // The final item is gated. Record exactly what subscribers saw before reconnecting.
+    let mut live_items = Vec::new();
+    for _ in 0..3 {
+        let completed: ItemCompletedNotification = timeout(
+            DEFAULT_READ_TIMEOUT,
+            primary.read_notification("item/completed"),
+        )
+        .await??;
+        assert_eq!(completed.turn_id, running_turn.id);
+        live_items.push(completed.item);
+    }
+    let summary_items = [live_items[0].clone(), live_items[2].clone()];
 
     let resume_id = primary
         .send_thread_resume_request(ThreadResumeParams {
@@ -5524,6 +5685,10 @@ async fn thread_resume_rejoins_running_paginated_thread_with_initial_page() -> R
         "hot paginated resume should wait for a real token usage update"
     );
 
+    let history_db = codex_state::open_thread_history_db(
+        &codex_state::SqliteConfig::new_for_testing(codex_home.path().abs()),
+    )
+    .await?;
     for (exclude_turns, items_view) in [
         (true, None),
         (true, Some(TurnItemsView::Full)),
@@ -5551,14 +5716,50 @@ async fn thread_resume_rejoins_running_paginated_thread_with_initial_page() -> R
             page.data[0].items_view,
             items_view.unwrap_or(TurnItemsView::Summary)
         );
-        assert!(!page.data[0].items.is_empty());
+        let page_turn = &page.data[0];
+        let expected = if page_turn.items_view == TurnItemsView::Full {
+            live_items.as_slice()
+        } else {
+            &summary_items
+        };
+        assert_eq!(page_turn.items, expected);
+        if page_turn.items_view == TurnItemsView::Full {
+            // Simulate a prepared page that does not yet include the live turn.
+            let deleted = sqlx::query("DELETE FROM thread_turns WHERE turn_id = ?")
+                .bind(&running_turn.id)
+                .execute(&history_db)
+                .await?;
+            assert_eq!(deleted.rows_affected(), 1);
+        }
         if !exclude_turns {
             let full_turn = resumed.thread.turns.last().expect("full active turn");
             assert_eq!(full_turn.id, running_turn.id);
             assert_eq!(full_turn.items_view, TurnItemsView::Full);
-            assert!(!full_turn.items.is_empty());
+            assert_eq!(full_turn.items, live_items);
         }
     }
+
+    // An unreadable item only fails requests that need its text.
+    sqlx::query("UPDATE thread_items SET item_json = json_set(item_json, '$.text', '') WHERE turn_id = ? AND item_id = 'earlier'")
+        .bind(&running_turn.id).execute(&history_db).await?;
+    let missing_id = primary
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id: thread.id.clone(),
+            ..Default::default()
+        })
+        .await?;
+    let error = timeout(
+        DEFAULT_READ_TIMEOUT,
+        primary.read_stream_until_error_message(RequestId::Integer(missing_id)),
+    )
+    .await??;
+    assert_eq!(
+        error.error.message,
+        format!(
+            "saved history is missing completed assistant items for turn {}",
+            running_turn.id
+        )
+    );
 
     let asc_resume_id = primary
         .send_thread_resume_request(ThreadResumeParams {
@@ -5567,7 +5768,7 @@ async fn thread_resume_rejoins_running_paginated_thread_with_initial_page() -> R
             initial_turns_page: Some(ThreadResumeInitialTurnsPageParams {
                 limit: Some(1),
                 sort_direction: Some(SortDirection::Asc),
-                items_view: Some(TurnItemsView::NotLoaded),
+                items_view: Some(TurnItemsView::Full),
             }),
             ..Default::default()
         })
@@ -5900,14 +6101,14 @@ async fn thread_resume_replays_pending_file_change_request_approval() -> Result<
                 .await?;
             let started: ItemStartedNotification =
                 serde_json::from_value(notification.params.clone().expect("item/started params"))?;
-            if let ThreadItem::FileChange { .. } = started.item {
-                return Ok::<ThreadItem, anyhow::Error>(started.item);
+            if let ThreadItemPayload::FileChange { .. } = started.item.payload {
+                return Ok::<ThreadItemPayload, anyhow::Error>(started.item.payload);
             }
         }
     })
     .await??;
     let expected_readme_path = workspace.join("README.md");
-    let expected_file_change = ThreadItem::FileChange {
+    let expected_file_change = ThreadItemPayload::FileChange {
         id: "patch-call".to_string(),
         changes: vec![codex_app_server_protocol::FileUpdateChange {
             path: expected_readme_path.to_string_lossy().into_owned(),
@@ -5997,106 +6198,6 @@ async fn thread_resume_replays_pending_file_change_request_approval() -> Result<
 }
 
 #[tokio::test]
-async fn thread_resume_config_provider_override_preserves_current_model_selection() -> Result<()> {
-    let saved_server = create_mock_responses_server_repeating_assistant("Saved").await;
-    let selected_server = create_mock_responses_server_repeating_assistant("Selected").await;
-    let codex_home = TempDir::new()?;
-    let selected_base_url = format!("{}/v1", selected_server.uri());
-    mock_responses_config(&saved_server.uri())
-        .with_model("gpt-5.2-codex")
-        .with_extra_config(&format!(
-            r#"[model_providers.resume_provider]
-name = "Resume provider"
-base_url = "{selected_base_url}"
-wire_api = "responses"
-request_max_retries = 0
-stream_max_retries = 0"#
-        ))
-        .write(codex_home.path())?;
-
-    // The fixture explicitly starts gpt-5.4, unlike the current launch default.
-    let RestartedThreadFixture {
-        mut mcp,
-        thread_id,
-        rollout_file_path,
-        ..
-    } = start_materialized_thread_and_restart(codex_home.path(), "saved selection").await?;
-    let expected_thread_id = ThreadId::from_string(&thread_id)?;
-    let (items, _, _) = RolloutRecorder::load_rollout_items(&rollout_file_path).await?;
-    let saved_model = items.iter().rev().find_map(|item| match item {
-        RolloutItem::TurnContext(context) => Some(context.model.as_str()),
-        _ => None,
-    });
-    let saved_provider = items.iter().find_map(|item| match item {
-        RolloutItem::SessionMeta(meta) if meta.meta.id == expected_thread_id => {
-            meta.meta.model_provider.as_deref()
-        }
-        _ => None,
-    });
-    assert_eq!(
-        (saved_model, saved_provider),
-        (Some("gpt-5.4"), Some("mock_provider"))
-    );
-
-    let resume_id = mcp
-        .send_thread_resume_request(ThreadResumeParams {
-            thread_id,
-            config: Some(
-                [("model_provider".to_string(), json!("resume_provider"))]
-                    .into_iter()
-                    .collect(),
-            ),
-            ..Default::default()
-        })
-        .await?;
-    let resumed: ThreadResumeResponse =
-        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
-    assert_eq!(
-        (
-            resumed.model.as_str(),
-            resumed.model_provider.as_str(),
-            resumed.thread.model_provider.as_str(),
-        ),
-        ("gpt-5.2-codex", "resume_provider", "resume_provider")
-    );
-
-    let turn_id = mcp
-        .send_turn_start_request(TurnStartParams {
-            thread_id: resumed.thread.id,
-            input: vec![UserInput::Text {
-                text: "use the resumed selection".to_string(),
-                text_elements: Vec::new(),
-            }],
-            ..Default::default()
-        })
-        .await?;
-    timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(turn_id)),
-    )
-    .await??;
-    timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_notification_message("turn/completed"),
-    )
-    .await??;
-    let requests = selected_server
-        .received_requests()
-        .await
-        .unwrap_or_default();
-    let response_models = requests
-        .iter()
-        .filter(|request| request.url.path().ends_with("/responses"))
-        .map(|request| serde_json::from_slice::<serde_json::Value>(&request.body))
-        .collect::<serde_json::Result<Vec<_>>>()?
-        .into_iter()
-        .map(|body| body["model"].clone())
-        .collect::<Vec<_>>();
-    assert_eq!(response_models, vec![json!("gpt-5.2-codex")]);
-    Ok(())
-}
-
-#[tokio::test]
 async fn thread_resume_with_overrides_preserves_recency_and_checkpoints_model() -> Result<()> {
     let server = create_mock_responses_server_repeating_assistant("Done").await;
     let codex_home = TempDir::new()?;
@@ -6156,6 +6257,51 @@ async fn thread_resume_with_overrides_preserves_recency_and_checkpoints_model() 
         mcp.read_stream_until_notification_message("turn/completed"),
     )
     .await??;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn thread_resume_does_not_checkpoint_unchanged_settings() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let codex_home = TempDir::new()?;
+    mock_responses_config(&server.uri()).write(codex_home.path())?;
+
+    let RestartedThreadFixture {
+        mut mcp,
+        thread_id,
+        rollout_file_path,
+        ..
+    } = start_materialized_thread_and_restart(codex_home.path(), "materialize").await?;
+
+    let (items, _, _) = RolloutRecorder::load_rollout_items(&rollout_file_path).await?;
+    let settings_before_resume = items
+        .into_iter()
+        .filter_map(|item| match item {
+            RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) => Some(event),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(!settings_before_resume.is_empty());
+
+    let resume_id = mcp
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id,
+            ..Default::default()
+        })
+        .await?;
+    let _: ThreadResumeResponse =
+        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
+
+    let (items, _, _) = RolloutRecorder::load_rollout_items(&rollout_file_path).await?;
+    let settings_after_resume = items
+        .into_iter()
+        .filter_map(|item| match item {
+            RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) => Some(event),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(settings_after_resume, settings_before_resume);
 
     Ok(())
 }
@@ -6290,180 +6436,6 @@ async fn thread_resume_surfaces_cloud_config_bundle_load_errors() -> Result<()> 
             "statusCode": 401,
             "detail": "Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again.",
         }))
-    );
-
-    Ok(())
-}
-
-/// A proxy that counts (and denies) any connection targeting a host other
-/// than the exempted loopback mocks, so tests can prove the app-server never
-/// dials a production endpoint.
-struct ProductionDialCounter {
-    port: u16,
-    dials: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-}
-
-impl ProductionDialCounter {
-    async fn start() -> ProductionDialCounter {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind proxy");
-        let port = listener.local_addr().expect("proxy port").port();
-        let dials = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let counter = std::sync::Arc::clone(&dials);
-        tokio::spawn(async move {
-            loop {
-                let (mut stream, _) = match listener.accept().await {
-                    Ok(value) => value,
-                    Err(_) => return,
-                };
-                let head = tokio::time::timeout(std::time::Duration::from_secs(5), async {
-                    use tokio::io::AsyncReadExt as _;
-                    let mut head = vec![0u8; 512];
-                    let read = stream.read(&mut head).await.unwrap_or(0);
-                    head.truncate(read);
-                    head
-                })
-                .await
-                .unwrap_or_default();
-                if head
-                    .windows(b"chatgpt.com".len())
-                    .any(|w| w == b"chatgpt.com")
-                {
-                    counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                }
-                // Deny the tunnel; the client should treat this like an
-                // unreachable endpoint, never a configured one.
-                use tokio::io::AsyncWriteExt as _;
-                let _ = stream.shutdown().await;
-            }
-        });
-        ProductionDialCounter { port, dials }
-    }
-
-    fn count(&self) -> usize {
-        self.dials.load(std::sync::atomic::Ordering::SeqCst)
-    }
-}
-
-/// When the startup config load fails and falls back to defaults, the cloud
-/// config bundle loader must keep targeting the deployment's configured
-/// `chatgpt_base_url` instead of the hardcoded production default, and the
-/// startup residency sync must stay bounded.
-///
-/// On the unfixed code the fallback silently re-points the loader at
-/// `https://chatgpt.com/backend-api/`, so the post-fallback bundle fetch
-/// leaves the test's mock and dials production — observable here as a counted
-/// proxy connection even on machines where production is reachable (where the
-/// fetch itself would otherwise succeed fast and hide the defect).
-#[tokio::test]
-async fn startup_config_fallback_keeps_bundle_on_configured_base_url() -> Result<()> {
-    let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/backend-api/wham/config/bundle"))
-        .respond_with(
-            ResponseTemplate::new(401)
-                .insert_header("content-type", "text/html")
-                .set_body_string("<html>nope</html>"),
-        )
-        .mount(&server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/oauth/token"))
-        .respond_with(ResponseTemplate::new(401).set_body_json(json!({
-            "error": { "code": "refresh_token_invalidated" }
-        })))
-        .mount(&server)
-        .await;
-
-    let proxy = ProductionDialCounter::start().await;
-    let proxy_url = format!("http://127.0.0.1:{}", proxy.port);
-
-    let codex_home = TempDir::new()?;
-    let model_server = create_mock_responses_server_repeating_assistant("Done").await;
-    let chatgpt_base_url = format!("{}/backend-api", server.uri());
-    mock_responses_config(&model_server.uri())
-        .with_root_config(&format!(r#"chatgpt_base_url = "{chatgpt_base_url}""#))
-        .write(codex_home.path())?;
-    write_chatgpt_auth(
-        codex_home.path(),
-        ChatGptAuthFixture::new("chatgpt-token")
-            .refresh_token("stale-refresh-token")
-            .plan_type("business")
-            .chatgpt_user_id("user-123")
-            .chatgpt_account_id("account-123")
-            .account_id("account-123"),
-        AuthCredentialsStoreMode::File,
-    )?;
-    let conversation_id = create_fake_rollout_with_text_elements(
-        codex_home.path(),
-        "2025-01-05T12-00-00",
-        "2025-01-05T12:00:00Z",
-        "Saved user message",
-        Vec::new(),
-        Some("mock_provider"),
-        /*git_info*/ None,
-    )?;
-    let refresh_token_url = format!("{}/oauth/token", server.uri());
-    let started = std::time::Instant::now();
-    let mut mcp = TestAppServer::builder()
-        .with_codex_home(codex_home.path())
-        .with_env_overrides(&[
-            ("OPENAI_API_KEY", None),
-            (
-                REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR,
-                Some(refresh_token_url.as_str()),
-            ),
-            ("HTTPS_PROXY", Some(proxy_url.as_str())),
-            ("https_proxy", Some(proxy_url.as_str())),
-            ("NO_PROXY", Some("localhost,127.0.0.1")),
-            ("no_proxy", Some("localhost,127.0.0.1")),
-        ])
-        .build_initialized()
-        .await?;
-
-    // The fallback must not have dialed any production endpoint: every bundle
-    // request stays on the configured base URL, which the loopback mocks
-    // answer.
-    assert_eq!(
-        proxy.count(),
-        0,
-        "startup dialed a production endpoint after the config fallback"
-    );
-    // The startup residency sync is bounded even when bundle responses are
-    // slow or the endpoint is unreachable.
-    assert!(
-        started.elapsed() < std::time::Duration::from_secs(10),
-        "startup took {}s after a config fallback",
-        started.elapsed().as_secs()
-    );
-
-    // The server is functional after the fallback: resuming the thread
-    // surfaces the configured bundle load error from the mock, exactly like
-    // the non-fallback path.
-    let resume_id = mcp
-        .send_thread_resume_request(ThreadResumeParams {
-            thread_id: conversation_id,
-            ..Default::default()
-        })
-        .await?;
-    let err: JSONRPCError = timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_error_message(RequestId::Integer(resume_id)),
-    )
-    .await??;
-    assert!(
-        err.error.message.contains("failed to load configuration"),
-        "unexpected error message: {}",
-        err.error.message
-    );
-    let data = err.error.data.expect("structured config load error");
-    assert_eq!(data["reason"], json!("cloudConfigBundle"));
-    assert_eq!(data["statusCode"], json!(401));
-    assert_eq!(
-        proxy.count(),
-        0,
-        "resume dialed a production endpoint after the config fallback"
     );
 
     Ok(())
@@ -6852,586 +6824,220 @@ async fn setup_rollout_fixture(codex_home: &Path, server_uri: &str) -> Result<Ro
     })
 }
 
-async fn captured_models(server: &MockServer) -> Result<Vec<serde_json::Value>> {
-    // wiremock records requests asynchronously; poll briefly so a
-    // just-completed turn's request is never raced by the assertion.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    loop {
-        let count = server.received_requests().await.unwrap_or_default().len();
-        if count >= 2 || std::time::Instant::now() > deadline {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+#[test_case::test_case(false, false; "missing_definition_config_override")]
+#[test_case::test_case(false, true; "missing_definition_typed_override")]
+#[test_case::test_case(true, false; "policy_conflict_config_override")]
+#[test_case::test_case(true, true; "policy_conflict_typed_override")]
+#[tokio::test]
+async fn thread_resume_returns_provider_error_even_with_provider_override(
+    policy_conflict: bool,
+    typed_override: bool,
+) -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let home = TempDir::new()?;
+    mock_responses_config(&server.uri()).write(home.path())?;
+    let thread_id = create_fake_rollout(
+        home.path(),
+        "2025-01-05T12-00-00",
+        "2025-01-05T12:00:00Z",
+        "Saved history",
+        Some("old_provider"),
+        /*git_info*/ None,
+    )?;
+    if policy_conflict {
+        let config_path = home.path().join("config.toml");
+        let config = std::fs::read_to_string(&config_path)?;
+        let server_uri = server.uri();
+        std::fs::write(
+            config_path,
+            format!(
+                "{config}\n[model_providers.old_provider]\nname = 'Original provider'\nbase_url = '{server_uri}/v1'\n"
+            ),
+        )?;
+        std::fs::write(
+            home.path().join("requirements.toml"),
+            "model_provider = 'mock_provider'",
+        )?;
     }
-    Ok(server
-        .received_requests()
-        .await
-        .unwrap_or_default()
-        .iter()
-        .filter(|request| request.url.path().ends_with("/responses"))
-        .map(|request| serde_json::from_slice::<serde_json::Value>(&request.body))
-        .collect::<serde_json::Result<Vec<_>>>()?
-        .into_iter()
-        .map(|body| body["model"].clone())
-        .collect())
-}
-
-/// Warm-path divergence of the echo override: on a thread this connection
-/// already loaded (and therefore subscribes to), and on a thread with a turn
-/// in flight, the override is IGNORED to preserve rejoin semantics — the
-/// response and the real HTTP body keep the model the live thread is using.
-/// The cold path applies the override (previous test); unifying the two is a
-/// product decision registered in the follow-up spec, not changed here.
-#[tokio::test]
-async fn thread_resume_echo_override_is_ignored_on_loaded_and_running_threads() -> Result<()> {
-    // LOADED: bare resume loads the thread (restoring gpt-5.4) and subscribes
-    // this connection; the subsequent echo resume must not re-route it.
-    let server = create_mock_responses_server_repeating_assistant("Done").await;
-    let codex_home = TempDir::new()?;
-    mock_responses_config(&server.uri())
-        .with_model("gpt-5.2-codex")
-        .write(codex_home.path())?;
-    let RestartedThreadFixture {
-        mut mcp, thread_id, ..
-    } = start_materialized_thread_and_restart(codex_home.path(), "loaded echo").await?;
-    let bare_id = mcp
-        .send_thread_resume_request(ThreadResumeParams {
-            thread_id: thread_id.clone(),
-            ..Default::default()
-        })
+    let mut client = TestAppServer::builder()
+        .with_codex_home(home.path())
+        .build_initialized()
         .await?;
-    let bare: ThreadResumeResponse =
-        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(bare_id)).await??;
-    assert_eq!(
-        (bare.model.as_str(), bare.model_provider.as_str()),
-        ("gpt-5.4", "mock_provider")
-    );
-    let echo_id = mcp
-        .send_thread_resume_request(ThreadResumeParams {
-            thread_id: thread_id.clone(),
-            config: Some(
-                [("model_provider".to_string(), json!("mock_provider"))]
-                    .into_iter()
-                    .collect(),
-            ),
-            ..Default::default()
-        })
-        .await?;
-    let echoed: ThreadResumeResponse =
-        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(echo_id)).await??;
-    assert_eq!(
-        (echoed.model.as_str(), echoed.model_provider.as_str()),
-        ("gpt-5.4", "mock_provider"),
-        "a loaded, subscribed thread must not re-route on an echo override"
-    );
-    let turn_id = mcp
-        .send_turn_start_request(TurnStartParams {
-            thread_id: echoed.thread.id,
-            input: vec![UserInput::Text {
-                text: "stay on the loaded model".to_string(),
-                text_elements: Vec::new(),
-            }],
-            ..Default::default()
-        })
-        .await?;
-    timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(turn_id)),
-    )
-    .await??;
-    timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_notification_message("turn/completed"),
-    )
-    .await??;
-    let wire_models = captured_models(&server).await?;
-    assert_eq!(
-        wire_models,
-        vec![json!("gpt-5.4"), json!("gpt-5.4")],
-        "one materialization turn and the post-echo turn stay on gpt-5.4"
-    );
-
-    // Gate the second response until resume assertions finish. A timed delay
-    // cannot prove the turn remains running on a busy host.
-    let (release_running_turn, running_turn_gate) = oneshot::channel();
-    let (delayed, _completions) = start_streaming_sse_server(vec![
-        ungated_goal_response(create_final_assistant_message_sse_response("materialize")?),
-        vec![
-            StreamingSseChunk {
-                gate: None,
-                body: responses::sse(vec![
-                    responses::ev_response_created("echo-running"),
-                    responses::ev_message_item_added("echo-message", ""),
-                ]),
-            },
-            StreamingSseChunk {
-                gate: Some(running_turn_gate),
-                body: responses::sse(vec![
-                    responses::ev_assistant_message("echo-message", "Done"),
-                    responses::ev_completed("echo-running"),
-                ]),
-            },
-        ],
-    ])
-    .await;
-    let running_home = TempDir::new()?;
-    mock_responses_config(delayed.uri())
-        .with_model("gpt-5.2-codex")
-        .write(running_home.path())?;
-    let RestartedThreadFixture {
-        mut mcp, thread_id, ..
-    } = start_materialized_thread_and_restart(running_home.path(), "running echo").await?;
-    let load_id = mcp
-        .send_thread_resume_request(ThreadResumeParams {
-            thread_id: thread_id.clone(),
-            ..Default::default()
-        })
-        .await?;
-    let loaded: ThreadResumeResponse =
-        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(load_id)).await??;
-    assert_eq!(
-        (loaded.model.as_str(), loaded.model_provider.as_str()),
-        ("gpt-5.4", "mock_provider")
-    );
-    let running_turn_id = mcp
-        .send_turn_start_request(TurnStartParams {
-            thread_id: loaded.thread.id,
-            input: vec![UserInput::Text {
-                text: "run slowly".to_string(),
-                text_elements: Vec::new(),
-            }],
-            ..Default::default()
-        })
-        .await?;
-    let started_response = timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(running_turn_id)),
-    )
-    .await??;
-    let started: TurnStartResponse = to_response(started_response)?;
-    timeout(DEFAULT_READ_TIMEOUT, async {
-        loop {
-            let item: ItemStartedNotification = mcp.read_notification("item/started").await?;
-            if item.turn_id == started.turn.id
-                && matches!(item.item, ThreadItem::AgentMessage { .. })
-            {
-                return Ok::<(), anyhow::Error>(());
-            }
+    let expected = if policy_conflict {
+        codex_app_server_protocol::ModelProviderError::ModelProviderPolicyConflict {
+            model_provider: "old_provider".into(),
+            required_model_provider: "mock_provider".into(),
         }
-    })
-    .await??;
-    assert_eq!(delayed.requests().await.len(), 2);
-    let running_echo_id = mcp
-        .send_thread_resume_request(ThreadResumeParams {
-            thread_id: thread_id.clone(),
-            config: Some(
-                [("model_provider".to_string(), json!("mock_provider"))]
-                    .into_iter()
-                    .collect(),
-            ),
-            ..Default::default()
-        })
-        .await?;
-    let running_echo: ThreadResumeResponse =
-        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(running_echo_id)).await??;
-    assert_eq!(
-        (
-            running_echo.model.as_str(),
-            running_echo.model_provider.as_str()
-        ),
-        ("gpt-5.4", "mock_provider"),
-        "a thread with a turn in flight must not re-route on an echo override"
-    );
-    assert!(matches!(
-        running_echo.thread.status,
-        ThreadStatus::Active { .. }
-    ));
-    release_running_turn
-        .send(())
-        .map_err(|_| anyhow::anyhow!("running response gate closed"))?;
-    timeout(
-        std::time::Duration::from_secs(30),
-        mcp.read_stream_until_notification_message("turn/completed"),
-    )
-    .await??;
-    let running_wire_models = delayed
-        .requests()
-        .await
-        .into_iter()
-        .map(|body| serde_json::from_slice::<serde_json::Value>(&body))
-        .collect::<serde_json::Result<Vec<_>>>()?
-        .into_iter()
-        .map(|body| body["model"].clone())
-        .collect::<Vec<_>>();
-    assert_eq!(
-        running_wire_models,
-        vec![json!("gpt-5.4"), json!("gpt-5.4")],
-        "the in-flight turn keeps the loaded model end to end"
-    );
-    delayed.shutdown().await;
-    Ok(())
-}
-
-/// Warm/subscribed contrast on a SECOND connection: client A loads and
-/// subscribes the thread; client B — a different connection to the same
-/// server — sends the same-provider echo resume. The live-owner rule must
-/// hold across connections: the loaded thread keeps its in-memory model
-/// instead of re-routing to the current default, and the wire stays on the
-/// materialized model end to end. (Same-connection coverage lives above;
-/// cold fresh-load semantics live in the test below.)
-#[tokio::test]
-async fn thread_resume_echo_override_is_ignored_when_another_connection_subscribes() -> Result<()> {
-    use super::connection_handling_websocket::connect_websocket;
-    use super::connection_handling_websocket::read_response_and_notification_for_method;
-    use super::connection_handling_websocket::read_response_for_id;
-    use super::connection_handling_websocket::send_initialize_request;
-    use super::connection_handling_websocket::send_request;
-    use super::connection_handling_websocket::spawn_websocket_server;
-
-    let server = create_mock_responses_server_repeating_assistant("Done").await;
-    let codex_home = TempDir::new()?;
-    mock_responses_config(&server.uri())
-        .with_model("gpt-5.2-codex")
-        .write(codex_home.path())?;
-    let (_process, bind_addr) = spawn_websocket_server(codex_home.path()).await?;
-
-    // Client A materializes the thread on gpt-5.4 and stays subscribed.
-    let mut client_a = connect_websocket(bind_addr).await?;
-    send_initialize_request(&mut client_a, /*id*/ 1, "echo-subscriber-a").await?;
-    timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_a, 1)).await??;
-    send_request(
-        &mut client_a,
-        "thread/start",
-        2,
-        Some(serde_json::to_value(ThreadStartParams {
-            model: Some("gpt-5.4".to_string()),
-            ..Default::default()
-        })?),
-    )
-    .await?;
-    let start_response =
-        timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_a, 2)).await??;
-    let ThreadStartResponse { thread, .. } = serde_json::from_value(start_response.result)?;
-    send_request(
-        &mut client_a,
-        "turn/start",
-        3,
-        Some(serde_json::to_value(TurnStartParams {
-            thread_id: thread.id.clone(),
-            input: vec![UserInput::Text {
-                text: "materialize".to_string(),
-                text_elements: Vec::new(),
-            }],
-            ..Default::default()
-        })?),
-    )
-    .await?;
-    timeout(
-        DEFAULT_READ_TIMEOUT,
-        read_response_and_notification_for_method(&mut client_a, 3, "turn/completed"),
-    )
-    .await??;
-
-    // Client B resumes the already-loaded thread with an echo override.
-    let mut client_b = connect_websocket(bind_addr).await?;
-    send_initialize_request(&mut client_b, /*id*/ 1, "echo-subscriber-b").await?;
-    timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_b, 1)).await??;
-    send_request(
-        &mut client_b,
-        "thread/resume",
-        2,
-        Some(serde_json::to_value(ThreadResumeParams {
-            thread_id: thread.id.clone(),
-            config: Some(
-                [("model_provider".to_string(), json!("mock_provider"))]
-                    .into_iter()
-                    .collect(),
-            ),
-            ..Default::default()
-        })?),
-    )
-    .await?;
-    let resume_response =
-        timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_b, 2)).await??;
-    let echoed: ThreadResumeResponse = serde_json::from_value(resume_response.result)?;
-    assert_eq!(
-        (echoed.model.as_str(), echoed.model_provider.as_str()),
-        ("gpt-5.4", "mock_provider"),
-        "a thread loaded and subscribed by another connection must not re-route on an echo override"
-    );
-
-    send_request(
-        &mut client_b,
-        "turn/start",
-        3,
-        Some(serde_json::to_value(TurnStartParams {
-            thread_id: echoed.thread.id,
-            input: vec![UserInput::Text {
-                text: "stay on the loaded model".to_string(),
-                text_elements: Vec::new(),
-            }],
-            ..Default::default()
-        })?),
-    )
-    .await?;
-    timeout(
-        DEFAULT_READ_TIMEOUT,
-        read_response_and_notification_for_method(&mut client_b, 3, "turn/completed"),
-    )
-    .await??;
-    let wire_models = captured_models(&server).await?;
-    assert_eq!(
-        wire_models,
-        vec![json!("gpt-5.4"), json!("gpt-5.4")],
-        "materialization and the post-echo turn stay on gpt-5.4 across both connections"
-    );
-    Ok(())
-}
-
-/// An idle loaded thread without subscribers is a replaceable cache entry:
-/// an echo override shuts down the old runtime before the fresh-load path
-/// selects the current default model. Confirm the unsubscribe through its
-/// public RPC response and require loaded-list membership so a cold resume
-/// cannot accidentally satisfy this contrast with the subscribed cases.
-#[tokio::test]
-async fn thread_resume_echo_override_applies_to_an_unsubscribed_loaded_thread() -> Result<()> {
-    use super::connection_handling_websocket::connect_websocket;
-    use super::connection_handling_websocket::read_response_and_notification_for_method;
-    use super::connection_handling_websocket::read_response_for_id;
-    use super::connection_handling_websocket::send_initialize_request;
-    use super::connection_handling_websocket::send_request;
-    use super::connection_handling_websocket::spawn_websocket_server;
-
-    let server = create_mock_responses_server_repeating_assistant("Done").await;
-    let codex_home = TempDir::new()?;
-    mock_responses_config(&server.uri())
-        .with_model("gpt-5.2-codex")
-        .write(codex_home.path())?;
-    let (_process, bind_addr) = spawn_websocket_server(codex_home.path()).await?;
-
-    // Client A materializes the thread on gpt-5.4, then explicitly removes
-    // the last subscription before disconnecting.
-    let mut client_a = connect_websocket(bind_addr).await?;
-    send_initialize_request(&mut client_a, /*id*/ 1, "unsubscribed-a").await?;
-    timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_a, 1)).await??;
-    send_request(
-        &mut client_a,
-        "thread/start",
-        2,
-        Some(serde_json::to_value(ThreadStartParams {
-            model: Some("gpt-5.4".to_string()),
-            ..Default::default()
-        })?),
-    )
-    .await?;
-    let start_response =
-        timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_a, 2)).await??;
-    let ThreadStartResponse { thread, .. } = serde_json::from_value(start_response.result)?;
-    send_request(
-        &mut client_a,
-        "turn/start",
-        3,
-        Some(serde_json::to_value(TurnStartParams {
-            thread_id: thread.id.clone(),
-            input: vec![UserInput::Text {
-                text: "materialize".to_string(),
-                text_elements: Vec::new(),
-            }],
-            ..Default::default()
-        })?),
-    )
-    .await?;
-    timeout(
-        DEFAULT_READ_TIMEOUT,
-        read_response_and_notification_for_method(&mut client_a, 3, "turn/completed"),
-    )
-    .await??;
-    send_request(
-        &mut client_a,
-        "thread/unsubscribe",
-        4,
-        Some(serde_json::to_value(ThreadUnsubscribeParams {
-            thread_id: thread.id.clone(),
-        })?),
-    )
-    .await?;
-    let unsubscribe_response =
-        timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_a, 4)).await??;
-    let unsubscribe: ThreadUnsubscribeResponse =
-        serde_json::from_value(unsubscribe_response.result)?;
-    assert_eq!(
-        unsubscribe,
-        ThreadUnsubscribeResponse {
-            status: ThreadUnsubscribeStatus::Unsubscribed,
+    } else {
+        codex_app_server_protocol::ModelProviderError::ModelProviderNotConfigured {
+            model_provider: "old_provider".into(),
         }
-    );
-    drop(client_a);
-
-    // Client B must observe the old runtime still loaded before echo-resume.
-    let mut client_b = connect_websocket(bind_addr).await?;
-    send_initialize_request(&mut client_b, /*id*/ 1, "unsubscribed-b").await?;
-    timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_b, 1)).await??;
-    send_request(
-        &mut client_b,
-        "thread/loaded/list",
-        2,
-        Some(serde_json::to_value(ThreadLoadedListParams::default())?),
-    )
-    .await?;
-    let loaded_response =
-        timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_b, 2)).await??;
-    let loaded: ThreadLoadedListResponse = serde_json::from_value(loaded_response.result)?;
-    assert_eq!(
-        loaded,
-        ThreadLoadedListResponse {
-            data: vec![thread.id.clone()],
-            next_cursor: None,
+    };
+    // Model and reasoning overrides must not discard the provider being validated.
+    for mut params in [
+        ThreadResumeParams::default(),
+        ThreadResumeParams {
+            model: Some("gpt-5.1-codex".into()),
+            ..Default::default()
         },
-        "the no-subscriber contrast must exercise a loaded runtime, not a cold resume"
-    );
-
-    send_request(
-        &mut client_b,
-        "thread/resume",
-        3,
-        Some(serde_json::to_value(ThreadResumeParams {
-            thread_id: thread.id.clone(),
-            config: Some(
-                [("model_provider".to_string(), json!("mock_provider"))]
-                    .into_iter()
-                    .collect(),
-            ),
+        ThreadResumeParams {
+            config: Some(std::collections::HashMap::from([(
+                "model".into(),
+                json!("gpt-5.1-codex"),
+            )])),
             ..Default::default()
-        })?),
-    )
-    .await?;
-    let resume_response =
-        timeout(DEFAULT_READ_TIMEOUT, read_response_for_id(&mut client_b, 3)).await??;
-    let echoed: ThreadResumeResponse = serde_json::from_value(resume_response.result)?;
-    assert_eq!(
-        echoed.model.as_str(),
-        "gpt-5.2-codex",
-        "without a subscriber the echo override applies through the fresh-load path"
-    );
-
-    send_request(
-        &mut client_b,
-        "turn/start",
-        4,
-        Some(serde_json::to_value(TurnStartParams {
-            thread_id: echoed.thread.id,
-            input: vec![UserInput::Text {
-                text: "match the reported model".to_string(),
-                text_elements: Vec::new(),
-            }],
+        },
+        ThreadResumeParams {
+            config: Some(std::collections::HashMap::from([(
+                "model_reasoning_effort".into(),
+                json!("high"),
+            )])),
             ..Default::default()
-        })?),
-    )
-    .await?;
-    timeout(
-        DEFAULT_READ_TIMEOUT,
-        read_response_and_notification_for_method(&mut client_b, 4, "turn/completed"),
-    )
-    .await??;
-    let wire_models = captured_models(&server).await?;
-    assert_eq!(
-        wire_models,
-        vec![json!("gpt-5.4"), json!("gpt-5.2-codex")],
-        "materialization ran on gpt-5.4; the unsubscribed echo rerouted and the wire matches the reported model"
+        },
+    ] {
+        params.thread_id = thread_id.clone();
+        let id = client.send_thread_resume_request(params).await?;
+        let error = client
+            .read_stream_until_error_message(RequestId::Integer(id))
+            .await?;
+        assert_eq!(
+            error.error,
+            JSONRPCErrorError {
+                code: -32600,
+                message: expected.to_string(),
+                data: Some(serde_json::to_value(&expected)?),
+            }
+        );
+    }
+    assert!(
+        server
+            .received_requests()
+            .await
+            .expect("mock server should record received requests")
+            .iter()
+            .all(|request| !request.url.path().ends_with("/responses"))
     );
+    // Failure leaves the history readable and does not create a live session with a new provider.
+    let id = client
+        .send_raw_request(
+            "thread/read",
+            Some(json!({"threadId": thread_id, "includeTurns": true})),
+        )
+        .await?;
+    let read: codex_app_server_protocol::ThreadReadResponse = client.read_response(id).await?;
+    assert_eq!(read.thread.model_provider, "old_provider");
+    // Provider overrides must not bypass admission for the saved provider.
+    let id = client
+        .send_thread_resume_request(ThreadResumeParams {
+            thread_id,
+            model: Some("gpt-5.1-codex".into()),
+            model_provider: typed_override.then(|| "mock_provider".into()),
+            config: (!typed_override).then(|| {
+                std::collections::HashMap::from([("model_provider".into(), json!("mock_provider"))])
+            }),
+            ..Default::default()
+        })
+        .await?;
+    let error = client
+        .read_stream_until_error_message(RequestId::Integer(id))
+        .await?;
+    assert_eq!(error.error.data, Some(serde_json::to_value(expected)?));
     Ok(())
 }
 
+#[test_case::test_case(false; "missing_definition")]
+#[test_case::test_case(true; "provider_mismatch")]
 #[tokio::test]
-async fn thread_resume_same_provider_echo_uses_current_default_model() -> Result<()> {
-    // An explicit `config.model_provider` — even echoing the persisted
-    // provider — is an explicit routing override on the fresh-load path: the
-    // current default model of that provider applies, and the wire request
-    // carries it. Without any override the persisted model is restored.
-    // (On a thread already loaded in the server, a later echo resume keeps
-    // the in-memory model; that loaded-thread divergence is registered as a
-    // behavior boundary, not pinned here.)
+async fn thread_resume_recovers_after_provider_configuration_is_restored(
+    configured: bool,
+) -> Result<()> {
     let server = create_mock_responses_server_repeating_assistant("Done").await;
-    let codex_home = TempDir::new()?;
-    mock_responses_config(&server.uri())
-        .with_model("gpt-5.2-codex")
-        .write(codex_home.path())?;
-
-    // Control fixture: bare resume restores the persisted model.
-    let RestartedThreadFixture {
-        mut mcp, thread_id, ..
-    } = start_materialized_thread_and_restart(codex_home.path(), "echo control").await?;
-    let bare_id = mcp
-        .send_thread_resume_request(ThreadResumeParams {
-            thread_id,
-            ..Default::default()
-        })
-        .await?;
-    let bare: ThreadResumeResponse =
-        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(bare_id)).await??;
-    assert_eq!(
-        (bare.model.as_str(), bare.model_provider.as_str()),
-        ("gpt-5.4", "mock_provider")
-    );
-
-    // Echo fixture: same persisted provider, explicit override → current
-    // default model, asserted against the real HTTP body.
-    let RestartedThreadFixture {
-        mut mcp, thread_id, ..
-    } = start_materialized_thread_and_restart(codex_home.path(), "echo selection").await?;
-    let resume_id = mcp
-        .send_thread_resume_request(ThreadResumeParams {
-            thread_id,
-            config: Some(
-                [("model_provider".to_string(), json!("mock_provider"))]
-                    .into_iter()
-                    .collect(),
+    let home = TempDir::new()?;
+    mock_responses_config(&server.uri()).write(home.path())?;
+    let thread_id = create_fake_rollout(
+        home.path(),
+        "2025-01-05T12-00-00",
+        "2025-01-05T12:00:00Z",
+        "Saved history",
+        Some("old_provider"),
+        /*git_info*/ None,
+    )?;
+    let config_path = home.path().join("config.toml");
+    if configured {
+        let config = std::fs::read_to_string(&config_path)?;
+        let server_uri = server.uri();
+        std::fs::write(
+            &config_path,
+            format!(
+                "{config}\n[model_providers.old_provider]\nname = 'Original provider'\nbase_url = '{server_uri}/v1'\n"
             ),
-            ..Default::default()
-        })
+        )?;
+    }
+    let mut client = TestAppServer::builder()
+        .with_codex_home(home.path())
+        .build_initialized()
         .await?;
-    let echoed: ThreadResumeResponse =
-        timeout(DEFAULT_READ_TIMEOUT, mcp.read_response(resume_id)).await??;
-    assert_eq!(
-        (echoed.model.as_str(), echoed.model_provider.as_str()),
-        ("gpt-5.2-codex", "mock_provider")
-    );
-
-    let turn_id = mcp
-        .send_turn_start_request(TurnStartParams {
-            thread_id: echoed.thread.id,
-            input: vec![UserInput::Text {
-                text: "use the echoed selection".to_string(),
-                text_elements: Vec::new(),
-            }],
-            ..Default::default()
-        })
+    let params = ThreadResumeParams {
+        thread_id,
+        ..Default::default()
+    };
+    let id = client.send_thread_resume_request(params.clone()).await?;
+    let error = client
+        .read_stream_until_error_message(RequestId::Integer(id))
         .await?;
-    timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(turn_id)),
-    )
-    .await??;
-    timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_notification_message("turn/completed"),
-    )
-    .await??;
-    let requests = server.received_requests().await.unwrap_or_default();
-    let wire_models = requests
-        .iter()
-        .filter(|request| request.url.path().ends_with("/responses"))
-        .map(|request| serde_json::from_slice::<serde_json::Value>(&request.body))
-        .collect::<serde_json::Result<Vec<_>>>()?
-        .into_iter()
-        .map(|body| body["model"].clone())
-        .collect::<Vec<_>>();
-    // Wire history: the two fixture-materialization turns ran on the
-    // persisted gpt-5.4; only the turn after the echo override carries the
-    // current default.
     assert_eq!(
-        wire_models,
-        vec![json!("gpt-5.4"), json!("gpt-5.4"), json!("gpt-5.2-codex")]
+        error
+            .error
+            .data
+            .as_ref()
+            .expect("provider error should include structured data")["type"],
+        if configured {
+            "modelProviderMismatch"
+        } else {
+            "modelProviderNotConfigured"
+        }
     );
+    if configured {
+        for overrides in [
+            ThreadResumeParams {
+                model_provider: Some("mock_provider".into()),
+                ..params.clone()
+            },
+            ThreadResumeParams {
+                config: Some(std::collections::HashMap::from([(
+                    "model_provider".into(),
+                    json!("mock_provider"),
+                )])),
+                ..params.clone()
+            },
+        ] {
+            let id = client.send_thread_resume_request(overrides).await?;
+            let overridden = client
+                .read_stream_until_error_message(RequestId::Integer(id))
+                .await?;
+            assert_eq!(overridden.error, error.error);
+        }
+    }
+    let id = client
+        .send_raw_request(
+            "thread/read",
+            Some(json!({"threadId": params.thread_id, "includeTurns": true})),
+        )
+        .await?;
+    let read: codex_app_server_protocol::ThreadReadResponse = client.read_response(id).await?;
+    assert_eq!(read.thread.model_provider, "old_provider");
+    let config = std::fs::read_to_string(&config_path)?;
+    let restored = if configured {
+        config.replace(
+            "model_provider = \"mock_provider\"",
+            "model_provider = \"old_provider\"",
+        )
+    } else {
+        config.replace("mock_provider", "old_provider")
+    };
+    std::fs::write(config_path, restored)?;
+    let id = client.send_thread_resume_request(params).await?;
+    let resumed: ThreadResumeResponse = client.read_response(id).await?;
+    assert_eq!(resumed.model_provider, "old_provider");
     Ok(())
 }

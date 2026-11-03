@@ -19,6 +19,7 @@ mod nuwax_env;
 mod nuwax_env_controls;
 mod nuwax_env_stream_wait;
 mod originator;
+mod output_last_message;
 mod output_schema;
 mod prompt_stdin;
 mod resume;

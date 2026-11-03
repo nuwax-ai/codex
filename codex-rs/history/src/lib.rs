@@ -8,6 +8,7 @@ pub use heartbeat::UserInputOrigin;
 mod compaction_resume_metadata;
 pub use codex_protocol::turn_input::TurnAttribution;
 pub use compaction_resume_metadata::CompactionResumeMetadata;
+pub use compaction_resume_metadata::DynamicToolsSnapshot;
 pub use compaction_resume_metadata::PreviousTurnSettings;
 pub use compaction_resume_metadata::resume_multi_agent_version;
 
@@ -133,6 +134,10 @@ pub struct CodexHarnessMetadata {
     )]
     pub mcp_attribution: Option<McpAttribution>,
 
+    /// Native search ran during automatic fallback, so its browsing references stay on native.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub native_search_fallback_used: bool,
+
     /// Sender context captured by the host when this task message was accepted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sender_user_messages: Option<Box<SenderUserMessages>>,
@@ -251,6 +256,11 @@ impl Borrow<ResponseItem> for ResponseItemEnvelope {
 #[derive(Debug, Clone)]
 pub enum RolloutItem {
     SessionMeta(Box<SessionMetaLine>),
+    /// Complete dynamic-tool catalog for subsequent model steps, including an empty catalog.
+    DynamicToolsUpdated {
+        thread_id: ThreadId,
+        tools: Vec<DynamicToolSpec>,
+    },
     ResponseItem(ResponseItemEnvelope),
     InterAgentCommunication(InterAgentCommunication),
     InterAgentCommunicationMetadata {
@@ -483,17 +493,7 @@ impl InitialHistory {
     }
 
     pub fn get_dynamic_tools(&self) -> Option<Vec<DynamicToolSpec>> {
-        match self {
-            Self::New | Self::Cleared => None,
-            Self::Resumed(resumed) => resumed.history.iter().find_map(|item| match item {
-                RolloutItem::SessionMeta(meta_line) => meta_line.meta.dynamic_tools.clone(),
-                _ => None,
-            }),
-            Self::Forked(items) => items.iter().find_map(|item| match item {
-                RolloutItem::SessionMeta(meta_line) => meta_line.meta.dynamic_tools.clone(),
-                _ => None,
-            }),
-        }
+        latest_dynamic_tools(self.get_rollout_items()).map(<[_]>::to_vec)
     }
 
     pub fn get_selected_capability_roots(&self) -> Vec<SelectedCapabilityRoot> {
@@ -573,6 +573,31 @@ fn session_cwd_from_items(items: &[RolloutItem]) -> Option<PathBuf> {
         RolloutItem::SessionMeta(meta_line) => Some(meta_line.meta.cwd.clone()),
         _ => None,
     })
+}
+
+/// Returns the latest catalog, preserving explicit clears and falling back to creation metadata.
+pub fn latest_dynamic_tools(items: &[RolloutItem]) -> Option<&[DynamicToolSpec]> {
+    let metadata = items.iter().find_map(|item| match item {
+        RolloutItem::SessionMeta(meta) => Some(&meta.meta),
+        _ => None,
+    });
+    items
+        .iter()
+        .rev()
+        .find_map(|item| {
+            let (thread_id, tools) = match item {
+                RolloutItem::DynamicToolsUpdated { thread_id, tools } => (thread_id, tools),
+                RolloutItem::Compacted(compacted) => {
+                    let snapshot = compacted.resume_metadata.as_ref()?.dynamic_tools.as_ref()?;
+                    (&snapshot.thread_id, &snapshot.tools)
+                }
+                _ => return None,
+            };
+            metadata
+                .is_none_or(|meta| meta.id == *thread_id)
+                .then_some(tools.as_slice())
+        })
+        .or_else(|| metadata.and_then(|meta| meta.dynamic_tools.as_deref()))
 }
 
 /// Returns a thread's latest plugin selection, with a turn-context fallback.

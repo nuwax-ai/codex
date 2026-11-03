@@ -33,6 +33,13 @@ use super::test_warmup::warm_secure_transport_once;
 
 const PROTOCOL_VERSION_TLS_ALERT: &[u8] = &[21, 3, 3, 0, 2, 2, 70];
 
+// Schannel ARM needs TLS 1.1 to expose the protocol-version alert; the x64 CI image
+// disables TLS 1.1, so x64 and other platforms retain TLS 1.2.
+#[cfg(all(windows, target_arch = "aarch64"))]
+const NATIVE_TLS_TEST_VERSION: reqwest::tls::Version = reqwest::tls::Version::TLS_1_1;
+#[cfg(not(all(windows, target_arch = "aarch64")))]
+const NATIVE_TLS_TEST_VERSION: reqwest::tls::Version = reqwest::tls::Version::TLS_1_2;
+
 type SuccessfulTlsFallbackServer = (
     String,
     TransportClient,
@@ -51,6 +58,7 @@ async fn default_pool_does_not_retry_a_native_tls_protocol_failure() {
         HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
         ClientRouteClass::Other,
     );
+    use_native_tls_for_direct_route(&pool);
     let request = reqwest::Request::new(
         Method::POST,
         reqwest::Url::parse(&url).expect("valid HTTPS URL"),
@@ -82,6 +90,7 @@ async fn retries_a_native_tls_protocol_failure_once_with_rustls() {
         ClientRouteClass::Other,
     )
     .with_tls_backend_fallback();
+    use_native_tls_for_direct_route(&pool);
     let destination = reqwest::Url::parse(&url).expect("valid HTTPS URL");
     let mut request = reqwest::Request::new(Method::POST, destination.clone());
     *request.body_mut() = Some(Bytes::from_static(b"mcp-initialize").into());
@@ -123,6 +132,7 @@ async fn retries_a_native_tls_failure_after_another_request_caches_rustls() {
         ClientRouteClass::Other,
     )
     .with_tls_backend_fallback();
+    use_native_tls_for_direct_route(&pool);
     let destination = reqwest::Url::parse(&url).expect("valid HTTPS URL");
     let (route, native_client, selected_tls_backend) = pool
         .client_for_url_with_resolver(destination.as_str(), |_| async {
@@ -218,6 +228,7 @@ async fn successful_rustls_fallback_replays_the_request_and_reuses_the_destinati
         ClientRouteClass::Other,
     )
     .with_tls_backend_fallback();
+    use_native_tls_for_direct_route(&pool);
     let destination = reqwest::Url::parse(&url).expect("valid HTTPS URL");
     let existing_destination =
         reqwest::Url::parse("https://another-mcp.example.com/mcp").expect("valid HTTPS URL");
@@ -283,6 +294,7 @@ async fn retries_a_tls_protocol_failure_when_request_url_contains_certificate_ma
         ClientRouteClass::Other,
     )
     .with_tls_backend_fallback();
+    use_native_tls_for_direct_route(&pool);
     let mut destination = reqwest::Url::parse(&url).expect("valid HTTPS URL");
     destination.set_path("/certificate/hostname/expired/revoked/mcp");
     let request = reqwest::Request::new(Method::POST, destination);
@@ -314,6 +326,7 @@ async fn does_not_retry_a_non_replayable_streaming_request() {
         ClientRouteClass::Other,
     )
     .with_tls_backend_fallback();
+    use_native_tls_for_direct_route(&pool);
     let mut request = reqwest::Request::new(
         Method::POST,
         reqwest::Url::parse(&url).expect("valid HTTPS URL"),
@@ -345,6 +358,20 @@ async fn does_not_retry_a_non_replayable_streaming_request() {
             .expect("TLS server should finish")
             .expect("TLS server should reject one connection"),
         1
+    );
+}
+
+fn use_native_tls_for_direct_route(pool: &RouteAwareClientPool) {
+    // Start with reqwest's default native backend even when the environment supplies a CA bundle.
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .min_tls_version(NATIVE_TLS_TEST_VERSION)
+        .max_tls_version(NATIVE_TLS_TEST_VERSION)
+        .build()
+        .expect("native TLS client should build");
+    pool.clients.lock().expect("client cache lock").insert(
+        OutboundProxyRoute::Direct,
+        TransportClient::new(client, RequestLogging::Enabled, http::HeaderMap::new()),
     );
 }
 

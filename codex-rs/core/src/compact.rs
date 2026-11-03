@@ -20,7 +20,6 @@ use crate::hook_runtime::run_pre_compact_hooks;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::responses_metadata::CompactionTurnMetadata;
 use crate::session::RequestEffortUsage;
-use crate::session::TokenUsageContext;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::session::turn::get_last_assistant_message_from_turn;
@@ -298,14 +297,13 @@ async fn run_compact_task_inner_impl(
     let mut client_session = sess.services.model_client.new_session();
     let compaction_response = loop {
         // Clone is required because of the loop
-        let annotated_input = history
+        let mut turn_input = history
             .clone()
-            .for_prompt_annotated(&turn_context.model_info().input_modalities);
-        let input_provenance = crate::model_output_projection::sources_for_input(&annotated_input);
-        let mut turn_input = annotated_input
-            .into_iter()
-            .map(codex_history::ResponseItemEnvelope::into_item)
-            .collect::<Vec<_>>();
+            .for_prompt(
+                &turn_context.model_info().input_modalities,
+                sess.services.image_store.as_ref(),
+            )
+            .await;
         sess.services
             .executed_tool_calls
             .attach_to_compaction_prompt(&mut turn_input);
@@ -323,7 +321,6 @@ async fn run_compact_task_inner_impl(
         };
         let prompt = Prompt {
             input: turn_input,
-            input_provenance,
             base_instructions,
             cyber_access_program: turn_context.cyber_access_program,
             ..Default::default()
@@ -331,11 +328,6 @@ async fn run_compact_task_inner_impl(
         let responses_metadata = sess
             .compaction_responses_metadata(turn_context.as_ref(), compaction_metadata)
             .await;
-        // Each wire attempt is its own sampling: mint a fresh host key so
-        // the ledger joins this compaction attempt by host identity instead
-        // of the provider response id, which a provider may reuse across
-        // distinct compactions.
-        let response_key = sess.next_sampling_response_key(&turn_context.sub_id);
         let attempt_result = drain_to_completed(
             &sess,
             turn_context.as_ref(),
@@ -343,7 +335,6 @@ async fn run_compact_task_inner_impl(
             &responses_metadata,
             &prompt,
             compaction_metadata.phase(),
-            &response_key,
         )
         .await;
 
@@ -363,12 +354,10 @@ async fn run_compact_task_inner_impl(
                 if matches!(
                     e.details(),
                     CodexErrorDetails::SessionBudgetExceeded
-                        | CodexErrorDetails::CapExhausted { .. }
                         | CodexErrorDetails::ResponseIncomplete(_)
+                        | CodexErrorDetails::Fatal(_)
                 ) =>
             {
-                // A cap terminal is not a transport failure: retrying the
-                // same exhausted generation budget cannot recover.
                 return Err(e);
             }
             Err(e) if matches!(e.details(), CodexErrorDetails::ContextWindowExceeded) => {
@@ -841,10 +830,8 @@ async fn drain_to_completed(
     responses_metadata: &CodexResponsesMetadata,
     prompt: &Prompt,
     phase: CompactionPhase,
-    response_key: &str,
 ) -> CodexResult<CompactionResponse> {
-    sess.set_server_reasoning_included(turn_context.model_info().use_responses_lite)
-        .await;
+    let mut includes_reasoning = turn_context.model_info().use_responses_lite;
     let mut stream = client_session
         .stream(
             prompt,
@@ -875,7 +862,7 @@ async fn drain_to_completed(
             // Keep each attempt isolated until the response completes successfully.
             Ok(ResponseEvent::OutputItemDone(item)) => output.push(item),
             Ok(ResponseEvent::ServerReasoningIncluded(included)) => {
-                sess.set_server_reasoning_included(included).await;
+                includes_reasoning = included;
             }
             Ok(ResponseEvent::RateLimits(snapshot)) => {
                 sess.update_rate_limits(turn_context, snapshot).await;
@@ -904,14 +891,17 @@ async fn drain_to_completed(
                 }
                 sess.record_observed_response_completed(
                     turn_context,
-                    Some(response_key),
                     &response_id,
                     token_usage.as_ref(),
                     usage_metadata.as_ref(),
                 )
                 .await;
-                sess.update_token_usage_info(turn_context, token_usage.as_ref())
-                    .await?;
+                sess.update_token_usage_info(
+                    turn_context,
+                    token_usage.as_ref(),
+                    includes_reasoning,
+                )
+                .await?;
                 return Ok(CompactionResponse {
                     response_id,
                     output,
@@ -924,41 +914,8 @@ async fn drain_to_completed(
                         turn_context,
                         &turn_context.initial_settings,
                         incomplete,
-                        Some(response_key),
                     )
                     .await;
-                    sess.send_token_count_event(turn_context).await;
-                } else if let CodexErrorDetails::CapExhausted {
-                    response_id,
-                    reported_usage,
-                    ..
-                } = e.details()
-                {
-                    // Fork cap terminal carries the same reported usage an
-                    // incomplete response would; account it before the
-                    // terminal propagates (mirrors the sampling path).
-                    if let Some(usage) = sess
-                        .record_cap_exhausted_usage(
-                            turn_context,
-                            response_key,
-                            response_id.as_deref(),
-                            reported_usage.as_ref(),
-                        )
-                        .await
-                        && let Err(accounting_error) = sess
-                            .record_token_usage_info(
-                                turn_context,
-                                &turn_context.initial_settings,
-                                Some(&usage),
-                                TokenUsageContext::SpendingOnly,
-                            )
-                            .await
-                    {
-                        tracing::warn!(
-                            error = %accounting_error,
-                            "failed to account a capped compaction's usage"
-                        );
-                    }
                     sess.send_token_count_event(turn_context).await;
                 }
                 return Err(e);

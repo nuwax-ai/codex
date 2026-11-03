@@ -10,7 +10,6 @@ use crate::protocol::ErrorEvent;
 use crate::protocol::MisalignmentErrorDetails;
 use crate::protocol::RateLimitReachedType;
 use crate::protocol::RateLimitSnapshot;
-use crate::protocol::ReportedResponseUsage;
 use crate::protocol::TokenUsage;
 use crate::protocol::TruncationPolicy;
 use chrono::DateTime;
@@ -84,9 +83,12 @@ pub struct CodexErr {
 
 /// A terminal response that stopped before the model finished, with any reported usage.
 /// Content-filter retries and explicit interruptions have separate handling.
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(derive_more::Debug, Error, PartialEq, Eq)]
 #[error("Incomplete response returned, reason: {reason}")]
 pub struct ResponseIncompleteError {
+    /// Provider output items explicitly marked incomplete, retained for failed inference traces.
+    #[debug(skip)]
+    pub partial_output: Vec<serde_json::Value>,
     pub reason: String,
     pub response_id: Option<String>,
     pub token_usage: Option<TokenUsage>,
@@ -122,11 +124,9 @@ pub enum CodexErrorDetails {
     /// A retryable upstream rate limit received inside the response stream.
     #[error("rate limit exceeded: {0}")]
     RateLimitExceeded(String),
-    // Fork (nuwax-codex): the upstream iOS input-limit classifier matched this
-    // message's ASCII prefix; the fork ships no iOS client, so the brand is
-    // the fork's own.
+    // The iOS input-limit classifier matches this message's ASCII prefix.
     #[error(
-        "nuwax-harness ran out of room in the model's context window. Start a new thread or clear earlier history before retrying."
+        "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying."
     )]
     ContextWindowExceeded,
     #[error("no thread with id: {0}")]
@@ -154,17 +154,12 @@ pub enum CodexErrorDetails {
     /// Invalid request.
     #[error("{0}")]
     InvalidRequest(String),
-    /// The caller-selected output cap was exhausted mid-stream. Terminal and
-    /// non-retryable, with the same message text the `InvalidRequest` mapping
-    /// used to carry; the structured payload preserves the sampling's provider
-    /// response id and the counters the terminal frame actually reported so
-    /// core can account the failed sampling's usage. Absent usage means the
-    /// terminal carried no usable report.
     #[error("{message}")]
-    CapExhausted {
+    InvalidAudioInput { message: String },
+    #[error("{message}")]
+    ModelNotFound {
         message: String,
-        response_id: Option<String>,
-        reported_usage: Option<ReportedResponseUsage>,
+        status: Option<StatusCode>,
     },
     #[error("{message}")]
     InvalidPrompt { message: String },
@@ -178,6 +173,9 @@ pub enum CodexErrorDetails {
     UsageLimitReached(UsageLimitReachedError),
     #[error("Selected model is at capacity. Please try a different model.")]
     ServerOverloaded,
+    /// Policy-restricted capacity follows the same retry advice as ordinary overloads.
+    #[error("Policy-restricted capacity is unavailable. Please try again later.")]
+    PolicyCapacityUnavailable,
     #[error("Flex capacity unavailable.")]
     FlexUnavailable,
     #[error("{message}")]
@@ -195,7 +193,9 @@ pub enum CodexErrorDetails {
     ConnectionFailed(ConnectionFailedError),
     #[error("Quota exceeded. Check your plan and billing details.")]
     QuotaExceeded,
-    #[error("To use Nuwax Harness with your ChatGPT plan, upgrade to Plus.")]
+    #[error(
+        "To use Codex with your ChatGPT plan, upgrade to Plus: https://chatgpt.com/explore/plus."
+    )]
     UsageNotIncluded,
     #[error("We’re currently experiencing high demand, which may cause temporary errors.")]
     InternalServerError,
@@ -434,8 +434,9 @@ impl CodexErr {
             | CodexErrorDetails::QuotaExceeded
             | CodexErrorDetails::InvalidImageRequest()
             | CodexErrorDetails::InvalidRequest(_)
-            | CodexErrorDetails::CapExhausted { .. }
+            | CodexErrorDetails::InvalidAudioInput { .. }
             | CodexErrorDetails::ResponseIncomplete(_)
+            | CodexErrorDetails::ModelNotFound { .. }
             | CodexErrorDetails::InvalidPrompt { .. }
             | CodexErrorDetails::ToolCollision(_)
             | CodexErrorDetails::RefreshTokenFailed(_)
@@ -453,9 +454,9 @@ impl CodexErr {
             | CodexErrorDetails::CyberPolicy { .. }
             | CodexErrorDetails::BioPolicy { .. }
             | CodexErrorDetails::MisalignmentPolicyViolation { .. } => None,
-            CodexErrorDetails::ServerOverloaded | CodexErrorDetails::RetryLimit(_) => {
-                self.server_retry_delay()
-            }
+            CodexErrorDetails::ServerOverloaded
+            | CodexErrorDetails::PolicyCapacityUnavailable
+            | CodexErrorDetails::RetryLimit(_) => self.server_retry_delay(),
             CodexErrorDetails::Stream(..)
             | CodexErrorDetails::ContentFilter
             | CodexErrorDetails::RateLimitExceeded(_)
@@ -511,9 +512,13 @@ impl CodexErr {
             | CodexErrorDetails::QuotaExceeded
             | CodexErrorDetails::UsageNotIncluded => CodexErrorInfo::UsageLimitExceeded,
             CodexErrorDetails::ServerOverloaded => CodexErrorInfo::ServerOverloaded,
+            CodexErrorDetails::PolicyCapacityUnavailable => {
+                CodexErrorInfo::PolicyCapacityUnavailable
+            }
             CodexErrorDetails::FlexUnavailable => CodexErrorInfo::FlexUnavailable,
             CodexErrorDetails::CyberPolicy { .. } => CodexErrorInfo::CyberPolicy,
             CodexErrorDetails::BioPolicy { .. } => CodexErrorInfo::BioPolicy,
+            CodexErrorDetails::ModelNotFound { .. } => CodexErrorInfo::ModelNotFound,
             CodexErrorDetails::InvalidPrompt { .. } => CodexErrorInfo::InvalidPrompt,
             CodexErrorDetails::MisalignmentPolicyViolation { .. } => {
                 CodexErrorInfo::MisalignmentPolicyViolation
@@ -535,7 +540,8 @@ impl CodexErr {
             CodexErrorDetails::SessionConfiguredNotFirstEvent
             | CodexErrorDetails::InternalServerError
             | CodexErrorDetails::InternalAgentDied => CodexErrorInfo::InternalServerError,
-            CodexErrorDetails::UnsupportedOperation(_)
+            CodexErrorDetails::InvalidAudioInput { .. }
+            | CodexErrorDetails::UnsupportedOperation(_)
             | CodexErrorDetails::ThreadNotFound(_)
             | CodexErrorDetails::AgentLimitReached { .. } => CodexErrorInfo::BadRequest,
             CodexErrorDetails::Sandbox(_) => CodexErrorInfo::SandboxError,
@@ -564,6 +570,7 @@ impl CodexErr {
     pub fn http_status_code_value(&self) -> Option<u16> {
         let http_status_code = match &self.details {
             CodexErrorDetails::FlexUnavailable => Some(StatusCode::TOO_MANY_REQUESTS),
+            CodexErrorDetails::ModelNotFound { status, .. } => *status,
             CodexErrorDetails::RetryLimit(err) => Some(err.status),
             CodexErrorDetails::UnexpectedStatus(err) => Some(err.status),
             CodexErrorDetails::ConnectionFailed(err) => err.source.status(),
@@ -740,7 +747,7 @@ impl std::fmt::Display for UsageLimitReachedError {
             .and_then(|snapshot| snapshot.limit_name.as_deref())
             .map(str::trim)
             .filter(|name| !name.is_empty())
-            && !limit_name.eq_ignore_ascii_case("nuwax-harness")
+            && !limit_name.eq_ignore_ascii_case("codex")
             && !limit_name.eq_ignore_ascii_case("gpt-reserve")
         {
             return write!(
@@ -813,7 +820,7 @@ impl std::fmt::Display for UsageLimitReachedError {
             }
             Some(PlanType::Known(KnownPlan::Free)) | Some(PlanType::Known(KnownPlan::Go)) => {
                 format!(
-                    "You’ve hit your usage limit. Upgrade to Plus to continue using Nuwax Harness,{}",
+                    "You’ve hit your usage limit. Upgrade to Plus to continue using Codex (https://chatgpt.com/explore/plus),{}",
                     retry_suffix_after_or(self.resets_at.as_ref())
                 )
             }

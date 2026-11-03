@@ -8,8 +8,6 @@ use codex_install_context::StandalonePlatform;
 /// Update action the CLI should perform after the TUI exits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpdateAction {
-    /// Fork: update via `npm install -g @nuwax-ai/nuwax-harness@latest`.
-    NpmNuwaxLatest,
     /// Replace the local daemon after restoring the terminal.
     Daemon(DaemonUpdateSource),
     /// Update via `npm install -g @openai/codex@latest`.
@@ -22,7 +20,7 @@ pub enum UpdateAction {
     PnpmGlobalLatest,
     /// Update via `brew upgrade codex`.
     BrewUpgrade,
-    /// Update via `curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh`.
+    /// Update via the standalone Unix installer.
     StandaloneUnix,
     /// Update via `$env:CODEX_NON_INTERACTIVE=1; irm https://chatgpt.com/codex/install.ps1 | iex`.
     StandaloneWindows,
@@ -37,8 +35,6 @@ impl UpdateAction {
             InstallMethod::VitePlus => Some(UpdateAction::VitePlusGlobalLatest),
             InstallMethod::Pnpm => Some(UpdateAction::PnpmGlobalLatest),
             InstallMethod::Brew => Some(UpdateAction::BrewUpgrade),
-            // Fork npm package: update to @nuwax-ai/nuwax-harness, not @openai/codex.
-            InstallMethod::NpmNuwax => Some(UpdateAction::NpmNuwaxLatest),
             InstallMethod::Standalone { platform, .. } => Some(match platform {
                 StandalonePlatform::Unix => UpdateAction::StandaloneUnix,
                 StandalonePlatform::Windows => UpdateAction::StandaloneWindows,
@@ -52,9 +48,6 @@ impl UpdateAction {
         match self {
             UpdateAction::Daemon(source) => ("codex", source.command_args()),
             UpdateAction::NpmGlobalLatest => ("npm", &["install", "-g", "@openai/codex"]),
-            UpdateAction::NpmNuwaxLatest => {
-                ("npm", &["install", "-g", "@nuwax-ai/nuwax-harness@latest"])
-            }
             UpdateAction::BunGlobalLatest => ("bun", &["install", "-g", "@openai/codex"]),
             UpdateAction::VitePlusGlobalLatest => ("vp", &["install", "-g", "@openai/codex"]),
             UpdateAction::PnpmGlobalLatest => ("pnpm", &["add", "-g", "@openai/codex"]),
@@ -63,7 +56,7 @@ impl UpdateAction {
                 "sh",
                 &[
                     "-c",
-                    "curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh",
+                    r#"s=$(curl -fsSL https://chatgpt.com/codex/install.sh) && CODEX_NON_INTERACTIVE=1 eval "$s""#,
                 ],
             ),
             UpdateAction::StandaloneWindows => (
@@ -163,30 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn fork_install_updates_the_scoped_harness_package() {
-        let action = UpdateAction::from_install_context(&InstallContext {
-            method: InstallMethod::NpmNuwax,
-            package_layout: None,
-        })
-        .expect("the fork npm install has an update action");
-        assert_eq!(
-            action.command_str(),
-            "npm install -g @nuwax-ai/nuwax-harness@latest"
-        );
-    }
-
-    #[test]
-    fn standalone_update_commands_rerun_latest_installer() {
-        assert_eq!(
-            UpdateAction::StandaloneUnix.command_args(),
-            (
-                "sh",
-                &[
-                    "-c",
-                    "curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh"
-                ][..],
-            )
-        );
+    fn standalone_windows_update_command_reruns_latest_installer() {
         assert_eq!(
             UpdateAction::StandaloneWindows.command_args(),
             (
@@ -199,6 +169,23 @@ mod tests {
                 ][..],
             )
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn standalone_unix_update_fails_when_installer_download_fails() {
+        let (command, args) = UpdateAction::StandaloneUnix.command_args();
+        let offline_command = args[1].replace("https://chatgpt.com", "file:///dev/null");
+        assert_ne!(offline_command, args[1], "installer URL must be replaced");
+        let output = std::process::Command::new(command)
+            .args([args[0], &offline_command])
+            .env_clear()
+            .env("HOME", "/dev/null")
+            .env("PATH", "/usr/bin:/bin")
+            .output()
+            .expect("run standalone Unix update command");
+
+        assert!(!output.status.success(), "{output:?}");
     }
 }
 

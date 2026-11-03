@@ -338,7 +338,8 @@ impl ThreadMetadataSync {
                     update.approval_mode = Some(settings.approval_policy);
                     update.permission_profile = Some(settings.permission_profile.clone());
                 }
-                RolloutItem::SessionMeta(_)
+                RolloutItem::DynamicToolsUpdated { .. }
+                | RolloutItem::SessionMeta(_)
                 | RolloutItem::EventMsg(_)
                 | RolloutItem::ResponseItem(_)
                 | RolloutItem::InterAgentCommunication(_)
@@ -485,6 +486,7 @@ mod tests {
     async fn create_metadata_records_originator_without_project() {
         let thread_id = ThreadId::new();
         let sync = ThreadMetadataSync::for_create(&CreateThreadParams {
+            attached_thread: false,
             creator_user_id: None,
             creator_account_id: None,
             session_id: thread_id.into(),
@@ -536,6 +538,7 @@ mod tests {
                 thread_id,
                 vec![RolloutItem::EventMsg(EventMsg::ItemCompleted(
                     ItemCompletedEvent {
+                        content_token_count: None,
                         thread_id,
                         turn_id: "turn-1".to_string(),
                         item: TurnItem::UserMessage(UserMessageItem::new(&[UserInput::Text {
@@ -648,6 +651,7 @@ mod tests {
         let update = sync
             .observe_appended_items(&[RolloutItem::EventMsg(EventMsg::ItemCompleted(
                 ItemCompletedEvent {
+                    content_token_count: None,
                     thread_id,
                     turn_id: "turn-1".to_string(),
                     item: TurnItem::UserMessage(UserMessageItem::new(&[UserInput::Text {

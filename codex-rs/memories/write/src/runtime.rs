@@ -29,14 +29,12 @@ use codex_protocol::MemoryVersion;
 use codex_protocol::SessionId;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ReasoningSummary;
-use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::InternalSessionSource;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::ThreadSource;
 use codex_protocol::protocol::TokenUsage;
-use codex_protocol::turn_input::NotSubmittedReason;
 use codex_protocol::user_input::UserInput;
 use codex_rollout_trace::InferenceTraceContext;
 use codex_state::MemoryStore;
@@ -45,13 +43,6 @@ use futures::StreamExt;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-
-pub(crate) enum ConsolidationAgentStartError {
-    Canceled,
-    Failed(anyhow::Error),
-    // The spawned agent may still be alive. Its job lease must remain owned.
-    ShutdownUnconfirmed(anyhow::Error),
-}
 
 pub(crate) struct SpawnedConsolidationAgent {
     pub(crate) thread_id: ThreadId,
@@ -128,7 +119,7 @@ fn build_session_telemetry(
         &config.model_provider,
         auth_manager.codex_api_key_env_enabled(),
     );
-    SessionTelemetry::new(
+    let mut session_telemetry = SessionTelemetry::new(
         thread_id,
         model,
         model,
@@ -140,14 +131,14 @@ fn build_session_telemetry(
         user_agent(),
         source,
     )
-    .with_auth_env(auth_env_telemetry.to_otel_metadata())
+    .with_auth_env(auth_env_telemetry.to_otel_metadata());
+    if !config.otel.log_sse_deltas {
+        session_telemetry = session_telemetry.without_sse_delta_logs();
+    }
+    session_telemetry
 }
 
 impl MemoryStartupContext {
-    pub(crate) fn is_shutting_down(&self) -> bool {
-        self.thread_manager.is_shutting_down()
-    }
-
     pub(crate) fn new(
         thread_manager: Arc<ThreadManager>,
         auth_manager: Arc<AuthManager>,
@@ -309,7 +300,7 @@ impl MemoryStartupContext {
 
         StageOneRequestContext {
             version: self.version,
-            model_info,
+            model_info: Arc::unwrap_or_clone(model_info.model),
             session_telemetry: build_session_telemetry(
                 &self.auth_manager,
                 self.thread_id,
@@ -413,8 +404,11 @@ impl MemoryStartupContext {
         &self,
         config: Config,
         prompt: Vec<UserInput>,
-    ) -> Result<SpawnedConsolidationAgent, ConsolidationAgentStartError> {
-        let started = self
+        workspace_lock: Arc<crate::MemoryWorkspaceLock>,
+    ) -> anyhow::Result<SpawnedConsolidationAgent> {
+        let NewThread {
+            thread_id, thread, ..
+        } = self
             .thread_manager
             .start_thread(StartThreadOptions {
                 session_source: Some(SessionSource::Internal(
@@ -423,22 +417,16 @@ impl MemoryStartupContext {
                 thread_source: Some(ThreadSource::MemoryConsolidation),
                 ..StartThreadOptions::new(config)
             })
-            .await;
-        let NewThread {
-            thread_id, thread, ..
-        } = match started {
-            Ok(started) => started,
-            Err(error)
-                if matches!(
-                    error.details(),
-                    CodexErrorDetails::InvalidRequest(message)
-                        if message == "thread manager is shutting down"
-                ) =>
-            {
-                return Err(ConsolidationAgentStartError::Canceled);
-            }
-            Err(error) => return Err(ConsolidationAgentStartError::Failed(error.into())),
-        };
+            .await?;
+
+        // Cancellation or a shutdown timeout must not release workspace ownership
+        // while the agent can still write. The phase-2 handler keeps another owner
+        // through the final baseline reset after this thread has terminated.
+        let running_thread = Arc::clone(&thread);
+        tokio::spawn(async move {
+            running_thread.wait_until_terminated().await;
+            drop(workspace_lock);
+        });
 
         let agent = SpawnedConsolidationAgent { thread_id, thread };
         let submit_result = match agent
@@ -452,29 +440,16 @@ impl MemoryStartupContext {
             .await
         {
             Ok(StartIfIdleSubmission::Started { .. }) => Ok(()),
-            Ok(StartIfIdleSubmission::NotSubmitted {
-                reason: NotSubmittedReason::ServerDraining,
-            }) => Err(ConsolidationAgentStartError::Canceled),
-            Ok(submission) => Err(ConsolidationAgentStartError::Failed(anyhow::anyhow!(
+            Ok(submission) => Err(anyhow::anyhow!(
                 "memory consolidation input was not started: {submission:?}"
-            ))),
-            Err(err)
-                if matches!(err.details(), CodexErrorDetails::InternalAgentDied)
-                    && matches!(
-                        agent.thread.agent_status().await,
-                        codex_protocol::protocol::AgentStatus::Shutdown
-                    )
-                    && agent.thread.last_terminal_agent_status().await.is_none() =>
-            {
-                Err(ConsolidationAgentStartError::Canceled)
-            }
-            Err(err) => Err(ConsolidationAgentStartError::Failed(err.into())),
+            )),
+            Err(err) => Err(err.into()),
         };
         if let Err(err) = submit_result {
             if let Err(shutdown_err) = self.shutdown_consolidation_agent(agent).await {
-                return Err(ConsolidationAgentStartError::ShutdownUnconfirmed(
-                    shutdown_err,
-                ));
+                tracing::warn!(
+                    "failed to shut down consolidation agent after submit error: {shutdown_err}"
+                );
             }
             return Err(err);
         }
@@ -498,36 +473,3 @@ impl MemoryStartupContext {
         Ok(())
     }
 }
-
-/// Resolves a memory-pipeline model id that the configured provider can
-/// actually serve.
-///
-/// Same defect class as the guardian reviewer fix: the OpenAI catalog
-/// aliases behind the preferred memory models require a known provider;
-/// built-in OpenAI and Bedrock providers supply their own supported ids.
-/// A third-party endpoint can answer 400 for those aliases,
-/// which silently disabled memory extraction and consolidation on custom
-/// providers (the background jobs fail on every rollout). Explicit
-/// `memories.extract_model` / `memories.consolidation_model` config always
-/// wins; on any other provider the user's active model is the only id we
-/// know is servable.
-pub(crate) fn reachable_memory_model(
-    provider: &codex_model_provider_info::ModelProviderInfo,
-    configured: Option<&str>,
-    preferred: &str,
-    active_model: Option<&str>,
-) -> String {
-    if let Some(configured) = configured {
-        return configured.to_string();
-    }
-    if provider.is_first_party() {
-        return preferred.to_string();
-    }
-    active_model
-        .map(str::to_string)
-        .unwrap_or_else(|| preferred.to_string())
-}
-
-#[cfg(test)]
-#[path = "runtime_model_tests.rs"]
-mod reachable_memory_model_tests;

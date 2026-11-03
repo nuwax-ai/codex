@@ -7,7 +7,6 @@ use codex_core::config::Config;
 use codex_features::Feature;
 use codex_history::RolloutItem;
 use codex_login::CodexAuth;
-use codex_model_provider::RemoteCompactionSupport;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::built_in_model_providers;
 use codex_models_manager::bundled_models_response;
@@ -1151,11 +1150,11 @@ async fn incomplete_response_during_compaction_is_terminal_and_counted(
     for (provider, expected_error) in [
         (
             non_openai_model_provider as fn(&MockServer) -> ModelProviderInfo,
-            "Output token limit reached; increase max_output_tokens before retrying",
+            "Incomplete response returned, reason: max_output_tokens",
         ),
         (
             openai_model_provider,
-            "Error running remote compact task: Output token limit reached; increase max_output_tokens before retrying",
+            "Error running remote compact task: Incomplete response returned, reason: max_output_tokens",
         ),
     ] {
         let server = start_mock_server().await;
@@ -1504,115 +1503,6 @@ async fn manual_compact_records_durable_and_local_token_usage() {
             compacted.latest_token_usage_record.as_ref(),
         ),
         (Some("r1"), records.last().copied())
-    );
-}
-
-/// Two compactions whose provider echoes the SAME response id must both
-/// count: each compaction attempt joins the ledger by its own minted host
-/// key, never by the reusable provider id.
-#[test_case::test_case(RemoteCompactionSupport::Unsupported; "local")]
-#[test_case::test_case(RemoteCompactionSupport::V2; "remote_v2")]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn repeated_compaction_response_ids_count_separately(
-    remote_compaction: RemoteCompactionSupport,
-) {
-    skip_if_no_network!();
-
-    let server = start_mock_server().await;
-
-    // Both compaction responses reuse the provider id "r1" with different totals.
-    let response_mock = mount_sse_sequence(
-        &server,
-        [30, 12]
-            .into_iter()
-            .map(|total_tokens| {
-                let output = match remote_compaction {
-                    RemoteCompactionSupport::Unsupported => {
-                        ev_assistant_message("summary", SUMMARY_TEXT)
-                    }
-                    RemoteCompactionSupport::V2 => json!({
-                        "type": "response.output_item.done",
-                        "item": {"type": "compaction", "encrypted_content": SUMMARY_TEXT},
-                    }),
-                };
-                sse(vec![output, ev_completed_with_tokens("r1", total_tokens)])
-            })
-            .collect(),
-    )
-    .await;
-
-    let model_provider = match remote_compaction {
-        RemoteCompactionSupport::Unsupported => non_openai_model_provider(&server),
-        RemoteCompactionSupport::V2 => openai_model_provider(&server),
-    };
-    let mut builder = test_codex().with_config(move |config| {
-        config.model_provider = model_provider;
-        set_test_compact_prompt(config);
-    });
-    let test = builder
-        .build_with_auto_env(&server)
-        .await
-        .expect("build compaction test");
-    let rollout_path = test.codex.rollout_path().expect("rollout path");
-    let codex = test.codex;
-
-    for _ in 0..2 {
-        codex.submit(Op::Compact).await.expect("submit compaction");
-        wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
-    }
-
-    let expected_trigger_count = usize::from(remote_compaction == RemoteCompactionSupport::V2);
-    assert_eq!(
-        response_mock
-            .requests()
-            .iter()
-            .map(|request| (
-                request.path(),
-                request.inputs_of_type("compaction_trigger").len()
-            ))
-            .collect::<Vec<_>>(),
-        vec![("/v1/responses".to_string(), expected_trigger_count); 2],
-        "exactly two requests must use the selected compaction path"
-    );
-
-    let records = fs::read_to_string(rollout_path)
-        .expect("read rollout")
-        .lines()
-        .filter_map(|line| codex_rollout::parse_rollout_line(line).ok())
-        .filter_map(|line| match line.item {
-            RolloutItem::TokenUsageRecord(record) => Some(record),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(
-        records.len(),
-        2,
-        "each compaction records its own sampling: {records:?}"
-    );
-    let response_keys = records
-        .iter()
-        .map(|record| {
-            record
-                .response_key
-                .as_deref()
-                .expect("compaction sampling must have a persisted host key")
-        })
-        .collect::<Vec<_>>();
-    assert_ne!(
-        response_keys[0], response_keys[1],
-        "the two compactions mint distinct host keys"
-    );
-    assert_eq!(
-        records
-            .iter()
-            .map(|record| (
-                record.response_id.as_str(),
-                record.usage.total_tokens,
-                record.thread_token_usage.total_tokens,
-            ))
-            .collect::<Vec<_>>(),
-        vec![("r1", 30, 30), ("r1", 12, 42)],
-        "the reused provider id must not replace the first compaction's spend"
     );
 }
 
@@ -2436,160 +2326,6 @@ async fn auto_compact_runs_after_token_limit_hit() {
             .iter()
             .any(|text| text.contains(prefixed_auto_summary)),
         "auto compact follow-up request should include the summary message"
-    );
-}
-
-// Agent-style flow with image-bearing history: two image turns push token
-// usage over the auto-compact limit, compaction runs, and the task continues
-// on the compacted thread. Images reach the wire before compaction; the
-// summarization material and the compacted follow-up history carry none
-// (compact.rs drops InputImage from summary material and strips images from
-// retained user messages, keeping their text as annotated parts).
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn auto_compact_with_image_history_drops_images_and_continues_the_task() {
-    skip_if_no_network!();
-
-    let server = start_mock_server().await;
-
-    let sse1 = sse(vec![
-        ev_assistant_message("m1", FIRST_REPLY),
-        ev_completed_with_tokens("r1", /*total_tokens*/ 70_000),
-    ]);
-    let sse2 = sse(vec![
-        ev_assistant_message("m2", "SECOND_REPLY"),
-        ev_completed_with_tokens("r2", /*total_tokens*/ 330_000),
-    ]);
-    let sse3 = sse(vec![
-        ev_assistant_message("m3", AUTO_SUMMARY_TEXT),
-        ev_completed_with_tokens("r3", /*total_tokens*/ 200),
-    ]);
-    let sse4 = sse(vec![
-        ev_assistant_message("m4", FINAL_REPLY),
-        ev_completed_with_tokens("r4", /*total_tokens*/ 120),
-    ]);
-
-    let request_log = mount_sse_sequence(&server, vec![sse1, sse2, sse3, sse4]).await;
-
-    let model_provider = non_openai_model_provider(&server);
-
-    let image_dir = tempfile::tempdir().expect("image directory");
-    let write_test_png = |name: &str, color: [u8; 4]| {
-        let path = image_dir.path().join(name);
-        image::ImageBuffer::from_pixel(4, 4, image::Rgba(color))
-            .save(&path)
-            .expect("synthetic fixture image");
-        path
-    };
-    let first_image = write_test_png("turn1.png", [200, 30, 30, 255]);
-    let second_image = write_test_png("turn2.png", [30, 30, 200, 255]);
-
-    let mut builder = test_codex().with_config(move |config| {
-        config.model_provider = model_provider;
-        set_test_compact_prompt(config);
-        config.model_auto_compact_token_limit = Some(200_000);
-    });
-    let codex = builder.build(&server).await.unwrap().codex;
-
-    codex
-        .start_or_steer_turn(TurnInputRequest::user_input(vec![
-            UserInput::LocalImage {
-                path: first_image,
-                detail: None,
-            },
-            UserInput::Text {
-                text: FIRST_AUTO_MSG.into(),
-                text_elements: Vec::new(),
-            },
-        ]))
-        .await
-        .unwrap();
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
-
-    codex
-        .start_or_steer_turn(TurnInputRequest::user_input(vec![
-            UserInput::LocalImage {
-                path: second_image,
-                detail: None,
-            },
-            UserInput::Text {
-                text: SECOND_AUTO_MSG.into(),
-                text_elements: Vec::new(),
-            },
-        ]))
-        .await
-        .unwrap();
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
-
-    codex
-        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
-            text: POST_AUTO_USER_MSG.into(),
-            text_elements: Vec::new(),
-        }]))
-        .await
-        .unwrap();
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
-
-    let requests = request_log.requests();
-    let request_bodies: Vec<String> = requests
-        .iter()
-        .map(|request| request.body_json().to_string())
-        .collect();
-    assert_eq!(
-        request_bodies.len(),
-        4,
-        "expected two image turns, one compaction request, and the follow-up; got {}",
-        request_bodies.len()
-    );
-    let compact_index = request_bodies
-        .iter()
-        .enumerate()
-        .find_map(|(idx, body)| body_contains_text(body, SUMMARIZATION_PROMPT).then_some(idx))
-        .expect("auto compact request missing");
-    assert_eq!(compact_index, 2, "auto compact should be the third request");
-
-    // The images reached the model before compaction, and the compaction
-    // request itself carries the full current history (the model summarizes
-    // the images too), so images legitimately appear in requests 0-2.
-    assert!(
-        request_bodies[0].contains("input_image"),
-        "turn one must carry its image on the wire"
-    );
-    assert!(
-        request_bodies[1].contains("input_image"),
-        "turn two must carry its image on the wire"
-    );
-    assert!(
-        request_bodies[2].contains("input_image"),
-        "the compaction request summarizes the full history, images included"
-    );
-    // The compacted follow-up history is text-only by contract (summary plus
-    // retained text user messages): no image payload survives compaction.
-    assert!(
-        !request_bodies[3].contains("input_image"),
-        "the compacted follow-up must not carry image payloads"
-    );
-    // The task continued on the compacted thread: new user message and the
-    // summary are the follow-up's history.
-    let follow_up_body = requests[3].body_json();
-    let follow_up_texts: Vec<&str> = follow_up_body["input"]
-        .as_array()
-        .expect("follow-up input array")
-        .iter()
-        .filter_map(|item| item["content"].as_array())
-        .flatten()
-        .filter_map(|part| part["text"].as_str())
-        .collect();
-    assert!(
-        follow_up_texts
-            .iter()
-            .any(|text| *text == POST_AUTO_USER_MSG),
-        "the follow-up request must include the new user message"
-    );
-    assert!(
-        follow_up_texts
-            .iter()
-            .any(|text| text.contains(AUTO_SUMMARY_TEXT)),
-        "the follow-up request must include the compaction summary"
     );
 }
 
@@ -5744,8 +5480,18 @@ async fn auto_compact_body_after_prefix_still_caps_at_context_window() {
     );
 }
 
+#[derive(Clone, Copy)]
+enum ContinueThread {
+    Live,
+    Fork,
+    Restart,
+}
+
+#[test_case::test_case(ContinueThread::Live; "live")]
+#[test_case::test_case(ContinueThread::Fork; "fork")]
+#[test_case::test_case(ContinueThread::Restart; "cold resume")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn auto_compact_accounts_for_encrypted_reasoning() {
+async fn auto_compact_accounts_for_encrypted_reasoning(continuation: ContinueThread) {
     skip_if_no_network!();
 
     let server = start_mock_server().await;
@@ -5783,26 +5529,53 @@ async fn auto_compact_accounts_for_encrypted_reasoning() {
     )
     .await;
 
-    let test = test_codex()
-        .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
-        .with_model_info_override("gpt-5.5", |model| {
-            model.use_responses_lite = true;
-        })
-        .with_config(|config| {
-            config.model = Some("gpt-5.5".to_string());
-            set_test_compact_prompt(config);
-            config.model_auto_compact_token_limit = Some(81);
-        })
+    let builder = || {
+        test_codex()
+            .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
+            .with_model_info_override("gpt-5.5", |model| {
+                model.use_responses_lite = true;
+            })
+            .with_config(|config| {
+                config.model = Some("gpt-5.5".to_string());
+                set_test_compact_prompt(config);
+                config.model_auto_compact_token_limit = Some(81);
+            })
+    };
+    let mut test = builder()
         .build_with_auto_env(&server)
         .await
         .expect("build codex");
 
-    for user in [
-        "FIRST_REASONING",
-        "SECOND_REASONING",
-        "BELOW_COMPACT_LIMIT",
-        "AT_COMPACT_LIMIT",
-    ] {
+    for user in ["FIRST_REASONING", "SECOND_REASONING"] {
+        test.submit_text_turn(user).await.expect("submit user turn");
+    }
+
+    match continuation {
+        ContinueThread::Live => {}
+        ContinueThread::Restart => {
+            test = builder()
+                .restart_with_auto_env(&server, &test)
+                .await
+                .expect("restart");
+        }
+        ContinueThread::Fork => {
+            let path = test
+                .session_configured
+                .rollout_path
+                .clone()
+                .expect("rollout path");
+            let options = test.start_thread_options().await;
+            test.codex.shutdown_and_wait().await.expect("flush rollout");
+            test.codex = test
+                .thread_manager
+                .fork_legacy_thread(usize::MAX, options, path)
+                .await
+                .expect("fork")
+                .thread;
+        }
+    }
+
+    for user in ["BELOW_COMPACT_LIMIT", "AT_COMPACT_LIMIT"] {
         test.submit_text_turn(user).await.expect("submit user turn");
     }
 
@@ -5818,19 +5591,73 @@ async fn auto_compact_accounts_for_encrypted_reasoning() {
     );
 }
 
-/// Waits for TurnComplete and requires it to be error-free for the
-/// image-bearing pre-turn compaction turns: a failed turn must fail the test
-/// instead of silently satisfying the wait while request-shape assertions
-/// inspect a broken exchange.
-async fn wait_image_turn_complete(codex: &codex_core::CodexThread) {
-    let event = wait_for_event(codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
-    let EventMsg::TurnComplete(complete) = event else {
-        unreachable!("matched TurnComplete");
-    };
-    assert!(
-        complete.error.is_none(),
-        "image compaction turn completed with an error: {:?}",
-        complete.error
+#[test_case::test_case("response.incomplete", true, true; "incomplete_with_usage")]
+#[test_case::test_case("response.incomplete", false, true; "incomplete_without_usage")]
+#[test_case::test_case("response.completed", false, true; "completed_without_usage")]
+#[test_case::test_case("response.incomplete", false, false; "non_lite_incomplete_without_usage")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn auto_compact_accounts_for_unreported_reasoning(
+    event_type: &str,
+    with_usage: bool,
+    use_responses_lite: bool,
+) {
+    skip_if_no_network!();
+
+    let server = start_mock_server().await;
+    let mut responses = vec![sse(vec![
+        ev_assistant_message("initial", "Initial reply."),
+        ev_completed_with_tokens("initial", /*total_tokens*/ 80),
+    ])];
+    for id in ["partial-1", "partial-2"] {
+        let usage = with_usage.then(|| {
+            ev_completed_with_tokens(id, /*total_tokens*/ 15)["response"]["usage"].clone()
+        });
+        responses.push(sse(vec![
+            ev_reasoning_item(id, &["partial"], &[&"r".repeat(12_000)]),
+            json!({
+                "type": event_type,
+                "response": {
+                    "id": id,
+                    "incomplete_details": {"reason": "max_output_tokens"},
+                    "usage": usage
+                }
+            }),
+        ]));
+    }
+    responses.push(remote_v2_compaction_response());
+    responses.push(sse(vec![
+        ev_assistant_message("final", FINAL_REPLY),
+        ev_completed_with_tokens("final", /*total_tokens*/ 1),
+    ]));
+    let request_log = mount_sse_sequence(&server, responses).await;
+    let test = test_codex()
+        .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
+        .with_model_info_override("gpt-5.5", move |model| {
+            model.use_responses_lite = use_responses_lite;
+        })
+        .with_config(|config| {
+            set_test_compact_prompt(config);
+            config.model_auto_compact_token_limit = Some(5_000);
+            config.model_provider.stream_max_retries = Some(0);
+        })
+        .build_with_auto_env(&server)
+        .await
+        .expect("build codex");
+
+    for user in ["INITIAL", "PARTIAL_ONE", "PARTIAL_TWO", "CONTINUE"] {
+        test.submit_text_turn(user).await.expect("submit user turn");
+    }
+
+    // The saved count is 80. Each partial response retains about 3,000 tokens:
+    // one stays below the 5,000-token limit, but two must compact before CONTINUE.
+    assert_eq!(
+        request_log
+            .requests()
+            .iter()
+            .map(|request| request.inputs_of_type("compaction_trigger").len())
+            .collect::<Vec<_>>(),
+        vec![0, 0, 0, 1, 0],
+        "retained reasoning must trigger compaction before the continuation request",
     );
 }
 
@@ -5880,7 +5707,7 @@ async fn snapshot_request_shape_pre_turn_compaction_including_incoming_user_mess
             }]))
             .await
             .expect("submit user input");
-        wait_image_turn_complete(&codex).await;
+        wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
     }
     core_test_support::submit_thread_settings(
         &codex,
@@ -5910,7 +5737,7 @@ async fn snapshot_request_shape_pre_turn_compaction_including_incoming_user_mess
         ]))
         .await
         .expect("submit user input");
-    wait_image_turn_complete(&codex).await;
+    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     let requests = request_log.requests();
     assert_eq!(requests.len(), 4, "expected user, user, compact, follow-up");
@@ -6474,386 +6301,6 @@ async fn remote_v2_compaction_refreshes_instructions_and_preserves_them_on_cold_
     );
 
     Ok(())
-}
-
-// Fork (nuwax-codex): bridge wires surface vendor context-window rejections
-// as plain HTTP 400 bodies. The error classification must recognize them so
-// the compaction trim-retry loop sheds history instead of failing the turn
-// with a generic invalid request after exhausting retries.
-#[tokio::test(flavor = "multi_thread")]
-async fn auto_compact_recovers_from_http_context_window_rejection_by_trimming() {
-    skip_if_no_network!();
-
-    let server = start_mock_server().await;
-
-    let sse1 = sse(vec![
-        ev_assistant_message("m1", FIRST_REPLY),
-        ev_completed_with_tokens("r1", /*total_tokens*/ 70_000),
-    ]);
-    let sse2 = sse(vec![
-        ev_assistant_message("m2", "SECOND_REPLY"),
-        ev_completed_with_tokens("r2", /*total_tokens*/ 330_000),
-    ]);
-    let context_window_rejection =
-        wiremock::ResponseTemplate::new(/*status*/ 400).set_body_json(json!({
-            "error": {
-                "code": "context_length_exceeded",
-                "message": "This model's maximum context length is 8192 tokens.",
-            }
-        }));
-    let sse3 = sse(vec![
-        ev_assistant_message("m3", AUTO_SUMMARY_TEXT),
-        ev_completed_with_tokens("r3", /*total_tokens*/ 200),
-    ]);
-    let sse4 = sse(vec![
-        ev_assistant_message("m4", FINAL_REPLY),
-        ev_completed_with_tokens("r4", /*total_tokens*/ 120),
-    ]);
-
-    let request_log = mount_response_sequence(
-        &server,
-        vec![
-            sse_response(sse1),
-            sse_response(sse2),
-            context_window_rejection,
-            sse_response(sse3),
-            sse_response(sse4),
-        ],
-    )
-    .await;
-
-    let model_provider = non_openai_model_provider(&server);
-    let mut builder = test_codex().with_config(move |config| {
-        config.model_provider = model_provider;
-        set_test_compact_prompt(config);
-        config.model_auto_compact_token_limit = Some(200_000);
-    });
-    let codex = builder.build(&server).await.unwrap().codex;
-
-    for msg in [FIRST_AUTO_MSG, SECOND_AUTO_MSG, POST_AUTO_USER_MSG] {
-        codex
-            .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
-                text: msg.into(),
-                text_elements: Vec::new(),
-            }]))
-            .await
-            .unwrap();
-        wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
-    }
-
-    let requests = request_log.requests();
-    let bodies: Vec<String> = requests
-        .iter()
-        .map(|request| request.body_json().to_string())
-        .collect();
-    assert_eq!(
-        bodies.len(),
-        5,
-        "expected two turns, a rejected compaction, the retried compaction, and the follow-up"
-    );
-    let compaction_indices: Vec<usize> = bodies
-        .iter()
-        .enumerate()
-        .filter(|(_, body)| body_contains_text(body, SUMMARIZATION_PROMPT))
-        .map(|(index, _)| index)
-        .collect();
-    assert_eq!(
-        compaction_indices,
-        vec![2, 3],
-        "compaction should be rejected once, then retried"
-    );
-    // The retry must carry strictly fewer input items than the rejected
-    // attempt: the trim loop removed the oldest history item.
-    let input_len =
-        |body: &serde_json::Value| body["input"].as_array().map(Vec::len).unwrap_or_default();
-    let rejected = requests[2].body_json();
-    let retried = requests[3].body_json();
-    assert!(
-        input_len(&retried) < input_len(&rejected),
-        "retry must shed history: {} !< {}",
-        input_len(&retried),
-        input_len(&rejected)
-    );
-    assert!(
-        bodies[4].contains(POST_AUTO_USER_MSG)
-            && !body_contains_text(&bodies[4], SUMMARIZATION_PROMPT)
-    );
-}
-
-// Fork (nuwax-codex): overflow recovery for a third-party gateway. When the
-// gateway rejects an oversized *sampling* request with an HTTP body the
-// bridge maps to a context-window error (GLM `1261 prompt is too long`), the
-// turn used to die with a hard error: the existing recovery arm requires a
-// Guardian marker that only the local budget check inserts. These tests pin
-// the fork's two-sided fix — recover by compacting once and retrying, and
-// charge the turn's pending input into the pre-turn compaction decision so a
-// single large paste cannot step over the threshold in one turn.
-
-fn glm_prompt_too_long_rejection() -> wiremock::ResponseTemplate {
-    wiremock::ResponseTemplate::new(/*status*/ 400).set_body_json(json!({
-        "type": "error",
-        "error": {
-            "type": "invalid_request_error",
-            "code": "1261",
-            "message": "[1261][prompt is too long][20261102overflowprobe]"
-        }
-    }))
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn gateway_context_rejection_compacts_once_and_retries_the_turn() {
-    skip_if_no_network!();
-
-    let server = start_mock_server().await;
-
-    let sse1 = sse(vec![
-        ev_assistant_message("m1", FIRST_REPLY),
-        ev_completed_with_tokens("r1", /*total_tokens*/ 70_000),
-    ]);
-    let compact_ok = sse(vec![
-        ev_assistant_message("m2", AUTO_SUMMARY_TEXT),
-        ev_completed_with_tokens("r2", /*total_tokens*/ 200),
-    ]);
-    let retry_ok = sse(vec![
-        ev_assistant_message("m3", FINAL_REPLY),
-        ev_completed_with_tokens("r3", /*total_tokens*/ 120),
-    ]);
-    let request_log = mount_response_sequence(
-        &server,
-        vec![
-            sse_response(sse1),
-            glm_prompt_too_long_rejection(),
-            sse_response(compact_ok),
-            sse_response(retry_ok),
-        ],
-    )
-    .await;
-
-    let model_provider = non_openai_model_provider(&server);
-    let codex = test_codex()
-        .with_config(move |config| {
-            config.model_provider = model_provider;
-            set_test_compact_prompt(config);
-        })
-        .build(&server)
-        .await
-        .expect("build codex")
-        .codex;
-
-    codex
-        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
-            text: FIRST_AUTO_MSG.to_string(),
-            text_elements: Vec::new(),
-        }]))
-        .await
-        .expect("submit first user");
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
-
-    codex
-        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
-            text: SECOND_AUTO_MSG.to_string(),
-            text_elements: Vec::new(),
-        }]))
-        .await
-        .expect("submit second user");
-    let final_reply = wait_for_event_match(&codex, |event| match event {
-        EventMsg::ItemCompleted(ItemCompletedEvent {
-            item: TurnItem::AgentMessage(message),
-            ..
-        }) => message
-            .content
-            .iter()
-            .map(|part| match part {
-                codex_protocol::items::AgentMessageContent::Text { text } => text.clone(),
-            })
-            .filter(|text| text.contains(FINAL_REPLY))
-            .next()
-            .map(|_| FINAL_REPLY.to_string()),
-        _ => None,
-    })
-    .await;
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
-    assert_eq!(final_reply, FINAL_REPLY, "the retried turn must complete");
-
-    let requests = request_log.requests();
-    let bodies: Vec<String> = requests
-        .iter()
-        .map(|request| request.body_json().to_string())
-        .collect();
-    assert_eq!(
-        bodies.len(),
-        4,
-        "expected the first turn, the rejected sampling, one compaction, and the retry"
-    );
-    assert!(
-        body_contains_text(&bodies[2], SUMMARIZATION_PROMPT),
-        "the recovery must compact exactly once before retrying"
-    );
-    assert!(
-        bodies[3].contains(SECOND_AUTO_MSG)
-            && !body_contains_text(&bodies[3], SUMMARIZATION_PROMPT),
-        "the retry must carry the turn's user message, not another compaction"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn persistent_context_rejection_surfaces_the_error_after_bounded_attempts() {
-    skip_if_no_network!();
-
-    let server = start_mock_server().await;
-
-    let sse1 = sse(vec![
-        ev_assistant_message("m1", FIRST_REPLY),
-        ev_completed_with_tokens("r1", /*total_tokens*/ 70_000),
-    ]);
-    // Every later request — the turn's sampling and each trimmed compaction —
-    // is rejected; recovery must stay bounded and surface the error. The trim
-    // loop sheds one history item per attempt and the compaction prompt also
-    // carries injected context items, so mount generously: an unbounded loop
-    // would exhaust these and fail on the unmatched request.
-    let rejections: Vec<wiremock::ResponseTemplate> =
-        (0..24).map(|_| glm_prompt_too_long_rejection()).collect();
-    let mut responses = vec![sse_response(sse1)];
-    responses.extend(rejections);
-    // Open-ended: the bounded-recovery loop sends fewer requests than mounted,
-    // and wiremock would otherwise fail the exact-count expectation on drop.
-    let request_log = responses::mount_response_sequence_open_ended(&server, responses).await;
-
-    let mut model_provider = non_openai_model_provider(&server);
-    model_provider.stream_max_retries = Some(0);
-    let codex = test_codex()
-        .with_config(move |config| {
-            config.model_provider = model_provider;
-            set_test_compact_prompt(config);
-        })
-        .build(&server)
-        .await
-        .expect("build codex")
-        .codex;
-
-    codex
-        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
-            text: FIRST_AUTO_MSG.to_string(),
-            text_elements: Vec::new(),
-        }]))
-        .await
-        .expect("submit first user");
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
-
-    codex
-        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
-            text: SECOND_AUTO_MSG.to_string(),
-            text_elements: Vec::new(),
-        }]))
-        .await
-        .expect("submit second user");
-    let error_message = wait_for_event_match(&codex, |event| match event {
-        EventMsg::Error(err) => Some(err.message.clone()),
-        _ => None,
-    })
-    .await;
-    assert!(
-        error_message.contains("ran out of room in the model's context window"),
-        "expected the context-window error to surface, got {error_message}"
-    );
-
-    let requests = request_log.requests();
-    assert!(
-        requests.len() >= 3,
-        "the sampling rejection must trigger at least one compaction attempt, got {}",
-        requests.len()
-    );
-    assert!(
-        requests.len() <= 24,
-        "recovery must stay bounded instead of looping, got {}",
-        requests.len()
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn pre_turn_compaction_charges_the_pending_user_input() {
-    skip_if_no_network!();
-
-    let server = start_mock_server().await;
-
-    // 880k reported usage sits below the 900k full-window limit (90% of the
-    // configured 1M); the second turn's pending input (~50k estimated tokens
-    // of text) pushes the projection over it, so compaction must run *before*
-    // the turn is sampled.
-    let big_pending_input = "pending input token filler line. ".repeat(6_400);
-    let sse1 = sse(vec![
-        ev_assistant_message("m1", FIRST_REPLY),
-        ev_completed_with_usage("r1", 880_000, 0),
-    ]);
-    let compact_ok = sse(vec![
-        ev_assistant_message("m2", AUTO_SUMMARY_TEXT),
-        ev_completed_with_tokens("r2", /*total_tokens*/ 200),
-    ]);
-    let turn2_ok = sse(vec![
-        ev_assistant_message("m3", FINAL_REPLY),
-        ev_completed_with_tokens("r3", /*total_tokens*/ 120),
-    ]);
-    let request_log = mount_response_sequence(
-        &server,
-        vec![
-            sse_response(sse1),
-            sse_response(compact_ok),
-            sse_response(turn2_ok),
-        ],
-    )
-    .await;
-
-    let model_provider = non_openai_model_provider(&server);
-    let codex = test_codex()
-        .with_config(move |config| {
-            config.model_provider = model_provider;
-            set_test_compact_prompt(config);
-            // The pending charge guards the model's full window (90% of the
-            // configured 1M), not an operator's soft threshold.
-            config.model_context_window = Some(1_000_000);
-        })
-        .build(&server)
-        .await
-        .expect("build codex")
-        .codex;
-
-    codex
-        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
-            text: FIRST_AUTO_MSG.to_string(),
-            text_elements: Vec::new(),
-        }]))
-        .await
-        .expect("submit first user");
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
-
-    codex
-        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
-            text: big_pending_input,
-            text_elements: Vec::new(),
-        }]))
-        .await
-        .expect("submit second user");
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
-
-    let requests = request_log.requests();
-    let bodies: Vec<String> = requests
-        .iter()
-        .map(|request| request.body_json().to_string())
-        .collect();
-    assert_eq!(
-        bodies.len(),
-        3,
-        "expected the first turn, the pre-turn compaction, and the compacted second turn"
-    );
-    assert!(
-        body_contains_text(&bodies[1], SUMMARIZATION_PROMPT),
-        "the pending input must trigger compaction before the turn is sampled; \
-         the reported usage alone (880k of a 900k full-window limit) would not have"
-    );
-    assert!(
-        bodies[2].contains("pending input token filler"),
-        "the second turn must sample after compaction, carrying its user message"
-    );
 }
 
 #[path = "compact_program_tests.rs"]

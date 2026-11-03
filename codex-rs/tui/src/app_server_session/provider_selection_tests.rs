@@ -8,23 +8,7 @@ use pretty_assertions::assert_eq;
 #[tokio::test]
 async fn starts_and_forks_use_server_provider_unless_explicitly_selected() -> Result<()> {
     let home = tempfile::tempdir()?;
-    std::fs::write(
-        home.path().join("config.toml"),
-        r#"
-model_provider = "server-provider"
-model = "gpt-5.2"
-[model_providers.server-provider]
-name = "Server provider"
-base_url = "http://127.0.0.1:9/v1"
-wire_api = "responses"
-requires_openai_auth = false
-[model_providers.client-provider]
-name = "Client provider"
-base_url = "http://127.0.0.1:9/v1"
-wire_api = "responses"
-requires_openai_auth = false
-"#,
-    )?;
+    write_provider_config(home.path())?;
     let server_config = ConfigBuilder::default()
         .codex_home(home.path().to_path_buf())
         .build()
@@ -48,10 +32,15 @@ requires_openai_auth = false
     )?;
     let mut server = crate::start_embedded_app_server_for_picker(&server_config).await?;
     assert_eq!(
-        crate::lookup_session_target_with_app_server(&mut server, &client_config, "Server history")
-            .await?
-            .unwrap()
-            .thread_id,
+        crate::lookup_session_target_with_app_server(
+            crate::resume_picker::SessionPickerAction::Resume,
+            &mut server,
+            &client_config,
+            "Server history"
+        )
+        .await?
+        .unwrap()
+        .thread_id,
         parent
     );
     let resumed = server
@@ -172,101 +161,114 @@ async fn required_provider_overrides_oss_history_selection() -> Result<()> {
     Ok(())
 }
 
+fn write_provider_config(home: &std::path::Path) -> std::io::Result<()> {
+    std::fs::write(
+        home.join("config.toml"),
+        r#"
+model_provider = "server-provider"
+model = "gpt-5.4"
+[model_providers.server-provider]
+name = "Server provider"
+base_url = "http://127.0.0.1:9/v1"
+wire_api = "responses"
+requires_openai_auth = false
+[model_providers.client-provider]
+name = "Client provider"
+base_url = "http://127.0.0.1:9/v1"
+wire_api = "responses"
+requires_openai_auth = false
+"#,
+    )?;
+    Ok(())
+}
+
 #[tokio::test]
-async fn environment_provider_is_explicit_in_remote_start_fork_resume_and_history() -> Result<()> {
+async fn resume_discovers_other_providers_but_rejects_mismatched_resume() -> Result<()> {
     let home = tempfile::tempdir()?;
-    let seeds = codex_utils_cli::nuwax_env_overrides(
-        codex_utils_cli::NuwaxEnvInput {
-            model: Some("environment-model".into()),
-            base_url: Some("https://gateway.example/v1".into()),
-            wire_api: Some("chat".into()),
-            api_key: Some("test-key".into()),
-            ..Default::default()
-        },
-        /*cli_model*/ None,
-        /*cli_provider*/ None,
-        &[],
-    )
-    .map_err(color_eyre::eyre::Report::msg)?;
-    let server_overrides = vec![(
-        "model_provider".into(),
-        toml::Value::String("openai".into()),
-    )];
-    let loader_overrides = codex_config::LoaderOverrides::without_managed_config_for_tests();
-    let server_config = ConfigBuilder::default()
+    write_provider_config(home.path())?;
+    let original = ConfigBuilder::default()
         .codex_home(home.path().to_path_buf())
-        .cli_overrides(server_overrides.clone())
-        .env_seed_overrides(seeds.clone())
-        .loader_overrides(loader_overrides.clone())
-        .build()
-        .await?;
-    let client_config = ConfigBuilder::default()
-        .codex_home(home.path().to_path_buf())
-        .env_seed_overrides(seeds.clone())
-        .loader_overrides(loader_overrides.clone())
         .build()
         .await?;
     let parent = crate::tests::write_session_rollout(
         home.path(),
         "2025-01-02T10-00-00",
         "2025-01-02T10:00:00Z",
-        "OpenAI history",
-        "openai",
-        server_config.cwd.as_path(),
+        "Old provider history",
+        "server-provider",
+        original.cwd.as_path(),
     )?;
-    let state_db = codex_rollout::state_db::try_init(&server_config)
-        .await
-        .map_err(color_eyre::eyre::Report::msg)?;
-    let client = crate::start_embedded_app_server(
-        codex_arg0::Arg0DispatchPaths::default(),
-        server_config,
-        server_overrides,
-        seeds,
-        loader_overrides,
-        /*strict_config*/ false,
-        codex_config::CloudConfigBundleLoader::default(),
-        codex_feedback::CodexFeedback::new(),
-        /*log_db*/ None,
-        Some(state_db),
-        Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
-        Default::default(),
-    )
-    .await?;
-    let mut server = AppServerSession::new(
-        crate::backend_id::BackendId::new(),
-        AppServerClient::InProcess(client),
-        ThreadParamsMode::Remote,
+    let path = home.path().join("config.toml");
+    let updated = std::fs::read_to_string(&path)?.replacen(
+        "model_provider = \"server-provider\"",
+        "model_provider = \"client-provider\"",
+        1,
     );
-    assert_eq!(
-        server.history_model_provider(&client_config).await?,
-        Some("nuwax_env".into()),
-    );
-    let local_settings = LocalSettings::from(&client_config);
-    let started = server.start_thread(&client_config).await?;
-    let forked = server
-        .fork_thread(&local_settings, client_config.clone(), parent)
+    std::fs::write(path, updated)?;
+    let config = ConfigBuilder::default()
+        .codex_home(home.path().to_path_buf())
+        .build()
         .await?;
-    let resumed = server
+    let local_settings = LocalSettings::from(&config);
+    let mut server = crate::start_embedded_app_server_for_picker(&config).await?;
+    let named = crate::lookup_session_target_with_app_server(
+        crate::resume_picker::SessionPickerAction::Resume,
+        &mut server,
+        &config,
+        "Old provider history",
+    )
+    .await?
+    .expect("old-provider thread by name");
+    let latest = crate::lookup_latest_session_target_with_app_server(
+        crate::resume_picker::SessionPickerAction::Resume,
+        &mut server,
+        &config,
+        /*cwd_filter*/ None,
+        /*include_non_interactive*/ false,
+    )
+    .await?
+    .expect("old-provider thread via --last");
+    assert_eq!((named.thread_id, latest.thread_id), (parent, parent));
+    assert!(
+        crate::lookup_session_target_with_app_server(
+            crate::resume_picker::SessionPickerAction::Fork,
+            &mut server,
+            &config,
+            "Old provider history",
+        )
+        .await?
+        .is_none()
+    );
+    assert!(
+        crate::lookup_latest_session_target_with_app_server(
+            crate::resume_picker::SessionPickerAction::Fork,
+            &mut server,
+            &config,
+            /*cwd_filter*/ None,
+            /*include_non_interactive*/ false,
+        )
+        .await?
+        .is_none()
+    );
+    let error = server
         .resume_thread(
             &local_settings,
-            client_config,
+            config.clone(),
             parent,
-            ResumeModelSettings::OverrideFromCurrentConfig,
+            ResumeModelSettings::RestoreFromThread,
         )
-        .await?;
+        .await
+        .expect_err("a different configured provider must block resume");
+    assert!(error.to_string().contains(
+        "This chat uses server-provider, but your current provider is client-provider. Switch to server-provider to continue."
+    ));
     assert_eq!(
-        (
-            started.session.model_provider_id,
-            forked.session.model_provider_id,
-            resumed.session.model_provider_id,
-            resumed.session.model,
-        ),
-        (
-            "nuwax_env".to_string(),
-            "nuwax_env".to_string(),
-            "nuwax_env".to_string(),
-            "environment-model".to_string(),
-        ),
+        server
+            .start_thread(&config)
+            .await?
+            .session
+            .model_provider_id,
+        "client-provider"
     );
     server.shutdown().await?;
     Ok(())

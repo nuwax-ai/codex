@@ -8,6 +8,7 @@ use crate::session::step_context::StepContext;
 use crate::session::tests::make_session_and_context;
 use crate::session::tests::make_session_and_context_with_rx;
 use crate::session::tests::mcp_config_for_test;
+use crate::session::tests::test_environment_id;
 use crate::session::tests::update_selected_settings_for_test;
 use crate::session::tests::update_turn_settings_for_test;
 use crate::session::turn_context::TurnEnvironment;
@@ -106,6 +107,13 @@ fn approval_config(turn_context: &TurnContext) -> codex_mcp::McpConfig {
     (*mcp_config_for_test(&turn_context.config)).clone()
 }
 
+fn thread_permission_source(turn_context: &TurnContext) -> McpPermissionSource<'_> {
+    McpPermissionSource::Thread {
+        profile: turn_context.config.permissions.permission_profile(),
+        host_cwd: &turn_context.config.cwd,
+    }
+}
+
 #[test_case::test_case(false, None, Ok(Some("default_link")); "catalog_account")]
 #[test_case::test_case(true, None, Err(McpToolAccountError::InvalidSelector); "required_selector_omitted")]
 #[test_case::test_case(true, Some(serde_json::json!(null)), Err(McpToolAccountError::InvalidSelector); "null_selector")]
@@ -119,7 +127,7 @@ fn mcp_tool_metadata_resolves_advertised_account_selector(
     expected: Result<Option<&str>, McpToolAccountError>,
 ) {
     let tool_info = serde_json::from_value(serde_json::json!({
-        "server_name": NUWAX_APPS_MCP_SERVER_NAME,
+        "server_name": CODEX_APPS_MCP_SERVER_NAME,
         "tool_name": "events/create",
         "tool_namespace": "calendar",
         "connector_id": "calendar",
@@ -164,7 +172,7 @@ fn mcp_tool_metadata_preserves_legacy_account_fallback(
         tool["_meta"] = meta;
     }
     let tool_info = serde_json::from_value(serde_json::json!({
-        "server_name": NUWAX_APPS_MCP_SERVER_NAME,
+        "server_name": CODEX_APPS_MCP_SERVER_NAME,
         "tool_name": "events/create",
         "tool_namespace": "calendar",
         "connector_id": "calendar",
@@ -372,7 +380,7 @@ fn openai_file_params_are_only_honored_for_codex_apps() {
     let params = HashMap::from([("file".to_string(), Vec::new())]);
 
     assert_eq!(
-        openai_file_input_optional_fields_for_server(NUWAX_APPS_MCP_SERVER_NAME, &params),
+        openai_file_input_optional_fields_for_server(CODEX_APPS_MCP_SERVER_NAME, &params),
         Some(params.clone())
     );
     assert_eq!(
@@ -542,7 +550,7 @@ async fn mcp_tool_call_span_records_error_type_and_error_code(
         &session,
         &turn_context,
         McpToolCallSpanFields {
-            server_name: NUWAX_APPS_MCP_SERVER_NAME,
+            server_name: CODEX_APPS_MCP_SERVER_NAME,
             tool_name: "calendar_search",
             call_id: "call-123",
             server_origin: Some("https://chatgpt.com/api/codex/ps/mcp"),
@@ -733,10 +741,24 @@ fn truncates_strings_on_char_boundaries() {
 
 #[test]
 fn approval_elicitation_request_uses_message_override_and_preserves_tool_params_keys() {
+    let mut metadata = approval_metadata(
+        Some("calendar"),
+        Some("Calendar"),
+        Some("Manage events and schedules."),
+        Some("Create Event"),
+        Some("Create a calendar event."),
+    );
+    metadata.annotations = Some(ToolAnnotations::from_raw(
+        /*title*/ Some("Calendar Event".to_string()),
+        /*read_only_hint*/ Some(false),
+        /*destructive_hint*/ Some(false),
+        /*idempotent_hint*/ Some(true),
+        /*open_world_hint*/ Some(true),
+    ));
     let question = build_mcp_tool_approval_question(
         "q".to_string(),
-        NUWAX_APPS_MCP_SERVER_NAME,
-        "create_event",
+        CODEX_APPS_MCP_SERVER_NAME,
+        "calendar.create_event",
         Some("Calendar"),
         prompt_options(
             /*allow_session_remember*/ true, /*allow_persistent_approval*/ true,
@@ -745,14 +767,9 @@ fn approval_elicitation_request_uses_message_override_and_preserves_tool_params_
     );
 
     let request = build_mcp_tool_approval_elicitation_request(McpToolApprovalElicitationRequest {
-        server: NUWAX_APPS_MCP_SERVER_NAME,
-        metadata: Some(&approval_metadata(
-            Some("calendar"),
-            Some("Calendar"),
-            Some("Manage events and schedules."),
-            Some("Create Event"),
-            Some("Create a calendar event."),
-        )),
+        server: CODEX_APPS_MCP_SERVER_NAME,
+        tool_name: "calendar.create_event",
+        metadata: Some(&metadata),
         tool_params: Some(&serde_json::json!({
             "calendar_id": "primary",
             "title": "Roadmap review",
@@ -789,6 +806,13 @@ fn approval_elicitation_request_uses_message_override_and_preserves_tool_params_
                 MCP_TOOL_APPROVAL_CONNECTOR_ID_KEY: "calendar",
                 MCP_TOOL_APPROVAL_CONNECTOR_NAME_KEY: "Calendar",
                 MCP_TOOL_APPROVAL_CONNECTOR_DESCRIPTION_KEY: "Manage events and schedules.",
+                "tool_name": "calendar.create_event",
+                "tool_annotations": {
+                    "readOnlyHint": false,
+                    "destructiveHint": false,
+                    "idempotentHint": true,
+                    "openWorldHint": true,
+                },
                 MCP_TOOL_APPROVAL_TOOL_TITLE_KEY: "Create Event",
                 MCP_TOOL_APPROVAL_TOOL_DESCRIPTION_KEY: "Create a calendar event.",
                 MCP_TOOL_APPROVAL_TOOL_PARAMS_KEY: {
@@ -849,7 +873,7 @@ fn custom_mcp_tool_question_mentions_server_name() {
 fn codex_apps_tool_question_uses_fallback_app_label() {
     let question = build_mcp_tool_approval_question(
         "q".to_string(),
-        NUWAX_APPS_MCP_SERVER_NAME,
+        CODEX_APPS_MCP_SERVER_NAME,
         "run_action",
         /*connector_name*/ None,
         prompt_options(
@@ -868,7 +892,7 @@ fn codex_apps_tool_question_uses_fallback_app_label() {
 fn trusted_codex_apps_tool_question_offers_always_allow() {
     let question = build_mcp_tool_approval_question(
         "q".to_string(),
-        NUWAX_APPS_MCP_SERVER_NAME,
+        CODEX_APPS_MCP_SERVER_NAME,
         "run_action",
         Some("Calendar"),
         prompt_options(
@@ -904,7 +928,7 @@ fn trusted_codex_apps_tool_question_offers_always_allow() {
 fn codex_apps_tool_question_without_elicitation_omits_always_allow() {
     let question = build_mcp_tool_approval_question(
         "q".to_string(),
-        NUWAX_APPS_MCP_SERVER_NAME,
+        CODEX_APPS_MCP_SERVER_NAME,
         "run_action",
         Some("Calendar"),
         mcp_tool_approval_prompt_options(
@@ -1006,7 +1030,7 @@ fn custom_servers_support_session_and_persistent_approval() {
 #[test]
 fn codex_apps_connectors_support_persistent_approval() {
     let invocation = McpInvocation {
-        server: NUWAX_APPS_MCP_SERVER_NAME.to_string(),
+        server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
         tool: "calendar/list_events".to_string(),
         arguments: None,
     };
@@ -1019,7 +1043,7 @@ fn codex_apps_connectors_support_persistent_approval() {
     );
     metadata.link_id = Some("link_a".to_string());
     let expected = McpToolApprovalKey {
-        server: NUWAX_APPS_MCP_SERVER_NAME.to_string(),
+        server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
         plugin_id: None,
         connector_id: Some("calendar".to_string()),
         link_id: Some("link_a".to_string()),
@@ -1349,7 +1373,7 @@ async fn mcp_sandbox_cwd_uses_matching_server_environment_uri() -> anyhow::Resul
         .initial_environments
         .primary()
         .expect("primary environment")
-        .environment
+        .environment()
         .clone();
     turn_context
         .initial_environments
@@ -1361,6 +1385,7 @@ async fn mcp_sandbox_cwd_uses_matching_server_environment_uri() -> anyhow::Resul
                 cwd: secondary_cwd.clone(),
                 workspace_roots: Vec::new(),
                 config: EnvironmentConfigState::Ready(EnvironmentConfig {
+                    environment_hooks: Default::default(),
                     allow_login_shell: true,
                     workspace_roots: Vec::new(),
                     windows_sandbox_level: turn_context.windows_sandbox_level,
@@ -1455,7 +1480,7 @@ fn mcp_tool_call_item_metadata_only_trusts_codex_apps_identity() {
     );
 
     assert_eq!(
-        McpToolCallItemMetadata::from_tool_metadata(NUWAX_APPS_MCP_SERVER_NAME, Some(&metadata),),
+        McpToolCallItemMetadata::from_tool_metadata(CODEX_APPS_MCP_SERVER_NAME, Some(&metadata),),
         McpToolCallItemMetadata {
             connector_id: Some("asdk_app_0123456789abcdef0123456789abcdef".to_string()),
             link_id: Some("link_fedcba9876543210fedcba9876543210".to_string()),
@@ -1491,7 +1516,7 @@ async fn mcp_tool_call_item_includes_app_identity() {
         &turn_context,
         "call-plugin",
         McpInvocation {
-            server: NUWAX_APPS_MCP_SERVER_NAME.to_string(),
+            server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
             tool: "echo".to_string(),
             arguments: None,
         },
@@ -1585,7 +1610,7 @@ async fn codex_apps_tool_call_request_meta_includes_turn_metadata_and_codex_apps
     assert_eq!(
         build_mcp_tool_call_request_meta(
             &step_context,
-            NUWAX_APPS_MCP_SERVER_NAME,
+            CODEX_APPS_MCP_SERVER_NAME,
             "call_abc123xyz789",
             Some(&metadata),
             is_host_owned_apps
@@ -1608,7 +1633,7 @@ async fn codex_apps_tool_call_request_meta_includes_call_id_without_existing_cod
     assert_eq!(
         build_mcp_tool_call_request_meta(
             &step_context,
-            NUWAX_APPS_MCP_SERVER_NAME,
+            CODEX_APPS_MCP_SERVER_NAME,
             "call_abc123xyz789",
             /*metadata*/ None,
             /*is_host_owned_apps*/ false
@@ -1672,7 +1697,7 @@ fn codex_apps_auth_classification_requires_the_trusted_server_and_connector() {
     );
     assert_eq!(
         mcp_tool_call_auth_elicitation_type(
-            NUWAX_APPS_MCP_SERVER_NAME,
+            CODEX_APPS_MCP_SERVER_NAME,
             Some("connector_drive"),
             &result,
         ),
@@ -1695,7 +1720,7 @@ async fn codex_apps_auth_elicitation_feature_disabled_returns_original_result() 
         &turn_context,
         turn_context.approval_policy(),
         "call_123",
-        NUWAX_APPS_MCP_SERVER_NAME,
+        CODEX_APPS_MCP_SERVER_NAME,
         Some(&metadata),
         result.clone(),
     )
@@ -1720,7 +1745,7 @@ async fn codex_apps_auth_elicitation_disallowed_by_policy_returns_original_resul
         &turn_context,
         AskForApproval::Never,
         "call_123",
-        NUWAX_APPS_MCP_SERVER_NAME,
+        CODEX_APPS_MCP_SERVER_NAME,
         Some(&metadata),
         result.clone(),
     )
@@ -1756,7 +1781,7 @@ async fn codex_apps_auth_elicitation_granular_mcp_disabled_returns_original_resu
         &turn_context,
         turn_context.approval_policy(),
         "call_123",
-        NUWAX_APPS_MCP_SERVER_NAME,
+        CODEX_APPS_MCP_SERVER_NAME,
         Some(&metadata),
         result.clone(),
     )
@@ -1790,7 +1815,7 @@ async fn codex_apps_auth_elicitation_enabled_by_default_requests_elicitation(
                 &turn_context,
                 turn_context.approval_policy(),
                 "call_123",
-                NUWAX_APPS_MCP_SERVER_NAME,
+                CODEX_APPS_MCP_SERVER_NAME,
                 Some(&metadata),
                 result,
             )
@@ -1807,7 +1832,7 @@ async fn codex_apps_auth_elicitation_enabled_by_default_requests_elicitation(
             break request;
         }
     };
-    assert_eq!(request.server_name, NUWAX_APPS_MCP_SERVER_NAME);
+    assert_eq!(request.server_name, CODEX_APPS_MCP_SERVER_NAME);
     assert_eq!(
         request.id,
         codex_protocol::mcp::RequestId::String("codex_apps_auth_call_123".to_string())
@@ -1819,7 +1844,7 @@ async fn codex_apps_auth_elicitation_enabled_by_default_requests_elicitation(
 
     session
         .resolve_elicitation(
-            NUWAX_APPS_MCP_SERVER_NAME.to_string(),
+            CODEX_APPS_MCP_SERVER_NAME.to_string(),
             rmcp::model::RequestId::String("codex_apps_auth_call_123".into()),
             ElicitationResponse {
                 action: ElicitationAction::Accept,
@@ -1921,6 +1946,7 @@ fn approval_elicitation_meta_marks_tool_approvals() {
     assert_eq!(
         build_mcp_tool_approval_elicitation_meta(
             "custom_server",
+            "run_action",
             /*metadata*/ None,
             /*tool_params*/ None,
             /*tool_params_display*/ None,
@@ -1930,7 +1956,37 @@ fn approval_elicitation_meta_marks_tool_approvals() {
         ),
         Some(serde_json::json!({
             MCP_TOOL_APPROVAL_KIND_KEY: MCP_TOOL_APPROVAL_KIND_MCP_TOOL_CALL,
+            MCP_TOOL_APPROVAL_TOOL_NAME_KEY: "run_action",
         }))
+    );
+}
+
+#[test]
+fn approval_elicitation_meta_emits_only_supplied_hints_for_custom_servers() {
+    let metadata = McpToolApprovalMetadata {
+        annotations: Some(annotations(
+            Some(false),
+            /*destructive*/ None,
+            /*open_world*/ None,
+        )),
+        ..Default::default()
+    };
+    assert_eq!(
+        build_mcp_tool_approval_elicitation_meta(
+            "custom_server",
+            "run_action",
+            Some(&metadata),
+            /*tool_params*/ None,
+            /*tool_params_display*/ None,
+            prompt_options(
+                /*allow_session_remember*/ false, /*allow_persistent_approval*/ false
+            ),
+        ),
+        Some(serde_json::json!({
+            "codex_approval_kind": "mcp_tool_call",
+            "tool_name": "run_action",
+            "tool_annotations": { "readOnlyHint": false },
+        })),
     );
 }
 
@@ -1939,6 +1995,7 @@ fn approval_elicitation_meta_merges_session_and_always_persist_for_custom_server
     assert_eq!(
         build_mcp_tool_approval_elicitation_meta(
             "custom_server",
+            "run_action",
             Some(&approval_metadata(
                 /*connector_id*/ None,
                 /*connector_name*/ None,
@@ -1954,6 +2011,7 @@ fn approval_elicitation_meta_merges_session_and_always_persist_for_custom_server
         ),
         Some(serde_json::json!({
             MCP_TOOL_APPROVAL_KIND_KEY: MCP_TOOL_APPROVAL_KIND_MCP_TOOL_CALL,
+            MCP_TOOL_APPROVAL_TOOL_NAME_KEY: "run_action",
             MCP_TOOL_APPROVAL_PERSIST_KEY: [
                 MCP_TOOL_APPROVAL_PERSIST_SESSION,
                 MCP_TOOL_APPROVAL_PERSIST_ALWAYS,
@@ -1970,7 +2028,7 @@ fn approval_elicitation_meta_merges_session_and_always_persist_for_custom_server
 #[test]
 fn guardian_mcp_review_request_includes_invocation_metadata() {
     let invocation = McpInvocation {
-        server: NUWAX_APPS_MCP_SERVER_NAME.to_string(),
+        server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
         tool: "browser_navigate".to_string(),
         arguments: Some(serde_json::json!({
             "url": "https://example.com",
@@ -1991,7 +2049,7 @@ fn guardian_mcp_review_request_includes_invocation_metadata() {
         request,
         GuardianApprovalRequest::McpToolCall {
             id: "call-1".to_string(),
-            server: NUWAX_APPS_MCP_SERVER_NAME.to_string(),
+            server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
             tool_name: "browser_navigate".to_string(),
             arguments: Some(serde_json::json!({
                 "url": "https://example.com",
@@ -2003,6 +2061,7 @@ fn guardian_mcp_review_request_includes_invocation_metadata() {
             tool_title: Some("Navigate".to_string()),
             tool_description: Some("Open a page".to_string()),
             annotations: None,
+            prompt_permissions: None,
         }
     );
 }
@@ -2050,6 +2109,7 @@ fn guardian_mcp_review_request_includes_annotations_when_present() {
                 open_world_hint: Some(true),
                 read_only_hint: Some(false),
             }),
+            prompt_permissions: None,
         }
     );
 }
@@ -2084,6 +2144,7 @@ fn guardian_mcp_review_request_ignores_untrusted_connected_account_email() {
             tool_title: None,
             tool_description: None,
             annotations: None,
+            prompt_permissions: None,
         }
     );
 }
@@ -2092,7 +2153,8 @@ fn guardian_mcp_review_request_ignores_untrusted_connected_account_email() {
 fn approval_elicitation_meta_includes_connector_source_for_codex_apps() {
     assert_eq!(
         build_mcp_tool_approval_elicitation_meta(
-            NUWAX_APPS_MCP_SERVER_NAME,
+            CODEX_APPS_MCP_SERVER_NAME,
+            "calendar.run_action",
             Some(&approval_metadata(
                 Some("calendar"),
                 Some("Calendar"),
@@ -2111,6 +2173,7 @@ fn approval_elicitation_meta_includes_connector_source_for_codex_apps() {
         Some(serde_json::json!({
             MCP_TOOL_APPROVAL_KIND_KEY: MCP_TOOL_APPROVAL_KIND_MCP_TOOL_CALL,
             MCP_TOOL_APPROVAL_SOURCE_KEY: MCP_TOOL_APPROVAL_SOURCE_CONNECTOR,
+            MCP_TOOL_APPROVAL_TOOL_NAME_KEY: "calendar.run_action",
             MCP_TOOL_APPROVAL_CONNECTOR_ID_KEY: "calendar",
             MCP_TOOL_APPROVAL_CONNECTOR_NAME_KEY: "Calendar",
             MCP_TOOL_APPROVAL_CONNECTOR_DESCRIPTION_KEY: "Manage events and schedules.",
@@ -2127,7 +2190,8 @@ fn approval_elicitation_meta_includes_connector_source_for_codex_apps() {
 fn approval_elicitation_meta_merges_session_and_always_persist_with_connector_source() {
     assert_eq!(
         build_mcp_tool_approval_elicitation_meta(
-            NUWAX_APPS_MCP_SERVER_NAME,
+            CODEX_APPS_MCP_SERVER_NAME,
+            "calendar.run_action",
             Some(&approval_metadata(
                 Some("calendar"),
                 Some("Calendar"),
@@ -2150,6 +2214,7 @@ fn approval_elicitation_meta_merges_session_and_always_persist_with_connector_so
                 MCP_TOOL_APPROVAL_PERSIST_ALWAYS,
             ],
             MCP_TOOL_APPROVAL_SOURCE_KEY: MCP_TOOL_APPROVAL_SOURCE_CONNECTOR,
+            MCP_TOOL_APPROVAL_TOOL_NAME_KEY: "calendar.run_action",
             MCP_TOOL_APPROVAL_CONNECTOR_ID_KEY: "calendar",
             MCP_TOOL_APPROVAL_CONNECTOR_NAME_KEY: "Calendar",
             MCP_TOOL_APPROVAL_CONNECTOR_DESCRIPTION_KEY: "Manage events and schedules.",
@@ -2300,6 +2365,7 @@ async fn dispatched_mcp_approval_with_closed_response_is_classified_as_approval(
 
     let action = ApprovalAction::McpToolCall {
         id: call_id.to_string(),
+        environment_id: test_environment_id(&turn_context).to_owned(),
         server: "calendar".to_string(),
         tool_name: "send".to_string(),
         arguments: None,
@@ -2316,6 +2382,7 @@ async fn dispatched_mcp_approval_with_closed_response_is_classified_as_approval(
         approval_mode: AppToolApproval::Auto,
         allow_session_remember: true,
         allow_persistent_approval: true,
+        prompt_permissions: None,
     };
     let approval = tokio::spawn({
         let session = Arc::clone(&session);
@@ -2591,7 +2658,7 @@ async fn maybe_persist_mcp_tool_approval_reloads_session_config() {
     let codex_home = session.codex_home().await;
     std::fs::create_dir_all(&codex_home).expect("create codex home");
     let key = McpToolApprovalKey {
-        server: NUWAX_APPS_MCP_SERVER_NAME.to_string(),
+        server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
         plugin_id: None,
         connector_id: Some("calendar".to_string()),
         link_id: None,
@@ -2850,7 +2917,8 @@ async fn approve_mode_skips_when_annotations_do_not_require_approval() {
         &HookToolName::new("mcp__test__tool"),
         &metadata,
         &approval_config(&turn_context),
-        turn_context.config.permissions.permission_profile(),
+        thread_permission_source(&turn_context),
+        test_environment_id(&turn_context),
         McpToolApprovalPolicy::for_server(AppToolApproval::Approve),
     )
     .await;
@@ -2932,7 +3000,8 @@ async fn guardian_mode_skips_auto_when_annotations_do_not_require_approval() {
         &HookToolName::new("mcp__test__tool"),
         &metadata,
         &approval_config(&turn_context),
-        turn_context.config.permissions.permission_profile(),
+        thread_permission_source(&turn_context),
+        test_environment_id(&turn_context),
         McpToolApprovalPolicy::for_server(AppToolApproval::Auto),
     )
     .await;
@@ -2996,7 +3065,8 @@ async fn permission_request_hook_allows_mcp_tool_call() {
         &HookToolName::new("mcp__memory__create_entities"),
         &metadata,
         &approval_config(&turn_context),
-        turn_context.config.permissions.permission_profile(),
+        thread_permission_source(&turn_context),
+        test_environment_id(&turn_context),
         McpToolApprovalPolicy::for_server(AppToolApproval::Auto),
     )
     .await;
@@ -3074,7 +3144,8 @@ async fn permission_request_hook_uses_hook_tool_name_without_metadata() {
         &HookToolName::new("mcp__memory__create_entities"),
         &metadata,
         &approval_config(&turn_context),
-        turn_context.config.permissions.permission_profile(),
+        thread_permission_source(&turn_context),
+        test_environment_id(&turn_context),
         McpToolApprovalPolicy::for_server(AppToolApproval::Auto),
     )
     .await;
@@ -3168,7 +3239,8 @@ async fn permission_request_hook_runs_after_remembered_mcp_approval() {
         &HookToolName::new("mcp__memory__create_entities"),
         &metadata,
         &approval_config(&turn_context),
-        turn_context.config.permissions.permission_profile(),
+        thread_permission_source(&turn_context),
+        test_environment_id(&turn_context),
         McpToolApprovalPolicy::for_server(AppToolApproval::Auto),
     )
     .await;
@@ -3275,7 +3347,11 @@ async fn strict_auto_review_forces_guardian_for_mcp_policy_skip() {
         &HookToolName::new("mcp__test__tool"),
         &metadata,
         &captured_mcp_config,
-        &captured_mcp_config.permission_profile,
+        McpPermissionSource::Thread {
+            profile: &captured_mcp_config.permission_profile,
+            host_cwd: &captured_mcp_config.host_cwd,
+        },
+        test_environment_id(&turn_context),
         McpToolApprovalPolicy::for_server(AppToolApproval::Approve),
     )
     .await;
@@ -3359,7 +3435,8 @@ async fn assert_mcp_user_approval_persistence(
                 &HookToolName::new("mcp__memory__create_entities"),
                 &metadata,
                 &approval_config(&turn_context),
-                turn_context.config.permissions.permission_profile(),
+                thread_permission_source(&turn_context),
+                test_environment_id(&turn_context),
                 McpToolApprovalPolicy::for_server(AppToolApproval::Auto),
             )
             .await
@@ -3450,7 +3527,8 @@ async fn prompt_mode_waits_for_approval_when_annotations_do_not_require_approval
                 &HookToolName::new("mcp__test__tool"),
                 &metadata,
                 &approval_config(&turn_context),
-                turn_context.config.permissions.permission_profile(),
+                thread_permission_source(&turn_context),
+                test_environment_id(&turn_context),
                 McpToolApprovalPolicy::for_server(AppToolApproval::Prompt),
             )
             .await
@@ -3482,7 +3560,7 @@ async fn full_access_mode_skips_mcp_tool_approval_for_all_approval_modes() {
     let session = Arc::new(session);
     let turn_context = Arc::new(turn_context);
     let invocation = McpInvocation {
-        server: NUWAX_APPS_MCP_SERVER_NAME.to_string(),
+        server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
         tool: "dangerous_tool".to_string(),
         arguments: Some(serde_json::json!({ "id": 1 })),
     };
@@ -3517,7 +3595,8 @@ async fn full_access_mode_skips_mcp_tool_approval_for_all_approval_modes() {
             &HookToolName::new("mcp__test__tool"),
             &metadata,
             &approval_config(&turn_context),
-            turn_context.config.permissions.permission_profile(),
+            thread_permission_source(&turn_context),
+            test_environment_id(&turn_context),
             McpToolApprovalPolicy::for_server(approval_mode),
         )
         .await;
@@ -3542,7 +3621,7 @@ async fn approve_mode_skips_guardian_in_every_permission_mode() {
         .await;
 
     let invocation = McpInvocation {
-        server: NUWAX_APPS_MCP_SERVER_NAME.to_string(),
+        server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
         tool: "dangerous_tool".to_string(),
         arguments: Some(serde_json::json!({ "id": 1 })),
     };
@@ -3612,7 +3691,8 @@ async fn approve_mode_skips_guardian_in_every_permission_mode() {
             &HookToolName::new("mcp__test__tool"),
             &metadata,
             &approval_config(&turn_context),
-            turn_context.config.permissions.permission_profile(),
+            thread_permission_source(&turn_context),
+            test_environment_id(&turn_context),
             McpToolApprovalPolicy::for_server(AppToolApproval::Approve),
         )
         .await;
@@ -3626,7 +3706,7 @@ async fn approval_metadata_is_released_when_the_invocation_future_is_dropped() {
     let (session, turn_context) = crate::session::tests::make_session_and_context().await;
     let review_context = GuardianReviewContext::from(Arc::new(turn_context));
     let invocation = McpInvocation {
-        server: NUWAX_APPS_MCP_SERVER_NAME.to_string(),
+        server: CODEX_APPS_MCP_SERVER_NAME.to_string(),
         tool: "write_record".to_string(),
         arguments: Some(serde_json::json!({"value": 42})),
     };
@@ -3655,7 +3735,7 @@ async fn approval_metadata_is_released_when_the_invocation_future_is_dropped() {
     );
     assert_eq!(
         session
-            .mcp_tool_approval_metadata(NUWAX_APPS_MCP_SERVER_NAME, "call")
+            .mcp_tool_approval_metadata(CODEX_APPS_MCP_SERVER_NAME, "call")
             .map(|context| (context.invocation, context.metadata.connector_id)),
         Some((Some(invocation.clone()), Some("connector".to_string()))),
     );
@@ -3667,7 +3747,7 @@ async fn approval_metadata_is_released_when_the_invocation_future_is_dropped() {
     drop(call);
     assert!(
         session
-            .mcp_tool_approval_metadata(NUWAX_APPS_MCP_SERVER_NAME, "call")
+            .mcp_tool_approval_metadata(CODEX_APPS_MCP_SERVER_NAME, "call")
             .is_none()
     );
     let _next_metadata = session.register_mcp_tool_approval_metadata(
@@ -3683,11 +3763,11 @@ async fn approval_metadata_is_released_when_the_invocation_future_is_dropped() {
         keys,
         vec![
             (
-                NUWAX_APPS_MCP_SERVER_NAME.to_string(),
+                CODEX_APPS_MCP_SERVER_NAME.to_string(),
                 "next-call".to_string()
             ),
             (
-                NUWAX_APPS_MCP_SERVER_NAME.to_string(),
+                CODEX_APPS_MCP_SERVER_NAME.to_string(),
                 "other-call".to_string()
             ),
         ],

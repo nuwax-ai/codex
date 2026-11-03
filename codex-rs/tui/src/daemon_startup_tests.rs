@@ -1,7 +1,7 @@
 //! Opportunistic attachment may fall back; automatic startup requires a shared server.
 
-use super::*;
 use crate::legacy_core::config::ConfigBuilder;
+use crate::*;
 use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 
@@ -23,23 +23,6 @@ fn feature_overrides_allow_daemon_without_allowing_arbitrary_config() {
         ("tui={fullscreen_transcript='true'}", false),
         ("tui={fullscreen_transcript=true,animations=false}", false),
         ("features={}", false),
-        ("model_reasoning_effort=none", true),
-        ("model_reasoning_effort=high", true),
-        ("model_reasoning_effort=''", false),
-        ("model_reasoning_effort='  '", false),
-        ("model_reasoning_effort=true", false),
-        // Fork (nuwax-codex): env-seeded context/compact values ride the
-        // per-thread config projection, so they keep the daemon eligible.
-        ("model_context_window=60000", true),
-        ("model_auto_compact_token_limit=12000", true),
-        ("model_auto_compact_ratio=0.2", true),
-        ("model_auto_compact_ratio=1", true),
-        ("model_context_window=-1", false),
-        ("model_auto_compact_token_limit=0", false),
-        ("model_auto_compact_ratio=0", false),
-        ("model_auto_compact_ratio=1.5", false),
-        ("model_auto_compact_ratio='0.2'", false),
-        ("model_auto_compact_ratio=60000", false),
         ("model='test'", false),
     ] {
         let overrides = codex_utils_cli::CliConfigOverrides {
@@ -62,63 +45,21 @@ fn feature_overrides_allow_daemon_without_allowing_arbitrary_config() {
 }
 
 #[test]
-fn monorepo_wrapper_overrides_are_eligible_for_daemon_compatibility_checks() {
-    let overrides = codex_utils_cli::CliConfigOverrides {
-        raw_overrides: [
-            "model_reasoning_effort=none",
-            "features.realtime_conversation=true",
-            "features.worktrees=true",
-            "features.remote_models=true",
-            "features.api_key_model_discovery=true",
-            "features.request_rule=true",
-            "features.auth_elicitation=true",
-            "features.mcp_oauth_refresh_coordination=true",
-            "features.responses_websockets_v2=true",
-            "features.workspace_owner_usage_nudge=true",
-            "features.tool_search_always_defer_mcp_tools=true",
-            "features.remote_compaction_v2=true",
-            "features.standalone_web_search=true",
-            "features.multi_agent_mode=true",
-            "features.code_mode_host=true",
-            "suppress_unstable_features_warning=true",
-        ]
-        .map(str::to_string)
-        .to_vec(),
-    }
-    .parse_overrides()
-    .unwrap();
-    assert_eq!(
-        daemon_startup::config_exclusion(
-            &overrides,
-            &LoaderOverrides::default(),
-            /*strict_config*/ false,
-            /*bypass_hook_trust*/ false,
-        ),
-        None
-    );
-}
-
-#[tokio::test]
-async fn daemon_features_follow_cli_table_replacement_and_last_value() -> color_eyre::Result<()> {
-    run_daemon_feature_compatibility_scenarios(&["table replacement"]).await
-}
-
-#[test]
-fn daemon_launch_telemetry_records_once_on_connection_or_early_return() {
-    for connected in [false, true] {
+fn daemon_launch_telemetry_records_once_on_connection_update_or_early_return() {
+    for mode in [Some("in_process"), Some("update_requested"), None] {
         let observations = std::cell::RefCell::new(Vec::new());
-        let launch = daemon_telemetry::Launch(Some(|target: &AppServerTarget, actual: bool| {
-            observations.borrow_mut().push((target.clone(), actual));
+        let launch = daemon_telemetry::Launch(Some(|actual| {
+            observations.borrow_mut().push(actual);
             Vec::new()
         }));
-        if connected {
-            launch.record(&AppServerTarget::Embedded, connected);
+        if let Some(mode) = mode {
+            launch.record(mode);
         } else {
             drop(launch);
         }
         assert_eq!(
             observations.into_inner(),
-            vec![(AppServerTarget::Embedded, connected)]
+            vec![mode.unwrap_or("unconfirmed")]
         );
     }
 }
@@ -126,24 +67,6 @@ fn daemon_launch_telemetry_records_once_on_connection_or_early_return() {
 #[tokio::test]
 async fn daemon_feature_compatibility_respects_required_and_optional_attachment()
 -> color_eyre::Result<()> {
-    run_daemon_feature_compatibility_scenarios(&[
-        "matching",
-        "unreachable daemon",
-        "conflicting client",
-        "explicit enable",
-        "mixed flags",
-        "missing enabled",
-        "managed",
-        "legacy managed",
-        "old requirements server",
-        "unsupported RPC",
-    ])
-    .await
-}
-
-async fn run_daemon_feature_compatibility_scenarios(
-    scenarios: &[&'static str],
-) -> color_eyre::Result<()> {
     use codex_app_server_protocol::JSONRPCMessage;
     use futures::SinkExt;
     use futures::StreamExt;
@@ -151,7 +74,18 @@ async fn run_daemon_feature_compatibility_scenarios(
     use tokio_tungstenite::tungstenite::Message;
 
     for allow_embedded_fallback in [false, true] {
-        for &scenario in scenarios {
+        for scenario in [
+            "matching",
+            "unreachable daemon",
+            "conflicting client",
+            "explicit enable",
+            "mixed flags",
+            "missing enabled",
+            "managed",
+            "legacy managed",
+            "old requirements server",
+            "unsupported RPC",
+        ] {
             let cli_overrides = codex_utils_cli::CliConfigOverrides {
                 raw_overrides: match scenario {
                     "matching" => vec![
@@ -165,11 +99,6 @@ async fn run_daemon_feature_compatibility_scenarios(
                     "mixed flags" => vec![
                         "features.zz_overridden=true",
                         "features={api_key_model_discovery=false,code_mode_host=false,instant_interrupt=true}",
-                        "features.code_mode_host=true",
-                    ],
-                    "table replacement" => vec![
-                        "features.api_key_model_discovery=true",
-                        "features={code_mode_host=false}",
                         "features.code_mode_host=true",
                     ],
                     "missing enabled" => vec!["features.zz_missing=true"],
@@ -270,7 +199,6 @@ async fn run_daemon_feature_compatibility_scenarios(
                     "This session requires api_key_model_discovery to be disabled"
                 }
                 "missing enabled" => "This session requires zz_missing to be enabled",
-                "table replacement" => "This session requires code_mode_host to be enabled",
                 "unsupported RPC" => "Experimental feature request failed",
                 _ => unreachable!(),
             };
@@ -291,15 +219,6 @@ async fn run_daemon_feature_compatibility_scenarios(
                             ("api_key_model_discovery".to_string(), false),
                             ("code_mode_host".to_string(), true),
                         ]))
-                    );
-                }
-                if scenario == "table replacement" {
-                    assert_eq!(
-                        error.restart_features,
-                        Some(std::collections::BTreeMap::from([(
-                            "code_mode_host".to_string(),
-                            true,
-                        )]))
                     );
                 }
                 let error = error.to_string();
@@ -382,7 +301,6 @@ async fn daemon_startup_falls_back_only_for_implicit_endpoints() -> color_eyre::
             Arg0DispatchPaths::default(),
             config,
             Vec::new(),
-            /*env_seed_overrides*/ Vec::new(),
             LoaderOverrides::default(),
             /*strict_config*/ false,
             CloudConfigBundleLoader::default(),
@@ -442,50 +360,15 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
             daemon_startup::exclusion(
                 &cli,
                 &[],
-                &[],
                 &LoaderOverrides::default(),
                 /*workload_identity_selected*/ false,
-                /*exec_server_url*/ None,
-                &codex_install_context::InstallMethod::Other
+                /*exec_server_url*/ None
             ),
             expected
         );
     }
-    // Fork (nuwax-codex): the NUWAX_* environment provider references
-    // per-process credentials; it must force the embedded backend.
-    let nuwax_cli = Cli::parse_from(["codex"]);
-    assert_eq!(
-        daemon_startup::exclusion(
-            &nuwax_cli,
-            &[],
-            &[(
-                "model_providers.nuwax_env".to_string(),
-                toml::Value::String("seeded".into())
-            )],
-            &LoaderOverrides::default(),
-            /*workload_identity_selected*/ false,
-            /*exec_server_url*/ None,
-            &codex_install_context::InstallMethod::Other
-        ),
-        Some("NUWAX environment provider (per-run credentials)")
-    );
-    // Fork: the @nuwax-ai/nuwax-harness npm package ships a single binary without a
-    // complete local package, so the daemon is never auto-started or reused.
-    let npm_cli = Cli::parse_from(["codex"]);
-    assert_eq!(
-        daemon_startup::exclusion(
-            &npm_cli,
-            &[],
-            &[],
-            &LoaderOverrides::default(),
-            /*workload_identity_selected*/ false,
-            /*exec_server_url*/ None,
-            &codex_install_context::InstallMethod::NpmNuwax
-        ),
-        Some("npm single-binary install (@nuwax-ai/nuwax-harness)")
-    );
-    let mut cli = Cli::parse_from(["codex"]);
-    let overrides = vec![("web_search".into(), toml::Value::String("live".into()))];
+    let cli = Cli::parse_from(["codex"]);
+    let overrides = [("web_search".into(), toml::Value::String("live".into()))];
     let loader = LoaderOverrides {
         ignore_user_config: true,
         ..Default::default()
@@ -515,32 +398,10 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
         ),
     ] {
         assert_eq!(
-            daemon_startup::exclusion(
-                &cli,
-                kv,
-                &[],
-                &loader,
-                workload,
-                executor,
-                &codex_install_context::InstallMethod::Other
-            ),
+            daemon_startup::exclusion(&cli, kv, &loader, workload, executor),
             Some(expected)
         );
     }
-    cli.agents_overview = true;
-    cli.strict_config = true;
-    assert_eq!(
-        daemon_startup::exclusion(
-            &cli,
-            &overrides,
-            &[],
-            &LoaderOverrides::default(),
-            /*workload_identity_selected*/ false,
-            /*exec_server_url*/ None,
-            &codex_install_context::InstallMethod::Other
-        ),
-        None
-    );
 }
 
 #[test]

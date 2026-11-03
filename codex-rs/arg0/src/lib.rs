@@ -267,34 +267,35 @@ fn build_runtime() -> anyhow::Result<tokio::runtime::Runtime> {
     Ok(builder.build()?)
 }
 
-const ILLEGAL_ENV_VAR_PREFIXES: [&str; 2] = ["CODEX_", "NUWAX_"];
+const ILLEGAL_ENV_VAR_PREFIX: &str = "CODEX_";
 
 /// Load env vars from ~/.codex/.env.
 ///
 /// Security: Do not allow `.env` files to create or modify any variables
-/// with names starting with `CODEX_` (process control) or `NUWAX_` (the
-/// fork's environment startup group must come from the real process
-/// environment only).
+/// with names starting with `CODEX_`.
 fn load_dotenv() {
     if let Ok(codex_home) = find_codex_home()
-        && let Ok(iter) = dotenvy::from_path_iter(codex_home.join(".env"))
+        && let dotenv_path = codex_home.join(".env")
+        && dotenv_path.is_file()
+        && let Ok(iter) = dotenvy::from_path_iter(dotenv_path)
     {
         set_filtered(iter);
     }
 }
 
-/// Helper to set vars from a dotenvy iterator while filtering out keys with
-/// an illegal prefix.
+/// Helper to set vars from a dotenvy iterator while filtering out `CODEX_` keys.
 fn set_filtered<I>(iter: I)
 where
     I: IntoIterator<Item = Result<(String, String), dotenvy::Error>>,
 {
-    for (key, value) in iter.into_iter().flatten() {
-        let upper = key.to_ascii_uppercase();
-        if !ILLEGAL_ENV_VAR_PREFIXES
-            .iter()
-            .any(|prefix| upper.starts_with(prefix))
-        {
+    for result in iter {
+        let (key, value) = match result {
+            Ok(entry) => entry,
+            // read_line consumes invalid UTF-8 lines. Other read errors may repeat.
+            Err(dotenvy::Error::Io(err)) if err.kind() != std::io::ErrorKind::InvalidData => break,
+            Err(_) => continue,
+        };
+        if !key.to_ascii_uppercase().starts_with(ILLEGAL_ENV_VAR_PREFIX) {
             // It is safe to call set_var() because our process is
             // single-threaded at this point in its execution.
             unsafe { std::env::set_var(&key, &value) };

@@ -25,6 +25,7 @@ use codex_config::ResidencyRequirement;
 use codex_config::SandboxModeRequirement;
 use codex_config::Sourced;
 use codex_config::ThreadConfigLoader;
+use codex_config::apply_default_gcp_auth;
 use codex_config::config_toml::CircuitBreakAction;
 use codex_config::config_toml::ConfigToml;
 use codex_config::config_toml::DEFAULT_PROJECT_DOC_MAX_BYTES;
@@ -34,7 +35,6 @@ use codex_config::config_toml::RealtimeConfig;
 use codex_config::config_toml::ThreadStoreToml;
 use codex_config::config_toml::validate_model_providers;
 use codex_config::loader::load_config_layers_state;
-use codex_config::loader::load_config_layers_state_with_env_seed;
 use codex_config::loader::project_trust_key;
 use codex_config::permissions_toml::PermissionProfileToml;
 use codex_config::permissions_toml::PermissionsToml;
@@ -44,7 +44,6 @@ use codex_config::types::AuthCredentialsStoreMode;
 use codex_config::types::AuthKeyringBackendKind;
 use codex_config::types::History;
 use codex_config::types::McpServerConfig;
-use codex_config::types::McpServerDisabledReason;
 use codex_config::types::MemoriesConfig;
 use codex_config::types::ModelAvailabilityNuxConfig;
 use codex_config::types::Notice;
@@ -90,7 +89,10 @@ use codex_mcp::McpPluginAttribution;
 use codex_mcp::McpProtocolMode;
 use codex_mcp::McpServerRegistration;
 use codex_mcp::ResolvedMcpCatalog;
+use codex_model_provider::ChatgptBaseUrl;
+use codex_model_provider::DEFAULT_CHATGPT_BASE_URL;
 use codex_model_provider::ProviderCapabilities;
+use codex_model_provider_info::GCP_PROVIDER_ID;
 use codex_model_provider_info::LEGACY_OLLAMA_CHAT_PROVIDER_ID;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::OLLAMA_CHAT_PROVIDER_REMOVED_ERROR;
@@ -98,6 +100,7 @@ use codex_model_provider_info::built_in_model_providers;
 use codex_model_provider_info::merge_configured_model_providers;
 use codex_models_manager::ModelsManagerConfig;
 use codex_prompts::ResolvedModelMessages;
+use codex_protocol::MemoryVersion;
 use codex_protocol::config_types::AltScreenMode;
 use codex_protocol::config_types::AutoCompactTokenLimitScope;
 use codex_protocol::config_types::ForcedLoginMethod;
@@ -573,7 +576,7 @@ impl Permissions {
 }
 
 // A profile override only inherits the selected profile's proxy/allowlist config
-// when Nuwax Harness is still responsible for the network policy. `Disabled` means no
+// when Codex is still responsible for the network policy. `Disabled` means no
 // outer sandbox, so starting the managed proxy would narrow the override.
 fn profile_allows_configured_network_proxy(permission_profile: &PermissionProfile) -> bool {
     match permission_profile {
@@ -654,11 +657,6 @@ pub struct Config {
 
     /// Token usage threshold triggering auto-compaction of conversation history.
     pub model_auto_compact_token_limit: Option<i64>,
-
-    /// Fork (nuwax-codex): fraction of the effective context window that
-    /// triggers pre-turn auto-compaction (e.g. `0.8`). Only consulted when
-    /// `model_auto_compact_token_limit` is unset.
-    pub model_auto_compact_ratio: Option<f64>,
 
     /// Controls whether `model_auto_compact_token_limit` applies to the full
     /// active context or only tokens after the carried compaction-window prefix.
@@ -746,6 +744,9 @@ pub struct Config {
     /// Include a structured error when Guardian's circuit breaker interrupts a turn.
     pub guardian_circuit_break_action: CircuitBreakAction,
 
+    /// Overall Guardian review budget. None means unlimited; cancellation still applies.
+    pub guardian_review_timeout: Option<Duration>,
+
     /// Whether to inject the `<permissions instructions>` developer block.
     pub include_permissions_instructions: bool,
 
@@ -776,23 +777,23 @@ pub struct Config {
     /// Compact prompt override.
     pub compact_prompt: Option<String>,
 
-    /// Optional external notifier command. When set, Nuwax Harness will spawn this
+    /// Optional external notifier command. When set, Codex will spawn this
     /// program after each completed *turn* (i.e. when the agent finishes
     /// processing a user submission). The value must be the full command
-    /// broken into argv tokens **without** the trailing JSON argument - Nuwax Harness
+    /// broken into argv tokens **without** the trailing JSON argument - Codex
     /// appends one extra argument containing a JSON payload describing the
     /// event.
     ///
     /// Example `~/.codex/config.toml` snippet:
     ///
     /// ```toml
-    /// notify = ["notify-send", "Nuwax Harness"]
+    /// notify = ["notify-send", "Codex"]
     /// ```
     ///
     /// which will be invoked as:
     ///
     /// ```shell
-    /// notify-send Nuwax Harness '{"type":"agent-turn-complete","turn-id":"12345"}'
+    /// notify-send Codex '{"type":"agent-turn-complete","turn-id":"12345"}'
     /// ```
     ///
     /// If unset the feature is disabled.
@@ -917,12 +918,12 @@ pub struct Config {
     pub workspace_roots_explicit: bool,
 
     /// Preferred store for CLI auth credentials.
-    /// file (default): Use a file in the Nuwax Harness home directory.
+    /// file (default): Use a file in the Codex home directory.
     /// keyring: Use an OS-specific keyring service.
     /// auto: Use the OS-specific keyring service if available, otherwise use a file.
     pub cli_auth_credentials_store_mode: AuthCredentialsStoreMode,
 
-    /// Definition for MCP servers that Nuwax Harness can reach out to for tool calls.
+    /// Definition for MCP servers that Codex can reach out to for tool calls.
     pub mcp_servers: Constrained<HashMap<String, McpServerConfig>>,
 
     /// Trusted IdP shared by all permitted EMA MCP registrations.
@@ -933,16 +934,16 @@ pub struct Config {
 
     /// Preferred store for MCP OAuth credentials.
     /// keyring: Use an OS-specific keyring service.
-    ///          Credentials stored in the keyring will only be readable by Nuwax Harness unless the user explicitly grants access via OS-level keyring access.
+    ///          Credentials stored in the keyring will only be readable by Codex unless the user explicitly grants access via OS-level keyring access.
     ///          https://github.com/openai/codex/blob/main/codex-rs/rmcp-client/src/oauth.rs#L2
     /// file: CODEX_HOME/.credentials.json
-    ///       This file will be readable to Nuwax Harness and other applications running as the same user.
+    ///       This file will be readable to Codex and other applications running as the same user.
     /// auto (default): keyring if available, otherwise file.
     pub mcp_oauth_credentials_store_mode: OAuthCredentialsStoreMode,
 
     /// Optional fixed port to use for the local HTTP callback server used during MCP OAuth login.
     ///
-    /// When unset, Nuwax Harness will bind to an ephemeral port chosen by the OS.
+    /// When unset, Codex will bind to an ephemeral port chosen by the OS.
     pub mcp_oauth_callback_port: Option<u16>,
 
     /// Optional redirect URI to use during MCP OAuth login.
@@ -994,11 +995,11 @@ pub struct Config {
     /// Memories subsystem settings.
     pub memories: MemoriesConfig,
 
-    /// Directory containing all Nuwax Harness state (defaults to `~/.nuwax-harness` but can be
+    /// Directory containing all Codex state (defaults to `~/.codex` but can be
     /// overridden by the `CODEX_HOME` environment variable).
     pub codex_home: AbsolutePathBuf,
 
-    /// Resolved configuration shared by all Nuwax Harness SQLite databases.
+    /// Resolved configuration shared by all Codex SQLite databases.
     pub sqlite: codex_state::SqliteConfig,
 
     /// Directory for log files (defaults to `$CODEX_HOME/log`).
@@ -1012,6 +1013,10 @@ pub struct Config {
     /// When true, session is not persisted on disk. Default to `false`
     pub ephemeral: bool,
 
+    /// Enable persistent dynamic tool updates only when every reader, including rollback
+    /// versions, can restore the updated tools and preserve them through compaction.
+    pub allow_persistent_dynamic_tool_updates: bool,
+
     /// Optional extra configuration fields for the thread.
     pub extra_config: Option<ExtraConfig>,
 
@@ -1024,7 +1029,7 @@ pub struct Config {
     /// output will be hyperlinked using the specified URI scheme.
     pub file_opener: UriBasedFileOpener,
 
-    /// Path to the current Nuwax Harness executable. This cannot be set in the config
+    /// Path to the current Codex executable. This cannot be set in the config
     /// file: it must be set in code via [`ConfigOverrides`].
     pub codex_self_exe: Option<PathBuf>,
 
@@ -1057,9 +1062,6 @@ pub struct Config {
     /// using the Responses API. When unset, the model catalog default is used.
     pub model_reasoning_summary: Option<ReasoningSummary>,
 
-    /// Fork (nuwax-codex): `$CODEX_HOME/models.d/*.toml` merged user overlay,
-    /// loaded (and validated) at config load time.
-    pub user_overlay: Option<codex_models_manager::vendor_catalog::Overlay>,
     /// Optional full model catalog loaded from `model_catalog_json`.
     /// When set, this replaces the bundled catalog for the current process.
     pub model_catalog: Option<ModelsResponse>,
@@ -1069,6 +1071,9 @@ pub struct Config {
 
     /// Base URL for requests to ChatGPT (as opposed to the OpenAI API).
     pub chatgpt_base_url: String,
+
+    /// Whether configuration or managed requirements explicitly selected the ChatGPT base URL.
+    pub chatgpt_base_url_is_explicit: bool,
 
     /// Whether Codex-owned clients should respect host system proxy settings.
     pub respect_system_proxy: bool,
@@ -1128,10 +1133,6 @@ pub struct Config {
     /// Whether to register the update_plan tool.
     pub update_plan_enabled: bool,
 
-    /// Fork (nuwax-codex): when `false`, MCP tools are advertised directly in
-    /// the initial tool list instead of being deferred behind `tool_search`.
-    pub tool_search_enabled: bool,
-
     /// Policy for collecting and validating tool runtimes.
     pub tool_registry: ToolRegistryConfig,
 
@@ -1182,8 +1183,8 @@ pub struct Config {
     /// Collection of various notices we show the user
     pub notices: Notice,
 
-    /// When `true`, checks for Nuwax Harness updates on startup and surfaces update prompts.
-    /// Set to `false` only if your Nuwax Harness updates are centrally managed.
+    /// When `true`, checks for Codex updates on startup and surfaces update prompts.
+    /// Set to `false` only if your Codex updates are centrally managed.
     /// Defaults to `true`.
     pub check_for_update_on_startup: bool,
 
@@ -1192,7 +1193,7 @@ pub struct Config {
     /// or placeholder replacement will occur for fast keypress bursts.
     pub disable_paste_burst: bool,
 
-    /// When `false`, disables OpenAI analytics across Nuwax Harness product surfaces on this machine.
+    /// When `false`, disables OpenAI analytics across Codex product surfaces on this machine.
     /// Custom OTLP metrics exporters are controlled by `otel.metrics_exporter`.
     /// Voluntarily left as Optional because the default value might depend on the client.
     pub analytics_enabled: Option<bool>,
@@ -1358,6 +1359,7 @@ impl Default for TokenBudgetConfig {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RolloutBudgetConfig {
+    pub enforce_limit: bool,
     pub limit_tokens: i64,
     pub reminder_at_remaining_tokens: Vec<i64>,
     pub sampling_token_weight: f64,
@@ -1495,7 +1497,6 @@ impl AuthManagerConfig for Config {
 pub struct ConfigBuilder {
     codex_home: Option<PathBuf>,
     cli_overrides: Option<Vec<(String, TomlValue)>>,
-    env_seed_overrides: Option<Vec<(String, TomlValue)>>,
     harness_overrides: Option<ConfigOverrides>,
     loader_overrides: Option<LoaderOverrides>,
     strict_config: bool,
@@ -1513,14 +1514,6 @@ impl ConfigBuilder {
 
     pub fn cli_overrides(mut self, cli_overrides: Vec<(String, TomlValue)>) -> Self {
         self.cli_overrides = Some(cli_overrides);
-        self
-    }
-
-    /// Fork (nuwax-codex): the `NUWAX_*` environment group's seed overrides,
-    /// kept out of the CLI overrides so their provenance survives into the
-    /// layer stack (reserved-provider isolation depends on it).
-    pub fn env_seed_overrides(mut self, env_seed_overrides: Vec<(String, TomlValue)>) -> Self {
-        self.env_seed_overrides = Some(env_seed_overrides);
         self
     }
 
@@ -1565,14 +1558,26 @@ impl ConfigBuilder {
 
     pub async fn build(self) -> std::io::Result<Config> {
         // Keep the large config-loading future off small runtime thread stacks.
-        Box::pin(self.build_inner()).await
+        // Avoid an additional async frame for ordinary config loads.
+        Box::pin(self.build_inner(|_, _, _| Ok(()))).await
     }
 
-    async fn build_inner(self) -> std::io::Result<Config> {
+    /// Validates the same loaded configuration that will be materialized, before provider
+    /// selection or initialization. Validation cannot alter the loaded configuration.
+    pub async fn build_with_validation(
+        self,
+        validate: impl FnOnce(&ConfigToml, &ConfigOverrides, &ConfigLayerStack) -> std::io::Result<()>,
+    ) -> std::io::Result<Config> {
+        Box::pin(self.build_inner(validate)).await
+    }
+
+    async fn build_inner(
+        self,
+        validate: impl FnOnce(&ConfigToml, &ConfigOverrides, &ConfigLayerStack) -> std::io::Result<()>,
+    ) -> std::io::Result<Config> {
         let Self {
             codex_home,
             cli_overrides,
-            env_seed_overrides,
             harness_overrides,
             loader_overrides,
             strict_config,
@@ -1586,7 +1591,6 @@ impl ConfigBuilder {
             None => find_codex_home()?,
         };
         let cli_overrides = cli_overrides.unwrap_or_default();
-        let env_seed_overrides = env_seed_overrides.unwrap_or_default();
         let mut harness_overrides = harness_overrides.unwrap_or_default();
         let loader_overrides = loader_overrides.unwrap_or_default();
         let cwd_override = harness_overrides.cwd.as_deref().or(fallback_cwd.as_deref());
@@ -1595,12 +1599,11 @@ impl ConfigBuilder {
             None => AbsolutePathBuf::current_dir()?,
         };
         harness_overrides.cwd = Some(cwd.to_path_buf());
-        let config_layer_stack = load_config_layers_state_with_env_seed(
+        let config_layer_stack = load_config_layers_state(
             LOCAL_FS.as_ref(),
             &codex_home,
             (!without_project_context).then_some(cwd),
             &cli_overrides,
-            &env_seed_overrides,
             ConfigLoadOptions {
                 loader_overrides,
                 strict_config,
@@ -1612,6 +1615,7 @@ impl ConfigBuilder {
         )
         .await?;
         let config_toml = config_toml_from_layers(&config_layer_stack).await?;
+        validate(&config_toml, &harness_overrides, &config_layer_stack)?;
         Config::load_config_with_layer_stack(
             LOCAL_FS.as_ref(),
             config_toml,
@@ -1630,7 +1634,7 @@ impl ConfigBuilder {
 
 async fn config_toml_from_layers(layers: &ConfigLayerStack) -> std::io::Result<ConfigToml> {
     // The loader resolves paths relative to each layer's file before deserialization.
-    match layers.effective_config().try_into() {
+    match ConfigToml::try_from(layers.effective_config()) {
         Ok(config_toml) => Ok(config_toml),
         Err(err) => {
             if let Some(config_error) = codex_config::first_layer_config_error::<ConfigToml>(
@@ -1763,19 +1767,10 @@ impl Config {
     }
 
     pub fn to_models_manager_config(&self) -> ModelsManagerConfig {
-        // Fork (nuwax-codex): the absolute limit and the ratio travel
-        // untouched; the models manager derives the ratio against the
-        // model's EFFECTIVE window (after the max-context-window clamp) in
-        // one place. Deriving here instead would freeze the threshold
-        // against the unclamped configured window and silently bypass that
-        // clamp (a 200k window override with ratio 0.5 on a 60k model must
-        // compact at 30k, not 100k).
         ModelsManagerConfig {
             model_context_window: self.model_context_window,
             model_auto_compact_token_limit: self.model_auto_compact_token_limit,
-            model_auto_compact_ratio: self.model_auto_compact_ratio,
             tool_output_token_limit: self.tool_output_token_limit,
-            tool_search_enabled: (!self.tool_search_enabled).then_some(false),
             base_instructions: self.base_instructions.clone().filter(|_| {
                 !matches!(
                     self.base_instructions_provenance,
@@ -1784,7 +1779,15 @@ impl Config {
             }),
             personality: self.personality,
             model_catalog: self.model_catalog.clone(),
-            user_overlay: self.user_overlay.clone(),
+        }
+    }
+
+    /// Returns backend routing that can resolve defaults against the request's auth snapshot.
+    pub fn chatgpt_backend_url(&self) -> ChatgptBaseUrl {
+        if !self.chatgpt_base_url_is_explicit && self.chatgpt_base_url == DEFAULT_CHATGPT_BASE_URL {
+            ChatgptBaseUrl::Default
+        } else {
+            ChatgptBaseUrl::Configured(self.chatgpt_base_url.clone())
         }
     }
 
@@ -1950,16 +1953,20 @@ impl Config {
                 .enabled(Feature::SkillMcpDependencyInstall),
             approval_policy: self.permissions.approval_policy.clone(),
             permission_profile: self.permissions.permission_profile().clone(),
+            host_cwd: self.cwd.clone(),
             config_layer_stack: self.config_layer_stack.clone(),
             plugins: self.plugins.clone(),
             approvals_reviewer: self.approvals_reviewer,
             environment_cwds: HashMap::new(),
             environment_use_mxc: HashMap::new(),
-            server_permission_profiles: HashMap::new(),
+            server_permissions: HashMap::new(),
             codex_self_exe: self.codex_self_exe.clone(),
             codex_linux_sandbox_exe: self.codex_linux_sandbox_exe.clone(),
             use_legacy_landlock: self.features.use_legacy_landlock(),
             apps_enabled: self.features.enabled(Feature::Apps),
+            apps_early_resource_discovery: self
+                .features
+                .enabled(Feature::AppsEarlyResourceDiscovery),
             prefix_mcp_tool_names: self.prefix_mcp_tool_names(),
             non_prefixed_mcp_tool_servers: if self
                 .features
@@ -1972,6 +1979,7 @@ impl Config {
                 Vec::new()
             },
             protocol_mode: self.mcp_protocol_mode(),
+            discover_local_stdio: self.features.enabled(Feature::McpConnectionSharing),
             host_owned_apps_protocol_mode: if self.features.enabled(Feature::CodexAppsMcp20260728) {
                 McpProtocolMode::V20260728
             } else {
@@ -2088,7 +2096,7 @@ impl Config {
         .await
     }
 
-    /// Load a default configuration for a specific Nuwax Harness home without reading
+    /// Load a default configuration for a specific Codex home without reading
     /// user, project, or system config layers.
     pub async fn load_default_with_cli_overrides_for_codex_home(
         codex_home: PathBuf,
@@ -2115,7 +2123,7 @@ impl Config {
     }
     /// This is a secondary way of creating [Config], which is appropriate when
     /// the harness is meant to be used with a specific configuration that
-    /// ignores user settings. For example, the `nuwax-harness exec` subcommand is
+    /// ignores user settings. For example, the `codex exec` subcommand is
     /// designed to use [AskForApproval::Never] exclusively.
     ///
     /// Further, [ConfigOverrides] contains some options that are not supported
@@ -2207,32 +2215,11 @@ pub async fn load_config_toml_with_layer_stack(
     cli_overrides: Vec<(String, TomlValue)>,
     options: impl Into<ConfigLoadOptions>,
 ) -> std::io::Result<ConfigTomlLoadResult> {
-    load_config_toml_with_layer_stack_and_env_seed(
-        codex_home,
-        cwd,
-        cli_overrides,
-        Vec::new(),
-        options,
-    )
-    .await
-}
-
-/// Fork (nuwax-codex): [`load_config_toml_with_layer_stack`] with the
-/// `NUWAX_*` environment seed overrides carried as their own provenance
-/// channel (same semantics as [`ConfigBuilder::env_seed_overrides`]).
-pub async fn load_config_toml_with_layer_stack_and_env_seed(
-    codex_home: &Path,
-    cwd: Option<&AbsolutePathBuf>,
-    cli_overrides: Vec<(String, TomlValue)>,
-    env_seed_overrides: Vec<(String, TomlValue)>,
-    options: impl Into<ConfigLoadOptions>,
-) -> std::io::Result<ConfigTomlLoadResult> {
-    let config_layer_stack = load_config_layers_state_with_env_seed(
+    let config_layer_stack = load_config_layers_state(
         LOCAL_FS.as_ref(),
         codex_home,
         cwd.cloned(),
         &cli_overrides,
-        &env_seed_overrides,
         options,
         &codex_config::NoopThreadConfigLoader,
     )
@@ -2257,8 +2244,7 @@ pub fn deserialize_config_toml_with_base(
     // This guard ensures that any relative paths that is deserialized into an
     // [AbsolutePathBuf] is resolved against `config_base_dir`.
     let _guard = AbsolutePathBufGuard::new(config_base_dir);
-    root_value
-        .try_into()
+    ConfigToml::try_from(root_value)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
@@ -2294,49 +2280,6 @@ fn load_catalog_json(path: &AbsolutePathBuf) -> std::io::Result<ModelsResponse> 
     Ok(catalog)
 }
 
-/// Fork (nuwax-codex): reads `$CODEX_HOME/models.d/*.toml` user overlay
-/// documents (Spec §7). Every file must parse — a malformed file fails fast
-/// naming the file and field — and files merge field-by-field in sorted
-/// filename order over the committed overlay.
-fn load_user_models_overlay(
-    codex_home: &AbsolutePathBuf,
-) -> std::io::Result<Option<codex_models_manager::vendor_catalog::Overlay>> {
-    let dir = codex_home.join("models.d");
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return Ok(None);
-    };
-    let mut merged: Option<codex_models_manager::vendor_catalog::Overlay> = None;
-    let mut names: Vec<std::path::PathBuf> = entries
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "toml"))
-        .collect();
-    names.sort();
-    for path in names {
-        let text = std::fs::read_to_string(&path).map_err(|error| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!(
-                    "models.d file `{}` could not be read: {error}",
-                    path.display()
-                ),
-            )
-        })?;
-        let parsed =
-            codex_models_manager::vendor_catalog::parse_user_overlay(&text).map_err(|error| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("models.d file `{}` is invalid: {error}", path.display()),
-                )
-            })?;
-        merged = Some(match merged {
-            Some(base) => base.merged_with(&parsed),
-            None => parsed,
-        });
-    }
-    Ok(merged)
-}
-
 fn load_model_catalog(
     model_catalog_json: Option<AbsolutePathBuf>,
 ) -> std::io::Result<Option<ModelsResponse>> {
@@ -2362,10 +2305,7 @@ fn filter_mcp_servers_by_requirements(
         if allowed {
             server.disabled_reason = None;
         } else {
-            server.enabled = false;
-            server.disabled_reason = Some(McpServerDisabledReason::Requirements {
-                source: source.clone(),
-            });
+            server.disable_by_requirements(source.clone());
         }
     }
 }
@@ -2398,10 +2338,7 @@ fn filter_plugin_mcp_servers_by_requirements(
         if allowed {
             server.disabled_reason = None;
         } else {
-            server.enabled = false;
-            server.disabled_reason = Some(McpServerDisabledReason::Requirements {
-                source: source.clone(),
-            });
+            server.disable_by_requirements(source.clone());
         }
     }
 }
@@ -2699,10 +2636,7 @@ fn thread_store_config(thread_store: Option<ThreadStoreToml>) -> ThreadStoreConf
 }
 
 fn is_session_layer(source: &ConfigLayerSource) -> bool {
-    matches!(
-        source,
-        ConfigLayerSource::SessionFlags | ConfigLayerSource::EnvSeed
-    )
+    matches!(source, ConfigLayerSource::SessionFlags)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2896,14 +2830,6 @@ fn resolve_update_plan_enabled(config_toml: &ConfigToml) -> bool {
         .as_ref()
         .and_then(|tools| tools.update_plan.as_ref())
         .is_some_and(|config| config.enabled)
-}
-
-fn resolve_tool_search_enabled(config_toml: &ConfigToml) -> bool {
-    config_toml
-        .tools
-        .as_ref()
-        .and_then(|tools| tools.tool_search)
-        .unwrap_or(true)
 }
 
 fn resolve_feature_enabled(feature: Option<&codex_config::config_toml::FeatureToggleToml>) -> bool {
@@ -3143,6 +3069,7 @@ fn resolve_rollout_budget_config(
         }
     }
     Ok(Some(RolloutBudgetConfig {
+        enforce_limit: config.enforce_limit.unwrap_or(true),
         limit_tokens,
         reminder_at_remaining_tokens,
         sampling_token_weight,
@@ -3285,13 +3212,6 @@ pub(crate) fn resolve_web_search_mode_for_turn(
     provider_capabilities: ProviderCapabilities,
 ) -> WebSearchMode {
     let preferred = web_search_mode.value();
-    // Fork: the DEFAULT web search mode is cached; chat-family bridge wires
-    // cannot express it. Fail closed to disabled rather than advertising a
-    // tool the wire would reject (or silently running live searches the
-    // configured mode never asked for). An explicit live choice is unaffected.
-    if matches!(preferred, WebSearchMode::Cached) && !provider_capabilities.cached_web_search {
-        return WebSearchMode::Disabled;
-    }
     let is_allowed = |mode: WebSearchMode| {
         let provider_supports_mode = match mode {
             WebSearchMode::Live | WebSearchMode::Indexed => {
@@ -3513,6 +3433,15 @@ impl Config {
             config_layer_stack.requirements(),
             &mut startup_warnings,
         );
+        // Packaged defaults supply a URL even when no override was configured.
+        let chatgpt_base_url_is_explicit =
+            config_layer_stack.requirements().chatgpt_base_url.is_some()
+                || config_layer_stack
+                    .layers_high_to_low()
+                    .find(|layer| layer.config.get("chatgpt_base_url").is_some())
+                    .map_or(cfg.chatgpt_base_url.is_some(), |layer| {
+                        !matches!(layer.name, ConfigLayerSource::PackagedDefaults { .. })
+                    });
         // Destructure every field to ensure ConfigRequirements additions are
         // either applied above or handled while constructing the final Config.
         let ConfigRequirements {
@@ -3521,6 +3450,7 @@ impl Config {
             cli_auth_credentials_store,
             chatgpt_base_url: _,
             sqlite_home: _,
+            unsafe_enforce_sqlite_journal_mode,
             log_dir: _,
             model_catalog_json: _,
             model_provider: _,
@@ -3528,6 +3458,7 @@ impl Config {
             check_for_update_on_startup: _,
             allow_login_shell: _,
             feedback: _,
+            otel: _,
             approval_policy: mut constrained_approval_policy,
             approvals_reviewer: mut constrained_approvals_reviewer,
             auto_review_required_models: _,
@@ -3637,6 +3568,16 @@ impl Config {
             feature_requirements,
             &mut startup_warnings,
         )?;
+        if let Some(FeatureToml::Config(guardian)) = cfg
+            .features
+            .as_ref()
+            .and_then(|features| features.guardianv2.as_ref())
+            && guardian.async_classifier_mode.is_some()
+        {
+            startup_warnings.push(
+                "`[features.guardianv2].async_classifier_mode` is deprecated and ignored. Async classification always uses conversations; remove this setting from config.toml or profile configuration files.".to_owned(),
+            );
+        }
         let mcp_enterprise_managed_auth = McpEnterpriseManagedAuthConfig::resolve(
             &config_layer_stack,
             cfg.mcp_enterprise_managed_auth.as_ref(),
@@ -3763,7 +3704,20 @@ impl Config {
             ));
         }
 
-        let memories_config: MemoriesConfig = cfg.memories.clone().unwrap_or_default().into();
+        let mut memories = cfg.memories.clone().unwrap_or_default();
+        // Fresh profiles have no V1 context to preserve or warm up before using V2.
+        // Keep explicit selections and transition opt-outs, and fail closed on IO errors.
+        if features.enabled(Feature::MemoryTool)
+            && memories.version.is_none()
+            && memories.dual_write != Some(false)
+            && matches!(
+                tokio::fs::try_exists(codex_home.join(MemoryVersion::V1.directory_name())).await,
+                Ok(false)
+            )
+        {
+            memories.version = Some(MemoryVersion::V2);
+        }
+        let memories_config: MemoriesConfig = memories.into();
         let memories_root = codex_home.join(memories_config.version.directory_name());
 
         let profiles_are_active = effective_permission_selection.profiles_are_active(
@@ -4048,7 +4002,6 @@ impl Config {
         let experimental_request_user_input_enabled =
             resolve_experimental_request_user_input_enabled(&cfg);
         let update_plan_enabled = resolve_update_plan_enabled(&cfg);
-        let tool_search_enabled = resolve_tool_search_enabled(&cfg);
         let tool_registry = ToolRegistryConfig {
             error_on_tool_collisions: cfg
                 .features
@@ -4087,19 +4040,18 @@ impl Config {
             .clone()
             .filter(|value| !value.is_empty());
 
+        let mut model_providers =
+            merge_configured_model_providers(built_in_model_providers(openai_base_url), cfg.model_providers)
+                .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message))?;
+
+        if let Some(provider) = model_providers.get_mut(GCP_PROVIDER_ID) {
+            apply_default_gcp_auth(provider, &resolved_cwd);
+        }
+
         let model_provider_id = config_layer_stack.required_model_provider().map(str::to_string)
             .or(model_provider)
             .or(cfg.model_provider)
             .unwrap_or_else(|| "openai".to_string());
-        // Initial loads and refreshes share the final provider selection:
-        // requirements outrank typed overrides, which outrank config layers.
-        codex_config::env_group_isolation::validate_env_group_isolation(
-            &config_layer_stack,
-            &model_provider_id,
-        )?;
-        let model_providers =
-            merge_configured_model_providers(built_in_model_providers(openai_base_url), cfg.model_providers)
-                .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message))?;
         let model_provider = model_providers
             .get(&model_provider_id)
             .ok_or_else(|| {
@@ -4192,7 +4144,7 @@ impl Config {
             .unwrap_or(DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS)
             .max(MIN_EMPTY_YIELD_TIME_MS);
         let thread_unload_delay =
-            Duration::from_secs(cfg.thread_unload_delay_secs.unwrap_or(/*default*/ 1800));
+            Duration::from_secs(cfg.thread_unload_delay_secs.unwrap_or(/*default*/ 60));
         if std::time::Instant::now()
             .checked_add(thread_unload_delay)
             .is_none()
@@ -4364,7 +4316,6 @@ impl Config {
 
         let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(true);
         let model_catalog = load_model_catalog(cfg.model_catalog_json.clone())?;
-        let user_overlay = load_user_models_overlay(&codex_home)?;
 
         let log_dir = cfg
             .log_dir
@@ -4384,7 +4335,12 @@ impl Config {
             .cloned()
             .or(sqlite_home_env)
             .unwrap_or_else(|| codex_home.clone());
-        let mut sqlite = codex_state::SqliteConfig::from_sqlite_home(sqlite_home);
+        let enforce_delete_on_nfs =
+            unsafe_enforce_sqlite_journal_mode.is_some_and(|required| required.value);
+        let mut sqlite = codex_state::SqliteConfig::from_sqlite_home_with_nfs_enforcement(
+            sqlite_home,
+            enforce_delete_on_nfs,
+        );
         let requirements = config_layer_stack.requirements_toml();
         if cfg.log_dir.is_some() && requirements.sqlite_home.is_none() {
             sqlite = sqlite.with_local_logs_home(log_dir.clone());
@@ -4433,7 +4389,7 @@ impl Config {
         {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "`approval_policy = \"never\"` cannot be used because requirements do not allow `sandbox_mode = \"danger-full-access\"`; Nuwax Harness would fall back to read-only permissions with approvals disabled. Choose an `approval_policy` based on what you need, such as `on-request`, or choose an allowed sandbox mode.",
+                "`approval_policy = \"never\"` cannot be used because requirements do not allow `sandbox_mode = \"danger-full-access\"`; Codex would fall back to read-only permissions with approvals disabled. Choose an `approval_policy` based on what you need, such as `on-request`, or choose an allowed sandbox mode.",
             ));
         }
         if permission_profile_was_constrained {
@@ -4572,28 +4528,6 @@ impl Config {
         )
         .map_err(std::io::Error::from)?;
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
-        // Fork (nuwax-codex): fail fast on non-positive window/compact seeds.
-        // A zero-or-negative `model_auto_compact_token_limit` would force
-        // compaction every turn (including the raw BodyAfterPrefix read in
-        // `session/context_window.rs`), and a non-positive context window
-        // breaks token budgeting. Env seeding already rejects these values;
-        // the TOML / `-c` path previously passed them through.
-        if let Some(window) = cfg.model_context_window
-            && window <= 0
-        {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "model_context_window must be a positive token count",
-            ));
-        }
-        if let Some(limit) = cfg.model_auto_compact_token_limit
-            && limit <= 0
-        {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "model_auto_compact_token_limit must be a positive token count",
-            ));
-        }
         let mut config = Self {
             plugins: cfg.plugins,
             prefer_mxc,
@@ -4603,7 +4537,6 @@ impl Config {
             review_model,
             model_context_window: cfg.model_context_window,
             model_auto_compact_token_limit: cfg.model_auto_compact_token_limit,
-            model_auto_compact_ratio: cfg.model_auto_compact_ratio,
             model_auto_compact_token_limit_scope: cfg
                 .model_auto_compact_token_limit_scope
                 .unwrap_or_default(),
@@ -4716,6 +4649,7 @@ impl Config {
             application_auth_route_config: None,
             history,
             ephemeral: ephemeral.unwrap_or_default(),
+            allow_persistent_dynamic_tool_updates: false,
             extra_config: None,
             bypass_hook_trust,
             file_opener: cfg.file_opener.unwrap_or(UriBasedFileOpener::VsCode),
@@ -4735,6 +4669,13 @@ impl Config {
             guardian_transcript_mode,
             guardian_conversation_history_prompt,
             guardian_conversation_history_max_output_tokens,
+            guardian_review_timeout: cfg
+                .auto_review
+                .as_ref()
+                .and_then(|auto_review| auto_review.timeout_ms)
+                .map_or(Some(codex_guardian_reviewer::REVIEW_TIMEOUT), |timeout_ms| {
+                    (timeout_ms != 0).then(|| Duration::from_millis(u64::from(timeout_ms)))
+                }),
             guardian_circuit_break_action: cfg
                 .auto_review
                 .as_ref()
@@ -4744,11 +4685,11 @@ impl Config {
             plan_mode_reasoning_effort: cfg.plan_mode_reasoning_effort,
             model_reasoning_summary: cfg.model_reasoning_summary,
             model_catalog,
-            user_overlay,
             model_verbosity: cfg.model_verbosity,
+            chatgpt_base_url_is_explicit,
             chatgpt_base_url: cfg
                 .chatgpt_base_url
-                .unwrap_or("https://chatgpt.com/backend-api/".to_string()),
+                .unwrap_or_else(|| DEFAULT_CHATGPT_BASE_URL.to_string()),
             respect_system_proxy,
             apps_mcp_product_sku: cfg.apps_mcp_product_sku.clone(),
             responses_api_metadata: cfg.responses_api_metadata.unwrap_or_default(),
@@ -4784,7 +4725,6 @@ impl Config {
             web_search_config,
             experimental_request_user_input_enabled,
             update_plan_enabled,
-            tool_search_enabled,
             tool_registry,
             code_mode,
             background_terminal_max_timeout,
@@ -4979,11 +4919,7 @@ impl Config {
         !matches!(
             self.permissions.permission_profile(),
             PermissionProfile::Disabled
-        ) && self
-            .config_layer_stack
-            .requirements_toml()
-            .network
-            .is_some()
+        ) && self.config_layer_stack.requirements().network.is_some()
     }
 
     /// Resolves a named permission profile from effective config and managed requirements.
@@ -4991,11 +4927,8 @@ impl Config {
         &self,
         profile_name: &str,
     ) -> std::io::Result<PermissionProfileToml> {
-        let cfg: ConfigToml = self
-            .config_layer_stack
-            .effective_config()
-            .try_into()
-            .map_err(|err| {
+        let cfg =
+            ConfigToml::try_from(self.config_layer_stack.effective_config()).map_err(|err| {
                 std::io::Error::new(
                     ErrorKind::InvalidInput,
                     format!(
@@ -5019,11 +4952,8 @@ impl Config {
     ) -> std::io::Result<Option<NetworkProxySpec>> {
         let profile_allows_network_proxy =
             profile_allows_configured_network_proxy(permission_profile);
-        let cfg: ConfigToml = self
-            .config_layer_stack
-            .effective_config()
-            .try_into()
-            .map_err(|err| {
+        let cfg =
+            ConfigToml::try_from(self.config_layer_stack.effective_config()).map_err(|err| {
                 std::io::Error::new(
                     ErrorKind::InvalidInput,
                     format!(
@@ -5307,9 +5237,9 @@ fn normalize_guardian_policy_config(value: Option<&str>) -> Option<String> {
     })
 }
 
-/// Returns the path to the Nuwax Harness configuration directory, which can be
+/// Returns the path to the Codex configuration directory, which can be
 /// specified by the `CODEX_HOME` environment variable. If not set, defaults to
-/// `~/.nuwax-harness`.
+/// `~/.codex`.
 ///
 /// - If `CODEX_HOME` is set, the value must exist and be a directory. The
 ///   value will be canonicalized and this function will Err otherwise.
@@ -5319,7 +5249,7 @@ pub fn find_codex_home() -> std::io::Result<AbsolutePathBuf> {
     codex_utils_home_dir::find_codex_home()
 }
 
-/// Returns the path to the folder where Nuwax Harness logs are stored. Does not verify
+/// Returns the path to the folder where Codex logs are stored. Does not verify
 /// that the directory exists.
 pub fn log_dir(cfg: &Config) -> std::io::Result<PathBuf> {
     Ok(cfg.log_dir.clone())

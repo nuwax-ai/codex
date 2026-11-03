@@ -73,10 +73,12 @@ pub(super) async fn update_thread_metadata(
     let requires_rollout_compat =
         staged_requires_rollout_compat || requires_rollout_compatibility_update(&patch);
     let has_explicit_metadata = patch.name.is_some() || requires_rollout_compat;
-    let history_mode = if has_explicit_metadata {
+    // Retain failed observed writes when indexing is available, while preserving callers
+    // that intentionally run without a state runtime.
+    let history_mode = if has_explicit_metadata || store.state_db.is_some() {
         match live_writer::live_writer_parts(store, thread_id).await {
             Ok((_recorder, _rollout_id, history_mode)) => Some(history_mode),
-            Err(ThreadStoreError::ThreadNotFound { .. }) => Some(
+            Err(ThreadStoreError::ThreadNotFound { .. }) if has_explicit_metadata => Some(
                 read_thread::read_thread(
                     store,
                     ReadThreadParams {
@@ -88,6 +90,7 @@ pub(super) async fn update_thread_metadata(
                 .await?
                 .history_mode,
             ),
+            Err(ThreadStoreError::ThreadNotFound { .. }) => None,
             Err(err) => return Err(err),
         }
     } else {
@@ -524,13 +527,17 @@ async fn apply_metadata_update(
             if let Some(daybreak_enabled) = patch.daybreak_enabled {
                 metadata.daybreak_enabled = Some(daybreak_enabled);
             }
-            let upsert_result = state_db.upsert_thread(&metadata).await;
+            let memory_mode = patch.memory_mode.map(memory_mode_as_str);
+            let recency_at = existing.as_ref().and(advance_recency_at);
+            let upsert_result = state_db
+                .upsert_thread_with_observed_metadata(&metadata, memory_mode, recency_at)
+                .await;
             if existing.is_none()
                 && metadata.project_id.is_some()
                 && matches!(&upsert_result, Err(err) if err.to_string().contains("FOREIGN KEY constraint failed"))
             {
                 metadata.project_id = None;
-                state_db.upsert_thread(&metadata).await.map_err(|err| {
+                state_db.upsert_thread_with_observed_metadata(&metadata, memory_mode, recency_at).await.map_err(|err| {
                     ThreadStoreError::Internal {
                         message: format!("failed to update thread metadata for {thread_id}: {err}"),
                     }
@@ -592,26 +599,6 @@ async fn apply_metadata_update(
                         ),
                     });
                 }
-            }
-            if existing.is_some()
-                && let Some(recency_at) = advance_recency_at
-            {
-                state_db
-                    .touch_thread_recency_at(thread_id, recency_at)
-                    .await
-                    .map_err(|err| ThreadStoreError::Internal {
-                        message: format!(
-                            "failed to advance thread recency_at for {thread_id}: {err}"
-                        ),
-                    })?;
-            }
-            if let Some(memory_mode) = patch.memory_mode {
-                state_db
-                    .set_thread_memory_mode(thread_id, memory_mode_as_str(memory_mode))
-                    .await
-                    .map_err(|err| ThreadStoreError::Internal {
-                        message: format!("failed to update memory mode for {thread_id}: {err}"),
-                    })?;
             }
             if let Some(daybreak_enabled) = patch.daybreak_enabled
                 && !state_db
@@ -678,7 +665,9 @@ async fn metadata_for_missing_sqlite_row(
         patch.source.clone().unwrap_or(SessionSource::Unknown),
     );
     builder.model_provider = patch.model_provider.clone();
-    builder.history_mode = canonical_history_mode(store, thread_id, rollout_path).await?;
+    let (history_mode, attached_thread_parent_id) =
+        canonical_history_mode_and_attachment(store, thread_id, rollout_path).await?;
+    builder.history_mode = history_mode;
     builder.thread_source = patch.thread_source.clone().flatten();
     builder.agent_nickname = patch.agent_nickname.clone().flatten();
     builder.agent_role = patch.agent_role.clone().flatten();
@@ -686,21 +675,25 @@ async fn metadata_for_missing_sqlite_row(
     builder.cwd = patch.cwd.clone().map(normalize_cwd).unwrap_or_default();
     builder.cli_version = patch.cli_version.clone();
     let mut metadata = builder.build(store.config.default_model_provider_id.as_str());
+    metadata.attached_thread_parent_id = attached_thread_parent_id;
     if rollout_path_archived {
         metadata.archived_at = Some(metadata.updated_at);
     }
     Ok(metadata)
 }
 
-async fn canonical_history_mode(
+async fn canonical_history_mode_and_attachment(
     store: &LocalThreadStore,
     thread_id: ThreadId,
     rollout_path: &Path,
-) -> ThreadStoreResult<ThreadHistoryMode> {
+) -> ThreadStoreResult<(ThreadHistoryMode, Option<ThreadId>)> {
     if let Some((path, meta)) = live_writer::unpersisted_session_meta(store, thread_id).await
         && path == rollout_path
     {
-        return Ok(meta.history_mode);
+        return Ok((
+            meta.history_mode,
+            meta.forked_from_id.filter(|_| meta.attached_thread),
+        ));
     }
     let session_meta = match read_session_meta_line(rollout_path).await {
         Ok(session_meta) => session_meta,
@@ -717,7 +710,7 @@ async fn canonical_history_mode(
             {
                 // The live writer retains the canonical mode selected before its deferred
                 // SessionMeta reaches JSONL.
-                return Ok(history_mode);
+                return Ok((history_mode, None));
             }
             return Err(ThreadStoreError::Internal {
                 message: format!(
@@ -734,7 +727,13 @@ async fn canonical_history_mode(
             ),
         });
     }
-    Ok(session_meta.meta.history_mode)
+    Ok((
+        session_meta.meta.history_mode,
+        session_meta
+            .meta
+            .forked_from_id
+            .filter(|_| session_meta.meta.attached_thread),
+    ))
 }
 
 fn requires_rollout_compatibility_update(patch: &ThreadMetadataPatch) -> bool {

@@ -8,6 +8,8 @@
 //! API provider construction applies the process-wide managed residency policy also
 //! used by default HTTP headers.
 
+use codex_client::OPENAI_ORGANIZATION_HEADER;
+use codex_client::OPENAI_PROJECT_HEADER;
 use codex_client::Provider as ApiProvider;
 use codex_client::RetryConfig as ApiRetryConfig;
 use codex_protocol::auth::AuthMode;
@@ -27,21 +29,19 @@ use std::fmt;
 use std::num::NonZeroU64;
 use std::path::Component;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::PoisonError;
 use std::sync::RwLock;
 use std::time::Duration;
 
 mod capabilities;
-mod catalog_overrides;
-
-pub use catalog_overrides::ignores_catalog_defaults;
-pub use catalog_overrides::set_ignores_catalog_defaults;
 mod gateway_oauth;
 mod oauth_session;
 pub use capabilities::ModelProviderCapabilities;
 pub use capabilities::RemoteCompactionSupport;
 pub use gateway_oauth::GatewayOAuthConfig;
 pub use gateway_oauth::GatewayOAuthDelivery;
+pub use oauth_session::OAuthCredentialsStore;
 pub use oauth_session::OAuthSessionConfig;
 
 pub const RESIDENCY_HEADER_NAME: &str = "x-openai-internal-codex-residency";
@@ -80,17 +80,20 @@ const MAX_STREAM_MAX_RETRIES: u64 = 100;
 /// Hard cap for user-configured `request_max_retries`.
 const MAX_REQUEST_MAX_RETRIES: u64 = 100;
 
-const OPENAI_PROVIDER_NAME: &str = "OpenAI";
+pub const OPENAI_PROVIDER_NAME: &str = "OpenAI";
 const OPENAI_ACTOR_AUTHORIZATION_HEADER: &str = "x-openai-actor-authorization";
 pub const OPENAI_PROVIDER_ID: &str = "openai";
 pub const CHATGPT_CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
-const AMAZON_BEDROCK_PROVIDER_NAME: &str = "Amazon Bedrock";
+pub const AMAZON_BEDROCK_PROVIDER_NAME: &str = "Amazon Bedrock";
 pub const AMAZON_BEDROCK_PROVIDER_ID: &str = "amazon-bedrock";
-const AMAZON_BEDROCK_RUNTIME_PROVIDER_NAME: &str = "Amazon Bedrock Runtime";
+pub const AMAZON_BEDROCK_RUNTIME_PROVIDER_NAME: &str = "Amazon Bedrock Runtime";
 pub const AMAZON_BEDROCK_RUNTIME_PROVIDER_ID: &str = "amazon-bedrock-runtime";
+pub const GCP_PROVIDER_NAME: &str = "Google Cloud Vertex AI";
+pub const GCP_PROVIDER_ID: &str = "gcp";
 pub const AMAZON_BEDROCK_GPT_5_5_MODEL_ID: &str = "openai.gpt-5.5";
 pub const AMAZON_BEDROCK_GPT_5_6_SOL_MODEL_ID: &str = "openai.gpt-5.6-sol";
 pub const AMAZON_BEDROCK_GPT_6_1_SOL_MODEL_ID: &str = "openai.gpt-6.1-sol";
+pub const AMAZON_BEDROCK_GPT_6_1_TERRA_MODEL_ID: &str = "openai.gpt-6.1-terra";
 pub const AMAZON_BEDROCK_GPT_6_SOL_MODEL_ID: &str = "openai.gpt-6-sol";
 pub const AMAZON_BEDROCK_GPT_6_LUNA_MODEL_ID: &str = "openai.gpt-6-luna";
 pub const AMAZON_BEDROCK_GPT_6_ASTRA_MODEL_ID: &str = "openai.gpt-6-astra";
@@ -103,6 +106,7 @@ pub const AMAZON_BEDROCK_DEFAULT_BASE_URL: &str =
     "https://bedrock-mantle.us-east-1.api.aws/openai/v1";
 const AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER: &str = "x-amzn-mantle-client-agent";
 const AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_VALUE: &str = "codex";
+const CHAT_WIRE_API_REMOVED_ERROR: &str = "`wire_api = \"chat\"` is no longer supported.\nHow to fix: set `wire_api = \"responses\"` in your provider config.\nMore info: https://github.com/openai/codex/discussions/7782";
 pub const LEGACY_OLLAMA_CHAT_PROVIDER_ID: &str = "ollama-chat";
 pub const OLLAMA_CHAT_PROVIDER_REMOVED_ERROR: &str = "`ollama-chat` is no longer supported.\nHow to fix: replace `ollama-chat` with `ollama` in `model_provider`, `oss_provider`, or `--local-provider`.\nMore info: https://github.com/openai/codex/discussions/7782";
 
@@ -113,70 +117,14 @@ pub enum WireApi {
     /// The Responses API exposed by OpenAI at `/v1/responses`.
     #[default]
     Responses,
-    /// The Chat Completions API exposed at `/v1/chat/completions`.
-    Chat,
-    /// The Anthropic Messages API (`/v1/messages`), served through a model
-    /// bridge (fork extension). Select this wire explicitly; the endpoint
-    /// URL does not override `wire_api`.
-    Anthropic,
 }
 
 impl fmt::Display for WireApi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value = match self {
             Self::Responses => "responses",
-            Self::Chat => "chat",
-            Self::Anthropic => "anthropic",
         };
         f.write_str(value)
-    }
-}
-
-/// Model bridge implementation backing this provider (fork extension).
-/// `Rig` is the default for third-party providers and supports the explicitly
-/// selected Responses, Chat Completions, or Anthropic wire. `Native` selects
-/// the upstream Responses transport. The legacy `Genai` bridge only supports
-/// Chat Completions and Anthropic.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum ChatBridge {
-    /// The `codex-rust-genai-bridge` crate.
-    Genai,
-    /// The `codex-rust-rig-bridge` crate (fork default).
-    #[default]
-    Rig,
-    /// The upstream-native transport. Only meaningful with
-    /// `wire_api = "responses"`; overrides the fork default that routes
-    /// third-party Responses providers through the rig bridge.
-    Native,
-}
-
-impl fmt::Display for ChatBridge {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let value = match self {
-            Self::Genai => "genai",
-            Self::Rig => "rig",
-            Self::Native => "native",
-        };
-        f.write_str(value)
-    }
-}
-
-impl<'de> Deserialize<'de> for ChatBridge {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = String::deserialize(deserializer)?;
-        match value.as_str() {
-            "genai" => Ok(Self::Genai),
-            "rig" => Ok(Self::Rig),
-            "native" => Ok(Self::Native),
-            _ => Err(serde::de::Error::unknown_variant(
-                &value,
-                &["genai", "rig", "native"],
-            )),
-        }
     }
 }
 
@@ -188,12 +136,8 @@ impl<'de> Deserialize<'de> for WireApi {
         let value = String::deserialize(deserializer)?;
         match value.as_str() {
             "responses" => Ok(Self::Responses),
-            "chat" => Ok(Self::Chat),
-            "anthropic" => Ok(Self::Anthropic),
-            _ => Err(serde::de::Error::unknown_variant(
-                &value,
-                &["responses", "chat", "anthropic"],
-            )),
+            "chat" => Err(serde::de::Error::custom(CHAT_WIRE_API_REMOVED_ERROR)),
+            _ => Err(serde::de::Error::unknown_variant(&value, &["responses"])),
         }
     }
 }
@@ -209,6 +153,16 @@ pub struct ModelProviderInfo {
     pub base_url: Option<String>,
     /// Optional full URL for a Codex-native model catalog. When unset, OpenAI discovery
     /// uses the Codex backend unless `base_url` overrides the inference endpoint.
+    /// The endpoint must serve the Codex catalog format, not the public `/v1/models` API.
+    ///
+    /// For built-in OpenAI, set this under `[model_providers.openai]`; other non-default
+    /// provider overrides are rejected. The URL must use HTTPS and an allowed ChatGPT
+    /// host. Other hosts require a custom provider. Inference still uses `openai_base_url`.
+    ///
+    /// Catalog requests use the provider's credentials, including an API key or ChatGPT
+    /// access token. Only configure an endpoint you trust with those credentials.
+    /// Setting this URL does not grant catalog access or guarantee that the endpoint
+    /// accepts a regional API key. Existing discovery gates and entitlement checks apply.
     pub model_catalog_url: Option<RedactedString>,
     /// Environment variable that stores the user's API key for this provider.
     pub env_key: Option<String>,
@@ -226,22 +180,18 @@ pub struct ModelProviderInfo {
     pub gateway_oauth: Option<GatewayOAuthConfig>,
     /// AWS SigV4 auth configuration for this provider.
     pub aws: Option<ModelProviderAwsAuthInfo>,
+    /// Google Cloud project ID for the built-in GCP provider. Takes precedence
+    /// over `GOOGLE_CLOUD_PROJECT` when deriving the Vertex AI endpoint.
+    pub project_id: Option<String>,
+    /// Google Cloud location for the built-in GCP provider. Takes precedence
+    /// over `GOOGLE_CLOUD_LOCATION`; defaults to `global` when neither is set.
+    pub location: Option<String>,
+    /// Absolute path to a Google ADC credential file. For GCP, overrides
+    /// GOOGLE_APPLICATION_CREDENTIALS in the auth command's environment only.
+    pub credential_file: Option<PathBuf>,
     /// Which wire protocol this provider expects.
     #[serde(default)]
     pub wire_api: WireApi,
-    /// Which model bridge serves this provider (fork extension). Unset uses
-    /// Rig for third-party providers and the native transport for first-party
-    /// providers. `native` requires the Responses wire; the legacy `genai`
-    /// bridge only supports Chat Completions and Anthropic.
-    #[serde(default)]
-    pub experimental_bridge: Option<ChatBridge>,
-    /// Runtime provider identity from the config key (fork extension,
-    /// `#[serde(skip)]` — filled at load time). Used by `is_first_party()`
-    /// instead of matching on the display `name`, which users can set to
-    /// anything (a third-party provider named "OpenAI" must not be routed
-    /// to the native Responses transport).
-    #[serde(skip)]
-    pub provider_id: Option<String>,
     /// Optional API capability overrides for a custom Responses-compatible provider.
     /// Unspecified capabilities retain their existing provider defaults.
     pub capabilities: Option<ModelProviderCapabilities>,
@@ -257,44 +207,6 @@ pub struct ModelProviderInfo {
     pub env_http_headers: Option<HashMap<String, String>>,
     /// Maximum number of times to retry a failed HTTP request to this provider.
     pub request_max_retries: Option<u64>,
-    /// Fork (nuwax-codex): optional output budget for this provider. The
-    /// chat bridge maps it to the wire `max_tokens` (required by Anthropic,
-    /// optional for Chat) instead of its built-in default; the Responses
-    /// passthrough sends requests verbatim and ignores it.
-    pub max_output_tokens: Option<u64>,
-    /// Fork (nuwax-codex): whether the Anthropic bridge replays persisted
-    /// web-search wire blocks (server_tool_use + result pairs, including
-    /// encrypted content) into follow-up requests. Default true; set false
-    /// to fall back to dropping search history (the pre-D2 behavior).
-    pub hosted_results_replay: Option<bool>,
-    /// Fork (nuwax-codex): opt-in for Anthropic prompt caching. When true the
-    /// rig bridge places `cache_control` breakpoints (system tail, final
-    /// non-deferred tool, conversation tail) with Anthropic's 5-minute TTL;
-    /// `cache_read_input_tokens`/`cache_creation_input_tokens` usage already
-    /// flow back. Default off: only enable for gateways that accept
-    /// Anthropic cache markers.
-    pub anthropic_prompt_caching: Option<bool>,
-    /// Fork (nuwax-codex): the reasoning-effort tiers this provider's models
-    /// actually take, in rig's own vocabulary (e.g. GLM-5.3-Flash is
-    /// `["low", "high", "max"]`). The Anthropic bridge answers rig's typed
-    /// `Reasoning` from this list, so a request naming a tier the model does
-    /// not have fails before anything is sent — instead of the gateway
-    /// accepting the value and silently applying a different tier. Unset
-    /// leaves the wire permissive (rig's default for a model its catalog does
-    /// not list), which is how `medium` once reached GLM-5.3-Flash unnoticed.
-    ///
-    /// The words are read through rig's `Effort` deserializer, so the accepted
-    /// vocabulary is rig's and is never a copy kept in step by hand; a word rig
-    /// does not spell fails naming the variable and rig's own list. `none` and
-    /// `off` are not tiers — they say whether thinking can be turned off,
-    /// which these always-thinking gateways refuse. Unset leaves the wire
-    /// permissive; a list that is set but names no tier is refused rather than
-    /// read as "takes none", which would refuse every effort.
-    ///
-    /// Gates both rig wires. Anthropic hands the list to rig's typed channel;
-    /// Chat checks it in the bridge, because rig's Chat dialect would rename
-    /// the output cap in exchange (FORK.md §10).
-    pub reasoning_effort_levels: Option<Vec<String>>,
     /// Number of times to retry reconnecting a dropped streaming response before failing.
     pub stream_max_retries: Option<u64>,
     /// Idle timeout (in milliseconds) to wait for activity on a streaming response before treating
@@ -396,7 +308,6 @@ impl ModelProviderInfo {
     /// Call this on the override before merging it with the built-in provider.
     pub fn validate_bedrock_override(&self) -> Result<(), String> {
         let unsupported_fields = Self {
-            provider_id: None,
             base_url: None,
             auth: None,
             aws: None,
@@ -413,7 +324,20 @@ other non-default provider fields are not supported"
         Ok(())
     }
 
+    /// Checks the credential-file path for a GCP provider or built-in GCP override.
+    pub fn validate_gcp_credential_file(&self) -> Result<(), String> {
+        if let Some(credential_file) = &self.credential_file
+            && !credential_file.is_absolute()
+        {
+            return Err("provider credential_file must be an absolute path".to_string());
+        }
+        Ok(())
+    }
+
     pub fn validate(&self) -> std::result::Result<(), String> {
+        if self.is_gcp() {
+            self.validate_gcp_credential_file()?;
+        }
         if let Some(gateway) = &self.gateway_oauth {
             gateway.validate(self)?;
         }
@@ -511,7 +435,8 @@ other non-default provider fields are not supported"
         }
     }
 
-    fn build_header_map(&self) -> CodexResult<HeaderMap> {
+    /// Resolve configured request headers before choosing credentials or a runtime.
+    pub fn build_header_map(&self) -> CodexResult<HeaderMap> {
         let capacity = self.http_headers.as_ref().map_or(0, HashMap::len)
             + self.env_http_headers.as_ref().map_or(0, HashMap::len);
         let mut headers = HeaderMap::with_capacity(capacity);
@@ -588,10 +513,6 @@ other non-default provider fields are not supported"
             headers,
             retry,
             stream_idle_timeout: self.stream_idle_timeout(),
-            max_output_tokens: self.max_output_tokens,
-            hosted_results_replay: self.hosted_results_replay,
-            anthropic_prompt_caching: self.anthropic_prompt_caching,
-            reasoning_effort_levels: self.reasoning_effort_levels.clone(),
         })
     }
 
@@ -656,8 +577,6 @@ other non-default provider fields are not supported"
             gateway_oauth: None,
             aws: None,
             wire_api: WireApi::Responses,
-            experimental_bridge: None,
-            provider_id: Some(OPENAI_PROVIDER_ID.to_string()),
             query_params: None,
             http_headers: Some(
                 [("version".to_string(), env!("CARGO_PKG_VERSION").into())]
@@ -667,20 +586,19 @@ other non-default provider fields are not supported"
             env_http_headers: Some(
                 [
                     (
-                        "OpenAI-Organization".to_string(),
+                        OPENAI_ORGANIZATION_HEADER.to_string(),
                         "OPENAI_ORGANIZATION".to_string(),
                     ),
-                    ("OpenAI-Project".to_string(), "OPENAI_PROJECT".to_string()),
+                    (
+                        OPENAI_PROJECT_HEADER.to_string(),
+                        "OPENAI_PROJECT".to_string(),
+                    ),
                 ]
                 .into_iter()
                 .collect(),
             ),
             // Use global defaults for retry/timeout unless overridden in config.toml.
             request_max_retries: None,
-            max_output_tokens: None,
-            hosted_results_replay: None,
-            anthropic_prompt_caching: None,
-            reasoning_effort_levels: None,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -688,6 +606,9 @@ other non-default provider fields are not supported"
             supports_websockets: true,
             supports_standalone_web_search: true,
             capabilities: None,
+            project_id: None,
+            location: None,
+            credential_file: None,
             include_internal_metadata: true,
         }
     }
@@ -714,8 +635,6 @@ other non-default provider fields are not supported"
                 auth_refresh: None,
             })),
             wire_api: WireApi::Responses,
-            experimental_bridge: None,
-            provider_id: Some(AMAZON_BEDROCK_PROVIDER_ID.to_string()),
             query_params: None,
             http_headers: Some(HashMap::from([(
                 AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER.to_string(),
@@ -723,10 +642,6 @@ other non-default provider fields are not supported"
             )])),
             env_http_headers: None,
             request_max_retries: None,
-            max_output_tokens: None,
-            hosted_results_replay: None,
-            anthropic_prompt_caching: None,
-            reasoning_effort_levels: None,
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
@@ -734,6 +649,9 @@ other non-default provider fields are not supported"
             supports_websockets: false,
             supports_standalone_web_search: false,
             capabilities: None,
+            project_id: None,
+            location: None,
+            credential_file: None,
             include_internal_metadata: false,
         }
     }
@@ -743,79 +661,50 @@ other non-default provider fields are not supported"
     ) -> ModelProviderInfo {
         let mut provider = Self::create_amazon_bedrock_provider(aws);
         provider.name = AMAZON_BEDROCK_RUNTIME_PROVIDER_NAME.into();
-        // Fork: pin the runtime provider id (first-party routing checks);
-        // upstream keeps the mantle client-agent header for both bedrock
-        // providers, so http_headers is no longer cleared here.
-        provider.provider_id = Some(AMAZON_BEDROCK_RUNTIME_PROVIDER_ID.to_string());
         provider
+    }
+
+    pub fn create_gcp_provider() -> ModelProviderInfo {
+        ModelProviderInfo {
+            name: GCP_PROVIDER_NAME.into(),
+            base_url: None,
+            model_catalog_url: None,
+            env_key: None,
+            env_key_instructions: None,
+            experimental_bearer_token: None,
+            // Config loading supplies default command auth after resolving its working directory.
+            auth: None,
+            gateway_oauth: None,
+            aws: None,
+            capabilities: None,
+            wire_api: WireApi::Responses,
+            query_params: None,
+            http_headers: None,
+            env_http_headers: None,
+            request_max_retries: None,
+            stream_max_retries: None,
+            stream_idle_timeout_ms: None,
+            websocket_connect_timeout_ms: None,
+            requires_openai_auth: false,
+            supports_websockets: false,
+            supports_standalone_web_search: false,
+            project_id: None,
+            location: None,
+            credential_file: None,
+            include_internal_metadata: false,
+        }
+    }
+
+    /// Whether explicit Cyber programs may be selected and forwarded to this provider.
+    /// Use the configured provider ID, never its user-controlled display name, for defaults.
+    pub fn supports_cyber_access_programs(&self, provider_id: &str) -> bool {
+        self.capabilities
+            .and_then(|capabilities| capabilities.cyber_access_programs)
+            .unwrap_or(provider_id == OPENAI_PROVIDER_ID)
     }
 
     pub fn is_openai(&self) -> bool {
         self.name == OPENAI_PROVIDER_NAME
-    }
-
-    /// Identity-based first-party check (fork): OpenAI and Bedrock are the
-    /// only providers entitled to the native Responses transport under the
-    /// fork's default third-party bridging policy. Unlike `is_openai()`,
-    /// this matches on the config key (`provider_id`), not the display
-    /// name, so a user-defined provider named "OpenAI" is still routed
-    /// through the bridge — except where [`Self::requires_workspace_routing`]
-    /// pins the native transport.
-    pub fn is_first_party(&self) -> bool {
-        matches!(
-            self.provider_id.as_deref(),
-            Some(OPENAI_PROVIDER_ID)
-                | Some(AMAZON_BEDROCK_PROVIDER_ID)
-                | Some(AMAZON_BEDROCK_RUNTIME_PROVIDER_ID)
-        )
-    }
-
-    /// Providers whose ChatGPT credentials travel the first-party auth path:
-    /// no `env_key`, bearer, command or AWS override of its own.
-    pub fn uses_first_party_auth_path(&self) -> bool {
-        self.requires_openai_auth
-            && self.env_key.is_none()
-            && self.experimental_bearer_token.is_none()
-            && self.auth.is_none()
-            && self.aws.is_none()
-    }
-
-    /// Whether this provider's model requests must carry account workspace
-    /// routing (routed backend origin, residency and routing-override
-    /// headers), and the 401 recovery that discovery on that route performs.
-    /// Discovery lives only in `responses_api_provider`, which the bridge
-    /// path does not call, so a routing-capable entry keeps the native
-    /// Responses transport even when its config key is not first-party.
-    pub fn requires_workspace_routing(&self) -> bool {
-        self.uses_first_party_auth_path() && self.supports_codex_backend_routes()
-    }
-
-    /// Whether inference is routed through a model bridge under the fork
-    /// routing policy. The bridge speaks the provider's explicit `wire_api`
-    /// (Responses, Chat Completions, or Anthropic) — "bridged" does not imply
-    /// Chat Completions. Auxiliary inference and compaction must consult the
-    /// same policy as core.
-    pub fn uses_model_bridge(&self) -> bool {
-        match self.wire_api {
-            WireApi::Chat | WireApi::Anthropic => true,
-            WireApi::Responses => match self.experimental_bridge {
-                Some(ChatBridge::Native) => false,
-                Some(ChatBridge::Rig | ChatBridge::Genai) => true,
-                None => !(self.is_first_party() || self.requires_workspace_routing()),
-            },
-        }
-    }
-
-    /// Reserved non-Bedrock entries may only select a transport; endpoint and
-    /// authentication changes still require a distinct custom provider ID.
-    pub fn is_builtin_bridge_override(&self) -> bool {
-        self.experimental_bridge.is_some()
-            && Self {
-                name: String::new(),
-                experimental_bridge: None,
-                provider_id: None,
-                ..self.clone()
-            } == Self::default()
     }
 
     pub fn supports_codex_backend_routes(&self) -> bool {
@@ -846,6 +735,10 @@ other non-default provider fields are not supported"
         self.name == AMAZON_BEDROCK_RUNTIME_PROVIDER_NAME
     }
 
+    pub fn is_gcp(&self) -> bool {
+        self.name == GCP_PROVIDER_NAME
+    }
+
     pub fn has_command_auth(&self) -> bool {
         self.auth.is_some()
     }
@@ -866,14 +759,14 @@ pub fn built_in_model_providers(
     let amazon_bedrock_provider = P::create_amazon_bedrock_provider(/*aws*/ None);
     let amazon_bedrock_runtime_provider =
         P::create_amazon_bedrock_runtime_provider(/*aws*/ None);
+    let gcp_provider = P::create_gcp_provider();
 
-    // We do not want to be in the business of adjucating which third-party
-    // providers are bundled with Codex CLI, so we only include the OpenAI and
-    // open source ("oss") providers by default. Users are encouraged to add to
-    // `model_providers` in config.toml to add their own providers.
+    // Bundle OpenAI, supported cloud-hosted OpenAI backends, and local OSS providers.
+    // Other compatible providers can be added through `model_providers` in config.toml.
     [
         (OPENAI_PROVIDER_ID, openai_provider),
         (AMAZON_BEDROCK_PROVIDER_ID, amazon_bedrock_provider),
+        (GCP_PROVIDER_ID, gcp_provider),
         (
             AMAZON_BEDROCK_RUNTIME_PROVIDER_ID,
             amazon_bedrock_runtime_provider,
@@ -888,25 +781,42 @@ pub fn built_in_model_providers(
         ),
     ]
     .into_iter()
-    .map(|(k, mut v)| {
-        v.provider_id = Some(k.to_string());
-        (k.to_string(), v)
-    })
+    .map(|(k, v)| (k.to_string(), v))
     .collect()
 }
 
 /// Merge configured providers into the built-in provider catalog.
 ///
 /// Configured providers extend the built-in set. Built-in providers are not
-/// generally overridable, but built-in Amazon Bedrock providers allow the user
-/// to customize their endpoint, authentication, headers, and AWS settings.
+/// generally overridable. OpenAI allows a catalog URL override, while the
+/// cloud-hosted OpenAI providers allow a limited
+/// set of endpoint, authentication, header, and cloud-specific overrides.
 pub fn merge_configured_model_providers(
     mut model_providers: HashMap<String, ModelProviderInfo>,
     configured_model_providers: HashMap<String, ModelProviderInfo>,
 ) -> Result<HashMap<String, ModelProviderInfo>, String> {
     for (key, mut provider) in configured_model_providers {
-        provider.provider_id = Some(key.clone());
-        if matches!(
+        if key == "openai" {
+            // Keep the built-in identity, inference routing, and authentication.
+            // Only catalog routing is configurable through this provider entry.
+            if let Some(catalog_url) = provider.model_catalog_url.take()
+                && let Some(built_in_provider) = model_providers.get_mut(&key)
+            {
+                let allowed = catalog_url.parse::<http::Uri>().ok().is_some_and(|uri| {
+                    uri.scheme_str() == Some("https")
+                        && uri.host().is_some_and(|host| {
+                            codex_http_client::is_allowed_chatgpt_host(&host.to_ascii_lowercase())
+                        })
+                        && uri
+                            .authority()
+                            .is_some_and(|authority| !authority.as_str().contains('@'))
+                });
+                if !allowed {
+                    return Err("model_providers.openai.model_catalog_url must use an allowed ChatGPT host. If you need to use a 3rd party host, configure a custom model_provider".to_string());
+                }
+                built_in_provider.model_catalog_url = Some(catalog_url);
+            }
+        } else if matches!(
             key.as_str(),
             AMAZON_BEDROCK_PROVIDER_ID | AMAZON_BEDROCK_RUNTIME_PROVIDER_ID
         ) {
@@ -930,25 +840,56 @@ pub fn merge_configured_model_providers(
                         .extend(http_headers_override);
                 }
             }
+        } else if key == GCP_PROVIDER_ID {
+            merge_gcp_provider_overrides(model_providers.get_mut(&key), provider)?;
         } else {
-            // Fork: when the key collides with a built-in provider, the
-            // user's config can at least override the bridge selection
-            // (e.g. `experimental_bridge = "native"` on ollama) even though
-            // the rest of the built-in defaults stand.
-            match model_providers.entry(key) {
-                std::collections::hash_map::Entry::Vacant(v) => {
-                    v.insert(provider);
-                }
-                std::collections::hash_map::Entry::Occupied(mut o) => {
-                    if o.get().experimental_bridge != provider.experimental_bridge {
-                        o.get_mut().experimental_bridge = provider.experimental_bridge;
-                    }
-                }
-            }
+            model_providers.entry(key).or_insert(provider);
         }
     }
 
     Ok(model_providers)
+}
+
+/// Validates GCP overrides and applies them when the built-in provider is present.
+pub fn merge_gcp_provider_overrides(
+    built_in: Option<&mut ModelProviderInfo>,
+    mut overrides: ModelProviderInfo,
+) -> Result<(), String> {
+    overrides
+        .validate_gcp_credential_file()
+        .and_then(|()| overrides.validate())
+        .map_err(|message| format!("model_providers.{GCP_PROVIDER_ID} {message}"))?;
+    let base_url = overrides.base_url.take();
+    let auth = overrides.auth.take();
+    let credential_file = overrides.credential_file.take();
+    let http_headers = overrides.http_headers.take();
+    let project_id = overrides.project_id.take();
+    let location = overrides.location.take();
+    if overrides != ModelProviderInfo::default() {
+        return Err(format!(
+            "model_providers.{GCP_PROVIDER_ID} only supports changing \
+`base_url`, `auth`, `http_headers`, `project_id`, `location`, and `credential_file`; other non-default provider fields are not supported"
+        ));
+    }
+
+    if let Some(provider) = built_in {
+        provider.project_id = project_id;
+        provider.location = location;
+        provider.credential_file = credential_file;
+        if let Some(base_url) = base_url {
+            provider.base_url = Some(base_url);
+        }
+        if let Some(auth) = auth {
+            provider.auth = Some(auth);
+        }
+        if let Some(http_headers) = http_headers {
+            provider
+                .http_headers
+                .get_or_insert_default()
+                .extend(http_headers);
+        }
+    }
+    Ok(())
 }
 
 pub fn create_oss_provider(default_provider_port: u16, wire_api: WireApi) -> ModelProviderInfo {
@@ -982,16 +923,10 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         gateway_oauth: None,
         aws: None,
         wire_api,
-        experimental_bridge: None,
-        provider_id: None,
         query_params: None,
         http_headers: None,
         env_http_headers: None,
         request_max_retries: None,
-        max_output_tokens: None,
-        hosted_results_replay: None,
-        anthropic_prompt_caching: None,
-        reasoning_effort_levels: None,
         stream_max_retries: None,
         stream_idle_timeout_ms: None,
         websocket_connect_timeout_ms: None,
@@ -999,6 +934,9 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         supports_websockets: false,
         supports_standalone_web_search: false,
         capabilities: None,
+        project_id: None,
+        location: None,
+        credential_file: None,
         include_internal_metadata: false,
     }
 }
@@ -1006,7 +944,3 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
 #[cfg(test)]
 #[path = "model_provider_info_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "bridge_routing_tests.rs"]
-mod bridge_routing_tests;

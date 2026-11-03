@@ -29,9 +29,8 @@ codex-app-server-client = { workspace = true }
 codex-app-server-protocol = { workspace = true }
 codex-cloud-config = { workspace = true }
 codex-config = { workspace = true }
-# Enable the rust-genai Chat Completions bridge so headless `codex exec`
-# sessions work with `wire_api = "chat"` providers, matching the CLI binary.
-codex-core = { workspace = true, features = ["rust-genai", "rust-rig"] }
+codex-core = { workspace = true }
+codex-exec-server = { workspace = true }
 codex-features = { workspace = true }
 codex-feedback = { workspace = true }
 codex-git-utils = { workspace = true }
@@ -79,14 +78,9 @@ opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 predicates = { workspace = true }
 pretty_assertions = { workspace = true }
-sqlx = { workspace = true }
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
 tracing-opentelemetry = { workspace = true }
 uuid = { workspace = true }
 walkdir = { workspace = true }
 wiremock = { workspace = true }
 zstd = { workspace = true }
-
-[build-dependencies]
-sha2 = { workspace = true }

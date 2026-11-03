@@ -79,13 +79,19 @@ pub struct ModelProvider {
     pub supports_standalone_web_search: bool,
     #[prost(string, optional, tag = "19")]
     pub model_catalog_url: ::core::option::Option<::prost::alloc::string::String>,
-    /// Fork: bridge selection ("genai" | "rig" | "native").
     #[prost(string, optional, tag = "20")]
-    pub experimental_bridge: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(uint64, optional, tag = "21")]
-    pub max_output_tokens: ::core::option::Option<u64>,
-    #[prost(bool, optional, tag = "22")]
-    pub hosted_results_replay: ::core::option::Option<bool>,
+    pub project_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "21")]
+    pub location: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "22")]
+    pub credential_file: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "23")]
+    pub capabilities: ::core::option::Option<ModelProviderCapabilities>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ModelProviderCapabilities {
+    #[prost(bool, optional, tag = "1")]
+    pub cyber_access_programs: ::core::option::Option<bool>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StringMap {
@@ -111,8 +117,6 @@ pub struct ModelProviderAuthInfo {
 pub enum WireApi {
     Unspecified = 0,
     Responses = 1,
-    Chat = 2,
-    Anthropic = 3,
 }
 impl WireApi {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -123,8 +127,6 @@ impl WireApi {
         match self {
             Self::Unspecified => "WIRE_API_UNSPECIFIED",
             Self::Responses => "WIRE_API_RESPONSES",
-            Self::Chat => "WIRE_API_CHAT",
-            Self::Anthropic => "WIRE_API_ANTHROPIC",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -132,8 +134,6 @@ impl WireApi {
         match value {
             "WIRE_API_UNSPECIFIED" => Some(Self::Unspecified),
             "WIRE_API_RESPONSES" => Some(Self::Responses),
-            "WIRE_API_CHAT" => Some(Self::Chat),
-            "WIRE_API_ANTHROPIC" => Some(Self::Anthropic),
             _ => None,
         }
     }

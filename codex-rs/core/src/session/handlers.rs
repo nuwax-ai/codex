@@ -27,6 +27,7 @@ use crate::tasks::UserShellCommandTask;
 use crate::tasks::execute_user_shell_command;
 use crate::thread_manager::AgentTreeShutdownFailure;
 use crate::thread_manager::thread_store_error_kind;
+use codex_protocol::approvals::ExecApprovalKind;
 use codex_protocol::error::CodexErr;
 use codex_protocol::protocol::CodexErrorInfo;
 use codex_protocol::protocol::ErrorEvent;
@@ -175,36 +176,51 @@ pub async fn resolve_elicitation(
     }
 }
 
-/// Propagate a user's exec approval decision to the session.
-/// Also optionally applies an execpolicy amendment.
-pub async fn exec_approval(
-    sess: &Arc<Session>,
-    approval_id: String,
-    turn_id: Option<String>,
-    decision: ReviewDecision,
-) {
-    let event_turn_id = turn_id.unwrap_or_else(|| approval_id.clone());
-    if let ReviewDecision::ApprovedExecpolicyAmendment {
-        proposed_execpolicy_amendment,
-    } = &decision
-        && let Err(err) = sess
-            .persist_execpolicy_amendment(proposed_execpolicy_amendment)
+impl Session {
+    /// Claim the prompt before applying a decision that can outlive the requesting execution.
+    pub(crate) async fn resolve_exec_approval(
+        self: &Arc<Self>,
+        approval_id: String,
+        turn_id: Option<String>,
+        decision: ReviewDecision,
+    ) {
+        let Some((pending, active_turn_id)) = self
+            .take_pending_approval(&approval_id, turn_id.as_deref())
             .await
-    {
-        let message = format!("Failed to apply execpolicy amendment: {err}");
-        tracing::warn!("{message}");
-        let warning = EventMsg::Warning(WarningEvent { message });
-        sess.send_event_raw(Event {
-            id: event_turn_id.clone(),
-            msg: warning,
-        })
-        .await;
-    }
-    match decision {
-        ReviewDecision::Abort => {
-            sess.interrupt_task().await;
+        else {
+            return;
+        };
+        let decision = pending.validate(decision);
+        if decision == ReviewDecision::Abort {
+            let turn_id = if pending.kind == ExecApprovalKind::HumanCommand {
+                Some(&pending.turn_id)
+            } else {
+                active_turn_id.as_ref()
+            };
+            if let Some(turn_id) = turn_id {
+                self.abort_turn_if_active(
+                    turn_id,
+                    TurnAbortReason::Interrupted,
+                    /*error*/ None,
+                )
+                .await;
+            }
+        } else if let ReviewDecision::ApprovedExecpolicyAmendment {
+            proposed_execpolicy_amendment,
+        } = &decision
+            && let Err(err) = self
+                .persist_execpolicy_amendment(proposed_execpolicy_amendment)
+                .await
+        {
+            let message = format!("Failed to apply execpolicy amendment: {err}");
+            tracing::warn!("{message}");
+            self.send_event_raw(Event {
+                id: turn_id.unwrap_or(approval_id),
+                msg: EventMsg::Warning(WarningEvent { message }),
+            })
+            .await;
         }
-        other => sess.notify_approval(&approval_id, other).await,
+        let _ = pending.sender.send(decision);
     }
 }
 
@@ -396,10 +412,10 @@ pub async fn shutdown(sess: &Arc<Session>, sub_id: String) -> bool {
     sess.services
         .rollout_thread_trace
         .record_protocol_event(&event.msg);
-    sess.deliver_event_raw(event).await;
     sess.services
         .rollout_thread_trace
         .record_ended(codex_rollout_trace::RolloutStatus::Completed);
+    sess.deliver_event_raw(event).await;
     true
 }
 
@@ -496,24 +512,21 @@ pub(super) async fn submission_loop(
         let should_exit = async {
             match sub.op {
                 Op::Interrupt => {
-                    Box::pin(interrupt(&sess)).await;
+                    interrupt(&sess).await;
                     false
                 }
                 Op::InterruptIfNoPendingInput { turn_id, reply } => {
-                    Box::pin(sess.interrupt_turn_if_no_pending_input(&turn_id, reply)).await;
+                    sess.interrupt_turn_if_no_pending_input(&turn_id, reply)
+                        .await;
                     false
                 }
                 Op::CleanBackgroundTerminals => {
-                    Box::pin(clean_background_terminals(&sess)).await;
+                    clean_background_terminals(&sess).await;
                     false
                 }
                 Op::RealtimeConversationStart(params) => {
-                    if let Err(err) = Box::pin(handle_realtime_conversation_start(
-                        &sess,
-                        sub.id.clone(),
-                        params,
-                    ))
-                    .await
+                    if let Err(err) =
+                        handle_realtime_conversation_start(&sess, sub.id.clone(), params).await
                     {
                         sess.send_event_raw(Event {
                             id: sub.id.clone(),
@@ -533,6 +546,18 @@ pub(super) async fn submission_loop(
                     let _ = reply.send(result);
                     false
                 }
+                Op::RealtimeConversationAttachStream {
+                    params,
+                    transport,
+                    reply,
+                } => {
+                    let result = crate::realtime_conversation::handle_attach_stream(
+                        &sess, sub.id, params, transport,
+                    )
+                    .await;
+                    let _ = reply.send(result);
+                    false
+                }
                 Op::RealtimeConversationDetach {
                     realtime_session_id,
                     reply,
@@ -547,38 +572,23 @@ pub(super) async fn submission_loop(
                     false
                 }
                 Op::RealtimeConversationAudio(params) => {
-                    Box::pin(handle_realtime_conversation_audio(
-                        &sess,
-                        sub.id.clone(),
-                        params,
-                    ))
-                    .await;
+                    handle_realtime_conversation_audio(&sess, sub.id.clone(), params).await;
                     false
                 }
                 Op::RealtimeConversationText(params) => {
-                    Box::pin(handle_realtime_conversation_text(
-                        &sess,
-                        sub.id.clone(),
-                        params,
-                    ))
-                    .await;
+                    handle_realtime_conversation_text(&sess, sub.id.clone(), params).await;
                     false
                 }
                 Op::RealtimeConversationSpeech(params) => {
-                    Box::pin(handle_realtime_conversation_speech(
-                        &sess,
-                        sub.id.clone(),
-                        params,
-                    ))
-                    .await;
+                    handle_realtime_conversation_speech(&sess, sub.id.clone(), params).await;
                     false
                 }
                 Op::RealtimeConversationClose => {
-                    Box::pin(handle_realtime_conversation_close(&sess, sub.id.clone())).await;
+                    handle_realtime_conversation_close(&sess, sub.id.clone()).await;
                     false
                 }
                 Op::RealtimeConversationListVoices => {
-                    Box::pin(realtime_conversation_list_voices(&sess, sub.id.clone())).await;
+                    realtime_conversation_list_voices(&sess, sub.id.clone()).await;
                     false
                 }
                 Op::TurnInput {
@@ -590,10 +600,7 @@ pub(super) async fn submission_loop(
                         request: *request,
                         turn_extension_init: sub.turn_extension_init,
                     };
-                    // Keep the larger turn state out of this dispatch future,
-                    // as in the branches of `turn_input::handle`.
-                    let result =
-                        Box::pin(turn_input::handle(&sess, request, mode, sub.id.clone())).await;
+                    let result = turn_input::handle(&sess, request, mode, sub.id.clone()).await;
                     let _ = reply.send(result);
                     false
                 }
@@ -602,7 +609,7 @@ pub(super) async fn submission_loop(
                     start_options,
                     reply,
                 } => {
-                    let result = Box::pin(turn_input::handle_recovery(
+                    let result = turn_input::handle_recovery(
                         &sess,
                         WithTurnExtensionData {
                             request: thread_settings,
@@ -610,17 +617,15 @@ pub(super) async fn submission_loop(
                         },
                         start_options,
                         sub.id.clone(),
-                    ))
+                    )
                     .await;
                     let _ = reply.send(result);
                     false
                 }
                 Op::SuspendTurnAndShutdown { reply } => {
-                    let result = Box::pin(super::turn_suspension::suspend_turn_and_shutdown(
-                        &sess,
-                        sub.id.clone(),
-                    ))
-                    .await;
+                    let result =
+                        super::turn_suspension::suspend_turn_and_shutdown(&sess, sub.id.clone())
+                            .await;
                     // Exit only after history is durable and its writer has closed; an error
                     // must leave responsibility for the thread with the current worker.
                     let should_exit = matches!(
@@ -639,7 +644,7 @@ pub(super) async fn submission_loop(
                         request: thread_settings,
                         turn_extension_init: sub.turn_extension_init,
                     };
-                    match Box::pin(thread_settings::update(&sess, thread_settings)).await {
+                    match thread_settings::update(&sess, thread_settings).await {
                         Ok(snapshot) => {
                             // Reply first: the caller may hold a lock its event consumer needs.
                             if let Some(reply) = reply {
@@ -666,12 +671,16 @@ pub(super) async fn submission_loop(
                     }
                     false
                 }
+                Op::ReplaceDynamicTools { tools, reply } => {
+                    let _ = reply.send(sess.replace_dynamic_tools(tools).await);
+                    false
+                }
                 Op::TurnSettings {
                     turn_id,
                     update,
                     reply,
                 } => {
-                    let outcome = Box::pin(sess.apply_turn_settings(&turn_id, update)).await;
+                    let outcome = sess.apply_turn_settings(&turn_id, update).await;
                     let _ = reply.send(outcome);
                     false
                 }
@@ -681,13 +690,8 @@ pub(super) async fn submission_loop(
                 } => {
                     let communication =
                         crate::PendingAgentMessage::new(communication, sub.message_delivery);
-                    Box::pin(inter_agent_communication(
-                        &sess,
-                        sub.id.clone(),
-                        communication,
-                        start_options,
-                    ))
-                    .await;
+                    inter_agent_communication(&sess, sub.id.clone(), communication, start_options)
+                        .await;
                     false
                 }
                 Op::ExecApproval {
@@ -695,23 +699,24 @@ pub(super) async fn submission_loop(
                     turn_id,
                     decision,
                 } => {
-                    Box::pin(exec_approval(&sess, approval_id, turn_id, decision)).await;
+                    sess.resolve_exec_approval(approval_id, turn_id, decision)
+                        .await;
                     false
                 }
                 Op::PatchApproval { id, decision } => {
-                    Box::pin(patch_approval(&sess, id, decision)).await;
+                    patch_approval(&sess, id, decision).await;
                     false
                 }
                 Op::UserInputAnswer { id, response } => {
-                    Box::pin(request_user_input_response(&sess, id, response)).await;
+                    request_user_input_response(&sess, id, response).await;
                     false
                 }
                 Op::RequestPermissionsResponse { id, response } => {
-                    Box::pin(request_permissions_response(&sess, id, response)).await;
+                    request_permissions_response(&sess, id, response).await;
                     false
                 }
                 Op::DynamicToolResponse { id, response } => {
-                    Box::pin(dynamic_tool_response(&sess, id, response)).await;
+                    dynamic_tool_response(&sess, id, response).await;
                     false
                 }
                 Op::RefreshMcpServers => {
@@ -719,28 +724,22 @@ pub(super) async fn submission_loop(
                     false
                 }
                 Op::ReloadUserConfig => {
-                    Box::pin(reload_user_config(&sess)).await;
+                    reload_user_config(&sess).await;
                     false
                 }
                 Op::Compact => {
-                    Box::pin(compact(&sess, sub.id.clone())).await;
+                    compact(&sess, sub.id.clone()).await;
                     false
                 }
                 Op::SetThreadMemoryMode { mode } => {
-                    Box::pin(set_thread_memory_mode(&sess, sub.id.clone(), mode)).await;
+                    set_thread_memory_mode(&sess, sub.id.clone(), mode).await;
                     false
                 }
                 Op::RunUserShellCommand {
                     command,
                     timeout_ms,
                 } => {
-                    Box::pin(run_user_shell_command(
-                        &sess,
-                        sub.id.clone(),
-                        command,
-                        timeout_ms,
-                    ))
-                    .await;
+                    run_user_shell_command(&sess, sub.id.clone(), command, timeout_ms).await;
                     false
                 }
                 Op::ResolveElicitation {
@@ -750,24 +749,17 @@ pub(super) async fn submission_loop(
                     content,
                     meta,
                 } => {
-                    Box::pin(resolve_elicitation(
-                        &sess,
-                        server_name,
-                        request_id,
-                        decision,
-                        content,
-                        meta,
-                    ))
-                    .await;
+                    resolve_elicitation(&sess, server_name, request_id, decision, content, meta)
+                        .await;
                     false
                 }
-                Op::Shutdown => Box::pin(shutdown(&sess, sub.id.clone())).await,
+                Op::Shutdown => shutdown(&sess, sub.id.clone()).await,
                 Op::Review { review_request } => {
-                    Box::pin(review(&sess, &config, sub.id.clone(), review_request)).await;
+                    review(&sess, &config, sub.id.clone(), review_request).await;
                     false
                 }
                 Op::ApproveGuardianDeniedAction { event } => {
-                    Box::pin(approve_guardian_denied_action(&sess, event)).await;
+                    approve_guardian_denied_action(&sess, event).await;
                     false
                 }
                 _ => false, // Ignore unknown ops; enum is non_exhaustive to allow extensions.
@@ -798,6 +790,9 @@ pub(super) async fn submission_loop(
             );
             warn!("failed to shutdown thread persistence after submission channel closed: {err}");
         }
+        sess.services
+            .rollout_thread_trace
+            .record_ended(codex_rollout_trace::RolloutStatus::Aborted);
     }
     debug!("Agent loop exited");
 }

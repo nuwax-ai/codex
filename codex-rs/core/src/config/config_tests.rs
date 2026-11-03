@@ -10,6 +10,7 @@ use codex_config::ConfigLayerEntry;
 use codex_config::ConfigLayerSource;
 use codex_config::ConfigLayerStack;
 use codex_config::McpServerCommandMatcher;
+use codex_config::McpServerDisabledReason;
 use codex_config::McpServerIdentity;
 use codex_config::McpServerRequirement;
 use codex_config::McpServerValueMatcher;
@@ -73,6 +74,7 @@ use codex_config::types::WindowsToml;
 use codex_exec_server::LOCAL_FS;
 use codex_features::Feature;
 use codex_features::FeaturesToml;
+use codex_login::CodexAuth;
 use codex_login::default_client::RESIDENCY_HEADER_NAME;
 use codex_login::test_support::auth_manager_from_optional_auth;
 use codex_model_provider::ProviderCapabilities;
@@ -256,9 +258,9 @@ async fn load_config_applies_optional_mcp_startup_grace() -> std::io::Result<()>
 async fn load_config_resolves_thread_unload_delay() -> anyhow::Result<()> {
     let codex_home = tempdir()?;
     for (toml, seconds) in [
-        ("", 1800),
+        ("", 60),
         ("thread_unload_delay_secs = 0", 0),
-        ("thread_unload_delay_secs = 60", 60),
+        ("thread_unload_delay_secs = 1800", 1800),
     ] {
         let config = Config::load_from_base_config_with_overrides(
             toml::from_str(toml)?,
@@ -334,6 +336,7 @@ min_rollout_idle_hours = 24
 min_rate_limit_remaining_percent = 12
 extract_model = "gpt-5-mini"
 consolidation_model = "gpt-5.2"
+consolidation_service_tier = "fast"
 "#;
     let memories_cfg =
         toml::from_str::<ConfigToml>(memories).expect("TOML deserialization should succeed");
@@ -353,6 +356,7 @@ consolidation_model = "gpt-5.2"
             min_rate_limit_remaining_percent: Some(12),
             extract_model: Some("gpt-5-mini".to_string()),
             consolidation_model: Some("gpt-5.2".to_string()),
+            consolidation_service_tier: Some("fast".to_string()),
         }),
         memories_cfg.memories
     );
@@ -381,6 +385,7 @@ consolidation_model = "gpt-5.2"
             min_rate_limit_remaining_percent: 12,
             extract_model: Some("gpt-5-mini".to_string()),
             consolidation_model: Some("gpt-5.2".to_string()),
+            consolidation_service_tier: "priority".to_string(),
         }
     );
 
@@ -395,6 +400,34 @@ consolidation_model = "gpt-5.2"
         )
         .disable_on_external_context
     );
+}
+
+#[tokio::test]
+async fn fresh_memory_profiles_preserve_explicit_version_and_transition_opt_out() {
+    for (settings, expected) in [
+        ("", codex_protocol::MemoryVersion::V2),
+        ("version = 'v1'", codex_protocol::MemoryVersion::V1),
+        ("dual_write = false", codex_protocol::MemoryVersion::V1),
+        (
+            "version = 'v2'\ndual_write = false",
+            codex_protocol::MemoryVersion::V2,
+        ),
+    ] {
+        let home = tempdir().expect("tempdir");
+        let cfg = toml::from_str::<ConfigToml>(&format!(
+            "[features]\nmemories = true\n[memories]\n{settings}"
+        ))
+        .expect("memory config");
+        let config = Config::load_from_base_config_with_overrides(
+            cfg,
+            ConfigOverrides::default(),
+            home.abs(),
+        )
+        .await
+        .expect("load config");
+        assert_eq!(config.memories.version, expected, "{settings}");
+        assert!(!home.path().join("memories").exists());
+    }
 }
 
 #[tokio::test]
@@ -460,9 +493,7 @@ web_search = true
         cfg.tools,
         Some(ToolsToml {
             web_search: None,
-            experimental_request_user_input: None,
-            update_plan: None,
-            tool_search: None,
+            ..Default::default()
         })
     );
 }
@@ -481,9 +512,7 @@ web_search = false
         cfg.tools,
         Some(ToolsToml {
             web_search: None,
-            experimental_request_user_input: None,
-            update_plan: None,
-            tool_search: None,
+            ..Default::default()
         })
     );
 }
@@ -500,10 +529,8 @@ fn tools_experimental_request_user_input_defaults_to_enabled() {
     assert_eq!(
         cfg.tools,
         Some(ToolsToml {
-            web_search: None,
             experimental_request_user_input: Some(ExperimentalRequestUserInput { enabled: true }),
-            update_plan: None,
-            tool_search: None,
+            ..Default::default()
         })
     );
 }
@@ -521,10 +548,8 @@ enabled = false
     assert_eq!(
         cfg.tools,
         Some(ToolsToml {
-            web_search: None,
             experimental_request_user_input: Some(ExperimentalRequestUserInput { enabled: false }),
-            update_plan: None,
-            tool_search: None,
+            ..Default::default()
         })
     );
 }
@@ -540,7 +565,7 @@ async fn load_config_resolves_experimental_request_user_input_enabled() -> std::
                     enabled: false,
                 }),
                 update_plan: None,
-                tool_search: None,
+                ..Default::default()
             }),
             ..ConfigToml::default()
         },
@@ -867,38 +892,6 @@ async fn load_config_rejects_non_positive_auto_compact_fallback_buffer() -> std:
     Ok(())
 }
 
-// Fork (nuwax-codex): a zero-or-negative auto-compact limit forces compaction
-// every turn and a non-positive context window breaks token budgeting; both
-// previously passed through the TOML path unvalidated (env seeding rejected
-// them, and models-manager now also drops them defensively).
-#[tokio::test]
-async fn load_config_rejects_non_positive_model_context_seeds() -> std::io::Result<()> {
-    for (key, value) in [
-        ("model_context_window", -1),
-        ("model_context_window", 0),
-        ("model_auto_compact_token_limit", -1),
-        ("model_auto_compact_token_limit", 0),
-    ] {
-        let codex_home = tempdir()?;
-        let config_toml =
-            toml::from_str(&format!("{key} = {value}\n")).expect("TOML should deserialize");
-        let error = Config::load_from_base_config_with_overrides(
-            config_toml,
-            ConfigOverrides::default(),
-            codex_home.abs(),
-        )
-        .await
-        .expect_err("non-positive seed should be rejected");
-
-        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
-        assert_eq!(
-            error.to_string(),
-            format!("{key} must be a positive token count")
-        );
-    }
-    Ok(())
-}
-
 #[tokio::test]
 async fn load_config_rejects_missing_auto_compact_fallback_buffer() -> std::io::Result<()> {
     let codex_home = tempdir()?;
@@ -949,6 +942,7 @@ prefill_token_weight = 0.1
     assert_eq!(
         config.rollout_budget,
         Some(RolloutBudgetConfig {
+            enforce_limit: true,
             limit_tokens: 100_000,
             reminder_at_remaining_tokens: vec![50_000, 25_000, 10_000],
             sampling_token_weight: 1.0,
@@ -1263,6 +1257,108 @@ command = "print-token"
     assert_eq!(config.model_provider, expected_provider);
 }
 
+#[tokio::test]
+async fn load_config_uses_resolved_cwd_for_default_gcp_auth() {
+    let codex_home = tempdir().expect("tempdir");
+    let workspace = tempdir().expect("tempdir");
+    let cwd = workspace.abs();
+
+    for base_url in [None, Some("https://vertex.example.com/v1")] {
+        let mut cfg = ConfigToml {
+            model_provider: Some("gcp".to_string()),
+            ..Default::default()
+        };
+        if let Some(base_url) = base_url {
+            cfg.model_providers.insert(
+                "gcp".to_string(),
+                ModelProviderInfo {
+                    base_url: Some(base_url.to_string()),
+                    ..Default::default()
+                },
+            );
+        }
+        let config = Config::load_from_base_config_with_overrides(
+            cfg,
+            ConfigOverrides {
+                cwd: Some(cwd.to_path_buf()),
+                ..Default::default()
+            },
+            codex_home.abs(),
+        )
+        .await
+        .expect("load config");
+
+        let mut expected_provider = ModelProviderInfo::create_gcp_provider();
+        expected_provider.base_url = base_url.map(str::to_string);
+        expected_provider.auth = Some(ModelProviderAuthInfo {
+            command: if cfg!(windows) {
+                "gcloud.cmd"
+            } else {
+                "gcloud"
+            }
+            .to_string(),
+            args: vec![
+                "auth".into(),
+                "application-default".into(),
+                "print-access-token".into(),
+            ],
+            timeout_ms: std::num::NonZeroU64::new(30_000).expect("timeout should be non-zero"),
+            refresh_interval_ms: 3_000_000,
+            cwd: cwd.clone(),
+        });
+        assert_eq!(config.model_provider_id, "gcp");
+        assert_eq!(config.model_provider, expected_provider);
+        assert_eq!(config.model_providers.get("gcp"), Some(&expected_provider));
+    }
+}
+
+#[tokio::test]
+async fn load_config_applies_gcp_transport_overrides() {
+    let cfg = toml::from_str::<ConfigToml>(
+        r#"
+model_provider = "gcp"
+
+[model_providers.gcp]
+base_url = "https://vertex.example.com/v1"
+http_headers = { "X-Custom-Header" = "value" }
+
+[model_providers.gcp.auth]
+command = "print-token"
+"#,
+    )
+    .expect("GCP transport overrides should deserialize");
+
+    let config = Config::load_from_base_config_with_overrides(
+        cfg,
+        ConfigOverrides::default(),
+        tempdir().expect("tempdir").abs(),
+    )
+    .await
+    .expect("load config");
+
+    let mut expected_provider = built_in_model_providers(/*openai_base_url*/ None)
+        .remove("gcp")
+        .expect("GCP provider should be built in");
+    expected_provider.base_url = Some("https://vertex.example.com/v1".to_string());
+    expected_provider.auth = Some(ModelProviderAuthInfo {
+        command: "print-token".to_string(),
+        args: Vec::new(),
+        timeout_ms: std::num::NonZeroU64::new(5_000).expect("timeout should be non-zero"),
+        refresh_interval_ms: 300_000,
+        cwd: std::env::current_dir()
+            .expect("current directory should be available")
+            .try_into()
+            .expect("current directory should be absolute"),
+    });
+    expected_provider.http_headers = Some(std::collections::HashMap::from([(
+        "X-Custom-Header".to_string(),
+        "value".into(),
+    )]));
+
+    assert_eq!(config.model_provider_id, "gcp");
+    assert_eq!(config.model_provider, expected_provider);
+}
+
 #[test]
 fn config_toml_rejects_unsupported_amazon_bedrock_overrides() {
     let err = toml::from_str::<ConfigToml>(
@@ -1294,6 +1390,7 @@ fn config_toml_deserializes_model_availability_nux() {
     assert_eq!(
         cfg.tui.expect("tui config should deserialize"),
         Tui {
+            default_hosts: Default::default(),
             notification_settings: TuiNotificationSettings::default(),
             animations: true,
             screen_reader_detection_done: None,
@@ -1589,6 +1686,8 @@ strip_request_headers = ["authorization"]
                             actions: Some(IndexMap::from([(
                                 "strip_auth".to_string(),
                                 NetworkMitmActionToml {
+                                    body_secret_substitution: None,
+                                    aws_sigv4: None,
                                     strip_request_headers: vec!["authorization".to_string()],
                                     inject_request_headers: Vec::new(),
                                 },
@@ -1671,6 +1770,8 @@ fn permissions_profile_network_to_proxy_config_preserves_mitm_hooks() {
             actions: Some(IndexMap::from([(
                 "strip_auth".to_string(),
                 NetworkMitmActionToml {
+                    body_secret_substitution: None,
+                    aws_sigv4: None,
                     strip_request_headers: vec!["authorization".to_string()],
                     inject_request_headers: Vec::new(),
                 },
@@ -2327,6 +2428,117 @@ enabled = true
             .expect("experimental_network should configure the managed proxy")
             .enabled()
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn managed_network_requirements_ignore_disabled_proxy_feature_config() -> std::io::Result<()>
+{
+    let feature_config = r#"
+[features.network_proxy]
+enabled = true
+dangerously_allow_all_unix_sockets = true
+allow_local_binding = true
+domains = { "unmanaged.example" = "allow" }
+unix_sockets = { "/tmp/unmanaged.sock" = "allow" }
+"#;
+    let requirements = r#"
+default_permissions = "managed-primary"
+
+[features]
+network_proxy = false
+
+[allowed_permission_profiles]
+managed-primary = true
+managed-secondary = true
+
+[permissions.network]
+enabled = true
+allow_upstream_proxy = false
+domains = { "shared.example" = "allow", "blocked.example" = "deny" }
+
+[permissions.managed-primary]
+extends = ":workspace"
+
+[permissions.managed-primary.network]
+enabled = true
+proxy_url = "http://127.0.0.1:43128"
+dangerously_allow_all_unix_sockets = false
+domains = { "primary.example" = "allow" }
+unix_sockets = { "/tmp/primary.sock" = "allow" }
+
+[permissions.managed-secondary]
+extends = "managed-primary"
+
+[permissions.managed-secondary.network]
+proxy_url = "http://127.0.0.1:43129"
+"#;
+    let mut baseline: Option<(NetworkProxySpec, NetworkProxySpec)> = None;
+
+    for source in ["baseline", "user", "trusted project"] {
+        let codex_home = TempDir::new()?;
+        let workspace = TempDir::new()?;
+        let workspace_key = TomlValue::String(project_trust_key(workspace.path()));
+        let user_features = if source == "user" { feature_config } else { "" };
+        std::fs::write(
+            codex_home.path().join(CONFIG_TOML_FILE),
+            format!(
+                r#"
+[projects.{workspace_key}]
+trust_level = "trusted"
+{user_features}
+"#
+            ),
+        )?;
+        if source == "trusted project" {
+            let project_config_dir = workspace.path().join(".codex");
+            std::fs::create_dir_all(&project_config_dir)?;
+            std::fs::write(project_config_dir.join(CONFIG_TOML_FILE), feature_config)?;
+        }
+
+        let config = ConfigBuilder::without_managed_config_for_tests()
+            .codex_home(codex_home.path().to_path_buf())
+            .harness_overrides(ConfigOverrides {
+                cwd: Some(workspace.path().to_path_buf()),
+                ..Default::default()
+            })
+            .cloud_config_bundle(
+                CloudConfigBundleFixture::loader_with_enterprise_requirement(requirements),
+            )
+            .build()
+            .await?;
+
+        assert!(!config.features.enabled(Feature::NetworkProxy), "{source}");
+        assert!(config.managed_network_requirements_enabled(), "{source}");
+        let active_profile = config
+            .permissions
+            .active_permission_profile()
+            .expect("managed profile should be active");
+        let initial = config
+            .permissions
+            .network
+            .as_ref()
+            .expect("shared requirements should enable the proxy");
+        let mut selected_profile = active_profile;
+        selected_profile.id = "managed-secondary".to_string();
+        let reselected = config
+            .network_proxy_spec_for_active_permission_profile(
+                &selected_profile,
+                config.permissions.permission_profile(),
+            )?
+            .expect("reselected managed profile should retain the proxy");
+
+        if let Some((baseline_initial, baseline_reselected)) = &baseline {
+            assert_eq!(initial, baseline_initial, "{source} initial");
+            assert_eq!(&reselected, baseline_reselected, "{source} reselected");
+        } else {
+            assert!(initial.enabled());
+            assert!(reselected.enabled());
+            assert_eq!(initial.proxy_host_and_port(), "127.0.0.1:43128");
+            assert_eq!(reselected.proxy_host_and_port(), "127.0.0.1:43129");
+            baseline = Some((initial.clone(), reselected));
+        }
+    }
     Ok(())
 }
 
@@ -4540,6 +4752,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
     assert_eq!(
         tui,
         Tui {
+            default_hosts: Default::default(),
             notification_settings: TuiNotificationSettings::default(),
             animations: true,
             screen_reader_detection_done: None,
@@ -5337,8 +5550,10 @@ fn filter_mcp_servers_by_allowlist_blocks_all_when_empty() {
         ("server-b".to_string(), http_mcp("https://example.com/b")),
     ]);
 
+    servers.get_mut("server-b").expect("server-b").enabled = false;
     let source = RequirementSource::LegacyManagedConfigTomlFromMdm;
     let requirements = Sourced::new(BTreeMap::new(), source.clone());
+    filter_mcp_servers_by_requirements(&mut servers, Some(&requirements));
     filter_mcp_servers_by_requirements(&mut servers, Some(&requirements));
 
     let reason = Some(McpServerDisabledReason::Requirements { source });
@@ -5351,8 +5566,16 @@ fn filter_mcp_servers_by_allowlist_blocks_all_when_empty() {
             ))
             .collect::<HashMap<String, (bool, Option<McpServerDisabledReason>)>>(),
         HashMap::from([
-            ("server-a".to_string(), (false, reason.clone())),
-            ("server-b".to_string(), (false, reason)),
+            ("server-a".to_string(), (false, reason)),
+            (
+                "server-b".to_string(),
+                (
+                    false,
+                    Some(McpServerDisabledReason::ExplicitAndRequirements {
+                        source: requirements.source.clone(),
+                    })
+                ),
+            ),
         ])
     );
 }
@@ -6338,7 +6561,7 @@ async fn memory_tool_makes_memories_root_readable_without_creating_or_widening_w
 -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     let cwd = TempDir::new()?;
-    let memories_root = codex_home.path().join("memories");
+    let memories_root = codex_home.path().join("memories_v2");
     let memories_root_abs = memories_root.abs();
 
     let config = Config::load_from_base_config_with_overrides(
@@ -6439,11 +6662,14 @@ async fn config_resolves_explicit_keyring_auth_store_mode() -> std::io::Result<(
     Ok(())
 }
 
+#[test_case::test_case("https://managed.example/backend-api/"; "custom")]
+#[test_case::test_case(DEFAULT_CHATGPT_BASE_URL; "explicit_default")]
 #[tokio::test]
-async fn config_applies_managed_auth_store_and_chatgpt_base_url() -> std::io::Result<()> {
+async fn config_applies_managed_auth_store_and_chatgpt_base_url(
+    managed_url: &str,
+) -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     let managed_store = AuthCredentialsStoreMode::Keyring;
-    let managed_url = "https://managed.example/backend-api/";
     let requirements = codex_config::ConfigRequirements {
         cli_auth_credentials_store: Some(Sourced::new(managed_store, RequirementSource::Unknown)),
         chatgpt_base_url: Some(Sourced::new(
@@ -6476,6 +6702,13 @@ async fn config_applies_managed_auth_store_and_chatgpt_base_url() -> std::io::Re
 
     assert_eq!(config.cli_auth_credentials_store_mode, managed_store);
     assert_eq!(config.chatgpt_base_url, managed_url);
+    assert!(config.chatgpt_base_url_is_explicit);
+    assert_eq!(
+        config
+            .chatgpt_backend_url()
+            .resolve(&CodexAuth::from_api_key("sk-proj-fedramp-test-key")),
+        managed_url
+    );
     assert!(config.startup_warnings.iter().any(|warning| {
         warning.contains("Configured value for `cli_auth_credentials_store` is overridden")
     }));
@@ -6483,6 +6716,50 @@ async fn config_applies_managed_auth_store_and_chatgpt_base_url() -> std::io::Re
         warning.contains("Configured value for `chatgpt_base_url` is overridden")
     }));
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn chatgpt_backend_url_defaults_follow_captured_auth() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let legacy = CodexAuth::from_api_key("legacy-key");
+    let marked = CodexAuth::from_api_key("sk-proj-fedramp-test-key");
+    let custom_url = "https://custom.example/backend-api/";
+    for configured_url in [None, Some(custom_url), Some(DEFAULT_CHATGPT_BASE_URL)] {
+        std::fs::write(
+            codex_home.path().join(CONFIG_TOML_FILE),
+            configured_url
+                .map(|url| format!("chatgpt_base_url = '{url}'\n"))
+                .unwrap_or_default(),
+        )?;
+        let mut config = ConfigBuilder::without_managed_config_for_tests()
+            .codex_home(codex_home.path().to_path_buf())
+            .fallback_cwd(Some(codex_home.path().to_path_buf()))
+            .build()
+            .await?;
+        let raw_url = configured_url.unwrap_or(DEFAULT_CHATGPT_BASE_URL);
+        let raw_auth_config = config.auth_config();
+        assert_eq!(
+            config.chatgpt_base_url_is_explicit,
+            configured_url.is_some()
+        );
+        for (auth, default_url) in [
+            (&legacy, DEFAULT_CHATGPT_BASE_URL),
+            (&marked, "https://gov.chatgpt.com/backend-api/"),
+            (&legacy, DEFAULT_CHATGPT_BASE_URL),
+        ] {
+            assert_eq!(
+                config.chatgpt_backend_url().resolve(auth),
+                configured_url.unwrap_or(default_url)
+            );
+            assert_eq!(config.chatgpt_base_url, raw_url);
+            assert_eq!(config.auth_config(), raw_auth_config);
+        }
+        if configured_url.is_none() {
+            config.chatgpt_base_url = custom_url.to_owned();
+            assert_eq!(config.chatgpt_backend_url().resolve(&marked), custom_url);
+        }
+    }
     Ok(())
 }
 
@@ -6685,27 +6962,6 @@ fn web_search_mode_for_turn_uses_preference_for_read_only() {
     );
 
     assert_eq!(mode, WebSearchMode::Cached);
-}
-
-// Fork: the default cached mode fails closed to disabled on wires that
-// cannot express it (chat-family bridge), never silently widening to live.
-#[test]
-fn web_search_mode_for_turn_disables_cached_when_the_wire_cannot_express_it() {
-    let web_search_mode = Constrained::allow_any(WebSearchMode::Cached);
-    let bridge_wire = ProviderCapabilities {
-        cached_web_search: false,
-        ..ProviderCapabilities::default()
-    };
-    for permission_profile in [PermissionProfile::read_only(), PermissionProfile::Disabled] {
-        let mode =
-            resolve_web_search_mode_for_turn(&web_search_mode, &permission_profile, bridge_wire);
-        assert_eq!(mode, WebSearchMode::Disabled);
-    }
-    // An explicit live choice is untouched by the cached rule.
-    let live = Constrained::allow_any(WebSearchMode::Live);
-    let mode =
-        resolve_web_search_mode_for_turn(&live, &PermissionProfile::read_only(), bridge_wire);
-    assert_eq!(mode, WebSearchMode::Live);
 }
 
 #[test]
@@ -8650,6 +8906,8 @@ experimental_policy_template = "Configured template: {{ tenant_policy_config }}"
 #[test_case::test_case("", codex_protocol::TranscriptFormat::Line; "default_line")]
 #[test_case::test_case("[guardianv2]\ntranscript_mode = 'line'", codex_protocol::TranscriptFormat::Line; "explicit_line")]
 #[test_case::test_case("[guardianv2]\ntranscript_mode = 'json'", codex_protocol::TranscriptFormat::Json; "explicit_json")]
+#[test_case::test_case("[guardianv2]\nasync_classifier_mode = 'snapshot'", codex_protocol::TranscriptFormat::Line; "legacy_snapshot")]
+#[test_case::test_case("[guardianv2]\nasync_classifier_mode = 'conversation'", codex_protocol::TranscriptFormat::Line; "legacy_conversation")]
 #[tokio::test]
 async fn load_config_uses_auto_review_guardian_policy_config_and_template(
     features: &str,
@@ -8659,6 +8917,7 @@ async fn load_config_uses_auto_review_guardian_policy_config_and_template(
     let cfg = ConfigToml {
         features: Some(toml::from_str(features).unwrap()),
         auto_review: Some(AutoReviewToml {
+            timeout_ms: None,
             circuit_break_action: None,
             policy: Some("  Use the user-configured guardian policy.  ".to_string()),
             extra_policy: Some("  Use the user-configured additional policy.  ".to_string()),
@@ -8696,6 +8955,12 @@ async fn load_config_uses_auto_review_guardian_policy_config_and_template(
         )
     );
 
+    assert_eq!(
+        config.startup_warnings.iter().any(|warning| warning
+            .contains("`[features.guardianv2].async_classifier_mode` is deprecated and ignored.")),
+        features.contains("async_classifier_mode"),
+    );
+
     Ok(())
 }
 
@@ -8722,6 +8987,7 @@ async fn requirements_guardian_policy_beats_auto_review() -> std::io::Result<()>
         .map_err(std::io::Error::other)?;
         let cfg = ConfigToml {
             auto_review: Some(AutoReviewToml {
+                timeout_ms: None,
                 circuit_break_action: None,
                 policy: Some("Use the user-configured guardian policy.".to_string()),
                 extra_policy: Some("Use the user-configured additional policy.".to_string()),
@@ -8763,6 +9029,7 @@ async fn load_config_ignores_empty_auto_review_guardian_policy_config() -> std::
     let codex_home = TempDir::new()?;
     let cfg = ConfigToml {
         auto_review: Some(AutoReviewToml {
+            timeout_ms: None,
             circuit_break_action: None,
             policy: Some("   ".to_string()),
             extra_policy: Some("   ".to_string()),
@@ -10038,45 +10305,6 @@ async fn model_catalog_json_loads_from_path() -> std::io::Result<()> {
     Ok(())
 }
 
-// Fork (nuwax-codex): `[tools] tool_search = false` must resolve to a
-// disabled capability override on the models-manager config; unset keeps the
-// default-enabled behavior.
-#[tokio::test]
-async fn tools_tool_search_false_propagates_to_models_manager() -> std::io::Result<()> {
-    let disabled = Config::load_from_base_config_with_overrides(
-        ConfigToml {
-            tools: Some(ToolsToml {
-                tool_search: Some(false),
-                ..Default::default()
-            }),
-            ..Default::default()
-        },
-        ConfigOverrides::default(),
-        TempDir::new()?.abs(),
-    )
-    .await?;
-    assert!(!disabled.tool_search_enabled);
-    assert_eq!(
-        disabled.to_models_manager_config().tool_search_enabled,
-        Some(false)
-    );
-
-    let default_enabled = Config::load_from_base_config_with_overrides(
-        ConfigToml::default(),
-        ConfigOverrides::default(),
-        TempDir::new()?.abs(),
-    )
-    .await?;
-    assert!(default_enabled.tool_search_enabled);
-    assert_eq!(
-        default_enabled
-            .to_models_manager_config()
-            .tool_search_enabled,
-        None
-    );
-    Ok(())
-}
-
 #[tokio::test]
 async fn model_catalog_json_rejects_empty_catalog() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
@@ -10209,6 +10437,7 @@ async fn metrics_exporter_defaults_to_statsig_when_missing() -> std::io::Result<
     .await?;
 
     assert_eq!(config.otel.metrics_exporter, OtelExporterKind::Statsig);
+    assert!(config.otel.log_sse_deltas);
     assert!(!config.otel.agent_response_logging_enabled());
     assert!(!config.otel.guardian_assessment_logging_enabled());
     Ok(())
@@ -10219,7 +10448,8 @@ async fn trace_exporter_defaults_to_none_when_log_exporter_is_set() -> std::io::
     let fixture = create_test_fixture()?;
     let mut cfg = fixture.cfg.clone();
     cfg.otel = Some(OtelConfigToml {
-        tool_result: toml::from_str("max_bytes = 8192").expect("tool-result logging config"),
+        tool_result: Some(toml::from_str("max_bytes = 8192").expect("tool-result logging config")),
+        log_sse_deltas: Some(false),
         log_agent_responses: Some(true),
         log_guardian_assessments: Some(true),
         exporter: Some(OtelExporterKind::OtlpHttp {
@@ -10243,6 +10473,7 @@ async fn trace_exporter_defaults_to_none_when_log_exporter_is_set() -> std::io::
     .await?;
 
     assert_eq!(config.otel.tool_result.max_bytes, 8192);
+    assert!(!config.otel.log_sse_deltas);
     assert!(config.otel.agent_response_logging_enabled());
     assert!(config.otel.guardian_assessment_logging_enabled());
     assert!(matches!(
@@ -10282,7 +10513,7 @@ beta = "two"
 
     assert_eq!(
         config.otel.span_attributes,
-        BTreeMap::from([("example.trace_attr".to_string(), "enabled".to_string())])
+        HashMap::from([("example.trace_attr".to_string(), "enabled".to_string())])
     );
     assert_eq!(
         config.otel.tracestate,
@@ -10332,7 +10563,7 @@ alpha = "one\ntwo"
     assert_eq!(config.otel.environment, "test");
     assert_eq!(
         config.otel.span_attributes,
-        BTreeMap::from([("example.trace_attr".to_string(), "enabled".to_string())])
+        HashMap::from([("example.trace_attr".to_string(), "enabled".to_string())])
     );
     assert_eq!(
         config.otel.tracestate,
@@ -10545,6 +10776,7 @@ async fn test_requirements_web_search_mode_allowlist_does_not_warn_when_unset() 
         cli_auth_credentials_store: None,
         chatgpt_base_url: None,
         sqlite_home: None,
+        unsafe_enforce_sqlite_journal_mode: None,
         log_dir: None,
         model_catalog_json: None,
         check_for_update_on_startup: None,
@@ -10571,6 +10803,7 @@ async fn test_requirements_web_search_mode_allowlist_does_not_warn_when_unset() 
         mcp_servers: None,
         plugins: None,
         marketplaces: None,
+        otel: None,
         apps: None,
         rules: None,
         enforce_residency: None,
@@ -12129,6 +12362,7 @@ shell_tool = false
 
 #[test_case::test_case(Feature::Personality; "personality")]
 #[test_case::test_case(Feature::GuardianThreadContext; "guardian thread context")]
+#[test_case::test_case(Feature::DaemonAutoStart; "daemon auto start")]
 #[test_case::test_case(Feature::Worktrees; "worktrees")]
 #[test_case::test_case(Feature::RealtimeConversation; "realtime conversation")]
 #[test_case::test_case(Feature::ShellZshFork; "shell zsh fork")]
@@ -13720,8 +13954,12 @@ async fn load_with_enterprise_requirement(
         .await
 }
 
+#[test_case::test_case(true; "enforce_sqlite_journal_mode")]
+#[test_case::test_case(false; "preserve_sqlite_journal_mode")]
 #[tokio::test]
-async fn exact_requirements_apply_to_runtime_config() -> std::io::Result<()> {
+async fn exact_requirements_apply_to_runtime_config(
+    enforce_delete_on_nfs: bool,
+) -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     let unused_diagnostics = codex_home.path().join("unused-diagnostics");
     std::fs::write(&unused_diagnostics, "not a directory")?;
@@ -13740,6 +13978,7 @@ async fn exact_requirements_apply_to_runtime_config() -> std::io::Result<()> {
 log_dir = {unused_diagnostics:?}
 check_for_update_on_startup = true
 allow_login_shell = true
+unsafe_enforce_sqlite_journal_mode = false
 
 [feedback]
 enabled = true
@@ -13752,6 +13991,7 @@ enabled = true
     let requirements = format!(
         r#"
 sqlite_home = {:?}
+unsafe_enforce_sqlite_journal_mode = {enforce_delete_on_nfs}
 log_dir = {:?}
 model_catalog_json = {:?}
 check_for_update_on_startup = false
@@ -13766,7 +14006,13 @@ enabled = false
     );
     let config = load_with_enterprise_requirement(&codex_home, requirements).await?;
 
-    assert_eq!(config.sqlite.home(), required_sqlite_home.as_path());
+    assert_eq!(
+        config.sqlite,
+        codex_state::SqliteConfig::new_for_testing(AbsolutePathBuf::try_from(
+            required_sqlite_home.clone()
+        )?)
+        .enable_delete_mode_on_nfs(enforce_delete_on_nfs)
+    );
     assert_eq!(config.log_dir, required_log_dir);
     assert_eq!(
         (
@@ -13785,6 +14031,139 @@ enabled = false
     assert!(config.startup_warnings.iter().any(|warning| {
         warning.contains("Configured value for `check_for_update_on_startup` is overridden")
     }));
+    Ok(())
+}
+
+#[test_case::test_case(
+    r#"
+[otel]
+tool_result = { max_bytes = 4096 }
+log_user_prompt = true
+environment = "user"
+exporter = { otlp-http = { endpoint = "https://user.example/logs", protocol = "json", headers = { Authorization = "user-secret" } } }
+trace_exporter = { otlp-grpc = { endpoint = "https://user.example:4317" } }
+metrics_exporter = "statsig"
+span_attributes = { "deployment.environment" = "user", machine = "laptop" }
+tracestate = { vendor = { tenant = "user", region = "us" }, other = { keep = "yes" } }
+"#,
+    r#"
+[otel]
+tool_result = { max_bytes = 1024 }
+log_user_prompt = false
+environment = "production"
+exporter = { otlp-http = { endpoint = "https://managed.example/logs", protocol = "binary", headers = { Authorization = "managed-secret" } } }
+trace_exporter = "none"
+metrics_exporter = { otlp-grpc = { endpoint = "https://managed.example:4317" } }
+span_attributes = { "deployment.environment" = "production", team = "platform" }
+tracestate = { vendor = { tenant = "managed" }, managed = { required = "yes" } }
+"#,
+    r#"
+[otel]
+tool_result = { max_bytes = 1024 }
+log_user_prompt = false
+environment = "production"
+exporter = { otlp-http = { endpoint = "https://managed.example/logs", protocol = "binary", headers = { Authorization = "managed-secret" } } }
+trace_exporter = "none"
+metrics_exporter = { otlp-grpc = { endpoint = "https://managed.example:4317" } }
+span_attributes = { "deployment.environment" = "production", machine = "laptop", team = "platform" }
+tracestate = { vendor = { tenant = "managed", region = "us" }, other = { keep = "yes" }, managed = { required = "yes" } }
+"#,
+    true; "managed_exact_values_and_unmanaged_metadata"
+)]
+#[test_case::test_case(
+    "[otel]\nenvironment = 'user'", "[otel]\ntool_result = { max_bytes = 1024 }",
+    "[otel]\nenvironment = 'user'\ntool_result = { max_bytes = 1024 }", false; "unset_user_limit"
+)]
+#[test_case::test_case(
+    "[otel]\ntool_result = { max_bytes = 2048 }", "[otel]\ntool_result = { max_bytes = 1024 }",
+    "[otel]\ntool_result = { max_bytes = 1024 }", true; "explicit_default_user_limit"
+)]
+#[test_case::test_case(
+    "", "[otel]\ntool_result = {}", "[otel]\ntool_result = { max_bytes = 2048 }", false; "managed_default_limit"
+)]
+#[test_case::test_case(
+    "", "[otel]\ntool_result = { max_bytes = 0 }", "[otel]\ntool_result = { max_bytes = 0 }", false; "managed_zero_limit"
+)]
+#[test_case::test_case(
+    "[otel]\nlog_agent_responses = false\nlog_guardian_assessments = true",
+    "[otel]\nlog_agent_responses = true\nlog_guardian_assessments = false",
+    "[otel]\nlog_agent_responses = true\nlog_guardian_assessments = false", true; "managed_logging_flags"
+)]
+#[test_case::test_case(
+    "[otel]\nlog_sse_deltas = true", "[otel]\nlog_sse_deltas = false",
+    "[otel]\nlog_sse_deltas = false", true; "managed_sse_delta_logs"
+)]
+#[tokio::test]
+async fn otel_requirements_resolve_config(
+    user_config: &str,
+    requirements: &str,
+    expected_config: &str,
+    expect_override_warning: bool,
+) -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(codex_home.path().join(CONFIG_TOML_FILE), user_config)?;
+    let config = load_with_enterprise_requirement(&codex_home, requirements).await?;
+    let expected: ConfigToml =
+        toml::from_str(expected_config).expect("expected OTEL config should deserialize");
+    let mut warnings = Vec::new();
+    assert_eq!(
+        config.otel,
+        super::otel::resolve_config(expected.otel.unwrap_or_default(), &mut warnings)
+    );
+    assert_eq!(
+        config
+            .startup_warnings
+            .iter()
+            .find(|warning| warning.contains("Configured values under `otel` are overridden"))
+            .map(String::as_str),
+        expect_override_warning.then_some(
+            "Configured values under `otel` are overridden by requirements from enterprise-managed requirements Base requirements (req_1).",
+        ),
+    );
+    assert!(
+        config
+            .startup_warnings
+            .iter()
+            .all(|warning| !warning.contains("managed-secret"))
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn analytics_disabled_preserves_managed_metrics_exporter() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    std::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"
+[analytics]
+enabled = false
+"#,
+    )?;
+
+    let config = load_with_enterprise_requirement(
+        &codex_home,
+        r#"
+[otel]
+metrics_exporter = { otlp-http = { endpoint = "http://127.0.0.1:1/v1/metrics", protocol = "json" } }
+"#,
+    )
+    .await?;
+
+    assert!(matches!(
+        config.otel.metrics_exporter,
+        OtelExporterKind::OtlpHttp { .. }
+    ));
+    assert!(
+        crate::otel_init::build_provider(
+            &config,
+            env!("CARGO_PKG_VERSION"),
+            /*service_name_override*/ None,
+            /*default_analytics_enabled*/ true,
+        )
+        .expect("managed metrics configuration should remain valid")
+        .is_some(),
+        "analytics.enabled=false should preserve the custom managed metrics exporter"
+    );
     Ok(())
 }
 
@@ -13843,81 +14222,4 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
     assert!(warnings.is_empty());
 
     Ok(())
-}
-
-// Fork (nuwax-codex): the ratio travels untouched to the models manager,
-// which derives it against the model's EFFECTIVE window in one place.
-// Deriving at the Config layer would freeze the threshold against the
-// unclamped configured window (200k window override + ratio 0.5 on a model
-// whose max_context_window is 60k must compact at 30k, not 100k).
-#[tokio::test]
-async fn to_models_manager_config_passes_the_ratio_through_for_model_layer_derivation() {
-    let codex_home = tempdir().expect("tempdir");
-    let base = ConfigBuilder::without_managed_config_for_tests()
-        .codex_home(codex_home.path().to_path_buf())
-        .cli_overrides(vec![
-            (
-                "model_context_window".to_string(),
-                toml::Value::Integer(60_000),
-            ),
-            (
-                "model_auto_compact_ratio".to_string(),
-                toml::Value::Float(0.8),
-            ),
-        ])
-        .build()
-        .await
-        .expect("base config");
-    let derived = base.to_models_manager_config();
-    assert_eq!(derived.model_auto_compact_token_limit, None);
-    assert_eq!(derived.model_auto_compact_ratio, Some(0.8));
-    assert_eq!(derived.model_context_window, Some(60_000));
-
-    // The F03 regression shape: a window override above the model's
-    // max_context_window must not pre-bake a threshold here.
-    let clamped = Config {
-        model_context_window: Some(200_000),
-        ..base.clone()
-    };
-    let derived = clamped.to_models_manager_config();
-    assert_eq!(derived.model_auto_compact_token_limit, None);
-    assert_eq!(derived.model_auto_compact_ratio, Some(0.8));
-
-    // Out-of-range ratios are passed through verbatim; the models manager
-    // owns the single diagnosis (warn + ignore), including NaN, which never
-    // matches the (0, 1] range check there.
-    for ratio in [-0.5, 0.0, 1.5] {
-        let config = Config {
-            model_auto_compact_ratio: Some(ratio),
-            ..base.clone()
-        };
-        let derived = config.to_models_manager_config();
-        assert_eq!(
-            derived.model_auto_compact_ratio,
-            Some(ratio),
-            "ratio {ratio} must travel untouched for model-layer diagnosis"
-        );
-        assert!(derived.model_auto_compact_token_limit.is_none());
-    }
-    let nan_config = Config {
-        model_auto_compact_ratio: Some(f64::NAN),
-        ..base.clone()
-    };
-    assert!(
-        nan_config
-            .to_models_manager_config()
-            .model_auto_compact_ratio
-            .is_some_and(f64::is_nan)
-    );
-
-    // An explicit absolute limit also travels; precedence (absolute wins)
-    // is resolved where the effective window is known.
-    let config = Config {
-        model_auto_compact_token_limit: Some(12_345),
-        model_auto_compact_ratio: Some(0.8),
-        ..base
-    };
-    let derived = config.to_models_manager_config();
-    assert_eq!(derived.model_auto_compact_token_limit, Some(12_345));
-    assert_eq!(derived.model_auto_compact_ratio, Some(0.8));
 }

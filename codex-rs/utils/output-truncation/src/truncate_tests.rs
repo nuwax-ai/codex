@@ -1,8 +1,11 @@
+use crate::OutputBoundary;
 use crate::TruncationPolicy;
 use crate::approx_token_count;
 use crate::approx_tokens_from_byte_count_i64;
+use crate::formatted_output_at_token_boundaries;
+use crate::formatted_truncate_function_output_items_with_policy;
 use crate::formatted_truncate_text;
-use crate::formatted_truncate_text_content_items_with_policy;
+use crate::mixed_output_at_token_boundaries;
 use crate::truncate_function_output_items_with_policy;
 use crate::truncate_mcp_tool_result;
 use crate::truncate_text;
@@ -166,9 +169,7 @@ fn truncates_across_multiple_under_limit_texts_and_reports_omitted() {
     let chunk = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega.\n";
     let chunk_tokens = approx_token_count(chunk);
     assert!(chunk_tokens > 0, "chunk must consume tokens");
-    // The image in the middle now reserves its visual cost from the same
-    // budget; size the policy so the text flow under test is unchanged.
-    let limit = crate::TOOL_OUTPUT_IMAGE_VISUAL_TOKENS + chunk_tokens * 3;
+    let limit = chunk_tokens * 3;
     let t1 = chunk.to_string();
     let t2 = chunk.to_string();
     let t3 = chunk.repeat(10);
@@ -270,62 +271,38 @@ fn truncate_function_output_items_with_policy_discards_empty_text() {
             encrypted_content: "enc_opaque".to_string(),
         },
     ];
-    items.extend(content);
-    // An unaffordable image becomes an explicit omission; preserving it
-    // would violate the caller's shared visual/text budget.
+    items.extend(content.clone());
     for policy in [TruncationPolicy::Bytes(16), TruncationPolicy::Tokens(4)] {
-        let output = truncate_function_output_items_with_policy(&items, policy, |_| 1);
-        assert!(
-            !output
-                .iter()
-                .any(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. })),
-            "{policy:?}: {output:?}"
+        assert_eq!(
+            truncate_function_output_items_with_policy(&items, policy, |_| 1),
+            content
         );
-        assert!(output.iter().any(|item| matches!(
-            item,
-            FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 2 image")
-        )));
-        assert!(output.iter().any(|item| matches!(
-            item,
-            FunctionCallOutputContentItem::EncryptedContent { encrypted_content } if encrypted_content == "enc_opaque"
-        )));
     }
 }
 
 #[test]
-fn formatted_truncate_text_content_items_with_policy_returns_original_under_limit() {
-    let items = vec![
-        FunctionCallOutputContentItem::InputText {
-            text: "alpha".to_string(),
-        },
-        FunctionCallOutputContentItem::InputText {
-            text: String::new(),
-        },
-        FunctionCallOutputContentItem::InputText {
-            text: "beta".to_string(),
-        },
-    ];
+fn formatted_text_output_reuses_owned_items_under_limit() {
+    let items = vec![text("alpha"), text(""), text("beta")];
+    let policy = TruncationPolicy::Bytes(32);
 
-    let (output, original_token_count) =
-        formatted_truncate_text_content_items_with_policy(&items, TruncationPolicy::Bytes(32));
+    let borrowed = formatted_truncate_function_output_items_with_policy(&items, policy, |_| 0);
+    assert_eq!(borrowed, items);
 
-    assert_eq!(output, items);
-    assert_eq!(original_token_count, None);
+    let allocation = items.as_ptr();
+    let owned = formatted_truncate_function_output_items_with_policy(items, policy, |_| 0);
+    assert_eq!(owned, borrowed);
+    assert_eq!(owned.as_ptr(), allocation);
 }
 
 #[test]
-fn formatted_truncate_text_content_items_with_policy_preserves_empty_leading_text_behavior() {
-    let items = vec![
-        FunctionCallOutputContentItem::InputText {
-            text: String::new(),
-        },
-        FunctionCallOutputContentItem::InputText {
-            text: "abc".to_string(),
-        },
-    ];
+fn formatted_text_output_preserves_empty_leading_text_behavior() {
+    let items = vec![text(""), text("abc")];
 
-    let (output, original_token_count) =
-        formatted_truncate_text_content_items_with_policy(&items, TruncationPolicy::Bytes(0));
+    let output = formatted_truncate_function_output_items_with_policy(
+        items,
+        TruncationPolicy::Bytes(0),
+        |_| 0,
+    );
 
     assert_eq!(
         output,
@@ -333,86 +310,63 @@ fn formatted_truncate_text_content_items_with_policy_preserves_empty_leading_tex
             text: "Warning: truncated output (original token count: 1)\nTotal output lines: 1\n\n…3 chars truncated…".to_string(),
         }]
     );
-    assert_eq!(original_token_count, Some(1));
 }
 
 #[test]
-fn formatted_truncate_text_content_items_with_policy_merges_text_and_appends_media() {
+fn formatted_mixed_output_budgets_text_and_audio_in_order() {
+    let audio = FunctionCallOutputContentItem::InputAudio {
+        audio_url: "audio:one".to_owned(),
+    };
+    let file_image = FunctionCallOutputContentItem::InputImage {
+        image: ImageReference::File {
+            file_id: "file_123".to_owned(),
+        },
+        detail: Some(DEFAULT_IMAGE_DETAIL),
+    };
     let items = vec![
-        FunctionCallOutputContentItem::InputText {
-            text: "abcd".to_string(),
-        },
-        FunctionCallOutputContentItem::InputImage {
-            image: ImageReference::Inline {
-                image_url: "img:one".to_string(),
-            },
-            detail: Some(DEFAULT_IMAGE_DETAIL),
-        },
-        FunctionCallOutputContentItem::InputText {
-            text: "efgh".to_string(),
-        },
-        FunctionCallOutputContentItem::InputAudio {
-            audio_url: "audio:one".to_string(),
-        },
-        FunctionCallOutputContentItem::InputImage {
-            image: ImageReference::File {
-                file_id: "file_123".to_string(),
-            },
-            detail: Some(DEFAULT_IMAGE_DETAIL),
-        },
-        FunctionCallOutputContentItem::InputText {
-            text: "ijkl".to_string(),
-        },
-        FunctionCallOutputContentItem::InputImage {
-            image: ImageReference::Inline {
-                image_url: "img:two".to_string(),
-            },
-            detail: Some(DEFAULT_IMAGE_DETAIL),
-        },
+        text("abcd"),
+        inline_image("img:one".to_owned()),
+        text("efgh"),
+        audio.clone(),
+        file_image.clone(),
+        text("ijkl"),
+        inline_image("img:two".to_owned()),
     ];
 
-    let (output, original_token_count) =
-        formatted_truncate_text_content_items_with_policy(&items, TruncationPolicy::Bytes(8));
-
-    // None of the images fits an eight-byte visual allowance.
-    assert_eq!(original_token_count, Some(4));
-    assert!(
-        !output
-            .iter()
-            .any(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. }))
+    let output = formatted_truncate_function_output_items_with_policy(
+        items,
+        TruncationPolicy::Bytes(12),
+        |_| 1,
     );
-    assert!(matches!(
-        output.last(),
-        Some(FunctionCallOutputContentItem::InputText { text }) if text.contains("omitted 3 image")
-    ));
-}
-
-#[test]
-fn formatted_truncate_text_content_items_with_policy_preserves_encrypted_content() {
-    let items = vec![
-        FunctionCallOutputContentItem::InputText {
-            text: "abcdefgh".to_string(),
-        },
-        FunctionCallOutputContentItem::EncryptedContent {
-            encrypted_content: "enc_opaque".to_string(),
-        },
-    ];
-
-    let (output, original_token_count) =
-        formatted_truncate_text_content_items_with_policy(&items, TruncationPolicy::Bytes(2));
 
     assert_eq!(
         output,
         vec![
-            FunctionCallOutputContentItem::InputText {
-                text: "Warning: truncated output (original token count: 2)\nTotal output lines: 1\n\na…6 chars truncated…h".to_string(),
-            },
-            FunctionCallOutputContentItem::EncryptedContent {
-                encrypted_content: "enc_opaque".to_string(),
-            },
+            text("abcd"),
+            inline_image("img:one".to_owned()),
+            text("efgh"),
+            audio,
+            file_image,
+            inline_image("img:two".to_owned()),
+            text("[omitted 1 text items ...]"),
         ]
     );
-    assert_eq!(original_token_count, Some(2));
+}
+
+#[test]
+fn formatted_mixed_output_preserves_encrypted_content() {
+    let encrypted = FunctionCallOutputContentItem::EncryptedContent {
+        encrypted_content: "enc_opaque".to_owned(),
+    };
+    let items = vec![text("abcdefgh"), encrypted.clone()];
+
+    let output = formatted_truncate_function_output_items_with_policy(
+        items,
+        TruncationPolicy::Bytes(2),
+        |_| 0,
+    );
+
+    assert_eq!(output, vec![text("a…6 chars truncated…h"), encrypted]);
 }
 
 #[test]
@@ -475,18 +429,14 @@ fn truncate_function_output_items_with_policy_charges_audio_against_byte_budget(
 }
 
 #[test]
-fn formatted_truncate_text_content_items_with_policy_merges_all_text_for_token_budget() {
-    let items = vec![
-        FunctionCallOutputContentItem::InputText {
-            text: "abcdefgh".to_string(),
-        },
-        FunctionCallOutputContentItem::InputText {
-            text: "ijklmnop".to_string(),
-        },
-    ];
+fn formatted_text_output_merges_all_text_for_token_budget() {
+    let items = vec![text("abcdefgh"), text("ijklmnop")];
 
-    let (output, original_token_count) =
-        formatted_truncate_text_content_items_with_policy(&items, TruncationPolicy::Tokens(2));
+    let output = formatted_truncate_function_output_items_with_policy(
+        items,
+        TruncationPolicy::Tokens(2),
+        |_| 0,
+    );
 
     assert_eq!(
         output,
@@ -494,7 +444,6 @@ fn formatted_truncate_text_content_items_with_policy_merges_all_text_for_token_b
             text: "Warning: truncated output (original token count: 5)\nTotal output lines: 2\n\nabcd…3 tokens truncated…mnop".to_string(),
         }]
     );
-    assert_eq!(original_token_count, Some(5));
 }
 
 #[test]
@@ -504,215 +453,112 @@ fn byte_count_conversion_clamps_non_positive_values() {
     assert_eq!(approx_tokens_from_byte_count_i64(/*bytes*/ 5), 2);
 }
 
-// ---------------------------------------------------------------------------
-// Per-tool-output image entrance limits
-// ---------------------------------------------------------------------------
+fn boundaries<const N: usize>(positions: [(usize, usize); N]) -> [OutputBoundary; N] {
+    positions.map(|(item_index, text_offset)| OutputBoundary {
+        item_index,
+        text_offset,
+    })
+}
 
-use crate::MAX_TOOL_OUTPUT_IMAGE_BYTES;
-use crate::MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES;
-use crate::MAX_TOOL_OUTPUT_IMAGES;
-use crate::TOOL_OUTPUT_IMAGE_VISUAL_TOKENS;
+fn positions<const N: usize>(boundaries: [OutputBoundary; N]) -> [(usize, usize); N] {
+    boundaries.map(|b| (b.item_index, b.text_offset))
+}
 
-fn image_item(
-    name: &str,
-    detail: Option<codex_protocol::models::ImageDetail>,
-) -> FunctionCallOutputContentItem {
+fn text(s: &str) -> FunctionCallOutputContentItem {
+    FunctionCallOutputContentItem::InputText { text: s.to_owned() }
+}
+
+fn inline_image(image_url: String) -> FunctionCallOutputContentItem {
     FunctionCallOutputContentItem::InputImage {
-        image: ImageReference::Inline {
-            image_url: name.to_string(),
-        },
-        detail,
+        image: ImageReference::Inline { image_url },
+        detail: Some(DEFAULT_IMAGE_DETAIL),
     }
-}
-
-fn text_item(text: &str) -> FunctionCallOutputContentItem {
-    FunctionCallOutputContentItem::InputText {
-        text: text.to_string(),
-    }
-}
-
-fn kept_image_urls(output: &[FunctionCallOutputContentItem]) -> Vec<String> {
-    output
-        .iter()
-        .filter_map(|item| match item {
-            FunctionCallOutputContentItem::InputImage {
-                image: ImageReference::Inline { image_url },
-                ..
-            } => Some(image_url.clone()),
-            _ => None,
-        })
-        .collect()
 }
 
 #[test]
-fn image_hard_token_cap_keeps_the_newest_images_and_reports_the_rest() {
-    let items: Vec<_> = (0..MAX_TOOL_OUTPUT_IMAGES + 3)
-        .map(|index| image_item(&format!("img-{index}"), Some(DEFAULT_IMAGE_DETAIL)))
-        .collect();
-    let output = truncate_function_output_items_with_policy(
-        &items,
-        TruncationPolicy::Tokens(TOOL_OUTPUT_IMAGE_VISUAL_TOKENS * MAX_TOOL_OUTPUT_IMAGES),
-        |_| 0,
-    );
+fn boundary_formatters_normalize_input_and_remap_truncated_text() {
+    let audio_cost: fn(&str) -> usize = |_| 1;
+    let items = [text("left-head"), text("right-tail")];
+    let max_tokens = 2;
+    let mut boundary = boundaries([(0, 0), (0, 2), (1, 0), (1, 8), (2, 0)]);
+    let output =
+        formatted_output_at_token_boundaries(&items, max_tokens, audio_cost, &mut boundary);
+    let [FunctionCallOutputContentItem::InputText { text: rendered }] = output.as_slice() else {
+        panic!("expected one merged text item")
+    };
+    let head = rendered.find("left").expect("expected retained prefix");
+    let tail = rendered
+        .strip_suffix("tail")
+        .expect("expected retained suffix")
+        .len();
     assert_eq!(
-        kept_image_urls(&output),
-        (6..MAX_TOOL_OUTPUT_IMAGES + 3)
-            .map(|index| format!("img-{index}"))
-            .collect::<Vec<_>>(),
-        "the newest images survive the count cap"
+        positions(boundary),
+        [
+            (0, 0),
+            (0, head + 2),
+            (0, tail),
+            (0, tail + 2),
+            (0, rendered.len())
+        ]
     );
-    assert!(output.iter().any(|item| matches!(item,
-        FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 6 image")
-    )));
+
+    for (middle, middle_end) in [(text("after"), 5), (inline_image("img:one".to_owned()), 0)] {
+        let items = [text("🙂é boundary"), middle, text("last")];
+        for formatter in [
+            formatted_output_at_token_boundaries,
+            mixed_output_at_token_boundaries,
+        ] {
+            for tokens in [0, 1, 2, 256] {
+                let mut b = boundaries([(0, 1), (1, usize::MAX), (0, 8), (usize::MAX, usize::MAX)]);
+                let output = formatter(&items, tokens, audio_cost, &mut b);
+                assert_eq!(output, formatter(&items, tokens, audio_cost, &mut []));
+                let result = positions(b);
+                assert!(result.is_sorted());
+                assert!(
+                    result
+                        .iter()
+                        .all(|&(index, offset)| match output.get(index) {
+                            Some(FunctionCallOutputContentItem::InputText { text }) =>
+                                text.is_char_boundary(offset),
+                            _ => index <= output.len() && offset == 0,
+                        })
+                );
+                if tokens == 256 {
+                    assert_eq!(result, [(0, 0), (1, middle_end), (1, middle_end), (3, 0)]);
+                }
+            }
+        }
+    }
 }
 
 #[test]
-fn oversized_image_is_refused_before_decode_and_reported() {
-    let big = format!(
-        "data:image/png;base64,{}",
-        "A".repeat(MAX_TOOL_OUTPUT_IMAGE_BYTES + 1)
-    );
+fn owned_mixed_output_moves_a_preserved_image_across_text_truncation() {
+    let image_url = "data:image/png;base64,".to_owned() + &"a".repeat(4096);
+    let url_ptr = image_url.as_ptr();
     let items = vec![
-        image_item(&big, Some(DEFAULT_IMAGE_DETAIL)),
-        image_item("img-small", Some(DEFAULT_IMAGE_DETAIL)),
-        text_item("context"),
+        text("long prefix"),
+        inline_image(image_url),
+        text("omitted"),
     ];
-    let output =
-        truncate_function_output_items_with_policy(&items, TruncationPolicy::Tokens(10_000), |_| 0);
-    assert_eq!(kept_image_urls(&output), vec!["img-small".to_string()]);
-    assert!(
-        output.iter().any(|item| matches!(item,
-        FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 1 image")
-        )),
-        "{output:?}"
-    );
-    assert!(!output.iter().any(|item| matches!(item,
-        FunctionCallOutputContentItem::InputText { text } if text.contains("AAAA")
-    )));
-}
-
-#[test]
-fn aggregate_byte_cap_drops_oldest_images_first() {
-    let chunk = MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES / 3 + 1024;
-    assert!(chunk < MAX_TOOL_OUTPUT_IMAGE_BYTES);
-    let items: Vec<_> = (0..3)
-        .map(|index| {
-            image_item(
-                &format!("data:image/png;base64,{},{}", index, "B".repeat(chunk)),
-                Some(DEFAULT_IMAGE_DETAIL),
-            )
-        })
-        .collect();
-    let output = truncate_function_output_items_with_policy(
-        &items,
-        TruncationPolicy::Tokens(usize::MAX),
-        |_| 0,
-    );
-    assert_eq!(kept_image_urls(&output).len(), 2, "{output:?}");
-    let kept = kept_image_urls(&output);
-    assert!(
-        kept.iter()
-            .all(|url| !url.starts_with("data:image/png;base64,0,"))
-    );
-    assert!(output.iter().any(|item| matches!(item,
-    FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 1 image")
-    )));
-}
-
-#[test]
-fn text_and_images_share_one_budget() {
-    // Text that alone fits the budget, plus images whose visual cost must
-    // come out of the same budget: the images are admitted newest-first and
-    // the text collapses into the remainder.
-    let policy = TruncationPolicy::Tokens(10_000);
-    let items = vec![
-        text_item(&"word ".repeat(200)),
-        image_item("img-a", Some(DEFAULT_IMAGE_DETAIL)),
-        image_item("img-b", Some(DEFAULT_IMAGE_DETAIL)),
-        image_item("img-c", Some(DEFAULT_IMAGE_DETAIL)),
-    ];
-    let output = truncate_function_output_items_with_policy(&items, policy, |_| 0);
-    // 10_000 / 1_844 -> all three images fit by count and budget.
-    assert_eq!(kept_image_urls(&output).len(), 3);
-    let kept_text: usize = output
-        .iter()
-        .filter_map(|item| match item {
-            FunctionCallOutputContentItem::InputText { text } => Some(approx_token_count(text)),
-            _ => None,
-        })
-        .sum();
-    assert!(
-        kept_text <= 10_000 - 3 * TOOL_OUTPUT_IMAGE_VISUAL_TOKENS,
-        "text may only spend what the images left: {kept_text}"
-    );
-}
-
-#[test]
-fn original_detail_uses_a_conservative_visual_charge() {
-    let items = vec![image_item(
-        "original",
-        Some(codex_protocol::models::ImageDetail::Original),
-    )];
-    let output =
-        truncate_function_output_items_with_policy(&items, TruncationPolicy::Tokens(10_000), |_| 0);
-    assert_eq!(kept_image_urls(&output), Vec::<String>::new());
-    assert!(output.iter().any(
-        |item| matches!(item, FunctionCallOutputContentItem::InputText { text }
-        if text.contains("unknown original costs 10000 tokens plus control headroom"))
-    ));
-}
-
-#[test]
-fn an_unaffordable_newest_image_is_reported_explicitly() {
-    let items = vec![image_item("img-a", Some(DEFAULT_IMAGE_DETAIL))];
-    let output =
-        truncate_function_output_items_with_policy(&items, TruncationPolicy::Tokens(1), |_| 0);
-    assert_eq!(kept_image_urls(&output), Vec::<String>::new());
-    assert!(output.iter().any(|item| matches!(item, FunctionCallOutputContentItem::InputText { text } if text.contains("omitted 1 image"))));
-}
-
-#[test]
-fn byte_policies_charge_images_in_bytes() {
-    let items = vec![
-        text_item("words for the budget"),
-        image_item("img-a", Some(DEFAULT_IMAGE_DETAIL)),
-        image_item("img-b", Some(DEFAULT_IMAGE_DETAIL)),
-    ];
-    // ~10k bytes ≈ 2.5k tokens: one image fits, the second does not.
-    let output =
-        truncate_function_output_items_with_policy(&items, TruncationPolicy::Bytes(10_000), |_| 0);
-    let kept = kept_image_urls(&output);
-    assert_eq!(kept, vec!["img-b".to_string()], "{output:?}");
-}
-
-#[test]
-fn file_references_pass_size_limits_but_still_cost_visual_tokens() {
-    let items = vec![
-        FunctionCallOutputContentItem::InputImage {
-            image: ImageReference::File {
-                file_id: "file_1".to_string(),
-            },
-            detail: Some(DEFAULT_IMAGE_DETAIL),
-        },
-        FunctionCallOutputContentItem::InputImage {
-            image: ImageReference::File {
-                file_id: "file_2".to_string(),
-            },
-            detail: Some(DEFAULT_IMAGE_DETAIL),
-        },
-        text_item("tail text"),
-    ];
-    let output = truncate_function_output_items_with_policy(
-        &items,
-        TruncationPolicy::Tokens(2 * TOOL_OUTPUT_IMAGE_VISUAL_TOKENS),
-        |_| 0,
-    );
-    let kept = output
-        .iter()
-        .filter(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. }))
-        .count();
-    assert_eq!(kept, 2);
-    assert!(!output.iter().any(|item| matches!(item,
-        FunctionCallOutputContentItem::InputText { text } if text.contains("image")
-    )));
+    let mut borrowed = boundaries([(0, 5), (2, 3)]);
+    let mut owned = boundaries([(0, 5), (2, 3)]);
+    let max_tokens = 1;
+    let expected = formatted_output_at_token_boundaries(&items, max_tokens, |_| 0, &mut borrowed);
+    let actual = formatted_output_at_token_boundaries(items, max_tokens, |_| 0, &mut owned);
+    assert_eq!(actual, expected);
+    let projected = positions(owned);
+    assert_eq!(projected, positions(borrowed));
+    let [(index, offset), omitted] = projected;
+    let FunctionCallOutputContentItem::InputText { text: snippet } = &actual[index] else {
+        panic!("expected boundary inside truncated text");
+    };
+    assert_eq!((index, &snippet[offset..], omitted), (0, "ix", (2, 0)));
+    let FunctionCallOutputContentItem::InputImage {
+        image: ImageReference::Inline { image_url },
+        ..
+    } = &actual[1]
+    else {
+        panic!("expected preserved image")
+    };
+    assert_eq!(image_url.as_ptr(), url_ptr);
 }

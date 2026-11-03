@@ -1,17 +1,18 @@
 //! Session-wide mutable state.
 
+use codex_protocol::dynamic_tools::DynamicToolSpec;
 use codex_protocol::models::BaseInstructionsProvenance;
 #[cfg(test)]
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ReasoningEffort;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 use super::AdditionalContextStore;
 use super::auto_compact_window::AutoCompactWindow;
 use super::auto_compact_window::AutoCompactWindowIds;
 use super::auto_compact_window::AutoCompactWindowSnapshot;
-use super::token_usage_record::MAX_RESPONSE_IDENTITY_BYTES;
 use crate::TurnStartOptions;
 use crate::context_manager::ContextManager;
 use crate::context_manager::HistoryReplacement;
@@ -66,53 +67,11 @@ impl ReasoningEffortPin {
     }
 }
 
-/// Ledger identity of one usage report. Samplings join by their minted host
-/// key; legacy reports without one join by provider response id. Keeping the
-/// two namespaces distinct means a provider id that collides with a minted
-/// key can never alias a different sampling's snapshot.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum ResponseLedgerKey {
-    Sampling(String),
-    ProviderResponseId(String),
-}
-
-/// One usage report entering the ledger: where it was observed, which
-/// sampling it belongs to, and the counters themselves. A single typed
-/// value keeps the record call self-documenting at every call site.
-pub(crate) struct TokenUsageReport<'a> {
-    pub(crate) thread_id: ThreadId,
-    pub(crate) turn_id: &'a str,
-    pub(crate) session_id: SessionId,
-    pub(crate) root_turn_id: String,
-    pub(crate) response_key: Option<&'a str>,
-    pub(crate) response_id: &'a str,
-    pub(crate) usage: &'a TokenUsage,
-}
-
-impl ResponseLedgerKey {
-    /// The key a persisted record joins under: its host key when present,
-    /// else its provider response id when non-empty. Both must respect the
-    /// live identity budget — an over-limit identity from an OLD rollout
-    /// never becomes a join key (nothing minted by the live path could ever
-    /// match it, and truncating would alias distinct ids). Restored values
-    /// separately normalize oversized identities without changing counters
-    /// or the original rollout bytes.
-    pub(crate) fn of(record: &TokenUsageRecord) -> Option<Self> {
-        match (&record.response_key, record.response_id.as_str()) {
-            (Some(key), _) if key.len() <= MAX_RESPONSE_IDENTITY_BYTES => {
-                Some(Self::Sampling(key.clone()))
-            }
-            (None, id) if !id.is_empty() && id.len() <= MAX_RESPONSE_IDENTITY_BYTES => {
-                Some(Self::ProviderResponseId(id.to_string()))
-            }
-            _ => None,
-        }
-    }
-}
-
 /// Persistent, session-scoped state previously stored directly on `Session`.
 pub(crate) struct SessionState {
     pub(crate) session_configuration: SessionConfiguration,
+    /// Catalog to carry across compaction, independent of an explicit resume override.
+    pub(crate) persisted_dynamic_tools: Arc<[DynamicToolSpec]>,
     /// Plugin selection of the last admitted task; settings updates take effect on the next task.
     pub(crate) active_disabled_plugin_ids: Vec<String>,
     /// Persisted origin of the session base instructions, when known.
@@ -122,14 +81,6 @@ pub(crate) struct SessionState {
     pub(crate) history_reset: CancellationToken,
     pub(crate) latest_rate_limits: Option<RateLimitSnapshot>,
     pub(crate) latest_token_usage_record: Option<TokenUsageRecord>,
-    /// Latest cumulative usage snapshot per response key. A sampling that
-    /// reports again (duplicate Completed delivery, replay) replaces its
-    /// snapshot instead of double-counting. Samplings keyed by their
-    /// locally minted host key never alias across requests even when a
-    /// provider reuses a response id; legacy records without a host key
-    /// join by provider response id, and keyless reports stay additive.
-    pub(crate) response_token_usage: std::collections::HashMap<ResponseLedgerKey, TokenUsageRecord>,
-    pub(crate) server_reasoning_included: bool,
     pub(crate) mcp_dependency_prompted: HashSet<String>,
     pub(crate) additional_context: AdditionalContextStore,
     /// Settings used by the latest regular user turn, used for turn-to-turn
@@ -177,14 +128,13 @@ impl SessionState {
     ) -> Self {
         Self {
             active_disabled_plugin_ids: Vec::new(),
+            persisted_dynamic_tools: Arc::clone(&session_configuration.dynamic_tools),
             session_configuration,
             base_instructions_provenance: None,
             history,
             history_reset: CancellationToken::new(),
             latest_rate_limits: None,
             latest_token_usage_record: None,
-            response_token_usage: std::collections::HashMap::new(),
-            server_reasoning_included: false,
             mcp_dependency_prompted: HashSet::new(),
             additional_context: AdditionalContextStore::default(),
             previous_turn_settings: None,
@@ -278,50 +228,15 @@ impl SessionState {
         self.history.set_token_info(info);
     }
 
-    pub(crate) fn record_token_usage(&mut self, report: TokenUsageReport<'_>) -> TokenUsageRecord {
-        let TokenUsageReport {
-            thread_id,
-            turn_id,
-            session_id,
-            root_turn_id,
-            response_key,
-            response_id,
-            usage,
-        } = report;
-        // Samplings join the ledger by their minted host key; legacy reports
-        // without one fall back to the provider response id, and keyless
-        // reports stay purely additive. A re-report replaces its snapshot,
-        // with the turn and thread subtotals re-derived by swapping the old
-        // snapshot for the new one. Provider identity strings over the
-        // identity budget are neither stored nor keyed — never truncated
-        // into a prefix two distinct ids could share — so their reports
-        // degrade to the keyless-additive semantics with an empty id.
-        let response_id_over_budget = response_id.len() > MAX_RESPONSE_IDENTITY_BYTES;
-        if response_id_over_budget {
-            // Log only the length: the id itself is provider content of
-            // unbounded size and must not enter the log line.
-            tracing::warn!(
-                bytes = response_id.len(),
-                limit = MAX_RESPONSE_IDENTITY_BYTES,
-                "provider response id over the identity budget; report degrades to keyless"
-            );
-        }
-        let response_id = if response_id_over_budget {
-            ""
-        } else {
-            response_id
-        };
-        let response_key = response_key.filter(|key| key.len() <= MAX_RESPONSE_IDENTITY_BYTES);
-        let ledger_key = match (response_key, response_id.is_empty()) {
-            (Some(key), _) => Some(ResponseLedgerKey::Sampling(key.to_string())),
-            (None, false) => Some(ResponseLedgerKey::ProviderResponseId(
-                response_id.to_string(),
-            )),
-            (None, true) => None,
-        };
-        let previous = ledger_key
-            .as_ref()
-            .and_then(|key| self.response_token_usage.get(key).cloned());
+    pub(crate) fn record_token_usage(
+        &mut self,
+        thread_id: ThreadId,
+        turn_id: &str,
+        session_id: SessionId,
+        root_turn_id: String,
+        response_id: String,
+        usage: &TokenUsage,
+    ) -> TokenUsageRecord {
         let mut turn_token_usage = self
             .latest_token_usage_record
             .as_ref()
@@ -329,37 +244,24 @@ impl SessionState {
             .map_or_else(TokenUsage::default, |record| {
                 record.turn_token_usage.clone()
             });
+        turn_token_usage.add_assign(usage);
         let mut thread_token_usage = self
             .latest_token_usage_record
             .as_ref()
             .map_or_else(TokenUsage::default, |record| {
                 record.thread_token_usage.clone()
             });
-        if let Some(previous) = previous.as_ref() {
-            // Only replace a sampling's contribution in the turn that owns
-            // its previous snapshot. Moving an old sampling into this turn
-            // must not subtract another sampling's usage.
-            if previous.turn_id == turn_id {
-                turn_token_usage.sub_assign_floor(&previous.usage);
-            }
-            thread_token_usage.sub_assign_floor(&previous.usage);
-        }
-        turn_token_usage.add_assign(usage);
         thread_token_usage.add_assign(usage);
         let record = TokenUsageRecord {
             thread_id,
             turn_id: turn_id.to_string(),
             session_id,
             root_turn_id,
-            response_id: response_id.to_string(),
-            response_key: response_key.map(str::to_string),
+            response_id,
             usage: usage.clone(),
             turn_token_usage,
             thread_token_usage,
         };
-        if let Some(key) = ledger_key {
-            self.response_token_usage.insert(key, record.clone());
-        }
         self.latest_token_usage_record = Some(record.clone());
         record
     }
@@ -392,8 +294,15 @@ impl SessionState {
         &mut self,
         usage: &TokenUsage,
         model_context_window: Option<i64>,
+        includes_reasoning: bool,
+        input_item_count: usize,
     ) {
-        self.history.update_token_info(usage, model_context_window);
+        self.history.update_token_info(
+            usage,
+            model_context_window,
+            includes_reasoning,
+            input_item_count,
+        );
     }
 
     pub(crate) fn ensure_auto_compact_window_server_prefill_from_usage(
@@ -475,17 +384,8 @@ impl SessionState {
         self.history.set_token_usage_full(context_window);
     }
 
-    pub(crate) fn get_total_token_usage(&self, server_reasoning_included: bool) -> i64 {
-        self.history
-            .get_total_token_usage(server_reasoning_included)
-    }
-
-    pub(crate) fn set_server_reasoning_included(&mut self, included: bool) {
-        self.server_reasoning_included = included;
-    }
-
-    pub(crate) fn server_reasoning_included(&self) -> bool {
-        self.server_reasoning_included
+    pub(crate) fn get_total_token_usage(&self) -> i64 {
+        self.history.get_total_token_usage()
     }
 
     pub(crate) fn record_mcp_dependency_prompted<I>(&mut self, names: I)
@@ -551,7 +451,7 @@ fn merge_rate_limit_fields(
     mut snapshot: RateLimitSnapshot,
 ) -> RateLimitSnapshot {
     if snapshot.limit_id.is_none() {
-        snapshot.limit_id = Some("nuwax-harness".to_string());
+        snapshot.limit_id = Some("codex".to_string());
     }
     if snapshot.credits.is_none() {
         snapshot.credits = previous.and_then(|prior| prior.credits.clone());

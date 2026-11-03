@@ -2,6 +2,7 @@
 
 use crate::context::UserGoalUpdate;
 use codex_protocol::ResponseItemId;
+use codex_protocol::openai_models::CatalogModel;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -14,6 +15,7 @@ use crate::compact::CompactionAnalyticsDetails;
 use crate::compact_remote_history::trim_function_call_history_to_fit_context_window;
 use crate::context::world_state::WorldState;
 use crate::context_manager::ContextManager;
+use crate::context_manager::replace_unresolvable_image_files;
 use crate::responses_metadata::CompactionTurnMetadata;
 use crate::session::CompactionPrefix;
 use crate::session::session::Session;
@@ -23,12 +25,13 @@ use codex_analytics::CompactionPhase;
 use codex_analytics::CompactionReason;
 use codex_analytics::CompactionTrigger;
 use codex_history::CodexHarnessMetadata;
+use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ResponseItem;
-use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::protocol::TokenUsage;
 use codex_rollout_trace::CompactionTraceContext;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 pub(super) struct RemoteCompactV2Attempt {
@@ -37,7 +40,6 @@ pub(super) struct RemoteCompactV2Attempt {
     pub(super) prompt_input: Vec<ResponseItem>,
     pub(super) prompt_input_metadata: Vec<Option<CodexHarnessMetadata>>,
     pub(super) compaction_output: ResponseItem,
-    pub(super) compaction_provenance: Option<codex_history::ModelOutputProvenance>,
     pub(super) compaction_response_id: String,
     pub(super) token_usage: Option<TokenUsage>,
     /// Keeps a session created for standalone compaction alive through lifecycle completion.
@@ -51,7 +53,7 @@ pub(super) enum RemoteCompactV2AttemptInput<'a> {
 
 pub(crate) struct BackgroundCompactionCandidate {
     pub(crate) prefix: CompactionPrefix,
-    pub(super) model_info: Arc<ModelInfo>,
+    pub(super) model_info: Arc<CatalogModel>,
     pub(super) cutoff_world_state: Arc<WorldState>,
     pub(super) attempt: RemoteCompactV2Attempt,
 }
@@ -82,8 +84,6 @@ pub(super) async fn run_remote_compact_v2_attempt(
         base_instructions,
         mut input,
         prompt_input_metadata,
-        input_provenance,
-        output_provenance,
         transport,
         captured_window,
     ) = match input {
@@ -118,9 +118,7 @@ pub(super) async fn run_remote_compact_v2_attempt(
                 );
             }
             if estimated_deleted_tokens > 0 {
-                let max_local_deleted_tokens = sess
-                    .estimated_tokens_after_last_model_generated_item()
-                    .await;
+                let max_local_deleted_tokens = sess.estimated_tokens_since_last_usage().await;
                 analytics_details.active_context_tokens_before = analytics_details
                     .active_context_tokens_before
                     .map(|active_context_tokens_before| {
@@ -131,10 +129,12 @@ pub(super) async fn run_remote_compact_v2_attempt(
             let trace_input_history = compaction_trace
                 .is_enabled()
                 .then(|| history.raw_items().cloned().collect());
-            let annotated_input = history.for_prompt_annotated(&model_info.input_modalities);
-            let input_provenance =
-                crate::model_output_projection::sources_for_input(&annotated_input);
-            let (mut input, metadata): (Vec<_>, Vec<_>) = annotated_input
+            let (mut input, metadata): (Vec<_>, Vec<_>) = history
+                .for_prompt_annotated(
+                    &model_info.input_modalities,
+                    sess.services.image_store.as_ref(),
+                )
+                .await
                 .into_iter()
                 .map(|envelope| (envelope.item, envelope.metadata))
                 .unzip();
@@ -144,10 +144,6 @@ pub(super) async fn run_remote_compact_v2_attempt(
             let client_session = client_session.unwrap_or_else(|| {
                 owned_client_session.insert(sess.services.model_client.new_session())
             });
-            // The transport borrows the session for the request; the shared
-            // provenance cell lets this attempt read the wire source that the
-            // request settled on once the borrow ends.
-            let output_provenance = client_session.output_provenance_cell();
             (
                 model_info,
                 input_goal_ids,
@@ -155,8 +151,6 @@ pub(super) async fn run_remote_compact_v2_attempt(
                 base_instructions,
                 input,
                 metadata,
-                input_provenance,
-                output_provenance,
                 CompactionRequestTransport::Foreground(client_session),
                 None,
             )
@@ -168,13 +162,6 @@ pub(super) async fn run_remote_compact_v2_attempt(
             input.base_instructions,
             input.input,
             input.metadata,
-            // Background input is replayed without envelope metadata, so it
-            // carries no replayable output provenance (the prompt grants no
-            // opaque replay either).
-            crate::model_output_projection::InputProvenance::default(),
-            // Background input replays without envelope metadata; the cell
-            // only satisfies the executor's shared recording hook.
-            std::sync::Arc::new(std::sync::Mutex::new(None)),
             CompactionRequestTransport::Background(
                 input.turn_state,
                 input.prefix.auth_owner_generation,
@@ -190,8 +177,6 @@ pub(super) async fn run_remote_compact_v2_attempt(
     input.push(ResponseItem::CompactionTrigger {});
     let prompt = Prompt {
         input,
-        input_provenance,
-        opaque_replay_grant: None,
         tools: if tools_in_history {
             Arc::default()
         } else {
@@ -220,15 +205,12 @@ pub(super) async fn run_remote_compact_v2_attempt(
         "input": &prompt.input,
         "parallel_tool_calls": prompt.parallel_tool_calls,
     }));
-    // Both arms supply a provenance cell (the foreground clones the session's;
-    // the background owns a fresh one the executor writes).
     let compaction_output_result = run_remote_compaction_request_v2(
         sess,
         step_context,
         &prompt,
         &responses_metadata,
         transport,
-        &output_provenance,
     )
     .await;
     trace_attempt.record_result(
@@ -241,11 +223,6 @@ pub(super) async fn run_remote_compact_v2_attempt(
         response_id,
         token_usage,
     } = compaction_output_result?;
-    let compaction_provenance = output_provenance
-        .lock()
-        .map(|provenance| provenance.clone())
-        .ok()
-        .flatten();
     let mut prompt_input = prompt.input;
     prompt_input.pop();
     Ok(RemoteCompactV2Attempt {
@@ -254,14 +231,14 @@ pub(super) async fn run_remote_compact_v2_attempt(
         prompt_input,
         prompt_input_metadata,
         compaction_output,
-        compaction_provenance,
         compaction_response_id: response_id,
         token_usage,
         owned_client_session,
     })
 }
 
-pub(crate) fn capture_background_input(
+// Defer normalization and attribution until the caller releases the session lock.
+pub(crate) async fn capture_background_input(
     sess: &Session,
     step_context: &StepContext,
     mut snapshot: ContextManager,
@@ -293,8 +270,9 @@ pub(crate) fn capture_background_input(
         step_context.settings.model_info.usable_context_window(),
         &base_instructions,
     );
+    snapshot.normalize_history(&step_context.settings.model_info.input_modalities);
     let (mut input, metadata): (Vec<_>, Vec<_>) = snapshot
-        .for_prompt_annotated(&step_context.settings.model_info.input_modalities)
+        .into_annotated_items()
         .into_iter()
         .map(|envelope| (envelope.item, envelope.metadata))
         .unzip();
@@ -316,8 +294,16 @@ pub(crate) async fn run_background_compaction(
     step_context: Arc<StepContext>,
     cutoff_world_state: Arc<WorldState>,
     phase: CompactionPhase,
-    prepared_input: BackgroundCompactionInput,
+    mut prepared_input: BackgroundCompactionInput,
+    shutdown_cancellation: &CancellationToken,
 ) -> CodexResult<BackgroundCompactionCandidate> {
+    tokio::select! {
+        _ = shutdown_cancellation.cancelled() => return Err(CodexErr::TurnAborted),
+        () = replace_unresolvable_image_files(
+            prepared_input.input.iter_mut(),
+            sess.services.image_store.as_ref(),
+        ) => {},
+    }
     let prefix = prepared_input.prefix;
     let metadata = CompactionTurnMetadata::new(
         CompactionTrigger::Auto,
