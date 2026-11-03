@@ -370,10 +370,10 @@ impl<'a> ToolRuntime<UnifiedExecRequest<'_>, UnifiedExecAttempt> for UnifiedExec
                         Some(&prepared.turn_environment.selection.environment_id),
                     )
                     .map_err(|err| {
-                        ToolError::Codex(CodexErr::Io(io::Error::other(format!(
+                        ToolError::Codex(Box::new(CodexErr::Io(io::Error::other(format!(
                             "failed to prepare network proxy for environment `{}`: {err}",
                             prepared.turn_environment.selection.environment_id
-                        ))))
+                        )))))
                     })?;
                 (
                     child_environment.env,

@@ -401,22 +401,26 @@ async fn schedule_startup_prewarm_inner(
         PrewarmInput::History => {
             // Use the same history projection and tool metadata as a sampling request.
             // The real turn still checks this prefix before reusing the prepared response.
-            let mut history = session
+            session
                 .clone_history()
                 .await
-                .for_prompt(
+                .for_prompt_annotated(
                     &step_context.settings.model_info.input_modalities,
                     session.services.image_store.as_ref(),
                 )
-                .await;
-            session
-                .services
-                .executed_tool_calls
-                .attach_to_prompt(&mut history, &mut HashMap::new());
-            history
+                .await
         }
     };
-    let startup_prompt = build_prompt(
+    let input_provenance = crate::model_output_projection::sources_for_input(&prompt_input);
+    let mut prompt_input = prompt_input
+        .into_iter()
+        .map(codex_history::ResponseItemEnvelope::into_item)
+        .collect::<Vec<_>>();
+    session
+        .services
+        .executed_tool_calls
+        .attach_to_prompt(&mut prompt_input, &mut HashMap::new());
+    let mut startup_prompt = build_prompt(
         prompt_input,
         step_context.as_ref(),
         BaseInstructions {
@@ -427,6 +431,7 @@ async fn schedule_startup_prewarm_inner(
             .current_window_uses_incremental_tools(&step_context)
             .await,
     );
+    startup_prompt.input_provenance = input_provenance;
     startup_turn_context.session_telemetry.record_startup_phase(
         "startup_prewarm_build_prompt",
         build_prompt_started_at.elapsed(),

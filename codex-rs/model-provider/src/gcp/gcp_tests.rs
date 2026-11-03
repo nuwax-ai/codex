@@ -330,7 +330,7 @@ async fn unknown_vertex_models_use_static_catalog_fallback() {
         .await;
 
     assert_eq!(
-        (model.slug.as_str(), model.origin),
+        (model.slug.as_str(), model.origin.clone()),
         ("vertex-test-model", ModelOrigin::Synthetic)
     );
 }

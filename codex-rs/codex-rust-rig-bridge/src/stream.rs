@@ -651,6 +651,8 @@ fn stream_via_rig_attempt(
                 // The bridge has no graceful-interrupt channel yet; cancellation
                 // drops the stream, matching native's plain SSE spawns.
                 interrupt: None,
+                // ChatGPT-backend routing affinity does not apply to bridge vendors.
+                routing_affinity: None,
             },
             recorders,
         ))

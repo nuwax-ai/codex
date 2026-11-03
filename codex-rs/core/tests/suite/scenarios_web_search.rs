@@ -260,7 +260,7 @@ async fn model_selected_search_preserves_discovery_and_call_history() -> Result<
             sse(vec![
                 ev_function_call_with_namespace(
                     "paper-search",
-                    "mcp__codex_apps__search_service",
+                    "mcp__nuwax_apps__search_service",
                     "_web_run",
                     &search.to_string(),
                 ),
@@ -281,7 +281,7 @@ async fn model_selected_search_preserves_discovery_and_call_history() -> Result<
             sse(vec![
                 ev_function_call_with_namespace(
                     "open",
-                    "mcp__codex_apps__search_service",
+                    "mcp__nuwax_apps__search_service",
                     "_web_run",
                     &open.to_string(),
                 ),
@@ -323,7 +323,7 @@ async fn model_selected_search_preserves_discovery_and_call_history() -> Result<
     assert_eq!(requests.len(), 8);
     assert!(
         requests[0]
-            .tool_by_name("mcp__codex_apps__search_service", "_web_run")
+            .tool_by_name("mcp__nuwax_apps__search_service", "_web_run")
             .is_none()
     );
     assert!(
@@ -539,7 +539,7 @@ async fn background_search_and_native_fallback(native_first: bool) -> Result<()>
     let pending = format!(
         r#"yield_control();
 await tools.test_sync_tool({barrier});
-text((await tools.mcp__codex_apps__search_service_web_run({{literature_search_query:[{{q:"FlashAttention-2"}}]}})).content);"#
+text((await tools.mcp__nuwax_apps__search_service_web_run({{literature_search_query:[{{q:"FlashAttention-2"}}]}})).content);"#
     );
     let first = mount_sse_sequence(
         &server,

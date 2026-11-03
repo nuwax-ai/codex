@@ -33,7 +33,14 @@ pub(super) async fn checks(
 ) -> Vec<DoctorCheck> {
     progress.begin("config");
     let config_started = Instant::now();
-    let config = match super::load_config(overrides, interactive, arg0_paths).await {
+    let config = match super::load_config(
+        overrides,
+        interactive,
+        arg0_paths,
+        codex_utils_cli::nuwax_env_from_process(),
+    )
+    .await
+    {
         Ok(config) => config,
         Err(error) => {
             let check = super::config_load_failure(&error)
@@ -76,7 +83,7 @@ pub(super) async fn checks(
 }
 
 #[cfg(any(target_os = "macos", test))]
-pub(super) const SYSTEM_PROXY_REMEDIATION: &str = "A macOS system proxy is configured but unused. If your organization requires it, ask your administrator whether to enable the experimental System proxy setting in `/experimental` or with `codex features enable respect_system_proxy`. Restart Codex after changing this setting.";
+pub(super) const SYSTEM_PROXY_REMEDIATION: &str = "A macOS system proxy is configured but unused. If your organization requires it, ask your administrator whether to enable the experimental System proxy setting in `/experimental` or with `nuwax-harness features enable respect_system_proxy`. Restart Nuwax Harness after changing this setting.";
 
 pub(super) fn check(config: Option<&Config>) -> DoctorCheck {
     let mut details = Vec::new();

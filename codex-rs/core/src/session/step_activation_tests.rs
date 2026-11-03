@@ -577,7 +577,8 @@ async fn submitted_sparse_updates_preserve_captured_steps_and_ordering() {
             .model_info_overrides
             .models_manager_config(configuration.step_settings.personality)
     };
-    let expected_destination = with_config_overrides(expected_destination, &model_manager_config);
+    let expected_destination =
+        with_config_overrides(expected_destination, &ModelOrigin::Bundled, &model_manager_config);
     let desired = desired_step_settings(&session).await;
     let (submissions, receiver) = async_channel::unbounded();
     let loop_task = tokio::spawn(submission_loop(
@@ -1547,7 +1548,7 @@ async fn model_safety_admits_vendor_catalog_models_for_mid_turn_switching() {
     let entry = codex_models_manager::vendor_catalog::resolve("GLM-5.3-Flash")
         .expect("the display-cased slug resolves");
     let vendor = codex_models_manager::vendor_catalog::vendor_model_info(&entry);
-    assert!(!vendor.used_fallback_model_metadata);
+    assert!(matches!(vendor.origin, ModelOrigin::Vendor { .. }));
     let (admitted, destination) = safety_models();
     let mut destination = destination;
     destination.model_specialty = None;
@@ -1571,7 +1572,7 @@ async fn model_safety_admits_vendor_catalog_models_for_mid_turn_switching() {
     }
     // Fallback placeholders stay refused.
     let mut placeholder = admitted.clone();
-    placeholder.used_fallback_model_metadata = true;
+    placeholder.origin = ModelOrigin::Synthetic;
     assert_eq!(
         check_legacy_model_safety(&placeholder, &placeholder, &glm, &turn.config, &turn.config),
         Err("the active model has only fallback metadata".to_string())

@@ -37,7 +37,7 @@ async fn recorded_questions_share_queued_input_order_across_resume() {
     let question = |call_id: &str| {
         serde_json::from_value::<ResponseItem>(json!({
             "type": "function_call", "call_id": call_id,
-            "namespace": "mcp__codex_apps", "name": "user_messaging_send_message",
+            "namespace": "mcp__nuwax_apps", "name": "user_messaging_send_message",
             "arguments": "{\"text\":\"Continue?\"}"
         }))
         .unwrap()

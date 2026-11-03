@@ -76,7 +76,7 @@ async fn runtime_overlay_preserves_disabled_server() -> TestResult {
     assert_eq!(
         codex_mcp::apply_http_headers_helper(
             login_client,
-            &configured[CODEX_APPS_MCP_SERVER_NAME],
+            &configured[NUWAX_APPS_MCP_SERVER_NAME],
             codex_home.path().to_path_buf(),
         )
         .err(),

@@ -1894,7 +1894,7 @@ async fn embedded_server_dispatches_only_its_own_dynamic_tools() -> Result<()> {
     app.config.codex_home = codex_home.path().to_path_buf().abs();
     app.config.sqlite = SqliteConfig::new_for_testing(codex_home.path().abs());
     let app_server = crate::start_embedded_app_server_for_picker(&app.config).await?;
-    for (id, namespace, expected_success) in [(100, "codex_app", false), (101, "codex_tui", true)] {
+    for (id, namespace, expected_success) in [(100, "codex_app", false), (101, "nuwax_tui", true)] {
         app.handle_app_server_event(
             &app_server,
             codex_app_server_client::AppServerEvent::ServerRequest(Box::new(

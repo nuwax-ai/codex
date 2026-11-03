@@ -13,7 +13,11 @@ async fn configured_and_effective_context_are_distinct_and_unset_is_explicit() {
     model.context_window = Some(272_000);
     model.max_context_window = Some(400_000);
     model.effective_context_window_percent = 95;
-    let resolved = with_config_overrides(model.clone(), &config.to_models_manager_config());
+    let resolved = with_config_overrides(
+        model.clone(),
+        &codex_protocol::openai_models::ModelOrigin::Synthetic,
+        &config.to_models_manager_config(),
+    );
     let tags = usage_tags(&config, &config.features, &resolved, Some("priority"));
     assert_eq!(
         [

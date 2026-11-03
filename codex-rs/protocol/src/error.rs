@@ -10,6 +10,7 @@ use crate::protocol::ErrorEvent;
 use crate::protocol::MisalignmentErrorDetails;
 use crate::protocol::RateLimitReachedType;
 use crate::protocol::RateLimitSnapshot;
+use crate::protocol::ReportedResponseUsage;
 use crate::protocol::TokenUsage;
 use crate::protocol::TruncationPolicy;
 use chrono::DateTime;
@@ -154,6 +155,18 @@ pub enum CodexErrorDetails {
     /// Invalid request.
     #[error("{0}")]
     InvalidRequest(String),
+    /// The caller-selected output cap was exhausted mid-stream. Terminal and
+    /// non-retryable, with the same message text the `InvalidRequest` mapping
+    /// used to carry; the structured payload preserves the sampling's provider
+    /// response id and the counters the terminal frame actually reported so
+    /// core can account the failed sampling's usage. Absent usage means the
+    /// terminal carried no usable report.
+    #[error("{message}")]
+    CapExhausted {
+        message: String,
+        response_id: Option<String>,
+        reported_usage: Option<ReportedResponseUsage>,
+    },
     #[error("{message}")]
     InvalidAudioInput { message: String },
     #[error("{message}")]
@@ -194,7 +207,7 @@ pub enum CodexErrorDetails {
     #[error("Quota exceeded. Check your plan and billing details.")]
     QuotaExceeded,
     #[error(
-        "To use Codex with your ChatGPT plan, upgrade to Plus: https://chatgpt.com/explore/plus."
+        "To use Nuwax Harness with your ChatGPT plan, upgrade to Plus."
     )]
     UsageNotIncluded,
     #[error("We’re currently experiencing high demand, which may cause temporary errors.")]
@@ -434,6 +447,7 @@ impl CodexErr {
             | CodexErrorDetails::QuotaExceeded
             | CodexErrorDetails::InvalidImageRequest()
             | CodexErrorDetails::InvalidRequest(_)
+            | CodexErrorDetails::CapExhausted { .. }
             | CodexErrorDetails::InvalidAudioInput { .. }
             | CodexErrorDetails::ResponseIncomplete(_)
             | CodexErrorDetails::ModelNotFound { .. }
@@ -820,7 +834,7 @@ impl std::fmt::Display for UsageLimitReachedError {
             }
             Some(PlanType::Known(KnownPlan::Free)) | Some(PlanType::Known(KnownPlan::Go)) => {
                 format!(
-                    "You’ve hit your usage limit. Upgrade to Plus to continue using Codex (https://chatgpt.com/explore/plus),{}",
+                    "You’ve hit your usage limit. Upgrade to Plus to continue using Nuwax Harness,{}",
                     retry_suffix_after_or(self.resets_at.as_ref())
                 )
             }

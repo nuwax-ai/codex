@@ -662,6 +662,7 @@ pub struct OtelConfigToml {
 
     /// Metrics exporter. Defaults to `statsig`, which follows `analytics.enabled`.
     /// Custom OTLP exporters are independent of `analytics.enabled`; `none` disables metrics export.
+    /// Fork (nuwax-codex): `statsig` resolves to `none` at startup (same as exporter).
     pub metrics_exporter: Option<OtelExporterKind>,
 
     /// Attributes to add to every exported trace span.

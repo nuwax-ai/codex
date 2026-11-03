@@ -4340,7 +4340,7 @@ impl Session {
                         .features
                         .enabled(codex_features::Feature::HostedSearchPolicy))
             {
-                required_servers.push(codex_mcp::CODEX_APPS_MCP_SERVER_NAME.to_owned());
+                required_servers.push(codex_mcp::NUWAX_APPS_MCP_SERVER_NAME.to_owned());
             }
             let (mcp, prepared_recommendations) = tokio::join!(
                 // MCP refresh can be large; keep it off the sampling request's stack.

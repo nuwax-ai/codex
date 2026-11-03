@@ -1175,7 +1175,12 @@ pub(crate) fn estimate_user_input_token_count(user_input: &UserInput) -> i64 {
         // Local files become inline payloads at serialization; their size is
         // not known here, so charge the resized-image floor.
         UserInput::LocalImage { .. } => RESIZED_IMAGE_BYTES_ESTIMATE,
-        UserInput::Audio { audio_url } => estimate_audio_bytes(audio_url),
+        UserInput::Audio { audio } => match audio {
+            AudioReference::Inline { audio_url } => estimate_audio_bytes(audio_url),
+            // File references carry no local size; charging zero keeps this
+            // estimate honest about what it knows.
+            AudioReference::File { .. } => 0,
+        },
         // Converted to file content later; charging zero keeps this estimate
         // honest about what it knows rather than guessing at payload sizes.
         // The wildcard also covers future `#[non_exhaustive]` variants.

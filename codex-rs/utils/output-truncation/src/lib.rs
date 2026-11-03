@@ -1,5 +1,23 @@
 //! Shared byte/token truncation for tool and exec output.
 
+mod image_limits;
+
+pub use image_limits::ImageAdmission;
+pub use image_limits::MAX_IMAGE_REFERENCE_BYTES;
+pub use image_limits::MAX_TOOL_OUTPUT_IMAGE_BYTES;
+pub use image_limits::MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES;
+pub use image_limits::MAX_TOOL_OUTPUT_IMAGES;
+pub use image_limits::MAX_TOOL_OUTPUT_VISIBLE_TOKENS;
+use image_limits::OmissionKind;
+pub use image_limits::TOOL_OUTPUT_IMAGE_ORIGINAL_VISUAL_TOKENS;
+pub use image_limits::TOOL_OUTPUT_IMAGE_VISUAL_TOKENS;
+pub use image_limits::admit_tool_output_images;
+use image_limits::image_budget_charge;
+use image_limits::is_tool_output_header;
+use image_limits::omission_marker;
+pub use image_limits::omitted_images_marker;
+use image_limits::tool_output_items_policy;
+
 use std::borrow::Cow;
 
 use codex_protocol::mcp::CallToolResult;
@@ -273,18 +291,25 @@ fn truncate_output_items(
     estimate_audio_token_count: impl Fn(&str) -> usize,
     boundaries: &mut [OutputBoundary],
 ) -> Vec<FunctionCallOutputContentItem> {
+    // Fork (nuwax-codex): tool-output image caps and one bounded shared
+    // budget (image visual cost charged up front) apply on every path into
+    // the item pipeline, boundary-aware or not (FORK.md §4 图片边界).
+    let policy = tool_output_items_policy(&items, policy);
+    let admission = admit_tool_output_images(&items, policy);
     match items {
         Cow::Borrowed(items) => truncate_output_iter(
             items.iter().map(Cow::Borrowed),
             policy,
             estimate_audio_token_count,
             boundaries,
+            &admission,
         ),
         Cow::Owned(items) => truncate_output_iter(
             items.into_iter().map(Cow::Owned),
             policy,
             estimate_audio_token_count,
             boundaries,
+            &admission,
         ),
     }
 }
@@ -294,12 +319,19 @@ fn truncate_output_iter<'a>(
     policy: TruncationPolicy,
     estimate_audio_token_count: impl Fn(&str) -> usize,
     boundaries: &mut [OutputBoundary],
+    admission: &ImageAdmission,
 ) -> Vec<FunctionCallOutputContentItem> {
     let mut out: Vec<FunctionCallOutputContentItem> = Vec::with_capacity(items.len());
     let mut remaining_budget = match policy {
         TruncationPolicy::Bytes(_) => policy.byte_budget(),
         TruncationPolicy::Tokens(_) => policy.token_budget(),
     };
+    // Fork (nuwax-codex): kept images are charged their visual cost up front,
+    // so text and media share one bounded per-output budget.
+    remaining_budget =
+        remaining_budget.saturating_sub(image_budget_charge(admission.visual_tokens, policy));
+    // Fork: images replaced by the consolidated admission marker.
+    let mut omitted_image_items = admission.dropped;
     let mut omitted_text_items = 0usize;
     let mut omitted_audio_items = 0usize;
     let mut next_boundary = 0;
@@ -312,6 +344,32 @@ fn truncate_output_iter<'a>(
         };
         let mut text_edit = None;
         let keep = match item.as_ref() {
+            // Fork: only one bounded leading header is control data and stays
+            // uncharged. Similar text elsewhere, or an oversized forged
+            // header, spends the ordinary budget.
+            FunctionCallOutputContentItem::InputText { text }
+                if index == 0 && is_tool_output_header(text) =>
+            {
+                true
+            }
+            // Fork: pre-existing omission notices are aggregated into the
+            // final markers instead of being re-charged as text.
+            FunctionCallOutputContentItem::InputText { text }
+                if let Some((kind, count)) = omission_marker(text) =>
+            {
+                match kind {
+                    OmissionKind::Image => {
+                        omitted_image_items = omitted_image_items.saturating_add(count)
+                    }
+                    OmissionKind::Text => {
+                        omitted_text_items = omitted_text_items.saturating_add(count)
+                    }
+                    OmissionKind::Audio => {
+                        omitted_audio_items = omitted_audio_items.saturating_add(count)
+                    }
+                }
+                false
+            }
             // Empty text contributes no model content but still consumes an API array slot.
             FunctionCallOutputContentItem::InputText { text } if text.is_empty() => false,
             FunctionCallOutputContentItem::InputText { .. } if remaining_budget == 0 => {
@@ -338,8 +396,10 @@ fn truncate_output_iter<'a>(
                     false
                 }
             }
-            FunctionCallOutputContentItem::InputImage { .. }
-            | FunctionCallOutputContentItem::EncryptedContent { .. } => true,
+            // Fork: image membership is decided by admission; survivors are
+            // already charged in the pre-pass above.
+            FunctionCallOutputContentItem::InputImage { .. } => admission.keep[index],
+            FunctionCallOutputContentItem::EncryptedContent { .. } => true,
             FunctionCallOutputContentItem::InputAudio { audio_url } => {
                 let token_cost = estimate_audio_token_count(audio_url);
                 let cost = match policy {
@@ -378,6 +438,9 @@ fn truncate_output_iter<'a>(
         boundary.text_offset = 0;
     }
 
+    if omitted_image_items > 0 {
+        out.push(omitted_images_marker(omitted_image_items));
+    }
     if omitted_text_items > 0 {
         out.push(FunctionCallOutputContentItem::InputText {
             text: format!("[omitted {omitted_text_items} text items ...]"),

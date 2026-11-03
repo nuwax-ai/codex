@@ -55,6 +55,16 @@ pub trait AuthProvider: Send + Sync {
         Ok(headers)
     }
 
+    /// Resolves auth headers for an outbound request, to be overlaid onto the
+    /// request's existing headers (fork contract used by the model bridges).
+    ///
+    /// Unlike [`Self::to_auth_headers`], implementations may perform asynchronous work to refresh
+    /// credentials before returning. Header-only providers with static credentials can rely on the
+    /// default implementation.
+    fn resolve_auth_headers(&self) -> AuthHeadersFuture<'_> {
+        Box::pin(async { self.to_auth_headers() })
+    }
+
     /// Describes headers expected on a successful request without refreshing or registering auth.
     /// Async providers should override this rather than resolving credentials for telemetry.
     fn auth_header_telemetry(&self) -> Result<AuthHeaderTelemetry, AuthError> {

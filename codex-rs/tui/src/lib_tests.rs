@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::legacy_core::config::ConfigBuilder;
+use crate::legacy_core::config::load_config_toml_with_layer_stack_and_env_seed;
 use crate::legacy_core::config::ConfigOverrides;
 use clap::Parser;
 use codex_app_server_protocol::AskForApproval;
@@ -315,10 +316,11 @@ async fn startup_services_use_final_cloud_managed_http_policy() -> color_eyre::R
         let prepared_environment_manager =
             EnvironmentManager::prepare_from_codex_home(codex_home.path()).await?;
         let loader_overrides = LoaderOverrides::without_managed_config_for_tests();
-        let bootstrap_config = load_config_toml_with_layer_stack(
+        let bootstrap_config = load_config_toml_with_layer_stack_and_env_seed(
             codex_home.path(),
             /*cwd*/ None,
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             codex_config::ConfigLoadOptions {
                 loader_overrides: loader_overrides.clone(),
                 ..Default::default()
@@ -381,6 +383,7 @@ pub(crate) async fn start_test_embedded_app_server(
         Arg0DispatchPaths::default(),
         config,
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         LoaderOverrides::default(),
         /*strict_config*/ false,
         CloudConfigBundleLoader::default(),
@@ -422,6 +425,7 @@ async fn startup_resume_rejects_guardian_thread() -> color_eyre::Result<()> {
         &config,
         &AppServerTarget::Embedded,
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         LoaderOverrides::without_managed_config_for_tests(),
         state_db,
         Arc::new(EnvironmentManager::default_for_tests()),
@@ -537,6 +541,7 @@ async fn startup_resume_and_fork_use_configured_or_explicit_cwd() -> color_eyre:
             &final_config,
             &AppServerTarget::Embedded,
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             LoaderOverrides::without_managed_config_for_tests(),
             state_db,
             Arc::new(EnvironmentManager::default_for_tests()),
@@ -859,6 +864,7 @@ fn app_server_target_for_launch_uses_local_daemon_for_default_socket() -> color_
             /*can_reuse_implicit_local_daemon*/ !explicit,
             /*workload_identity_selected*/ false,
             /*exec_server_url*/ None,
+        /*env_seed_overrides*/ &[],
         )?;
         assert_eq!(
             target,
@@ -884,6 +890,7 @@ fn app_server_target_for_launch_preserves_executor_selection() -> color_eyre::Re
                 /*can_reuse_implicit_local_daemon*/ true,
                 /*workload_identity_selected*/ false,
                 Some(std::ffi::OsStr::new(executor)),
+            /*env_seed_overrides*/ &[],
             )?,
             AppServerTarget::Embedded,
         );
@@ -902,6 +909,7 @@ fn app_server_target_for_launch_prefers_explicit_remote_endpoint() -> color_eyre
         /*can_reuse_implicit_local_daemon*/ false,
         /*workload_identity_selected*/ false,
         Some(std::ffi::OsStr::new("none")),
+        /*env_seed_overrides*/ &[],
     )?;
 
     assert_eq!(
@@ -925,6 +933,7 @@ fn app_server_target_for_launch_skips_local_daemon_when_launch_config_is_not_rep
         /*can_reuse_implicit_local_daemon*/ false,
         /*workload_identity_selected*/ false,
         /*exec_server_url*/ None,
+        /*env_seed_overrides*/ &[],
     )?;
 
     assert_eq!(target, AppServerTarget::Embedded);
@@ -941,6 +950,7 @@ fn workload_identity_requires_an_embedded_app_server() -> color_eyre::Result<()>
             /*can_reuse_implicit_local_daemon*/ true,
             /*workload_identity_selected*/ true,
             /*exec_server_url*/ None,
+        /*env_seed_overrides*/ &[],
         )?,
         AppServerTarget::Embedded
     );
@@ -954,6 +964,7 @@ fn workload_identity_requires_an_embedded_app_server() -> color_eyre::Result<()>
         /*can_reuse_implicit_local_daemon*/ false,
         /*workload_identity_selected*/ true,
         /*exec_server_url*/ None,
+        /*env_seed_overrides*/ &[],
     )
     .expect_err("remote hosts must own workload identity");
     assert_eq!(
@@ -1586,6 +1597,7 @@ async fn embedded_app_server_start_failure_is_returned() -> color_eyre::Result<(
         Arg0DispatchPaths::default(),
         config,
         Vec::new(),
+        /*env_seed_overrides*/ Vec::new(),
         LoaderOverrides::default(),
         /*strict_config*/ false,
         CloudConfigBundleLoader::default(),

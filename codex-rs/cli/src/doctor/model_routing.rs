@@ -149,18 +149,20 @@ pub(super) async fn check(
             };
             // The catalog is only a default: name both sides when an explicit
             // override moved the effective window.
-            let window_label = match &model_info.metadata_source {
-                codex_protocol::openai_models::MetadataSource::Official => {
+            let window_label = match &model_info.origin {
+                codex_protocol::openai_models::ModelOrigin::Bundled
+                | codex_protocol::openai_models::ModelOrigin::Provider
+                | codex_protocol::openai_models::ModelOrigin::ExplicitConfig => {
                     "official catalog".to_string()
                 }
-                codex_protocol::openai_models::MetadataSource::Vendor { provider } => {
+                codex_protocol::openai_models::ModelOrigin::Vendor { provider } => {
                     if config.model_context_window.is_some() {
                         format!("vendor catalog ({provider}; explicit override applied)")
                     } else {
                         format!("vendor catalog ({provider})")
                     }
                 }
-                codex_protocol::openai_models::MetadataSource::Fallback => {
+                codex_protocol::openai_models::ModelOrigin::Synthetic => {
                     if config.model_context_window.is_some() {
                         "explicit override (placeholder metadata)".to_string()
                     } else {

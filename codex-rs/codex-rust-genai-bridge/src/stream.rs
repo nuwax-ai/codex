@@ -163,6 +163,8 @@ pub async fn stream_via_genai(
         rx_event: rx,
         upstream_request_id: None,
         interrupt: None,
+        // ChatGPT-backend routing affinity does not apply to bridge vendors.
+        routing_affinity: None,
     })
 }
 

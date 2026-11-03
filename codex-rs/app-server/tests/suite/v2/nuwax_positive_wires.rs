@@ -23,6 +23,8 @@ use anyhow::Context;
 use anyhow::Result;
 use app_test_support::TestAppServer;
 use codex_app_server_protocol::ClientRequest;
+use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::ThreadCompactStartParams;
 use codex_app_server_protocol::ThreadCompactStartResponse;
 use codex_app_server_protocol::ThreadReadParams;
@@ -303,8 +305,8 @@ async fn chat_env_group_executes_a_tool_round_trip_over_the_real_chat_wire() -> 
         .turn
         .items
         .iter()
-        .filter_map(|item| match item {
-            codex_app_server_protocol::ThreadItem::AgentMessage { text, .. } => Some(text.as_str()),
+        .filter_map(|item| match &item.payload {
+            codex_app_server_protocol::ThreadItemPayload::AgentMessage { text, .. } => Some(text.as_str()),
             _ => None,
         })
         .collect();
@@ -442,8 +444,8 @@ async fn responses_env_group_executes_a_tool_round_trip_over_the_real_responses_
         .turn
         .items
         .iter()
-        .filter_map(|item| match item {
-            codex_app_server_protocol::ThreadItem::AgentMessage { text, .. } => Some(text.as_str()),
+        .filter_map(|item| match &item.payload {
+            codex_app_server_protocol::ThreadItemPayload::AgentMessage { text, .. } => Some(text.as_str()),
             _ => None,
         })
         .collect();
@@ -839,8 +841,8 @@ async fn env_group_compact_and_recall_keep_the_typed_wire_and_usage_accounting()
         .turn
         .items
         .iter()
-        .filter_map(|item| match item {
-            codex_app_server_protocol::ThreadItem::AgentMessage { text, .. } => Some(text.as_str()),
+        .filter_map(|item| match &item.payload {
+            codex_app_server_protocol::ThreadItemPayload::AgentMessage { text, .. } => Some(text.as_str()),
             _ => None,
         })
         .collect();

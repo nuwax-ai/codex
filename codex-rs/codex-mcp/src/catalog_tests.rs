@@ -752,7 +752,7 @@ fn environment_policy_exempts_only_explicitly_host_owned_apps() {
         let custom = server("https://custom.example/mcp");
         let mut builder = ResolvedMcpCatalog::builder();
         builder.register(McpServerRegistration::from_config(
-            CODEX_APPS_MCP_SERVER_NAME.to_string(),
+            NUWAX_APPS_MCP_SERVER_NAME.to_string(),
             custom.clone(),
         ));
         let denied = builder
@@ -773,7 +773,7 @@ fn environment_policy_exempts_only_explicitly_host_owned_apps() {
             .with_materialized_servers(catalog.configured_servers())
             .to_builder();
         builder.register(McpServerRegistration::from_extension(
-            CODEX_APPS_MCP_SERVER_NAME.to_string(),
+            NUWAX_APPS_MCP_SERVER_NAME.to_string(),
             "custom",
             /*contribution_order*/ 1,
             custom,

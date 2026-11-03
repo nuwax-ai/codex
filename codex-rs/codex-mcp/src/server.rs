@@ -4,7 +4,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::mcp::CODEX_APPS_MCP_SERVER_NAME;
+use crate::mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use crate::runtime::McpRuntimeContext;
 use codex_api::SharedAuthProvider;
 use codex_config::AppToolApproval;
@@ -94,7 +94,7 @@ impl EffectiveMcpServer {
         server_name: &str,
         runtime_auth_provider: Option<&SharedAuthProvider>,
     ) -> bool {
-        server_name != CODEX_APPS_MCP_SERVER_NAME
+        server_name != NUWAX_APPS_MCP_SERVER_NAME
             && self.config.is_local_environment()
             && runtime_auth_provider.is_none()
             && !matches!(self.config.auth, McpServerAuth::EmaAuth)

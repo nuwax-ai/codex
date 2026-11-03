@@ -8,6 +8,12 @@ use tempfile::tempdir;
 #[test]
 fn runtime_internal_metadata_opt_in_is_not_serialized_or_configurable() {
     let trusted = ModelProviderInfo {
+        experimental_bridge: None,
+        max_output_tokens: None,
+        hosted_results_replay: None,
+        anthropic_prompt_caching: None,
+        reasoning_effort_levels: None,
+        provider_id: None,
         include_internal_metadata: true,
         ..Default::default()
     };
@@ -100,6 +106,12 @@ base_url = "http://localhost:11434/v1"
         project_id: None,
         location: None,
         credential_file: None,
+        experimental_bridge: None,
+        max_output_tokens: None,
+        hosted_results_replay: None,
+        anthropic_prompt_caching: None,
+        reasoning_effort_levels: None,
+        provider_id: None,
         include_internal_metadata: false,
     };
 
@@ -142,6 +154,12 @@ query_params = { api-version = "2025-04-01-preview" }
         project_id: None,
         location: None,
         credential_file: None,
+        experimental_bridge: None,
+        max_output_tokens: None,
+        hosted_results_replay: None,
+        anthropic_prompt_caching: None,
+        reasoning_effort_levels: None,
+        provider_id: None,
         include_internal_metadata: false,
     };
 
@@ -188,6 +206,12 @@ supports_standalone_web_search = true
         project_id: None,
         location: None,
         credential_file: None,
+        experimental_bridge: None,
+        max_output_tokens: None,
+        hosted_results_replay: None,
+        anthropic_prompt_caching: None,
+        reasoning_effort_levels: None,
+        provider_id: None,
         include_internal_metadata: false,
     };
 
@@ -196,7 +220,10 @@ supports_standalone_web_search = true
 }
 
 #[test]
-fn test_deserialize_chat_wire_api_shows_helpful_error() {
+fn test_deserialize_chat_wire_api_is_accepted_under_the_fork() {
+    // Fork (nuwax-codex): upstream removed `wire_api = "chat"` (discussion
+    // #7782), but the fork's model bridges serve Chat Completions and
+    // Anthropic for third-party vendors, so all three wires stay valid.
     let provider_toml = r#"
 name = "OpenAI using Chat Completions"
 base_url = "https://api.openai.com/v1"
@@ -204,8 +231,8 @@ env_key = "OPENAI_API_KEY"
 wire_api = "chat"
         "#;
 
-    let err = toml::from_str::<ModelProviderInfo>(provider_toml).unwrap_err();
-    assert!(err.to_string().contains(CHAT_WIRE_API_REMOVED_ERROR));
+    let provider: ModelProviderInfo = toml::from_str(provider_toml).unwrap();
+    assert_eq!(provider.wire_api, WireApi::Chat);
 }
 
 #[test]
@@ -383,7 +410,13 @@ fn test_create_amazon_bedrock_provider() {
             project_id: None,
             location: None,
             credential_file: None,
-            include_internal_metadata: false,
+            experimental_bridge: None,
+        max_output_tokens: None,
+        hosted_results_replay: None,
+        anthropic_prompt_caching: None,
+        reasoning_effort_levels: None,
+        provider_id: None,
+        include_internal_metadata: false,
         }
     );
 }

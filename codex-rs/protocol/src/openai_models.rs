@@ -422,24 +422,6 @@ const fn is_true(value: &bool) -> bool {
     *value
 }
 
-/// Fork (nuwax-codex): where a model's metadata came from. Drives the fork's
-/// window-override policy (explicit windows apply in full for vendor and
-/// fallback models; official catalog models keep the upstream clamp) and
-/// doctor's source labels. Internal-only, like `used_fallback_model_metadata`.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum MetadataSource {
-    /// The built-in official catalog (gpt-* and friends): upstream behavior.
-    #[default]
-    Official,
-    /// The fork's bundled vendor catalog (models.dev snapshot + overlay).
-    Vendor {
-        /// The winning provider entry, e.g. `zai-coding-plan`.
-        provider: Box<str>,
-    },
-    /// Placeholder metadata for an unknown slug.
-    Fallback,
-}
-
 /// Model metadata returned by the Codex backend `/models` endpoint.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, TS, JsonSchema)]
 pub struct ModelInfo {
@@ -549,13 +531,21 @@ pub struct ModelInfo {
 }
 
 /// Where model metadata was obtained during local catalog resolution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelOrigin {
     Bundled,
     Provider,
     ExplicitConfig,
     /// Generic metadata synthesized when no catalog entry matches the requested model.
     Synthetic,
+    /// Fork (nuwax-codex): the fork's bundled vendor catalog (models.dev
+    /// snapshot + overlay). Drives the fork's window-override policy (an
+    /// explicit window applies in full, like for fallback metadata) and
+    /// doctor's source labels.
+    Vendor {
+        /// The winning provider entry, e.g. `zai-coding-plan`.
+        provider: Box<str>,
+    },
 }
 
 /// Model metadata and its locally determined source, retained together through resolution.
@@ -1214,7 +1204,6 @@ mod tests {
 
     pub(super) fn test_model(spec: Option<ModelMessages>) -> ModelInfo {
         ModelInfo {
-            metadata_source: MetadataSource::Official,
             slug: "test-model".to_string(),
             display_name: "Test Model".to_string(),
             description: None,

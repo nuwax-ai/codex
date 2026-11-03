@@ -23,6 +23,7 @@ use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ThreadForkParams;
 use codex_app_server_protocol::ThreadForkResponse;
 use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::ThreadReadParams;
 use codex_app_server_protocol::ThreadReadResponse;
 use codex_app_server_protocol::ThreadResumeParams;
@@ -129,8 +130,8 @@ async fn successful_turn(app: &mut TestAppServer, thread_id: &str, prompt: &str)
         .turn
         .items
         .iter()
-        .filter_map(|item| match item {
-            ThreadItem::AgentMessage { text, .. } => Some(text.as_str()),
+        .filter_map(|item| match &item.payload {
+            ThreadItemPayload::AgentMessage { text, .. } => Some(text.as_str()),
             _ => None,
         })
         .collect();

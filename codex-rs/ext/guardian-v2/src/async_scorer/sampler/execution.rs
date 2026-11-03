@@ -158,6 +158,7 @@ impl SamplingExecution {
                 | ApiError::UsageNotIncluded
                 | ApiError::RateLimit(_)
                 | ApiError::InvalidRequest { .. }
+                | ApiError::CapExhausted { .. }
                 | ApiError::InvalidAudioInput { .. }
                 | ApiError::ModelNotFound { .. }
                 | ApiError::InvalidPrompt { .. }

@@ -104,6 +104,7 @@ async fn connect_owner(
     socket_path: &codex_utils_absolute_path::AbsolutePathBuf,
 ) -> Result<RemoteAppServerClient> {
     Ok(RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
+            required_human_approval: false,
         endpoint: RemoteAppServerEndpoint::UnixSocket {
             socket_path: socket_path.clone(),
         },

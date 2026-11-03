@@ -867,7 +867,7 @@ impl ModelsManager for StaticModelsManager {
                 .cloned()
                 .map(|model| CatalogModel {
                     model: model.into(),
-                    origin: self.origin,
+                    origin: self.origin.clone(),
                 })
                 .collect()
         })
@@ -879,7 +879,12 @@ impl ModelsManager for StaticModelsManager {
         config: &'a ModelsManagerConfig,
     ) -> ModelsManagerFuture<'a, CatalogModel> {
         Box::pin(async move {
-            construct_model_info_from_candidates(model, &self.remote_models, self.origin, config)
+            construct_model_info_from_candidates(
+                model,
+                &self.remote_models,
+                self.origin.clone(),
+                config,
+            )
         })
     }
 
@@ -1031,13 +1036,21 @@ fn construct_model_info(
     remote: Option<CatalogModel>,
     config: &ModelsManagerConfig,
 ) -> CatalogModel {
-    let mut resolved = remote.unwrap_or_else(|| CatalogModel {
-        model: model_info::model_info_from_slug(model).into(),
-        origin: ModelOrigin::Synthetic,
+    let mut resolved = remote.unwrap_or_else(|| {
+        // Fork: the bundled vendor catalog sits between the official catalog
+        // and the fallback placeholder — a hit behaves like a cataloged model.
+        if let Some(entry) = crate::vendor_catalog::resolve(model) {
+            crate::vendor_catalog::vendor_model_info(&entry)
+        } else {
+            CatalogModel {
+                model: model_info::model_info_from_slug(model).into(),
+                origin: ModelOrigin::Synthetic,
+            }
+        }
     });
     let mut metadata = Arc::unwrap_or_clone(resolved.model);
     metadata.slug = model.to_owned();
-    resolved.model = model_info::with_config_overrides(metadata, config).into();
+    resolved.model = model_info::with_config_overrides(metadata, &resolved.origin, config).into();
     resolved
 }
 

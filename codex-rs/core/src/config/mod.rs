@@ -35,6 +35,7 @@ use codex_config::config_toml::RealtimeConfig;
 use codex_config::config_toml::ThreadStoreToml;
 use codex_config::config_toml::validate_model_providers;
 use codex_config::loader::load_config_layers_state;
+use codex_config::loader::load_config_layers_state_with_env_seed;
 use codex_config::loader::project_trust_key;
 use codex_config::permissions_toml::PermissionProfileToml;
 use codex_config::permissions_toml::PermissionsToml;
@@ -576,7 +577,7 @@ impl Permissions {
 }
 
 // A profile override only inherits the selected profile's proxy/allowlist config
-// when Codex is still responsible for the network policy. `Disabled` means no
+// when Nuwax Harness is still responsible for the network policy. `Disabled` means no
 // outer sandbox, so starting the managed proxy would narrow the override.
 fn profile_allows_configured_network_proxy(permission_profile: &PermissionProfile) -> bool {
     match permission_profile {
@@ -657,6 +658,11 @@ pub struct Config {
 
     /// Token usage threshold triggering auto-compaction of conversation history.
     pub model_auto_compact_token_limit: Option<i64>,
+
+    /// Fork (nuwax-codex): fraction of the effective context window that
+    /// triggers pre-turn auto-compaction (e.g. `0.8`). Only consulted when
+    /// `model_auto_compact_token_limit` is unset.
+    pub model_auto_compact_ratio: Option<f64>,
 
     /// Controls whether `model_auto_compact_token_limit` applies to the full
     /// active context or only tokens after the carried compaction-window prefix.
@@ -777,23 +783,23 @@ pub struct Config {
     /// Compact prompt override.
     pub compact_prompt: Option<String>,
 
-    /// Optional external notifier command. When set, Codex will spawn this
+    /// Optional external notifier command. When set, Nuwax Harness will spawn this
     /// program after each completed *turn* (i.e. when the agent finishes
     /// processing a user submission). The value must be the full command
-    /// broken into argv tokens **without** the trailing JSON argument - Codex
+    /// broken into argv tokens **without** the trailing JSON argument - Nuwax Harness
     /// appends one extra argument containing a JSON payload describing the
     /// event.
     ///
     /// Example `~/.codex/config.toml` snippet:
     ///
     /// ```toml
-    /// notify = ["notify-send", "Codex"]
+    /// notify = ["notify-send", "Nuwax Harness"]
     /// ```
     ///
     /// which will be invoked as:
     ///
     /// ```shell
-    /// notify-send Codex '{"type":"agent-turn-complete","turn-id":"12345"}'
+    /// notify-send Nuwax Harness '{"type":"agent-turn-complete","turn-id":"12345"}'
     /// ```
     ///
     /// If unset the feature is disabled.
@@ -918,12 +924,12 @@ pub struct Config {
     pub workspace_roots_explicit: bool,
 
     /// Preferred store for CLI auth credentials.
-    /// file (default): Use a file in the Codex home directory.
+    /// file (default): Use a file in the Nuwax Harness home directory.
     /// keyring: Use an OS-specific keyring service.
     /// auto: Use the OS-specific keyring service if available, otherwise use a file.
     pub cli_auth_credentials_store_mode: AuthCredentialsStoreMode,
 
-    /// Definition for MCP servers that Codex can reach out to for tool calls.
+    /// Definition for MCP servers that Nuwax Harness can reach out to for tool calls.
     pub mcp_servers: Constrained<HashMap<String, McpServerConfig>>,
 
     /// Trusted IdP shared by all permitted EMA MCP registrations.
@@ -934,16 +940,16 @@ pub struct Config {
 
     /// Preferred store for MCP OAuth credentials.
     /// keyring: Use an OS-specific keyring service.
-    ///          Credentials stored in the keyring will only be readable by Codex unless the user explicitly grants access via OS-level keyring access.
+    ///          Credentials stored in the keyring will only be readable by Nuwax Harness unless the user explicitly grants access via OS-level keyring access.
     ///          https://github.com/openai/codex/blob/main/codex-rs/rmcp-client/src/oauth.rs#L2
     /// file: CODEX_HOME/.credentials.json
-    ///       This file will be readable to Codex and other applications running as the same user.
+    ///       This file will be readable to Nuwax Harness and other applications running as the same user.
     /// auto (default): keyring if available, otherwise file.
     pub mcp_oauth_credentials_store_mode: OAuthCredentialsStoreMode,
 
     /// Optional fixed port to use for the local HTTP callback server used during MCP OAuth login.
     ///
-    /// When unset, Codex will bind to an ephemeral port chosen by the OS.
+    /// When unset, Nuwax Harness will bind to an ephemeral port chosen by the OS.
     pub mcp_oauth_callback_port: Option<u16>,
 
     /// Optional redirect URI to use during MCP OAuth login.
@@ -995,11 +1001,11 @@ pub struct Config {
     /// Memories subsystem settings.
     pub memories: MemoriesConfig,
 
-    /// Directory containing all Codex state (defaults to `~/.codex` but can be
+    /// Directory containing all Nuwax Harness state (defaults to `~/.nuwax-harness` but can be
     /// overridden by the `CODEX_HOME` environment variable).
     pub codex_home: AbsolutePathBuf,
 
-    /// Resolved configuration shared by all Codex SQLite databases.
+    /// Resolved configuration shared by all Nuwax Harness SQLite databases.
     pub sqlite: codex_state::SqliteConfig,
 
     /// Directory for log files (defaults to `$CODEX_HOME/log`).
@@ -1029,7 +1035,7 @@ pub struct Config {
     /// output will be hyperlinked using the specified URI scheme.
     pub file_opener: UriBasedFileOpener,
 
-    /// Path to the current Codex executable. This cannot be set in the config
+    /// Path to the current Nuwax Harness executable. This cannot be set in the config
     /// file: it must be set in code via [`ConfigOverrides`].
     pub codex_self_exe: Option<PathBuf>,
 
@@ -1062,6 +1068,9 @@ pub struct Config {
     /// using the Responses API. When unset, the model catalog default is used.
     pub model_reasoning_summary: Option<ReasoningSummary>,
 
+    /// Fork (nuwax-codex): `$CODEX_HOME/models.d/*.toml` merged user overlay,
+    /// loaded (and validated) at config load time.
+    pub user_overlay: Option<codex_models_manager::vendor_catalog::Overlay>,
     /// Optional full model catalog loaded from `model_catalog_json`.
     /// When set, this replaces the bundled catalog for the current process.
     pub model_catalog: Option<ModelsResponse>,
@@ -1133,6 +1142,10 @@ pub struct Config {
     /// Whether to register the update_plan tool.
     pub update_plan_enabled: bool,
 
+    /// Fork (nuwax-codex): when `false`, MCP tools are advertised directly in
+    /// the initial tool list instead of being deferred behind `tool_search`.
+    pub tool_search_enabled: bool,
+
     /// Policy for collecting and validating tool runtimes.
     pub tool_registry: ToolRegistryConfig,
 
@@ -1183,8 +1196,8 @@ pub struct Config {
     /// Collection of various notices we show the user
     pub notices: Notice,
 
-    /// When `true`, checks for Codex updates on startup and surfaces update prompts.
-    /// Set to `false` only if your Codex updates are centrally managed.
+    /// When `true`, checks for Nuwax Harness updates on startup and surfaces update prompts.
+    /// Set to `false` only if your Nuwax Harness updates are centrally managed.
     /// Defaults to `true`.
     pub check_for_update_on_startup: bool,
 
@@ -1193,7 +1206,7 @@ pub struct Config {
     /// or placeholder replacement will occur for fast keypress bursts.
     pub disable_paste_burst: bool,
 
-    /// When `false`, disables OpenAI analytics across Codex product surfaces on this machine.
+    /// When `false`, disables OpenAI analytics across Nuwax Harness product surfaces on this machine.
     /// Custom OTLP metrics exporters are controlled by `otel.metrics_exporter`.
     /// Voluntarily left as Optional because the default value might depend on the client.
     pub analytics_enabled: Option<bool>,
@@ -1497,6 +1510,7 @@ impl AuthManagerConfig for Config {
 pub struct ConfigBuilder {
     codex_home: Option<PathBuf>,
     cli_overrides: Option<Vec<(String, TomlValue)>>,
+    env_seed_overrides: Option<Vec<(String, TomlValue)>>,
     harness_overrides: Option<ConfigOverrides>,
     loader_overrides: Option<LoaderOverrides>,
     strict_config: bool,
@@ -1514,6 +1528,14 @@ impl ConfigBuilder {
 
     pub fn cli_overrides(mut self, cli_overrides: Vec<(String, TomlValue)>) -> Self {
         self.cli_overrides = Some(cli_overrides);
+        self
+    }
+
+    /// Fork (nuwax-codex): the `NUWAX_*` environment group's seed overrides,
+    /// kept out of the CLI overrides so their provenance survives into the
+    /// layer stack (reserved-provider isolation depends on it).
+    pub fn env_seed_overrides(mut self, env_seed_overrides: Vec<(String, TomlValue)>) -> Self {
+        self.env_seed_overrides = Some(env_seed_overrides);
         self
     }
 
@@ -1578,6 +1600,7 @@ impl ConfigBuilder {
         let Self {
             codex_home,
             cli_overrides,
+            env_seed_overrides,
             harness_overrides,
             loader_overrides,
             strict_config,
@@ -1591,6 +1614,7 @@ impl ConfigBuilder {
             None => find_codex_home()?,
         };
         let cli_overrides = cli_overrides.unwrap_or_default();
+        let env_seed_overrides = env_seed_overrides.unwrap_or_default();
         let mut harness_overrides = harness_overrides.unwrap_or_default();
         let loader_overrides = loader_overrides.unwrap_or_default();
         let cwd_override = harness_overrides.cwd.as_deref().or(fallback_cwd.as_deref());
@@ -1599,11 +1623,12 @@ impl ConfigBuilder {
             None => AbsolutePathBuf::current_dir()?,
         };
         harness_overrides.cwd = Some(cwd.to_path_buf());
-        let config_layer_stack = load_config_layers_state(
+        let config_layer_stack = load_config_layers_state_with_env_seed(
             LOCAL_FS.as_ref(),
             &codex_home,
             (!without_project_context).then_some(cwd),
             &cli_overrides,
+            &env_seed_overrides,
             ConfigLoadOptions {
                 loader_overrides,
                 strict_config,
@@ -1770,7 +1795,9 @@ impl Config {
         ModelsManagerConfig {
             model_context_window: self.model_context_window,
             model_auto_compact_token_limit: self.model_auto_compact_token_limit,
+            model_auto_compact_ratio: self.model_auto_compact_ratio,
             tool_output_token_limit: self.tool_output_token_limit,
+            tool_search_enabled: (!self.tool_search_enabled).then_some(false),
             base_instructions: self.base_instructions.clone().filter(|_| {
                 !matches!(
                     self.base_instructions_provenance,
@@ -1779,6 +1806,7 @@ impl Config {
             }),
             personality: self.personality,
             model_catalog: self.model_catalog.clone(),
+            user_overlay: self.user_overlay.clone(),
         }
     }
 
@@ -2096,7 +2124,7 @@ impl Config {
         .await
     }
 
-    /// Load a default configuration for a specific Codex home without reading
+    /// Load a default configuration for a specific Nuwax Harness home without reading
     /// user, project, or system config layers.
     pub async fn load_default_with_cli_overrides_for_codex_home(
         codex_home: PathBuf,
@@ -2123,7 +2151,7 @@ impl Config {
     }
     /// This is a secondary way of creating [Config], which is appropriate when
     /// the harness is meant to be used with a specific configuration that
-    /// ignores user settings. For example, the `codex exec` subcommand is
+    /// ignores user settings. For example, the `nuwax-harness exec` subcommand is
     /// designed to use [AskForApproval::Never] exclusively.
     ///
     /// Further, [ConfigOverrides] contains some options that are not supported
@@ -2215,11 +2243,32 @@ pub async fn load_config_toml_with_layer_stack(
     cli_overrides: Vec<(String, TomlValue)>,
     options: impl Into<ConfigLoadOptions>,
 ) -> std::io::Result<ConfigTomlLoadResult> {
-    let config_layer_stack = load_config_layers_state(
+    load_config_toml_with_layer_stack_and_env_seed(
+        codex_home,
+        cwd,
+        cli_overrides,
+        Vec::new(),
+        options,
+    )
+    .await
+}
+
+/// Fork (nuwax-codex): [`load_config_toml_with_layer_stack`] with the
+/// `NUWAX_*` environment seed overrides carried as their own provenance
+/// channel (same semantics as [`ConfigBuilder::env_seed_overrides`]).
+pub async fn load_config_toml_with_layer_stack_and_env_seed(
+    codex_home: &Path,
+    cwd: Option<&AbsolutePathBuf>,
+    cli_overrides: Vec<(String, TomlValue)>,
+    env_seed_overrides: Vec<(String, TomlValue)>,
+    options: impl Into<ConfigLoadOptions>,
+) -> std::io::Result<ConfigTomlLoadResult> {
+    let config_layer_stack = load_config_layers_state_with_env_seed(
         LOCAL_FS.as_ref(),
         codex_home,
         cwd.cloned(),
         &cli_overrides,
+        &env_seed_overrides,
         options,
         &codex_config::NoopThreadConfigLoader,
     )
@@ -2278,6 +2327,49 @@ fn load_catalog_json(path: &AbsolutePathBuf) -> std::io::Result<ModelsResponse> 
         ));
     }
     Ok(catalog)
+}
+
+/// Fork (nuwax-codex): reads `$CODEX_HOME/models.d/*.toml` user overlay
+/// documents (Spec §7). Every file must parse — a malformed file fails fast
+/// naming the file and field — and files merge field-by-field in sorted
+/// filename order over the committed overlay.
+fn load_user_models_overlay(
+    codex_home: &AbsolutePathBuf,
+) -> std::io::Result<Option<codex_models_manager::vendor_catalog::Overlay>> {
+    let dir = codex_home.join("models.d");
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Ok(None);
+    };
+    let mut merged: Option<codex_models_manager::vendor_catalog::Overlay> = None;
+    let mut names: Vec<std::path::PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "toml"))
+        .collect();
+    names.sort();
+    for path in names {
+        let text = std::fs::read_to_string(&path).map_err(|error| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "models.d file `{}` could not be read: {error}",
+                    path.display()
+                ),
+            )
+        })?;
+        let parsed =
+            codex_models_manager::vendor_catalog::parse_user_overlay(&text).map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("models.d file `{}` is invalid: {error}", path.display()),
+                )
+            })?;
+        merged = Some(match merged {
+            Some(base) => base.merged_with(&parsed),
+            None => parsed,
+        });
+    }
+    Ok(merged)
 }
 
 fn load_model_catalog(
@@ -2636,7 +2728,10 @@ fn thread_store_config(thread_store: Option<ThreadStoreToml>) -> ThreadStoreConf
 }
 
 fn is_session_layer(source: &ConfigLayerSource) -> bool {
-    matches!(source, ConfigLayerSource::SessionFlags)
+    matches!(
+        source,
+        ConfigLayerSource::SessionFlags | ConfigLayerSource::EnvSeed
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2830,6 +2925,14 @@ fn resolve_update_plan_enabled(config_toml: &ConfigToml) -> bool {
         .as_ref()
         .and_then(|tools| tools.update_plan.as_ref())
         .is_some_and(|config| config.enabled)
+}
+
+fn resolve_tool_search_enabled(config_toml: &ConfigToml) -> bool {
+    config_toml
+        .tools
+        .as_ref()
+        .and_then(|tools| tools.tool_search)
+        .unwrap_or(true)
 }
 
 fn resolve_feature_enabled(feature: Option<&codex_config::config_toml::FeatureToggleToml>) -> bool {
@@ -3212,6 +3315,13 @@ pub(crate) fn resolve_web_search_mode_for_turn(
     provider_capabilities: ProviderCapabilities,
 ) -> WebSearchMode {
     let preferred = web_search_mode.value();
+    // Fork: the DEFAULT web search mode is cached; chat-family bridge wires
+    // cannot express it. Fail closed to disabled rather than advertising a
+    // tool the wire would reject (or silently running live searches the
+    // configured mode never asked for). An explicit live choice is unaffected.
+    if matches!(preferred, WebSearchMode::Cached) && !provider_capabilities.cached_web_search {
+        return WebSearchMode::Disabled;
+    }
     let is_allowed = |mode: WebSearchMode| {
         let provider_supports_mode = match mode {
             WebSearchMode::Live | WebSearchMode::Indexed => {
@@ -4002,6 +4112,7 @@ impl Config {
         let experimental_request_user_input_enabled =
             resolve_experimental_request_user_input_enabled(&cfg);
         let update_plan_enabled = resolve_update_plan_enabled(&cfg);
+        let tool_search_enabled = resolve_tool_search_enabled(&cfg);
         let tool_registry = ToolRegistryConfig {
             error_on_tool_collisions: cfg
                 .features
@@ -4040,6 +4151,17 @@ impl Config {
             .clone()
             .filter(|value| !value.is_empty());
 
+        let model_provider_id = config_layer_stack.required_model_provider().map(str::to_string)
+            .or(model_provider)
+            .or(cfg.model_provider)
+            .unwrap_or_else(|| "openai".to_string());
+        // Initial loads and refreshes share the final provider selection:
+        // requirements outrank typed overrides, which outrank config layers.
+        codex_config::env_group_isolation::validate_env_group_isolation(
+            &config_layer_stack,
+            &model_provider_id,
+        )?;
+
         let mut model_providers =
             merge_configured_model_providers(built_in_model_providers(openai_base_url), cfg.model_providers)
                 .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message))?;
@@ -4048,10 +4170,6 @@ impl Config {
             apply_default_gcp_auth(provider, &resolved_cwd);
         }
 
-        let model_provider_id = config_layer_stack.required_model_provider().map(str::to_string)
-            .or(model_provider)
-            .or(cfg.model_provider)
-            .unwrap_or_else(|| "openai".to_string());
         let model_provider = model_providers
             .get(&model_provider_id)
             .ok_or_else(|| {
@@ -4316,6 +4434,7 @@ impl Config {
 
         let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(true);
         let model_catalog = load_model_catalog(cfg.model_catalog_json.clone())?;
+        let user_overlay = load_user_models_overlay(&codex_home)?;
 
         let log_dir = cfg
             .log_dir
@@ -4389,7 +4508,7 @@ impl Config {
         {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "`approval_policy = \"never\"` cannot be used because requirements do not allow `sandbox_mode = \"danger-full-access\"`; Codex would fall back to read-only permissions with approvals disabled. Choose an `approval_policy` based on what you need, such as `on-request`, or choose an allowed sandbox mode.",
+                "`approval_policy = \"never\"` cannot be used because requirements do not allow `sandbox_mode = \"danger-full-access\"`; Nuwax Harness would fall back to read-only permissions with approvals disabled. Choose an `approval_policy` based on what you need, such as `on-request`, or choose an allowed sandbox mode.",
             ));
         }
         if permission_profile_was_constrained {
@@ -4528,6 +4647,28 @@ impl Config {
         )
         .map_err(std::io::Error::from)?;
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
+        // Fork (nuwax-codex): fail fast on non-positive window/compact seeds.
+        // A zero-or-negative `model_auto_compact_token_limit` would force
+        // compaction every turn (including the raw BodyAfterPrefix read in
+        // `session/context_window.rs`), and a non-positive context window
+        // breaks token budgeting. Env seeding already rejects these values;
+        // the TOML / `-c` path previously passed them through.
+        if let Some(window) = cfg.model_context_window
+            && window <= 0
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "model_context_window must be a positive token count",
+            ));
+        }
+        if let Some(limit) = cfg.model_auto_compact_token_limit
+            && limit <= 0
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "model_auto_compact_token_limit must be a positive token count",
+            ));
+        }
         let mut config = Self {
             plugins: cfg.plugins,
             prefer_mxc,
@@ -4537,6 +4678,7 @@ impl Config {
             review_model,
             model_context_window: cfg.model_context_window,
             model_auto_compact_token_limit: cfg.model_auto_compact_token_limit,
+            model_auto_compact_ratio: cfg.model_auto_compact_ratio,
             model_auto_compact_token_limit_scope: cfg
                 .model_auto_compact_token_limit_scope
                 .unwrap_or_default(),
@@ -4684,6 +4826,7 @@ impl Config {
             model_reasoning_effort: cfg.model_reasoning_effort,
             plan_mode_reasoning_effort: cfg.plan_mode_reasoning_effort,
             model_reasoning_summary: cfg.model_reasoning_summary,
+            user_overlay,
             model_catalog,
             model_verbosity: cfg.model_verbosity,
             chatgpt_base_url_is_explicit,
@@ -4724,6 +4867,7 @@ impl Config {
             web_search_mode: constrained_web_search_mode.value,
             web_search_config,
             experimental_request_user_input_enabled,
+            tool_search_enabled,
             update_plan_enabled,
             tool_registry,
             code_mode,
@@ -5237,9 +5381,9 @@ fn normalize_guardian_policy_config(value: Option<&str>) -> Option<String> {
     })
 }
 
-/// Returns the path to the Codex configuration directory, which can be
+/// Returns the path to the Nuwax Harness configuration directory, which can be
 /// specified by the `CODEX_HOME` environment variable. If not set, defaults to
-/// `~/.codex`.
+/// `~/.nuwax-harness`.
 ///
 /// - If `CODEX_HOME` is set, the value must exist and be a directory. The
 ///   value will be canonicalized and this function will Err otherwise.
@@ -5249,7 +5393,7 @@ pub fn find_codex_home() -> std::io::Result<AbsolutePathBuf> {
     codex_utils_home_dir::find_codex_home()
 }
 
-/// Returns the path to the folder where Codex logs are stored. Does not verify
+/// Returns the path to the folder where Nuwax Harness logs are stored. Does not verify
 /// that the directory exists.
 pub fn log_dir(cfg: &Config) -> std::io::Result<PathBuf> {
     Ok(cfg.log_dir.clone())

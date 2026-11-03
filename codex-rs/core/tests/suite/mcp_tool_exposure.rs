@@ -1010,7 +1010,7 @@ async fn elevated_apps_catalog_limit_requires_host_owned_registration() -> Resul
         assert!(
             tools_state_sections(&request)
                 .iter()
-                .any(|text| text.contains("mcp__codex_apps__calendar")),
+                .any(|text| text.contains("mcp__nuwax_apps__calendar")),
             "the accepted Apps catalog should remain model-discoverable in world state"
         );
         test.codex.shutdown_and_wait().await?;

@@ -207,14 +207,14 @@ async fn full_mcp_server_status_skips_codex_apps_resource_templates(
                 limit: None,
                 detail: Some(McpServerStatusDetail::Full),
                 thread_id,
-                server_name: Some("codex_apps".to_string()),
+                server_name: Some("nuwax_apps".to_string()),
             },
         })
         .await?;
     let [status] = response.data.as_slice() else {
         anyhow::bail!("expected the selected Apps server in the full inventory");
     };
-    assert_eq!(status.name, "codex_apps");
+    assert_eq!(status.name, "nuwax_apps");
     assert!(status.resource_templates.is_empty());
     let requests = server.received_requests().await.expect("recorded requests");
     let was_requested = |method: &str| {

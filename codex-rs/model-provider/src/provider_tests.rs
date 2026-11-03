@@ -85,6 +85,12 @@ fn provider_for(base_url: String) -> ModelProviderInfo {
         project_id: None,
         location: None,
         credential_file: None,
+        experimental_bridge: None,
+        max_output_tokens: None,
+        hosted_results_replay: None,
+        anthropic_prompt_caching: None,
+        reasoning_effort_levels: None,
+        provider_id: None,
         include_internal_metadata: false,
     }
 }

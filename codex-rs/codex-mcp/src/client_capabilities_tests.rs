@@ -88,7 +88,7 @@ fn user_verification_is_projected_only_to_the_host_owned_plugin_service() {
     assert_eq!(
         server_mcp_extensions(
             &extensions,
-            CODEX_APPS_MCP_SERVER_NAME,
+            NUWAX_APPS_MCP_SERVER_NAME,
             /*server*/ None,
             /*advertise_network_policy*/ true,
             "https://chatgpt.com",

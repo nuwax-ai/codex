@@ -6,7 +6,7 @@ use codex_config::ConfigLayerStack;
 use codex_config::LoaderOverrides;
 use codex_config::ThreadConfigLoader;
 use codex_config::apply_default_gcp_auth;
-use codex_config::loader::load_config_layers_state;
+use codex_config::loader::load_config_layers_state_with_env_seed;
 use codex_config::loader::load_managed_requirements_state;
 use codex_core::config::Config;
 use codex_core::config::ConfigBuilder;
@@ -44,6 +44,10 @@ pub(crate) mod application_network;
 pub(crate) struct ConfigManager {
     codex_home: PathBuf,
     cli_overrides: Arc<RwLock<Vec<(String, TomlValue)>>>,
+    /// Fork (nuwax-codex): the `NUWAX_*` environment seeds, held apart from
+    /// user CLI/request overrides so reserved-provider isolation can attribute
+    /// every contribution.
+    env_seed_overrides: Vec<(String, TomlValue)>,
     runtime_feature_enablement: Arc<RwLock<BTreeMap<String, bool>>>,
     loader_overrides: LoaderOverrides,
     strict_config: bool,
@@ -92,7 +96,7 @@ struct ApplicationPolicySnapshot {
 impl ConfigManager {
     pub(crate) fn new(
         codex_home: PathBuf,
-        cli_overrides: Vec<(String, TomlValue)>,
+        launch_overrides: codex_config::LaunchOverrides,
         loader_overrides: LoaderOverrides,
         strict_config: bool,
         cloud_config_bundle: CloudConfigBundleLoader,
@@ -100,9 +104,14 @@ impl ConfigManager {
         thread_config_loader: Arc<dyn ThreadConfigLoader>,
     ) -> Self {
         let network_policy = codex_http_client::NetworkPolicyController::default();
+        let codex_config::LaunchOverrides {
+            cli_overrides,
+            env_seed_overrides,
+        } = launch_overrides;
         Self {
             codex_home,
             cli_overrides: Arc::new(RwLock::new(cli_overrides)),
+            env_seed_overrides,
             runtime_feature_enablement: Arc::new(RwLock::new(BTreeMap::new())),
             loader_overrides,
             strict_config,
@@ -373,7 +382,7 @@ impl ConfigManager {
             .as_ref()
             .and_then(|providers| providers.get(&current.model_provider_id))
             .cloned();
-        let required_provider = match required_provider {
+        let mut required_provider = match required_provider {
             Some(provider)
                 if matches!(
                     current.model_provider_id.as_str(),
@@ -398,9 +407,42 @@ impl ConfigManager {
                 }
                 provider
             }
-            Some(provider) => Some(provider),
+            Some(provider)
+                if provider.is_builtin_bridge_override()
+                    && built_in_model_providers(/*openai_base_url*/ None)
+                        .contains_key(&current.model_provider_id) =>
+            {
+                // Bridge-only requirements change the transport on the retained
+                // built-in definition. Reuse the load-time merge without
+                // reloading its endpoint or environment-derived defaults.
+                merge_configured_model_providers(
+                    HashMap::from([(
+                        current.model_provider_id.clone(),
+                        current.model_provider.clone(),
+                    )]),
+                    HashMap::from([(current.model_provider_id.clone(), provider)]),
+                )
+                .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message))?
+                .remove(&current.model_provider_id)
+            }
+            Some(mut provider) => {
+                // `provider_id` is a load-time fork extension: the merged
+                // provider the thread runs with carries it, while the raw
+                // requirements state does not. Fill it from the same key the
+                // merge uses so the definition comparison below cannot report
+                // a spurious drift from this field alone.
+                provider.provider_id = Some(current.model_provider_id.clone());
+                Some(provider)
+            }
             None => None,
         };
+        // Fork (`provider_id` is a load-time extension): the merged provider
+        // the thread runs with carries it, while the raw requirements state
+        // does not. Fill it from the same key the merge uses so the definition
+        // comparison below cannot report a spurious drift from this field alone.
+        if let Some(provider) = required_provider.as_mut() {
+            provider.provider_id = Some(current.model_provider_id.clone());
+        }
         let definition_changed = required_provider
             .as_ref()
             .is_some_and(|provider| provider != &current.model_provider);
@@ -492,6 +534,7 @@ impl ConfigManager {
         let mut config = ConfigBuilder::default()
             .codex_home(self.codex_home.clone())
             .cli_overrides(self.current_cli_overrides())
+            .env_seed_overrides(self.env_seed_overrides.clone())
             .loader_overrides(loader_overrides)
             .fallback_cwd(Some(self.codex_home.clone()))
             .cloud_config_bundle(CloudConfigBundleLoader::default())
@@ -717,6 +760,7 @@ impl ConfigManager {
         let result = codex_core::config::ConfigBuilder::default()
             .codex_home(self.codex_home.clone())
             .cli_overrides(merged_cli_overrides)
+            .env_seed_overrides(self.env_seed_overrides.clone())
             .loader_overrides(self.loader_overrides.clone())
             .strict_config(self.strict_config)
             .harness_overrides(typesafe_overrides)
@@ -748,11 +792,12 @@ impl ConfigManager {
         cwd: Option<AbsolutePathBuf>,
     ) -> std::io::Result<ConfigLayerStack> {
         let policy_load = self.refresh_application_network_policy().await?;
-        let result = load_config_layers_state(
+        let result = load_config_layers_state_with_env_seed(
             LOCAL_FS.as_ref(),
             &self.codex_home,
             cwd,
             &self.current_cli_overrides(),
+            &self.env_seed_overrides,
             codex_config::ConfigLoadOptions {
                 loader_overrides: self.loader_overrides().clone(),
                 strict_config: self.strict_config,
@@ -807,7 +852,7 @@ impl ConfigManager {
     ) -> Self {
         Self::new(
             codex_home,
-            cli_overrides,
+            codex_config::LaunchOverrides::from_cli(cli_overrides),
             loader_overrides,
             /*strict_config*/ false,
             cloud_config_bundle,
@@ -834,6 +879,10 @@ mod application_network_tests;
 #[cfg(test)]
 #[path = "config_manager_provider_tests.rs"]
 mod provider_tests;
+
+#[cfg(test)]
+#[path = "config_manager_startup_tests.rs"]
+mod startup_tests;
 
 pub(crate) fn protected_feature_keys(config_layer_stack: &ConfigLayerStack) -> BTreeSet<String> {
     let mut protected_features = config_layer_stack

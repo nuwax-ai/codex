@@ -415,7 +415,7 @@ fn no_daemon_rejects_queue_and_explicit_remote_targets() -> Result<()> {
         let args = args.split_whitespace().collect::<Vec<_>>();
         let home = TempDir::new()?;
         let expected = if args.contains(&"queue") && !args.contains(&"--remote") {
-            "--no-daemon cannot be used with codex queue."
+            "--no-daemon cannot be used with nuwax-harness queue."
         } else {
             "--no-daemon cannot be used with --remote."
         };

@@ -28,6 +28,7 @@ pub mod dynamic_tools;
 mod environment;
 pub mod error;
 pub mod exec_output;
+mod fork_compact;
 pub mod hooks;
 pub mod items;
 mod legacy_events;

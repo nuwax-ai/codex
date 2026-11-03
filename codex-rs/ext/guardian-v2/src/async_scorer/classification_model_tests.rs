@@ -105,6 +105,7 @@ async fn classifier_request_uses_the_captured_active_model_policy() -> Result<()
             },
             conversation_history: test.codex.conversation_history_snapshot().await,
             source: ToolCallSource::Direct,
+            serving_assessment: None,
         })
         .await;
     let request = tokio::time::timeout(

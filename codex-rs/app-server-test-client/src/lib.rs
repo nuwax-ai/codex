@@ -115,7 +115,7 @@ const TRACE_DISABLED_MESSAGE: &str =
 #[command(author = "Codex", version, about = "Bootstrap Codex app-server", long_about = None)]
 struct Cli {
     /// Path to the `codex` CLI binary. When set, requests use stdio by
-    /// spawning `codex app-server` as a child process.
+    /// spawning `nuwax-harness app-server` as a child process.
     #[arg(long, env = "CODEX_BIN", global = true)]
     codex_bin: Option<PathBuf>,
 
@@ -154,12 +154,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum CliCommand {
-    /// Start `codex app-server` on a websocket endpoint in the background.
+    /// Start `nuwax-harness app-server` on a websocket endpoint in the background.
     ///
     /// Logs are written to:
     ///   `/tmp/codex-app-server-test-client/`
     Serve {
-        /// WebSocket listen URL passed to `codex app-server --listen`.
+        /// WebSocket listen URL passed to `nuwax-harness app-server --listen`.
         #[arg(long, default_value = "ws://127.0.0.1:4222")]
         listen: String,
         /// Kill any process listening on the same port before starting.

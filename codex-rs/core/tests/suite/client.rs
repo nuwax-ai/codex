@@ -2417,7 +2417,7 @@ async fn omits_apps_guidance_when_orchestrator_mcp_is_disabled() {
         request.body_json()["input"]
     );
     assert!(
-        !request.body_contains_text("mcp__codex_apps"),
+        !request.body_contains_text("mcp__nuwax_apps"),
         "did not expect codex_apps MCP tools when orchestrator MCP is disabled, got {:?}",
         request.body_json()["tools"]
     );

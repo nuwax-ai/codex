@@ -88,7 +88,7 @@ async fn creation_attaches_to_original_task_and_survives_service_restart_scenari
         serde_json::from_value(json!({"url":"http://127.0.0.1:1/mcp"}))?;
     let mut servers = conflicting.mcp_servers.get().clone();
     servers.insert(
-        "codex_tui".to_owned(),
+        "nuwax_tui".to_owned(),
         codex_config::McpServerConfig::try_from(raw).map_err(color_eyre::eyre::Report::msg)?,
     );
     conflicting.mcp_servers.set(servers)?;

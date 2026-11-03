@@ -23,6 +23,23 @@ fn feature_overrides_allow_daemon_without_allowing_arbitrary_config() {
         ("tui={fullscreen_transcript='true'}", false),
         ("tui={fullscreen_transcript=true,animations=false}", false),
         ("features={}", false),
+        ("model_reasoning_effort=none", true),
+        ("model_reasoning_effort=high", true),
+        ("model_reasoning_effort=''", false),
+        ("model_reasoning_effort='  '", false),
+        ("model_reasoning_effort=true", false),
+        // Fork (nuwax-codex): env-seeded context/compact values ride the
+        // per-thread config projection, so they keep the daemon eligible.
+        ("model_context_window=60000", true),
+        ("model_auto_compact_token_limit=12000", true),
+        ("model_auto_compact_ratio=0.2", true),
+        ("model_auto_compact_ratio=1", true),
+        ("model_context_window=-1", false),
+        ("model_auto_compact_token_limit=0", false),
+        ("model_auto_compact_ratio=0", false),
+        ("model_auto_compact_ratio=1.5", false),
+        ("model_auto_compact_ratio='0.2'", false),
+        ("model_auto_compact_ratio=60000", false),
         ("model='test'", false),
     ] {
         let overrides = codex_utils_cli::CliConfigOverrides {
@@ -67,6 +84,24 @@ fn daemon_launch_telemetry_records_once_on_connection_update_or_early_return() {
 #[tokio::test]
 async fn daemon_feature_compatibility_respects_required_and_optional_attachment()
 -> color_eyre::Result<()> {
+    run_daemon_feature_compatibility_scenarios(&[
+        "matching",
+        "unreachable daemon",
+        "conflicting client",
+        "explicit enable",
+        "mixed flags",
+        "missing enabled",
+        "managed",
+        "legacy managed",
+        "old requirements server",
+        "unsupported RPC",
+    ])
+    .await
+}
+
+async fn run_daemon_feature_compatibility_scenarios(
+    scenarios: &[&'static str],
+) -> color_eyre::Result<()> {
     use codex_app_server_protocol::JSONRPCMessage;
     use futures::SinkExt;
     use futures::StreamExt;
@@ -74,18 +109,7 @@ async fn daemon_feature_compatibility_respects_required_and_optional_attachment(
     use tokio_tungstenite::tungstenite::Message;
 
     for allow_embedded_fallback in [false, true] {
-        for scenario in [
-            "matching",
-            "unreachable daemon",
-            "conflicting client",
-            "explicit enable",
-            "mixed flags",
-            "missing enabled",
-            "managed",
-            "legacy managed",
-            "old requirements server",
-            "unsupported RPC",
-        ] {
+        for &scenario in scenarios {
             let cli_overrides = codex_utils_cli::CliConfigOverrides {
                 raw_overrides: match scenario {
                     "matching" => vec![
@@ -99,6 +123,11 @@ async fn daemon_feature_compatibility_respects_required_and_optional_attachment(
                     "mixed flags" => vec![
                         "features.zz_overridden=true",
                         "features={api_key_model_discovery=false,code_mode_host=false,instant_interrupt=true}",
+                        "features.code_mode_host=true",
+                    ],
+                    "table replacement" => vec![
+                        "features.api_key_model_discovery=true",
+                        "features={code_mode_host=false}",
                         "features.code_mode_host=true",
                     ],
                     "missing enabled" => vec!["features.zz_missing=true"],
@@ -199,6 +228,7 @@ async fn daemon_feature_compatibility_respects_required_and_optional_attachment(
                     "This session requires api_key_model_discovery to be disabled"
                 }
                 "missing enabled" => "This session requires zz_missing to be enabled",
+                "table replacement" => "This session requires code_mode_host to be enabled",
                 "unsupported RPC" => "Experimental feature request failed",
                 _ => unreachable!(),
             };
@@ -219,6 +249,15 @@ async fn daemon_feature_compatibility_respects_required_and_optional_attachment(
                             ("api_key_model_discovery".to_string(), false),
                             ("code_mode_host".to_string(), true),
                         ]))
+                    );
+                }
+                if scenario == "table replacement" {
+                    assert_eq!(
+                        error.restart_features,
+                        Some(std::collections::BTreeMap::from([(
+                            "code_mode_host".to_string(),
+                            true,
+                        )]))
                     );
                 }
                 let error = error.to_string();
@@ -301,6 +340,7 @@ async fn daemon_startup_falls_back_only_for_implicit_endpoints() -> color_eyre::
             Arg0DispatchPaths::default(),
             config,
             Vec::new(),
+            /*env_seed_overrides*/ Vec::new(),
             LoaderOverrides::default(),
             /*strict_config*/ false,
             CloudConfigBundleLoader::default(),
@@ -360,15 +400,50 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
             daemon_startup::exclusion(
                 &cli,
                 &[],
+                &[],
                 &LoaderOverrides::default(),
                 /*workload_identity_selected*/ false,
-                /*exec_server_url*/ None
+                /*exec_server_url*/ None,
+                &codex_install_context::InstallMethod::Other
             ),
             expected
         );
     }
-    let cli = Cli::parse_from(["codex"]);
-    let overrides = [("web_search".into(), toml::Value::String("live".into()))];
+    // Fork (nuwax-codex): the NUWAX_* environment provider references
+    // per-process credentials; it must force the embedded backend.
+    let nuwax_cli = Cli::parse_from(["codex"]);
+    assert_eq!(
+        daemon_startup::exclusion(
+            &nuwax_cli,
+            &[],
+            &[(
+                "model_providers.nuwax_env".to_string(),
+                toml::Value::String("seeded".into())
+            )],
+            &LoaderOverrides::default(),
+            /*workload_identity_selected*/ false,
+            /*exec_server_url*/ None,
+            &codex_install_context::InstallMethod::Other
+        ),
+        Some("NUWAX environment provider (per-run credentials)")
+    );
+    // Fork: the @nuwax-ai/nuwax-harness npm package ships a single binary without a
+    // complete local package, so the daemon is never auto-started or reused.
+    let npm_cli = Cli::parse_from(["codex"]);
+    assert_eq!(
+        daemon_startup::exclusion(
+            &npm_cli,
+            &[],
+            &[],
+            &LoaderOverrides::default(),
+            /*workload_identity_selected*/ false,
+            /*exec_server_url*/ None,
+            &codex_install_context::InstallMethod::NpmNuwax
+        ),
+        Some("npm single-binary install (@nuwax-ai/nuwax-harness)")
+    );
+    let mut cli = Cli::parse_from(["codex"]);
+    let overrides = vec![("web_search".into(), toml::Value::String("live".into()))];
     let loader = LoaderOverrides {
         ignore_user_config: true,
         ..Default::default()
@@ -398,11 +473,36 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
         ),
     ] {
         assert_eq!(
-            daemon_startup::exclusion(&cli, kv, &loader, workload, executor),
+            daemon_startup::exclusion(
+                &cli,
+                kv,
+                &[],
+                &loader,
+                workload,
+                executor,
+                &codex_install_context::InstallMethod::Other
+            ),
             Some(expected)
         );
     }
+    cli.agents_overview = true;
+    cli.strict_config = true;
+    assert_eq!(
+        daemon_startup::exclusion(
+            &cli,
+            &overrides,
+            &[],
+            &LoaderOverrides::default(),
+            /*workload_identity_selected*/ false,
+            /*exec_server_url*/ None,
+            &codex_install_context::InstallMethod::Other
+        ),
+        None
+    );
 }
+
+#[test]
+
 
 #[test]
 fn daemon_exclusion_warning_snapshot() {

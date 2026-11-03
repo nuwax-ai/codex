@@ -14,6 +14,8 @@ use app_test_support::to_response;
 use codex_app_server::in_process;
 use codex_app_server::in_process::InProcessStartArgs;
 use codex_app_server_protocol::ClientInfo;
+use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::CodexErrorInfo;
 use codex_app_server_protocol::DeprecationNoticeNotification;
@@ -32,7 +34,6 @@ use codex_app_server_protocol::ThreadForkParams;
 use codex_app_server_protocol::ThreadForkResponse;
 use codex_app_server_protocol::ThreadHistoryMode;
 use codex_app_server_protocol::ThreadItemEntry;
-use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::ThreadItemsListAnchor;
 use codex_app_server_protocol::ThreadItemsListCursor;
 use codex_app_server_protocol::ThreadItemsListParams;
@@ -2501,6 +2502,7 @@ async fn thread_items_list_limit_one_pages_slice_between_call_and_result_items()
         .create_thread(CreateThreadParams {
             creator_user_id: None,
             creator_account_id: None,
+            attached_thread: false,
             session_id: thread_id.into(),
             thread_id,
             extra_config: None,
@@ -2721,7 +2723,7 @@ async fn thread_items_list_limit_one_pages_slice_between_call_and_result_items()
                 "call-1-output",
                 "the call item's result must stay adjacent across page boundaries"
             );
-            let ThreadItem::FunctionCallOutput { id, output, .. } = &merged[call_index + 1].item
+            let ThreadItemPayload::FunctionCallOutput { id, output, .. } = &merged[call_index + 1].item.payload
             else {
                 panic!("expected the call's result item to follow it");
             };
@@ -3635,26 +3637,26 @@ async fn cold_resume_reads_legacy_rollout_without_newer_fields() -> Result<()> {
 }
 
 fn thread_item_kind(item: &ThreadItem) -> &'static str {
-    match item {
-        ThreadItem::UserMessage { .. } => "userMessage",
-        ThreadItem::HookPrompt { .. } => "hookPrompt",
-        ThreadItem::AgentMessage { .. } => "agentMessage",
-        ThreadItem::FunctionCallOutput { .. } => "functionCallOutput",
-        ThreadItem::Plan { .. } => "plan",
-        ThreadItem::Reasoning { .. } => "reasoning",
-        ThreadItem::CommandExecution { .. } => "commandExecution",
-        ThreadItem::FileChange { .. } => "fileChange",
-        ThreadItem::McpToolCall { .. } => "mcpToolCall",
-        ThreadItem::DynamicToolCall { .. } => "dynamicToolCall",
-        ThreadItem::CollabAgentToolCall { .. } => "collabAgentToolCall",
-        ThreadItem::SubAgentActivity { .. } => "subAgentActivity",
-        ThreadItem::WebSearch(_) => "webSearch",
-        ThreadItem::ImageView { .. } => "imageView",
-        ThreadItem::Sleep(_) => "sleep",
-        ThreadItem::ImageGeneration(_) => "imageGeneration",
-        ThreadItem::EnteredReviewMode { .. } => "enteredReviewMode",
-        ThreadItem::ExitedReviewMode { .. } => "exitedReviewMode",
-        ThreadItem::ContextCompaction { .. } => "contextCompaction",
+    match &item.payload {
+        ThreadItemPayload::UserMessage { .. } => "userMessage",
+        ThreadItemPayload::HookPrompt { .. } => "hookPrompt",
+        ThreadItemPayload::AgentMessage { .. } => "agentMessage",
+        ThreadItemPayload::FunctionCallOutput { .. } => "functionCallOutput",
+        ThreadItemPayload::Plan { .. } => "plan",
+        ThreadItemPayload::Reasoning { .. } => "reasoning",
+        ThreadItemPayload::CommandExecution { .. } => "commandExecution",
+        ThreadItemPayload::FileChange { .. } => "fileChange",
+        ThreadItemPayload::McpToolCall { .. } => "mcpToolCall",
+        ThreadItemPayload::DynamicToolCall { .. } => "dynamicToolCall",
+        ThreadItemPayload::CollabAgentToolCall { .. } => "collabAgentToolCall",
+        ThreadItemPayload::SubAgentActivity { .. } => "subAgentActivity",
+        ThreadItemPayload::WebSearch(_) => "webSearch",
+        ThreadItemPayload::ImageView { .. } => "imageView",
+        ThreadItemPayload::Sleep(_) => "sleep",
+        ThreadItemPayload::ImageGeneration(_) => "imageGeneration",
+        ThreadItemPayload::EnteredReviewMode { .. } => "enteredReviewMode",
+        ThreadItemPayload::ExitedReviewMode { .. } => "exitedReviewMode",
+        ThreadItemPayload::ContextCompaction { .. } => "contextCompaction",
     }
 }
 
@@ -3685,15 +3687,19 @@ fn capped_turn_sse_response() -> String {
 fn assert_command_result_retained(items: &[ThreadItem]) {
     match items
         .iter()
-        .find(|item| matches!(item, ThreadItem::CommandExecution { .. }))
+        .find(|item| matches!(&item.payload, ThreadItemPayload::CommandExecution { .. }))
         .expect("command execution item")
     {
-        ThreadItem::CommandExecution {
-            id,
-            exit_code,
-            aggregated_output,
-            ..
-        } => {
+        item => {
+            let ThreadItemPayload::CommandExecution {
+                id,
+                exit_code,
+                aggregated_output,
+                ..
+            } = &item.payload
+            else {
+                unreachable!("filtered to command executions");
+            };
             assert_eq!(id, "call-1");
             assert_eq!(*exit_code, Some(0));
             assert!(
@@ -3703,20 +3709,22 @@ fn assert_command_result_retained(items: &[ThreadItem]) {
                 "command result output must be retained, got {aggregated_output:?}"
             );
         }
-        _ => unreachable!("filtered to command executions"),
     }
     match items
         .iter()
-        .find(|item| matches!(item, ThreadItem::McpToolCall { .. }))
+        .find(|item| matches!(&item.payload, ThreadItemPayload::McpToolCall { .. }))
     {
-        Some(ThreadItem::McpToolCall {
-            id, status, result, ..
-        }) => {
+        Some(item) => {
+            let ThreadItemPayload::McpToolCall {
+                id, status, result, ..
+            } = &item.payload
+            else {
+                unreachable!("filtered to mcp tool calls");
+            };
             assert_eq!(id, "mcp-1");
             assert_eq!(status, &McpToolCallStatus::InProgress);
             assert_eq!(result, &None);
         }
-        Some(_) => unreachable!("filtered to mcp tool calls"),
         None => {}
     }
 }

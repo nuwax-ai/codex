@@ -983,7 +983,7 @@ async fn sandbox_denied_retry_uses_the_action_policy_and_reviewer() {
         ) -> Result<String, ToolError> {
             self.attempts += 1;
             if self.attempts == 1 {
-                return Err(ToolError::Codex(CodexErr::Sandbox(SandboxErr::Denied {
+                return Err(ToolError::Codex(Box::new(CodexErr::Sandbox(SandboxErr::Denied {
                     output: Box::new(ExecToolCallOutput {
                         exit_code: 1,
                         ..Default::default()
@@ -996,7 +996,7 @@ async fn sandbox_denied_retry_uses_the_action_policy_and_reviewer() {
                         port: Some(443),
                         reason: None,
                     }),
-                })));
+                }))));
             }
             Ok("sandbox-retry-succeeded".to_string())
         }

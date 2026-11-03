@@ -182,6 +182,12 @@ pub struct ConfigToml {
     /// Token usage threshold triggering auto-compaction of conversation history.
     pub model_auto_compact_token_limit: Option<i64>,
 
+    /// Fork (nuwax-codex): fraction of the effective context window that
+    /// triggers auto-compaction (e.g. `0.8`). Only consulted when
+    /// `model_auto_compact_token_limit` is unset; keeps deployments from
+    /// hardcoding absolute token counts per vendor.
+    pub model_auto_compact_ratio: Option<f64>,
+
     /// Controls whether the auto-compaction limit applies to the full context or
     /// only to tokens after the carried prefix in the current compaction window.
     pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>,
@@ -715,6 +721,10 @@ pub struct ToolsToml {
     pub web_search: Option<WebSearchToolConfig>,
     pub experimental_request_user_input: Option<ExperimentalRequestUserInput>,
     pub update_plan: Option<UpdatePlanToolConfig>,
+    /// Fork (nuwax-codex): set to `false` to expose MCP tools directly in the
+    /// initial tool list instead of lazy-loading them through `tool_search`.
+    /// `true` and unset keep the model catalog's own behavior.
+    pub tool_search: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
@@ -1025,8 +1035,46 @@ fn deserialize_model_providers<'de, D>(
 where
     D: serde::Deserializer<'de>,
 {
-    let model_providers = HashMap::<String, ModelProviderInfo>::deserialize(deserializer)?;
+    // Fork: intercept as raw tables first — the fork-owned
+    // `ignore_catalog_effort_levels` escape hatch (Spec §5.3) lives in a
+    // side table, not a struct field, so it is extracted here at load time
+    // and never reaches (or breaks) the upstream struct.
+    let mut raw = HashMap::<String, toml::Value>::deserialize(deserializer)?;
+    let mut model_providers = HashMap::with_capacity(raw.len());
+    for (key, value) in raw.iter_mut() {
+        if let Some(table) = value.as_table_mut() {
+            if let Some(flag) = table.remove("ignore_catalog_effort_levels") {
+                match flag.as_bool() {
+                    Some(true) => {
+                        // Register under the config key; the display name is
+                        // added after parsing below (the wire Provider carries
+                        // only the display name).
+                        codex_model_provider_info::set_ignores_catalog_defaults(key)
+                    }
+                    Some(false) => {}
+                    None => {
+                        return Err(serde::de::Error::custom(format!(
+                            "model_providers.{key}.ignore_catalog_effort_levels \
+                             must be a boolean"
+                        )));
+                    }
+                }
+            }
+        }
+        let provider: ModelProviderInfo =
+            value.clone().try_into().map_err(serde::de::Error::custom)?;
+        if codex_model_provider_info::ignores_catalog_defaults(key) {
+            codex_model_provider_info::set_ignores_catalog_defaults(&provider.name);
+        }
+        model_providers.insert(key.clone(), provider);
+    }
     validate_model_providers(&model_providers).map_err(serde::de::Error::custom)?;
+    // Fork: entries keep their config key identity via
+    // `merge_configured_model_providers` (which stamps `provider_id` on the
+    // final map), so `is_first_party` matches on the key, not the display
+    // name. Stamping happens at merge time, not here: merged override
+    // comparisons use `ModelProviderInfo::default()` equality and a stamped
+    // `provider_id` would always differ from the default.
     Ok(model_providers)
 }
 

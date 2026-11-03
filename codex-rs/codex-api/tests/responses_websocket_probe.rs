@@ -42,6 +42,10 @@ fn probe_client(base_url: String) -> ResponsesWebsocketClient {
                 retry_transport: false,
             },
             stream_idle_timeout: Duration::from_secs(/*secs*/ 5),
+            max_output_tokens: None,
+            hosted_results_replay: None,
+            anthropic_prompt_caching: None,
+            reasoning_effort_levels: None,
         },
         Arc::new(NoAuth),
     )

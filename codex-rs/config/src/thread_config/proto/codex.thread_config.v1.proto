@@ -60,6 +60,12 @@ message ModelProvider {
   optional string location = 21;
   optional string credential_file = 22;
   optional ModelProviderCapabilities capabilities = 23;
+  // Fork: bridge selection ("genai" | "rig" | "native").
+  optional string experimental_bridge = 24;
+  // Fork: provider output budget (wire max_tokens).
+  optional uint64 max_output_tokens = 25;
+  // Fork: Anthropic hosted-results replay toggle (default true).
+  optional bool hosted_results_replay = 26;
 }
 
 message ModelProviderCapabilities {

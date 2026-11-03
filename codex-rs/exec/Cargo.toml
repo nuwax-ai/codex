@@ -68,6 +68,7 @@ uuid = { workspace = true }
 
 
 [dev-dependencies]
+sqlx = { workspace = true }
 assert_cmd = { workspace = true }
 codex-apply-patch = { workspace = true }
 codex-utils-cargo-bin = { workspace = true }
@@ -84,3 +85,6 @@ uuid = { workspace = true }
 walkdir = { workspace = true }
 wiremock = { workspace = true }
 zstd = { workspace = true }
+
+[build-dependencies]
+sha2 = { workspace = true }

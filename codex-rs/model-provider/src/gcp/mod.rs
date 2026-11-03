@@ -80,10 +80,12 @@ impl ModelProvider for GcpModelProvider {
 
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities {
+            namespace_tools: true,
             reasoning_summaries: false,
             image_generation: false,
             web_search: false,
             external_web_access: false,
+            cached_web_search: false,
             remote_compaction: RemoteCompactionSupport::V2,
         }
     }

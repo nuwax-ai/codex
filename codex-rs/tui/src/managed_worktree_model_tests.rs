@@ -23,7 +23,7 @@ async fn model_call(
     } else {
         responses::ev_function_call_with_namespace(
             tool,
-            "mcp__codex_tui",
+            "mcp__nuwax_tui",
             tool,
             &arguments.to_string(),
         )
@@ -227,7 +227,7 @@ pub(super) async fn exercise(
             body["tools"]
                 .as_array_mut()
                 .expect("request tools")
-                .retain(|tool| tool["name"] == "mcp__codex_tui");
+                .retain(|tool| tool["name"] == "mcp__nuwax_tui");
             let mut text = body.to_string();
             for (path, label) in [
                 (&root.join(""), "<WORKTREE>/"),

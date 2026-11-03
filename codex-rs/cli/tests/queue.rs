@@ -211,7 +211,7 @@ fn queue_rejects_unsupported_options() -> Result<()> {
         assert!(!output.status.success());
         let stderr = String::from_utf8(output.stderr)?;
         assert!(
-            stderr.contains("`codex queue`") && stderr.contains(expected),
+            stderr.contains("`nuwax-harness queue`") && stderr.contains(expected),
             "{args:?}: {stderr}"
         );
     }
@@ -686,6 +686,7 @@ async fn queue_uses_default_socket_owner_after_provider_retarget() -> Result<()>
     })
     .await??;
     let mut app = RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
+            required_human_approval: false,
         endpoint: RemoteAppServerEndpoint::UnixSocket { socket_path },
         client_name: "queue-owner-e2e-test".to_string(),
         client_version: "0.1.0".to_string(),

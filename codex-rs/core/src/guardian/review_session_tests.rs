@@ -673,14 +673,13 @@ async fn encrypted_parent_compaction_requires_original_item_id(mode: GuardianCon
         item: item.clone(),
         metadata: Some(metadata.clone()),
     }]);
+    // Upstream's parent_compaction hands back the checkpoint item itself;
+    // envelope metadata travels through the compaction-install path instead.
     assert_eq!(
         policy
             .parent_compaction(history.annotated_items())
             .expect("valid checkpoint"),
-        Some(ResponseItemEnvelope {
-            item,
-            metadata: Some(metadata),
-        })
+        Some(item)
     );
     // The latest unusable checkpoint must not fall back to the older valid one.
     let mut items = history.annotated_items().to_vec();

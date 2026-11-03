@@ -1352,9 +1352,9 @@ pub(crate) async fn execution_network_proxy(
             fallback_policy_decider,
         )
         .map_err(|err| {
-            ToolError::Codex(CodexErr::Io(io::Error::other(format!(
+            ToolError::Codex(Box::new(CodexErr::Io(io::Error::other(format!(
                 "failed to create execution-scoped network proxy: {err}"
-            ))))
+            )))))
         })?;
     Ok(Some(execution_proxy))
 }
@@ -1370,9 +1370,9 @@ pub(crate) async fn remote_network_proxy_launch(
         .info()
         .await
         .map_err(|err| {
-            ToolError::Codex(CodexErr::Io(io::Error::other(format!(
+            ToolError::Codex(Box::new(CodexErr::Io(io::Error::other(format!(
                 "failed to query exec-server capabilities: {err}"
-            ))))
+            )))))
         })?
         .capabilities
         .network_proxy();
@@ -1390,7 +1390,7 @@ pub(crate) async fn remote_network_proxy_launch(
             credential_masking,
         )
         .await
-        .map_err(|err| ToolError::Codex(CodexErr::Io(io::Error::other(err))))?;
+        .map_err(|err| ToolError::Codex(Box::new(CodexErr::Io(io::Error::other(err)))))?;
     if launch.proxy.enabled && !network_proxy.launch {
         return Err(ToolError::Rejected(
             "selected exec-server does not support executor-local network proxy launches"

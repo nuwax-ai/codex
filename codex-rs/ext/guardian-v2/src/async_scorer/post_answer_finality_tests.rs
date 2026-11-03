@@ -101,6 +101,7 @@ async fn start_scored_tool(
             payload: &payload,
             conversation_history: history,
             source: ToolCallSource::Direct,
+            serving_assessment: None,
         })
         .await;
 }

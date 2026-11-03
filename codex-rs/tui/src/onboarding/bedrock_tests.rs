@@ -515,7 +515,7 @@ fn credential_entries_share_region_and_keep_aws_secrets_hidden() {
     insta::assert_snapshot!(render_visible(&access_keys), @r###"
     > Set up Amazon Bedrock
 
-      Configure AWS credentials in your environment, then restart Codex.
+      Configure AWS credentials in your environment, then restart Nuwax Harness.
 
       Setup guide: https://learn.chatgpt.com/docs/amazon-bedrock
 

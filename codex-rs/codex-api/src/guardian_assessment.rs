@@ -2,6 +2,8 @@
 //! Missing or malformed assessments remain unavailable; consumers must validate the
 //! response, completed action, and current authorization before using a low-risk result.
 
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
 /// One final serving assessment emitted immediately before the matching output item is done.
@@ -9,7 +11,9 @@ use serde_json::Value;
 ///
 /// Consumers must validate the response, completed action, and current authorization
 /// before using a low-risk result. This assessment does not grant permission to execute.
-#[derive(Clone, Debug, PartialEq, Eq)]
+// Fork (nuwax-codex): serde derives added — the fork serializes `ResponseEvent`
+// (persistence/replay), which carries this type in one variant.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuardianAssessment {
     pub response_id: String,
     pub item_id: String,

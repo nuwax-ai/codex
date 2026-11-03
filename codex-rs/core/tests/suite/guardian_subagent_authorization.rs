@@ -570,7 +570,7 @@ async fn run_guardian_subagent_review(
     let code_mode_batch = matches!(messaging_tool, MessagingTool::CodeModeSingularFlatBatch);
     let connector_case = matches!(messaging_tool, MessagingTool::CodeModeSingularConnector);
     let (messaging_namespace, messaging_tool) = match messaging_tool {
-        MessagingTool::Plural => ("mcp__codex_apps", "user_messaging_send_message"),
+        MessagingTool::Plural => ("mcp__nuwax_apps", "user_messaging_send_message"),
         MessagingTool::PluralConnector => ("mcp__nuwax_apps__user_messaging", "_send_message"),
         MessagingTool::SingularConnector | MessagingTool::CodeModeSingularConnector => {
             ("mcp__nuwax_apps__user_message", "_send_message")
@@ -583,7 +583,7 @@ async fn run_guardian_subagent_review(
         MessagingTool::SingularFlat
         | MessagingTool::CodeModeSingularFlat
         | MessagingTool::CodeModeSingularFlatBatch => {
-            ("mcp__codex_apps", "user_message_send_message")
+            ("mcp__nuwax_apps", "user_message_send_message")
         }
     };
     let messaging_code_tool = if code_mode

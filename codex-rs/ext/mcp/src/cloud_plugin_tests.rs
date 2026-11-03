@@ -546,7 +546,7 @@ async fn run_cloud_catalog_refresh_lifecycle() -> anyhow::Result<()> {
             config.chatgpt_base_url = apps_server.chatgpt_base_url;
         });
     let test = builder.build_with_auto_env(&server).await?;
-    assert!(!test.config.mcp_servers.get()[codex_mcp::CODEX_APPS_MCP_SERVER_NAME].enabled);
+    assert!(!test.config.mcp_servers.get()[codex_mcp::NUWAX_APPS_MCP_SERVER_NAME].enabled);
     let calendar = ("calendar", "list_events", "Cloud Demo");
     let gmail = ("gmail", "search_email", "Gmail Demo");
     for (turn, reply, expected_plugin, new_account, tool_call) in [

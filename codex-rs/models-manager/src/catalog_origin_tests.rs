@@ -33,7 +33,7 @@ async fn catalog_origins_survive_reload_and_auth_change() {
             catalog
                 .iter()
                 .find(|entry| entry.model.slug == "codex-auto-review")
-                .map(|entry| entry.origin),
+                .map(|entry| entry.origin.clone()),
             Some(reviewer_origin)
         );
 
@@ -98,7 +98,7 @@ async fn static_catalog_records_its_supplied_origin() {
             ModelsResponse {
                 models: vec![model.clone()],
             },
-            origin,
+            origin.clone(),
         );
         assert_eq!(
             manager
@@ -113,7 +113,7 @@ async fn static_catalog_records_its_supplied_origin() {
                     ..model.clone()
                 }
                 .into(),
-                origin
+                origin: origin.clone(),
             }
         );
         assert_eq!(

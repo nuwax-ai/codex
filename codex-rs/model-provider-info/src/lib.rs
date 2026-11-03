@@ -35,10 +35,13 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 mod capabilities;
+mod catalog_overrides;
 mod gateway_oauth;
 mod oauth_session;
 pub use capabilities::ModelProviderCapabilities;
 pub use capabilities::RemoteCompactionSupport;
+pub use catalog_overrides::ignores_catalog_defaults;
+pub use catalog_overrides::set_ignores_catalog_defaults;
 pub use gateway_oauth::GatewayOAuthConfig;
 pub use gateway_oauth::GatewayOAuthDelivery;
 pub use oauth_session::OAuthCredentialsStore;
@@ -106,7 +109,6 @@ pub const AMAZON_BEDROCK_DEFAULT_BASE_URL: &str =
     "https://bedrock-mantle.us-east-1.api.aws/openai/v1";
 const AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER: &str = "x-amzn-mantle-client-agent";
 const AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_VALUE: &str = "codex";
-const CHAT_WIRE_API_REMOVED_ERROR: &str = "`wire_api = \"chat\"` is no longer supported.\nHow to fix: set `wire_api = \"responses\"` in your provider config.\nMore info: https://github.com/openai/codex/discussions/7782";
 pub const LEGACY_OLLAMA_CHAT_PROVIDER_ID: &str = "ollama-chat";
 pub const OLLAMA_CHAT_PROVIDER_REMOVED_ERROR: &str = "`ollama-chat` is no longer supported.\nHow to fix: replace `ollama-chat` with `ollama` in `model_provider`, `oss_provider`, or `--local-provider`.\nMore info: https://github.com/openai/codex/discussions/7782";
 
@@ -117,12 +119,20 @@ pub enum WireApi {
     /// The Responses API exposed by OpenAI at `/v1/responses`.
     #[default]
     Responses,
+    /// The Chat Completions API exposed at `/v1/chat/completions`.
+    Chat,
+    /// The Anthropic Messages API (`/v1/messages`), served through a model
+    /// bridge (fork extension). Select this wire explicitly; the endpoint
+    /// URL does not override `wire_api`.
+    Anthropic,
 }
 
 impl fmt::Display for WireApi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value = match self {
             Self::Responses => "responses",
+            Self::Chat => "chat",
+            Self::Anthropic => "anthropic",
         };
         f.write_str(value)
     }
@@ -135,9 +145,64 @@ impl<'de> Deserialize<'de> for WireApi {
     {
         let value = String::deserialize(deserializer)?;
         match value.as_str() {
+            // Fork (nuwax-codex): upstream removed `chat` (discussion #7782),
+            // but the fork's model bridges serve Chat Completions and
+            // Anthropic for third-party vendors — all three wires stay valid.
             "responses" => Ok(Self::Responses),
-            "chat" => Err(serde::de::Error::custom(CHAT_WIRE_API_REMOVED_ERROR)),
-            _ => Err(serde::de::Error::unknown_variant(&value, &["responses"])),
+            "chat" => Ok(Self::Chat),
+            "anthropic" => Ok(Self::Anthropic),
+            _ => Err(serde::de::Error::unknown_variant(
+                &value,
+                &["responses", "chat", "anthropic"],
+            )),
+        }
+    }
+}
+
+/// Model bridge implementation backing this provider (fork extension).
+/// `Rig` is the default for third-party providers and supports the explicitly
+/// selected Responses, Chat Completions, or Anthropic wire. `Native` selects
+/// the upstream Responses transport. The legacy `Genai` bridge only supports
+/// Chat Completions and Anthropic.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ChatBridge {
+    /// The `codex-rust-genai-bridge` crate.
+    Genai,
+    /// The `codex-rust-rig-bridge` crate (fork default).
+    #[default]
+    Rig,
+    /// The upstream-native transport. Only meaningful with
+    /// `wire_api = "responses"`; overrides the fork default that routes
+    /// third-party Responses providers through the rig bridge.
+    Native,
+}
+
+impl fmt::Display for ChatBridge {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            Self::Genai => "genai",
+            Self::Rig => "rig",
+            Self::Native => "native",
+        };
+        f.write_str(value)
+    }
+}
+
+impl<'de> Deserialize<'de> for ChatBridge {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        match value.as_str() {
+            "genai" => Ok(Self::Genai),
+            "rig" => Ok(Self::Rig),
+            "native" => Ok(Self::Native),
+            _ => Err(serde::de::Error::unknown_variant(
+                &value,
+                &["genai", "rig", "native"],
+            )),
         }
     }
 }
@@ -192,6 +257,20 @@ pub struct ModelProviderInfo {
     /// Which wire protocol this provider expects.
     #[serde(default)]
     pub wire_api: WireApi,
+    /// Which model bridge serves this provider (fork extension). Unset uses
+    /// Rig for third-party providers and the native transport for first-party
+    /// providers. `native` requires the Responses wire; the legacy `genai`
+    /// bridge only supports Chat Completions and Anthropic.
+    #[serde(default)]
+    pub experimental_bridge: Option<ChatBridge>,
+    /// Fork (nuwax-codex): the `model_providers.<id>` config key this entry
+    /// was loaded under (`#[serde(skip)]` — filled at load time). Used by
+    /// `is_first_party()` instead of matching on the display `name`, which
+    /// users can set to anything (a third-party provider named "OpenAI" must
+    /// not be routed to the native Responses transport).
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub provider_id: Option<String>,
     /// Optional API capability overrides for a custom Responses-compatible provider.
     /// Unspecified capabilities retain their existing provider defaults.
     pub capabilities: Option<ModelProviderCapabilities>,
@@ -207,6 +286,44 @@ pub struct ModelProviderInfo {
     pub env_http_headers: Option<HashMap<String, String>>,
     /// Maximum number of times to retry a failed HTTP request to this provider.
     pub request_max_retries: Option<u64>,
+    /// Fork (nuwax-codex): optional output budget for this provider. The
+    /// chat bridge maps it to the wire `max_tokens` (required by Anthropic,
+    /// optional for Chat) instead of its built-in default; the Responses
+    /// passthrough sends requests verbatim and ignores it.
+    pub max_output_tokens: Option<u64>,
+    /// Fork (nuwax-codex): whether the Anthropic bridge replays persisted
+    /// web-search wire blocks (server_tool_use + result pairs, including
+    /// encrypted content) into follow-up requests. Default true; set false
+    /// to fall back to dropping search history (the pre-D2 behavior).
+    pub hosted_results_replay: Option<bool>,
+    /// Fork (nuwax-codex): opt-in for Anthropic prompt caching. When true the
+    /// rig bridge places `cache_control` breakpoints (system tail, final
+    /// non-deferred tool, conversation tail) with Anthropic's 5-minute TTL;
+    /// `cache_read_input_tokens`/`cache_creation_input_tokens` usage already
+    /// flow back. Default off: only enable for gateways that accept
+    /// Anthropic cache markers.
+    pub anthropic_prompt_caching: Option<bool>,
+    /// Fork (nuwax-codex): the reasoning-effort tiers this provider's models
+    /// actually take, in rig's own vocabulary (e.g. GLM-5.3-Flash is
+    /// `["low", "high", "max"]`). The Anthropic bridge answers rig's typed
+    /// `Reasoning` from this list, so a request naming a tier the model does
+    /// not have fails before anything is sent — instead of the gateway
+    /// accepting the value and silently applying a different tier. Unset
+    /// leaves the wire permissive (rig's default for a model its catalog does
+    /// not list), which is how `medium` once reached GLM-5.3-Flash unnoticed.
+    ///
+    /// The words are read through rig's `Effort` deserializer, so the accepted
+    /// vocabulary is rig's and is never a copy kept in step by hand; a word rig
+    /// does not spell fails naming the variable and rig's own list. `none` and
+    /// `off` are not tiers — they say whether thinking can be turned off,
+    /// which these always-thinking gateways refuse. Unset leaves the wire
+    /// permissive; a list that is set but names no tier is refused rather than
+    /// read as "takes none", which would refuse every effort.
+    ///
+    /// Gates both rig wires. Anthropic hands the list to rig's typed channel;
+    /// Chat checks it in the bridge, because rig's Chat dialect would rename
+    /// the output cap in exchange (FORK.md §10).
+    pub reasoning_effort_levels: Option<Vec<String>>,
     /// Number of times to retry reconnecting a dropped streaming response before failing.
     pub stream_max_retries: Option<u64>,
     /// Idle timeout (in milliseconds) to wait for activity on a streaming response before treating
@@ -513,6 +630,10 @@ other non-default provider fields are not supported"
             headers,
             retry,
             stream_idle_timeout: self.stream_idle_timeout(),
+            max_output_tokens: self.max_output_tokens,
+            hosted_results_replay: self.hosted_results_replay,
+            anthropic_prompt_caching: self.anthropic_prompt_caching,
+            reasoning_effort_levels: self.reasoning_effort_levels.clone(),
         })
     }
 
@@ -609,7 +730,13 @@ other non-default provider fields are not supported"
             project_id: None,
             location: None,
             credential_file: None,
-            include_internal_metadata: true,
+            experimental_bridge: None,
+        max_output_tokens: None,
+        hosted_results_replay: None,
+        anthropic_prompt_caching: None,
+        reasoning_effort_levels: None,
+        provider_id: None,
+        include_internal_metadata: true,
         }
     }
 
@@ -652,7 +779,13 @@ other non-default provider fields are not supported"
             project_id: None,
             location: None,
             credential_file: None,
-            include_internal_metadata: false,
+            experimental_bridge: None,
+        max_output_tokens: None,
+        hosted_results_replay: None,
+        anthropic_prompt_caching: None,
+        reasoning_effort_levels: None,
+        provider_id: None,
+        include_internal_metadata: false,
         }
     }
 
@@ -661,6 +794,10 @@ other non-default provider fields are not supported"
     ) -> ModelProviderInfo {
         let mut provider = Self::create_amazon_bedrock_provider(aws);
         provider.name = AMAZON_BEDROCK_RUNTIME_PROVIDER_NAME.into();
+        // Fork: pin the runtime provider id (first-party routing checks);
+        // upstream keeps the mantle client-agent header for both bedrock
+        // providers, so http_headers is no longer cleared here.
+        provider.provider_id = Some(AMAZON_BEDROCK_RUNTIME_PROVIDER_ID.to_string());
         provider
     }
 
@@ -691,6 +828,12 @@ other non-default provider fields are not supported"
             project_id: None,
             location: None,
             credential_file: None,
+            provider_id: None,
+            experimental_bridge: None,
+            max_output_tokens: None,
+            hosted_results_replay: None,
+            anthropic_prompt_caching: None,
+            reasoning_effort_levels: None,
             include_internal_metadata: false,
         }
     }
@@ -701,6 +844,68 @@ other non-default provider fields are not supported"
         self.capabilities
             .and_then(|capabilities| capabilities.cyber_access_programs)
             .unwrap_or(provider_id == OPENAI_PROVIDER_ID)
+    }
+
+    /// Fork (nuwax-codex): first-party providers (OpenAI and the managed
+    /// cloud transports) provably serve the catalog's reviewer/model ids;
+    /// third-party providers only serve their configured models, so
+    /// alias-backed ids must not be routed to them (see
+    /// `reachable_review_model_id`).
+    pub fn is_first_party(&self) -> bool {
+        matches!(
+            self.provider_id.as_deref(),
+            Some(OPENAI_PROVIDER_ID)
+                | Some(AMAZON_BEDROCK_PROVIDER_ID)
+                | Some(AMAZON_BEDROCK_RUNTIME_PROVIDER_ID)
+        )
+    }
+
+    /// Providers whose ChatGPT credentials travel the first-party auth path:
+    /// no `env_key`, bearer, command or AWS override of its own.
+    pub fn uses_first_party_auth_path(&self) -> bool {
+        self.requires_openai_auth
+            && self.env_key.is_none()
+            && self.experimental_bearer_token.is_none()
+            && self.auth.is_none()
+            && self.aws.is_none()
+    }
+
+    /// Whether this provider's model requests must carry account workspace
+    /// routing (routed backend origin, residency and routing-override
+    /// headers), and the 401 recovery that discovery on that route performs.
+    /// Discovery lives only in `responses_api_provider`, which the bridge
+    /// path does not call, so a routing-capable entry keeps the native
+    /// Responses transport even when its config key is not first-party.
+    pub fn requires_workspace_routing(&self) -> bool {
+        self.uses_first_party_auth_path() && self.supports_codex_backend_routes()
+    }
+
+    /// Whether inference is routed through a model bridge under the fork
+    /// routing policy. The bridge speaks the provider's explicit `wire_api`
+    /// (Responses, Chat Completions, or Anthropic) — "bridged" does not imply
+    /// Chat Completions. Auxiliary inference and compaction must consult the
+    /// same policy as core.
+    pub fn uses_model_bridge(&self) -> bool {
+        match self.wire_api {
+            WireApi::Chat | WireApi::Anthropic => true,
+            WireApi::Responses => match self.experimental_bridge {
+                Some(ChatBridge::Native) => false,
+                Some(ChatBridge::Rig | ChatBridge::Genai) => true,
+                None => !(self.is_first_party() || self.requires_workspace_routing()),
+            },
+        }
+    }
+
+    /// Reserved non-Bedrock entries may only select a transport; endpoint and
+    /// authentication changes still require a distinct custom provider ID.
+    pub fn is_builtin_bridge_override(&self) -> bool {
+        self.experimental_bridge.is_some()
+            && Self {
+                name: String::new(),
+                experimental_bridge: None,
+                provider_id: None,
+                ..self.clone()
+            } == Self::default()
     }
 
     pub fn is_openai(&self) -> bool {
@@ -843,10 +1048,31 @@ pub fn merge_configured_model_providers(
         } else if key == GCP_PROVIDER_ID {
             merge_gcp_provider_overrides(model_providers.get_mut(&key), provider)?;
         } else {
-            model_providers.entry(key).or_insert(provider);
+            // Fork: when the key collides with a built-in provider, the
+            // user's config can at least override the bridge selection
+            // (e.g. `experimental_bridge = "native"` on ollama) even though
+            // the rest of the built-in defaults stand.
+            match model_providers.entry(key) {
+                std::collections::hash_map::Entry::Vacant(v) => {
+                    v.insert(provider);
+                }
+                std::collections::hash_map::Entry::Occupied(mut o) => {
+                    if o.get().experimental_bridge != provider.experimental_bridge {
+                        o.get_mut().experimental_bridge = provider.experimental_bridge;
+                    }
+                }
+            }
         }
     }
 
+    // Fork (nuwax-codex): stamp every entry with its config key so identity
+    // checks (`is_first_party`) match on the key, not the user-controlled
+    // display name. Done at merge time so raw configured tables stay
+    // comparable with `ModelProviderInfo::default()` (see the GCP override
+    // validation above).
+    for (key, provider) in model_providers.iter_mut() {
+        provider.provider_id = Some(key.clone());
+    }
     Ok(model_providers)
 }
 
@@ -937,6 +1163,12 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         project_id: None,
         location: None,
         credential_file: None,
+        experimental_bridge: None,
+        max_output_tokens: None,
+        hosted_results_replay: None,
+        anthropic_prompt_caching: None,
+        reasoning_effort_levels: None,
+        provider_id: None,
         include_internal_metadata: false,
     }
 }

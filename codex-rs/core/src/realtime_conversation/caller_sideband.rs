@@ -106,7 +106,7 @@ pub(super) fn spawn_input_task(
             && let RealtimeInputTaskExit::TransportLost { err, .. } =
                 classify_realtime_input_error(err)
         {
-            report_realtime_transport_loss(&events_tx, err).await;
+            report_realtime_transport_loss(&events_tx, *err).await;
         }
         let transcript_tail = transcript_state.take_transcript_tail().await;
         flush_realtime_transcript_tail(&transcript_tail_flush, &transcript_tail).await;

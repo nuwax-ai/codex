@@ -23,6 +23,8 @@ use anyhow::Context;
 use anyhow::Result;
 use app_test_support::TestAppServer;
 use codex_app_server_protocol::ThreadCompactStartParams;
+use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::ThreadCompactStartResponse;
 use codex_app_server_protocol::ThreadResumeParams;
 use codex_app_server_protocol::ThreadResumeResponse;
@@ -212,8 +214,8 @@ fn agent_text(completed: &TurnCompletedNotification) -> String {
         .turn
         .items
         .iter()
-        .filter_map(|item| match item {
-            codex_app_server_protocol::ThreadItem::AgentMessage { text, .. } => Some(text.as_str()),
+        .filter_map(|item| match &item.payload {
+            codex_app_server_protocol::ThreadItemPayload::AgentMessage { text, .. } => Some(text.as_str()),
             _ => None,
         })
         .collect::<Vec<_>>()

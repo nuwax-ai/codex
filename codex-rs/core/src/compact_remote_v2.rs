@@ -1416,6 +1416,7 @@ mod tests {
             &sess,
             &turn,
             stream,
+            /*response_key*/ None,
             CompactionRequestKind::Background(&CancellationToken::new()),
         )
         .await;

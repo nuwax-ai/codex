@@ -38,13 +38,17 @@ pub async fn run_session_queue_command(
 ) -> Result<String> {
     if options.cli.no_daemon && options.explicit_remote_endpoint.is_none() {
         return Err(eyre!(
-            "--no-daemon cannot be used with codex queue. Queuing must discover the shared server to avoid writing through a separate server."
+            "--no-daemon cannot be used with nuwax-harness queue. Queuing must discover the shared server to avoid writing through a separate server."
         ));
     }
-    let codex_home = find_codex_home().wrap_err("failed to find Codex home")?;
+    let codex_home = find_codex_home().wrap_err("failed to find Nuwax Harness home")?;
     let explicit_remote = options.explicit_remote_endpoint.is_some();
-    let mut app_server =
-        start_app_server_for_session_command(options, codex_home.to_path_buf()).await?;
+    let mut app_server = start_app_server_for_session_command(
+        options,
+        codex_home.to_path_buf(),
+        crate::session_startup_policy::SessionCommandPurpose::Queue,
+    )
+    .await?;
     if !explicit_remote
         && app_server.uses_embedded_app_server()
         && super::maybe_probe_default_daemon_socket(codex_home.as_path())
@@ -114,7 +118,9 @@ pub(super) async fn run_session_queue_action_with_app_server(
                 // An empty filter includes Atlas/ChatGPT sessions.
                 Vec::new(),
             ],
-            /*model_providers*/ None,
+            // Queue resolves the target across providers; enqueueing goes
+            // through the owner server either way.
+            Some(Vec::new()),
         )
         .await?
         .ok_or_else(|| eyre!("No active session found matching '{target}'."))?;

@@ -73,7 +73,7 @@ enabled = false
             .tool_by_name("mcp__nuwax_apps__calendar", "lookup")
             .is_none()
     );
-    assert!(requests[0].body_contains_text("mcp__codex_apps__calendar__lookup("));
+    assert!(requests[0].body_contains_text("mcp__nuwax_apps__calendar__lookup("));
     let output =
         super::super::code_mode::custom_tool_output_last_non_empty_text(&requests[1], "lookup")
             .expect("exec reports actual discovery and dispatch");

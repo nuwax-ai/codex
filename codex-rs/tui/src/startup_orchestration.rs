@@ -44,7 +44,7 @@ pub(super) async fn run_main_inner(
         }
         if cli.fork_picker || cli.fork_last {
             return Err(std::io::Error::other(
-                "`codex fork --worktree` requires an explicit session ID",
+                "`nuwax-harness fork --worktree` requires an explicit session ID",
             ));
         }
     }
@@ -85,6 +85,28 @@ pub(super) async fn run_main_inner(
             std::process::exit(1);
         }
     };
+    // Fork (nuwax-codex): seed the NUWAX_* environment startup group at env
+    // precedence — below the typed `-m`/`--oss` selections, above config
+    // files. An explicit `--oss` provider selection makes the group
+    // irrelevant (ignored and unvalidated). The seeds ride their own channel
+    // into config loading so the reserved-provider isolation can attribute
+    // every contribution; they never mix into the user `-c` pairs.
+    let nuwax_env_seeds = match codex_utils_cli::nuwax_env_overrides(
+        codex_utils_cli::nuwax_env_from_process(),
+        cli.shared.model.as_deref(),
+        cli.shared
+            .oss
+            .then_some("oss")
+            .or_else(|| cli.shared.oss_provider.as_deref()),
+        &cli_kv_overrides,
+    ) {
+        Ok(seeds) => seeds,
+        #[allow(clippy::print_stderr)]
+        Err(e) => {
+            eprintln!("Error parsing NUWAX_* environment: {e}");
+            std::process::exit(1);
+        }
+    };
     if explicit_remote_endpoint.is_some()
         && cli_kv_overrides.iter().any(|(key, value)| {
             key == "sandbox_workspace_write.writable_roots"
@@ -101,7 +123,7 @@ pub(super) async fn run_main_inner(
     let codex_home = match find_codex_home() {
         Ok(codex_home) => codex_home.to_path_buf(),
         Err(err) => {
-            eprintln!("Error finding codex home: {err}");
+            eprintln!("Error finding nuwax-harness home: {err}");
             std::process::exit(1);
         }
     };
@@ -150,6 +172,7 @@ pub(super) async fn run_main_inner(
             /*can_reuse_implicit_local_daemon*/ false,
             workload_identity_selected,
             std::env::var_os(codex_exec_server::CODEX_EXEC_SERVER_URL_ENV_VAR).as_deref(),
+            &nuwax_env_seeds,
         )?;
         let validation_environment_manager =
             if should_load_configured_environments(&loader_overrides, &validation_target) {
@@ -170,6 +193,7 @@ pub(super) async fn run_main_inner(
             &codex_home,
             validation_cwd.as_ref(),
             cli_kv_overrides.clone(),
+            nuwax_env_seeds.clone(),
             validation_loader_overrides.clone(),
             strict_config,
             CloudConfigBundleLoader::default(),
@@ -188,6 +212,7 @@ pub(super) async fn run_main_inner(
         };
         load_config_or_exit(
             cli_kv_overrides.clone(),
+            nuwax_env_seeds.clone(),
             ConfigOverrides {
                 model: cli.model.clone(),
                 approval_policy,
@@ -216,9 +241,11 @@ pub(super) async fn run_main_inner(
     let mut daemon_exclusion = daemon_startup::exclusion(
         &cli,
         &cli_kv_overrides,
+        &nuwax_env_seeds,
         &launch_loader_overrides,
         workload_identity_selected,
         std::env::var_os(codex_exec_server::CODEX_EXEC_SERVER_URL_ENV_VAR).as_deref(),
+        &codex_install_context::InstallContext::current().method,
     );
     let reuse_implicit_local_daemon = daemon_exclusion.is_none();
     let search_forces_embedded = cli.web_search
@@ -231,6 +258,7 @@ pub(super) async fn run_main_inner(
         .is_none();
     let search_only_config_override = !workload_identity_selected
         && cli.web_search
+        && nuwax_env_seeds.is_empty()
         && startup_preflight::has_only_search_config_override(&cli_kv_overrides)
         && loader_overrides_are_default(&launch_loader_overrides)
         && !strict_config
@@ -267,6 +295,7 @@ pub(super) async fn run_main_inner(
         reuse_implicit_local_daemon,
         workload_identity_selected,
         std::env::var_os(codex_exec_server::CODEX_EXEC_SERVER_URL_ENV_VAR).as_deref(),
+        &nuwax_env_seeds,
     )?;
     let prepared_environment_manager =
         if should_load_configured_environments(&launch_loader_overrides, &presentation_target) {
@@ -297,6 +326,7 @@ pub(super) async fn run_main_inner(
         &codex_home,
         loader_overrides.clone(),
         cli_kv_overrides.clone(),
+        nuwax_env_seeds.clone(),
         config_cwd,
     )
     .await
@@ -373,6 +403,7 @@ pub(super) async fn run_main_inner(
         reuse_implicit_local_daemon,
         workload_identity_selected,
         std::env::var_os(codex_exec_server::CODEX_EXEC_SERVER_URL_ENV_VAR).as_deref(),
+        &nuwax_env_seeds,
     )?;
     let remote_cwd_override = cli
         .cwd
@@ -422,6 +453,7 @@ pub(super) async fn run_main_inner(
                     &codex_home,
                     config_cwd.as_ref(),
                     cli_kv_overrides.clone(),
+                    nuwax_env_seeds.clone(),
                     loader_overrides.clone(),
                     strict_config,
                     cloud_config_bundle.clone(),
@@ -511,6 +543,7 @@ pub(super) async fn run_main_inner(
     let mut config = startup_draft
         .run_until(load_config_or_exit(
             cli_kv_overrides.clone(),
+            nuwax_env_seeds.clone(),
             overrides.clone(),
             loader_overrides.clone(),
             cloud_config_bundle.clone(),
@@ -545,6 +578,7 @@ pub(super) async fn run_main_inner(
                 config.clone(),
                 &mut overrides,
                 cli_kv_overrides.clone(),
+                nuwax_env_seeds.clone(),
                 loader_overrides.clone(),
                 strict_config,
                 &app_server_target,
@@ -782,7 +816,7 @@ pub(super) async fn run_main_inner(
             ("terminal_name", terminal_name),
             ("multiplexer", multiplexer),
         ]);
-        let _ = metrics.counter("codex.tui.start", /*inc*/ 1, &launch_tags);
+        let _ = metrics.counter("nuwax-harness.tui.start", /*inc*/ 1, &launch_tags);
         if app_server_mode == "in_process" {
             let reason = match daemon_exclusion {
                 _ if elevated_warning.is_some() => "windows_elevated",
@@ -983,6 +1017,7 @@ pub(super) async fn run_main_inner(
         manually_selected_oss_provider,
         overrides,
         cli_kv_overrides,
+        nuwax_env_seeds,
         cloud_config_bundle,
         feedback,
         log_db,
@@ -1022,7 +1057,7 @@ pub(super) async fn run_main_inner(
             ),
             ("outcome", "handoff_requested"),
         ]);
-        let _ = metrics.counter("codex.daemon.update", /*inc*/ 1, &tags);
+        let _ = metrics.counter("nuwax-harness.daemon.update", /*inc*/ 1, &tags);
     }
 
     if let Some(otel) = otel

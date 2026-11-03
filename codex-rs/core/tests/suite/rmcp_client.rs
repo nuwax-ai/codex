@@ -3634,7 +3634,6 @@ async fn stdio_image_responses_are_sanitized_for_text_only_model() -> anyhow::Re
         &server,
         ModelsResponse {
             models: vec![ModelInfo {
-                metadata_source: codex_protocol::openai_models::MetadataSource::Official,
                 slug: text_only_model_slug.to_string(),
                 display_name: "RMCP Text Only".to_string(),
                 description: Some("Test model without image input support".to_string()),
@@ -5526,6 +5525,9 @@ async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Res
         requires_openai_auth: false,
         supports_websockets: false,
         supports_standalone_web_search: false,
+        project_id: None,
+        location: None,
+        credential_file: None,
         include_internal_metadata: false,
         max_output_tokens: Some(1_024),
         hosted_results_replay: None,

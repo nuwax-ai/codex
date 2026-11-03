@@ -340,6 +340,7 @@ pub struct ModelClientSession {
     /// appends, or continuation requests), and must not send it between different turns.
     /// An auth ownership change clears it so the new owner gets fresh routing state.
     turn_state: Arc<OnceLock<String>>,
+    output_provenance: Arc<std::sync::Mutex<Option<codex_history::ModelOutputProvenance>>>,
 }
 
 /// Executes HTTP Responses requests without owning a turn's WebSocket state.
@@ -433,6 +434,7 @@ fn responses_request_properties_mismatch(
         input: _,
         tools: previous_tools,
         tool_choice: previous_tool_choice,
+        max_output_tokens: previous_max_output_tokens,
         parallel_tool_calls: previous_parallel_tool_calls,
         reasoning: previous_reasoning,
         store: previous_store,
@@ -450,6 +452,7 @@ fn responses_request_properties_mismatch(
         input: _,
         tools: current_tools,
         tool_choice: current_tool_choice,
+        max_output_tokens: current_max_output_tokens,
         parallel_tool_calls: current_parallel_tool_calls,
         reasoning: current_reasoning,
         store: current_store,
@@ -473,6 +476,8 @@ fn responses_request_properties_mismatch(
         "tool_choice_changed"
     } else if previous_parallel_tool_calls != current_parallel_tool_calls {
         "parallel_tool_calls_changed"
+    } else if previous_max_output_tokens != current_max_output_tokens {
+        "max_output_tokens_changed"
     } else if previous_reasoning != current_reasoning {
         "reasoning_changed"
     } else if previous_store != current_store {
@@ -759,6 +764,7 @@ impl ModelClient {
             client: self.clone(),
             websocket_session,
             turn_state: Arc::new(OnceLock::new()),
+            output_provenance: std::sync::Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -1052,6 +1058,45 @@ impl ModelClient {
                 }
             });
         }
+        let native_transport = !self.state.provider.info().uses_model_bridge();
+        if self.state.provider.info().wire_api == WireApi::Responses {
+            for item in &mut input {
+                if let ResponseItem::WebSearchCall { wire_blocks, .. } = item {
+                    *wire_blocks = None;
+                }
+            }
+        }
+        if native_transport
+            || self.state.provider.info().experimental_bridge
+                == Some(codex_model_provider_info::ChatBridge::Genai)
+        {
+            input.retain(|item| {
+                let ResponseItem::Reasoning {
+                    encrypted_content: Some(value),
+                    content,
+                    ..
+                } = item
+                else {
+                    return true;
+                };
+                if is_rig_reasoning_envelope(value) {
+                    return false;
+                }
+                // Legacy bridges duplicated visible reasoning into the encrypted
+                // field. It is not native Responses ciphertext either.
+                let legacy_text: String = content
+                    .iter()
+                    .flatten()
+                    .map(|part| match part {
+                        codex_protocol::models::ReasoningItemContent::ReasoningText { text }
+                        | codex_protocol::models::ReasoningItemContent::Text { text } => {
+                            text.as_str()
+                        }
+                    })
+                    .collect();
+                !(native_transport && !legacy_text.is_empty() && value == &legacy_text)
+            });
+        }
         let is_openai = self.state.provider.info().is_openai();
         // These prompt-only items are rebuilt on every request. Hash their visible payloads
         // within the thread so retries and resumed sessions preserve their identity.
@@ -1163,6 +1208,7 @@ impl ModelClient {
             tools,
             tool_choice: "auto".to_string(),
             parallel_tool_calls: prompt.parallel_tool_calls && !model_info.use_responses_lite,
+            max_output_tokens: self.state.provider.info().max_output_tokens,
             reasoning: Some(reasoning),
             store: false,
             stream: true,
@@ -1560,6 +1606,28 @@ impl Drop for ModelClientSession {
 }
 
 impl ModelClientSession {
+    pub(crate) fn output_provenance(&self) -> Option<codex_history::ModelOutputProvenance> {
+        self.output_provenance
+            .lock()
+            .map(|provenance| provenance.clone())
+            .ok()
+            .flatten()
+    }
+
+    /// Shared cell so a borrowed executor can record the wire source the
+    /// request settled on while the session owns the value.
+    pub(crate) fn output_provenance_cell(
+        &self,
+    ) -> Arc<std::sync::Mutex<Option<codex_history::ModelOutputProvenance>>> {
+        Arc::clone(&self.output_provenance)
+    }
+
+    fn set_output_provenance(&self, provenance: codex_history::ModelOutputProvenance) {
+        if let Ok(mut slot) = self.output_provenance.lock() {
+            *slot = Some(provenance);
+        }
+    }
+
     pub(crate) fn inference_tools_changed(&self, tools: &Arc<[ToolSpec]>) -> bool {
         let previous = self
             .client
@@ -1884,15 +1952,291 @@ impl ModelClientSession {
     }
 }
 
+/// Validates the prompt's guardian replay grant against this live request.
+///
+/// The request's provenance is recomputed with only the fixed guardian
+/// reviewer header stripped; the grant survives only if that basis still
+/// reproduces the checkpoint producer's full provider, endpoint, wire,
+/// and credential scope, and the request uses the approved reviewer model.
+#[allow(clippy::too_many_arguments)]
+fn opaque_replay_authorization(
+    client: &ModelClient,
+    prompt: &crate::client_common::Prompt,
+    producing_source: &codex_history::ModelOutputProvenance,
+    extra_headers: &http::HeaderMap,
+    client_setup: &CurrentClientSetup,
+    model_info: &ModelInfo,
+) -> Result<Option<crate::model_output_projection::OpaqueReplayAuthorization>> {
+    let Some(grant) = prompt.opaque_replay_grant.as_ref() else {
+        return Ok(None);
+    };
+    let mut stripped = extra_headers.clone();
+    stripped.remove(crate::guardian::GUARDIAN_REVIEWER_HEADER);
+    let basis = crate::model_output_projection::request_source(
+        client.state.provider.info(),
+        &client_setup.api_provider,
+        client_setup.auth.as_ref(),
+        &model_info.slug,
+        client_setup.api_auth.as_ref(),
+        client_setup.agent_identity_telemetry.as_ref(),
+        &stripped,
+    )
+    .map_err(|_| {
+        CodexErr::InvalidRequest("Cannot verify the guardian checkpoint request source".to_string())
+    })?;
+    crate::guardian::authorize_opaque_replay(grant, producing_source, &basis)
+        .map(Some)
+        .ok_or_else(|| CodexErr::InvalidRequest(
+            "Guardian checkpoint source could not be verified; refusing review without its required context".to_string(),
+        ))
+}
+
+fn responses_request_compression(client: &ModelClient, auth: Option<&CodexAuth>) -> Compression {
+    if client.state.enable_request_compression
+        && auth.is_some_and(CodexAuth::uses_codex_backend)
+        && client.state.provider.info().is_openai()
+    {
+        Compression::Zstd
+    } else {
+        Compression::None
+    }
+}
+
 impl ResponsesHttpExecutor<'_> {
-    fn responses_request_compression(&self, auth: Option<&CodexAuth>) -> Compression {
-        if self.client.state.enable_request_compression
-            && auth.is_some_and(CodexAuth::uses_codex_backend)
-            && self.client.state.provider.info().is_openai()
-        {
-            Compression::Zstd
-        } else {
-            Compression::None
+    /// Validates the prompt's guardian replay grant against this live request.
+    ///
+    /// The request's provenance is recomputed with only the fixed guardian
+    /// reviewer header stripped; the grant survives only if that basis still
+    /// reproduces the checkpoint producer's full provider, endpoint, wire,
+    /// and credential scope, and the request uses the approved reviewer model.
+    fn opaque_replay_authorization(
+        &self,
+        prompt: &crate::client_common::Prompt,
+        producing_source: &codex_history::ModelOutputProvenance,
+        extra_headers: &http::HeaderMap,
+        client_setup: &CurrentClientSetup,
+        model_info: &ModelInfo,
+    ) -> Result<Option<crate::model_output_projection::OpaqueReplayAuthorization>> {
+        opaque_replay_authorization(
+            self.client,
+            prompt,
+            producing_source,
+            extra_headers,
+            client_setup,
+            model_info,
+        )
+    }
+
+    /// Streams a turn through the model bridge selected by the provider
+    /// (fork extension). The bridge speaks the provider's explicit wire:
+    /// Responses (same-protocol passthrough on rig), Chat Completions, or
+    /// Anthropic Messages; conversion internals live in the bridge crates.
+    #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
+    #[allow(clippy::too_many_arguments)]
+    #[instrument(
+        name = "model_client.stream_model_bridge",
+        level = "info",
+        skip_all,
+        fields(
+            model = %model_info.slug,
+            wire_api = %self.client.state.provider.info().wire_api,
+            transport = "model_bridge",
+            http.method = "POST",
+            api.path = tracing::field::Empty,
+            turn.has_metadata_header = true
+        )
+    )]
+    async fn stream_model_bridge(
+        &self,
+        turn_state: &Arc<OnceLock<String>>,
+        output_provenance: &Arc<std::sync::Mutex<Option<codex_history::ModelOutputProvenance>>>,
+        _event_sender: Option<&Sender<ProtocolEvent>>,
+        prompt: &Prompt,
+        model_info: &ModelInfo,
+        session_telemetry: &SessionTelemetry,
+        effort: Option<ReasoningEffortConfig>,
+        summary: ReasoningSummaryConfig,
+        service_tier: Option<String>,
+        responses_metadata: &CodexResponsesMetadata,
+        inference_trace: &InferenceTraceContext,
+    ) -> Result<ResponseStream> {
+        let auth_manager = self.client.state.provider.auth_manager();
+        let mut auth_recovery = auth_manager
+            .as_ref()
+            .map(AuthManager::unauthorized_recovery);
+        let mut provider_auth_recovery_attempted = false;
+        let mut pending_retry = PendingUnauthorizedRetry::default();
+        loop {
+            // Bridged providers are never routing-capable:
+            // `uses_model_bridge()` pins the native transport for entries
+            // whose ChatGPT credentials travel the first-party auth path on
+            // a codex backend route, so resolving exactly the configured
+            // provider here cannot drop workspace routing.
+            let client_setup = self
+                .client
+                .current_client_setup(ClientRouting::ConfiguredProvider)
+                .await?;
+            // Reflect the real wire in telemetry: a responses-wire provider
+            // bridged through rig hits /responses, not chat/completions.
+            let endpoint = match self.client.state.provider.info().wire_api {
+                WireApi::Responses => "/responses",
+                WireApi::Chat => "/chat/completions",
+                WireApi::Anthropic => "/messages",
+            };
+            tracing::Span::current().record("api.path", endpoint);
+            let request_auth_context = AuthRequestTelemetryContext::new(
+                client_setup.auth.as_ref().map(CodexAuth::auth_mode),
+                client_setup.api_auth.as_ref(),
+                client_setup.agent_identity_telemetry.clone(),
+                pending_retry,
+            )
+            .map_err(|error| self.client.state.provider.map_api_error(error))?;
+            let (_request_telemetry, _sse_telemetry) =
+                ModelClientSession::build_streaming_telemetry(
+                    session_telemetry,
+                    request_auth_context,
+                    RequestRouteTelemetry::for_endpoint(endpoint),
+                    self.client.state.auth_env_telemetry.clone(),
+                );
+            let compression =
+                responses_request_compression(self.client, client_setup.auth.as_ref());
+            let use_responses_lite = self.client.state.provider.info().wire_api
+                == WireApi::Responses
+                && model_info.use_responses_lite;
+            let mut options = self
+                .build_responses_options(
+                    turn_state,
+                    responses_metadata,
+                    compression,
+                    use_responses_lite,
+                )
+                .await;
+            let producing_source = crate::model_output_projection::request_source(
+                self.client.state.provider.info(),
+                &client_setup.api_provider,
+                client_setup.auth.as_ref(),
+                &model_info.slug,
+                client_setup.api_auth.as_ref(),
+                client_setup.agent_identity_telemetry.as_ref(),
+                &options.extra_headers,
+            )
+            .map_err(|error| {
+                self.client
+                    .state
+                    .provider
+                    .map_api_error(ApiError::Transport(error.into()))
+            })?;
+            let replay_authorization = opaque_replay_authorization(
+                self.client,
+                prompt,
+                &producing_source,
+                &options.extra_headers,
+                &client_setup,
+                model_info,
+            )?;
+            let mut projected_prompt = prompt.clone();
+            crate::model_output_projection::project_input(
+                &mut projected_prompt.input,
+                &prompt.input_provenance,
+                &producing_source,
+                replay_authorization.as_ref(),
+            );
+            let prompt = &projected_prompt;
+
+            let include_internal = self
+                .client
+                .state
+                .provider
+                .include_internal_metadata(&client_setup.api_provider);
+            let mut request = self.client.build_responses_request(
+                prompt,
+                model_info,
+                effort.clone(),
+                summary,
+                service_tier.clone(),
+                responses_metadata,
+                include_internal,
+            )?;
+            // Match the native Responses transport: outbound items never
+            // carry legacy non-prefixed ids, so the bridge wire is identical
+            // to what stream_responses_api would have sent for them.
+            self.client
+                .prepare_response_items_for_request(&mut request.input);
+            let interceptors = crate::model_request::prepare(
+                &self.client.request_contributors,
+                &self.client.state.thread_id.to_string(),
+                &model_info.slug,
+                codex_extension_api::ModelRequestKind::Generation,
+                &mut request.client_metadata,
+            );
+            let inference_trace_attempt = inference_trace.start_attempt();
+            inference_trace_attempt.add_request_headers(&mut options.extra_headers);
+            inference_trace_attempt.record_started(&request);
+
+            let wire_api = self.client.state.provider.info().wire_api;
+            let bridge = self.client.state.provider.info().experimental_bridge;
+
+            let stream_result = dispatch_model_bridge(
+                &request,
+                &client_setup,
+                options,
+                bridge,
+                wire_api,
+                model_info,
+                &producing_source,
+            )
+            .await;
+
+            match stream_result {
+                Ok(stream) => {
+                    if let Ok(mut slot) = output_provenance.lock() {
+                        *slot = Some(producing_source);
+                    }
+                    return Ok(map_response_stream(
+                        stream,
+                        session_telemetry.clone(),
+                        inference_trace_attempt,
+                        Arc::clone(&self.client.state.provider),
+                        interceptors,
+                        /*last_response_tx*/ None,
+                    ));
+                }
+                Err(ApiError::Transport(
+                    unauthorized_transport @ TransportError::Http { status, .. },
+                )) if status == StatusCode::UNAUTHORIZED => {
+                    let response_debug_context =
+                        extract_response_debug_context(&unauthorized_transport);
+                    inference_trace_attempt.record_failed(
+                        &unauthorized_transport,
+                        response_debug_context.request_id.as_deref(),
+                        &[],
+                    );
+                    pending_retry = PendingUnauthorizedRetry::from_recovery(
+                        handle_unauthorized(
+                            unauthorized_transport,
+                            &mut auth_recovery,
+                            &mut provider_auth_recovery_attempted,
+                            session_telemetry,
+                            &self.client.state.provider,
+                            self.client.event_sender.as_ref(),
+                            responses_metadata.turn_id.as_deref(),
+                        )
+                        .await?,
+                    );
+                    continue;
+                }
+                Err(err) => {
+                    let response_debug_context =
+                        extract_response_debug_context_from_api_error(&err);
+                    let err = self.client.state.provider.map_api_error(err);
+                    inference_trace_attempt.record_failed(
+                        &err,
+                        response_debug_context.request_id.as_deref(),
+                        &[],
+                    );
+                    return Err(err);
+                }
+            }
         }
     }
 
@@ -1918,6 +2262,7 @@ impl ResponsesHttpExecutor<'_> {
         turn_state: &Arc<OnceLock<String>>,
         expected_auth_owner: Option<u64>,
         event_sender: Option<&Sender<ProtocolEvent>>,
+        output_provenance: &Arc<std::sync::Mutex<Option<codex_history::ModelOutputProvenance>>>,
         prompt: &Prompt,
         model_info: &ModelInfo,
         session_telemetry: &SessionTelemetry,
@@ -1967,7 +2312,8 @@ impl ResponsesHttpExecutor<'_> {
                 RequestRouteTelemetry::for_endpoint("/responses"),
                 self.client.state.auth_env_telemetry.clone(),
             );
-            let compression = self.responses_request_compression(client_setup.auth.as_ref());
+            let compression =
+                responses_request_compression(self.client, client_setup.auth.as_ref());
             let mut options = self
                 .build_responses_options(
                     turn_state,
@@ -1976,6 +2322,39 @@ impl ResponsesHttpExecutor<'_> {
                     model_info.use_responses_lite,
                 )
                 .await;
+            // The producing source must see every header this request will
+            // actually carry; guardian/routing headers joined options above.
+            options.extra_headers.extend(responses_headers.clone());
+            let producing_source = crate::model_output_projection::request_source(
+                self.client.state.provider.info(),
+                &client_setup.api_provider,
+                client_setup.auth.as_ref(),
+                &model_info.slug,
+                client_setup.api_auth.as_ref(),
+                client_setup.agent_identity_telemetry.as_ref(),
+                &options.extra_headers,
+            )
+            .map_err(|error| {
+                self.client
+                    .state
+                    .provider
+                    .map_api_error(ApiError::Transport(error.into()))
+            })?;
+            let replay_authorization = self.opaque_replay_authorization(
+                prompt,
+                &producing_source,
+                &options.extra_headers,
+                &client_setup,
+                model_info,
+            )?;
+            let mut projected_prompt = prompt.clone();
+            crate::model_output_projection::project_input(
+                &mut projected_prompt.input,
+                &prompt.input_provenance,
+                &producing_source,
+                replay_authorization.as_ref(),
+            );
+            let prompt = &projected_prompt;
 
             let mut request = self.client.build_responses_request(
                 prompt,
@@ -2014,7 +2393,7 @@ impl ResponsesHttpExecutor<'_> {
                 .prepare_response_items_for_request(&mut request.input);
             let request_session_telemetry =
                 session_telemetry_for_request(session_telemetry, &request);
-            options.extra_headers.extend(responses_headers);
+            // responses_headers already joined options before request_source.
             let interceptors = crate::model_request::prepare(
                 &self.client.request_contributors,
                 &self.client.state.thread_id.to_string(),
@@ -2145,6 +2524,40 @@ impl ModelClientSession {
             let responses_headers = self
                 .client
                 .responses_headers(client_setup.auth.as_ref(), &model_info.slug);
+            // Websocket sideband auth headers mirror the auth snapshot that
+            // request_source compares privately; responses_headers carry the
+            // per-request metadata worth scoping.
+            let producing_source = crate::model_output_projection::request_source(
+                self.client.state.provider.info(),
+                &client_setup.api_provider,
+                client_setup.auth.as_ref(),
+                &model_info.slug,
+                client_setup.api_auth.as_ref(),
+                client_setup.agent_identity_telemetry.as_ref(),
+                &responses_headers,
+            )
+            .map_err(|error| {
+                self.client
+                    .state
+                    .provider
+                    .map_api_error(ApiError::Transport(error.into()))
+            })?;
+            let replay_authorization = opaque_replay_authorization(
+                &self.client,
+                prompt,
+                &producing_source,
+                &responses_headers,
+                &client_setup,
+                model_info,
+            )?;
+            let mut projected_prompt = prompt.clone();
+            crate::model_output_projection::project_input(
+                &mut projected_prompt.input,
+                &prompt.input_provenance,
+                &producing_source,
+                replay_authorization.as_ref(),
+            );
+            let prompt = &projected_prompt;
             tracing::Span::current().record("api.path", "/responses");
             let request_auth_context = AuthRequestTelemetryContext::new(
                 client_setup.auth.as_ref().map(CodexAuth::auth_mode),
@@ -2384,6 +2797,7 @@ impl ModelClientSession {
                 );
                 err
             })?;
+            self.set_output_provenance(producing_source);
             let (last_response_tx, last_response_rx) = oneshot::channel();
             let stream = map_response_stream(
                 stream_result,
@@ -2518,25 +2932,61 @@ impl ModelClientSession {
         responses_metadata: &CodexResponsesMetadata,
         inference_trace: &InferenceTraceContext,
     ) -> Result<ResponseStream> {
-        let wire_api = self.client.state.provider.info().wire_api;
+        let info = self.client.state.provider.info();
+        #[cfg(not(any(feature = "rust-genai", feature = "rust-rig")))]
+        if info.uses_model_bridge() {
+            return Err(CodexErr::Fatal(
+                "The selected model provider requires a model bridge; enable `rust-rig` or \
+                 `rust-genai`, or select `experimental_bridge = \"native\"` for a Responses provider"
+                    .into(),
+            ));
+        }
+        let wire_api = info.wire_api;
         match wire_api {
             WireApi::Responses => {
-                if self.client.responses_websocket_enabled() {
-                    let request_trace = current_span_w3c_trace_context();
-                    match self
-                        .stream_responses_websocket(
+                // Fork default: third-party Responses providers route through
+                // the rig bridge, which speaks the SAME Responses wire
+                // (same-protocol passthrough; hosted-tool capability gaps are
+                // handled by config, not silent protocol conversion).
+                // First-party OpenAI (websocket, hosted tools, ZDR) and Amazon
+                // Bedrock (SigV4) keep the native transport, so does any entry
+                // that needs account workspace routing (`requires_workspace_routing`,
+                // because discovery lives on this path), and
+                // `experimental_bridge = "native"` forces it explicitly.
+                #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
+                if info.uses_model_bridge() {
+                    return Box::pin(
+                        ResponsesHttpExecutor::new(&self.client).stream_model_bridge(
+                            &self.turn_state,
+                            &self.output_provenance,
+                            self.client.event_sender.as_ref(),
                             prompt,
                             model_info,
                             session_telemetry,
-                            effort.clone(),
+                            effort,
                             summary,
-                            service_tier.clone(),
+                            service_tier,
                             responses_metadata,
-                            /*warmup*/ false,
-                            request_trace,
                             inference_trace,
-                        )
-                        .await?
+                        ),
+                    )
+                    .await;
+                }
+                if self.client.responses_websocket_enabled() {
+                    let request_trace = current_span_w3c_trace_context();
+                    match Box::pin(self.stream_responses_websocket(
+                        prompt,
+                        model_info,
+                        session_telemetry,
+                        effort.clone(),
+                        summary,
+                        service_tier.clone(),
+                        responses_metadata,
+                        /*warmup*/ false,
+                        request_trace,
+                        inference_trace,
+                    ))
+                    .await?
                     {
                         WebsocketStreamOutcome::Stream(stream) => return Ok(stream),
                         WebsocketStreamOutcome::FallbackToHttp => {
@@ -2550,6 +3000,7 @@ impl ModelClientSession {
                         &self.turn_state,
                         /*expected_auth_owner*/ None,
                         self.client.event_sender.as_ref(),
+                        &self.output_provenance,
                         prompt,
                         model_info,
                         session_telemetry,
@@ -2561,6 +3012,31 @@ impl ModelClientSession {
                     )
                     .await
             }
+            #[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
+            WireApi::Chat | WireApi::Anthropic => {
+                Box::pin(
+                    ResponsesHttpExecutor::new(&self.client).stream_model_bridge(
+                        &self.turn_state,
+                        &self.output_provenance,
+                        self.client.event_sender.as_ref(),
+                        prompt,
+                        model_info,
+                        session_telemetry,
+                        effort,
+                        summary,
+                        service_tier,
+                        responses_metadata,
+                        inference_trace,
+                    ),
+                )
+                .await
+            }
+            #[cfg(not(any(feature = "rust-genai", feature = "rust-rig")))]
+            WireApi::Chat | WireApi::Anthropic => Err(CodexErr::Fatal(
+                "Chat-family APIs (`wire_api = \"chat\" | \"anthropic\"`) require a \
+                 bridge feature: enable `rust-genai` or `rust-rig`"
+                    .into(),
+            )),
         }
     }
 
@@ -3275,6 +3751,100 @@ impl WebsocketTelemetry for ApiTelemetry {
         self.session_telemetry
             .record_websocket_event(result, duration);
     }
+}
+
+/// Whether an `encrypted_content` value holds the rig bridge's replay
+/// envelope. Delegates to the bridge crate when compiled in; other builds
+/// mirror the prefix. `client_bridge_tests` keeps the mirror in sync with
+/// the bridge constant.
+fn is_rig_reasoning_envelope(value: &str) -> bool {
+    #[cfg(feature = "rust-rig")]
+    {
+        codex_rust_rig_bridge::is_replay_envelope(value)
+    }
+    #[cfg(not(feature = "rust-rig"))]
+    {
+        value.starts_with("codex-rig-reasoning-v1:") || value.starts_with("codex-rig-reasoning-v2:")
+    }
+}
+
+/// Sends the model request through the bridge the provider selected via
+/// `experimental_bridge` (fork extension). Unset defaults to the rig bridge;
+/// `"genai"` opts back into the original bridge; the concrete implementations
+/// are isolated behind the `ModelBridge` trait in codex-api, so this dispatch
+/// knows no bridge-specific types. The wire protocol comes from the
+/// provider's EXPLICIT `wire_api` — URL guessing must never override it, and
+/// `wire_api = "responses"` reaches the rig bridge as a same-protocol
+/// passthrough instead of a silent Chat conversion.
+#[cfg(any(feature = "rust-genai", feature = "rust-rig"))]
+async fn dispatch_model_bridge(
+    request: &codex_api::ResponsesApiRequest,
+    client_setup: &CurrentClientSetup,
+    options: ApiResponsesOptions,
+    bridge: Option<codex_model_provider_info::ChatBridge>,
+    wire: WireApi,
+    model_info: &ModelInfo,
+    source: &codex_history::ModelOutputProvenance,
+) -> std::result::Result<codex_api::ResponseStream, codex_api::ApiError> {
+    use codex_model_provider_info::ChatBridge;
+
+    let protocol = match wire {
+        WireApi::Responses => codex_api::ModelWireProtocol::Responses,
+        WireApi::Chat => codex_api::ModelWireProtocol::ChatCompletions,
+        WireApi::Anthropic => codex_api::ModelWireProtocol::Anthropic,
+    };
+
+    let bridge_impl: &dyn codex_api::ModelBridge = match bridge.unwrap_or_default() {
+        #[cfg(feature = "rust-genai")]
+        ChatBridge::Genai => &codex_rust_genai_bridge::GenaiChatBridge,
+        #[cfg(feature = "rust-rig")]
+        ChatBridge::Rig => &codex_rust_rig_bridge::RigModelBridge,
+        // `native` only applies to the Responses wire; a chat-wire provider
+        // has no native transport to fall back to. Match arms that are
+        // compiled out collapse into one of the above when a single bridge
+        // feature is enabled.
+        #[cfg(not(feature = "rust-genai"))]
+        ChatBridge::Genai => {
+            return Err(codex_api::ApiError::InvalidRequest {
+                message: "experimental_bridge = \"genai\" requires the rust-genai feature; \
+                          remove the key to use the default rig bridge"
+                    .into(),
+            });
+        }
+        #[cfg(not(feature = "rust-rig"))]
+        ChatBridge::Rig => {
+            return Err(codex_api::ApiError::InvalidRequest {
+                message: "the default rig bridge requires the rust-rig feature; set \
+                          experimental_bridge = \"genai\" on the provider"
+                    .into(),
+            });
+        }
+        #[allow(unreachable_patterns)]
+        ChatBridge::Native => {
+            return Err(codex_api::ApiError::InvalidRequest {
+                message: "experimental_bridge = \"native\" requires wire_api = \"responses\"; \
+                          chat-wire providers must use the genai or rig bridge"
+                    .into(),
+            });
+        }
+    };
+
+    bridge_impl
+        .stream(
+            request,
+            &client_setup.api_provider,
+            &client_setup.api_auth,
+            codex_api::ModelBridgeOptions {
+                extra_headers: options.extra_headers,
+                protocol,
+                idle_timeout: client_setup.api_provider.stream_idle_timeout,
+                turn_state: options.turn_state,
+                auth_domain: source.auth_domain.clone(),
+                auth_domain_kind: source.auth_domain_kind.clone(),
+                context_window_tokens: model_info.usable_context_window(),
+            },
+        )
+        .await
 }
 
 #[cfg(test)]

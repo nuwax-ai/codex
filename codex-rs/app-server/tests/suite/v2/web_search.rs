@@ -723,7 +723,7 @@ async fn model_lab_search_provider(
         .with_priority(1)
         .mount(&server)
         .await;
-    let namespace = "mcp__codex_apps__search_service";
+    let namespace = "mcp__nuwax_apps__search_service";
     let key = if pinned_literature {
         "literature_search_query"
     } else {

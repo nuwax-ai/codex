@@ -11,10 +11,11 @@ use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use codex_protocol::config_types::ReasoningSummary;
+use codex_protocol::openai_models::CatalogModel;
 use codex_protocol::openai_models::ConfigShellToolType;
 use codex_protocol::openai_models::InputModality;
 use codex_protocol::openai_models::ModelInfo;
-use codex_protocol::openai_models::ModelMessages;
+use codex_protocol::openai_models::ModelOrigin;
 use codex_protocol::openai_models::ModelVisibility;
 use codex_protocol::openai_models::TruncationPolicyConfig;
 use codex_protocol::openai_models::WebSearchToolType;
@@ -370,11 +371,12 @@ pub(crate) fn bundled() -> Option<&'static VendorCatalog> {
 #[path = "vendor_catalog_tests.rs"]
 mod tests;
 
-/// Builds full `ModelInfo` from a vendor-catalog entry: the model behaves
-/// like a cataloged one (`used_fallback_model_metadata = false`), so every
-/// fallback-keyed behavior — review budgets, mid-turn model switching,
-/// reviewer image admission, tool face — treats it as a known model.
-pub fn vendor_model_info(entry: &VendorModel) -> ModelInfo {
+/// Builds full model metadata from a vendor-catalog entry, tagged with the
+/// vendor provenance: every fallback-keyed behavior — review budgets,
+/// mid-turn model switching, reviewer image admission, tool face — treats it
+/// as a known model, and the fork's window policy takes explicit overrides in
+/// full (see `model_info::with_config_overrides`).
+pub fn vendor_model_info(entry: &VendorModel) -> CatalogModel {
     let overlay = overlay();
     let percent = overlay
         .provider
@@ -393,7 +395,7 @@ pub fn vendor_model_info(entry: &VendorModel) -> ModelInfo {
         .collect::<Vec<_>>();
     // models.dev carries no tool-call capability flag, so the search tool
     // stays off — the fork does not pretend to know what it cannot see.
-    ModelInfo {
+    let model = ModelInfo {
         slug: entry.slug.clone(),
         display_name: entry
             .display_name
@@ -425,6 +427,7 @@ pub fn vendor_model_info(entry: &VendorModel) -> ModelInfo {
         default_verbosity: None,
         apply_patch_tool_type: None,
         web_search_tool_type: WebSearchToolType::Text,
+        web_search_provider: None,
         truncation_policy: TruncationPolicyConfig::bytes(/*limit*/ 10_000),
         supports_image_detail_original: entry.modalities.iter().any(|m| m == "image"),
         context_window: entry.context_limit,
@@ -434,10 +437,6 @@ pub fn vendor_model_info(entry: &VendorModel) -> ModelInfo {
         effective_context_window_percent: percent,
         experimental_supported_tools: Vec::new(),
         input_modalities,
-        used_fallback_model_metadata: false,
-        metadata_source: codex_protocol::openai_models::MetadataSource::Vendor {
-            provider: entry.provider.clone().into_boxed_str(),
-        },
         supports_search_tool: false,
         supports_experimental_context: false,
         use_responses_lite: false,
@@ -450,5 +449,11 @@ pub fn vendor_model_info(entry: &VendorModel) -> ModelInfo {
         tool_mode: None,
         multi_agent_version: None,
         multi_agent_reasoning_effort: None,
+    };
+    CatalogModel {
+        model: model.into(),
+        origin: ModelOrigin::Vendor {
+            provider: entry.provider.clone().into_boxed_str(),
+        },
     }
 }

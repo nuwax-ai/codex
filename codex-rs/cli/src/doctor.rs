@@ -1,4 +1,4 @@
-//! Implements the `codex doctor` diagnostic report.
+//! Implements the `nuwax-harness doctor` diagnostic report.
 //!
 //! Doctor is intentionally read-mostly: checks inspect the current installation,
 //! configuration, authentication, terminal, state paths, and bounded reachability
@@ -78,6 +78,7 @@ mod desktop;
 mod disk;
 mod filesystem_paths;
 mod git;
+mod model_routing;
 mod network;
 mod output;
 mod progress;
@@ -94,6 +95,10 @@ mod windows_dev_drive;
 #[cfg(test)]
 #[path = "doctor/desktop_tests.rs"]
 mod desktop_tests;
+
+#[cfg(test)]
+#[path = "doctor/model_config_tests.rs"]
+mod model_config_tests;
 
 use background::background_server_check;
 use git::git_check;
@@ -152,7 +157,7 @@ const REMOTE_TERMINAL_ENV_VARS: &[&str] = &[
 const NARROW_TERMINAL_COLUMNS: u16 = 80;
 const NARROW_TERMINAL_ROWS: u16 = 24;
 
-/// Options for building a local Codex diagnostic report.
+/// Options for building a local Nuwax Harness diagnostic report.
 ///
 /// The command runs the full diagnostic set unless `--network-only` is selected.
 /// Human output includes detailed diagnostics by default; --summary keeps the terminal output
@@ -323,7 +328,7 @@ impl DoctorCheck {
 
 /// Builds, renders, and exits according to the current doctor report.
 ///
-/// This is the CLI entry point for codex doctor. It does not repair issues;
+/// This is the CLI entry point for nuwax-harness doctor. It does not repair issues;
 /// failures are represented in the report and cause a non-zero process exit so
 /// scripts can distinguish a clean environment from one that needs attention.
 pub async fn run_doctor(
@@ -380,7 +385,14 @@ async fn build_report(
 
     progress.begin("config");
     let config_started = Instant::now();
-    let config_result = load_config(root_config_overrides, interactive, arg0_paths).await;
+    let nuwax_input = codex_utils_cli::nuwax_env_from_process();
+    let config_result = load_config(
+        root_config_overrides.clone(),
+        interactive,
+        arg0_paths,
+        nuwax_input.clone(),
+    )
+    .await;
     let config_duration = config_started.elapsed();
     let cwd = config_result
         .as_ref()
@@ -401,6 +413,7 @@ async fn build_report(
     }));
     match &config_result {
         Ok(config) => {
+            let sources = routing_sources(config, interactive, &root_config_overrides);
             // Other checks below do synchronous work inside join!. Keep the
             // probe deadlines independent of those checks' scheduler delays.
             let filesystem_paths_check = run_async_check(
@@ -453,7 +466,7 @@ async fn build_report(
                         )
                         .detail(error.to_string())
                         .remediation(
-                            "Fix the reported authentication error, then rerun codex doctor.",
+                            "Fix the reported authentication error, then rerun nuwax-harness doctor.",
                         ),
                     })
                 },
@@ -567,12 +580,11 @@ async fn build_report(
     }
 
     progress.begin("desktop");
+    // Fork: the desktop-application update probe is intentionally gone — it
+    // queried OpenAI's appcast feeds (persistent.oaistatic.com, a chatgpt.com
+    // backend), which are no channel of this fork and an outbound request
+    // enterprise deployments do not expect. Local desktop detection remains.
     if let Some(desktop) = desktop::collect().await {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        if let Some(application) = desktop.application.as_ref() {
-            updates::append_desktop_update(&mut checks, config_result.as_ref().ok(), application)
-                .await;
-        }
         progress.finish("desktop", overall_status(&desktop.checks));
         checks.extend(desktop.checks);
     }
@@ -600,7 +612,7 @@ fn config_load_failure(err: &anyhow::Error) -> DoctorCheck {
         CheckStatus::Fail,
         "config could not be loaded",
     )
-    .remediation("Fix the reported config error, then rerun codex doctor.");
+    .remediation("Fix the reported config error, then rerun nuwax-harness doctor.");
     // Error messages can echo config values. Report only typed metadata,
     // including errors wrapped by io::Error, whose source skips the wrapper.
     let config_error = err.chain().find_map(|cause| {
@@ -628,10 +640,86 @@ fn config_load_failure(err: &anyhow::Error) -> DoctorCheck {
     }
 }
 
+/// Field-level routing provenance for the model-routing check, read from the
+/// loaded layer stack — display only, never a second source of loading
+/// truth. The environment group counts only when its seed layer actually
+/// contributed the selection; the reserved id alone does not establish
+/// provenance (and cannot load without the group).
+fn routing_sources(
+    config: &Config,
+    interactive: &TuiCli,
+    config_overrides: &codex_utils_cli::CliConfigOverrides,
+) -> model_routing::ModelRoutingSources {
+    use codex_config::ConfigLayerSource;
+    use model_routing::ModelSource;
+    use model_routing::ProviderSource;
+    let overrides = config_overrides.parse_overrides().unwrap_or_default();
+    let explicit_model = overrides.iter().any(|(key, _)| key == "model");
+    let explicit_provider = overrides
+        .iter()
+        .rev()
+        .find(|(key, _)| key == "model_provider")
+        .and_then(|(_, value)| value.as_str());
+    let typed_provider = interactive
+        .oss
+        .then_some(interactive.oss_provider.as_deref())
+        .flatten();
+    let env_seed = config
+        .config_layer_stack
+        .layers_low_to_high()
+        .find(|layer| matches!(layer.name, ConfigLayerSource::EnvSeed));
+    let env_group_selected = config.model_provider_id == codex_utils_cli::NUWAX_ENV_PROVIDER_ID
+        && env_seed.is_some_and(|layer| {
+            layer
+                .config
+                .get("model_providers")
+                .is_some_and(|providers| {
+                    providers
+                        .get(codex_utils_cli::NUWAX_ENV_PROVIDER_ID)
+                        .is_some()
+                })
+        });
+    let env_model_selected = env_seed.is_some_and(|layer| {
+        layer
+            .config
+            .get("model")
+            .and_then(toml::Value::as_str)
+            .is_some_and(|model| Some(model) == config.model.as_deref())
+    });
+    model_routing::ModelRoutingSources {
+        plain_oss: interactive.oss && interactive.oss_provider.is_none(),
+        provider: if config
+            .config_layer_stack
+            .required_model_provider()
+            .is_some()
+        {
+            ProviderSource::ConfigLayers
+        } else if env_group_selected {
+            ProviderSource::NuwaxEnvironmentGroup
+        } else if typed_provider == Some(config.model_provider_id.as_str()) {
+            ProviderSource::LocalProviderFlag
+        } else if explicit_provider == Some(config.model_provider_id.as_str()) {
+            ProviderSource::CliOverride
+        } else {
+            ProviderSource::ConfigLayers
+        },
+        model: if interactive.model.is_some() {
+            ModelSource::ModelFlag
+        } else if explicit_model {
+            ModelSource::CliOverride
+        } else if env_model_selected {
+            ModelSource::NuwaxModelEnvironment
+        } else {
+            ModelSource::ConfigLayers
+        },
+    }
+}
+
 async fn load_config(
     mut root_config_overrides: CliConfigOverrides,
     interactive: &TuiCli,
     arg0_paths: &Arg0DispatchPaths,
+    nuwax_input: codex_utils_cli::NuwaxEnvInput,
 ) -> anyhow::Result<Config> {
     if interactive.web_search {
         root_config_overrides
@@ -652,9 +740,30 @@ async fn load_config(
     .await?
     .build()
     .await
-    .context("failed to load Codex config")?;
+    .context("failed to load Nuwax Harness config")?;
     config.config_layer_stack.ensure_config_server_applied()?;
     Ok(config)
+}
+
+fn model_cli_overrides(
+    config: &CliConfigOverrides,
+    interactive: &TuiCli,
+    input: codex_utils_cli::NuwaxEnvInput,
+) -> anyhow::Result<codex_config::LaunchOverrides> {
+    let explicit = config.parse_overrides().map_err(anyhow::Error::msg)?;
+    let seeds = codex_utils_cli::nuwax_env_overrides(
+        input,
+        interactive.model.as_deref(),
+        interactive
+            .oss
+            .then_some(interactive.oss_provider.as_deref().unwrap_or("oss")),
+        &explicit,
+    )
+    .map_err(anyhow::Error::msg)?;
+    Ok(codex_config::LaunchOverrides {
+        cli_overrides: explicit,
+        env_seed_overrides: seeds,
+    })
 }
 
 fn config_overrides_from_interactive(
@@ -688,7 +797,7 @@ fn config_overrides_from_interactive(
     }
 }
 
-/// JSON support report emitted by `codex doctor --json`.
+/// JSON support report emitted by `nuwax-harness doctor --json`.
 ///
 /// The report is keyed by check id so support tooling can fetch paths like
 /// `checks["terminal.metadata"]` without scanning arrays. Human rendering can
@@ -953,14 +1062,14 @@ fn installation_check(show_details: bool) -> DoctorCheck {
     let mut remediation = None;
 
     if path_entries.len() > 1 {
-        details.push(format!("PATH codex entries: {}", path_entries.len()));
+        details.push(format!("PATH nuwax-harness entries: {}", path_entries.len()));
     }
     if show_details || path_entries.len() > 1 {
         details.extend(
             path_entries
                 .iter()
                 .enumerate()
-                .map(|(index, path)| format!("PATH codex #{}: {path}", index + 1)),
+                .map(|(index, path)| format!("PATH nuwax-harness #{}: {path}", index + 1)),
         );
     }
 
@@ -971,7 +1080,7 @@ fn installation_check(show_details: bool) -> DoctorCheck {
             status = status.max(CheckStatus::Warning);
             summary = "npm-managed launch is missing package-root provenance".to_string();
             remediation = Some(
-                "Reinstall or update Codex so the JS shim provides CODEX_MANAGED_PACKAGE_ROOT."
+                "Reinstall or update Nuwax Harness so the JS shim provides CODEX_MANAGED_PACKAGE_ROOT."
                     .to_string(),
             );
         }
@@ -1054,6 +1163,10 @@ fn describe_install_context(context: &InstallContext) -> String {
         InstallMethod::Npm => {
             describe_method_with_package_layout("npm", context.package_layout.as_ref())
         }
+        InstallMethod::NpmNuwax => describe_method_with_package_layout(
+            "npm (@nuwax-ai/nuwax-harness)",
+            context.package_layout.as_ref(),
+        ),
         InstallMethod::Bun => {
             describe_method_with_package_layout("bun", context.package_layout.as_ref())
         }
@@ -1108,7 +1221,7 @@ fn display_list<T: AsRef<str>>(items: &[T]) -> String {
 }
 
 fn codex_path_entries() -> Vec<String> {
-    let Ok(candidates) = which::which_all("codex") else {
+    let Ok(candidates) = which::which_all("nuwax-harness") else {
         return Vec::new();
     };
     let mut seen = BTreeSet::new();
@@ -1298,7 +1411,7 @@ fn auth_check(config: &Config) -> DoctorCheck {
                 DoctorCheck::new("auth.credentials", "auth", status, summary).details(details);
             if status == CheckStatus::Fail {
                 check =
-                    check.remediation("Run codex login again or provide a supported auth env var.");
+                    check.remediation("Run nuwax-harness login again or provide a supported auth env var.");
             }
             check
         }
@@ -1313,10 +1426,10 @@ fn auth_check(config: &Config) -> DoctorCheck {
             "auth.credentials",
             "auth",
             CheckStatus::Fail,
-            "no Codex credentials were found",
+            "no Nuwax Harness credentials were found",
         )
         .details(details)
-        .remediation("Run codex login or provide an API key through a supported auth env var."),
+        .remediation("Run nuwax-harness login or provide an API key through a supported auth env var."),
         Err(err) => DoctorCheck::new(
             "auth.credentials",
             "auth",
@@ -1324,7 +1437,7 @@ fn auth_check(config: &Config) -> DoctorCheck {
             "stored credentials could not be read",
         )
         .detail(err.to_string())
-        .remediation("Fix auth storage access or run codex login again."),
+        .remediation("Fix auth storage access or run nuwax-harness login again."),
     }
 }
 
@@ -2487,6 +2600,7 @@ fn websocket_error_detail(err: &ApiError) -> String {
         | ApiError::UsageNotIncluded
         | ApiError::FlexUnavailable
         | ApiError::ServerOverloaded { .. }
+        | ApiError::CapExhausted { .. }
         | ApiError::PolicyCapacityUnavailable { .. } => format!("handshake error: {err}"),
         ApiError::Retryable { .. } => "handshake error: retryable error: [redacted]".to_string(),
         ApiError::RateLimitExceeded { .. } => {
@@ -2722,7 +2836,7 @@ fn provider_reachability_plan_from_parts(
         }],
         (ProviderAuthReachabilityMode::Chatgpt, None) => vec![ReachabilityEndpoint {
             label: "ChatGPT".to_string(),
-            url: provider_url_for_path(chatgpt_base_url, "codex/responses", provider_query_params),
+            url: provider_url_for_path(chatgpt_base_url, "nuwax-harness/responses", provider_query_params),
             required: true,
             route_probe_url: None,
         }],
@@ -3435,7 +3549,7 @@ mod tests {
     #[test]
     fn config_overrides_from_interactive_preserves_global_options() {
         let interactive = TuiCli::parse_from([
-            "codex",
+            "nuwax-harness",
             "--oss",
             "--local-provider",
             "ollama",
@@ -3724,7 +3838,7 @@ mod tests {
         let check = provider_specific_auth_check(
             /*requires_openai_auth*/ false,
             Some("PROVIDER_API_KEY"),
-            Some("Set PROVIDER_API_KEY before running Codex."),
+            Some("Set PROVIDER_API_KEY before running Nuwax Harness."),
             Vec::new(),
             |_| false,
         )
@@ -3737,7 +3851,7 @@ mod tests {
         );
         assert_eq!(
             check.remediation,
-            Some("Set PROVIDER_API_KEY before running Codex.".to_string())
+            Some("Set PROVIDER_API_KEY before running Nuwax Harness.".to_string())
         );
     }
 
@@ -3985,7 +4099,7 @@ mod tests {
             default_reachability_plan().endpoints,
             vec![ReachabilityEndpoint {
                 label: "ChatGPT".to_string(),
-                url: "https://chatgpt.com/backend-api/codex/responses".to_string(),
+                url: "https://chatgpt.com/backend-api/nuwax-harness/responses".to_string(),
                 required: true,
                 route_probe_url: None,
             }]

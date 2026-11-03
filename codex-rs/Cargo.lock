@@ -3021,12 +3021,9 @@ dependencies = [
  "codex-rmcp-client",
  "codex-rollout",
  "codex-rollout-trace",
-<<<<<<< HEAD
+ "codex-runtime-agent-instance",
  "codex-rust-genai-bridge",
  "codex-rust-rig-bridge",
-=======
- "codex-runtime-agent-instance",
->>>>>>> origin/main
  "codex-sandboxing",
  "codex-shell-command",
  "codex-skills",

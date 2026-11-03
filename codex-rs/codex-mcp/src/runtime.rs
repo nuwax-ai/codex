@@ -64,7 +64,7 @@ use crate::elicitation::ElicitationLifecycle;
 use crate::elicitation::ElicitationRequestRouter;
 use crate::elicitation::ElicitationReviewerHandle;
 use crate::event_stream::McpEventStreamOpener;
-use crate::mcp::CODEX_APPS_MCP_SERVER_NAME;
+use crate::mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use crate::resource_client::McpResourceServerCacheKey;
 use crate::resource_origin::ResourceOrigins;
 use crate::server::EffectiveMcpServer;
@@ -337,7 +337,7 @@ impl McpRuntime {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .find(call_id)?;
         let binding = self
-            .current_binding_for_call(crate::CODEX_APPS_MCP_SERVER_NAME)
+            .current_binding_for_call(crate::NUWAX_APPS_MCP_SERVER_NAME)
             .await
             .ok_or_else(|| anyhow::anyhow!("codex_apps MCP server is unavailable"))?;
 
@@ -448,14 +448,14 @@ impl McpRuntime {
             ))
             .await,
         );
-        let hosted_event_server_retained = connections.contains_server(CODEX_APPS_MCP_SERVER_NAME)
+        let hosted_event_server_retained = connections.contains_server(NUWAX_APPS_MCP_SERVER_NAME)
             && config
                 .mcp_server_catalog
-                .server(CODEX_APPS_MCP_SERVER_NAME)
+                .server(NUWAX_APPS_MCP_SERVER_NAME)
                 .is_some_and(|registration| {
                     registration
                         .source()
-                        .is_host_owned_apps(CODEX_APPS_MCP_SERVER_NAME, registration.config())
+                        .is_host_owned_apps(NUWAX_APPS_MCP_SERVER_NAME, registration.config())
                 });
         let mut cancellation = self
             .event_stream_cancellation
@@ -907,7 +907,7 @@ impl McpRuntime {
         &self,
     ) -> anyhow::Result<Arc<McpConnectionSet>> {
         let current = self.current.load();
-        ensure_host_owned_apps_registration(&current, CODEX_APPS_MCP_SERVER_NAME)?;
+        ensure_host_owned_apps_registration(&current, NUWAX_APPS_MCP_SERVER_NAME)?;
         Ok(Arc::clone(&current.connections))
     }
 
@@ -923,7 +923,7 @@ impl McpRuntime {
             .cancel_event_streams_on_server_removal
             .subscribe();
         let current = self.current.load();
-        if server == CODEX_APPS_MCP_SERVER_NAME {
+        if server == NUWAX_APPS_MCP_SERVER_NAME {
             ensure_host_owned_apps_registration(&current, server)?;
         }
         Ok((
@@ -1227,7 +1227,7 @@ mod tests {
         connections.list_all_tools().await;
         let mut config = crate::mcp::tests::test_mcp_config(codex_home.path().to_path_buf());
         config.server_permissions.insert(
-            CODEX_APPS_MCP_SERVER_NAME.to_string(),
+            NUWAX_APPS_MCP_SERVER_NAME.to_string(),
             McpServerPermissions::Thread,
         );
         let published = Arc::new(PublishedMcpRuntime {
@@ -1248,7 +1248,7 @@ mod tests {
         runtime.current.store(Arc::clone(&published));
         runtime
             .latest_call_tool_without_attribution(
-                CODEX_APPS_MCP_SERVER_NAME,
+                NUWAX_APPS_MCP_SERVER_NAME,
                 "search",
                 /*arguments*/ None,
                 /*meta*/ None,
@@ -1282,7 +1282,7 @@ mod tests {
         .expect("refreshed binding");
         assert!(!Arc::ptr_eq(&before, &refreshed));
         let call = refreshed
-            .prepare_call(CODEX_APPS_MCP_SERVER_NAME, "search")
+            .prepare_call(NUWAX_APPS_MCP_SERVER_NAME, "search")
             .expect("refreshed call");
         let error = call
             .call_with_preparation(/*requested_timeout*/ None, || async {

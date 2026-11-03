@@ -235,7 +235,7 @@ async fn cua_tool_call_lifecycle_requires_a_start_and_deduplicates_replay() {
 
     let item = |status| ThreadItemPayload::McpToolCall {
         id: "cua-call".into(),
-        server: "codex_apps".into(),
+        server: "nuwax_apps".into(),
         tool: "js".into(),
         status,
         arguments: json!({"script": "synthetic-private-input"}),

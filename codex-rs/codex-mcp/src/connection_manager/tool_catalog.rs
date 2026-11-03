@@ -707,7 +707,7 @@ impl McpConnectionSet {
     pub(crate) async fn apps_tools_from_mcp_client(&self) -> Vec<ToolInfo> {
         let Some(client) = self
             .servers
-            .get(crate::CODEX_APPS_MCP_SERVER_NAME)
+            .get(crate::NUWAX_APPS_MCP_SERVER_NAME)
             .filter(|view| {
                 view.connection
                     .client
