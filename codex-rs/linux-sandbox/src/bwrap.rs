@@ -17,6 +17,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::fs;
 use std::fs::File;
@@ -127,8 +128,97 @@ impl BwrapNetworkMode {
 #[derive(Debug)]
 pub(crate) struct BwrapArgs {
     pub args: Vec<String>,
+    /// Mask arguments whose destination lives on the procfs that `args` mounts later.
+    ///
+    /// `create_bwrap_flags` splices these after `--proc /proc`, because the fresh
+    /// procfs replaces everything already mounted under `/proc`.
+    pub proc_scoped_args: Vec<String>,
+    /// Whether `/proc` destinations are collected into `proc_scoped_args`.
+    ///
+    /// Only `--proc /proc` overmounts a mask. Without a fresh procfs the masks stay
+    /// where they were emitted, which is where they already take effect.
+    pub relocate_proc_destinations: bool,
+    /// The `/dev` symlink entries whose deny rules switched the device tree to the
+    /// explicit construction and are omitted from it. Their denies hold by absence.
+    pub denied_dev_symlinks: BTreeSet<&'static str>,
+    /// Whether the sandbox enters a fresh network namespace. Only then do the
+    /// host-only `/proc/sys/net/...` names have no destination to mask, and their
+    /// deny rules hold by absence.
+    pub network_namespace_isolated: bool,
     pub preserved_files: Vec<File>,
     pub synthetic_mount_targets: Vec<SyntheticMountTarget>,
+}
+
+impl BwrapArgs {
+    /// The argument list that a mask for `destination` belongs to.
+    ///
+    /// Callers take this once per mask group so every argument of the group, including
+    /// the `--perms`/`--tmpfs`/`--remount-ro` trio and the mount target parents, is
+    /// emitted together and keeps its relative order.
+    fn mask_sink(&mut self, destination: &Path) -> &mut Vec<String> {
+        if self.relocate_proc_destinations && mask_lands_on_mounted_procfs(destination) {
+            &mut self.proc_scoped_args
+        } else {
+            &mut self.args
+        }
+    }
+}
+
+/// Returns true when a mask for `destination` has to be applied to the freshly mounted
+/// procfs rather than to the host `/proc` the argument was written against.
+///
+/// Both halves matter: procfs must re-create the destination once `--proc` replaces
+/// the tree, and the destination must exist to be masked at all. Masking a path the new
+/// procfs does not have makes bubblewrap abort on the missing mount point.
+fn mask_lands_on_mounted_procfs(destination: &Path) -> bool {
+    procfs_entry_survives_new_pid_namespace(destination) && destination.exists()
+}
+
+/// Returns true when `/proc` entries under `destination` still exist after the sandbox
+/// gets its fresh procfs in a fresh PID namespace.
+///
+/// `--proc` is only mounted alongside `--unshare-pid` (see `BwrapOptions::mount_proc`),
+/// so the new tree lists nothing but the sandbox's own processes. A mask for
+/// `/proc/<pid>/...` therefore has no destination to attach to, which is also the
+/// denial the rule asked for: the host process it pointed at is gone.
+fn procfs_entry_survives_new_pid_namespace(destination: &Path) -> bool {
+    let Ok(relative) = destination.strip_prefix(Path::new("/proc")) else {
+        return false;
+    };
+    match relative.components().next() {
+        // `/proc` itself is the mount point, so it always exists in the new tree.
+        None => true,
+        Some(component) => !is_pid_directory_name(component.as_os_str()),
+    }
+}
+
+fn is_pid_directory_name(name: &OsStr) -> bool {
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    !name.is_empty() && name.chars().all(|char| char.is_ascii_digit())
+}
+
+/// The procfs paths that resolve through the reading process's own pid:
+/// anything under `/proc/self`, `/proc/thread-self`, or `/proc/net` (a
+/// symlink to `self/net`). A mount-time mask for such a path resolves
+/// through bubblewrap's setup process instead and lands where no sandboxed
+/// reader ever looks, so the deny would silently protect nothing (O4 in the
+/// sandbox ledger; the payload's pid in the fresh pid namespace is not 1, so
+/// no numeric translation can target it either).
+fn deny_target_traverses_proc_self(path: &Path) -> bool {
+    let Ok(relative) = path.strip_prefix(Path::new("/proc")) else {
+        return false;
+    };
+    let Some(first) = relative
+        .components()
+        .next()
+        .and_then(|component| component.as_os_str().to_str())
+    else {
+        // `/proc` itself is the mount point; it stays maskable.
+        return false;
+    };
+    matches!(first, "self" | "thread-self" | "net")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -251,6 +341,10 @@ pub(crate) fn create_bwrap_command_args(
         return if options.network_mode == BwrapNetworkMode::FullAccess {
             Ok(BwrapArgs {
                 args: command,
+                proc_scoped_args: Vec::new(),
+                relocate_proc_destinations: false,
+                denied_dev_symlinks: BTreeSet::new(),
+                network_namespace_isolated: false,
                 preserved_files: Vec::new(),
                 synthetic_mount_targets: Vec::new(),
             })
@@ -303,6 +397,10 @@ fn create_bwrap_flags_full_filesystem(command: Vec<String>, options: BwrapOption
     args.extend(command);
     BwrapArgs {
         args,
+        proc_scoped_args: Vec::new(),
+        relocate_proc_destinations: false,
+        denied_dev_symlinks: BTreeSet::new(),
+        network_namespace_isolated: options.network_mode.should_unshare_network(),
         preserved_files: Vec::new(),
         synthetic_mount_targets: Vec::new(),
     }
@@ -335,8 +433,10 @@ fn create_bwrap_flags(
     }
     let BwrapArgs {
         args: filesystem_args,
+        proc_scoped_args,
         preserved_files,
         synthetic_mount_targets,
+        ..
     } = create_filesystem_args(file_system_sandbox_policy, sandbox_policy_cwd, options)?;
     let normalized_command_cwd = normalize_command_cwd_for_bwrap(command_cwd);
     let mut args = Vec::new();
@@ -373,6 +473,10 @@ fn create_bwrap_flags(
         args.push("--proc".to_string());
         args.push("/proc".to_string());
     }
+    // bubblewrap walks its arguments in order, so the procfs just mounted replaced
+    // every mask the policy applied to a host /proc path. Re-apply those here, on the
+    // fresh procfs, or a deny rule under /proc silently protects nothing.
+    args.extend(proc_scoped_args);
     if normalized_command_cwd.as_path() != command_cwd {
         // Bubblewrap otherwise inherits the helper's logical cwd, which can be
         // a symlink alias that disappears once the sandbox only mounts
@@ -387,6 +491,10 @@ fn create_bwrap_flags(
     args.extend(command);
     Ok(BwrapArgs {
         args,
+        proc_scoped_args: Vec::new(),
+        relocate_proc_destinations: false,
+        denied_dev_symlinks: BTreeSet::new(),
+        network_namespace_isolated: options.network_mode.should_unshare_network(),
         preserved_files,
         synthetic_mount_targets,
     })
@@ -499,19 +607,20 @@ fn create_filesystem_args(
     unreadable_roots.sort();
     unreadable_roots.dedup();
 
+    let denied_dev_symlinks: BTreeSet<&'static str> = unreadable_roots
+        .iter()
+        .filter_map(|root| denied_synthetic_dev_symlink_entry(root))
+        .collect();
+
     let mut args = if resolved.has_full_disk_read_access {
         // Read-only root, then mount a minimal device tree.
         // In bubblewrap (`bubblewrap.c`, `SETUP_MOUNT_DEV`), `--dev /dev`
         // creates the standard minimal nodes: null, zero, full, random,
         // urandom, and tty. `/dev` must be mounted before writable roots so
         // explicit `/dev/*` writable binds remain visible.
-        vec![
-            "--ro-bind".to_string(),
-            "/".to_string(),
-            "/".to_string(),
-            "--dev".to_string(),
-            "/dev".to_string(),
-        ]
+        let mut args = vec!["--ro-bind".to_string(), "/".to_string(), "/".to_string()];
+        append_dev_tree_args(&mut args, &denied_dev_symlinks);
+        args
     } else {
         // Start from an empty filesystem and add only the approved readable
         // roots plus a minimal `/dev`.
@@ -545,13 +654,8 @@ fn create_filesystem_args(
         // the broad read baseline. Explicit unreadable carveouts are
         // re-applied later.
         if readable_roots.iter().any(|root| root == Path::new("/")) {
-            args = vec![
-                "--ro-bind".to_string(),
-                "/".to_string(),
-                "/".to_string(),
-                "--dev".to_string(),
-                "/dev".to_string(),
-            ];
+            args = vec!["--ro-bind".to_string(), "/".to_string(), "/".to_string()];
+            append_dev_tree_args(&mut args, &denied_dev_symlinks);
         } else {
             for root in readable_roots {
                 if !root.exists() {
@@ -569,6 +673,13 @@ fn create_filesystem_args(
                 } else {
                     root
                 };
+                if !denied_dev_symlinks.is_empty() && mount_root == Path::new("/dev") {
+                    // Keep the minimal tree just constructed, as a full-root read
+                    // grant does. Rebinding the host device directory here would
+                    // restore the symlinks whose absence enforces the denies.
+                    continue;
+                }
+                ensure_explicit_dev_bind_preserves_denies(&mount_root, &denied_dev_symlinks)?;
                 args.push("--ro-bind".to_string());
                 args.push(path_to_string(&mount_root));
                 args.push(path_to_string(&mount_root));
@@ -583,6 +694,12 @@ fn create_filesystem_args(
     }
     let mut bwrap_args = BwrapArgs {
         args,
+        proc_scoped_args: Vec::new(),
+        relocate_proc_destinations: options.mount_proc,
+        // The writable-root rebinds below still consult the set, so hand the
+        // struct a clone and keep the original for the remaining arg building.
+        denied_dev_symlinks: denied_dev_symlinks.clone(),
+        network_namespace_isolated: options.network_mode.should_unshare_network(),
         preserved_files: Vec::new(),
         synthetic_mount_targets: Vec::new(),
     };
@@ -637,6 +754,8 @@ fn create_filesystem_args(
         }
 
         let mount_root = symlink_target.as_deref().unwrap_or(root);
+        ensure_explicit_dev_bind_preserves_denies(root, &denied_dev_symlinks)?;
+        ensure_explicit_dev_bind_preserves_denies(mount_root, &denied_dev_symlinks)?;
         // Rebinding a root alias would also undo masks already applied to `/`.
         // The physical root is already writable; only the alias's carveouts remain.
         let redundant_root_alias =
@@ -648,9 +767,8 @@ fn create_filesystem_args(
             if mount_root == Path::new("/") {
                 // The root bind shadows the earlier device tree and applies nodev.
                 // Recreate only standard devices before applying explicit deny masks.
+                append_dev_tree_args(&mut bwrap_args.args, &denied_dev_symlinks);
                 bwrap_args.args.extend([
-                    "--dev".to_string(),
-                    "/dev".to_string(),
                     "--bind-try".to_string(),
                     "/dev/shm".to_string(),
                     "/dev/shm".to_string(),
@@ -792,6 +910,14 @@ fn create_filesystem_args(
             "--remount-ro".to_string(),
             WSLG_DISTRO_ROOT.to_string(),
         ]);
+    }
+
+    if !denied_dev_symlinks.is_empty() {
+        // Absence only enforces a deny while the payload cannot recreate the
+        // omitted name. Seal the parent after every bind/mask; this remount is
+        // non-recursive so separately granted writable devices and shm survive.
+        bwrap_args.args.push("--remount-ro".to_string());
+        bwrap_args.args.push("/dev".to_string());
     }
 
     Ok(bwrap_args)
@@ -1280,19 +1406,21 @@ fn append_empty_file_bind_data_args(bwrap_args: &mut BwrapArgs, path: &Path) -> 
     let null_file = File::open("/dev/null")?;
     let null_fd = null_file.as_raw_fd().to_string();
     bwrap_args.preserved_files.push(null_file);
-    bwrap_args.args.push("--ro-bind-data".to_string());
-    bwrap_args.args.push(null_fd);
-    bwrap_args.args.push(path_to_string(path));
+    let mask_args = bwrap_args.mask_sink(path);
+    mask_args.push("--ro-bind-data".to_string());
+    mask_args.push(null_fd);
+    mask_args.push(path_to_string(path));
     Ok(())
 }
 
 fn append_empty_directory_args(bwrap_args: &mut BwrapArgs, path: &Path) {
-    bwrap_args.args.push("--perms".to_string());
-    bwrap_args.args.push("555".to_string());
-    bwrap_args.args.push("--tmpfs".to_string());
-    bwrap_args.args.push(path_to_string(path));
-    bwrap_args.args.push("--remount-ro".to_string());
-    bwrap_args.args.push(path_to_string(path));
+    let mask_args = bwrap_args.mask_sink(path);
+    mask_args.push("--perms".to_string());
+    mask_args.push("555".to_string());
+    mask_args.push("--tmpfs".to_string());
+    mask_args.push(path_to_string(path));
+    mask_args.push("--remount-ro".to_string());
+    mask_args.push(path_to_string(path));
 }
 
 fn append_missing_read_only_subpath_args(bwrap_args: &mut BwrapArgs, path: &Path) -> Result<()> {
@@ -1362,6 +1490,46 @@ fn append_unreadable_root_args(
         )));
     }
 
+    if deny_is_enforced_by_absent_dev_path(unreadable_root) {
+        return Ok(());
+    }
+
+    if deny_target_traverses_proc_self(unreadable_root) {
+        /*
+         * Paths through the magic /proc/self, /proc/thread-self, and /proc/net
+         * symlinks resolve through the READING process's own pid, while every
+         * mount-time mask resolves through bubblewrap's setup process. The
+         * design probes measured both halves: self-directed mounts land where
+         * no sandboxed reader looks, and the payload's pid in the fresh pid
+         * namespace is not 1 (bubblewrap keeps its own process chain), so not
+         * even a numeric translation can target it. Such a deny would silently
+         * protect nothing; fail closed instead. Numeric /proc/<pid> denies keep
+         * their existing behavior.
+         */
+        return Err(CodexErr::Fatal(format!(
+            "cannot enforce sandbox deny-read path {}: it resolves through the reader's own pid in procfs, which no mount-time mask can cover",
+            unreadable_root.display()
+        )));
+    }
+
+    // The explicit device tree omits the denied symlink entries, so their
+    // denial holds by absence and no mask may be emitted for them.
+    if let Some(entry) = denied_synthetic_dev_symlink_entry(unreadable_root)
+        && bwrap_args.denied_dev_symlinks.contains(&entry)
+    {
+        return Ok(());
+    }
+
+    // A fresh network namespace never creates the host-only sysctl names under
+    // /proc/sys/net/*/conf, so their masks would have no destination inside
+    // the sandbox; the denial already holds by absence there.
+    if bwrap_args.network_namespace_isolated
+        && bwrap_args.relocate_proc_destinations
+        && deny_is_enforced_by_absent_netns_sysctl(unreadable_root)
+    {
+        return Ok(());
+    }
+
     if !unreadable_root.exists() {
         if let Some(first_missing_component) = find_first_non_existent_component(unreadable_root)
             && is_within_allowed_write_paths(&first_missing_component, allowed_write_paths)
@@ -1385,37 +1553,215 @@ fn append_existing_unreadable_path_args(
             .map(PathBuf::as_path)
             .filter(|path| *path != unreadable_root && path.starts_with(unreadable_root))
             .collect();
-        bwrap_args.args.push("--perms".to_string());
+        // One sink for the whole group: the trio and the mount target parents have to
+        // stay together, wherever the denied destination ends up being mounted.
+        let mask_args = bwrap_args.mask_sink(unreadable_root);
+        mask_args.push("--perms".to_string());
         // Execute-only perms let the process traverse into explicitly
         // re-opened writable descendants while still hiding the denied
         // directory contents. Plain denied directories with no writable child
         // mounts stay at `000`.
-        bwrap_args.args.push(if writable_descendants.is_empty() {
+        mask_args.push(if writable_descendants.is_empty() {
             "000".to_string()
         } else {
             "111".to_string()
         });
-        bwrap_args.args.push("--tmpfs".to_string());
-        bwrap_args.args.push(path_to_string(unreadable_root));
+        mask_args.push("--tmpfs".to_string());
+        mask_args.push(path_to_string(unreadable_root));
         // Recreate any writable descendants inside the tmpfs before remounting
         // the denied parent read-only. Otherwise bubblewrap cannot mkdir the
         // nested mount targets after the parent has been frozen.
         writable_descendants.sort_by_key(|path| path_depth(path));
         for writable_descendant in writable_descendants {
-            append_mount_target_parent_dir_args(
-                &mut bwrap_args.args,
-                writable_descendant,
-                unreadable_root,
-            );
+            append_mount_target_parent_dir_args(mask_args, writable_descendant, unreadable_root);
         }
-        bwrap_args.args.push("--remount-ro".to_string());
-        bwrap_args.args.push(path_to_string(unreadable_root));
+        mask_args.push("--remount-ro".to_string());
+        mask_args.push(path_to_string(unreadable_root));
         return Ok(());
     }
 
-    bwrap_args.args.push("--perms".to_string());
-    bwrap_args.args.push("000".to_string());
+    let mask_args = bwrap_args.mask_sink(unreadable_root);
+    mask_args.push("--perms".to_string());
+    mask_args.push("000".to_string());
     append_empty_file_bind_data_args(bwrap_args, unreadable_root)
+}
+
+/// Every `/dev` entry bwrap creates for itself (`bubblewrap.c`, `SETUP_MOUNT_DEV`):
+/// the six bound nodes, the `stdin`/`stdout`/`stderr`/`fd`/`core`/`ptmx` symlinks,
+/// the `shm` and `pts` mount points, and `console` (which appears whenever the
+/// sandbox's stdout is a tty).
+const SYNTHETIC_DEV_ENTRIES: [&str; 15] = [
+    "null", "zero", "full", "random", "urandom", "tty", "stdin", "stdout", "stderr", "fd", "core",
+    "pts", "ptmx", "shm", "console",
+];
+
+/// Returns true when a deny rule targets a `/dev` entry bwrap never creates.
+///
+/// `--dev /dev` replaces the host device tree with exactly the entries above, so any
+/// other `/dev/*` path cannot be reached from inside the sandbox at all. Emitting a
+/// mask for one makes bubblewrap abort before the command starts, because there is no
+/// mount point to attach it to; omitting the mask leaves the path absent, which is the
+/// denial the policy asked for.
+///
+/// Entries in the list are still masked. Several of them are symlinks into `/proc`,
+/// which is not mounted yet when the mask arguments are emitted, so their mask can
+/// fail to land — but absence must never be used as the reason a live path goes
+/// unmasked.
+fn deny_is_enforced_by_absent_dev_path(path: &Path) -> bool {
+    let Ok(relative) = path.strip_prefix(Path::new("/dev")) else {
+        return false;
+    };
+    let Some(entry) = relative
+        .components()
+        .next()
+        .and_then(|component| component.as_os_str().to_str())
+    else {
+        // `/dev` itself is a mount point bubblewrap creates, so it stays maskable.
+        return false;
+    };
+    !SYNTHETIC_DEV_ENTRIES.contains(&entry)
+}
+
+/// The `/dev` entries `--dev` creates as symlinks (`bubblewrap.c`,
+/// `SETUP_MOUNT_DEV`). A deny mask for one of them has no mountable
+/// destination: the mount target resolves through the symlink into a procfs
+/// that either is not mounted yet or belongs to a different process, so
+/// bubblewrap aborts before the command starts. Denying any of them switches
+/// the whole device tree to the explicit construction below, which omits the
+/// denied entry — absence is the denial the policy asked for.
+const SYNTHETIC_DEV_SYMLINK_ENTRIES: [&str; 7] =
+    ["stdin", "stdout", "stderr", "fd", "core", "ptmx", "console"];
+
+/// The device nodes `SETUP_MOUNT_DEV` bind-mounts from the host dev tree.
+const SYNTHETIC_DEV_DEVICE_NODES: [&str; 6] = ["null", "zero", "full", "random", "urandom", "tty"];
+
+/// Returns the synthetic-dev symlink entry a deny rule targets, if any.
+fn denied_synthetic_dev_symlink_entry(path: &Path) -> Option<&'static str> {
+    let relative = path.strip_prefix(Path::new("/dev")).ok()?;
+    let entry = relative.components().next()?.as_os_str().to_str()?;
+    SYNTHETIC_DEV_SYMLINK_ENTRIES
+        .iter()
+        .find(|candidate| **candidate == entry)
+        .copied()
+}
+
+/// Appends the `/dev` construction. Without denied symlink entries this stays
+/// with `--dev /dev`, whose `SETUP_MOUNT_DEV` builds the standard tree
+/// (six bound nodes, the stdio/`fd`/`core`/`ptmx` symlinks, the `shm`
+/// directory, a private devpts at `pts`, and `console` on a tty).
+///
+/// Otherwise the tree is rebuilt explicitly in the same shape, omitting the
+/// denied symlinks. Bubblewrap has no standalone private-devpts flag, so this
+/// restricted branch leaves `pts` empty and omits `ptmx`: allocating new PTYs
+/// is unavailable, while inherited stdio and its optional console still work.
+/// It must never bind the host devpts as a substitute for a private instance.
+/// The parent is sealed read-only after all policy mounts are constructed.
+fn append_dev_tree_args(args: &mut Vec<String>, denied_symlinks: &BTreeSet<&'static str>) {
+    if denied_symlinks.is_empty() {
+        args.push("--dev".to_string());
+        args.push("/dev".to_string());
+        return;
+    }
+    args.push("--tmpfs".to_string());
+    args.push("/dev".to_string());
+    for node in SYNTHETIC_DEV_DEVICE_NODES {
+        args.push("--dev-bind".to_string());
+        args.push(format!("/dev/{node}"));
+        args.push(format!("/dev/{node}"));
+    }
+    for (entry, target) in [
+        ("stdin", "/proc/self/fd/0"),
+        ("stdout", "/proc/self/fd/1"),
+        ("stderr", "/proc/self/fd/2"),
+        ("fd", "/proc/self/fd"),
+        ("core", "/proc/kcore"),
+    ] {
+        if denied_symlinks.contains(entry) {
+            continue;
+        }
+        args.push("--symlink".to_string());
+        args.push(target.to_string());
+        args.push(format!("/dev/{entry}"));
+    }
+    // `SETUP_MOUNT_DEV` creates the directory without mounting anything on it;
+    // callers bind `/dev/shm` separately when the policy grants it.
+    args.push("--dir".to_string());
+    args.push("/dev/shm".to_string());
+    args.push("--dir".to_string());
+    args.push("/dev/pts".to_string());
+    if !denied_symlinks.contains("console")
+        && let Some(tty_device) = host_stdout_tty_device()
+    {
+        args.push("--dev-bind".to_string());
+        args.push(path_to_string(&tty_device));
+        args.push("/dev/console".to_string());
+    }
+}
+
+/// A later device bind must not undo omission-based denies or replace the empty
+/// PTY directory with the host's terminals. The full-root bind is handled by
+/// rebuilding the device tree immediately afterwards; a read-only `/dev` grant
+/// is handled by retaining that minimal tree. Other conflicting grants cannot
+/// be represented safely by this restricted construction.
+fn ensure_explicit_dev_bind_preserves_denies(
+    path: &Path,
+    denied_symlinks: &BTreeSet<&'static str>,
+) -> Result<()> {
+    if denied_symlinks.is_empty() || path == Path::new("/") {
+        return Ok(());
+    }
+    let conflicts_with_omitted_entry = denied_symlinks.iter().any(|entry| {
+        let omitted = Path::new("/dev").join(entry);
+        path.starts_with(&omitted) || omitted.starts_with(path)
+    });
+    if conflicts_with_omitted_entry
+        || path.starts_with("/dev/pts")
+        || path == Path::new("/dev/ptmx")
+    {
+        return Err(CodexErr::Fatal(format!(
+            "cannot enforce sandbox device deny with bind destination {}: the restricted device tree must preserve omitted entries and cannot expose host PTYs",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+/// The tty device backing our stdout, mirroring `SETUP_MOUNT_DEV`'s console
+/// rule: bubblewrap only creates `/dev/console` when its own stdout is a tty,
+/// and points it at that device so `ttyname()` works in the sandbox.
+fn host_stdout_tty_device() -> Option<PathBuf> {
+    use std::io::IsTerminal as _;
+    if !std::io::stdout().is_terminal() {
+        return None;
+    }
+    let target = std::fs::read_link("/proc/self/fd/1").ok()?;
+    (target.is_absolute() && target.starts_with("/dev/")).then_some(target)
+}
+
+/// Returns true for `/proc/sys/net/{ipv4,ipv6}/conf/<iface>` names a fresh
+/// network namespace never creates: it brings up no interfaces besides `lo`,
+/// so `conf` holds only the `all`, `default`, and `lo` classifier entries. A
+/// mask for any other interface name has no destination in the sandbox's
+/// sysctl tree, and the deny holds by absence.
+///
+/// Everything else under `/proc/sys/net` is recreated per-netns and keeps its
+/// mask. The classification is deliberately narrow: an entry it wrongly
+/// classifies as absent would fail open, while anything it misses keeps
+/// today's loud missing-mount-point abort.
+fn deny_is_enforced_by_absent_netns_sysctl(path: &Path) -> bool {
+    let Ok(relative) = path.strip_prefix(Path::new("/proc/sys/net")) else {
+        return false;
+    };
+    let mut components = relative.components();
+    let family = components.next().and_then(|c| c.as_os_str().to_str());
+    let subdirectory = components.next().and_then(|c| c.as_os_str().to_str());
+    let interface = components.next().and_then(|c| c.as_os_str().to_str());
+    match (family, subdirectory, interface) {
+        (Some("ipv4" | "ipv6"), Some("conf"), Some(interface)) => {
+            !matches!(interface, "all" | "default" | "lo")
+        }
+        _ => false,
+    }
 }
 
 /// Returns true when `path` is under any allowed writable root.

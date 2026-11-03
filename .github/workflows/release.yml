@@ -154,6 +154,13 @@ jobs:
           rustup toolchain install "$toolchain" --target ${{ matrix.target }} --profile minimal --no-self-update
           rustup default "$toolchain"
 
+      # The rusty_v8 git pin vendors V8 submodules whose snapshot paths
+      # exceed MAX_PATH; git refuses the checkout without this.
+      - if: ${{ runner.os == 'Windows' }}
+        name: Enable git long paths (Windows)
+        shell: bash
+        run: git config --global core.longpaths true
+
       - if: ${{ contains(matrix.target, 'unknown-linux-musl') }}
         name: Use hermetic Cargo home (musl)
         shell: bash
