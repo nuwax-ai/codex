@@ -625,7 +625,7 @@ impl McpRequestProcessor {
         if origin_call_id.is_none()
             && let Some(target) = target
         {
-            if server != codex_mcp::CODEX_APPS_MCP_SERVER_NAME
+            if server != codex_mcp::NUWAX_APPS_MCP_SERVER_NAME
                 || target.connector_id.trim().is_empty()
                 || target
                     .link_id
@@ -652,7 +652,7 @@ impl McpRequestProcessor {
 
             let task = async move {
                 let origin_call_id =
-                    origin_call_id.filter(|_| server == codex_mcp::CODEX_APPS_MCP_SERVER_NAME);
+                    origin_call_id.filter(|_| server == codex_mcp::NUWAX_APPS_MCP_SERVER_NAME);
                 let result = match origin_call_id.as_deref() {
                     Some(call_id) => {
                         thread

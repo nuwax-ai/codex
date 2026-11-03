@@ -755,7 +755,7 @@ fn mixed_catalogs_alias_all_skill_sources_under_budget_pressure() {
         executor_root,
         "executor",
     );
-    let cloud_catalog = catalog(SkillSourceKind::Cloud, "codex_apps", cloud_root, "cloud");
+    let cloud_catalog = catalog(SkillSourceKind::Cloud, "nuwax_apps", cloud_root, "cloud");
     let host_catalog = catalog(SkillSourceKind::Host, "host", host_root, "host");
 
     let rendered = render_combined_available_skills(
@@ -847,7 +847,7 @@ fn mixed_catalog_prefers_executor_inclusion_over_total_aliased_inclusion() {
         entries: vec![
             SkillCatalogEntry::new(
                 SkillPackageId("c1".to_string()),
-                SkillAuthority::new(SkillSourceKind::Cloud, "codex_apps"),
+                SkillAuthority::new(SkillSourceKind::Cloud, "nuwax_apps"),
                 "c1",
                 "",
                 SkillResourceId::new(cloud_resource),

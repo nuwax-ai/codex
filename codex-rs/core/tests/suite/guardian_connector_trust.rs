@@ -46,7 +46,7 @@ impl McpServerContributor<Config> for ExtensionOwnedAppsServer {
             let config = serde_json::from_value(json!({ "url": self.url }))
                 .expect("test Apps MCP server config");
             vec![McpServerContribution::Set {
-                name: "codex_apps".to_string(),
+                name: "nuwax_apps".to_string(),
                 config: Box::new(config),
             }]
         })
@@ -149,7 +149,7 @@ async fn extension_owned_apps_cannot_attest_connector_to_guardian() -> Result<()
         })
         .build_with_auto_env(&server)
         .await?;
-    wait_for_mcp_server(&test.codex, "codex_apps").await?;
+    wait_for_mcp_server(&test.codex, "nuwax_apps").await?;
     test.submit_text_turn("List today's calendar events.")
         .await?;
     assert!(parent_index.load(Ordering::SeqCst) >= 2);

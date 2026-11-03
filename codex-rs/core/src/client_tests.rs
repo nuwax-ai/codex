@@ -576,7 +576,7 @@ async fn responses_request_includes_internal_metadata_for_provider_grant_or_firs
         sources: vec![McpAttributionSource {
             connector_id: Some("connector_example".to_string()),
             plugin_id: Some("example@openai-bundled".to_string()),
-            server_name: "codex_apps".to_string(),
+            server_name: "nuwax_apps".to_string(),
             tool_name: "search".to_string(),
             first_turn_id: "turn_123".to_string(),
         }],

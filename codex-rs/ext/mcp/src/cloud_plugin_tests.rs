@@ -682,7 +682,7 @@ async fn run_cloud_catalog_refresh_lifecycle() -> anyhow::Result<()> {
                 .clone()
                 .context("cloud provider resource client missing")?;
             let previous_auth =
-                resources.auth_cache_key_for_server(codex_mcp::CODEX_APPS_MCP_SERVER_NAME);
+                resources.auth_cache_key_for_server(codex_mcp::NUWAX_APPS_MCP_SERVER_NAME);
             codex_login::auth::login_with_chatgpt_auth_tokens(
                 test.codex_home_path(),
                 "header.e30.changed",
@@ -692,7 +692,7 @@ async fn run_cloud_catalog_refresh_lifecycle() -> anyhow::Result<()> {
             test.thread_manager.auth_manager().reload().await;
             tokio::time::timeout(std::time::Duration::from_secs(10), async {
                 loop {
-                    if resources.auth_cache_key_for_server(codex_mcp::CODEX_APPS_MCP_SERVER_NAME)
+                    if resources.auth_cache_key_for_server(codex_mcp::NUWAX_APPS_MCP_SERVER_NAME)
                         != previous_auth
                         && test
                             .codex
@@ -724,7 +724,7 @@ async fn run_cloud_catalog_refresh_lifecycle() -> anyhow::Result<()> {
         if let Some((connector, action, _)) = tool_call {
             events.push(ev_function_call_with_namespace(
                 &call_id,
-                &format!("mcp__codex_apps__{connector}"),
+                &format!("mcp__nuwax_apps__{connector}"),
                 &format!("_{action}"),
                 "{}",
             ));
@@ -756,7 +756,7 @@ async fn run_cloud_catalog_refresh_lifecycle() -> anyhow::Result<()> {
                             .clone()
                             .context("cloud provider resource client missing")?;
                         let previous_auth = resources
-                            .auth_cache_key_for_server(codex_mcp::CODEX_APPS_MCP_SERVER_NAME);
+                            .auth_cache_key_for_server(codex_mcp::NUWAX_APPS_MCP_SERVER_NAME);
                         // Rotate credentials without replacing the captured runtime/client.
                         codex_login::auth::login_with_chatgpt_auth_tokens(
                             test.codex_home_path(),
@@ -767,7 +767,7 @@ async fn run_cloud_catalog_refresh_lifecycle() -> anyhow::Result<()> {
                         test.thread_manager.auth_manager().reload().await;
                         // Auth must be published while cloud discovery remains paused.
                         while resources
-                            .auth_cache_key_for_server(codex_mcp::CODEX_APPS_MCP_SERVER_NAME)
+                            .auth_cache_key_for_server(codex_mcp::NUWAX_APPS_MCP_SERVER_NAME)
                             == previous_auth
                         {
                             tokio::task::yield_now().await;
@@ -811,14 +811,14 @@ async fn run_cloud_catalog_refresh_lifecycle() -> anyhow::Result<()> {
             );
             assert_eq!(call["params"]["arguments"], json!({}));
             let (other_namespace, other_tool) = if connector == "calendar" {
-                ("mcp__codex_apps__gmail", "_search_email")
+                ("mcp__nuwax_apps__gmail", "_search_email")
             } else {
-                ("mcp__codex_apps__calendar", "_list_events")
+                ("mcp__nuwax_apps__calendar", "_list_events")
             };
             assert!(request.tool_by_name(other_namespace, other_tool).is_none());
             let tool = request
                 .tool_by_name(
-                    &format!("mcp__codex_apps__{connector}"),
+                    &format!("mcp__nuwax_apps__{connector}"),
                     &format!("_{action}"),
                 )
                 .expect("the current account's tool should be advertised");

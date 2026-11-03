@@ -673,7 +673,7 @@ async fn executor_cloud_and_host_share_catalog_world_state_flow() -> TestResult 
         .with_cloud_provider(provider(
             test_entry(
                 SkillSourceKind::Cloud,
-                "codex_apps",
+                "nuwax_apps",
                 "cloud/cloud-skill",
                 "skill://cloud/cloud-skill/SKILL.md",
             )
@@ -1789,7 +1789,7 @@ async fn default_context_truncates_catalog_descriptions() -> TestResult {
         .collect();
     let mut cloud_entry = test_entry(
         SkillSourceKind::Cloud,
-        "codex_apps",
+        "nuwax_apps",
         "cloud/cloud-long-description",
         "skill://cloud/cloud-long-description/SKILL.md",
     );
@@ -1896,7 +1896,7 @@ async fn catalog_rebalances_only_to_avoid_omissions_and_retains_the_allocation()
                         let package_id = format!("cloud/cloud-skill-{index:02}");
                         let mut entry = test_entry(
                             SkillSourceKind::Cloud,
-                            "codex_apps",
+                            "nuwax_apps",
                             &package_id,
                             &format!("skill://{package_id}/SKILL.md"),
                         );
@@ -2134,7 +2134,7 @@ async fn extreme_budget_pressure_removes_descriptions_before_omitting_entries() 
             let package_id = format!("cloud/cloud-skill-{index:03}");
             let mut entry = test_entry(
                 SkillSourceKind::Cloud,
-                "codex_apps",
+                "nuwax_apps",
                 &package_id,
                 &format!("skill://{package_id}/SKILL.md"),
             );
@@ -2236,7 +2236,7 @@ async fn skills_list_only_returns_model_visible_bounded_metadata() -> TestResult
     let opaque_suffix = "\\".repeat(1_500);
     let mut entry = test_entry(
         SkillSourceKind::Cloud,
-        "codex_apps",
+        "nuwax_apps",
         &format!("cloud/{opaque_suffix}"),
         &format!("skill://cloud/{opaque_suffix}/SKILL.md"),
     );
@@ -2244,7 +2244,7 @@ async fn skills_list_only_returns_model_visible_bounded_metadata() -> TestResult
     let [first_entry, mut middle_entry, mut final_entry] = ["p0", "p1", "p2"].map(|name| {
         test_entry(
             SkillSourceKind::Cloud,
-            "codex_apps",
+            "nuwax_apps",
             name,
             &format!("skill://{name}/SKILL.md"),
         )
@@ -2261,7 +2261,7 @@ async fn skills_list_only_returns_model_visible_bounded_metadata() -> TestResult
                 final_entry,
                 test_entry(
                     SkillSourceKind::Cloud,
-                    "codex_apps",
+                    "nuwax_apps",
                     "cloud/hidden",
                     "skill://cloud/hidden/SKILL.md",
                 )

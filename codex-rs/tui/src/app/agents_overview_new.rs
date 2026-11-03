@@ -181,7 +181,10 @@ impl App {
                             " If the server restarts, Nuwax Harness will reconnect automatically.",
                         );
                     }
-                    (Some("Nuwax Harness's background server is shutting down"), message)
+                    (
+                        Some("Nuwax Harness's background server is shutting down"),
+                        message,
+                    )
                 } else {
                     (None, format!("Failed to start session: {error}"))
                 };

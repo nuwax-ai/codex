@@ -35,7 +35,7 @@ use crate::codex_apps::normalize_codex_apps_tool_title;
 use crate::codex_apps::prepare_openai_file_params_for_model;
 use crate::elicitation::ElicitationRequestManager;
 use crate::executor_environment_http_client::ExecutorEnvironmentHttpClient;
-use crate::mcp::CODEX_APPS_MCP_SERVER_NAME;
+use crate::mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use crate::mcp::ToolPluginContext;
 use crate::openai_docs_source_attribution::maybe_with_openai_docs_source_attribution;
 use crate::pagination::collect_paginated_with_limit;
@@ -354,7 +354,7 @@ impl ManagedClientStartup {
             startup_complete,
             server_capabilities,
         } = self.clone();
-        let is_codex_apps_mcp_server = server_name == CODEX_APPS_MCP_SERVER_NAME;
+        let is_codex_apps_mcp_server = server_name == NUWAX_APPS_MCP_SERVER_NAME;
         let startup_timeout = server
             .config()
             .startup_timeout_sec
@@ -489,7 +489,7 @@ impl AsyncManagedClient {
         protocol_mode: McpProtocolMode,
         catalog_item_limit: usize,
     ) -> Self {
-        let is_codex_apps_mcp_server = server_name == CODEX_APPS_MCP_SERVER_NAME;
+        let is_codex_apps_mcp_server = server_name == NUWAX_APPS_MCP_SERVER_NAME;
         let reconnect_server_name = server_name.clone();
         let reconnect_tx_event = tx_event.clone();
         let cached_server_info = if is_codex_apps_mcp_server {
@@ -1587,7 +1587,7 @@ mod tests {
         let expected_tool = tool.clone();
 
         let tool_info = tool_info_from_listed_tool(
-            CODEX_APPS_MCP_SERVER_NAME,
+            NUWAX_APPS_MCP_SERVER_NAME,
             /*is_codex_apps_mcp_server*/ true,
             /*server_instructions*/ None,
             ToolWithConnectorId {
@@ -1599,7 +1599,7 @@ mod tests {
         );
 
         let expected = ToolInfo {
-            server_name: CODEX_APPS_MCP_SERVER_NAME.to_string(),
+            server_name: NUWAX_APPS_MCP_SERVER_NAME.to_string(),
             supports_parallel_tool_calls: false,
             server_origin: None,
             callable_name: "capture_file_upload".to_string(),

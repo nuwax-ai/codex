@@ -37,7 +37,7 @@ use crate::style::user_message_style;
 use crate::wrapping::RtOptions;
 use crate::wrapping::adaptive_wrap_lines;
 
-const MCP_CODEX_APPS_SERVER_NAME: &str = "codex_apps";
+const MCP_CODEX_APPS_SERVER_NAME: &str = "nuwax_apps";
 const MCP_TOOL_CODEX_APPS_META_KEY: &str = "_codex_apps";
 const CONNECTOR_AUTH_FAILURE_META_KEY: &str = "connector_auth_failure";
 const CONNECTOR_AUTH_FAILURE_IS_AUTH_FAILURE_KEY: &str = "is_auth_failure";
@@ -914,7 +914,7 @@ mod tests {
         AppLinkElicitationTarget {
             thread_id: ThreadId::try_from("00000000-0000-0000-0000-000000000001")
                 .expect("valid thread id"),
-            server_name: "codex_apps".to_string(),
+            server_name: "nuwax_apps".to_string(),
             request_id: AppServerRequestId::String("request-1".to_string()),
         }
     }
@@ -1443,7 +1443,7 @@ mod tests {
                 assert_eq!(
                     op,
                     Op::ResolveElicitation {
-                        server_name: "codex_apps".to_string(),
+                        server_name: "nuwax_apps".to_string(),
                         request_id: AppServerRequestId::String("request-1".to_string()),
                         decision: McpServerElicitationAction::Accept,
                         content: None,
@@ -1485,7 +1485,7 @@ mod tests {
                 assert_eq!(
                     op,
                     Op::ResolveElicitation {
-                        server_name: "codex_apps".to_string(),
+                        server_name: "nuwax_apps".to_string(),
                         request_id: AppServerRequestId::String("request-1".to_string()),
                         decision: McpServerElicitationAction::Decline,
                         content: None,
@@ -1535,7 +1535,7 @@ mod tests {
                 assert_eq!(
                     op,
                     Op::ResolveElicitation {
-                        server_name: "codex_apps".to_string(),
+                        server_name: "nuwax_apps".to_string(),
                         request_id: AppServerRequestId::String("request-1".to_string()),
                         decision: McpServerElicitationAction::Accept,
                         content: None,
@@ -1571,7 +1571,7 @@ mod tests {
 
         assert!(
             view.dismiss_app_server_request(&ResolvedAppServerRequest::McpElicitation {
-                server_name: "codex_apps".to_string(),
+                server_name: "nuwax_apps".to_string(),
                 request_id: AppServerRequestId::String("request-1".to_string()),
             })
         );

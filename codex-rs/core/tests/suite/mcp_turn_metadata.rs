@@ -1534,12 +1534,12 @@ async fn apps_default_writes_prompts_for_writes_but_not_reads() -> Result<()> {
             "status": "complete",
             "sources": [{
                 "connector_id": "calendar",
-                "server_name": "codex_apps",
+                "server_name": "nuwax_apps",
                 "tool_name": "calendar_list_events",
                 "first_turn_id": first_turn_id,
             }, {
                 "connector_id": "calendar",
-                "server_name": "codex_apps",
+                "server_name": "nuwax_apps",
                 "tool_name": "calendar_create_event",
                 "first_turn_id": first_turn_id,
             }],

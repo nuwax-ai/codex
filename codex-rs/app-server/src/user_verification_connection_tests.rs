@@ -22,7 +22,7 @@ fn request() -> rpc::ServerRequestPayload {
     rpc::ServerRequestPayload::McpServerElicitationRequest(rpc::McpServerElicitationRequestParams {
         thread_id: ThreadId::new().to_string(),
         turn_id: None,
-        server_name: "codex_apps".into(),
+        server_name: "nuwax_apps".into(),
         request: rpc::McpServerElicitationRequest::UserVerification {
             meta: None,
             title: "Approve".into(),

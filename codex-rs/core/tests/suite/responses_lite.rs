@@ -11,7 +11,7 @@ use codex_features::Feature;
 use codex_image_generation_extension::install as install_image_generation_extension;
 use codex_login::CodexAuth;
 use codex_login::auth::BedrockApiKeyAuth;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
+use codex_mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use codex_protocol::config_types::WebSearchMode;
 use codex_protocol::models::ImageDetail;
 use codex_protocol::models::ImageReference;
@@ -245,7 +245,7 @@ async fn responses_lite_includes_tool_namespaces_info_when_enabled() -> Result<(
             config.tool_registry.turn_metadata_includes_tool_info = true;
         });
     let test = builder.build_with_auto_env(&server).await?;
-    wait_for_mcp_server(&test.codex, CODEX_APPS_MCP_SERVER_NAME).await?;
+    wait_for_mcp_server(&test.codex, NUWAX_APPS_MCP_SERVER_NAME).await?;
 
     test.submit_turn("hello").await?;
 
@@ -265,10 +265,10 @@ async fn responses_lite_includes_tool_namespaces_info_when_enabled() -> Result<(
             "name": SEARCH_CALENDAR_CREATE_TOOL,
             "direct": true,
             "deferred": false,
-            "code_mode_name": "mcp__codex_apps__calendar_create_event",
+            "code_mode_name": "mcp__nuwax_apps__calendar_create_event",
             "source": {
                 "kind": "mcp",
-                "server_name": "codex_apps",
+                "server_name": "nuwax_apps",
             },
         })
     );

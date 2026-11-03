@@ -1845,7 +1845,8 @@ enabled = false
             .rebuild_config_for_permission_profile(":workspace")
             .await?;
         let pet_url =
-            "https://persistent.oaistatic.com/nuwax-harness/pets/v1/dewey-spritesheet-v4.webp".parse()?;
+            "https://persistent.oaistatic.com/nuwax-harness/pets/v1/dewey-spritesheet-v4.webp"
+                .parse()?;
         for config in [&app.config, &new_config, &permission_config] {
             assert_eq!(config.application_network_policy, controller.policy());
             assert_eq!(

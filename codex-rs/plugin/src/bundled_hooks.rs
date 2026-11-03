@@ -104,7 +104,7 @@ const ALLOWLISTED_BUNDLED_HOOKS: &[BundledHook] = &[
             HookEventName::SubagentStop,
         ],
         target: BundledHookTarget::App {
-            server: "codex_apps",
+            server: "nuwax_apps",
             connector_id: "connector_openai_browser",
             tool: "browser.turn_ended",
         },

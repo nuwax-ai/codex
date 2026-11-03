@@ -10,10 +10,10 @@ use serde_json::Value;
 use serde_json::json;
 use test_case::test_case;
 
-#[test_case("mcp__codex_apps__slack__send_message", json!({"text": "Staging only?"}), true; "other_app")]
-#[test_case("mcp__codex_apps__user_message__send_message_to_thread", json!({"text": "Staging only?"}), true; "other_user_message_action")]
-#[test_case("mcp__codex_apps__user_messaging__send_message", json!({"text": "Staging only?"}), false; "failed_send")]
-#[test_case("mcp__codex_apps__user_messaging__send_message", json!({"text": " "}), true; "empty_text")]
+#[test_case("mcp__nuwax_apps__slack__send_message", json!({"text": "Staging only?"}), true; "other_app")]
+#[test_case("mcp__nuwax_apps__user_message__send_message_to_thread", json!({"text": "Staging only?"}), true; "other_user_message_action")]
+#[test_case("mcp__nuwax_apps__user_messaging__send_message", json!({"text": "Staging only?"}), false; "failed_send")]
+#[test_case("mcp__nuwax_apps__user_messaging__send_message", json!({"text": " "}), true; "empty_text")]
 fn undelivered_or_unrelated_messages_have_no_evidence(name: &str, input: Value, success: bool) {
     let state = ToolCallState::default();
     capture_delivery(&messaging_result(name, input, success), Some(&state));
@@ -23,7 +23,7 @@ fn undelivered_or_unrelated_messages_have_no_evidence(name: &str, input: Value, 
 #[test]
 fn capture_keeps_the_first_confirmed_rewritten_message() {
     let state = ToolCallState::default();
-    let name = "mcp__codex_apps__user_message__send_message";
+    let name = "mcp__nuwax_apps__user_message__send_message";
     for text in ["Staging only?", "Replace the question?"] {
         capture_delivery(
             &messaging_result(name, json!({"text": text}), /*success*/ true),

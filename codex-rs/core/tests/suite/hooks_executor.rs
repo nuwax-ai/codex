@@ -589,19 +589,19 @@ async fn executor_browser_and_computer_use_cleanup_hooks_use_separate_mcp_routes
                 "hooks": { "hooks": {
                     "Stop": [{ "hooks": [{
                         "type": "mcp_tool",
-                        "server": "codex_apps",
+                        "server": "nuwax_apps",
                         "tool": "browser.turn_ended",
                         "input": {},
                     }] }],
                     "Interrupt": [{ "hooks": [{
                         "type": "mcp_tool",
-                        "server": "codex_apps",
+                        "server": "nuwax_apps",
                         "tool": "browser.turn_ended",
                         "input": {},
                     }] }],
                     "SubagentStop": [{ "hooks": [{
                         "type": "mcp_tool",
-                        "server": "codex_apps",
+                        "server": "nuwax_apps",
                         "tool": "browser.turn_ended",
                         "input": {},
                     }] }],
@@ -696,7 +696,7 @@ async fn executor_browser_and_computer_use_cleanup_hooks_use_separate_mcp_routes
             .current_mcp_config_and_runtime_context()
             .await;
         let statuses = fixture.test.codex.mcp_connection_statuses(&config).await;
-        for server in ["node_repl", "codex_apps"] {
+        for server in ["node_repl", "nuwax_apps"] {
             assert_eq!(
                 statuses.get(server),
                 Some(&McpServerConnectionStatus::Connected),

@@ -117,7 +117,7 @@ async fn host_owned_orchestrator_connector_reaches_guardian_context() -> Result<
         })
         .build_with_auto_env(&server)
         .await?;
-    wait_for_mcp_server(&test.codex, "codex_apps").await?;
+    wait_for_mcp_server(&test.codex, "nuwax_apps").await?;
     test.submit_text_turn("List today's calendar events.")
         .await?;
     assert_eq!(parent_index.load(Ordering::SeqCst), 2);
@@ -152,7 +152,7 @@ async fn host_owned_orchestrator_connector_reaches_guardian_context() -> Result<
     assert_eq!(
         trusted_messages,
         vec![json!({
-            "server": "codex_apps",
+            "server": "nuwax_apps",
             "connector_id": "calendar",
             "source": "plugin_service_orchestrator",
         })]

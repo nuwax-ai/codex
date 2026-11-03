@@ -589,7 +589,11 @@ impl ChatWidget {
                 self.open_theme_picker();
             }
             SlashCommand::Pets => {
-                self.open_pets_picker();
+                // Fork (nuwax-codex): pets are disabled. The feature pulls
+                // assets from OpenAI's CDN (persistent.oaistatic.com) — a
+                // side-channel request beyond the model gateway (audit §6
+                // #4) — and its companion naming is Codex-branded.
+                self.add_warning_message("Pets are disabled in nuwax-harness.".to_string());
             }
             SlashCommand::Ps => {
                 self.add_ps_output();

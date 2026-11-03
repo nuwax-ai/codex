@@ -16,7 +16,7 @@ fn delegated_previews_unwrap_only_recognized_inputs() {
             Some("Check <main> & &lt;literal&gt;"),
         ),
         (
-            Some("codex_tui"),
+            Some("nuwax_tui"),
             "send_message_to_thread",
             wrapped,
             Some("Check <main> & &lt;literal&gt;"),
@@ -27,7 +27,7 @@ fn delegated_previews_unwrap_only_recognized_inputs() {
             "plain &lt;text&gt;",
             Some("plain &lt;text&gt;"),
         ),
-        (Some("codex_tui"), "create_thread", "  ", None),
+        (Some("nuwax_tui"), "create_thread", "  ", None),
         (Some("other"), "create_thread", wrapped, None),
         (None, "create_thread", wrapped, None),
         (Some("codex_app"), "shell", wrapped, None),

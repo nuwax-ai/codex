@@ -45,7 +45,7 @@ async fn config_reload_during_preparation_applies_to_next_step_but_reads_still_c
     });
     let cloud = test_entry(
         SkillSourceKind::Cloud,
-        "codex_apps",
+        "nuwax_apps",
         "cloud/demo",
         "skill://cloud/demo/SKILL.md",
     );

@@ -174,7 +174,7 @@ fn is_hosted_messaging_review_body(body: &Value) -> bool {
                             .and_then(|text| serde_json::from_str::<Value>(text).ok())
                             .is_some_and(|action| {
                                 action["tool"] == "mcp_tool_call"
-                                    && action["server"] == "codex_apps"
+                                    && action["server"] == "nuwax_apps"
                             })
                 })
             })
@@ -380,14 +380,14 @@ async fn code_mode_messaging_fixture(
         })
         .build_with_auto_env(server)
         .await?;
-    wait_for_mcp_server(&test.codex, "codex_apps").await?;
+    wait_for_mcp_server(&test.codex, "nuwax_apps").await?;
     allow_hosted_messaging_review(server).await;
     Ok(test)
 }
 
 fn code_mode_message(text: &str) -> Value {
     let code_tool = code_mode_name_for_tool_name(&ToolName::namespaced(
-        "mcp__codex_apps__user_message",
+        "mcp__nuwax_apps__user_message",
         "_send_message",
     ));
     let code = format!("text(await tools.{code_tool}({}));", json!({"text": text}));
@@ -569,14 +569,14 @@ async fn run_guardian_subagent_review(
     let connector_case = matches!(messaging_tool, MessagingTool::CodeModeSingularConnector);
     let (messaging_namespace, messaging_tool) = match messaging_tool {
         MessagingTool::Plural => ("mcp__codex_apps", "user_messaging_send_message"),
-        MessagingTool::PluralConnector => ("mcp__codex_apps__user_messaging", "_send_message"),
+        MessagingTool::PluralConnector => ("mcp__nuwax_apps__user_messaging", "_send_message"),
         MessagingTool::SingularConnector | MessagingTool::CodeModeSingularConnector => {
-            ("mcp__codex_apps__user_message", "_send_message")
+            ("mcp__nuwax_apps__user_message", "_send_message")
         }
         MessagingTool::CodeModeSingularFlat
             if matches!(messaging_outcome, MessagingOutcome::UntrustedMcp) =>
         {
-            ("mcp__codex_apps__user_message", "_send_message")
+            ("mcp__nuwax_apps__user_message", "_send_message")
         }
         MessagingTool::SingularFlat
         | MessagingTool::CodeModeSingularFlat
@@ -589,7 +589,7 @@ async fn run_guardian_subagent_review(
         && !matches!(messaging_outcome, MessagingOutcome::UntrustedMcp)
     {
         code_mode_name_for_tool_name(&ToolName::namespaced(
-            "mcp__codex_apps__flat",
+            "mcp__nuwax_apps__flat",
             "_send_message",
         ))
     } else {
@@ -616,7 +616,7 @@ async fn run_guardian_subagent_review(
         if matches!(messaging_outcome, MessagingOutcome::UntrustedMcp) {
             "codex_apps__user_message"
         } else {
-            "codex_apps"
+            "nuwax_apps"
         }
     } else {
         messaging_namespace
@@ -713,7 +713,7 @@ async fn run_guardian_subagent_review(
                 return;
             }
             let mut hooks = json!({"hooks": {"PreToolUse": [{
-                "matcher": "^(mcp__codex_apps__user_messag(e|ing)_+send_message|mcp__codex_apps__flat_+send_message)$",
+                "matcher": "^(mcp__nuwax_apps__user_messag(e|ing)_+send_message|mcp__nuwax_apps__flat_+send_message)$",
                 "hooks": [{
                     "type": "mcp_tool",
                     "server": configured_messaging_server,
@@ -723,7 +723,7 @@ async fn run_guardian_subagent_review(
             }]}});
             if block_post_hook || cancel_post_hook {
                 hooks["hooks"]["PostToolUse"] = json!([{
-                    "matcher": "^(mcp__codex_apps__user_messag(e|ing)_+send_message|mcp__codex_apps__flat_+send_message)$",
+                    "matcher": "^(mcp__nuwax_apps__user_messag(e|ing)_+send_message|mcp__nuwax_apps__flat_+send_message)$",
                     "hooks": [{
                         "type": "mcp_tool", "server": configured_messaging_server,
                         "tool": "post_send", "input": {}

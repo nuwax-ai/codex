@@ -38,11 +38,11 @@ use codex_exec_server::HttpRequestParams;
 use codex_features::Feature;
 use codex_http_client::HttpClientBuilder;
 use codex_login::CodexAuth;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_mcp::MCP_SANDBOX_LAUNCHER_META_KEY;
 use codex_mcp::MCP_SANDBOX_STATE_CAPABILITY;
 use codex_mcp::MCP_SANDBOX_STATE_META_CAPABILITY;
 use codex_mcp::McpProtocolMode;
+use codex_mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use codex_mcp::SandboxState;
 use codex_models_manager::manager::RefreshStrategy;
 use codex_utils_path_uri::LegacyAppPathString;
@@ -1680,7 +1680,7 @@ async fn apps_enabled_turn_skips_pending_optional_mcp_without_cached_tools() -> 
                 .await
                 .context("event stream ended before Codex Apps became ready")?;
             if let EventMsg::McpStartupUpdate(update) = event.msg
-                && update.server == CODEX_APPS_MCP_SERVER_NAME
+                && update.server == NUWAX_APPS_MCP_SERVER_NAME
                 && matches!(update.status, McpStartupStatus::Ready)
             {
                 break Ok::<(), anyhow::Error>(());

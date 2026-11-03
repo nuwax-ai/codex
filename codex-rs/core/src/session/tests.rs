@@ -681,7 +681,7 @@ async fn request_mcp_server_elicitation_auto_accepts_when_auto_deny_is_enabled(
     let response = session
         .request_mcp_server_elicitation(
             turn_context.as_ref(),
-            "codex_apps".to_string(),
+            "nuwax_apps".to_string(),
             RequestId::String("request-1".into()),
             ElicitationRequest::Form {
                 meta: None,
@@ -731,7 +731,7 @@ async fn request_mcp_server_elicitation_waits_for_user_response(source: SessionS
             session
                 .request_mcp_server_elicitation(
                     &turn_context,
-                    "codex_apps".to_string(),
+                    "nuwax_apps".to_string(),
                     RequestId::String("request-1".into()),
                     request,
                 )
@@ -749,7 +749,7 @@ async fn request_mcp_server_elicitation_waits_for_user_response(source: SessionS
         event,
         codex_protocol::approvals::ElicitationRequestEvent {
             turn_id: Some(turn_context.sub_id.clone()),
-            server_name: "codex_apps".to_string(),
+            server_name: "nuwax_apps".to_string(),
             id: codex_protocol::mcp::RequestId::String("request-1".to_string()),
             request,
         }
@@ -764,7 +764,7 @@ async fn request_mcp_server_elicitation_waits_for_user_response(source: SessionS
     };
     session
         .resolve_elicitation(
-            "codex_apps".to_string(),
+            "nuwax_apps".to_string(),
             RequestId::String("request-1".into()),
             response.clone(),
         )

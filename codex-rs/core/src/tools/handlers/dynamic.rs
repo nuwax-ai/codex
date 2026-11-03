@@ -106,7 +106,9 @@ impl ToolExecutor<ToolInvocation> for DynamicToolHandler {
             self.spec(),
             Some(ToolSearchSourceInfo {
                 name: "Dynamic tools".to_string(),
-                description: Some("Tools provided by the current nuwax-harness thread.".to_string()),
+                description: Some(
+                    "Tools provided by the current nuwax-harness thread.".to_string(),
+                ),
             }),
         )
     }

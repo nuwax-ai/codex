@@ -73,7 +73,7 @@ use uuid::Uuid;
 #[path = "dynamic_tools_response.rs"]
 mod response;
 
-pub(crate) const NAMESPACE: &str = "codex_tui";
+pub(crate) const NAMESPACE: &str = "nuwax_tui";
 pub(crate) const DELEGATION_TOOLS: [&str; 3] =
     ["create_thread", "send_message_to_thread", "fork_thread"];
 const DEFAULT_LIST_LIMIT: u32 = 10;

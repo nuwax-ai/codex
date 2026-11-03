@@ -175,7 +175,7 @@ fn review_event_serializes_expected_shape() {
             item_id: None,
             review_id: "review-1".to_string(),
             app_server_client: CodexAppServerClientMetadata {
-                product_client_id: "codex_tui".to_string(),
+                product_client_id: "nuwax_tui".to_string(),
                 client_name: Some("codex-tui".to_string()),
                 client_version: Some("1.2.3".to_string()),
                 rpc_transport: AppServerRpcTransport::Websocket,
@@ -213,7 +213,7 @@ fn review_event_serializes_expected_shape() {
                 "item_id": null,
                 "review_id": "review-1",
                 "app_server_client": {
-                    "product_client_id": "codex_tui",
+                    "product_client_id": "nuwax_tui",
                     "client_name": "codex-tui",
                     "client_version": "1.2.3",
                     "rpc_transport": "websocket",

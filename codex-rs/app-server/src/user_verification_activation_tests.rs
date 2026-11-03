@@ -76,7 +76,7 @@ async fn user_verification_initialize_owns_advertisement_and_eligibility() -> Re
                     rpc::McpServerElicitationRequestParams {
                         thread_id: thread_id.to_string(),
                         turn_id: None,
-                        server_name: "codex_apps".into(),
+                        server_name: "nuwax_apps".into(),
                         request: rpc::McpServerElicitationRequest::UserVerification {
                             meta: None,
                             challenge: "AQ".into(),

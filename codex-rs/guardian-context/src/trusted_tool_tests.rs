@@ -23,7 +23,7 @@ fn trusted_tool_context_attests_only_the_matching_source_and_identity() {
         ),
     ] {
         let fragment = TrustedTool {
-            server: "codex_apps".into(),
+            server: "nuwax_apps".into(),
             connector_id: Some("calendar".into()),
             source,
         };
@@ -35,7 +35,7 @@ fn trusted_tool_context_attests_only_the_matching_source_and_identity() {
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(metadata).unwrap(),
             json!({
-                "server": "codex_apps",
+                "server": "nuwax_apps",
                 "connector_id": "calendar",
                 "source": json_source,
             }),

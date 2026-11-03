@@ -925,7 +925,7 @@ async fn run_cloud_plugin_projection_scenarios() -> anyhow::Result<()> {
             "{case}"
         );
         let calendar = requests[0]
-            .tool_by_name("mcp__codex_apps__calendar", "_list_events")
+            .tool_by_name("mcp__nuwax_apps__calendar", "_list_events")
             .context("Calendar tool missing")?;
         assert_eq!(
             calendar["description"]

@@ -319,7 +319,7 @@ async fn confirmed_delivery_refreshes_pending_local_allow(
     let root = test.session_configured.thread_id;
     let output_file = test.workspace_path_uri("refreshed-local-allow.txt")?;
     let messaging_tool = code_mode_name_for_tool_name(&ToolName::namespaced(
-        "mcp__codex_apps__user_message",
+        "mcp__nuwax_apps__user_message",
         "_send_message",
     ));
     let command = json!({

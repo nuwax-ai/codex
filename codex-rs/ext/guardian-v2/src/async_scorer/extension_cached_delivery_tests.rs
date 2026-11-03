@@ -123,7 +123,7 @@ async fn confirmed_root_delivery_invalidates_root_and_worker_cached_approvals() 
         MessagingSetup::CodeMode(format!("{}/user-messaging", messaging_server.uri())),
     )
     .await?;
-    wait_for_mcp_server(&test.codex, "codex_apps").await?;
+    wait_for_mcp_server(&test.codex, "nuwax_apps").await?;
     allow_messaging_guardian_review(&thread_server).await;
     let root_store = test.codex.thread_extension_data();
     let root_progress = root_store.get::<GuardianV2ScoreProgress>().unwrap();
@@ -165,7 +165,7 @@ async fn confirmed_root_delivery_invalidates_root_and_worker_cached_approvals() 
             ev_custom_tool_call(
                 "send-message",
                 "exec",
-                "text(await tools.mcp__codex_apps__user_message_send_message({text: 'May I deploy?'}));",
+                "text(await tools.mcp__nuwax_apps__user_message_send_message({text: 'May I deploy?'}));",
             ),
             ev_completed("send-message"),
         ]),

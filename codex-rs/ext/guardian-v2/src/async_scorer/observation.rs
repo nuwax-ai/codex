@@ -116,7 +116,7 @@ impl GuardianV2Extension {
         if input.mcp_tool.is_some_and(|tool| {
             let info = tool.tool_info();
             is_node_repl_backed_connector(&info.server_name, info.connector_id.as_deref())
-                && if info.server_name == "codex_apps" {
+                && if info.server_name == "nuwax_apps" {
                     info.tool
                         .meta
                         .as_ref()

@@ -1431,7 +1431,7 @@ async fn skill_read_recovers_omitted_installation_and_reads_selected_environment
         let package = format!("skill://deployment/{name}");
         let mut entry = SkillCatalogEntry::new(
             SkillPackageId(package.clone()),
-            SkillAuthority::new(SkillSourceKind::Cloud, "codex_apps"),
+            SkillAuthority::new(SkillSourceKind::Cloud, "nuwax_apps"),
             name,
             "Check an installed deployment before proceeding.",
             SkillResourceId::new(format!("{package}/SKILL.md")),

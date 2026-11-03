@@ -1233,7 +1233,7 @@ async fn external_transport_registers_dynamic_tools_and_finds_task_mentions() ->
     assert_eq!(starts.len(), 2);
     for params in starts {
         assert_eq!(params["dynamicTools"][0]["type"], "namespace");
-        assert_eq!(params["dynamicTools"][0]["name"], "codex_tui");
+        assert_eq!(params["dynamicTools"][0]["name"], "nuwax_tui");
         assert_eq!(
             params["dynamicTools"][0]["tools"].as_array().map(Vec::len),
             Some(6)
@@ -1533,7 +1533,7 @@ async fn local_daemon_registers_approval_gated_mcp_tools_for_both_start_paths_sc
     let tools = &inventory
         .data
         .iter()
-        .find(|server| server.name == "codex_tui")
+        .find(|server| server.name == "nuwax_tui")
         .expect("local daemon must connect to the TUI MCP server")
         .tools;
     assert_eq!(tools.len(), 9);
@@ -2100,7 +2100,7 @@ async fn check_dynamic_tool_requests(
                     thread_id: thread_id.clone(),
                     turn_id: "turn-1".to_string(),
                     call_id: "call-2".to_string(),
-                    namespace: Some("codex_tui".to_string()),
+                    namespace: Some("nuwax_tui".to_string()),
                     tool: "list_threads".to_string(),
                     arguments: serde_json::json!({}),
                 },
@@ -2157,7 +2157,7 @@ async fn check_dynamic_tool_requests(
                     thread_id: thread_id.clone(),
                     turn_id: "turn-1".to_string(),
                     call_id: "call-3".to_string(),
-                    namespace: Some("codex_tui".to_string()),
+                    namespace: Some("nuwax_tui".to_string()),
                     tool: "set_thread_title".to_string(),
                     arguments: serde_json::json!({"threadId": thread_id, "title": "Renamed"}),
                 },
@@ -2191,7 +2191,7 @@ async fn check_dynamic_tool_requests(
                         thread_id: thread_id.clone(),
                         turn_id: "turn-1".to_string(),
                         call_id: format!("rejected-{index}"),
-                        namespace: Some("codex_tui".to_string()),
+                        namespace: Some("nuwax_tui".to_string()),
                         tool: tool.to_string(),
                         arguments: serde_json::json!({}),
                     },
@@ -2270,7 +2270,7 @@ async fn check_dynamic_tool_requests(
             thread_id: creation_source.to_string(),
             turn_id: "turn-1".to_string(),
             call_id: "call-4".to_string(),
-            namespace: Some("codex_tui".to_string()),
+            namespace: Some("nuwax_tui".to_string()),
             tool: "create_thread".to_string(),
             arguments: serde_json::json!({
                 "prompt": "Check <main> & report",
@@ -2356,7 +2356,7 @@ async fn check_dynamic_tool_requests(
         turn["toolOutput"],
         serde_json::json!({
             "name": "create_thread",
-            "namespace": "codex_tui",
+            "namespace": "nuwax_tui",
             "output": format!(
                 "<codex_delegation>\n  <source_thread_id>{creation_source}</source_thread_id>\n  <input>Check &lt;main&gt; &amp; report</input>\n</codex_delegation>"
             )
@@ -2393,7 +2393,7 @@ async fn check_dynamic_tool_requests(
             thread_id: thread_id.clone(),
             turn_id: "turn-1".to_string(),
             call_id: "call-5".to_string(),
-            namespace: Some("codex_tui".to_string()),
+            namespace: Some("nuwax_tui".to_string()),
             tool: "send_message_to_thread".to_string(),
             arguments: serde_json::json!({
                 "threadId": created_thread_id,
@@ -2441,7 +2441,7 @@ async fn check_dynamic_tool_requests(
         turn["toolOutput"],
         serde_json::json!({
             "name": "send_message_to_thread",
-            "namespace": "codex_tui",
+            "namespace": "nuwax_tui",
             "output": format!(
                 "<codex_delegation>\n  <source_thread_id>{thread_id}</source_thread_id>\n  <input>Follow &lt;up&gt; &amp; report</input>\n</codex_delegation>"
             )

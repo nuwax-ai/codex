@@ -57,7 +57,7 @@ async fn test_server(
             "item": {
                 "type": "DynamicToolCall",
                 "id": "persisted-tool",
-                "namespace": "codex_tui",
+                "namespace": "nuwax_tui",
                 "tool": "list_threads",
                 "arguments": tool_arguments,
                 "status": "completed",
@@ -280,7 +280,7 @@ stream_max_retries = 0
 #[test]
 fn delegated_prompts_match_desktop_xml_contract() {
     let output = FunctionCallOutputBody::Text(delegated_prompt("thread-1", "Check status"));
-    for namespace in ["codex_tui", "codex_app"] {
+    for namespace in ["nuwax_tui", "codex_app"] {
         assert_eq!(
             parse_delegated_tool_output("send_message_to_thread", Some(namespace), &output),
             Some(("thread-1".to_string(), "Check status".to_string()))
@@ -329,7 +329,7 @@ fn activity_metadata_is_retained_without_including_outputs() -> color_eyre::Resu
                 "revisedPrompt": "a cat", "result": "image bytes"},
             {"type": "enteredReviewMode", "id": "review-1", "review": "review changes"},
             {"type": "functionCallOutput", "id": "delegation-1", "name": "send_message_to_thread",
-                "namespace": "codex_tui", "output": delegated_prompt("source-2", "Follow <up> & report")}
+                "namespace": "nuwax_tui", "output": delegated_prompt("source-2", "Follow <up> & report")}
         ]
     }))?;
 
@@ -362,7 +362,7 @@ fn activity_metadata_is_retained_without_including_outputs() -> color_eyre::Resu
                 "revisedPrompt": "a cat", "savedPath": null},
             {"type": "enteredReviewMode", "id": "review-1", "review": "review changes"},
             {"type": "functionCallOutput", "id": "delegation-1", "name": "send_message_to_thread",
-                "namespace": "codex_tui", "codexDelegation": {
+                "namespace": "nuwax_tui", "codexDelegation": {
                     "sourceThreadId": "source-2", "input": "Follow <up> & report"
                 }}
         ])

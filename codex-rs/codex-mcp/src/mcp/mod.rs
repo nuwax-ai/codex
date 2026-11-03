@@ -61,7 +61,7 @@ use crate::runtime::McpStartupPolicy;
 use crate::server::EffectiveMcpServer;
 use crate::tools::ToolInfo;
 
-pub const CODEX_APPS_MCP_SERVER_NAME: &str = "codex_apps";
+pub const NUWAX_APPS_MCP_SERVER_NAME: &str = "nuwax_apps";
 pub(crate) const DEFAULT_CODEX_APPS_MCP_PRODUCT_SKU: &str = "codex";
 const MCP_TOOL_NAME_PREFIX: &str = "mcp";
 const MCP_TOOL_NAME_DELIMITER: &str = "__";
@@ -442,7 +442,7 @@ pub fn effective_mcp_servers_from_configured(
         })
         .collect::<HashMap<_, _>>();
     if !host_owned_codex_apps_enabled(config, auth) {
-        servers.remove(CODEX_APPS_MCP_SERVER_NAME);
+        servers.remove(NUWAX_APPS_MCP_SERVER_NAME);
     }
     servers
 }

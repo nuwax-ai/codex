@@ -17,7 +17,7 @@ fn cloud_skill(name: &str) -> SkillCatalogEntry {
     let package = format!("skill://Plugin_123/{name}");
     SkillCatalogEntry::new(
         SkillPackageId(package.clone()),
-        SkillAuthority::new(SkillSourceKind::Cloud, "codex_apps"),
+        SkillAuthority::new(SkillSourceKind::Cloud, "nuwax_apps"),
         format!("deploy:{name}"),
         format!("Cloud {name} description"),
         SkillResourceId::new(format!("{package}/SKILL.md")),
@@ -573,7 +573,7 @@ async fn cloud_rendering_and_reads_share_aliases_after_a_plugin_is_disabled() ->
                 let package = format!("skill://{root}/{name}");
                 SkillCatalogEntry::new(
                     SkillPackageId(package.clone()),
-                    SkillAuthority::new(SkillSourceKind::Cloud, "codex_apps"),
+                    SkillAuthority::new(SkillSourceKind::Cloud, "nuwax_apps"),
                     format!("{root}:{name}"),
                     "Cloud skill",
                     SkillResourceId::new(format!("{package}/SKILL.md")),

@@ -48,7 +48,7 @@ pub fn is_node_repl_backed_server(server: &str) -> bool {
 /// from tool arguments or provider-supplied elicitation metadata.
 pub fn is_node_repl_backed_connector(server: &str, connector_id: Option<&str>) -> bool {
     is_node_repl_backed_server(server)
-        || server == "codex_apps" && connector_id == Some("connector_openai_browser")
+        || server == "nuwax_apps" && connector_id == Some("connector_openai_browser")
 }
 
 /// Recognizes Node REPL-backed tools in model-visible MCP namespaces or legacy

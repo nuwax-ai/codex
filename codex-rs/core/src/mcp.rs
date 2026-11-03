@@ -24,13 +24,13 @@ use codex_extension_api::SelectedPluginSnapshot;
 use codex_extension_api::SessionIsolation;
 use codex_features::Feature;
 use codex_login::CodexAuth;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_mcp::EffectiveMcpServer;
 use codex_mcp::McpConfig;
 use codex_mcp::McpEnvironmentAuthority;
 use codex_mcp::McpPluginAttribution;
 use codex_mcp::McpServerRegistration;
 use codex_mcp::McpToolCatalogCache;
+use codex_mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use codex_mcp::ToolInfo;
 use codex_mcp::codex_apps_mcp_server_config;
 use codex_mcp::configured_mcp_servers;
@@ -464,7 +464,7 @@ impl McpManager {
                 != Some(&SessionIsolation::Isolated)
         {
             catalog.register(McpServerRegistration::from_compatibility(
-                CODEX_APPS_MCP_SERVER_NAME.to_string(),
+                NUWAX_APPS_MCP_SERVER_NAME.to_string(),
                 LEGACY_CODEX_APPS_REGISTRATION_ID,
                 codex_apps_mcp_server_config(
                     &mcp_config.chatgpt_base_url,
@@ -474,7 +474,7 @@ impl McpManager {
             ));
         } else {
             catalog.remove_compatibility(
-                CODEX_APPS_MCP_SERVER_NAME.to_string(),
+                NUWAX_APPS_MCP_SERVER_NAME.to_string(),
                 LEGACY_CODEX_APPS_REGISTRATION_ID,
             );
         }

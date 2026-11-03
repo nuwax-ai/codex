@@ -216,7 +216,7 @@ async fn build_tool_call_uses_namespace_for_registry_name() -> anyhow::Result<()
         encrypted_content: None,
         id: None,
         name: tool_name.clone(),
-        namespace: Some("mcp__codex_apps__calendar".to_string()),
+        namespace: Some("mcp__nuwax_apps__calendar".to_string()),
         arguments: "{}".to_string(),
         encrypted_function_args: Some(Vec::new()),
         call_id: "call-namespace".to_string(),
@@ -226,7 +226,7 @@ async fn build_tool_call_uses_namespace_for_registry_name() -> anyhow::Result<()
 
     assert_eq!(
         call.tool_name,
-        ToolName::namespaced("mcp__codex_apps__calendar", tool_name)
+        ToolName::namespaced("mcp__nuwax_apps__calendar", tool_name)
     );
     assert_eq!(call.call_id, "call-namespace");
     assert_eq!(call.encrypted_function_args, Some(Vec::new()));

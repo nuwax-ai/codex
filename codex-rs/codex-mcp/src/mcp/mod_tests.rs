@@ -763,7 +763,7 @@ async fn effective_mcp_servers_preserve_runtime_servers() {
         },
     ));
     catalog.register(McpServerRegistration::from_config(
-        CODEX_APPS_MCP_SERVER_NAME.to_string(),
+        NUWAX_APPS_MCP_SERVER_NAME.to_string(),
         codex_apps_mcp_server_config(
             &config.chatgpt_base_url,
             config.apps_mcp_product_sku.as_deref(),
@@ -779,7 +779,7 @@ async fn effective_mcp_servers_preserve_runtime_servers() {
         .get("docs")
         .expect("configured server should exist");
     let codex_apps = effective
-        .get(CODEX_APPS_MCP_SERVER_NAME)
+        .get(NUWAX_APPS_MCP_SERVER_NAME)
         .expect("codex apps server should exist");
 
     let sample = sample.config();

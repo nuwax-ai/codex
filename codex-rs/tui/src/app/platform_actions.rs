@@ -165,7 +165,8 @@ impl App {
         if self.windows_sandbox.pending_setup.is_some() {
             if self.windows_sandbox.setup_started_at.is_none() {
                 self.chat_widget.add_info_message(
-                    "Windows sandbox setup is still running. Restart Nuwax Harness to retry.".to_string(),
+                    "Windows sandbox setup is still running. Restart Nuwax Harness to retry."
+                        .to_string(),
                     /*hint*/ None,
                 );
             }

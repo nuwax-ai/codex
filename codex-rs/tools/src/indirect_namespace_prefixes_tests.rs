@@ -114,11 +114,11 @@ fn flat_tool_descriptions_use_trimmed_namespace_prefixes() {
 #[test]
 fn matching_prefixes_cover_each_namespace_once() {
     let servers = BTreeMap::from([
-        ("codex_apps".to_string(), " App guidance. ".to_string()),
+        ("nuwax_apps".to_string(), " App guidance. ".to_string()),
         ("apps_alias".to_string(), "App guidance.\n".to_string()),
     ]);
     let exact = BTreeMap::from([(
-        "mcp__codex_apps__gmail".to_string(),
+        "mcp__nuwax_apps__gmail".to_string(),
         "App guidance.".to_string(),
     )]);
     let configured = IndirectDescriptionPrefixes {
@@ -126,8 +126,8 @@ fn matching_prefixes_cover_each_namespace_once() {
         mcp_servers: Some(servers),
     };
     let original = ["gmail", "calendar", "drive", "slack"].map(|app| ToolDefinition {
-        name: format!("mcp__codex_apps__{app}__search"),
-        tool_name: ToolName::namespaced(format!("mcp__codex_apps__{app}"), "search"),
+        name: format!("mcp__nuwax_apps__{app}__search"),
+        tool_name: ToolName::namespaced(format!("mcp__nuwax_apps__{app}"), "search"),
         description: "Search.".to_string(),
         kind: CodeModeToolKind::Function,
         input_schema: None,
@@ -137,10 +137,10 @@ fn matching_prefixes_cover_each_namespace_once() {
     let mut tools = original.clone();
     let namespaces = original
         .iter()
-        .map(|tool| ("codex_apps", tool.tool_name.namespace.as_deref().unwrap()))
+        .map(|tool| ("nuwax_apps", tool.tool_name.namespace.as_deref().unwrap()))
         .chain([
-            ("codex_apps", "mcp__codex_apps__gmail"),
-            ("apps_alias", "mcp__codex_apps__gmail"),
+            ("nuwax_apps", "mcp__nuwax_apps__gmail"),
+            ("apps_alias", "mcp__nuwax_apps__gmail"),
         ]);
     IndirectNamespacePrefixes::new(Some(&configured), namespaces)
         .unwrap()

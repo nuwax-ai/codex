@@ -42,7 +42,7 @@ async fn cloud_preference_preserves_aliases_reads_and_executor_fallback() -> Tes
             for index in 0..3 {
                 let mut entry = test_entry(
                     SkillSourceKind::Cloud,
-                    "codex_apps",
+                    "nuwax_apps",
                     &format!("cloud/{plugin}/s{index}"),
                     &format!("cloud/{plugin}/s{index}/SKILL.md"),
                 );

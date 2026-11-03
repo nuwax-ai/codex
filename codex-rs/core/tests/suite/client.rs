@@ -2299,7 +2299,7 @@ async fn omits_apps_guidance_when_orchestrator_mcp_is_disabled() {
                     read_call_id,
                     "read_mcp_resource",
                     &json!({
-                        "server": "codex_apps",
+                        "server": "nuwax_apps",
                         "uri": "skill://demo/SKILL.md",
                     })
                     .to_string(),

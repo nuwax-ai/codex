@@ -24,8 +24,8 @@ async fn strict_ignores_app_omissions_but_preserves_app_access() -> anyhow::Resu
     AppsTestServer::mount_with_tools(&server, Arc::new(Mutex::new(tools))).await?;
     let mut extensions = ExtensionRegistryBuilder::new();
     extensions.mcp_server_contributor(Arc::new(AppsServer(vec![])));
-    let script = r#"const names = ALL_TOOLS.filter(t => t.name.startsWith("mcp__codex_apps__calendar__")).map(t => t.name).sort();
-const t = ALL_TOOLS.find(t => t.name === "mcp__codex_apps__calendar__lookup");
+    let script = r#"const names = ALL_TOOLS.filter(t => t.name.startsWith("mcp__nuwax_apps__calendar__")).map(t => t.name).sort();
+const t = ALL_TOOLS.find(t => t.name === "mcp__nuwax_apps__calendar__lookup");
 text(JSON.stringify({names, result: t ? (await tools[t.name]({})).content[0].text : null}));"#;
     let mock = responses::mount_sse_sequence(
         &server,
@@ -75,7 +75,7 @@ enabled = false
     assert_eq!(requests.len(), 2);
     assert!(
         requests[0]
-            .tool_by_name("mcp__codex_apps__calendar", "lookup")
+            .tool_by_name("mcp__nuwax_apps__calendar", "lookup")
             .is_none()
     );
     let output =
@@ -84,7 +84,7 @@ enabled = false
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&output)?,
         json!({
-            "names": ["mcp__codex_apps__calendar__lookup"],
+            "names": ["mcp__nuwax_apps__calendar__lookup"],
             "result": "called lookup for  at  with "
         }),
         "app omissions are ignored; disabled and app-only tools never enter ALL_TOOLS"

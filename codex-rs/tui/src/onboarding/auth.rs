@@ -438,7 +438,10 @@ impl AuthModeWidget {
 
     fn render_pick_mode(&self, area: Rect, buf: &mut Buffer) {
         let mut lines: Vec<Line> = if self.bedrock_setup_enabled {
-            vec!["  Choose how you want to use Nuwax Harness.".into(), "".into()]
+            vec![
+                "  Choose how you want to use Nuwax Harness.".into(),
+                "".into(),
+            ]
         } else {
             vec![
                 Line::from(vec![

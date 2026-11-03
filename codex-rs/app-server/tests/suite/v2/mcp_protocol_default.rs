@@ -51,7 +51,7 @@ async fn enabling_hosted_apps_protocol_refreshes_an_existing_thread() -> Result<
 
     let call_tool = |thread_id: String| McpServerToolCallParams {
         thread_id,
-        server: "codex_apps".to_string(),
+        server: "nuwax_apps".to_string(),
         tool: "calendar_list_events".to_string(),
         arguments: Some(json!({ "query": "hello" })),
         meta: None,

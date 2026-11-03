@@ -33,7 +33,7 @@ use codex_features::Feature;
 use codex_http_client::DestinationPolicy;
 use codex_http_client::NetworkPolicyController;
 use codex_login::CodexAuth;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
+use codex_mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use codex_mcp::codex_apps_mcp_server_config;
 use codex_models_manager::bundled_models_response;
 use codex_protocol::config_types::ApprovalsReviewer;
@@ -2207,7 +2207,7 @@ async fn direct_result_metadata_retained_budget_preserves_resource_access() -> R
         .map(|call_id| {
             responses::ev_function_call_with_namespace(
                 call_id,
-                "mcp__codex_apps__messagesearch",
+                "mcp__nuwax_apps__messagesearch",
                 RESULT_METADATA_TOOL,
                 &arguments.to_string(),
             )
@@ -2221,7 +2221,7 @@ async fn direct_result_metadata_retained_budget_preserves_resource_access() -> R
         sse(vec![
             responses::ev_function_call_with_namespace(
                 &call_ids[32],
-                "mcp__codex_apps__messagesearch",
+                "mcp__nuwax_apps__messagesearch",
                 RESULT_METADATA_TOOL,
                 &arguments.to_string(),
             ),
@@ -2410,7 +2410,7 @@ async fn result_metadata_preserves_results_within_request_budget(
             .map(|(arguments, call_id)| {
                 responses::ev_function_call_with_namespace(
                     call_id,
-                    "mcp__codex_apps__messagesearch",
+                    "mcp__nuwax_apps__messagesearch",
                     RESULT_METADATA_TOOL,
                     &arguments.to_string(),
                 )
@@ -2609,7 +2609,7 @@ async fn result_metadata_follows_call_binding(
         let mut extensions = ExtensionRegistryBuilder::<Config>::new();
         extensions.mcp_server_contributor(Arc::new(ResultMetadataTestControl {
             server: Mutex::new(McpServerContribution::Set {
-                name: CODEX_APPS_MCP_SERVER_NAME.to_string(),
+                name: NUWAX_APPS_MCP_SERVER_NAME.to_string(),
                 config: Box::new(codex_apps_mcp_server_config(
                     &apps_server.chatgpt_base_url,
                     /*apps_mcp_product_sku*/ None,
@@ -2628,7 +2628,7 @@ async fn result_metadata_follows_call_binding(
             sse(vec![
                 responses::ev_function_call_with_namespace(
                     "call-1",
-                    "mcp__codex_apps__messagesearch",
+                    "mcp__nuwax_apps__messagesearch",
                     RESULT_METADATA_TOOL,
                     &arguments.to_string(),
                 ),
@@ -2915,7 +2915,7 @@ async fn code_mode_result_metadata_keeps_prepared_call_binding_across_runtime_re
     );
     // The next call uses an extension-owned binding, but the held call keeps its host proof.
     *control.server.lock().unwrap() = McpServerContribution::Set {
-        name: CODEX_APPS_MCP_SERVER_NAME.to_string(),
+        name: NUWAX_APPS_MCP_SERVER_NAME.to_string(),
         config: Box::new(codex_apps_mcp_server_config(
             &refreshed_apps.chatgpt_base_url,
             /*apps_mcp_product_sku*/ None,
@@ -3669,7 +3669,7 @@ const tool = matches[0];
     } else {
         r#"
 const tool = ALL_TOOLS.find(
-  ({ name }) => name === "mcp__codex_apps__calendar_timezone_option_99"
+  ({ name }) => name === "mcp__nuwax_apps__calendar_timezone_option_99"
 );
 "#
     };
@@ -3682,7 +3682,7 @@ if (!tool) {
     found: true,
     rankedSearchAvailable: typeof tools.tool_search === "function",
     name: tool.name,
-    hasDeclaration: tool.description.includes("mcp__codex_apps__calendar_timezone_option_99(args:"),
+    hasDeclaration: tool.description.includes("mcp__nuwax_apps__calendar_timezone_option_99(args:"),
     hasSchemaDescription: tool.description.includes("schema_budget_marker"),
     hasNamespacePrefix: tool.description.startsWith("Calendar search context.\n\n"),
     descriptionPrefix: tool.description.split("\n\nexec tool declaration:")[0],
@@ -3777,7 +3777,7 @@ if (!tool) {
                 .get_or_insert_with(Default::default)
                 .indirect_description_prefixes = Some(
                 serde_json::from_value(serde_json::json!({
-                    "mcp_servers": {"codex_apps": "  Calendar search context.  "},
+                    "mcp_servers": {"nuwax_apps": "  Calendar search context.  "},
                 }))
                 .expect("indirect namespace prefixes"),
             );
@@ -3836,7 +3836,7 @@ if (!tool) {
         serde_json::json!({
             "found": true,
             "rankedSearchAvailable": ranked_search,
-            "name": "mcp__codex_apps__calendar_timezone_option_99",
+            "name": "mcp__nuwax_apps__calendar_timezone_option_99",
             "hasDeclaration": true,
             "hasSchemaDescription": schema_max_bytes.is_some(),
             "hasNamespacePrefix": true,
@@ -3894,7 +3894,7 @@ text(JSON.stringify({{
   error,
 }}));
 "#,
-        visible_tool_name = "mcp__codex_apps__calendar_timezone_option_99",
+        visible_tool_name = "mcp__nuwax_apps__calendar_timezone_option_99",
         tool_name = DIRECT_CALENDAR_APP_ONLY_TOOL,
     );
 

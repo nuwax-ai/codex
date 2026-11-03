@@ -4,7 +4,7 @@ use codex_protocol::items::FunctionCallOutputItem;
 
 /// Extract the task text from a delegated input, ignoring unrelated tool outputs.
 pub fn delegated_output_preview(output: &FunctionCallOutputItem) -> Option<String> {
-    if !matches!(output.namespace.as_deref(), Some("codex_app" | "codex_tui"))
+    if !matches!(output.namespace.as_deref(), Some("codex_app" | "nuwax_tui"))
         || !matches!(
             output.name.as_str(),
             "create_thread" | "send_message_to_thread"

@@ -92,10 +92,10 @@ impl AnyToolResult {
         // Both connector spellings also have a form for catalogs without connector metadata.
         if !matches!(
             payload.tool_name.name(),
-            "mcp__codex_apps__user_messaging__send_message"
-                | "mcp__codex_apps__user_messaging_send_message"
-                | "mcp__codex_apps__user_message__send_message"
-                | "mcp__codex_apps__user_message_send_message"
+            "mcp__nuwax_apps__user_messaging__send_message"
+                | "mcp__nuwax_apps__user_messaging_send_message"
+                | "mcp__nuwax_apps__user_message__send_message"
+                | "mcp__nuwax_apps__user_message_send_message"
         ) {
             return None;
         }

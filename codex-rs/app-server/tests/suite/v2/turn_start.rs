@@ -498,7 +498,7 @@ async fn tool_call_metadata_stays_out_of_raw_response_item_notifications(
     assert!(serde_json::to_string(&output["output"])?.contains("Calendar result"));
     assert_eq!(
         output["internal_chat_message_metadata_passthrough"]["executed_tool_calls"],
-        json!([{"name": "mcp__codex_apps__calendar_list_events", "arguments": arguments}]),
+        json!([{"name": "mcp__nuwax_apps__calendar_list_events", "arguments": arguments}]),
     );
     assert_eq!(
         output["internal_chat_message_metadata_passthrough"]["tool_calls_complete"],

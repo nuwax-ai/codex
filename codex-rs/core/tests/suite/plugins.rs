@@ -19,7 +19,7 @@ use codex_extension_api::ExtensionRegistry;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_features::Feature;
 use codex_login::CodexAuth;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
+use codex_mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use codex_model_provider_info::AMAZON_BEDROCK_PROVIDER_ID;
 use codex_model_provider_info::OPENAI_PROVIDER_ID;
 use codex_plugin::PluginId;
@@ -83,7 +83,7 @@ const SAMPLE_REMOTE_PLUGIN_CONFIG_NAME: &str = "sample@openai-curated-remote";
 const SAMPLE_PLUGIN_DISPLAY_NAME: &str = "sample";
 const SAMPLE_PLUGIN_DESCRIPTION: &str = "inspect sample data";
 const SAMPLE_REMOTE_PLUGIN_ID: &str = "plugins~Plugin_sample";
-const SAMPLE_PLUGIN_APP_NAMESPACE: &str = "mcp__codex_apps__google_calendar";
+const SAMPLE_PLUGIN_APP_NAMESPACE: &str = "mcp__nuwax_apps__google_calendar";
 const SAMPLE_PLUGIN_MCP_NAMESPACE: &str = "mcp__sample";
 const PLUGIN_APP_SEARCH_CALL_ID: &str = "plugin-app-search";
 const PLUGIN_MCP_SEARCH_CALL_ID: &str = "plugin-mcp-search";
@@ -919,7 +919,7 @@ async fn thread_disabled_plugins_filter_skills_and_tools_without_changing_shared
             "echo",
             Some(serde_json::json!({"message": "plugin check"})),
         ),
-        (CODEX_APPS_MCP_SERVER_NAME, "calendar_list_events", None),
+        (NUWAX_APPS_MCP_SERVER_NAME, "calendar_list_events", None),
     ];
 
     for (phase, enabled, injection_count) in [(0, true, 1), (1, false, 1), (2, true, 2)] {
@@ -1017,7 +1017,7 @@ async fn thread_disabled_plugins_filter_skills_and_tools_without_changing_shared
                 .await;
             assert_eq!(
                 result.is_ok(),
-                enabled || *server_name == CODEX_APPS_MCP_SERVER_NAME,
+                enabled || *server_name == NUWAX_APPS_MCP_SERVER_NAME,
                 "unexpected {server_name}/{tool} result: {result:?}"
             );
         }
@@ -1880,7 +1880,7 @@ async fn explicit_plugin_mentions_use_apps_for_chatgpt_dual_surface_plugins(
         build_apps_enabled_plugin_test_codex(&server, codex_home, apps_server.chatgpt_base_url)
             .await?;
     let codex = Arc::clone(&test_codex.codex);
-    wait_for_mcp_server(&codex, CODEX_APPS_MCP_SERVER_NAME).await?;
+    wait_for_mcp_server(&codex, NUWAX_APPS_MCP_SERVER_NAME).await?;
 
     codex
         .start_or_steer_turn(TurnInputRequest::user_input(vec![

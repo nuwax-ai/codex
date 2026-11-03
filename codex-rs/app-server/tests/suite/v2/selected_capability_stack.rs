@@ -653,7 +653,7 @@ fn assert_selected_plugin_tools_absent(request: &ResponsesRequest) {
             .is_none()
     );
     let connector = request
-        .tool_by_name("mcp__codex_apps__calendar", "connector_calendar")
+        .tool_by_name("mcp__nuwax_apps__calendar", "connector_calendar")
         .expect("host connector should remain model-visible");
     assert!(
         connector["description"]
@@ -719,7 +719,7 @@ fn assert_selected_plugin_tools(request: &ResponsesRequest) {
             .is_some()
     );
     let connector = request
-        .tool_by_name("mcp__codex_apps__calendar", "connector_calendar")
+        .tool_by_name("mcp__nuwax_apps__calendar", "connector_calendar")
         .expect("selected connector should be model-visible");
     assert!(
         connector["description"]

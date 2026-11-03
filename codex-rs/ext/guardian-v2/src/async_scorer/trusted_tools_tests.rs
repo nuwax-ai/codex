@@ -68,8 +68,8 @@ async fn trusts_only_tools_configured_in_codex_home() -> Result<()> {
             McpToolSource::Config,
         ),
         (
-            mcp_tool("codex_apps", Some("connector_home"))?,
-            mcp_tool("codex_apps", Some("connector_other"))?,
+            mcp_tool("nuwax_apps", Some("connector_home"))?,
+            mcp_tool("nuwax_apps", Some("connector_other"))?,
             McpToolSource::Connector,
         ),
     ] {
@@ -100,7 +100,7 @@ async fn rejects_blank_orchestrator_connector_ids() -> Result<()> {
         .features
         .enable(Feature::GuardianTrustOrchestratorConnectors)?;
     for connector_id in [Some(""), Some(" \t\n "), None] {
-        let tool = mcp_tool("codex_apps", connector_id)?;
+        let tool = mcp_tool("nuwax_apps", connector_id)?;
         assert_eq!(
             trusted_tool_context(
                 &tool,
@@ -158,7 +158,7 @@ async fn trusts_connector_declared_by_home_owned_plugin() -> Result<()> {
         .join("test")
         .join("trusted")
         .join("local");
-    let tool = mcp_tool("codex_apps", Some("connector_calendar"))?;
+    let tool = mcp_tool("nuwax_apps", Some("connector_calendar"))?;
     let context = trusted_tool_context(
         &tool,
         &McpToolSource::Connector,

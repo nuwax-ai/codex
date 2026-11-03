@@ -79,13 +79,25 @@ impl Lighting {
             ]
         };
         let key = [scaled(0), scaled(1), scaled(2)];
-        let shadow = [
-            key[0] * 0.30,
-            key[1] * 0.32,
-            key[2] * 0.42,
-        ];
-        let fill = mix(key, [BLUE[0] * self.hue_gain, BLUE[1] * self.hue_gain, BLUE[2] * self.hue_gain], 0.30);
-        let rim = mix(key, [ROSE[0] * self.hue_gain, ROSE[1] * self.hue_gain, ROSE[2] * self.hue_gain], 0.45);
+        let shadow = [key[0] * 0.30, key[1] * 0.32, key[2] * 0.42];
+        let fill = mix(
+            key,
+            [
+                BLUE[0] * self.hue_gain,
+                BLUE[1] * self.hue_gain,
+                BLUE[2] * self.hue_gain,
+            ],
+            0.30,
+        );
+        let rim = mix(
+            key,
+            [
+                ROSE[0] * self.hue_gain,
+                ROSE[1] * self.hue_gain,
+                ROSE[2] * self.hue_gain,
+            ],
+            0.45,
+        );
         let highlight = self.highlight;
         let rgb: [u8; 3] = std::array::from_fn(|i| {
             let value = shadow[i] * (1.0 - diffuse) * base

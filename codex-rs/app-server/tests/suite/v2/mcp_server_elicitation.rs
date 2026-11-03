@@ -95,7 +95,7 @@ const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
 const CONNECTOR_ID: &str = "calendar";
 const CONNECTOR_NAME: &str = "Calendar";
 const CONNECTED_ACCOUNT_EMAIL: &str = "calendar-owner@example.com";
-const TOOL_NAMESPACE: &str = "mcp__codex_apps__calendar";
+const TOOL_NAMESPACE: &str = "mcp__nuwax_apps__calendar";
 const CALLABLE_TOOL_NAME: &str = "_confirm_action";
 const TOOL_NAME: &str = "calendar_confirm_action";
 const TOOL_CALL_ID: &str = "call-calendar-confirm";
@@ -199,7 +199,7 @@ async fn assert_standard_form_elicitation_round_trip(
         McpServerElicitationRequestParams {
             thread_id: fixture.thread_id.clone(),
             turn_id: Some(fixture.turn_id.clone()),
-            server_name: "codex_apps".to_string(),
+            server_name: "nuwax_apps".to_string(),
             request: McpServerElicitationRequest::Form {
                 meta: None,
                 message: ELICITATION_MESSAGE.to_string(),
@@ -245,7 +245,7 @@ async fn mcp_server_openai_form_elicitation_round_trip() -> Result<()> {
         McpServerElicitationRequestParams {
             thread_id: fixture.thread_id.clone(),
             turn_id: Some(fixture.turn_id.clone()),
-            server_name: "codex_apps".to_string(),
+            server_name: "nuwax_apps".to_string(),
             request: McpServerElicitationRequest::OpenAiForm {
                 meta: None,
                 message: OPENAI_FORM_MESSAGE.to_string(),
@@ -284,7 +284,7 @@ async fn mcp_server_openai_elicitation_form_round_trip() -> Result<()> {
         McpServerElicitationRequestParams {
             thread_id: fixture.thread_id.clone(),
             turn_id: Some(fixture.turn_id.clone()),
-            server_name: "codex_apps".to_string(),
+            server_name: "nuwax_apps".to_string(),
             request: McpServerElicitationRequest::OpenAiElicitationForm {
                 meta: Some(json!({ "example/request": "template-picker" })),
                 message: OPENAI_FORM_MESSAGE.to_string(),
@@ -912,7 +912,7 @@ impl ElicitationRoundTripFixture {
                 action,
                 json!({
                     "tool": "mcp_tool_call",
-                    "server": "codex_apps",
+                    "server": "nuwax_apps",
                     "tool_name": TOOL_NAME,
                     "arguments": {},
                     "connector_id": CONNECTOR_ID,

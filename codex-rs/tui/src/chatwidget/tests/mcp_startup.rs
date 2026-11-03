@@ -80,7 +80,7 @@ async fn mcp_apps_readiness_retries_an_in_flight_installed_mention_lookup() {
     chat.refresh_connector_mentions(/*force_refresh*/ false);
     chat.on_mcp_server_status_updated(McpServerStatusUpdatedNotification {
         thread_id: None,
-        name: "codex_apps".to_string(),
+        name: "nuwax_apps".to_string(),
         status: McpServerStartupState::Ready,
         error: None,
         failure_reason: None,

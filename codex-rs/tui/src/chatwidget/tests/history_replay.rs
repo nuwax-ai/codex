@@ -333,7 +333,7 @@ async fn replayed_delegated_tool_output_is_attributed_without_seeding_composer_h
     let item = AppServerThreadItem::FunctionCallOutput {
         id: "delegation-1".to_string(),
         name: "send_message_to_thread".to_string(),
-        namespace: Some("codex_tui".to_string()),
+        namespace: Some("nuwax_tui".to_string()),
         output: FunctionCallOutputBody::Text(
             "<codex_delegation>\n  <source_thread_id>source-task</source_thread_id>\n  <input>Follow &lt;up&gt; &amp; report</input>\n</codex_delegation>".to_string(),
         ),

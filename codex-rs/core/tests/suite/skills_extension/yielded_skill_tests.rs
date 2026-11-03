@@ -20,7 +20,7 @@ async fn yielded_skill_read_keeps_originating_turn_metadata() -> Result<()> {
                 is_partial: false,
                 entries: vec![SkillCatalogEntry::new(
                     SkillPackageId(PACKAGE.to_string()),
-                    SkillAuthority::new(SkillSourceKind::Cloud, CODEX_APPS_MCP_SERVER_NAME),
+                    SkillAuthority::new(SkillSourceKind::Cloud, NUWAX_APPS_MCP_SERVER_NAME),
                     "demo:yielded",
                     "Instructions for the yielded skill.",
                     SkillResourceId::new(RESOURCE),

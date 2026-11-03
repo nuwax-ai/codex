@@ -150,7 +150,7 @@ pub(super) async fn connector_exposure_requests(
             .mount(&server)
             .await;
     }
-    let namespace = "mcp__codex_apps__calendar";
+    let namespace = "mcp__nuwax_apps__calendar";
     let tool_call = if case.expect_exec {
         responses::ev_custom_tool_call(
             "lookup",
@@ -208,7 +208,7 @@ pub(super) async fn connector_exposure_requests(
     );
     assert!(
         requests[0]
-            .tool_by_name("mcp__codex_apps__notes", "read")
+            .tool_by_name("mcp__nuwax_apps__notes", "read")
             .is_none()
     );
     let body = requests[0].body_json();
@@ -223,7 +223,7 @@ pub(super) async fn connector_exposure_requests(
         exec_description.contains(&format!("{namespace}__lookup(")),
         case.expect_exec && case.mode == ToolMode::CodeModeOnly
     );
-    assert!(!exec_description.contains("mcp__codex_apps__notes__read("));
+    assert!(!exec_description.contains("mcp__nuwax_apps__notes__read("));
     if calls_tool {
         assert!(requests[1].body_contains_text("calendar-lookup-ok"));
     }

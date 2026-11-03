@@ -126,7 +126,7 @@ fn query(client: Option<Arc<McpResourceClient>>) -> SkillListQuery {
 
 fn request(client: Option<Arc<McpResourceClient>>) -> SkillReadRequest<'static> {
     SkillReadRequest {
-        authority: SkillAuthority::new(SkillSourceKind::Cloud, "codex_apps"),
+        authority: SkillAuthority::new(SkillSourceKind::Cloud, "nuwax_apps"),
         package: SkillPackageId("skill://demo".into()),
         resource: SkillResourceId::new("skill://demo/SKILL.md"),
         context: SkillReadContext::Cloud {
@@ -513,7 +513,7 @@ async fn cloud_refresh_preserves_complete_catalogs_only_within_the_same_auth_sco
     let catalog = |name: &str, is_partial| SkillCatalog {
         entries: vec![SkillCatalogEntry::new(
             SkillPackageId("skill://demo".into()),
-            SkillAuthority::new(SkillSourceKind::Cloud, "codex_apps"),
+            SkillAuthority::new(SkillSourceKind::Cloud, "nuwax_apps"),
             name,
             "test catalog",
             SkillResourceId::new("skill://demo/SKILL.md"),

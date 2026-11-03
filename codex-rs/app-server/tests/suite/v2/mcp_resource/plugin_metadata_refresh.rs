@@ -249,7 +249,7 @@ async fn read_mcp_skill_resource(app_server: &mut TestAppServer, thread_id: &str
         .send_mcp_resource_read_request(McpResourceReadParams {
             thread_id: Some(thread_id.to_string()),
             origin_call_id: None,
-            server: "codex_apps".to_string(),
+            server: "nuwax_apps".to_string(),
             uri: SKILL_MAIN_PROMPT_URI.to_string(),
             connector_id: None,
             target: None,

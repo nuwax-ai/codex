@@ -186,7 +186,7 @@ async fn mcp_resource_read_returns_resource_contents() -> Result<()> {
                     params: McpResourceReadParams {
                         thread_id: thread_id.clone(),
                         origin_call_id: None,
-                        server: "codex_apps".to_string(),
+                        server: "nuwax_apps".to_string(),
                         uri: TEST_RESOURCE_URI.to_string(),
                         connector_id: None,
                         target: target.clone(),
@@ -487,7 +487,7 @@ apps = true
             params: McpResourceReadParams {
                 thread_id: None,
                 origin_call_id: None,
-                server: "codex_apps".to_string(),
+                server: "nuwax_apps".to_string(),
                 uri: TEST_RESOURCE_URI.to_string(),
                 connector_id: None,
                 target: None,
@@ -501,7 +501,7 @@ apps = true
             params: McpResourceReadParams {
                 thread_id: None,
                 origin_call_id: None,
-                server: "codex_apps".to_string(),
+                server: "nuwax_apps".to_string(),
                 uri: TEST_ELICITATION_RESOURCE_URI.to_string(),
                 connector_id: None,
                 target: None,
@@ -543,7 +543,7 @@ async fn mcp_resource_read_returns_error_for_unknown_thread() -> Result<()> {
             params: McpResourceReadParams {
                 thread_id: Some("00000000-0000-4000-8000-000000000000".to_string()),
                 origin_call_id: None,
-                server: "codex_apps".to_string(),
+                server: "nuwax_apps".to_string(),
                 uri: TEST_RESOURCE_URI.to_string(),
                 connector_id: None,
                 target: None,

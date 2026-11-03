@@ -1895,10 +1895,10 @@ fn bundled_cleanup_trust_requires_matching_plugin_server_and_event() {
 #[test]
 fn local_hosted_app_cleanup_hooks_require_saved_trust() {
     let temp = tempdir().expect("create plugin directory");
-    let mut source = bundled_cleanup_source("browser@openai-curated-remote", "codex_apps", "Stop");
+    let mut source = bundled_cleanup_source("browser@openai-curated-remote", "nuwax_apps", "Stop");
     source.plugin_root = AbsolutePathBuf::try_from(temp.path()).expect("plugin root");
     source.hooks.stop[0].hooks[0] = HookHandlerConfig::McpTool {
-        server: "codex_apps".to_string(),
+        server: "nuwax_apps".to_string(),
         tool: "browser.turn_ended".to_string(),
         input: Default::default(),
         timeout_sec: None,

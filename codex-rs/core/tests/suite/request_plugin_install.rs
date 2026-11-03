@@ -80,7 +80,7 @@ const DISCOVERABLE_GMAIL_ID: &str = "connector_68df038e0ba48191908c8434991bbac2"
 const REMOTE_CALENDAR_PLUGIN_CONFIG_ID: &str = "calendar@openai-curated-remote";
 const REMOTE_CALENDAR_PLUGIN_ID: &str = "plugin_calendar";
 const CALENDAR_CONNECTOR_ID: &str = "calendar";
-const CALENDAR_NAMESPACE: &str = "mcp__codex_apps__calendar";
+const CALENDAR_NAMESPACE: &str = "mcp__nuwax_apps__calendar";
 const CALENDAR_CREATE_EVENT_TOOL: &str = "_create_event";
 const STEP_PREPARATION_MCP_SERVER: &str = "step_preparation";
 

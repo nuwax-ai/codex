@@ -52,6 +52,17 @@ pub(crate) async fn run_update_prompt_if_needed(
     tui: &mut Tui,
     config: &Config,
 ) -> Result<UpdatePromptOutcome> {
+    // Fork (nuwax-codex): the in-TUI self-update prompt is disabled. Its
+    // actions would send users to the official @openai/codex package or
+    // install scripts (audit §6 #6); the fork's channel is
+    // @nuwax-ai/nuwax-harness on npm, and doctor already reports version
+    // status from that channel.
+    let _ = (tui, config);
+    return Ok(UpdatePromptOutcome::Continue);
+    #[expect(
+        unreachable_code,
+        reason = "fork disablement keeps the original flow intact below"
+    )]
     let Some(latest_version) = updates::get_upgrade_version_for_popup(config) else {
         return Ok(UpdatePromptOutcome::Continue);
     };

@@ -11,11 +11,11 @@ use crate::tools::ToolInfo;
 
 fn tool_info(tool: Tool) -> ToolInfo {
     ToolInfo {
-        server_name: "codex_apps".to_string(),
+        server_name: "nuwax_apps".to_string(),
         supports_parallel_tool_calls: false,
         server_origin: None,
         callable_name: tool.name.to_string(),
-        callable_namespace: "codex_apps".to_string(),
+        callable_namespace: "nuwax_apps".to_string(),
         namespace_description: None,
         tool,
         openai_file_input_optional_fields: HashMap::new(),

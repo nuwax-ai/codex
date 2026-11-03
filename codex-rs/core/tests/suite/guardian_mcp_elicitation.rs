@@ -418,8 +418,8 @@ enum CallIdSource {
     PreviousTurn,
 }
 
-#[test_case("codex_apps", false, CallIdSource::Host; "browser_connector")]
-#[test_case("codex_apps", true, CallIdSource::Host; "strict_browser_connector")]
+#[test_case("nuwax_apps", false, CallIdSource::Host; "browser_connector")]
+#[test_case("nuwax_apps", true, CallIdSource::Host; "strict_browser_connector")]
 #[test_case("node_repl", false, CallIdSource::Host; "ordinary_node_repl")]
 #[test_case("node_repl", true, CallIdSource::Host; "strict_node_repl")]
 #[test_case("cua_repl", false, CallIdSource::Host; "ordinary_cua_repl")]
@@ -440,7 +440,7 @@ async fn node_elicitations_attribute_independent_reviews_without_changing_action
     skip_if_no_network!(Ok(()));
     skip_if_wine_exec!(Ok(()), "the MCP fixture requires a host Python interpreter");
 
-    let browser = server_name == "codex_apps";
+    let browser = server_name == "nuwax_apps";
     let actions = [
         (
             if browser && strict_auto_review {
@@ -773,13 +773,13 @@ async fn strict_browser_nested_review_requires_live_browser_identity(
             config.approvals_reviewer = ApprovalsReviewer::User;
         });
     let test = builder.build_with_auto_env(&server).await?;
-    wait_for_mcp_server(&test.codex, "codex_apps").await?;
+    wait_for_mcp_server(&test.codex, "nuwax_apps").await?;
     responses::mount_sse_once(
         &server,
         responses::sse(vec![
             responses::ev_function_call_with_namespace(
                 "eliciting-tool",
-                "mcp__codex_apps__browser",
+                "mcp__nuwax_apps__browser",
                 "_js",
                 r#"{"code":"write_record()"}"#,
             ),

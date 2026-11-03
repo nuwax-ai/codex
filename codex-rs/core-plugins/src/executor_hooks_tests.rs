@@ -261,7 +261,7 @@ fn resolves_apps_hook_metadata_from_the_registered_connector() {
     let mut manifest = cleanup_hook_manifest();
     manifest["name"] = json!("browser");
     let handler = &mut manifest["hooks"]["hooks"]["Stop"][0]["hooks"][0];
-    handler["server"] = json!("codex_apps");
+    handler["server"] = json!("nuwax_apps");
     handler["tool"] = json!("browser.turn_ended");
     handler["input"] = json!({});
     let mut expected = expected_source(/*index*/ 0);
@@ -383,7 +383,7 @@ fn resolves_apps_hook_metadata_from_the_registered_connector() {
         );
         let tool_info = connector_id.map(|connector_id| {
             serde_json::from_value::<ToolInfo>(json!({
-                "server_name": "codex_apps",
+                "server_name": "nuwax_apps",
                 "tool_name": "turn_ended",
                 "tool_namespace": "browser",
                 "connector_id": connector_id,

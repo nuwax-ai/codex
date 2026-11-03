@@ -10,11 +10,11 @@ use codex_exec_server::ExecutorCapabilityDiscoveryV2Cache;
 use codex_exec_server::ExecutorCapabilityDiscoveryV2Snapshot;
 use codex_exec_server::MAX_SELECTED_CAPABILITY_ROOTS;
 use codex_exec_server::ResolvedSelectedCapabilityRoot;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_mcp::ElicitationReviewRequest;
 use codex_mcp::ElicitationReviewer;
 use codex_mcp::ElicitationReviewerHandle;
 use codex_mcp::MCP_TOOL_CODEX_APPS_META_KEY;
+use codex_mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use codex_otel::auth_storage::AuthStorageOriginator;
 use codex_prompts::ResolvedModelMessages;
 use codex_protocol::capabilities::CapabilityRootLocation;
@@ -368,8 +368,8 @@ impl Session {
             Some(self.mcp_elicitation_reviewer()),
         );
         anyhow::ensure!(
-            input.mcp_servers.contains_key(CODEX_APPS_MCP_SERVER_NAME),
-            "unknown MCP server '{CODEX_APPS_MCP_SERVER_NAME}'"
+            input.mcp_servers.contains_key(NUWAX_APPS_MCP_SERVER_NAME),
+            "unknown MCP server '{NUWAX_APPS_MCP_SERVER_NAME}'"
         );
         let refreshed = AuthStorageOriginator::from_client_name(&desired.originator)
             .scope(self.services.mcp_runtime.replace_fresh(input))
@@ -978,7 +978,7 @@ async fn review_guardian_mcp_elicitation(
         .elicitation
         .meta()
         .and_then(|meta| match request.server_name.as_str() {
-            CODEX_APPS_MCP_SERVER_NAME => meta.get(MCP_TOOL_CODEX_APPS_META_KEY)?.get("call_id"),
+            NUWAX_APPS_MCP_SERVER_NAME => meta.get(MCP_TOOL_CODEX_APPS_META_KEY)?.get("call_id"),
             _ => meta.get("callId"),
         })
         .and_then(Value::as_str);
@@ -1024,7 +1024,7 @@ async fn review_guardian_mcp_elicitation(
         // A live Browser invocation can review a nested action with its own identity.
         // Other hosted connectors must still review their registered outer invocation.
         let review_outer_invocation =
-            request.server_name == CODEX_APPS_MCP_SERVER_NAME && originating_call_id.is_none();
+            request.server_name == NUWAX_APPS_MCP_SERVER_NAME && originating_call_id.is_none();
         let trusted_guardian_request = if review_outer_invocation {
             let Some(call_id) = call_id else {
                 return Ok(None);

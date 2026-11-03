@@ -169,7 +169,7 @@ async fn installed_apps_threadless_refresh_updates_existing_thread_tools() -> Re
             assert_eq!(
                 responses::namespace_child_tool(
                     &body,
-                    &format!("mcp__codex_apps__{candidate}"),
+                    &format!("mcp__nuwax_apps__{candidate}"),
                     &format!("connector_{candidate}"),
                 )
                 .is_some(),
@@ -303,7 +303,7 @@ async fn installed_apps_thread_refresh_updates_live_tools_and_retains_them_on_fa
     assert!(
         initial_model_request
             .single_request()
-            .tool_by_name("mcp__codex_apps__alpha", "connector_alpha")
+            .tool_by_name("mcp__nuwax_apps__alpha", "connector_alpha")
             .is_some()
     );
 
@@ -353,7 +353,7 @@ async fn installed_apps_thread_refresh_updates_live_tools_and_retains_them_on_fa
                 responses::sse(vec![
                     responses::ev_function_call_with_namespace(
                         call_id,
-                        "mcp__codex_apps__beta",
+                        "mcp__nuwax_apps__beta",
                         "connector_beta",
                         "{}",
                     ),
@@ -380,12 +380,12 @@ async fn installed_apps_thread_refresh_updates_live_tools_and_retains_them_on_fa
         assert_eq!(requests.len(), 2);
         assert!(
             requests[0]
-                .tool_by_name("mcp__codex_apps__beta", "connector_beta")
+                .tool_by_name("mcp__nuwax_apps__beta", "connector_beta")
                 .is_some()
         );
         assert!(
             requests[0]
-                .tool_by_name("mcp__codex_apps__alpha", "connector_alpha")
+                .tool_by_name("mcp__nuwax_apps__alpha", "connector_alpha")
                 .is_none()
         );
         assert_eq!(

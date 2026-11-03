@@ -32,7 +32,7 @@ fn delegated_output_emits_only_first_preview_in_live_patch() {
             item: TurnItem::FunctionCallOutput(FunctionCallOutputItem {
                 id: format!("output-{index}"),
                 name: "create_thread".to_string(),
-                namespace: Some("codex_tui".to_string()),
+                namespace: Some("nuwax_tui".to_string()),
                 output: FunctionCallOutputBody::Text(format!(
                     "<codex_delegation>\n  <source_thread_id>source</source_thread_id>\n  <input>{text}</input>\n</codex_delegation>"
                 )),

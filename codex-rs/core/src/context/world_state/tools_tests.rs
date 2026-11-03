@@ -38,7 +38,7 @@ fn snapshots_namespace_omission() {
     let tools = ToolsState::new(
         (0..80).map(|index| {
             (
-                format!("mcp__codex_apps__workspace_{index:02}_project_documents_and_search"),
+                format!("mcp__nuwax_apps__workspace_{index:02}_project_documents_and_search"),
                 "Search project documents.".to_string(),
             )
         }),

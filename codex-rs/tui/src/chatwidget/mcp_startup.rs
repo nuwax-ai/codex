@@ -305,7 +305,7 @@ impl ChatWidget {
         &mut self,
         notification: McpServerStatusUpdatedNotification,
     ) {
-        let refresh_connector_mentions = notification.name == "codex_apps"
+        let refresh_connector_mentions = notification.name == "nuwax_apps"
             && notification.status == McpServerStartupState::Ready;
         let status = match notification.status {
             McpServerStartupState::Starting => McpStartupStatus::Starting,

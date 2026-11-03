@@ -24,7 +24,7 @@ use codex_login::CodexAuth;
 use codex_login::ExternalAuth;
 use codex_login::ExternalAuthFuture;
 use codex_login::ExternalAuthRefreshContext;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
+use codex_mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use codex_mcp::EffectiveMcpServer;
 use codex_mcp::McpEventNotification;
 use codex_mcp::McpResourceClient;
@@ -160,7 +160,7 @@ impl Fixture {
             plugins_available: false,
             ready_selected_capability_roots: Vec::new(),
             mcp_servers: HashMap::from([(
-                CODEX_APPS_MCP_SERVER_NAME.into(),
+                NUWAX_APPS_MCP_SERVER_NAME.into(),
                 EffectiveMcpServer::from_host_config(server_config.clone()),
             )]),
             submit_id: "test".into(),
@@ -183,7 +183,7 @@ impl Fixture {
         let runtime_input = runtime_input();
         assert!(
             runtime
-                .latest_wait_for_server_ready(CODEX_APPS_MCP_SERVER_NAME, WAIT)
+                .latest_wait_for_server_ready(NUWAX_APPS_MCP_SERVER_NAME, WAIT)
                 .await
         );
         Ok(Self {

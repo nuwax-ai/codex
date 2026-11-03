@@ -3671,7 +3671,7 @@ fn core_turn_item_into_thread_item_converts_supported_variants() {
 fn mcp_tool_call_app_context_serializes_connector_id() {
     let item = ThreadItem::McpToolCall {
         id: "mcp-1".to_string(),
-        server: "codex_apps".to_string(),
+        server: "nuwax_apps".to_string(),
         tool: "calendar.create_event".to_string(),
         status: McpToolCallStatus::InProgress,
         arguments: json!({}),
@@ -3696,7 +3696,7 @@ fn mcp_tool_call_app_context_serializes_connector_id() {
         json!({
             "type": "mcpToolCall",
             "id": "mcp-1",
-            "server": "codex_apps",
+            "server": "nuwax_apps",
             "tool": "calendar.create_event",
             "status": "inProgress",
             "arguments": {},

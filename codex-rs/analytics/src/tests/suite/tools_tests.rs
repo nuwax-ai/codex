@@ -115,7 +115,7 @@ fn command_execution_event_serializes_expected_shape() {
                 originating_response_id: None,
                 subsequent_response_id: None,
                 app_server_client: CodexAppServerClientMetadata {
-                    product_client_id: "codex_tui".to_string(),
+                    product_client_id: "nuwax_tui".to_string(),
                     client_name: Some("codex-tui".to_string()),
                     client_version: Some("1.2.3".to_string()),
                     rpc_transport: AppServerRpcTransport::Websocket,
@@ -174,7 +174,7 @@ fn command_execution_event_serializes_expected_shape() {
             "originating_response_id": null,
             "subsequent_response_id": null,
             "app_server_client": {
-                "product_client_id": "codex_tui",
+                "product_client_id": "nuwax_tui",
                 "client_name": "codex-tui",
                 "client_version": "1.2.3",
                 "rpc_transport": "websocket",

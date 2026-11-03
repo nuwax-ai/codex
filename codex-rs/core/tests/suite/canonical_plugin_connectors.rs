@@ -131,7 +131,7 @@ async fn canonical_plugin_disable_overrides_shared_connector_and_can_be_cleared(
         assert_eq!(
             namespace_child_tool(
                 &mock.requests()[1].tool_search_output(&call_id),
-                "mcp__codex_apps__google_calendar",
+                "mcp__nuwax_apps__google_calendar",
                 SEARCH_CALENDAR_CREATE_TOOL,
             )
             .is_some(),

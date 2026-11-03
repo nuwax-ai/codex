@@ -3415,8 +3415,8 @@ mod tests {
     fn function_call_deserializes_optional_namespace() {
         let item: ResponseItem = serde_json::from_value(serde_json::json!({
             "type": "function_call",
-            "name": "mcp__codex_apps__gmail_get_recent_emails",
-            "namespace": "mcp__codex_apps__gmail",
+            "name": "mcp__nuwax_apps__gmail_get_recent_emails",
+            "namespace": "mcp__nuwax_apps__gmail",
             "arguments": "{\"top_k\":5}",
             "call_id": "call-1",
         }))
@@ -3428,8 +3428,8 @@ mod tests {
                 status: None,
                 encrypted_content: None,
                 id: None,
-                name: "mcp__codex_apps__gmail_get_recent_emails".to_string(),
-                namespace: Some("mcp__codex_apps__gmail".to_string()),
+                name: "mcp__nuwax_apps__gmail_get_recent_emails".to_string(),
+                namespace: Some("mcp__nuwax_apps__gmail".to_string()),
                 arguments: "{\"top_k\":5}".to_string(),
                 encrypted_function_args: None,
                 call_id: "call-1".to_string(),
@@ -4381,7 +4381,7 @@ mod tests {
             execution: "client".to_string(),
             tools: vec![serde_json::json!({
                 "type": "function",
-                "name": "mcp__codex_apps__calendar_create_event",
+                "name": "mcp__nuwax_apps__calendar_create_event",
                 "description": "Create a calendar event.",
                 "defer_loading": true,
                 "parameters": {
@@ -4403,7 +4403,7 @@ mod tests {
                 execution: "client".to_string(),
                 tools: vec![serde_json::json!({
                     "type": "function",
-                    "name": "mcp__codex_apps__calendar_create_event",
+                    "name": "mcp__nuwax_apps__calendar_create_event",
                     "description": "Create a calendar event.",
                     "defer_loading": true,
                     "parameters": {
@@ -4428,7 +4428,7 @@ mod tests {
                 "execution": "client",
                 "tools": [{
                     "type": "function",
-                    "name": "mcp__codex_apps__calendar_create_event",
+                    "name": "mcp__nuwax_apps__calendar_create_event",
                     "description": "Create a calendar event.",
                     "defer_loading": true,
                     "parameters": {

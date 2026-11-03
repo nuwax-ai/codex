@@ -177,16 +177,14 @@ pub(crate) mod announcement {
     const CURRENT_OS: TargetOs = TargetOs::current();
 
     /// Prewarm the cache of the announcement tip.
-    pub(crate) fn prewarm(http_client_factory: HttpClientFactory) {
-        if ANNOUNCEMENT_TIP.get().is_some() {
-            return;
-        }
-        tokio::spawn(async move {
-            let announcement_tip = fetch_announcement_tip_text(http_client_factory)
-                .await
-                .and_then(|raw| AnnouncementTips::parse(&raw));
-            let _ = ANNOUNCEMENT_TIP.set(announcement_tip);
-        });
+    ///
+    /// Fork (nuwax-codex): disabled. The upstream tip feed is
+    /// raw.githubusercontent.com/openai/codex — fetching it would push
+    /// official announcements at fork users and add a side-channel request
+    /// beyond the model gateway (audit §6 #5). `fetch_announcement_tip`
+    /// keeps returning None.
+    pub(crate) fn prewarm(_http_client_factory: HttpClientFactory) {
+        let _ = ANNOUNCEMENT_TIP.set(None);
     }
 
     /// Fetch the announcement tip, return None if the prewarm is not done yet.

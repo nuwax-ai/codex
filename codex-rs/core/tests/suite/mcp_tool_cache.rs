@@ -19,7 +19,7 @@ use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::McpServerContribution;
 use codex_extension_api::McpServerContributionContext;
 use codex_extension_api::McpServerContributor;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
+use codex_mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use codex_protocol::mcp::McpServerConnectionStatus;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::protocol::AskForApproval;
@@ -368,7 +368,7 @@ async fn apps_cache_filled_during_binding_capture_reaches_the_model() -> anyhow:
                 .into_iter()
                 .collect::<std::collections::BTreeSet<_>>(),
             std::collections::BTreeSet::from([
-                CODEX_APPS_MCP_SERVER_NAME.to_string(),
+                NUWAX_APPS_MCP_SERVER_NAME.to_string(),
                 SERVER_NAME.to_string(),
             ])
         );
@@ -420,7 +420,7 @@ async fn apps_cache_filled_during_binding_capture_reaches_the_model() -> anyhow:
             .thread_manager
             .start_thread(StartThreadOptions::new(peer_config))
             .await?;
-        wait_for_mcp_server(&peer, CODEX_APPS_MCP_SERVER_NAME).await?;
+        wait_for_mcp_server(&peer, NUWAX_APPS_MCP_SERVER_NAME).await?;
         release_waiting.send(())?;
         wait_for_event(&child, |event| matches!(event, EventMsg::TurnComplete(_))).await;
         // The child's own Apps client must still be pending when its request reaches inference.

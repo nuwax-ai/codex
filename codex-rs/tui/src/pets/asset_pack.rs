@@ -43,6 +43,20 @@ pub(crate) fn builtin_spritesheet_path(codex_home: &Path, file: &str) -> PathBuf
 /// should treat any error here as "the asset is unavailable", not as a partial
 /// install they can safely ignore.
 pub(crate) async fn ensure_builtin_pet(
+    _codex_home: &Path,
+    _pet: catalog::BuiltinPet,
+    _http_client: &RouteAwareClientPool,
+) -> Result<()> {
+    // Fork (nuwax-codex): builtin pets would download spritesheets from
+    // OpenAI's CDN (persistent.oaistatic.com) — a side-channel request
+    // beyond the model gateway (audit §6 #4). The pets command is disabled
+    // upstream of this call; this guard keeps any other path honest too.
+    anyhow::bail!("pets are disabled in nuwax-harness")
+}
+
+#[allow(dead_code)]
+#[cfg(any())]
+async fn ensure_builtin_pet_disabled(
     codex_home: &Path,
     pet: catalog::BuiltinPet,
     http_client: &RouteAwareClientPool,

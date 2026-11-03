@@ -143,7 +143,7 @@ async fn mcp_event_stream_waits_for_activation_forwards_events_and_cancels() -> 
         .await?;
     let start_params = json!({
         "threadId": thread.id,
-        "server": "codex_apps",
+        "server": "nuwax_apps",
         "subscriptionId": "subscription-1",
         "name": "issue.updated",
         "arguments": { "project": "codex" },

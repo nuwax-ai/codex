@@ -3103,7 +3103,7 @@ mod tests {
         let params = v2::McpServerElicitationRequestParams {
             thread_id: "thr_123".to_string(),
             turn_id: Some("turn_123".to_string()),
-            server_name: "codex_apps".to_string(),
+            server_name: "nuwax_apps".to_string(),
             request: v2::McpServerElicitationRequest::Form {
                 meta: Some(json!({
                     "suggestion_id": "request_plugin_install_install-github"
@@ -3124,7 +3124,7 @@ mod tests {
                 "params": {
                     "threadId": "thr_123",
                     "turnId": "turn_123",
-                    "serverName": "codex_apps",
+                    "serverName": "nuwax_apps",
                     "mode": "form",
                     "_meta": {
                         "suggestion_id": "request_plugin_install_install-github"

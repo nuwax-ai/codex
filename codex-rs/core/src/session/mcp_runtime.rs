@@ -10,11 +10,11 @@ use crate::mcp::McpRuntimeProjection;
 use codex_config::McpServerDisabledReason;
 use codex_config::McpServerTransportConfig;
 use codex_file_system::WindowsSandboxSelection;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_mcp::ElicitationReviewerHandle;
 use codex_mcp::McpServerRegistration;
 use codex_mcp::McpServerSource;
 use codex_mcp::McpStartupPolicy;
+use codex_mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use codex_mcp::PreparedMcpCall;
 use codex_mcp::ToolInfo;
 use codex_otel::auth_storage::AuthStorageOriginator;
@@ -201,7 +201,7 @@ impl Session {
                         /*inc*/ 1,
                         &[("server_name", name.as_str()), ("outcome", outcome)],
                     );
-                    if name == CODEX_APPS_MCP_SERVER_NAME
+                    if name == NUWAX_APPS_MCP_SERVER_NAME
                         || !server.is_local_environment()
                         || projection
                             .config

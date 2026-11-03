@@ -32,8 +32,8 @@ use codex_extension_api::WorldStateContributionInput;
 use codex_extension_api::WorldStateSectionContribution;
 use codex_features::Feature;
 use codex_login::CodexAuth;
-use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_mcp::McpResourceClient;
+use codex_mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use codex_mcp_extension::PluginProviders;
 use codex_mcp_extension::install_plugin_providers;
 use codex_protocol::config_types::WindowsSandboxLevel;
@@ -1068,7 +1068,7 @@ async fn auth_rotation_refreshes_plugin_acceptance_before_merged_skills() -> Res
                     entries: vec![
                         SkillCatalogEntry::new(
                             SkillPackageId("skill://plugin_demo/demo".into()),
-                            SkillAuthority::new(SkillSourceKind::Cloud, CODEX_APPS_MCP_SERVER_NAME),
+                            SkillAuthority::new(SkillSourceKind::Cloud, NUWAX_APPS_MCP_SERVER_NAME),
                             "inert-sentinel",
                             "Accepted plugin skill",
                             SkillResourceId::new("skill://plugin_demo/demo/SKILL.md"),
@@ -1138,7 +1138,7 @@ async fn auth_rotation_refreshes_plugin_acceptance_before_merged_skills() -> Res
                 .await?
                 .expect("tool completion");
             cloud.available.store(available, Ordering::SeqCst);
-            let previous = client.auth_cache_key_for_server(CODEX_APPS_MCP_SERVER_NAME);
+            let previous = client.auth_cache_key_for_server(NUWAX_APPS_MCP_SERVER_NAME);
             if revision != cases[index - 1].0 {
                 codex_login::auth::login_with_chatgpt_auth_tokens(
                     test.codex_home_path(),
@@ -1148,7 +1148,7 @@ async fn auth_rotation_refreshes_plugin_acceptance_before_merged_skills() -> Res
                 )?;
                 test.thread_manager.auth_manager().reload().await;
                 tokio::time::timeout(Duration::from_secs(15), async {
-                    while client.auth_cache_key_for_server(CODEX_APPS_MCP_SERVER_NAME) == previous {
+                    while client.auth_cache_key_for_server(NUWAX_APPS_MCP_SERVER_NAME) == previous {
                         tokio::task::yield_now().await;
                     }
                 })
