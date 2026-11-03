@@ -31,7 +31,5 @@ pub fn set_ignores_catalog_defaults(provider: &str) {
 
 /// True when `provider` opted out of catalog-provided defaults.
 pub fn ignores_catalog_defaults(provider: &str) -> bool {
-    registry()
-        .read()
-        .is_ok_and(|set| set.contains(provider))
+    registry().read().is_ok_and(|set| set.contains(provider))
 }

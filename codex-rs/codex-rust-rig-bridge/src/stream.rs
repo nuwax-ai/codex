@@ -460,11 +460,11 @@ fn stream_via_rig_attempt(
         // provider opts out with `ignore_catalog_effort_levels`.
         let catalog_levels = (api_provider.reasoning_effort_levels.is_none()
             && !codex_model_provider_info::ignores_catalog_defaults(&api_provider.name))
-            .then(|| {
-                codex_models_manager::vendor_catalog::effort_table_for(model.as_str(), None)
-                    .map(|table| table.levels)
-            })
-            .flatten();
+        .then(|| {
+            codex_models_manager::vendor_catalog::effort_table_for(model.as_str(), None)
+                .map(|table| table.levels)
+        })
+        .flatten();
         let (declared_words, tiers_source) = match api_provider.reasoning_effort_levels.as_deref() {
             Some(words) => (
                 words,

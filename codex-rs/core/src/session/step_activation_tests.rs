@@ -1498,7 +1498,7 @@ async fn model_safety_admits_vendor_catalog_models_for_mid_turn_switching() {
     let (_, turn) = make_session_and_context().await;
     let entry = codex_models_manager::vendor_catalog::resolve("GLM-5.3-Flash")
         .expect("the display-cased slug resolves");
-    let vendor = codex_models_manager::model_info::vendor_model_info(&entry);
+    let vendor = codex_models_manager::vendor_catalog::vendor_model_info(&entry);
     assert!(!vendor.used_fallback_model_metadata);
     let (admitted, destination) = safety_models();
     let mut destination = destination;
@@ -1507,7 +1507,7 @@ async fn model_safety_admits_vendor_catalog_models_for_mid_turn_switching() {
     let another = {
         let entry = codex_models_manager::vendor_catalog::resolve("glm-4.7");
         match entry {
-            Some(e) => codex_models_manager::model_info::vendor_model_info(&e),
+            Some(e) => codex_models_manager::vendor_catalog::vendor_model_info(&e),
             None => vendor.clone(),
         }
     };
@@ -1525,13 +1525,7 @@ async fn model_safety_admits_vendor_catalog_models_for_mid_turn_switching() {
     let mut placeholder = admitted.clone();
     placeholder.used_fallback_model_metadata = true;
     assert_eq!(
-        check_legacy_model_safety(
-            &placeholder,
-            &placeholder,
-            &glm,
-            &turn.config,
-            &turn.config
-        ),
+        check_legacy_model_safety(&placeholder, &placeholder, &glm, &turn.config, &turn.config),
         Err("the active model has only fallback metadata".to_string())
     );
 }

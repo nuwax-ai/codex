@@ -866,21 +866,15 @@ pub(crate) async fn run_turn(
                 can_drain_pending_input = false;
                 continue;
             }
-            // Fork (nuwax-codex): an overflow reported by the gateway or the
-            // bridge's wire budget carries no Guardian marker, and for a fork
-            // user on a third-party model those are the *expected* sources —
-            // there is no first-party model whose catalog the local gates can
-            // trust to fire first. The same remedy as the arm above: compact
-            // once, retry once, bounded.
+            // Fork (nuwax-codex): gateway/wire-budget overflows compact once
+            // and retry (see `fork_overflow_recoverable` and FORK.md §10).
             Err(err)
-                if auto_summarization_enabled
-                    && matches!(err.details(), CodexErrorDetails::ContextWindowExceeded)
-                    && !guardian_budget_compacted
-                    && sess
-                        .services
-                        .thread_extension_data
-                        .get::<crate::guardian::ExhaustedReviewBudget>()
-                        .is_none() =>
+                if fork_overflow_recoverable(
+                    auto_summarization_enabled,
+                    &err,
+                    guardian_budget_compacted,
+                    &sess,
+                ) =>
             {
                 guardian_budget_compacted = true;
                 Box::pin(run_auto_compact(
@@ -3651,3 +3645,28 @@ pub(crate) fn get_last_assistant_message_from_turn<'a>(
 #[cfg(test)]
 #[path = "turn_tests.rs"]
 mod tests;
+
+// ── Fork (nuwax-codex): overflow-recovery predicates ─────────────────────
+// Kept in fork-owned helpers so the upstream match arms in the turn loop
+// shrink to one-line calls; the semantics live in one auditable place
+// (see FORK.md §10 "上下文窗口溢出"行).
+
+/// True when a sampling-stage overflow may self-heal by compacting once:
+/// compaction is enabled, this step has not already compacted for overflow,
+/// and the error did not come from the Guardian budget path (which has its
+/// own arm above).
+pub(super) fn fork_overflow_recoverable(
+    auto_summarization_enabled: bool,
+    error: &CodexErr,
+    guardian_budget_compacted: bool,
+    sess: &Session,
+) -> bool {
+    auto_summarization_enabled
+        && matches!(error.details(), CodexErrorDetails::ContextWindowExceeded)
+        && !guardian_budget_compacted
+        && sess
+            .services
+            .thread_extension_data
+            .get::<crate::guardian::ExhaustedReviewBudget>()
+            .is_none()
+}

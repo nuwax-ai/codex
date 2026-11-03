@@ -1972,7 +1972,8 @@ async fn prefers_apikey_when_config_prefers_apikey_even_with_chatgpt_tokens() {
         .mount(&server)
         .await;
 
-    let model_provider = ModelProviderInfo {        capabilities: None,
+    let model_provider = ModelProviderInfo {
+        capabilities: None,
         base_url: Some(format!("{}/v1", server.uri())),
         supports_websockets: false,
         ..built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["openai"].clone()

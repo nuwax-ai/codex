@@ -1010,8 +1010,7 @@ where
     // `ignore_catalog_effort_levels` escape hatch (Spec §5.3) lives in a
     // side table, not a struct field, so it is extracted here at load time
     // and never reaches (or breaks) the upstream struct.
-    let mut raw =
-        HashMap::<String, toml::Value>::deserialize(deserializer)?;
+    let mut raw = HashMap::<String, toml::Value>::deserialize(deserializer)?;
     let mut model_providers = HashMap::with_capacity(raw.len());
     for (key, value) in raw.iter_mut() {
         if let Some(table) = value.as_table_mut() {
@@ -1028,15 +1027,13 @@ where
                         return Err(serde::de::Error::custom(format!(
                             "model_providers.{key}.ignore_catalog_effort_levels \
                              must be a boolean"
-                        )))
+                        )));
                     }
                 }
             }
         }
-        let provider: ModelProviderInfo = value
-            .clone()
-            .try_into()
-            .map_err(serde::de::Error::custom)?;
+        let provider: ModelProviderInfo =
+            value.clone().try_into().map_err(serde::de::Error::custom)?;
         if codex_model_provider_info::ignores_catalog_defaults(key) {
             codex_model_provider_info::set_ignores_catalog_defaults(&provider.name);
         }

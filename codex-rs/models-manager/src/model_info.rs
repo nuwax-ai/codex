@@ -208,89 +208,6 @@ fn is_h1_heading(line: &str) -> bool {
 }
 
 /// Build a minimal fallback model descriptor for missing/unknown slugs.
-/// Builds full `ModelInfo` from a vendor-catalog entry: the model behaves
-/// like a cataloged one (`used_fallback_model_metadata = false`), so every
-/// fallback-keyed behavior — review budgets, mid-turn model switching,
-/// reviewer image admission, tool face — treats it as a known model.
-pub fn vendor_model_info(entry: &crate::vendor_catalog::VendorModel) -> ModelInfo {
-    let overlay = crate::vendor_catalog::overlay();
-    let percent = overlay
-        .provider
-        .get(&entry.provider)
-        .and_then(|tuning| tuning.effective_context_window_percent)
-        .unwrap_or(95);
-    let input_modalities = entry
-        .modalities
-        .iter()
-        .filter_map(|m| match m.as_str() {
-            "text" => Some(InputModality::Text),
-            "image" => Some(InputModality::Image),
-            "audio" => Some(InputModality::Audio),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    // models.dev carries no tool-call capability flag, so the search tool
-    // stays off — the fork does not pretend to know what it cannot see.
-    ModelInfo {
-        slug: entry.slug.clone(),
-        display_name: entry
-            .display_name
-            .clone()
-            .unwrap_or_else(|| entry.slug.clone()),
-        description: None,
-        default_reasoning_level: None,
-        // Effort tiers reach the engine as provider-level defaults (see the
-        // catalog plan §5); a models.dev `reasoning: true` boolean invents
-        // no tiers here.
-        supported_reasoning_levels: Vec::new(),
-        shell_type: ConfigShellToolType::UnifiedExec,
-        visibility: ModelVisibility::None,
-        supported_in_api: true,
-        priority: 99,
-        additional_speed_tiers: Vec::new(),
-        service_tiers: Vec::new(),
-        default_service_tier: None,
-        available_access_programs: None,
-        availability_nux: None,
-        upgrade: None,
-        model_messages: Some(local_model_messages(&entry.slug)),
-        include_skills_usage_instructions: false,
-        include_plugin_usage_instructions: false,
-        include_apps_usage_instructions: false,
-        supports_reasoning_summary_parameter: true,
-        default_reasoning_summary: ReasoningSummary::Auto,
-        support_verbosity: false,
-        default_verbosity: None,
-        apply_patch_tool_type: None,
-        web_search_tool_type: WebSearchToolType::Text,
-        truncation_policy: TruncationPolicyConfig::bytes(/*limit*/ 10_000),
-        supports_image_detail_original: entry.modalities.iter().any(|m| m == "image"),
-        context_window: entry.context_limit,
-        max_context_window: entry.context_limit,
-        auto_compact_token_limit: None,
-        comp_hash: None,
-        effective_context_window_percent: percent,
-        experimental_supported_tools: Vec::new(),
-        input_modalities,
-        used_fallback_model_metadata: false,
-        metadata_source: codex_protocol::openai_models::MetadataSource::Vendor {
-            provider: entry.provider.clone().into_boxed_str(),
-        },
-        supports_search_tool: false,
-        supports_experimental_context: false,
-        use_responses_lite: false,
-        supports_reasoning_effort_updates: false,
-        guardian: None,
-        node_repl_auto_review_required: false,
-        node_repl_disabled: false,
-        auto_review_model_override: None,
-        model_specialty: None,
-        tool_mode: None,
-        multi_agent_version: None,
-        multi_agent_reasoning_effort: None,
-    }
-}
-
 /// Warns, once per process per slug, that a model resolved to fallback
 /// placeholder metadata. The placeholder window (272k) silently budgeting a
 /// session was invisible to users; the warning names the knob to set.
@@ -368,7 +285,7 @@ pub fn model_info_from_slug(slug: &str) -> ModelInfo {
 /// (e.g. "GLM-5.3-Flash running in nuwax-harness") instead of inheriting the
 /// upstream Codex/OpenAI identity, which third-party vendor models were never
 /// told apart from and would happily claim as their own.
-fn local_model_messages(slug: &str) -> ModelMessages {
+pub(crate) fn local_model_messages(slug: &str) -> ModelMessages {
     ModelMessages {
         instructions_template: Some(fallback_instructions_template(slug)),
         ..Default::default()

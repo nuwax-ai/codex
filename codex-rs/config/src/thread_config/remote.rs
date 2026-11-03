@@ -228,7 +228,6 @@ fn model_provider_to_proto(
     let ModelProviderInfo {
         name,
         base_url,
-        ignore_catalog_effort_levels: _,
         model_catalog_url,
         env_key,
         env_key_instructions,

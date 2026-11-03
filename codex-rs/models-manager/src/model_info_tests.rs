@@ -487,7 +487,7 @@ fn tool_search_false_override_strips_search_tool_capability() {
 #[test]
 fn a_vendor_catalog_hit_behaves_like_a_cataloged_model() {
     let entry = crate::vendor_catalog::resolve("glm-5.3-flash").expect("resolvable");
-    let model = crate::model_info::vendor_model_info(&entry);
+    let model = crate::vendor_catalog::vendor_model_info(&entry);
     assert_eq!(model.slug, "glm-5.3-flash");
     assert_eq!(model.context_window, Some(1_000_000));
     assert!(!model.used_fallback_model_metadata);
@@ -511,7 +511,7 @@ fn a_vendor_catalog_hit_behaves_like_a_cataloged_model() {
 fn explicit_windows_apply_in_full_for_vendor_models_with_an_upward_warning_boundary() {
     fn vendor_model(window: i64) -> ModelInfo {
         let entry = crate::vendor_catalog::resolve("glm-5.3-flash").expect("resolvable");
-        let mut model = crate::model_info::vendor_model_info(&entry);
+        let mut model = crate::vendor_catalog::vendor_model_info(&entry);
         model.context_window = Some(window);
         model.max_context_window = Some(window);
         model
@@ -533,7 +533,7 @@ fn explicit_windows_apply_in_full_for_vendor_models_with_an_upward_warning_bound
 
 #[test]
 fn official_catalog_models_keep_the_upstream_clamp() {
-    let mut model = crate::model_info::vendor_model_info(
+    let mut model = crate::vendor_catalog::vendor_model_info(
         &crate::vendor_catalog::resolve("glm-5.3-flash").expect("resolvable"),
     );
     model.metadata_source = codex_protocol::openai_models::MetadataSource::Official;
@@ -560,7 +560,7 @@ fn with_config_overrides_impl(model: &mut ModelInfo, window: Option<i64>) {
 #[test]
 fn a_vendor_model_with_image_modality_admits_reviewer_images() {
     let entry = crate::vendor_catalog::resolve("GLM-5.3-Flash").expect("resolvable");
-    let model = crate::model_info::vendor_model_info(&entry);
+    let model = crate::vendor_catalog::vendor_model_info(&entry);
     // glm-5.3-flash's catalog entry lists image input.
     assert!(
         model.input_modalities.contains(&InputModality::Image),

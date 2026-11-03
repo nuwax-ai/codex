@@ -550,22 +550,14 @@ impl ModelInfo {
     }
 
     pub fn auto_compact_token_limit(&self) -> Option<i64> {
-        // Fork (nuwax-codex): the derived default is 80% of the resolved
-        // window, not upstream's 90%. Third-party gateways reserve part of the
-        // window for output (probe 2026-11-02: a 1M-window gateway rejected at
-        // ~950-980k), and the compaction request itself carries the full
-        // history, so a 90% trigger leaves too little room for either — the
-        // probe's compaction request was rejected and had to shed history. An
-        // explicit limit — catalog or user configuration — is authoritative
-        // and no longer capped by the derived ratio: silently clamping a
-        // configured 950k to 900k contradicted fail-fast, and every catalog
-        // value is at or below 90%, so official models keep their behavior.
-        match self.auto_compact_token_limit {
-            Some(explicit) => Some(explicit),
-            None => self
-                .resolved_context_window()
-                .map(|context_window| (context_window * 8) / 10),
-        }
+        // Fork (nuwax-codex): derivation and explicit-uncapping live in the
+        // fork-owned `fork_compact` module (one auditable place, FORK.md §10);
+        // upstream's shape — derive from the window, cap the explicit — is
+        // replaced by that policy in a single line.
+        crate::fork_compact::effective_auto_compact_limit(
+            self.auto_compact_token_limit,
+            self.resolved_context_window(),
+        )
     }
 }
 
