@@ -1074,6 +1074,7 @@ See the Codex keymap documentation for supported actions and examples."
             dynamic_tool_status_updates,
             dynamic_tool_tasks: HashMap::new(),
             pending_model_switch: None,
+            provider_wizard: None,
             pending_startup_thread_start,
             pending_server_version_notice: if pending_startup_thread_start {
                 initial_server_version_notice

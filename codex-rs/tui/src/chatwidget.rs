@@ -282,6 +282,10 @@ mod ide_context;
 use self::ide_context::IdeContextState;
 mod input_queue;
 mod provider_error;
+mod provider_wizard;
+
+pub(crate) use provider_wizard::ProviderWizardDraft;
+pub(crate) use provider_wizard::PROVIDER_PRESETS;
 mod reconnect;
 use self::input_queue::InputQueueState;
 mod image_submission;

@@ -430,8 +430,8 @@ model 却没回填 provider——现补"sqlite 观测 provider 非空且 ≠ 存
 真集成变体已恢复（取消 `#[ignore]`）。
 
 **P2 剩余（后续）**：目标窗口 < 当前会话用量时的"建议先 /compact"黄色警
-告（需要 TUI 侧 token 用量接线）；独立确认对话框（现为行内二次确认）；
-P4 配置向导。
+告（需要 TUI 侧 token 用量接线；确认交互沿用现有行内二次确认）。P4 配置
+向导已落地为 §7.5。
 
 ### 7.4 终端状态协议应用标识（2026-11-04）
 
@@ -439,6 +439,39 @@ TUI 发出的 OSC 7501 生命周期状态使用 `app=nuwax-harness`（原 `app=c
 包括 idle/working/blocked/done/error；状态名、阻塞原因、清理序列和 iTerm2
 OSC 21337 字段不变。快照覆盖全部状态。该改动不重命名 Cargo bin/crate，
 也不保证 IDE 按进程名生成的终端标签随之变化；Qoder 标签仍需实际验证。
+
+### 7.5 TUI 厂商配置向导（2026-11-04，P4）
+
+`/model` 的 All-models picker 底部新增 **"Manage providers…"** 行（列表非空
+即出现，`tui/src/chatwidget/model_popups.rs`），发出 `AppEvent::OpenProviderWizard`
+进入链式弹窗向导：`tui/src/chatwidget/provider_wizard.rs` 渲染各步，
+`tui/src/app/provider_wizard.rs` 逐步校验推进（一步一个 `AppEvent` 变体）。
+
+- **步骤 1 预设选择**：8 个精选预设——`glm` / `glm-chat` / `mimo` /
+  `mimo-chat` / `deepseek` / `moonshotai` / `stepfun` / `minimax`（GLM/MiMo
+  各含 anthropic 与 chat 双入口）+ "Custom…"。**预设仅做 UI 预填**：id/名称/
+  base_url/wire_api/env_key/models 皆可编辑，不参与请求行为——引擎侧模型
+  元数据仍按 §7.2 走 bundled vendor catalog 的 per-slug 解析。已配置的 id
+  在行上标注 "already configured — saving overwrites these keys"。
+- **预设路径**：env_key（可编辑预填；UPPER_SNAKE_CASE，留空 = 本地免鉴权
+  网关）→ models（逗号分隔，可编辑预填）→ 预览。
+- **Custom 路径**：provider id（仅小写字母/数字/连字符；`nuwax_env` 保留，
+  拒绝）→ 显示名（留空默认 = id）→ base URL（必须 `http://` 或 `https://`
+  开头）→ wire_api picker（`anthropic`/`chat`/`responses` 各带一行说明）→
+  env_key → models → 预览。
+- **预览步**：逐字展示将写入的 `[model_providers.<id>]` TOML 块；覆盖已有
+  provider 时注明只覆盖所列键、其余保留；提醒 **key 本身永不入 config**（只记
+  变量名）、保存后 `export $KEY` 并重启 TUI；"Save provider" 需显式二次确认
+  （`require_explicit_confirmation`）才落盘。
+- **写入路径**：`config/batchWrite`（`persist_model_defaults`），每字段一条
+  key-path edit——`model_providers.<id>.{name,base_url,env_key,wire_api,models}`
+  （`MergeStrategy::Replace`）——同 provider 表下未列出的其它键原样保留。
+  models 空列表行内拒绝（至少一个 slug），与 §7.2 的加载期 fail-fast 呼应。
+- **安全红线**：向导全程不接触 key 值，只记录 `env_key` 变量名；`nuwax_env`
+  为保留 id 不允许使用。
+- **与 §7.2/§7.3 衔接**：保存后该 provider 声明的 `models` 进入 `/model`
+  （P1），All-models 出现其跨厂商行并可会话级切换/re-home（P2/P3）；向导
+  本身不改当前会话与磁盘默认厂商。
 
 ## 8. 版本与发布
 

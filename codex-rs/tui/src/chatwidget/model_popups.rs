@@ -247,7 +247,8 @@ impl ChatWidget {
         }
 
         let mut items: Vec<SelectionItem> = Vec::new();
-        let model_ids = presets.iter().map(|preset| preset.model.clone()).collect();
+        let model_ids: Vec<String> =
+            presets.iter().map(|preset| preset.model.clone()).collect();
         for preset in presets.into_iter() {
             let description =
                 (!preset.description.is_empty()).then_some(preset.description.to_string());
@@ -281,8 +282,25 @@ impl ChatWidget {
         }
 
         // Fork (nuwax-codex): cross-vendor entries come after the current
-        // provider's models so the common path stays unchanged.
+        // provider's models so the common path stays unchanged. The wizard
+        // entry rides along whenever the picker offers anything at all.
+        let show_wizard_entry = !cross_vendor.is_empty() || !model_ids.is_empty();
         items.extend(cross_vendor);
+        if show_wizard_entry {
+            items.push(SelectionItem {
+                name: "Manage providers…".to_string(),
+                description: Some(
+                    "Add or update a model provider with a guided wizard — the API key \
+                     stays in an environment variable"
+                        .to_string(),
+                ),
+                actions: vec![Box::new(|tx| {
+                    tx.send(AppEvent::OpenProviderWizard);
+                })],
+                dismiss_on_select: true,
+                ..Default::default()
+            });
+        }
 
         let header = self.model_menu_header("Select Model and Effort", "");
         self.show_model_selection_view(

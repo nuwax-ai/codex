@@ -364,6 +364,34 @@ impl App {
                 }
                 result?;
             }
+            // Fork (nuwax-codex): provider wizard steps (FORK.md §7.3).
+            AppEvent::OpenProviderWizard => {
+                self.provider_wizard_open();
+            }
+            AppEvent::ProviderWizardPreset(id) => {
+                self.provider_wizard_preset(&id);
+            }
+            AppEvent::ProviderWizardId(value) => {
+                self.provider_wizard_id(&value);
+            }
+            AppEvent::ProviderWizardName(value) => {
+                self.provider_wizard_name(&value);
+            }
+            AppEvent::ProviderWizardBaseUrl(value) => {
+                self.provider_wizard_base_url(&value);
+            }
+            AppEvent::ProviderWizardWire(wire) => {
+                self.provider_wizard_wire(&wire);
+            }
+            AppEvent::ProviderWizardEnvKey(value) => {
+                self.provider_wizard_env_key(&value);
+            }
+            AppEvent::ProviderWizardModels(value) => {
+                self.provider_wizard_models(&value);
+            }
+            AppEvent::ProviderWizardConfirm => {
+                self.provider_wizard_confirm(app_server).await;
+            }
             AppEvent::StartManagedWorktree { mode, name } => {
                 if self.pending_start_managed_worktree.is_some() {
                     self.chat_widget

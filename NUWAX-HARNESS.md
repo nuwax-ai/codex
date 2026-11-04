@@ -237,8 +237,15 @@ effective context window 是否符合预期。
 切换了 provider 后再打开旧会话时，若提示"本会话只读（provider 不匹配）"，
 按 **`r`** 即可以当前配置的模型恢复同一会话。CLI 等价：
 `nuwax-harness resume <会话id> -c model=<模型> -c model_provider=<provider>`。
-分级 UX 的剩余部分（窗口缩减警告、配置向导）见
+分级 UX 的剩余部分（窗口缩减警告）见
 [多厂商模型切换方案](my-docs/multi-vendor-model-switch-plan-2026-11-04.md)。
+
+不想手编 config.toml 时，用向导新增/更新厂商：`/model` → All models 列表底部
+**Manage providers…**。预置 8 家厂商模板（GLM/MiMo/DeepSeek/Kimi/StepFun/
+MiniMax 等，模板只是预填、各步可改）；自定义走 id/显示名/base URL/协议/
+环境变量名/模型列表六步；预览将写入的 TOML 块并二次确认后落盘 config.toml。
+**API key 本身永不写入**，只记录变量名——保存后 `export $KEY` 并重启 TUI，
+该厂商的模型即出现在 `/model`（FORK.md §7.5）。
 
 ## 4. 上下文、输出与压缩
 

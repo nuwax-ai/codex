@@ -600,6 +600,19 @@ pub(crate) enum AppEvent {
         provider_id: String,
     },
 
+    /// Fork (nuwax-codex): the add-a-model-provider wizard (FORK.md §7.3).
+    /// Each event advances the draft one step; the flow writes through
+    /// config/batchWrite on ProviderWizardConfirm.
+    OpenProviderWizard,
+    ProviderWizardPreset(String),
+    ProviderWizardId(String),
+    ProviderWizardName(String),
+    ProviderWizardBaseUrl(String),
+    ProviderWizardWire(String),
+    ProviderWizardEnvKey(String),
+    ProviderWizardModels(String),
+    ProviderWizardConfirm,
+
     /// Create a managed checkout and start or fork a session into it.
     StartManagedWorktree {
         mode: ManagedWorktreeMode,

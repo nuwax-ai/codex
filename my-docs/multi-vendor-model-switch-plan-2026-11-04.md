@@ -1,6 +1,6 @@
 # nuwax-harness 内置多厂商与跨厂商模型切换 — 详细设计方案 v3(2026-11-04)
 
-状态: **P1 已实现(2026-11-04),P3/P2/P4 待排期** · 作者: Claude(实测+四项目源码级调研) · 关联: ROADMAP, FORK.md §7.2/§10, NUWAX-HARNESS.md §3
+状态: **P1/P2核心/P3/P4 已交付(2026-11-04,FORK.md §7.2/§7.3/§7.5),P2 剩余窗口缩减警告** · 作者: Claude(实测+四项目源码级调研) · 关联: ROADMAP, FORK.md §7.2/§10, NUWAX-HARNESS.md §3
 参照源码: `/Volumes/zhitai/git_workspace/{goose, aichat, rig}` + 本仓库
 变更: v4 = 落实"**不建新 crate**"决策(用户 2026-11-04 拍板,理由见 §0 表)+ P1 按 §3.1 实现完毕(FORK.md §7.2 为准);v3 = crate 架构决策(§3)+ slash 命令分层(§6);v2 的社区对照并入 §2;v1 简版废弃
 
@@ -267,7 +267,7 @@ models      = ["mimo-v2.6-flash", "mimo-v2.5"]     # ← 新键: 该 provider �
 | **P1** | `models` 声明键 + 数据源修复 + picker 校验守卫 | config_toml.rs / model-provider-info / models-manager(models_for_entry)/ tui picker | ✅ 已交付(2026-11-04,见 FORK.md §7.2) |
 | **P2** | /model 分组 + 跨厂商条目 + re-home/fork 串联 + 确认框 | tui picker/session + app-server(串联已有原语) | 🟡 核心已交付(2026-11-04,FORK.md §7.3:All-models 跨厂商行 + Explicit re-home + 凭据置灰;窗口缩减警告/独立确认框待补) |
 | **P3** | 恢复侧"以自定义模型恢复"入口 | TUI picker/notice 动作 | ✅ 已交付(2026-11-04,FORK.md §7.3:notice `r` 键 re-home;原"会话 picker 行内"并入 P2 的 picker 分组改造) |
-| **P4** | TUI 厂商配置向导(config_keys/setup_steps) | 新 TUI 流 | ~3-5 天(可选) |
+| **P4** | TUI 厂商配置向导(config_keys/setup_steps) | 新 TUI 流 | ✅ 已交付(2026-11-04,FORK.md §7.5:TUI 六步向导 + 预置模板 + batchWrite 写入) |
 | 同步 | FORK.md(行为差异)+ NUWAX-HARNESS.md(键/用法) | 文档 | 随期 |
 
 建议顺序: **P1 → P3 → P2**(P3 一天即可让"跨厂商续接"可用;P2 的切换 UX 随后完善)。

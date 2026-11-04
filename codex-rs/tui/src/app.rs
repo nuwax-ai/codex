@@ -261,6 +261,7 @@ mod reconnect;
 mod replay_filter;
 mod resize_reflow;
 mod resume_config;
+mod provider_wizard;
 mod resume_preparation;
 mod right_click_paste;
 pub(crate) use right_click_paste::PasteEnvironment;
@@ -672,6 +673,9 @@ pub(crate) struct App {
         tokio::sync::broadcast::Sender<codex_app_server_protocol::ThreadStatusChangedNotification>,
     dynamic_tool_tasks: HashMap<codex_app_server_protocol::RequestId, (String, JoinHandle<()>)>,
     pending_model_switch: Option<PendingModelSwitch>,
+    /// Fork (nuwax-codex): in-flight "add a model provider" wizard draft
+    /// (FORK.md §7.3); advanced one step per AppEvent.
+    provider_wizard: Option<crate::chatwidget::ProviderWizardDraft>,
     pending_startup_thread_start: bool,
     pending_server_version_notice: Option<crate::status::remote_connection::ServerVersionNotice>,
     /// Opens the session picker after event dispatch returns, with a fresh stack.
