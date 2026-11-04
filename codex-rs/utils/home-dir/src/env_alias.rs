@@ -118,6 +118,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn non_unicode_values_flow_through_for_consumer_boundaries() {
         use std::os::unix::ffi::OsStringExt;
