@@ -324,6 +324,15 @@ pub struct ModelProviderInfo {
     /// Chat checks it in the bridge, because rig's Chat dialect would rename
     /// the output cap in exchange (FORK.md §10).
     pub reasoning_effort_levels: Option<Vec<String>>,
+    /// Fork (nuwax-codex): the model slugs this provider serves, declared by
+    /// the user. When set, `/model` lists exactly these slugs — replacing the
+    /// bundled OpenAI seed that env-key providers without a catalog URL would
+    /// otherwise show (and any fetched catalog: an explicit declaration wins).
+    /// Metadata for each slug still comes from the vendor catalog and
+    /// `models.d`-style overrides at selection time; an unknown slug degrades
+    /// to placeholder metadata with a warning. Unset keeps the existing
+    /// discovery/seed behavior unchanged.
+    pub models: Option<Vec<String>>,
     /// Number of times to retry reconnecting a dropped streaming response before failing.
     pub stream_max_retries: Option<u64>,
     /// Idle timeout (in milliseconds) to wait for activity on a streaming response before treating
@@ -523,6 +532,29 @@ other non-default provider fields are not supported"
             }
         }
 
+        if let Some(models) = self.models.as_ref() {
+            if models.is_empty() {
+                return Err(
+                    "provider models must list at least one model slug; an empty list would \
+                     leave /model with nothing to offer — remove the key to restore the \
+                     default list"
+                        .to_string(),
+                );
+            }
+            let mut seen = std::collections::HashSet::with_capacity(models.len());
+            for slug in models {
+                if slug.trim().is_empty() {
+                    return Err("provider models must not contain empty slugs".to_string());
+                }
+                if !seen.insert(slug.to_ascii_lowercase()) {
+                    return Err(format!(
+                        "provider models lists `{slug}` more than once (slug comparison is \
+                         case-insensitive)"
+                    ));
+                }
+            }
+        }
+
         let Some(auth) = self.auth.as_ref() else {
             return Ok(());
         };
@@ -698,6 +730,7 @@ other non-default provider fields are not supported"
             gateway_oauth: None,
             aws: None,
             wire_api: WireApi::Responses,
+            models: None,
             query_params: None,
             http_headers: Some(
                 [("version".to_string(), env!("CARGO_PKG_VERSION").into())]
@@ -762,6 +795,7 @@ other non-default provider fields are not supported"
                 auth_refresh: None,
             })),
             wire_api: WireApi::Responses,
+            models: None,
             query_params: None,
             http_headers: Some(HashMap::from([(
                 AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER.to_string(),
@@ -815,6 +849,7 @@ other non-default provider fields are not supported"
             aws: None,
             capabilities: None,
             wire_api: WireApi::Responses,
+            models: None,
             query_params: None,
             http_headers: None,
             env_http_headers: None,
@@ -1065,6 +1100,12 @@ pub fn merge_configured_model_providers(
                     if o.get().experimental_bridge != provider.experimental_bridge {
                         o.get_mut().experimental_bridge = provider.experimental_bridge;
                     }
+                    // Fork: a declared `models` list rides the same exception —
+                    // e.g. curating what `/model` offers for a local ollama
+                    // instance while the built-in endpoint defaults stand.
+                    if o.get().models != provider.models {
+                        o.get_mut().models = provider.models;
+                    }
                 }
             }
         }
@@ -1154,6 +1195,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         gateway_oauth: None,
         aws: None,
         wire_api,
+        models: None,
         query_params: None,
         http_headers: None,
         env_http_headers: None,

@@ -297,6 +297,7 @@ mod tests {
     fn test_provider(name: &str) -> ModelProviderInfo {
         ModelProviderInfo {
             name: name.to_string(),
+            models: None,
             base_url: Some("http://127.0.0.1:8061/api/codex".to_string()),
             model_catalog_url: None,
             env_key: None,

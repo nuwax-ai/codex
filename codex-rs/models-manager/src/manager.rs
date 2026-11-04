@@ -328,6 +328,10 @@ pub struct OpenAiModelsManager {
     catalog_source: CatalogSource,
     api_key_model_discovery_enabled: Arc<AtomicBool>,
     auth_manager: Option<Arc<AuthManager>>,
+    /// Fork: the provider's user-declared `models` slugs. When set, every
+    /// list surface (`/model` presets, `model/list`) serves exactly these
+    /// slugs, replacing the bundled OpenAI seed and any fetched catalog.
+    declared_models: Option<Vec<String>>,
 }
 
 /// Static model manager backed by an authoritative in-process catalog.
@@ -395,6 +399,7 @@ impl OpenAiModelsManager {
             endpoint_client,
             catalog_source: CatalogSource::Default,
             auth_manager,
+            declared_models: None,
         }
     }
 
@@ -403,6 +408,14 @@ impl OpenAiModelsManager {
     pub fn with_provider_catalog(mut self) -> Self {
         self.catalog_source = CatalogSource::ExplicitProvider(Mutex::new(()));
         self.remote_models.get_mut().entry.models.clear();
+        self
+    }
+
+    /// Fork: pin the provider's user-declared model list. The declaration
+    /// replaces every other source — the bundled seed, a cached snapshot, and
+    /// a fetched catalog — because the user curated the list explicitly.
+    pub fn with_declared_models(mut self, models: Vec<String>) -> Self {
+        self.declared_models = Some(models);
         self
     }
 }
@@ -459,6 +472,7 @@ impl ModelsManager for OpenAiModelsManager {
         if matches!(self.catalog_source, CatalogSource::ExplicitProvider(_)) {
             manager = manager.with_provider_catalog();
         }
+        manager.declared_models = self.declared_models.clone();
         manager.api_key_model_discovery_enabled = Arc::clone(&self.api_key_model_discovery_enabled);
         let manager: SharedModelsManager = Arc::new(manager);
         managers.insert(originator, Arc::clone(&manager));
@@ -532,21 +546,28 @@ impl ModelsManager for OpenAiModelsManager {
             let remote = {
                 let entry = self.remote_models.read().await;
                 let selected = self.models_for_entry(&entry.entry);
-                let models = match &selected {
-                    SelectedCatalog::CurrentSnapshot(models)
-                    | SelectedCatalog::Fallback(models) => models,
-                };
-                let model = match &self.catalog_source {
-                    CatalogSource::Default => find_model_from_candidates(model, models),
-                    CatalogSource::ExplicitProvider(_) => models
+                match &selected {
+                    // Fork: a declared entry already carries its origin, so it
+                    // flows into construct_model_info untouched.
+                    SelectedCatalog::Declared(declared) => declared
                         .iter()
                         .find(|candidate| candidate.slug == model)
                         .cloned(),
-                };
-                model.map(|model| CatalogModel {
-                    origin: entry.model_origin(&selected, &model.slug),
-                    model: model.into(),
-                })
+                    SelectedCatalog::CurrentSnapshot(models)
+                    | SelectedCatalog::Fallback(models) => {
+                        let found = match &self.catalog_source {
+                            CatalogSource::Default => find_model_from_candidates(model, models),
+                            CatalogSource::ExplicitProvider(_) => models
+                                .iter()
+                                .find(|candidate| candidate.slug == model)
+                                .cloned(),
+                        };
+                        found.map(|found| CatalogModel {
+                            origin: entry.model_origin(&selected, &found.slug),
+                            model: found.into(),
+                        })
+                    }
+                }
             };
             construct_model_info(model, remote, config)
         })
@@ -572,6 +593,18 @@ impl ModelsManager for OpenAiModelsManager {
 impl OpenAiModelsManager {
     /// Selects the catalog available under the current provider and auth identity.
     fn models_for_entry<'a>(&self, entry: &'a ModelsCacheEntry) -> SelectedCatalog<'a> {
+        // Fork: an explicit `models` declaration replaces every other source —
+        // the bundled OpenAI seed (which env-key providers would otherwise
+        // show as if they served GPT models), a cached snapshot, and a fetched
+        // catalog.
+        if let Some(declared) = &self.declared_models {
+            return SelectedCatalog::Declared(
+                declared
+                    .iter()
+                    .map(|slug| declared_catalog_model(slug))
+                    .collect(),
+            );
+        }
         if !self.api_key_discovery_disabled()
             && entry.identity.is_some()
             && entry.identity == self.endpoint_client.identity()
@@ -1052,6 +1085,22 @@ fn construct_model_info(
     metadata.slug = model.to_owned();
     resolved.model = model_info::with_config_overrides(metadata, &resolved.origin, config).into();
     resolved
+}
+
+/// Fork: the catalog entry for a user-declared slug, carrying its true origin
+/// so selection keeps the fork's Vendor window-override policy. The vendor
+/// catalog supplies display metadata when it knows the slug; otherwise the
+/// slug stands in as its own display name and `model_info_from_slug` warns
+/// about the placeholder window. `construct_model_info` re-resolves per slug
+/// on selection for anything not found here.
+fn declared_catalog_model(slug: &str) -> CatalogModel {
+    match crate::vendor_catalog::resolve(slug) {
+        Some(entry) => crate::vendor_catalog::vendor_model_info(&entry),
+        None => CatalogModel {
+            model: model_info::model_info_from_slug(slug).into(),
+            origin: ModelOrigin::Synthetic,
+        },
+    }
 }
 
 #[cfg(test)]

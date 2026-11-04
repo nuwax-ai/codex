@@ -1897,3 +1897,51 @@ fn bundled_models_json_roundtrips() {
         "bundled models.json should contain at least one model"
     );
 }
+
+#[tokio::test]
+async fn declared_models_replace_remote_seed_and_cache_lists() {
+    let codex_home = tempdir().expect("temp dir");
+    let remote_models = vec![remote_model("remote", "Remote", /*priority*/ 0)];
+    let manager = openai_manager_for_tests(
+        codex_home.path().to_path_buf(),
+        TestModelsEndpoint::new(vec![remote_models]),
+    )
+    .with_declared_models(vec![
+        "GLM-5.3-Flash".to_string(),
+        "my-uncataloged-model".to_string(),
+    ]);
+
+    let models = manager.get_remote_models().await;
+    let slugs: Vec<&str> = models.iter().map(|model| model.slug.as_str()).collect();
+    assert_eq!(slugs, vec!["GLM-5.3-Flash", "my-uncataloged-model"]);
+    // The vendor-known slug carries its catalog display metadata; the
+    // uncataloged one degrades to placeholder metadata under its own name.
+    assert_eq!(models[0].context_window, Some(1_000_000));
+    assert_eq!(models[1].display_name, "my-uncataloged-model");
+    assert_eq!(models[1].context_window, Some(272_000));
+}
+
+#[tokio::test]
+async fn declared_slug_selection_keeps_vendor_origin_and_window_policy() {
+    let codex_home = tempdir().expect("temp dir");
+    let manager = openai_manager_for_tests(
+        codex_home.path().to_path_buf(),
+        TestModelsEndpoint::new(Vec::new()),
+    )
+    .with_declared_models(vec!["GLM-5.3-Flash".to_string()]);
+    let config = ModelsManagerConfig::default();
+
+    // Selecting the declared slug keeps the Vendor origin (the fork's window
+    // policy takes explicit config overrides in full for vendor models).
+    let selected = manager.get_model_info("GLM-5.3-Flash", &config).await;
+    assert!(matches!(selected.origin, ModelOrigin::Vendor { .. }));
+    assert_eq!(selected.slug, "GLM-5.3-Flash");
+    assert_eq!(selected.context_window, Some(1_000_000));
+
+    // A slug outside the declaration still resolves through the vendor
+    // catalog fallback — the declaration curates the list, it does not gate
+    // `-m`/`NUWAX_MODEL` selection.
+    let escape = manager.get_model_info("mimo-v2.6-flash", &config).await;
+    assert!(matches!(escape.origin, ModelOrigin::Vendor { .. }));
+    assert_eq!(escape.slug, "mimo-v2.6-flash");
+}

@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use codex_protocol::openai_models::ModelInfo;
 
@@ -14,12 +15,23 @@ pub use codex_protocol::openai_models::ModelOrigin;
 pub(crate) enum SelectedCatalog<'a> {
     CurrentSnapshot(Cow<'a, [ModelInfo]>),
     Fallback(Cow<'a, [ModelInfo]>),
+    /// Fork: the provider's user-declared model list. Unlike `Fallback`, each
+    /// entry carries its own origin (vendor-catalog hit or placeholder), so
+    /// selection keeps the fork's Vendor window-override policy instead of
+    /// being flattened to `Bundled`.
+    Declared(Vec<CatalogModel>),
 }
 
 impl<'a> SelectedCatalog<'a> {
     pub fn into_models(self) -> Cow<'a, [ModelInfo]> {
         match self {
             Self::CurrentSnapshot(models) | Self::Fallback(models) => models,
+            Self::Declared(declared) => Cow::Owned(
+                declared
+                    .into_iter()
+                    .map(|model| Arc::unwrap_or_clone(model.model))
+                    .collect(),
+            ),
         }
     }
 }
@@ -53,6 +65,11 @@ impl CatalogState {
     }
 
     pub fn model_origin(&self, selected: &SelectedCatalog<'_>, slug: &str) -> ModelOrigin {
+        if let SelectedCatalog::Declared(declared) = selected
+            && let Some(model) = declared.iter().find(|model| model.slug == slug)
+        {
+            return model.origin.clone();
+        }
         if matches!(selected, SelectedCatalog::CurrentSnapshot(_))
             && self.provider_model_ids.contains(slug)
         {
@@ -63,15 +80,15 @@ impl CatalogState {
     }
 
     pub fn model_catalog(&self, selected: SelectedCatalog<'_>) -> Vec<CatalogModel> {
-        let models = match &selected {
-            SelectedCatalog::CurrentSnapshot(models) | SelectedCatalog::Fallback(models) => models,
-        };
-        models
-            .iter()
-            .map(|model| CatalogModel {
-                origin: self.model_origin(&selected, &model.slug),
-                model: model.clone().into(),
-            })
-            .collect()
+        match &selected {
+            SelectedCatalog::Declared(declared) => declared.clone(),
+            SelectedCatalog::CurrentSnapshot(models) | SelectedCatalog::Fallback(models) => models
+                .iter()
+                .map(|model| CatalogModel {
+                    origin: self.model_origin(&selected, &model.slug),
+                    model: model.clone().into(),
+                })
+                .collect(),
+        }
     }
 }

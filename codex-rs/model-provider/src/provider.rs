@@ -576,6 +576,14 @@ impl ConfiguredModelProvider {
                 OpenAiModelsManager::new_with_cache(cache, endpoint, auth_manager)
             }
         };
+        // Fork: a user-declared `models` list pins every list surface for this
+        // provider (see `with_declared_models`); it takes precedence over the
+        // catalog-url path below, while an explicit `model_catalog_json`
+        // (StaticModelsManager, handled above) still wins over both.
+        let manager = match self.info.models.clone() {
+            Some(models) => manager.with_declared_models(models),
+            None => manager,
+        };
         match &self.info.model_catalog_url {
             Some(_) => Arc::new(manager.with_provider_catalog()),
             None => Arc::new(manager),

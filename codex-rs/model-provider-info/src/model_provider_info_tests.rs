@@ -92,6 +92,7 @@ base_url = "http://localhost:11434/v1"
         gateway_oauth: None,
         aws: None,
         wire_api: WireApi::Responses,
+        models: None,
         query_params: None,
         http_headers: None,
         env_http_headers: None,
@@ -138,6 +139,7 @@ query_params = { api-version = "2025-04-01-preview" }
         gateway_oauth: None,
         aws: None,
         wire_api: WireApi::Responses,
+        models: None,
         query_params: Some(maplit::hashmap! {
             "api-version".to_string() => "2025-04-01-preview".into(),
         }),
@@ -188,6 +190,7 @@ supports_standalone_web_search = true
         gateway_oauth: None,
         aws: None,
         wire_api: WireApi::Responses,
+        models: None,
         query_params: None,
         http_headers: Some(maplit::hashmap! {
             "X-Example-Header".to_string() => "example-value".into(),
@@ -393,6 +396,7 @@ fn test_create_amazon_bedrock_provider() {
                 auth_refresh: None,
             }),
             wire_api: WireApi::Responses,
+        models: None,
             query_params: None,
             http_headers: Some(maplit::hashmap! {
                 AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER.to_string() =>
@@ -827,6 +831,7 @@ fn test_merge_configured_model_providers_allows_amazon_bedrock_default_fields() 
                 auth_refresh: None,
             }),
             wire_api: WireApi::Responses,
+        models: None,
             ..ModelProviderInfo::default()
         },
     )]);
@@ -1150,4 +1155,68 @@ fn cyber_access_program_capability_uses_provider_identity_and_explicit_overrides
             assert_eq!(round_trip, provider);
         }
     }
+}
+
+#[test]
+fn models_declaration_parses_and_round_trips() {
+    let provider: ModelProviderInfo = toml::from_str(
+        "name = \"Xiaomi MiMo\"\nmodels = [\"mimo-v2.6-flash\", \"mimo-v2.5\"]\n",
+    )
+    .unwrap();
+    assert_eq!(
+        provider.models,
+        Some(vec![
+            "mimo-v2.6-flash".to_string(),
+            "mimo-v2.5".to_string()
+        ])
+    );
+    // Absence keeps the None default (existing behavior untouched).
+    let bare: ModelProviderInfo = toml::from_str("name = \"Bare\"\n").unwrap();
+    assert_eq!(bare.models, None);
+    // Round trip preserves the declaration.
+    let round_trip: ModelProviderInfo = toml::from_str(&toml::to_string(&provider).unwrap()).unwrap();
+    assert_eq!(round_trip, provider);
+}
+
+#[test]
+fn models_declaration_rejects_empty_list_blank_and_duplicate_slugs() {
+    let mut provider = ModelProviderInfo::default();
+    provider.name = "Test".into();
+
+    provider.models = Some(Vec::new());
+    let err = provider.validate().unwrap_err();
+    assert!(err.contains("at least one model slug"), "{err}");
+
+    provider.models = Some(vec!["glm-5.3-flash".into(), " ".into()]);
+    let err = provider.validate().unwrap_err();
+    assert!(err.contains("empty slugs"), "{err}");
+
+    // Slug comparison is case-insensitive: same model under display casing is
+    // still a duplicate.
+    provider.models = Some(vec!["glm-5.3-flash".into(), "GLM-5.3-Flash".into()]);
+    let err = provider.validate().unwrap_err();
+    assert!(err.contains("more than once"), "{err}");
+
+    provider.models = Some(vec!["glm-5.3-flash".into(), "mimo-v2.6-flash".into()]);
+    provider.validate().expect("distinct non-empty slugs validate");
+}
+
+#[test]
+fn merge_carries_declared_models_onto_built_in_keys() {
+    let built_ins = built_in_model_providers(/*openai_base_url*/ None);
+    let mut configured = HashMap::new();
+    let mut ollama_override = ModelProviderInfo::default();
+    ollama_override.name = "gpt-oss".into();
+    ollama_override.models = Some(vec!["llama-x".to_string()]);
+    configured.insert("ollama".to_string(), ollama_override);
+
+    let merged =
+        merge_configured_model_providers(built_ins, configured).expect("merge succeeds");
+
+    assert_eq!(
+        merged.get("ollama").and_then(|p| p.models.clone()),
+        Some(vec!["llama-x".to_string()])
+    );
+    // Built-ins without a declaration stay undeclared.
+    assert_eq!(merged.get("openai").and_then(|p| p.models.clone()), None);
 }

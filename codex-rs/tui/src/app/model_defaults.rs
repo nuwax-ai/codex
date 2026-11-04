@@ -52,6 +52,14 @@ impl App {
         model: String,
         effort: Option<ReasoningEffort>,
     ) {
+        // Fork: with a `models` declaration on the active provider, /model
+        // offers exactly the declared slugs — refuse to write any other slug
+        // into config.toml (stale picker data, manual edits) instead of
+        // persisting a default the provider cannot serve.
+        if let Some(rejection) = self.declared_models_rejection(model.as_str()) {
+            self.chat_widget.add_error_message(rejection);
+            return;
+        }
         self.app_event_tx
             .send(crate::app_event::AppEvent::FollowTranscript);
         match self
@@ -82,6 +90,24 @@ impl App {
                     .add_error_message(format!("Failed to save default model: {error}"));
             }
         }
+    }
+
+    /// Fork: `Some(reason)` when the active provider declares a `models` list
+    /// and `model` is not on it; `None` when the provider declares nothing
+    /// (persistence keeps its existing behavior) or the slug is declared.
+    fn declared_models_rejection(&self, model: &str) -> Option<String> {
+        let declared = self.config.model_provider.models.as_ref()?;
+        if declared
+            .iter()
+            .any(|slug| slug.eq_ignore_ascii_case(model))
+        {
+            return None;
+        }
+        Some(format!(
+            "`{model}` is not in the `models` list declared for the active provider \
+             `{provider}`; default model not saved",
+            provider = self.config.model_provider.name,
+        ))
     }
 
     pub(super) async fn select_session_model(

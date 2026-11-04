@@ -656,6 +656,41 @@
       },
       "type": "object"
     },
+    "CapPartialDiagnosticsConfigToml": {
+      "description": "Config for [`crate::Feature::CapPartialDiagnostics`].",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "ChatBridge": {
+      "description": "Model bridge implementation backing this provider (fork extension). `Rig` is the default for third-party providers and supports the explicitly selected Responses, Chat Completions, or Anthropic wire. `Native` selects the upstream Responses transport. The legacy `Genai` bridge only supports Chat Completions and Anthropic.",
+      "oneOf": [
+        {
+          "description": "The `codex-rust-genai-bridge` crate.",
+          "enum": [
+            "genai"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The `codex-rust-rig-bridge` crate (fork default).",
+          "enum": [
+            "rig"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The upstream-native transport. Only meaningful with `wire_api = \"responses\"`; overrides the fork default that routes third-party Responses providers through the rig bridge.",
+          "enum": [
+            "native"
+          ],
+          "type": "string"
+        }
+      ]
+    },
     "CircuitBreakAction": {
       "oneOf": [
         {
@@ -911,6 +946,9 @@
             },
             "browser_use_full_cdp_access": {
               "type": "boolean"
+            },
+            "cap_partial_diagnostics": {
+              "$ref": "#/definitions/FeatureToml_for_CapPartialDiagnosticsConfigToml"
             },
             "chronicle": {
               "type": "boolean"
@@ -1793,6 +1831,16 @@
         },
         {
           "$ref": "#/definitions/AsyncCompactionConfigToml"
+        }
+      ]
+    },
+    "FeatureToml_for_CapPartialDiagnosticsConfigToml": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/definitions/CapPartialDiagnosticsConfigToml"
         }
       ]
     },
@@ -3091,6 +3139,10 @@
       "additionalProperties": false,
       "description": "Serializable representation of a provider definition.",
       "properties": {
+        "anthropic_prompt_caching": {
+          "description": "Fork (nuwax-codex): opt-in for Anthropic prompt caching. When true the rig bridge places `cache_control` breakpoints (system tail, final non-deferred tool, conversation tail) with Anthropic's 5-minute TTL; `cache_read_input_tokens`/`cache_creation_input_tokens` usage already flow back. Default off: only enable for gateways that accept Anthropic cache markers.",
+          "type": "boolean"
+        },
         "auth": {
           "allOf": [
             {
@@ -3142,6 +3194,15 @@
           "description": "Value to use with `Authorization: Bearer <token>` header. Use of this config is discouraged in favor of `env_key` for security reasons, but this may be necessary when using this programmatically.",
           "type": "string"
         },
+        "experimental_bridge": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ChatBridge"
+            }
+          ],
+          "default": null,
+          "description": "Which model bridge serves this provider (fork extension). Unset uses Rig for third-party providers and the native transport for first-party providers. `native` requires the Responses wire; the legacy `genai` bridge only supports Chat Completions and Anthropic."
+        },
         "gateway_oauth": {
           "allOf": [
             {
@@ -3149,6 +3210,10 @@
             }
           ],
           "description": "Secondary OAuth credentials required by the provider's gateway."
+        },
+        "hosted_results_replay": {
+          "description": "Fork (nuwax-codex): whether the Anthropic bridge replays persisted web-search wire blocks (server_tool_use + result pairs, including encrypted content) into follow-up requests. Default true; set false to fall back to dropping search history (the pre-D2 behavior).",
+          "type": "boolean"
         },
         "http_headers": {
           "additionalProperties": {
@@ -3161,9 +3226,22 @@
           "description": "Google Cloud location for the built-in GCP provider. Takes precedence over `GOOGLE_CLOUD_LOCATION`; defaults to `global` when neither is set.",
           "type": "string"
         },
+        "max_output_tokens": {
+          "description": "Fork (nuwax-codex): optional output budget for this provider. The chat bridge maps it to the wire `max_tokens` (required by Anthropic, optional for Chat) instead of its built-in default; the Responses passthrough sends requests verbatim and ignores it.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
         "model_catalog_url": {
           "description": "Optional full URL for a Codex-native model catalog. When unset, OpenAI discovery uses the Codex backend unless `base_url` overrides the inference endpoint. The endpoint must serve the Codex catalog format, not the public `/v1/models` API.\n\nFor built-in OpenAI, set this under `[model_providers.openai]`; other non-default provider overrides are rejected. The URL must use HTTPS and an allowed ChatGPT host. Other hosts require a custom provider. Inference still uses `openai_base_url`.\n\nCatalog requests use the provider's credentials, including an API key or ChatGPT access token. Only configure an endpoint you trust with those credentials. Setting this URL does not grant catalog access or guarantee that the endpoint accepts a regional API key. Existing discovery gates and entitlement checks apply.",
           "type": "string"
+        },
+        "models": {
+          "description": "Fork (nuwax-codex): the model slugs this provider serves, declared by the user. When set, `/model` lists exactly these slugs — replacing the bundled OpenAI seed that env-key providers without a catalog URL would otherwise show (and any fetched catalog: an explicit declaration wins). Metadata for each slug still comes from the vendor catalog and `models.d`-style overrides at selection time; an unknown slug degrades to placeholder metadata with a warning. Unset keeps the existing discovery/seed behavior unchanged.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "name": {
           "default": "",
@@ -3180,6 +3258,13 @@
           },
           "description": "Optional query parameters to append to the base URL.",
           "type": "object"
+        },
+        "reasoning_effort_levels": {
+          "description": "Fork (nuwax-codex): the reasoning-effort tiers this provider's models actually take, in rig's own vocabulary (e.g. GLM-5.3-Flash is `[\"low\", \"high\", \"max\"]`). The Anthropic bridge answers rig's typed `Reasoning` from this list, so a request naming a tier the model does not have fails before anything is sent — instead of the gateway accepting the value and silently applying a different tier. Unset leaves the wire permissive (rig's default for a model its catalog does not list), which is how `medium` once reached GLM-5.3-Flash unnoticed.\n\nThe words are read through rig's `Effort` deserializer, so the accepted vocabulary is rig's and is never a copy kept in step by hand; a word rig does not spell fails naming the variable and rig's own list. `none` and `off` are not tiers — they say whether thinking can be turned off, which these always-thinking gateways refuse. Unset leaves the wire permissive; a list that is set but names no tier is refused rather than read as \"takes none\", which would refuse every effort.\n\nGates both rig wires. Anthropic hands the list to rig's typed channel; Chat checks it in the bridge, because rig's Chat dialect would rename the output cap in exchange (FORK.md §10).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "request_max_retries": {
           "description": "Maximum number of times to retry a failed HTTP request to this provider.",
@@ -3848,7 +3933,7 @@
               "$ref": "#/definitions/OtelExporterKind"
             }
           ],
-          "description": "Metrics exporter. Defaults to `statsig`, which follows `analytics.enabled`. Custom OTLP exporters are independent of `analytics.enabled`; `none` disables metrics export."
+          "description": "Metrics exporter. Defaults to `statsig`, which follows `analytics.enabled`. Custom OTLP exporters are independent of `analytics.enabled`; `none` disables metrics export. Fork (nuwax-codex): `statsig` resolves to `none` at startup (same as exporter)."
         },
         "span_attributes": {
           "additionalProperties": {
@@ -5069,6 +5154,10 @@
         },
         "experimental_request_user_input": {
           "$ref": "#/definitions/ExperimentalRequestUserInput"
+        },
+        "tool_search": {
+          "description": "Fork (nuwax-codex): set to `false` to expose MCP tools directly in the initial tool list instead of lazy-loading them through `tool_search`. `true` and unset keep the model catalog's own behavior.",
+          "type": "boolean"
         },
         "update_plan": {
           "$ref": "#/definitions/UpdatePlanToolConfig"
@@ -7409,6 +7498,20 @@
             "responses"
           ],
           "type": "string"
+        },
+        {
+          "description": "The Chat Completions API exposed at `/v1/chat/completions`.",
+          "enum": [
+            "chat"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The Anthropic Messages API (`/v1/messages`), served through a model bridge (fork extension). Select this wire explicitly; the endpoint URL does not override `wire_api`.",
+          "enum": [
+            "anthropic"
+          ],
+          "type": "string"
         }
       ]
     },
@@ -7671,6 +7774,9 @@
         },
         "browser_use_full_cdp_access": {
           "type": "boolean"
+        },
+        "cap_partial_diagnostics": {
+          "$ref": "#/definitions/FeatureToml_for_CapPartialDiagnosticsConfigToml"
         },
         "chronicle": {
           "type": "boolean"
@@ -8426,6 +8532,11 @@
     "model": {
       "description": "Optional override of model selection.",
       "type": "string"
+    },
+    "model_auto_compact_ratio": {
+      "description": "Fork (nuwax-codex): fraction of the effective context window that triggers auto-compaction (e.g. `0.8`). Only consulted when `model_auto_compact_token_limit` is unset; keeps deployments from hardcoding absolute token counts per vendor.",
+      "format": "double",
+      "type": "number"
     },
     "model_auto_compact_token_limit": {
       "description": "Token usage threshold triggering auto-compaction of conversation history.",

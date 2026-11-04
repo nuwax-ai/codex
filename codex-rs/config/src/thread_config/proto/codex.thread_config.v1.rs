@@ -96,6 +96,10 @@ pub struct ModelProvider {
     /// Fork: Anthropic hosted-results replay toggle (default true).
     #[prost(bool, optional, tag = "26")]
     pub hosted_results_replay: ::core::option::Option<bool>,
+    /// Fork: user-declared model slugs served by this provider; empty means
+    /// undeclared.
+    #[prost(string, repeated, tag = "27")]
+    pub models: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ModelProviderCapabilities {

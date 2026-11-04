@@ -233,7 +233,8 @@ code-mode-host、rg）。先前fork npm包只发单二进制，自启所需布�
 `model_providers.*.anthropic_prompt_caching`（2026-10-26 起：Anthropic 线 opt-in
 cache_control 断点，rig 0.45 原语，5m TTL；远程 thread config 无该字段线格式，
 同步时丢弃、恢复为 None，同 `max_output_tokens` 的既有边界）、
-`[tools] tool_search = false`（2026-10-26 起：MCP 工具全量直出开关，见 §7.1）。
+`[tools] tool_search = false`（2026-10-26 起：MCP 工具全量直出开关，见 §7.1）、
+`model_providers.*.models`（2026-11-04 起：声明式模型列表，见 §7.2）。
 
 **环境变量**：`CODEX_INSTALL_SOURCE=npm_nuwax`（launcher 设置，install-context
 识别 NpmNuwax）、`CODEX_MODEL_REASONING_EFFORT`、`CODEX_MODEL_CONTEXT_WINDOW`、
@@ -340,6 +341,43 @@ tool_search = false   # MCP 工具在首个请求全量直出，不注册 tool_s
   端到端（StaticModelsManager 解析后 `supports_search_tool=false`）、config 解析
   传播三例；行为层由既有 `suite::search_tool` 覆盖（`supports_search_tool=false`
   → 无 `tool_search`、MCP Direct 路径已验证）。
+
+### 7.2 `model_providers.*.models`——声明式模型列表（2026-11-04）
+
+**背景**：env-key 自定义 provider 无 `model_catalog_url` 时，`/model` 列表落入
+bundled GPT 种子（11 个 gpt-\*，与该 provider 毫无关系），Enter 会把种子 slug
+写进 config.toml。内置厂商目录（models.dev 快照）只有按 slug 的元数据，没有
+"该 provider 服务哪些模型"的映射，无法自动推导——列表必须由用户声明。
+
+**行为契约**：
+- 声明 `models = [...]` 后，该 provider 的全部列表 surface（`/model`、
+  model/list、get_remote_models）恰好给出声明 slugs（保持声明顺序），
+  同时替换 bundled 种子、缓存快照与线上 catalog——显式声明最高。
+  实现：`SelectedCatalog::Declared`（models-manager），per-slug 携带真实 origin。
+- 元数据按 slug 仍走 `vendor_catalog::resolve`：命中 → `ModelOrigin::Vendor`，
+  fork 窗口覆盖策略走"显式全额生效"路径（与未声明时 `-m GLM-5.3-Flash`
+  的既有行为一致，声明不改变窗口语义）；未命中 → 占位元数据（272k 窗口）
+  + 一次性告警提示设置 `model_context_window`。
+- 声明治理列表、不治理选择：`-m` / `NUWAX_MODEL` 选声明外的 slug 照常解析
+  （走同一 vendor 目录兜底）——声明不是白名单闸门。
+- `/model` Enter 持久化守卫（tui model_defaults）：激活 provider 声明了
+  `models` 时，非声明 slug 拒绝写入 config 并报错点名 provider；
+  未声明 provider 的持久化行为不变。
+- 校验 fail-fast（`ModelProviderInfo::validate`）：空列表、空/空白 slug、
+  重复 slug（大小写不敏感）在 config 加载即报错。
+- 优先级：`model_catalog_json`（StaticModelsManager，最重逃逸口）> `models`
+  声明 > `model_catalog_url` 发现 > bundled 种子。
+- 远程 thread config 线格式新增 `models`（repeated string，tag 27；空 = 未
+  声明），from/to proto 双向携带——顺带修复了 `.proto` 文件中合并残留的
+  重复字段块（experimental_bridge/max_output_tokens/hosted_results_replay
+  与上游 project_id/location/credential_file 的 20/21/22 号冲突；vendored
+  生成代码本身无此问题）。
+- 内置 key（如 ollama）的 Occupied 合并例外在 `experimental_bridge` 之外
+  现也携带 `models`（本地模型策展进 `/model`）。
+
+**测试**：声明解析/round-trip、校验 fail-fast、merge 携带
+（model-provider-info）；声明列表替换种子/缓存/远端 + Vendor origin 与窗口
+策略保持 + 声明外 slug 逃逸（models-manager）。
 
 ## 8. 版本与发布
 

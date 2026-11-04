@@ -206,6 +206,8 @@ fn model_provider_from_proto(
         request_max_retries: provider.request_max_retries,
         max_output_tokens: provider.max_output_tokens,
         hosted_results_replay: provider.hosted_results_replay,
+        // Empty repeated field on the wire means "undeclared" (None).
+        models: (!provider.models.is_empty()).then(|| provider.models),
         anthropic_prompt_caching: None,
         reasoning_effort_levels: None,
         stream_max_retries: provider.stream_max_retries,
@@ -261,6 +263,8 @@ fn model_provider_to_proto(
         // tiers are a local provider concern, so a remote session keeps the
         // permissive default rather than the tiers its own config declared.
         reasoning_effort_levels: _,
+        // Fork: the declared model list rides the wire; None maps to empty.
+        models,
         stream_max_retries,
         stream_idle_timeout_ms,
         websocket_connect_timeout_ms,
@@ -294,6 +298,7 @@ fn model_provider_to_proto(
         request_max_retries,
         max_output_tokens,
         hosted_results_replay,
+        models: models.unwrap_or_default(),
         stream_max_retries,
         stream_idle_timeout_ms,
         websocket_connect_timeout_ms,
@@ -593,6 +598,7 @@ mod tests {
                             request_max_retries: Some(7),
                             max_output_tokens: Some(16_384),
                             hosted_results_replay: Some(false),
+                            models: vec!["local-model".to_string()],
                             stream_max_retries: Some(8),
                             stream_idle_timeout_ms: Some(9_000),
                             websocket_connect_timeout_ms: Some(10_000),
@@ -634,6 +640,7 @@ mod tests {
     fn expected_provider() -> ModelProviderInfo {
         ModelProviderInfo {
             name: "Local".to_string(),
+            models: Some(vec!["local-model".to_string()]),
             base_url: Some("http://127.0.0.1:8061/api/codex".to_string()),
             model_catalog_url: Some("http://127.0.0.1:8061/api/codex/models".into()),
             env_key: None,
