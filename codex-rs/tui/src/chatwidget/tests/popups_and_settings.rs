@@ -3314,7 +3314,7 @@ async fn memories_reset_confirmation_snapshot() {
     assert_chatwidget_snapshot!("memories_reset_confirmation", popup);
 
     chat.handle_key_event(KeyEvent::from(KeyCode::Esc));
-    assert!(render_bottom_popup(&chat, /*width*/ 80).contains("Choose how Codex uses"));
+    assert!(render_bottom_popup(&chat, /*width*/ 80).contains("Choose how Nuwax Harness uses"));
     chat.handle_key_event(KeyEvent::from(KeyCode::Esc));
     assert!(chat.no_modal_or_popup_active());
 }

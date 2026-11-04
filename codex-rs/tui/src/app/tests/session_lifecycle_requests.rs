@@ -1829,7 +1829,7 @@ async fn local_daemon_registers_approval_gated_mcp_tools_for_both_start_paths_sc
     for params in &starts {
         assert_eq!(params["dynamicTools"], serde_json::Value::Null);
         assert_eq!(params["config"].get("web_search"), None);
-        let server = &params["config"]["mcp_servers.codex_tui"];
+        let server = &params["config"]["mcp_servers.nuwax_tui"];
         assert!(
             server["url"]
                 .as_str()
@@ -1846,7 +1846,7 @@ async fn local_daemon_registers_approval_gated_mcp_tools_for_both_start_paths_sc
         }
     }
 
-    let mcp_url = starts[0]["config"]["mcp_servers.codex_tui"]["url"]
+    let mcp_url = starts[0]["config"]["mcp_servers.nuwax_tui"]["url"]
         .as_str()
         .expect("MCP server URL");
     let unauthorized = codex_http_client::HttpClientBuilder::new()
@@ -1875,8 +1875,8 @@ async fn local_daemon_registers_approval_gated_mcp_tools_for_both_start_paths_sc
         .pop()
         .expect("resumed task request");
     assert_eq!(
-        resumed["config"]["mcp_servers.codex_tui"],
-        starts[0]["config"]["mcp_servers.codex_tui"]
+        resumed["config"]["mcp_servers.nuwax_tui"],
+        starts[0]["config"]["mcp_servers.nuwax_tui"]
     );
     Box::pin(app_server.resume_thread(
         &app.local_settings,
@@ -1889,8 +1889,8 @@ async fn local_daemon_registers_approval_gated_mcp_tools_for_both_start_paths_sc
         .pop()
         .expect("reattached task request");
     assert_eq!(
-        reattached["config"]["mcp_servers.codex_tui"],
-        starts[0]["config"]["mcp_servers.codex_tui"]
+        reattached["config"]["mcp_servers.nuwax_tui"],
+        starts[0]["config"]["mcp_servers.nuwax_tui"]
     );
     Box::pin(app_server.fork_thread(&app.local_settings, app.config.clone(), delegation_source))
         .await?;
@@ -1898,11 +1898,11 @@ async fn local_daemon_registers_approval_gated_mcp_tools_for_both_start_paths_sc
         .pop()
         .expect("forked task request");
     assert_eq!(
-        forked["config"]["mcp_servers.codex_tui"],
-        starts[0]["config"]["mcp_servers.codex_tui"]
+        forked["config"]["mcp_servers.nuwax_tui"],
+        starts[0]["config"]["mcp_servers.nuwax_tui"]
     );
     let authorization =
-        starts[0]["config"]["mcp_servers.codex_tui"]["http_headers"]["Authorization"]
+        starts[0]["config"]["mcp_servers.nuwax_tui"]["http_headers"]["Authorization"]
             .as_str()
             .expect("MCP bearer token");
     let client = codex_http_client::HttpClientBuilder::new().build_direct()?;
@@ -2011,8 +2011,8 @@ async fn local_daemon_registers_approval_gated_mcp_tools_for_both_start_paths_sc
     assert_eq!(child["dynamicTools"], serde_json::Value::Null);
     assert!(child["config"]["web_search"].is_null());
     assert_eq!(
-        child["config"]["mcp_servers.codex_tui"],
-        starts[0]["config"]["mcp_servers.codex_tui"]
+        child["config"]["mcp_servers.nuwax_tui"],
+        starts[0]["config"]["mcp_servers.nuwax_tui"]
     );
     // Fork another task: this synthetic MCP call has no active turn to cut before.
     let fork_source =
@@ -2055,8 +2055,8 @@ async fn local_daemon_registers_approval_gated_mcp_tools_for_both_start_paths_sc
         .pop()
         .expect("MCP-created fork request");
     assert_eq!(
-        forked["config"]["mcp_servers.codex_tui"],
-        starts[0]["config"]["mcp_servers.codex_tui"]
+        forked["config"]["mcp_servers.nuwax_tui"],
+        starts[0]["config"]["mcp_servers.nuwax_tui"]
     );
 
     app_server.shutdown().await?;
@@ -2142,13 +2142,13 @@ async fn local_mcp_respects_configured_servers_and_managed_requirements() -> Res
             .expect("fallback task start");
         if scenario == "allowed" {
             assert!(start["dynamicTools"].is_null());
-            assert!(start["config"]["mcp_servers.codex_tui"].is_object());
+            assert!(start["config"]["mcp_servers.nuwax_tui"].is_object());
         } else {
             assert_eq!(
                 start["dynamicTools"][0]["tools"].as_array().map(Vec::len),
                 Some(6)
             );
-            assert!(start["config"]["mcp_servers.codex_tui"].is_null());
+            assert!(start["config"]["mcp_servers.nuwax_tui"].is_null());
         }
         app_server.shutdown().await?;
         proxy.await??;

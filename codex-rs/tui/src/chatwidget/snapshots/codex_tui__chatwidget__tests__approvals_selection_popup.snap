@@ -12,7 +12,7 @@ expression: popup
                        internet. Commands the policy flags as dangerous require
                        approval; other commands run directly without a sandbox.
                        (For per-command approval use Granular policies.)
-  3. Full Access       Use with caution: Codex can edit files outside this
-                       workspace and access the internet without approval
+  3. Full Access       Use with caution: Nuwax Harness can edit files outside
+                       this workspace and access the internet without approval
 
   enter select · esc back

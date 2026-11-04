@@ -1,11 +1,10 @@
 ---
 source: tui/src/chatwidget/tests/popups_and_settings.rs
-assertion_line: 3203
 expression: popup
 ---
   Experimental features
   Checked features are configured on. Some experimental features take effect
-  only in new tasks or after restarting the Codex server.
+  only in new tasks or after restarting the Nuwax Harness server.
 
 
 › [ ] Network proxy                Apply network proxy restrictions to sandboxed

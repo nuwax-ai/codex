@@ -194,7 +194,7 @@ async fn reconnect_restores_history_permissions_and_resumes_unsent_input() -> Re
         ));
         let mut overrides = None;
         transport.configure_mcp(&mut overrides);
-        let mcp = overrides.unwrap().remove("mcp_servers.codex_tui").unwrap();
+        let mcp = overrides.unwrap().remove("mcp_servers.nuwax_tui").unwrap();
         let client = codex_http_client::HttpClientBuilder::new().build_direct()?;
         let call_mcp = || {
             client
@@ -413,13 +413,13 @@ async fn reconnect_restores_history_permissions_and_resumes_unsent_input() -> Re
             .lines()
             .filter(|line| {
                 line.contains("Couldn't confirm whether")
-                    || line.contains("background Codex service")
+                    || line.contains("background Nuwax Harness service")
             })
             .collect::<Vec<_>>()
             .join("\n");
         if deferred_notice {
             assert_snapshot!(notices, @r###"
-⚠ A background Codex service is running v2.0.0, older than your Codex CLI
+⚠ A background Nuwax Harness service is running v2.0.0, older than your Nuwax
 "###);
         } else if edit_offline {
             assert!(notices.contains("unacknowledged prompt"));

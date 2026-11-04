@@ -1992,7 +1992,7 @@ async fn live_app_server_server_overloaded_error_renders_error() {
         let rendered = lines_to_single_string(&cells[0]);
         insta::allow_duplicates! {
             if message.is_empty() {
-                insta::assert_snapshot!(rendered, @"■ Codex is currently experiencing high load.");
+                insta::assert_snapshot!(rendered, @"■ Nuwax Harness is currently experiencing high load.");
             } else {
                 insta::assert_snapshot!(rendered, @"■ server overloaded");
             }

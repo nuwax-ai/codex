@@ -263,7 +263,7 @@ pub(crate) async fn request_thread_start_with_history_fallback(
                     || params
                         .config
                         .as_ref()
-                        .is_some_and(|config| config.contains_key("mcp_servers.codex_tui"));
+                        .is_some_and(|config| config.contains_key("mcp_servers.nuwax_tui"));
                 return Ok((response, history_support, task_tools_available));
             }
             Err(TypedRequestError::Server { source, .. })

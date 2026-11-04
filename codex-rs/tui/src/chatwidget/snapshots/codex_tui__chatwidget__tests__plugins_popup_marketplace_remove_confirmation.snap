@@ -1,11 +1,10 @@
 ---
 source: tui/src/chatwidget/tests/popups_and_settings.rs
-assertion_line: 559
 expression: confirmation
 ---
                 Plugins
 › Ask nuwax-ha  Remove Repo Marketplace marketplace?
-                This removes the configured marketplace from Codex.
+                This removes the configured marketplace from Nuwax Harness.
   GPT-5.6-Sol
 
               › 1. Remove marketplace  Remove this marketplace from the available
