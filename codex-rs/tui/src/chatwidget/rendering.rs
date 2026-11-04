@@ -263,6 +263,7 @@ impl ChatWidget {
                 },
                 message: self.provider_error_message(error),
                 can_continue,
+                can_rehome: self.can_rehome_provider_error(),
                 configuration_location: self
                     .remote_connection
                     .as_ref()

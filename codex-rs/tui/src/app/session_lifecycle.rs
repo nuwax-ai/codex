@@ -1443,6 +1443,26 @@ impl App {
         app_server: &mut AppServerSession,
         target_session: SessionTarget,
     ) -> Result<AppRunControl> {
+        self.resume_target_session_with_source(
+            tui,
+            app_server,
+            target_session,
+            super::resume_preparation::ResumeSource::Active,
+        )
+        .await
+    }
+
+    /// Fork (nuwax-codex): the provider-mismatch notice's "resume with
+    /// current model" action — same attachment flow as a picker resume, but
+    /// the resume always carries the current config's model/provider
+    /// overrides so the thread re-homes instead of staying read-only.
+    pub(super) async fn resume_target_session_with_source(
+        &mut self,
+        tui: &mut tui::Tui,
+        app_server: &mut AppServerSession,
+        target_session: SessionTarget,
+        source: super::resume_preparation::ResumeSource<'_>,
+    ) -> Result<AppRunControl> {
         if let Err(error) = target_session.ensure_backend(app_server.backend_id()) {
             self.add_session_picker_error(error.to_string());
             return Ok(AppRunControl::Continue);
@@ -1471,7 +1491,7 @@ impl App {
                 tui,
                 app_server,
                 &target_session,
-                super::resume_preparation::ResumeSource::Active,
+                source,
             )
             .await
         {

@@ -421,6 +421,36 @@ impl App {
                     }
                     return;
                 }
+                // Fork (nuwax-codex): re-home resume — keep this conversation
+                // and its history, but hand it to the currently configured
+                // model/provider (see FORK.md §7.2's multi-vendor plan).
+                KeyCode::Char('r')
+                    if self.chat_widget.can_rehome_provider_error()
+                        && let Some(thread_id) = self.chat_widget.thread_id() =>
+                {
+                    let target = SessionTarget {
+                        backend_id: app_server.backend_id(),
+                        path: self
+                            .primary_session_configured
+                            .as_ref()
+                            .and_then(|session| session.rollout_path.clone()),
+                        thread_id,
+                        cwd: None,
+                        history_mode: None,
+                    };
+                    if let Ok(AppRunControl::Exit(_)) = self
+                        .resume_target_session_with_source(
+                            tui,
+                            app_server,
+                            target,
+                            super::resume_preparation::ResumeSource::ActiveWithCurrentModel,
+                        )
+                        .await
+                    {
+                        self.app_event_tx.send(AppEvent::Exit(ExitMode::Immediate));
+                    }
+                    return;
+                }
                 KeyCode::Char('n') => {
                     self.app_event_tx.send(AppEvent::NewSession { name: None });
                     return;

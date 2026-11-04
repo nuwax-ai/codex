@@ -21,6 +21,12 @@ pub(super) struct BackendSettings {
 #[derive(Clone, Copy)]
 pub(super) enum ResumeSource<'a> {
     Active,
+    /// Fork (nuwax-codex): re-home resume from the provider-mismatch notice.
+    /// Behaves like `Active` except the resume always carries the current
+    /// config's model/provider overrides (`thread/resume {model,
+    /// modelProvider}`), which app-server accepts across providers and
+    /// re-stamps the thread's home provider.
+    ActiveWithCurrentModel,
     Backend(&'a BackendSettings),
 }
 
@@ -63,6 +69,9 @@ impl App {
         let permission_overrides = self.resume_permission_overrides(&resume_config);
         let model_settings = match source {
             ResumeSource::Active => self.resume_model_settings(),
+            ResumeSource::ActiveWithCurrentModel => {
+                crate::app_server_session::ResumeModelSettings::OverrideFromCurrentConfig
+            }
             ResumeSource::Backend(_) => {
                 super::config_persistence::resume_model_settings_for_overrides(
                     &resume_config,

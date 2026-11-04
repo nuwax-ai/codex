@@ -40,7 +40,8 @@ impl App {
         // Active-backend resume keeps its existing eager settings refresh. A stored backend must
         // not replace the displayed conversation's settings before attachment succeeds.
         let (target, current_config, local_settings) = match source {
-            super::resume_preparation::ResumeSource::Active => {
+            super::resume_preparation::ResumeSource::Active
+            | super::resume_preparation::ResumeSource::ActiveWithCurrentModel => {
                 self.refresh_in_memory_config_from_disk_best_effort("resuming a thread")
                     .await;
                 (

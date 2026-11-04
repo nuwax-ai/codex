@@ -1,5 +1,6 @@
 ---
 source: tui/src/chatwidget/rendering_tests.rs
+assertion_line: 645
 expression: "snapshots.join(\"\\n\\n\")"
 ---
 provider_error_local_80
@@ -7,14 +8,16 @@ provider_error_local_80
       This chat uses model provider “old-provider”, which is no longer
       configured. Restore this provider’s configuration to continue.
 
-  c continue in new chat · n start fresh · esc other chats
+  r resume with current model · c continue in new chat · n start fresh · esc
+  other chats
 
 provider_error_mismatch_local_80
   🔒   Continue in a new chat
       This chat uses Team Gateway, but Codex now uses Amazon Bedrock Runtime,
       so this chat is read-only.
 
-  c continue in new chat · n start fresh · esc other chats
+  r resume with current model · c continue in new chat · n start fresh · esc
+  other chats
 
 provider_error_mismatch_local_40
   🔒   Continue in a new chat
@@ -23,8 +26,9 @@ provider_error_mismatch_local_40
       Runtime, so this chat is read-
       only.
 
-  c continue in new chat · n start fresh
-  · esc other chats
+  r resume with current model · c
+  continue in new chat · n start fresh ·
+  esc other chats
 
 provider_error_mismatch_remote_80
   🔒   Continue in a new chat
@@ -32,7 +36,8 @@ provider_error_mismatch_remote_80
       so this chat is read-only.
       Configuration on ws://devbox.example.com:4500/
 
-  c continue in new chat · n start fresh · esc other chats
+  r resume with current model · c continue in new chat · n start fresh · esc
+  other chats
 
 provider_error_policy_provider_local_80
   🔒   Model provider blocked by policy

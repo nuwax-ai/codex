@@ -266,7 +266,7 @@ models      = ["mimo-v2.6-flash", "mimo-v2.5"]     # ← 新键: 该 provider �
 |---|---|---|---|
 | **P1** | `models` 声明键 + 数据源修复 + picker 校验守卫 | config_toml.rs / model-provider-info / models-manager(models_for_entry)/ tui picker | ✅ 已交付(2026-11-04,见 FORK.md §7.2) |
 | **P2** | /model 分组 + 跨厂商条目 + re-home/fork 串联 + 确认框 | goose-cli picker/session + app-server(串联已有原语) | ~4-6 天 |
-| **P3** | 恢复侧"以自定义模型恢复"入口 | TUI picker/notice 动作 | ~1-2 天 |
+| **P3** | 恢复侧"以自定义模型恢复"入口 | TUI picker/notice 动作 | ✅ 已交付(2026-11-04,FORK.md §7.3:notice `r` 键 re-home;原"会话 picker 行内"并入 P2 的 picker 分组改造) |
 | **P4** | TUI 厂商配置向导(config_keys/setup_steps) | 新 TUI 流 | ~3-5 天(可选) |
 | 同步 | FORK.md(行为差异)+ NUWAX-HARNESS.md(键/用法) | 文档 | 随期 |
 

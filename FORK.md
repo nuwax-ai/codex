@@ -379,6 +379,23 @@ bundled GPT 种子（11 个 gpt-\*，与该 provider 毫无关系），Enter 会
 （model-provider-info）；声明列表替换种子/缓存/远端 + Vendor origin 与窗口
 策略保持 + 声明外 slug 逃逸（models-manager）。
 
+### 7.3 多厂商会话切换——恢复侧入口（2026-11-04，三期 P3）
+
+provider 不匹配的只读提示条新增 **`r` = resume with current model**：以当前
+config 的 `model`+`model_provider` 显式覆盖重新 `thread/resume`（协议原语
+2026-11-03 实测：跨厂商 resume 成功、线程 re-home、后续无覆盖 resume 亦正常）。
+
+- **适用变体**：`ModelProviderMismatch` 与 `ModelProviderNotConfigured`
+  （当前配置能接手即能 re-home）；`PolicyConflict` 不给该键（组织要求的
+  provider 不是用户能绕的）。
+- **实现**：`ResumeSource::ActiveWithCurrentModel`（config 刷新同 `Active`，
+  仅 model_settings 强制 `OverrideFromCurrentConfig`）→
+  `resume_target_session_with_source`；提示条 footer 条件渲染 `r` 快捷键。
+- **与 `c` 的区别**：`c` 开新会话、把旧转录当文件引用；`r` 保留同一会话与
+  全部历史，thinking 跨源按既有 envelope 机制丢弃（FORK.md §3 压缩说明同源）。
+- **CLI 等价**：`resume <id> -c model=… -c model_provider=…`（早已支持）。
+- 快照锁定：`provider_errors`（mismatch/未配置带 `r`，policy 不带）。
+
 ## 8. 版本与发布
 
 正式版本 `v0.18.14` → `f82730975` 已发布（2026-10-23）：

@@ -14,6 +14,10 @@ pub(super) struct ProviderErrorNotice {
     pub(super) message: String,
     pub(super) configuration_location: Option<String>,
     pub(super) can_continue: bool,
+    /// Fork (nuwax-codex): show the "resume with current model" shortcut —
+    /// the re-home resume that hands this conversation to the currently
+    /// configured model/provider instead of staying read-only.
+    pub(super) can_rehome: bool,
 }
 
 impl Renderable for ProviderErrorNotice {
@@ -54,6 +58,12 @@ impl ProviderErrorNotice {
             ),
         );
         let mut shortcuts = Vec::new();
+        if self.can_rehome {
+            shortcuts.extend([
+                crate::key_hint::plain(KeyCode::Char('r')).into(),
+                " resume with current model · ".into(),
+            ]);
+        }
         if self.can_continue {
             shortcuts.extend([
                 crate::key_hint::plain(KeyCode::Char('c')).into(),
@@ -123,6 +133,19 @@ impl ChatWidget {
 
     pub(crate) fn has_provider_error(&self) -> bool {
         self.provider_error.is_some()
+    }
+
+    /// Fork (nuwax-codex): whether the read-only state can be lifted by the
+    /// re-home resume. A provider mismatch or a no-longer-configured provider
+    /// both resolve by handing the thread to the current config's provider; a
+    /// policy conflict names a required provider and is not the user's to
+    /// re-home away.
+    pub(crate) fn can_rehome_provider_error(&self) -> bool {
+        matches!(
+            self.provider_error,
+            Some(ModelProviderError::ModelProviderMismatch { .. })
+                | Some(ModelProviderError::ModelProviderNotConfigured { .. })
+        )
     }
 
     pub(crate) fn show_provider_error(

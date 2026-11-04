@@ -229,7 +229,11 @@ effective context window 是否符合预期。
 
 多厂商切换提示：同一会话跨厂商续接/切换的协议原语（`thread/resume` 带显式
 `model`+`model_provider` 覆盖）已内建；给每个 provider 配上 `models` 后，
-`/model` 的列表就是各厂商自己的模型。分级 UX（picker 分组、切换确认框）见
+`/model` 的列表就是各厂商自己的模型。切换了一个 provider 后再打开旧会话时，
+若提示"本会话只读（provider 不匹配）"，按 **`r`** 即可以当前配置的模型恢复
+同一会话（历史保留；旧模型的 thinking 不跨厂商携带）。CLI 等价：
+`nuwax-harness resume <会话id> -c model=<模型> -c model_provider=<provider>`。
+分级 UX（picker 分组、切换确认框）见
 [多厂商模型切换方案](my-docs/multi-vendor-model-switch-plan-2026-11-04.md)分期落地。
 
 ## 4. 上下文、输出与压缩
