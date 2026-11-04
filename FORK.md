@@ -416,10 +416,18 @@ TUI 的完整 provider 配置与模型默认值，保留同一线程、历史和
 草稿和历史保留，以及执行中多次选择、正常完成/停止后仅应用最后一项。
 协议测试与真实 app-server 集成测试分开；本机真实集成曾阻塞于 macOS
 FSEvents 注册（首次 resume 阶段），不以协议模拟通过宣称真实集成已通过。
-**跟进项（2026-11-04）**：真实变体另发现切换成功后，线程快照刷新的
-PreserveExistingThread rejoin 会把切换前模型带回 widget——服务端重建顺序
-待查；该变体暂 `#[ignore]`（协议变体已锁请求形态），见
-`session_lifecycle_requests.rs`。
+**跟进项已闭环（2026-11-04 晚，三层根因）**：真集成变体失败并非"rejoin 顺序"
+本身，而是一整条链：①`load_for_resume` 与 turn 准入检查同源的磁盘漂移比较
+把显式跨厂商 resume 全部拒掉（P0 的孪生 bug）——现改为**客户端显式指定
+provider 时该指定即本次 resume 的权威选择**，只跳过磁盘比较，策略/存在性
+校验保留，无显式指定时只读保护不变；②resume 成功后未把有效路由写回存储
+——现在 resume 响应组装前把 `model_provider`+`model` 直接 upsert 进
+durable thread store（manager 的 loaded 路径只进 staging，物化前读不到）；
+③Legacy 合并读（`read_thread.rs`）用 rollout 线程替换 sqlite 线程时回填了
+model 却没回填 provider——现补"sqlite 观测 provider 非空且 ≠ 存储默认时
+覆盖 rollout 头"（默认值填充的修复行仍让位 rollout，上游测试语义保留；
+**已知边角**：re-home 到恰好等于存储默认 provider 的会话读侧仍显示旧头）。
+真集成变体已恢复（取消 `#[ignore]`）。
 
 **P2 剩余（后续）**：目标窗口 < 当前会话用量时的"建议先 /compact"黄色警
 告（需要 TUI 侧 token 用量接线）；独立确认对话框（现为行内二次确认）；

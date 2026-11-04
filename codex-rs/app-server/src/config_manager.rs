@@ -609,10 +609,22 @@ impl ConfigManager {
                 .map(str::to_owned)
         });
         // Resolve the selection before the saved provider is applied as a resume override.
-        let current_provider = self
-            .load_latest_config(typesafe_overrides.cwd.clone().or_else(|| cwd.clone()))
-            .await
-            .map(|config| config.model_provider_id);
+        // Fork (nuwax-codex): an explicitly requested provider is the requester's
+        // selection for this resume — the same session-scoped routing the turn
+        // admission check honors. Drift-checking it against the bare disk config
+        // would reject every cross-provider re-home (`thread/resume {model,
+        // modelProvider}`), so the current-provider comparison only applies when
+        // the resume inherits its provider from disk. Policy and
+        // configured-existence checks below still run for both the saved and
+        // the requested provider.
+        let current_provider = if requested_provider.is_some() {
+            None
+        } else {
+            self.load_latest_config(typesafe_overrides.cwd.clone().or_else(|| cwd.clone()))
+                .await
+                .ok()
+                .map(|config| config.model_provider_id)
+        };
         self.load_with_validation(
             &self.current_cli_overrides(),
             request_overrides,
@@ -651,19 +663,21 @@ impl ConfigManager {
                         ));
                     }
                 }
-                let current_provider = current_provider?;
-                for provider in [
-                    saved_provider.unwrap_or(requested_provider),
-                    requested_provider,
-                ] {
-                    if provider != current_provider {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            ModelProviderError::ModelProviderMismatch {
-                                model_provider: provider.to_owned(),
-                                current_model_provider: current_provider,
-                            },
-                        ));
+                let current_provider = current_provider.clone();
+                if let Some(current_provider) = current_provider {
+                    for provider in [
+                        saved_provider.unwrap_or(requested_provider),
+                        requested_provider,
+                    ] {
+                        if provider != current_provider {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::InvalidInput,
+                                ModelProviderError::ModelProviderMismatch {
+                                    model_provider: provider.to_owned(),
+                                    current_model_provider: current_provider,
+                                },
+                            ));
+                        }
                     }
                 }
                 Ok(())

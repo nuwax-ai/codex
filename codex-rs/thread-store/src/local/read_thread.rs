@@ -71,6 +71,13 @@ pub(super) async fn read_thread(
                 .await)
     {
         let metadata_sandbox_policy = metadata.sandbox_policy.clone();
+        // Fork (nuwax-codex): the sqlite-observed provider is authoritative
+        // over the rollout meta line below — a re-homed thread
+        // (`thread/resume` with a provider override, FORK.md §7.3) re-stamps
+        // the stored route, and reads must not resurrect the birth provider
+        // from the rollout header. Upstream threads never change provider,
+        // so an empty (never observed) value keeps the rollout's.
+        let sqlite_observed_provider = metadata.model_provider.clone();
         let mut thread = stored_thread_from_sqlite_metadata(store, metadata).await?;
         // Paginated history may contain only a suffix, so its display metadata lives in SQLite.
         // Legacy display metadata remains rollout-derived.
@@ -96,6 +103,17 @@ pub(super) async fn read_thread(
             rollout_thread.daybreak_enabled = thread.daybreak_enabled;
             rollout_thread.model = thread.model;
             rollout_thread.reasoning_effort = thread.reasoning_effort;
+            // Fork: default-filled sqlite rows are repair artifacts, not
+            // observations — only a provider that differs from the store
+            // default was truly observed (a re-home) and may override the
+            // rollout's birth provider. Re-homing TO the store-default
+            // provider therefore keeps the rollout header (known edge,
+            // FORK.md §7.3).
+            if !sqlite_observed_provider.is_empty()
+                && sqlite_observed_provider != store.config.default_model_provider_id
+            {
+                rollout_thread.model_provider = sqlite_observed_provider;
+            }
             rollout_thread.git_info = thread.git_info;
             rollout_thread.permission_profile = permission_profile_from_metadata_value(
                 &metadata_sandbox_policy,

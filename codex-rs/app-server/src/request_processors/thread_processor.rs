@@ -4541,6 +4541,32 @@ impl ThreadRequestProcessor {
                     }
                 }
 
+                // Fork (nuwax-codex): stamp the effective route into the
+                // durable thread store so pickers and thread/read agree with
+                // the resumed session — the stored provider may be missing
+                // (summaries fall back to the process default) or stale after
+                // an explicit re-home (§7.3). Written to the store directly:
+                // the manager's loaded path stages the patch until
+                // materialization, so an immediate thread/read would still
+                // see the pre-switch home. The rebuilt session's own
+                // materialization re-asserts the same values later.
+                let route_patch = StoreThreadMetadataPatch {
+                    model_provider: Some(session_configured.model_provider_id.clone()),
+                    model: Some(session_configured.model.clone()),
+                    ..Default::default()
+                };
+                if let Err(err) = self
+                    .thread_store
+                    .update_thread_metadata(codex_thread_store::UpdateThreadMetadataParams {
+                        thread_id,
+                        patch: route_patch,
+                        include_archived: true,
+                    })
+                    .await
+                {
+                    warn!(%err, "failed to stamp resumed thread route");
+                }
+
                 let thread_originator = config_snapshot.originator.clone();
                 let response = ThreadResumeResponse {
                     thread,

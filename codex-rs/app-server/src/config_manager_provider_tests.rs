@@ -408,3 +408,81 @@ async fn input_provider_check_honors_session_scoped_routing() -> Result<()> {
     );
     Ok(())
 }
+
+/// Fork (nuwax-codex): resume-side provider validation semantics.
+///
+/// An explicitly requested provider is the requester's selection for the
+/// resume: cross-provider re-homes (`thread/resume {modelProvider}`) must
+/// load even though the bare disk config selects another provider — the
+/// resume-time twin of the admission fix (FORK.md §10). Without an explicit
+/// request, a saved provider that drifted from the disk selection is still
+/// rejected so the read-only mismatch flow keeps working.
+#[tokio::test]
+async fn load_for_resume_honors_explicit_provider_and_keeps_drift_check() -> Result<()> {
+    let home = tempdir()?;
+    std::fs::write(
+        home.path().join("config.toml"),
+        r#"
+model_provider = "mimo"
+[model_providers.mimo]
+name = "MiMo"
+base_url = "http://127.0.0.1:9/v1"
+wire_api = "responses"
+models = ["mimo-v2.6-flash"]
+[model_providers.step]
+name = "Step"
+base_url = "http://127.0.0.1:9/v1"
+wire_api = "responses"
+models = ["step-5-preview"]
+"#,
+    )?;
+    let manager =
+        ConfigManager::without_managed_config_for_tests(home.path().to_path_buf());
+    let cwd = Some(home.path().to_path_buf());
+
+    // Explicit cross-provider re-home: requested step over saved mimo loads.
+    let rehomed = manager
+        .load_for_resume(
+            /*saved_provider*/ Some("mimo"),
+            /*request_overrides*/ None,
+            codex_core::config::ConfigOverrides {
+                model_provider: Some("step".to_string()),
+                ..Default::default()
+            },
+            cwd.clone(),
+        )
+        .await?;
+    assert_eq!(rehomed.model_provider_id, "step");
+
+    // No explicit request: the saved route drift-checks against the disk
+    // selection and is rejected (read-only mismatch flow).
+    std::fs::write(
+        home.path().join("config.toml"),
+        r#"
+model_provider = "openai"
+[model_providers.mimo]
+name = "MiMo"
+base_url = "http://127.0.0.1:9/v1"
+wire_api = "responses"
+"#,
+    )?;
+    let error = manager
+        .load_for_resume(
+            /*saved_provider*/ Some("mimo"),
+            /*request_overrides*/ None,
+            codex_core::config::ConfigOverrides::default(),
+            cwd,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error
+            .get_ref()
+            .and_then(|error| error.downcast_ref::<ModelProviderError>()),
+        Some(&ModelProviderError::ModelProviderMismatch {
+            model_provider: "mimo".into(),
+            current_model_provider: "openai".into(),
+        })
+    );
+    Ok(())
+}

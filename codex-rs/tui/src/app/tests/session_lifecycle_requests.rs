@@ -364,10 +364,6 @@ async fn same_thread_retry_keeps_subscription_and_restores_draft() -> Result<()>
 }
 
 #[tokio::test]
-#[ignore = "real-app-server variant: after a successful explicit switch, a \
-settings-preserving rejoin (thread snapshot refresh) reports the pre-switch \
-model and the widget reads it back — needs server-side ordering work; the \
-protocol variant below covers the request shapes (FORK.md §7.3 follow-up)"]
 async fn model_picker_rehomes_displayed_thread_and_updates_route() -> Result<()> {
     check_model_picker_rehome(HistoryCapabilities::Current).await
 }
