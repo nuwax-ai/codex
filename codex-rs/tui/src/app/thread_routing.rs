@@ -2026,8 +2026,24 @@ impl App {
             ThreadBufferedEvent::Notification(notification) => {
                 self.cache_collab_receiver_threads_for_notification(notification.as_ref());
                 let tip_ready = self.turn_tips.observe(&notification, Instant::now());
+                let completed_turn = match notification.as_ref() {
+                    ServerNotification::TurnCompleted(completed) => {
+                        Some((completed.thread_id.clone(), completed.turn.id.clone()))
+                    }
+                    _ => None,
+                };
                 self.chat_widget
                     .handle_server_notification(*notification, /*replay_kind*/ None);
+                if let Some((thread_id, turn_id)) = completed_turn
+                    && self
+                        .pending_model_switch
+                        .as_ref()
+                        .is_some_and(|pending| pending.thread_id.to_string() == thread_id)
+                    && self.chat_widget.last_turn_id() == Some(turn_id.as_str())
+                    && !self.chat_widget.is_user_turn_pending_or_running()
+                {
+                    self.app_event_tx.send(AppEvent::ApplyPendingModelSwitch);
+                }
                 // History cells queued by completion must be applied before anchoring its tip.
                 if let Some(event) = tip_ready {
                     self.app_event_tx.send(event);

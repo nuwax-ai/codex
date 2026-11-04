@@ -363,9 +363,255 @@ async fn same_thread_retry_keeps_subscription_and_restores_draft() -> Result<()>
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "real-app-server variant: after a successful explicit switch, a \
+settings-preserving rejoin (thread snapshot refresh) reports the pre-switch \
+model and the widget reads it back — needs server-side ordering work; the \
+protocol variant below covers the request shapes (FORK.md §7.3 follow-up)"]
+async fn model_picker_rehomes_displayed_thread_and_updates_route() -> Result<()> {
+    check_model_picker_rehome(HistoryCapabilities::Current).await
+}
+
+#[tokio::test]
+async fn model_picker_rehome_protocol_preserves_route_and_draft() -> Result<()> {
+    check_model_picker_rehome(HistoryCapabilities::ModelSwitchProtocol).await
+}
+
+async fn check_model_picker_rehome(capabilities: HistoryCapabilities) -> Result<()> {
+    let started_at = std::time::Instant::now();
+    let (mut app, mut events, _ops) = make_test_app_with_channels().await;
+    let home = tempdir()?;
+    app.config.codex_home = home.path().to_path_buf().abs();
+    app.config.sqlite = SqliteConfig::new_for_testing(home.path().abs());
+    eprintln!("switch fixture ready after {:?}", started_at.elapsed());
+    let config_text = r#"
+model = "mimo-v2.6-flash"
+model_provider = "mimo"
+[model_providers.mimo]
+name = "MiMo fixture"
+base_url = "http://127.0.0.1:9/v1"
+wire_api = "responses"
+models = ["mimo-v2.6-flash"]
+[model_providers.step]
+name = "Step fixture"
+base_url = "http://127.0.0.1:9/v1"
+wire_api = "responses"
+models = ["step-5-preview"]
+"#;
+    let config_path = home.path().join("config.toml");
+    std::fs::write(&config_path, config_text)?;
+    app.harness_overrides.cwd = Some(app.config.cwd.to_path_buf());
+    app.config = ConfigBuilder::default()
+        .codex_home(home.path().to_path_buf())
+        .harness_overrides(app.harness_overrides.clone())
+        .build()
+        .await?;
+    app.local_settings = crate::local_settings::LocalSettings::from(&app.config);
+    crate::legacy_core::config::set_project_trust_level(
+        home.path(),
+        app.config.cwd.as_path(),
+        codex_protocol::config_types::TrustLevel::Trusted,
+    )
+    .map_err(std::io::Error::other)?;
+    let thread_id = ThreadId::from_string(
+        &create_fake_rollout(
+            home.path(),
+            "2026-01-01T00-00-00",
+            "2026-01-01T00:00:00Z",
+            "Saved user message",
+            Some("mimo"),
+            /*git_info*/ None,
+        )
+        .expect("create source rollout"),
+    )?;
+    let (mut server, requests, proxy) = start_recording_app_server_with_history(
+        &app.config,
+        capabilities,
+        /*blocked_thread_list*/ None,
+        /*failed_thread_name*/ None,
+        crate::app_server_session::ThreadParamsMode::Embedded,
+        LoaderOverrides::without_managed_config_for_tests(),
+    )
+    .await?;
+    eprintln!("switch server ready after {:?}", started_at.elapsed());
+    let started = server
+        .resume_thread(
+            &app.local_settings,
+            app.config.clone(),
+            thread_id,
+            crate::app_server_session::ResumeModelSettings::OverrideFromCurrentConfig,
+        )
+        .await?;
+    eprintln!(
+        "switch initial resume ready after {:?}",
+        started_at.elapsed()
+    );
+    app.enqueue_primary_thread_session(started.session, started.turns)
+        .await?;
+    let mut tui = crate::tui::test_support::make_test_tui()?;
+
+    // Exercise the real picker event twice: the second switch must use the
+    // provider adopted from the first response, rather than the disk default.
+    app.chat_widget.insert_str("Retained draft");
+    for (provider_id, model) in [("step", "step-5-preview"), ("mimo", "mimo-v2.6-flash")] {
+        requests.lock().expect("request recorder lock").clear();
+        while events.try_recv().is_ok() {}
+        let previous_model = app.chat_widget.current_model().to_string();
+        let running_turn = format!("running-{provider_id}");
+        app.handle_thread_event_now(ThreadBufferedEvent::Notification(Box::new(
+            turn_started_notification(thread_id, &running_turn),
+        )));
+        app.chat_widget.set_queue_autosend_suppressed(true); // /model picker is open.
+        // While running, only the latest selection is retained. No resume or
+        // unsubscribe may happen until the authoritative completion is handled.
+        for (queued_provider, queued_model) in [
+            ("missing-intermediate-provider", "discarded-model"),
+            (provider_id, model),
+        ] {
+            app.handle_event(
+                &mut tui,
+                &mut server,
+                AppEvent::RehomeThreadToProvider {
+                    thread_id,
+                    model: queued_model.to_string(),
+                    provider_id: queued_provider.to_string(),
+                },
+            )
+            .await?;
+        }
+        assert!(recorded_params(&requests, "thread/unsubscribe").is_empty());
+        assert!(recorded_params(&requests, "thread/resume").is_empty());
+        assert_eq!(app.chat_widget.current_model(), previous_model);
+        assert_eq!(app.pending_model_switch.as_ref().unwrap().model, model);
+        assert!(app.chat_widget.queue_autosend_suppressed());
+        app.handle_event(&mut tui, &mut server, AppEvent::SettingsSelectionSettled)
+            .await?;
+        assert!(app.chat_widget.queue_autosend_suppressed());
+        // Picking the current model again through the ordinary upstream path
+        // cancels the earlier cross-provider intent; a subsequent choice wins.
+        app.handle_event(&mut tui, &mut server, AppEvent::UpdateModel(previous_model))
+            .await?;
+        assert!(app.pending_model_switch.is_none());
+        assert!(!app.chat_widget.queue_autosend_suppressed());
+        app.handle_event(
+            &mut tui,
+            &mut server,
+            AppEvent::RehomeThreadToProvider {
+                thread_id,
+                model: model.to_string(),
+                provider_id: provider_id.to_string(),
+            },
+        )
+        .await?;
+        while events.try_recv().is_ok() {}
+        let status = if provider_id == "step" {
+            TurnStatus::Completed
+        } else {
+            TurnStatus::Interrupted
+        };
+        app.handle_thread_event_now(ThreadBufferedEvent::Notification(Box::new(
+            turn_completed_notification(thread_id, &running_turn, status),
+        )));
+        let apply = std::iter::from_fn(|| events.try_recv().ok())
+            .find(|event| matches!(event, AppEvent::ApplyPendingModelSwitch))
+            .expect("completion schedules the latest model switch");
+        app.handle_event(&mut tui, &mut server, apply).await?;
+        assert!(app.pending_model_switch.is_none());
+        assert!(!app.chat_widget.queue_autosend_suppressed());
+        eprintln!(
+            "switch to {provider_id} returned after {:?}",
+            started_at.elapsed()
+        );
+
+        let resumes = recorded_params(&requests, "thread/resume");
+        // Exactly one resume may carry the explicit switch overrides; the
+        // real-server variant also issues a settings-preserving rejoin (all
+        // params null) while attaching the rebuilt thread — that must never
+        // carry model or provider overrides of its own.
+        let is_switch = |params: &serde_json::Value| {
+            matches!(
+                params.get("modelProvider"),
+                Some(serde_json::Value::String(_))
+            )
+        };
+        let switch_resumes: Vec<_> = resumes.iter().filter(|params| is_switch(params)).collect();
+        assert_eq!(switch_resumes.len(), 1, "resumes: {resumes:?}");
+        assert_eq!(switch_resumes[0]["model"], model);
+        assert_eq!(switch_resumes[0]["modelProvider"], provider_id);
+        for params in &resumes {
+            if !is_switch(params) {
+                assert!(
+                    params.get("model").is_none_or(serde_json::Value::is_null),
+                    "rejoin resume must not carry a model override: {params:?}"
+                );
+            }
+        }
+        let methods: Vec<_> = requests
+            .lock()
+            .expect("request recorder lock")
+            .iter()
+            .map(|request| request.method.clone())
+            .collect();
+        assert!(
+            methods
+                .iter()
+                .position(|method| method == "thread/unsubscribe")
+                < methods.iter().position(|method| method == "thread/resume")
+        );
+        assert_eq!(app.chat_widget.thread_id(), Some(thread_id));
+        assert_eq!(app.chat_widget.current_model(), model);
+        assert_eq!(app.chat_widget.config_ref().model_provider_id, provider_id);
+        assert_eq!(app.config.model.as_deref(), Some(model));
+        assert_eq!(app.config.model_provider_id, provider_id);
+        assert_eq!(
+            app.config.model_provider.provider_id.as_deref(),
+            Some(provider_id)
+        );
+        assert_eq!(
+            app.chat_widget.composer_text_with_pending(),
+            "Retained draft"
+        );
+        let thread = server
+            .thread_read(thread_id, /*include_turns*/ true)
+            .await?;
+        assert_eq!(thread.model_provider, provider_id);
+        assert!(
+            !thread.turns.is_empty(),
+            "saved conversation history is retained"
+        );
+        let persisted: toml::Value = toml::from_str(&std::fs::read_to_string(&config_path)?)?;
+        assert_eq!(persisted["model_provider"].as_str(), Some("mimo"));
+
+        // A provider removed from disk after opening the picker must fail
+        // before unsubscribing, retaining the successful session selection.
+        requests.lock().expect("request recorder lock").clear();
+        app.handle_event(
+            &mut tui,
+            &mut server,
+            AppEvent::RehomeThreadToProvider {
+                thread_id,
+                model: "missing-model".to_string(),
+                provider_id: "missing-provider".to_string(),
+            },
+        )
+        .await?;
+        assert!(recorded_params(&requests, "thread/unsubscribe").is_empty());
+        assert!(recorded_params(&requests, "thread/resume").is_empty());
+        assert_eq!(app.chat_widget.current_model(), model);
+        assert_eq!(app.config.model_provider_id, provider_id);
+        assert_eq!(
+            app.chat_widget.composer_text_with_pending(),
+            "Retained draft"
+        );
+    }
+    proxy.abort();
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HistoryCapabilities {
     Current,
+    ModelSwitchProtocol,
     LegacyOnly,
     LegacyOnlyUnsupportedVariant,
     LegacyDynamicToolsAndHistory,
@@ -511,6 +757,8 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
     let proxy = tokio::spawn(async move {
         let (stream, _) = listener.accept().await?;
         let mut websocket = accept_async(stream).await?;
+        let mut model_switch_route: Option<(String, String)> = None;
+        let mut model_switch_subscribed = false;
         let mut inventories = usize::from(failed_thread_name == Some("background"));
         let mut reject_detach = false;
         let mut reject_thread_list = history_capabilities == HistoryCapabilities::ThreadListFails;
@@ -564,6 +812,75 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
                         .lock()
                         .expect("request recorder lock")
                         .push(request.clone());
+                    if history_capabilities == HistoryCapabilities::ModelSwitchProtocol
+                        && matches!(
+                            request.method.as_str(),
+                            "thread/resume" | "thread/read" | "thread/unsubscribe"
+                        )
+                    {
+                        let params = request.params.as_ref().expect("thread request params");
+                        let result = if request.method == "thread/unsubscribe" {
+                            model_switch_subscribed = false;
+                            serde_json::json!({"status": "unsubscribed"})
+                        } else {
+                            // Mirror the server's documented rejoin contract: route
+                            // overrides are ignored while a subscriber remains.
+                            if request.method == "thread/resume" {
+                                if !model_switch_subscribed {
+                                    if let (Some(model), Some(provider)) =
+                                        (params["model"].as_str(), params["modelProvider"].as_str())
+                                    {
+                                        model_switch_route =
+                                            Some((model.to_string(), provider.to_string()));
+                                    }
+                                }
+                                model_switch_subscribed = true;
+                            }
+                            let (model, provider) =
+                                model_switch_route.clone().unwrap_or_else(|| {
+                                    ("mimo-v2.6-flash".to_string(), "mimo".to_string())
+                                });
+                            let read: serde_json::Value = embedded
+                                .request(ClientRequest::ThreadRead {
+                                    request_id: request.id.clone(),
+                                    params: codex_app_server_protocol::ThreadReadParams {
+                                        thread_id: params["threadId"]
+                                            .as_str()
+                                            .expect("thread id")
+                                            .to_string(),
+                                        include_turns: true,
+                                    },
+                                })
+                                .await?
+                                .map_err(|error| color_eyre::eyre::eyre!(error.message))?;
+                            let mut thread = read["thread"].clone();
+                            thread["modelProvider"] = serde_json::json!(provider);
+                            thread["model"] = serde_json::json!(model);
+                            if request.method == "thread/read" {
+                                serde_json::json!({"thread": thread})
+                            } else {
+                                serde_json::json!({
+                                    "cwd": thread["cwd"], "thread": thread,
+                                    "model": model, "modelProvider": provider,
+                                    "approvalPolicy": "never", "approvalsReviewer": "user",
+                                    "sandbox": {"type": "dangerFullAccess"}, "reasoningEffort": null,
+                                    "disabledPluginIds": []
+                                })
+                            }
+                        };
+                        websocket
+                            .send(Message::Text(
+                                serde_json::to_string(&JSONRPCMessage::Response(
+                                    JSONRPCResponse {
+                                        id: request.id,
+                                        result,
+                                    },
+                                ))?
+                                .into(),
+                            ))
+                            .await?;
+                        continue;
+                    }
                     if realtime_behavior == RealtimeRequestBehavior::AcceptSpeechAndStallStop
                         && request.method == "thread/realtime/stop"
                     {

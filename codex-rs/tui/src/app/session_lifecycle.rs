@@ -1467,7 +1467,14 @@ impl App {
             self.add_session_picker_error(error.to_string());
             return Ok(AppRunControl::Continue);
         }
-        if self.ignore_same_thread_resume(&target_session) {
+        // Explicit model/provider overrides intentionally rebuild this same conversation.
+        // Only a plain navigation resume can be an "already viewing" no-op.
+        let overrides_model = matches!(
+            &source,
+            super::resume_preparation::ResumeSource::ActiveWithCurrentModel
+                | super::resume_preparation::ResumeSource::ActiveWithModel { .. }
+        );
+        if !overrides_model && self.ignore_same_thread_resume(&target_session) {
             self.agents_overview
                 .hidden_threads
                 .remove(&target_session.thread_id);
@@ -1486,17 +1493,20 @@ impl App {
         if self.reject_pending_permission_root_switch() {
             return Ok(AppRunControl::Continue);
         }
+        let previous_settings =
+            overrides_model.then(|| (self.config.clone(), self.local_settings.clone()));
         let prepared = match self
-            .prepare_target_session(
-                tui,
-                app_server,
-                &target_session,
-                source,
-            )
+            .prepare_target_session(tui, app_server, &target_session, source)
             .await
         {
             Ok(prepared) => prepared,
-            Err(control) => return Ok(control),
+            Err(control) => {
+                if let Some((config, local_settings)) = previous_settings {
+                    self.config = config;
+                    self.local_settings = local_settings;
+                }
+                return Ok(control);
+            }
         };
         self.activate_prepared_session(tui, app_server, prepared)
             .await
@@ -1525,11 +1535,11 @@ impl App {
             return Ok(AppRunControl::Continue);
         }
         let resumed_thread_id = resumed.session.thread_id;
-        let retained_input = ((self.chat_widget.is_external_writer_view()
-            || self.chat_widget.has_provider_error())
-            && self.chat_widget.thread_id() == Some(resumed_thread_id))
-        .then(|| self.chat_widget.capture_thread_input_state())
-        .flatten();
+        let model_route_changed = self.chat_widget.current_model() != resumed.session.model
+            || self.chat_widget.config_ref().model_provider_id != resumed.session.model_provider_id;
+        let retained_input = (self.chat_widget.thread_id() == Some(resumed_thread_id))
+            .then(|| self.chat_widget.capture_thread_input_state())
+            .flatten();
         self.detach_current_thread_for_navigation(app_server, Some(resumed_thread_id))
             .await;
         self.local_settings = local_settings;
@@ -1554,12 +1564,16 @@ impl App {
                 if let Some(mut input) = retained_input {
                     // A successful resume is the authority for clearing the old rejection.
                     input.provider_error = None;
-                    self.chat_widget.restore_thread_input_state(
-                        Some(input),
-                        ThreadInputStateRestoreMode {
-                            preserve_in_flight_turn: false,
-                        },
-                    );
+                    if model_route_changed {
+                        self.chat_widget.restore_input_after_model_switch(input);
+                    } else {
+                        self.chat_widget.restore_thread_input_state(
+                            Some(input),
+                            ThreadInputStateRestoreMode {
+                                preserve_in_flight_turn: false,
+                            },
+                        );
+                    }
                 }
                 if let Some(error) = provider_error {
                     self.chat_widget

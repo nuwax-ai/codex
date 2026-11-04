@@ -37,6 +37,31 @@ impl App {
         app_server: &mut AppServerSession,
         event: AppEvent,
     ) -> Result<AppRunControl> {
+        let event = if matches!(event, AppEvent::ApplyPendingModelSwitch) {
+            let Some(pending) = &self.pending_model_switch else {
+                return Ok(AppRunControl::Continue);
+            };
+            AppEvent::RehomeThreadToProvider {
+                thread_id: pending.thread_id,
+                model: pending.model.clone(),
+                provider_id: pending.provider_id.clone(),
+            }
+        } else {
+            event
+        };
+        // A later same-provider picker choice uses the upstream settings path
+        // for future turns and supersedes a queued cross-provider selection.
+        if matches!(
+            &event,
+            AppEvent::UpdateModel(_)
+                | AppEvent::ApplyModelSelection { .. }
+                | AppEvent::SelectSessionModel { .. }
+                | AppEvent::ApplyAdvancedReasoning { .. }
+        ) && let Some(pending) = self.pending_model_switch.take()
+        {
+            self.chat_widget
+                .set_queue_autosend_suppressed(pending.queue_autosend_was_suppressed);
+        }
         let from_agents_overview = matches!(event, AppEvent::ForkAgentsOverviewThreadReady { .. });
         let event = if let AppEvent::ForkAgentsOverviewThreadReady { thread_id } = event {
             if self.current_displayed_thread_id() != Some(thread_id)
@@ -266,6 +291,7 @@ impl App {
                     }
                 }
             }
+            AppEvent::ApplyPendingModelSwitch => return Ok(AppRunControl::Continue),
             AppEvent::RehomeThreadToProvider {
                 thread_id,
                 model,
@@ -278,13 +304,24 @@ impl App {
                     return Ok(AppRunControl::Continue);
                 }
                 if self.chat_widget.is_user_turn_pending_or_running() {
+                    let was_suppressed = self.pending_model_switch.as_ref()
+                        .map(|pending| pending.queue_autosend_was_suppressed)
+                        .unwrap_or_else(|| self.chat_widget.queue_autosend_suppressed());
+                    self.chat_widget.set_queue_autosend_suppressed(true);
+                    self.pending_model_switch = Some(PendingModelSwitch {
+                        thread_id,
+                        model: model.clone(),
+                        provider_id,
+                        queue_autosend_was_suppressed: was_suppressed,
+                    });
                     self.chat_widget.add_info_message(
-                        "Finish the running turn before switching this conversation's model."
-                            .to_string(),
+                        format!("Will switch to {model} after the current turn finishes or stops. \
+                            Only the latest model selection will be applied."),
                         /*hint*/ None,
                     );
                     return Ok(AppRunControl::Continue);
                 }
+                let pending = self.pending_model_switch.take();
                 let target = SessionTarget {
                     backend_id: app_server.backend_id(),
                     path: self
@@ -306,13 +343,26 @@ impl App {
                     format!("Switching this conversation to {model} ({display})…"),
                     /*hint*/ None,
                 );
-                self.resume_target_session_with_source(
+                let expected_model = model.clone();
+                let expected_provider = provider_id.clone();
+                let result = self.resume_target_session_with_source(
                     tui,
                     app_server,
                     target,
                     super::resume_preparation::ResumeSource::ActiveWithModel { model, provider_id },
                 )
-                .await?;
+                .await;
+                if let Some(pending) = pending {
+                    self.chat_widget.set_queue_autosend_suppressed(
+                        pending.queue_autosend_was_suppressed,
+                    );
+                    if self.chat_widget.current_model() == expected_model
+                        && self.chat_widget.config_ref().model_provider_id == expected_provider
+                    {
+                        self.chat_widget.maybe_send_next_queued_input();
+                    }
+                }
+                result?;
             }
             AppEvent::StartManagedWorktree { mode, name } => {
                 if self.pending_start_managed_worktree.is_some() {
@@ -2500,9 +2550,15 @@ impl App {
                     if turn_permissions_overrides(permissions_override, config.cwd.as_path())
                         .is_ok()
                     {
-                        self.chat_widget
-                            .set_queue_autosend_suppressed(/*suppressed*/ false);
-                        self.chat_widget.maybe_send_next_queued_input();
+                        if let Some(pending) = self.pending_model_switch.as_mut() {
+                            // The picker has settled, but the route is still waiting
+                            // for turn completion. Do not submit a follow-up on the old route.
+                            pending.queue_autosend_was_suppressed = false;
+                        } else {
+                            self.chat_widget
+                                .set_queue_autosend_suppressed(/*suppressed*/ false);
+                            self.chat_widget.maybe_send_next_queued_input();
+                        }
                     }
                 }
             }

@@ -130,6 +130,7 @@ pub(crate) async fn make_test_app() -> Box<App> {
         pending_app_server_requests: PendingAppServerRequests::default(),
         dynamic_tool_status_updates: tokio::sync::broadcast::channel(/*capacity*/ 64).0,
         dynamic_tool_tasks: HashMap::new(),
+        pending_model_switch: None,
         pending_startup_thread_start: false,
         pending_server_version_notice: None,
         pending_open_resume_picker: false,

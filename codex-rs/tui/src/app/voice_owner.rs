@@ -125,6 +125,14 @@ impl App {
         app_server: &mut AppServerSession,
         destination: Option<ThreadId>,
     ) {
+        if self.pending_model_switch.as_ref().is_some_and(|pending| {
+            Some(pending.thread_id) != destination
+                && self.chat_widget.thread_id() == Some(pending.thread_id)
+        }) && let Some(pending) = self.pending_model_switch.take()
+        {
+            self.chat_widget
+                .set_queue_autosend_suppressed(pending.queue_autosend_was_suppressed);
+        }
         let thread_ids: Vec<_> = self
             .thread_event_channels
             .iter()

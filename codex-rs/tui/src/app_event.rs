@@ -591,6 +591,9 @@ pub(crate) enum AppEvent {
     /// Fork (nuwax-codex): switch the displayed conversation to an explicitly
     /// picked model/provider pair by re-homing `thread/resume` — history is
     /// kept, the thread's home provider is re-stamped.
+    /// Apply the latest deferred selection after the active turn has stopped.
+    ApplyPendingModelSwitch,
+
     RehomeThreadToProvider {
         thread_id: ThreadId,
         model: String,

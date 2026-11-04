@@ -21,6 +21,18 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
 
 ## 二、模块清单:哪些是我们自己开发的
 
+### TUI 跨厂商切换补丁（2026-11-04）
+
+`app/session_lifecycle.rs` 与 `app/resume_preparation.rs`：显式同线程 model/provider
+恢复绕过导航去重，先解除当前订阅再 resume；检查服务端返回的真实路由，
+同步完整 provider 配置并保留历史与草稿。失败尝试重新订阅，不把状态栏改字
+当作路由生效。定向回归见 `model_picker_rehomes_displayed_thread_and_updates_route`。
+
+执行中的跨厂商选择暂存到 `PendingModelSwitch`，只保留最后一次；当前轮正常结束或停止完成后才恢复路由，等待期间暂停队列自动发送。离开会话取消待切换；后来的同 provider 选择覆盖先前跨厂商意图。协议回归覆盖多次选择、完成/停止、草稿与失败保留。
+
+`tui/src/terminal_program_status.rs`：OSC 7501 的应用标识改为
+`app=nuwax-harness`，相关七态快照同步；保留 Cargo 二进制名及其余协议字段。
+
 ### 纯 fork 新增 crate(上游完全没有)
 
 | 路径 | 作用 |

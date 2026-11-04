@@ -536,6 +536,13 @@ struct InitialHistoryReplayBuffer {
     was_truncated: bool,
 }
 
+struct PendingModelSwitch {
+    thread_id: ThreadId,
+    model: String,
+    provider_id: String,
+    queue_autosend_was_suppressed: bool,
+}
+
 pub(crate) struct App {
     feature_write_lock: Arc<tokio::sync::Mutex<()>>,
     config_notification_test_generation: u64,
@@ -664,6 +671,7 @@ pub(crate) struct App {
     dynamic_tool_status_updates:
         tokio::sync::broadcast::Sender<codex_app_server_protocol::ThreadStatusChangedNotification>,
     dynamic_tool_tasks: HashMap<codex_app_server_protocol::RequestId, (String, JoinHandle<()>)>,
+    pending_model_switch: Option<PendingModelSwitch>,
     pending_startup_thread_start: bool,
     pending_server_version_notice: Option<crate::status::remote_connection::ServerVersionNotice>,
     /// Opens the session picker after event dispatch returns, with a fresh stack.

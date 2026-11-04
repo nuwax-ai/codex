@@ -787,6 +787,24 @@ impl ChatWidget {
         self.request_redraw();
     }
 
+    /// Restore drafts and queued inputs without reverting a confirmed route change.
+    pub(crate) fn restore_input_after_model_switch(&mut self, mut input: ThreadInputState) {
+        input.current_collaboration_mode = self.current_collaboration_mode.clone();
+        input.active_collaboration_mask = self.active_collaboration_mask.clone();
+        input.plan_mode_reasoning_effort = self.config.plan_mode_reasoning_effort.clone();
+        input.pending_thread_settings = None;
+        self.restore_thread_input_state(
+            Some(input),
+            ThreadInputStateRestoreMode {
+                preserve_in_flight_turn: false,
+            },
+        );
+    }
+
+    pub(crate) fn queue_autosend_suppressed(&self) -> bool {
+        self.input_queue.suppress_queue_autosend
+    }
+
     pub(crate) fn set_queue_autosend_suppressed(&mut self, suppressed: bool) {
         self.input_queue.suppress_queue_autosend = suppressed;
     }

@@ -93,6 +93,45 @@ impl App {
             }
         };
 
+        if let ResumeSource::ActiveWithModel { model, provider_id } = &source {
+            let Some(provider) = resume_config.model_providers.get(provider_id).cloned() else {
+                self.add_session_picker_error(format!(
+                    "Model provider `{provider_id}` is not configured."
+                ));
+                return Err(AppRunControl::Continue);
+            };
+            // The selected route must also own the replacement widget's provider and
+            // model defaults. Carrying the previous provider here leaves menus and
+            // subsequent turns using stale metadata even after resume succeeds.
+            resume_config.model = Some(model.clone());
+            resume_config.model_provider_id = provider_id.clone();
+            resume_config.model_provider = provider;
+            resume_config.model_reasoning_effort = None;
+            resume_config.plan_mode_reasoning_effort = None;
+        }
+
+        let expected_route = match &source {
+            ResumeSource::ActiveWithModel { .. } | ResumeSource::ActiveWithCurrentModel => Some((
+                resume_config.model.clone(),
+                resume_config.model_provider_id.clone(),
+            )),
+            ResumeSource::Active | ResumeSource::Backend(_) => None,
+        };
+        let rehome_current_thread = expected_route.is_some()
+            && self.current_displayed_thread_id() == Some(target_session.thread_id);
+        if rehome_current_thread {
+            // A subscribed loaded thread treats resume as a rejoin and ignores
+            // route overrides. Release only our subscription; keep the UI and draft
+            // until the replacement has been prepared successfully.
+            if let Err(error) = app_server
+                .thread_unsubscribe(target_session.thread_id)
+                .await
+            {
+                self.add_session_picker_error(format!("Failed to prepare model switch: {error}"));
+                return Err(AppRunControl::Continue);
+            }
+        }
+
         if let Some(history_mode) = target_session.history_mode {
             app_server.remember_thread_history_mode(target_session.thread_id, history_mode);
         }
@@ -105,6 +144,25 @@ impl App {
                 permission_overrides,
             )
             .await;
+        if let Err(resume_error) = &resumed
+            && rehome_current_thread
+        {
+            if let Err(error) = app_server
+                .resume_thread(
+                    &self.local_settings,
+                    self.chat_widget.config_ref().clone(),
+                    target_session.thread_id,
+                    crate::app_server_session::ResumeModelSettings::PreserveExistingThread,
+                )
+                .await
+            {
+                self.add_session_picker_error(format!(
+                    "Failed to reattach after model switch failed: {error}"
+                ));
+            }
+            self.add_session_picker_error(format!("Failed to switch model: {resume_error}"));
+            return Err(AppRunControl::Continue);
+        }
         let mut history_notice = None;
         let mut provider_error = None;
         let (resumed, read_only) = match resumed {
@@ -142,6 +200,20 @@ impl App {
                 return Err(AppRunControl::Continue);
             }
         };
+        if !read_only
+            && let Some((model, provider_id)) = expected_route
+            && (resumed.session.model_provider_id != provider_id
+                || model
+                    .as_ref()
+                    .is_some_and(|model| *model != resumed.session.model))
+        {
+            self.add_session_picker_error(format!(
+                "Model switch was not applied: the server kept {} ({}). Close other clients \
+                 attached to this conversation and finish any running turn before retrying.",
+                resumed.session.model, resumed.session.model_provider_id
+            ));
+            return Err(AppRunControl::Continue);
+        }
         Ok(PreparedResume {
             backend_id: app_server.backend_id(),
             config: resume_config,
