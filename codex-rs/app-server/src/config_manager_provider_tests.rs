@@ -263,6 +263,13 @@ async fn catalog_reload_uses_latest_model_provider() -> Result<()> {
 }
 
 /// Invocation overrides and selected profiles still define the current provider.
+///
+/// Fork semantics (session-scoped routing): an explicit `model_provider`
+/// override rides the thread's session layers, so input admission accepts it
+/// even when the checking process carries no such override (the ACP gateway
+/// case); a provider picked through a *profile* is user-layer state, not
+/// session state, so a process that no longer selects the profile still
+/// rejects the thread.
 #[test_case("model_provider", "gateway"; "explicit_provider")]
 #[test_case("profile", "gateway-profile"; "selected_profile")]
 #[tokio::test]
@@ -305,8 +312,89 @@ name = "Gateway"
         .await?;
     let default_manager =
         ConfigManager::without_managed_config_for_tests(home.path().to_path_buf());
-    let error = default_manager
+    if key == "profile" {
+        let error = default_manager
+            .check_thread_model_provider_for_input(&current)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error
+                .get_ref()
+                .and_then(|error| error.downcast_ref::<ModelProviderError>()),
+            Some(&ModelProviderError::ModelProviderMismatch {
+                model_provider: "gateway".into(),
+                current_model_provider: "openai".into(),
+            })
+        );
+    } else {
+        // The explicit override lives on the thread's session layers and
+        // survives a process that carries no such override.
+        default_manager
+            .check_thread_model_provider_for_input(&current)
+            .await?;
+    }
+    Ok(())
+}
+
+/// Fork (nuwax-codex): a session-scoped provider route (thread/start
+/// `modelProvider` + provider definition, like the ACP adapter's
+/// `custom-gateway`) must pass input admission while the disk config selects
+/// a different provider; a thread that merely inherited its provider from
+/// disk must still be rejected once the disk selection drifts.
+#[tokio::test]
+async fn input_provider_check_honors_session_scoped_routing() -> Result<()> {
+    let home = tempdir()?;
+    std::fs::write(
+        home.path().join("config.toml"),
+        "model_provider = \"openai\"\n",
+    )?;
+    let manager =
+        ConfigManager::without_managed_config_for_tests(home.path().to_path_buf());
+
+    // Session-routed thread: provider + definition arrive as request
+    // overrides (exactly how thread/start threads are configured).
+    let mut request_overrides = std::collections::HashMap::new();
+    request_overrides.insert(
+        "model_provider".to_string(),
+        serde_json::Value::String("custom-gateway".to_string()),
+    );
+    request_overrides.insert(
+        "model_providers".to_string(),
+        serde_json::json!({
+            "custom-gateway": {
+                "name": "Custom Gateway",
+                "base_url": "https://gw.example.test/v1",
+                "env_key": "GW_API_KEY",
+            }
+        }),
+    );
+    let current = manager
+        .load_with_overrides(
+            Some(request_overrides),
+            codex_core::config::ConfigOverrides::default(),
+        )
+        .await?;
+    assert_eq!(current.model_provider_id, "custom-gateway");
+    manager
         .check_thread_model_provider_for_input(&current)
+        .await?;
+
+    // Disk-inherited thread: provider comes from disk at load time, then the
+    // disk selection changes underneath it — input must be rejected.
+    std::fs::write(
+        home.path().join("config.toml"),
+        "model_provider = \"gateway\"\n[model_providers.gateway]\nname = \"Gateway\"\n",
+    )?;
+    let inherited = manager
+        .load_latest_config(Some(home.path().to_path_buf()))
+        .await?;
+    assert_eq!(inherited.model_provider_id, "gateway");
+    std::fs::write(
+        home.path().join("config.toml"),
+        "model_provider = \"openai\"\n",
+    )?;
+    let error = manager
+        .check_thread_model_provider_for_input(&inherited)
         .await
         .unwrap_err();
     assert_eq!(

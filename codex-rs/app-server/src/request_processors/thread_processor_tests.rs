@@ -638,6 +638,7 @@ mod thread_processor_behavior_tests {
         let temp_dir = TempDir::new()?;
         let session_provider = ModelProviderInfo {
             name: "session".to_string(),
+            models: None,
             base_url: Some("http://127.0.0.1:8061/api/codex".to_string()),
             model_catalog_url: None,
             env_key: None,

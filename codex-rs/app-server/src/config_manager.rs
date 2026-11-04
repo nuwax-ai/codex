@@ -482,8 +482,19 @@ impl ConfigManager {
         current: &Config,
     ) -> std::io::Result<()> {
         self.check_thread_model_provider(current).await?;
+        // Fork (nuwax-codex): reload through the thread's own session layers.
+        // A provider selected at session scope (thread/start `modelProvider` +
+        // provider definition, resume overrides, env gateway) is the thread's
+        // authoritative route and must not be re-checked against the bare
+        // disk config — the ACP adapter's per-session gateway routing and the
+        // fork's re-home resume both depend on it. Threads that inherited
+        // their provider from disk (no session selection) still drift-check
+        // against the current disk config below.
         let configured = self
-            .load_latest_config(Some(current.cwd.to_path_buf()))
+            .load_latest_config_with_session_layers(
+                &current.config_layer_stack,
+                current.cwd.as_path(),
+            )
             .await?;
         if current.model_provider_id != configured.model_provider_id {
             return Err(std::io::Error::new(
