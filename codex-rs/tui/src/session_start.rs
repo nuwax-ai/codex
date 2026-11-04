@@ -14,7 +14,7 @@ use crate::unarchive_prompt::UnarchiveChoice;
 use color_eyre::Result;
 use color_eyre::eyre::WrapErr;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) enum SessionStartAction {
     Resume(
         ResumeModelSettings,
@@ -24,7 +24,7 @@ pub(crate) enum SessionStartAction {
 }
 
 impl SessionStartAction {
-    pub(crate) fn verb(self) -> &'static str {
+    pub(crate) fn verb(&self) -> &'static str {
         match self {
             Self::Resume(..) => "resume",
             Self::Fork(_) => "fork",
@@ -113,11 +113,12 @@ pub(crate) async fn complete_session_start(
         .await
         .wrap_err_with(|| format!("Failed to unarchive session {}", target.thread_id))?;
     // Retry by ID, not by the old rollout path, which unarchiving may have moved.
+    let verb = action.verb();
     action
         .start(app_server, config.config, config.local_settings, target)
         .await
         .map(|started| SessionStartOutcome::Started(Box::new(started)))
-        .map_err(|err| session_start_error(action.verb(), target, err))
+        .map_err(|err| session_start_error(verb, target, err))
 }
 
 pub(crate) async fn cancel_session_start(app_server: AppServerSession) -> AppExitInfo {

@@ -271,7 +271,7 @@ async fn history_hydration_archived_retry_uses_first_attempt_runtime_settings() 
                 /*failed_thread_name*/ None,
             )
             .await?;
-            let initial = match action {
+            let initial = match action.clone() {
                 SessionStartAction::Resume(settings, _) => {
                     server
                         .resume_thread(
@@ -302,7 +302,7 @@ async fn history_hydration_archived_retry_uses_first_attempt_runtime_settings() 
                     local_settings: &app.local_settings,
                 },
                 &target,
-                action,
+                action.clone(),
                 initial,
                 async || Ok(crate::unarchive_prompt::UnarchiveChoice::Unarchive),
             )

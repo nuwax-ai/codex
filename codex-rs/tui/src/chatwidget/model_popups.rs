@@ -233,7 +233,11 @@ impl ChatWidget {
         presets: Vec<ModelPreset>,
         view_id: &'static str,
     ) {
-        if presets.is_empty() {
+        // Fork (nuwax-codex): other providers that declared a `models` list
+        // (FORK.md §7.2) can take over this conversation — offered below the
+        // current provider's models.
+        let cross_vendor = self.cross_vendor_model_items();
+        if presets.is_empty() && cross_vendor.is_empty() {
             self.bottom_pane.dismiss_view_by_id(view_id);
             self.add_info_message(
                 "No additional models are available right now.".to_string(),
@@ -276,6 +280,10 @@ impl ChatWidget {
             });
         }
 
+        // Fork (nuwax-codex): cross-vendor entries come after the current
+        // provider's models so the common path stays unchanged.
+        items.extend(cross_vendor);
+
         let header = self.model_menu_header("Select Model and Effort", "");
         self.show_model_selection_view(
             model_ids,
@@ -286,6 +294,79 @@ impl ChatWidget {
                 ..SelectionViewParams::picker()
             },
         );
+    }
+
+    /// Fork (nuwax-codex): rows for models served by *other* configured
+    /// providers. Only providers that declared a `models` list (FORK.md
+    /// §7.2) are offered — an undeclared provider has no truthful list to
+    /// show. Picking a row re-homes this conversation to that model/provider
+    /// (same primitive as the mismatch notice's `r`); the previous model's
+    /// thinking is not carried across vendors.
+    fn cross_vendor_model_items(&self) -> Vec<SelectionItem> {
+        // A conversation that has not started yet has nothing to re-home —
+        // its model changes through the ordinary selection path.
+        let Some(current_thread_id) = self.thread_id() else {
+            return Vec::new();
+        };
+        let active_provider = self
+            .config
+            .model_provider
+            .provider_id
+            .clone()
+            .unwrap_or_else(|| "openai".to_string());
+        let mut items = Vec::new();
+        for (provider_id, provider) in &self.config.model_providers {
+            if provider_id == &active_provider || provider_id == "nuwax_env" {
+                continue;
+            }
+            let Some(declared) = &provider.models else {
+                continue;
+            };
+            let display = if provider.name.trim().is_empty() {
+                provider_id.clone()
+            } else {
+                provider.name.clone()
+            };
+            let credential_hint = provider.env_key.as_ref().filter(|key| {
+                std::env::var(key)
+                    .ok()
+                    .is_none_or(|value| value.trim().is_empty())
+            });
+            for model in declared {
+                let (is_disabled, disabled_reason) = match &credential_hint {
+                    Some(key) => (true, Some(format!("set ${key} to enable this provider"))),
+                    None => (false, None),
+                };
+                let actions: Vec<SelectionAction> = vec![Box::new({
+                    let model = model.clone();
+                    let provider_id = provider_id.clone();
+                    move |tx| {
+                        tx.send(AppEvent::RehomeThreadToProvider {
+                            thread_id: current_thread_id,
+                            model: model.clone(),
+                            provider_id: provider_id.clone(),
+                        });
+                    }
+                })];
+                items.push(SelectionItem {
+                    name: model.clone(),
+                    category_tag: Some(display.clone()),
+                    description: Some(display.clone()),
+                    is_current: false,
+                    is_disabled,
+                    disabled_reason,
+                    require_explicit_confirmation: !is_disabled,
+                    footer_hint: Some(Line::from(format!(
+                        "Switch this conversation to {display} — history is kept; the previous \
+                         model's thinking is not carried across vendors"
+                    ))),
+                    actions,
+                    dismiss_on_select: true,
+                    ..Default::default()
+                });
+            }
+        }
+        items
     }
 
     fn model_selection_actions(

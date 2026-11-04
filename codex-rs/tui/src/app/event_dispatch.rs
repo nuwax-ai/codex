@@ -266,6 +266,54 @@ impl App {
                     }
                 }
             }
+            AppEvent::RehomeThreadToProvider {
+                thread_id,
+                model,
+                provider_id,
+            } => {
+                // Fork (nuwax-codex): cross-vendor switch from the model
+                // picker. Only the displayed idle conversation can re-home;
+                // a running turn must finish first.
+                if self.chat_widget.thread_id() != Some(thread_id) {
+                    return Ok(AppRunControl::Continue);
+                }
+                if self.chat_widget.is_user_turn_pending_or_running() {
+                    self.chat_widget.add_info_message(
+                        "Finish the running turn before switching this conversation's model."
+                            .to_string(),
+                        /*hint*/ None,
+                    );
+                    return Ok(AppRunControl::Continue);
+                }
+                let target = SessionTarget {
+                    backend_id: app_server.backend_id(),
+                    path: self
+                        .primary_session_configured
+                        .as_ref()
+                        .and_then(|session| session.rollout_path.clone()),
+                    thread_id,
+                    cwd: None,
+                    history_mode: None,
+                };
+                let display = self
+                    .config
+                    .model_providers
+                    .get(&provider_id)
+                    .filter(|provider| !provider.name.trim().is_empty())
+                    .map(|provider| provider.name.clone())
+                    .unwrap_or_else(|| provider_id.clone());
+                self.chat_widget.add_info_message(
+                    format!("Switching this conversation to {model} ({display})…"),
+                    /*hint*/ None,
+                );
+                self.resume_target_session_with_source(
+                    tui,
+                    app_server,
+                    target,
+                    super::resume_preparation::ResumeSource::ActiveWithModel { model, provider_id },
+                )
+                .await?;
+            }
             AppEvent::StartManagedWorktree { mode, name } => {
                 if self.pending_start_managed_worktree.is_some() {
                     self.chat_widget

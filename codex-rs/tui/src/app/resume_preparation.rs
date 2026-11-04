@@ -18,7 +18,7 @@ pub(super) struct BackendSettings {
 ///
 /// The active source may refresh the displayed conversation's settings eagerly. A stored backend
 /// is refreshed without adopting its settings until attachment succeeds.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(super) enum ResumeSource<'a> {
     Active,
     /// Fork (nuwax-codex): re-home resume from the provider-mismatch notice.
@@ -27,6 +27,13 @@ pub(super) enum ResumeSource<'a> {
     /// modelProvider}`), which app-server accepts across providers and
     /// re-stamps the thread's home provider.
     ActiveWithCurrentModel,
+    /// Fork (nuwax-codex): cross-vendor switch from the model picker — resume
+    /// the current thread with exactly this model/provider pair, regardless
+    /// of what any config layer selects.
+    ActiveWithModel {
+        model: String,
+        provider_id: String,
+    },
     Backend(&'a BackendSettings),
 }
 
@@ -57,7 +64,7 @@ impl App {
         source: ResumeSource<'_>,
     ) -> std::result::Result<PreparedResume, AppRunControl> {
         let (mut resume_config, local_settings) = self
-            .resume_config_for_target(tui, app_server, target_session, source)
+            .resume_config_for_target(tui, app_server, target_session, source.clone())
             .await?;
         if let Err(error) = self.apply_runtime_policy_overrides(
             &mut resume_config,
@@ -67,10 +74,16 @@ impl App {
             return Err(AppRunControl::Continue);
         }
         let permission_overrides = self.resume_permission_overrides(&resume_config);
-        let model_settings = match source {
+        let model_settings = match &source {
             ResumeSource::Active => self.resume_model_settings(),
             ResumeSource::ActiveWithCurrentModel => {
                 crate::app_server_session::ResumeModelSettings::OverrideFromCurrentConfig
+            }
+            ResumeSource::ActiveWithModel { model, provider_id } => {
+                crate::app_server_session::ResumeModelSettings::Explicit {
+                    model: model.clone(),
+                    model_provider: provider_id.clone(),
+                }
             }
             ResumeSource::Backend(_) => {
                 super::config_persistence::resume_model_settings_for_overrides(

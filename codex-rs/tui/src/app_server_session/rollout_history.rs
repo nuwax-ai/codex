@@ -161,13 +161,15 @@ impl AppServerSession {
             self.thread_tool_transport().validate_config(&config)?;
         }
         let session_config = if matches!(
-            model_settings,
+            &model_settings,
             ResumeModelSettings::RestoreFromThread | ResumeModelSettings::PreserveExistingThread
         ) {
             config.clone()
         } else {
             self.session_config_with_effective_service_tier(&config)
         };
+        let carries_config_overrides =
+            model_settings == ResumeModelSettings::OverrideFromCurrentConfig;
         let mut params = thread_resume_params_from_config(
             session_config,
             thread_id,
@@ -177,7 +179,7 @@ impl AppServerSession {
             permission_overrides,
         );
         if self.thread_params_mode().settings_owner() == ThreadSettingsOwner::Client
-            && model_settings == ResumeModelSettings::OverrideFromCurrentConfig
+            && carries_config_overrides
         {
             params.model_provider = self.explicit_model_provider(&config);
         }

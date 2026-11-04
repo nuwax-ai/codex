@@ -685,7 +685,7 @@ impl App {
                             &local_settings,
                             config.clone(),
                             target_session.thread_id,
-                            model_settings,
+                            model_settings.clone(),
                             crate::resume_permissions::ResumePermissions::from_overrides(
                                 &config,
                                 &harness_overrides,
@@ -755,7 +755,7 @@ impl App {
                             local_settings: &local_settings,
                         },
                         &target_session,
-                        action,
+                        action.clone(),
                         resumed,
                         async || {
                             startup_draft.flush_pending_events(tui).await?;
@@ -859,7 +859,7 @@ impl App {
                         local_settings: &local_settings,
                     },
                     &target_session,
-                    action,
+                    action.clone(),
                     forked,
                     async || {
                         startup_draft.flush_pending_events(tui).await?;

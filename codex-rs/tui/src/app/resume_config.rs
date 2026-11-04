@@ -41,7 +41,8 @@ impl App {
         // not replace the displayed conversation's settings before attachment succeeds.
         let (target, current_config, local_settings) = match source {
             super::resume_preparation::ResumeSource::Active
-            | super::resume_preparation::ResumeSource::ActiveWithCurrentModel => {
+            | super::resume_preparation::ResumeSource::ActiveWithCurrentModel
+            | super::resume_preparation::ResumeSource::ActiveWithModel { .. } => {
                 self.refresh_in_memory_config_from_disk_best_effort("resuming a thread")
                     .await;
                 (

@@ -17,6 +17,7 @@ async fn start_session(
 ) -> Result<SessionStartOutcome> {
     let local_settings = LocalSettings::from(config);
     let initial_result = action
+        .clone()
         .start(app_server, config, &local_settings, target)
         .await;
     complete_session_start(
@@ -26,7 +27,7 @@ async fn start_session(
             local_settings: &local_settings,
         },
         target,
-        action,
+        action.clone(),
         initial_result,
         confirm,
     )
@@ -75,7 +76,7 @@ async fn archived_session_requires_confirmation_before_resume_or_fork() -> Resul
         let prompts = Cell::new(0);
 
         for choice in [UnarchiveChoice::Cancel, UnarchiveChoice::Quit] {
-            let outcome = start_session(&mut app_server, &config, &target, action, async || {
+            let outcome = start_session(&mut app_server, &config, &target, action.clone(), async || {
                 prompts.set(prompts.get() + 1);
                 Ok(choice)
             })
@@ -100,7 +101,7 @@ async fn archived_session_requires_confirmation_before_resume_or_fork() -> Resul
 
         assert_eq!(prompts.get(), 2);
         let SessionStartOutcome::Started(started) =
-            start_session(&mut app_server, &config, &target, action, async || {
+            start_session(&mut app_server, &config, &target, action.clone(), async || {
                 prompts.set(prompts.get() + 1);
                 Ok(UnarchiveChoice::Unarchive)
             })
@@ -151,7 +152,7 @@ async fn archived_session_requires_confirmation_before_resume_or_fork() -> Resul
             cwd: None,
             history_mode: None,
         };
-        let error = start_session(&mut app_server, &config, &missing, action, async || {
+        let error = start_session(&mut app_server, &config, &missing, action.clone(), async || {
             panic!("unrelated failures must not prompt")
         })
         .await

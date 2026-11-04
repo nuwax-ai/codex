@@ -410,7 +410,7 @@ pub(crate) enum ThreadSettingsOwner {
 }
 
 /// Determines where model settings come from when resuming a thread.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ResumeModelSettings {
     /// Sends the current config's model, provider, and reasoning effort as explicit overrides.
     OverrideFromCurrentConfig,
@@ -418,6 +418,13 @@ pub(crate) enum ResumeModelSettings {
     RestoreFromThread,
     /// Rejoins a loaded thread without changing any of its existing settings.
     PreserveExistingThread,
+    /// Fork (nuwax-codex): an interactive cross-vendor selection from the
+    /// model picker — the thread re-homes to exactly this model/provider pair
+    /// regardless of what any config layer says.
+    Explicit {
+        model: String,
+        model_provider: String,
+    },
 }
 
 impl ThreadParamsMode {
@@ -2499,8 +2506,7 @@ fn thread_resume_params_from_config(
             thread_id: thread_id.to_string(),
             ..ThreadResumeParams::default()
         };
-    }
-    let permissions = permissions_selection_from_config(&config, thread_params_mode);
+    }    let permissions = permissions_selection_from_config(&config, thread_params_mode);
     let sandbox = permissions
         .is_none()
         .then(|| {
@@ -2524,6 +2530,7 @@ fn thread_resume_params_from_config(
             config.model.clone(),
             provider_selection::explicit_provider(&config),
         ),
+        ResumeModelSettings::Explicit { model, model_provider } => (Some(model), Some(model_provider)),
         ResumeModelSettings::RestoreFromThread | ResumeModelSettings::PreserveExistingThread => {
             (None, None)
         }

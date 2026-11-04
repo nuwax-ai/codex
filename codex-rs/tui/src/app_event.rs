@@ -588,6 +588,15 @@ pub(crate) enum AppEvent {
         thread_id: ThreadId,
     },
 
+    /// Fork (nuwax-codex): switch the displayed conversation to an explicitly
+    /// picked model/provider pair by re-homing `thread/resume` — history is
+    /// kept, the thread's home provider is re-stamped.
+    RehomeThreadToProvider {
+        thread_id: ThreadId,
+        model: String,
+        provider_id: String,
+    },
+
     /// Create a managed checkout and start or fork a session into it.
     StartManagedWorktree {
         mode: ManagedWorktreeMode,
