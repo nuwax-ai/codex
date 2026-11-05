@@ -25,13 +25,17 @@ nuwax-harness --version
 
 ```bash
 cd <仓库>/codex-rs && set -a && source <V8 env 文件> && set +a && \
-  CARGO_TARGET_DIR=~/.nuwax-cargo-target \
+  CARGO_TARGET_DIR="$PWD/target" \
   cargo install --path cli --bin codex --root ~/.nuwax-cargo --locked --force
 ln -sf ~/.nuwax-cargo/bin/codex ~/.cargo/bin/nuwax-harness
 ```
 
 - 源码构建版本号恒为 `0.0.0`,可用来区分 npm 版;workspace 版本恒占位,
   因此每次重装都需要 `--force`。`CARGO_TARGET_DIR` 固定后后续重装走增量编译。
+  **建议指向项目目录下的 `codex-rs/target`**:缓存会跟仓库一起留在同一块盘上;
+  旧的 `~/.nuwax-cargo-target` 写法会把 10G+ 缓存堆到系统盘。
+- 不要用 `cp` 原地覆盖已安装的二进制:macOS 会因签名缓存失效直接 SIGKILL
+  (`Killed: 9`);`cargo install --force` 走临时文件 + rename,不会踩到。
 - V8 env 文件由 `scripts/prefetch_rusty_v8.sh` 生成;不 source 它构建会失败。
 - 安装到独立 root 再软链,**不要**把 fork 的 `codex` 装进 `~/.cargo/bin`,
   避免与官方 codex(如 homebrew 的 `/opt/homebrew/bin/codex`)冲突。

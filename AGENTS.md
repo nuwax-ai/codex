@@ -48,7 +48,8 @@
 ```bash
 # 源码装到本机(不等 npm 发布);V8 env 文件由 prefetch 脚本生成
 cd codex-rs && set -a && source /tmp/nuwax-v8.env && set +a
-CARGO_TARGET_DIR=~/.nuwax-cargo-target cargo install --path cli --bin codex \
+# 缓存放项目所在盘(外接盘):别用 ~/.nuwax-cargo-target,那会在系统盘堆 10G+
+CARGO_TARGET_DIR="$PWD/target" cargo install --path cli --bin codex \
   --root ~/.nuwax-cargo --locked --force
 ln -sf ~/.nuwax-cargo/bin/codex ~/.cargo/bin/nuwax-harness
 ```
