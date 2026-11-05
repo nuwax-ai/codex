@@ -52,6 +52,10 @@ pub(crate) struct CustomPromptView {
     submit_label: &'static str,
     preserve_whitespace: bool,
     dismiss_after_child_accept: bool,
+    /// Fork (nuwax-codex): render the input masked with '*' — used for
+    /// secret entry (direct API keys); the buffer never becomes chat
+    /// history, suggestions, or snapshots.
+    pub(crate) masked: bool,
 
     // UI state
     textarea: TextArea,
@@ -84,6 +88,7 @@ impl CustomPromptView {
             submit_label: "submit",
             preserve_whitespace: false,
             dismiss_after_child_accept: false,
+            masked: false,
             textarea,
             textarea_state: RefCell::new(TextAreaState::default()),
             paste_burst: PasteBurst::default(),

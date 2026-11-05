@@ -612,6 +612,11 @@ pub(crate) enum AppEvent {
     ProviderWizardEnvKey(String),
     ProviderWizardModels(String),
     ProviderWizardConfirm,
+    /// Fork: credential-mode branch of the wizard (direct key / env / none).
+    ProviderWizardCredentialMode(String),
+    /// Fork: the pasted API key from the masked input (restricted: never
+    /// logged, never rendered after entry).
+    ProviderWizardApiKey(String),
 
     /// Create a managed checkout and start or fork a session into it.
     StartManagedWorktree {

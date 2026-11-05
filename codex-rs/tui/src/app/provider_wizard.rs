@@ -5,6 +5,7 @@
 //! One AppEvent variant per step; the dispatch arms call straight through.
 
 use super::*;
+use crate::chatwidget::WizardCredentialIntent;
 
 impl App {
     pub(super) fn provider_wizard_open(&mut self) {
@@ -20,12 +21,7 @@ impl App {
             Some(preset) => {
                 self.provider_wizard =
                     Some(crate::chatwidget::ProviderWizardDraft::from_preset(preset));
-                let initial = self
-                    .provider_wizard
-                    .as_ref()
-                    .map(|draft| draft.env_key.clone())
-                    .unwrap_or_default();
-                self.show_wizard_env_key_step(initial);
+                self.chat_widget.show_provider_wizard_credential_step();
             }
             // Custom: collect everything by hand, starting with the id.
             None => {
@@ -118,15 +114,10 @@ impl App {
         if !matches!(wire, "responses" | "chat" | "anthropic") {
             return;
         }
-        let initial = self
-            .provider_wizard
-            .as_ref()
-            .map(|draft| draft.env_key.clone())
-            .unwrap_or_default();
         if let Some(draft) = self.provider_wizard.as_mut() {
             draft.wire_api = wire.to_string();
         }
-        self.show_wizard_env_key_step(initial);
+        self.chat_widget.show_provider_wizard_credential_step();
     }
 
     pub(super) fn provider_wizard_env_key(&mut self, value: &str) {
@@ -146,9 +137,14 @@ impl App {
             let Some(draft) = self.provider_wizard.as_mut() else {
                 return;
             };
-            draft.env_key = env_key;
+            draft.env_key = env_key.clone();
             draft.models.join(", ")
         };
+        self.wizard_credential = Some(if env_key.is_empty() {
+            WizardCredentialIntent::NoAuth
+        } else {
+            WizardCredentialIntent::EnvKey(env_key)
+        });
         self.chat_widget.show_provider_wizard_text_step(
             "Models",
             "Comma-separated model slugs this provider serves — these are what /model \
@@ -182,7 +178,24 @@ impl App {
         let Some(draft) = self.provider_wizard.as_ref() else {
             return;
         };
-        self.chat_widget.show_provider_wizard_preview(draft);
+        self.chat_widget
+            .show_provider_wizard_preview(draft, &self.wizard_credential_note());
+    }
+
+    /// The preview line for the credential slot — a status, never a value.
+    fn wizard_credential_note(&self) -> String {
+        match &self.wizard_credential {
+            Some(WizardCredentialIntent::DirectKey(_)) => {
+                "api_key = \u{2022}\u{2022}\u{2022}\u{2022} (will be saved from your input)".to_string()
+            }
+            Some(WizardCredentialIntent::EnvKey(name)) => {
+                format!("env_key = {name:?}")
+            }
+            Some(WizardCredentialIntent::NoAuth) => {
+                "# no authentication (local gateway)".to_string()
+            }
+            None => "env_key = \"\"".to_string(),
+        }
     }
 
     pub(super) async fn provider_wizard_confirm(&mut self, app_server: &mut AppServerSession) {
@@ -193,16 +206,19 @@ impl App {
         };
         let provider_id = draft.provider_id.clone();
         let env_key = draft.env_key.clone();
+        let edits = match &self.wizard_credential {
+            Some(WizardCredentialIntent::DirectKey(key)) => {
+                draft.config_edits_with_api_key(key)
+            }
+            _ => draft.config_edits(),
+        };
         match self
-            .persist_model_defaults(
-                app_server.request_handle(),
-                draft.config_edits(),
-                "model provider",
-            )
+            .persist_model_defaults(app_server.request_handle(), edits, "model provider")
             .await
         {
             Ok(()) => {
                 self.provider_wizard = None;
+                self.wizard_credential = None;
                 // Refresh the in-memory config so the new provider is visible
                 // to /model in this same session (the preview footer promises
                 // exactly that).
@@ -225,7 +241,8 @@ impl App {
                      confirm again to retry."
                 ));
                 if let Some(draft) = self.provider_wizard.as_ref() {
-                    self.chat_widget.show_provider_wizard_preview(draft);
+                    self.chat_widget
+                        .show_provider_wizard_preview(draft, &self.wizard_credential_note());
                 }
             }
         }
@@ -249,6 +266,45 @@ impl App {
             initial,
             AppEvent::ProviderWizardId,
         );
+    }
+
+    /// Fork: route the credential-mode choice. Direct key opens the masked
+    /// input; env var opens the variable-name step; no auth skips ahead.
+    pub(super) fn provider_wizard_credential_mode(&mut self, mode: &str) {
+        match mode {
+            "API key (paste)" => self.chat_widget.show_provider_wizard_key_input(),
+            "Environment variable (advanced)" => {
+                self.show_wizard_env_key_step(String::new());
+            }
+            "No authentication" => {
+                if let Some(draft) = self.provider_wizard.as_mut() {
+                    draft.env_key = String::new();
+                }
+                self.show_wizard_models_step(String::new());
+            }
+            _ => {}
+        }
+    }
+
+    /// Fork: store the pasted key and advance to the models step. The key
+    /// lives only in the draft; the TOML preview shows "will be saved as
+    /// api_key", never the value.
+    pub(super) fn provider_wizard_api_key(&mut self, key: &str) {
+        let key = key.trim().to_string();
+        if key.is_empty() {
+            self.chat_widget.add_error_message(
+                "The API key must not be empty — paste a key or pick another \
+                 authentication mode."
+                    .to_string(),
+            );
+            self.chat_widget.show_provider_wizard_credential_step();
+            return;
+        }
+        if let Some(draft) = self.provider_wizard.as_mut() {
+            draft.env_key = String::new();
+        }
+        self.wizard_credential = Some(WizardCredentialIntent::DirectKey(key));
+        self.show_wizard_models_step(String::new());
     }
 
     fn show_wizard_env_key_step(&mut self, initial: String) {

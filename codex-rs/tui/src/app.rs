@@ -676,6 +676,9 @@ pub(crate) struct App {
     /// Fork (nuwax-codex): in-flight "add a model provider" wizard draft
     /// (FORK.md §7.3); advanced one step per AppEvent.
     provider_wizard: Option<crate::chatwidget::ProviderWizardDraft>,
+    /// Fork: the wizard's pending credential intent; the direct key value
+    /// lives ONLY here until the confirmed write.
+    wizard_credential: Option<crate::chatwidget::WizardCredentialIntent>,
     pending_startup_thread_start: bool,
     pending_server_version_notice: Option<crate::status::remote_connection::ServerVersionNotice>,
     /// Opens the session picker after event dispatch returns, with a fresh stack.

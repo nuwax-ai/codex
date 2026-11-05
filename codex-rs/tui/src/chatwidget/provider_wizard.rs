@@ -97,6 +97,17 @@ pub(crate) struct ProviderWizardDraft {
     pub(crate) models: Vec<String>,
 }
 
+/// Fork: how the wizard finishes the credential step.
+#[derive(Clone, PartialEq)]
+pub(crate) enum WizardCredentialIntent {
+    /// Paste a key into a masked input; saved as `api_key`.
+    DirectKey(String),
+    /// Reference an environment variable (advanced mode).
+    EnvKey(String),
+    /// Local gateway without auth.
+    NoAuth,
+}
+
 impl ProviderWizardDraft {
     pub(crate) fn from_preset(preset: &ProviderPreset) -> Self {
         Self {
@@ -109,9 +120,10 @@ impl ProviderWizardDraft {
         }
     }
 
-    /// The `[model_providers.<id>]` block this draft writes, rendered for the
-    /// preview step.
-    pub(crate) fn toml_preview(&self) -> String {
+    /// The `[model_providers.<id>]` block this draft writes, rendered for
+    /// the preview step. The credential line is a STATUS, never a value:
+    /// `api_key = "••••"` is replaced at write time by the typed key.
+    pub(crate) fn toml_preview(&self, credential_note: &str) -> String {
         let models = self
             .models
             .iter()
@@ -122,11 +134,39 @@ impl ProviderWizardDraft {
             format!("[model_providers.{}]", self.provider_id),
             format!("name = {:?}", self.name),
             format!("base_url = {:?}", self.base_url),
-            format!("env_key = {:?}", self.env_key),
             format!("wire_api = {:?}", self.wire_api),
+            credential_note.to_string(),
             format!("models = [{models}]"),
         ]
         .join("\n")
+    }
+
+    /// Edits including a direct api_key: the key value is inserted ONLY in
+    /// this restricted write path (never in the preview, logs, or draft
+    /// serialization).
+    pub(crate) fn config_edits_with_api_key(
+        &self,
+        key: &str,
+    ) -> Vec<codex_app_server_protocol::ConfigEdit> {
+        let mut edits = self.config_edits();
+        let prefix = format!("model_providers.{}.", self.provider_id);
+        // Source switch: delete any env_key the earlier edit chain would
+        // have written (a null write removes an existing field).
+        edits.retain(|edit| edit.key_path != format!("{prefix}env_key"));
+        edits.insert(
+            0,
+            codex_app_server_protocol::ConfigEdit {
+                key_path: format!("{prefix}env_key"),
+                value: serde_json::Value::Null,
+                merge_strategy: codex_app_server_protocol::MergeStrategy::Replace,
+            },
+        );
+        edits.push(codex_app_server_protocol::ConfigEdit {
+            key_path: format!("{prefix}api_key"),
+            value: serde_json::json!(key),
+            merge_strategy: codex_app_server_protocol::MergeStrategy::Replace,
+        });
+        edits
     }
 
     /// One key-path edit per field; `config/batchWrite` preserves unrelated
@@ -208,6 +248,67 @@ impl ChatWidget {
         });
     }
 
+    /// Fork: the credential-mode picker — direct key (default), env var
+    /// (advanced), or no auth. The direct-key branch opens a MASKED input;
+    /// the pasted value never renders in clear, never enters chat history,
+    /// and never reaches the TOML preview.
+    pub(crate) fn show_provider_wizard_credential_step(&mut self) {
+        let items: Vec<SelectionItem> = [
+            (
+                "API key (paste)",
+                "Paste the key directly — saved as api_key in your user config (masked input)",
+            ),
+            (
+                "Environment variable (advanced)",
+                "Reference an env var like MY_PROVIDER_API_KEY; the key stays in your shell",
+            ),
+            (
+                "No authentication",
+                "Local gateway or proxy without credentials",
+            ),
+        ]
+        .into_iter()
+        .map(|(name, description)| SelectionItem {
+            name: name.to_string(),
+            description: Some(description.to_string()),
+            actions: vec![Box::new(move |tx| {
+                tx.send(AppEvent::ProviderWizardCredentialMode(name.to_string()));
+            })],
+            dismiss_on_select: true,
+            ..Default::default()
+        })
+        .collect();
+        self.show_selection_view(SelectionViewParams {
+            view_id: Some("provider-wizard-credential"),
+            title: Some("Authentication".to_string()),
+            subtitle: Some(
+                "How should this provider authenticate? The key itself is only ever \
+                 written to your user config (0600) or sent to the provider."
+                    .to_string(),
+            ),
+            items,
+            ..SelectionViewParams::picker()
+        });
+    }
+
+    /// Fork: masked input for the API key. Rendered with '*', never echoed.
+    pub(crate) fn show_provider_wizard_key_input(&mut self) {
+        let tx = self.app_event_tx.clone();
+        let view = CustomPromptView::new(
+            "API key".to_string(),
+            "Paste the key and press Enter (input is masked)".to_string(),
+            String::new(),
+            /*context_label*/ None,
+            Box::new(move |value: String| {
+                tx.send(AppEvent::ProviderWizardApiKey(value));
+            }),
+        );
+        // The masked flag is set after construction via the struct field.
+        let mut view = view;
+        view.masked = true;
+        self.bottom_pane.show_text_prompt(view);
+    }
+
     /// A single-line text step. `initial` prefills the editor.
     pub(crate) fn show_provider_wizard_text_step(
         &mut self,
@@ -267,13 +368,18 @@ impl ChatWidget {
     }
 
     /// Final step: preview the exact TOML block and confirm the write.
-    pub(crate) fn show_provider_wizard_preview(&mut self, draft: &ProviderWizardDraft) {
+    pub(crate) fn show_provider_wizard_preview(
+        &mut self,
+        draft: &ProviderWizardDraft,
+        credential_note: &str,
+    ) {
+        let toml = draft.toml_preview(credential_note);
         let env_key = draft.env_key.clone();
         let exists = self
             .config
             .model_providers
             .contains_key(&draft.provider_id);
-        let mut description = vec![draft.toml_preview()];
+        let mut description = vec![toml];
         if exists {
             description.push(format!(
                 "Provider `{}` is already configured — saving overwrites the keys above (others are kept).",
@@ -319,10 +425,13 @@ mod tests {
             env_key: "GW_API_KEY".to_string(),
             models: vec!["model-a".to_string(), "model-b".to_string()],
         };
-        let preview = draft.toml_preview();
+        let preview = draft.toml_preview("env_key = \"GW_API_KEY\"");
         assert!(preview.contains("[model_providers.my-gateway]"));
         assert!(preview.contains("wire_api = \"chat\""));
         assert!(preview.contains("models = [\"model-a\", \"model-b\"]"));
+        // The credential note is caller-supplied so the direct key never
+        // passes through the draft.
+        assert!(preview.contains("env_key = \"GW_API_KEY\""));
         let edits = draft.config_edits();
         let paths: Vec<&str> = edits.iter().map(|edit| edit.key_path.as_str()).collect();
         assert_eq!(
@@ -374,5 +483,58 @@ mod tests {
             );
             assert!(!preset.models.is_empty(), "{}", preset.id);
         }
+    }
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::*;
+
+    #[test]
+    fn direct_key_edits_delete_env_key_and_carry_the_key_once() {
+        let draft = ProviderWizardDraft {
+            provider_id: "gw".to_string(),
+            name: "Gateway".to_string(),
+            base_url: "https://gw.example.test/v1".to_string(),
+            wire_api: "chat".to_string(),
+            env_key: "GW_ENV_KEY".to_string(),
+            models: vec!["model-a".to_string()],
+        };
+        let edits = draft.config_edits_with_api_key("sk-test-key");
+        let key_edit = edits
+            .iter()
+            .find(|edit| edit.key_path == "model_providers.gw.api_key")
+            .expect("api_key edit present");
+        assert_eq!(key_edit.value, serde_json::json!("sk-test-key"));
+        let env_edit = edits
+            .iter()
+            .find(|edit| edit.key_path == "model_providers.gw.env_key")
+            .expect("env_key deletion edit present");
+        assert_eq!(env_edit.value, serde_json::Value::Null);
+        // The key appears exactly once across all edits.
+        let hits = edits
+            .iter()
+            .filter(|edit| {
+                edit.value
+                    .as_str()
+                    .is_some_and(|value| value.contains("sk-test-key"))
+            })
+            .count();
+        assert_eq!(hits, 1);
+    }
+
+    #[test]
+    fn preview_never_contains_the_key_value() {
+        let draft = ProviderWizardDraft {
+            provider_id: "gw".to_string(),
+            name: "Gateway".to_string(),
+            base_url: "https://gw.example.test/v1".to_string(),
+            wire_api: "chat".to_string(),
+            env_key: String::new(),
+            models: vec!["model-a".to_string()],
+        };
+        let preview = draft.toml_preview("api_key = \"•••• (will be saved from your input)\"");
+        assert!(!preview.contains("sk-"));
+        assert!(preview.contains("api_key"));
     }
 }

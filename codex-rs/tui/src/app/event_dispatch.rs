@@ -398,6 +398,12 @@ impl App {
             AppEvent::ProviderWizardModels(value) => {
                 self.provider_wizard_models(&value);
             }
+            AppEvent::ProviderWizardCredentialMode(mode) => {
+                self.provider_wizard_credential_mode(&mode);
+            }
+            AppEvent::ProviderWizardApiKey(key) => {
+                self.provider_wizard_api_key(&key);
+            }
             AppEvent::ProviderWizardConfirm => {
                 self.provider_wizard_confirm(app_server).await;
             }
