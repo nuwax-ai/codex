@@ -101,7 +101,7 @@ impl AccountRequestProcessor {
         let client = client
             .ok_or_else(|| invalid_request("The current provider does not use gateway OAuth"))?;
         if config.model_provider.requires_openai_auth
-            && config.model_provider.env_key.is_none()
+            && !config.model_provider.has_static_api_key_source()
             && config.model_provider.experimental_bearer_token.is_none()
             && config.model_provider.auth.is_none()
             && self.auth_manager.auth_cached().is_none()

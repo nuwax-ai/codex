@@ -1001,6 +1001,15 @@ fn compute_override_metadata(
 
     // Redact the complete OTEL config before extracting the overridden path,
     // which may point to an entire exporter or an individual credential.
+    // Fork: a higher layer's provider api_key is a secret — report
+    // configured-status instead of the raw value on this public path.
+    if segments
+        .first()
+        .is_some_and(|segment| segment == "model_providers")
+        && segments.last().is_some_and(|segment| segment == "api_key")
+    {
+        return None;
+    }
     let effective_value = if segments.first().is_some_and(|segment| segment == "otel") {
         effective
             .get("otel")

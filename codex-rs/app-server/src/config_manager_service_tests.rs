@@ -3729,8 +3729,9 @@ async fn direct_api_key_write_switches_source_atomically() -> Result<()> {
             auth: GatewayAuth::DirectApiKey
         }
     );
-    let saved: serde_json::Value =
-        toml::from_str(&std::fs::read_to_string(home.path().join(CONFIG_TOML_FILE))?)?;
+    let saved: serde_json::Value = toml::from_str(&std::fs::read_to_string(
+        home.path().join(CONFIG_TOML_FILE),
+    )?)?;
     assert_eq!(
         saved["model_providers"]["gw"]["api_key"].as_str(),
         Some("sk-direct-test-key")
@@ -3747,8 +3748,9 @@ async fn direct_api_key_write_switches_source_atomically() -> Result<()> {
             serde_json::json!({"envKey": "GW_ENV_KEY"}),
         ))
         .await?;
-    let saved: serde_json::Value =
-        toml::from_str(&std::fs::read_to_string(home.path().join(CONFIG_TOML_FILE))?)?;
+    let saved: serde_json::Value = toml::from_str(&std::fs::read_to_string(
+        home.path().join(CONFIG_TOML_FILE),
+    )?)?;
     assert_eq!(
         saved["model_providers"]["gw"]["env_key"].as_str(),
         Some("GW_ENV_KEY")
@@ -3775,10 +3777,13 @@ async fn direct_api_key_write_switches_source_atomically() -> Result<()> {
         .await?;
     assert_eq!(
         cleared.provider.settings,
-        ProviderSettings::CustomGateway { auth: GatewayAuth::None }
+        ProviderSettings::CustomGateway {
+            auth: GatewayAuth::None
+        }
     );
-    let saved: serde_json::Value =
-        toml::from_str(&std::fs::read_to_string(home.path().join(CONFIG_TOML_FILE))?)?;
+    let saved: serde_json::Value = toml::from_str(&std::fs::read_to_string(
+        home.path().join(CONFIG_TOML_FILE),
+    )?)?;
     assert!(saved["model_providers"]["gw"].get("api_key").is_none());
     Ok(())
 }
@@ -3810,10 +3815,7 @@ async fn direct_api_key_write_validates_inputs() -> Result<()> {
     );
 
     let error = manager
-        .model_provider_config_write(gateway_patch(
-            Some("gw"),
-            serde_json::json!({"models": []}),
-        ))
+        .model_provider_config_write(gateway_patch(Some("gw"), serde_json::json!({"models": []})))
         .await
         .expect_err("empty models must fail");
     assert!(error.to_string().contains("at least one model slug"));
@@ -3905,8 +3907,9 @@ async fn direct_api_key_write_models_and_wire_round_trip() -> Result<()> {
             }),
         ))
         .await?;
-    let saved: serde_json::Value =
-        toml::from_str(&std::fs::read_to_string(home.path().join(CONFIG_TOML_FILE))?)?;
+    let saved: serde_json::Value = toml::from_str(&std::fs::read_to_string(
+        home.path().join(CONFIG_TOML_FILE),
+    )?)?;
     let provider = &saved["model_providers"]["gw"];
     assert_eq!(provider["wire_api"].as_str(), Some("anthropic"));
     assert_eq!(

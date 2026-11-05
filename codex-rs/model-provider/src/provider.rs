@@ -418,8 +418,7 @@ pub fn resolve_api_provider(
 
 pub fn provider_uses_first_party_auth_path(provider: &ModelProviderInfo) -> bool {
     provider.requires_openai_auth
-        && provider.env_key.is_none()
-        && provider.experimental_bearer_token.is_none()
+        && !provider.has_static_api_key_source()
         && provider.auth.is_none()
         && provider.aws.is_none()
 }

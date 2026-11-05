@@ -4754,9 +4754,12 @@ impl ThreadRequestProcessor {
             // (direct api_key set/rotated, base_url moved), the thread must
             // rebuild on idle so the next turn authenticates with the new
             // credential — otherwise "saved" masquerades as "applied".
-            let thread_provider = existing_thread.config().await.model_provider.clone();
+            let thread_config = existing_thread.config().await;
+            let thread_provider = thread_config.model_provider.clone();
+            let thread_cwd = Some(thread_config.cwd.to_path_buf());
+            drop(thread_config);
             if self
-                .provider_definition_drifted(&thread_provider)
+                .provider_definition_drifted(&thread_provider, thread_cwd)
                 .await
                 .unwrap_or(false)
             {
@@ -7009,14 +7012,18 @@ impl ThreadRequestProcessor {
     async fn provider_definition_drifted(
         &self,
         thread_provider: &codex_model_provider_info::ModelProviderInfo,
+        thread_cwd: Option<std::path::PathBuf>,
     ) -> std::io::Result<bool> {
         let Some(thread_provider_id) = thread_provider.provider_id.clone() else {
             return Ok(false);
         };
-        let cwd = None;
+        // Load with the thread's own cwd so project-layer providers resolve
+        // the same way they did at build time; a project-less load would
+        // miss project-defined providers entirely (false negatives) and
+        // mismatch project-overridden ones forever (false positives).
         let fresh = self
             .config_manager
-            .load_latest_config(cwd)
+            .load_latest_config(thread_cwd)
             .await?
             .model_providers
             .get(&thread_provider_id)

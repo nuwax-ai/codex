@@ -161,17 +161,19 @@ pub fn write_atomically(write_path: &Path, contents: &str) -> io::Result<()> {
     std::fs::create_dir_all(parent)?;
     let mut tmp = NamedTempFile::new_in(parent)?;
     tmp.write_all(contents.as_bytes())?;
-    // Fork (nuwax-codex): user config files may carry a direct API key
-    // (my-docs/direct-provider-api-key-2026-11-05) — restrict the temp file
-    // and the persisted file to the owner before the content lands.
+    // Fork (nuwax-codex): these outputs include the user config, which may
+    // carry a direct API key (my-docs/direct-provider-api-key-2026-11-05) —
+    // restrict to owner-only where the filesystem supports it. Best-effort
+    // by design: chmod fails on vfat/exFAT/some network mounts, and failing
+    // the whole (already-atomic) write there would break configs on those
+    // filesystems; tempfile's Unix default is already 0600 anyway, so this
+    // only re-asserts after the rename replaced a previously looser file.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o600))?;
+        std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o600)).ok();
         tmp.persist(write_path)?;
-        // persist replaces by rename; re-assert in case the target existed
-        // with looser bits.
-        std::fs::set_permissions(write_path, std::fs::Permissions::from_mode(0o600))?;
+        std::fs::set_permissions(write_path, std::fs::Permissions::from_mode(0o600)).ok();
     }
     #[cfg(not(unix))]
     {

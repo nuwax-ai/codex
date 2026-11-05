@@ -8992,6 +8992,23 @@
           "type": "object"
         },
         {
+          "description": "Fork: an API key is stored directly in the user config. Status only — the key itself is never returned.",
+          "properties": {
+            "mode": {
+              "enum": [
+                "directApiKey"
+              ],
+              "title": "DirectApiKeyGatewayAuthMode",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "title": "DirectApiKeyGatewayAuth",
+          "type": "object"
+        },
+        {
           "properties": {
             "envKey": {
               "type": "string"
@@ -15001,6 +15018,13 @@
         {
           "additionalProperties": false,
           "properties": {
+            "apiKey": {
+              "description": "Fork: the direct API key. Absent = keep; Some(None) = clear; Some(k) = set. The value travels only in this restricted write request and is never echoed in summaries, errors, or logs.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "baseUrl": {
               "type": [
                 "string",
@@ -15010,6 +15034,15 @@
             "envKey": {
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "models": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
                 "null"
               ]
             },
@@ -15029,6 +15062,13 @@
               ],
               "title": "CustomGatewayProviderSettingsPatchType",
               "type": "string"
+            },
+            "wireApi": {
+              "description": "Fork (nuwax-codex): wire protocol + declared models (P1/P4 fields).",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [

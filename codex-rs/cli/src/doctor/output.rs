@@ -900,6 +900,9 @@ pub(super) fn redact_detail(detail: &str) -> String {
         "bearer_token",
         "token",
         "secret",
+        // Fork: direct provider keys live in config.toml; a toml parse error
+        // echoes the offending source line verbatim, which carries the key.
+        "api_key",
     ];
     if secret_keys.iter().any(|key| lower.contains(key)) {
         // make sure that windows drives in paths are not matches C:/ if they are a first token

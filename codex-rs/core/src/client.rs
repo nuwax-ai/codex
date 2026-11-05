@@ -1387,8 +1387,7 @@ impl ModelClient {
         auth.is_some_and(CodexAuth::uses_codex_backend)
             && provider.is_openai()
             && provider.requires_openai_auth
-            && provider.env_key.is_none()
-            && provider.experimental_bearer_token.is_none()
+            && !provider.has_static_api_key_source()
             && provider.auth.is_none()
             && provider.aws.is_none()
     }
@@ -2157,7 +2156,7 @@ impl ResponsesHttpExecutor<'_> {
                 responses_metadata,
                 include_internal,
             )?;
-                        // Match the native Responses transport: outbound items never
+            // Match the native Responses transport: outbound items never
             // carry legacy non-prefixed ids, so the bridge wire is identical
             // to what stream_responses_api would have sent for them.
             self.client
@@ -2365,7 +2364,7 @@ impl ResponsesHttpExecutor<'_> {
                 responses_metadata,
                 include_internal,
             )?;
-                        self.client.set_guardian_metadata(
+            self.client.set_guardian_metadata(
                 &mut request.client_metadata,
                 responses_metadata.parent_response_id.as_deref(),
                 client_setup.auth.as_ref(),
@@ -2581,7 +2580,7 @@ impl ModelClientSession {
                 responses_metadata,
                 include_internal,
             )?;
-                        if is_guardian_reviewer(&responses_headers) {
+            if is_guardian_reviewer(&responses_headers) {
                 request.service_tier = None;
             }
             request.access_programs = cyber_access_program::for_auth(

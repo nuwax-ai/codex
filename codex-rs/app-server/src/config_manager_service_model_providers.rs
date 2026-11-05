@@ -161,7 +161,8 @@ pub(super) fn summarize_provider(
             } else if config.is_some_and(|config| {
                 config
                     .get("api_key")
-                    .is_some_and(|key| !key.as_str().is_none_or(str::is_empty))
+                    .and_then(TomlValue::as_str)
+                    .is_some_and(|key| !key.trim().is_empty())
             }) {
                 // Status only — never the value.
                 GatewayAuth::DirectApiKey
@@ -224,7 +225,17 @@ pub(super) fn supported_fields(
         }
         (Some(_), GCP_PROVIDER_ID) => &["project_id", "location", "credential_file"],
         (Some(_), _) => &[],
-        (None, _) => &["name", "base_url", "env_key", "wire_api", "models", "api_key"],
+        (None, _) => &[
+            "name",
+            "base_url",
+            "env_key",
+            "wire_api",
+            "models",
+            "api_key",
+            // Writable only as the target of an atomic credential-source
+            // switch (deleted when api_key is set); never settable directly.
+            "experimental_bearer_token",
+        ],
     }
 }
 

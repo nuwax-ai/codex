@@ -1,8 +1,10 @@
 //! Fork (nuwax-codex): the "add a model provider" wizard (multi-vendor plan
 //! P4, FORK.md §7.3). Chained popups collect a provider definition and hand
 //! it to the app layer, which writes it through `config/batchWrite` as
-//! `model_providers.<id>` keys. API keys never enter this flow: the wizard
-//! records the *variable name* (`env_key`) only.
+//! `model_providers.<id>` keys. Credential modes since 2026-11-05: a direct
+//! API key (masked input, value held only in the app-side credential intent
+//! until the confirmed write) or the classic env-var *name*; the value/secret
+//! never renders in the preview.
 
 use super::*;
 
@@ -116,7 +118,11 @@ impl ProviderWizardDraft {
             base_url: preset.base_url.to_string(),
             wire_api: preset.wire_api.to_string(),
             env_key: preset.env_key.to_string(),
-            models: preset.models.iter().map(|model| model.to_string()).collect(),
+            models: preset
+                .models
+                .iter()
+                .map(|model| model.to_string())
+                .collect(),
         }
     }
 
@@ -183,18 +189,39 @@ impl ProviderWizardDraft {
             }
         }
         let prefix = format!("model_providers.{}.", self.provider_id);
-        // An empty env_key means "no auth" — omit the key entirely. Writing
-        // env_key = "" would deserialize to Some("") and make the engine look
-        // for a required environment variable with an empty name.
-        let mut edits = vec![
+        // An empty env_key means "no auth" — a Null edit DELETES any existing
+        // key (writing "" would make the engine require an empty-named env
+        // var), and the same deletion applies to api_key/experimental_bearer
+        // token so re-running the wizard over a direct-key provider can
+        // actually switch credential modes instead of failing exclusivity.
+        // Empty env_key = no auth: a Null edit deletes any existing key
+        // (writing "" would make the engine require an empty-named env var).
+        let env_key_value = if self.env_key.is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::json!(self.env_key)
+        };
+        let edits = vec![
             edit(format!("{prefix}name"), serde_json::json!(self.name)),
-            edit(format!("{prefix}base_url"), serde_json::json!(self.base_url)),
-            edit(format!("{prefix}wire_api"), serde_json::json!(self.wire_api)),
+            edit(
+                format!("{prefix}base_url"),
+                serde_json::json!(self.base_url),
+            ),
+            edit(
+                format!("{prefix}wire_api"),
+                serde_json::json!(self.wire_api),
+            ),
+            edit(format!("{prefix}env_key"), env_key_value),
+            // Deleting any prior direct key / legacy bearer is what makes
+            // credential-mode switching over an existing provider work —
+            // leaving them fails api_key exclusivity on next load.
+            edit(format!("{prefix}api_key"), serde_json::Value::Null),
+            edit(
+                format!("{prefix}experimental_bearer_token"),
+                serde_json::Value::Null,
+            ),
+            edit(format!("{prefix}models"), serde_json::json!(self.models)),
         ];
-        if !self.env_key.is_empty() {
-            edits.push(edit(format!("{prefix}env_key"), serde_json::json!(self.env_key)));
-        }
-        edits.push(edit(format!("{prefix}models"), serde_json::json!(self.models)));
         edits
     }
 }
@@ -347,16 +374,14 @@ impl ChatWidget {
             ),
         ]
         .into_iter()
-        .map(|(wire, description)| {
-            SelectionItem {
-                name: wire.to_string(),
-                description: Some(description.to_string()),
-                actions: vec![Box::new(move |tx| {
-                    tx.send(AppEvent::ProviderWizardWire(wire.to_string()));
-                })],
-                dismiss_on_select: true,
-                ..Default::default()
-            }
+        .map(|(wire, description)| SelectionItem {
+            name: wire.to_string(),
+            description: Some(description.to_string()),
+            actions: vec![Box::new(move |tx| {
+                tx.send(AppEvent::ProviderWizardWire(wire.to_string()));
+            })],
+            dismiss_on_select: true,
+            ..Default::default()
         })
         .collect();
         self.show_selection_view(SelectionViewParams {
@@ -368,17 +393,16 @@ impl ChatWidget {
     }
 
     /// Final step: preview the exact TOML block and confirm the write.
+    /// `after_save_note` is credential-mode specific (the direct key needs
+    /// no export; env mode still reminds about the variable).
     pub(crate) fn show_provider_wizard_preview(
         &mut self,
         draft: &ProviderWizardDraft,
         credential_note: &str,
+        after_save_note: &str,
     ) {
         let toml = draft.toml_preview(credential_note);
-        let env_key = draft.env_key.clone();
-        let exists = self
-            .config
-            .model_providers
-            .contains_key(&draft.provider_id);
+        let exists = self.config.model_providers.contains_key(&draft.provider_id);
         let mut description = vec![toml];
         if exists {
             description.push(format!(
@@ -386,9 +410,7 @@ impl ChatWidget {
                 draft.provider_id
             ));
         }
-        description.push(format!(
-            "After saving: export {env_key}=<your key> (the key itself never goes into config), then choose the provider's models with /model."
-        ));
+        description.push(after_save_note.to_string());
         let items = vec![SelectionItem {
             name: "Save provider".to_string(),
             description: Some(description.join("\n\n")),
@@ -444,10 +466,7 @@ mod tests {
                 "model_providers.my-gateway.models",
             ]
         );
-        assert_eq!(
-            edits[4].value,
-            serde_json::json!(["model-a", "model-b"])
-        );
+        assert_eq!(edits[4].value, serde_json::json!(["model-a", "model-b"]));
 
         // No auth: the env_key edit is omitted entirely — writing
         // env_key = "" would make the engine require an empty-named

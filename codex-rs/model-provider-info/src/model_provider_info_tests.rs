@@ -1278,12 +1278,21 @@ fn direct_api_key_is_never_serialized_into_public_projections() {
         "generic serialization must skip api_key: {serialized}"
     );
     assert!(!serialized.contains("api_key"));
-    // Round-trip keeps the field on disk semantics (deserialize accepts it).
     let toml_text = toml::to_string(&provider).unwrap();
     assert!(
         !toml_text.contains("sk-never-serialize-me"),
         "generic TOML serialization must also skip the key"
     );
+    // Documented consequence of skip_serializing: a serialize→deserialize
+    // round-trip DROPS the credential by design (public projections never
+    // carry it). Persistence paths must write through explicit TOML edits,
+    // never through this type's Serialize.
+    let round_tripped: ModelProviderInfo = toml::from_str(&toml_text).unwrap();
+    assert!(
+        round_tripped.api_key.is_none(),
+        "round-trip drops the key by design; persistence must use explicit edits"
+    );
+    // Direct disk load keeps the field.
     let reloaded: ModelProviderInfo = toml::from_str(
         "name = \"Direct\"\napi_key = \"sk-kept\"\nbase_url = \"https://gw.example.test/v1\"\n",
     )

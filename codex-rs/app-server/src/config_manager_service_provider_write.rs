@@ -259,9 +259,7 @@ fn apply_credential_source_switch(
         return Err(invalid("api_key must not be blank; clear it with null."));
     }
     let has = |field: &str| existing.is_some_and(|provider| provider.get(field).is_some());
-    let clears = |fields: &[PatchField<'_>], field: &str| {
-        fields.iter().any(|(f, _)| *f == field)
-    };
+    let clears = |fields: &[PatchField<'_>], field: &str| fields.iter().any(|(f, _)| *f == field);
     // Setting one primary credential deletes the other primary fields in
     // this same atomic edit; omitting a field never deletes it.
     if patch.api_key.as_ref().is_some_and(|value| value.is_some()) {
@@ -288,10 +286,7 @@ fn apply_credential_source_switch(
         has(field)
     };
     if resulting("api_key")
-        && (resulting("env_key")
-            || has("experimental_bearer_token")
-            || has("auth")
-            || has("aws"))
+        && (resulting("env_key") || has("experimental_bearer_token") || has("auth") || has("aws"))
     {
         return Err(invalid(
             "api_key cannot be combined with env_key, experimental_bearer_token, auth, \

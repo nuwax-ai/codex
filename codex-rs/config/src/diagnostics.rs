@@ -368,6 +368,44 @@ fn span_for_path(contents: &str, path: &SerdePath) -> Option<std::ops::Range<usi
     }
 }
 
+/// Fork (nuwax-codex): provider-table spans must not select a source line
+/// that can carry a credential. Validation errors surfaced by
+/// `deserialize_model_providers` attribute to the `model_providers` path,
+/// whose table span starts at the first entry — for dotted-key or
+/// inline-table layouts that is the `api_key = "sk-..."` line itself, and
+/// the error renderer prints the selected line verbatim. When the span
+/// resolves inside `model_providers`, clamp it to the table header span so
+/// the rendered excerpt shows structure, never the credential value.
+fn clamp_provider_span(
+    contents: &str,
+    path: &SerdePath,
+    span: std::ops::Range<usize>,
+) -> std::ops::Range<usize> {
+    let in_providers = matches!(
+        path.iter().next(),
+        Some(SerdeSegment::Map { key }) if key == "model_providers"
+    );
+    if !in_providers {
+        return span;
+    }
+    let doc = match contents.parse::<Document<String>>() {
+        Ok(doc) => doc,
+        Err(_) => return span,
+    };
+    if let Some(table) = doc.get("model_providers").and_then(|item| item.as_table()) {
+        if let Some(header) = table.span() {
+            // Header line only ("[model_providers.<id>]"): one line of
+            // structure at most.
+            let header_end = contents[header.start..header.end]
+                .find('\n')
+                .map(|offset| header.start + offset)
+                .unwrap_or(header.end);
+            return header.start..header_end;
+        }
+    }
+    span
+}
+
 pub(crate) fn span_for_config_path(
     contents: &str,
     path: &SerdePath,
@@ -377,7 +415,8 @@ pub(crate) fn span_for_config_path(
     {
         return Some(span);
     }
-    span_for_path(contents, path)
+    let span = span_for_path(contents, path)?;
+    Some(clamp_provider_span(contents, path, span))
 }
 
 pub(crate) fn span_for_toml_key_path(
