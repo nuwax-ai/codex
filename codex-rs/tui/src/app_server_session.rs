@@ -2506,7 +2506,8 @@ fn thread_resume_params_from_config(
             thread_id: thread_id.to_string(),
             ..ThreadResumeParams::default()
         };
-    }    let permissions = permissions_selection_from_config(&config, thread_params_mode);
+    }
+    let permissions = permissions_selection_from_config(&config, thread_params_mode);
     let sandbox = permissions
         .is_none()
         .then(|| {
@@ -2530,7 +2531,10 @@ fn thread_resume_params_from_config(
             config.model.clone(),
             provider_selection::explicit_provider(&config),
         ),
-        ResumeModelSettings::Explicit { model, model_provider } => (Some(model), Some(model_provider)),
+        ResumeModelSettings::Explicit {
+            model,
+            model_provider,
+        } => (Some(model), Some(model_provider)),
         ResumeModelSettings::RestoreFromThread | ResumeModelSettings::PreserveExistingThread => {
             (None, None)
         }

@@ -38,7 +38,8 @@ impl App {
     pub(super) fn provider_wizard_id(&mut self, value: &str) {
         let id = value.trim().to_ascii_lowercase();
         let valid = !id.is_empty()
-            && id.chars()
+            && id
+                .chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
         if !valid {
             self.chat_widget.add_error_message(
@@ -47,9 +48,21 @@ impl App {
             self.show_wizard_id_step(value.to_string());
             return;
         }
-        if id == "nuwax_env" {
-            self.chat_widget
-                .add_error_message("`nuwax_env` is a reserved provider id.".to_string());
+        // Reserved ids fail at the engine's config validation; reject them
+        // here so the user learns at step one, not after six steps.
+        let reserved = [
+            "openai",
+            "oss",
+            "lmstudio",
+            "gcp",
+            "amazon-bedrock",
+            "amazon-bedrock-runtime",
+            "nuwax_env",
+        ];
+        if reserved.contains(&id.as_str()) {
+            self.chat_widget.add_error_message(format!(
+                "`{id}` is a reserved provider id — pick another key."
+            ));
             self.show_wizard_id_step(value.to_string());
             return;
         }
@@ -162,6 +175,7 @@ impl App {
                  nothing to offer."
                     .to_string(),
             );
+            self.show_wizard_models_step(value.to_string());
             return;
         }
         draft.models = models;
@@ -172,20 +186,32 @@ impl App {
     }
 
     pub(super) async fn provider_wizard_confirm(&mut self, app_server: &mut AppServerSession) {
-        let Some(draft) = self.provider_wizard.take() else {
+        // Keep the draft until the write succeeds so a failed save can be
+        // retried from the preview instead of redoing every step.
+        let Some(draft) = self.provider_wizard.clone() else {
             return;
         };
         let provider_id = draft.provider_id.clone();
         let env_key = draft.env_key.clone();
         match self
-            .persist_model_defaults(app_server.request_handle(), draft.config_edits(), "model provider")
+            .persist_model_defaults(
+                app_server.request_handle(),
+                draft.config_edits(),
+                "model provider",
+            )
             .await
         {
             Ok(()) => {
+                self.provider_wizard = None;
+                // Refresh the in-memory config so the new provider is visible
+                // to /model in this same session (the preview footer promises
+                // exactly that).
+                self.refresh_in_memory_config_from_disk_best_effort("saving a model provider")
+                    .await;
                 let key_hint = if env_key.is_empty() {
                     String::new()
                 } else {
-                    format!(" Set ${env_key} and restart the TUI to use it.")
+                    format!(" Set ${env_key} to use it.")
                 };
                 self.chat_widget.add_info_message(
                     format!("Provider `{provider_id}` saved.{key_hint}"),
@@ -195,10 +221,25 @@ impl App {
             Err(err) => {
                 let error = crate::config_update::format_config_error(&err);
                 self.chat_widget.add_error_message(format!(
-                    "Failed to save provider `{provider_id}`: {error}"
+                    "Failed to save provider `{provider_id}`: {error} — adjust the draft or \
+                     confirm again to retry."
                 ));
+                if let Some(draft) = self.provider_wizard.as_ref() {
+                    self.chat_widget.show_provider_wizard_preview(draft);
+                }
             }
         }
+    }
+
+    fn show_wizard_models_step(&mut self, initial: String) {
+        self.chat_widget.show_provider_wizard_text_step(
+            "Models",
+            "Comma-separated model slugs this provider serves — these are what /model \
+             lists. Metadata (context window, effort tiers) resolves from the bundled \
+             vendor catalog per slug.",
+            initial,
+            AppEvent::ProviderWizardModels,
+        );
     }
 
     fn show_wizard_id_step(&mut self, initial: String) {

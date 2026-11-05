@@ -1042,6 +1042,14 @@ pub fn merge_configured_model_providers(
 ) -> Result<HashMap<String, ModelProviderInfo>, String> {
     for (key, mut provider) in configured_model_providers {
         if key == "openai" {
+            if provider.models.is_some() {
+                return Err(
+                    "model_providers.openai does not support `models` — the built-in \
+                     OpenAI provider serves its own catalog; declare a custom provider \
+                     to curate a model list"
+                        .to_string(),
+                );
+            }
             // Keep the built-in identity, inference routing, and authentication.
             // Only catalog routing is configurable through this provider entry.
             if let Some(catalog_url) = provider.model_catalog_url.take()

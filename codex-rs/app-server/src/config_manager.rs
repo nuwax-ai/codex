@@ -601,6 +601,7 @@ impl ConfigManager {
         typesafe_overrides: ConfigOverrides,
         cwd: Option<PathBuf>,
     ) -> std::io::Result<Config> {
+        let mut request_overrides = request_overrides;
         let requested_provider = typesafe_overrides.model_provider.clone().or_else(|| {
             request_overrides
                 .as_ref()
@@ -608,6 +609,25 @@ impl ConfigManager {
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned)
         });
+        // Fork (nuwax-codex): mirror an explicit resume selection (the
+        // typesafe `model`/`modelProvider` fields — the re-home primitive,
+        // FORK.md §7.3) into the request-overrides map so it lands in a
+        // SessionFlags layer of the loaded config. The turn-admission check
+        // rebuilds from the thread's session layers only; without this, a
+        // typesafe-only selection is invisible to it and the first input
+        // after a successful cross-provider switch is rejected.
+        let explicit_model = typesafe_overrides.model.clone();
+        if let Some(provider) = requested_provider.clone() {
+            let overrides = request_overrides.get_or_insert_with(HashMap::new);
+            overrides
+                .entry("model_provider".to_string())
+                .or_insert_with(|| serde_json::Value::String(provider));
+            if let Some(model) = explicit_model.clone() {
+                overrides
+                    .entry("model".to_string())
+                    .or_insert_with(|| serde_json::Value::String(model));
+            }
+        }
         // Resolve the selection before the saved provider is applied as a resume override.
         // Fork (nuwax-codex): an explicitly requested provider is the requester's
         // selection for this resume — the same session-scoped routing the turn
@@ -616,14 +636,16 @@ impl ConfigManager {
         // modelProvider}`), so the current-provider comparison only applies when
         // the resume inherits its provider from disk. Policy and
         // configured-existence checks below still run for both the saved and
-        // the requested provider.
+        // the requested provider. Load errors on that inherit path still fail
+        // the resume (fail-fast), matching the pre-fork behavior.
         let current_provider = if requested_provider.is_some() {
             None
         } else {
-            self.load_latest_config(typesafe_overrides.cwd.clone().or_else(|| cwd.clone()))
-                .await
-                .ok()
-                .map(|config| config.model_provider_id)
+            Some(
+                self.load_latest_config(typesafe_overrides.cwd.clone().or_else(|| cwd.clone()))
+                    .await
+                    .map(|config| config.model_provider_id),
+            )
         };
         self.load_with_validation(
             &self.current_cli_overrides(),
@@ -663,8 +685,10 @@ impl ConfigManager {
                         ));
                     }
                 }
-                let current_provider = current_provider.clone();
+                // Inherit path: a failed disk load still fails the resume
+                // (fail-fast); the explicit-override path has None here.
                 if let Some(current_provider) = current_provider {
+                    let current_provider = current_provider?;
                     for provider in [
                         saved_provider.unwrap_or(requested_provider),
                         requested_provider,

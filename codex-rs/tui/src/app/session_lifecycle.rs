@@ -512,6 +512,11 @@ impl App {
     /// replacement widget so that replayed collab items render agent names immediately.
     pub(super) fn replace_chat_widget(&mut self, mut chat_widget: ChatWidget) {
         chat_widget.fork_in_progress = self.chat_widget.fork_in_progress;
+        // A queued model switch belongs to the conversation being replaced;
+        // its autosend suppression dies with the old widget, so dropping the
+        // pending here keeps a later picker event from restoring that flag
+        // onto an unrelated conversation.
+        self.pending_model_switch = None;
         self.pending_right_click_paste = None;
         self.config_notification_test_pending = None;
         if !self.chat_widget.realtime_conversation_is_running() {
@@ -1319,6 +1324,9 @@ impl App {
         &mut self,
         app_server: &mut AppServerSession,
     ) -> LoadedSubagentBackfill {
+        // Same invariant as replace_chat_widget: a queued model switch
+        // belongs to the conversation being replaced.
+        self.pending_model_switch = None;
         let Some(primary_thread_id) = self.primary_thread_id else {
             return LoadedSubagentBackfill::default();
         };

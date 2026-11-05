@@ -143,13 +143,19 @@ impl ProviderWizardDraft {
             }
         }
         let prefix = format!("model_providers.{}.", self.provider_id);
-        vec![
+        // An empty env_key means "no auth" — omit the key entirely. Writing
+        // env_key = "" would deserialize to Some("") and make the engine look
+        // for a required environment variable with an empty name.
+        let mut edits = vec![
             edit(format!("{prefix}name"), serde_json::json!(self.name)),
             edit(format!("{prefix}base_url"), serde_json::json!(self.base_url)),
-            edit(format!("{prefix}env_key"), serde_json::json!(self.env_key)),
             edit(format!("{prefix}wire_api"), serde_json::json!(self.wire_api)),
-            edit(format!("{prefix}models"), serde_json::json!(self.models)),
-        ]
+        ];
+        if !self.env_key.is_empty() {
+            edits.push(edit(format!("{prefix}env_key"), serde_json::json!(self.env_key)));
+        }
+        edits.push(edit(format!("{prefix}models"), serde_json::json!(self.models)));
+        edits
     }
 }
 
@@ -324,14 +330,34 @@ mod tests {
             [
                 "model_providers.my-gateway.name",
                 "model_providers.my-gateway.base_url",
-                "model_providers.my-gateway.env_key",
                 "model_providers.my-gateway.wire_api",
+                "model_providers.my-gateway.env_key",
                 "model_providers.my-gateway.models",
             ]
         );
         assert_eq!(
             edits[4].value,
             serde_json::json!(["model-a", "model-b"])
+        );
+
+        // No auth: the env_key edit is omitted entirely — writing
+        // env_key = "" would make the engine require an empty-named
+        // environment variable.
+        let mut no_auth = draft;
+        no_auth.env_key = String::new();
+        let no_auth_edits = no_auth.config_edits();
+        let paths: Vec<&str> = no_auth_edits
+            .iter()
+            .map(|edit| edit.key_path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                "model_providers.my-gateway.name",
+                "model_providers.my-gateway.base_url",
+                "model_providers.my-gateway.wire_api",
+                "model_providers.my-gateway.models",
+            ]
         );
     }
 

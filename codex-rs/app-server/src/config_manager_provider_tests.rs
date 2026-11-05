@@ -409,6 +409,73 @@ async fn input_provider_check_honors_session_scoped_routing() -> Result<()> {
     Ok(())
 }
 
+/// VERIFIER PROBE (rehome_admission_probe): mirrors the TUI /model picker
+/// re-home. `thread/resume {model, modelProvider}` sends the provider ONLY as
+/// the top-level typesafe field (`ThreadResumeParams.model_provider` →
+/// `ConfigOverrides.model_provider`); the `config` request-overrides map never
+/// carries `model_provider` (see `config_request_overrides_from_config`).
+/// The resume itself loads (see `load_for_resume_honors_explicit_provider...`),
+/// and that the FIRST TURN then passes `check_thread_model_provider_for_input`
+/// (the explicit selection must land in a session layer the admission rebuild
+/// preserves — regression test for the typesafe-only re-home bounce).
+#[tokio::test]
+async fn rehome_admission_probe() -> Result<()> {
+    let home = tempdir()?;
+    std::fs::write(
+        home.path().join("config.toml"),
+        r#"
+model_provider = "mimo"
+[model_providers.mimo]
+name = "MiMo"
+base_url = "http://127.0.0.1:9/v1"
+wire_api = "responses"
+models = ["mimo-v2.6-flash"]
+[model_providers.step]
+name = "Step"
+base_url = "http://127.0.0.1:9/v1"
+wire_api = "responses"
+models = ["step-5-preview"]
+"#,
+    )?;
+    let manager = ConfigManager::without_managed_config_for_tests(home.path().to_path_buf());
+    let cwd = Some(home.path().to_path_buf());
+
+    // Typesafe-only provider override, exactly what the resume request carries
+    // after `build_thread_config_overrides` (no request-overrides entry).
+    let rehomed = manager
+        .load_for_resume(
+            /*saved_provider*/ Some("mimo"),
+            /*request_overrides*/ None,
+            codex_core::config::ConfigOverrides {
+                model_provider: Some("step".to_string()),
+                ..Default::default()
+            },
+            cwd,
+        )
+        .await?;
+    assert_eq!(rehomed.model_provider_id, "step");
+
+    // turn/start admission check with the thread's retained config.
+    let session_layer_carries_provider = rehomed.config_layer_stack.layers_low_to_high().any(
+        |layer| {
+            matches!(
+                layer.name,
+                codex_config::ConfigLayerSource::SessionFlags
+                    | codex_config::ConfigLayerSource::EnvSeed
+            ) && layer.config.get("model_provider").is_some()
+        },
+    );
+    assert!(
+        session_layer_carries_provider,
+        "explicit resume selection must land in a session layer"
+    );
+    manager
+        .check_thread_model_provider_for_input(&rehomed)
+        .await
+        .expect("first turn after a successful re-home must pass admission");
+    Ok(())
+}
+
 /// Fork (nuwax-codex): resume-side provider validation semantics.
 ///
 /// An explicitly requested provider is the requester's selection for the

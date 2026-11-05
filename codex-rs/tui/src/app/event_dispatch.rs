@@ -59,6 +59,15 @@ impl App {
                 | AppEvent::ApplyAdvancedReasoning { .. }
         ) && let Some(pending) = self.pending_model_switch.take()
         {
+            // This also fires for the automatic rate-limit downgrade prompt —
+            // say what was cancelled instead of dropping it silently.
+            self.chat_widget.add_info_message(
+                format!(
+                    "Cancelled queued switch to {} ({}).",
+                    pending.model, pending.provider_id
+                ),
+                /*hint*/ None,
+            );
             self.chat_widget
                 .set_queue_autosend_suppressed(pending.queue_autosend_was_suppressed);
         }

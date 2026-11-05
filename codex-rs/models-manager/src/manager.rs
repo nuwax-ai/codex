@@ -332,6 +332,11 @@ pub struct OpenAiModelsManager {
     /// list surface (`/model` presets, `model/list`) serves exactly these
     /// slugs, replacing the bundled OpenAI seed and any fetched catalog.
     declared_models: Option<Vec<String>>,
+    /// Materialized Declared catalog, built once from `declared_models`:
+    /// each slug costs a vendor resolve plus a full ModelInfo build
+    /// (including a ~20KB instruction-template render), and models_for_entry
+    /// runs on the per-turn path — rebuilding per call is pure waste.
+    declared_catalog: std::sync::OnceLock<Vec<CatalogModel>>,
 }
 
 /// Static model manager backed by an authoritative in-process catalog.
@@ -400,6 +405,7 @@ impl OpenAiModelsManager {
             catalog_source: CatalogSource::Default,
             auth_manager,
             declared_models: None,
+            declared_catalog: std::sync::OnceLock::new(),
         }
     }
 
@@ -442,7 +448,11 @@ impl ModelsManager for OpenAiModelsManager {
         http_client_factory: HttpClientFactory,
     ) -> ModelsManagerFuture<'_, Vec<CatalogModel>> {
         Box::pin(async move {
+            // Fork: a declared `models` list is authoritative and
+            // self-sufficient — skip the (possibly network) refresh instead
+            // of fetching a catalog that models_for_entry then discards.
             if refresh_strategy != RefreshStrategy::InMemory
+                && self.declared_models.is_none()
                 && let Err(err) = self
                     .refresh_available_models(refresh_strategy, &http_client_factory)
                     .await
@@ -549,9 +559,13 @@ impl ModelsManager for OpenAiModelsManager {
                 match &selected {
                     // Fork: a declared entry already carries its origin, so it
                     // flows into construct_model_info untouched.
+                    // Case-insensitive like the TUI persistence gate: a
+                    // declared GLM-5.3-Flash must resolve a persisted
+                    // glm-5.3-flash too, not silently degrade to the
+                    // placeholder path.
                     SelectedCatalog::Declared(declared) => declared
                         .iter()
-                        .find(|candidate| candidate.slug == model)
+                        .find(|candidate| candidate.slug.eq_ignore_ascii_case(model))
                         .cloned(),
                     SelectedCatalog::CurrentSnapshot(models)
                     | SelectedCatalog::Fallback(models) => {
@@ -598,12 +612,19 @@ impl OpenAiModelsManager {
         // show as if they served GPT models), a cached snapshot, and a fetched
         // catalog.
         if let Some(declared) = &self.declared_models {
-            return SelectedCatalog::Declared(
-                declared
-                    .iter()
-                    .map(|slug| declared_catalog_model(slug))
-                    .collect(),
-            );
+            let _ = declared;
+            let catalog = self.declared_catalog.get_or_init(|| {
+                self.declared_models
+                    .as_ref()
+                    .map(|slugs| {
+                        slugs
+                            .iter()
+                            .map(|slug| declared_catalog_model(slug))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            });
+            return SelectedCatalog::Declared(catalog.clone());
         }
         if !self.api_key_discovery_disabled()
             && entry.identity.is_some()

@@ -379,6 +379,13 @@ bundled GPT 种子（11 个 gpt-\*，与该 provider 毫无关系），Enter 会
 （model-provider-info）；声明列表替换种子/缓存/远端 + Vendor origin 与窗口
 策略保持 + 声明外 slug 逃逸（models-manager）。
 
+**2026-11-05 审查修复**：`model_providers.openai` 配 `models` 由静默忽略改
+为 fail-fast 报错；声明存在时跳过 catalog 网络刷新（原"拉了再丢"+ 假错
+误日志）；远程 thread config 的 proto 路径补空 slug 校验；Declared 查找改
+大小写不敏感（与 TUI 持久化门对齐，防大小写变体静默降级占位元数据）；
+Declared 目录在 `with_declared_models` 一次性物化缓存（原每轮 turn 全量重
+建，每 slug 含一次 ~20KB 指令模板渲染）。
+
 ### 7.3 多厂商会话切换——恢复侧入口（2026-11-04，P3+P2 核心）
 
 provider 不匹配的只读提示条新增 **`r` = resume with current model**：以当前
@@ -428,6 +435,18 @@ model 却没回填 provider——现补"sqlite 观测 provider 非空且 ≠ 存
 覆盖 rollout 头"（默认值填充的修复行仍让位 rollout，上游测试语义保留；
 **已知边角**：re-home 到恰好等于存储默认 provider 的会话读侧仍显示旧头）。
 真集成变体已恢复（取消 `#[ignore]`）。
+
+**2026-11-05 审查修复批**（10 角度代码审查 + 逐条验证后落地）：
+①`load_for_resume` 把显式 typesafe `model`/`modelProvider` 镜像进 request
+overrides，使其落成 SessionFlags 层——修复跨厂商切换 resume 成功后**首次
+turn 准入仍被拒**（typesafe 载体对准入重建不可见；回归测试
+`rehome_admission_probe` 锁定全链）；②继承路径的磁盘加载错误恢复 fail-fast
+传播（原 `.ok()` 静默跳过漂移检查）；③**行为变化记录**：profile/env-seed
+设置的普通 resume 因总携带显式 modelProvider，现在会**静默 re-home** 并落
+章（原合并后行为是只读提示）；无 sqlite 元数据的线程仍走漂移检查；④排队
+切换：被后续选择（含限流降级提示）取消时现在显式提示、widget 替换路径统
+一清理待切项（防跨会话还原抑制标志）；中止轮（无 TurnCompleted 通知面）
+的搁浅为已知残留，导航/再选择可解锁。
 
 **P2 剩余（后续）**：目标窗口 < 当前会话用量时的"建议先 /compact"黄色警
 告（需要 TUI 侧 token 用量接线；确认交互沿用现有行内二次确认）。P4 配置
