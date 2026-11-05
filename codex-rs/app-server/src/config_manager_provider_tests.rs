@@ -553,3 +553,31 @@ wire_api = "responses"
     );
     Ok(())
 }
+
+/// Fork: the drift comparison behind key rotation — a provider definition
+/// loaded from disk must compare unequal when only its api_key changed, so
+/// the resume rebuild path (provider_definition_drifted) fires.
+#[test]
+fn direct_api_key_rotation_changes_provider_equality() {
+    let base = r#"
+name = "Gateway"
+base_url = "https://gw.example.test/v1"
+wire_api = "chat"
+api_key = "sk-rotation-a"
+"#;
+    let rotated = r#"
+name = "Gateway"
+base_url = "https://gw.example.test/v1"
+wire_api = "chat"
+api_key = "sk-rotation-b"
+"#;
+    let a: codex_model_provider_info::ModelProviderInfo = toml::from_str(base).unwrap();
+    let b: codex_model_provider_info::ModelProviderInfo = toml::from_str(rotated).unwrap();
+    assert_ne!(
+        a, b,
+        "rotating the direct key must make provider definitions compare unequal"
+    );
+    // Debug output must never carry either key.
+    let debugged = format!("{a:?}");
+    assert!(!debugged.contains("sk-rotation-a"), "{debugged}");
+}

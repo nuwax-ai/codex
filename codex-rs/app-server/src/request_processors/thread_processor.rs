@@ -4743,11 +4743,29 @@ impl ThreadRequestProcessor {
             }
             let (config_snapshot, selected_service_tier) =
                 existing_thread.resume_config_snapshot().await;
-            let mismatch_details = collect_resume_override_mismatches(
+            let mut mismatch_details = collect_resume_override_mismatches(
                 params,
                 &config_snapshot,
                 selected_service_tier.as_deref(),
             );
+            // Fork (nuwax-codex): key rotation must not be invisible. A
+            // loaded thread holds its provider definition from build time;
+            // when the on-disk definition for the same provider id changed
+            // (direct api_key set/rotated, base_url moved), the thread must
+            // rebuild on idle so the next turn authenticates with the new
+            // credential — otherwise "saved" masquerades as "applied".
+            let thread_provider = existing_thread.config().await.model_provider.clone();
+            if self
+                .provider_definition_drifted(&thread_provider)
+                .await
+                .unwrap_or(false)
+            {
+                mismatch_details.push(format!(
+                    "provider definition changed on disk for `{}` (credential or endpoint \
+                     rotation)",
+                    config_snapshot.model_provider_id
+                ));
+            }
             if !mismatch_details.is_empty() {
                 let has_subscribers = !self
                     .thread_state_manager
@@ -6981,3 +6999,33 @@ fn build_thread_from_loaded_snapshot(
 #[cfg(test)]
 #[path = "thread_processor_tests.rs"]
 mod thread_processor_tests;
+
+impl ThreadRequestProcessor {
+    /// Fork (nuwax-codex): whether the provider definition on disk differs
+    /// from the one a loaded thread was built with — catches direct api_key
+    /// rotation and endpoint moves that leave the provider NAME unchanged.
+    /// Compares only public fields: the api_key value participates through
+    /// PartialEq without ever being logged or echoed.
+    async fn provider_definition_drifted(
+        &self,
+        thread_provider: &codex_model_provider_info::ModelProviderInfo,
+    ) -> std::io::Result<bool> {
+        let Some(thread_provider_id) = thread_provider.provider_id.clone() else {
+            return Ok(false);
+        };
+        let cwd = None;
+        let fresh = self
+            .config_manager
+            .load_latest_config(cwd)
+            .await?
+            .model_providers
+            .get(&thread_provider_id)
+            .cloned();
+        let Some(fresh) = fresh else {
+            // Provider removed from disk: that drift surfaces through the
+            // admission checks; nothing extra to do here.
+            return Ok(false);
+        };
+        Ok(fresh != *thread_provider)
+    }
+}
