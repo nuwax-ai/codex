@@ -573,13 +573,16 @@ fn mask_type_error_values(message: &str) -> String {
     // Replace content between the first pair of backticks after "invalid
     // type:" — that's the input value; the expected type follows.
     let mut result = message.to_string();
-    if let Some(start) = result.find("invalid type: `") {
-        let value_start = start + "invalid type: `".len();
-        if let Some(end_rel) = result[value_start..].find('`') {
-            let value_end = value_start + end_rel;
+    // Actual serde format: "invalid type: integer `12345`, expected a
+    // string" — the type name sits between "invalid type: " and the
+    // backtick. Find the FIRST backtick-quoted value in the message and
+    // replace it.
+    if let Some(first_tick) = result.find('`') {
+        if let Some(end_rel) = result[first_tick + 1..].find('`') {
+            let value_end = first_tick + 1 + end_rel;
             result = format!(
                 "{}<redacted>{}",
-                &result[..value_start],
+                &result[..first_tick + 1],
                 &result[value_end..]
             );
         }

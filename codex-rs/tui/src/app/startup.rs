@@ -1077,6 +1077,7 @@ See the Codex keymap documentation for supported actions and examples."
             provider_wizard: None,
             wizard_credential: None,
             pending_credential_refresh: None,
+            widget_generation: 0,
             pending_startup_thread_start,
             pending_server_version_notice: if pending_startup_thread_start {
                 initial_server_version_notice

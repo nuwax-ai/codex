@@ -134,6 +134,7 @@ pub(crate) async fn make_test_app() -> Box<App> {
         provider_wizard: None,
         wizard_credential: None,
         pending_credential_refresh: None,
+        widget_generation: 0,
         pending_startup_thread_start: false,
         pending_server_version_notice: None,
         pending_open_resume_picker: false,

@@ -684,6 +684,10 @@ pub(crate) struct App {
     /// next turn authenticates with the new key (deliberately separate from
     /// PendingModelSwitch so a user's model choice is never clobbered).
     pending_credential_refresh: Option<codex_protocol::ThreadId>,
+    /// Fork: increments on every chat-widget replacement; the credential
+    /// refresh uses it to prove the resume actually rebuilt the session
+    /// (the resume path returns Ok(Continue) even on partial failure).
+    widget_generation: u64,
     pending_startup_thread_start: bool,
     pending_server_version_notice: Option<crate::status::remote_connection::ServerVersionNotice>,
     /// Opens the session picker after event dispatch returns, with a fresh stack.

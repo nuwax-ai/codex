@@ -517,6 +517,8 @@ impl App {
         // pending here keeps a later picker event from restoring that flag
         // onto an unrelated conversation.
         self.pending_model_switch = None;
+        self.pending_credential_refresh = None;
+        self.widget_generation += 1;
         self.pending_right_click_paste = None;
         self.config_notification_test_pending = None;
         if !self.chat_widget.realtime_conversation_is_running() {
@@ -1241,6 +1243,8 @@ impl App {
         presentation: ThreadAttachPresentation,
         initial_user_message: Option<crate::chatwidget::UserMessage>,
     ) -> Result<()> {
+        self.widget_generation += 1;
+        self.pending_credential_refresh = None;
         // Initial messages are for freshly attached primary threads only. Thread switches and
         // resume/fork flows pass `None` so they cannot replay old history and then auto-submit a new
         // user turn by accident.

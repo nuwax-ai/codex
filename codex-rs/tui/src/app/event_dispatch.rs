@@ -405,11 +405,6 @@ impl App {
                 if self.chat_widget.thread_id() != Some(thread_id) {
                     return Ok(AppRunControl::Continue);
                 }
-                // Rebuild the session with the CURRENT model and provider
-                // (the drift check fires on the definition change), then
-                // release the queue autosend suppression held since the
-                // TurnCompleted site so queued follow-ups fire on the new
-                // credential.
                 let model = self.chat_widget.current_model().to_string();
                 let provider_id = self.chat_widget.config_ref().model_provider_id.clone();
                 let target = crate::resume_picker::SessionTarget {
@@ -422,6 +417,13 @@ impl App {
                     cwd: None,
                     history_mode: None,
                 };
+                // The generation counter is the ONLY reliable applied-signal:
+                // resume_target_session returns Ok(Continue) even when the
+                // rebuild failed internally, and the widget can still be on
+                // the same thread. A generation bump means the widget was
+                // actually replaced (the session was rebuilt with the new
+                // credential definition).
+                let generation_before = self.widget_generation;
                 let result = self
                     .resume_target_session_with_source(
                         tui,
@@ -433,20 +435,13 @@ impl App {
                         },
                     )
                     .await;
-                // Release suppression only when the rebuild demonstrably
-                // landed on the same thread AND the provider definition is
-                // now the one we saved (the resume path returns
-                // Ok(Continue) even on partial failure; a widget still on
-                // the old route means the refresh didn't apply).
-                let applied = self.chat_widget.thread_id() == Some(thread_id)
-                    && result.is_ok();
-                if applied {
+                let widget_was_replaced = self.widget_generation != generation_before;
+                if widget_was_replaced && self.chat_widget.thread_id() == Some(thread_id) {
                     self.chat_widget.set_queue_autosend_suppressed(false);
                     self.chat_widget.maybe_send_next_queued_input();
                 } else {
-                    // Keep the suppression and the intent; the next turn
-                    // boundary retries. Report to the user so silence
-                    // isn't mistaken for success.
+                    // The resume did not rebuild the session — keep the
+                    // suppression and the intent for the next boundary.
                     self.pending_credential_refresh = Some(thread_id);
                     self.chat_widget.add_error_message(
                         "Credential refresh did not apply — will retry after the next turn."
