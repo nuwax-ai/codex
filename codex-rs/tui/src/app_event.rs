@@ -615,8 +615,12 @@ pub(crate) enum AppEvent {
     /// Fork: credential-mode branch of the wizard (direct key / env / none).
     ProviderWizardCredentialMode(String),
     /// Fork: fire the deferred credential refresh registered when a key was
-    /// saved mid-turn (same model/provider re-home to rebuild auth).
-    ApplyPendingCredentialRefresh,
+    /// saved mid-turn (same model/provider re-home to rebuild auth). Carries
+    /// the originating thread so a stale event cannot act on a different
+    /// conversation displayed later.
+    ApplyPendingCredentialRefresh {
+        thread_id: ThreadId,
+    },
     /// Fork: the pasted API key from the masked input (restricted: never
     /// logged, never rendered after entry).
     ProviderWizardApiKey(String),

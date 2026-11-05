@@ -154,24 +154,19 @@ impl ProviderWizardDraft {
         &self,
         key: &str,
     ) -> Vec<codex_app_server_protocol::ConfigEdit> {
-        let mut edits = self.config_edits();
         let prefix = format!("model_providers.{}.", self.provider_id);
-        // Source switch: delete any env_key the earlier edit chain would
-        // have written (a null write removes an existing field).
-        edits.retain(|edit| edit.key_path != format!("{prefix}env_key"));
-        edits.insert(
-            0,
-            codex_app_server_protocol::ConfigEdit {
-                key_path: format!("{prefix}env_key"),
-                value: serde_json::Value::Null,
-                merge_strategy: codex_app_server_protocol::MergeStrategy::Replace,
-            },
-        );
-        edits.push(codex_app_server_protocol::ConfigEdit {
-            key_path: format!("{prefix}api_key"),
-            value: serde_json::json!(key),
-            merge_strategy: codex_app_server_protocol::MergeStrategy::Replace,
-        });
+        let mut edits = self.config_edits();
+        // Replace the base's Null api_key deletion with the real value, and
+        // force env_key to a Null deletion (the base wrote the draft's
+        // non-empty env_key — the direct-key mode must remove it).
+        for edit in edits.iter_mut() {
+            if edit.key_path == format!("{prefix}api_key") {
+                edit.value = serde_json::json!(key);
+            }
+            if edit.key_path == format!("{prefix}env_key") {
+                edit.value = serde_json::Value::Null;
+            }
+        }
         edits
     }
 
@@ -463,30 +458,23 @@ mod tests {
                 "model_providers.my-gateway.base_url",
                 "model_providers.my-gateway.wire_api",
                 "model_providers.my-gateway.env_key",
+                // Null edits clear stale credentials (mode switching)
+                "model_providers.my-gateway.api_key",
+                "model_providers.my-gateway.experimental_bearer_token",
                 "model_providers.my-gateway.models",
             ]
         );
-        assert_eq!(edits[4].value, serde_json::json!(["model-a", "model-b"]));
 
-        // No auth: the env_key edit is omitted entirely — writing
-        // env_key = "" would make the engine require an empty-named
-        // environment variable.
+        // No auth: env_key becomes a Null deletion (removing any existing
+        // key), and api_key/bearer are always cleared.
         let mut no_auth = draft;
         no_auth.env_key = String::new();
         let no_auth_edits = no_auth.config_edits();
-        let paths: Vec<&str> = no_auth_edits
+        let env_edit = no_auth_edits
             .iter()
-            .map(|edit| edit.key_path.as_str())
-            .collect();
-        assert_eq!(
-            paths,
-            [
-                "model_providers.my-gateway.name",
-                "model_providers.my-gateway.base_url",
-                "model_providers.my-gateway.wire_api",
-                "model_providers.my-gateway.models",
-            ]
-        );
+            .find(|edit| edit.key_path == "model_providers.my-gateway.env_key")
+            .expect("env_key edit present");
+        assert_eq!(env_edit.value, serde_json::Value::Null);
     }
 
     #[test]
@@ -530,6 +518,12 @@ mod credential_tests {
             .find(|edit| edit.key_path == "model_providers.gw.env_key")
             .expect("env_key deletion edit present");
         assert_eq!(env_edit.value, serde_json::Value::Null);
+        // The bearer is also cleared (base config_edits always emits Null).
+        let bearer_edit = edits
+            .iter()
+            .find(|edit| edit.key_path == "model_providers.gw.experimental_bearer_token")
+            .expect("bearer deletion edit present");
+        assert_eq!(bearer_edit.value, serde_json::Value::Null);
         // The key appears exactly once across all edits.
         let hits = edits
             .iter()

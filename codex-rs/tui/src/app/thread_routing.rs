@@ -2032,6 +2032,25 @@ impl App {
                     }
                     _ => None,
                 };
+                // Fork: a credential saved mid-turn must rebuild the session
+                // auth BEFORE ChatWidget's completion handler auto-sends the
+                // next queued input — otherwise the follow-up fires on the
+                // old key and the "not running" check below fails. Suppress
+                // queue autosend now; the refresh handler releases it after
+                // the rebuild.
+                let credential_refresh_due =
+                    completed_turn
+                        .as_ref()
+                        .is_some_and(|(completed_thread_id, _)| {
+                            self.pending_credential_refresh
+                                .as_ref()
+                                .is_some_and(|pending| pending.to_string() == *completed_thread_id)
+                        });
+                let mut credential_suppression_active = false;
+                if credential_refresh_due {
+                    self.chat_widget.set_queue_autosend_suppressed(true);
+                    credential_suppression_active = true;
+                }
                 self.chat_widget
                     .handle_server_notification(*notification, /*replay_kind*/ None);
                 if let Some((thread_id, turn_id)) = completed_turn
@@ -2045,17 +2064,20 @@ impl App {
                     {
                         self.app_event_tx.send(AppEvent::ApplyPendingModelSwitch);
                     }
-                    // Fork: a credential saved mid-turn rebuilds the session
-                    // auth on the same model/provider before any queued
-                    // follow-up fires on the old key.
-                    if self
-                        .pending_credential_refresh
-                        .is_some_and(|pending| pending.to_string() == thread_id)
+                    if credential_refresh_due
+                        && let Some(pending_thread_id) = self.pending_credential_refresh.take()
                     {
-                        self.pending_credential_refresh = None;
                         self.app_event_tx
-                            .send(AppEvent::ApplyPendingCredentialRefresh);
+                            .send(AppEvent::ApplyPendingCredentialRefresh {
+                                thread_id: pending_thread_id,
+                            });
                     }
+                }
+                // If the refresh couldn't fire (turn already restarted via a
+                // non-queue path), release suppression so the queue isn't
+                // stranded; the refresh stays pending for the next boundary.
+                if credential_suppression_active && self.pending_credential_refresh.is_some() {
+                    self.chat_widget.set_queue_autosend_suppressed(false);
                 }
                 // History cells queued by completion must be applied before anchoring its tip.
                 if let Some(event) = tip_ready {

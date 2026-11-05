@@ -288,17 +288,14 @@ pub fn format_config_error(error: &ConfigError, contents: &str) -> String {
         None => return output.trim_end().to_string(),
     };
 
-    // Fork: the selected source line may carry a credential value (api_key,
-    // bearer token) regardless of which span pointed here — inline tables,
-    // dotted keys, and syntax errors on the key line all reach this printer.
-    // TOML's many value syntaxes (single/double quotes, escapes, multi-line
-    // strings, no-space assignments) make partial masking unreliable, so the
-    // entire line is suppressed when any credential key name appears.
-    let line = if line_contains_credential_key(line) {
-        "<line suppressed: may contain a credential>"
-    } else {
-        line
-    };
+    // Fork: the selected source line may carry a credential value in any
+    // TOML layout — single/double quotes, escapes (\u005f key obfuscation),
+    // multi-line strings (continuation lines have no key name), inline
+    // tables, dotted keys, and same-line multiple keys. No text-matching
+    // approach can reliably bound the secret, so the raw source excerpt is
+    // suppressed entirely; only the line number and the error message
+    // (which never echoes values from our validation) are shown.
+    let line = "<source line suppressed: config may contain credentials>";
 
     let line_number = start.line;
     let gutter = line_number.to_string().len();
@@ -544,20 +541,4 @@ fn seq_child<'a>(node: &TomlNode<'a>, index: usize) -> Option<TomlNode<'a>> {
         TomlNode::Value(Value::Array(array)) => array.get(index).map(TomlNode::Value),
         _ => None,
     }
-}
-
-/// Fork: masks credential values in a config source line selected for a
-/// diagnostic excerpt. Matches `key = "value"` pairs where the key names a
-/// credential field, replacing the value with a fixed-length mask so column
-/// highlights stay roughly aligned. Layout-agnostic: works on dotted keys,
-/// inline tables, and bare key lines alike.
-fn line_contains_credential_key(line: &str) -> bool {
-    const CREDENTIAL_KEYS: [&str; 4] = [
-        "api_key",
-        "experimental_bearer_token",
-        "bearer_token",
-        "access_token",
-    ];
-    let lower = line.to_ascii_lowercase();
-    CREDENTIAL_KEYS.iter().any(|key| lower.contains(key))
 }
