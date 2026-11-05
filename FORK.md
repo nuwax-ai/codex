@@ -531,13 +531,20 @@ OSC 21337 字段不变。快照覆盖全部状态。该改动不重命名 Cargo 
 `ConfigLoadError::Display`，后者经 `io::Error::to_string()` 进入 app-server 的
 "invalid configuration" 告警），匹配规则改为"值位置内、受引号包裹的第一个片段"：
 兼容 serde 对字符串的**双引号**渲染与 `unknown variant` 形态，且不再误伤
-`expected one of \`a\`, \`b\`` 这类期望值；`diagnostics` 9 例单测 + 一处
+`expected one of \`a\`, \`b\`` 这类期望值；`diagnostics` 10 例单测 + 一处
 `replace_chat_widget` 计数器语义测试锁定。③顺带恢复 clippy 闸门：本批范围内
 `config`（`remote.rs` 的 `then_some`、`ConfigLoadError` Display 路径）、
 `model-provider-info`（测试里的冗余 clone）、`app-server`（provider 写入的两处
 `redundant_closure`/`needless_borrow`）与 `tui`（`expect_used`、`needless_late_init`、
 `print_stderr`）的 deny 级 lint 全部清零；并移除模型切换测试里遗留的 `eprintln!`
-计时输出（`codex-tui` 现 `cargo clippy --all-targets` 通过）。
+计时输出（`codex-tui` 现 `cargo clippy --all-targets` 通过）。④补齐**第三处脱敏缺口**
+（2026-11-05 复查实测发现）：exec/TUI 启动走的是"合并后 TOML 反序列化"路径，
+`deserialize_config_toml_with_base` 直接把裸 `toml::de::Error` 塞进 `io::Error`，
+`downcast_ref::<ConfigLoadError>()` 失败后走 `eprintln!("...{err}")` 兜底，实测把
+`api_key = 987654` 原样打印。现由 `codex_config::RedactedConfigError` 包装该路径
+（Display 即脱敏文本），exec/TUI 兜底分支再叠加 `redact_config_error_text`，
+日志 `Failed to deserialize overridden config` 也随之脱敏；`diagnostics` 补 1 例，
+共 11 例。
 
 ## 8. 版本与发布
 
@@ -558,6 +565,11 @@ Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§
   `~/.nuwax-harness-cache`）。
 - 主程序 `--version`/`-V` 只输出版本号本身（如 `0.18.14`），不带官方的
   `codex-cli` 前缀；tarball 安装脚本 `install.sh` 的版本探测兼容新旧两种输出。
+  实现方式是 `disable_version_flag` + 手动 `version` 字段（打印
+  `CARGO_PKG_VERSION`），而**不是** clap 的自动版本标志——后者渲染
+  `<crate name> <version>`，即 `codex-cli 0.0.0`。该实现曾在 2026-11-03 的
+  529 提交合并中丢失（合并只留下 `version,`），2026-11-05 已按 `v0.18.19` 的
+  原样恢复并加解析回归；源码构建因此显示裸 `0.0.0`，npm 制品显示裸 `0.18.x`。
 - live-tests crate（`LIVE_VENDORS` + `.env.local` 凭据）按 厂商×桥×场景 矩阵跑
   真实请求；compact 场景已入 exec 矩阵（三线）。
 
