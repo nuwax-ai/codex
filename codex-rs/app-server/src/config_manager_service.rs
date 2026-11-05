@@ -2,6 +2,7 @@ use crate::config_layer::config_layer_metadata_to_api;
 use crate::config_layer::config_layer_to_api;
 use crate::config_manager::ConfigManager;
 use crate::otel_config::redact_otel_exporter_headers;
+use crate::otel_config::redact_provider_api_keys;
 use codex_app_server_protocol::Config as ApiConfig;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigEdit as ApiConfigEdit;
@@ -206,6 +207,11 @@ impl ConfigManager {
             if let Some(otel) = layer.config.get_mut("otel") {
                 redact_otel_exporter_headers(otel);
             }
+            // Fork (nuwax-codex): raw layer TOML carries provider api_key
+            // values verbatim — strip them from every public layer view; the
+            // effective config is already safe (ModelProviderInfo skips the
+            // field on Serialize).
+            redact_provider_api_keys(&mut layer.config);
         }
 
         Ok(response)

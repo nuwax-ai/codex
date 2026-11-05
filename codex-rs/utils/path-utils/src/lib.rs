@@ -161,7 +161,22 @@ pub fn write_atomically(write_path: &Path, contents: &str) -> io::Result<()> {
     std::fs::create_dir_all(parent)?;
     let mut tmp = NamedTempFile::new_in(parent)?;
     tmp.write_all(contents.as_bytes())?;
-    tmp.persist(write_path)?;
+    // Fork (nuwax-codex): user config files may carry a direct API key
+    // (my-docs/direct-provider-api-key-2026-11-05) — restrict the temp file
+    // and the persisted file to the owner before the content lands.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o600))?;
+        tmp.persist(write_path)?;
+        // persist replaces by rename; re-assert in case the target existed
+        // with looser bits.
+        std::fs::set_permissions(write_path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    {
+        tmp.persist(write_path)?;
+    }
     Ok(())
 }
 

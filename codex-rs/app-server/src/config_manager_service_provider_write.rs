@@ -119,11 +119,19 @@ fn provider_edits(
                         || default_id == Some(id)
                 })
             };
-            let mut fields =
-                patch_fields([("base_url", &patch.base_url), ("env_key", &patch.env_key)]);
+            let mut fields = patch_fields([
+                ("base_url", &patch.base_url),
+                ("env_key", &patch.env_key),
+                ("wire_api", &patch.wire_api),
+                ("api_key", &patch.api_key),
+            ]);
             if patch.name.is_some() {
                 fields.push(("name", Some(name)));
             }
+            // Fork: keep/set/clear with real source switching — setting one
+            // primary credential removes the other primary fields in the
+            // same atomic edit; omitting a field never deletes it.
+            apply_credential_source_switch(&mut fields, &patch, existing)?;
             (id, fields)
         }
         ProviderSettingsPatch::Bedrock(patch) => {
@@ -191,15 +199,113 @@ fn provider_edits(
         fields.push(("wire_api", Some("responses")));
     }
     let escaped_id = provider_id.replace('\\', "\\\\").replace('"', "\\\"");
-    let edits = fields
+    let mut edits = fields
         .into_iter()
         .map(|(field, value)| ApiConfigEdit {
             key_path: format!(r#"model_providers."{escaped_id}".{field}"#),
             value: value.into(),
             merge_strategy: MergeStrategy::Replace,
         })
-        .collect();
+        .collect::<Vec<_>>();
+    if let Some(models) = params_models(&params.settings) {
+        // Some(None) clears the declaration; Some(list) replaces it. An
+        // empty list would leave /model with nothing and is rejected.
+        if let Some(list) = models.as_ref() {
+            if list.is_empty() {
+                return Err(invalid(
+                    "models must list at least one model slug; clear it with null.",
+                ));
+            }
+            if list.iter().any(|slug| slug.trim().is_empty()) {
+                return Err(invalid("models must not contain empty slugs."));
+            }
+        }
+        edits.push(ApiConfigEdit {
+            key_path: format!(r#"model_providers."{escaped_id}".models"#),
+            value: models
+                .map(|list| {
+                    serde_json::Value::Array(
+                        list.into_iter().map(serde_json::Value::String).collect(),
+                    )
+                })
+                .unwrap_or(serde_json::Value::Null),
+            merge_strategy: MergeStrategy::Replace,
+        });
+    }
     Ok((provider_id, edits))
+}
+
+/// Fork: direct-key source switching. `fields` already carries the client's
+/// explicit string patches; this adds the deletions that make a source
+/// switch atomic and validates the resulting combination.
+fn apply_credential_source_switch(
+    fields: &mut Vec<PatchField<'_>>,
+    patch: &CustomGatewaySettingsParams,
+    existing: Option<&TomlValue>,
+) -> Result<(), ConfigManagerError> {
+    if let Some(wire) = patch.wire_api.as_ref().and_then(Option::as_deref)
+        && !matches!(wire.trim(), "responses" | "chat" | "anthropic")
+    {
+        return Err(invalid(
+            "wire_api must be one of responses, chat, or anthropic.",
+        ));
+    }
+    let api_key_set = patch
+        .api_key
+        .as_ref()
+        .and_then(Option::as_deref)
+        .map(str::trim);
+    if api_key_set == Some("") {
+        return Err(invalid("api_key must not be blank; clear it with null."));
+    }
+    let has = |field: &str| existing.is_some_and(|provider| provider.get(field).is_some());
+    let clears = |fields: &[PatchField<'_>], field: &str| {
+        fields.iter().any(|(f, _)| *f == field)
+    };
+    // Setting one primary credential deletes the other primary fields in
+    // this same atomic edit; omitting a field never deletes it.
+    if patch.api_key.as_ref().is_some_and(|value| value.is_some()) {
+        for other in ["env_key", "experimental_bearer_token"] {
+            if (has(other) || clears(fields, other)) && !clears(fields, other) {
+                fields.push((other, None));
+            }
+        }
+    }
+    if patch.env_key.as_ref().is_some_and(|value| value.is_some()) {
+        for other in ["api_key", "experimental_bearer_token"] {
+            if (has(other) || clears(fields, other)) && !clears(fields, other) {
+                fields.push((other, None));
+            }
+        }
+    }
+    // The resulting combination must stay exclusive.
+    let resulting = |field: &str| -> bool {
+        if clears(fields, field) {
+            return fields
+                .iter()
+                .any(|(f, value)| *f == field && value.is_some());
+        }
+        has(field)
+    };
+    if resulting("api_key")
+        && (resulting("env_key")
+            || has("experimental_bearer_token")
+            || has("auth")
+            || has("aws"))
+    {
+        return Err(invalid(
+            "api_key cannot be combined with env_key, experimental_bearer_token, auth, \
+             or aws — configure one credential source per provider.",
+        ));
+    }
+    Ok(())
+}
+
+fn params_models(settings: &ProviderSettingsPatch) -> Option<Option<Vec<String>>> {
+    match settings {
+        ProviderSettingsPatch::CustomGateway(patch) => patch.models.clone(),
+        _ => None,
+    }
 }
 
 // Missing fields are excluded. A field with no value clears its TOML key.

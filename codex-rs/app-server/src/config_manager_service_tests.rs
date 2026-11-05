@@ -3673,3 +3673,240 @@ async fn model_provider_list_checks_builtin_configuration_fields() -> Result<()>
     }
     Ok(())
 }
+
+// ---- Fork: direct api_key credential mode (my-docs/direct-provider-api-key-2026-11-05) ----
+
+fn direct_key_manager(home: &tempfile::TempDir) -> Result<ConfigManager> {
+    let config_path = home.path().join(CONFIG_TOML_FILE);
+    std::fs::write(
+        &config_path,
+        "[model_providers.gw]\nname = 'Gateway'\nbase_url = 'https://gw.example.test/v1'\nenv_key = 'GW_ENV_KEY'\nwire_api = 'chat'\nmodels = ['model-a']\n",
+    )?;
+    Ok(ConfigManager::without_managed_config_for_tests(
+        home.path().to_path_buf(),
+    ))
+}
+
+fn gateway_patch(
+    id: Option<&str>,
+    body: serde_json::Value,
+) -> codex_app_server_protocol::ModelProviderConfigWriteParams {
+    let mut settings = body;
+    settings["type"] = "customGateway".into();
+    if let Some(id) = id {
+        settings["providerId"] = id.into();
+    }
+    serde_json::from_value(serde_json::json!({"settings": settings})).expect("parse patch")
+}
+
+#[tokio::test]
+async fn direct_api_key_write_switches_source_atomically() -> Result<()> {
+    use codex_app_server_protocol::GatewayAuth;
+    use codex_app_server_protocol::ProviderSettings;
+
+    let home = tempdir()?;
+    let manager = direct_key_manager(&home)?;
+
+    // Set the direct key: env_key must be deleted in the same edit.
+    let response = manager
+        .model_provider_config_write(gateway_patch(
+            Some("gw"),
+            serde_json::json!({"apiKey": "sk-direct-test-key"}),
+        ))
+        .await?;
+    assert_eq!(
+        response.provider.settings,
+        ProviderSettings::CustomGateway {
+            auth: GatewayAuth::DirectApiKey
+        }
+    );
+    let saved: serde_json::Value =
+        toml::from_str(&std::fs::read_to_string(home.path().join(CONFIG_TOML_FILE))?)?;
+    assert_eq!(
+        saved["model_providers"]["gw"]["api_key"].as_str(),
+        Some("sk-direct-test-key")
+    );
+    assert!(
+        saved["model_providers"]["gw"].get("env_key").is_none(),
+        "setting api_key must delete env_key in the same atomic edit: {saved}"
+    );
+
+    // Switch back to env: the api_key field must be truly deleted, not kept.
+    manager
+        .model_provider_config_write(gateway_patch(
+            Some("gw"),
+            serde_json::json!({"envKey": "GW_ENV_KEY"}),
+        ))
+        .await?;
+    let saved: serde_json::Value =
+        toml::from_str(&std::fs::read_to_string(home.path().join(CONFIG_TOML_FILE))?)?;
+    assert_eq!(
+        saved["model_providers"]["gw"]["env_key"].as_str(),
+        Some("GW_ENV_KEY")
+    );
+    assert!(
+        saved["model_providers"]["gw"].get("api_key").is_none(),
+        "switching to env_key must delete api_key: {saved}"
+    );
+
+    // Clear with null: the field disappears entirely. Note the earlier
+    // env->api_key switch deleted env_key, so the provider now has no
+    // credential at all (restoring env is a separate explicit step).
+    manager
+        .model_provider_config_write(gateway_patch(
+            Some("gw"),
+            serde_json::json!({"apiKey": "sk-direct-test-key"}),
+        ))
+        .await?;
+    let cleared = manager
+        .model_provider_config_write(gateway_patch(
+            Some("gw"),
+            serde_json::json!({"apiKey": null}),
+        ))
+        .await?;
+    assert_eq!(
+        cleared.provider.settings,
+        ProviderSettings::CustomGateway { auth: GatewayAuth::None }
+    );
+    let saved: serde_json::Value =
+        toml::from_str(&std::fs::read_to_string(home.path().join(CONFIG_TOML_FILE))?)?;
+    assert!(saved["model_providers"]["gw"].get("api_key").is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn direct_api_key_write_validates_inputs() -> Result<()> {
+    let home = tempdir()?;
+    let manager = direct_key_manager(&home)?;
+
+    let error = manager
+        .model_provider_config_write(gateway_patch(
+            Some("gw"),
+            serde_json::json!({"apiKey": "   "}),
+        ))
+        .await
+        .expect_err("blank key must fail");
+    assert!(error.to_string().contains("api_key must not be blank"));
+
+    let error = manager
+        .model_provider_config_write(gateway_patch(
+            Some("gw"),
+            serde_json::json!({"wireApi": "grpc"}),
+        ))
+        .await
+        .expect_err("bad wire must fail");
+    assert!(
+        error.to_string().contains("wire_api must be one of"),
+        "{error}"
+    );
+
+    let error = manager
+        .model_provider_config_write(gateway_patch(
+            Some("gw"),
+            serde_json::json!({"models": []}),
+        ))
+        .await
+        .expect_err("empty models must fail");
+    assert!(error.to_string().contains("at least one model slug"));
+
+    // Errors must never echo a supplied key value.
+    let error = manager
+        .model_provider_config_write(gateway_patch(
+            Some("gw"),
+            serde_json::json!({"apiKey": "sk-secret-do-not-echo", "envKey": "KEEP_ME"}),
+        ))
+        .await
+        .expect_err("conflicting sources must fail");
+    let message = error.to_string();
+    assert!(message.contains("cannot be combined"), "{message}");
+    assert!(!message.contains("sk-secret-do-not-echo"), "{message}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn direct_api_key_layer_views_are_redacted() -> Result<()> {
+    let home = tempdir()?;
+    let manager = direct_key_manager(&home)?;
+    manager
+        .model_provider_config_write(gateway_patch(
+            Some("gw"),
+            serde_json::json!({"apiKey": "sk-layer-redaction-probe"}),
+        ))
+        .await?;
+
+    let response = manager
+        .read(codex_app_server_protocol::ConfigReadParams {
+            cwd: None,
+            include_layers: true,
+        })
+        .await?;
+    let rendered = serde_json::to_string(&response)?;
+    assert!(
+        !rendered.contains("sk-layer-redaction-probe"),
+        "public config/read must not carry the key: {rendered}"
+    );
+    // The raw layer view reports configured-status, not a placeholder that
+    // could be written back to disk.
+    if let Some(layers) = response.layers {
+        for layer in layers {
+            if let Some(providers) = layer.config.get("model_providers") {
+                if let Some(gw) = providers.get("gw") {
+                    assert_eq!(gw.get("api_key"), Some(&serde_json::json!(true)));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn direct_api_key_config_file_permissions_are_restricted() -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let home = tempdir()?;
+    let manager = direct_key_manager(&home)?;
+    manager
+        .model_provider_config_write(gateway_patch(
+            Some("gw"),
+            serde_json::json!({"apiKey": "sk-permissions-probe"}),
+        ))
+        .await?;
+    let mode = std::fs::metadata(home.path().join(CONFIG_TOML_FILE))?
+        .permissions()
+        .mode();
+    assert_eq!(
+        mode & 0o777,
+        0o600,
+        "config files carrying a direct key must be owner-only"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn direct_api_key_write_models_and_wire_round_trip() -> Result<()> {
+    let home = tempdir()?;
+    let manager = direct_key_manager(&home)?;
+    manager
+        .model_provider_config_write(gateway_patch(
+            Some("gw"),
+            serde_json::json!({
+                "apiKey": "sk-round-trip",
+                "wireApi": "anthropic",
+                "models": ["model-b", "model-c"],
+            }),
+        ))
+        .await?;
+    let saved: serde_json::Value =
+        toml::from_str(&std::fs::read_to_string(home.path().join(CONFIG_TOML_FILE))?)?;
+    let provider = &saved["model_providers"]["gw"];
+    assert_eq!(provider["wire_api"].as_str(), Some("anthropic"));
+    assert_eq!(
+        provider["models"],
+        serde_json::json!(["model-b", "model-c"])
+    );
+    assert_eq!(provider["api_key"].as_str(), Some("sk-round-trip"));
+    // The saved file must load back cleanly (validation passes).
+    let reloaded = manager.load_thread_agnostic_config().await?;
+    let _ = reloaded;
+    Ok(())
+}

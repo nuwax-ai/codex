@@ -158,6 +158,13 @@ pub(super) fn summarize_provider(
             let env_key = string_field(config, "env_key");
             let auth = if external_auth {
                 GatewayAuth::ExternallyConfigured { env_key }
+            } else if config.is_some_and(|config| {
+                config
+                    .get("api_key")
+                    .is_some_and(|key| !key.as_str().is_none_or(str::is_empty))
+            }) {
+                // Status only — never the value.
+                GatewayAuth::DirectApiKey
             } else if let Some(env_key) = env_key {
                 GatewayAuth::EnvironmentVariable { env_key }
             } else {
@@ -217,7 +224,7 @@ pub(super) fn supported_fields(
         }
         (Some(_), GCP_PROVIDER_ID) => &["project_id", "location", "credential_file"],
         (Some(_), _) => &[],
-        (None, _) => &["name", "base_url", "env_key"],
+        (None, _) => &["name", "base_url", "env_key", "wire_api", "models", "api_key"],
     }
 }
 

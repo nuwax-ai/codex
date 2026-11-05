@@ -93,3 +93,22 @@ pub(crate) fn redact_otel_exporter_headers(otel: &mut JsonValue) {
         }
     }
 }
+
+/// Fork (nuwax-codex): strips direct `api_key` values from every provider in
+/// a raw JSON/TOML layer view before it crosses the API boundary
+/// (`config/read` with included layers). Status queries use
+/// `GatewayAuth::DirectApiKey` instead — the value itself is never returned.
+pub(crate) fn redact_provider_api_keys(layer: &mut JsonValue) {
+    let Some(providers) = layer
+        .get_mut("model_providers")
+        .and_then(JsonValue::as_object_mut)
+    else {
+        return;
+    };
+    for provider in providers.values_mut() {
+        if let Some(api_key) = provider.get_mut("api_key") {
+            let configured = api_key.as_str().is_some_and(|key| !key.trim().is_empty());
+            *api_key = JsonValue::Bool(configured);
+        }
+    }
+}

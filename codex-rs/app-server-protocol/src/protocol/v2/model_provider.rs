@@ -75,6 +75,9 @@ pub enum ProviderSettings {
 #[ts(tag = "mode", rename_all = "camelCase", export_to = "v2/")]
 pub enum GatewayAuth {
     None,
+    /// Fork: an API key is stored directly in the user config. Status only —
+    /// the key itself is never returned.
+    DirectApiKey,
     EnvironmentVariable {
         #[serde(rename = "envKey")]
         #[ts(rename = "envKey")]
@@ -149,6 +152,40 @@ pub struct CustomGatewaySettingsParams {
     #[ts(type = "string | null")]
     #[ts(optional = nullable)]
     pub env_key: Option<Option<String>>,
+    /// Fork (nuwax-codex): wire protocol + declared models (P1/P4 fields).
+    #[serde(
+        default,
+        deserialize_with = "crate::protocol::serde_helpers::deserialize_double_option",
+        serialize_with = "crate::protocol::serde_helpers::serialize_double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[schemars(with = "Option<String>", skip_serializing_if = "Option::is_none")]
+    #[ts(type = "string | null")]
+    #[ts(optional = nullable)]
+    pub wire_api: Option<Option<String>>,
+    #[serde(
+        default,
+        deserialize_with = "crate::protocol::serde_helpers::deserialize_double_option",
+        serialize_with = "crate::protocol::serde_helpers::serialize_double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[schemars(with = "Option<Vec<String>>", skip_serializing_if = "Option::is_none")]
+    #[ts(type = "string[] | null")]
+    #[ts(optional = nullable)]
+    pub models: Option<Option<Vec<String>>>,
+    /// Fork: the direct API key. Absent = keep; Some(None) = clear; Some(k) = set.
+    /// The value travels only in this restricted write request and is never
+    /// echoed in summaries, errors, or logs.
+    #[serde(
+        default,
+        deserialize_with = "crate::protocol::serde_helpers::deserialize_double_option",
+        serialize_with = "crate::protocol::serde_helpers::serialize_double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[schemars(with = "Option<String>", skip_serializing_if = "Option::is_none")]
+    #[ts(type = "string | null")]
+    #[ts(optional = nullable)]
+    pub api_key: Option<Option<String>>,
 }
 
 /// AWS configuration fields for built-in Bedrock providers.
