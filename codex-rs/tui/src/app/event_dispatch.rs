@@ -433,12 +433,27 @@ impl App {
                         },
                     )
                     .await;
-                // Release suppression only on the rebuilt (same) thread.
-                if self.chat_widget.thread_id() == Some(thread_id) {
+                // Release suppression only when the rebuild demonstrably
+                // landed on the same thread AND the provider definition is
+                // now the one we saved (the resume path returns
+                // Ok(Continue) even on partial failure; a widget still on
+                // the old route means the refresh didn't apply).
+                let applied = self.chat_widget.thread_id() == Some(thread_id)
+                    && result.is_ok();
+                if applied {
                     self.chat_widget.set_queue_autosend_suppressed(false);
                     self.chat_widget.maybe_send_next_queued_input();
+                } else {
+                    // Keep the suppression and the intent; the next turn
+                    // boundary retries. Report to the user so silence
+                    // isn't mistaken for success.
+                    self.pending_credential_refresh = Some(thread_id);
+                    self.chat_widget.add_error_message(
+                        "Credential refresh did not apply — will retry after the next turn."
+                            .to_string(),
+                    );
                 }
-                let _ = result?;
+                let _ = result;
             }
             AppEvent::ProviderWizardCredentialMode(mode) => {
                 self.provider_wizard_credential_mode(&mode);

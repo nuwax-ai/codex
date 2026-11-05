@@ -2074,10 +2074,17 @@ impl App {
                     }
                 }
                 // If the refresh couldn't fire (turn already restarted via a
-                // non-queue path), release suppression so the queue isn't
-                // stranded; the refresh stays pending for the next boundary.
+                // non-queue path), release ONLY the suppression this refresh
+                // set — a PendingModelSwitch may also hold a suppression that
+                // must survive until the model switch applies.
                 if credential_suppression_active && self.pending_credential_refresh.is_some() {
-                    self.chat_widget.set_queue_autosend_suppressed(false);
+                    let model_switch_holds =
+                        self.pending_model_switch.as_ref().is_some_and(|pending| {
+                            self.chat_widget.thread_id() == Some(pending.thread_id)
+                        });
+                    if !model_switch_holds {
+                        self.chat_widget.set_queue_autosend_suppressed(false);
+                    }
                 }
                 // History cells queued by completion must be applied before anchoring its tip.
                 if let Some(event) = tip_ready {

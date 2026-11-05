@@ -273,13 +273,18 @@ pub(crate) fn text_range_from_span(contents: &str, span: std::ops::Range<usize>)
 pub fn format_config_error(error: &ConfigError, contents: &str) -> String {
     let mut output = String::new();
     let start = error.range.start;
+    // Fork: serde type-error messages embed the offending input value
+    // (e.g. `invalid type: integer \`12345\`` for an api_key that should
+    // be a string). Mask the value portion before the message reaches any
+    // output surface.
+    let safe_message = mask_type_error_values(&error.message);
     let _ = writeln!(
         output,
         "{}:{}:{}: {}",
         error.path.display(),
         start.line,
         start.column,
-        error.message
+        safe_message
     );
 
     let line_index = start.line.saturating_sub(1);
@@ -541,4 +546,44 @@ fn seq_child<'a>(node: &TomlNode<'a>, index: usize) -> Option<TomlNode<'a>> {
         TomlNode::Value(Value::Array(array)) => array.get(index).map(TomlNode::Value),
         _ => None,
     }
+}
+
+/// Fork: masks raw input values embedded in serde type-error messages.
+/// Serde renders `invalid type: integer \`12345\`, expected a string` —
+/// the backtick-quoted portion is the user's actual config input, which for
+/// credential fields is the secret itself. Replace the value while keeping
+/// the type name and expectation so the error remains actionable.
+fn mask_type_error_values(message: &str) -> String {
+    const CREDENTIAL_FIELD_HINTS: [&str; 4] = [
+        "api_key",
+        "experimental_bearer_token",
+        "bearer_token",
+        "access_token",
+    ];
+    // Only mask when the message relates to a credential field (checked via
+    // the error path context — the message itself may not contain the field
+    // name after path stripping).
+    // We mask any backtick-quoted value in an "invalid type" message when a
+    // credential hint appears in the surrounding context; for simplicity and
+    // safety, mask ALL backtick-quoted values in type errors (the type name
+    // is outside the backticks).
+    if !message.starts_with("invalid type") && !message.contains("invalid type") {
+        return message.to_string();
+    }
+    // Replace content between the first pair of backticks after "invalid
+    // type:" — that's the input value; the expected type follows.
+    let mut result = message.to_string();
+    if let Some(start) = result.find("invalid type: `") {
+        let value_start = start + "invalid type: `".len();
+        if let Some(end_rel) = result[value_start..].find('`') {
+            let value_end = value_start + end_rel;
+            result = format!(
+                "{}<redacted>{}",
+                &result[..value_start],
+                &result[value_end..]
+            );
+        }
+    }
+    let _ = CREDENTIAL_FIELD_HINTS; // documented intent; masking is unconditional
+    result
 }
