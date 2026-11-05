@@ -3497,6 +3497,11 @@ async fn model_provider_list_allows_user_overrides_of_system_defaults() -> Resul
             "System gateway",
             "environmentVariable",
         ),
+        // Fork: these three rows pinned name/base_url/env_key in a higher
+        // layer and expected canEdit=false under upstream's field set. The
+        // fork's custom providers additionally expose wire_api/models/api_key
+        // as editable fields (none pinned here), so the provider remains
+        // editable — expectations flipped accordingly.
         (
             vec![
                 ("model_providers.team.name", "System gateway"),
@@ -3507,11 +3512,13 @@ async fn model_provider_list_allows_user_overrides_of_system_defaults() -> Resul
                 ("model_providers.team.env_key", "SYSTEM_KEY"),
             ],
             false,
-            false,
+            true,
             true,
             "System gateway",
             "environmentVariable",
         ),
+        // A builtin-looking name still forces rename-before-edit, so
+        // canEdit stays false even with the new editable fields.
         (
             vec![("model_providers.team.name", "OpenAI")],
             false,
@@ -3520,6 +3527,8 @@ async fn model_provider_list_allows_user_overrides_of_system_defaults() -> Resul
             "OpenAI",
             "externallyConfigured",
         ),
+        // A blank name also forces rename-before-edit (same rule as the
+        // builtin-looking name above), so canEdit stays false.
         (
             vec![("model_providers.team.name", " ")],
             false,
