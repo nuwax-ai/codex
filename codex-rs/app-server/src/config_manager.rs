@@ -497,11 +497,26 @@ impl ConfigManager {
             )
             .await?;
         if current.model_provider_id != configured.model_provider_id {
+            // Fork (nuwax-codex): keep the conversation on its own provider
+            // instead of blocking every turn. Only a provider that no longer
+            // exists is a hard stop — the user can then re-home the thread.
+            let still_configured = configured
+                .model_providers
+                .contains_key(&current.model_provider_id)
+                || built_in_model_providers(/*openai_base_url*/ None)
+                    .contains_key(&current.model_provider_id);
+            if still_configured {
+                tracing::info!(
+                    thread_provider = %current.model_provider_id,
+                    config_provider = %configured.model_provider_id,
+                    "conversation keeps its own model provider"
+                );
+                return Ok(());
+            }
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                ModelProviderError::ModelProviderMismatch {
+                ModelProviderError::ModelProviderNotConfigured {
                     model_provider: current.model_provider_id.clone(),
-                    current_model_provider: configured.model_provider_id,
                 },
             ));
         }
@@ -628,6 +643,19 @@ impl ConfigManager {
                     .or_insert_with(|| serde_json::Value::String(model));
             }
         }
+        // Fork (nuwax-codex): an inherited thread keeps the provider it was
+        // created with. Mirror it into the session layer so the loaded config —
+        // and every later rebuild — stays on that route instead of silently
+        // following the disk default while the user believes they are on the
+        // conversation's own provider.
+        if requested_provider.is_none()
+            && let Some(saved) = saved_provider
+        {
+            let overrides = request_overrides.get_or_insert_with(HashMap::new);
+            overrides
+                .entry("model_provider".to_string())
+                .or_insert_with(|| serde_json::Value::String(saved.to_string()));
+        }
         // Resolve the selection before the saved provider is applied as a resume override.
         // Fork (nuwax-codex): an explicitly requested provider is the requester's
         // selection for this resume — the same session-scoped routing the turn
@@ -694,13 +722,15 @@ impl ConfigManager {
                         requested_provider,
                     ] {
                         if provider != current_provider {
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::InvalidInput,
-                                ModelProviderError::ModelProviderMismatch {
-                                    model_provider: provider.to_owned(),
-                                    current_model_provider: current_provider,
-                                },
-                            ));
+                            // Fork (nuwax-codex): the saved provider already
+                            // passed the configured/policy checks above, so
+                            // resume keeps the conversation on it and only
+                            // records the drift.
+                            tracing::info!(
+                                thread_provider = provider,
+                                config_provider = %current_provider,
+                                "resuming a conversation under its own model provider"
+                            );
                         }
                     }
                 }

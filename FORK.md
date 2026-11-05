@@ -445,6 +445,17 @@ config layer stack，而 turn 准入用 `load_latest_config_with_session_layers`
 `turn/start`** 验证切换后的会话可直接继续对话（该检查正是只读条的来源）。
 目标是"同一会话内跨厂商切换后继续使用"，因此切换成功即用会话层路由，
 不出现只读提示。
+**路由不阻塞（2026-11-05 用户决策，取代此前的只读策略）**：打开/续接一个 provider 与当前
+配置不同的会话时**不再设为只读**。会话保留自己创建时的 provider——`load_for_resume` 把它
+镜像进会话层，保证真正加载出来的 config 用它（此前只是放行，config 仍跟随磁盘默认，等于
+静默换厂商）；准入检查与续接校验在 provider **仍然配置**时降级为 `tracing::info`
+（记录 `thread_provider`/`config_provider`）并继续，不再返回 `ModelProviderMismatch`。
+只有两种情况仍会拦：该 provider **已不再配置**（`ModelProviderNotConfigured`）与组织
+策略要求的 provider 冲突（`ModelProviderPolicyConflict`）——这两种 UI 才出现带 `r`/`c`/`n`
+的提示条。`ModelProviderMismatch` 变体仅为协议兼容保留，当前无生产路径产生它。
+上游断言"默认选择变化必须拒绝既有会话输入"的用例按新语义重写
+（`model_provider_enforcement` 的 default 分支、`thread_resume_recovers_after_provider_configuration_is_restored`）。
+
 **跟进项已闭环（2026-11-04 晚，三层根因）**：真集成变体失败并非"rejoin 顺序"
 本身，而是一整条链：①`load_for_resume` 与 turn 准入检查同源的磁盘漂移比较
 把显式跨厂商 resume 全部拒掉（P0 的孪生 bug）——现改为**客户端显式指定

@@ -2094,6 +2094,22 @@ async fn check_provider_resume_retries(reopen_via: ProviderResumeRoute) -> Resul
             history_mode: None,
         };
         Box::pin(app.resume_target_session(&mut tui, &mut server, target.clone())).await?;
+        if provider_configured {
+            // Fork (nuwax-codex, 2026-11-05): the saved provider is still
+            // configured, so the conversation stays usable — the default
+            // selection differing no longer produces a read-only notice.
+            assert!(!app.chat_widget.has_provider_error());
+            assert_eq!(app.chat_widget.thread_id(), Some(thread_id));
+            let turns = app.thread_event_channels[&thread_id]
+                .store
+                .lock()
+                .await
+                .snapshot()
+                .turns;
+            assert!(serde_json::to_string(&turns)?.contains("Saved provider history"));
+            server.shutdown().await?;
+            continue;
+        }
         assert!(app.chat_widget.has_provider_error());
         assert_eq!(app.chat_widget.thread_id(), Some(thread_id));
         let turns = app.thread_event_channels[&thread_id]
@@ -2122,11 +2138,11 @@ async fn check_provider_resume_retries(reopen_via: ProviderResumeRoute) -> Resul
                 Box::pin(app.select_agents_overview_thread(&mut tui, &mut server, other_id))
                     .await?;
                 assert_eq!(app.chat_widget.thread_id(), Some(other_id));
-                assert!(
-                    app.agents_overview.input_states[&thread_id]
-                        .provider_error
-                        .is_some()
-                );
+                // The draft-bearing state is preserved for the thread we left.
+                // Its read-only flag is re-derived on reopen: once the saved
+                // provider is configured again, the thread stays usable
+                // (FORK.md, 2026-11-05 non-blocking routing).
+                assert!(app.agents_overview.input_states.contains_key(&thread_id));
             }
             std::fs::write(
                 home.join("config.toml"),
@@ -2154,13 +2170,13 @@ async fn check_provider_resume_retries(reopen_via: ProviderResumeRoute) -> Resul
                 }
             }
             let input = app.chat_widget.capture_thread_input_state().unwrap();
-            let expected_error = (current_provider != "missing_provider").then(|| {
-                codex_app_server_protocol::ModelProviderError::ModelProviderMismatch {
-                    model_provider: "missing_provider".into(),
-                    current_model_provider: current_provider.into(),
-                }
-            });
-            assert_eq!(input.provider_error, expected_error);
+            // Fork (nuwax-codex, 2026-11-05): the thread keeps its own
+            // provider as long as it is configured, so reopening it under any
+            // default selection leaves no provider error behind.
+            assert_eq!(
+                input.provider_error, None,
+                "current_provider={current_provider}"
+            );
             assert_eq!(app.chat_widget.thread_id(), Some(thread_id));
             assert_eq!(
                 app.chat_widget.composer_text_with_pending(),

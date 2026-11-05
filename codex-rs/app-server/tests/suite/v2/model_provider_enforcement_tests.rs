@@ -159,34 +159,61 @@ base_url = "{}/v1"
         message: provider_error.to_string(),
         data: Some(serde_json::to_value(provider_error)?),
     };
-    for (method, params) in [
-        ("thread/resume", json!({"threadId": started.thread.id})),
-        (
-            "thread/guardianReview",
-            json!({ "threadId": started.thread.id }),
-        ),
-        (
-            "thread/goal/set",
-            json!({"threadId": started.thread.id, "objective": "Blocked objective"}),
-        ),
-        (
-            "turn/start",
-            json!({ "threadId": started.thread.id, "input": input }),
-        ),
-        (
-            "turn/steer",
-            json!({ "threadId": started.thread.id, "input": input, "expectedTurnId": active.turn.id }),
-        ),
-        (
-            "review/start",
-            json!({ "threadId": started.thread.id, "target": { "type": "custom", "instructions": "Review this change." }, "delivery": "inline" }),
-        ),
-    ] {
-        let id = server.send_raw_request(method, Some(params)).await?;
-        let error = server
-            .read_stream_until_error_message(RequestId::Integer(id))
+    // Fork (nuwax-codex, 2026-11-05): changing the *default* selection is not a
+    // managed requirement, so the conversation keeps running on its own
+    // provider. A required-provider change (the other cases) still fails closed.
+    if required_selection == "default" {
+        for (method, params) in [
+            ("thread/resume", json!({"threadId": started.thread.id})),
+            (
+                "turn/start",
+                json!({ "threadId": started.thread.id, "input": input }),
+            ),
+        ] {
+            let id = server.send_raw_request(method, Some(params)).await?;
+            let _: serde_json::Value = server.read_response(id).await?;
+        }
+        // Goals stay readable on a conversation that kept its route.
+        let id = server
+            .send_raw_request(
+                "thread/goal/get",
+                Some(json!({"threadId": started.thread.id})),
+            )
             .await?;
-        assert_eq!(error.error, expected_error);
+        let goal: codex_app_server_protocol::ThreadGoalGetResponse =
+            server.read_response(id).await?;
+        assert_eq!(goal.goal.expect("existing goal").objective, "Original goal");
+        return Ok(());
+    } else {
+        for (method, params) in [
+            ("thread/resume", json!({"threadId": started.thread.id})),
+            (
+                "thread/guardianReview",
+                json!({ "threadId": started.thread.id }),
+            ),
+            (
+                "thread/goal/set",
+                json!({"threadId": started.thread.id, "objective": "Blocked objective"}),
+            ),
+            (
+                "turn/start",
+                json!({ "threadId": started.thread.id, "input": input }),
+            ),
+            (
+                "turn/steer",
+                json!({ "threadId": started.thread.id, "input": input, "expectedTurnId": active.turn.id }),
+            ),
+            (
+                "review/start",
+                json!({ "threadId": started.thread.id, "target": { "type": "custom", "instructions": "Review this change." }, "delivery": "inline" }),
+            ),
+        ] {
+            let id = server.send_raw_request(method, Some(params)).await?;
+            let error = server
+                .read_stream_until_error_message(RequestId::Integer(id))
+                .await?;
+            assert_eq!(error.error, expected_error);
+        }
     }
 
     let id = server
@@ -318,20 +345,19 @@ async fn provider_selection_can_be_restored_for_existing_threads() -> Result<()>
         }],
         ..Default::default()
     };
-    let id = server.send_turn_start_request(params.clone()).await?;
-    let error = server
-        .read_stream_until_error_message(RequestId::Integer(id))
+    // Fork (nuwax-codex, 2026-11-05): a changed *default* selection no longer
+    // makes the conversation read-only. It keeps its own (still configured)
+    // provider, so the next turn is accepted and reaches that provider.
+    let id = server.send_turn_start_request(params).await?;
+    let _: TurnStartResponse = server.read_response(id).await?;
+    server
+        .read_stream_until_notification_message("turn/completed")
         .await?;
     assert_eq!(
-        error.error.data,
-        Some(serde_json::to_value(
-            codex_app_server_protocol::ModelProviderError::ModelProviderMismatch {
-                model_provider: "mock_provider".into(),
-                current_model_provider: "openai".into(),
-            }
-        )?)
+        requests.requests().len(),
+        1,
+        "the turn must reach the conversation's own provider"
     );
-    assert!(requests.requests().is_empty());
     let id = server
         .send_raw_request(
             "thread/read",
@@ -340,13 +366,7 @@ async fn provider_selection_can_be_restored_for_existing_threads() -> Result<()>
         .await?;
     let read: codex_app_server_protocol::ThreadReadResponse = server.read_response(id).await?;
     assert_eq!(read.thread.model_provider, "mock_provider");
-    std::fs::write(path, original)?;
-    let id = server.send_turn_start_request(params).await?;
-    let _: TurnStartResponse = server.read_response(id).await?;
-    server
-        .read_stream_until_notification_message("turn/completed")
-        .await?;
-    assert_eq!(requests.requests().len(), 1);
+    let _ = original;
     Ok(())
 }
 

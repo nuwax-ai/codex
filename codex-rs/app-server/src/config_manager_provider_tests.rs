@@ -312,27 +312,14 @@ name = "Gateway"
         .await?;
     let default_manager =
         ConfigManager::without_managed_config_for_tests(home.path().to_path_buf());
-    if key == "profile" {
-        let error = default_manager
-            .check_thread_model_provider_for_input(&current)
-            .await
-            .unwrap_err();
-        assert_eq!(
-            error
-                .get_ref()
-                .and_then(|error| error.downcast_ref::<ModelProviderError>()),
-            Some(&ModelProviderError::ModelProviderMismatch {
-                model_provider: "gateway".into(),
-                current_model_provider: "openai".into(),
-            })
-        );
-    } else {
-        // The explicit override lives on the thread's session layers and
-        // survives a process that carries no such override.
-        default_manager
-            .check_thread_model_provider_for_input(&current)
-            .await?;
-    }
+    // Fork (nuwax-codex, 2026-11-05): whichever layer picked the provider, one
+    // that is still configured keeps the conversation usable. The
+    // override/profile only decides the *default* route; it no longer decides
+    // whether an existing thread may run (a provider that disappeared is the
+    // remaining hard stop).
+    default_manager
+        .check_thread_model_provider_for_input(&current)
+        .await?;
     Ok(())
 }
 
@@ -401,9 +388,8 @@ async fn input_provider_check_honors_session_scoped_routing() -> Result<()> {
         error
             .get_ref()
             .and_then(|error| error.downcast_ref::<ModelProviderError>()),
-        Some(&ModelProviderError::ModelProviderMismatch {
+        Some(&ModelProviderError::ModelProviderNotConfigured {
             model_provider: "gateway".into(),
-            current_model_provider: "openai".into(),
         })
     );
     Ok(())
@@ -533,24 +519,18 @@ base_url = "http://127.0.0.1:9/v1"
 wire_api = "responses"
 "#,
     )?;
-    let error = manager
+    let drifted = manager
         .load_for_resume(
             /*saved_provider*/ Some("mimo"),
             /*request_overrides*/ None,
             codex_core::config::ConfigOverrides::default(),
             cwd,
         )
-        .await
-        .unwrap_err();
-    assert_eq!(
-        error
-            .get_ref()
-            .and_then(|error| error.downcast_ref::<ModelProviderError>()),
-        Some(&ModelProviderError::ModelProviderMismatch {
-            model_provider: "mimo".into(),
-            current_model_provider: "openai".into(),
-        })
-    );
+        .await?;
+    // Fork (nuwax-codex, 2026-11-05): the disk default moved to openai, but
+    // mimo is still configured, so resume keeps the conversation on mimo
+    // instead of forcing a read-only mismatch flow.
+    assert_eq!(drifted.model_provider_id, "mimo");
     Ok(())
 }
 
