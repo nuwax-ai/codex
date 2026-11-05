@@ -59,6 +59,50 @@ Keep 不写掩码字符串，Clear 不残留旧来源；保存故障、配置竞
 - [x] 定向验证通过后按独立 root 流程更新本机源码安装（见下），备份旧二进制并验证实际路径；
   不覆盖官方 codex。不自动发布 npm 或推送。
 
+## 第六轮复审修复批与定向复验（2026-11-05）
+
+修复提交：`d5b4da1c39`（续接前五轮的复审修复）、`c5500a3adf`（补交 DirectApiKeyGatewayAuth 的
+python codegen 产物）。三处行为/边界变化：
+
+1. **刷新"已生效"判据**：`widget_generation` 只在 `replace_chat_widget`（唯一 swap 点）自增；
+   resume 包装函数入口的自增已删——它在终端清除失败时先自增后失败，会给出假的"已生效"。
+   判定恢复为 `result.is_ok() && bump && thread 匹配`（执行中排队路径与保存后空闲路径共用）。
+2. **类型错误脱敏收口**：`format_config_error` 与 `ConfigLoadError::Display` 两处都遮
+   （后者经 `io::Error::to_string()` 进 app-server 的 invalid-config 告警）；规则改为
+   "`, expected` 之前、受引号包裹的第一个片段"，覆盖 serde 的字符串双引号渲染与
+   `unknown variant`，不再误遮 `expected one of \`a\`, \`b\``。
+3. **闸门与杂项**：本批范围内 config/app-server/tui 的 deny 级 clippy lint 清零（含
+   `then_some`、needless borrow、redundant closure、`expect_used`、`print_stderr`），
+   并删除模型切换测试里遗留的 `eprintln!` 计时输出；bedrock picker 快照按 P4 向导补行。
+
+### 定向验证（只跑改动模块，未跑全量 workspace）
+
+| 命令 | 结果 |
+| --- | --- |
+| `cargo nextest run -p codex-config -p codex-model-provider-info`（整包） | **481/481** |
+| `cargo nextest run -p codex-app-server -E 'test(/direct_api_key|provider_write|config_warn|invalid_config/)'` | **16/16** |
+| `cargo nextest run -p codex-tui -E '…wizard/refresh/replace_chat_widget/model_picker/rehome/config_errors/preference…'` | **51/51** |
+| `cargo clippy -p codex-config -p codex-model-provider-info -p codex-app-server -p codex-tui --all-targets` | **0 error** |
+| `rustfmt --check`（本批改动的全部 .rs） | **0 diff** |
+
+新增测试：`config/src/diagnostics_tests.rs` 9 例（整数/布尔/双引号字符串/`\"` 转义/
+`unknown variant`/期望值保留/无值原样/幂等/`ConfigLoadError::Display`）；
+`tui/src/app/tests.rs::replace_chat_widget_bumps_generation_and_clears_credential_refresh`
+（每次替换恰好 +1、替换清 pending）。
+
+**排除项（均非本批引入，同样不能算本批通过）**：
+
+- `app::tests::session_lifecycle_requests::model_picker_rehomes_displayed_thread_and_updates_route`
+  仍超时：即文末"基线环境注意"记录的 macOS FSEvents 真集成阻塞；改动前的 16:57 全量过滤跑
+  同样超时，有基线对照。
+- `app::tests::backend_sessions::backend_sessions_poll_three_sources_and_isolate_closed_or_paused_streams`
+  在 nextest 60s×2 预算下超时；去掉时限以 `cargo test` 单跑 **90.48s 通过**，属本机负载
+  （load avg≈11）下的慢测。
+
+**仍未做**：T5 最后一条（编译实际 CLI + 可选实网最小请求）保持未勾。本轮未构建 CLI、
+未做任何厂商实网调用；上面的数字全部是 nextest/clippy 的本地结果，不能当成实网或
+"凭据已在真实网关生效"的证据。
+
 基线环境注意：此前真实 app-server 恢复测试曾阻塞于 macOS FSEvents 注册。
 若再次遇到，采样确认并单独报告；协议模拟、真实 app-server、TUI 和厂商实网
 证据分别列出，不相互冒充。不要扩大快照更新范围去吞掉其它工作区变更。
