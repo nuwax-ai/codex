@@ -1142,8 +1142,19 @@ impl AppServerSession {
             self.thread_tool_transport().configure(&mut params);
         }
         if let Some((model, model_provider)) = route_override {
-            params.model = Some(model);
-            params.model_provider = Some(model_provider);
+            params.model = Some(model.clone());
+            params.model_provider = Some(model_provider.clone());
+            // Also carry the route as a request config override: the typed
+            // parameters alone do not become part of the thread's config layer
+            // stack, and turn admission re-loads the config through those
+            // layers — a typed-only route is compared against the disk default
+            // and rejected as `ModelProviderMismatch`.
+            let overrides = params.config.get_or_insert_with(HashMap::new);
+            overrides.insert("model".to_string(), serde_json::Value::String(model));
+            overrides.insert(
+                "model_provider".to_string(),
+                serde_json::Value::String(model_provider),
+            );
         }
         let request_handle = self.request_handle();
         let (response, history_support, task_tools_available) =

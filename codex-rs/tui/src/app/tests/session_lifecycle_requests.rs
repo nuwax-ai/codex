@@ -5943,7 +5943,7 @@ models = ["step-5-preview"]
     )
     .map_err(std::io::Error::other)?;
 
-    let (mut server, _requests, proxy) =
+    let (mut server, requests, proxy) =
         start_recording_app_server(&app.config, /*blocked_thread_list*/ None, None).await?;
     let mut tui = crate::tui::test_support::make_test_tui()?;
     app.start_fresh_session(
@@ -5977,6 +5977,20 @@ models = ["step-5-preview"]
     );
     assert_eq!(app.chat_widget.current_model(), "step-5-preview");
     assert_eq!(app.chat_widget.config_ref().model_provider_id, "step");
+
+    // The route must also reach the thread's config layer stack: a typed-only
+    // `modelProvider` parameter is not replayed by turn admission, which then
+    // compares the thread against the disk default and rejects the first turn
+    // with `ModelProviderMismatch` (observed as the read-only notice).
+    let starts = recorded_params(&requests, "thread/start");
+    let last = starts.last().expect("the switch starts a thread");
+    assert_eq!(last["modelProvider"], "step");
+    assert_eq!(last["model"], "step-5-preview");
+    assert_eq!(
+        last["config"]["model_provider"], "step",
+        "the route needs a session-scope config override: {last}"
+    );
+    assert_eq!(last["config"]["model"], "step-5-preview");
 
     server.shutdown().await?;
     proxy.await??;

@@ -436,6 +436,12 @@ session/env/profile 层选中的 provider，纯 config.toml 默认值会被传�
 由服务端按自己的默认值落线（实测会把 step 落回 mimo）。草稿随
 `restore_input_after_model_switch` 带过去；有 turn 的会话仍走原 resume 路径，
 并保留"rollout 被删时按同一错误回退到新会话"的兜底。
+**路由必须同时进会话层**：`thread/start` 的类型化 `modelProvider` 参数不进线程的
+config layer stack，而 turn 准入用 `load_latest_config_with_session_layers` 重放
+层栈——只传类型化参数时首条消息会被判成 `ModelProviderMismatch`（UI 显示
+"read-only / Continue in a new chat"）。所以起线程时把 `model`+`model_provider`
+一并写进 `params.config`（会话级覆盖）；回归断言了 `thread/start` 的
+`config.model_provider` 与 `modelProvider` 两个位置都带目标路由。
 **跟进项已闭环（2026-11-04 晚，三层根因）**：真集成变体失败并非"rejoin 顺序"
 本身，而是一整条链：①`load_for_resume` 与 turn 准入检查同源的磁盘漂移比较
 把显式跨厂商 resume 全部拒掉（P0 的孪生 bug）——现改为**客户端显式指定
