@@ -2276,6 +2276,8 @@ pub async fn load_config_toml_with_layer_stack_and_env_seed(
 
     let merged_toml = config_layer_stack.effective_config();
     let cfg = deserialize_config_toml_with_base(merged_toml, codex_home).map_err(|e| {
+        // `e` wraps a `RedactedConfigError`, so this log cannot echo a raw
+        // config value.
         tracing::error!("Failed to deserialize overridden config: {e}");
         e
     })?;
@@ -2293,8 +2295,17 @@ pub fn deserialize_config_toml_with_base(
     // This guard ensures that any relative paths that is deserialized into an
     // [AbsolutePathBuf] is resolved against `config_base_dir`.
     let _guard = AbsolutePathBufGuard::new(config_base_dir);
-    ConfigToml::try_from(root_value)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    ConfigToml::try_from(root_value).map_err(|e| {
+        // Fork (nuwax-codex): this path has no per-file `ConfigError` metadata,
+        // so it used to hand a plain `toml::de::Error` to callers — whose
+        // `Display` embeds the offending input value. Wrap it so every print
+        // path (exec/TUI `Error loading config.toml:` fallback, `{err}` logs)
+        // renders the value redacted.
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            codex_config::RedactedConfigError::new(e.to_string()),
+        )
+    })
 }
 
 /// Validate user-visible feature settings against managed feature requirements.

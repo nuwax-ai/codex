@@ -2531,7 +2531,12 @@ async fn load_bootstrap_config_or_exit(
                     format_config_error_with_source(config_error)
                 );
             } else {
-                eprintln!("Error loading config.toml: {err}");
+                // Fork (nuwax-codex): untyped fallbacks can still carry a toml
+                // error whose Display embeds the offending value.
+                eprintln!(
+                    "Error loading config.toml: {}",
+                    codex_config::redact_config_error_text(&err.to_string())
+                );
             }
             std::process::exit(1);
         }

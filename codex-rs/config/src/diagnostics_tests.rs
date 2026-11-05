@@ -126,3 +126,22 @@ fn load_error_display_masks_values() {
         "guidance lost: {rendered}"
     );
 }
+
+/// Shape of the merged-layer deserializer: a plain toml error whose Display
+/// carries the value plus `in \`path\`` context lines. Wrapping it must mask
+/// the value but keep the context.
+#[test]
+fn redacted_config_error_masks_toml_display_text() {
+    let error = RedactedConfigError::new(
+        "invalid type: integer `987654`, expected a string\nin `api_key`\n\nin `model_providers`",
+    );
+    let rendered = error.to_string();
+    assert!(!rendered.contains("987654"), "value leaked: {rendered}");
+    assert!(rendered.contains("<redacted>"), "not masked: {rendered}");
+    assert!(
+        rendered.contains("in `api_key`"),
+        "context lost: {rendered}"
+    );
+    // The free function used by the exec/TUI fallback agrees.
+    assert!(!redact_config_error_text(&rendered).contains("987654"));
+}

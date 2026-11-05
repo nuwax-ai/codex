@@ -624,6 +624,37 @@ fn closing_quote(text: &str, from: usize, quote: char) -> Option<usize> {
     None
 }
 
+/// Public wrapper: redact raw config values from an arbitrary config error
+/// text, for paths that render an error without typed `ConfigError` metadata
+/// (e.g. the merged-layer deserializer returning a plain `toml::de::Error`).
+pub fn redact_config_error_text(message: &str) -> String {
+    mask_type_error_values(message)
+}
+
+/// An error whose `Display` is a config error message with raw input values
+/// redacted.
+///
+/// Wrap value-carrying errors that have no `ConfigError` (so the exec/TUI
+/// `eprintln!` fallback and any `{err}` logging cannot bypass masking).
+#[derive(Debug, Clone)]
+pub struct RedactedConfigError {
+    text: String,
+}
+
+impl RedactedConfigError {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into() }
+    }
+}
+
+impl fmt::Display for RedactedConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&mask_type_error_values(&self.text))
+    }
+}
+
+impl std::error::Error for RedactedConfigError {}
+
 #[cfg(test)]
 #[path = "diagnostics_tests.rs"]
 mod tests;
