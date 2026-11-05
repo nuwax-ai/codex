@@ -103,3 +103,8 @@ __pycache__/
 *.sqlite-shm
 *.sqlite-journal
 *.sqlite-wal
+
+# planning-with-files scratch (session-local planning artifacts, not repo content)
+/findings.md
+/progress.md
+/task_plan.md
