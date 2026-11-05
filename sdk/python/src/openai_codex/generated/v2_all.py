@@ -1812,6 +1812,13 @@ class NoneGatewayAuth(BaseModel):
     mode: Annotated[Literal["none"], Field(title="NoneGatewayAuthMode")]
 
 
+class DirectApiKeyGatewayAuth(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    mode: Annotated[Literal["directApiKey"], Field(title="DirectApiKeyGatewayAuthMode")]
+
+
 class EnvironmentVariableGatewayAuth(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -1831,9 +1838,19 @@ class ExternallyConfiguredGatewayAuth(BaseModel):
 
 
 class GatewayAuth(
-    RootModel[NoneGatewayAuth | EnvironmentVariableGatewayAuth | ExternallyConfiguredGatewayAuth]
+    RootModel[
+        NoneGatewayAuth
+        | DirectApiKeyGatewayAuth
+        | EnvironmentVariableGatewayAuth
+        | ExternallyConfiguredGatewayAuth
+    ]
 ):
-    root: NoneGatewayAuth | EnvironmentVariableGatewayAuth | ExternallyConfiguredGatewayAuth
+    root: (
+        NoneGatewayAuth
+        | DirectApiKeyGatewayAuth
+        | EnvironmentVariableGatewayAuth
+        | ExternallyConfiguredGatewayAuth
+    )
 
 
 class GatewayOAuthCancelResponse(BaseModel):
@@ -3793,8 +3810,16 @@ class CustomGatewayProviderSettingsPatch(BaseModel):
         extra="forbid",
         populate_by_name=True,
     )
+    api_key: Annotated[
+        str | None,
+        Field(
+            alias="apiKey",
+            description="Fork: the direct API key. Absent = keep; Some(None) = clear; Some(k) = set. The value travels only in this restricted write request and is never echoed in summaries, errors, or logs.",
+        ),
+    ] = None
     base_url: Annotated[str | None, Field(alias="baseUrl")] = None
     env_key: Annotated[str | None, Field(alias="envKey")] = None
+    models: list[str] | None = None
     name: str | None = None
     provider_id: Annotated[
         str | None,
@@ -3804,6 +3829,13 @@ class CustomGatewayProviderSettingsPatch(BaseModel):
         ),
     ] = None
     type: Annotated[Literal["customGateway"], Field(title="CustomGatewayProviderSettingsPatchType")]
+    wire_api: Annotated[
+        str | None,
+        Field(
+            alias="wireApi",
+            description="Fork (nuwax-codex): wire protocol + declared models (P1/P4 fields).",
+        ),
+    ] = None
 
 
 class BedrockProviderSettingsPatch(BaseModel):
