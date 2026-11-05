@@ -112,3 +112,28 @@ pub(crate) fn redact_provider_api_keys(layer: &mut JsonValue) {
         }
     }
 }
+
+/// Fork: recursively strips any `api_key` string value to a configured
+/// boolean, regardless of nesting depth — used on values extracted from
+/// arbitrary `model_providers.*` paths where the segment may be a whole
+/// provider table, the providers root, or an intermediate subtree.
+pub(crate) fn redact_api_keys_recursive(value: &mut JsonValue) {
+    match value {
+        JsonValue::Object(map) => {
+            for (key, entry) in map.iter_mut() {
+                if key == "api_key" {
+                    let configured = entry.as_str().is_some_and(|key| !key.trim().is_empty());
+                    *entry = JsonValue::Bool(configured);
+                } else {
+                    redact_api_keys_recursive(entry);
+                }
+            }
+        }
+        JsonValue::Array(items) => {
+            for item in items.iter_mut() {
+                redact_api_keys_recursive(item);
+            }
+        }
+        _ => {}
+    }
+}

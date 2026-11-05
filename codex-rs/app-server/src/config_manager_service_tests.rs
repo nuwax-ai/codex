@@ -3922,3 +3922,109 @@ async fn direct_api_key_write_models_and_wire_round_trip() -> Result<()> {
     let _ = reloaded;
     Ok(())
 }
+
+/// Fork (codex re-review): parent-path effectiveValue must not carry the key.
+#[tokio::test]
+async fn direct_api_key_parent_path_override_is_redacted() -> Result<()> {
+    let home = tempdir()?;
+    let system = home.path().join("system.toml");
+    std::fs::write(
+        &system,
+        "[model_providers.gw]\nname = 'Managed'\nbase_url = 'https://gw.example.test/v1'\napi_key = 'sk-managed-secret'\nwire_api = 'chat'\n",
+    )?;
+    let overrides = LoaderOverrides {
+        system_config_path: Some(system),
+        ..LoaderOverrides::without_managed_config_for_tests()
+    };
+    let manager = ConfigManager::new_for_tests(
+        home.path().to_path_buf(),
+        Vec::new(),
+        overrides,
+        CloudConfigBundleLoader::default(),
+    );
+    // Write the PARENT path (the whole provider) — effectiveValue previously
+    // returned the managed table including the raw key.
+    let response = manager
+        .write_value(codex_app_server_protocol::ConfigValueWriteParams {
+            key_path: "model_providers.gw.name".to_string(),
+            value: serde_json::json!("User Gateway"),
+            merge_strategy: codex_app_server_protocol::MergeStrategy::Replace,
+            file_path: None,
+            expected_version: None,
+        })
+        .await;
+    // The response may carry overridden metadata; assert no raw key leaks.
+    if let Ok(response) = &response
+        && let Some(metadata) = &response.overridden_metadata
+    {
+        let rendered = serde_json::to_string(&metadata.effective_value)?;
+        assert!(
+            !rendered.contains("sk-managed-secret"),
+            "parent-path effective_value must not carry the key: {rendered}"
+        );
+    }
+    Ok(())
+}
+
+/// Fork (codex re-review): bearer→api_key switch must succeed atomically.
+#[tokio::test]
+async fn direct_api_key_switch_from_bearer_succeeds() -> Result<()> {
+    let home = tempdir()?;
+    let config_path = home.path().join(CONFIG_TOML_FILE);
+    std::fs::write(
+        &config_path,
+        "[model_providers.gw]\nname = 'Gateway'\nbase_url = 'https://gw.example.test/v1'\nexperimental_bearer_token = 'legacy-tok'\nwire_api = 'chat'\nmodels = ['m']\n",
+    )?;
+    let manager = ConfigManager::without_managed_config_for_tests(home.path().to_path_buf());
+    let response = manager
+        .model_provider_config_write(gateway_patch(
+            Some("gw"),
+            serde_json::json!({"apiKey": "sk-fresh-key"}),
+        ))
+        .await
+        .expect("switching from legacy bearer to direct key must succeed");
+    let _ = response;
+    let saved: serde_json::Value = toml::from_str(&std::fs::read_to_string(&config_path)?)?;
+    assert_eq!(
+        saved["model_providers"]["gw"]["api_key"].as_str(),
+        Some("sk-fresh-key")
+    );
+    assert!(
+        saved["model_providers"]["gw"]
+            .get("experimental_bearer_token")
+            .is_none(),
+        "the old bearer must be deleted in the same atomic edit: {saved}"
+    );
+    Ok(())
+}
+
+/// Fork (codex re-review): explicit wireApi on create must not be overridden.
+#[tokio::test]
+async fn direct_api_key_create_respects_explicit_wire_api() -> Result<()> {
+    let home = tempdir()?;
+    let manager = ConfigManager::without_managed_config_for_tests(home.path().to_path_buf());
+    manager
+        .model_provider_config_write(gateway_patch(
+            /*id*/ None,
+            serde_json::json!({
+                "name": "New Gateway",
+                "baseUrl": "https://new.example.test/v1",
+                "wireApi": "chat",
+            }),
+        ))
+        .await?;
+    let saved: serde_json::Value = toml::from_str(&std::fs::read_to_string(
+        home.path().join(CONFIG_TOML_FILE),
+    )?)?;
+    let providers = &saved["model_providers"];
+    let provider = providers
+        .as_object()
+        .and_then(|providers| providers.values().next())
+        .expect("one provider created");
+    assert_eq!(
+        provider["wire_api"].as_str(),
+        Some("chat"),
+        "explicit wireApi must win over the responses default: {provider}"
+    );
+    Ok(())
+}

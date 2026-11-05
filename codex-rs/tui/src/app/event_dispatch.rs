@@ -405,7 +405,7 @@ impl App {
                 self.provider_wizard_api_key(&key);
             }
             AppEvent::ProviderWizardConfirm => {
-                self.provider_wizard_confirm(app_server).await;
+                self.provider_wizard_confirm(tui, app_server).await;
             }
             AppEvent::StartManagedWorktree { mode, name } => {
                 if self.pending_start_managed_worktree.is_some() {

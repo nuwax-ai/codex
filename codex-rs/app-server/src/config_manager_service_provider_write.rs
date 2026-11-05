@@ -195,7 +195,10 @@ fn provider_edits(
     {
         fields.push(("name", Some(name)));
     }
-    if builtin.is_none() && existing.is_none() {
+    if builtin.is_none()
+        && existing.is_none()
+        && !fields.iter().any(|(field, _)| *field == "wire_api")
+    {
         fields.push(("wire_api", Some("responses")));
     }
     let escaped_id = provider_id.replace('\\', "\\\\").replace('"', "\\\"");
@@ -286,7 +289,10 @@ fn apply_credential_source_switch(
         has(field)
     };
     if resulting("api_key")
-        && (resulting("env_key") || has("experimental_bearer_token") || has("auth") || has("aws"))
+        && (resulting("env_key")
+            || resulting("experimental_bearer_token")
+            || resulting("auth")
+            || resulting("aws"))
     {
         return Err(invalid(
             "api_key cannot be combined with env_key, experimental_bearer_token, auth, \

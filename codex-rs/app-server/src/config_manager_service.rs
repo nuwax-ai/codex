@@ -1,6 +1,7 @@
 use crate::config_layer::config_layer_metadata_to_api;
 use crate::config_layer::config_layer_to_api;
 use crate::config_manager::ConfigManager;
+use crate::otel_config::redact_api_keys_recursive;
 use crate::otel_config::redact_otel_exporter_headers;
 use crate::otel_config::redact_provider_api_keys;
 use codex_app_server_protocol::Config as ApiConfig;

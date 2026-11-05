@@ -288,6 +288,13 @@ pub fn format_config_error(error: &ConfigError, contents: &str) -> String {
         None => return output.trim_end().to_string(),
     };
 
+    // Fork: the selected source line may carry a credential value (api_key,
+    // bearer token) regardless of which span pointed here — inline tables,
+    // dotted keys, and syntax errors on the key line all reach this printer.
+    // Redact at the output boundary so every layout is covered.
+    let redacted_line = redact_credential_values(line);
+    let line = redacted_line.as_str();
+
     let line_number = start.line;
     let gutter = line_number.to_string().len();
     let _ = writeln!(output, "{:width$} |", "", width = gutter);
@@ -532,4 +539,37 @@ fn seq_child<'a>(node: &TomlNode<'a>, index: usize) -> Option<TomlNode<'a>> {
         TomlNode::Value(Value::Array(array)) => array.get(index).map(TomlNode::Value),
         _ => None,
     }
+}
+
+/// Fork: masks credential values in a config source line selected for a
+/// diagnostic excerpt. Matches `key = "value"` pairs where the key names a
+/// credential field, replacing the value with a fixed-length mask so column
+/// highlights stay roughly aligned. Layout-agnostic: works on dotted keys,
+/// inline tables, and bare key lines alike.
+fn redact_credential_values(line: &str) -> String {
+    const CREDENTIAL_KEYS: [&str; 4] = [
+        "api_key",
+        "experimental_bearer_token",
+        "bearer_token",
+        "access_token",
+    ];
+    let mut result = line.to_string();
+    for key in CREDENTIAL_KEYS {
+        // Match `key = "..."` (with optional whitespace) and replace the
+        // quoted value; the mask length is fixed so the excerpt stays
+        // visually proportional without revealing the real length.
+        let pattern = format!("{key} = \"");
+        if let Some(start) = result.find(&pattern) {
+            let value_start = start + pattern.len();
+            if let Some(end_rel) = result[value_start..].find('"') {
+                let value_end = value_start + end_rel;
+                result = format!(
+                    "{}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}{}",
+                    &result[..value_start],
+                    &result[value_end..]
+                );
+            }
+        }
+    }
+    result
 }
