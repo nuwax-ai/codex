@@ -441,7 +441,10 @@ config layer stack，而 turn 准入用 `load_latest_config_with_session_layers`
 层栈——只传类型化参数时首条消息会被判成 `ModelProviderMismatch`（UI 显示
 "read-only / Continue in a new chat"）。所以起线程时把 `model`+`model_provider`
 一并写进 `params.config`（会话级覆盖）；回归断言了 `thread/start` 的
-`config.model_provider` 与 `modelProvider` 两个位置都带目标路由。
+`config.model_provider` 与 `modelProvider` 两个位置都带目标路由，并**实际发起一次
+`turn/start`** 验证切换后的会话可直接继续对话（该检查正是只读条的来源）。
+目标是"同一会话内跨厂商切换后继续使用"，因此切换成功即用会话层路由，
+不出现只读提示。
 **跟进项已闭环（2026-11-04 晚，三层根因）**：真集成变体失败并非"rejoin 顺序"
 本身，而是一整条链：①`load_for_resume` 与 turn 准入检查同源的磁盘漂移比较
 把显式跨厂商 resume 全部拒掉（P0 的孪生 bug）——现改为**客户端显式指定

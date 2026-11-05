@@ -5992,6 +5992,41 @@ models = ["step-5-preview"]
     );
     assert_eq!(last["config"]["model"], "step-5-preview");
 
+    // The point of the switch: keep talking in this conversation. turn/start
+    // runs the provider admission check that produced the read-only notice
+    // before the route reached the session config layer.
+    let switched_thread = app.chat_widget.thread_id().expect("switched thread id");
+    let turn = server
+        .turn_start(
+            switched_thread,
+            "user",
+            "client-message-1".to_string(),
+            vec![
+                CoreUserInput::Text {
+                    text: "你好".to_string(),
+                    text_elements: Vec::new(),
+                }
+                .into(),
+            ],
+            app.config.cwd.to_path_buf(),
+            /*approval_policy*/ None,
+            /*approvals_reviewer*/ None,
+            crate::app_server_session::TurnPermissionsOverride::Preserve,
+            &app.config.permissions.user_visible_workspace_roots(),
+            "step-5-preview".to_string(),
+            /*effort*/ None,
+            /*summary*/ None,
+            /*service_tier*/ None,
+            /*collaboration_mode*/ None,
+            /*output_schema*/ None,
+            /*cyber_access_program*/ None,
+        )
+        .await;
+    assert!(
+        turn.is_ok(),
+        "the switched conversation must accept a new turn: {turn:?}"
+    );
+
     server.shutdown().await?;
     proxy.await??;
     Ok(())
