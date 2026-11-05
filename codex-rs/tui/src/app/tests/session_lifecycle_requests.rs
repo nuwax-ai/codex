@@ -6012,7 +6012,7 @@ models = ["step-5-preview"]
             /*approval_policy*/ None,
             /*approvals_reviewer*/ None,
             crate::app_server_session::TurnPermissionsOverride::Preserve,
-            &app.config.permissions.user_visible_workspace_roots(),
+            app.config.permissions.user_visible_workspace_roots(),
             "step-5-preview".to_string(),
             /*effort*/ None,
             /*summary*/ None,
