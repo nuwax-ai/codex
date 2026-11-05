@@ -115,7 +115,10 @@ use codex_terminal_detection::TerminalName;
 #[derive(Debug, Parser)]
 #[clap(
     author,
-    version,
+    // clap's auto version flag renders "<crate name> <version>" ("codex-cli …"),
+    // but the published binary is `nuwax-harness`; the manual `version` field
+    // below prints only the version.
+    disable_version_flag = true,
     // If a sub‑command is given, ignore requirements of the default args.
     subcommand_negates_reqs = true,
     // The executable is sometimes invoked via a platform‑specific name like
@@ -136,6 +139,10 @@ struct MultitoolCli {
 
     #[clap(flatten)]
     interactive: TuiCli,
+
+    /// Print the version and exit.
+    #[arg(short = 'V', long)]
+    version: bool,
 
     #[clap(subcommand)]
     subcommand: Option<Subcommand>,
@@ -1055,9 +1062,17 @@ async fn dispatch_cli(
         feature_toggles,
         remote,
         mut interactive,
+        version,
         subcommand,
     } = config_override_args::try_parse_from(std::env::args_os())
         .unwrap_or_else(|error| error.exit());
+    // Fork (nuwax-codex): `--version`/`-V` prints the version alone, without
+    // clap's "<crate name> " prefix (see the `disable_version_flag` note on
+    // `MultitoolCli`). Consumed by the npm launcher's version probe.
+    if version {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        return Ok(None);
+    }
     // Retain the launch target through TUI exit, even if a launcher changes selection.
     let daemon_cli_executable = arg0_paths
         .codex_self_exe
@@ -2931,6 +2946,7 @@ enabled = true
             mut interactive,
             config_overrides: mut root_overrides,
             subcommand,
+            version: _,
             feature_toggles: _,
             remote: _,
         } = cli;
@@ -2968,6 +2984,7 @@ enabled = true
             mut interactive,
             config_overrides: mut root_overrides,
             subcommand,
+            version: _,
             feature_toggles: _,
             remote: _,
         } = cli;
@@ -3012,6 +3029,7 @@ enabled = true
             interactive,
             config_overrides: root_overrides,
             subcommand,
+            version: _,
             feature_toggles: _,
             remote: _,
         } = cli;
@@ -4795,6 +4813,20 @@ enabled = true
         )
         .expect_err("app-server proxy should reject --remote-auth-token-env");
         assert!(err.to_string().contains("app-server proxy"));
+    }
+
+    /// `--version` is a manual flag (`disable_version_flag`), so it must keep
+    /// parsing in both spellings and stay out of clap's "<crate name> " format.
+    #[test]
+    fn version_flag_parses_from_long_and_short_forms() {
+        let cli = MultitoolCli::try_parse_from(["codex", "--version"]).expect("parse --version");
+        assert!(cli.version);
+
+        let cli = MultitoolCli::try_parse_from(["codex", "-V"]).expect("parse -V");
+        assert!(cli.version);
+        // The launcher compares this against a bare semver, so it must not
+        // contain the space clap's built-in flag would insert.
+        assert!(!env!("CARGO_PKG_VERSION").contains(char::is_whitespace));
     }
 
     #[test]
