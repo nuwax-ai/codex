@@ -251,8 +251,10 @@ effective context window 是否符合预期。
 结束或停止完成后自动切换，期间多次选择只保留最后一次。切换前暂停后续输入
 的自动发送，避免发到旧模型；离开当前会话会取消待切换选择。历史保留，会话级
 切换，不改 config.toml；旧模型的 thinking 不跨厂商携带；key 未配置的厂商行会置灰。
-切换了 provider 后再打开旧会话时，若提示"本会话只读（provider 不匹配）"，
-按 **`r`** 即可以当前配置的模型恢复同一会话。CLI 等价：
+切换了 provider 后再打开旧会话**不会变成只读**：会话保留自己创建时的 provider
+（2026-11-05 起），默认 provider 不同只在日志里记一笔，直接接着对话即可。只有该
+provider **已被删除/不再配置**（或组织策略强制指定其它 provider）时才会拦，这时
+提示条里的 **`r`** 可以用当前配置的模型把会话接过来。CLI 等价：
 `nuwax-harness resume <会话id> -c model=<模型> -c model_provider=<provider>`。
 分级 UX 的剩余部分（窗口缩减警告）见
 [多厂商模型切换方案](my-docs/multi-vendor-model-switch-plan-2026-11-04.md)。

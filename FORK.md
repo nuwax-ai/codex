@@ -388,9 +388,10 @@ Declared 目录在 `with_declared_models` 一次性物化缓存（原每轮 turn
 
 ### 7.3 多厂商会话切换——恢复侧入口（2026-11-04，P3+P2 核心）
 
-provider 不匹配的只读提示条新增 **`r` = resume with current model**：以当前
+提示条新增 **`r` = resume with current model**：以当前
 config 的 `model`+`model_provider` 显式覆盖重新 `thread/resume`（协议原语
 2026-11-03 实测：跨厂商 resume 成功、线程 re-home、后续无覆盖 resume 亦正常）。
+（2026-11-05 起提示条只在"provider 已不再配置"或策略冲突时出现，见本节末"路由不阻塞"。）
 
 - **适用变体**：`ModelProviderMismatch` 与 `ModelProviderNotConfigured`
   （当前配置能接手即能 re-home）；`PolicyConflict` 不给该键（组织要求的
