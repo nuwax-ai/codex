@@ -555,14 +555,19 @@ fn seq_child<'a>(node: &TomlNode<'a>, index: usize) -> Option<TomlNode<'a>> {
 
 /// Fork: masks the raw config value embedded in serde value-error messages.
 ///
-/// Serde renders the offending input *before* the expectation clause, and the
-/// quoting depends on the input type: scalars use backticks
+/// Serde renders the offending input first in the message body and quotes it by
+/// input type: scalars use backticks
 /// (`invalid type: integer \`12345\`, expected a string`), strings use double
 /// quotes (`invalid type: string "…", expected u64`), and enum variants echo
-/// the raw input as `unknown variant \`…\`, expected one of …`. Only the value
-/// is replaced; the type name and the `expected …` guidance are preserved —
-/// the guidance itself uses backticks for its alternatives, so masking the
-/// first backtick pair in the whole message would corrupt it.
+/// the raw input as `unknown variant \`…\`, expected one of …`. Only the quoted
+/// value is replaced; the type name and the `expected …` guidance are kept —
+/// that guidance quotes its own alternatives, so masking "the first pair of
+/// backticks in the message" would corrupt it.
+///
+/// The value is located by its quoting, not by the `, expected` marker: a value
+/// may itself contain that text, and for string values the marker appears after
+/// the closing quote. A span only counts when it is followed by the separator
+/// (or by nothing), which is also what keeps the expectation list untouched.
 ///
 /// Idempotent: masking an already-masked message yields the same text.
 fn mask_type_error_values(message: &str) -> String {
@@ -570,20 +575,26 @@ fn mask_type_error_values(message: &str) -> String {
         return message.to_string();
     };
     let body = &message[body_start..];
-    // Everything before ", expected" is the value rendering; anything after it
-    // is the expectation, which never carries user input.
-    let value_len = body.find(", expected").unwrap_or(body.len());
-    let value = &body[..value_len];
-    let Some(masked_value) =
-        mask_first_quoted(value, '`').or_else(|| mask_first_quoted(value, '"'))
+    // The value uses backticks or double quotes depending on the input type;
+    // whichever opens first is the value.
+    let Some((open, quote)) = body
+        .char_indices()
+        .find(|(_, character)| *character == '`' || *character == '"')
     else {
         return message.to_string();
     };
+    let value_start = open + quote.len_utf8();
+    let Some(close) = closing_quote(body, value_start, quote) else {
+        return message.to_string();
+    };
+    let after = body[close + quote.len_utf8()..].trim_start();
+    if !after.is_empty() && !after.starts_with(',') {
+        return message.to_string();
+    }
     format!(
-        "{}{}{}",
-        &message[..body_start],
-        masked_value,
-        &body[value_len..]
+        "{}<redacted>{}",
+        &message[..body_start + value_start],
+        &body[close..]
     )
 }
 
@@ -594,14 +605,11 @@ fn value_message_body_start(message: &str) -> Option<usize> {
         .find_map(|prefix| message.find(prefix).map(|at| at + prefix.len()))
 }
 
-/// Replaces the contents of the first `quote`-delimited span with
-/// `<redacted>`, keeping the delimiters. For double quotes the scan honours
-/// `\"` escapes, so a value that itself contains quotes is masked whole.
-fn mask_first_quoted(text: &str, quote: char) -> Option<String> {
-    let start = text.find(quote)?;
-    let value_start = start + quote.len_utf8();
+/// Index of the `quote` that closes the span starting at `from`. Double quotes
+/// honour `\"` escapes, so a value containing quotes is still masked whole.
+fn closing_quote(text: &str, from: usize, quote: char) -> Option<usize> {
     let bytes = text.as_bytes();
-    let mut index = value_start;
+    let mut index = from;
     while index < bytes.len() {
         let byte = bytes[index];
         if byte == b'\\' && quote == '"' {
@@ -609,11 +617,7 @@ fn mask_first_quoted(text: &str, quote: char) -> Option<String> {
             continue;
         }
         if byte == quote as u8 {
-            return Some(format!(
-                "{}<redacted>{}",
-                &text[..value_start],
-                &text[index..]
-            ));
+            return Some(index);
         }
         index += 1;
     }

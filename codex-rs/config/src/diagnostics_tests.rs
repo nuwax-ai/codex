@@ -62,6 +62,16 @@ fn masks_string_value_with_escaped_quotes() {
     );
 }
 
+/// A value may itself contain the `, expected` text; locating the value by that
+/// marker would stop early and leak the rest of it.
+#[test]
+fn masks_value_containing_the_expectation_marker() {
+    assert_eq!(
+        mask("invalid type: string \"sk-, expected -,tail\", expected u64"),
+        "invalid type: string \"<redacted>\", expected u64"
+    );
+}
+
 #[test]
 fn leaves_messages_without_values_untouched() {
     for message in [
