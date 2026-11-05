@@ -216,6 +216,7 @@ provider 常用字段：
 | `max_output_tokens` | 可选；每次生成的输出上限 |
 | `request_max_retries` / `stream_max_retries` / `stream_idle_timeout_ms` | 可选；重试与流空闲超时 |
 | `reasoning_effort_levels` | 可选；该网关的模型真实接受的 effort 档位(如 `["low","high","max"]`)，见 §4 |
+| `api_key` | 可选(2026-11-05 起)；直接保存的 API key(TUI 向导默认方式,输入框隐藏、配置文件 0600)。与 `env_key`/`experimental_bearer_token`/`auth`/`aws` 互斥,冲突启动即报错 |
 | `models` | 可选；该 provider 服务的模型 slug 列表。声明后 `/model` 恰好列出这些模型（不再显示与本 provider 无关的内置 GPT 种子）；每个 slug 的窗口/档位元数据仍从内置厂商目录按 slug 解析，未知 slug 用占位元数据（272k 窗口）并告警。空列表、空串、重复 slug（不分大小写）启动即报错。`-m`/`NUWAX_MODEL` 选声明外的模型不受限制 |
 
 其他常用顶层键：`model_auto_compact_ratio` / `model_auto_compact_token_limit`（见 §4）、

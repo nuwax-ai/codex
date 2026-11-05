@@ -492,6 +492,31 @@ OSC 21337 字段不变。快照覆盖全部状态。该改动不重命名 Cargo 
   （P1），All-models 出现其跨厂商行并可会话级切换/re-home（P2/P3）；向导
   本身不改当前会话与磁盘默认厂商。
 
+### 7.6 直接 API Key 凭据模式（2026-11-05）
+
+用户决策:允许真实 key 明文保存在用户级 config.toml（`model_providers.<id>.api_key`），
+环境变量降为高级选项（my-docs/direct-provider-api-key-2026-11-05/）。
+
+- **鉴权**：`ModelProviderInfo.api_key: Option<RedactedString>`（Deserialize 接受、
+  Serialize 跳过——公开投影永不携带）；`api_key()` 显式键优先、无回退；
+  `has_static_api_key_source()` 统一四处散落的显式鉴权判定；与
+  env_key/experimental_bearer_token/auth/aws 互斥，加载即 fail-fast（只报字段名）。
+  三协议 loopback 实测鉴权头（responses/chat=Bearer、anthropic=x-api-key），双
+  provider 不串 key（`direct_api_key` 测试族）。
+- **写入**：`modelProvider/config/write` 扩展 wire_api/models/api_key 三态
+  （缺省=Keep、null=Clear、值=Set）；设置主凭据同批原子删除其它主凭据字段；
+  空白 key、空 models、非法 wire_api、来源冲突写入即拒且不回显值；
+  `GatewayAuth::DirectApiKey` 摘要只报已配置状态。
+- **脱敏边界**：config/read 的层视图把 api_key 值替换为布尔（`false` 才可能被写回
+  磁盘，掩码字符串永不落盘）；`write_atomically` 在 Unix 上对配置文件与临时文件
+  强制 0600；错误消息/Debug 不回显。
+- **轮换**：加载线程的 resume 现比较 provider 定义（含 api_key）——同名换 key 触发
+  重建（空闲、无其它订阅者时），下一轮用新 key；执行中轮次保持旧快照（既有边界）。
+- **TUI**：向导凭据步骤三选一（直接键/环境变量/无鉴权，默认直接键）；隐藏输入
+  （`render_ref_masked('*')`）粘贴 key；key 只存在于向导意图直至确认写入；预览显示
+  圆点状态行；保存后刷新内存配置、无需 export/重启。
+- **远程 proto 不携带 key**（thread_config 无该字段——各后端读自己的用户配置）。
+
 ## 8. 版本与发布
 
 正式版本 `v0.18.14` → `f82730975` 已发布（2026-10-23）：

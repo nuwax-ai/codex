@@ -10,8 +10,10 @@
 | [FORK.md](FORK.md) | fork 与官方的行为差异:协议路由、窗口语义、压缩、品牌、已知限制 | 任何涉及"为什么这样实现"/"改这个会不会破坏合同"的问题 |
 
 配套无凭据模板:[nuwax.env.example](nuwax.env.example)(harness CLI)、
-[acp.env.example](acp.env.example)(ACP agent)。**API key 只走环境变量,不写进任何
-提交文件。**
+[acp.env.example](acp.env.example)(ACP agent)。**API key 允许两种配置方式:
+用户级 config.toml 的 `model_providers.<id>.api_key`(TUI 向导默认,文件 0600)或
+环境变量引用(`env_key`);真实 key 一律不得提交进仓库、示例、测试或项目级
+.codex**(2026-11-05 用户决策,详见 my-docs/direct-provider-api-key-2026-11-05/)。
 
 ## 必读约定
 
