@@ -398,6 +398,37 @@ impl App {
             AppEvent::ProviderWizardModels(value) => {
                 self.provider_wizard_models(&value);
             }
+            AppEvent::ApplyPendingCredentialRefresh => {
+                // The pending flag was consumed at the TurnCompleted site;
+                // rebuild the session with the CURRENT model and provider
+                // (the drift check fires on the definition change).
+                if let Some(thread_id) = self.chat_widget.thread_id() {
+                    let model = self.chat_widget.current_model().to_string();
+                    let provider_id =
+                        self.chat_widget.config_ref().model_provider_id.clone();
+                    let target = crate::resume_picker::SessionTarget {
+                        backend_id: app_server.backend_id(),
+                        path: self
+                            .primary_session_configured
+                            .as_ref()
+                            .and_then(|session| session.rollout_path.clone()),
+                        thread_id,
+                        cwd: None,
+                        history_mode: None,
+                    };
+                    let _ = self
+                        .resume_target_session_with_source(
+                            tui,
+                            app_server,
+                            target,
+                            super::resume_preparation::ResumeSource::ActiveWithModel {
+                                model,
+                                provider_id,
+                            },
+                        )
+                        .await;
+                }
+            }
             AppEvent::ProviderWizardCredentialMode(mode) => {
                 self.provider_wizard_credential_mode(&mode);
             }

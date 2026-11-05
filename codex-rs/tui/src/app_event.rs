@@ -614,6 +614,9 @@ pub(crate) enum AppEvent {
     ProviderWizardConfirm,
     /// Fork: credential-mode branch of the wizard (direct key / env / none).
     ProviderWizardCredentialMode(String),
+    /// Fork: fire the deferred credential refresh registered when a key was
+    /// saved mid-turn (same model/provider re-home to rebuild auth).
+    ApplyPendingCredentialRefresh,
     /// Fork: the pasted API key from the masked input (restricted: never
     /// logged, never rendered after entry).
     ProviderWizardApiKey(String),

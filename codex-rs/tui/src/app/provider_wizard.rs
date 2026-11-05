@@ -263,33 +263,44 @@ impl App {
                 let current_provider_id = self.chat_widget.config_ref().model_provider_id.clone();
                 if provider_id.clone() == current_provider_id
                     && let Some(thread_id) = self.chat_widget.thread_id()
-                    && !self.chat_widget.is_user_turn_pending_or_running()
                 {
-                    let model = self.chat_widget.current_model().to_string();
-                    self.chat_widget.add_info_message(
-                        "Refreshing this conversation's credentials…".to_string(),
-                        /*hint*/ None,
-                    );
-                    let _ = self
-                        .resume_target_session_with_source(
-                            tui,
-                            app_server,
-                            crate::resume_picker::SessionTarget {
-                                backend_id: app_server.backend_id(),
-                                path: self
-                                    .primary_session_configured
-                                    .as_ref()
-                                    .and_then(|session| session.rollout_path.clone()),
-                                thread_id,
-                                cwd: None,
-                                history_mode: None,
-                            },
-                            crate::app::resume_preparation::ResumeSource::ActiveWithModel {
-                                model,
-                                provider_id: provider_id.clone(),
-                            },
-                        )
-                        .await;
+                    if self.chat_widget.is_user_turn_pending_or_running() {
+                        // Mid-turn: the current turn keeps its auth snapshot
+                        // (correct); register a credential refresh so the
+                        // TurnCompleted handler rebuilds before any queued
+                        // follow-up is sent on the old key.
+                        self.pending_credential_refresh = Some(thread_id);
+                        self.chat_widget.add_info_message(
+                            "Credentials saved — will apply after the current turn.".to_string(),
+                            /*hint*/ None,
+                        );
+                    } else {
+                        let model = self.chat_widget.current_model().to_string();
+                        self.chat_widget.add_info_message(
+                            "Refreshing this conversation's credentials…".to_string(),
+                            /*hint*/ None,
+                        );
+                        let _ = self
+                            .resume_target_session_with_source(
+                                tui,
+                                app_server,
+                                crate::resume_picker::SessionTarget {
+                                    backend_id: app_server.backend_id(),
+                                    path: self
+                                        .primary_session_configured
+                                        .as_ref()
+                                        .and_then(|session| session.rollout_path.clone()),
+                                    thread_id,
+                                    cwd: None,
+                                    history_mode: None,
+                                },
+                                crate::app::resume_preparation::ResumeSource::ActiveWithModel {
+                                    model,
+                                    provider_id: provider_id.clone(),
+                                },
+                            )
+                            .await;
+                    }
                 }
                 let key_hint = if env_key.is_empty() {
                     String::new()

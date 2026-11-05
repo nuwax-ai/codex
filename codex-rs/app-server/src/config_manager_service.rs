@@ -1027,6 +1027,17 @@ fn compute_override_metadata(
     }
     .unwrap_or(JsonValue::Null);
 
+    // Fork: strip direct api_key values from ANY model_providers path —
+    // the overridden segment may be a whole provider table, the providers
+    // root, or an individual leaf; recursive redaction covers every shape.
+    let mut effective_value = effective_value;
+    if segments
+        .first()
+        .is_some_and(|segment| segment == "model_providers")
+    {
+        redact_api_keys_recursive(&mut effective_value);
+    }
+
     Some(OverriddenMetadata {
         message,
         overriding_layer: config_layer_metadata_to_api(overriding_layer),

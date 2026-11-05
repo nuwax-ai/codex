@@ -252,6 +252,7 @@ mod permission_shortcuts;
 mod pets;
 mod platform_actions;
 mod plugin_mentions;
+mod provider_wizard;
 mod rate_limit_refresh;
 mod realtime_delivery;
 mod realtime_settings;
@@ -261,7 +262,6 @@ mod reconnect;
 mod replay_filter;
 mod resize_reflow;
 mod resume_config;
-mod provider_wizard;
 mod resume_preparation;
 mod right_click_paste;
 pub(crate) use right_click_paste::PasteEnvironment;
@@ -679,6 +679,11 @@ pub(crate) struct App {
     /// Fork: the wizard's pending credential intent; the direct key value
     /// lives ONLY here until the confirmed write.
     wizard_credential: Option<crate::chatwidget::WizardCredentialIntent>,
+    /// Fork: a credential was saved for the current thread's provider while
+    /// a turn was running; fire a same-model re-home on TurnCompleted so the
+    /// next turn authenticates with the new key (deliberately separate from
+    /// PendingModelSwitch so a user's model choice is never clobbered).
+    pending_credential_refresh: Option<codex_protocol::ThreadId>,
     pending_startup_thread_start: bool,
     pending_server_version_notice: Option<crate::status::remote_connection::ServerVersionNotice>,
     /// Opens the session picker after event dispatch returns, with a fresh stack.

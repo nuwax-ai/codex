@@ -2035,14 +2035,27 @@ impl App {
                 self.chat_widget
                     .handle_server_notification(*notification, /*replay_kind*/ None);
                 if let Some((thread_id, turn_id)) = completed_turn
-                    && self
-                        .pending_model_switch
-                        .as_ref()
-                        .is_some_and(|pending| pending.thread_id.to_string() == thread_id)
                     && self.chat_widget.last_turn_id() == Some(turn_id.as_str())
                     && !self.chat_widget.is_user_turn_pending_or_running()
                 {
-                    self.app_event_tx.send(AppEvent::ApplyPendingModelSwitch);
+                    if self
+                        .pending_model_switch
+                        .as_ref()
+                        .is_some_and(|pending| pending.thread_id.to_string() == thread_id)
+                    {
+                        self.app_event_tx.send(AppEvent::ApplyPendingModelSwitch);
+                    }
+                    // Fork: a credential saved mid-turn rebuilds the session
+                    // auth on the same model/provider before any queued
+                    // follow-up fires on the old key.
+                    if self
+                        .pending_credential_refresh
+                        .is_some_and(|pending| pending.to_string() == thread_id)
+                    {
+                        self.pending_credential_refresh = None;
+                        self.app_event_tx
+                            .send(AppEvent::ApplyPendingCredentialRefresh);
+                    }
                 }
                 // History cells queued by completion must be applied before anchoring its tip.
                 if let Some(event) = tip_ready {

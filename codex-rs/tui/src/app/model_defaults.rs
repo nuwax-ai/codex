@@ -97,10 +97,7 @@ impl App {
     /// (persistence keeps its existing behavior) or the slug is declared.
     fn declared_models_rejection(&self, model: &str) -> Option<String> {
         let declared = self.config.model_provider.models.as_ref()?;
-        if declared
-            .iter()
-            .any(|slug| slug.eq_ignore_ascii_case(model))
-        {
+        if declared.iter().any(|slug| slug.eq_ignore_ascii_case(model)) {
             return None;
         }
         Some(format!(

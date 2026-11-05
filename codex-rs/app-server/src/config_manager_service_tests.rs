@@ -3924,26 +3924,23 @@ async fn direct_api_key_write_models_and_wire_round_trip() -> Result<()> {
 }
 
 /// Fork (codex re-review): parent-path effectiveValue must not carry the key.
+/// A managed requirements layer pins the provider (including api_key); any
+/// user write under model_providers.* reports the managed table as the
+/// effective value — the raw key must never survive that projection.
 #[tokio::test]
 async fn direct_api_key_parent_path_override_is_redacted() -> Result<()> {
     let home = tempdir()?;
-    let system = home.path().join("system.toml");
-    std::fs::write(
-        &system,
-        "[model_providers.gw]\nname = 'Managed'\nbase_url = 'https://gw.example.test/v1'\napi_key = 'sk-managed-secret'\nwire_api = 'chat'\n",
-    )?;
-    let overrides = LoaderOverrides {
-        system_config_path: Some(system),
-        ..LoaderOverrides::without_managed_config_for_tests()
-    };
     let manager = ConfigManager::new_for_tests(
         home.path().to_path_buf(),
         Vec::new(),
-        overrides,
-        CloudConfigBundleLoader::default(),
+        LoaderOverrides::without_managed_config_for_tests(),
+        CloudConfigBundleFixture::loader_with_enterprise_requirement(
+            "[model_providers.gw]\nname = 'Managed'\nbase_url = 'https://gw.example.test/v1'\napi_key = 'sk-managed-secret'\nwire_api = 'chat'",
+        ),
     );
-    // Write the PARENT path (the whole provider) — effectiveValue previously
-    // returned the managed table including the raw key.
+    // Writing any sub-path under the pinned provider triggers the override
+    // metadata with the managed provider table as effectiveValue; the raw
+    // key must be stripped at every depth.
     let response = manager
         .write_value(codex_app_server_protocol::ConfigValueWriteParams {
             key_path: "model_providers.gw.name".to_string(),
@@ -3953,16 +3950,29 @@ async fn direct_api_key_parent_path_override_is_redacted() -> Result<()> {
             expected_version: None,
         })
         .await;
-    // The response may carry overridden metadata; assert no raw key leaks.
+    // The write may be rejected by the managed layer — either way, any
+    // metadata that IS returned must not carry the key.
     if let Ok(response) = &response
         && let Some(metadata) = &response.overridden_metadata
     {
         let rendered = serde_json::to_string(&metadata.effective_value)?;
         assert!(
             !rendered.contains("sk-managed-secret"),
-            "parent-path effective_value must not carry the key: {rendered}"
+            "effective_value must not carry the key: {rendered}"
         );
     }
+    // Also verify via config/read with layers: no raw key in any layer view.
+    let read = manager
+        .read(codex_app_server_protocol::ConfigReadParams {
+            cwd: None,
+            include_layers: true,
+        })
+        .await?;
+    let rendered = serde_json::to_string(&read)?;
+    assert!(
+        !rendered.contains("sk-managed-secret"),
+        "public config/read must not carry the key: {rendered}"
+    );
     Ok(())
 }
 
