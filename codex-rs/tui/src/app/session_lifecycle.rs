@@ -1165,6 +1165,55 @@ impl App {
         tui.frame_requester().schedule_frame();
     }
 
+    /// Start a fresh conversation bound to an explicit model/provider route.
+    ///
+    /// Cross-vendor switching from the model picker re-homes a thread through
+    /// `thread/resume`, which needs a stored rollout to rebuild from. A
+    /// conversation that has not produced a turn yet has none, so the app
+    /// server answers `no rollout found` — there is also nothing worth
+    /// preserving, so the switch starts a new conversation on the target route
+    /// instead of failing. The composer draft is carried over.
+    pub(super) async fn start_fresh_session_on_route(
+        &mut self,
+        tui: &mut tui::Tui,
+        app_server: &mut AppServerSession,
+        model: String,
+        provider_id: String,
+    ) -> Result<()> {
+        let (mut config, local_settings) = self.load_new_session_config(app_server).await?;
+        let Some(provider) = config.model_providers.get(&provider_id).cloned() else {
+            color_eyre::eyre::bail!("model provider `{provider_id}` is not configured");
+        };
+        config.model = Some(model.clone());
+        config.model_provider_id = provider_id.clone();
+        config.model_provider = provider;
+        // The previous route's effort tier need not exist on the new one.
+        config.model_reasoning_effort = None;
+        config.plan_mode_reasoning_effort = None;
+
+        let started = app_server
+            .start_thread_on_route(&local_settings, &config, model, provider_id)
+            .await?;
+        let retained_input = self.chat_widget.capture_thread_input_state();
+        self.adopt_fresh_session(
+            tui,
+            app_server,
+            PreparedFreshSession {
+                started,
+                config,
+                local_settings,
+            },
+            ThreadAttachPresentation::Fresh,
+            /*initial_user_message*/ None,
+            /*new_thread_name*/ None,
+        )
+        .await;
+        if let Some(input) = retained_input {
+            self.chat_widget.restore_input_after_model_switch(input);
+        }
+        Ok(())
+    }
+
     pub(super) async fn adopt_fresh_session(
         &mut self,
         tui: &mut tui::Tui,

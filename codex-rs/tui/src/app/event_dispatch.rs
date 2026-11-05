@@ -354,13 +354,52 @@ impl App {
                 );
                 let expected_model = model.clone();
                 let expected_provider = provider_id.clone();
-                let result = self.resume_target_session_with_source(
-                    tui,
-                    app_server,
-                    target,
-                    super::resume_preparation::ResumeSource::ActiveWithModel { model, provider_id },
-                )
-                .await;
+                // A conversation that has not produced a turn has no persisted
+                // rollout, and the route-override resume can only rebuild one
+                // that was persisted (app server answers `no rollout found`).
+                // Nothing exists to preserve there, so switch by starting a new
+                // conversation on the target route; a failed read means the
+                // same (the thread is not materialized yet).
+                let has_turns = app_server
+                    .thread_read(thread_id, /*include_turns*/ true)
+                    .await
+                    .ok()
+                    .is_some_and(|thread| !thread.turns.is_empty());
+                let result = if has_turns {
+                    self.resume_target_session_with_source(
+                        tui,
+                        app_server,
+                        target,
+                        super::resume_preparation::ResumeSource::ActiveWithModel {
+                            model: expected_model.clone(),
+                            provider_id: expected_provider.clone(),
+                        },
+                    )
+                    .await
+                } else {
+                    self.start_fresh_session_on_route(
+                        tui,
+                        app_server,
+                        expected_model.clone(),
+                        expected_provider.clone(),
+                    )
+                    .await
+                    .map(|()| AppRunControl::Continue)
+                };
+                // Safety net: a conversation whose rollout was deleted still
+                // reports the same error, and there is nothing to preserve.
+                let result = match result {
+                    Err(error) if is_no_rollout_resume_error(&error) => self
+                        .start_fresh_session_on_route(
+                            tui,
+                            app_server,
+                            expected_model.clone(),
+                            expected_provider.clone(),
+                        )
+                        .await
+                        .map(|()| AppRunControl::Continue),
+                    other => other,
+                };
                 if let Some(pending) = pending {
                     self.chat_widget.set_queue_autosend_suppressed(
                         pending.queue_autosend_was_suppressed,
@@ -4337,4 +4376,15 @@ impl App {
             }
         })
     }
+}
+
+/// Whether the failure is "this conversation has no stored rollout".
+///
+/// Cross-vendor switching re-homes a thread through `thread/resume`; the app
+/// server can only rebuild a conversation that was persisted, and answers
+/// `no rollout found for thread id …` for one that never produced a turn.
+fn is_no_rollout_resume_error(error: &color_eyre::eyre::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| cause.to_string().contains("no rollout found for thread id"))
 }

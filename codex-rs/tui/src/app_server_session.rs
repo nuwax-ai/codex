@@ -1058,6 +1058,51 @@ impl AppServerSession {
         remote_cwd_override: Option<&std::path::Path>,
         selected_profile: Option<&PermissionProfileSelection>,
     ) -> Result<AppServerStartedThread> {
+        self.start_thread_with_route(
+            local_settings,
+            config,
+            session_start_source,
+            remote_cwd_override,
+            selected_profile,
+            /*route_override*/ None,
+        )
+        .await
+    }
+
+    /// Start a thread whose model/provider come from an explicit route rather
+    /// than the config's layer stack.
+    ///
+    /// `thread_start_params_from_config` only forwards a provider that a
+    /// session/env/profile layer selected; a plain config.toml default is sent
+    /// as "no preference" and the server falls back to its own default. A
+    /// cross-vendor pick has to win over that, so it overrides both fields.
+    pub(crate) async fn start_thread_on_route(
+        &mut self,
+        local_settings: &LocalSettings,
+        config: &Config,
+        model: String,
+        model_provider: String,
+    ) -> Result<AppServerStartedThread> {
+        self.start_thread_with_route(
+            local_settings,
+            config,
+            /*session_start_source*/ None,
+            /*remote_cwd_override*/ None,
+            /*selected_profile*/ None,
+            Some((model, model_provider)),
+        )
+        .await
+    }
+
+    async fn start_thread_with_route(
+        &mut self,
+        local_settings: &LocalSettings,
+        config: &Config,
+        session_start_source: Option<ThreadStartSource>,
+        remote_cwd_override: Option<&std::path::Path>,
+        selected_profile: Option<&PermissionProfileSelection>,
+        route_override: Option<(String, String)>,
+    ) -> Result<AppServerStartedThread> {
         if self.thread_params_mode.settings_owner() == ThreadSettingsOwner::Server
             && selected_profile.is_some()
         {
@@ -1095,6 +1140,10 @@ impl AppServerSession {
         if self.thread_params_mode.settings_owner() == ThreadSettingsOwner::Client {
             self.thread_tool_transport().validate_config(config)?;
             self.thread_tool_transport().configure(&mut params);
+        }
+        if let Some((model, model_provider)) = route_override {
+            params.model = Some(model);
+            params.model_provider = Some(model_provider);
         }
         let request_handle = self.request_handle();
         let (response, history_support, task_tools_available) =

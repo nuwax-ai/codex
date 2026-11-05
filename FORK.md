@@ -423,6 +423,19 @@ TUI 的完整 provider 配置与模型默认值，保留同一线程、历史和
 草稿和历史保留，以及执行中多次选择、正常完成/停止后仅应用最后一项。
 协议测试与真实 app-server 集成测试分开；本机真实集成曾阻塞于 macOS
 FSEvents 注册（首次 resume 阶段），不以协议模拟通过宣称真实集成已通过。
+**未开始会话的切换（2026-11-05，实测修复）**：刚启动、还没有任何 turn 的会话
+点跨厂商模型会失败——`thread/resume` 只能从**已落盘**的 rollout 重建，新会话
+（rollout 路径已分配、文件尚未生成）会被 app-server 以
+`no rollout found for thread id …` 拒绝，TUI 显示
+`Failed to switch model: thread/resume failed … (code -32600)`。空会话没有需要
+保留的内容，所以切换改为**用目标路由新开一个会话**：`thread/read` 先确认当前
+会话没有 turn（读取失败同样视为"未开始"），再走
+`AppServerSession::start_thread_on_route`——它在 `thread/start` 参数里显式带上
+`model`+`model_provider`，因为 `thread_start_params_from_config` 只转发由
+session/env/profile 层选中的 provider，纯 config.toml 默认值会被传成"无偏好"、
+由服务端按自己的默认值落线（实测会把 step 落回 mimo）。草稿随
+`restore_input_after_model_switch` 带过去；有 turn 的会话仍走原 resume 路径，
+并保留"rollout 被删时按同一错误回退到新会话"的兜底。
 **跟进项已闭环（2026-11-04 晚，三层根因）**：真集成变体失败并非"rejoin 顺序"
 本身，而是一整条链：①`load_for_resume` 与 turn 准入检查同源的磁盘漂移比较
 把显式跨厂商 resume 全部拒掉（P0 的孪生 bug）——现改为**客户端显式指定

@@ -5897,3 +5897,88 @@ async fn provider_error_preserves_partial_history_notice() -> Result<()> {
     }
     Ok(())
 }
+
+/// Cross-vendor switch on a conversation that has no rollout yet.
+///
+/// The route-override primitive is `thread/resume`, which the app server can
+/// only satisfy from a persisted conversation ("no rollout found"). A brand-new
+/// conversation has nothing to preserve, so the switch must start a new
+/// conversation on the target route instead of surfacing that error
+/// (reported from a real session: launch, pick another vendor, get
+/// "no rollout found for thread id …").
+#[tokio::test]
+async fn rehome_on_a_conversation_without_a_rollout_starts_a_new_thread() -> Result<()> {
+    let (mut app, _events, _ops) = make_test_app_with_channels().await;
+    let home = tempdir()?;
+    app.config.codex_home = home.path().to_path_buf().abs();
+    app.config.sqlite = SqliteConfig::new_for_testing(home.path().abs());
+    std::fs::write(
+        home.path().join("config.toml"),
+        r#"
+model = "mimo-fixture"
+model_provider = "mimo"
+[model_providers.mimo]
+name = "MiMo fixture"
+base_url = "http://127.0.0.1:9/v1"
+wire_api = "responses"
+models = ["mimo-fixture"]
+[model_providers.step]
+name = "Step fixture"
+base_url = "http://127.0.0.1:9/v1"
+wire_api = "responses"
+models = ["step-5-preview"]
+"#,
+    )?;
+    app.harness_overrides.cwd = Some(app.config.cwd.to_path_buf());
+    app.config = ConfigBuilder::default()
+        .codex_home(home.path().to_path_buf())
+        .harness_overrides(app.harness_overrides.clone())
+        .build()
+        .await?;
+    app.local_settings = crate::local_settings::LocalSettings::from(&app.config);
+    crate::legacy_core::config::set_project_trust_level(
+        home.path(),
+        app.config.cwd.as_path(),
+        codex_protocol::config_types::TrustLevel::Trusted,
+    )
+    .map_err(std::io::Error::other)?;
+
+    let (mut server, _requests, proxy) =
+        start_recording_app_server(&app.config, /*blocked_thread_list*/ None, None).await?;
+    let mut tui = crate::tui::test_support::make_test_tui()?;
+    app.start_fresh_session(
+        &mut tui,
+        &mut server,
+        /*session_start_source*/ None,
+        /*initial_user_message*/ None,
+        /*new_thread_name*/ None,
+    )
+    .await;
+    let original_thread = app.chat_widget.thread_id().expect("fresh thread id");
+    // The rollout *path* is allocated up front; the file only appears once a
+    // turn runs. Nothing has been written yet, which is exactly the state where
+    // `thread/resume` answers "no rollout found".
+
+    app.handle_event(
+        &mut tui,
+        &mut server,
+        AppEvent::RehomeThreadToProvider {
+            thread_id: original_thread,
+            model: "step-5-preview".to_string(),
+            provider_id: "step".to_string(),
+        },
+    )
+    .await?;
+
+    assert_ne!(
+        app.chat_widget.thread_id(),
+        Some(original_thread),
+        "the switch should start a new conversation instead of failing"
+    );
+    assert_eq!(app.chat_widget.current_model(), "step-5-preview");
+    assert_eq!(app.chat_widget.config_ref().model_provider_id, "step");
+
+    server.shutdown().await?;
+    proxy.await??;
+    Ok(())
+}
