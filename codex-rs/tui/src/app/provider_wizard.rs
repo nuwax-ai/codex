@@ -254,6 +254,13 @@ impl App {
                 // exactly that).
                 self.refresh_in_memory_config_from_disk_best_effort("saving a model provider")
                     .await;
+                // `/model` builds its cross-vendor rows from the widget's own
+                // provider snapshot, which only changes when the widget is
+                // replaced. A saved non-active provider has no resume, so pass
+                // the refreshed table through explicitly — otherwise the new
+                // provider stays invisible until the next thread switch.
+                self.chat_widget
+                    .adopt_model_providers(self.config.model_providers.clone());
                 // If the saved provider IS the current thread's provider, the
                 // loaded session still holds the old credential definition —
                 // a same-name key change needs a resume to rebuild the auth

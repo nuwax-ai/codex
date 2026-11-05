@@ -2091,6 +2091,24 @@ impl ChatWidget {
         &self.config
     }
 
+    /// Adopt a provider table refreshed from disk.
+    ///
+    /// The provider wizard writes config.toml without replacing the widget, so
+    /// the widget's snapshot would otherwise keep the pre-save providers until
+    /// the next thread switch — and the `/model` picker reads this snapshot,
+    /// leaving a just-saved provider (e.g. DeepSeek) absent from the
+    /// cross-vendor rows. Only the provider table is replaced: the active route
+    /// and every runtime cache derived from it stay as they are.
+    pub(crate) fn adopt_model_providers(
+        &mut self,
+        model_providers: std::collections::HashMap<
+            String,
+            codex_model_provider_info::ModelProviderInfo,
+        >,
+    ) {
+        self.config.model_providers = model_providers;
+    }
+
     pub(crate) fn status_line_text(&self) -> Option<String> {
         self.status_line_content()
             .cloned()

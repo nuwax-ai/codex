@@ -320,7 +320,7 @@ impl ChatWidget {
     /// show. Picking a row re-homes this conversation to that model/provider
     /// (same primitive as the mismatch notice's `r`); the previous model's
     /// thinking is not carried across vendors.
-    fn cross_vendor_model_items(&self) -> Vec<SelectionItem> {
+    pub(super) fn cross_vendor_model_items(&self) -> Vec<SelectionItem> {
         // A conversation that has not started yet has nothing to re-home —
         // its model changes through the ordinary selection path.
         let Some(current_thread_id) = self.thread_id() else {
