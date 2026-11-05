@@ -70,8 +70,7 @@ fn auth_domain(
     let selected_override = query_scoped
         || provider_auth
         || !scoped_extra_headers.is_empty()
-        || info.env_key.is_some()
-        || info.experimental_bearer_token.is_some()
+        || info.has_static_api_key_source()
         || info.auth.is_some()
         || info.gateway_oauth.is_some()
         || info.aws.is_some()

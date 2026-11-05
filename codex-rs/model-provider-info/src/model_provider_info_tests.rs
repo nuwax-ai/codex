@@ -93,6 +93,7 @@ base_url = "http://localhost:11434/v1"
         aws: None,
         wire_api: WireApi::Responses,
         models: None,
+        api_key: None,
         query_params: None,
         http_headers: None,
         env_http_headers: None,
@@ -140,6 +141,7 @@ query_params = { api-version = "2025-04-01-preview" }
         aws: None,
         wire_api: WireApi::Responses,
         models: None,
+        api_key: None,
         query_params: Some(maplit::hashmap! {
             "api-version".to_string() => "2025-04-01-preview".into(),
         }),
@@ -191,6 +193,7 @@ supports_standalone_web_search = true
         aws: None,
         wire_api: WireApi::Responses,
         models: None,
+        api_key: None,
         query_params: None,
         http_headers: Some(maplit::hashmap! {
             "X-Example-Header".to_string() => "example-value".into(),
@@ -397,6 +400,7 @@ fn test_create_amazon_bedrock_provider() {
             }),
             wire_api: WireApi::Responses,
         models: None,
+        api_key: None,
             query_params: None,
             http_headers: Some(maplit::hashmap! {
                 AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER.to_string() =>
@@ -832,6 +836,7 @@ fn test_merge_configured_model_providers_allows_amazon_bedrock_default_fields() 
             }),
             wire_api: WireApi::Responses,
         models: None,
+        api_key: None,
             ..ModelProviderInfo::default()
         },
     )]);
@@ -1219,4 +1224,72 @@ fn merge_carries_declared_models_onto_built_in_keys() {
     );
     // Built-ins without a declaration stay undeclared.
     assert_eq!(merged.get("openai").and_then(|p| p.models.clone()), None);
+}
+
+#[test]
+fn direct_api_key_parses_and_conflicts_fail_fast() {
+    let provider: ModelProviderInfo = toml::from_str(
+        "name = \"Direct\"\napi_key = \"sk-direct-test\"\nbase_url = \"https://gw.example.test/v1\"\n",
+    )
+    .unwrap();
+    assert!(provider.api_key.is_some());
+    // Resolution prefers the explicit key and never touches the environment.
+    assert_eq!(
+        provider.api_key().expect("resolves").as_deref(),
+        Some("sk-direct-test")
+    );
+    assert!(provider.has_static_api_key_source());
+
+    // Blank key fails at load naming the field.
+    let err = toml::from_str::<ModelProviderInfo>(
+        "name = \"Blank\"\napi_key = \"   \"\nbase_url = \"https://gw.example.test/v1\"\n",
+    )
+    .unwrap()
+    .validate()
+    .unwrap_err();
+    assert!(err.contains("api_key must not be blank"), "{err}");
+
+    // Conflicts name the fields, never the values.
+    let mut conflict = provider.clone();
+    conflict.env_key = Some("SOME_VAR".into());
+    let err = conflict.validate().unwrap_err();
+    assert!(err.contains("api_key cannot be combined with env_key"), "{err}");
+    assert!(!err.contains("sk-direct-test"), "errors must not echo values");
+
+    let mut conflict = provider.clone();
+    conflict.experimental_bearer_token = Some("legacy-token".into());
+    let err = conflict.validate().unwrap_err();
+    assert!(
+        err.contains("api_key cannot be combined with experimental_bearer_token"),
+        "{err}"
+    );
+
+}
+
+#[test]
+fn direct_api_key_is_never_serialized_into_public_projections() {
+    let provider: ModelProviderInfo = toml::from_str(
+        "name = \"Direct\"\napi_key = \"sk-never-serialize-me\"\nbase_url = \"https://gw.example.test/v1\"\n",
+    )
+    .unwrap();
+    let serialized = toml::to_string(&provider).unwrap();
+    assert!(
+        !serialized.contains("sk-never-serialize-me"),
+        "generic serialization must skip api_key: {serialized}"
+    );
+    assert!(!serialized.contains("api_key"));
+    // Round-trip keeps the field on disk semantics (deserialize accepts it).
+    let toml_text = toml::to_string(&provider).unwrap();
+    assert!(
+        !toml_text.contains("sk-never-serialize-me"),
+        "generic TOML serialization must also skip the key"
+    );
+    let reloaded: ModelProviderInfo = toml::from_str(
+        "name = \"Direct\"\napi_key = \"sk-kept\"\nbase_url = \"https://gw.example.test/v1\"\n",
+    )
+    .unwrap();
+    assert_eq!(
+        reloaded.api_key().expect("resolves").as_deref(),
+        Some("sk-kept")
+    );
 }

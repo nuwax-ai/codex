@@ -178,6 +178,10 @@ fn model_provider_from_proto(
         base_url: provider.base_url,
         model_catalog_url: provider.model_catalog_url.map(Into::into),
         env_key: provider.env_key,
+        // The remote thread-config wire format deliberately has no api_key
+        // field: direct keys stay in each backend's own user config and are
+        // never transported (spec: no plaintext key on public protos).
+        api_key: None,
         env_key_instructions: provider.env_key_instructions,
         experimental_bearer_token: provider.experimental_bearer_token.map(Into::into),
         auth: provider
@@ -240,6 +244,8 @@ fn model_provider_to_proto(
         base_url,
         model_catalog_url,
         env_key,
+        // Never transported: see the from_proto note above.
+        api_key: _,
         env_key_instructions,
         experimental_bearer_token,
         auth,
@@ -640,6 +646,7 @@ mod tests {
     fn expected_provider() -> ModelProviderInfo {
         ModelProviderInfo {
             name: "Local".to_string(),
+            api_key: None,
             models: Some(vec!["local-model".to_string()]),
             base_url: Some("http://127.0.0.1:8061/api/codex".to_string()),
             model_catalog_url: Some("http://127.0.0.1:8061/api/codex/models".into()),

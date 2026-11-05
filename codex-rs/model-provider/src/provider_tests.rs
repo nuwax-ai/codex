@@ -63,6 +63,7 @@ fn provider_for(base_url: String) -> ModelProviderInfo {
     ModelProviderInfo {
         name: "mock".into(),
         models: None,
+        api_key: None,
         base_url: Some(base_url),
         model_catalog_url: None,
         env_key: None,

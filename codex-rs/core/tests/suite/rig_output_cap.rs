@@ -50,6 +50,8 @@ fn output_cap_provider(base_url: &str, wire_api: WireApi) -> ModelProviderInfo {
     };
     ModelProviderInfo {
         capabilities: None,
+        api_key: None,
+        models: None,
         name: format!("rig-cap-{protocol_name}"),
         base_url: Some(format!("{base_url}/v1")),
         model_catalog_url: None,

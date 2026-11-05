@@ -23,6 +23,8 @@ use wiremock::matchers::method;
 pub(super) fn anthropic_provider(base_url: &str) -> ModelProviderInfo {
     ModelProviderInfo {
         capabilities: None,
+        api_key: None,
+        models: None,
         name: "rig-anthropic".into(),
         base_url: Some(format!("{base_url}/v1")),
         model_catalog_url: None,

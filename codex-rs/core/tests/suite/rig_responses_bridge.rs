@@ -26,6 +26,8 @@ use wiremock::MockServer;
 fn bridged_responses_provider(server: &MockServer) -> ModelProviderInfo {
     ModelProviderInfo {
         capabilities: None,
+        api_key: None,
+        models: None,
         name: "rig-responses".into(),
         base_url: Some(format!("{}/v1", server.uri())),
         model_catalog_url: None,

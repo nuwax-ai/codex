@@ -231,6 +231,17 @@ pub struct ModelProviderInfo {
     pub model_catalog_url: Option<RedactedString>,
     /// Environment variable that stores the user's API key for this provider.
     pub env_key: Option<String>,
+    /// Fork (nuwax-codex): an API key stored directly in the user-level
+    /// config (the "direct API key" credential mode, my-docs/
+    /// direct-provider-api-key-2026-11-05). Mutually exclusive with
+    /// `env_key`, `experimental_bearer_token`, `auth`, and `aws` — loading a
+    /// conflicting combination fails naming the fields, never echoing the
+    /// value. Deserialization accepts the field from disk; serialization
+    /// skips it so public config projections (config/read, summaries, thread
+    /// config, proto round-trips) never carry the key — real values reach
+    /// disk only through explicit restricted writes.
+    #[serde(default, skip_serializing)]
+    pub api_key: Option<RedactedString>,
 
     /// Optional instructions to help the user get a valid value for the
     /// variable and set it.
@@ -532,6 +543,37 @@ other non-default provider fields are not supported"
             }
         }
 
+        // Fork (nuwax-codex): the direct `api_key` is a primary credential —
+        // it cannot coexist with another primary source. Errors name fields
+        // only and never echo values. `gateway_oauth` is secondary and may
+        // combine. Legacy combinations that do not involve api_key keep
+        // their existing (permissive) semantics.
+        if self.api_key.is_some() {
+            if self.api_key.as_deref().is_none_or(|key| key.trim().is_empty()) {
+                return Err("provider api_key must not be blank".to_string());
+            }
+            let mut conflicts = Vec::new();
+            if self.env_key.is_some() {
+                conflicts.push("env_key");
+            }
+            if self.experimental_bearer_token.is_some() {
+                conflicts.push("experimental_bearer_token");
+            }
+            if self.auth.is_some() {
+                conflicts.push("auth");
+            }
+            if self.aws.is_some() {
+                conflicts.push("aws");
+            }
+            if !conflicts.is_empty() {
+                return Err(format!(
+                    "provider api_key cannot be combined with {} — configure one \
+                     credential source per provider",
+                    conflicts.join(", ")
+                ));
+            }
+        }
+
         if let Some(models) = self.models.as_ref() {
             if models.is_empty() {
                 return Err(
@@ -669,10 +711,16 @@ other non-default provider fields are not supported"
         })
     }
 
-    /// If `env_key` is Some, returns the API key for this provider if present
+    /// If `api_key` is set (direct credential mode), returns it. Otherwise,
+    /// if `env_key` is Some, returns the API key for this provider if present
     /// (and non-empty) in the environment. If `env_key` is required but
-    /// cannot be found, returns an error.
+    /// cannot be found, returns an error. The explicit key never falls back
+    /// to the environment or any other source — conflicts are rejected at
+    /// load time.
     pub fn api_key(&self) -> CodexResult<Option<String>> {
+        if let Some(api_key) = &self.api_key {
+            return Ok(Some(api_key.to_string()));
+        }
         match &self.env_key {
             Some(env_key) => {
                 let api_key = std::env::var(env_key)
@@ -688,6 +736,17 @@ other non-default provider fields are not supported"
             }
             None => Ok(None),
         }
+    }
+
+    /// Fork (nuwax-codex): whether this provider carries an explicit static
+    /// bearer credential in its configuration — the direct `api_key`, an
+    /// `env_key` reference, or the legacy experimental token. Describes the
+    /// configured source only: side-effect free (never reads the environment
+    /// or network), and false for command auth, OAuth, and login flows.
+    pub fn has_static_api_key_source(&self) -> bool {
+        self.api_key.is_some()
+            || self.env_key.is_some()
+            || self.experimental_bearer_token.is_some()
     }
 
     /// Effective maximum number of request retries for this provider.
@@ -731,6 +790,7 @@ other non-default provider fields are not supported"
             aws: None,
             wire_api: WireApi::Responses,
             models: None,
+            api_key: None,
             query_params: None,
             http_headers: Some(
                 [("version".to_string(), env!("CARGO_PKG_VERSION").into())]
@@ -796,6 +856,7 @@ other non-default provider fields are not supported"
             })),
             wire_api: WireApi::Responses,
             models: None,
+            api_key: None,
             query_params: None,
             http_headers: Some(HashMap::from([(
                 AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER.to_string(),
@@ -850,6 +911,7 @@ other non-default provider fields are not supported"
             capabilities: None,
             wire_api: WireApi::Responses,
             models: None,
+            api_key: None,
             query_params: None,
             http_headers: None,
             env_http_headers: None,
@@ -1204,6 +1266,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         aws: None,
         wire_api,
         models: None,
+        api_key: None,
         query_params: None,
         http_headers: None,
         env_http_headers: None,

@@ -29,8 +29,7 @@ pub(super) fn apply_experimental_context(
         || !starting_model.supports_experimental_context
         || !provider.supports_codex_backend_routes()
         || !provider.requires_openai_auth
-        || provider.env_key.is_some()
-        || provider.experimental_bearer_token.is_some()
+        || provider.has_static_api_key_source()
         || provider.auth.is_some()
         || provider.aws.is_some()
         || !auth.is_some_and(|auth| {

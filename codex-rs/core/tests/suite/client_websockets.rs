@@ -3202,6 +3202,7 @@ fn websocket_provider_with_connect_timeout(
 ) -> ModelProviderInfo {
     ModelProviderInfo {
         name: "mock-ws".into(),
+        api_key: None,
         models: None,
         base_url: Some(format!("{}/v1", server.uri())),
         model_catalog_url: None,

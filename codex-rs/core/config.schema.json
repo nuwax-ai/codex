@@ -3143,6 +3143,11 @@
           "description": "Fork (nuwax-codex): opt-in for Anthropic prompt caching. When true the rig bridge places `cache_control` breakpoints (system tail, final non-deferred tool, conversation tail) with Anthropic's 5-minute TTL; `cache_read_input_tokens`/`cache_creation_input_tokens` usage already flow back. Default off: only enable for gateways that accept Anthropic cache markers.",
           "type": "boolean"
         },
+        "api_key": {
+          "description": "Fork (nuwax-codex): an API key stored directly in the user-level config (the \"direct API key\" credential mode, my-docs/ direct-provider-api-key-2026-11-05). Mutually exclusive with `env_key`, `experimental_bearer_token`, `auth`, and `aws` — loading a conflicting combination fails naming the fields, never echoing the value. Deserialization accepts the field from disk; serialization skips it so public config projections (config/read, summaries, thread config, proto round-trips) never carry the key — real values reach disk only through explicit restricted writes.",
+          "type": "string",
+          "writeOnly": true
+        },
         "auth": {
           "allOf": [
             {

@@ -50,8 +50,7 @@ pub fn validate_runtime_provider(
     runtime: &RuntimeAuthManager,
 ) -> CodexResult<()> {
     if !info.requires_openai_auth
-        || info.env_key.is_some()
-        || info.experimental_bearer_token.is_some()
+        || info.has_static_api_key_source()
         || info.auth.is_some()
         || info.aws.is_some()
         || !credentials.is_some_and(|auth| runtime.uses_credentials(auth))

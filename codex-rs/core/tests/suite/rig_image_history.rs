@@ -43,6 +43,8 @@ fn rig_image_provider(base_url: &str, wire_api: WireApi) -> ModelProviderInfo {
     };
     ModelProviderInfo {
         capabilities: None,
+        api_key: None,
+        models: None,
         name: format!("rig-image-{protocol}"),
         base_url: Some(format!("{base_url}/v1")),
         model_catalog_url: None,

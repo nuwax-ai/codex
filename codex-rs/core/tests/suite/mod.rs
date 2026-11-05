@@ -207,6 +207,7 @@ mod review;
 mod rig_anthropic_hosted_tools;
 mod rig_image_history;
 mod rig_interrupt;
+mod direct_api_key;
 mod rig_output_cap;
 mod rig_responses_bridge;
 mod rmcp_client;

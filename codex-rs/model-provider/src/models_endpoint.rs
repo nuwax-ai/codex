@@ -323,8 +323,7 @@ impl ModelsEndpointClient for OpenAiModelsEndpoint {
     }
 
     fn has_provider_api_key(&self) -> bool {
-        self.provider_info.env_key.is_some()
-            || self.provider_info.experimental_bearer_token.is_some()
+        self.provider_info.has_static_api_key_source()
     }
 
     fn identity(&self) -> Option<String> {
