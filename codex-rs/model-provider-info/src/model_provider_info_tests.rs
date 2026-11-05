@@ -399,8 +399,8 @@ fn test_create_amazon_bedrock_provider() {
                 auth_refresh: None,
             }),
             wire_api: WireApi::Responses,
-        models: None,
-        api_key: None,
+            models: None,
+            api_key: None,
             query_params: None,
             http_headers: Some(maplit::hashmap! {
                 AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER.to_string() =>
@@ -419,12 +419,12 @@ fn test_create_amazon_bedrock_provider() {
             location: None,
             credential_file: None,
             experimental_bridge: None,
-        max_output_tokens: None,
-        hosted_results_replay: None,
-        anthropic_prompt_caching: None,
-        reasoning_effort_levels: None,
-        provider_id: None,
-        include_internal_metadata: false,
+            max_output_tokens: None,
+            hosted_results_replay: None,
+            anthropic_prompt_caching: None,
+            reasoning_effort_levels: None,
+            provider_id: None,
+            include_internal_metadata: false,
         }
     );
 }
@@ -561,7 +561,7 @@ fn test_merge_configured_model_providers_adds_custom_provider() {
 
     let mut expected = built_in_model_providers(/*openai_base_url*/ None);
     // The merge stamps every entry with its config key.
-    let mut stamped = custom_provider.clone();
+    let mut stamped = custom_provider;
     stamped.provider_id = Some("custom".to_string());
     expected.insert("custom".to_string(), stamped);
 
@@ -835,8 +835,8 @@ fn test_merge_configured_model_providers_allows_amazon_bedrock_default_fields() 
                 auth_refresh: None,
             }),
             wire_api: WireApi::Responses,
-        models: None,
-        api_key: None,
+            models: None,
+            api_key: None,
             ..ModelProviderInfo::default()
         },
     )]);
@@ -1164,22 +1164,19 @@ fn cyber_access_program_capability_uses_provider_identity_and_explicit_overrides
 
 #[test]
 fn models_declaration_parses_and_round_trips() {
-    let provider: ModelProviderInfo = toml::from_str(
-        "name = \"Xiaomi MiMo\"\nmodels = [\"mimo-v2.6-flash\", \"mimo-v2.5\"]\n",
-    )
-    .unwrap();
+    let provider: ModelProviderInfo =
+        toml::from_str("name = \"Xiaomi MiMo\"\nmodels = [\"mimo-v2.6-flash\", \"mimo-v2.5\"]\n")
+            .unwrap();
     assert_eq!(
         provider.models,
-        Some(vec![
-            "mimo-v2.6-flash".to_string(),
-            "mimo-v2.5".to_string()
-        ])
+        Some(vec!["mimo-v2.6-flash".to_string(), "mimo-v2.5".to_string()])
     );
     // Absence keeps the None default (existing behavior untouched).
     let bare: ModelProviderInfo = toml::from_str("name = \"Bare\"\n").unwrap();
     assert_eq!(bare.models, None);
     // Round trip preserves the declaration.
-    let round_trip: ModelProviderInfo = toml::from_str(&toml::to_string(&provider).unwrap()).unwrap();
+    let round_trip: ModelProviderInfo =
+        toml::from_str(&toml::to_string(&provider).unwrap()).unwrap();
     assert_eq!(round_trip, provider);
 }
 
@@ -1203,7 +1200,9 @@ fn models_declaration_rejects_empty_list_blank_and_duplicate_slugs() {
     assert!(err.contains("more than once"), "{err}");
 
     provider.models = Some(vec!["glm-5.3-flash".into(), "mimo-v2.6-flash".into()]);
-    provider.validate().expect("distinct non-empty slugs validate");
+    provider
+        .validate()
+        .expect("distinct non-empty slugs validate");
 }
 
 #[test]
@@ -1215,8 +1214,7 @@ fn merge_carries_declared_models_onto_built_in_keys() {
     ollama_override.models = Some(vec!["llama-x".to_string()]);
     configured.insert("ollama".to_string(), ollama_override);
 
-    let merged =
-        merge_configured_model_providers(built_ins, configured).expect("merge succeeds");
+    let merged = merge_configured_model_providers(built_ins, configured).expect("merge succeeds");
 
     assert_eq!(
         merged.get("ollama").and_then(|p| p.models.clone()),
@@ -1253,17 +1251,22 @@ fn direct_api_key_parses_and_conflicts_fail_fast() {
     let mut conflict = provider.clone();
     conflict.env_key = Some("SOME_VAR".into());
     let err = conflict.validate().unwrap_err();
-    assert!(err.contains("api_key cannot be combined with env_key"), "{err}");
-    assert!(!err.contains("sk-direct-test"), "errors must not echo values");
+    assert!(
+        err.contains("api_key cannot be combined with env_key"),
+        "{err}"
+    );
+    assert!(
+        !err.contains("sk-direct-test"),
+        "errors must not echo values"
+    );
 
-    let mut conflict = provider.clone();
+    let mut conflict = provider;
     conflict.experimental_bearer_token = Some("legacy-token".into());
     let err = conflict.validate().unwrap_err();
     assert!(
         err.contains("api_key cannot be combined with experimental_bearer_token"),
         "{err}"
     );
-
 }
 
 #[test]

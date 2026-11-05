@@ -131,7 +131,7 @@ fn provider_edits(
             // Fork: keep/set/clear with real source switching — setting one
             // primary credential removes the other primary fields in the
             // same atomic edit; omitting a field never deletes it.
-            apply_credential_source_switch(&mut fields, &patch, existing)?;
+            apply_credential_source_switch(&mut fields, patch, existing)?;
             (id, fields)
         }
         ProviderSettingsPatch::Bedrock(patch) => {
@@ -265,14 +265,14 @@ fn apply_credential_source_switch(
     let clears = |fields: &[PatchField<'_>], field: &str| fields.iter().any(|(f, _)| *f == field);
     // Setting one primary credential deletes the other primary fields in
     // this same atomic edit; omitting a field never deletes it.
-    if patch.api_key.as_ref().is_some_and(|value| value.is_some()) {
+    if patch.api_key.as_ref().is_some_and(Option::is_some) {
         for other in ["env_key", "experimental_bearer_token"] {
             if (has(other) || clears(fields, other)) && !clears(fields, other) {
                 fields.push((other, None));
             }
         }
     }
-    if patch.env_key.as_ref().is_some_and(|value| value.is_some()) {
+    if patch.env_key.as_ref().is_some_and(Option::is_some) {
         for other in ["api_key", "experimental_bearer_token"] {
             if (has(other) || clears(fields, other)) && !clears(fields, other) {
                 fields.push((other, None));

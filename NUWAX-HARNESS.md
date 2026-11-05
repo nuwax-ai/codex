@@ -160,7 +160,17 @@ nuwax-harness doctor --json
 
 环境变量组适合一次性对比；日常长期使用建议把 provider 写进
 `~/.nuwax-harness/config.toml`（目录可用 `CODEX_HOME`/`NUWAX_HOME` 改）。
-**API Key 不写进配置文件**，用 `env_key` 引用环境变量名。
+**API Key 有两种写法**（2026-11-05 起，见 [FORK.md §7.6](FORK.md)）：
+
+- `api_key = "<key>"`——直接把 key 存进**用户级** config.toml（TUI 向导的默认方式；
+  输入框隐藏，写入文件权限 0600，保存即生效、无需 export 或重启）。这是约定而非
+  强制：项目级 `.codex/` 与托管配置通常进版本库或分发给他人，请在那里改用
+  `env_key`，不要把明文 key 写进去。
+- `env_key = "GLM_API_KEY"`——只记变量名，key 留在环境变量里（高级选项，适合
+  CI/容器与不希望 key 落盘的场景）。
+
+两种来源与 `experimental_bearer_token`、`auth`、`aws` **互斥**：同一 provider 同时
+配置多个会在启动时报错并点名字段（不静默选一个）。
 
 以 GLM Coding Plan（Anthropic 线，本项目实网验证最充分的线）为例：
 
@@ -175,14 +185,15 @@ model_context_window = 1000000
 [model_providers.glm]
 name = "GLM Coding Plan (Anthropic)"
 base_url = "https://open.bigmodel.cn/api/anthropic"
-env_key = "GLM_API_KEY"          # Key 从该环境变量读取，不落盘
+env_key = "GLM_API_KEY"          # 方式二：Key 从该环境变量读取，不落盘
+# api_key = "<你的key>"          # 方式一（默认）：直接存本文件，0600；与 env_key 互斥
 wire_api = "anthropic"           # responses | chat | anthropic
 anthropic_prompt_caching = true  # 可选：Anthropic 线 prompt 缓存（opt-in，5 分钟 TTL）
 # models = ["GLM-5.3-Flash", "GLM-5.3"]  # 可选：固定 /model 列表（见下表）
 # max_output_tokens = 8192       # 可选：输出上限；Anthropic 线不设时默认 16384
 ```
 
-Key 放进受保护环境文件（沿用 §2 的 agent.env 模式，`chmod 600`）：
+选 `env_key` 方式时，Key 放进受保护环境文件（沿用 §2 的 agent.env 模式，`chmod 600`）：
 
 ```bash
 echo "export GLM_API_KEY='<你的key>'" >> "$HOME/.config/nuwax-harness/agent.env"
@@ -210,19 +221,20 @@ provider 常用字段：
 | 字段 | 说明 |
 | --- | --- |
 | `base_url` | 平台**协议基址**，不要自行拼接 `/chat/completions` 等路径 |
-| `env_key` | 存 Key 的环境变量名；Key 永不落盘 |
+| `env_key` | **方式二**：存 Key 的环境变量名，Key 不落盘；与 `api_key` 互斥 |
 | `wire_api` | `responses` / `chat` / `anthropic`（后两者为 fork 扩展） |
 | `anthropic_prompt_caching` | 可选；Anthropic 线 `cache_control` 断点，默认关 |
 | `max_output_tokens` | 可选；每次生成的输出上限 |
 | `request_max_retries` / `stream_max_retries` / `stream_idle_timeout_ms` | 可选；重试与流空闲超时 |
 | `reasoning_effort_levels` | 可选；该网关的模型真实接受的 effort 档位(如 `["low","high","max"]`)，见 §4 |
-| `api_key` | 可选(2026-11-05 起)；直接保存的 API key(TUI 向导默认方式,输入框隐藏、配置文件 0600)。与 `env_key`/`experimental_bearer_token`/`auth`/`aws` 互斥,冲突启动即报错 |
+| `api_key` | **方式一（默认）**：直接保存的 API key（TUI 向导默认方式，输入框隐藏、配置文件 0600）。与 `env_key`/`experimental_bearer_token`/`auth`/`aws` 互斥，冲突启动即报错；错误、日志与 `config/read` 层视图均不回显该值 |
 | `models` | 可选；该 provider 服务的模型 slug 列表。声明后 `/model` 恰好列出这些模型（不再显示与本 provider 无关的内置 GPT 种子）；每个 slug 的窗口/档位元数据仍从内置厂商目录按 slug 解析，未知 slug 用占位元数据（272k 窗口）并告警。空列表、空串、重复 slug（不分大小写）启动即报错。`-m`/`NUWAX_MODEL` 选声明外的模型不受限制 |
 
 其他常用顶层键：`model_auto_compact_ratio` / `model_auto_compact_token_limit`（见 §4）、
 `[tools] tool_search = false`（MCP 工具全量直出，见 FORK.md §7.1）。
 
-要点：自定义 provider 不弹官方登录界面，Key 在环境变量里即可直接进 TUI/exec；
+要点：自定义 provider 不弹官方登录界面，凭据用 `api_key`（默认）或 `env_key`
+二选一即可直接进 TUI/exec；
 优先级为显式 CLI（`-m`/`-c`）> 环境种子（`NUWAX_*`/`CODEX_*`）> config.toml；
 `nuwax_env` 是保留 provider ID，不要在配置文件里手工定义。验证配置：
 `nuwax-harness doctor --json`，看 `config.model_routing` 的 provider/wire/bridge/
@@ -244,9 +256,12 @@ effective context window 是否符合预期。
 不想手编 config.toml 时，用向导新增/更新厂商：`/model` → All models 列表底部
 **Manage providers…**。预置 8 家厂商模板（GLM/MiMo/DeepSeek/Kimi/StepFun/
 MiniMax 等，模板只是预填、各步可改）；自定义走 id/显示名/base URL/协议/
-环境变量名/模型列表六步；预览将写入的 TOML 块并二次确认后落盘 config.toml。
-**API key 本身永不写入**，只记录变量名——保存后 `export $KEY` 并重启 TUI，
-该厂商的模型即出现在 `/model`（FORK.md §7.5）。
+凭据方式/模型列表各步；预览将写入的 TOML 块并二次确认后落盘 config.toml。
+**凭据三选一**：直接粘贴 API key（默认，输入框隐藏，落盘 0600，预览只显示圆点
+状态行）、环境变量名、或不鉴权。直接键保存后刷新本会话配置，该厂商的模型立即
+出现在 `/model`，**无需 export、无需重启**；选环境变量方式时才需要
+`export $KEY` 并重启 TUI。无论哪种方式，key 值都不会出现在提示、错误或日志里
+（见 FORK.md §7.6）。
 
 ## 4. 上下文、输出与压缩
 

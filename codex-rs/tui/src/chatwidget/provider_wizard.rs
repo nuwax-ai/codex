@@ -118,11 +118,7 @@ impl ProviderWizardDraft {
             base_url: preset.base_url.to_string(),
             wire_api: preset.wire_api.to_string(),
             env_key: preset.env_key.to_string(),
-            models: preset
-                .models
-                .iter()
-                .map(|model| model.to_string())
-                .collect(),
+            models: preset.models.iter().map(ToString::to_string).collect(),
         }
     }
 

@@ -374,12 +374,10 @@ async fn model_picker_rehome_protocol_preserves_route_and_draft() -> Result<()> 
 }
 
 async fn check_model_picker_rehome(capabilities: HistoryCapabilities) -> Result<()> {
-    let started_at = std::time::Instant::now();
     let (mut app, mut events, _ops) = make_test_app_with_channels().await;
     let home = tempdir()?;
     app.config.codex_home = home.path().to_path_buf().abs();
     app.config.sqlite = SqliteConfig::new_for_testing(home.path().abs());
-    eprintln!("switch fixture ready after {:?}", started_at.elapsed());
     let config_text = r#"
 model = "mimo-v2.6-flash"
 model_provider = "mimo"
@@ -429,7 +427,6 @@ models = ["step-5-preview"]
         LoaderOverrides::without_managed_config_for_tests(),
     )
     .await?;
-    eprintln!("switch server ready after {:?}", started_at.elapsed());
     let started = server
         .resume_thread(
             &app.local_settings,
@@ -438,10 +435,6 @@ models = ["step-5-preview"]
             crate::app_server_session::ResumeModelSettings::OverrideFromCurrentConfig,
         )
         .await?;
-    eprintln!(
-        "switch initial resume ready after {:?}",
-        started_at.elapsed()
-    );
     app.enqueue_primary_thread_session(started.session, started.turns)
         .await?;
     let mut tui = crate::tui::test_support::make_test_tui()?;
@@ -514,10 +507,6 @@ models = ["step-5-preview"]
         app.handle_event(&mut tui, &mut server, apply).await?;
         assert!(app.pending_model_switch.is_none());
         assert!(!app.chat_widget.queue_autosend_suppressed());
-        eprintln!(
-            "switch to {provider_id} returned after {:?}",
-            started_at.elapsed()
-        );
 
         let resumes = recorded_params(&requests, "thread/resume");
         // Exactly one resume may carry the explicit switch overrides; the

@@ -280,7 +280,14 @@ impl App {
                             "Refreshing this conversation's credentials…".to_string(),
                             /*hint*/ None,
                         );
-                        let _ = self
+                        // Same applied-signal as the mid-turn path: the resume
+                        // returns Ok(Continue) for partial failures, so only a
+                        // real widget replacement (the generation counter is
+                        // bumped at the swap point) proves the new key took
+                        // effect. Otherwise keep the intent and say so, rather
+                        // than reporting a success that did not happen.
+                        let generation_before = self.widget_generation;
+                        let result = self
                             .resume_target_session_with_source(
                                 tui,
                                 app_server,
@@ -300,6 +307,17 @@ impl App {
                                 },
                             )
                             .await;
+                        let applied = result.is_ok()
+                            && self.widget_generation != generation_before
+                            && self.chat_widget.thread_id() == Some(thread_id);
+                        if !applied {
+                            self.pending_credential_refresh = Some(thread_id);
+                            self.chat_widget.add_error_message(
+                                "Credential refresh did not apply — will retry after your next \
+                                 turn."
+                                    .to_string(),
+                            );
+                        }
                     }
                 }
                 let key_hint = if env_key.is_empty() {

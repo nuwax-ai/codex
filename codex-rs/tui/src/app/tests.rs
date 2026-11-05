@@ -9816,6 +9816,35 @@ async fn replay_thread_snapshot_replays_turn_history_in_order() {
 }
 
 #[tokio::test]
+async fn replace_chat_widget_bumps_generation_and_clears_credential_refresh() {
+    // The credential refresh proves "the rebuild applied" with this counter, so
+    // it must move exactly once per replacement — at the swap point — and must
+    // not survive a conversation replacement.
+    let (mut app, _app_event_rx, _op_rx) = make_test_app_with_channels().await;
+    let mut tui = crate::tui::test_support::make_test_tui().expect("test tui");
+    app.pending_credential_refresh =
+        Some(ThreadId::from_string("019cff70-2599-75e2-af72-b958ce5dc1cc").expect("valid thread"));
+    let generation_before = app.widget_generation;
+
+    let init = app.chatwidget_init_for_forked_or_resumed_thread(
+        &mut tui,
+        app.config.clone(),
+        /*initial_user_message*/ None,
+    );
+    app.replace_chat_widget(ChatWidget::new_with_app_event(init));
+    assert_eq!(app.widget_generation, generation_before + 1);
+    assert!(app.pending_credential_refresh.is_none());
+
+    let second_init = app.chatwidget_init_for_forked_or_resumed_thread(
+        &mut tui,
+        app.config.clone(),
+        /*initial_user_message*/ None,
+    );
+    app.replace_chat_widget(ChatWidget::new_with_app_event(second_init));
+    assert_eq!(app.widget_generation, generation_before + 2);
+}
+
+#[tokio::test]
 async fn replace_chat_widget_reseeds_collab_agent_metadata_for_replay() {
     let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
     let receiver_thread_id =

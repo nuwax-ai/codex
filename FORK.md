@@ -469,25 +469,31 @@ OSC 21337 字段不变。快照覆盖全部状态。该改动不重命名 Cargo 
 - **步骤 1 预设选择**：8 个精选预设——`glm` / `glm-chat` / `mimo` /
   `mimo-chat` / `deepseek` / `moonshotai` / `stepfun` / `minimax`（GLM/MiMo
   各含 anthropic 与 chat 双入口）+ "Custom…"。**预设仅做 UI 预填**：id/名称/
-  base_url/wire_api/env_key/models 皆可编辑，不参与请求行为——引擎侧模型
+  base_url/wire_api/凭据（`api_key` 或 `env_key`）/models 皆可编辑，不参与请求行为——引擎侧模型
   元数据仍按 §7.2 走 bundled vendor catalog 的 per-slug 解析。已配置的 id
   在行上标注 "already configured — saving overwrites these keys"。
-- **预设路径**：env_key（可编辑预填；UPPER_SNAKE_CASE，留空 = 本地免鉴权
-  网关）→ models（逗号分隔，可编辑预填）→ 预览。
+- **预设路径**：凭据步骤（见下）→ models（逗号分隔，可编辑预填）→ 预览。
 - **Custom 路径**：provider id（仅小写字母/数字/连字符；`nuwax_env` 保留，
   拒绝）→ 显示名（留空默认 = id）→ base URL（必须 `http://` 或 `https://`
   开头）→ wire_api picker（`anthropic`/`chat`/`responses` 各带一行说明）→
-  env_key → models → 预览。
-- **预览步**：逐字展示将写入的 `[model_providers.<id>]` TOML 块；覆盖已有
-  provider 时注明只覆盖所列键、其余保留；提醒 **key 本身永不入 config**（只记
-  变量名）、保存后 `export $KEY` 并重启 TUI；"Save provider" 需显式二次确认
-  （`require_explicit_confirmation`）才落盘。
+  凭据步骤 → models → 预览。
+- **凭据步骤（§7.6 起重构）**：三选一——**直接 API Key（默认）**、环境变量
+  （高级）、无鉴权。选直接键时进入专用隐藏输入框（`render_ref_masked('*')`），
+  粘贴的 key 只存在于向导意图中直到确认写入；选环境变量才走
+  UPPER_SNAKE_CASE 变量名步骤（留空 = 本地免鉴权网关）。
+- **预览步**：逐字展示将写入的 `[model_providers.<id>]` TOML 块（直接键只显示
+  圆点状态行，绝不显示值）；覆盖已有 provider 时注明只覆盖所列键、其余保留；
+  环境变量方式提示 `export $KEY` 并重启 TUI，直接键方式保存即生效、无需重启；
+  "Save provider" 需显式二次确认（`require_explicit_confirmation`）才落盘。
 - **写入路径**：`config/batchWrite`（`persist_model_defaults`），每字段一条
-  key-path edit——`model_providers.<id>.{name,base_url,env_key,wire_api,models}`
-  （`MergeStrategy::Replace`）——同 provider 表下未列出的其它键原样保留。
-  models 空列表行内拒绝（至少一个 slug），与 §7.2 的加载期 fail-fast 呼应。
-- **安全红线**：向导全程不接触 key 值，只记录 `env_key` 变量名；`nuwax_env`
-  为保留 id 不允许使用。
+  key-path edit——`model_providers.<id>.{name,base_url,env_key,api_key,wire_api,models}`
+  （`MergeStrategy::Replace`；`api_key` 为 §7.6 的三态写：缺省 Keep / null Clear /
+  值 Set，设置主凭据时同批删除其它主凭据字段）——同 provider 表下未列出的
+  其它键原样保留。models 空列表行内拒绝（至少一个 slug），与 §7.2 的加载期
+  fail-fast 呼应。
+- **安全红线**：key 值不得进入提示、错误、日志、预览 TOML 块或公开配置投影
+  （`config/read` 层视图替换为布尔）；只有用户级配置文件本身以 0600 持有明文
+  （§7.6）；`nuwax_env` 为保留 id 不允许使用。
 - **与 §7.2/§7.3 衔接**：保存后该 provider 声明的 `models` 进入 `/model`
   （P1），All-models 出现其跨厂商行并可会话级切换/re-home（P2/P3）；向导
   本身不改当前会话与磁盘默认厂商。
@@ -516,6 +522,22 @@ OSC 21337 字段不变。快照覆盖全部状态。该改动不重命名 Cargo 
   （`render_ref_masked('*')`）粘贴 key；key 只存在于向导意图直至确认写入；预览显示
   圆点状态行；保存后刷新内存配置、无需 export/重启。
 - **远程 proto 不携带 key**（thread_config 无该字段——各后端读自己的用户配置）。
+
+**2026-11-05 第六轮审查修复**：①刷新"已生效"判据改为**双条件**——`widget_generation`
+计数器只在真正替换 widget 的单一交换点自增（此前在 resume 包装函数入口自增，终端
+清除失败时会给出假"已生效"），且必须 `result.is_ok()`；两个保存路径（执行中排队
+与应用前空闲态）都据此判定，失败保留抑制与待刷新意图并明确提示，不再静默。
+②类型错误值脱敏**收口到两处 Display**（`format_config_error` 与
+`ConfigLoadError::Display`，后者经 `io::Error::to_string()` 进入 app-server 的
+"invalid configuration" 告警），匹配规则改为"值位置内、受引号包裹的第一个片段"：
+兼容 serde 对字符串的**双引号**渲染与 `unknown variant` 形态，且不再误伤
+`expected one of \`a\`, \`b\`` 这类期望值；`diagnostics` 9 例单测 + 一处
+`replace_chat_widget` 计数器语义测试锁定。③顺带恢复 clippy 闸门：本批范围内
+`config`（`remote.rs` 的 `then_some`、`ConfigLoadError` Display 路径）、
+`model-provider-info`（测试里的冗余 clone）、`app-server`（provider 写入的两处
+`redundant_closure`/`needless_borrow`）与 `tui`（`expect_used`、`needless_late_init`、
+`print_stderr`）的 deny 级 lint 全部清零；并移除模型切换测试里遗留的 `eprintln!`
+计时输出（`codex-tui` 现 `cargo clippy --all-targets` 通过）。
 
 ## 8. 版本与发布
 

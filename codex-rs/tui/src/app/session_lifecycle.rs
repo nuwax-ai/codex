@@ -1243,7 +1243,11 @@ impl App {
         presentation: ThreadAttachPresentation,
         initial_user_message: Option<crate::chatwidget::UserMessage>,
     ) -> Result<()> {
-        self.widget_generation += 1;
+        // `widget_generation` is bumped by `replace_chat_widget` (the single
+        // swap point, reached below) — never here: this function can fail
+        // before the swap (terminal clear), and a bump without a replacement
+        // would make the credential refresh believe an unapplied rebuild
+        // succeeded.
         self.pending_credential_refresh = None;
         // Initial messages are for freshly attached primary threads only. Thread switches and
         // resume/fork flows pass `None` so they cannot replay old history and then auto-submit a new

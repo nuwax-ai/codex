@@ -32,6 +32,9 @@ Anthropic Messages，并保留绕过 rig 的上游原生 Responses 入口。
 main@342ed69a1 已通过 merge a5b25b043 集成并随晚间批次推送。
 复审输入 origin/test=850a87390；Rust1.99.1、V8152.2.0、rig0.44.0、genai0.7.0。
 验收期间冻结这些版本，不再同步新的 main 或升级 rig。
+（注：以上是 2026-10-23 收口快照。其后 2026-10-26 已解冻并升到 rig 0.45.0、
+2026-11-03 又并入 origin/main@7ee5efad4a 的 529 个提交；当前版本以 Cargo.lock 与
+[FORK.md](../FORK.md) 为准。）
 
 已完成证据包括：三协议实网9用例、ACP工作流12/12、rcoder容器3/3；
 这些二进制绑定 a5b25b043，不扩大为后续全部提交/全部厂商均已实网。

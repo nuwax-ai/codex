@@ -73,7 +73,10 @@ impl fmt::Display for ConfigLoadError {
             self.error.path.display(),
             self.error.range.start.line,
             self.error.range.start.column,
-            self.error.message
+            // Fork: this Display reaches user surfaces through
+            // `io::Error::to_string()` (e.g. the app-server's invalid-config
+            // warning), so it must mask just like `format_config_error` does.
+            mask_type_error_values(&self.error.message)
         )
     }
 }
@@ -288,7 +291,9 @@ pub fn format_config_error(error: &ConfigError, contents: &str) -> String {
     );
 
     let line_index = start.line.saturating_sub(1);
-    let line = match contents.lines().nth(line_index) {
+    // The excerpt itself is never rendered (see below), but a range pointing
+    // past the file still ends the diagnostic early.
+    let _line = match contents.lines().nth(line_index) {
         Some(line) => line.trim_end_matches('\r'),
         None => return output.trim_end().to_string(),
     };
@@ -548,45 +553,73 @@ fn seq_child<'a>(node: &TomlNode<'a>, index: usize) -> Option<TomlNode<'a>> {
     }
 }
 
-/// Fork: masks raw input values embedded in serde type-error messages.
-/// Serde renders `invalid type: integer \`12345\`, expected a string` —
-/// the backtick-quoted portion is the user's actual config input, which for
-/// credential fields is the secret itself. Replace the value while keeping
-/// the type name and expectation so the error remains actionable.
+/// Fork: masks the raw config value embedded in serde value-error messages.
+///
+/// Serde renders the offending input *before* the expectation clause, and the
+/// quoting depends on the input type: scalars use backticks
+/// (`invalid type: integer \`12345\`, expected a string`), strings use double
+/// quotes (`invalid type: string "…", expected u64`), and enum variants echo
+/// the raw input as `unknown variant \`…\`, expected one of …`. Only the value
+/// is replaced; the type name and the `expected …` guidance are preserved —
+/// the guidance itself uses backticks for its alternatives, so masking the
+/// first backtick pair in the whole message would corrupt it.
+///
+/// Idempotent: masking an already-masked message yields the same text.
 fn mask_type_error_values(message: &str) -> String {
-    const CREDENTIAL_FIELD_HINTS: [&str; 4] = [
-        "api_key",
-        "experimental_bearer_token",
-        "bearer_token",
-        "access_token",
-    ];
-    // Only mask when the message relates to a credential field (checked via
-    // the error path context — the message itself may not contain the field
-    // name after path stripping).
-    // We mask any backtick-quoted value in an "invalid type" message when a
-    // credential hint appears in the surrounding context; for simplicity and
-    // safety, mask ALL backtick-quoted values in type errors (the type name
-    // is outside the backticks).
-    if !message.starts_with("invalid type") && !message.contains("invalid type") {
+    let Some(body_start) = value_message_body_start(message) else {
         return message.to_string();
-    }
-    // Replace content between the first pair of backticks after "invalid
-    // type:" — that's the input value; the expected type follows.
-    let mut result = message.to_string();
-    // Actual serde format: "invalid type: integer `12345`, expected a
-    // string" — the type name sits between "invalid type: " and the
-    // backtick. Find the FIRST backtick-quoted value in the message and
-    // replace it.
-    if let Some(first_tick) = result.find('`') {
-        if let Some(end_rel) = result[first_tick + 1..].find('`') {
-            let value_end = first_tick + 1 + end_rel;
-            result = format!(
-                "{}<redacted>{}",
-                &result[..first_tick + 1],
-                &result[value_end..]
-            );
-        }
-    }
-    let _ = CREDENTIAL_FIELD_HINTS; // documented intent; masking is unconditional
-    result
+    };
+    let body = &message[body_start..];
+    // Everything before ", expected" is the value rendering; anything after it
+    // is the expectation, which never carries user input.
+    let value_len = body.find(", expected").unwrap_or(body.len());
+    let value = &body[..value_len];
+    let Some(masked_value) =
+        mask_first_quoted(value, '`').or_else(|| mask_first_quoted(value, '"'))
+    else {
+        return message.to_string();
+    };
+    format!(
+        "{}{}{}",
+        &message[..body_start],
+        masked_value,
+        &body[value_len..]
+    )
 }
+
+/// Offset just past the value introducer of a serde value-error message.
+fn value_message_body_start(message: &str) -> Option<usize> {
+    ["invalid type: ", "invalid value: ", "unknown variant "]
+        .iter()
+        .find_map(|prefix| message.find(prefix).map(|at| at + prefix.len()))
+}
+
+/// Replaces the contents of the first `quote`-delimited span with
+/// `<redacted>`, keeping the delimiters. For double quotes the scan honours
+/// `\"` escapes, so a value that itself contains quotes is masked whole.
+fn mask_first_quoted(text: &str, quote: char) -> Option<String> {
+    let start = text.find(quote)?;
+    let value_start = start + quote.len_utf8();
+    let bytes = text.as_bytes();
+    let mut index = value_start;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte == b'\\' && quote == '"' {
+            index += 2;
+            continue;
+        }
+        if byte == quote as u8 {
+            return Some(format!(
+                "{}<redacted>{}",
+                &text[..value_start],
+                &text[index..]
+            ));
+        }
+        index += 1;
+    }
+    None
+}
+
+#[cfg(test)]
+#[path = "diagnostics_tests.rs"]
+mod tests;

@@ -211,7 +211,7 @@ fn model_provider_from_proto(
         max_output_tokens: provider.max_output_tokens,
         hosted_results_replay: provider.hosted_results_replay,
         // Empty repeated field on the wire means "undeclared" (None).
-        models: (!provider.models.is_empty()).then(|| provider.models),
+        models: (!provider.models.is_empty()).then_some(provider.models),
         anthropic_prompt_caching: None,
         reasoning_effort_levels: None,
         stream_max_retries: provider.stream_max_retries,

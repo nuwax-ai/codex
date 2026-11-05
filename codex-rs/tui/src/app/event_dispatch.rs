@@ -417,12 +417,13 @@ impl App {
                     cwd: None,
                     history_mode: None,
                 };
-                // The generation counter is the ONLY reliable applied-signal:
-                // resume_target_session returns Ok(Continue) even when the
-                // rebuild failed internally, and the widget can still be on
-                // the same thread. A generation bump means the widget was
-                // actually replaced (the session was rebuilt with the new
-                // credential definition).
+                // Two independent conditions, both required:
+                // - the generation counter proves the widget was actually
+                //   replaced (the resume path returns Ok(Continue) even when a
+                //   partial failure left the session un-rebuilt), and it is
+                //   only bumped at the real swap point;
+                // - `result.is_ok()` rejects hard errors that may have bumped
+                //   the counter before failing later in the attach flow.
                 let generation_before = self.widget_generation;
                 let result = self
                     .resume_target_session_with_source(
@@ -435,7 +436,8 @@ impl App {
                         },
                     )
                     .await;
-                let widget_was_replaced = self.widget_generation != generation_before;
+                let widget_was_replaced =
+                    result.is_ok() && self.widget_generation != generation_before;
                 if widget_was_replaced && self.chat_widget.thread_id() == Some(thread_id) {
                     self.chat_widget.set_queue_autosend_suppressed(false);
                     self.chat_widget.maybe_send_next_queued_input();
@@ -448,7 +450,6 @@ impl App {
                             .to_string(),
                     );
                 }
-                let _ = result;
             }
             AppEvent::ProviderWizardCredentialMode(mode) => {
                 self.provider_wizard_credential_mode(&mode);

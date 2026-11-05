@@ -130,7 +130,13 @@ impl BackendSessions {
     }
 
     pub(super) fn set_preference_key(&mut self, owner: BackendId, key: &str) {
-        let slot = self.slot(owner).expect("registered app-server");
+        // Was `expect("registered app-server")`; the workspace denies
+        // `expect_used` in production code, so an unregistered owner is
+        // reported and ignored instead of panicking the TUI.
+        let Some(slot) = self.slot(owner) else {
+            tracing::warn!("ignoring preference key for an unregistered app-server");
+            return;
+        };
         assert!(
             !key.is_empty()
                 && key

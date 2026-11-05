@@ -9,9 +9,11 @@
 
 ## 一、项目背景与目标
 
-这是 **OpenAI codex CLI 的 fork**（本轮上游同步目标 `main@342ed69a1`，Rust 1.99.1 / V8 152.2.0），
+这是 **OpenAI codex CLI 的 fork**（最近一次上游同步：`origin/main@7ee5efad4a`，2026-11-03 以
+`1f457a52b8` 并入 `test`，529 个提交；Rust 1.99.1 / V8 152.2.0 / rig 0.45.0），
 核心使命:**让 codex 能接入国内/第三方大模型厂商**(小米 MiMo、智谱 GLM、阶跃 StepFun、
-DeepSeek、Ollama 等),并通过 npm 以 `nuwax-codex` 包名独立发布。
+DeepSeek、Ollama 等),并通过 npm 组织包 `@nuwax-ai/nuwax-harness` 独立发布
+（主命令/主二进制 `nuwax-harness`，Cargo crate 名保持 `codex-*`）。
 
 上游 codex 已删除 Chat Completions 支持(只保留 Responses API),且第三方厂商的
 Responses 实现普遍残缺(如 MiMo 拒绝 `web_search` 宿主工具)。本 fork 的解法:
@@ -37,7 +39,7 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
 
 | 路径 | 作用 |
 |---|---|
-| `codex-rs/codex-rust-rig-bridge/` | **默认桥**。基于 rig-core =0.44.0(精确锁版本),把 `ResponsesApiRequest` 转成 rig `CompletionRequest`(OpenAI Chat Completions 或 Anthropic Messages),流式转回 codex `ResponseEvent`。核心文件:`convert_request.rs`(请求映射)、`convert_response.rs`(响应/流事件映射)、`stream.rs`(流泵+错误映射)、`client.rs`(rig 客户端构造)、`bridge_impl.rs`(trait 实现) |
+| `codex-rs/codex-rust-rig-bridge/` | **默认桥**。基于 rig-core =0.45(精确锁版本),把 `ResponsesApiRequest` 转成 rig `CompletionRequest`(OpenAI Chat Completions 或 Anthropic Messages),流式转回 codex `ResponseEvent`。核心文件:`convert_request.rs`(请求映射)、`convert_response.rs`(响应/流事件映射)、`stream.rs`(流泵+错误映射)、`client.rs`(rig 客户端构造)、`bridge_impl.rs`(trait 实现) |
 | `codex-rs/codex-rust-genai-bridge/` | 备用桥(基于 rust-genai 0.7.0)。**已降级为回退选项**,配置 `experimental_bridge = "genai"` 才启用。结构与 rig 桥同构 |
 | `codex-rs/live-tests/` | 独立集成测试 crate(不耦合业务代码)。三厂商(MiMo/GLM/StepFun)× 两桥 × 多场景的真实模型测试矩阵 + 编译产物 E2E + 录制回放 cassette + A/B diff。凭据从 gitignored 的 `.env.local` 读 |
 
@@ -52,10 +54,10 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
 | `codex-rs/core/src/tools/flat_name_index.rs`(新增)+ `registry.rs`(小改) | namespace 工具展平为 `mcp__ns__tool` 后的回环索引 |
 | `codex-rs/core/src/session/turn_context.rs`、`models-manager/model_info.rs` | fallback 模型元数据告警降噪(自定义厂商必然 fallback,不该每轮弹警告) |
 | `codex-rs/config/src/thread_config/remote.rs` | 新字段初始化 |
-| `codex-rs/utils/home-dir/src/lib.rs`(小改)+ `src/nuwax_default.rs`(fork 新增文件) | **分层默认配置目录**:`CODEX_HOME` 未设置时优先 `~/.codex-nuwax`(存在即用,Fail Fast 校验),回落上游 `~/.codex`。fork 配置与官方 codex 默认目录隔离,官方二进制解析零改动。设计见 `my-docs/nuwax-home/` |
+| `codex-rs/utils/home-dir/src/lib.rs`(小改)+ `src/nuwax_default.rs`(fork 新增文件) | **独立默认配置目录(2026-10-23 起)**:`CODEX_HOME`(别名 `NUWAX_HOME`)显式设置时优先,未设置时默认 `~/.nuwax-harness`。**不再回落到 `~/.codex`**,也不读取/迁移旧的 `.codex-nuwax`、`.nuwax-codex`(见 FORK.md §2);官方二进制解析零改动。设计见 `my-docs/nuwax-home/` |
 | `codex-rs/tui/src/daemon_startup.rs`(小改)+ `daemon_startup_tests.rs`、`startup_orchestration.rs`(1 行传参) | **npm 安装不自启 daemon**:npm 单二进制包无完整本地包布局,daemon 自安装必失败。`exclusion()` 增加 NpmNuwax 排除(装方式以参数注入,hermetic 可测);`providers/set` 的 apiType=anthropic 同轮在 ACP-TS 支持 |
 | `codex-rs/cli/Cargo.toml`、`codex-rs/exec/Cargo.toml` | 启用 `rust-genai` + `rust-rig` 双 feature |
-| `npm/`(bin/postinstall/package.json) | npm 包 `nuwax-codex`,postinstall 从阿里云 OSS 下载平台二进制 |
+| `npm/`(bin/postinstall/package.json) | npm 组织包 `@nuwax-ai/nuwax-harness`(主程序打包时改名 `nuwax-harness`),postinstall 从阿里云 OSS 下载平台二进制 |
 | `.github/workflows/release.yml`、`live-tests.yml` | 发版 CI(tag 触发,6 平台)+ live 测试 CI(manual/nightly) |
 | `.config/nextest.toml` | **按厂商分组的测试并发治理**(见下文限流数据) |
 
@@ -69,7 +71,7 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
    - `experimental_bridge` 可显式选 `"rig"`(默认)/`"genai"`/`"native"`(强制原生,逃生舱)
 2. **trait 隔离**:`codex-api::ModelBridge` 是唯一契约,两桥以单元结构体实现;
    core 的 `dispatch_model_bridge` 只见 `&dyn ModelBridge`。
-3. **rig 版本策略**：`rig-core` / `rig-reqwest = "=0.44.0"` 精确锁定。此次合并保持该版本，
+3. **rig 版本策略**：`rig-core` / `rig-reqwest = "=0.45"` 精确锁定。此次合并保持该版本，
    SDK 升级须另做协议/历史/最终出站回归，不能以本地 rig checkout 的 HEAD 替代锁定源码。
 4. **双 reqwest 共存**:workspace 其他部分用 reqwest 0.12,rig-bridge 以重命名依赖
    `reqwest_rig`(package = "reqwest", version = "0.13")使用 rig 内嵌的 0.13,类型不跨界。
@@ -100,8 +102,8 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
 ## 五、审查重点(请重点检查这些)
 
 1. **正确性**:
-   - rig 桥的 convert_request/convert_response 映射是否正确(对照锁定的 rig-core 0.44.0 源码，
-     位于 `~/.cargo/registry/src/*/rig-core-0.44.0/`；参考 checkout 在
+   - rig 桥的 convert_request/convert_response 映射是否正确(对照锁定的 rig-core 0.45 源码，
+     位于 `~/.cargo/registry/src/*/rig-core-0.45.0/`；参考 checkout 在
      `/Volumes/soddy/git_workspace/rig`，但以 Cargo.lock 锁定内容为准)
    - 事件契约五条(见三.5)是否有遗漏场景(如:并行工具、流中断、超长参数)
    - `stream_via_rig` 的急切首事件 + mpsc 泵逻辑:`next_event` 预取模式是否有竞态或

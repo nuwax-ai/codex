@@ -22,6 +22,11 @@ pub(super) struct LayoutSections {
 }
 
 impl AsyncQuestions {
+    // The section heights are assigned inside two interleaved branches because
+    // every assignment also shrinks `remaining`; rewriting them as one
+    // if-expression would duplicate that arithmetic. Kept verbatim from
+    // upstream, so the newer `needless_late_init` lint is allowed here.
+    #[allow(clippy::needless_late_init)]
     pub(super) fn layout_sections(&self, area: Rect) -> LayoutSections {
         let has_options = self.has_options();
         let full_options_height = self.options_required_height(area.width);
