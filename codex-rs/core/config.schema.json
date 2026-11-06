@@ -8534,6 +8534,27 @@
       ],
       "description": "Memories subsystem settings."
     },
+    "migration_compact_max_ranges": {
+      "description": "How many ranges one migration may summarize. Defaults to 8.",
+      "format": "uint32",
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "migration_compact_max_span_ratio": {
+      "description": "Upper bound for a single summary request, as a fraction of the window. Defaults to 0.5.",
+      "format": "double",
+      "type": "number"
+    },
+    "migration_compact_ratio": {
+      "description": "Fraction of the target model's window that the migrated history may occupy (history + fixed request prefix). Defaults to 0.8.",
+      "format": "double",
+      "type": "number"
+    },
+    "migration_compact_retain_ratio": {
+      "description": "Fraction of the window kept verbatim, so the recent turns and the next step survive the summary. Defaults to 0.16.",
+      "format": "double",
+      "type": "number"
+    },
     "model": {
       "description": "Optional override of model selection.",
       "type": "string"
