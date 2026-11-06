@@ -294,3 +294,19 @@ git push gitea HEAD:main          # 注意：不要带 --tags，tag 会触发 re
 **aarch64-windows 的建议**：装 VS BuildTools 的 ARM64 组件
 （`Microsoft.VisualStudio.Component.VC.Tools.ARM64`，需要管理员跑 VS Installer，
 约 1–2 GB）后再打开该目标；在那之前让 GitHub CI 继续负责它。
+
+### 多 Linux 并行（2026-11-06 追加）
+
+3 个 Linux 目标原来挤在 Gitea 宿主的 2 个 runner 槽位里，musl 交叉一占就是 40 分钟，
+gnu/musl 互相排队。现在多接了一台 `192.168.31.41`（**72 核 / 62 GB**）作为 `linux-host`：
+
+- 它没有 `/data`，所以 workflow 的 Linux 分支改成读 `CI_DATA_ROOT` / `CI_CACHE_ROOT`
+  （以及 `CI_CARGO_HOME`/`CI_RUSTUP_HOME`/`CI_ZIG_DIR`），默认仍是 Gitea 宿主的 `/data` 布局；
+  该跑动器在启动 daemon 时 export 自己的路径（`$HOME/ci/{data,cache}`）。
+- 每台 Linux runner 都需要：rustup 1.99.1 + 两个 musl target、Zig 0.14.0、
+  **cargo vendor 目录**（1.9 G，`vendor-deps.sh`）、rusty_v8 的三个 Linux 归档、以及 act_runner。
+- 国内下载 rustup 组件很慢，**用 `RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static`**
+  （rsproxy 的 rustup 路径已 404，tuna 403）。
+- 装完 zig 后要确认没有半写状态：job 报 `zig: Text file busy` 说明安装脚本还在写文件，
+  等它结束再触发。
+- 用 `setsid nohup ... &` 启动 daemon，普通 `nohup ... &` 在 ssh 会话结束时会被带走。
