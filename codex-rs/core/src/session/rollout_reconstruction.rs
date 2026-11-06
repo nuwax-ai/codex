@@ -684,7 +684,11 @@ impl ContextManager {
         // Surface replacements are applied once replay produced the final surface:
         // a full-compaction checkpoint installs its own replacement_history, so the
         // boundary item may live inside that snapshot rather than the suffix.
-        apply_active_surface_replacement(&mut history, rollout_items);
+        // Only replacements recorded AFTER the effective checkpoint participate: a
+        // checkpoint absorbs every earlier migration record (its replacement_history
+        // is authoritative), so re-applying an older boundary on top could delete
+        // content the newer checkpoint deliberately kept before that boundary.
+        apply_active_surface_replacement(&mut history, rollout_suffix);
 
         let window = window.or(initial_window).unwrap_or(ReconstructedWindow {
             number: fallback_window_number,

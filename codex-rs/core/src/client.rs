@@ -1208,7 +1208,9 @@ impl ModelClient {
             tools,
             tool_choice: "auto".to_string(),
             parallel_tool_calls: prompt.parallel_tool_calls && !model_info.use_responses_lite,
-            max_output_tokens: self.state.provider.info().max_output_tokens,
+            max_output_tokens: prompt
+                .max_output_tokens
+                .or_else(|| self.state.provider.info().max_output_tokens),
             reasoning: Some(reasoning),
             store: false,
             stream: true,

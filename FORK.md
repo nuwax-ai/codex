@@ -248,9 +248,25 @@ turn 级超窗处理才会触发（官方代码里这两个机制只认该分类
 `compact::tests::migration_compact_extreme_800k_history_converges_into_32k_window`）**：
 单次迁移最多摘 `max_ranges`(8) 段，只能移走约 7.2 万 token，**一轮装不下**；
 每个 turn 触发一次迁移，默认配置约 11 轮收敛（806,379 → 15,308 token，79 次摘要
-请求，每个请求体都在 32K×4B 估算内，llama.cpp 预算闸门不会拒）。等不及的用户可
-把 `migration_compact_max_ranges` 提到 64：同样 79 次摘要但 3 轮收敛。摘要失败
-仍然只 warn 回退，不会静默丢历史。
+请求）。等不及的用户可把 `migration_compact_max_ranges` 提到 64：同样 79 次摘要
+但 3 轮收敛。摘要失败仍然只 warn 回退，不会静默丢历史。
+
+**审查加固（2026-11-06，codex 独立审查三项）**：
+- **旧迁移不覆盖新 checkpoint**：回放只在**有效 Compacted checkpoint 之后**的
+  记录里选生效的 `SurfaceReplacement`——checkpoint 的 `replacement_history`
+  是权威面，其之前的迁移记录已被吸收，再套用旧边界会删掉新 checkpoint 特意
+  保留的边界前内容（回归 `an_older_surface_replacement_cannot_override_a_
+  newer_checkpoint`）。
+- **摘要输出上限与预留一致**：`RESERVED_OUTPUT_TOKENS`(2048) 不再只是预算减
+  法——`Prompt.max_output_tokens` 新增逐请求覆盖，摘要请求在 wire 上真实携带
+  2048 上限（native Responses 与 rig 桥同享该字段），provider 的大输出配置
+  不再能把 input+output 顶出目标窗口。回归：极限测试逐请求断言
+  `max_output_tokens == 2048` 且解压后 `input(4B/token) + 2048 ≤ window`。
+- **切点联合约束**：`select_compaction_region` 的边界必须落在带 rollout id 的
+  条目上；由于尾部保留与 span 上限都是单调约束，任何前移都会破坏其一，所以
+  无 id 的切点直接无解（None）而非跳到孤立工具结果。旧 checkpoint 的无 id
+  嵌套条目由此安全拒绝。另：固定前缀吃满预算（budget ≤ 0）时明确跳过，
+  不再退化成 1-token span。
 
 **配置键**（`config.toml` 顶层，缺省即下列默认值；越界 fail-fast 并点名键）：
 

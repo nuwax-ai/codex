@@ -44,6 +44,12 @@ pub struct Prompt {
     pub output_schema_strict: bool,
 
     pub(crate) cyber_access_program: Option<codex_protocol::turn_input::CyberAccessProgram>,
+
+    /// Per-request override of the provider's output-token cap. Set by
+    /// bounded auxiliary requests (migration-compaction summaries) whose
+    /// input+output must fit a small target window; None keeps the provider
+    /// default.
+    pub(crate) max_output_tokens: Option<u64>,
 }
 
 impl Default for Prompt {
@@ -58,6 +64,7 @@ impl Default for Prompt {
             output_schema: None,
             output_schema_strict: true,
             cyber_access_program: None,
+            max_output_tokens: None,
         }
     }
 }

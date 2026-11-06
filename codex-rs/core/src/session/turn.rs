@@ -1846,6 +1846,7 @@ pub(crate) fn build_prompt(
             &turn_context.session_source,
         ),
         cyber_access_program: turn_context.cyber_access_program,
+        max_output_tokens: None,
     }
 }
 

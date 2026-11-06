@@ -298,8 +298,9 @@ async fn migration_compact_extreme_800k_history_converges_into_32k_window() -> a
     );
 
     // Unlimited SSE responder: every summarization request returns a short
-    // summary with a unique response id, and records its body so the test can
-    // assert each request fits the target window.
+    // summary with a unique response id, and records its (decompressed) body
+    // so the test can assert each request fits the target window including
+    // the reserved output.
     #[derive(Default, Clone)]
     struct MigrationSummaries(Arc<MigrationSummariesInner>);
     #[derive(Default)]
@@ -311,6 +312,8 @@ async fn migration_compact_extreme_800k_history_converges_into_32k_window() -> a
         fn request_count(&self) -> usize {
             self.0.calls.load(Ordering::SeqCst)
         }
+        /// Decoded request bodies in call order (zstd content-encoding
+        /// transparently decompressed).
         fn bodies(&self) -> Vec<Vec<u8>> {
             self.0.bodies.lock().expect("bodies lock").clone()
         }
@@ -318,11 +321,21 @@ async fn migration_compact_extreme_800k_history_converges_into_32k_window() -> a
     impl wiremock::Respond for MigrationSummaries {
         fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
             let call = self.0.calls.fetch_add(1, Ordering::SeqCst);
-            self.0
-                .bodies
-                .lock()
-                .expect("bodies lock")
-                .push(request.body.clone());
+            let encoding = request
+                .headers
+                .get("content-encoding")
+                .and_then(|value| value.to_str().ok());
+            let body = if encoding.is_some_and(|value| {
+                value
+                    .split(',')
+                    .any(|entry| entry.trim().eq_ignore_ascii_case("zstd"))
+            }) {
+                zstd::stream::decode_all(std::io::Cursor::new(&request.body))
+                    .expect("decode zstd request body")
+            } else {
+                request.body.clone()
+            };
+            self.0.bodies.lock().expect("bodies lock").push(body);
             let body = responses::sse(vec![
                 responses::ev_assistant_message("summary", "Older history summarized."),
                 responses::ev_completed(&format!("migration-summary-{call}")),
@@ -401,15 +414,23 @@ async fn migration_compact_extreme_800k_history_converges_into_32k_window() -> a
         assert!(passes < 200, "migration compaction did not converge");
     }
 
-    // Every summary request must fit the 32K window under the shared 4
-    // bytes/token estimate (the guarantee that keeps llama.cpp's budget gate
-    // from rejecting the request).
-    let window_bytes = 32_768 * 4;
+    // Every summary request must fit the 32K window including its reserved
+    // output, under the same 4 bytes/token estimate the budget uses: the
+    // decoded request body upper-bounds the model-visible input (history
+    // slice + instructions + tool payload), and `max_output_tokens` must be
+    // the reserved 2,048 so the wire request cannot outgrow the reservation.
     for (index, body) in recorder.bodies().iter().enumerate() {
+        let request: serde_json::Value = serde_json::from_slice(body)
+            .unwrap_or_else(|error| panic!("request {index} is not JSON: {error}"));
+        assert_eq!(
+            request["max_output_tokens"], serde_json::json!(2_048),
+            "summary request {index} must cap output at the reserved budget"
+        );
+        let input_tokens = body.len().div_ceil(4) as i64;
+        let total = input_tokens + 2_048;
         assert!(
-            body.len() <= window_bytes,
-            "summary request {index} of {} bytes exceeds the 32K window estimate",
-            body.len()
+            total <= 32_768,
+            "summary request {index}: input ≈{input_tokens} + output 2048 = {total} tokens exceeds the 32K window"
         );
     }
     let final_tokens = session

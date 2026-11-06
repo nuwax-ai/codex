@@ -63,6 +63,12 @@ pub use codex_prompts::SUMMARIZATION_PROMPT;
 pub use codex_prompts::SUMMARY_PREFIX;
 const COMPACT_USER_MESSAGE_MAX_TOKENS: usize = 20_000;
 
+/// Output tokens reserved for one migration-compaction summary. Charged
+/// against the target window when computing the history budget in
+/// `run_migration_compact_task` AND enforced as the summary request's actual
+/// output cap in `summarize_migration_region` — one value, both sides.
+pub(crate) const RESERVED_OUTPUT_TOKENS: i64 = 2_048;
+
 /// Thread-local policy that preserves inherited context without changing model or skill budgets.
 /// Insert into `StartThreadOptions::thread_extension_init` to disable automatic compaction.
 pub struct AutoCompactionDisabled;
@@ -1019,12 +1025,23 @@ pub(crate) async fn run_migration_compact_task(
             .max(0);
         // The next request also has to fit `input + output`: reserve the
         // generation cap so the migration does not stop just below a request the
-        // gateway will still reject.
-        const RESERVED_OUTPUT_TOKENS: i64 = 2_048;
+        // gateway will still reject. The same value is enforced as the summary
+        // request's actual output cap (see summarize_migration_region), so the
+        // reservation and the wire request cannot drift apart.
         let budget = ((window as f64 * settings.ratio) as i64)
             .saturating_sub(prefix_tokens)
-            .saturating_sub(RESERVED_OUTPUT_TOKENS)
-            .max(0);
+            .saturating_sub(RESERVED_OUTPUT_TOKENS);
+        if budget <= 0 {
+            // The fixed prefix alone overflows the usable window: no span can
+            // make the request fit. Shrinking to a 1-token span would only
+            // spin through meaningless summaries.
+            tracing::warn!(
+                window,
+                prefix_tokens,
+                "migration compaction: no room left under the history budget; skipping"
+            );
+            break;
+        }
         if history_tokens <= budget {
             break;
         }
@@ -1045,19 +1062,18 @@ pub(crate) async fn run_migration_compact_task(
         };
 
         // The record hides history by the id of the first item the model must
-        // still see; skip forward until an item actually carries an id.
-        let mut boundary_index = region.end;
-        let boundary_id = loop {
-            if let Some(id) = items.get(boundary_index).and_then(|item| item.id()) {
-                break id.as_str().to_string();
-            }
-            if boundary_index + 1 >= items.len() {
-                return Err(CodexErr::Stream(
+        // still see. The selector only returns cuts that already land on an
+        // id carrier (pairing-, span-, and tail-safe), so the boundary is
+        // directly usable; missing ids here are a selector contract breach.
+        let boundary_id = items
+            .get(region.end)
+            .and_then(|item| item.id())
+            .map(|id| id.as_str().to_string())
+            .ok_or_else(|| {
+                CodexErr::Stream(
                     "migration compaction: no identified history item to resume at".to_string(),
-                ));
-            }
-            boundary_index += 1;
-        };
+                )
+            })?;
 
         if !announced {
             // TUI and ACP both surface this item, so the user sees the
@@ -1069,7 +1085,7 @@ pub(crate) async fn run_migration_compact_task(
         let summary = summarize_migration_region(
             &sess,
             &turn_context,
-            &items[region.start..boundary_index],
+            &items[region.start..region.end],
         )
         .await?;
         if summary.trim().is_empty() {
@@ -1094,8 +1110,8 @@ pub(crate) async fn run_migration_compact_task(
 
         // Apply the same cut in memory so the rest of this turn sees the smaller
         // surface without waiting for a reload.
-        let mut replacement = Vec::with_capacity(items.len() - boundary_index + 1);
-        replacement.extend(items[boundary_index..].iter().cloned());
+        let mut replacement = Vec::with_capacity(items.len() - region.end + 1);
+        replacement.extend(items[region.end..].iter().cloned());
         replacement.insert(
             0,
             codex_history::ResponseItemEnvelope {
@@ -1178,6 +1194,14 @@ async fn summarize_migration_region(
         input_provenance,
         base_instructions,
         cyber_access_program: turn_context.cyber_access_program,
+        // The span budget in `run_migration_compact_task` reserves exactly
+        // RESERVED_OUTPUT_TOKENS for the summary output; enforce the same
+        // value on the wire instead of inheriting the provider's (much
+        // larger) default cap, or input+output can overflow the target
+        // window the span was sized for.
+        max_output_tokens: Some(
+            u64::try_from(RESERVED_OUTPUT_TOKENS).expect("reserved output tokens as u64"),
+        ),
         ..Default::default()
     };
     // `PostTurn` is what makes `drain_to_completed` hand the output back

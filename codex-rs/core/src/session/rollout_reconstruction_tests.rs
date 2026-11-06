@@ -3013,3 +3013,91 @@ async fn surface_replacement_cuts_a_compaction_checkpoint_history() {
         "the migration summary must replace the cut: {texts:?}"
     );
 }
+
+/// A full-compaction checkpoint recorded AFTER a surface replacement absorbs
+/// the migration: its `replacement_history` is the authoritative surface, so
+/// re-applying the older replacement's boundary must not delete content the
+/// checkpoint deliberately kept before that boundary. Regression for the
+/// reverse-override bug (codex review 2026-11-06, P1 #1).
+#[tokio::test]
+async fn an_older_surface_replacement_cannot_override_a_newer_checkpoint() {
+    let (session, turn_context) = make_session_and_context().await;
+    let user_item = |id: &str, text: &str| ResponseItemEnvelope {
+        item: ResponseItem::Message {
+            id: Some(codex_protocol::ResponseItemId::from_server(id.to_string())),
+            role: "user".to_owned(),
+            content: vec![ContentItem::InputText {
+                text: text.to_owned(),
+            }],
+            phase: None,
+            status: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    };
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(user_item("item_0", "pre-migration turn")),
+        RolloutItem::SurfaceReplacement(Box::new(codex_history::SurfaceReplacementItem {
+            compaction_id: "cmp_old".to_string(),
+            resume_at_item_id: "item_2".to_string(),
+            summary: "## Current Work\n- stale migration summary".to_string(),
+            provider: "local".to_string(),
+            model: "small-window".to_string(),
+            shadowed_tokens: 400_000,
+            retained_tail_tokens: 2_000,
+            reason: codex_history::SurfaceReplacementReason::WindowShrink,
+            supersedes: Vec::new(),
+        })),
+        RolloutItem::Compacted(Box::new(codex_history::CompactedItem {
+            message: "fresh full-compaction summary".to_string(),
+            // The newer checkpoint deliberately keeps a fact before the old
+            // migration boundary; the old record must not cut it away.
+            replacement_history: Some(vec![
+                user_item("item_1", "new checkpoint fact"),
+                user_item("item_2", "kept turn"),
+            ]),
+            retained_context: None,
+            guardian_history: None,
+            mcp_resource_origins: None,
+            window_number: Some(2),
+            first_window_id: None,
+            previous_window_id: None,
+            window_id: None,
+            compaction_response_id: None,
+            latest_token_usage_record: None,
+            resume_metadata: None,
+        })),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+    let texts: Vec<String> = reconstructed
+        .history
+        .iter()
+        .filter_map(|envelope| match &envelope.item {
+            ResponseItem::Message { content, .. } => content.first().and_then(|item| match item {
+                ContentItem::InputText { text } => Some(text.clone()),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        texts.iter().any(|text| text == "new checkpoint fact"),
+        "the newer checkpoint's history is authoritative: {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|text| text == "kept turn"),
+        "the boundary item survives either way: {texts:?}"
+    );
+    assert!(
+        !texts
+            .iter()
+            .any(|text| text.starts_with(crate::compact::SUMMARY_PREFIX)
+                && text.contains("stale migration summary")),
+        "an absorbed migration record must not cut the newer checkpoint: {texts:?}"
+    );
+}

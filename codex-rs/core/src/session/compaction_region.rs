@@ -59,7 +59,11 @@ fn item_tokens(items: &[ResponseItemEnvelope]) -> Vec<i64> {
 }
 
 /// Pick the oldest span that can be replaced while retaining `retain_tail_tokens`
-/// verbatim and keeping the span itself under `max_span_tokens`.
+/// verbatim and keeping the span itself under `max_span_tokens`. The returned
+/// boundary must additionally land on an item that carries a rollout id: the
+/// replacement record resumes by id, and no forward position can satisfy the
+/// tail/span constraints (both monotone), so an id-less cut has no legal
+/// adjustment and yields `None`.
 ///
 /// `max_span_tokens <= 0` disables the cap (used by tests).
 pub(crate) fn select_compaction_region(
@@ -109,7 +113,21 @@ pub(crate) fn select_compaction_region(
     }
 
     let start = 0usize;
-    if start >= end {
+    if start >= end || end >= items.len() {
+        return None;
+    }
+
+    // The replacement record hides history by the id of the first item the
+    // model must still see, so the cut must land on an id carrier — and it
+    // cannot be moved forward onto one: the retain walk stopped at the
+    // LARGEST end whose tail still satisfies `retain_tail_tokens` (end+1
+    // already violates it) and the span walk stopped at the LARGEST end
+    // under `max_span_tokens` (end+1 already exceeds it). Both invariants
+    // are monotone, so any forward position breaks at least one guarantee
+    // the cut was validated for. An id-less boundary therefore means there
+    // is no legal cut — report None instead of silently orphaning history
+    // (an old checkpoint's replacement entries can lack ids).
+    if items[end].id().is_none() {
         return None;
     }
     let tokens: i64 = tokens[start..end].iter().sum();
