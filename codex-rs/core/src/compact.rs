@@ -1036,7 +1036,11 @@ pub(crate) async fn run_migration_compact_task(
         }
 
         let retain = (window as f64 * RETAIN_RATIO) as i64;
-        let max_span = ((window as f64 * MAX_SPAN_RATIO) as i64).max(1);
+        // The summary request also carries the fixed prefix and the provider's
+        // tool payload, and the bridge prices all of that before sending. Keep
+        // the span to half the remaining history budget so the request cannot
+        // trip that budget gate.
+        let max_span = (((window as f64 * MAX_SPAN_RATIO) as i64).min(budget / 2)).max(1);
         let items = history.annotated_items();
         let Some(region) =
             crate::session::compaction_region::select_compaction_region(items, retain, max_span)
@@ -1134,28 +1138,50 @@ pub(crate) async fn run_migration_compact_task(
 }
 
 /// One summarization call over a bounded slice of history.
+///
+/// Builds the request the same way the full compaction task does
+/// (`for_prompt_annotated` + provenance + executed-tool attachment): a bare
+/// `Prompt` built by hand produced a stream with no final item on the chat wire.
 async fn summarize_migration_region(
     sess: &Arc<Session>,
     turn_context: &TurnContext,
     region: &[codex_history::ResponseItemEnvelope],
 ) -> CodexResult<String> {
-    let mut input: Vec<ResponseItem> = region.iter().cloned().map(|item| item.item).collect();
-    input.push(ResponseItem::Message {
-        id: None,
-        role: "user".to_owned(),
-        content: vec![ContentItem::InputText {
-            text: SUMMARIZATION_PROMPT.to_string(),
+    let model_info = turn_context.model_info();
+    let mut scratch = crate::context_manager::ContextManager::new();
+    let items: Vec<ResponseItem> = region.iter().cloned().map(|item| item.item).collect();
+    scratch.record_items(&items, model_info.truncation_policy.into());
+    scratch.record_items(
+        &[ResponseItem::Message {
+            id: None,
+            role: "user".to_owned(),
+            content: vec![ContentItem::InputText {
+                text: SUMMARIZATION_PROMPT.to_string(),
+            }],
+            phase: None,
+            status: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
         }],
-        phase: None,
-        status: None,
-        encrypted_content: None,
-        internal_chat_message_metadata_passthrough: None,
-    });
+        model_info.truncation_policy.into(),
+    );
+
+    let annotated_input = scratch
+        .for_prompt_annotated(&model_info.input_modalities, sess.services.image_store.as_ref())
+        .await;
+    let input_provenance = crate::model_output_projection::sources_for_input(&annotated_input);
+    let mut turn_input = annotated_input
+        .into_iter()
+        .map(codex_history::ResponseItemEnvelope::into_item)
+        .collect::<Vec<_>>();
+    sess.services
+        .executed_tool_calls
+        .attach_to_compaction_prompt(&mut turn_input);
 
     let base_instructions = sess.get_prompt_base_instructions().await;
     let prompt = Prompt {
-        input,
-        input_provenance: Default::default(),
+        input: turn_input,
+        input_provenance,
         base_instructions,
         cyber_access_program: turn_context.cyber_access_program,
         ..Default::default()
@@ -1181,6 +1207,7 @@ async fn summarize_migration_region(
         &response_key,
     )
     .await?;
+
     if let Some(summary) = get_last_assistant_message_from_turn(response.output.iter()) {
         return Ok(summary);
     }
