@@ -183,7 +183,7 @@ jobs:
           command -v pkg-config >/dev/null || { echo "pkg-config is required (apt-get install pkg-config libcap-dev)" >&2; exit 1; }
 
       - name: Windows long paths
-        if: ${{ runner.os == 'Windows' }}
+        if: ${{ contains(matrix.target, 'windows') }}
         shell: bash
         run: git config --global core.longpaths true
 
