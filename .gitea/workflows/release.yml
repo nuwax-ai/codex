@@ -195,7 +195,10 @@ jobs:
         run: |
           set -euo pipefail
           zig version
-          bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
+          # Several jobs share one host here, and two apt-get runs at once die on
+          # the dpkg lock. Serialize the package installation per machine.
+          flock /tmp/codex-musl-tools.lock \
+            bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
 
       - name: Configure rusty_v8 from the host archive
         shell: bash
