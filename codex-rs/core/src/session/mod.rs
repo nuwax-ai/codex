@@ -4635,9 +4635,19 @@ impl Session {
     /// "迁移压缩"). Unlike a full compaction this keeps the untouched tail and
     /// only swaps the replaced prefix for its summary, so it does not reset the
     /// world-state baseline or the compaction window identity.
-    pub(crate) async fn replace_history_for_migration(&self, items: Vec<ResponseItem>) {
+    pub(crate) async fn replace_history_for_migration(
+        &self,
+        items: Vec<codex_history::ResponseItemEnvelope>,
+    ) {
         let mut state = self.state.lock().await;
-        state.replace_history(items, /*reference_context_item*/ None);
+        // A migration keeps the untouched tail, so it is not a full checkpoint:
+        // replace the surface and drop cached review state, but leave the
+        // compaction window identity alone.
+        state.replace_annotated_history(
+            items,
+            /*reference_context_item*/ None,
+            crate::context_manager::HistoryReplacement::Reset,
+        );
     }
 
     pub(crate) async fn replace_compacted_history<'a>(

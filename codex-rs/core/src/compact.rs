@@ -991,7 +991,7 @@ mod tests;
 /// Returns whether anything was replaced.
 pub(crate) async fn run_migration_compact_task(
     sess: Arc<Session>,
-    step_context: Arc<StepContext>,
+    turn_context: Arc<TurnContext>,
 ) -> CodexResult<bool> {
     /// Never spend more than this many summary calls per migration.
     const MAX_RANGES: usize = 8;
@@ -1002,8 +1002,8 @@ pub(crate) async fn run_migration_compact_task(
     /// Upper bound for one summary request, relative to the window.
     const MAX_SPAN_RATIO: f64 = 0.5;
 
-    let turn_context = step_context.turn.clone();
     let mut replaced = false;
+    let mut announced = false;
 
     for _ in 0..MAX_RANGES {
         let history = sess.clone_history().await;
@@ -1019,8 +1019,18 @@ pub(crate) async fn run_migration_compact_task(
         // Reported usage covers the fixed request prefix (instructions + tools) that
         // the history estimate does not, so charge it against the window instead of
         // pretending the whole window is available for history.
-        let prefix_tokens = status.active_context_tokens.saturating_sub(history_tokens).max(0);
-        let budget = ((window as f64 * BUDGET_RATIO) as i64).saturating_sub(prefix_tokens);
+        let prefix_tokens = status
+            .active_context_tokens
+            .saturating_sub(history_tokens)
+            .max(0);
+        // The next request also has to fit `input + output`: reserve the
+        // generation cap so the migration does not stop just below a request the
+        // gateway will still reject.
+        const RESERVED_OUTPUT_TOKENS: i64 = 2_048;
+        let budget = ((window as f64 * BUDGET_RATIO) as i64)
+            .saturating_sub(prefix_tokens)
+            .saturating_sub(RESERVED_OUTPUT_TOKENS)
+            .max(0);
         if history_tokens <= budget {
             break;
         }
@@ -1051,6 +1061,13 @@ pub(crate) async fn run_migration_compact_task(
             boundary_index += 1;
         };
 
+        if !announced {
+            // TUI and ACP both surface this item, so the user sees the
+            // compaction instead of a silent pause.
+            let item = TurnItem::ContextCompaction(ContextCompactionItem::new());
+            sess.emit_turn_item_started(&turn_context, &item).await;
+            announced = true;
+        }
         let summary = summarize_migration_region(
             &sess,
             &turn_context,
@@ -1098,13 +1115,21 @@ pub(crate) async fn run_migration_compact_task(
                 metadata: None,
             },
         );
-        sess.replace_history_for_migration(
-            replacement.into_iter().map(|item| item.item).collect(),
-        )
-        .await;
+        sess.replace_history_for_migration(replacement).await;
         replaced = true;
+        tracing::info!(
+            shadowed_tokens = region.tokens,
+            history_tokens,
+            budget,
+            window,
+            "migration compaction: replaced the oldest history with a summary"
+        );
     }
 
+    if announced {
+        let item = TurnItem::ContextCompaction(ContextCompactionItem::new());
+        sess.emit_turn_item_completed(&turn_context, item).await;
+    }
     Ok(replaced)
 }
 
@@ -1156,6 +1181,46 @@ async fn summarize_migration_region(
         &response_key,
     )
     .await?;
-    get_last_assistant_message_from_turn(response.output.iter())
-        .ok_or_else(|| CodexErr::Stream("migration compaction returned no summary".to_string()))
+    if let Some(summary) = get_last_assistant_message_from_turn(response.output.iter()) {
+        return Ok(summary);
+    }
+    // Some chat-wire models answer the summarization prompt as a plain message
+    // once the response is replayable; take any text the turn produced.
+    let fallback: String = response
+        .output
+        .iter()
+        .rev()
+        .filter_map(|item| match item {
+            ResponseItem::Message { content, .. } => Some(content),
+            _ => None,
+        })
+        .flat_map(|content| content.iter())
+        .filter_map(|item| match item {
+            ContentItem::OutputText { text, .. } | ContentItem::InputText { text } => {
+                Some(text.as_str())
+            }
+            _ => None,
+        })
+        .map(str::trim)
+        .find(|text| !text.is_empty())
+        .map(str::to_string)
+        .unwrap_or_default();
+    if fallback.is_empty() {
+        let kinds: Vec<&str> = response
+            .output
+            .iter()
+            .map(|item| match item {
+                ResponseItem::Message { .. } => "message",
+                ResponseItem::Reasoning { .. } => "reasoning",
+                ResponseItem::FunctionCall { .. } => "function_call",
+                _ => "other",
+            })
+            .collect();
+        tracing::warn!(
+            items = kinds.len(),
+            kinds = ?kinds,
+            "migration compaction: the summary response carried no text"
+        );
+    }
+    Ok(fallback)
 }

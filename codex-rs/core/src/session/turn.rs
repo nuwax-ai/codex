@@ -219,6 +219,15 @@ pub(crate) async fn run_turn(
     // new user message are recorded. Estimate pending incoming items (context
     // diffs/full reinjection + user input) and trigger compaction preemptively
     // when they would push the thread over the compaction threshold.
+    // Migration compaction runs first: a conversation that outgrew the current
+    // model's window cannot be repaired by the whole-history compact below,
+    // because that request would not fit either (FORK.md, "迁移压缩").
+    if auto_compaction_enabled
+        && let Err(err) =
+            crate::compact::run_migration_compact_task(sess.clone(), turn_context.clone()).await
+    {
+        warn!("migration compaction failed: {err}; falling back to the regular compact path");
+    }
     if auto_compaction_enabled
         && let Err(err) = run_pre_sampling_compact(
             &sess,
