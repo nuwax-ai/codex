@@ -1,0 +1,53 @@
+# Local Gitea + act_runner for validating the fork's CI without touching GitHub.
+#
+#   RUNNER_TOKEN=$(docker exec gitea gitea actions generate-runner-token | tail -1) \
+#     docker compose -f scripts/gitea-ci/docker-compose.yml up -d
+#
+# The web UI lands on http://localhost:3300 (git over http, ssh on 2222).
+services:
+  gitea:
+    image: gitea/gitea:1.23
+    container_name: gitea-ci
+    restart: unless-stopped
+    environment:
+      GITEA__server__ROOT_URL: http://localhost:3301/
+      GITEA__server__SSH_PORT: "2223"
+      # Single-node test instance: no installer, sqlite, no mail.
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__service__DISABLE_REGISTRATION: "false"
+      GITEA__actions__ENABLED: "true"
+      # Let the runner fetch actions/* from GitHub while there is network.
+      GITEA__actions__DEFAULT_ACTIONS_URL: https://github.com
+    ports:
+      - "3301:3000"
+      - "2223:22"
+    volumes:
+      - gitea-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  runner:
+    image: gitea/act_runner:0.2.11
+    container_name: gitea-runner
+    restart: unless-stopped
+    environment:
+      GITEA_INSTANCE_URL: http://gitea:3000/
+      GITEA_RUNNER_REGISTRATION_TOKEN: ${RUNNER_TOKEN:?export RUNNER_TOKEN first}
+      GITEA_RUNNER_NAME: local-docker
+      # ubuntu-latest jobs run in a disposable container; the host's Docker
+      # socket is required because act_runner is itself containerised here.
+      GITEA_RUNNER_LABELS: ubuntu-latest:docker://catthehacker/ubuntu:act-latest
+    volumes:
+      - runner-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      gitea:
+        condition: service_healthy
+
+volumes:
+  gitea-data:
+  runner-data:

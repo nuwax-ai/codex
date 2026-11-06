@@ -1,0 +1,226 @@
+name: release-gitea
+
+# Gitea-side port of .github/workflows/release.yml. It exists so this fork can
+# build its 7 platform archives without GitHub Actions; the GitHub workflow is
+# untouched and remains the official release path until this one is proven.
+#
+# Differences from the GitHub workflow, all deliberate:
+#   * No actions/setup-python, actions/cache, mlugg/setup-zig or
+#     actions/upload-artifact: a Gitea runner may be offline, so every tool is
+#     either expected on the machine (inventory), installed by shell (zig), or
+#     replaced by a host directory (cargo cache, artifact hand-off).
+#   * Builds run on self-hosted labels (linux / macos / windows) because a
+#     macOS or Windows binary cannot be cross-built reliably from Linux.
+#   * Publishing (OSS + npm) is intentionally left out: it needs credentials and
+#     a verified artifact set. See the release job comments.
+#
+# Trigger with a tag: git tag v0.18.30 && git push origin v0.18.30
+
+on:
+  push:
+    tags:
+      - "v[0-9]*.[0-9]*.[0-9]*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag to build (e.g. v0.18.29); defaults to the pushed tag"
+        required: false
+
+jobs:
+  get-version:
+    name: version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag_name: ${{ steps.v.outputs.tag_name }}
+    steps:
+      - name: Resolve version
+        id: v
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.tag_name }}
+        run: |
+          set -euo pipefail
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a stable tag: $tag" >&2; exit 1; }
+          echo "tag_name=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build ${{ matrix.target }}
+    needs: get-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: [self-hosted, macos]
+            target: aarch64-apple-darwin
+            ext: ""
+          - runner: [self-hosted, macos]
+            target: x86_64-apple-darwin
+            ext: ""
+          - runner: [self-hosted, linux]
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - runner: [self-hosted, linux]
+            target: x86_64-unknown-linux-musl
+            ext: ""
+          - runner: [self-hosted, linux]
+            target: aarch64-unknown-linux-musl
+            ext: ""
+          - runner: [self-hosted, windows]
+            target: x86_64-pc-windows-msvc
+            ext: ".exe"
+          - runner: [self-hosted, windows]
+            target: aarch64-pc-windows-msvc
+            ext: ".exe"
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: codex-rs
+        shell: bash
+    env:
+      # Keep every byte of build state on the host's big disk, not in the
+      # runner work directory (a Rust target tree is tens of GB per target).
+      CARGO_HOME: ${{ vars.CI_CARGO_HOME || '/srv/gitea-ci/cargo' }}
+      CARGO_TARGET_DIR: ${{ vars.CI_TARGET_DIR || '/srv/gitea-ci/target' }}
+      ARTIFACTS_DIR: ${{ vars.CI_ARTIFACTS_DIR || '/srv/gitea-ci/artifacts' }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.get-version.outputs.tag_name }}
+
+      - name: Runner inventory
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: bash scripts/gitea-ci/runner-inventory.sh
+
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          toolchain="$(python3 -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("rust-toolchain.toml").read_text())["toolchain"]["channel"])')"
+          rustup toolchain install "$toolchain" --target ${{ matrix.target }} --profile minimal --no-self-update
+          rustup default "$toolchain"
+
+      - name: Windows long paths
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: git config --global core.longpaths true
+
+      - name: Install musl build tooling
+        if: ${{ contains(matrix.target, 'unknown-linux-musl') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Pinned Zig replaces the GitHub action; the musl targets link with it.
+          zig_version="0.14.0"
+          case "$(uname -m)" in
+            x86_64)  zig_arch="x86_64" ;;
+            aarch64|arm64) zig_arch="aarch64" ;;
+            *) echo "unsupported host arch for zig: $(uname -m)" >&2; exit 1 ;;
+          esac
+          if ! command -v zig >/dev/null 2>&1 || ! zig version | grep -qx "$zig_version"; then
+            mkdir -p "${RUNNER_TEMP:-/tmp}/zig"
+            curl -fsSL "https://ziglang.org/download/${zig_version}/zig-linux-${zig_arch}-${zig_version}.tar.xz" \
+              | tar -xJ -C "${RUNNER_TEMP:-/tmp}/zig" --strip-components=1
+            export PATH="${RUNNER_TEMP:-/tmp}/zig:${PATH}"
+            echo "${RUNNER_TEMP:-/tmp}/zig" >> "$GITHUB_PATH"
+          fi
+          zig version
+          bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
+
+      - name: V8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Build bwrap and export digest
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --target ${{ matrix.target }} --release --bin bwrap
+          digest="$(sha256sum "target/${{ matrix.target }}/release/bwrap" | awk '{print $1}')"
+          echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
+
+      - name: Stamp release version
+        shell: bash
+        env:
+          VERSION: ${{ needs.get-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          sed -i.bak -E 's/^version = "0\.0\.0"$/version = "'"${VERSION}"'"/' Cargo.toml
+          rm -f Cargo.toml.bak
+
+      - name: Build main binary and Code Mode host
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --target ${{ matrix.target }} --release \
+            -p codex-cli --bin codex \
+            -p codex-code-mode-host --bin codex-code-mode-host
+
+      - name: Build Windows sandbox helpers
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --target ${{ matrix.target }} --release \
+            -p codex-windows-sandbox \
+            --bin codex-windows-sandbox-setup --bin codex-command-runner
+
+      - name: Strip
+        if: ${{ runner.os != 'Windows' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in codex codex-code-mode-host; do
+            bin="target/${{ matrix.target }}/release/${name}"
+            if [ "${{ runner.os }}" = "Linux" ]; then strip "$bin"; else strip -x "$bin"; fi
+          done
+
+      # Host-directory hand-off instead of actions/upload-artifact: a Gitea
+      # runner may not implement artifact storage, and this keeps the archives
+      # available to the publish job on the same machine.
+      - name: Package archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${ARTIFACTS_DIR}"
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/package_nuwax_release.py" \
+            --build-dir "${GITHUB_WORKSPACE}/codex-rs/target/${{ matrix.target }}/release" \
+            --output-dir "${ARTIFACTS_DIR}" \
+            --version "${{ needs.get-version.outputs.version }}" \
+            --target "${{ matrix.target }}" \
+            --github-output "${GITHUB_OUTPUT}"
+          ls -la "${ARTIFACTS_DIR}"
+
+  # Publishing stays manual until the artifacts above are verified:
+  #   * upload the archives in ${ARTIFACTS_DIR} to the OSS bucket
+  #     (ossutil cp -r ..., see .github/workflows/release.yml for the layout)
+  #   * npm publish the umbrella package from npm/ with NPM_TOKEN
+  # Keeping it out of CI avoids publishing a half-built release from an
+  # experimental pipeline.
+  verify-artifacts:
+    name: verify artifacts
+    needs: [get-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.get-version.outputs.tag_name }}
+
+      - name: List what was built
+        shell: bash
+        env:
+          ARTIFACTS_DIR: ${{ vars.CI_ARTIFACTS_DIR || '/srv/gitea-ci/artifacts' }}
+        run: |
+          set -euo pipefail
+          ls -la "${ARTIFACTS_DIR}"
+          count="$(find "${ARTIFACTS_DIR}" -maxdepth 1 -name '*.tar.gz' -o -maxdepth 1 -name '*.zip' | wc -l)"
+          echo "archives: ${count}"
+          [ "${count}" -ge 7 ] || { echo "expected at least 7 platform archives, found ${count}" >&2; exit 1; }

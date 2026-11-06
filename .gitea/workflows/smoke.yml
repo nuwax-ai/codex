@@ -1,0 +1,32 @@
+name: smoke
+
+# Fast Gitea-side pipeline: proves a runner is reachable and that the
+# toolchain inventory this fork's real build needs is present. It intentionally
+# keeps its dependencies tiny so a fresh machine runs it in about a minute.
+#
+# Kept separate from .github/workflows/ so the GitHub release CI is untouched.
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Toolchain inventory
+        shell: bash
+        run: bash scripts/gitea-ci/runner-inventory.sh
+
+      - name: Workflow context
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "server:   ${GITHUB_SERVER_URL:-unset}"
+          echo "repo:     ${GITHUB_REPOSITORY:-unset}"
+          echo "sha:      ${GITHUB_SHA:-unset}"
+          echo "ref:      ${GITHUB_REF_NAME:-unset}"
+          echo "workspace: ${GITHUB_WORKSPACE:-unset}"
