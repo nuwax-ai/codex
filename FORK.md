@@ -244,6 +244,14 @@ turn 级超窗处理才会触发（官方代码里这两个机制只认该分类
 **实测（32K 本地 llama.cpp + 2B 模型）**：两段摘要把 26,565 → 23,674 token 压到
 预算 22,855 内，本轮正常出结果；后续续聊回放后请求 17.5K token，不再重复压缩。
 
+**极限场景（80 万 token → 32K 窗口，回归测试
+`compact::tests::migration_compact_extreme_800k_history_converges_into_32k_window`）**：
+单次迁移最多摘 `max_ranges`(8) 段，只能移走约 7.2 万 token，**一轮装不下**；
+每个 turn 触发一次迁移，默认配置约 11 轮收敛（806,379 → 15,308 token，79 次摘要
+请求，每个请求体都在 32K×4B 估算内，llama.cpp 预算闸门不会拒）。等不及的用户可
+把 `migration_compact_max_ranges` 提到 64：同样 79 次摘要但 3 轮收敛。摘要失败
+仍然只 warn 回退，不会静默丢历史。
+
 **配置键**（`config.toml` 顶层，缺省即下列默认值；越界 fail-fast 并点名键）：
 
 | 键 | 默认 | 含义 |

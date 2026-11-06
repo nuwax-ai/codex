@@ -32,7 +32,13 @@ async fn local_compaction_retries_preserve_instructions_and_tool_metadata(
 ) -> anyhow::Result<()> {
     skip_if_no_network!(Ok(()));
     let server = responses::start_mock_server().await;
-    let provider = ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    let mut provider = ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    // Fork routing: a provider without a first-party `provider_id` routes
+    // through the model bridge, which the test binary does not enable. Mark it
+    // first-party like the built-in "openai" entry (same pattern as
+    // `compact_remote_v2_installation_tests`) so the native Responses
+    // transport streams straight to the mock server.
+    provider.provider_id = Some(codex_model_provider_info::OPENAI_PROVIDER_ID.to_string());
     let (session, turn, _events) = make_session_and_context_with_auth_and_config_and_rx(
         CodexAuth::create_dummy_chatgpt_auth_for_testing(),
         Vec::new(),
@@ -236,6 +242,186 @@ async fn local_compaction_retries_preserve_instructions_and_tool_metadata(
             if role == "user"
                 && content_items_to_text(content).as_deref() == Some(expected_summary.as_str()))
     }));
+    Ok(())
+}
+
+/// Extreme downshift (FORK.md §5.3): a conversation that grew to ~800K tokens
+/// must survive migration onto a 32K llama.cpp-class window. One migration
+/// pass hides at most `migration_compact_max_ranges` spans of `max_span`
+/// tokens, so the first pass cannot finish the job alone; repeated passes
+/// (one per turn) must keep every summary request inside the target window
+/// and converge to the history budget.
+#[tokio::test]
+async fn migration_compact_extreme_800k_history_converges_into_32k_window() -> anyhow::Result<()> {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
+    skip_if_no_network!(Ok(()));
+    let server = responses::start_mock_server().await;
+    let mut provider =
+        ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    // Fork routing: without a first-party provider_id the request would route
+    // through the model bridge, which the test binary does not enable.
+    provider.provider_id = Some(codex_model_provider_info::OPENAI_PROVIDER_ID.to_string());
+    provider.supports_websockets = false;
+    let (session, turn, _events) = make_session_and_context_with_auth_and_config_and_rx(
+        CodexAuth::create_dummy_chatgpt_auth_for_testing(),
+        Vec::new(),
+        move |config| {
+            config.model = Some("gpt-5.2".to_string());
+            config.model_provider = provider;
+            config.model_context_window = Some(32_768);
+        },
+    )
+    .await;
+
+    // ~800K tokens: 400 user messages x 8,000 bytes (4 bytes/token estimate).
+    let mut items = Vec::with_capacity(401);
+    items.push(user_message("First turn"));
+    for index in 0..400 {
+        items.push(user_message(&format!(
+            "turn {index}: {}",
+            "context payload ".repeat(500)
+        )));
+    }
+    session
+        .record_conversation_items(&turn, turn.model_info(), &items)
+        .await;
+    let initial_tokens = session
+        .clone_history()
+        .await
+        .estimate_token_count(turn.as_ref())
+        .unwrap_or(0);
+    assert!(
+        (780_000..=820_000).contains(&initial_tokens),
+        "expected ~800K tokens of history, estimated {initial_tokens}"
+    );
+
+    // Unlimited SSE responder: every summarization request returns a short
+    // summary with a unique response id, and records its body so the test can
+    // assert each request fits the target window.
+    #[derive(Default, Clone)]
+    struct MigrationSummaries(Arc<MigrationSummariesInner>);
+    #[derive(Default)]
+    struct MigrationSummariesInner {
+        calls: AtomicUsize,
+        bodies: std::sync::Mutex<Vec<Vec<u8>>>,
+    }
+    impl MigrationSummaries {
+        fn request_count(&self) -> usize {
+            self.0.calls.load(Ordering::SeqCst)
+        }
+        fn bodies(&self) -> Vec<Vec<u8>> {
+            self.0.bodies.lock().expect("bodies lock").clone()
+        }
+    }
+    impl wiremock::Respond for MigrationSummaries {
+        fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
+            let call = self.0.calls.fetch_add(1, Ordering::SeqCst);
+            self.0
+                .bodies
+                .lock()
+                .expect("bodies lock")
+                .push(request.body.clone());
+            let body = responses::sse(vec![
+                responses::ev_assistant_message("summary", "Older history summarized."),
+                responses::ev_completed(&format!("migration-summary-{call}")),
+            ]);
+            wiremock::ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body)
+        }
+    }
+    let recorder = MigrationSummaries::default();
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path_regex(".*/responses$"))
+        .respond_with(recorder.clone())
+        .mount(&server)
+        .await;
+
+    let budget = {
+        let status =
+            crate::session::context_window::context_window_token_status(&session, &turn).await;
+        let window = status.full_context_window_limit.expect("window limit");
+        let history_tokens = session
+            .clone_history()
+            .await
+            .estimate_token_count(turn.as_ref())
+            .unwrap_or(0);
+        let prefix = status.active_context_tokens.saturating_sub(history_tokens).max(0);
+        (window as f64 * session.get_config().await.migration_compact.ratio) as i64
+            - prefix
+            - 2_048
+    };
+    assert!(budget > 0, "history budget must be positive, got {budget}");
+
+    // One pass must not finish the job: it is capped at max_ranges spans.
+    let replaced = run_migration_compact_task(Arc::clone(&session), Arc::clone(&turn)).await?;
+    assert!(replaced, "first pass must replace the oldest history");
+    let requests_after_first_pass = recorder.request_count();
+    assert_eq!(
+        requests_after_first_pass,
+        session
+            .get_config()
+            .await
+            .migration_compact
+            .max_ranges as usize,
+        "one migration pass issues exactly max_ranges summary requests"
+    );
+    let tokens_after_first_pass = session
+        .clone_history()
+        .await
+        .estimate_token_count(turn.as_ref())
+        .unwrap_or(0);
+    assert!(
+        tokens_after_first_pass > budget,
+        "one pass cannot squeeze ~800K tokens into a 32K window: {} > {budget}",
+        tokens_after_first_pass
+    );
+
+    // Repeated passes (one per turn) must converge and never exceed the window.
+    let mut passes = 1usize;
+    loop {
+        passes += 1;
+        let requests_before = recorder.request_count();
+        run_migration_compact_task(Arc::clone(&session), Arc::clone(&turn)).await?;
+        let new_requests = recorder.request_count() - requests_before;
+        let history_tokens = session
+            .clone_history()
+            .await
+            .estimate_token_count(turn.as_ref())
+            .unwrap_or(0);
+        if new_requests == 0 {
+            assert!(
+                history_tokens <= budget,
+                "converged pass found history over budget: {history_tokens} > {budget}"
+            );
+            break;
+        }
+        assert!(passes < 200, "migration compaction did not converge");
+    }
+
+    // Every summary request must fit the 32K window under the shared 4
+    // bytes/token estimate (the guarantee that keeps llama.cpp's budget gate
+    // from rejecting the request).
+    let window_bytes = 32_768 * 4;
+    for (index, body) in recorder.bodies().iter().enumerate() {
+        assert!(
+            body.len() <= window_bytes,
+            "summary request {index} of {} bytes exceeds the 32K window estimate",
+            body.len()
+        );
+    }
+    let final_tokens = session
+        .clone_history()
+        .await
+        .estimate_token_count(turn.as_ref())
+        .unwrap_or(0);
+    eprintln!(
+        "migration compaction: {initial_tokens} -> {final_tokens} tokens over {passes} passes, {} summary requests, budget {budget}",
+        recorder.request_count()
+    );
+    assert!(final_tokens <= budget);
     Ok(())
 }
 
