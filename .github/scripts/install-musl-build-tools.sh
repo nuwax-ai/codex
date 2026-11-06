@@ -68,8 +68,12 @@ if [[ ! -f "${libcap_prefix}/lib/libcap.a" ]]; then
 
   tar -xJf "${libcap_tarball}" -C "${libcap_src_root}"
   libcap_source_dir="${libcap_src_root}/libcap-${libcap_version}"
+  # _makenames is a host tool that the build then executes: when
+  # cross-compiling it must be built with the host compiler, not the cross one
+  # (otherwise it fails with "Exec format error").
   make -C "${libcap_source_dir}/libcap" -j"$(nproc)" \
     CC="${musl_linker}" \
+    BUILD_CC="${BUILD_CC:-$(command -v cc || command -v gcc)}" \
     AR=ar \
     RANLIB=ranlib
 
