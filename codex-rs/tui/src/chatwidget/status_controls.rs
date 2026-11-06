@@ -418,9 +418,15 @@ impl ChatWidget {
         if self.token_usage_pending {
             return None;
         }
-        let Some(context_window) = self.status_line_context_window_size() else {
-            return Some(100);
-        };
+        // No usage has been reported yet (fresh thread, or a model switch that
+        // invalidated the old model's numbers): hide the item instead of
+        // claiming "0% used" for a window nobody has measured.
+        if self.token_info.is_none() {
+            return None;
+        }
+        // A percentage needs a window: without one the item would claim "0%
+        // used" for an unknown denominator. Hide it instead.
+        let context_window = self.status_line_context_window_size()?;
         let default_usage = TokenUsage::default();
         let usage = self
             .token_info

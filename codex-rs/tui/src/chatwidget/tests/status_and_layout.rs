@@ -4348,6 +4348,20 @@ async fn renamed_thread_footer_title_snapshot() {
     );
 }
 
+/// Give the footer a real usage report so the context item renders its data
+/// form instead of hiding (the item is shown once usage has been measured).
+fn set_status_line_usage(chat: &mut crate::chatwidget::ChatWidget) {
+    let usage = TokenUsage {
+        total_tokens: 24_000,
+        ..TokenUsage::default()
+    };
+    chat.set_token_info(Some(TokenUsageInfo {
+        total_token_usage: usage.clone(),
+        last_token_usage: usage,
+        model_context_window: Some(32_768),
+    }));
+}
+
 #[tokio::test]
 async fn status_line_model_with_reasoning_fast_footer_snapshot() {
     use ratatui::Terminal;
@@ -4368,6 +4382,7 @@ async fn status_line_model_with_reasoning_fast_footer_snapshot() {
     set_chatgpt_auth(&mut chat);
     set_fast_mode_test_catalog(&mut chat);
     assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
+    set_status_line_usage(&mut chat);
     chat.refresh_status_line();
 
     let width = 80;
@@ -4402,6 +4417,7 @@ async fn status_line_model_with_reasoning_context_remaining_footer_snapshot() {
     set_chatgpt_auth(&mut chat);
     set_fast_mode_test_catalog(&mut chat);
     assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
+    set_status_line_usage(&mut chat);
     chat.refresh_status_line();
 
     let width = 80;

@@ -310,7 +310,8 @@ impl ChatWidget {
 
     /// Set the model in the widget's config copy and stored collaboration mode.
     pub(crate) fn set_model(&mut self, model: &str) {
-        if model != self.current_model() {
+        let model_changed = model != self.current_model();
+        if model_changed {
             if self.current_model() == crate::model_catalog::LUNA_RESERVE_MODEL {
                 self.clear_reserve_return();
             } else {
@@ -327,6 +328,19 @@ impl ChatWidget {
             && let Some(mask) = self.active_collaboration_mask.as_mut()
         {
             mask.model = Some(model.to_string());
+        }
+        if model_changed {
+            // The last usage report priced the OLD model's context window; a
+            // switch can move between a 1M and a 32K model, so the stale window
+            // must not keep driving the status line. Hide the numbers until the
+            // next turn reports usage for the new model.
+            if let Some(info) = self.token_info.as_mut() {
+                info.model_context_window = None;
+            }
+            self.token_usage_pending = true;
+            self.bottom_pane.set_context_window_pending(/*pending*/ true);
+            self.bottom_pane
+                .set_context_window(/*percent*/ None, /*used_tokens*/ None);
         }
         self.refresh_effective_service_tier();
         self.refresh_model_dependent_surfaces();

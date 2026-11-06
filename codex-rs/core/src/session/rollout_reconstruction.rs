@@ -28,6 +28,38 @@ fn active_surface_replacement(items: &[RolloutItem]) -> Option<&codex_history::S
         .find(|replacement| !superseded.contains(replacement.compaction_id.as_str()))
 }
 
+/// Cut the replayed surface at the newest active replacement's boundary.
+///
+/// The model must see the summary in place of everything older than the boundary
+/// item; the tail is kept verbatim.
+fn apply_active_surface_replacement(
+    history: &mut crate::context_manager::ContextManager,
+    rollout_items: &[RolloutItem],
+) {
+    let Some(replacement) = active_surface_replacement(rollout_items) else {
+        return;
+    };
+    let items = history.annotated_items();
+    let Some(index) = items.iter().position(|item| {
+        item.id()
+            .is_some_and(|id| id.as_str() == replacement.resume_at_item_id)
+    }) else {
+        // Nothing is hidden: showing the full history is the safe failure mode.
+        tracing::warn!(
+            boundary = replacement.resume_at_item_id.as_str(),
+            "surface replacement boundary missing from the replayed history"
+        );
+        return;
+    };
+    let mut next = Vec::with_capacity(items.len().saturating_sub(index).saturating_add(1));
+    next.push(ResponseItemEnvelope {
+        item: surface_replacement_summary_item(replacement),
+        metadata: None,
+    });
+    next.extend(items[index..].iter().cloned());
+    history.replace_annotated(next);
+}
+
 /// The message planted where a replacement cuts the surface. Reusing the
 /// compaction prefix keeps it recognizable to every consumer that already
 /// recognizes compacted history.
@@ -549,7 +581,6 @@ impl ContextManager {
         }
         let rollout_suffix =
             history_checkpoint.map_or(rollout_items, |checkpoint| checkpoint.suffix);
-        let mut pending_surface_replacement = active_surface_replacement(rollout_suffix);
         for item in rollout_suffix {
             match item {
                 RolloutItem::SurfaceReplacement(_) => {}
@@ -557,17 +588,6 @@ impl ContextManager {
                     history.record_retained_context(event);
                 }
                 RolloutItem::ResponseItem(response_item) => {
-                    if let Some(replacement) = pending_surface_replacement {
-                        let reached_boundary = response_item
-                            .id()
-                            .is_some_and(|id| id.as_str() == replacement.resume_at_item_id);
-                        if !reached_boundary {
-                            continue;
-                        }
-                        let summary = surface_replacement_summary_item(replacement);
-                        history.record_items(std::iter::once(&summary), truncation_policy);
-                        pending_surface_replacement = None;
-                    }
                     history.replay_annotated_item(response_item, truncation_policy);
                 }
                 RolloutItem::InterAgentCommunication(communication) => {
@@ -660,6 +680,11 @@ impl ContextManager {
                 }
             }
         }
+
+        // Surface replacements are applied once replay produced the final surface:
+        // a full-compaction checkpoint installs its own replacement_history, so the
+        // boundary item may live inside that snapshot rather than the suffix.
+        apply_active_surface_replacement(&mut history, rollout_items);
 
         let window = window.or(initial_window).unwrap_or(ReconstructedWindow {
             number: fallback_window_number,

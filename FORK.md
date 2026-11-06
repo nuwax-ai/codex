@@ -216,6 +216,38 @@ turn 级超窗处理才会触发（官方代码里这两个机制只认该分类
   `CODEX_MODEL_CONTEXT_WINDOW` / `CODEX_AUTO_COMPACT_TOKEN_LIMIT` /
   `CODEX_AUTO_COMPACT_RATIO`。同类先行：`CODEX_MODEL_REASONING_EFFORT`。
 
+### 5.3 迁移压缩：大窗口会话降级到小窗口模型（v0.18.30 起）
+
+**问题**：会话在 1M 窗口模型上长到 40 万 token 后切到 32K/16K 模型。旧的
+"全量历史摘要"请求本身就超窗：实测（本地 llama.cpp 16K）会先被桥的本地预算
+闸门拒绝 6 次、再逐条 trim 4 次，最后只给一句 "ran out of room"。摘要也不能
+交给旧模型——旧模型可能已经不可用（key 失效/额度耗尽）。
+
+**做法**：不再"整段替换"，而是**隐藏最老的连续区间 + 保留尾部**：
+
+- 记录 `RolloutItem::SurfaceReplacement`（`my-docs` 迁移压缩方案 S1）：以
+  `resume_at_item_id`（稳定 `ResponseItem` id，不用下标，跨 checkpoint/回滚
+  仍有效）为边界，边界之前的历史由 `summary` 取代；`supersedes` 让新记录吸收
+  旧记录（每次迁移只有一条生效）。
+- 摘要**只用当前（目标）模型**做，区间有界，所以请求永远装得下：
+  `budget = 0.8×window − 实测前缀 − 2048`（前缀 = 上轮上报用量 − 历史估算，
+  含指令与工具负载），`retain = 0.16×window`，
+  `span ≤ min(0.5×window, budget/2)`（后一项是被桥闸门拒绝后补的：闸门按
+  "前缀 + 工具 + span" 计价），单次迁移最多 8 段。
+- 触发点：`turn.rs` 在常规 pre-sampling compact **之前**；
+- 回放：`rollout_reconstruction` 在重建完历史后按边界裁剪——必须放在重建之后，
+  因为旧的 `Compacted` checkpoint 会用 `replacement_history` 整体替换历史，
+  边界条目可能在那份快照里而不在 suffix 中（曾因此导致"跳过整段 suffix 但
+  checkpoint 的大历史仍在"）；边界找不到时保留全量历史并告警，不静默丢内容。
+- 失败语义：摘要失败只 `warn` 并回退旧路径；不会静默截断历史。
+
+**实测（32K 本地 llama.cpp + 2B 模型）**：两段摘要把 26,565 → 23,674 token 压到
+预算 22,855 内，本轮正常出结果；后续续聊回放后请求 17.5K token，不再重复压缩。
+
+**已知限制**：比例/上限目前是常量（0.8 / 0.16 / 0.5 / 8 段），尚未暴露成
+config 键；TUI 进度与 ACP 回执沿用既有 `ContextCompaction` 条目
+（`compaction_update`），未新增协议字段。
+
 ## 6. daemon：npm 安装不自启（v0.18.8）
 
 官方 TUI 默认自启共享 daemon，需要"完整本地包布局"（codex-package.json、

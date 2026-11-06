@@ -1186,11 +1186,15 @@ async fn summarize_migration_region(
         cyber_access_program: turn_context.cyber_access_program,
         ..Default::default()
     };
+    // `PostTurn` is what makes `drain_to_completed` hand the output back
+    // instead of recording it into the conversation: migration compaction
+    // consumes the summary itself and writes its own replacement record, so the
+    // summary must not land in the thread's history.
     let metadata = CompactionTurnMetadata::new(
         CompactionTrigger::Auto,
         CompactionReason::ModelDownshift,
         CompactionImplementation::Responses,
-        CompactionPhase::PreTurn,
+        CompactionPhase::PostTurn,
     );
     let responses_metadata = sess
         .compaction_responses_metadata(turn_context, metadata)
@@ -1203,7 +1207,7 @@ async fn summarize_migration_region(
         &mut client_session,
         &responses_metadata,
         &prompt,
-        CompactionPhase::PreTurn,
+        CompactionPhase::PostTurn,
         &response_key,
     )
     .await?;

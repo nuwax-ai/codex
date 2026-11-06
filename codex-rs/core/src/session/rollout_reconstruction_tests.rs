@@ -2928,3 +2928,88 @@ async fn surface_replacement_hides_shadowed_history_on_replay() {
         .expect("summary planted at the boundary");
     assert!(summary.contains("keep going"), "{summary}");
 }
+
+/// A full-compaction checkpoint installs its own `replacement_history`; a later
+/// surface replacement must still cut that installed snapshot, because its
+/// boundary item lives there rather than in the replayed suffix. Regression for
+/// the case where the whole suffix was skipped while the checkpoint's full
+/// history survived.
+#[tokio::test]
+async fn surface_replacement_cuts_a_compaction_checkpoint_history() {
+    let (session, turn_context) = make_session_and_context().await;
+    let user_item = |id: &str, text: &str| ResponseItemEnvelope {
+        item: ResponseItem::Message {
+            id: Some(codex_protocol::ResponseItemId::from_server(id.to_string())),
+            role: "user".to_owned(),
+            content: vec![ContentItem::InputText {
+                text: text.to_owned(),
+            }],
+            phase: None,
+            status: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    };
+    let checkpoint = codex_history::CompactedItem {
+        message: "legacy full summary".to_string(),
+        replacement_history: Some(vec![
+            user_item("item_1", "ancient turn"),
+            user_item("item_2", "recent turn"),
+        ]),
+        retained_context: None,
+        guardian_history: None,
+        mcp_resource_origins: None,
+        window_number: Some(1),
+        first_window_id: None,
+        previous_window_id: None,
+        window_id: None,
+        compaction_response_id: None,
+        latest_token_usage_record: None,
+        resume_metadata: None,
+    };
+    let rollout_items = vec![
+        RolloutItem::Compacted(Box::new(checkpoint)),
+        RolloutItem::SurfaceReplacement(Box::new(codex_history::SurfaceReplacementItem {
+            compaction_id: "cmp_migrate".to_string(),
+            resume_at_item_id: "item_2".to_string(),
+            summary: "## Current Work\n- migrated".to_string(),
+            provider: "local".to_string(),
+            model: "small-window".to_string(),
+            shadowed_tokens: 400_000,
+            retained_tail_tokens: 2_000,
+            reason: codex_history::SurfaceReplacementReason::WindowShrink,
+            supersedes: Vec::new(),
+        })),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+    let texts: Vec<String> = reconstructed
+        .history
+        .iter()
+        .filter_map(|envelope| match &envelope.item {
+            ResponseItem::Message { content, .. } => content.first().and_then(|item| match item {
+                ContentItem::InputText { text } => Some(text.clone()),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        !texts.iter().any(|text| text == "ancient turn"),
+        "the checkpoint's shadowed history must not survive: {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|text| text == "recent turn"),
+        "the boundary item must survive: {texts:?}"
+    );
+    assert!(
+        texts
+            .iter()
+            .any(|text| text.starts_with(crate::compact::SUMMARY_PREFIX) && text.contains("migrated")),
+        "the migration summary must replace the cut: {texts:?}"
+    );
+}
