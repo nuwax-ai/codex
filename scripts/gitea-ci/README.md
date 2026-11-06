@@ -347,3 +347,10 @@ ci-gitea/<version>/<target>/entry.json
 这样发布脚本 / `nuwax-harness` 的 postinstall 只要读一个文件，不用在代码里硬编码 7 个地址，
 也能用 `sha256` 校验下载完整性。生成脚本是 `scripts/gitea-ci/release-manifest.py`
 （只用标准库，刻意兼容 Python 3.9 —— macOS runner 就是 3.9）。
+
+> ⚠️ **vendor 目录必须带 `config.generated.toml`**。只替换 `[source.crates-io]` 时，
+> `v8`/`crossterm`/`tokio-tungstenite` 这些**git 依赖仍会走网络**，于是又去拉
+> `chromium.googlesource.com` 的 `buildtools` 子模块并超时失败。`vendor-deps.sh` 的
+> vendor 模式会把该文件写进目录；如果是手工 `cargo vendor`，记得把输出的完整
+> source 替换配置（9 个 `[source."git+…"]`）一起放进去，安装端会据此生成
+> `$CARGO_HOME/config.toml`。
