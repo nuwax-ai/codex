@@ -409,6 +409,7 @@ mod job {
                 | RolloutItem::SessionMeta(_)
                 | RolloutItem::InterAgentCommunicationMetadata { .. }
                 | RolloutItem::Compacted(_)
+                | RolloutItem::SurfaceReplacement(_)
                 | RolloutItem::TurnContext(_)
                 | RolloutItem::TokenUsageRecord(_)
                 | RolloutItem::RealtimeItem(_)

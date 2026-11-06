@@ -221,6 +221,7 @@ fn source_model_items(items: &[RolloutItem]) -> Option<Vec<SourceModelItem<'_>>>
             RolloutItem::SessionMeta(_)
             | RolloutItem::InterAgentCommunicationMetadata { .. }
             | RolloutItem::TokenUsageRecord(_)
+            | RolloutItem::SurfaceReplacement(_)
             | RolloutItem::RealtimeItem(_) => {}
             RolloutItem::ResponseItem(response_item) => {
                 model_items.push(SourceModelItem {
@@ -272,6 +273,7 @@ fn history_model_items(items: &[RolloutItem]) -> Option<Vec<&ResponseItem>> {
             )
             | RolloutItem::InterAgentCommunication(_)
             | RolloutItem::Compacted(_)
+            | RolloutItem::SurfaceReplacement(_)
             | RolloutItem::TurnContext(_)
             | RolloutItem::WorldState(_) => return None,
             RolloutItem::EventMsg(_) => {}

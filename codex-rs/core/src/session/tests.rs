@@ -4271,7 +4271,8 @@ async fn start_new_context_window_persists_checkpoint_state(clear_tools: bool) {
     assert_eq!(persisted_world_state.state, expected_snapshot);
     let persisted_compacted = resumed.history.iter().rev().find_map(|item| match item {
         RolloutItem::Compacted(compacted) => Some(compacted),
-        RolloutItem::DynamicToolsUpdated { .. }
+        RolloutItem::SurfaceReplacement(_)
+        | RolloutItem::DynamicToolsUpdated { .. }
         | RolloutItem::SessionMeta(_)
         | RolloutItem::ResponseItem(_)
         | RolloutItem::InterAgentCommunication(_)
@@ -4372,7 +4373,8 @@ async fn record_initial_history_assigns_and_persists_id_for_forked_response_item
     };
     let persisted_item = resumed.history.iter().find_map(|item| match item {
         RolloutItem::ResponseItem(response_item) => Some(response_item),
-        RolloutItem::DynamicToolsUpdated { .. }
+        RolloutItem::SurfaceReplacement(_)
+        | RolloutItem::DynamicToolsUpdated { .. }
         | RolloutItem::SessionMeta(_)
         | RolloutItem::InterAgentCommunication(_)
         | RolloutItem::InterAgentCommunicationMetadata { .. }

@@ -924,7 +924,7 @@ fn rollout_item_variants_preserve_existing_payload_shapes() -> Result<()> {
 fn rollout_item_schema_matches_tagged_payload_and_sibling_metadata() -> Result<()> {
     let schema = serde_json::to_value(schemars::schema_for!(RolloutItem))?;
     let variants = schema["oneOf"].as_array().expect("rollout variants");
-    assert_eq!(variants.len(), 13);
+    assert_eq!(variants.len(), 14);
 
     for variant in variants {
         let required = variant["required"].as_array().expect("required fields");
@@ -940,6 +940,15 @@ fn rollout_item_schema_matches_tagged_payload_and_sibling_metadata() -> Result<(
     assert_eq!(
         response_item["properties"]["payload"]["$ref"],
         json!("#/definitions/ResponseItem")
+    );
+
+    let surface_replacement = variants
+        .iter()
+        .find(|variant| variant["properties"]["type"]["enum"] == json!(["surface_replacement"]))
+        .expect("surface replacement schema");
+    assert_eq!(
+        surface_replacement["properties"]["payload"]["$ref"],
+        json!("#/definitions/SurfaceReplacementItem")
     );
 
     let compacted = &schema["definitions"]["CompactedItem"];
@@ -1203,5 +1212,38 @@ fn dynamic_tools_updates_survive_replay_and_explicit_clear() -> Result<()> {
             );
         }
     }
+    Ok(())
+}
+
+/// A partial-history replacement must survive the rollout wire format with its
+/// range and reason intact: replay and later compaction both depend on them.
+#[test]
+fn surface_replacement_round_trips_with_its_range() -> Result<()> {
+    let item = RolloutItem::SurfaceReplacement(Box::new(SurfaceReplacementItem {
+        compaction_id: "cmp_1".to_string(),
+        shadowed_start: 3,
+        shadowed_end: 9,
+        summary: "## Current Work\n- porting the adapter".to_string(),
+        provider: "deepseek".to_string(),
+        model: "deepseek-v4-pro".to_string(),
+        shadowed_tokens: 412_000,
+        retained_tail_tokens: 40_000,
+        reason: SurfaceReplacementReason::WindowShrink,
+        supersedes: vec!["cmp_0".to_string()],
+    }));
+
+    let json = serde_json::to_value(&item)?;
+    assert_eq!(json["type"], json!("surface_replacement"));
+    assert_eq!(json["payload"]["shadowed_start"], json!(3));
+    assert_eq!(json["payload"]["shadowed_end"], json!(9));
+    assert_eq!(json["payload"]["reason"], json!("window_shrink"));
+
+    let parsed: RolloutItem = serde_json::from_value(json)?;
+    let RolloutItem::SurfaceReplacement(parsed) = parsed else {
+        panic!("expected a surface replacement record");
+    };
+    assert_eq!(parsed.compaction_id, "cmp_1");
+    assert_eq!(parsed.shadowed_end, 9);
+    assert_eq!(parsed.supersedes, vec!["cmp_0".to_string()]);
     Ok(())
 }
