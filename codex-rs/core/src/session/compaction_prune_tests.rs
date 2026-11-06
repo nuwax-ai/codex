@@ -5,8 +5,12 @@ use pretty_assertions::assert_eq;
 fn tool_output(id: &str, text: &str) -> ResponseItemEnvelope {
     ResponseItemEnvelope {
         item: ResponseItem::FunctionCallOutput {
-            call_id: id.to_owned(),
+            id: None,
+            call_id: Some(id.to_owned()),
+            name: None,
+            namespace: None,
             output: FunctionCallOutputPayload::from_text(text.to_owned()),
+            internal_chat_message_metadata_passthrough: None,
         },
         metadata: None,
     }

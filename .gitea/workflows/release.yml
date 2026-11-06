@@ -176,7 +176,7 @@ jobs:
           # not reachable from this network.
           base="${CI_CACHE_ROOT}/rusty_v8/${TARGET}"
           [ -d "$base" ] || { echo "missing ${base}; run scripts/gitea-ci/fetch-rusty-v8.sh --target ${TARGET}" >&2; exit 1; }
-          archive="$(find "$base" -maxdepth 1 -name '*.a.gz' -o -maxdepth 1 -name '*.lib.gz' | head -1)"
+          archive="$(find "$base" -maxdepth 1 \( -name '*.a.gz' -o -name '*.lib.gz' \) | head -1)"
           binding="$(find "$base" -maxdepth 1 -name 'src_binding_*.rs' | head -1)"
           [ -n "$archive" ] && [ -n "$binding" ] || { echo "incomplete V8 pair in ${base}" >&2; exit 1; }
           echo "RUSTY_V8_ARCHIVE=${archive}" >> "$GITHUB_ENV"
@@ -187,6 +187,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "${GITHUB_WORKSPACE}/codex-rs"
           cargo build --target ${{ matrix.target }} --release --bin bwrap
           digest="$(sha256sum "${CARGO_TARGET_DIR}/${{ matrix.target }}/release/bwrap" | awk '{print $1}')"
           echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
@@ -195,6 +196,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "${GITHUB_WORKSPACE}/codex-rs"
           sed -i.bak -E 's/^version = "0\.0\.0"$/version = "'"${VERSION}"'"/' Cargo.toml
           rm -f Cargo.toml.bak
 
@@ -202,6 +204,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "${GITHUB_WORKSPACE}/codex-rs"
           cargo build --target ${{ matrix.target }} --release \
             -p codex-cli --bin codex \
             -p codex-code-mode-host --bin codex-code-mode-host
@@ -211,6 +214,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "${GITHUB_WORKSPACE}/codex-rs"
           cargo build --target ${{ matrix.target }} --release \
             -p codex-windows-sandbox \
             --bin codex-windows-sandbox-setup --bin codex-command-runner

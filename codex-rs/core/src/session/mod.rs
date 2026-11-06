@@ -268,6 +268,7 @@ mod mcp_runtime;
 mod model_history;
 pub(crate) mod multi_agents;
 mod compaction_prune;
+mod compaction_region;
 mod plugin_selection;
 mod realtime_history;
 mod retained_context;
