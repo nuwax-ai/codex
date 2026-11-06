@@ -21,6 +21,19 @@ TARGETS = (
 )
 
 
+def _sha256_of(binary) -> str:
+    """Streaming SHA-256.
+
+    `hashlib.file_digest` only exists on Python 3.11+, and release machines are
+    not guaranteed to have that (the macOS CI runner ships 3.9). The chunked
+    loop produces the same digest on every supported version.
+    """
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: binary.read(1024 * 1024), b""):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
 def package(build_dir, output_dir, version, target):
     if target not in TARGETS:
         raise ValueError("unsupported release target")
@@ -62,7 +75,7 @@ def package(build_dir, output_dir, version, target):
             except OSError:
                 shutil.copy2(build_dir / source, destination)
             with destination.open("rb") as binary:
-                digest = hashlib.file_digest(binary, "sha256").hexdigest()
+                digest = _sha256_of(binary)
             sums.append(f"{digest}  {name}\n")
         (stage / "SHA256SUMS").write_text("".join(sums), encoding="utf-8")
         names = [*files, "SHA256SUMS"]
