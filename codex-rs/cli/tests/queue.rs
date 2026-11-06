@@ -686,7 +686,7 @@ async fn queue_uses_default_socket_owner_after_provider_retarget() -> Result<()>
     })
     .await??;
     let mut app = RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
-            required_human_approval: false,
+        required_human_approval: false,
         endpoint: RemoteAppServerEndpoint::UnixSocket { socket_path },
         client_name: "queue-owner-e2e-test".to_string(),
         client_version: "0.1.0".to_string(),

@@ -49,7 +49,10 @@ impl AuthProvider for BearerAuthProvider {
             headers.insert(http::header::AUTHORIZATION, value);
         }
         if let Some(account) = &self.account_id {
-            headers.insert(CHATGPT_ACCOUNT_ID_HEADER, HeaderValue::from_str(account).ok()?);
+            headers.insert(
+                CHATGPT_ACCOUNT_ID_HEADER,
+                HeaderValue::from_str(account).ok()?,
+            );
         }
         if self.is_fedramp_account {
             headers.insert("X-OpenAI-Fedramp", HeaderValue::from_static("true"));

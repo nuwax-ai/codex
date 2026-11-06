@@ -577,8 +577,11 @@ async fn submitted_sparse_updates_preserve_captured_steps_and_ordering() {
             .model_info_overrides
             .models_manager_config(configuration.step_settings.personality)
     };
-    let expected_destination =
-        with_config_overrides(expected_destination, &ModelOrigin::Bundled, &model_manager_config);
+    let expected_destination = with_config_overrides(
+        expected_destination,
+        &ModelOrigin::Bundled,
+        &model_manager_config,
+    );
     let desired = desired_step_settings(&session).await;
     let (submissions, receiver) = async_channel::unbounded();
     let loop_task = tokio::spawn(submission_loop(

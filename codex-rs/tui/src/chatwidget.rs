@@ -284,9 +284,9 @@ mod input_queue;
 mod provider_error;
 mod provider_wizard;
 
+pub(crate) use provider_wizard::PROVIDER_PRESETS;
 pub(crate) use provider_wizard::ProviderWizardDraft;
 pub(crate) use provider_wizard::WizardCredentialIntent;
-pub(crate) use provider_wizard::PROVIDER_PRESETS;
 mod reconnect;
 use self::input_queue::InputQueueState;
 mod image_submission;
@@ -474,8 +474,12 @@ const ASK_FOR_APPROVAL_LABEL: &str = "Ask for approval";
 const APPROVE_FOR_ME_LABEL: &str = "Approve for me";
 const AUTO_REVIEW_DESCRIPTION: &str = "Only ask for actions detected as potentially unsafe";
 const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
-const DEFAULT_STATUS_LINE_ITEMS: [&str; 4] =
-    ["model-with-reasoning", "context-used", "current-dir", "thread-name"];
+const DEFAULT_STATUS_LINE_ITEMS: [&str; 4] = [
+    "model-with-reasoning",
+    "context-used",
+    "current-dir",
+    "thread-name",
+];
 
 /// Common initialization parameters shared by all `ChatWidget` constructors.
 pub(crate) struct ChatWidgetInit {

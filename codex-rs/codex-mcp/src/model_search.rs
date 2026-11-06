@@ -2,8 +2,8 @@
 //! Keep the projected declaration and invocation pin private to its sampling step.
 
 use super::McpBinding;
-use crate::NUWAX_APPS_MCP_SERVER_NAME;
 use crate::MCP_TOOL_CODEX_APPS_META_KEY;
+use crate::NUWAX_APPS_MCP_SERVER_NAME;
 use crate::pagination::MAX_CODEX_APPS_TOOL_CATALOG_ITEMS;
 use crate::pagination::collect_paginated_with_limit;
 use rmcp::model::RequestMetaObject;

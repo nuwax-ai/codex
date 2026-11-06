@@ -1437,16 +1437,16 @@ impl Session {
             // placeholder window) is documented behaviour there, not something
             // worth interrupting the user's turn with. Keep it in the log so the
             // information is still discoverable.
-            let declared_by_provider = tc
-                .config
-                .model_provider
-                .models
-                .as_ref()
-                .is_some_and(|models| {
-                    models
-                        .iter()
-                        .any(|model| model.eq_ignore_ascii_case(&tc.model_info().slug))
-                });
+            let declared_by_provider =
+                tc.config
+                    .model_provider
+                    .models
+                    .as_ref()
+                    .is_some_and(|models| {
+                        models
+                            .iter()
+                            .any(|model| model.eq_ignore_ascii_case(&tc.model_info().slug))
+                    });
             if declared_by_provider {
                 tracing::warn!(
                     model = %tc.model_info().slug,

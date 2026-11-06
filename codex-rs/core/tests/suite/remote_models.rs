@@ -1701,8 +1701,8 @@ async fn provider_declared_model_reports_fallback_only_in_the_log() -> Result<()
         let TestCodex { codex, .. } = test_codex()
             .with_model(requested_model)
             .with_config(move |config| {
-                config.model_provider.models = declare_model
-                    .then(|| vec![requested_model.to_string()]);
+                config.model_provider.models =
+                    declare_model.then(|| vec![requested_model.to_string()]);
             })
             .build(&server)
             .await?;

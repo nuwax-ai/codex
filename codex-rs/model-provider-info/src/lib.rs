@@ -549,7 +549,11 @@ other non-default provider fields are not supported"
         // combine. Legacy combinations that do not involve api_key keep
         // their existing (permissive) semantics.
         if self.api_key.is_some() {
-            if self.api_key.as_deref().is_none_or(|key| key.trim().is_empty()) {
+            if self
+                .api_key
+                .as_deref()
+                .is_none_or(|key| key.trim().is_empty())
+            {
                 return Err("provider api_key must not be blank".to_string());
             }
             let mut conflicts = Vec::new();
@@ -744,9 +748,7 @@ other non-default provider fields are not supported"
     /// configured source only: side-effect free (never reads the environment
     /// or network), and false for command auth, OAuth, and login flows.
     pub fn has_static_api_key_source(&self) -> bool {
-        self.api_key.is_some()
-            || self.env_key.is_some()
-            || self.experimental_bearer_token.is_some()
+        self.api_key.is_some() || self.env_key.is_some() || self.experimental_bearer_token.is_some()
     }
 
     /// Effective maximum number of request retries for this provider.
@@ -824,12 +826,12 @@ other non-default provider fields are not supported"
             location: None,
             credential_file: None,
             experimental_bridge: None,
-        max_output_tokens: None,
-        hosted_results_replay: None,
-        anthropic_prompt_caching: None,
-        reasoning_effort_levels: None,
-        provider_id: None,
-        include_internal_metadata: true,
+            max_output_tokens: None,
+            hosted_results_replay: None,
+            anthropic_prompt_caching: None,
+            reasoning_effort_levels: None,
+            provider_id: None,
+            include_internal_metadata: true,
         }
     }
 
@@ -875,12 +877,12 @@ other non-default provider fields are not supported"
             location: None,
             credential_file: None,
             experimental_bridge: None,
-        max_output_tokens: None,
-        hosted_results_replay: None,
-        anthropic_prompt_caching: None,
-        reasoning_effort_levels: None,
-        provider_id: None,
-        include_internal_metadata: false,
+            max_output_tokens: None,
+            hosted_results_replay: None,
+            anthropic_prompt_caching: None,
+            reasoning_effort_levels: None,
+            provider_id: None,
+            include_internal_metadata: false,
         }
     }
 

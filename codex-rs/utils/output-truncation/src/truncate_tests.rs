@@ -762,14 +762,12 @@ fn boundary_formatters_normalize_input_and_remap_truncated_text() {
                     // slot; an image whose visual-token charge exceeds the
                     // token budget is dropped by admission, so the trailing
                     // text moves up one slot and image boundaries collapse.
-                    let expected: &[(usize, usize)] = if matches!(
-                        &middle,
-                        FunctionCallOutputContentItem::InputImage { .. }
-                    ) {
-                        &[(0, 0), (1, 0), (1, 0), (2, 0)]
-                    } else {
-                        &[(0, 0), (1, middle_end), (1, middle_end), (3, 0)]
-                    };
+                    let expected: &[(usize, usize)] =
+                        if matches!(&middle, FunctionCallOutputContentItem::InputImage { .. }) {
+                            &[(0, 0), (1, 0), (1, 0), (2, 0)]
+                        } else {
+                            &[(0, 0), (1, middle_end), (1, middle_end), (3, 0)]
+                        };
                     assert_eq!(result, expected);
                 }
             }
@@ -803,10 +801,10 @@ fn owned_mixed_output_moves_a_preserved_image_across_text_truncation() {
     // instead of a preserved image.
     assert_eq!((index, &snippet[offset..], omitted), (0, "ix", (1, 0)));
     assert!(
-        actual[1..]
-            .iter()
-            .any(|item| matches!(item, FunctionCallOutputContentItem::InputText { text }
-                if text.contains("omitted 1 image"))),
+        actual[1..].iter().any(
+            |item| matches!(item, FunctionCallOutputContentItem::InputText { text }
+                if text.contains("omitted 1 image"))
+        ),
         "expected consolidated image omission marker"
     );
 }

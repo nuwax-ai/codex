@@ -273,7 +273,10 @@ fn exec_stderr_env_filter() -> EnvFilter {
 
 pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
     if let Err(err) = set_default_originator("codex_exec".to_string()) {
-        tracing::warn!(?err, "Failed to set nuwax-harness exec originator override {err:?}");
+        tracing::warn!(
+            ?err,
+            "Failed to set nuwax-harness exec originator override {err:?}"
+        );
     }
 
     let Cli {
@@ -296,7 +299,9 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
     if cyber_access_program.is_some() {
         match command.as_ref() {
             Some(ExecCommand::Review(_)) => {
-                anyhow::bail!("--cyber-access-program is not supported with `nuwax-harness exec review`");
+                anyhow::bail!(
+                    "--cyber-access-program is not supported with `nuwax-harness exec review`"
+                );
             }
             Some(ExecCommand::Fork(args)) if args.prompt.is_none() && prompt.is_none() => {
                 anyhow::bail!("Forking with --cyber-access-program requires a prompt");

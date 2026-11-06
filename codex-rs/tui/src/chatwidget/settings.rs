@@ -338,7 +338,8 @@ impl ChatWidget {
                 info.model_context_window = None;
             }
             self.token_usage_pending = true;
-            self.bottom_pane.set_context_window_pending(/*pending*/ true);
+            self.bottom_pane
+                .set_context_window_pending(/*pending*/ true);
             self.bottom_pane
                 .set_context_window(/*percent*/ None, /*used_tokens*/ None);
         }

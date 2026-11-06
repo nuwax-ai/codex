@@ -1130,7 +1130,9 @@ async fn dispatch_cli(
             );
             if open_agents_overview {
                 if interactive.prompt.is_some() || !interactive.images.is_empty() {
-                    anyhow::bail!("`nuwax-harness agents` does not accept an initial prompt or images");
+                    anyhow::bail!(
+                        "`nuwax-harness agents` does not accept an initial prompt or images"
+                    );
                 }
                 if root_remote.is_some()
                     && (interactive.oss
@@ -3080,7 +3082,10 @@ enabled = true
 
     #[test]
     fn profile_v2_is_rejected_for_config_management_subcommands() {
-        assert!(profile_v2_for_args(&["nuwax-harness", "--profile", "work", "features", "list"]).is_err());
+        assert!(
+            profile_v2_for_args(&["nuwax-harness", "--profile", "work", "features", "list"])
+                .is_err()
+        );
     }
 
     #[test]
@@ -3092,9 +3097,15 @@ enabled = true
             Some("work")
         );
         assert_eq!(
-            profile_v2_for_args(&["nuwax-harness", "--profile", "work", "debug", "prompt-input"])
-                .expect("debug prompt-input supports profile-v2")
-                .as_deref(),
+            profile_v2_for_args(&[
+                "nuwax-harness",
+                "--profile",
+                "work",
+                "debug",
+                "prompt-input"
+            ])
+            .expect("debug prompt-input supports profile-v2")
+            .as_deref(),
             Some("work")
         );
         assert_eq!(
@@ -3122,7 +3133,8 @@ enabled = true
     #[test]
     fn profile_v2_rejects_non_plain_names_at_parse_time() {
         assert!(
-            MultitoolCli::try_parse_from(["nuwax-harness", "--profile", "nested/work", "resume"]).is_err()
+            MultitoolCli::try_parse_from(["nuwax-harness", "--profile", "nested/work", "resume"])
+                .is_err()
         );
     }
 
@@ -3197,9 +3209,15 @@ enabled = true
 
     #[test]
     fn exec_resume_last_accepts_prompt_positional() {
-        let cli =
-            MultitoolCli::try_parse_from(["nuwax-harness", "exec", "--json", "resume", "--last", "2+2"])
-                .expect("parse should succeed");
+        let cli = MultitoolCli::try_parse_from([
+            "nuwax-harness",
+            "exec",
+            "--json",
+            "resume",
+            "--last",
+            "2+2",
+        ])
+        .expect("parse should succeed");
 
         let Some(Subcommand::Exec(exec)) = cli.subcommand else {
             panic!("expected exec subcommand");
@@ -3263,7 +3281,8 @@ enabled = true
     #[test]
     fn approve_for_me_configures_interactive_mode() {
         for flag in ["--approve-for-me", "--not-so-yolo"] {
-            let mut cli = MultitoolCli::try_parse_from(["nuwax-harness", flag]).expect("parse flag");
+            let mut cli =
+                MultitoolCli::try_parse_from(["nuwax-harness", flag]).expect("parse flag");
 
             assert!(cli.interactive.auto_review);
             cli.interactive
@@ -3283,7 +3302,10 @@ enabled = true
 
     #[test]
     fn not_so_yolo_alias_is_hidden_from_help() {
-        for args in [&["nuwax-harness", "--help"][..], &["nuwax-harness", "exec", "--help"][..]] {
+        for args in [
+            &["nuwax-harness", "--help"][..],
+            &["nuwax-harness", "exec", "--help"][..],
+        ] {
             let help = help_from_args(args);
 
             assert!(!help.contains("--not-so-yolo"), "{help}");
@@ -3292,7 +3314,8 @@ enabled = true
 
     #[test]
     fn approve_for_me_defaults_propagate_from_root_to_exec() {
-        let exec = finalize_exec_from_args(&["nuwax-harness", "--approve-for-me", "exec", "summarize"]);
+        let exec =
+            finalize_exec_from_args(&["nuwax-harness", "--approve-for-me", "exec", "summarize"]);
 
         assert_eq!(
             exec.config_overrides.raw_overrides,
@@ -3453,8 +3476,8 @@ enabled = true
 
     #[test]
     fn debug_models_parses_bundled_flag() {
-        let cli =
-            MultitoolCli::try_parse_from(["nuwax-harness", "debug", "models", "--bundled"]).expect("parse");
+        let cli = MultitoolCli::try_parse_from(["nuwax-harness", "debug", "models", "--bundled"])
+            .expect("parse");
 
         let Some(Subcommand::Debug(DebugCommand {
             subcommand: DebugSubcommand::Models(cmd),
@@ -3543,25 +3566,41 @@ enabled = true
             ("upgrade", "Usage: codex plugin marketplace upgrade"),
             ("remove", "Usage: codex plugin marketplace remove"),
         ] {
-            let help = help_from_args(&["nuwax-harness", "plugin", "marketplace", subcommand, "--help"]);
+            let help = help_from_args(&[
+                "nuwax-harness",
+                "plugin",
+                "marketplace",
+                subcommand,
+                "--help",
+            ]);
             assert!(help.contains(usage), "{help}");
         }
     }
 
     #[test]
     fn plugin_marketplace_add_parses_under_plugin() {
-        let cli =
-            MultitoolCli::try_parse_from(["nuwax-harness", "plugin", "marketplace", "add", "owner/repo"])
-                .expect("parse");
+        let cli = MultitoolCli::try_parse_from([
+            "nuwax-harness",
+            "plugin",
+            "marketplace",
+            "add",
+            "owner/repo",
+        ])
+        .expect("parse");
 
         assert!(matches!(cli.subcommand, Some(Subcommand::Plugin(_))));
     }
 
     #[test]
     fn plugin_marketplace_upgrade_parses_under_plugin() {
-        let cli =
-            MultitoolCli::try_parse_from(["nuwax-harness", "plugin", "marketplace", "upgrade", "debug"])
-                .expect("parse");
+        let cli = MultitoolCli::try_parse_from([
+            "nuwax-harness",
+            "plugin",
+            "marketplace",
+            "upgrade",
+            "debug",
+        ])
+        .expect("parse");
 
         assert!(matches!(cli.subcommand, Some(Subcommand::Plugin(_))));
     }
@@ -3583,9 +3622,14 @@ enabled = true
 
     #[test]
     fn plugin_list_parses_under_plugin() {
-        let cli =
-            MultitoolCli::try_parse_from(["nuwax-harness", "plugin", "list", "--marketplace", "debug"])
-                .expect("parse");
+        let cli = MultitoolCli::try_parse_from([
+            "nuwax-harness",
+            "plugin",
+            "list",
+            "--marketplace",
+            "debug",
+        ])
+        .expect("parse");
 
         assert!(matches!(cli.subcommand, Some(Subcommand::Plugin(_))));
     }
@@ -3660,7 +3704,8 @@ enabled = true
 
     #[test]
     fn sandbox_uninstall_respects_command_separator() {
-        let cli = MultitoolCli::try_parse_from(["nuwax-harness", "sandbox", "uninstall"]).expect("parse");
+        let cli =
+            MultitoolCli::try_parse_from(["nuwax-harness", "sandbox", "uninstall"]).expect("parse");
         assert!(matches!(
             cli.subcommand,
             Some(Subcommand::Sandbox(SandboxCommand {
@@ -3743,9 +3788,15 @@ enabled = true
     #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
     #[test]
     fn sandbox_parses_permissions_profile_short_alias() {
-        let cli =
-            MultitoolCli::try_parse_from(["nuwax-harness", "sandbox", "-P", ":workspace", "--", "echo"])
-                .expect("parse");
+        let cli = MultitoolCli::try_parse_from([
+            "nuwax-harness",
+            "sandbox",
+            "-P",
+            ":workspace",
+            "--",
+            "echo",
+        ])
+        .expect("parse");
 
         let Some(Subcommand::Sandbox(SandboxCommand { host: command, .. })) = cli.subcommand else {
             panic!("expected sandbox command");
@@ -3758,9 +3809,15 @@ enabled = true
     #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
     #[test]
     fn sandbox_parses_config_profile() {
-        let cli =
-            MultitoolCli::try_parse_from(["nuwax-harness", "sandbox", "--profile", "work", "--", "echo"])
-                .expect("parse");
+        let cli = MultitoolCli::try_parse_from([
+            "nuwax-harness",
+            "sandbox",
+            "--profile",
+            "work",
+            "--",
+            "echo",
+        ])
+        .expect("parse");
 
         let Some(Subcommand::Sandbox(SandboxCommand { host: command, .. })) = cli.subcommand else {
             panic!("expected sandbox command");
@@ -3781,9 +3838,14 @@ enabled = true
 
     #[test]
     fn plugin_marketplace_remove_parses_under_plugin() {
-        let cli =
-            MultitoolCli::try_parse_from(["nuwax-harness", "plugin", "marketplace", "remove", "debug"])
-                .expect("parse");
+        let cli = MultitoolCli::try_parse_from([
+            "nuwax-harness",
+            "plugin",
+            "marketplace",
+            "remove",
+            "debug",
+        ])
+        .expect("parse");
 
         assert!(matches!(cli.subcommand, Some(Subcommand::Plugin(_))));
     }
@@ -4045,7 +4107,13 @@ enabled = true
     #[test]
     fn resume_last_accepts_prompt_positional() {
         let interactive = finalize_resume_from_args(
-            ["nuwax-harness", "resume", "--last", "/compact focus on auth"].as_ref(),
+            [
+                "nuwax-harness",
+                "resume",
+                "--last",
+                "/compact focus on auth",
+            ]
+            .as_ref(),
         );
 
         assert!(!interactive.resume_picker);
@@ -4059,9 +4127,14 @@ enabled = true
 
     #[test]
     fn resume_last_rejects_explicit_session_and_prompt() {
-        let err =
-            MultitoolCli::try_parse_from(["nuwax-harness", "resume", "--last", "1234", "continue here"])
-                .expect_err("--last with an explicit session and prompt should be rejected");
+        let err = MultitoolCli::try_parse_from([
+            "nuwax-harness",
+            "resume",
+            "--last",
+            "1234",
+            "continue here",
+        ])
+        .expect_err("--last with an explicit session and prompt should be rejected");
 
         assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
@@ -4077,8 +4150,9 @@ enabled = true
 
     #[test]
     fn resume_with_session_id_accepts_prompt_positional() {
-        let interactive =
-            finalize_resume_from_args(["nuwax-harness", "resume", "1234", "continue here"].as_ref());
+        let interactive = finalize_resume_from_args(
+            ["nuwax-harness", "resume", "1234", "continue here"].as_ref(),
+        );
 
         assert!(!interactive.resume_picker);
         assert!(!interactive.resume_last);
@@ -4095,8 +4169,9 @@ enabled = true
 
     #[test]
     fn resume_include_non_interactive_flag_sets_source_filter_override() {
-        let interactive =
-            finalize_resume_from_args(["nuwax-harness", "resume", "--include-non-interactive"].as_ref());
+        let interactive = finalize_resume_from_args(
+            ["nuwax-harness", "resume", "--include-non-interactive"].as_ref(),
+        );
 
         assert!(interactive.resume_picker);
         assert!(interactive.resume_include_non_interactive);
@@ -4207,8 +4282,9 @@ enabled = true
 
     #[test]
     fn fork_last_accepts_prompt_positional() {
-        let interactive =
-            finalize_fork_from_args(["nuwax-harness", "fork", "--last", "/compact focus on auth"].as_ref());
+        let interactive = finalize_fork_from_args(
+            ["nuwax-harness", "fork", "--last", "/compact focus on auth"].as_ref(),
+        );
 
         assert!(!interactive.fork_picker);
         assert!(interactive.fork_last);
@@ -4221,9 +4297,14 @@ enabled = true
 
     #[test]
     fn fork_last_rejects_explicit_session_and_prompt() {
-        let err =
-            MultitoolCli::try_parse_from(["nuwax-harness", "fork", "--last", "1234", "continue here"])
-                .expect_err("--last with an explicit session and prompt should be rejected");
+        let err = MultitoolCli::try_parse_from([
+            "nuwax-harness",
+            "fork",
+            "--last",
+            "1234",
+            "continue here",
+        ])
+        .expect_err("--last with an explicit session and prompt should be rejected");
 
         assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
@@ -4268,25 +4349,32 @@ enabled = true
 
     #[test]
     fn app_server_remote_control_startup_flag_enables_remote_control() {
-        let enabled = app_server_from_args(["nuwax-harness", "app-server", "--remote-control"].as_ref());
+        let enabled =
+            app_server_from_args(["nuwax-harness", "app-server", "--remote-control"].as_ref());
         assert!(enabled.remote_control);
     }
 
     #[test]
     fn app_server_analytics_default_enabled_with_flag() {
-        let app_server =
-            app_server_from_args(["nuwax-harness", "app-server", "--analytics-default-enabled"].as_ref());
+        let app_server = app_server_from_args(
+            ["nuwax-harness", "app-server", "--analytics-default-enabled"].as_ref(),
+        );
         assert!(app_server.analytics_default_enabled);
     }
 
     #[test]
     fn strict_config_parses_for_supported_commands() {
-        let cli = MultitoolCli::try_parse_from(["nuwax-harness", "--strict-config"]).expect("parse");
+        let cli =
+            MultitoolCli::try_parse_from(["nuwax-harness", "--strict-config"]).expect("parse");
         assert!(cli.interactive.strict_config);
 
-        let cli =
-            MultitoolCli::try_parse_from(["nuwax-harness", "review", "--strict-config", "--uncommitted"])
-                .expect("parse");
+        let cli = MultitoolCli::try_parse_from([
+            "nuwax-harness",
+            "review",
+            "--strict-config",
+            "--uncommitted",
+        ])
+        .expect("parse");
         assert_matches!(
             cli.subcommand,
             Some(Subcommand::Review(ReviewCommand {
@@ -4355,8 +4443,10 @@ enabled = true
             ],
         ] {
             assert!(
-                MultitoolCli::try_parse_from(["nuwax-harness", "exec-server"].into_iter().chain(args))
-                    .is_err()
+                MultitoolCli::try_parse_from(
+                    ["nuwax-harness", "exec-server"].into_iter().chain(args)
+                )
+                .is_err()
             );
         }
     }
@@ -4385,8 +4475,9 @@ enabled = true
             "`--strict-config` is not supported for `nuwax-harness mcp`"
         );
 
-        let cli = MultitoolCli::try_parse_from(["nuwax-harness", "--strict-config", "remote-control"])
-            .expect("parse");
+        let cli =
+            MultitoolCli::try_parse_from(["nuwax-harness", "--strict-config", "remote-control"])
+                .expect("parse");
         let err = reject_root_strict_config_for_subcommand(
             cli.interactive.strict_config,
             &cli.subcommand,
@@ -4401,8 +4492,9 @@ enabled = true
 
     #[test]
     fn app_server_subcommands_reject_strict_config() {
-        let app_server =
-            app_server_from_args(["nuwax-harness", "app-server", "--strict-config", "proxy"].as_ref());
+        let app_server = app_server_from_args(
+            ["nuwax-harness", "app-server", "--strict-config", "proxy"].as_ref(),
+        );
         let err = reject_strict_config_for_app_server_subcommand(
             app_server.strict_config,
             app_server.subcommand.as_ref(),
@@ -4417,8 +4509,13 @@ enabled = true
 
     #[test]
     fn reject_remote_flag_for_remote_control() {
-        let cli = MultitoolCli::try_parse_from(["nuwax-harness", "--remote", "unix://", "remote-control"])
-            .expect("parse");
+        let cli = MultitoolCli::try_parse_from([
+            "nuwax-harness",
+            "--remote",
+            "unix://",
+            "remote-control",
+        ])
+        .expect("parse");
         let Some(Subcommand::RemoteControl(remote_control)) = &cli.subcommand else {
             panic!("expected remote-control subcommand");
         };
@@ -4436,7 +4533,8 @@ enabled = true
 
     #[test]
     fn remote_control_pair_parses() {
-        let cli = MultitoolCli::try_parse_from(["nuwax-harness", "remote-control", "pair"]).expect("parse");
+        let cli = MultitoolCli::try_parse_from(["nuwax-harness", "remote-control", "pair"])
+            .expect("parse");
         let Some(Subcommand::RemoteControl(remote_control)) = &cli.subcommand else {
             panic!("expected remote-control subcommand");
         };
@@ -4468,9 +4566,13 @@ enabled = true
 
     #[test]
     fn remote_flag_parses_for_resume_subcommand() {
-        let cli =
-            MultitoolCli::try_parse_from(["nuwax-harness", "resume", "--remote", "unix://codex.sock"])
-                .expect("parse");
+        let cli = MultitoolCli::try_parse_from([
+            "nuwax-harness",
+            "resume",
+            "--remote",
+            "unix://codex.sock",
+        ])
+        .expect("parse");
         let Subcommand::Resume(ResumeCommand { remote, .. }) =
             cli.subcommand.expect("resume present")
         else {
@@ -4620,9 +4722,13 @@ enabled = true
             "https://alice:secret@example.test",
             "http://example.test/?token=secret",
         ] {
-            let error =
-                MultitoolCli::try_parse_from(["nuwax-harness", "app-server", "--code-mode-host", endpoint])
-                    .expect_err("invalid code-mode host endpoint should fail argument parsing");
+            let error = MultitoolCli::try_parse_from([
+                "nuwax-harness",
+                "app-server",
+                "--code-mode-host",
+                endpoint,
+            ])
+            .expect_err("invalid code-mode host endpoint should fail argument parsing");
 
             assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
             let rendered_error = error.to_string();
@@ -4634,7 +4740,13 @@ enabled = true
     #[test]
     fn app_server_listen_websocket_url_parses() {
         let app_server = app_server_from_args(
-            ["nuwax-harness", "app-server", "--listen", "ws://127.0.0.1:4500"].as_ref(),
+            [
+                "nuwax-harness",
+                "app-server",
+                "--listen",
+                "ws://127.0.0.1:4500",
+            ]
+            .as_ref(),
         );
         assert_eq!(
             app_server.listen,
@@ -4688,7 +4800,13 @@ enabled = true
     #[test]
     fn app_server_listen_unix_socket_path_parses() {
         let app_server = app_server_from_args(
-            ["nuwax-harness", "app-server", "--listen", "unix:///tmp/codex.sock"].as_ref(),
+            [
+                "nuwax-harness",
+                "app-server",
+                "--listen",
+                "unix:///tmp/codex.sock",
+            ]
+            .as_ref(),
         );
         assert_eq!(
             app_server.listen,
@@ -4701,7 +4819,8 @@ enabled = true
 
     #[test]
     fn app_server_listen_off_parses() {
-        let app_server = app_server_from_args(["nuwax-harness", "app-server", "--listen", "off"].as_ref());
+        let app_server =
+            app_server_from_args(["nuwax-harness", "app-server", "--listen", "off"].as_ref());
         assert_eq!(app_server.listen, codex_app_server::AppServerTransport::Off);
     }
 
@@ -4744,20 +4863,28 @@ enabled = true
             }))
         ));
         assert!(matches!(
-            app_server_from_args(["nuwax-harness", "app-server", "daemon", "start"].as_ref()).subcommand,
+            app_server_from_args(["nuwax-harness", "app-server", "daemon", "start"].as_ref())
+                .subcommand,
             Some(AppServerSubcommand::Daemon(AppServerDaemonCommand {
                 subcommand: AppServerDaemonSubcommand::Start
             }))
         ));
         assert!(matches!(
-            app_server_from_args(["nuwax-harness", "app-server", "daemon", "restart"].as_ref()).subcommand,
+            app_server_from_args(["nuwax-harness", "app-server", "daemon", "restart"].as_ref())
+                .subcommand,
             Some(AppServerSubcommand::Daemon(AppServerDaemonCommand {
                 subcommand: AppServerDaemonSubcommand::Restart
             }))
         ));
         assert!(matches!(
             app_server_from_args(
-                ["nuwax-harness", "app-server", "daemon", "enable-remote-control"].as_ref()
+                [
+                    "nuwax-harness",
+                    "app-server",
+                    "daemon",
+                    "enable-remote-control"
+                ]
+                .as_ref()
             )
             .subcommand,
             Some(AppServerSubcommand::Daemon(AppServerDaemonCommand {
@@ -4766,7 +4893,13 @@ enabled = true
         ));
         assert!(matches!(
             app_server_from_args(
-                ["nuwax-harness", "app-server", "daemon", "disable-remote-control"].as_ref()
+                [
+                    "nuwax-harness",
+                    "app-server",
+                    "daemon",
+                    "disable-remote-control"
+                ]
+                .as_ref()
             )
             .subcommand,
             Some(AppServerSubcommand::Daemon(AppServerDaemonCommand {
@@ -4774,13 +4907,15 @@ enabled = true
             }))
         ));
         assert!(matches!(
-            app_server_from_args(["nuwax-harness", "app-server", "daemon", "stop"].as_ref()).subcommand,
+            app_server_from_args(["nuwax-harness", "app-server", "daemon", "stop"].as_ref())
+                .subcommand,
             Some(AppServerSubcommand::Daemon(AppServerDaemonCommand {
                 subcommand: AppServerDaemonSubcommand::Stop
             }))
         ));
         assert!(matches!(
-            app_server_from_args(["nuwax-harness", "app-server", "daemon", "version"].as_ref()).subcommand,
+            app_server_from_args(["nuwax-harness", "app-server", "daemon", "version"].as_ref())
+                .subcommand,
             Some(AppServerSubcommand::Daemon(AppServerDaemonCommand {
                 subcommand: AppServerDaemonSubcommand::Version
             }))
@@ -4789,8 +4924,16 @@ enabled = true
 
     #[test]
     fn app_server_proxy_sock_path_parses() {
-        let app_server =
-            app_server_from_args(["nuwax-harness", "app-server", "proxy", "--sock", "codex.sock"].as_ref());
+        let app_server = app_server_from_args(
+            [
+                "nuwax-harness",
+                "app-server",
+                "proxy",
+                "--sock",
+                "codex.sock",
+            ]
+            .as_ref(),
+        );
         let Some(AppServerSubcommand::Proxy(proxy)) = app_server.subcommand else {
             panic!("expected proxy subcommand");
         };
@@ -4910,8 +5053,9 @@ enabled = true
 
     #[test]
     fn features_enable_parses_feature_name() {
-        let cli = MultitoolCli::try_parse_from(["nuwax-harness", "features", "enable", "unified_exec"])
-            .expect("parse should succeed");
+        let cli =
+            MultitoolCli::try_parse_from(["nuwax-harness", "features", "enable", "unified_exec"])
+                .expect("parse should succeed");
         let Some(Subcommand::Features(FeaturesCli { sub })) = cli.subcommand else {
             panic!("expected features subcommand");
         };
@@ -4923,8 +5067,9 @@ enabled = true
 
     #[test]
     fn features_disable_parses_feature_name() {
-        let cli = MultitoolCli::try_parse_from(["nuwax-harness", "features", "disable", "shell_tool"])
-            .expect("parse should succeed");
+        let cli =
+            MultitoolCli::try_parse_from(["nuwax-harness", "features", "disable", "shell_tool"])
+                .expect("parse should succeed");
         let Some(Subcommand::Features(FeaturesCli { sub })) = cli.subcommand else {
             panic!("expected features subcommand");
         };

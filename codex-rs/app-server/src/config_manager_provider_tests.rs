@@ -335,8 +335,7 @@ async fn input_provider_check_honors_session_scoped_routing() -> Result<()> {
         home.path().join("config.toml"),
         "model_provider = \"openai\"\n",
     )?;
-    let manager =
-        ConfigManager::without_managed_config_for_tests(home.path().to_path_buf());
+    let manager = ConfigManager::without_managed_config_for_tests(home.path().to_path_buf());
 
     // Session-routed thread: provider + definition arrive as request
     // overrides (exactly how thread/start threads are configured).
@@ -442,15 +441,17 @@ models = ["step-5-preview"]
     assert_eq!(rehomed.model_provider_id, "step");
 
     // turn/start admission check with the thread's retained config.
-    let session_layer_carries_provider = rehomed.config_layer_stack.layers_low_to_high().any(
-        |layer| {
-            matches!(
-                layer.name,
-                codex_config::ConfigLayerSource::SessionFlags
-                    | codex_config::ConfigLayerSource::EnvSeed
-            ) && layer.config.get("model_provider").is_some()
-        },
-    );
+    let session_layer_carries_provider =
+        rehomed
+            .config_layer_stack
+            .layers_low_to_high()
+            .any(|layer| {
+                matches!(
+                    layer.name,
+                    codex_config::ConfigLayerSource::SessionFlags
+                        | codex_config::ConfigLayerSource::EnvSeed
+                ) && layer.config.get("model_provider").is_some()
+            });
     assert!(
         session_layer_carries_provider,
         "explicit resume selection must land in a session layer"
@@ -489,8 +490,7 @@ wire_api = "responses"
 models = ["step-5-preview"]
 "#,
     )?;
-    let manager =
-        ConfigManager::without_managed_config_for_tests(home.path().to_path_buf());
+    let manager = ConfigManager::without_managed_config_for_tests(home.path().to_path_buf());
     let cwd = Some(home.path().to_path_buf());
 
     // Explicit cross-provider re-home: requested step over saved mimo loads.

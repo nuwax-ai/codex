@@ -14,8 +14,6 @@ use app_test_support::to_response;
 use codex_app_server::in_process;
 use codex_app_server::in_process::InProcessStartArgs;
 use codex_app_server_protocol::ClientInfo;
-use codex_app_server_protocol::ThreadItem;
-use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::CodexErrorInfo;
 use codex_app_server_protocol::DeprecationNoticeNotification;
@@ -33,7 +31,9 @@ use codex_app_server_protocol::SortDirection;
 use codex_app_server_protocol::ThreadForkParams;
 use codex_app_server_protocol::ThreadForkResponse;
 use codex_app_server_protocol::ThreadHistoryMode;
+use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::ThreadItemEntry;
+use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::ThreadItemsListAnchor;
 use codex_app_server_protocol::ThreadItemsListCursor;
 use codex_app_server_protocol::ThreadItemsListParams;
@@ -2723,7 +2723,8 @@ async fn thread_items_list_limit_one_pages_slice_between_call_and_result_items()
                 "call-1-output",
                 "the call item's result must stay adjacent across page boundaries"
             );
-            let ThreadItemPayload::FunctionCallOutput { id, output, .. } = &merged[call_index + 1].item.payload
+            let ThreadItemPayload::FunctionCallOutput { id, output, .. } =
+                &merged[call_index + 1].item.payload
             else {
                 panic!("expected the call's result item to follow it");
             };

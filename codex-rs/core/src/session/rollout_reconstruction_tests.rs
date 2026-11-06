@@ -3009,7 +3009,8 @@ async fn surface_replacement_cuts_a_compaction_checkpoint_history() {
     assert!(
         texts
             .iter()
-            .any(|text| text.starts_with(crate::compact::SUMMARY_PREFIX) && text.contains("migrated")),
+            .any(|text| text.starts_with(crate::compact::SUMMARY_PREFIX)
+                && text.contains("migrated")),
         "the migration summary must replace the cut: {texts:?}"
     );
 }

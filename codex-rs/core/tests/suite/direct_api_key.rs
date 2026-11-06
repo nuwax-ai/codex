@@ -8,8 +8,8 @@
 
 use anyhow::Result;
 use codex_model_provider_info::ModelProviderInfo;
-use codex_utils_redacted_string::RedactedString;
 use codex_model_provider_info::WireApi;
+use codex_utils_redacted_string::RedactedString;
 use core_test_support::responses;
 use core_test_support::skip_if_no_network;
 use core_test_support::test_codex::test_codex;
@@ -114,12 +114,10 @@ async fn submit_turn_patient(
         }]))
         .await?;
     loop {
-        let event = tokio::time::timeout(
-            std::time::Duration::from_secs(45),
-            test.codex.next_event(),
-        )
-        .await
-        .expect("timed out waiting for a turn event")?;
+        let event =
+            tokio::time::timeout(std::time::Duration::from_secs(45), test.codex.next_event())
+                .await
+                .expect("timed out waiting for a turn event")?;
         if matches!(event.msg, EventMsg::TurnComplete(_)) {
             return Ok(());
         }
@@ -131,9 +129,10 @@ async fn submit_turn_patient(
 async fn mount_models_discovery(server: &MockServer) {
     wiremock::Mock::given(wiremock::matchers::method("GET"))
         .and(wiremock::matchers::path("/v1/models"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
-            serde_json::json!({"object":"list","data":[]}),
-        ))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"object":"list","data":[]})),
+        )
         .mount(server)
         .await;
 }
@@ -244,8 +243,10 @@ async fn direct_api_key_authenticates_anthropic_wire() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn direct_api_key_providers_do_not_cross_keys() -> Result<()> {
     skip_if_no_network!(Ok(()));
-    for (provider_id, key) in [("direct-key-a", "sk-key-a-only"), ("direct-key-b", "sk-key-b-only")]
-    {
+    for (provider_id, key) in [
+        ("direct-key-a", "sk-key-a-only"),
+        ("direct-key-b", "sk-key-b-only"),
+    ] {
         let server = MockServer::start().await;
         mount_models_discovery(&server).await;
         mount_sse(&server, "/v1/chat/completions", chat_completion_sse()).await;

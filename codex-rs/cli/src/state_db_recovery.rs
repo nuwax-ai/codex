@@ -31,7 +31,9 @@ fn sqlite_home_is_blocking_file(startup_error: &LocalStateDbStartupError) -> boo
 
 pub(crate) fn print_auto_backup_start(startup_error: &LocalStateDbStartupError) {
     eprintln!("Nuwax Harness couldn't start because its local database appears to be damaged.");
-    eprintln!("Moving the damaged local database aside so Nuwax Harness can rebuild it from saved data.");
+    eprintln!(
+        "Moving the damaged local database aside so Nuwax Harness can rebuild it from saved data."
+    );
     print_technical_details(startup_error);
 }
 
@@ -74,7 +76,9 @@ pub(crate) fn print_diagnostic_guidance(startup_error: &LocalStateDbStartupError
 }
 
 pub(crate) fn print_locked_guidance(startup_error: &LocalStateDbStartupError) {
-    eprintln!("Nuwax Harness couldn't start because another Nuwax Harness process is using its local data.");
+    eprintln!(
+        "Nuwax Harness couldn't start because another Nuwax Harness process is using its local data."
+    );
     eprintln!("Quit any other copies of Nuwax Harness that may still be running, then try again.");
     print_technical_details(startup_error);
 }

@@ -23,10 +23,10 @@ use anyhow::Context;
 use anyhow::Result;
 use app_test_support::TestAppServer;
 use codex_app_server_protocol::ClientRequest;
-use codex_app_server_protocol::ThreadItem;
-use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::ThreadCompactStartParams;
 use codex_app_server_protocol::ThreadCompactStartResponse;
+use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::ThreadReadParams;
 use codex_app_server_protocol::ThreadReadResponse;
 use codex_app_server_protocol::ThreadResumeParams;
@@ -306,7 +306,9 @@ async fn chat_env_group_executes_a_tool_round_trip_over_the_real_chat_wire() -> 
         .items
         .iter()
         .filter_map(|item| match &item.payload {
-            codex_app_server_protocol::ThreadItemPayload::AgentMessage { text, .. } => Some(text.as_str()),
+            codex_app_server_protocol::ThreadItemPayload::AgentMessage { text, .. } => {
+                Some(text.as_str())
+            }
             _ => None,
         })
         .collect();
@@ -445,7 +447,9 @@ async fn responses_env_group_executes_a_tool_round_trip_over_the_real_responses_
         .items
         .iter()
         .filter_map(|item| match &item.payload {
-            codex_app_server_protocol::ThreadItemPayload::AgentMessage { text, .. } => Some(text.as_str()),
+            codex_app_server_protocol::ThreadItemPayload::AgentMessage { text, .. } => {
+                Some(text.as_str())
+            }
             _ => None,
         })
         .collect();
@@ -842,7 +846,9 @@ async fn env_group_compact_and_recall_keep_the_typed_wire_and_usage_accounting()
         .items
         .iter()
         .filter_map(|item| match &item.payload {
-            codex_app_server_protocol::ThreadItemPayload::AgentMessage { text, .. } => Some(text.as_str()),
+            codex_app_server_protocol::ThreadItemPayload::AgentMessage { text, .. } => {
+                Some(text.as_str())
+            }
             _ => None,
         })
         .collect();

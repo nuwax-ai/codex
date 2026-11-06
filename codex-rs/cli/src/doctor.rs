@@ -456,7 +456,8 @@ async fn build_report(
                     })
                 },
                 async {
-                    run_sync_check("auth", progress.clone(), || match &auth_manager_result {
+                    run_sync_check("auth", progress.clone(), || {
+                        match &auth_manager_result {
                         Ok(_) => auth_check(config),
                         Err(error) => DoctorCheck::new(
                             "auth.load",
@@ -468,6 +469,7 @@ async fn build_report(
                         .remediation(
                             "Fix the reported authentication error, then rerun nuwax-harness doctor.",
                         ),
+                    }
                     })
                 },
                 run_async_check("updates", progress.clone(), updates_check(config)),
@@ -1062,7 +1064,10 @@ fn installation_check(show_details: bool) -> DoctorCheck {
     let mut remediation = None;
 
     if path_entries.len() > 1 {
-        details.push(format!("PATH nuwax-harness entries: {}", path_entries.len()));
+        details.push(format!(
+            "PATH nuwax-harness entries: {}",
+            path_entries.len()
+        ));
     }
     if show_details || path_entries.len() > 1 {
         details.extend(
@@ -1410,8 +1415,9 @@ fn auth_check(config: &Config) -> DoctorCheck {
             let mut check =
                 DoctorCheck::new("auth.credentials", "auth", status, summary).details(details);
             if status == CheckStatus::Fail {
-                check =
-                    check.remediation("Run nuwax-harness login again or provide a supported auth env var.");
+                check = check.remediation(
+                    "Run nuwax-harness login again or provide a supported auth env var.",
+                );
             }
             check
         }
@@ -1429,7 +1435,9 @@ fn auth_check(config: &Config) -> DoctorCheck {
             "no Nuwax Harness credentials were found",
         )
         .details(details)
-        .remediation("Run nuwax-harness login or provide an API key through a supported auth env var."),
+        .remediation(
+            "Run nuwax-harness login or provide an API key through a supported auth env var.",
+        ),
         Err(err) => DoctorCheck::new(
             "auth.credentials",
             "auth",
@@ -2836,7 +2844,11 @@ fn provider_reachability_plan_from_parts(
         }],
         (ProviderAuthReachabilityMode::Chatgpt, None) => vec![ReachabilityEndpoint {
             label: "ChatGPT".to_string(),
-            url: provider_url_for_path(chatgpt_base_url, "nuwax-harness/responses", provider_query_params),
+            url: provider_url_for_path(
+                chatgpt_base_url,
+                "nuwax-harness/responses",
+                provider_query_params,
+            ),
             required: true,
             route_probe_url: None,
         }],

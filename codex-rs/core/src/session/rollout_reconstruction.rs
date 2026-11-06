@@ -13,7 +13,9 @@ use uuid::Uuid;
 /// Only the newest non-superseded record applies: a later migration absorbs the
 /// earlier one (`supersedes`), so replay has at most one prefix boundary to
 /// honour. Records are appended, so the last candidate wins.
-fn active_surface_replacement(items: &[RolloutItem]) -> Option<&codex_history::SurfaceReplacementItem> {
+fn active_surface_replacement(
+    items: &[RolloutItem],
+) -> Option<&codex_history::SurfaceReplacementItem> {
     let mut superseded = std::collections::HashSet::new();
     let mut candidates = Vec::new();
     for item in items {
@@ -70,7 +72,11 @@ fn surface_replacement_summary_item(
         id: None,
         role: "user".to_owned(),
         content: vec![ContentItem::InputText {
-            text: format!("{}\n{}", crate::compact::SUMMARY_PREFIX, replacement.summary),
+            text: format!(
+                "{}\n{}",
+                crate::compact::SUMMARY_PREFIX,
+                replacement.summary
+            ),
         }],
         phase: None,
         status: None,

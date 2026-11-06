@@ -1,6 +1,6 @@
 use super::McpServerConnection;
-use crate::NUWAX_APPS_MCP_SERVER_NAME;
 use crate::McpRuntime;
+use crate::NUWAX_APPS_MCP_SERVER_NAME;
 use codex_rmcp_client::RmcpClient;
 use rmcp::model::ServerResult;
 use std::collections::HashMap;

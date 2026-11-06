@@ -147,7 +147,10 @@ fn event_target(value: &str) -> Option<&'static str> {
     let parts = value.split(['\\', '/']).map(str::trim).collect::<Vec<_>>();
     let name = *parts.last()?;
     let package = parts.iter().any(|part| part.starts_with("openai.codex_"));
-    let trusted = package || parts.windows(2).any(|pair| pair == ["openai", "nuwax-harness"]);
+    let trusted = package
+        || parts
+            .windows(2)
+            .any(|pair| pair == ["openai", "nuwax-harness"]);
     match name {
         "codex-windows-sandbox-setup.exe" => Some("sandbox_setup"),
         "codex-command-runner.exe" => Some("command_runner"),
@@ -199,10 +202,16 @@ fn classify(channels: &[Option<Vec<Evidence>>]) -> DoctorCheck {
     }
     let summary = match (status, visible) {
         (CheckStatus::Ok, _) if channels.contains(&None) => "security event coverage is incomplete",
-        (CheckStatus::Ok, _) => "no locally visible recent Nuwax Harness security enforcement was found",
+        (CheckStatus::Ok, _) => {
+            "no locally visible recent Nuwax Harness security enforcement was found"
+        }
         (CheckStatus::Warning, false) => "security event channels could not be inspected",
-        (CheckStatus::Warning, true) => "recent Nuwax Harness security audit or detection requires review",
-        (CheckStatus::Fail, _) => "endpoint security blocked or quarantined a Nuwax Harness executable",
+        (CheckStatus::Warning, true) => {
+            "recent Nuwax Harness security audit or detection requires review"
+        }
+        (CheckStatus::Fail, _) => {
+            "endpoint security blocked or quarantined a Nuwax Harness executable"
+        }
     };
     let mut check = desktop_check("desktop.security.enforcement", status, summary).details(details);
     if status != CheckStatus::Ok {

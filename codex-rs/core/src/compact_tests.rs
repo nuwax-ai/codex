@@ -32,7 +32,8 @@ async fn local_compaction_retries_preserve_instructions_and_tool_metadata(
 ) -> anyhow::Result<()> {
     skip_if_no_network!(Ok(()));
     let server = responses::start_mock_server().await;
-    let mut provider = ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    let mut provider =
+        ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
     // Fork routing: a provider without a first-party `provider_id` routes
     // through the model bridge, which the test binary does not enable. Mark it
     // first-party like the built-in "openai" entry (same pattern as
@@ -361,10 +362,11 @@ async fn migration_compact_extreme_800k_history_converges_into_32k_window() -> a
             .await
             .estimate_token_count(turn.as_ref())
             .unwrap_or(0);
-        let prefix = status.active_context_tokens.saturating_sub(history_tokens).max(0);
-        (window as f64 * session.get_config().await.migration_compact.ratio) as i64
-            - prefix
-            - 2_048
+        let prefix = status
+            .active_context_tokens
+            .saturating_sub(history_tokens)
+            .max(0);
+        (window as f64 * session.get_config().await.migration_compact.ratio) as i64 - prefix - 2_048
     };
     assert!(budget > 0, "history budget must be positive, got {budget}");
 
@@ -374,11 +376,7 @@ async fn migration_compact_extreme_800k_history_converges_into_32k_window() -> a
     let requests_after_first_pass = recorder.request_count();
     assert_eq!(
         requests_after_first_pass,
-        session
-            .get_config()
-            .await
-            .migration_compact
-            .max_ranges as usize,
+        session.get_config().await.migration_compact.max_ranges as usize,
         "one migration pass issues exactly max_ranges summary requests"
     );
     let tokens_after_first_pass = session
@@ -424,7 +422,8 @@ async fn migration_compact_extreme_800k_history_converges_into_32k_window() -> a
         let request: serde_json::Value = serde_json::from_slice(body)
             .unwrap_or_else(|error| panic!("request {index} is not JSON: {error}"));
         assert_eq!(
-            request["max_output_tokens"], serde_json::json!(2_048),
+            request["max_output_tokens"],
+            serde_json::json!(2_048),
             "summary request {index} must cap output at the reserved budget"
         );
         let input_tokens = body.len().div_ceil(4) as i64;
@@ -474,14 +473,10 @@ async fn migration_compact_end_to_end_turn_completes_and_keeps_recent_context() 
     // compaction endpoint, so the overflow recovery uses the LOCAL
     // summarizing compact with its trim-retry loop (what llama.cpp-class
     // providers get; bridge providers resolve Unsupported anyway).
-    provider.capabilities = Some(
-        codex_model_provider_info::ModelProviderCapabilities {
-            remote_compaction: Some(
-                codex_model_provider_info::RemoteCompactionSupport::Unsupported,
-            ),
-            ..Default::default()
-        },
-    );
+    provider.capabilities = Some(codex_model_provider_info::ModelProviderCapabilities {
+        remote_compaction: Some(codex_model_provider_info::RemoteCompactionSupport::Unsupported),
+        ..Default::default()
+    });
     let (session, turn, _events) = make_session_and_context_with_auth_and_config_and_rx(
         CodexAuth::create_dummy_chatgpt_auth_for_testing(),
         Vec::new(),

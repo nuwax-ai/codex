@@ -247,8 +247,7 @@ impl ChatWidget {
         }
 
         let mut items: Vec<SelectionItem> = Vec::new();
-        let model_ids: Vec<String> =
-            presets.iter().map(|preset| preset.model.clone()).collect();
+        let model_ids: Vec<String> = presets.iter().map(|preset| preset.model.clone()).collect();
         for preset in presets.into_iter() {
             let description =
                 (!preset.description.is_empty()).then_some(preset.description.to_string());

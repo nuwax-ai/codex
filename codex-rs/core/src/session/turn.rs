@@ -1,5 +1,5 @@
-use std::borrow::Cow;
 use codex_history::ResponseItemEnvelope;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -234,16 +234,15 @@ pub(crate) async fn run_turn(
         const MAX_MIGRATION_PASSES_PER_TURN: usize = 32;
         let mut passes = 0usize;
         loop {
-            match crate::compact::run_migration_compact_task(
-                sess.clone(),
-                turn_context.clone(),
-            )
-            .await
+            match crate::compact::run_migration_compact_task(sess.clone(), turn_context.clone())
+                .await
             {
                 Ok(/*replaced*/ true) => {}
                 Ok(false) => break,
                 Err(err) => {
-                    warn!("migration compaction failed: {err}; falling back to the regular compact path");
+                    warn!(
+                        "migration compaction failed: {err}; falling back to the regular compact path"
+                    );
                     break;
                 }
             }
@@ -3885,4 +3884,3 @@ pub(super) fn fork_overflow_recoverable(
             .get::<crate::guardian::ExhaustedReviewBudget>()
             .is_none()
 }
-

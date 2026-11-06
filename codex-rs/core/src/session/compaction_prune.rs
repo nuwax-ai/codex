@@ -40,17 +40,23 @@ pub(crate) fn prune_oversized_tool_results(
     for envelope in items {
         match &mut envelope.item {
             ResponseItem::FunctionCallOutput { output, .. } => {
-                if let Some(removed) =
-                    prune_body(&mut output.body, keep_head_chars, keep_tail_chars, min_chars_to_prune)
-                {
+                if let Some(removed) = prune_body(
+                    &mut output.body,
+                    keep_head_chars,
+                    keep_tail_chars,
+                    min_chars_to_prune,
+                ) {
                     outcome.pruned_results += 1;
                     outcome.chars_removed += removed;
                 }
             }
             ResponseItem::CustomToolCallOutput { output, .. } => {
-                if let Some(removed) =
-                    prune_body(&mut output.body, keep_head_chars, keep_tail_chars, min_chars_to_prune)
-                {
+                if let Some(removed) = prune_body(
+                    &mut output.body,
+                    keep_head_chars,
+                    keep_tail_chars,
+                    min_chars_to_prune,
+                ) {
                     outcome.pruned_results += 1;
                     outcome.chars_removed += removed;
                 }
@@ -76,10 +82,7 @@ fn prune_body(
     }
     let head: String = text.chars().take(keep_head_chars).collect();
     let tail_len = keep_tail_chars.min(total.saturating_sub(keep_head_chars));
-    let tail: String = text
-        .chars()
-        .skip(total.saturating_sub(tail_len))
-        .collect();
+    let tail: String = text.chars().skip(total.saturating_sub(tail_len)).collect();
     let removed = total.saturating_sub(head.chars().count() + tail.chars().count());
     if removed == 0 {
         return None;

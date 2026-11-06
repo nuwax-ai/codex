@@ -502,8 +502,6 @@ fn daemon_eligibility_preserves_launch_options_and_explains_exclusions() {
 }
 
 #[test]
-
-
 #[test]
 fn daemon_exclusion_warning_snapshot() {
     use crate::history_cell::HistoryCell;

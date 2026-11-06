@@ -137,11 +137,7 @@ pub(crate) fn select_compaction_region(
         return None;
     }
     let tokens: i64 = tokens[start..end].iter().sum();
-    Some(CompactionRegion {
-        start,
-        end,
-        tokens,
-    })
+    Some(CompactionRegion { start, end, tokens })
 }
 
 #[cfg(test)]

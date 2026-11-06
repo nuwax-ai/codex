@@ -500,7 +500,10 @@ impl AuthModeWidget {
         let mut lines: Vec<Line> = if self.highlighted_mode.is_alternative() {
             vec!["  Sign in another way".into(), "".into()]
         } else if self.bedrock_setup_enabled || self.gcp_setup_enabled {
-            vec!["  Choose how you want to use Nuwax Harness.".into(), "".into()]
+            vec![
+                "  Choose how you want to use Nuwax Harness.".into(),
+                "".into(),
+            ]
         } else {
             vec![
                 Line::from(vec![

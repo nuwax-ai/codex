@@ -4,8 +4,8 @@
 
 use super::*;
 use crate::legacy_core::config::ConfigBuilder;
-use crate::legacy_core::config::load_config_toml_with_layer_stack_and_env_seed;
 use crate::legacy_core::config::ConfigOverrides;
+use crate::legacy_core::config::load_config_toml_with_layer_stack_and_env_seed;
 use clap::Parser;
 use codex_app_server_protocol::AskForApproval;
 use codex_app_server_protocol::ClientRequest;
@@ -864,7 +864,7 @@ fn app_server_target_for_launch_uses_local_daemon_for_default_socket() -> color_
             /*can_reuse_implicit_local_daemon*/ !explicit,
             /*workload_identity_selected*/ false,
             /*exec_server_url*/ None,
-        /*env_seed_overrides*/ &[],
+            /*env_seed_overrides*/ &[],
         )?;
         assert_eq!(
             target,
@@ -890,7 +890,7 @@ fn app_server_target_for_launch_preserves_executor_selection() -> color_eyre::Re
                 /*can_reuse_implicit_local_daemon*/ true,
                 /*workload_identity_selected*/ false,
                 Some(std::ffi::OsStr::new(executor)),
-            /*env_seed_overrides*/ &[],
+                /*env_seed_overrides*/ &[],
             )?,
             AppServerTarget::Embedded,
         );
@@ -950,7 +950,7 @@ fn workload_identity_requires_an_embedded_app_server() -> color_eyre::Result<()>
             /*can_reuse_implicit_local_daemon*/ true,
             /*workload_identity_selected*/ true,
             /*exec_server_url*/ None,
-        /*env_seed_overrides*/ &[],
+            /*env_seed_overrides*/ &[],
         )?,
         AppServerTarget::Embedded
     );

@@ -142,7 +142,10 @@ fn a_cut_never_lands_inside_a_tool_pair() {
 
 #[test]
 fn nothing_to_replace_when_the_surface_is_tiny() {
-    assert_eq!(select_compaction_region(&[message("only turn")], 1_000, 0), None);
+    assert_eq!(
+        select_compaction_region(&[message("only turn")], 1_000, 0),
+        None
+    );
     assert_eq!(select_compaction_region(&[], 0, 0), None);
 }
 
@@ -163,7 +166,10 @@ fn an_id_less_cut_falls_back_to_an_earlier_id_boundary() {
     let cap = per_item[0] + per_item[1];
     let region = select_compaction_region(&items, retain, cap).expect("a region");
     assert_eq!(region.end, 1, "falls back to the earlier id boundary");
-    assert_eq!(region.tokens, per_item[0], "bookkeeping covers the real span");
+    assert_eq!(
+        region.tokens, per_item[0],
+        "bookkeeping covers the real span"
+    );
     let balances = cut_balances(&items);
     assert_eq!(balances[region.end], 0, "cut split a tool pair");
 }

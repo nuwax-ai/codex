@@ -1015,7 +1015,9 @@ pub(crate) async fn run_migration_compact_task(
         if window <= 0 {
             break;
         }
-        let history_tokens = history.estimate_token_count(turn_context.as_ref()).unwrap_or(0);
+        let history_tokens = history
+            .estimate_token_count(turn_context.as_ref())
+            .unwrap_or(0);
         // Reported usage covers the fixed request prefix (instructions + tools) that
         // the history estimate does not, so charge it against the window instead of
         // pretending the whole window is available for history.
@@ -1082,12 +1084,9 @@ pub(crate) async fn run_migration_compact_task(
             sess.emit_turn_item_started(&turn_context, &item).await;
             announced = true;
         }
-        let summary = summarize_migration_region(
-            &sess,
-            &turn_context,
-            &items[region.start..region.end],
-        )
-        .await?;
+        let summary =
+            summarize_migration_region(&sess, &turn_context, &items[region.start..region.end])
+                .await?;
         if summary.trim().is_empty() {
             return Err(CodexErr::Stream(
                 "migration compaction produced an empty summary".to_string(),
@@ -1105,8 +1104,10 @@ pub(crate) async fn run_migration_compact_task(
             reason: codex_history::SurfaceReplacementReason::WindowShrink,
             supersedes: Vec::new(),
         };
-        sess.persist_rollout_items(&[codex_history::RolloutItem::SurfaceReplacement(Box::new(record))])
-            .await;
+        sess.persist_rollout_items(&[codex_history::RolloutItem::SurfaceReplacement(Box::new(
+            record,
+        ))])
+        .await;
 
         // Apply the same cut in memory so the rest of this turn sees the smaller
         // surface without waiting for a reload.
@@ -1177,7 +1178,10 @@ async fn summarize_migration_region(
     );
 
     let annotated_input = scratch
-        .for_prompt_annotated(&model_info.input_modalities, sess.services.image_store.as_ref())
+        .for_prompt_annotated(
+            &model_info.input_modalities,
+            sess.services.image_store.as_ref(),
+        )
         .await;
     let input_provenance = crate::model_output_projection::sources_for_input(&annotated_input);
     let mut turn_input = annotated_input

@@ -1822,7 +1822,9 @@ Run nuwax-harness doctor without --summary for detailed diagnostics.
         assert!(rendered.contains("npm: \u{1b}[38;5;240mno"));
         assert!(rendered.contains("\u{1b}[38;5;240munknown"));
         assert!(rendered.contains("\u{1b}[38;5;10mok"));
-        assert!(rendered.contains("\u{1b}[38;5;117m~/code/nuwax-harness/target/debug/nuwax-harness"));
+        assert!(
+            rendered.contains("\u{1b}[38;5;117m~/code/nuwax-harness/target/debug/nuwax-harness")
+        );
         assert!(rendered.contains("\u{1b}[38;5;244m"));
     }
 
@@ -1983,8 +1985,7 @@ Run nuwax-harness doctor without --summary for detailed diagnostics.
 
     #[test]
     fn copyable_items_use_check_status() {
-        let description =
-            "/tmp/logs_2.sqlite, ~/goals_1.sqlite integrity check; try --summary or `nuwax-harness doctor`";
+        let description = "/tmp/logs_2.sqlite, ~/goals_1.sqlite integrity check; try --summary or `nuwax-harness doctor`";
         let details = r"see ./logs, ../goals. C:\logs, D:/goals. c:\logs, \\server\share\logs, \\?\C:\logs, \\?\UNC\server\share\logs, \\.\pipe\nuwax-harness, \??\C:\logs, \DosDevices\C:\logs, \rooted. http://localhost:8080: https://example.com; wss://example.com) and `/tmp/my data/logs_2.sqlite`";
         let mut rendered = String::new();
 

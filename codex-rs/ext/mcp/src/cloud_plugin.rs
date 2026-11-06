@@ -18,9 +18,9 @@ use codex_extension_api::TurnLifecycleContributor;
 use codex_extension_api::TurnStartInput;
 use codex_extension_api::TurnStartPhase;
 use codex_features::Feature;
-use codex_mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use codex_mcp::McpResourceClient;
 use codex_mcp::McpResourceClientAuthKey;
+use codex_mcp::NUWAX_APPS_MCP_SERVER_NAME;
 use std::collections::HashSet;
 
 const MAX_PROJECTED_CLOUD_PLUGINS: usize = 100;

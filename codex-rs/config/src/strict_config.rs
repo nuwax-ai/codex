@@ -140,7 +140,11 @@ pub(crate) fn unknown_model_provider_toml_value_path(value: &TomlValue) -> Vec<V
     // The accepted-key set comes from the generated schema: it lists every
     // deserializable field regardless of `skip_serializing_if` round-trips.
     let schema = schemars::schema_for!(codex_model_provider_info::ModelProviderInfo);
-    let Some(serialized_provider) = schema.schema.object.as_ref().map(|object| &object.properties)
+    let Some(serialized_provider) = schema
+        .schema
+        .object
+        .as_ref()
+        .map(|object| &object.properties)
     else {
         return Vec::new();
     };

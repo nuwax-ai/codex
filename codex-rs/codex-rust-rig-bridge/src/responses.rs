@@ -199,10 +199,17 @@ async fn stream_responses_via_rig_inner(
     let mut wire_request = request.clone();
     wire_request.max_output_tokens = request.max_output_tokens.or(api_provider.max_output_tokens);
     let projected = project_cross_protocol_history(&mut wire_request.input);
-    eprintln!("PROBE wire input kinds={:?}", wire_request.input.iter().map(|item| match item {
-        codex_protocol::models::ResponseItem::Compaction { .. } => "compaction",
-        _ => "other",
-    }).collect::<Vec<_>>());
+    eprintln!(
+        "PROBE wire input kinds={:?}",
+        wire_request
+            .input
+            .iter()
+            .map(|item| match item {
+                codex_protocol::models::ResponseItem::Compaction { .. } => "compaction",
+                _ => "other",
+            })
+            .collect::<Vec<_>>()
+    );
 
     let model = request.model.clone();
     tracing::info!(

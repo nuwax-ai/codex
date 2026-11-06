@@ -1,5 +1,4 @@
 use super::*;
-use codex_protocol::openai_models::ModelOrigin;
 use crate::config::PermissionProfileState;
 use crate::config::test_config;
 use crate::session::session::SessionConfiguration;
@@ -18,6 +17,7 @@ use codex_protocol::models::BaseInstructionsProvenance;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::openai_models::AutoReviewMessages;
 use codex_protocol::openai_models::GuardianV2ModelConfig;
+use codex_protocol::openai_models::ModelOrigin;
 use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::openai_models::TruncationPolicyConfig;
 use codex_protocol::permissions::FileSystemAccessMode;
@@ -504,7 +504,11 @@ async fn ratio_only_compact_threshold_survives_override_resolution() {
     let catalog = ModelsResponse {
         models: vec![model],
     };
-    let models_manager = StaticModelsManager::new(/*auth_manager*/ None, catalog.clone(), ModelOrigin::Bundled);
+    let models_manager = StaticModelsManager::new(
+        /*auth_manager*/ None,
+        catalog.clone(),
+        ModelOrigin::Bundled,
+    );
 
     let mut config = test_config().await;
     config.model = Some("model-a".to_string());
@@ -544,7 +548,11 @@ async fn tool_search_disabled_config_survives_override_resolution() {
     let catalog = ModelsResponse {
         models: vec![model],
     };
-    let models_manager = StaticModelsManager::new(/*auth_manager*/ None, catalog.clone(), ModelOrigin::Bundled);
+    let models_manager = StaticModelsManager::new(
+        /*auth_manager*/ None,
+        catalog.clone(),
+        ModelOrigin::Bundled,
+    );
 
     let mut settings = configured_settings();
     settings.collaboration_mode = settings.collaboration_mode.with_updates(

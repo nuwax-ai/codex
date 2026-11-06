@@ -212,7 +212,11 @@ fn baked_personality_section_is_preserved_without_explicit_none() {
             .instructions_template = Some(instructions.to_string());
 
         assert_eq!(
-            render_model_instructions(&with_config_overrides(model, &ModelOrigin::Synthetic, &config)),
+            render_model_instructions(&with_config_overrides(
+                model,
+                &ModelOrigin::Synthetic,
+                &config
+            )),
             instructions
         );
     }

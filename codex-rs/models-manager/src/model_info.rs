@@ -29,10 +29,7 @@ pub fn with_config_overrides(
                 context_window,
                 "model_context_window must be a positive token count; ignoring it"
             );
-        } else if matches!(
-            origin,
-            ModelOrigin::Synthetic | ModelOrigin::Vendor { .. }
-        ) {
+        } else if matches!(origin, ModelOrigin::Synthetic | ModelOrigin::Vendor { .. }) {
             // Fork (nuwax-codex): fallback and vendor-catalog models both take
             // an explicit override in full. Fallback metadata carries only a
             // synthetic 272k placeholder, not vendor knowledge; a vendor

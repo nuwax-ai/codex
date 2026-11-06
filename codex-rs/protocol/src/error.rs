@@ -206,9 +206,7 @@ pub enum CodexErrorDetails {
     ConnectionFailed(ConnectionFailedError),
     #[error("Quota exceeded. Check your plan and billing details.")]
     QuotaExceeded,
-    #[error(
-        "To use Nuwax Harness with your ChatGPT plan, upgrade to Plus."
-    )]
+    #[error("To use Nuwax Harness with your ChatGPT plan, upgrade to Plus.")]
     UsageNotIncluded,
     #[error("We’re currently experiencing high demand, which may cause temporary errors.")]
     InternalServerError,

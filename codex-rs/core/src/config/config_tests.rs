@@ -14247,14 +14247,32 @@ fn migration_compact_settings_validate_their_knobs() {
     for (ratio, retain, span, ranges, expected) in [
         (Some(0.0), None, None, None, "migration_compact_ratio"),
         (Some(1.5), None, None, None, "migration_compact_ratio"),
-        (None, Some(1.0), None, None, "migration_compact_retain_ratio"),
-        (None, Some(-0.1), None, None, "migration_compact_retain_ratio"),
-        (None, None, Some(0.0), None, "migration_compact_max_span_ratio"),
+        (
+            None,
+            Some(1.0),
+            None,
+            None,
+            "migration_compact_retain_ratio",
+        ),
+        (
+            None,
+            Some(-0.1),
+            None,
+            None,
+            "migration_compact_retain_ratio",
+        ),
+        (
+            None,
+            None,
+            Some(0.0),
+            None,
+            "migration_compact_max_span_ratio",
+        ),
         (None, None, None, Some(0), "migration_compact_max_ranges"),
         (None, None, None, Some(65), "migration_compact_max_ranges"),
     ] {
-        let error = MigrationCompactSettings::from_toml(ratio, retain, span, ranges)
-            .expect_err(expected);
+        let error =
+            MigrationCompactSettings::from_toml(ratio, retain, span, ranges).expect_err(expected);
         assert!(
             error.to_string().contains(expected),
             "error should name {expected}: {error}"

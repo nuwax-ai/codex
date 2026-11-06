@@ -98,7 +98,9 @@ pub struct GetArgs {
 }
 
 #[derive(Debug, clap::Parser)]
-#[command(override_usage = "nuwax-harness mcp add [OPTIONS] <NAME> (--url <URL> | -- <COMMAND>...)")]
+#[command(
+    override_usage = "nuwax-harness mcp add [OPTIONS] <NAME> (--url <URL> | -- <COMMAND>...)"
+)]
 pub struct AddArgs {
     /// Name for the MCP server configuration.
     pub name: String,
@@ -639,8 +641,9 @@ async fn run_logout(config: &Config, logout_args: LogoutArgs) -> Result<()> {
         let auth_manager =
             AuthManager::shared_from_config(config, /*enable_codex_api_key_env*/ true).await?;
         let auth = auth_manager.auth().await;
-        let scope = ema_auth_scope(auth.as_ref())
-            .context("Sign in to your Nuwax Harness account before removing enterprise authorization")?;
+        let scope = ema_auth_scope(auth.as_ref()).context(
+            "Sign in to your Nuwax Harness account before removing enterprise authorization",
+        )?;
         // Cleanup must remain available even when this server is no longer eligible
         // for EMA (for example, after disabling the feature or changing its transport).
         let profile = config
@@ -781,7 +784,9 @@ async fn run_list(config: &Config, list_args: ListArgs) -> Result<()> {
     }
 
     if entries.is_empty() {
-        println!("No MCP servers configured yet. Try `nuwax-harness mcp add my-tool -- my-command`.");
+        println!(
+            "No MCP servers configured yet. Try `nuwax-harness mcp add my-tool -- my-command`."
+        );
         return Ok(());
     }
 
