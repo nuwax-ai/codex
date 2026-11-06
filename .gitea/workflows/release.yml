@@ -83,10 +83,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          server="${GITHUB_SERVER_URL%/}"; host="${server#http://}"; host="${host#https://}"
+          server="${GITHUB_SERVER_URL%/}"
+          host="${server#http://}"; host="${host#https://}"
           auth=""; [ -n "${GH_TOKEN:-}" ] && auth="oauth2:${GH_TOKEN}@"
+          url="http://${auth}${host}/${GITHUB_REPOSITORY}.git"
           rm -rf ./* ./.git 2>/dev/null || true
-          git clone --depth 1 --branch "${TAG}" "http://${auth}${host}/${GITHUB_REPOSITORY}.git" .
+          if git clone --depth 1 --branch "${TAG}" "${url}" . 2>/tmp/clone.err; then
+            echo "checked out ${TAG} with git"
+          else
+            # macOS runners refuse the git connection even though curl to the
+            # very same instance answers 200 (Local Network privacy applies per
+            # binary). The archive API is the way in.
+            echo "git clone failed, falling back to the archive API:"
+            sed -n '1,4p' /tmp/clone.err
+            curl -fsSL -H "Authorization: token ${GH_TOKEN}" \
+              "${server}/api/v1/repos/${GITHUB_REPOSITORY}/archive/${TAG}.tar.gz" \
+              | tar -xz --strip-components=1
+            echo "checked out ${TAG} from the API archive"
+          fi
 
       # Host-mode runners keep their state on a big disk, but the layout
       # differs per OS (the Linux box has /data/nvme*, the Macs use $HOME).

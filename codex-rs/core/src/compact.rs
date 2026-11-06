@@ -978,3 +978,185 @@ async fn drain_to_completed(
 #[cfg(test)]
 #[path = "compact_tests.rs"]
 mod tests;
+
+/// Migration compaction: fit the conversation into the current model's window
+/// using only the current model.
+///
+/// A conversation that grew on a large-window model cannot be handed to a small
+/// one by asking the old model to summarize it (that model may be gone). Instead
+/// each step replaces one bounded, pairing-safe range with a summary the *new*
+/// model writes, then remeasures. The bound is what makes this work: the summary
+/// request never has to carry the whole history.
+///
+/// Returns whether anything was replaced.
+pub(crate) async fn run_migration_compact_task(
+    sess: Arc<Session>,
+    step_context: Arc<StepContext>,
+) -> CodexResult<bool> {
+    /// Never spend more than this many summary calls per migration.
+    const MAX_RANGES: usize = 8;
+    /// Fraction of the window a summary may consume (the rest is headroom).
+    const BUDGET_RATIO: f64 = 0.8;
+    /// Fraction of the window kept verbatim, so the next step stays in context.
+    const RETAIN_RATIO: f64 = 0.16;
+    /// Upper bound for one summary request, relative to the window.
+    const MAX_SPAN_RATIO: f64 = 0.5;
+
+    let turn_context = step_context.turn.clone();
+    let mut replaced = false;
+
+    for _ in 0..MAX_RANGES {
+        let history = sess.clone_history().await;
+        let status =
+            crate::session::context_window::context_window_token_status(&sess, &turn_context).await;
+        let Some(window) = status.full_context_window_limit else {
+            break;
+        };
+        if window <= 0 {
+            break;
+        }
+        let history_tokens = history.estimate_token_count(turn_context.as_ref()).unwrap_or(0);
+        // Reported usage covers the fixed request prefix (instructions + tools) that
+        // the history estimate does not, so charge it against the window instead of
+        // pretending the whole window is available for history.
+        let prefix_tokens = status.active_context_tokens.saturating_sub(history_tokens).max(0);
+        let budget = ((window as f64 * BUDGET_RATIO) as i64).saturating_sub(prefix_tokens);
+        if history_tokens <= budget {
+            break;
+        }
+
+        let retain = (window as f64 * RETAIN_RATIO) as i64;
+        let max_span = ((window as f64 * MAX_SPAN_RATIO) as i64).max(1);
+        let items = history.annotated_items();
+        let Some(region) =
+            crate::session::compaction_region::select_compaction_region(items, retain, max_span)
+        else {
+            return Err(CodexErr::Stream(
+                "migration compaction: no pairing-safe range can reduce the context".to_string(),
+            ));
+        };
+
+        // The record hides history by the id of the first item the model must
+        // still see; skip forward until an item actually carries an id.
+        let mut boundary_index = region.end;
+        let boundary_id = loop {
+            if let Some(id) = items.get(boundary_index).and_then(|item| item.id()) {
+                break id.as_str().to_string();
+            }
+            if boundary_index + 1 >= items.len() {
+                return Err(CodexErr::Stream(
+                    "migration compaction: no identified history item to resume at".to_string(),
+                ));
+            }
+            boundary_index += 1;
+        };
+
+        let summary = summarize_migration_region(
+            &sess,
+            &turn_context,
+            &items[region.start..boundary_index],
+        )
+        .await?;
+        if summary.trim().is_empty() {
+            return Err(CodexErr::Stream(
+                "migration compaction produced an empty summary".to_string(),
+            ));
+        }
+
+        let record = codex_history::SurfaceReplacementItem {
+            compaction_id: uuid::Uuid::new_v4().to_string(),
+            resume_at_item_id: boundary_id,
+            summary: summary.clone(),
+            provider: turn_context.config.model_provider_id.clone(),
+            model: turn_context.model_info().slug.clone(),
+            shadowed_tokens: region.tokens,
+            retained_tail_tokens: (window as f64 * RETAIN_RATIO) as i64,
+            reason: codex_history::SurfaceReplacementReason::WindowShrink,
+            supersedes: Vec::new(),
+        };
+        sess.persist_rollout_items(&[RolloutItem::SurfaceReplacement(Box::new(record))])
+            .await;
+
+        // Apply the same cut in memory so the rest of this turn sees the smaller
+        // surface without waiting for a reload.
+        let mut replacement = Vec::with_capacity(items.len() - boundary_index + 1);
+        replacement.extend(items[boundary_index..].iter().cloned());
+        replacement.insert(
+            0,
+            codex_history::ResponseItemEnvelope {
+                item: ResponseItem::Message {
+                    id: None,
+                    role: "user".to_owned(),
+                    content: vec![ContentItem::InputText {
+                        text: format!("{SUMMARY_PREFIX}\n{summary}"),
+                    }],
+                    phase: None,
+                    status: None,
+                    encrypted_content: None,
+                    internal_chat_message_metadata_passthrough: None,
+                },
+                metadata: None,
+            },
+        );
+        sess.replace_history(
+            replacement.into_iter().map(|item| item.item).collect(),
+            /*reference_context_item*/ None,
+        )
+        .await;
+        replaced = true;
+    }
+
+    Ok(replaced)
+}
+
+/// One summarization call over a bounded slice of history.
+async fn summarize_migration_region(
+    sess: &Arc<Session>,
+    turn_context: &TurnContext,
+    region: &[codex_history::ResponseItemEnvelope],
+) -> CodexResult<String> {
+    let mut input: Vec<ResponseItem> = region.iter().cloned().map(|item| item.item).collect();
+    input.push(ResponseItem::Message {
+        id: None,
+        role: "user".to_owned(),
+        content: vec![ContentItem::InputText {
+            text: SUMMARIZATION_PROMPT.to_string(),
+        }],
+        phase: None,
+        status: None,
+        encrypted_content: None,
+        internal_chat_message_metadata_passthrough: None,
+    });
+
+    let base_instructions = sess.get_prompt_base_instructions().await;
+    let prompt = Prompt {
+        input,
+        input_provenance: Default::default(),
+        base_instructions,
+        cyber_access_program: turn_context.cyber_access_program,
+        ..Default::default()
+    };
+    let metadata = CompactionTurnMetadata::new(
+        CompactionTrigger::Auto,
+        CompactionReason::ContextWindow,
+        CompactionImplementation::Local,
+        CompactionPhase::PreTurn,
+    );
+    let responses_metadata = sess
+        .compaction_responses_metadata(turn_context, metadata)
+        .await;
+    let mut client_session = sess.services.model_client.new_session();
+    let response_key = sess.next_sampling_response_key(&turn_context.sub_id);
+    let response = drain_to_completed(
+        sess,
+        turn_context,
+        &mut client_session,
+        &responses_metadata,
+        &prompt,
+        CompactionPhase::PreTurn,
+        &response_key,
+    )
+    .await?;
+    get_last_assistant_message_from_turn(response.output.iter())
+        .ok_or_else(|| CodexErr::Stream("migration compaction returned no summary".to_string()))
+}
