@@ -147,6 +147,28 @@ fn nothing_to_replace_when_the_surface_is_tiny() {
 }
 
 #[test]
+fn an_id_less_cut_falls_back_to_an_earlier_id_boundary() {
+    // The validated cut lands on an id-less item; shrinking the region to the
+    // nearest earlier id-carrying, pairing-safe boundary keeps the span under
+    // the cap and retains MORE tail, so it is always legal (codex review
+    // round 2: "no id ⇒ None" was too strong).
+    let items = vec![
+        message("old turn"),
+        message("second turn"),
+        message_with_id("idless turn", None),
+        message("tail turn"),
+    ];
+    let per_item = tokens(&items);
+    let retain = per_item[3] + 1;
+    let cap = per_item[0] + per_item[1];
+    let region = select_compaction_region(&items, retain, cap).expect("a region");
+    assert_eq!(region.end, 1, "falls back to the earlier id boundary");
+    assert_eq!(region.tokens, per_item[0], "bookkeeping covers the real span");
+    let balances = cut_balances(&items);
+    assert_eq!(balances[region.end], 0, "cut split a tool pair");
+}
+
+#[test]
 fn a_cut_without_an_id_carrier_is_rejected() {
     // Real-time items get ids assigned on record, but old checkpoint
     // replacement history can carry id-less entries. A boundary that cannot

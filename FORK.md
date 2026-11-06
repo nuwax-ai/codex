@@ -246,12 +246,13 @@ turn 级超窗处理才会触发（官方代码里这两个机制只认该分类
 
 **极限场景（80 万 token → 32K 窗口，回归测试
 `compact::tests::migration_compact_extreme_800k_history_converges_into_32k_window`）**：
-单次迁移最多摘 `max_ranges`(8) 段，只能移走约 7.2 万 token，**一轮装不下**；
-每个 turn 触发一次迁移，默认配置约 11 轮收敛（806,379 → 15,308 token，79 次摘要
-请求）。等不及的用户可把 `migration_compact_max_ranges` 提到 64：同样 79 次摘要
-但 3 轮收敛。摘要失败仍然只 warn 回退，不会静默丢历史。
+单次迁移 pass 最多摘 `max_ranges`(8) 段，只能移走约 7.2 万 token，**一个 pass 装不下**。
+`run_turn` 内**循环执行迁移 pass 直到历史入预算**（2026-11-06 第二轮审查起，此前
+是每 turn 一次、约 11 个 turn 收敛）：默认配置 806,379 → 15,308 token 需 ~11 个
+pass / 79 次摘要请求，**单个 turn 内完成**；`max_ranges=64` 时 3 个 pass。turn 级
+硬上限 32 个 pass 防病理空转，摘要失败仍只 warn 回退。
 
-**审查加固（2026-11-06，codex 独立审查三项）**：
+**审查加固（2026-11-06，codex 两轮独立审查）**：
 - **旧迁移不覆盖新 checkpoint**：回放只在**有效 Compacted checkpoint 之后**的
   记录里选生效的 `SurfaceReplacement`——checkpoint 的 `replacement_history`
   是权威面，其之前的迁移记录已被吸收，再套用旧边界会删掉新 checkpoint 特意
@@ -263,18 +264,24 @@ turn 级超窗处理才会触发（官方代码里这两个机制只认该分类
   不再能把 input+output 顶出目标窗口。回归：极限测试逐请求断言
   `max_output_tokens == 2048` 且解压后 `input(4B/token) + 2048 ≤ window`。
 - **切点联合约束**：`select_compaction_region` 的边界必须落在带 rollout id 的
-  条目上；由于尾部保留与 span 上限都是单调约束，任何前移都会破坏其一，所以
-  无 id 的切点直接无解（None）而非跳到孤立工具结果。旧 checkpoint 的无 id
-  嵌套条目由此安全拒绝。另：固定前缀吃满预算（budget ≤ 0）时明确跳过，
-  不再退化成 1-token span。
+  条目上。前移被单调性禁止（尾部保留与 span 上限都停在各自最大合法位置，
+  end+1 必破其一）；**无 id 切点向后回退**到最近的"带 id 且配对安全"边界
+  （缩小区间必然满足 span/尾部约束）。不存在任何合法边界才返回 None，绝不
+  跳到孤立工具结果。另：固定前缀吃满预算（budget ≤ 0）时明确跳过，不再退化
+  成 1-token span。
+- **未收敛不得落入旧 trim 路径**（第二轮 P1）：迁移 pass 耗尽 `max_ranges` 而
+  历史仍超预算时，若继续走常规压缩/推理，旧 trim 循环会**未经摘要地删除最老
+  条目**——内容从未进入任何成功请求即消失（实测丢 14/64 段）。修复即上述
+  turn 内循环：收敛前不把超窗历史交给会丢未摘要前缀的 fallback。
 
 **端到端 turn 级验证**（`migration_compact_end_to_end_turn_completes_and_keeps_
 recent_context`）：对 32K"网关"（mock 按同口径拒收超窗请求）跑完整 `run_turn`。
-实证链路：迁移 pass（8 段摘要）→ 推理超窗被拒 → `fork_overflow_recoverable` 臂
-触发本地 MidTurn 压缩 → trim-retry 逐条收敛 → 最终推理在窗内完成，保留尾部
-recent fact、膨胀载荷全部被摘要取代。两个前置条件：TokenBudget 特性会关闭
-该恢复臂（测试显式禁用）；OpenAI 第一方 provider 默认 `remote_compaction=V2`，
-32K 本地网关场景必须显式 `Unsupported`（桥路径 provider 本就解析为 Unsupported）。
+断言**覆盖不变量**：离开上下文的每段原始历史，必须先进入过至少一个被网关
+**接受**的摘要请求（旧 trim 删除的内容只会出现在被拒请求里，过不了该断言）；
+最终推理在窗内完成、保留尾部 recent fact、最老 filler 已被摘要。两个前置条件：
+TokenBudget 特性会关闭溢出恢复臂（测试显式禁用）；OpenAI 第一方 provider 默认
+`remote_compaction=V2`，32K 本地网关场景必须显式 `Unsupported`（桥路径 provider
+本就解析为 Unsupported）。
 
 **配置键**（`config.toml` 顶层，缺省即下列默认值；越界 fail-fast 并点名键）：
 

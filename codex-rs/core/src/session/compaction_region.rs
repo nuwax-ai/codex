@@ -60,10 +60,11 @@ fn item_tokens(items: &[ResponseItemEnvelope]) -> Vec<i64> {
 
 /// Pick the oldest span that can be replaced while retaining `retain_tail_tokens`
 /// verbatim and keeping the span itself under `max_span_tokens`. The returned
-/// boundary must additionally land on an item that carries a rollout id: the
-/// replacement record resumes by id, and no forward position can satisfy the
-/// tail/span constraints (both monotone), so an id-less cut has no legal
-/// adjustment and yields `None`.
+/// boundary must additionally land on an item that carries a rollout id (the
+/// replacement record resumes by id): forward moves are impossible (the
+/// monotone tail/span constraints each stop at their largest valid position),
+/// so an id-less cut shrinks backward to the nearest earlier id-carrying,
+/// pairing-safe boundary. Only the absence of any such boundary yields `None`.
 ///
 /// `max_span_tokens <= 0` disables the cap (used by tests).
 pub(crate) fn select_compaction_region(
@@ -112,22 +113,27 @@ pub(crate) fn select_compaction_region(
         }
     }
 
-    let start = 0usize;
-    if start >= end || end >= items.len() {
+    let mut end = end;
+    if end == 0 || end >= items.len() {
         return None;
     }
-
     // The replacement record hides history by the id of the first item the
-    // model must still see, so the cut must land on an id carrier — and it
-    // cannot be moved forward onto one: the retain walk stopped at the
-    // LARGEST end whose tail still satisfies `retain_tail_tokens` (end+1
-    // already violates it) and the span walk stopped at the LARGEST end
-    // under `max_span_tokens` (end+1 already exceeds it). Both invariants
-    // are monotone, so any forward position breaks at least one guarantee
-    // the cut was validated for. An id-less boundary therefore means there
-    // is no legal cut — report None instead of silently orphaning history
-    // (an old checkpoint's replacement entries can lack ids).
-    if items[end].id().is_none() {
+    // model must still see, so the cut must land on an id carrier. Forward
+    // moves stay forbidden (the retain walk and span walk each stop at the
+    // largest position satisfying their monotone constraint, so end+1 breaks
+    // one of them), but SHRINKING the region is always safe: a smaller span
+    // stays under the cap and retains more tail. Walk back to the nearest
+    // earlier boundary that carries an id and is pairing-safe; only the
+    // absence of any such position means no legal cut exists.
+    while items[end].id().is_none() || prefix[end] != 0 {
+        if end == 1 {
+            // The only remaining candidate would be 0, an empty region.
+            return None;
+        }
+        end -= 1;
+    }
+    let start = 0usize;
+    if start >= end {
         return None;
     }
     let tokens: i64 = tokens[start..end].iter().sum();

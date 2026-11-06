@@ -392,7 +392,8 @@ async fn migration_compact_extreme_800k_history_converges_into_32k_window() -> a
         tokens_after_first_pass
     );
 
-    // Repeated passes (one per turn) must converge and never exceed the window.
+    // Repeated passes (as run_turn loops them within one turn) must converge
+    // and never exceed the window.
     let mut passes = 1usize;
     loop {
         passes += 1;
@@ -451,11 +452,15 @@ fn annotated(items: Vec<ResponseItem>) -> Vec<ResponseItemEnvelope> {
 }
 
 /// End-to-end turn on a downshifted session (FORK.md §5.3): the whole
-/// `run_turn` pipeline — migration compaction, the regular pre-sampling
-/// compact decision, and the actual inference request — must cooperate
-/// instead of the old trim path silently eating the context. The mock acts
-/// as a 32K-window gateway: every request whose input (same 4 bytes/token
-/// estimate) does not fit is answered with `context_length_exceeded`.
+/// `run_turn` pipeline — repeated bounded migration passes, the regular
+/// pre-sampling compact decision, and the actual inference request — must
+/// converge WITHIN the turn and never hand unconverged history to the legacy
+/// trim path, which deletes the oldest items without summarizing them. The
+/// mock acts as a 32K-window gateway: every request whose input (same 4
+/// bytes/token estimate) does not fit is answered with
+/// `context_length_exceeded`. The coverage assertion at the end is the real
+/// invariant: anything that leaves the context must first have been read by
+/// an accepted (successfully summarized) request.
 #[tokio::test]
 async fn migration_compact_end_to_end_turn_completes_and_keeps_recent_context() -> anyhow::Result<()>
 {
@@ -619,21 +624,38 @@ async fn migration_compact_end_to_end_turn_completes_and_keeps_recent_context() 
         last.contains("keep-this-recent-fact"),
         "the retained tail's recent fact survives every compaction path"
     );
-    // The bulky filler payloads must be gone (summarized away); the short
-    // user-message skeletons may legitimately survive the regular compact,
-    // which keeps every real user message.
+    // The oldest filler must be summarized away; the retained tail keeps
+    // the last few fillers verbatim by design (retain_ratio), so only the
+    // oldest markers are expected to disappear.
     assert!(
-        !last.contains("context payload "),
-        "the bulky filler payloads must be summarized away"
+        !last.contains("filler-payload-0:"),
+        "the oldest filler must be summarized away"
     );
     assert!(
         last.contains("turn result") || reply.as_deref().is_some_and(|text| !text.is_empty()),
         "the turn produced a model reply: {reply:?}"
     );
-    // Some requests were rejected by the 32K gateway (the legacy trim path
-    // grinding after the migration pass) — recorded so regressions in how
-    // many rejections are needed are visible, without asserting an exact
-    // count that would couple the test to retry internals.
+    // Coverage invariant (codex review round 2): every piece of original
+    // history that left the context must first have been READ by some
+    // gateway-ACCEPTED request — i.e. summarized by a bounded migration span
+    // the small model actually processed. Content removed by the legacy trim
+    // path only ever appears in REJECTED requests and fails this check: that
+    // is silent data loss, not compaction.
+    for index in 0..64 {
+        let marker = format!("filler-payload-{index}:");
+        if last.contains(&marker) {
+            continue; // kept verbatim in the retained tail
+        }
+        let summarized = accepted.iter().any(|body| {
+            std::str::from_utf8(body)
+                .map(|text| text.contains(&marker))
+                .unwrap_or(false)
+        });
+        assert!(
+            summarized,
+            "filler {index} left the context without ever entering an accepted request"
+        );
+    }
     eprintln!(
         "e2e downshift turn: {} requests, {rejected} rejected by the window gate",
         bodies.len()

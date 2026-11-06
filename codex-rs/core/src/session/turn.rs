@@ -222,11 +222,40 @@ pub(crate) async fn run_turn(
     // Migration compaction runs first: a conversation that outgrew the current
     // model's window cannot be repaired by the whole-history compact below,
     // because that request would not fit either (FORK.md, "迁移压缩").
-    if auto_compaction_enabled
-        && let Err(err) =
-            crate::compact::run_migration_compact_task(sess.clone(), turn_context.clone()).await
-    {
-        warn!("migration compaction failed: {err}; falling back to the regular compact path");
+    // The passes repeat until the history fits the target window: a single
+    // pass is capped at `migration_compact_max_ranges` spans and may not
+    // converge, and letting an unconverged turn fall through to the compact
+    // below would hand the overflow to the legacy trim loop, which deletes
+    // the oldest items WITHOUT summarizing them — silent loss of history the
+    // bounded migration exists to prevent. Convergence ends the loop
+    // (`Ok(false)` = nothing left to replace); a hard cap bounds churn when
+    // replacement stops making progress.
+    if auto_compaction_enabled {
+        const MAX_MIGRATION_PASSES_PER_TURN: usize = 32;
+        let mut passes = 0usize;
+        loop {
+            match crate::compact::run_migration_compact_task(
+                sess.clone(),
+                turn_context.clone(),
+            )
+            .await
+            {
+                Ok(/*replaced*/ true) => {}
+                Ok(false) => break,
+                Err(err) => {
+                    warn!("migration compaction failed: {err}; falling back to the regular compact path");
+                    break;
+                }
+            }
+            passes += 1;
+            if passes >= MAX_MIGRATION_PASSES_PER_TURN {
+                warn!(
+                    passes,
+                    "migration compaction: pass cap reached without converging; falling back to the regular compact path"
+                );
+                break;
+            }
+        }
     }
     if auto_compaction_enabled
         && let Err(err) = run_pre_sampling_compact(
