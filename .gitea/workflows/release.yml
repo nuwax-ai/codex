@@ -94,13 +94,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          case "${{ runner.os }}" in
+          # `uname -s` rather than runner.os: Gitea's runner.os does not match
+          # the GitHub casing here, and a wrong match silently picked the macOS
+          # layout on the Linux box.
+          case "$(uname -s)" in
             Linux)
               root=/data/nvme1/gitea-ci; cache=/data/nvme0/ci-cache
               cargo_home="$root/toolchain/cargo"; rustup_home="$root/toolchain/rustup"
               zig_dir="$root/toolchain/zig"
               ;;
-            macOS)
+            Darwin)
               root="$HOME/ci"; cache="$HOME/ci-cache"
               cargo_home="$HOME/ci-toolchain/cargo"; rustup_home="$HOME/ci-toolchain/rustup"
               zig_dir="$HOME/ci-toolchain/zig"
