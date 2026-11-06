@@ -21,6 +21,7 @@ port="3301"
 ssh_port="2223"
 admin_user="ci"
 admin_pass="${GITEA_ADMIN_PASSWORD:-}"
+public_url=""
 compose_src="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/docker-compose.yml"
 
 usage() {
@@ -34,6 +35,8 @@ usage: install-gitea.sh [--data-dir DIR] [--port PORT] [--ssh-port PORT]
   --ssh-port PORT       git-over-ssh port (default 2223)
   --admin-user USER     initial admin login (default ci)
   --admin-password PASS admin password (default: generated, printed once)
+  --public-url URL      address job containers use to reach this instance
+                        (default http://<host-ip>:<PORT>)
 EOF
 }
 
@@ -44,6 +47,7 @@ while [ $# -gt 0 ]; do
     --ssh-port) ssh_port="$2"; shift 2 ;;
     --admin-user) admin_user="$2"; shift 2 ;;
     --admin-password) admin_pass="$2"; shift 2 ;;
+    --public-url) public_url="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage; exit 2 ;;
   esac
@@ -56,6 +60,9 @@ docker info >/dev/null 2>&1 || die "cannot talk to the docker daemon as $(id -un
 docker compose version >/dev/null 2>&1 || die "docker compose plugin is missing"
 
 [ -n "${admin_pass}" ] || admin_pass="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)"
+host_ip="$(hostname -I | awk '{print $1}')"
+[ -n "${public_url}" ] || public_url="http://${host_ip}:${port}"
+export PUBLIC_URL="${public_url}"
 
 echo "==> preparing ${data_dir}"
 mkdir -p "${data_dir}/gitea" "${data_dir}/runner" "${data_dir}/artifacts"
@@ -68,13 +75,13 @@ echo "==> ${data_dir} has ${avail} available"
 
 compose_file="${data_dir}/docker-compose.yml"
 python3 - "${compose_src}" "${compose_file}" "${data_dir}" "${port}" "${ssh_port}" <<'PY'
-import pathlib, sys
+import os, pathlib, sys
 src, dst, data_dir, port, ssh_port = sys.argv[1:6]
 text = pathlib.Path(src).read_text()
 text = text.replace('"3301:3000"', f'"{port}:3000"')
 text = text.replace('"2223:22"', f'"{ssh_port}:22"')
 text = text.replace('GITEA__server__SSH_PORT: "2223"', f'GITEA__server__SSH_PORT: "{ssh_port}"')
-text = text.replace('http://localhost:3301/', f'http://localhost:{port}/')
+text = text.replace('${PUBLIC_URL:-http://localhost:3301}', data_dir and os.environ.get("PUBLIC_URL", f"http://localhost:{port}"))
 text = text.replace("      - gitea-data:/data", f"      - {data_dir}/gitea:/data")
 text = text.replace("      - runner-data:/data", f"      - {data_dir}/runner:/data")
 text = text.replace("volumes:\n  gitea-data:\n  runner-data:\n", "")
@@ -93,20 +100,29 @@ curl -fsS "http://localhost:${port}/api/healthz" >/dev/null 2>&1 ||
   die "gitea did not become healthy; see: docker logs gitea-ci"
 
 echo "==> creating admin user ${admin_user}"
-docker exec gitea-ci gitea admin user create \
+docker exec -u git gitea-ci gitea admin user create \
   --username "${admin_user}" --password "${admin_pass}" \
   --email "${admin_user}@example.invalid" --admin --must-change-password=false \
   >/dev/null 2>&1 || echo "    (user may already exist)"
 
+if [ ! -f "${data_dir}/runner/config.yaml" ]; then
+  cat > "${data_dir}/runner/config.yaml" <<'EOF'
+log:
+  level: info
+container:
+  force_pull: false
+EOF
+fi
+
 echo "==> registering runner"
-runner_token="$(docker exec gitea-ci gitea actions generate-runner-token | tail -1 | tr -d '\r')"
-RUNNER_TOKEN="${runner_token}" docker compose -f docker-compose.yml up -d runner
+runner_token="$(docker exec -u git gitea-ci gitea actions generate-runner-token | tail -1 | tr -d '\r')"
+PUBLIC_URL="${public_url}" RUNNER_TOKEN="${runner_token}" docker compose --env-file /dev/null -f docker-compose.yml up -d runner
 
 cat <<EOF
 
 Gitea is up.
 
-  web:      http://$(hostname -I | awk '{print $1}'):${port}
+  web:      ${public_url}
   admin:    ${admin_user} / ${admin_pass}
   compose:  ${compose_file}
   data:     ${data_dir}  (gitea/, runner/, artifacts/)

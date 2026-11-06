@@ -47,19 +47,22 @@ PY
 )"
   actual="$(rustc --version 2>/dev/null | awk '{print $2}')"
   printf '\nexpected rust: %s\nactual rust:   %s\n' "${expected}" "${actual:-missing}"
+  # Advisory only: the release workflow installs the pinned toolchain itself,
+  # so a machine without Rust is still a valid runner.
   case "${actual:-}" in
     "${expected}"*) ;;
-    *) echo "rust toolchain does not match rust-toolchain.toml" >&2; missing=1 ;;
+    *) echo "note: rust toolchain differs from rust-toolchain.toml (the build installs it)" >&2 ;;
   esac
 else
   echo "warning: no rust-toolchain.toml at the checkout root" >&2
 fi
 
-# The release build shells out to python for its packaging contract.
-if command -v python3 >/dev/null 2>&1 && [ -d .github/scripts ]; then
-  python3 -c 'import sys; sys.exit(0)' || missing=1
+# python3 is required by the packaging step, so its absence IS fatal.
+if command -v python3 >/dev/null 2>&1; then
+  printf '%-14s %s\n' python3-ok "$(python3 -c 'import sys; print(sys.version.split()[0])')"
 else
-  echo "note: .github/scripts not present in this checkout" >&2
+  echo "python3 is required by the release packaging step" >&2
+  missing=1
 fi
 
 exit "${missing}"

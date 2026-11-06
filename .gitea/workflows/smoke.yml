@@ -14,8 +14,22 @@ jobs:
   inventory:
     runs-on: ubuntu-latest
     steps:
+      # No actions/checkout: a Gitea runner may sit behind a network that
+      # cannot reach github.com, and the checkout is two lines of git anyway.
       - name: Check out
-        uses: actions/checkout@v4
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          server="${GITHUB_SERVER_URL%/}"
+          host="${server#http://}"
+          host="${host#https://}"
+          auth=""
+          if [ -n "${GH_TOKEN:-}" ]; then auth="oauth2:${GH_TOKEN}@"; fi
+          url="http://${auth}${host}/${GITHUB_REPOSITORY}.git"
+          echo "cloning ${GITHUB_REPOSITORY} @ ${GITHUB_REF_NAME}"
+          git clone --depth 1 --branch "${GITHUB_REF_NAME}" "${url}" .
 
       - name: Toolchain inventory
         shell: bash

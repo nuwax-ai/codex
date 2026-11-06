@@ -145,3 +145,52 @@ git tag v0.18.30 && git push origin v0.18.30     # origin 指向 Gitea 时
 - runner 上会落 `NPM_TOKEN` / OSS AK，建议只给 **automation token + 单包权限**；
 - Gitea 默认 sqlite，适合单机；多人/多 runner 建议换 Postgres；
 - 不要把 Gitea 直接暴露公网；内网用 HTTP + 反向代理加 TLS 更稳。
+
+## 8. 实测记录（2026-11-06，`192.168.31.23`）
+
+环境：Ubuntu 24.04 / 8 核 / 31 GB / Docker 29.9.2（`swufe` 可直接用 daemon）/
+数据落 `/data/nvme1/gitea-ci`（1.7T 可用）、构建缓存计划落 `/data/nvme0/ci-cache`。
+
+**已验证**：Gitea 1.23 + act_runner 0.2.11 起来，`smoke` 流水线 **success**，
+job 日志里能看到 `8 cpus / 31.0 GiB / 1.5T free` 和工具链清单。
+
+实践中踩到并已修进本目录脚本的坑：
+
+| 现象 | 原因 | 修法 |
+|---|---|---|
+| `dial tcp 20.205.243.166:443: i/o timeout`（job 失败） | job 容器**访问不了 github.com**，而 `actions/checkout@v4` 要从 GitHub 克隆 action | 流水线**不用任何 GitHub action**：checkout 改成 `git clone`（见 `smoke.yml`），zig 自己下，缓存用宿主目录 |
+| `fatal: unable to access 'http://gitea:3000/...': Could not resolve host` | act_runner 给每个 job 建**独立 docker 网络**，compose 里的 `gitea` 主机名在那不存在 | `GITEA__server__ROOT_URL` / runner 的 `GITEA_INSTANCE_URL` 用**主机 IP**（`--public-url`），不要用容器名 |
+| `[actions] DEFAULT_ACTIONS_URL does not support "https://github.com"` | Gitea 1.23 只接受简写 | 配 `GITEA__actions__DEFAULT_ACTIONS_URL: github` |
+| `Gitea is not supposed to be run as root`（容器内 CLI 报错） | `gitea` 命令行拒绝 root | `docker exec -u git gitea-ci gitea ...` |
+| 镜像 `platform (linux/arm64) does not match host (linux/amd64)` | 从 Apple Silicon 上 `docker save` 的成像是 arm64 | 在能访问 registry 的机器上 `docker pull --platform linux/amd64`，再 `docker save \| ssh host docker load` |
+| `免費節點當前繁忙`（拉镜像失败） | 内网 registry 加速器限流 | 同上：从可用机器流式灌入 |
+| 改 ROOT_URL 后任务仍用旧地址 | runner 注册时把实例地址写进 `.runner` | 删 `runner/.runner` 重新注册 |
+
+## 9. 真实构建还需要的离线准备
+
+`smoke` 只验证 runner 与工具链。真要跑 `release-gitea.yml`，这台机器还需要：
+
+1. **cargo 镜像**：主机访问 `crates.io` 返回 403，但 `rsproxy.cn` 可用。
+   ```bash
+   cat > /data/nvme0/ci-cache/cargo/config.toml <<'TOML'
+   [source.crates-io]
+   replace-with = "rsproxy"
+   [source.rsproxy]
+   registry = "sparse+https://rsproxy.cn/index/"
+   [registries.rsproxy]
+   index = "sparse+https://rsproxy.cn/index/"
+   [net]
+   git-fetch-with-cli = true
+   TOML
+   ```
+   workflow 里已经把 `CARGO_HOME` 指到 `/srv/gitea-ci/cargo`（按需改成
+   `/data/nvme0/ci-cache/cargo`）。
+
+2. **rusty_v8 产物**：`.github/actions/setup-rusty-v8` 从 GitHub Releases 下载，
+   job 容器访问不到。在**主机**上下载（主机能连 GitHub）后落到固定目录，
+   流水线用 `RUSTY_V8_ARCHIVE` / `RUSTY_V8_SRC_BINDING_PATH` 指过去即可
+   （本机 `scripts/prefetch_rusty_v8.sh` 生成的 env 文件就是这两个变量）。
+
+3. **macOS / Windows runner**：见第 4 节，标签 `macos` / `windows`（host 模式）。
+
+4. 发布闭环（OSS 上传 + `npm publish`）仍按第 6 节保持人工，等产物核验后再接。

@@ -10,15 +10,18 @@ services:
     container_name: gitea-ci
     restart: unless-stopped
     environment:
-      GITEA__server__ROOT_URL: http://localhost:3301/
+      # Must be an address the job containers can reach: act_runner puts each
+      # job on its own docker network, so the compose DNS name "gitea" is not
+      # resolvable there — a host IP (or public URL) is.
+      GITEA__server__ROOT_URL: ${PUBLIC_URL:-http://localhost:3301}/
       GITEA__server__SSH_PORT: "2223"
       # Single-node test instance: no installer, sqlite, no mail.
       GITEA__security__INSTALL_LOCK: "true"
       GITEA__database__DB_TYPE: sqlite3
       GITEA__service__DISABLE_REGISTRATION: "false"
       GITEA__actions__ENABLED: "true"
-      # Let the runner fetch actions/* from GitHub while there is network.
-      GITEA__actions__DEFAULT_ACTIONS_URL: https://github.com
+      # Gitea 1.23 only accepts the shorthand here (a full URL is rejected).
+      GITEA__actions__DEFAULT_ACTIONS_URL: github
     ports:
       - "3301:3000"
       - "2223:22"
@@ -35,7 +38,7 @@ services:
     container_name: gitea-runner
     restart: unless-stopped
     environment:
-      GITEA_INSTANCE_URL: http://gitea:3000/
+      GITEA_INSTANCE_URL: ${PUBLIC_URL:-http://localhost:3301}/
       GITEA_RUNNER_REGISTRATION_TOKEN: ${RUNNER_TOKEN:?export RUNNER_TOKEN first}
       GITEA_RUNNER_NAME: local-docker
       # ubuntu-latest jobs run in a disposable container; the host's Docker
