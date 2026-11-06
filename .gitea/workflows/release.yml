@@ -288,6 +288,33 @@ jobs:
             --github-output "${GITHUB_OUTPUT}"
           ls -la "${ARTIFACTS_DIR}"
 
+      # Each runner publishes its own archive so the artifacts are reachable
+      # from anywhere, instead of living on whichever machine built them.
+      - name: Upload the archive
+        shell: bash
+        env:
+          S3_AK: ${{ secrets.NUWAX_UPLOAD_ACCESS_KEY }}
+          S3_SK: ${{ secrets.NUWAX_UPLOAD_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${S3_AK:-}" ] || [ -z "${S3_SK:-}" ]; then
+            echo "no S3 credentials configured; keeping the archive local"
+            exit 0
+          fi
+          tool="$(command -v nuwax-upload || true)"
+          if [ -z "${tool}" ]; then
+            for candidate in "${CI_DATA_ROOT}/bin/nuwax-upload" \
+                             "$HOME/ci/bin/nuwax-upload" \
+                             "$HOME/.npm-global/bin/nuwax-upload" \
+                             "$HOME/AppData/Roaming/npm/nuwax-upload.cmd"; do
+              [ -x "${candidate}" ] && tool="${candidate}" && break
+            done
+          fi
+          [ -n "${tool}" ] || { echo "nuwax-upload is not installed on this runner" >&2; exit 1; }
+          "${tool}" --access-key "${S3_AK}" --secret-key "${S3_SK}" \
+            --prefix "ci-gitea/${VERSION}/${{ matrix.target }}" \
+            "${ARTIFACTS_DIR}"/nuwax-codex-"${VERSION}"-"${{ matrix.target }}".*
+
   # Publishing (OSS upload + npm publish) stays manual until the archives above
   # are verified: this pipeline is new, and a half-built release must not reach
   # a registry. See .github/workflows/release.yml for the OSS layout.
@@ -296,21 +323,28 @@ jobs:
     needs: [build]
     runs-on: linux-host
     steps:
-      - name: Check the artifact set
+      - name: Check the archive set on S3
         shell: bash
         env:
-          ARTIFACTS_DIR: /data/nvme1/gitea-ci/artifacts
+          S3_BASE: https://s3.nuwax.com:9443/nuwax-packages
           REQUESTED_TAG: ${{ inputs.tag_name }}
         run: |
           set -euo pipefail
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
-          VERSION="${tag#v}"
-          export VERSION
-          set -euo pipefail
-          ls -la "${ARTIFACTS_DIR}"
-          count="$(find "${ARTIFACTS_DIR}" -maxdepth 1 \( -name '*'"${VERSION}"'*.tar.gz' -o -name '*'"${VERSION}"'*.zip' \) | wc -l)"
-          echo "archives for ${VERSION}: ${count}"
-          # macOS archives land on the Mac runner's own disk; the Linux host
-          # collects the three Linux targets. Raise this to 7 once the Windows
-          # runner exists and archives are gathered in one place.
-          [ "${count}" -ge 3 ] || { echo "expected the 3 linux archives, found ${count}" >&2; exit 1; }
+          version="${tag#v}"
+          targets=(aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu \
+                   x86_64-unknown-linux-musl aarch64-unknown-linux-musl \
+                   x86_64-pc-windows-msvc aarch64-pc-windows-msvc)
+          found=0
+          for t in "${targets[@]}"; do
+            ext=tar.gz; case "$t" in *windows*) ext=zip ;; esac
+            url="${S3_BASE}/ci-gitea/${version}/${t}/nuwax-codex-${version}-${t}.${ext}"
+            code="$(curl -s -o /dev/null -w '%{http_code}' -I --max-time 30 "$url" || echo 000)"
+            echo "$t -> HTTP $code"
+            [ "$code" = "200" ] && found=$((found + 1))
+          done
+          echo "archives reachable: ${found}/${#targets[@]}"
+          [ "${found}" -ge "${#targets[@]}" ] || {
+            echo "expected all ${#targets[@]} platform archives on S3" >&2
+            exit 1
+          }
