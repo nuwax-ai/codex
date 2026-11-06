@@ -1679,3 +1679,66 @@ async fn failed_catalog_refresh_preserves_tool_search_on_the_next_turn() -> Resu
     );
     Ok(())
 }
+
+/// A provider that declares `models` is expected to serve slugs the built-in
+/// catalog does not know. The fallback metadata is documented behaviour there,
+/// so it must not interrupt the turn with a user-visible warning (it still goes
+/// to the log). A slug nobody declared keeps the warning.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn provider_declared_model_reports_fallback_only_in_the_log() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    skip_if_sandbox!(Ok(()));
+
+    async fn fallback_warning_count(declare_model: bool) -> Result<usize> {
+        let server = MockServer::start().await;
+        let requested_model = "vendor-unknown-slug";
+        let _response_mock = mount_sse_once(
+            &server,
+            sse(vec![ev_response_created("resp-1"), ev_completed("resp-1")]),
+        )
+        .await;
+
+        let TestCodex { codex, .. } = test_codex()
+            .with_model(requested_model)
+            .with_config(move |config| {
+                config.model_provider.models = declare_model
+                    .then(|| vec![requested_model.to_string()]);
+            })
+            .build(&server)
+            .await?;
+
+        codex
+            .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+                text: "check fallback metadata visibility".into(),
+                text_elements: Vec::new(),
+            }]))
+            .await?;
+
+        let mut count = 0;
+        loop {
+            let event = wait_for_event(&codex, |_| true).await;
+            match event {
+                EventMsg::Warning(warning)
+                    if warning.message.contains("Defaulting to fallback metadata") =>
+                {
+                    count += 1;
+                }
+                EventMsg::TurnComplete(_) => break,
+                _ => {}
+            }
+        }
+        Ok(count)
+    }
+
+    assert_eq!(
+        fallback_warning_count(/*declare_model*/ true).await?,
+        0,
+        "a declared model must not surface the fallback warning"
+    );
+    assert_eq!(
+        fallback_warning_count(/*declare_model*/ false).await?,
+        1,
+        "an undeclared model still warns the user"
+    );
+    Ok(())
+}
