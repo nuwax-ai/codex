@@ -788,9 +788,29 @@ impl ChatWidget {
             StatusLineItem::ContextRemaining => self
                 .status_line_context_remaining_percent()
                 .map(|remaining| format!("Context {remaining}% left")),
-            StatusLineItem::ContextUsed => self
-                .status_line_context_used_percent()
-                .map(|used| format!("Context {used}% used")),
+            StatusLineItem::ContextUsed => {
+                self.status_line_context_used_percent().map(|used| {
+                    // Match the desktop client's single-line form so the same
+                    // numbers can be compared side by side while testing:
+                    // "Context 6% used (94% left) · 48k/828k tokens".
+                    let window = self.status_line_context_window_size();
+                    let used_tokens = self
+                        .token_info
+                        .as_ref()
+                        .map(|info| info.last_token_usage.tokens_in_context_window());
+                    match (window, used_tokens) {
+                        (Some(window), Some(used_tokens)) if window > 0 && used_tokens > 0 => {
+                            format!(
+                                "Context {used}% used ({}% left) · {}/{} tokens",
+                                100 - used,
+                                format_tokens_compact(used_tokens),
+                                format_tokens_compact(window)
+                            )
+                        }
+                        _ => format!("Context {used}% used"),
+                    }
+                })
+            }
             StatusLineItem::FiveHourLimit => {
                 let (window, is_secondary) = self
                     .rate_limit_snapshots_by_limit_id
