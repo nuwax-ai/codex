@@ -51,14 +51,12 @@ jobs:
           - runner: linux-host
             target: aarch64-unknown-linux-musl
             ext: ""
-          # Windows runner is not registered yet (`windows-host`). Uncomment
-          # once scripts/gitea-ci/install-windows-runner.ps1 has run on the box.
-          # - runner: windows-host
-          #   target: x86_64-pc-windows-msvc
-          #   ext: ".exe"
-          # - runner: windows-host
-          #   target: aarch64-pc-windows-msvc
-          #   ext: ".exe"
+          - runner: windows-host
+            target: x86_64-pc-windows-msvc
+            ext: ".exe"
+          - runner: windows-host
+            target: aarch64-pc-windows-msvc
+            ext: ".exe"
     runs-on: ${{ matrix.runner }}
     steps:
       # Gitea does not expose `needs.<job>.outputs` here (it evaluated to an
@@ -83,7 +81,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          server="${GITHUB_SERVER_URL%/}"
+          # A runner that cannot reach the instance on the configured address
+          # (this Windows box is on another subnet) may set CI_GITEA_BASE.
+          server="${CI_GITEA_BASE:-${GITHUB_SERVER_URL%/}}"
           host="${server#http://}"; host="${host#https://}"
           auth=""; [ -n "${GH_TOKEN:-}" ] && auth="oauth2:${GH_TOKEN}@"
           url="http://${auth}${host}/${GITHUB_REPOSITORY}.git"
@@ -121,6 +121,11 @@ jobs:
               root="$HOME/ci"; cache="$HOME/ci-cache"
               cargo_home="$HOME/ci-toolchain/cargo"; rustup_home="$HOME/ci-toolchain/rustup"
               zig_dir="$HOME/ci-toolchain/zig"
+              ;;
+            MINGW*|MSYS*|CYGWIN*)
+              root="C:/ci"; cache="C:/ci/cache"
+              cargo_home="$HOME/.cargo"; rustup_home="$HOME/.rustup"
+              zig_dir="$root/toolchain/zig"
               ;;
             *)
               root="$HOME/ci"; cache="$HOME/ci-cache"
@@ -242,10 +247,12 @@ jobs:
             --bin codex-windows-sandbox-setup --bin codex-command-runner
 
       - name: Strip
-        if: ${{ runner.os != 'Windows' }}
         shell: bash
         run: |
           set -euo pipefail
+          case "${{ matrix.target }}" in
+            *windows*) echo "no strip for ${{ matrix.target }}"; exit 0 ;;
+          esac
           for name in codex codex-code-mode-host; do
             bin="${CARGO_TARGET_DIR}/${{ matrix.target }}/release/${name}"
             if [ "${{ runner.os }}" = "Linux" ]; then strip "$bin"; else strip -x "$bin"; fi
