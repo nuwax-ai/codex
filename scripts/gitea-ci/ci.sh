@@ -167,11 +167,28 @@ cmd_release() {
 cmd_logs() {
   local run="${1:-}"
   [ -n "${run}" ] || { echo "usage: ci.sh logs <run-number>" >&2; return 2; }
-  local hex
-  hex="$(printf '%02x' "${run}")"
-  ssh "${GITEA_SSH}" "f=\$(find ${CI_DATA_ROOT}/gitea/gitea/actions_log -name '${run}.log.zst' | head -1); \
-    [ -n \"\$f\" ] || { echo 'no log for run ${run} yet' >&2; exit 1; }; \
-    zstd -dcq \"\$f\" | tail -80"
+
+  # Gitea names the log file after the task's global id; the per-repository
+  # run_number shown in the UI is different, so resolve it through the API.
+  local json task_id
+  json="$(mktemp)"
+  runs_json 100 > "${json}"
+  task_id="$(python3 - "${json}" "${run}" <<'PY'
+import json, sys
+runs = json.load(open(sys.argv[1])).get("workflow_runs") or []
+wanted = int(sys.argv[2])
+for run in runs:
+    if run.get("run_number") == wanted:
+        print(run.get("id", ""))
+        break
+PY
+)"
+  rm -f "${json}"
+  [ -n "${task_id}" ] || { echo "run ${run} not found in ${GITEA_REPO}" >&2; return 1; }
+
+  ssh "${GITEA_SSH}" "f=\$(find ${CI_DATA_ROOT}/gitea/gitea/actions_log/${GITEA_REPO} -name '${task_id}.log.zst' | head -1);
+    [ -n \"\$f\" ] || { echo 'no log file for task ${task_id} yet' >&2; exit 1; };
+    zstd -dcq \"\$f\" | tail -n 80"
 }
 
 cmd_artifacts() {

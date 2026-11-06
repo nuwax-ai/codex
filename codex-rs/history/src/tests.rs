@@ -1221,8 +1221,7 @@ fn dynamic_tools_updates_survive_replay_and_explicit_clear() -> Result<()> {
 fn surface_replacement_round_trips_with_its_range() -> Result<()> {
     let item = RolloutItem::SurfaceReplacement(Box::new(SurfaceReplacementItem {
         compaction_id: "cmp_1".to_string(),
-        shadowed_start: 3,
-        shadowed_end: 9,
+        resume_at_item_id: "item_42".to_string(),
         summary: "## Current Work\n- porting the adapter".to_string(),
         provider: "deepseek".to_string(),
         model: "deepseek-v4-pro".to_string(),
@@ -1234,8 +1233,7 @@ fn surface_replacement_round_trips_with_its_range() -> Result<()> {
 
     let json = serde_json::to_value(&item)?;
     assert_eq!(json["type"], json!("surface_replacement"));
-    assert_eq!(json["payload"]["shadowed_start"], json!(3));
-    assert_eq!(json["payload"]["shadowed_end"], json!(9));
+    assert_eq!(json["payload"]["resume_at_item_id"], json!("item_42"));
     assert_eq!(json["payload"]["reason"], json!("window_shrink"));
 
     let parsed: RolloutItem = serde_json::from_value(json)?;
@@ -1243,7 +1241,7 @@ fn surface_replacement_round_trips_with_its_range() -> Result<()> {
         panic!("expected a surface replacement record");
     };
     assert_eq!(parsed.compaction_id, "cmp_1");
-    assert_eq!(parsed.shadowed_end, 9);
+    assert_eq!(parsed.resume_at_item_id, "item_42");
     assert_eq!(parsed.supersedes, vec!["cmp_0".to_string()]);
     Ok(())
 }

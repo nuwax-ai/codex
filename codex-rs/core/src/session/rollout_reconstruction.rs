@@ -8,6 +8,45 @@ use codex_protocol::protocol::ThreadHistoryMode;
 use codex_utils_output_truncation::TruncationPolicy;
 use uuid::Uuid;
 
+/// The replacement that currently governs the model-visible surface.
+///
+/// Only the newest non-superseded record applies: a later migration absorbs the
+/// earlier one (`supersedes`), so replay has at most one prefix boundary to
+/// honour. Records are appended, so the last candidate wins.
+fn active_surface_replacement(items: &[RolloutItem]) -> Option<&codex_history::SurfaceReplacementItem> {
+    let mut superseded = std::collections::HashSet::new();
+    let mut candidates = Vec::new();
+    for item in items {
+        if let RolloutItem::SurfaceReplacement(replacement) = item {
+            superseded.extend(replacement.supersedes.iter().map(String::as_str));
+            candidates.push(replacement.as_ref());
+        }
+    }
+    candidates
+        .into_iter()
+        .rev()
+        .find(|replacement| !superseded.contains(replacement.compaction_id.as_str()))
+}
+
+/// The message planted where a replacement cuts the surface. Reusing the
+/// compaction prefix keeps it recognizable to every consumer that already
+/// recognizes compacted history.
+fn surface_replacement_summary_item(
+    replacement: &codex_history::SurfaceReplacementItem,
+) -> ResponseItem {
+    ResponseItem::Message {
+        id: None,
+        role: "user".to_owned(),
+        content: vec![ContentItem::InputText {
+            text: format!("{}\n{}", crate::compact::SUMMARY_PREFIX, replacement.summary),
+        }],
+        phase: None,
+        status: None,
+        encrypted_content: None,
+        internal_chat_message_metadata_passthrough: None,
+    }
+}
+
 // Return value of `Session::reconstruct_history_from_rollout`, bundling the rebuilt history with
 // the resume/fork hydration metadata derived from the same replay.
 #[derive(Debug, PartialEq)]
@@ -510,15 +549,25 @@ impl ContextManager {
         }
         let rollout_suffix =
             history_checkpoint.map_or(rollout_items, |checkpoint| checkpoint.suffix);
+        let mut pending_surface_replacement = active_surface_replacement(rollout_suffix);
         for item in rollout_suffix {
             match item {
-                // Partial replacement replay lands in a later commit; until then the
-                // model sees the full history (the pre-S1 behavior).
                 RolloutItem::SurfaceReplacement(_) => {}
                 RolloutItem::RetainedContext(event) => {
                     history.record_retained_context(event);
                 }
                 RolloutItem::ResponseItem(response_item) => {
+                    if let Some(replacement) = pending_surface_replacement {
+                        let reached_boundary = response_item
+                            .id()
+                            .is_some_and(|id| id.as_str() == replacement.resume_at_item_id);
+                        if !reached_boundary {
+                            continue;
+                        }
+                        let summary = surface_replacement_summary_item(replacement);
+                        history.record_items(std::iter::once(&summary), truncation_policy);
+                        pending_surface_replacement = None;
+                    }
                     history.replay_annotated_item(response_item, truncation_policy);
                 }
                 RolloutItem::InterAgentCommunication(communication) => {

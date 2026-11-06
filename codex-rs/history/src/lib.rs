@@ -355,17 +355,17 @@ pub enum SurfaceReplacementReason {
 /// place. The rollout stays append-only, so replaying it reproduces the same
 /// surface; readers that predate this record simply replay the shadowed items.
 ///
-/// Positions are indices over the model-visible `RolloutItem::ResponseItem`
-/// stream in file order. A later replacement that covers an earlier one lists
-/// its `compaction_id` in `supersedes`, and the older record stops applying.
+/// A later replacement that covers an earlier one lists its `compaction_id` in
+/// `supersedes`, and the older record stops applying.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SurfaceReplacementItem {
     pub compaction_id: String,
-    /// Inclusive start index over the response-item stream.
-    pub shadowed_start: u64,
-    /// Exclusive end index over the response-item stream.
-    pub shadowed_end: u64,
-    /// Summary text planted at the end of the shadowed range.
+    /// `ResponseItem::id` of the first history item the model must still see.
+    /// Every response item before it is replaced by `summary`. A stable item id
+    /// (rather than a positional index) keeps the record valid across checkpoint
+    /// suffixes and rollbacks.
+    pub resume_at_item_id: String,
+    /// Summary text planted immediately before the boundary item.
     pub summary: String,
     /// Route that produced the summary (always the model the thread switched to).
     pub provider: String,
