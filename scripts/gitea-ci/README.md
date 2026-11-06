@@ -235,3 +235,33 @@ bash vendor-deps.sh --install /data/nvme0/ci-cache/vendor/ci-vendor \
 ```
 
 依赖变更（`Cargo.lock` 更新）后需要重跑第 1、2 步。
+
+## 11. 用 make 触发（推荐入口）
+
+`Makefile` 只做一层转发，逻辑在 `scripts/gitea-ci/ci.sh`；配置读环境变量或
+`scripts/gitea-ci/.env`（已 gitignore，模板见 `.env.example`）。
+
+```bash
+make help                  # 列出全部目标
+make gitea-check           # 实例健康 + runner + 最近 run + artifacts 体积
+make gitea-runs N=10       # 最近 N 次运行
+make gitea-smoke           # 把当前 HEAD 推到 Gitea 镜像并等 smoke 结果
+make gitea-release TAG=v0.18.30   # 打 tag 并推送 → release-gitea 流水线
+make gitea-logs RUN=12     # 解压并 tail 某次运行的 job 日志
+make gitea-artifacts       # 宿主上已产出的归档
+make gitea-inventory       # 只读体检目标机
+make gitea-up / gitea-down # 启停 Gitea 栈
+```
+
+首次使用先把仓库镜像到 Gitea（只需一次）：
+
+```bash
+git remote add gitea http://<user>:<pass>@192.168.31.23:3301/<owner>/<repo>.git
+git push gitea HEAD:main          # 注意：不要带 --tags，tag 会触发 release 流水线
+```
+
+之后 `make gitea-smoke` 就是 `git push gitea HEAD:main` + 轮询结果。
+
+已知边界：`make gitea-release` 会触发 7 平台矩阵，而 U `macos-host` / `windows-host`
+两个 runner 还没接入，所以现在它会在那两个 job 上排队/失败；要只验证 Linux 链路，先把
+`release.yml` 的 matrix 收窄到 `linux-host` 的三个目标。

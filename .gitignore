@@ -108,3 +108,6 @@ __pycache__/
 /findings.md
 /progress.md
 /task_plan.md
+
+# Gitea CI local config (credentials)
+scripts/gitea-ci/.env
