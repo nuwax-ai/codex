@@ -30,27 +30,8 @@ on:
         required: false
 
 jobs:
-  get-version:
-    name: version
-    runs-on: linux-host
-    outputs:
-      version: ${{ steps.v.outputs.version }}
-      tag_name: ${{ steps.v.outputs.tag_name }}
-    steps:
-      - name: Resolve version
-        shell: bash
-        env:
-          REQUESTED_TAG: ${{ inputs.tag_name }}
-        run: |
-          set -euo pipefail
-          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
-          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a stable tag: $tag" >&2; exit 1; }
-          echo "tag_name=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
-
   build:
     name: build ${{ matrix.target }}
-    needs: get-version
     strategy:
       fail-fast: false
       matrix:
@@ -79,17 +60,27 @@ jobs:
           #   target: aarch64-pc-windows-msvc
           #   ext: ".exe"
     runs-on: ${{ matrix.runner }}
-    env:
-      # A job that aborts must not leave the tree at a released version.
-      VERSION: ${{ needs.get-version.outputs.version }}
     steps:
+      # Gitea does not expose `needs.<job>.outputs` here (it evaluated to an
+      # empty string and the checkout got `--branch ""`), so every job derives
+      # the version from the tag that triggered it.
+      - name: Resolve version
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.tag_name }}
+        run: |
+          set -euo pipefail
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a stable tag: $tag" >&2; exit 1; }
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          echo "VERSION=${tag#v}" >> "$GITHUB_ENV"
+
       # No actions/checkout: job containers have no GitHub access on this
       # network, and host mode makes a plain clone the simplest option.
       - name: Check out the tag
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.get-version.outputs.tag_name }}
         run: |
           set -euo pipefail
           server="${GITHUB_SERVER_URL%/}"; host="${server#http://}"; host="${host#https://}"
@@ -249,15 +240,19 @@ jobs:
   # a registry. See .github/workflows/release.yml for the OSS layout.
   verify-artifacts:
     name: verify artifacts
-    needs: [get-version, build]
+    needs: [build]
     runs-on: linux-host
     steps:
       - name: Check the artifact set
         shell: bash
         env:
           ARTIFACTS_DIR: /data/nvme1/gitea-ci/artifacts
-          VERSION: ${{ needs.get-version.outputs.version }}
+          REQUESTED_TAG: ${{ inputs.tag_name }}
         run: |
+          set -euo pipefail
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
+          VERSION="${tag#v}"
+          export VERSION
           set -euo pipefail
           ls -la "${ARTIFACTS_DIR}"
           count="$(find "${ARTIFACTS_DIR}" -maxdepth 1 \( -name '*'"${VERSION}"'*.tar.gz' -o -name '*'"${VERSION}"'*.zip' \) | wc -l)"

@@ -81,14 +81,34 @@ cmd_runs() {
   runs_json "${limit}" > "${json}"
   python3 - "${json}" <<'PY'
 import json, sys
-d = json.load(open(sys.argv[1]))
-rows = d.get("workflow_runs") or []
-if not rows:
+from collections import OrderedDict
+
+tasks = json.load(open(sys.argv[1])).get("workflow_runs") or []
+if not tasks:
     print("no runs yet")
     raise SystemExit(0)
-print(f"{'run':>4}  {'workflow':<18} {'status':<9} {'event':<12} title")
-for r in rows:
-    print(f"{r['run_number']:>4}  {r['workflow_id']:<18} {r['status']:<9} {r['event']:<12} {r.get('display_title','')[:60]}")
+
+# Gitea's tasks endpoint returns one entry per JOB, so runs repeat. Collapse
+# them: a run is failed if any of its jobs failed, running while any job runs.
+runs = OrderedDict()
+for t in tasks:
+    key = (t["workflow_id"], t["run_number"])
+    entry = runs.setdefault(key, {"jobs": [], "title": t.get("display_title", ""), "event": t.get("event", "")})
+    entry["jobs"].append(t["status"])
+
+print(f"{'run':>4}  {'workflow':<14} {'status':<9} {'jobs':<10} title")
+for (workflow, number), e in list(runs.items())[: int(sys.argv[2]) if len(sys.argv) > 2 else 10]:
+    statuses = e["jobs"]
+    if any(s in ("failure", "error") for s in statuses):
+        status = "failure"
+    elif any(s in ("running", "waiting") for s in statuses):
+        status = "running"
+    elif all(s == "success" for s in statuses):
+        status = "success"
+    else:
+        status = statuses[0] if statuses else "?"
+    ok = sum(1 for s in statuses if s == "success")
+    print(f"{number:>4}  {workflow:<14} {status:<9} {ok}/{len(statuses):<8} {e['title'][:56]}")
 PY
   rm -f "${json}"
 }
