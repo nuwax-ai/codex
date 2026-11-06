@@ -235,20 +235,33 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd "${GITHUB_WORKSPACE}/codex-rs"
-          cargo build --target ${{ matrix.target }} --release \
-            -p codex-cli --bin codex \
-            -p codex-code-mode-host --bin codex-code-mode-host
+          case "${{ matrix.target }}" in
+            *windows*)
+              # Needs the VS developer environment for the C dependencies.
+              cmd //c "scripts\\gitea-ci\\win-build.cmd" "${{ matrix.target }}" \
+                --release -p codex-cli --bin codex \
+                -p codex-code-mode-host --bin codex-code-mode-host
+              ;;
+            *)
+              cd "${GITHUB_WORKSPACE}/codex-rs"
+              cargo build --target ${{ matrix.target }} --release \
+                -p codex-cli --bin codex \
+                -p codex-code-mode-host --bin codex-code-mode-host
+              ;;
+          esac
 
       - name: Build Windows sandbox helpers
-        if: ${{ runner.os == 'Windows' }}
         shell: bash
         run: |
           set -euo pipefail
-          cd "${GITHUB_WORKSPACE}/codex-rs"
-          cargo build --target ${{ matrix.target }} --release \
-            -p codex-windows-sandbox \
-            --bin codex-windows-sandbox-setup --bin codex-command-runner
+          case "${{ matrix.target }}" in
+            *windows*)
+              cmd //c "scripts\\gitea-ci\\win-build.cmd" "${{ matrix.target }}" \
+                --release -p codex-windows-sandbox \
+                --bin codex-windows-sandbox-setup --bin codex-command-runner
+              ;;
+            *) echo "not a Windows target"; ;;
+          esac
 
       - name: Strip
         shell: bash
