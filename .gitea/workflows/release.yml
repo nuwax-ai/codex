@@ -162,6 +162,11 @@ jobs:
           if [ -d "${CI_ZIG_DIR}" ]; then
             echo "${CI_ZIG_DIR}" >> "$GITHUB_PATH"
           fi
+          # aarch64 musl is cross-compiled on an x86 host: the musl tools script
+          # prefers <arch>-linux-musl-gcc over the host musl-gcc.
+          if [ -d "${CI_DATA_ROOT}/tools/aarch64-linux-musl-cross/bin" ]; then
+            echo "${CI_DATA_ROOT}/tools/aarch64-linux-musl-cross/bin" >> "$GITHUB_PATH"
+          fi
 
       - name: Runner inventory
         shell: bash
