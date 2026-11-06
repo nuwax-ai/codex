@@ -313,7 +313,9 @@ jobs:
           fi
           [ -n "${tool}" ] || { echo "nuwax-upload is not installed on this runner" >&2; exit 1; }
           archive="$(ls "${ARTIFACTS_DIR}"/nuwax-codex-"${VERSION}"-"${{ matrix.target }}".* | head -1)"
-          entry="${ARTIFACTS_DIR}/entry.json"
+          # A host runs several jobs against the same ARTIFACTS_DIR, so the
+          # entry must not live there: it would be overwritten by a sibling job.
+          entry="$(mktemp -d)/entry.json"
           python3 "${GITHUB_WORKSPACE}/scripts/gitea-ci/release-manifest.py" entry \
             --archive "${archive}" \
             --version "${VERSION}" \
