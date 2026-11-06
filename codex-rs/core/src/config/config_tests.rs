@@ -14223,3 +14223,41 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn migration_compact_settings_validate_their_knobs() {
+    use crate::config::MigrationCompactSettings;
+
+    // Defaults when nothing is configured.
+    let defaults = MigrationCompactSettings::from_toml(None, None, None, None).expect("defaults");
+    assert_eq!(defaults.ratio, 0.8);
+    assert_eq!(defaults.retain_ratio, 0.16);
+    assert_eq!(defaults.max_span_ratio, 0.5);
+    assert_eq!(defaults.max_ranges, 8);
+
+    // Operator overrides pass through.
+    let tuned = MigrationCompactSettings::from_toml(Some(0.7), Some(0.2), Some(0.4), Some(3))
+        .expect("tuned");
+    assert_eq!(tuned.ratio, 0.7);
+    assert_eq!(tuned.retain_ratio, 0.2);
+    assert_eq!(tuned.max_span_ratio, 0.4);
+    assert_eq!(tuned.max_ranges, 3);
+
+    // Out-of-range values fail fast and name the key.
+    for (ratio, retain, span, ranges, expected) in [
+        (Some(0.0), None, None, None, "migration_compact_ratio"),
+        (Some(1.5), None, None, None, "migration_compact_ratio"),
+        (None, Some(1.0), None, None, "migration_compact_retain_ratio"),
+        (None, Some(-0.1), None, None, "migration_compact_retain_ratio"),
+        (None, None, Some(0.0), None, "migration_compact_max_span_ratio"),
+        (None, None, None, Some(0), "migration_compact_max_ranges"),
+        (None, None, None, Some(65), "migration_compact_max_ranges"),
+    ] {
+        let error = MigrationCompactSettings::from_toml(ratio, retain, span, ranges)
+            .expect_err(expected);
+        assert!(
+            error.to_string().contains(expected),
+            "error should name {expected}: {error}"
+        );
+    }
+}

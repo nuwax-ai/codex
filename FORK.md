@@ -244,9 +244,17 @@ turn 级超窗处理才会触发（官方代码里这两个机制只认该分类
 **实测（32K 本地 llama.cpp + 2B 模型）**：两段摘要把 26,565 → 23,674 token 压到
 预算 22,855 内，本轮正常出结果；后续续聊回放后请求 17.5K token，不再重复压缩。
 
-**已知限制**：比例/上限目前是常量（0.8 / 0.16 / 0.5 / 8 段），尚未暴露成
-config 键；TUI 进度与 ACP 回执沿用既有 `ContextCompaction` 条目
-（`compaction_update`），未新增协议字段。
+**配置键**（`config.toml` 顶层，缺省即下列默认值；越界 fail-fast 并点名键）：
+
+| 键 | 默认 | 含义 |
+|---|---|---|
+| `migration_compact_ratio` | `0.8` | 历史+固定前缀可占窗口的比例（预算） |
+| `migration_compact_retain_ratio` | `0.16` | 原样保留的尾部占比 |
+| `migration_compact_max_span_ratio` | `0.5` | 单次摘要请求占窗口上限 |
+| `migration_compact_max_ranges` | `8` | 单次迁移最多摘要段数（1–64） |
+
+TUI 进度与 ACP 回执沿用既有 `ContextCompaction` 条目（`compaction_update`），
+未新增协议字段。
 
 ## 6. daemon：npm 安装不自启（v0.18.8）
 

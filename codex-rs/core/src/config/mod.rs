@@ -623,6 +623,79 @@ pub enum ThreadStoreConfig {
     InMemory { id: String },
 }
 
+/// Fork (nuwax-codex): knobs for migration compaction (FORK.md §5.3), the pass
+/// that shrinks a large-window conversation so it fits a smaller model.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MigrationCompactSettings {
+    /// Budget for history plus the fixed request prefix, as a window fraction.
+    pub ratio: f64,
+    /// Verbatim tail retained during a replacement, as a window fraction.
+    pub retain_ratio: f64,
+    /// Largest single summary span, as a window fraction.
+    pub max_span_ratio: f64,
+    /// Summary calls allowed per migration.
+    pub max_ranges: u32,
+}
+
+impl Default for MigrationCompactSettings {
+    fn default() -> Self {
+        Self {
+            ratio: 0.8,
+            retain_ratio: 0.16,
+            max_span_ratio: 0.5,
+            max_ranges: 8,
+        }
+    }
+}
+
+impl MigrationCompactSettings {
+    /// Validate the TOML values. Out-of-range knobs fail fast and name the key:
+    /// a ratio of 0 would compact every turn and a retain ratio of 1 would leave
+    /// nothing to replace.
+    pub fn from_toml(
+        ratio: Option<f64>,
+        retain_ratio: Option<f64>,
+        max_span_ratio: Option<f64>,
+        max_ranges: Option<u32>,
+    ) -> std::io::Result<Self> {
+        let defaults = Self::default();
+        let ratio = ratio.unwrap_or(defaults.ratio);
+        if !(ratio > 0.0 && ratio <= 1.0) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "migration_compact_ratio must be greater than 0 and at most 1",
+            ));
+        }
+        let retain_ratio = retain_ratio.unwrap_or(defaults.retain_ratio);
+        if !(0.0..1.0).contains(&retain_ratio) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "migration_compact_retain_ratio must be at least 0 and less than 1",
+            ));
+        }
+        let max_span_ratio = max_span_ratio.unwrap_or(defaults.max_span_ratio);
+        if !(max_span_ratio > 0.0 && max_span_ratio <= 1.0) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "migration_compact_max_span_ratio must be greater than 0 and at most 1",
+            ));
+        }
+        let max_ranges = max_ranges.unwrap_or(defaults.max_ranges);
+        if !(1..=64).contains(&max_ranges) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "migration_compact_max_ranges must be between 1 and 64",
+            ));
+        }
+        Ok(Self {
+            ratio,
+            retain_ratio,
+            max_span_ratio,
+            max_ranges,
+        })
+    }
+}
+
 /// Application configuration loaded from disk and merged with overrides.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -667,6 +740,9 @@ pub struct Config {
     /// Controls whether `model_auto_compact_token_limit` applies to the full
     /// active context or only tokens after the carried compaction-window prefix.
     pub model_auto_compact_token_limit_scope: AutoCompactTokenLimitScope,
+
+    /// Fork (nuwax-codex): migration-compaction knobs (FORK.md §5.3).
+    pub migration_compact: MigrationCompactSettings,
 
     /// Percentage of the usable context window that triggers turn-end compaction.
     /// Zero disables turn-end compaction.
@@ -4680,6 +4756,12 @@ impl Config {
                 "model_auto_compact_token_limit must be a positive token count",
             ));
         }
+        let migration_compact = MigrationCompactSettings::from_toml(
+            cfg.migration_compact_ratio,
+            cfg.migration_compact_retain_ratio,
+            cfg.migration_compact_max_span_ratio,
+            cfg.migration_compact_max_ranges,
+        )?;
         let mut config = Self {
             plugins: cfg.plugins,
             prefer_mxc,
@@ -4690,6 +4772,7 @@ impl Config {
             model_context_window: cfg.model_context_window,
             model_auto_compact_token_limit: cfg.model_auto_compact_token_limit,
             model_auto_compact_ratio: cfg.model_auto_compact_ratio,
+            migration_compact,
             model_auto_compact_token_limit_scope: cfg
                 .model_auto_compact_token_limit_scope
                 .unwrap_or_default(),

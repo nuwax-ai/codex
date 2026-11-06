@@ -192,6 +192,22 @@ pub struct ConfigToml {
     /// only to tokens after the carried prefix in the current compaction window.
     pub model_auto_compact_token_limit_scope: Option<AutoCompactTokenLimitScope>,
 
+    // ── Fork (nuwax-codex): migration compaction knobs ────────────────────
+    /// Fraction of the target model's window that the migrated history may
+    /// occupy (history + fixed request prefix). Defaults to 0.8.
+    pub migration_compact_ratio: Option<f64>,
+
+    /// Fraction of the window kept verbatim, so the recent turns and the next
+    /// step survive the summary. Defaults to 0.16.
+    pub migration_compact_retain_ratio: Option<f64>,
+
+    /// Upper bound for a single summary request, as a fraction of the window.
+    /// Defaults to 0.5.
+    pub migration_compact_max_span_ratio: Option<f64>,
+
+    /// How many ranges one migration may summarize. Defaults to 8.
+    pub migration_compact_max_ranges: Option<u32>,
+
     /// Percentage of the usable context window that triggers compaction after a final
     /// response. Existing auto-compaction limits still apply. Omitted or zero disables
     /// turn-end compaction; valid values are 0–100.

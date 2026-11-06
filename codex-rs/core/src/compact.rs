@@ -993,19 +993,13 @@ pub(crate) async fn run_migration_compact_task(
     sess: Arc<Session>,
     turn_context: Arc<TurnContext>,
 ) -> CodexResult<bool> {
-    /// Never spend more than this many summary calls per migration.
-    const MAX_RANGES: usize = 8;
-    /// Fraction of the window a summary may consume (the rest is headroom).
-    const BUDGET_RATIO: f64 = 0.8;
-    /// Fraction of the window kept verbatim, so the next step stays in context.
-    const RETAIN_RATIO: f64 = 0.16;
-    /// Upper bound for one summary request, relative to the window.
-    const MAX_SPAN_RATIO: f64 = 0.5;
+    // Operator-tunable knobs (config: migration_compact_*), see FORK.md §5.3.
+    let settings = turn_context.config.migration_compact;
 
     let mut replaced = false;
     let mut announced = false;
 
-    for _ in 0..MAX_RANGES {
+    for _ in 0..settings.max_ranges {
         let history = sess.clone_history().await;
         let status =
             crate::session::context_window::context_window_token_status(&sess, &turn_context).await;
@@ -1027,7 +1021,7 @@ pub(crate) async fn run_migration_compact_task(
         // generation cap so the migration does not stop just below a request the
         // gateway will still reject.
         const RESERVED_OUTPUT_TOKENS: i64 = 2_048;
-        let budget = ((window as f64 * BUDGET_RATIO) as i64)
+        let budget = ((window as f64 * settings.ratio) as i64)
             .saturating_sub(prefix_tokens)
             .saturating_sub(RESERVED_OUTPUT_TOKENS)
             .max(0);
@@ -1035,12 +1029,12 @@ pub(crate) async fn run_migration_compact_task(
             break;
         }
 
-        let retain = (window as f64 * RETAIN_RATIO) as i64;
+        let retain = (window as f64 * settings.retain_ratio) as i64;
         // The summary request also carries the fixed prefix and the provider's
         // tool payload, and the bridge prices all of that before sending. Keep
         // the span to half the remaining history budget so the request cannot
         // trip that budget gate.
-        let max_span = (((window as f64 * MAX_SPAN_RATIO) as i64).min(budget / 2)).max(1);
+        let max_span = (((window as f64 * settings.max_span_ratio) as i64).min(budget / 2)).max(1);
         let items = history.annotated_items();
         let Some(region) =
             crate::session::compaction_region::select_compaction_region(items, retain, max_span)
@@ -1091,7 +1085,7 @@ pub(crate) async fn run_migration_compact_task(
             provider: turn_context.config.model_provider_id.clone(),
             model: turn_context.model_info().slug.clone(),
             shadowed_tokens: region.tokens,
-            retained_tail_tokens: (window as f64 * RETAIN_RATIO) as i64,
+            retained_tail_tokens: (window as f64 * settings.retain_ratio) as i64,
             reason: codex_history::SurfaceReplacementReason::WindowShrink,
             supersedes: Vec::new(),
         };

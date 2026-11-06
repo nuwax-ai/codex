@@ -240,6 +240,19 @@ provider 常用字段：
 其他常用顶层键：`model_auto_compact_ratio` / `model_auto_compact_token_limit`（见 §4）、
 `[tools] tool_search = false`（MCP 工具全量直出，见 FORK.md §7.1）。
 
+**跨模型窗口迁移**（大窗口会话切到小模型时自动压缩，见 FORK.md §5.3）也可调参，
+缺省即下表值，越界启动即报错并点名键：
+
+```toml
+migration_compact_ratio = 0.8            # 历史+固定前缀可占窗口的比例
+migration_compact_retain_ratio = 0.16    # 原样保留的尾部占比
+migration_compact_max_span_ratio = 0.5   # 单次摘要请求占窗口上限
+migration_compact_max_ranges = 8         # 单次迁移最多摘要段数（1–64）
+```
+
+窗口偏小的本地模型（如 16K）建议把 `migration_compact_ratio` 降到 `0.7`：固定
+前缀（指令+工具）本身要占 4–5K，留给历史的余量比比例看起来更紧。
+
 要点：自定义 provider 不弹官方登录界面，凭据用 `api_key`（默认）或 `env_key`
 二选一即可直接进 TUI/exec；
 优先级为显式 CLI（`-m`/`-c`）> 环境种子（`NUWAX_*`/`CODEX_*`）> config.toml；
