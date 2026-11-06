@@ -2857,3 +2857,74 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
     );
     assert!(session.reference_context_item().await.is_none());
 }
+
+/// A surface replacement hides the recorded items before its boundary and plants
+/// the summary in their place, leaving the boundary item and everything after it
+/// intact. This is what keeps a 1M-token conversation usable on a 16K model.
+#[tokio::test]
+async fn surface_replacement_hides_shadowed_history_on_replay() {
+    let (session, turn_context) = make_session_and_context().await;
+    let user_item = |id: &str, text: &str| ResponseItemEnvelope {
+        item: ResponseItem::Message {
+            id: Some(codex_protocol::ResponseItemId::from_server(id.to_string())),
+            role: "user".to_owned(),
+            content: vec![ContentItem::InputText {
+                text: text.to_owned(),
+            }],
+            phase: None,
+            status: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    };
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(user_item("item_1", "oldest turn")),
+        RolloutItem::ResponseItem(user_item("item_2", "second turn")),
+        RolloutItem::SurfaceReplacement(Box::new(codex_history::SurfaceReplacementItem {
+            compaction_id: "cmp_1".to_string(),
+            resume_at_item_id: "item_3".to_string(),
+            summary: "## Current Work\n- keep going".to_string(),
+            provider: "local".to_string(),
+            model: "small-window".to_string(),
+            shadowed_tokens: 400_000,
+            retained_tail_tokens: 2_000,
+            reason: codex_history::SurfaceReplacementReason::WindowShrink,
+            supersedes: Vec::new(),
+        })),
+        RolloutItem::ResponseItem(user_item("item_3", "kept turn")),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+    let texts: Vec<String> = reconstructed
+        .history
+        .iter()
+        .filter_map(|envelope| match &envelope.item {
+            ResponseItem::Message { content, .. } => content.first().and_then(|item| match item {
+                ContentItem::InputText { text } => Some(text.clone()),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        !texts.iter().any(|text| text == "oldest turn"),
+        "shadowed history must not reach the model: {texts:?}"
+    );
+    assert!(
+        !texts.iter().any(|text| text == "second turn"),
+        "shadowed history must not reach the model: {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|text| text == "kept turn"),
+        "the boundary item must survive: {texts:?}"
+    );
+    let summary = texts
+        .iter()
+        .find(|text| text.starts_with(crate::compact::SUMMARY_PREFIX))
+        .expect("summary planted at the boundary");
+    assert!(summary.contains("keep going"), "{summary}");
+}

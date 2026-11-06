@@ -29,10 +29,6 @@ on:
         description: "Tag to build (e.g. v0.18.29); defaults to the pushed tag"
         required: false
 
-env:
-  CI_DATA_ROOT: /data/nvme1/gitea-ci
-  CI_CACHE_ROOT: /data/nvme0/ci-cache
-
 jobs:
   get-version:
     name: version
@@ -74,19 +70,16 @@ jobs:
           - runner: linux-host
             target: aarch64-unknown-linux-musl
             ext: ""
-          - runner: windows-host
-            target: x86_64-pc-windows-msvc
-            ext: ".exe"
-          - runner: windows-host
-            target: aarch64-pc-windows-msvc
-            ext: ".exe"
+          # Windows runner is not registered yet (`windows-host`). Uncomment
+          # once scripts/gitea-ci/install-windows-runner.ps1 has run on the box.
+          # - runner: windows-host
+          #   target: x86_64-pc-windows-msvc
+          #   ext: ".exe"
+          # - runner: windows-host
+          #   target: aarch64-pc-windows-msvc
+          #   ext: ".exe"
     runs-on: ${{ matrix.runner }}
     env:
-      # Host paths: this job runs directly on the machine (see the header).
-      CARGO_HOME: ${{ env.CI_DATA_ROOT }}/toolchain/cargo
-      RUSTUP_HOME: ${{ env.CI_DATA_ROOT }}/toolchain/rustup
-      CARGO_TARGET_DIR: ${{ env.CI_CACHE_ROOT }}/target/${{ matrix.target }}
-      ARTIFACTS_DIR: ${{ env.CI_DATA_ROOT }}/artifacts
       # A job that aborts must not leave the tree at a released version.
       VERSION: ${{ needs.get-version.outputs.version }}
     steps:
@@ -104,11 +97,45 @@ jobs:
           rm -rf ./* ./.git 2>/dev/null || true
           git clone --depth 1 --branch "${TAG}" "http://${auth}${host}/${GITHUB_REPOSITORY}.git" .
 
+      # Host-mode runners keep their state on a big disk, but the layout
+      # differs per OS (the Linux box has /data/nvme*, the Macs use $HOME).
+      - name: Resolve CI paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ runner.os }}" in
+            Linux)
+              root=/data/nvme1/gitea-ci; cache=/data/nvme0/ci-cache
+              cargo_home="$root/toolchain/cargo"; rustup_home="$root/toolchain/rustup"
+              zig_dir="$root/toolchain/zig"
+              ;;
+            macOS)
+              root="$HOME/ci"; cache="$HOME/ci-cache"
+              cargo_home="$HOME/ci-toolchain/cargo"; rustup_home="$HOME/ci-toolchain/rustup"
+              zig_dir="$HOME/ci-toolchain/zig"
+              ;;
+            *)
+              root="$HOME/ci"; cache="$HOME/ci-cache"
+              cargo_home="$HOME/ci-toolchain/cargo"; rustup_home="$HOME/ci-toolchain/rustup"
+              zig_dir="$HOME/ci-toolchain/zig"
+              ;;
+          esac
+          mkdir -p "$root/artifacts" "$cache/rusty_v8"
+          {
+            echo "CI_DATA_ROOT=$root"
+            echo "CI_CACHE_ROOT=$cache"
+            echo "CARGO_HOME=$cargo_home"
+            echo "RUSTUP_HOME=$rustup_home"
+            echo "CI_ZIG_DIR=$zig_dir"
+            echo "CARGO_TARGET_DIR=$cache/target/${{ matrix.target }}"
+            echo "ARTIFACTS_DIR=$root/artifacts"
+          } >> "$GITHUB_ENV"
+
       - name: Put the host toolchain on PATH
         shell: bash
         run: |
           set -euo pipefail
-          for d in "${CARGO_HOME}/bin" "${CI_DATA_ROOT}/toolchain/zig"; do
+          for d in "${CARGO_HOME}/bin" "${CI_ZIG_DIR}"; do
             [ -d "$d" ] || { echo "missing toolchain dir: $d (run scripts/gitea-ci/install-host-runner.sh)" >&2; exit 1; }
             echo "$d" >> "$GITHUB_PATH"
           done
@@ -228,11 +255,14 @@ jobs:
       - name: Check the artifact set
         shell: bash
         env:
-          ARTIFACTS_DIR: ${{ env.CI_DATA_ROOT }}/artifacts
+          ARTIFACTS_DIR: /data/nvme1/gitea-ci/artifacts
           VERSION: ${{ needs.get-version.outputs.version }}
         run: |
           set -euo pipefail
           ls -la "${ARTIFACTS_DIR}"
           count="$(find "${ARTIFACTS_DIR}" -maxdepth 1 \( -name '*'"${VERSION}"'*.tar.gz' -o -name '*'"${VERSION}"'*.zip' \) | wc -l)"
           echo "archives for ${VERSION}: ${count}"
-          [ "${count}" -ge 7 ] || { echo "expected at least 7 platform archives, found ${count}" >&2; exit 1; }
+          # macOS archives land on the Mac runner's own disk; the Linux host
+          # collects the three Linux targets. Raise this to 7 once the Windows
+          # runner exists and archives are gathered in one place.
+          [ "${count}" -ge 3 ] || { echo "expected the 3 linux archives, found ${count}" >&2; exit 1; }
