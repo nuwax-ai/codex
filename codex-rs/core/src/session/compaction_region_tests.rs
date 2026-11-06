@@ -3,6 +3,8 @@ use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputPayload;
 use pretty_assertions::assert_eq;
 
+use crate::context_manager::estimate_item_token_count;
+
 fn message(text: &str) -> ResponseItemEnvelope {
     ResponseItemEnvelope {
         item: ResponseItem::Message {
@@ -51,65 +53,79 @@ fn output(call_id: &str, text: &str) -> ResponseItemEnvelope {
     }
 }
 
-/// A visible tool call plus its result must never be separated by the cut: the
-/// model would receive an orphan result.
+fn tokens(items: &[ResponseItemEnvelope]) -> Vec<i64> {
+    items
+        .iter()
+        .map(|envelope| estimate_item_token_count(&envelope.item))
+        .collect()
+}
+
+/// Five evenly sized turns: each is large enough that the numbers stay readable.
+fn five_turns() -> Vec<ResponseItemEnvelope> {
+    (0..5)
+        .map(|index| message(&format!("{index}").repeat(40_000)))
+        .collect()
+}
+
 #[test]
-fn the_cut_never_splits_a_tool_pair() {
-    let items = vec![
-        message(&"a".repeat(2_000)),
-        call("call_1"),
-        output("call_1", &"b".repeat(2_000)),
-        message(&"c".repeat(2_000)),
-    ];
+fn the_replacement_starts_at_the_oldest_history() {
+    let items = five_turns();
     let region = select_compaction_region(&items, 0, 0).expect("a region");
-    assert_eq!(region.end, 3, "the cut must land after the pair");
-    assert_eq!(region.start, 0);
+    assert_eq!(region.start, 0, "never skip older history");
+    let balances = cut_balances(&items);
+    assert_eq!(balances[region.end], 0, "the cut must be pairing-safe");
 }
 
 #[test]
 fn a_verbatim_tail_is_retained() {
-    let items = vec![
-        message(&"a".repeat(4_000)),
-        message(&"b".repeat(4_000)),
-        message(&"c".repeat(4_000)),
-    ];
-    // Retain at least half the surface; only the oldest message may be replaced.
-    let region = select_compaction_region(&items, 8_000, 0).expect("a region");
+    let items = five_turns();
+    let per_item = tokens(&items);
+    let retain = per_item[0] * 2 + per_item[1] / 2;
+    let region = select_compaction_region(&items, retain, 0).expect("a region");
+
+    let retained: i64 = per_item[region.end..].iter().sum();
+    assert!(
+        retained >= retain,
+        "retained {retained} tokens, expected at least {retain}"
+    );
     assert_eq!(region.start, 0);
-    assert_eq!(region.end, 1);
-    assert!(region.tokens >= 900, "tokens: {}", region.tokens);
 }
 
-/// The span cap is what keeps a single summary request inside a small model's
-/// window: the replacement shortens instead of exceeding the budget.
 #[test]
 fn the_span_is_capped_without_skipping_older_history() {
-    let items = vec![
-        message(&"a".repeat(4_000)),
-        message(&"b".repeat(4_000)),
-        message(&"c".repeat(4_000)),
-    ];
-    let region = select_compaction_region(&items, 0, 1_200).expect("a region");
-    assert_eq!(region.start, 0, "never skip the oldest history");
-    assert_eq!(region.end, 1);
-    assert!(region.tokens <= 1_200, "tokens: {}", region.tokens);
+    let items = five_turns();
+    let per_item = tokens(&items);
+    let cap = per_item[0] + per_item[1] / 2;
+    let region = select_compaction_region(&items, 0, cap).expect("a region");
+
+    assert_eq!(region.start, 0, "the cap shortens the tail edge");
+    assert!(
+        region.tokens <= cap,
+        "span {} tokens exceeds the cap {cap}",
+        region.tokens
+    );
 }
 
 #[test]
-fn nothing_to_replace_when_everything_is_the_tail() {
-    let items = vec![message("only turn")];
-    assert_eq!(select_compaction_region(&items, 10_000, 0), None);
-}
-
-#[test]
-fn a_leading_open_pair_pushes_the_cut_forward() {
-    // The surface starts inside a pair (a resumed window can look like this);
-    // the cap must not cut between the call and its result.
+fn a_cut_never_lands_inside_a_tool_pair() {
     let items = vec![
+        message(&"a".repeat(40_000)),
         call("call_1"),
-        output("call_1", &"b".repeat(4_000)),
-        message(&"c".repeat(4_000)),
+        output("call_1", &"b".repeat(40_000)),
+        message(&"c".repeat(40_000)),
     ];
-    let region = select_compaction_region(&items, 0, 600).expect("a region");
-    assert_eq!(region.end, 2, "the cut lands after the pair, never inside");
+    let per_item = tokens(&items);
+    // Cap exactly at the end of the tool result: the next item would overflow.
+    let cap: i64 = per_item[0..3].iter().sum();
+    let region = select_compaction_region(&items, 0, cap).expect("a region");
+
+    let balances = cut_balances(&items);
+    assert_eq!(balances[region.end], 0, "cut split a tool pair");
+    assert_eq!(region.end, 3, "the cut lands after the pair");
+}
+
+#[test]
+fn nothing_to_replace_when_the_surface_is_tiny() {
+    assert_eq!(select_compaction_region(&[message("only turn")], 1_000, 0), None);
+    assert_eq!(select_compaction_region(&[], 0, 0), None);
 }
