@@ -1074,7 +1074,7 @@ pub(crate) async fn run_migration_compact_task(
             reason: codex_history::SurfaceReplacementReason::WindowShrink,
             supersedes: Vec::new(),
         };
-        sess.persist_rollout_items(&[RolloutItem::SurfaceReplacement(Box::new(record))])
+        sess.persist_rollout_items(&[codex_history::RolloutItem::SurfaceReplacement(Box::new(record))])
             .await;
 
         // Apply the same cut in memory so the rest of this turn sees the smaller
@@ -1098,9 +1098,8 @@ pub(crate) async fn run_migration_compact_task(
                 metadata: None,
             },
         );
-        sess.replace_history(
+        sess.replace_history_for_migration(
             replacement.into_iter().map(|item| item.item).collect(),
-            /*reference_context_item*/ None,
         )
         .await;
         replaced = true;
@@ -1138,8 +1137,8 @@ async fn summarize_migration_region(
     };
     let metadata = CompactionTurnMetadata::new(
         CompactionTrigger::Auto,
-        CompactionReason::ContextWindow,
-        CompactionImplementation::Local,
+        CompactionReason::ModelDownshift,
+        CompactionImplementation::Responses,
         CompactionPhase::PreTurn,
     );
     let responses_metadata = sess

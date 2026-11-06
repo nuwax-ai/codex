@@ -4631,6 +4631,15 @@ impl Session {
         state.replace_history(items, reference_context_item);
     }
 
+    /// Install a shrunken surface after a migration compaction (FORK.md,
+    /// "迁移压缩"). Unlike a full compaction this keeps the untouched tail and
+    /// only swaps the replaced prefix for its summary, so it does not reset the
+    /// world-state baseline or the compaction window identity.
+    pub(crate) async fn replace_history_for_migration(&self, items: Vec<ResponseItem>) {
+        let mut state = self.state.lock().await;
+        state.replace_history(items, /*reference_context_item*/ None);
+    }
+
     pub(crate) async fn replace_compacted_history<'a>(
         &self,
         mut items: Vec<ResponseItemEnvelope>,

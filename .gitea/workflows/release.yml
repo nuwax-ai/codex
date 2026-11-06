@@ -143,10 +143,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for d in "${CARGO_HOME}/bin" "${CI_ZIG_DIR}"; do
-            [ -d "$d" ] || { echo "missing toolchain dir: $d (run scripts/gitea-ci/install-host-runner.sh)" >&2; exit 1; }
-            echo "$d" >> "$GITHUB_PATH"
-          done
+          [ -d "${CARGO_HOME}/bin" ] || {
+            echo "missing ${CARGO_HOME}/bin (run scripts/gitea-ci/install-host-runner.sh)" >&2
+            exit 1
+          }
+          echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
+          # Zig is only needed for the musl targets, which only the Linux host
+          # builds; on macOS/Windows the directory simply does not exist.
+          if [ -d "${CI_ZIG_DIR}" ]; then
+            echo "${CI_ZIG_DIR}" >> "$GITHUB_PATH"
+          fi
 
       - name: Runner inventory
         shell: bash
