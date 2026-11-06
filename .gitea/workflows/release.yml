@@ -161,6 +161,8 @@ jobs:
       - name: musl build tools
         if: ${{ contains(matrix.target, 'unknown-linux-musl') }}
         shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
           zig version
