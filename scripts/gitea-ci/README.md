@@ -310,3 +310,40 @@ gnu/musl 互相排队。现在多接了一台 `192.168.31.41`（**72 核 / 62 GB
 - 装完 zig 后要确认没有半写状态：job 报 `zig: Text file busy` 说明安装脚本还在写文件，
   等它结束再触发。
 - 用 `setsid nohup ... &` 启动 daemon，普通 `nohup ... &` 在 ssh 会话结束时会被带走。
+
+### 产物清单 manifest.json（2026-11-06 追加）
+
+每个平台 job 打完包后会生成一份 `entry.json`（`file`/`url`/`sha256`/`size`/`target`），
+和归档一起上传到：
+
+```
+ci-gitea/<version>/<target>/nuwax-codex-<version>-<target>.{tar.gz,zip}
+ci-gitea/<version>/<target>/entry.json
+```
+
+`verify-artifacts` 校验完 7 个归档后，把 7 份 entry 合并成 **`ci-gitea/<version>/manifest.json`**
+并上传：
+
+```json
+{
+  "version": "0.1.2",
+  "tag": "v0.1.2",
+  "generated_at": "2026-11-06T09:47:51Z",
+  "repository": "ci/codex",
+  "commit": "<sha>",
+  "base_url": "https://s3.nuwax.com:9443/nuwax-packages/ci-gitea/0.1.2",
+  "targets": {
+    "aarch64-apple-darwin": {
+      "target": "aarch64-apple-darwin",
+      "file": "nuwax-codex-0.1.2-aarch64-apple-darwin.tar.gz",
+      "url": "…/ci-gitea/0.1.2/aarch64-apple-darwin/nuwax-codex-0.1.2-aarch64-apple-darwin.tar.gz",
+      "sha256": "9c0e9f61…",
+      "size": 135860575
+    }
+  }
+}
+```
+
+这样发布脚本 / `nuwax-harness` 的 postinstall 只要读一个文件，不用在代码里硬编码 7 个地址，
+也能用 `sha256` 校验下载完整性。生成脚本是 `scripts/gitea-ci/release-manifest.py`
+（只用标准库，刻意兼容 Python 3.9 —— macOS runner 就是 3.9）。

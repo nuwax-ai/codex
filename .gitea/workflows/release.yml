@@ -293,6 +293,7 @@ jobs:
       - name: Upload the archive
         shell: bash
         env:
+          S3_BASE: https://s3.nuwax.com:9443/nuwax-packages
           S3_AK: ${{ secrets.NUWAX_UPLOAD_ACCESS_KEY }}
           S3_SK: ${{ secrets.NUWAX_UPLOAD_SECRET_KEY }}
         run: |
@@ -311,9 +312,17 @@ jobs:
             done
           fi
           [ -n "${tool}" ] || { echo "nuwax-upload is not installed on this runner" >&2; exit 1; }
+          archive="$(ls "${ARTIFACTS_DIR}"/nuwax-codex-"${VERSION}"-"${{ matrix.target }}".* | head -1)"
+          entry="${ARTIFACTS_DIR}/entry.json"
+          python3 "${GITHUB_WORKSPACE}/scripts/gitea-ci/release-manifest.py" entry \
+            --archive "${archive}" \
+            --version "${VERSION}" \
+            --target "${{ matrix.target }}" \
+            --base-url "${S3_BASE}/ci-gitea/${VERSION}/${{ matrix.target }}" \
+            --out "${entry}"
           "${tool}" --access-key "${S3_AK}" --secret-key "${S3_SK}" \
             --prefix "ci-gitea/${VERSION}/${{ matrix.target }}" \
-            "${ARTIFACTS_DIR}"/nuwax-codex-"${VERSION}"-"${{ matrix.target }}".*
+            "${archive}" "${entry}"
 
   # Publishing (OSS upload + npm publish) stays manual until the archives above
   # are verified: this pipeline is new, and a half-built release must not reach
@@ -322,12 +331,29 @@ jobs:
     name: verify artifacts
     needs: [build]
     runs-on: linux-host
+    env:
+      S3_BASE: https://s3.nuwax.com:9443/nuwax-packages
+      REQUESTED_TAG: ${{ inputs.tag_name }}
     steps:
-      - name: Check the archive set on S3
+      # The manifest is assembled by the helper script in the repository.
+      - name: Check out the tag
         shell: bash
         env:
-          S3_BASE: https://s3.nuwax.com:9443/nuwax-packages
-          REQUESTED_TAG: ${{ inputs.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
+          server="${CI_GITEA_BASE:-${GITHUB_SERVER_URL%/}}"
+          host="${server#http://}"; host="${host#https://}"
+          auth=""; [ -n "${GH_TOKEN:-}" ] && auth="oauth2:${GH_TOKEN}@"
+          rm -rf ./* ./.git 2>/dev/null || true
+          git clone --depth 1 --branch "${tag}" "http://${auth}${host}/${GITHUB_REPOSITORY}.git" .
+
+      - name: Verify the archives and publish manifest.json
+        shell: bash
+        env:
+          S3_AK: ${{ secrets.NUWAX_UPLOAD_ACCESS_KEY }}
+          S3_SK: ${{ secrets.NUWAX_UPLOAD_SECRET_KEY }}
         run: |
           set -euo pipefail
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
@@ -335,16 +361,47 @@ jobs:
           targets=(aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu \
                    x86_64-unknown-linux-musl aarch64-unknown-linux-musl \
                    x86_64-pc-windows-msvc aarch64-pc-windows-msvc)
+          entries="$(mktemp -d)"
           found=0
           for t in "${targets[@]}"; do
             ext=tar.gz; case "$t" in *windows*) ext=zip ;; esac
             url="${S3_BASE}/ci-gitea/${version}/${t}/nuwax-codex-${version}-${t}.${ext}"
             code="$(curl -s -o /dev/null -w '%{http_code}' -I --max-time 30 "$url" || echo 000)"
             echo "$t -> HTTP $code"
-            [ "$code" = "200" ] && found=$((found + 1))
+            if [ "$code" = "200" ]; then
+              found=$((found + 1))
+              curl -fsS --max-time 30 "${S3_BASE}/ci-gitea/${version}/${t}/entry.json" \
+                -o "${entries}/${t}.json"
+            fi
           done
           echo "archives reachable: ${found}/${#targets[@]}"
           [ "${found}" -ge "${#targets[@]}" ] || {
             echo "expected all ${#targets[@]} platform archives on S3" >&2
             exit 1
           }
+
+          python3 scripts/gitea-ci/release-manifest.py assemble \
+            --entries "${entries}" \
+            --version "${version}" \
+            --tag "${tag}" \
+            --base-url "${S3_BASE}/ci-gitea/${version}" \
+            --repository "${GITHUB_REPOSITORY:-}" \
+            --commit "${GITHUB_SHA:-}" \
+            --out "${entries}/manifest.json"
+
+          if [ -z "${S3_AK:-}" ] || [ -z "${S3_SK:-}" ]; then
+            echo "no S3 credentials configured; manifest left at ${entries}/manifest.json"
+            exit 0
+          fi
+          tool="$(command -v nuwax-upload || true)"
+          if [ -z "${tool}" ]; then
+            for candidate in /data/nvme1/gitea-ci/bin/nuwax-upload \
+                             "${HOME}/ci/data/bin/nuwax-upload" \
+                             "${HOME}/.npm-global/bin/nuwax-upload"; do
+              [ -x "${candidate}" ] && tool="${candidate}" && break
+            done
+          fi
+          [ -n "${tool}" ] || { echo "nuwax-upload is not installed on this runner" >&2; exit 1; }
+          "${tool}" --access-key "${S3_AK}" --secret-key "${S3_SK}" \
+            --prefix "ci-gitea/${version}" "${entries}/manifest.json"
+          echo "manifest: ${S3_BASE}/ci-gitea/${version}/manifest.json"
