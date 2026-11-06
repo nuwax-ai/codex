@@ -192,6 +192,10 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
+          # github.com is not reachable from these hosts; the tarball is mirrored
+          # in the same bucket the archives go to (the script still verifies the
+          # pinned sha256).
+          OPENSSL_SOURCE_URL: https://s3.nuwax.com:9443/nuwax-packages/ci-gitea/deps/openssl-3.6.4.tar.gz
         run: |
           set -euo pipefail
           zig version

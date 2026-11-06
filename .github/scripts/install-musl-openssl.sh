@@ -21,7 +21,10 @@ openssl_prefix="${openssl_root}/prefix"
 if [[ ! -f "${openssl_prefix}/.complete" ]]; then
   mkdir -p "${openssl_root}"
   archive="${openssl_root}/openssl-${openssl_version}.tar.gz"
-  curl -fsSL "https://github.com/openssl/openssl/releases/download/openssl-${openssl_version}/openssl-${openssl_version}.tar.gz" -o "${archive}"
+  # Relaxed CI hosts (and this one) cannot reach github.com; the checksum below
+  # still pins the content, so a mirror is safe.
+  openssl_source_url="${OPENSSL_SOURCE_URL:-https://github.com/openssl/openssl/releases/download/openssl-${openssl_version}/openssl-${openssl_version}.tar.gz}"
+  curl -fsSL "${openssl_source_url}" -o "${archive}"
   echo "${openssl_sha256}  ${archive}" | sha256sum -c -
   tar -xzf "${archive}" -C "${openssl_root}"
 
