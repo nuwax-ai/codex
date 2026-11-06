@@ -113,9 +113,13 @@ jobs:
           # layout on the Linux box.
           case "$(uname -s)" in
             Linux)
-              root=/data/nvme1/gitea-ci; cache=/data/nvme0/ci-cache
-              cargo_home="$root/toolchain/cargo"; rustup_home="$root/toolchain/rustup"
-              zig_dir="$root/toolchain/zig"
+              # Each Linux runner exports where its disks are (the box that
+              # hosts Gitea uses /data/nvme*; the others use /srv/ci).
+              root="${CI_DATA_ROOT:-/data/nvme1/gitea-ci}"
+              cache="${CI_CACHE_ROOT:-/data/nvme0/ci-cache}"
+              cargo_home="${CI_CARGO_HOME:-$root/toolchain/cargo}"
+              rustup_home="${CI_RUSTUP_HOME:-$root/toolchain/rustup}"
+              zig_dir="${CI_ZIG_DIR:-$root/toolchain/zig}"
               ;;
             Darwin)
               root="$HOME/ci"; cache="$HOME/ci-cache"
