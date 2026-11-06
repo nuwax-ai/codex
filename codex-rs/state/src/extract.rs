@@ -37,7 +37,7 @@ pub fn apply_rollout_item(
         RolloutItem::ResponseItem(item) => apply_response_item(metadata, &item.item),
         RolloutItem::InterAgentCommunication(_)
         | RolloutItem::InterAgentCommunicationMetadata { .. } => {}
-        RolloutItem::Compacted(_) => {}
+        RolloutItem::Compacted(_) | RolloutItem::SurfaceReplacement(_) => {}
         RolloutItem::WorldState(_) => {}
         RolloutItem::DynamicToolsUpdated { .. }
         | RolloutItem::RetainedContext(_)
@@ -73,6 +73,7 @@ pub fn rollout_item_affects_thread_metadata(item: &RolloutItem) -> bool {
         | RolloutItem::InterAgentCommunication(_)
         | RolloutItem::InterAgentCommunicationMetadata { .. }
         | RolloutItem::Compacted(_)
+        | RolloutItem::SurfaceReplacement(_)
         | RolloutItem::RealtimeItem(_)
         | RolloutItem::RetainedContext(_)
         | RolloutItem::DynamicToolsUpdated { .. }

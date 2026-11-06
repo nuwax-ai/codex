@@ -40,6 +40,7 @@ pub fn persisted_rollout_item(
         }
         // Persist Codex executive markers so we can analyze flows (e.g., compaction, API turns).
         RolloutItem::Compacted(_)
+        | RolloutItem::SurfaceReplacement(_)
         | RolloutItem::TurnContext(_)
         | RolloutItem::TokenUsageRecord(_)
         | RolloutItem::WorldState(_)

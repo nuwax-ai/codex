@@ -55,7 +55,8 @@ pub fn resume_multi_agent_version(item: &RolloutItem) -> Option<MultiAgentVersio
             .resume_metadata
             .as_ref()
             .and_then(|metadata| metadata.multi_agent_version),
-        RolloutItem::DynamicToolsUpdated { .. }
+        RolloutItem::SurfaceReplacement(_)
+        | RolloutItem::DynamicToolsUpdated { .. }
         | RolloutItem::SessionMeta(_)
         | RolloutItem::ResponseItem(_)
         | RolloutItem::InterAgentCommunication(_)

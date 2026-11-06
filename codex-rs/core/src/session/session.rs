@@ -1761,6 +1761,7 @@ impl Session {
                     }
                     RolloutItem::EventMsg(event) => mcp_runtime.observe_event(event),
                     RolloutItem::DynamicToolsUpdated { .. }
+                    | RolloutItem::SurfaceReplacement(_)
                     | RolloutItem::SessionMeta(_)
                     | RolloutItem::ResponseItem(_)
                     | RolloutItem::InterAgentCommunication(_)

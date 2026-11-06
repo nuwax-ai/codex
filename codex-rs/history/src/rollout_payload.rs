@@ -11,6 +11,7 @@ use super::ResponseItemEnvelope;
 use super::RolloutItem;
 use super::SecurityRiskScore;
 use super::SessionMetaLine;
+use super::SurfaceReplacementItem;
 use super::TokenUsageRecord;
 use super::TurnContextItem;
 use super::WorldStateItem;
@@ -50,6 +51,9 @@ pub(super) enum RolloutItemWire<'a> {
     },
     Compacted {
         payload: Cow<'a, CompactedItem>,
+    },
+    SurfaceReplacement {
+        payload: Cow<'a, SurfaceReplacementItem>,
     },
     TurnContext {
         payload: Cow<'a, TurnContextItem>,
@@ -107,6 +111,9 @@ impl<'a> From<&'a RolloutItem> for RolloutItemWire<'a> {
                 }
             }
             RolloutItem::Compacted(payload) => Self::Compacted {
+                payload: Cow::Borrowed(payload),
+            },
+            RolloutItem::SurfaceReplacement(payload) => Self::SurfaceReplacement {
                 payload: Cow::Borrowed(payload),
             },
             RolloutItem::TurnContext(payload) => Self::TurnContext {
@@ -241,6 +248,9 @@ impl From<RolloutItemWire<'_>> for RolloutItem {
             }
             RolloutItemWire::Compacted { payload } => {
                 Self::Compacted(Box::new(payload.into_owned()))
+            }
+            RolloutItemWire::SurfaceReplacement { payload } => {
+                Self::SurfaceReplacement(Box::new(payload.into_owned()))
             }
             RolloutItemWire::TurnContext { payload } => Self::TurnContext(payload.into_owned()),
             RolloutItemWire::TokenUsageRecord { payload } => {

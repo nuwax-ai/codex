@@ -84,6 +84,7 @@ fn keep_forked_rollout_item(item: &RolloutItem, preserve_context_baselines: bool
         RolloutItem::TokenUsageRecord(_) => false,
         RolloutItem::DynamicToolsUpdated { .. }
         | RolloutItem::Compacted(_)
+        | RolloutItem::SurfaceReplacement(_)
         | RolloutItem::EventMsg(_)
         | RolloutItem::SessionMeta(_) => true,
     }
@@ -380,6 +381,7 @@ pub(super) async fn prepare_forked_history(
         }
 
         match item {
+            RolloutItem::SurfaceReplacement(_) => true,
             RolloutItem::ResponseItem(response_item) => {
                 retain_forked_item(response_item, &mut replaced_parent_developer_instructions)
             }

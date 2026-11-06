@@ -194,3 +194,44 @@ job 日志里能看到 `8 cpus / 31.0 GiB / 1.5T free` 和工具链清单。
 3. **macOS / Windows runner**：见第 4 节，标签 `macos` / `windows`（host 模式）。
 
 4. 发布闭环（OSS 上传 + `npm publish`）仍按第 6 节保持人工，等产物核验后再接。
+
+## 10. 离线构建配方（已实测出包）
+
+`192.168.31.23` 的网络限制：**job 容器**连不到 github.com/crates.io；**宿主机**能连
+github.com 但 `crates.io` 返回 403、`chromium.googlesource.com` 超时。因此真实构建按
+"宿主机预置 + 目录源"做：
+
+| 依赖 | 做法 | 位置 | 实测 |
+|---|---|---|---|
+| Rust 1.99.1 + musl target | `install-host-runner.sh` | `/data/nvme1/gitea-ci/toolchain/{cargo,rustup}` | rustc/cargo 1.99.1 |
+| Zig 0.14.0（musl 链接） | 同上 | `.../toolchain/zig` | 0.14.0 |
+| crates 与 git 依赖（含 `rules_rust`/`nucleo`/`h3`/`mxc`/`rusty_v8`） | 有网机器 `cargo vendor`，整包搬过去 | `/data/nvme0/ci-cache/vendor/ci-vendor`（1.9G） | 目录源替代所有 registry |
+| rusty_v8 归档 | `fetch-rusty-v8.sh`（校验 `third_party/v8` 清单） | `/data/nvme0/ci-cache/rusty_v8/<target>`（87M/3 target） | 校验 OK |
+| 构建缓存 | `CARGO_TARGET_DIR` 指到大盘 | `/data/nvme0/ci-cache/target/<target>` | — |
+
+**为什么必须 vendor**：`Cargo.lock` 把 `v8` pin 在 `seanh-oai/rusty_v8` 的 git rev 上，
+那个 rev 的 `.gitmodules` 指向 `chromium.googlesource.com`（本网络超时）。git URL 重写
+到本地副本没用——子模块属于**被 pin 的那个提交**，改不了历史。换成目录源后 cargo
+根本不走 git，问题消失。
+
+实测：在 `.23` 上对 `codex-code-mode-host`（gnu）跑
+`cargo build --release` → **4 分 08 秒**出 207MB 二进制，全程无外网。
+
+完整流程：
+
+```bash
+# 1) 有网机器：vendor + 采 V8
+bash scripts/gitea-ci/vendor-deps.sh --repo codex-rs --out /tmp/ci-vendor
+bash scripts/gitea-ci/fetch-rusty-v8.sh --repo . --cache-root /tmp/v8seed --all-linux
+
+# 2) 搬到 CI 机
+tar -C /tmp -czf - ci-vendor | ssh ci-host 'tar -C /data/nvme0/ci-cache/vendor -xzf -'
+tar -C /tmp/v8seed -czf - rusty_v8 | ssh ci-host 'tar -C /data/nvme0/ci-cache -xzf -'
+
+# 3) CI 机：装工具链与 host runner，写入目录源配置
+bash install-host-runner.sh --instance http://<host>:3301
+bash vendor-deps.sh --install /data/nvme0/ci-cache/vendor/ci-vendor \
+  --cargo-home /data/nvme1/gitea-ci/toolchain/cargo
+```
+
+依赖变更（`Cargo.lock` 更新）后需要重跑第 1、2 步。

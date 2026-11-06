@@ -254,6 +254,7 @@ impl ContextManager {
                 | RolloutItem::TokenUsageRecord(_)
                 | RolloutItem::RealtimeItem(_)
                 | RolloutItem::Compacted(_)
+                | RolloutItem::SurfaceReplacement(_)
                 | RolloutItem::EventMsg(_) => None,
             })
             .peekable();
@@ -288,6 +289,8 @@ impl ContextManager {
         for (index, item) in replay_items.iter().enumerate().rev() {
             let preceding_turn_id = started_turn_ids.peek().copied().or(checkpoint_turn_id);
             match item {
+                // A partial replacement does not reset the window or world state.
+                RolloutItem::SurfaceReplacement(_) => {}
                 RolloutItem::Compacted(compacted) => {
                     let active_segment =
                         active_segment.get_or_insert_with(ActiveReplaySegment::default);
@@ -509,6 +512,9 @@ impl ContextManager {
             history_checkpoint.map_or(rollout_items, |checkpoint| checkpoint.suffix);
         for item in rollout_suffix {
             match item {
+                // Partial replacement replay lands in a later commit; until then the
+                // model sees the full history (the pre-S1 behavior).
+                RolloutItem::SurfaceReplacement(_) => {}
                 RolloutItem::RetainedContext(event) => {
                     history.record_retained_context(event);
                 }
@@ -579,6 +585,7 @@ impl ContextManager {
         for item in world_state_replay {
             match item {
                 RolloutItem::Compacted(_) => world_state_baseline = None,
+                RolloutItem::SurfaceReplacement(_) => {}
                 RolloutItem::WorldState(world_state) if world_state.full => {
                     world_state_baseline = Some(WorldStateSnapshot::from(&world_state.state));
                 }

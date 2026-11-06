@@ -267,6 +267,8 @@ pub enum RolloutItem {
         trigger_turn: bool,
     },
     Compacted(Box<CompactedItem>),
+    /// Partial-history replacement (fork, my-docs migration compaction).
+    SurfaceReplacement(Box<SurfaceReplacementItem>),
     TurnContext(TurnContextItem),
     TokenUsageRecord(TokenUsageRecord),
     WorldState(WorldStateItem),
@@ -332,6 +334,50 @@ mod rollout_payload;
 
 pub use guardian_history::GuardianHistoryCheckpoint;
 pub use guardian_history::GuardianRetainedOmissions;
+
+/// Why a partial-history replacement was written.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SurfaceReplacementReason {
+    /// The conversation moved to a model whose window is smaller than the history.
+    #[default]
+    WindowShrink,
+    /// Ordinary pre-turn pressure.
+    Pressure,
+    /// Provider-confirmed context overflow.
+    Overflow,
+    /// Explicit `/compact`.
+    Manual,
+}
+
+/// One partial-history replacement: the model no longer sees the recorded
+/// response items in `shadowed_start..shadowed_end`, and sees `summary` in their
+/// place. The rollout stays append-only, so replaying it reproduces the same
+/// surface; readers that predate this record simply replay the shadowed items.
+///
+/// Positions are indices over the model-visible `RolloutItem::ResponseItem`
+/// stream in file order. A later replacement that covers an earlier one lists
+/// its `compaction_id` in `supersedes`, and the older record stops applying.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct SurfaceReplacementItem {
+    pub compaction_id: String,
+    /// Inclusive start index over the response-item stream.
+    pub shadowed_start: u64,
+    /// Exclusive end index over the response-item stream.
+    pub shadowed_end: u64,
+    /// Summary text planted at the end of the shadowed range.
+    pub summary: String,
+    /// Route that produced the summary (always the model the thread switched to).
+    pub provider: String,
+    pub model: String,
+    pub shadowed_tokens: i64,
+    pub retained_tail_tokens: i64,
+    #[serde(default)]
+    pub reason: SurfaceReplacementReason,
+    /// Earlier replacements this one absorbs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supersedes: Vec<String>,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CompactedItem {

@@ -285,7 +285,7 @@ impl LegacyRolloutCanonicalizer {
             item @ RolloutItem::InterAgentCommunication(_) => {
                 self.write_item(writer, &timestamp, item).await?;
             }
-            item @ RolloutItem::Compacted(_) => {
+            item @ (RolloutItem::Compacted(_) | RolloutItem::SurfaceReplacement(_)) => {
                 self.write_item(writer, &timestamp, item).await?;
             }
             item @ (RolloutItem::InterAgentCommunicationMetadata { .. }

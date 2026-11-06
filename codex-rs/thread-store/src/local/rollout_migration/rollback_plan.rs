@@ -350,7 +350,8 @@ impl RollbackPlanner {
                     acceptance_order: Some(*acceptance_order),
                 });
             }
-            RolloutItem::SecurityRiskScore(_) => self.record_boundaries[index] = None,
+            RolloutItem::SecurityRiskScore(_)
+            | RolloutItem::SurfaceReplacement(_) => self.record_boundaries[index] = None,
         }
 
         Ok(())
