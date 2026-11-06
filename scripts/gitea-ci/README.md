@@ -265,3 +265,32 @@ git push gitea HEAD:main          # 注意：不要带 --tags，tag 会触发 re
 已知边界：`make gitea-release` 会触发 7 平台矩阵，而 U `macos-host` / `windows-host`
 两个 runner 还没接入，所以现在它会在那两个 job 上排队/失败；要只验证 Linux 链路，先把
 `release.yml` 的 matrix 收窄到 `linux-host` 的三个目标。
+
+## 12. 多平台实测（2026-11-06）
+
+三台 host 模式 runner 已接入：`linux-host`（192.168.31.23）、`macos-host`（Mac mini
+192.168.31.26）、`windows-host`（192.168.32.235）。`release.yml` 的 matrix 是 7 个目标。
+
+| 目标 | runner | 状态 |
+|---|---|---|
+| x86_64-unknown-linux-gnu | linux-host | ✅ **已产出归档**（`nuwax-codex-<ver>-x86_64-unknown-linux-gnu.tar.gz`，解出的 `nuwax-harness --version` 正常） |
+| x86_64-unknown-linux-musl / aarch64-unknown-linux-musl | linux-host | ⏳ 交叉编译很慢（zig 链接，冷构建 40 分钟以上） |
+| aarch64/x86_64-apple-darwin | macos-host | ✅ 编译通过；打包曾因 Python 3.9 缺 `hashlib.file_digest` 失败，已改成流式哈希 |
+| x86_64-pc-windows-msvc | windows-host | ⏳ 编译中 |
+| aarch64-pc-windows-msvc | windows-host | ❌ **缺 VS BuildTools 的 ARM64 组件**（`VC/Tools/MSVC/*/bin/Hostx64/arm64/cl.exe` 不存在）；只装 LLVM 不够，链接仍要 ARM64 的 MSVC 库 |
+
+踩过的平台差异（每条都已在 workflow 里处理）：
+
+1. `needs.<job>.outputs` 在 Gitea 求值为空 → 每个 job 自己从 `GITHUB_REF_NAME` 取版本。
+2. cargo 步骤必须在 `codex-rs/` 下跑（GitHub 用 `defaults.run.working-directory` 提供）。
+3. `install-musl-build-tools.sh` 需要 `TARGET` 环境变量。
+4. `runner.os` 大小写与 GitHub 不一致 → 用 `uname -s` 判断平台。
+5. **macOS job 里 `git` 连不上实例**（同一 job 内 `curl` 却 200/401）→ checkout 失败时回退到 Gitea archive API。
+6. 两个 mac job 并发 `rustup target add` 抢同一个 RUSTUP_HOME → mac runner `capacity: 1`。
+7. **Windows 在另一个网段且到不了 192.168.31.x**（TCP 能建但 HTTP 被 TUN 网关吞掉）→ 在同时有两个网段的机器上跑 3301 中继，runner 用 `CI_GITEA_BASE` 指向它。
+8. Windows 的 `tar`：Git Bash 的 `/usr/bin/tar` 处理不了 `C:\...`（当成远程主机），用 `C:\Windows\System32\tar.exe`。
+9. 打包脚本 `hashlib.file_digest` 需 Python 3.11+ → 改成流式 sha256（对所有平台安全）。
+
+**aarch64-windows 的建议**：装 VS BuildTools 的 ARM64 组件
+（`Microsoft.VisualStudio.Component.VC.Tools.ARM64`，需要管理员跑 VS Installer，
+约 1–2 GB）后再打开该目标；在那之前让 GitHub CI 继续负责它。
