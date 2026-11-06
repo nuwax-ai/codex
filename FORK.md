@@ -268,6 +268,14 @@ turn 级超窗处理才会触发（官方代码里这两个机制只认该分类
   嵌套条目由此安全拒绝。另：固定前缀吃满预算（budget ≤ 0）时明确跳过，
   不再退化成 1-token span。
 
+**端到端 turn 级验证**（`migration_compact_end_to_end_turn_completes_and_keeps_
+recent_context`）：对 32K"网关"（mock 按同口径拒收超窗请求）跑完整 `run_turn`。
+实证链路：迁移 pass（8 段摘要）→ 推理超窗被拒 → `fork_overflow_recoverable` 臂
+触发本地 MidTurn 压缩 → trim-retry 逐条收敛 → 最终推理在窗内完成，保留尾部
+recent fact、膨胀载荷全部被摘要取代。两个前置条件：TokenBudget 特性会关闭
+该恢复臂（测试显式禁用）；OpenAI 第一方 provider 默认 `remote_compaction=V2`，
+32K 本地网关场景必须显式 `Unsupported`（桥路径 provider 本就解析为 Unsupported）。
+
 **配置键**（`config.toml` 顶层，缺省即下列默认值；越界 fail-fast 并点名键）：
 
 | 键 | 默认 | 含义 |

@@ -12,6 +12,14 @@ filter = 'package(codex-app-server-protocol) & test(precomputed_exports_match_ge
 slow-timeout = { period = "1m", terminate-after = 3 }
 
 [[profile.default.overrides]]
+# A full turn against a 32K-window gateway: the migration pass, the overflow
+# recovery compact with its trim-retry loop, and the final inference all send
+# large requests. ~8s standalone, 50s+ when the compaction suite runs in
+# parallel on a loaded machine.
+filter = 'package(codex-core) & test(migration_compact_end_to_end_turn_completes_)'
+slow-timeout = { period = "1m", terminate-after = 3 }
+
+[[profile.default.overrides]]
 # These cases cold-start a daemon before confirming a second launch with new settings.
 filter = 'package(codex-cli) & binary(daemon_startup) & test(requires_confirmation_to_disable_)'
 slow-timeout = { period = "1m", terminate-after = 2 }

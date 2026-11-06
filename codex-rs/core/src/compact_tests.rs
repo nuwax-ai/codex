@@ -450,6 +450,198 @@ fn annotated(items: Vec<ResponseItem>) -> Vec<ResponseItemEnvelope> {
     items.into_iter().map(ResponseItemEnvelope::new).collect()
 }
 
+/// End-to-end turn on a downshifted session (FORK.md §5.3): the whole
+/// `run_turn` pipeline — migration compaction, the regular pre-sampling
+/// compact decision, and the actual inference request — must cooperate
+/// instead of the old trim path silently eating the context. The mock acts
+/// as a 32K-window gateway: every request whose input (same 4 bytes/token
+/// estimate) does not fit is answered with `context_length_exceeded`.
+#[tokio::test]
+async fn migration_compact_end_to_end_turn_completes_and_keeps_recent_context() -> anyhow::Result<()>
+{
+    skip_if_no_network!(Ok(()));
+    let server = responses::start_mock_server().await;
+    let mut provider =
+        ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    provider.provider_id = Some(codex_model_provider_info::OPENAI_PROVIDER_ID.to_string());
+    provider.supports_websockets = false;
+    // Model the downshift target as a plain 32K gateway: no OpenAI remote
+    // compaction endpoint, so the overflow recovery uses the LOCAL
+    // summarizing compact with its trim-retry loop (what llama.cpp-class
+    // providers get; bridge providers resolve Unsupported anyway).
+    provider.capabilities = Some(
+        codex_model_provider_info::ModelProviderCapabilities {
+            remote_compaction: Some(
+                codex_model_provider_info::RemoteCompactionSupport::Unsupported,
+            ),
+            ..Default::default()
+        },
+    );
+    let (session, turn, _events) = make_session_and_context_with_auth_and_config_and_rx(
+        CodexAuth::create_dummy_chatgpt_auth_for_testing(),
+        Vec::new(),
+        move |config| {
+            config.model = Some("gpt-5.2".to_string());
+            config.model_provider = provider;
+            config.model_context_window = Some(32_768);
+            // gpt-5.2 enables the TokenBudget feature, which replaces
+            // summarizing compaction with budget resets and disables the
+            // overflow-recovery arm this end-to-end path exercises (same
+            // opt-out as the sibling compaction tests).
+            let _ = config.features.disable(Feature::TokenBudget);
+        },
+    )
+    .await;
+
+    // ~130K tokens of history: bulky ASSISTANT output turns (the realistic
+    // shape — regular compaction preserves user messages verbatim, so the
+    // bulk must live in assistant output for any compaction to shrink it)
+    // plus a recent user fact that must survive every compaction path (it
+    // sits in the retained tail).
+    let mut items = Vec::with_capacity(66);
+    for index in 0..64 {
+        items.push(ResponseItem::Message {
+            id: None,
+            encrypted_content: None,
+            status: None,
+            role: "assistant".to_string(),
+            content: vec![ContentItem::OutputText {
+                annotations: None,
+                logprobs: None,
+                text: format!("filler-payload-{index}: {}", "context payload ".repeat(500)),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        });
+    }
+    items.push(user_message(
+        "recent fact: keep-this-recent-fact for the final answer",
+    ));
+    session
+        .record_conversation_items(&turn, turn.model_info(), &items)
+        .await;
+
+    #[derive(Default)]
+    struct WindowedGateway {
+        bodies: std::sync::Mutex<Vec<(bool, Vec<u8>)>>,
+    }
+    impl wiremock::Respond for WindowedGateway {
+        fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
+            let encoding = request
+                .headers
+                .get("content-encoding")
+                .and_then(|value| value.to_str().ok());
+            let body = if encoding.is_some_and(|value| {
+                value
+                    .split(',')
+                    .any(|entry| entry.trim().eq_ignore_ascii_case("zstd"))
+            }) {
+                zstd::stream::decode_all(std::io::Cursor::new(&request.body))
+                    .expect("decode zstd request body")
+            } else {
+                request.body.clone()
+            };
+            // Same coarse estimate the engine uses: 4 bytes per token.
+            let fits = body.len() as i64 / 4 + 2_048 <= 32_768;
+            self.bodies.lock().expect("bodies lock").push((fits, body));
+            let body = if fits {
+                responses::sse(vec![
+                    responses::ev_assistant_message("message", "turn result"),
+                    responses::ev_completed("gateway-response"),
+                ])
+            } else {
+                responses::sse_failed("failed", "context_length_exceeded", "Context too long")
+            };
+            wiremock::ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body)
+        }
+    }
+    impl WindowedGateway {
+        fn bodies(&self) -> Vec<(bool, Vec<u8>)> {
+            self.bodies.lock().expect("bodies lock").clone()
+        }
+    }
+    // wiremock's Respond needs the value itself; share state through an Arc
+    // inside a newtype that forwards to the gateway.
+    struct GatewayResponder(std::sync::Arc<WindowedGateway>);
+    impl wiremock::Respond for GatewayResponder {
+        fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
+            self.0.respond(request)
+        }
+    }
+    let gateway = std::sync::Arc::new(WindowedGateway::default());
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path_regex(".*/responses$"))
+        .respond_with(GatewayResponder(std::sync::Arc::clone(&gateway)))
+        .mount(&server)
+        .await;
+
+    let result = crate::session::turn::run_turn(
+        Arc::clone(&session),
+        Arc::clone(&turn),
+        vec![crate::session::TurnInput::UserInput {
+            metadata: Default::default(),
+            content: vec![UserInput::Text {
+                text: "what is the recent fact?".to_string(),
+                text_elements: Vec::new(),
+            }],
+            client_id: None,
+        }],
+        &mut crate::session::turn::McpStartupRequirements::default(),
+        /*prewarmed_client_session*/ None,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+    let bodies = gateway.bodies();
+    let reply = result.expect("the turn must complete");
+
+    let accepted: Vec<&Vec<u8>> = bodies
+        .iter()
+        .filter(|(fits, _)| *fits)
+        .map(|(_, body)| body)
+        .collect();
+    let rejected = bodies.len() - accepted.len();
+
+    // The final accepted request is the inference request: it carries the
+    // live user question and the retained recent fact, never the oldest
+    // filler, and the summary the migration planted.
+    let last = accepted
+        .last()
+        .copied()
+        .expect("at least one accepted request");
+    let last = String::from_utf8(last.clone()).expect("decoded body is utf8");
+    assert!(
+        last.contains("what is the recent fact?"),
+        "the inference request carries the live question"
+    );
+    assert!(
+        last.contains("keep-this-recent-fact"),
+        "the retained tail's recent fact survives every compaction path"
+    );
+    // The bulky filler payloads must be gone (summarized away); the short
+    // user-message skeletons may legitimately survive the regular compact,
+    // which keeps every real user message.
+    assert!(
+        !last.contains("context payload "),
+        "the bulky filler payloads must be summarized away"
+    );
+    assert!(
+        last.contains("turn result") || reply.as_deref().is_some_and(|text| !text.is_empty()),
+        "the turn produced a model reply: {reply:?}"
+    );
+    // Some requests were rejected by the 32K gateway (the legacy trim path
+    // grinding after the migration pass) — recorded so regressions in how
+    // many rejections are needed are visible, without asserting an exact
+    // count that would couple the test to retry internals.
+    eprintln!(
+        "e2e downshift turn: {} requests, {rejected} rejected by the window gate",
+        bodies.len()
+    );
+    assert!(!accepted.is_empty());
+    Ok(())
+}
+
 fn raw(items: Vec<ResponseItemEnvelope>) -> Vec<ResponseItem> {
     items
         .into_iter()
