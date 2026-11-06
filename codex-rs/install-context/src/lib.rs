@@ -74,9 +74,10 @@ pub enum InstallMethod {
     VitePlus,
     /// A Codex binary that appears to come from a Homebrew install prefix.
     Brew,
-    /// Fork: launched via the `nuwax-codex` npm package launcher, which
-    /// sets `CODEX_INSTALL_SOURCE=npm_nuwax`. Updates target the fork's
-    /// npm package (`nuwax-codex`), not upstream `@openai/codex`.
+    /// Fork: launched via the fork's npm launcher (`nuwax-harness` or the
+    /// legacy `nuwax-codex` JS forwarder), which sets
+    /// `CODEX_INSTALL_SOURCE=npm_nuwax`. Updates target the fork's
+    /// npm package (`@nuwax-ai/nuwax-harness`), not upstream `@openai/codex`.
     NpmNuwax,
     /// Any other execution environment.
     ///

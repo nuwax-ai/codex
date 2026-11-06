@@ -28,7 +28,8 @@
     "postinstall": "node bin/postinstall.js"
   },
   "bin": {
-    "nuwax-harness": "bin/nuwax-harness.js"
+    "nuwax-harness": "bin/nuwax-harness.js",
+    "nuwax-codex": "bin/nuwax-codex.js"
   },
   "files": [
     "bin"

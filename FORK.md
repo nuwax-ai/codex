@@ -595,8 +595,14 @@ Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§
 
 - workspace 版本恒为占位 `0.0.0`；npm 版本号来自 git tag（`v*` → release.yml，
   7 平台构建 → 阿里云 OSS 二进制 → npm publish；cargo bin 名保持官方 `codex`，
-  npm 打包时主程序改名 `nuwax-harness`，保留旧命令兼容入口，postinstall 从 OSS 下载平台二进制到
-  `~/.nuwax-harness-cache`）。
+  npm 打包时主程序改名 `nuwax-harness`，postinstall 从 OSS 下载平台二进制到
+  `~/.nuwax-harness-cache`）。旧命令 `nuwax-codex` 仅由 npm 层 JS 转发
+  （`bin/nuwax-codex.js`，`package.json` bin 注册）提供兼容入口；
+  **发布归档与平台分包不再附带 `nuwax-codex` 二进制别名**（2026-11-06 起——
+  此前 zip 无硬链接语义，同一主二进制被完整复制两份，Windows 包白占 ~121 MB；
+  tar.gz 侧原以 tar hardlink 免费携带，一并移除以统一语义）。下游按文件名解析
+  二进制的脚本须改用 `nuwax-harness`（ACP `CODEX_PATH` 用
+  `command -v nuwax-harness`）。
 - 主程序 `--version`/`-V` 只输出版本号本身（如 `0.18.14`），不带官方的
   `codex-cli` 前缀；tarball 安装脚本 `install.sh` 的版本探测兼容新旧两种输出。
   实现方式是 `disable_version_flag` + 手动 `version` 字段（打印

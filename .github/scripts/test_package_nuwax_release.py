@@ -31,7 +31,7 @@ class ReleasePackageContracts(unittest.TestCase):
         with tarfile.open(path) as archive:
             return {entry.name: archive.extractfile(entry).read() for entry in archive}
 
-    def test_all_seven_targets_include_matching_main_alias_and_required_helpers(self):
+    def test_all_seven_targets_ship_single_main_binary_and_required_helpers(self):
         for target in TARGETS:
             with self.subTest(target=target), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
@@ -39,7 +39,8 @@ class ReleasePackageContracts(unittest.TestCase):
                 path = package(build, root / "out", "0.18.13", target)
                 entries = self.read_archive(path)
                 self.assertEqual(entries["nuwax-harness" + ext], (build / ("codex" + ext)).read_bytes())
-                self.assertEqual(entries["nuwax-codex" + ext], entries["nuwax-harness" + ext])
+                self.assertNotIn("nuwax-codex" + ext, entries,
+                                 "legacy alias must stay npm-layer only (JS forwarding)")
                 self.assertIn("codex-code-mode-host" + ext, entries)
                 if "linux" in target:
                     self.assertIn("codex-resources/bwrap", entries)

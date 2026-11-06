@@ -67,7 +67,8 @@ for target in "${!platforms[@]}"; do
   else
     tar xzf "$archive_path" -C "${pkg_dir}/bin/" "${binaries[@]}"
   fi
-  cp "${pkg_dir}/bin/nuwax-harness${ext}" "${pkg_dir}/bin/nuwax-codex${ext}"
+  # Legacy `nuwax-codex` alias is provided by the npm package's JS forwarding
+  # (bin/nuwax-codex.js); platform packages ship a single main binary.
 
   # Linux archives ship the bundled bwrap; place it at the layout codex
   # expects: <package>/codex-resources/bwrap (sibling of bin/).

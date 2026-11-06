@@ -46,7 +46,10 @@ ln -sf ~/.nuwax-cargo/bin/codex ~/.cargo/bin/nuwax-harness
 
 npm 组织包名是 **`@nuwax-ai/nuwax-harness`**，主命令和发布归档内的主二进制叫
 **`nuwax-harness`**（Windows 为 `nuwax-harness.exe`）。该组织包只导出新主命令。
-ACP 的 `CODEX_PATH` 使用 `command -v nuwax-harness` 返回的绝对路径。
+兼容命令 `nuwax-codex` 由 npm 层的 JS 转发（`bin/nuwax-codex.js`）提供，
+**发布归档与平台分包内不再附带 `nuwax-codex` 二进制别名**——请勿在安装脚本中
+按该文件名解析二进制路径（2026-11-06 起；ACP 的 `CODEX_PATH` 使用
+`command -v nuwax-harness` 返回的绝对路径）。
 Rust crate、源码构建目标和 `codex-code-mode-host` 等辅助程序保持内部名称；
 发布包会处理主程序改名，请完整安装同一版本，保留其配套辅助程序。
 

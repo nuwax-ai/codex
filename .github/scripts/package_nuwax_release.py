@@ -30,11 +30,10 @@ def package(build_dir, output_dir, version, target):
     ext = ".exe" if windows else ""
     files = {
         "nuwax-harness" + ext: "codex" + ext,
-        # Existing ACP packages resolve this filename directly. It is an
-        # alias of the new main executable, not a separately built product.
-        "nuwax-codex" + ext: "codex" + ext,
         "codex-code-mode-host" + ext: "codex-code-mode-host" + ext,
     }
+    # The legacy `nuwax-codex` executable alias lives only in the npm layer
+    # (bin/nuwax-codex.js forwarding); archives ship a single main binary.
     if windows:
         files.update({name + ext: name + ext for name in (
             "codex-windows-sandbox-setup", "codex-command-runner",
@@ -58,7 +57,6 @@ def package(build_dir, output_dir, version, target):
         for name, source in files.items():
             destination = stage / name
             destination.parent.mkdir(parents=True, exist_ok=True)
-            # A tar hardlink keeps the legacy alias without doubling its size.
             try:
                 os.link(build_dir / source, destination)
             except OSError:

@@ -301,7 +301,10 @@ test("real ZIP archives with traversal, absolute, drive or backslash entries fai
 
 test("npm pack exposes the scoped harness command with shared runtime and postinstall", async () => {
   assert.equal(metadata.name, "@nuwax-ai/nuwax-harness");
-  assert.deepEqual(metadata.bin, { "nuwax-harness": "bin/nuwax-harness.js" });
+  assert.deepEqual(metadata.bin, {
+    "nuwax-harness": "bin/nuwax-harness.js",
+    "nuwax-codex": "bin/nuwax-codex.js",
+  });
   assert.equal(metadata.publishConfig.access, "public");
   assert.equal(metadata.publishConfig.registry, "https://registry.npmjs.org");
   const { stdout } = await execute("npm", ["pack", "--dry-run", "--ignore-scripts", "--json", "--cache", join(scratch, "npm-cache")], {
