@@ -1289,6 +1289,9 @@ async fn load_config_uses_resolved_cwd_for_default_gcp_auth() {
         .expect("load config");
 
         let mut expected_provider = ModelProviderInfo::create_gcp_provider();
+        // Fork: the reserved GCP entry is stamped with its provider id when
+        // merged (first-party/bridge routing), so the loaded provider carries it.
+        expected_provider.provider_id = Some("gcp".to_string());
         expected_provider.base_url = base_url.map(str::to_string);
         expected_provider.auth = Some(ModelProviderAuthInfo {
             command: if cfg!(windows) {
@@ -11824,7 +11827,7 @@ sandbox_mode = "danger-full-access"
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     assert_eq!(
         err.to_string(),
-        "`approval_policy = \"never\"` cannot be used because requirements do not allow `sandbox_mode = \"danger-full-access\"`; Codex would fall back to read-only permissions with approvals disabled. Choose an `approval_policy` based on what you need, such as `on-request`, or choose an allowed sandbox mode."
+        "`approval_policy = \"never\"` cannot be used because requirements do not allow `sandbox_mode = \"danger-full-access\"`; Nuwax Harness would fall back to read-only permissions with approvals disabled. Choose an `approval_policy` based on what you need, such as `on-request`, or choose an allowed sandbox mode."
     );
     Ok(())
 }
@@ -11858,7 +11861,7 @@ default_permissions = "dev"
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     assert_eq!(
         err.to_string(),
-        "`approval_policy = \"never\"` cannot be used because requirements do not allow `sandbox_mode = \"danger-full-access\"`; Codex would fall back to read-only permissions with approvals disabled. Choose an `approval_policy` based on what you need, such as `on-request`, or choose an allowed sandbox mode."
+        "`approval_policy = \"never\"` cannot be used because requirements do not allow `sandbox_mode = \"danger-full-access\"`; Nuwax Harness would fall back to read-only permissions with approvals disabled. Choose an `approval_policy` based on what you need, such as `on-request`, or choose an allowed sandbox mode."
     );
     Ok(())
 }
