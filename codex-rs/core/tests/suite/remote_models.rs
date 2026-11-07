@@ -1680,12 +1680,12 @@ async fn failed_catalog_refresh_preserves_tool_search_on_the_next_turn() -> Resu
     Ok(())
 }
 
-/// A provider that declares `models` is expected to serve slugs the built-in
-/// catalog does not know. The fallback metadata is documented behaviour there,
-/// so it must not interrupt the turn with a user-visible warning (it still goes
-/// to the log). A slug nobody declared keeps the warning.
+/// Fallback metadata (a slug the built-in catalog does not know) is a
+/// documented state — third-party gateways serve dated snapshot slugs no
+/// catalog will list — so it is never a user-visible turn warning, declared
+/// or not; it only goes to the log.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn provider_declared_model_reports_fallback_only_in_the_log() -> Result<()> {
+async fn fallback_model_metadata_is_never_a_user_visible_warning() -> Result<()> {
     skip_if_no_network!(Ok(()));
     skip_if_sandbox!(Ok(()));
 
@@ -1737,8 +1737,8 @@ async fn provider_declared_model_reports_fallback_only_in_the_log() -> Result<()
     );
     assert_eq!(
         fallback_warning_count(/*declare_model*/ false).await?,
-        1,
-        "an undeclared model still warns the user"
+        0,
+        "an undeclared model keeps the fallback warning in the log too"
     );
     Ok(())
 }

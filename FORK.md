@@ -437,16 +437,17 @@ bundled GPT 种子（11 个 gpt-\*，与该 provider 毫无关系），Enter 会
   fork 窗口覆盖策略走"显式全额生效"路径（与未声明时 `-m GLM-5.3-Flash`
   的既有行为一致，声明不改变窗口语义）；未命中 → 占位元数据（272k 窗口）
   + 一次性告警提示设置 `model_context_window`。
-- 占位元数据 turn 内告警分流（2026-11-06）：占位元数据（`ModelOrigin::Synthetic`）
-  原本每个 turn 弹用户可见警告 "Model metadata for `<slug>` not found.
-  Defaulting to fallback metadata…"。现在若该 slug 命中**当前 provider 的
-  `models` 声明**（大小写不敏感），降级为 `tracing::warn` 日志——声明即
-  "我知道这个 slug 不在内置目录"，fallback 元数据与 272k 占位窗口是该场景
-  的文档化行为，不该打断用户；slug 无人声明时保留原警告（真正配错 slug 的
-  信号）。实现：`core/src/session/turn_context.rs::
-  maybe_emit_model_warnings_for_turn`；测试：remote_models 套件
-  `provider_declared_model_reports_fallback_only_in_the_log`
-  （声明 → 0 条可见警告，未声明 → 1 条）。
+- 占位元数据 turn 内告警彻底降级（2026-11-07）：占位元数据
+  （`ModelOrigin::Synthetic`）原本每个 turn 弹用户可见警告 "Model metadata
+  for `<slug>` not found…"。三方网关普遍使用带日期的快照 slug（如
+  `...-1017`），任何目录快照都不可能收录——这是文档化状态而非异常，
+  **一律只写 `tracing::warn` 日志，不再发 turn 警告事件**（0.18.30 曾按
+  "是否命中 provider `models` 声明"分流，未命中的仍可见；终端用户无行动
+  价值，ACP 客户端会把它渲染进聊天流）。实现：`core/src/session/
+  turn_context.rs::maybe_emit_model_warnings_for_turn`；测试：remote_models
+  套件 `fallback_model_metadata_is_never_a_user_visible_warning`（声明与
+  未声明都 0 条事件）。ACP 侧另有兜底过滤（`CodexEventHandler::
+  createWarningEvent` 丢弃该模式并写日志），覆盖旧引擎。
 - 声明治理列表、不治理选择：`-m` / `NUWAX_MODEL` 选声明外的 slug 照常解析
   （走同一 vendor 目录兜底）——声明不是白名单闸门。
 - `/model` Enter 持久化守卫（tui model_defaults）：激活 provider 声明了

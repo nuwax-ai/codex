@@ -1432,39 +1432,18 @@ impl Session {
 
     pub(crate) async fn maybe_emit_model_warnings_for_turn(&self, tc: &TurnContext) {
         if tc.model_info().origin == ModelOrigin::Synthetic {
-            // A provider that declares `models` is expected to serve slugs the
-            // built-in catalog does not know; fallback metadata (and the 272k
-            // placeholder window) is documented behaviour there, not something
-            // worth interrupting the user's turn with. Keep it in the log so the
-            // information is still discoverable.
-            let declared_by_provider =
-                tc.config
-                    .model_provider
-                    .models
-                    .as_ref()
-                    .is_some_and(|models| {
-                        models
-                            .iter()
-                            .any(|model| model.eq_ignore_ascii_case(&tc.model_info().slug))
-                    });
-            if declared_by_provider {
-                tracing::warn!(
-                    model = %tc.model_info().slug,
-                    provider = %tc.config.model_provider_id,
-                    "provider-declared model has no built-in metadata; using fallback metadata"
-                );
-            } else {
-                self.send_event(
-                    tc,
-                    EventMsg::Warning(WarningEvent {
-                        message: format!(
-                            "Model metadata for `{}` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.",
-                            tc.model_info().slug
-                        ),
-                    }),
-                )
-                .await;
-            }
+            // Fork (nuwax-codex): fallback metadata is a documented state for
+            // any slug the built-in catalog does not know — third-party
+            // gateways serve dated snapshot slugs (e.g. `...-1017`) that no
+            // catalog snapshot will ever list. It is not user-actionable
+            // mid-turn, so it goes to the log only. A turn warning would be
+            // rendered into the chat stream by ACP clients (and the TUI),
+            // interrupting the user with engine internals.
+            tracing::warn!(
+                model = %tc.model_info().slug,
+                provider = %tc.config.model_provider_id,
+                "model has no built-in metadata; using fallback metadata"
+            );
         }
 
         if !tc.code_mode_available
