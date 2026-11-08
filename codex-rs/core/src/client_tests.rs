@@ -1086,6 +1086,9 @@ async fn responses_http_preserves_raw_tool_metadata_for_openai_custom_endpoint()
         .await;
     let mut provider =
         ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    // Fork routing: without a first-party provider_id the request routes
+    // through the model bridge, which this test binary does not enable.
+    provider.provider_id = Some(codex_model_provider_info::OPENAI_PROVIDER_ID.to_string());
     provider.requires_openai_auth = false;
     provider.supports_websockets = false;
     let mut client = test_model_client(SessionSource::Cli);
