@@ -1881,3 +1881,211 @@ fn assemble_compaction_history_keeps_compaction_last() {
     ];
     assert_eq!(refreshed, expected);
 }
+
+/// A byte-mirroring TCP proxy: forwards both directions verbatim and keeps
+/// every client→server byte, so the test can count and size the real HTTP
+/// requests the engine issued (offline, by scanning the stream for request
+/// JSON) without depending on any HTTP crate.
+async fn spawn_mirror_proxy(
+    upstream: &str,
+) -> anyhow::Result<(
+    std::net::SocketAddr,
+    std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+)> {
+    let (host, port) = upstream
+        .rsplit_once(':')
+        .ok_or_else(|| anyhow::anyhow!("host:port expected, got {upstream}"))?;
+    let host = host.to_string();
+    let port: u16 = port.parse().unwrap_or(9931);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let captured_clone = std::sync::Arc::clone(&captured);
+    tokio::spawn(async move {
+        loop {
+            let Ok(client) = listener.accept().await else {
+                break;
+            };
+            let Ok(server) = tokio::net::TcpStream::connect((host.as_str(), port)).await else {
+                continue;
+            };
+            let captured = std::sync::Arc::clone(&captured_clone);
+            let (mut client_read, mut client_write) = client.0.into_split();
+            let (mut server_read, mut server_write) = server.into_split();
+            let up = tokio::spawn(async move {
+                use tokio::io::AsyncReadExt;
+                use tokio::io::AsyncWriteExt;
+                let mut buf = vec![0u8; 16 * 1024];
+                loop {
+                    match client_read.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            captured
+                                .lock()
+                                .expect("capture lock")
+                                .extend_from_slice(&buf[..n]);
+                            if server_write.write_all(&buf[..n]).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+            let down = tokio::spawn(async move {
+                use tokio::io::AsyncReadExt;
+                use tokio::io::AsyncWriteExt;
+                let mut buf = vec![0u8; 16 * 1024];
+                loop {
+                    match server_read.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            if client_write.write_all(&buf[..n]).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+            let _ = up.await;
+            down.abort();
+        }
+    });
+    Ok((addr, captured))
+}
+
+/// LIVE verification against a local llama.cpp (downshift plan): the
+/// conversation "grew" on a 1M window, the same session then switches to the
+/// 64K LFM3-Omni-2B model, and the turn must continue normally — bounded
+/// summaries by the target model, the recent marker surviving into the real
+/// model's context, and a reply that uses it.
+///
+/// Ignored by default (needs the local server): run with
+/// `LLAMACPP_HOST=http://198.18.0.1:9931` and `--run-ignored=only`.
+#[tokio::test]
+#[ignore = "live llama.cpp server required (LLAMACPP_HOST)"]
+async fn live_downshift_from_1m_to_64k_llamacpp_continues_the_same_session() -> anyhow::Result<()> {
+    let upstream =
+        std::env::var("LLAMACPP_HOST").unwrap_or_else(|_| "http://198.18.0.1:9931".into());
+    let (proxy_addr, captured) = spawn_mirror_proxy(upstream.trim_start_matches("http://")).await?;
+
+    let mut provider =
+        ModelProviderInfo::create_openai_provider(Some(format!("http://{proxy_addr}/v1")));
+    // A non-OpenAI name routes through the rig bridge (the production shape
+    // for third-party Responses endpoints); the bridge speaks the same
+    // Responses wire to llama.cpp.
+    provider.name = "llamacpp-local".to_string();
+    provider.requires_openai_auth = false;
+    provider.supports_websockets = false;
+
+    let (session, _big_window_turn, _events) =
+        make_session_and_context_with_auth_and_config_and_rx(
+            CodexAuth::create_dummy_chatgpt_auth_for_testing(),
+            Vec::new(),
+            move |config| {
+                config.model = Some("ggml-org/LFM3-Omni-2B-GGUF:Q8_0".to_string());
+                config.model_provider = provider;
+                // The switch target's real window is a startup override by
+                // design: production switches resolve the new model's window
+                // fresh, and the 1M-era history below is the artifact the
+                // downshift has to handle on the first 64K turn.
+                config.model_context_window = Some(65_536);
+                let _ = config.features.disable(Feature::TokenBudget);
+            },
+        )
+        .await;
+
+    // ~116K tokens of "1M-era" history plus a marker the final question needs.
+    let mut items = Vec::with_capacity(60);
+    for index in 0..58 {
+        items.push(assistant_filler(index));
+    }
+    items.push(user_message(
+        "secret marker: PANDA-42. Remember it for later.",
+    ));
+    session
+        .record_conversation_items(&_big_window_turn, _big_window_turn.model_info(), &items)
+        .await;
+    let before_tokens = session
+        .clone_history()
+        .await
+        .estimate_token_count(_big_window_turn.as_ref())
+        .unwrap_or(0);
+
+    let turn = session.new_default_turn().await;
+    {
+        let status =
+            crate::session::context_window::context_window_token_status(&session, &turn).await;
+        let limit = status.full_context_window_limit.unwrap_or_default();
+        assert!(
+            (60_000..=65_536).contains(&limit),
+            "the session runs on the 64K window (effective {limit})"
+        );
+    }
+
+    let started = std::time::Instant::now();
+    let question = "我刚才告诉你的秘密标记是什么?只回答标记本身。";
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(/*secs*/ 15 * 60),
+        crate::session::turn::run_turn(
+            Arc::clone(&session),
+            Arc::clone(&turn),
+            vec![crate::session::TurnInput::UserInput {
+                metadata: Default::default(),
+                content: vec![UserInput::Text {
+                    text: question.to_string(),
+                    text_elements: Vec::new(),
+                }],
+                client_id: None,
+            }],
+            &mut crate::session::turn::McpStartupRequirements::default(),
+            None,
+            tokio_util::sync::CancellationToken::new(),
+        ),
+    )
+    .await;
+
+    let reply = match result.expect("the live turn timed out") {
+        Ok(reply) => reply,
+        Err(err) => {
+            eprintln!("live run_turn error: {err:?}");
+            return Err(err.into());
+        }
+    };
+    let after_tokens = session
+        .clone_history()
+        .await
+        .estimate_token_count(turn.as_ref())
+        .unwrap_or(0);
+
+    // Evidence: what actually crossed the wire.
+    let stream = captured.lock().expect("capture lock").clone();
+    let text = String::from_utf8_lossy(&stream);
+    let request_count = text.matches("\"model\":").count();
+    let summary_requests = text.matches("CONTEXT CHECKPOINT COMPACTION").count();
+    eprintln!(
+        "LIVE downshift: history {before_tokens} -> {after_tokens} tokens, \
+         requests={request_count} (summary prompts={summary_requests}), \
+         bytes={}, elapsed={:?}, reply={reply:?}",
+        stream.len(),
+        started.elapsed()
+    );
+
+    let reply = reply.unwrap_or_default();
+    assert!(
+        !reply.trim().is_empty(),
+        "the target model must answer in the same session"
+    );
+    assert!(
+        reply.to_uppercase().contains("PANDA-42"),
+        "the reply uses the retained-context marker: {reply}"
+    );
+    assert!(
+        request_count >= 2,
+        "summaries plus inference crossed the wire"
+    );
+    assert!(
+        after_tokens < before_tokens,
+        "the history shrank to fit the 64K window"
+    );
+    Ok(())
+}
