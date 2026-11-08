@@ -42,10 +42,17 @@ fn apply_active_surface_replacement(
         return;
     };
     let items = history.annotated_items();
-    let Some(index) = items.iter().position(|item| {
-        item.id()
-            .is_some_and(|id| id.as_str() == replacement.resume_at_item_id)
-    }) else {
+    // An empty boundary id is a no-summary trim with an EMPTY retained tail:
+    // the model sees nothing of the replaced history (downshift plan §3).
+    let index = if replacement.resume_at_item_id.is_empty() {
+        Some(items.len())
+    } else {
+        items.iter().position(|item| {
+            item.id()
+                .is_some_and(|id| id.as_str() == replacement.resume_at_item_id)
+        })
+    };
+    let Some(index) = index else {
         // Nothing is hidden: showing the full history is the safe failure mode.
         tracing::warn!(
             boundary = replacement.resume_at_item_id.as_str(),
@@ -54,10 +61,14 @@ fn apply_active_surface_replacement(
         return;
     };
     let mut next = Vec::with_capacity(items.len().saturating_sub(index).saturating_add(1));
-    next.push(ResponseItemEnvelope {
-        item: surface_replacement_summary_item(replacement),
-        metadata: None,
-    });
+    // A no-summary trim (empty summary) omits the shadowed range outright;
+    // nothing is planted in its place.
+    if !replacement.summary.trim().is_empty() {
+        next.push(ResponseItemEnvelope {
+            item: surface_replacement_summary_item(replacement),
+            metadata: None,
+        });
+    }
     next.extend(items[index..].iter().cloned());
     history.replace_annotated(next);
 }

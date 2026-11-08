@@ -221,3 +221,28 @@ fn a_span_capped_cut_without_an_id_carrier_is_rejected() {
     let cap = per_item[0];
     assert_eq!(select_compaction_region(&items, 0, cap), None);
 }
+
+#[test]
+fn zero_retention_cuts_before_the_last_item() {
+    // retain_ratio = 0 leaves the walk at the very end of the surface. The
+    // cut must step back to the last actual item instead of giving up: the
+    // replacement then hides everything before it, boundary = the final
+    // item's stable id (downshift plan 2026-11-08 §4).
+    let items = vec![message("first turn"), message("second turn")];
+    let per_item = tokens(&items);
+    let region = select_compaction_region(&items, /*retain*/ 0, /*cap*/ 0).expect("a region");
+    assert_eq!(region.end, 1, "the cut sits before the last item");
+    assert_eq!(region.tokens, per_item[0]);
+    let balances = cut_balances(&items);
+    assert_eq!(balances[region.end], 0);
+}
+
+#[test]
+fn zero_retention_still_requires_an_id_carrier() {
+    // Stepping back from the end must not skip the id and pairing rules.
+    let items = vec![
+        message_with_id("first turn", None),
+        message_with_id("second turn", None),
+    ];
+    assert_eq!(select_compaction_region(&items, 0, 0), None);
+}

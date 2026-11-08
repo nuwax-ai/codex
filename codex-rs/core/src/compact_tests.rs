@@ -371,8 +371,14 @@ async fn migration_compact_extreme_800k_history_converges_into_32k_window() -> a
     assert!(budget > 0, "history budget must be positive, got {budget}");
 
     // One pass must not finish the job: it is capped at max_ranges spans.
-    let replaced = run_migration_compact_task(Arc::clone(&session), Arc::clone(&turn)).await?;
-    assert!(replaced, "first pass must replace the oldest history");
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    let replaced =
+        run_migration_compact_task(Arc::clone(&session), Arc::clone(&turn), &cancellation).await;
+    assert_eq!(
+        replaced,
+        crate::compact::MigrationOutcome::StillOverBudget,
+        "the first pass replaces history but cannot converge alone"
+    );
     let requests_after_first_pass = recorder.request_count();
     assert_eq!(
         requests_after_first_pass,
@@ -396,7 +402,14 @@ async fn migration_compact_extreme_800k_history_converges_into_32k_window() -> a
     loop {
         passes += 1;
         let requests_before = recorder.request_count();
-        run_migration_compact_task(Arc::clone(&session), Arc::clone(&turn)).await?;
+        let outcome =
+            run_migration_compact_task(Arc::clone(&session), Arc::clone(&turn), &cancellation)
+                .await;
+        assert_ne!(
+            outcome,
+            crate::compact::MigrationOutcome::Cancelled,
+            "no cancellation in this test"
+        );
         let new_requests = recorder.request_count() - requests_before;
         let history_tokens = session
             .clone_history()
@@ -443,6 +456,541 @@ async fn migration_compact_extreme_800k_history_converges_into_32k_window() -> a
         recorder.request_count()
     );
     assert!(final_tokens <= budget);
+    Ok(())
+}
+
+/// Recorded gateway bodies for the degraded-downshift fixtures.
+#[derive(Default)]
+struct WindowedGatewayShared {
+    bodies: std::sync::Mutex<Vec<(bool, Vec<u8>)>>,
+}
+
+impl WindowedGatewayShared {
+    fn snapshot(&self) -> Vec<(bool, Vec<u8>)> {
+        self.bodies.lock().expect("bodies lock").clone()
+    }
+}
+
+/// Shared fixture for the degraded-downshift turns (downshift plan 2026-11-08):
+/// a session whose ~500K-token assistant history sits on a 32K window, driven
+/// through a full `run_turn` against a loopback gateway that rejects every
+/// request whose input does not fit (same 4 bytes/token estimate).
+async fn degraded_downshift_fixture(
+    configure: impl FnOnce(&mut crate::config::Config) + Clone + Send + 'static,
+    summary_behaviour: fn(&str) -> bool, // true = accept, false = fail summaries
+) -> anyhow::Result<(
+    Arc<Session>,
+    Arc<TurnContext>,
+    async_channel::Receiver<codex_protocol::protocol::Event>,
+    std::sync::Arc<WindowedGatewayShared>,
+    wiremock::MockServer,
+    tokio_util::sync::CancellationToken,
+)> {
+    let server = responses::start_mock_server().await;
+    let mut provider =
+        ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    provider.provider_id = Some(codex_model_provider_info::OPENAI_PROVIDER_ID.to_string());
+    provider.supports_websockets = false;
+    provider.capabilities = Some(codex_model_provider_info::ModelProviderCapabilities {
+        remote_compaction: Some(codex_model_provider_info::RemoteCompactionSupport::Unsupported),
+        ..Default::default()
+    });
+    let (session, turn, events) = make_session_and_context_with_auth_and_config_and_rx(
+        CodexAuth::create_dummy_chatgpt_auth_for_testing(),
+        Vec::new(),
+        move |config| {
+            config.model = Some("gpt-5.2".to_string());
+            config.model_provider = provider;
+            config.model_context_window = Some(32_768);
+            let _ = config.features.disable(Feature::TokenBudget);
+            configure(config);
+        },
+    )
+    .await;
+
+    // ~500K tokens of bulky assistant history plus a recent user fact. The
+    // volume guarantees the per-turn migration pass cap (32 passes x 1 span)
+    // cannot converge, forcing the degraded trim.
+    let mut items = Vec::with_capacity(252);
+    for index in 0..250 {
+        items.push(assistant_filler(index));
+    }
+    items.push(user_message(
+        "recent fact: keep-this-recent-fact for the final answer",
+    ));
+    session
+        .record_conversation_items(&turn, turn.model_info(), &items)
+        .await;
+
+    struct GatewayResponder {
+        shared: std::sync::Arc<WindowedGatewayShared>,
+        accept_summaries: bool,
+    }
+    impl wiremock::Respond for GatewayResponder {
+        fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
+            let encoding = request
+                .headers
+                .get("content-encoding")
+                .and_then(|value| value.to_str().ok());
+            let body = if encoding.is_some_and(|value| {
+                value
+                    .split(',')
+                    .any(|entry| entry.trim().eq_ignore_ascii_case("zstd"))
+            }) {
+                zstd::stream::decode_all(std::io::Cursor::new(&request.body))
+                    .expect("decode zstd request body")
+            } else {
+                request.body.clone()
+            };
+            let text = String::from_utf8_lossy(&body);
+            let is_summary = text.contains("CONTEXT CHECKPOINT COMPACTION");
+            let fits = body.len() as i64 / 4 + 2_048 <= 32_768;
+            let accept = fits && (!is_summary || self.accept_summaries);
+            self.shared
+                .bodies
+                .lock()
+                .expect("bodies lock")
+                .push((accept, body));
+            let body = if accept {
+                responses::sse(vec![
+                    responses::ev_assistant_message("message", "turn result"),
+                    responses::ev_completed("gateway-response"),
+                ])
+            } else if is_summary {
+                responses::sse_failed("failed", "server_error", "summary unavailable")
+            } else {
+                responses::sse_failed("failed", "context_length_exceeded", "Context too long")
+            };
+            wiremock::ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body)
+        }
+    }
+    let shared = std::sync::Arc::new(WindowedGatewayShared::default());
+    let accept = summary_behaviour("accept");
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path_regex(".*/responses$"))
+        .respond_with(GatewayResponder {
+            shared: std::sync::Arc::clone(&shared),
+            accept_summaries: accept,
+        })
+        .mount(&server)
+        .await;
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    Ok((session, turn, events, shared, server, cancellation))
+}
+
+fn assistant_filler(index: usize) -> ResponseItem {
+    ResponseItem::Message {
+        id: None,
+        encrypted_content: None,
+        status: None,
+        role: "assistant".to_string(),
+        content: vec![ContentItem::OutputText {
+            annotations: None,
+            logprobs: None,
+            text: format!("filler-payload-{index}: {}", "context payload ".repeat(500)),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    }
+}
+
+async fn drain_events(
+    rx: &async_channel::Receiver<codex_protocol::protocol::Event>,
+) -> Vec<EventMsg> {
+    let mut messages = Vec::new();
+    while let Ok(event) = rx.try_recv() {
+        messages.push(event.msg);
+    }
+    messages
+}
+
+/// Pass-cap degradation (downshift plan, acceptance #2): bounded summaries
+/// hit the per-turn cap without converging, so the oldest history is TRIMMED
+/// on the target model. The turn still completes in the same turn, entirely
+/// on accepted requests — the legacy whole-history compact never runs.
+#[tokio::test]
+async fn migration_cap_degrades_to_trim_and_completes_on_the_target_model() -> anyhow::Result<()> {
+    let (session, turn, events, gateway, _server, cancellation) = degraded_downshift_fixture(
+        |config| {
+            config.migration_compact.max_ranges = 1;
+        },
+        |_| true,
+    )
+    .await?;
+
+    let result = crate::session::turn::run_turn(
+        Arc::clone(&session),
+        Arc::clone(&turn),
+        vec![crate::session::TurnInput::UserInput {
+            metadata: Default::default(),
+            content: vec![UserInput::Text {
+                text: "what is the recent fact?".to_string(),
+                text_elements: Vec::new(),
+            }],
+            client_id: None,
+        }],
+        &mut crate::session::turn::McpStartupRequirements::default(),
+        None,
+        cancellation.clone(),
+    )
+    .await;
+    let reply = result.expect("the degraded turn must complete");
+    assert!(
+        reply.as_deref().is_some_and(|text| !text.is_empty()),
+        "the target model answered in the same turn"
+    );
+
+    let bodies = gateway.snapshot();
+    let rejected: usize = bodies.iter().filter(|(ok, _)| !ok).count();
+    assert_eq!(
+        rejected, 0,
+        "every request fits the window: no legacy trim grinding, no old-model fallback"
+    );
+    let summaries = bodies
+        .iter()
+        .filter(|(_, body)| {
+            std::str::from_utf8(body)
+                .map(|text| text.contains("CONTEXT CHECKPOINT COMPACTION"))
+                .unwrap_or(false)
+        })
+        .count();
+    let inferences = bodies.len() - summaries;
+    assert_eq!(
+        inferences, 1,
+        "exactly one inference request, on the target model"
+    );
+    // The per-turn cap is 32 passes of 1 range each.
+    assert_eq!(summaries, 32, "the pass cap bound the summary budget");
+
+    let final_request = String::from_utf8(
+        bodies
+            .iter()
+            .filter(|(_, body)| {
+                std::str::from_utf8(body)
+                    .map(|text| !text.contains("CONTEXT CHECKPOINT COMPACTION"))
+                    .unwrap_or(false)
+            })
+            .max_by_key(|(_, body)| body.len())
+            .expect("inference request")
+            .1
+            .clone(),
+    )
+    .expect("utf8");
+    assert!(
+        final_request.contains("what is the recent fact?"),
+        "the current input is preserved in full"
+    );
+    assert!(
+        final_request.contains("keep-this-recent-fact"),
+        "the retained tail keeps the recent fact"
+    );
+    assert!(
+        !final_request.contains("filler-payload-0:"),
+        "the oldest history was omitted"
+    );
+
+    // Exactly one user-visible notice for the omission.
+    let warnings: Vec<String> = drain_events(&events)
+        .await
+        .into_iter()
+        .filter_map(|msg| match msg {
+            EventMsg::Warning(warning) => Some(warning.message),
+            _ => None,
+        })
+        .collect();
+    let omission_notices: Vec<&String> = warnings
+        .iter()
+        .filter(|message| message.contains("omitted"))
+        .collect();
+    assert_eq!(
+        omission_notices.len(),
+        1,
+        "one omission notice, everything else stays quiet: {warnings:?}"
+    );
+
+    // The current input is recorded exactly once.
+    let history_texts: Vec<String> = session
+        .clone_history()
+        .await
+        .raw_items()
+        .filter_map(|item| match item {
+            ResponseItem::Message { role, content, .. } if role == "user" => {
+                content_items_to_text(content)
+            }
+            _ => None,
+        })
+        .collect();
+    let occurrences = history_texts
+        .iter()
+        .filter(|text| text.contains("what is the recent fact?"))
+        .count();
+    assert_eq!(occurrences, 1, "the current input landed exactly once");
+    Ok(())
+}
+
+/// Summary-failure degradation: when every summary request fails, the turn
+/// still completes on the target model with the trimmed tail.
+#[tokio::test]
+async fn migration_summary_failure_degrades_to_trim_and_completes() -> anyhow::Result<()> {
+    let (session, turn, _events, gateway, _server, cancellation) = degraded_downshift_fixture(
+        |config| {
+            config.migration_compact.max_ranges = 8;
+        },
+        |_| false,
+    )
+    .await?;
+
+    let result = crate::session::turn::run_turn(
+        Arc::clone(&session),
+        Arc::clone(&turn),
+        vec![crate::session::TurnInput::UserInput {
+            metadata: Default::default(),
+            content: vec![UserInput::Text {
+                text: "what is the recent fact?".to_string(),
+                text_elements: Vec::new(),
+            }],
+            client_id: None,
+        }],
+        &mut crate::session::turn::McpStartupRequirements::default(),
+        None,
+        cancellation.clone(),
+    )
+    .await;
+    assert!(
+        result.expect("the degraded turn completes").is_some(),
+        "the target model answered in the same turn"
+    );
+
+    let bodies = gateway.snapshot();
+    let rejected = bodies.iter().filter(|(ok, _)| !ok).count();
+    assert!(
+        rejected >= 1,
+        "at least one summary attempt was rejected by the fixture"
+    );
+    // After the failed summaries, no further summary request is issued and
+    // exactly one inference request (accepted) completes the turn.
+    let accepted: Vec<&Vec<u8>> = bodies
+        .iter()
+        .filter(|(ok, _)| *ok)
+        .map(|(_, body)| body)
+        .collect();
+    assert_eq!(accepted.len(), 1, "only the accepted inference remains");
+    let final_request = String::from_utf8(accepted[0].clone()).expect("utf8");
+    assert!(
+        final_request.contains("what is the recent fact?")
+            && final_request.contains("keep-this-recent-fact"),
+        "the current input and the recent fact survive the trim"
+    );
+    assert!(
+        !final_request.contains("CONTEXT CHECKPOINT COMPACTION"),
+        "no summary prompt reaches the gateway after the failure"
+    );
+    Ok(())
+}
+
+/// Cancellation: a user stop before any sampling means no requests at all,
+/// and the current input is recorded exactly once for replay.
+#[tokio::test]
+async fn cancelled_downshift_turn_sends_no_requests() -> anyhow::Result<()> {
+    let (session, turn, _events, gateway, _server, cancellation) = degraded_downshift_fixture(
+        |config| {
+            config.migration_compact.max_ranges = 8;
+        },
+        |_| true,
+    )
+    .await?;
+    cancellation.cancel();
+
+    let result = crate::session::turn::run_turn(
+        Arc::clone(&session),
+        Arc::clone(&turn),
+        vec![crate::session::TurnInput::UserInput {
+            metadata: Default::default(),
+            content: vec![UserInput::Text {
+                text: "stop before anything runs".to_string(),
+                text_elements: Vec::new(),
+            }],
+            client_id: None,
+        }],
+        &mut crate::session::turn::McpStartupRequirements::default(),
+        None,
+        cancellation.clone(),
+    )
+    .await;
+    assert!(
+        result.is_err(),
+        "a cancelled turn must not return a model reply"
+    );
+    assert!(
+        gateway.snapshot().is_empty(),
+        "no summary or inference request leaves the host after cancellation"
+    );
+    let occurrences = session
+        .clone_history()
+        .await
+        .raw_items()
+        .filter_map(|item| match item {
+            ResponseItem::Message { role, content, .. } if role == "user" => {
+                content_items_to_text(content)
+            }
+            _ => None,
+        })
+        .filter(|text| text.contains("stop before anything runs"))
+        .count();
+    assert_eq!(
+        occurrences, 1,
+        "the cancelled input is preserved exactly once"
+    );
+    Ok(())
+}
+
+/// Necessary content alone exceeds the window: the turn fails with an
+/// actionable error (naming the window) instead of a gateway rejection, and
+/// the current input is preserved.
+#[tokio::test]
+async fn downshift_with_unfittable_necessary_content_fails_with_actionable_error()
+-> anyhow::Result<()> {
+    let server = responses::start_mock_server().await;
+    let mut provider =
+        ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    provider.provider_id = Some(codex_model_provider_info::OPENAI_PROVIDER_ID.to_string());
+    provider.supports_websockets = false;
+    provider.capabilities = Some(codex_model_provider_info::ModelProviderCapabilities {
+        remote_compaction: Some(codex_model_provider_info::RemoteCompactionSupport::Unsupported),
+        ..Default::default()
+    });
+    let (session, turn, _events) = make_session_and_context_with_auth_and_config_and_rx(
+        CodexAuth::create_dummy_chatgpt_auth_for_testing(),
+        Vec::new(),
+        move |config| {
+            config.model = Some("gpt-5.2".to_string());
+            config.model_provider = provider;
+            // So small that instructions + margin + output reserve alone
+            // overflow it, no matter what history is trimmed.
+            config.model_context_window = Some(2_000);
+            let _ = config.features.disable(Feature::TokenBudget);
+        },
+    )
+    .await;
+    session
+        .record_conversation_items(
+            &turn,
+            turn.model_info(),
+            &[user_message("some older context"), assistant_filler(0)],
+        )
+        .await;
+
+    let result = crate::session::turn::run_turn(
+        Arc::clone(&session),
+        Arc::clone(&turn),
+        vec![crate::session::TurnInput::UserInput {
+            metadata: Default::default(),
+            content: vec![UserInput::Text {
+                text: "this cannot possibly fit".to_string(),
+                text_elements: Vec::new(),
+            }],
+            client_id: None,
+        }],
+        &mut crate::session::turn::McpStartupRequirements::default(),
+        None,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+    let error = result.expect_err("the turn must fail");
+    let message = error.to_string();
+    assert!(
+        message.contains("context window even after omitting older history"),
+        "the error names the window and the way out: {message}"
+    );
+    let occurrences = session
+        .clone_history()
+        .await
+        .raw_items()
+        .filter_map(|item| match item {
+            ResponseItem::Message { role, content, .. } if role == "user" => {
+                content_items_to_text(content)
+            }
+            _ => None,
+        })
+        .filter(|text| text.contains("this cannot possibly fit"))
+        .count();
+    assert_eq!(
+        occurrences, 1,
+        "the failed turn's input is preserved exactly once"
+    );
+    Ok(())
+}
+
+/// The last allowed pass that exactly converges is a SUCCESS, not a degrade:
+/// the outcome is `Converged` and inference proceeds normally.
+#[tokio::test]
+async fn migration_pass_cap_exactly_converging_reports_converged() -> anyhow::Result<()> {
+    let server = responses::start_mock_server().await;
+    let mut provider =
+        ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    provider.provider_id = Some(codex_model_provider_info::OPENAI_PROVIDER_ID.to_string());
+    provider.supports_websockets = false;
+    provider.capabilities = Some(codex_model_provider_info::ModelProviderCapabilities {
+        remote_compaction: Some(codex_model_provider_info::RemoteCompactionSupport::Unsupported),
+        ..Default::default()
+    });
+    let (session, turn, _events) = make_session_and_context_with_auth_and_config_and_rx(
+        CodexAuth::create_dummy_chatgpt_auth_for_testing(),
+        Vec::new(),
+        move |config| {
+            config.model = Some("gpt-5.2".to_string());
+            config.model_provider = provider;
+            config.model_context_window = Some(32_768);
+            let _ = config.features.disable(Feature::TokenBudget);
+            // Two spans are exactly enough for the history below (~36K
+            // tokens, budget ~22.8K, one span removes ~11.4K).
+            config.migration_compact.max_ranges = 2;
+        },
+    )
+    .await;
+    let recorded = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    struct CountingResponder(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+    impl wiremock::Respond for CountingResponder {
+        fn respond(&self, _: &wiremock::Request) -> wiremock::ResponseTemplate {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let body = responses::sse(vec![
+                responses::ev_assistant_message("summary", "summarized."),
+                responses::ev_completed("exact-converge"),
+            ]);
+            wiremock::ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body)
+        }
+    }
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path_regex(".*/responses$"))
+        .respond_with(CountingResponder(std::sync::Arc::clone(&recorded)))
+        .mount(&server)
+        .await;
+    // ~36K tokens: one span does not reach the budget, two do.
+    let mut items = Vec::new();
+    for index in 0..18 {
+        items.push(assistant_filler(index));
+    }
+    items.push(user_message("recent fact: keep-this-recent-fact"));
+    session
+        .record_conversation_items(&turn, turn.model_info(), &items)
+        .await;
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    let outcome =
+        run_migration_compact_task(Arc::clone(&session), Arc::clone(&turn), &cancellation).await;
+    assert_eq!(
+        outcome,
+        crate::compact::MigrationOutcome::Converged,
+        "the last allowed pass converged: normal inference follows"
+    );
+    assert_eq!(
+        recorded.load(std::sync::atomic::Ordering::SeqCst),
+        2,
+        "exactly the two allowed spans were summarized"
+    );
     Ok(())
 }
 

@@ -229,7 +229,9 @@ turn 级超窗处理才会触发（官方代码里这两个机制只认该分类
   `resume_at_item_id`（稳定 `ResponseItem` id，不用下标，跨 checkpoint/回滚
   仍有效）为边界，边界之前的历史由 `summary` 取代；`supersedes` 让新记录吸收
   旧记录（每次迁移只有一条生效）。
-- 摘要**只用当前（目标）模型**做，区间有界，所以请求永远装得下：
+- 摘要**只用当前（目标）模型**做，区间有界，所以每个摘要请求都按预算估算
+  装入窗口（最终以网关真实 tokenizer 为准；网关拒绝时由采样后的有界溢出
+  重试兜底——仅在尚未产生回复/工具副作用时逐条裁剪重试）：
   `budget = 0.8×window − 实测前缀 − 2048`（前缀 = 上轮上报用量 − 历史估算，
   含指令与工具负载），`retain = 0.16×window`，
   `span ≤ min(0.5×window, budget/2)`（后一项是被桥闸门拒绝后补的：闸门按
@@ -282,6 +284,21 @@ recent_context`）：对 32K"网关"（mock 按同口径拒收超窗请求）跑
 TokenBudget 特性会关闭溢出恢复臂（测试显式禁用）；OpenAI 第一方 provider 默认
 `remote_compaction=V2`，32K 本地网关场景必须显式 `Unsupported`（桥路径 provider
 本就解析为 Unsupported）。
+
+**降级裁剪（2026-11-08 方案，`my-docs/migration-compaction-downshift-plan-2026-11-08.md`）**：
+迁移结果拆为 `MigrationOutcome`（NoMigrationNeeded / Converged / StillOverBudget /
+CannotSummarize / Cancelled），run_turn 重复 pass（每轮上限 32）后仍超预算、无合法
+切点或摘要失败时，走 `degrade_history_to_target_window`：按目标窗口的请求预算
+（窗口 − 2048 输出预留 − 指令估算 − max(2048, 窗口/8) 工具/重注入余量 − 本轮输入）
+从尾部向前保留连续历史，切点配对安全、落稳定 id（全放不下允许空尾部），持久化
+`SurfaceReplacementReason::WindowShrinkOmitted`（空 summary = 无摘要省略，回放按同
+一边界裁剪且不种植消息；空边界 id = 隐藏全部），内存投影与记录一致，实际省略时
+发一次用户提示。原始 rollout 不动。必要内容（指令+工具+本轮输入+预留）本身超窗
+时保留本轮输入并报可行动错误；用户取消立即停（已提交记录仍可回放）。缩窗路径
+不依赖旧模型：迁移处理过的 turn 跳过 `maybe_run_previous_model_inline_compact` 的
+旧模型摘要入口，也不把未收敛历史交给旧全量 trim 循环。`retain_ratio = 0` 时选择器
+从最后一个实际条目回退找切点（此前在 `end == len` 直接放弃）。模型可见历史与原始
+记录的区别：裁剪只作用于模型可见面，rollout 永远完整。
 
 **配置键**（`config.toml` 顶层，缺省即下列默认值；越界 fail-fast 并点名键）：
 

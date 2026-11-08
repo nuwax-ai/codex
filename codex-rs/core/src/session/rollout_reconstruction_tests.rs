@@ -3102,3 +3102,104 @@ async fn an_older_surface_replacement_cannot_override_a_newer_checkpoint() {
         "an absorbed migration record must not cut the newer checkpoint: {texts:?}"
     );
 }
+
+/// A no-summary trim (downshift plan 2026-11-08): the boundary cuts the
+/// surface but nothing is planted — replay reproduces the trimmed tail
+/// without any summary item.
+#[tokio::test]
+async fn a_no_summary_trim_replays_to_the_same_boundary_without_planting() {
+    let (session, turn_context) = make_session_and_context().await;
+    let user_item = |id: &str, text: &str| ResponseItemEnvelope {
+        item: ResponseItem::Message {
+            id: Some(codex_protocol::ResponseItemId::from_server(id.to_string())),
+            role: "user".to_owned(),
+            content: vec![ContentItem::InputText {
+                text: text.to_owned(),
+            }],
+            phase: None,
+            status: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    };
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(user_item("item_1", "oldest turn")),
+        RolloutItem::ResponseItem(user_item("item_2", "middle turn")),
+        RolloutItem::SurfaceReplacement(Box::new(codex_history::SurfaceReplacementItem {
+            compaction_id: "cmp_trim".to_string(),
+            resume_at_item_id: "item_2".to_string(),
+            summary: String::new(),
+            provider: "local".to_string(),
+            model: "small-window".to_string(),
+            shadowed_tokens: 400,
+            retained_tail_tokens: 60,
+            reason: codex_history::SurfaceReplacementReason::WindowShrinkOmitted,
+            supersedes: Vec::new(),
+        })),
+        RolloutItem::ResponseItem(user_item("item_3", "kept turn")),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+    let texts: Vec<String> = reconstructed
+        .history
+        .iter()
+        .filter_map(|envelope| match &envelope.item {
+            ResponseItem::Message { content, .. } => content.first().and_then(|item| match item {
+                ContentItem::InputText { text } => Some(text.clone()),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        texts,
+        vec!["middle turn".to_string(), "kept turn".to_string()],
+        "the boundary tail survives, nothing is planted"
+    );
+}
+
+/// A no-summary trim with an EMPTY retained tail hides everything on replay.
+#[tokio::test]
+async fn a_no_summary_trim_with_empty_tail_hides_everything_on_replay() {
+    let (session, turn_context) = make_session_and_context().await;
+    let user_item = |id: &str, text: &str| ResponseItemEnvelope {
+        item: ResponseItem::Message {
+            id: Some(codex_protocol::ResponseItemId::from_server(id.to_string())),
+            role: "user".to_owned(),
+            content: vec![ContentItem::InputText {
+                text: text.to_owned(),
+            }],
+            phase: None,
+            status: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    };
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(user_item("item_1", "oldest turn")),
+        RolloutItem::ResponseItem(user_item("item_2", "last turn")),
+        RolloutItem::SurfaceReplacement(Box::new(codex_history::SurfaceReplacementItem {
+            compaction_id: "cmp_trim_all".to_string(),
+            resume_at_item_id: String::new(),
+            summary: String::new(),
+            provider: "local".to_string(),
+            model: "small-window".to_string(),
+            shadowed_tokens: 460,
+            retained_tail_tokens: 0,
+            reason: codex_history::SurfaceReplacementReason::WindowShrinkOmitted,
+            supersedes: Vec::new(),
+        })),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+    assert!(
+        reconstructed.history.is_empty(),
+        "an empty boundary id hides the entire replaced history"
+    );
+}

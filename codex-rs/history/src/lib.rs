@@ -342,6 +342,11 @@ pub enum SurfaceReplacementReason {
     /// The conversation moved to a model whose window is smaller than the history.
     #[default]
     WindowShrink,
+    /// The window shrank and bounded summaries could not converge, so older
+    /// history was omitted WITHOUT a summary (empty `summary`) to let the
+    /// target model continue the turn. Replay trims to the same boundary and
+    /// plants nothing.
+    WindowShrinkOmitted,
     /// Ordinary pre-turn pressure.
     Pressure,
     /// Provider-confirmed context overflow.

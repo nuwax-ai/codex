@@ -40,7 +40,7 @@ fn tool_pair_delta(item: &ResponseItem) -> i32 {
 
 /// Balance of the surface before each index: `prefix[i]` counts tool calls that
 /// are still open when the cut sits at `i`. A safe cut requires `prefix[i] == 0`.
-fn cut_balances(items: &[ResponseItemEnvelope]) -> Vec<i32> {
+pub(crate) fn cut_balances(items: &[ResponseItemEnvelope]) -> Vec<i32> {
     let mut prefix = Vec::with_capacity(items.len() + 1);
     prefix.push(0);
     let mut open = 0;
@@ -114,7 +114,15 @@ pub(crate) fn select_compaction_region(
     }
 
     let mut end = end;
-    if end == 0 || end >= items.len() {
+    if end >= items.len() {
+        // retain_ratio = 0 leaves the retain walk at the very end of the
+        // surface (nothing must be kept verbatim). An empty retained tail is
+        // legal for a replacement only when the cut still lands on an actual
+        // item, so step back to the last one and let the boundary search
+        // continue from there with the usual id and pairing rules.
+        end = items.len().saturating_sub(1);
+    }
+    if end == 0 {
         return None;
     }
     // The replacement record hides history by the id of the first item the

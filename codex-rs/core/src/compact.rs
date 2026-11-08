@@ -53,6 +53,7 @@ use codex_protocol::models::ContentItemKind;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::WarningEvent;
 use codex_protocol::user_input::UserInput;
 use codex_rollout_trace::InferenceTraceContext;
 use codex_utils_output_truncation::approx_token_count;
@@ -985,6 +986,29 @@ async fn drain_to_completed(
 #[path = "compact_tests.rs"]
 mod tests;
 
+/// The outcome of one migration-compaction pass (downshift plan 2026-11-08).
+///
+/// The caller distinguishes normal convergence (proceed to inference), the
+/// degradable states (history still over budget after `max_ranges` bounded
+/// spans, or summarization unavailable — trim older context on the target
+/// model instead), and user cancellation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MigrationOutcome {
+    /// Nothing to migrate: window unknown, or the history already fits.
+    NoMigrationNeeded,
+    /// The history fits after zero or more bounded summary ranges.
+    Converged,
+    /// Summaries made progress but the history still exceeds the budget
+    /// after this pass's `max_ranges` ranges: degrade by trimming.
+    StillOverBudget,
+    /// No legal cut, no identified boundary, a failed or empty summary, or a
+    /// pass that stopped shrinking the history: degradation is the only way
+    /// to continue on the target model.
+    CannotSummarize,
+    /// The user cancelled between ranges; already-persisted records stay.
+    Cancelled,
+}
+
 /// Migration compaction: fit the conversation into the current model's window
 /// using only the current model.
 ///
@@ -993,19 +1017,33 @@ mod tests;
 /// each step replaces one bounded, pairing-safe range with a summary the *new*
 /// model writes, then remeasures. The bound is what makes this work: the summary
 /// request never has to carry the whole history.
-///
-/// Returns whether anything was replaced.
 pub(crate) async fn run_migration_compact_task(
     sess: Arc<Session>,
     turn_context: Arc<TurnContext>,
-) -> CodexResult<bool> {
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> MigrationOutcome {
     // Operator-tunable knobs (config: migration_compact_*), see FORK.md §5.3.
     let settings = turn_context.config.migration_compact;
 
     let mut replaced = false;
     let mut announced = false;
+    // Whether this pass shrank the history at all; a pass whose summaries do
+    // not reduce the surface must not be repeated (downshift plan §1).
+    let mut progress = false;
+    let pass_start_tokens = sess
+        .clone_history()
+        .await
+        .estimate_token_count(turn_context.as_ref())
+        .unwrap_or(0);
+
+    let mut failure: Option<&'static str> = None;
 
     for _ in 0..settings.max_ranges {
+        if cancellation.is_cancelled() {
+            let outcome = MigrationOutcome::Cancelled;
+            finish_announcement(sess.as_ref(), &turn_context, announced, outcome).await;
+            return outcome;
+        }
         let history = sess.clone_history().await;
         let status =
             crate::session::context_window::context_window_token_status(&sess, &turn_context).await;
@@ -1035,13 +1073,14 @@ pub(crate) async fn run_migration_compact_task(
             .saturating_sub(RESERVED_OUTPUT_TOKENS);
         if budget <= 0 {
             // The fixed prefix alone overflows the usable window: no span can
-            // make the request fit. Shrinking to a 1-token span would only
-            // spin through meaningless summaries.
+            // make the request fit, and no summary can either. Degrade decides
+            // whether even the necessary request content fits.
             tracing::warn!(
                 window,
                 prefix_tokens,
-                "migration compaction: no room left under the history budget; skipping"
+                "migration compaction: no room left under the history budget"
             );
+            failure = Some("no room under the history budget");
             break;
         }
         if history_tokens <= budget {
@@ -1058,24 +1097,25 @@ pub(crate) async fn run_migration_compact_task(
         let Some(region) =
             crate::session::compaction_region::select_compaction_region(items, retain, max_span)
         else {
-            return Err(CodexErr::Stream(
-                "migration compaction: no pairing-safe range can reduce the context".to_string(),
-            ));
+            failure = Some("no pairing-safe range with an identified boundary");
+            break;
         };
 
         // The record hides history by the id of the first item the model must
         // still see. The selector only returns cuts that already land on an
         // id carrier (pairing-, span-, and tail-safe), so the boundary is
         // directly usable; missing ids here are a selector contract breach.
-        let boundary_id = items
+        let boundary_id = match items
             .get(region.end)
             .and_then(|item| item.id())
             .map(|id| id.as_str().to_string())
-            .ok_or_else(|| {
-                CodexErr::Stream(
-                    "migration compaction: no identified history item to resume at".to_string(),
-                )
-            })?;
+        {
+            Some(id) => id,
+            None => {
+                failure = Some("no identified history item to resume at");
+                break;
+            }
+        };
 
         if !announced {
             // TUI and ACP both surface this item, so the user sees the
@@ -1084,13 +1124,26 @@ pub(crate) async fn run_migration_compact_task(
             sess.emit_turn_item_started(&turn_context, &item).await;
             announced = true;
         }
-        let summary =
-            summarize_migration_region(&sess, &turn_context, &items[region.start..region.end])
-                .await?;
+        let summary = match summarize_migration_region(
+            &sess,
+            &turn_context,
+            &items[region.start..region.end],
+        )
+        .await
+        {
+            Ok(summary) => summary,
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    "migration compaction: summary request failed; degradation can still continue"
+                );
+                failure = Some("summary request failed");
+                break;
+            }
+        };
         if summary.trim().is_empty() {
-            return Err(CodexErr::Stream(
-                "migration compaction produced an empty summary".to_string(),
-            ));
+            failure = Some("summary was empty");
+            break;
         }
 
         let record = codex_history::SurfaceReplacementItem {
@@ -1132,6 +1185,7 @@ pub(crate) async fn run_migration_compact_task(
         );
         sess.replace_history_for_migration(replacement).await;
         replaced = true;
+        progress = true;
         tracing::info!(
             shadowed_tokens = region.tokens,
             history_tokens,
@@ -1141,11 +1195,255 @@ pub(crate) async fn run_migration_compact_task(
         );
     }
 
+    let outcome = if failure.is_some() {
+        MigrationOutcome::CannotSummarize
+    } else {
+        // Remeasure after the pass: converged, or still over budget (the
+        // caller repeats the pass up to the per-turn cap, then degrades).
+        let history_tokens = sess
+            .clone_history()
+            .await
+            .estimate_token_count(turn_context.as_ref())
+            .unwrap_or(0);
+        let status =
+            crate::session::context_window::context_window_token_status(&sess, &turn_context).await;
+        let fits = status.full_context_window_limit.is_some_and(|window| {
+            let prefix = status
+                .active_context_tokens
+                .saturating_sub(history_tokens)
+                .max(0);
+            let budget = ((window as f64 * settings.ratio) as i64)
+                .saturating_sub(prefix)
+                .saturating_sub(RESERVED_OUTPUT_TOKENS);
+            budget > 0 && history_tokens <= budget
+        });
+        if fits {
+            if replaced {
+                MigrationOutcome::Converged
+            } else {
+                // The history already fit when the pass started; no migration
+                // happened (the previous-model compact path stays eligible).
+                MigrationOutcome::NoMigrationNeeded
+            }
+        } else if replaced
+            || history_over_budget_at_entry(pass_start_tokens, &sess, &turn_context).await
+        {
+            MigrationOutcome::StillOverBudget
+        } else {
+            MigrationOutcome::NoMigrationNeeded
+        }
+    };
+    if let Some(reason) = failure {
+        tracing::warn!(reason, "migration compaction pass cannot summarize");
+    }
+    finish_announcement(sess.as_ref(), &turn_context, announced, outcome).await;
+    outcome
+}
+
+/// Whether the history exceeded the migration budget when the pass started,
+/// so a pass that replaced nothing still reports `StillOverBudget` (the caller
+/// degrades instead of silently proceeding on an over-window request).
+async fn history_over_budget_at_entry(
+    pass_start_tokens: i64,
+    sess: &Arc<Session>,
+    turn_context: &Arc<TurnContext>,
+) -> bool {
+    let settings = turn_context.config.migration_compact;
+    let status =
+        crate::session::context_window::context_window_token_status(sess, turn_context).await;
+    let Some(window) = status.full_context_window_limit else {
+        return false;
+    };
+    let prefix = status
+        .active_context_tokens
+        .saturating_sub(pass_start_tokens)
+        .max(0);
+    let budget = ((window as f64 * settings.ratio) as i64)
+        .saturating_sub(prefix)
+        .saturating_sub(RESERVED_OUTPUT_TOKENS);
+    budget > 0 && pass_start_tokens > budget
+}
+
+async fn finish_announcement(
+    sess: &Session,
+    turn_context: &Arc<TurnContext>,
+    announced: bool,
+    _outcome: MigrationOutcome,
+) {
     if announced {
         let item = TurnItem::ContextCompaction(ContextCompactionItem::new());
-        sess.emit_turn_item_completed(&turn_context, item).await;
+        sess.emit_turn_item_completed(turn_context, item).await;
     }
-    Ok(replaced)
+}
+
+/// The result of the degraded downshift path (downshift plan 2026-11-08 §2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DegradeOutcome {
+    /// Older history was trimmed (or already fit): inference may proceed on
+    /// the target model.
+    Trimmed {
+        /// Tokens of model-visible history removed without a summary.
+        shadowed_tokens: i64,
+        /// Tokens of the retained tail.
+        retained_tokens: i64,
+    },
+    /// Instructions + tools + the current input + the generation reserve
+    /// already exceed the window: no request can succeed, and the caller
+    /// must surface an actionable error while keeping this turn's input.
+    NecessaryContentExceedsWindow { window: i64 },
+}
+
+/// Floor charged on top of instructions and the current input for the tool
+/// payload, context reinjection, and serialization overhead, none of which
+/// are measurable from history alone. Scales with the window (a fixed floor
+/// under-prices large tool catalogs); the real gateway remains the authority,
+/// and the bounded overflow retry only fires before any reply exists.
+const DEGRADE_FIXED_MARGIN_MIN_TOKENS: i64 = 2_048;
+
+fn degrade_fixed_margin_tokens(window: i64) -> i64 {
+    DEGRADE_FIXED_MARGIN_MIN_TOKENS.max(window / 8)
+}
+
+/// Trim the oldest model-visible history so the turn's inference request fits
+/// the TARGET model's window. Used only after bounded migration summaries
+/// could not converge (pass cap, no legal cut, or failed summaries): the old
+/// model/provider is never consulted, and unconverged history is never handed
+/// to the legacy whole-history compact.
+///
+/// The current turn's input is not in history yet (it is recorded after this
+/// point), so reserving for it keeps it intact. The cut keeps tool calls
+/// paired, lands on an identified boundary when possible, and an empty
+/// retained tail is allowed. A no-summary replacement record is persisted so
+/// replay trims to the same boundary; the original rollout is untouched.
+pub(crate) async fn degrade_history_to_target_window(
+    sess: &Arc<Session>,
+    turn_context: &Arc<TurnContext>,
+    pending_input_tokens: i64,
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> CodexResult<DegradeOutcome> {
+    if cancellation.is_cancelled() {
+        return Err(CodexErr::TurnAborted);
+    }
+    let settings = turn_context.config.migration_compact;
+    let status =
+        crate::session::context_window::context_window_token_status(sess, turn_context).await;
+    let Some(window) = status
+        .full_context_window_limit
+        .filter(|window| *window > 0)
+    else {
+        // No known window: nothing to trim against.
+        return Ok(DegradeOutcome::Trimmed {
+            shadowed_tokens: 0,
+            retained_tokens: 0,
+        });
+    };
+    let instructions_tokens = (sess.get_prompt_base_instructions().await.text.len() as i64) / 4;
+    let history_budget = window
+        .saturating_sub(RESERVED_OUTPUT_TOKENS)
+        .saturating_sub(instructions_tokens)
+        .saturating_sub(degrade_fixed_margin_tokens(window))
+        .saturating_sub(pending_input_tokens.max(0));
+    if history_budget < 0 {
+        tracing::warn!(
+            window,
+            instructions_tokens,
+            pending_input_tokens,
+            "downshift degrade: the necessary request content exceeds the target window"
+        );
+        return Ok(DegradeOutcome::NecessaryContentExceedsWindow { window });
+    }
+
+    let history = sess.clone_history().await;
+    let items = history.annotated_items();
+    if items.is_empty() {
+        return Ok(DegradeOutcome::Trimmed {
+            shadowed_tokens: 0,
+            retained_tokens: 0,
+        });
+    }
+    let item_tokens: Vec<i64> = items
+        .iter()
+        .map(|envelope| crate::context_manager::estimate_item_token_count(&envelope.item))
+        .collect();
+    let total: i64 = item_tokens.iter().sum();
+    if total <= history_budget {
+        return Ok(DegradeOutcome::Trimmed {
+            shadowed_tokens: 0,
+            retained_tokens: total,
+        });
+    }
+
+    // Largest retained tail fitting the budget: walk the boundary forward
+    // from the oldest item until the remaining tail fits, then keep moving
+    // forward to the nearest pairing-safe, id-carrying boundary. An empty
+    // tail (boundary past the last item) is the final fallback.
+    let prefix = crate::session::compaction_region::cut_balances(items);
+    let mut boundary = 0usize;
+    let mut tail: i64 = 0;
+    for index in (0..items.len()).rev() {
+        tail += item_tokens[index];
+        if tail > history_budget {
+            // Keep from index+1 onward; index itself does not fit.
+            boundary = index + 1;
+            break;
+        }
+    }
+    while boundary < items.len() && (items[boundary].id().is_none() || prefix[boundary] != 0) {
+        boundary += 1;
+    }
+    let boundary_id = items
+        .get(boundary)
+        .and_then(|item| item.id())
+        .map(|id| id.as_str().to_string())
+        .unwrap_or_default();
+    let shadowed_tokens: i64 = item_tokens[..boundary].iter().sum();
+    let retained_tokens: i64 = item_tokens[boundary..].iter().sum();
+    debug_assert_eq!(shadowed_tokens + retained_tokens, total);
+
+    let record = codex_history::SurfaceReplacementItem {
+        compaction_id: uuid::Uuid::new_v4().to_string(),
+        // An empty boundary id means the retained tail is empty; the replay
+        // side interprets it as "hide everything".
+        resume_at_item_id: boundary_id,
+        summary: String::new(),
+        provider: turn_context.config.model_provider_id.clone(),
+        model: turn_context.model_info().slug.clone(),
+        shadowed_tokens,
+        retained_tail_tokens: retained_tokens,
+        reason: codex_history::SurfaceReplacementReason::WindowShrinkOmitted,
+        supersedes: Vec::new(),
+    };
+    sess.persist_rollout_items(&[codex_history::RolloutItem::SurfaceReplacement(Box::new(
+        record,
+    ))])
+    .await;
+
+    // Apply the same cut in memory: the tail only, nothing planted.
+    sess.replace_history_for_migration(items[boundary..].to_vec())
+        .await;
+
+    // One user-visible notice for the actual omission (spec: 提示一次).
+    sess.send_event(
+        turn_context,
+        EventMsg::Warning(WarningEvent {
+            message: format!(
+                "The context window shrank after the model switch; ~{shadowed_tokens} tokens of older history were omitted (without a summary) so this turn can continue. The original conversation record is preserved."
+            ),
+        }),
+    )
+    .await;
+    tracing::info!(
+        window,
+        history_budget,
+        shadowed_tokens,
+        retained_tokens,
+        settings_ratio = settings.ratio,
+        "downshift degrade: trimmed older history without summaries"
+    );
+    Ok(DegradeOutcome::Trimmed {
+        shadowed_tokens,
+        retained_tokens,
+    })
 }
 
 /// One summarization call over a bounded slice of history.

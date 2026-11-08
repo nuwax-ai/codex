@@ -247,8 +247,15 @@ provider 常用字段：
 migration_compact_ratio = 0.8            # 历史+固定前缀可占窗口的比例
 migration_compact_retain_ratio = 0.16    # 原样保留的尾部占比
 migration_compact_max_span_ratio = 0.5   # 单次摘要请求占窗口上限
-migration_compact_max_ranges = 8         # 单次迁移最多摘要段数（1–64）
+migration_compact_max_ranges = 8         # 每个 pass 最多摘要段数（1–64）
 ```
+
+`migration_compact_max_ranges` 是**每个 pass** 的摘要段数：一个 turn 内引擎会重复
+执行 pass 直到历史入预算（每轮硬上限 32 个 pass）。仍无法收敛时（pass 触顶、无
+合法切点或摘要失败），引擎会按目标窗口**裁剪较老上下文**（不摘要、一次性提示），
+用目标模型继续本轮——原始会话记录始终保留；若指令+工具+当前输入本身超窗则明确
+报错。摘要请求都由目标模型发出，2048 输出上限；预算是估算口径，最终以网关真实
+限制为准。
 
 窗口偏小的本地模型（如 16K）建议把 `migration_compact_ratio` 降到 `0.7`：固定
 前缀（指令+工具）本身要占 4–5K，留给历史的余量比比例看起来更紧。

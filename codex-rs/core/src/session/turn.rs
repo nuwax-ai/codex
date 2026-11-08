@@ -230,30 +230,103 @@ pub(crate) async fn run_turn(
     // bounded migration exists to prevent. Convergence ends the loop
     // (`Ok(false)` = nothing left to replace); a hard cap bounds churn when
     // replacement stops making progress.
+    // One call runs one bounded pass (up to `migration_compact_max_ranges`
+    // summary ranges). Repeat while the pass still shrinks the history, up to
+    // the per-turn cap; then, if the history STILL does not fit, degrade by
+    // trimming older context on the target model instead of handing
+    // unconverged history to the legacy whole-history compact (downshift
+    // plan 2026-11-08).
+    let mut downshift_handled = false;
+    let mut degrade_needed = false;
     if auto_compaction_enabled {
         const MAX_MIGRATION_PASSES_PER_TURN: usize = 32;
         let mut passes = 0usize;
+        let mut outcome = crate::compact::run_migration_compact_task(
+            sess.clone(),
+            turn_context.clone(),
+            &cancellation_token,
+        )
+        .await;
+        downshift_handled = !matches!(outcome, crate::compact::MigrationOutcome::NoMigrationNeeded);
         loop {
-            match crate::compact::run_migration_compact_task(sess.clone(), turn_context.clone())
-                .await
-            {
-                Ok(/*replaced*/ true) => {}
-                Ok(false) => break,
-                Err(err) => {
+            match outcome {
+                crate::compact::MigrationOutcome::StillOverBudget => {
+                    passes += 1;
+                    if passes >= MAX_MIGRATION_PASSES_PER_TURN {
+                        warn!(
+                            passes,
+                            "migration compaction: pass cap reached without converging; degrading to a target-window trim"
+                        );
+                        degrade_needed = true;
+                        break;
+                    }
+                    outcome = crate::compact::run_migration_compact_task(
+                        sess.clone(),
+                        turn_context.clone(),
+                        &cancellation_token,
+                    )
+                    .await;
+                }
+                crate::compact::MigrationOutcome::Cancelled => {
+                    // Preserve the incoming prompt, then stop: no further
+                    // summaries or inference after a user stop.
+                    let _ = run_hooks_and_record_inputs(
+                        &sess,
+                        &turn_context,
+                        &turn_context.capture_current_model_info(),
+                        &input,
+                        PersistContext::Standard,
+                    )
+                    .await;
+                    return Err(CodexErr::TurnAborted);
+                }
+                crate::compact::MigrationOutcome::CannotSummarize => {
                     warn!(
-                        "migration compaction failed: {err}; falling back to the regular compact path"
+                        "migration compaction cannot summarize; degrading to a target-window trim"
                     );
+                    degrade_needed = true;
                     break;
                 }
+                _ => break,
             }
-            passes += 1;
-            if passes >= MAX_MIGRATION_PASSES_PER_TURN {
-                warn!(
-                    passes,
-                    "migration compaction: pass cap reached without converging; falling back to the regular compact path"
-                );
-                break;
+        }
+    }
+    if degrade_needed {
+        match crate::compact::degrade_history_to_target_window(
+            &sess,
+            &turn_context,
+            estimate_pending_input_tokens(&input),
+            &cancellation_token,
+        )
+        .await
+        {
+            Ok(crate::compact::DegradeOutcome::Trimmed {
+                shadowed_tokens, ..
+            }) => {
+                if shadowed_tokens > 0 {
+                    info!(
+                        shadowed_tokens,
+                        "downshift degrade: trimmed older history without summaries"
+                    );
+                }
             }
+            Ok(crate::compact::DegradeOutcome::NecessaryContentExceedsWindow { window }) => {
+                // Keep this turn's input recorded, then fail with an
+                // actionable message: nothing the engine can trim would make
+                // the request fit.
+                let _ = run_hooks_and_record_inputs(
+                    &sess,
+                    &turn_context,
+                    &turn_context.capture_current_model_info(),
+                    &input,
+                    PersistContext::Standard,
+                )
+                .await;
+                return Err(CodexErr::Fatal(format!(
+                    "The request cannot fit the model's {window}-token context window even after omitting older history: the instructions, tool payload, and the current input alone are too large. Switch to a model with a larger context window, or shorten the input."
+                )));
+            }
+            Err(err) => return Err(err),
         }
     }
     if auto_compaction_enabled
@@ -263,6 +336,7 @@ pub(crate) async fn run_turn(
             &mut client_session,
             &cancellation_token,
             estimate_pending_input_tokens(&input),
+            /*skip_previous_model_compact*/ downshift_handled,
         )
         .await
     {
@@ -1550,9 +1624,21 @@ async fn run_pre_sampling_compact(
     client_session: &mut ModelClientSession,
     cancellation_token: &CancellationToken,
     pending_input_tokens: i64,
+    skip_previous_model_compact: bool,
 ) -> CodexResult<()> {
-    maybe_run_previous_model_inline_compact(sess, turn_context, client_session, cancellation_token)
+    // A window downshift this turn was already handled with the TARGET model
+    // (bounded summaries, then a trim); the previous-model inline compact
+    // must not send this thread's history to a model/provider that may no
+    // longer be reachable (downshift plan 2026-11-08 §2).
+    if !skip_previous_model_compact {
+        maybe_run_previous_model_inline_compact(
+            sess,
+            turn_context,
+            client_session,
+            cancellation_token,
+        )
         .await?;
+    }
     let token_status =
         super::context_window::context_window_token_status(sess.as_ref(), turn_context.as_ref())
             .await;
