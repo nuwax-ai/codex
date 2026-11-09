@@ -397,3 +397,21 @@ completed 事件在失败路径仍未发出，属既有小瑕疵）。
 DISABLE_THINKING/MODEL_CONTEXT_WINDOW`（适配器与 harness 均支持同义别名），日志里
 不再打印 `CODEX_*`。`CODEX_HOME`/`CODEX_SQLITE_HOME`/`CODEX_LOG_DIR` 因无同义别名
 暂留，目录名 `.codex` 的改名单独评估。
+
+
+---
+
+## 11. 复审后的语义修正：不要求用户换会话（2026-11-09）
+
+产品约束：**一个会话要能一直用，并且可以随时换模型**。因此：
+
+- `ContextWindowExceeded` 终态文案不再出现 "Start a new thread"；
+- ACP `context_exhausted` 的 action 由 `new_session` 改为 `retry`；
+- legacy `_meta.codex.sessionFailure` 增加 `kind`（`context_exhausted` /
+  `input_too_large`），客户端按 kind 判失败，不再提示换会话；
+- 客户端 `shouldFailTurn()`：两种 kind 都让本轮失败并展示 harness 文案，
+  会话本身保留，用户可在同一会话里重试 / 缩短输入 / 换更大窗口模型；
+- 降级警告文案改为"本地记录完整，需要该细节时换更大窗口模型"。
+
+配套能力（已有）：模型降级时的迁移压缩（FORK.md §5.3）保证换到小窗口模型也能继续，
+本轮的超窗自愈保证换到大窗口之前不会把会话耗死。

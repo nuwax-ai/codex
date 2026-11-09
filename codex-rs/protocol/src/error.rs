@@ -128,8 +128,11 @@ pub enum CodexErrorDetails {
     /// Machine clients must match `codex_error_info == "context_window_exceeded"`
     /// (see `to_codex_protocol_error`); this prose is for humans and may be
     /// reworded. Fork (nuwax-codex): brand the fork, not upstream "Codex".
+    // One conversation is meant to survive model switches: the recovery is to
+    // retry (the harness trims/summarizes first) or to move to a larger window,
+    // never to abandon the thread.
     #[error(
-        "nuwax-harness ran out of room in the model's context window. Start a new thread or clear earlier history before retrying."
+        "nuwax-harness ran out of room in the model's context window for this turn. The conversation is kept; retry, or switch to a model with a larger context window."
     )]
     ContextWindowExceeded,
     #[error("no thread with id: {0}")]

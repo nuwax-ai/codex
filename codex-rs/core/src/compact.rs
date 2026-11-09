@@ -1533,7 +1533,7 @@ pub(crate) async fn degrade_history_to_target_window(
         // Fork: the user did not switch anything — conversation compaction
         // itself could not fit, so name the harness and say what was lost.
         DegradeReason::CompactionOverflow => format!(
-            "nuwax-harness could not summarize this conversation into the model's context window; ~{shadowed_tokens} tokens of older history were omitted (without a summary) so this turn can continue. Start a new thread if the omitted detail is still needed."
+            "nuwax-harness could not summarize this conversation into the model's context window; ~{shadowed_tokens} tokens of older history were omitted (without a summary) so this turn can continue. The local record is complete; switch to a larger-window model if the model still needs that detail."
         ),
     };
     sess.send_event(

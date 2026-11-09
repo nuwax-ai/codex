@@ -365,10 +365,15 @@ resume 在同一状态上再失败——永久原地打转。
   （`full_context_window_limit`），所以一次图片密集请求被拒不会让后续纯文本轮次
   被误判成"必要内容都装不下"。
 - **两种"装不下"分流（2026-11-09）**：`NecessaryContentExceedsWindow`（指令+工具+
-  本轮输入本身超窗，换会话也没用）返回 `CodexErr::InvalidPrompt`，协议映射为
-  `CodexErrorInfo::InvalidPrompt`；客户端据此得到"本次输入过大、请缩短输入或换大窗
-  模型"的机器判据，与"会话上下文耗尽"（`ContextWindowExceeded`，动作是开新会话）
-  区分。此前是 `Fatal → Other`，客户端会误判成可重试的 provider 故障。
+  本轮输入本身超窗）返回 `CodexErr::InvalidPrompt`，协议映射为
+  `CodexErrorInfo::InvalidPrompt`；与"会话上下文耗尽"（`ContextWindowExceeded`）
+  形成两个机器判据。此前是 `Fatal → Other`，客户端会误判成可重试的 provider 故障。
+- **会话不弃（同日起）**：产品目标是"一个会话一直用、可自由换模型"，所以超窗的
+  终态提示不再让用户"开新线程"——`ContextWindowExceeded` 文案改为
+  "the conversation is kept; retry, or switch to a model with a larger context
+  window"，ACP 侧 `context_exhausted` 的 action 从 `new_session` 改为 `retry`；
+  降级警告也改为"本地记录完整，模型需要该细节时换更大窗口的模型"。会话内存中的
+  裁剪由 `SurfaceReplacement` 持久化，跨模型继续可用。
 - **品牌**：`CodexErrorDetails::ContextWindowExceeded` 的文案改为
   `nuwax-harness ran out of room in the model's context window. ...`。
   机器判据只能是 `codex_error_info == "context_window_exceeded"`；任何按
