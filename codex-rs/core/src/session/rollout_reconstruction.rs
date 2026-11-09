@@ -72,14 +72,17 @@ fn apply_active_surface_replacement(
     // that must stay visible on the next resume.
     let index = if replacement.resume_at_item_id.is_empty() {
         let ids_after = ids_after_record(rollout_items, record_index);
-        if ids_after.is_empty() {
-            // Nothing was appended after the trim: hide the history it covered.
-            Some(items.len())
-        } else {
+        // The trim covered everything recorded before it. Keep only items that
+        // were appended afterwards AND survived this replay: a later rollback
+        // can remove them from the rebuilt history, and falling back to "show
+        // the full history" would resurrect exactly the oversized range the
+        // trim was written to hide.
+        Some(
             items
                 .iter()
                 .position(|item| item.id().is_some_and(|id| ids_after.contains(id.as_str())))
-        }
+                .unwrap_or(items.len()),
+        )
     } else {
         items.iter().position(|item| {
             item.id()

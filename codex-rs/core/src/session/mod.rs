@@ -1645,6 +1645,18 @@ impl Session {
         );
     }
 
+    /// Fork (2026-11-09): the observed rejection point for this turn's route, if
+    /// a previous sampling request on the same model/provider was rejected.
+    pub(crate) async fn observed_context_ceiling(&self, turn_context: &TurnContext) -> Option<i64> {
+        let model = turn_context.model_info().slug.clone();
+        let provider = turn_context.config.model_provider_id.clone();
+        self.services
+            .thread_extension_data
+            .get::<crate::session::context_window::ObservedContextCeiling>()
+            .filter(|ceiling| ceiling.model == model && ceiling.provider == provider)
+            .map(|ceiling| ceiling.tokens)
+    }
+
     pub(crate) async fn auto_compact_window_snapshot(&self) -> AutoCompactWindowSnapshot {
         let state = self.state.lock().await;
         state.auto_compact_window_snapshot()

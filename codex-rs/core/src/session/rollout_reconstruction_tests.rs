@@ -3221,7 +3221,68 @@ async fn a_no_summary_trim_with_later_turns_keeps_them_on_replay() {
     );
 }
 
-/// A no-summary trim with an EMPTY retained tail hides everything on replay.
+/// A trim with an empty tail followed by a turn that is later rolled back must
+/// keep the trimmed range hidden: the post-trim ids still exist in the raw
+/// rollout, but they no longer survive the replay.
+#[tokio::test]
+async fn an_empty_tail_trim_stays_hidden_when_the_following_turn_is_rolled_back() {
+    let (session, turn_context) = make_session_and_context().await;
+    let user_item = |id: &str, text: &str| ResponseItemEnvelope {
+        item: ResponseItem::Message {
+            id: Some(codex_protocol::ResponseItemId::from_server(id.to_string())),
+            role: "user".to_owned(),
+            content: vec![ContentItem::InputText {
+                text: text.to_owned(),
+            }],
+            phase: None,
+            status: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    };
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(user_item("item_1", "oldest turn")),
+        RolloutItem::ResponseItem(user_item("item_2", "trimmed turn")),
+        RolloutItem::SurfaceReplacement(Box::new(codex_history::SurfaceReplacementItem {
+            compaction_id: "cmp_trim_all".to_string(),
+            resume_at_item_id: String::new(),
+            summary: String::new(),
+            provider: "local".to_string(),
+            model: "small-window".to_string(),
+            shadowed_tokens: 460,
+            retained_tail_tokens: 0,
+            reason: codex_history::SurfaceReplacementReason::Overflow,
+            supersedes: Vec::new(),
+        })),
+        RolloutItem::ResponseItem(user_item("item_3", "rolled back turn")),
+        RolloutItem::EventMsg(EventMsg::ThreadRolledBack(ThreadRolledBackEvent {
+            num_turns: 1,
+        })),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+    let texts: Vec<String> = reconstructed
+        .history
+        .iter()
+        .filter_map(|envelope| match &envelope.item {
+            ResponseItem::Message { content, .. } => content.first().and_then(|item| match item {
+                ContentItem::InputText { text } => Some(text.clone()),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        texts,
+        Vec::<String>::new(),
+        "the rolled-back turn must not resurrect the trimmed history"
+    );
+}
+
+/// A no-summary trim with an EMPTY retained tail hides everything on replay./// A no-summary trim with an EMPTY retained tail hides everything on replay.
 #[tokio::test]
 async fn a_no_summary_trim_with_empty_tail_hides_everything_on_replay() {
     let (session, turn_context) = make_session_and_context().await;

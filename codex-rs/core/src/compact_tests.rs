@@ -923,6 +923,108 @@ async fn downshift_with_unfittable_necessary_content_fails_with_actionable_error
     Ok(())
 }
 
+/// Fork regression (2026-11-09 review P1-1): a short instruction followed by a
+/// huge tool result must be repaired by pruning the tool output, not rejected
+/// as "necessary content exceeds the window" (the instruction is small).
+#[tokio::test]
+async fn midturn_degrade_prunes_tool_output_instead_of_failing_the_instruction()
+-> anyhow::Result<()> {
+    let server = responses::start_mock_server().await;
+    let mut provider =
+        ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    provider.provider_id = Some(codex_model_provider_info::OPENAI_PROVIDER_ID.to_string());
+    provider.supports_websockets = false;
+    provider.capabilities = Some(codex_model_provider_info::ModelProviderCapabilities {
+        remote_compaction: Some(codex_model_provider_info::RemoteCompactionSupport::Unsupported),
+        ..Default::default()
+    });
+    let (session, turn, _events) = make_session_and_context_with_auth_and_config_and_rx(
+        CodexAuth::create_dummy_chatgpt_auth_for_testing(),
+        Vec::new(),
+        move |config| {
+            config.model = Some("gpt-5.2".to_string());
+            config.model_provider = provider;
+            config.model_context_window = Some(20_000);
+            let _ = config.features.disable(Feature::TokenBudget);
+        },
+    )
+    .await;
+    session
+        .record_conversation_items(
+            &turn,
+            turn.model_info(),
+            &[
+                user_message("list the files"),
+                ResponseItem::FunctionCall {
+                    status: None,
+                    encrypted_content: None,
+                    id: None,
+                    name: "shell".to_string(),
+                    namespace: None,
+                    arguments: "{}".to_string(),
+                    call_id: "call-1".to_string(),
+                    encrypted_function_args: None,
+                    internal_chat_message_metadata_passthrough: None,
+                },
+                ResponseItem::FunctionCallOutput {
+                    id: None,
+                    call_id: Some("call-1".to_string()),
+                    name: None,
+                    namespace: None,
+                    output: FunctionCallOutputPayload::from_text("x".repeat(100_000)),
+                    internal_chat_message_metadata_passthrough: None,
+                },
+            ],
+        )
+        .await;
+
+    let outcome = crate::compact::degrade_history_to_target_window(
+        &session,
+        &turn,
+        /*pending_input_tokens*/ 0,
+        &tokio_util::sync::CancellationToken::new(),
+        crate::compact::DegradeReason::CompactionOverflow,
+        crate::compact::DegradeProtection::CurrentTurnInput,
+        /*observed_window*/ None,
+    )
+    .await?;
+    assert!(
+        matches!(outcome, crate::compact::DegradeOutcome::Trimmed { .. }),
+        "the tool output can be pruned, so this must not be NecessaryContentExceedsWindow: {outcome:?}"
+    );
+
+    let history = session.clone_history().await;
+    let instruction = history.raw_items().any(|item| {
+        matches!(
+            item,
+            ResponseItem::Message { role, content, .. }
+                if role == "user"
+                    && content.iter().any(|part| matches!(
+                        part,
+                        ContentItem::InputText { text } if text == "list the files"
+                    ))
+        )
+    });
+    assert!(
+        instruction,
+        "the instruction the turn is executing must survive"
+    );
+    let tool_output_chars = history.raw_items().find_map(|item| match item {
+        ResponseItem::FunctionCallOutput { output, .. } => match &output.body {
+            codex_protocol::models::FunctionCallOutputBody::Text(text) => {
+                Some(text.chars().count())
+            }
+            _ => None,
+        },
+        _ => None,
+    });
+    assert!(
+        tool_output_chars.is_some_and(|chars| chars < 20_000),
+        "the retained tool output should be pruned, got {tool_output_chars:?} chars"
+    );
+    Ok(())
+}
+
 /// The last allowed pass that exactly converges is a SUCCESS, not a degrade:
 /// the outcome is `Converged` and inference proceeds normally.
 #[tokio::test]

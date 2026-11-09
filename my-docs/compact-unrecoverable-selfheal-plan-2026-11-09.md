@@ -489,3 +489,18 @@ retry 建议），我加的 `invalidPrompt → input_too_large` 映射在真实�
 
 另：`app-server-protocol` 的 `stable_precomputed_exports_match_schema_fixtures`
 在当前 HEAD 上就是红的（已 stash 验证与本次无关），未在本次提交里改 fixture blob。
+
+
+---
+
+## 14. 第二轮复审修复（2026-11-09 晚）
+
+| 发现 | 结论 | 修复 | 回归 |
+|---|---|---|---|
+| P1 轮内降级把"短指令 + 超长工具输出"误判为输入过大 | 成立 | `degrade_history_to_target_window` 在保护当前 user 消息后，先对保留尾部做 `prune_oversized_tool_results`（头 4k/尾 1k），再判断是否 `NecessaryContentExceedsWindow` | `midturn_degrade_prunes_tool_output_instead_of_failing_the_instruction` |
+| P1 裁空后的新轮次被回滚时旧历史重现 | 成立 | 空 boundary 回放：`ids_after` 在重建历史里一个都找不到时隐藏全部（`unwrap_or(items.len())`），不再走"边界缺失→显示全量"的兜底 | `an_empty_tail_trim_stays_hidden_when_the_following_turn_is_rolled_back` |
+| P2 观测上限不在重试预算里 | 成立 | 恢复臂把 `observed_context_ceiling()` 传入 degrade，裁剪预算取 `min(宣称窗口, 观测点)`；必要内容判据仍用该窗口 | 无独立回归（依赖既有 compact 用例） |
+| P2 同一步可能压缩两次 / 吞掉必要内容超窗 | 成立 | `checkpoint_compacted` 跳过本 step 的 rollover 压缩（显式 `new_context` 仍优先）；检查点的 `NecessaryContentExceedsWindow` 直接返回 `InvalidPrompt` | 既有 compact 用例 |
+| P1 客户端改写 NUWAX_ 后旧 CODEX_ 拼写可能冲突 | 成立 | 抽出 `acpEnvAliases.takeAliasedEnv()`：先把两种拼写收敛成一份（NUWAX_ 优先、删除两者），再按明确优先级写回；覆盖 MODEL/BASE_URL/API_KEY/PROVIDER_ID/WIRE_API/API_PROTOCOL/DISABLE_THINKING/MODEL_REASONING_EFFORT/MODEL_CONTEXT_WINDOW | `acpEnvAliases.test.ts`（3 例） |
+
+**未做**：客户端 `_meta` 真机回放验收（需三端联调）；`InputTooLarge` v2 变体（§13）。

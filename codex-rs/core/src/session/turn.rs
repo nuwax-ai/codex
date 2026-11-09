@@ -299,6 +299,7 @@ pub(crate) async fn run_turn(
             &cancellation_token,
             crate::compact::DegradeReason::ModelDownshift,
             crate::compact::DegradeProtection::None,
+            /*observed_window*/ None,
         )
         .await
         {
@@ -791,6 +792,9 @@ pub(crate) async fn run_turn(
                 // window, leaving only the post-rejection recovery
                 // (`fork_overflow_recoverable`). Compact between steps once the
                 // configured mid-turn line is crossed.
+                // Whether the checkpoint below ran; the rollover branch must not
+                // compact a second time in the same step (2026-11-09 review).
+                let mut checkpoint_compacted = false;
                 if needs_follow_up
                     && auto_summarization_enabled
                     && mid_turn_compactions < MAX_MID_TURN_COMPACTIONS
@@ -798,6 +802,7 @@ pub(crate) async fn run_turn(
                     && !cancellation_token.is_cancelled()
                 {
                     mid_turn_compactions += 1;
+                    checkpoint_compacted = true;
                     let compaction = run_auto_compact(
                         &sess,
                         Arc::clone(&step_context),
@@ -820,10 +825,25 @@ pub(crate) async fn run_turn(
                                 &cancellation_token,
                                 crate::compact::DegradeReason::CompactionOverflow,
                                 crate::compact::DegradeProtection::CurrentTurnInput,
+                                sess.observed_context_ceiling(&turn_context).await,
                             )
                             .await
                             {
-                                Ok(_) => {}
+                                Ok(crate::compact::DegradeOutcome::Trimmed { .. }) => {}
+                                Ok(
+                                    crate::compact::DegradeOutcome::NecessaryContentExceedsWindow {
+                                        window,
+                                    },
+                                ) => {
+                                    // Nothing the harness can trim makes this request
+                                    // fit: report it as an input problem instead of
+                                    // silently continuing into the same failure.
+                                    return Err(CodexErr::new(CodexErrorDetails::InvalidPrompt {
+                                        message: format!(
+                                            "The request cannot fit the model's {window}-token context window even after omitting older history: the instructions, tool payload, and the current input alone are too large. Switch to a model with a larger context window, or shorten the input."
+                                        ),
+                                    }));
+                                }
                                 Err(degrade_err) => {
                                     warn!(
                                         error = %degrade_err,
@@ -886,11 +906,17 @@ pub(crate) async fn run_turn(
                 } else {
                     None
                 };
+                // An explicit `new_context` request always wins. Otherwise the
+                // rollover only fires when this step has not already compacted:
+                // the checkpoint above already paid for one compaction, and a
+                // second one would run on the same pressure.
+                let explicit_new_context = auto_compaction_enabled
+                    && needs_follow_up
+                    && sess.take_new_context_window_request().await;
                 let should_roll_over = auto_compaction_enabled
                     && needs_follow_up
-                    && (sess.take_new_context_window_request().await
-                        || token_limit_reached
-                        || candidate.is_some());
+                    && (explicit_new_context
+                        || (!checkpoint_compacted && (token_limit_reached || candidate.is_some())));
                 if auto_compaction_enabled {
                     let allow_auto_compact_fallback = !should_roll_over && !token_limit_reached;
                     super::token_budget::maybe_record(
@@ -1123,6 +1149,7 @@ pub(crate) async fn run_turn(
                         &cancellation_token,
                         crate::compact::DegradeReason::CompactionOverflow,
                         crate::compact::DegradeProtection::CurrentTurnInput,
+                        sess.observed_context_ceiling(&turn_context).await,
                     )
                     .await?
                     {
@@ -1802,6 +1829,7 @@ async fn run_pre_sampling_compact(
                 cancellation_token,
                 crate::compact::DegradeReason::CompactionOverflow,
                 crate::compact::DegradeProtection::None,
+                /*observed_window*/ None,
             )
             .await?
             {

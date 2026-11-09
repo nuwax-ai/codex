@@ -1389,6 +1389,10 @@ pub(crate) async fn degrade_history_to_target_window(
     cancellation: &tokio_util::sync::CancellationToken,
     reason: DegradeReason,
     protection: DegradeProtection,
+    // Fork (2026-11-09): a gateway that rejected a request below the advertised
+    // window must also constrain the retry's trim budget, otherwise the retry
+    // resends the same oversized payload.
+    observed_window: Option<i64>,
 ) -> CodexResult<DegradeOutcome> {
     if cancellation.is_cancelled() {
         return Err(CodexErr::TurnAborted);
@@ -1407,6 +1411,9 @@ pub(crate) async fn degrade_history_to_target_window(
         });
     };
     let instructions_tokens = (sess.get_prompt_base_instructions().await.text.len() as i64) / 4;
+    let window = observed_window
+        .filter(|observed| *observed > 0)
+        .map_or(window, |observed| window.min(observed));
     let history_budget = window
         .saturating_sub(RESERVED_OUTPUT_TOKENS)
         .saturating_sub(instructions_tokens)
@@ -1482,8 +1489,33 @@ pub(crate) async fn degrade_history_to_target_window(
         .map(|id| id.as_str().to_string())
         .unwrap_or_default();
     let shadowed_tokens: i64 = item_tokens[..boundary].iter().sum();
-    let retained_tokens: i64 = item_tokens[boundary..].iter().sum();
+    let mut retained: Vec<ResponseItemEnvelope> = items[boundary..].to_vec();
+    let mut retained_tokens: i64 = item_tokens[boundary..].iter().sum();
     debug_assert_eq!(shadowed_tokens + retained_tokens, total);
+    if protection == DegradeProtection::CurrentTurnInput && retained_tokens > history_budget {
+        // The retained tail is usually dominated by tool output the turn can
+        // re-run. Shrink that deterministically before declaring the protected
+        // input itself too large: a one-line question followed by a huge tool
+        // result must not fail as "input too large".
+        let pruned = crate::session::compaction_prune::prune_oversized_tool_results(
+            &mut retained,
+            /*keep_head_chars*/ 4_000,
+            /*keep_tail_chars*/ 1_000,
+            /*min_chars_to_prune*/ 4_000,
+        );
+        if !pruned.is_empty() {
+            retained_tokens = retained
+                .iter()
+                .map(|envelope| crate::context_manager::estimate_item_token_count(&envelope.item))
+                .sum();
+            tracing::info!(
+                pruned_results = pruned.pruned_results,
+                chars_removed = pruned.chars_removed,
+                retained_tokens,
+                "mid-turn degrade: pruned tool output in the retained tail"
+            );
+        }
+    }
     if protection == DegradeProtection::CurrentTurnInput && retained_tokens > history_budget {
         // The protected input plus everything after it cannot fit: no trim can
         // make this request succeed.
@@ -1522,8 +1554,7 @@ pub(crate) async fn degrade_history_to_target_window(
     .await;
 
     // Apply the same cut in memory: the tail only, nothing planted.
-    sess.replace_history_for_migration(items[boundary..].to_vec())
-        .await;
+    sess.replace_history_for_migration(retained).await;
 
     // One user-visible notice for the actual omission (spec: 提示一次).
     let notice = match reason {
