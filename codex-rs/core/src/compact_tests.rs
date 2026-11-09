@@ -1025,6 +1025,168 @@ async fn midturn_degrade_prunes_tool_output_instead_of_failing_the_instruction()
     Ok(())
 }
 
+/// Review P2 (2026-11-09): repeated shrinking must produce the exact same
+/// model-visible text live and after a reload — both paths share one projection
+/// helper and the record carries the window sequence.
+#[tokio::test]
+async fn repeated_pruning_matches_between_live_history_and_replay() -> anyhow::Result<()> {
+    let server = responses::start_mock_server().await;
+    let mut provider =
+        ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    provider.provider_id = Some(codex_model_provider_info::OPENAI_PROVIDER_ID.to_string());
+    provider.supports_websockets = false;
+    provider.capabilities = Some(codex_model_provider_info::ModelProviderCapabilities {
+        remote_compaction: Some(codex_model_provider_info::RemoteCompactionSupport::Unsupported),
+        ..Default::default()
+    });
+    let (mut session, turn, _events) = make_session_and_context_with_auth_and_config_and_rx(
+        CodexAuth::create_dummy_chatgpt_auth_for_testing(),
+        Vec::new(),
+        move |config| {
+            config.model = Some("gpt-5.2".to_string());
+            config.model_provider = provider;
+            // Tuned against the ~20.7k-char base instructions (≈5.2k tokens):
+            // necessary_budget ≈ 12_300 − 2×2048 − 5.2k ≈ 3k tokens, so five
+            // initial-pruned outputs (~6.3k tokens together) still overflow and
+            // force escalation rounds, while their stubs (~300 tokens) fit.
+            config.model_context_window = Some(12_300);
+            let _ = config.features.disable(Feature::TokenBudget);
+        },
+    )
+    .await;
+    // The compact-test session is an Arc; attach persistence through an
+    // exclusive borrow before anything else clones it.
+    let rollout_path = {
+        let exclusive =
+            Arc::get_mut(&mut session).expect("session Arc must be exclusive before recording");
+        crate::session::tests::open_thread_persistence(exclusive).await
+    };
+    let call_ids: Vec<String> = (1..=5).map(|index| format!("call-{index}")).collect();
+    let mut items = vec![user_message("inspect")];
+    for call_id in &call_ids {
+        items.push(ResponseItem::FunctionCall {
+            status: None,
+            encrypted_content: None,
+            id: None,
+            name: "shell".to_string(),
+            namespace: None,
+            arguments: "{}".to_string(),
+            call_id: call_id.clone(),
+            encrypted_function_args: None,
+            internal_chat_message_metadata_passthrough: None,
+        });
+        items.push(ResponseItem::FunctionCallOutput {
+            id: None,
+            call_id: Some(call_id.clone()),
+            name: None,
+            namespace: None,
+            output: FunctionCallOutputPayload::from_text("w".repeat(40_000)),
+            internal_chat_message_metadata_passthrough: None,
+        });
+    }
+    session
+        .record_conversation_items(&turn, turn.model_info(), &items)
+        .await;
+    let outcome = crate::compact::degrade_history_to_target_window(
+        &session,
+        &turn,
+        /*pending_input_tokens*/ 0,
+        &tokio_util::sync::CancellationToken::new(),
+        crate::compact::DegradeReason::CompactionOverflow,
+        crate::compact::DegradeProtection::CurrentTurnInput,
+        /*observed_window*/ None,
+    )
+    .await?;
+    assert!(
+        matches!(outcome, crate::compact::DegradeOutcome::Trimmed { .. }),
+        "escalation must shrink the outputs instead of failing: {outcome:?}"
+    );
+
+    // Live texts after the degrade (initial windows + escalation rounds).
+    let live_texts: Vec<(String, String)> = session
+        .clone_history()
+        .await
+        .raw_items()
+        .filter_map(|item| match item {
+            ResponseItem::FunctionCallOutput {
+                output, call_id, ..
+            } => match &output.body {
+                codex_protocol::models::FunctionCallOutputBody::Text(text) => {
+                    let call_id = call_id.clone()?;
+                    Some((call_id, text.clone()))
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+
+    // Reload through the REAL replay path: reconstruction re-records items
+    // through the model's truncation policy before applying the recorded
+    // windows, exactly like a resume would.
+    use codex_rollout::InitialHistory;
+    use codex_rollout::RolloutRecorder;
+    session
+        .flush_rollout()
+        .await
+        .expect("rollout flushed after degrade");
+    let resumed = match RolloutRecorder::get_rollout_history(&rollout_path)
+        .await
+        .expect("read rollout history")
+    {
+        InitialHistory::Resumed(resumed) => resumed,
+        other => panic!("expected a resumed history, got {other:?}"),
+    };
+    let windows: Vec<&codex_history::PrunedToolOutput> = resumed
+        .history
+        .iter()
+        .filter_map(|item| match item {
+            codex_history::RolloutItem::SurfaceReplacement(replacement) => Some(replacement),
+            _ => None,
+        })
+        .flat_map(|replacement| replacement.pruned_tool_outputs.iter())
+        .collect();
+    assert!(
+        windows.len() > call_ids.len(),
+        "expected escalation rounds beyond the initial windows, got {windows:?}"
+    );
+    let (replay_session, replay_turn, _replay_events) =
+        make_session_and_context_with_auth_and_config_and_rx(
+            CodexAuth::create_dummy_chatgpt_auth_for_testing(),
+            Vec::new(),
+            |config| {
+                config.model = Some("gpt-5.2".to_string());
+                config.model_context_window = Some(12_300);
+            },
+        )
+        .await;
+    let reconstructed = replay_session
+        .reconstruct_history_from_rollout(&replay_turn, &resumed.history)
+        .await;
+    for (call_id, live_text) in &live_texts {
+        let replay_text = reconstructed
+            .history
+            .iter()
+            .find_map(|envelope| match &envelope.item {
+                ResponseItem::FunctionCallOutput {
+                    call_id: existing,
+                    output,
+                    ..
+                } if existing.as_deref() == Some(call_id.as_str()) => match &output.body {
+                    codex_protocol::models::FunctionCallOutputBody::Text(text) => Some(text),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("output {call_id} missing from the replay"));
+        assert_eq!(
+            live_text, replay_text,
+            "live and replay projections must be byte-identical for {call_id}"
+        );
+    }
+    Ok(())
+}
+
 /// The last allowed pass that exactly converges is a SUCCESS, not a degrade:
 /// the outcome is `Converged` and inference proceeds normally.
 #[tokio::test]

@@ -77,9 +77,10 @@ pub(crate) const RESERVED_OUTPUT_TOKENS: i64 = 2_048;
 /// the retry count deterministic for the mock-server tests.
 const MAX_OVERFLOW_TRIM_ROUNDS: u8 = 2;
 
-/// Bound the "halve the largest output" loop; further pressure falls through to
-/// the NecessaryContentExceedsWindow check.
-const MAX_PRUNE_ESCALATION_ROUNDS: u8 = 6;
+/// Bound the "halve the largest output" loop. The loop also stops on its own
+/// when no application shrinks the payload anymore, so the cap only guards
+/// pathological churn; many small outputs each need one round.
+const MAX_PRUNE_ESCALATION_ROUNDS: u8 = 32;
 
 /// Thread-local policy that preserves inherited context without changing model or skill budgets.
 /// Insert into `StartThreadOptions::thread_extension_init` to disable automatic compaction.
@@ -1578,79 +1579,81 @@ pub(crate) async fn degrade_history_to_target_window(
             );
         }
         // Many tool calls in one turn: fixed windows may still overflow. Keep
-        // shrinking the LARGEST remaining output until the tail fits or nothing
-        // more can be cut (2026-11-09 review P2).
+        // shrinking the LARGEST remaining text output (function OR custom tool)
+        // until the tail fits, nothing shrinks anymore, or the round cap hits
+        // (2026-11-09 review P2). Every application goes through the SAME
+        // projection helper the replay uses, and each window is recorded as its
+        // own sequence entry so a reload reproduces this byte-for-byte
+        // (review P2: live and replay must share one projection).
         let mut extra_rounds = 0u8;
         while retained_tokens > necessary_budget && extra_rounds < MAX_PRUNE_ESCALATION_ROUNDS {
+            extra_rounds += 1;
             let mut largest: Option<(usize, i64)> = None;
             for (index, envelope) in retained.iter().enumerate() {
-                if let ResponseItem::FunctionCallOutput {
-                    call_id: Some(call_id),
-                    output,
-                    ..
-                } = &envelope.item
-                {
-                    if let codex_protocol::models::FunctionCallOutputBody::Text(text) = &output.body
-                    {
-                        let tokens =
-                            crate::context_manager::estimate_item_token_count(&envelope.item);
-                        if largest.is_none_or(|(_, best)| tokens > best) {
-                            largest = Some((index, tokens));
-                        }
-                    }
+                let is_text_output = matches!(
+                    &envelope.item,
+                    ResponseItem::FunctionCallOutput { output, .. }
+                        | ResponseItem::CustomToolCallOutput { output, .. }
+                    if matches!(output.body, codex_protocol::models::FunctionCallOutputBody::Text(_))
+                );
+                if !is_text_output {
+                    continue;
+                }
+                let tokens = crate::context_manager::estimate_item_token_count(&envelope.item);
+                if largest.is_none_or(|(_, best)| tokens > best) {
+                    largest = Some((index, tokens));
                 }
             }
             let Some((index, _tokens)) = largest else {
                 break;
             };
-            let (call_id, next_head, next_tail) = {
-                let ResponseItem::FunctionCallOutput {
-                    call_id, output, ..
-                } = &mut retained[index].item
-                else {
-                    break;
-                };
-                let codex_protocol::models::FunctionCallOutputBody::Text(text) = &mut output.body
-                else {
-                    break;
-                };
-                let call_id = call_id.clone().unwrap_or_default();
-                // Halve the window each round, down to a stub.
-                let current = text.chars().count();
-                let next_total = (current / 2).max(200);
-                let next_head = (next_total * 4) / 5;
-                let next_tail = next_total - next_head;
-                *text = {
-                    let head: String = text.chars().take(next_head).collect();
-                    let tail: String = text
-                        .chars()
-                        .skip(current.saturating_sub(next_tail))
-                        .collect();
-                    format!("{head}\n…<pruned {current} chars>…\n{tail}")
-                };
-                (call_id, next_head, next_tail)
-            };
-            extra_rounds += 1;
-            if !call_id.is_empty() {
-                let existing = pruned_tool_outputs
-                    .iter_mut()
-                    .find(|pruned| pruned.call_id == call_id);
-                match existing {
-                    Some(existing) => {
-                        existing.keep_head_chars = next_head;
-                        existing.keep_tail_chars = next_tail;
-                    }
-                    None => pruned_tool_outputs.push(codex_history::PrunedToolOutput {
-                        call_id,
-                        keep_head_chars: next_head,
-                        keep_tail_chars: next_tail,
-                    }),
+            let call_id = match &retained[index].item {
+                ResponseItem::FunctionCallOutput { call_id, .. } => {
+                    call_id.clone().unwrap_or_default()
                 }
+                ResponseItem::CustomToolCallOutput { call_id, .. } => call_id.clone(),
+                _ => String::new(),
+            };
+            if call_id.is_empty() {
+                break;
             }
-            retained_tokens = retained
+            let current_chars = match &retained[index].item {
+                ResponseItem::FunctionCallOutput { output, .. }
+                | ResponseItem::CustomToolCallOutput { output, .. } => match &output.body {
+                    codex_protocol::models::FunctionCallOutputBody::Text(text) => {
+                        text.chars().count()
+                    }
+                    _ => break,
+                },
+                _ => break,
+            };
+            let next_total = (current_chars / 2).max(200);
+            let next_head = (next_total * 4) / 5;
+            let next_tail = next_total - next_head;
+            let applied = crate::session::compaction_prune::prune_tool_output_by_call_id(
+                &mut retained,
+                &call_id,
+                next_head,
+                next_tail,
+            );
+            if !applied {
+                break;
+            }
+            let new_tokens: i64 = retained
                 .iter()
                 .map(|envelope| crate::context_manager::estimate_item_token_count(&envelope.item))
                 .sum();
+            if new_tokens >= retained_tokens {
+                // No further progress is possible (the output is at its stub).
+                retained_tokens = new_tokens;
+                break;
+            }
+            retained_tokens = new_tokens;
+            pruned_tool_outputs.push(codex_history::PrunedToolOutput {
+                call_id,
+                keep_head_chars: next_head,
+                keep_tail_chars: next_tail,
+            });
         }
     }
     if protection == DegradeProtection::CurrentTurnInput && retained_tokens > necessary_budget {

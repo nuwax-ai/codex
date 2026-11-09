@@ -109,29 +109,20 @@ fn apply_active_surface_replacement(
     }
     next.extend(items[index..].iter().cloned());
     // Re-apply the persisted tool-output windows so a reload sees the same
-    // shortened tail the live session saw. Windows ACCUMULATE across every
-    // active record: a second degrade that prunes output B must not restore
-    // output A that an earlier record pruned while A was still in the tail
-    // (2026-11-09 review P1). Later records win when the same call id appears
-    // twice, and windows whose call id no longer exists are skipped by the
-    // per-id prune helper.
-    let mut pruned_windows: std::collections::HashMap<String, (usize, usize)> =
-        std::collections::HashMap::new();
+    // shortened tail the live session saw. Entries are applied as an ordered
+    // SEQUENCE across every active record — the live path applied them in this
+    // exact order through the same projection helper, so replaying them in
+    // order reproduces the model-visible text byte-for-byte (2026-11-09 review
+    // P2). Windows whose call id no longer exists are skipped by the helper.
     for (_, record) in &active {
         for pruned in &record.pruned_tool_outputs {
-            pruned_windows.insert(
-                pruned.call_id.clone(),
-                (pruned.keep_head_chars, pruned.keep_tail_chars),
+            crate::session::compaction_prune::prune_tool_output_by_call_id(
+                &mut next,
+                &pruned.call_id,
+                pruned.keep_head_chars,
+                pruned.keep_tail_chars,
             );
         }
-    }
-    for (call_id, (keep_head_chars, keep_tail_chars)) in pruned_windows {
-        crate::session::compaction_prune::prune_tool_output_by_call_id(
-            &mut next,
-            &call_id,
-            keep_head_chars,
-            keep_tail_chars,
-        );
     }
     history.replace_annotated(next);
 }
@@ -163,7 +154,7 @@ fn surface_replacement_summary_item(
 // the resume/fork hydration metadata derived from the same replay.
 #[derive(Debug, PartialEq)]
 pub(crate) struct RolloutReconstruction {
-    pub(super) history: Vec<ResponseItemEnvelope>,
+    pub(crate) history: Vec<ResponseItemEnvelope>,
     pub(crate) retained_context: codex_history::RetainedContext,
     pub(super) guardian_history: Option<codex_history::GuardianHistoryCheckpoint>,
     pub(super) last_started_turn_id: Option<String>,
@@ -337,7 +328,7 @@ fn finalize_active_segment<'a>(
 }
 
 impl Session {
-    pub(super) async fn reconstruct_history_from_rollout(
+    pub(crate) async fn reconstruct_history_from_rollout(
         &self,
         turn_context: &TurnContext,
         rollout_items: &[RolloutItem],

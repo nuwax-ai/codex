@@ -386,7 +386,11 @@ resume 在同一状态上再失败——永久原地打转。
   resume 不再恢复第一个的完整长度；② 轮内降级的工具输出剪枝升级为预算驱动——固定
   头/尾窗口不够时，循环把"当前最大的输出"窗口减半（至多
   `MAX_PRUNE_ESCALATION_ROUNDS = 6` 轮），多条工具输出合计超窗不再误报"输入过大"。
-- **会话不弃（同日起）**- **会话不弃（同日起）**：产品目标是"一个会话一直用、可自由换模型"，所以超窗的
+- **复审加固（2026-11-09 第五轮）**：① 回放按**记录顺序**施加全部剪枝窗口（同
+  call_id 可多条、逐条演化），与实时路径共用同一投影函数，连续收缩后 live 与
+  resume 的模型可见文本逐字节一致；② 预算驱动剪枝覆盖 `CustomToolCallOutput`，
+  上限提到 32 轮并带"无进展即停"检查。
+- **会话不弃（同日起）**：产品目标是"一个会话一直用、可自由换模型"，所以超窗的
   终态提示不再让用户"开新线程"——`ContextWindowExceeded` 文案改为
   "the conversation is kept; retry, or switch to a model with a larger context
   window"，ACP 侧 `context_exhausted` 的 action 从 `new_session` 改为 `retry`；

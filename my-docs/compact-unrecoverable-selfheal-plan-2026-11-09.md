@@ -532,3 +532,17 @@ retry 建议），我加的 `invalidPrompt → input_too_large` 映射在真实�
 | P2 固定剪枝窗口在多工具输出下仍误报输入过大 | 成立 | 保留尾部剪枝升级为预算驱动：`retained_tokens > necessary_budget` 时循环把最大文本输出的窗口减半（200 字符下限，至多 6 轮），同步更新 `pruned_tool_outputs` | 既有 compact 用例 |
 
 **仍未做**：`InputTooLarge` v2 变体（§13）；guardian 观察（§12）；三端回放验收；部分回滚组合。
+
+
+---
+
+## 17. 第五轮复审修复（2026-11-09 深夜）
+
+| 发现 | 结论 | 修复 | 回归 |
+|---|---|---|---|
+| P1 客户端环境合并把不同来源的 URL/key 拼成一对 | 成立（review 实测复现） | 路由捕获提前到 `Object.assign(config.env)` 之前：进程环境对与后端 `agent_config.env` 的 OPENAI_* 对分别提取，`resolveCodexRoute` 增加第四来源，仍只选同源完整对 | `acpEnvAliases.test.ts` 跨来源合并反例（9/9） |
+| P2 同一输出再次剪枝时 live 与 replay 文本不一致 | 成立 | 实时升级循环改用与回放同一个 `prune_tool_output_by_call_id`；记录改为序列（每次施加各记一条），回放按记录顺序逐条施加 | `repeated_pruning_matches_between_live_history_and_replay`（真实 reconstruct 路径逐字节断言） |
+| P2 固定 6 轮 + 只处理 FunctionCallOutput 仍会误报 | 成立 | `largest` 搜索覆盖 `CustomToolCallOutput`；上限 32 轮 + 无进展即停 | 同上（5×40k 多输出场景） |
+
+注意：live 历史录制时受 truncation policy 影响（10k 截断），rollout 保留原文；真实
+回放先过截断策略再施加窗口序列，两端一致——回归必须走真实 reconstruct 路径。
