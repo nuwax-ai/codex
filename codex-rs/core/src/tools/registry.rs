@@ -787,23 +787,40 @@ impl ToolRegistry {
         let registered_tool = match self.registered_tool(&tool_name) {
             Some(tool) => tool,
             None => {
-                let message = unsupported_tool_call_message(&invocation.payload, &tool_name);
-                let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
-                let mut tool_result_tags = Vec::with_capacity(2);
-                sandbox_tags.append_metric_tags(&mut tool_result_tags);
-                otel.tool_result_with_tags(
-                    &tool_name,
-                    &call_id_owned,
-                    log_payload.as_ref(),
-                    Duration::ZERO,
-                    /*success*/ false,
-                    &message,
-                    &tool_result_tags,
-                    /*extra_trace_fields*/ &[],
-                );
-                let err = FunctionCallError::RespondToModel(message);
-                dispatch_trace.record_failed(&err);
-                return Err(err);
+                // Chat-Completions fallback, same as `tool()`: the model calls
+                // back with a single flat name (`mcp__server__tool`) for a
+                // flattened namespaced tool, which misses the exact
+                // `<default>::mcp__server__tool` lookup above. Without this
+                // branch the dispatch reported `unsupported call` for every
+                // MCP tool invocation on the chat wire (reproduced live
+                // 2026-11-09: the chrome-devtools incident).
+                match self
+                    .flat_index
+                    .resolve(tool_name.name.as_str())
+                    .and_then(|canonical| self.tools.get(canonical))
+                {
+                    Some(tool) => tool,
+                    None => {
+                        let message =
+                            unsupported_tool_call_message(&invocation.payload, &tool_name);
+                        let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
+                        let mut tool_result_tags = Vec::with_capacity(2);
+                        sandbox_tags.append_metric_tags(&mut tool_result_tags);
+                        otel.tool_result_with_tags(
+                            &tool_name,
+                            &call_id_owned,
+                            log_payload.as_ref(),
+                            Duration::ZERO,
+                            /*success*/ false,
+                            &message,
+                            &tool_result_tags,
+                            /*extra_trace_fields*/ &[],
+                        );
+                        let err = FunctionCallError::RespondToModel(message);
+                        dispatch_trace.record_failed(&err);
+                        return Err(err);
+                    }
+                }
             }
         };
         let tool = Arc::clone(&registered_tool.runtime);

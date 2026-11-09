@@ -1164,6 +1164,11 @@ async fn live_stdio_mcp_tools_survive_the_rig_bridge_chat_wire() -> anyhow::Resu
             move |config| {
                 config.model = Some("deepseek-v4.1-flash-1017".to_string());
                 config.model_provider = provider;
+                // The mock gateway issues a tool call; auto-approve so the
+                // dispatch can complete without an interactive reviewer.
+                config.permissions.approval_policy = codex_config::Constrained::allow_any(
+                    codex_protocol::protocol::AskForApproval::Never,
+                );
             },
         )
         .await;
