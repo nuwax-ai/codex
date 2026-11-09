@@ -390,6 +390,12 @@ resume 在同一状态上再失败——永久原地打转。
   call_id 可多条、逐条演化），与实时路径共用同一投影函数，连续收缩后 live 与
   resume 的模型可见文本逐字节一致；② 预算驱动剪枝覆盖 `CustomToolCallOutput`，
   上限提到 32 轮并带"无进展即停"检查。
+- **复审加固（2026-11-10 第六轮）**：① 轮内剪枝的重试目标改为
+  `min(宣称窗口, 观测拒绝点)`（此前用宣称窗口，被拒后可能原样重发）；到 stub 的
+  输出标记跳过、继续剪下一条，不再整体退出。② `app-server` v2 新增
+  `CodexErrorInfo::InputTooLarge`（wire `inputTooLarge`），harness 的
+  `InvalidPrompt`（必要内容超窗）不再翻成 `Other`，客户端经适配器得到
+  `input_too_large`（category `request`、actions `[]`），端到端贯通。
 - **会话不弃（同日起）**：产品目标是"一个会话一直用、可自由换模型"，所以超窗的
   终态提示不再让用户"开新线程"——`ContextWindowExceeded` 文案改为
   "the conversation is kept; retry, or switch to a model with a larger context

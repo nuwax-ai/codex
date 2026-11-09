@@ -100,6 +100,12 @@ pub enum CodexErrorInfo {
     InternalServerError,
     Unauthorized,
     BadRequest,
+    /// Fork (nuwax-codex): the request itself (instructions + tools + the
+    /// current input) cannot fit the model's context window no matter how much
+    /// older history is omitted. Distinct from `contextWindowExceeded`: a new
+    /// session does not help; the caller must shorten the input or switch to a
+    /// larger-window model.
+    InputTooLarge,
     ThreadRollbackFailed,
     SandboxError,
     /// The response SSE stream disconnected in the middle of a turn before completion.
@@ -177,7 +183,11 @@ impl From<CoreCodexErrorInfo> for CodexErrorInfo {
             CoreCodexErrorInfo::InternalServerError => CodexErrorInfo::InternalServerError,
             CoreCodexErrorInfo::Unauthorized => CodexErrorInfo::Unauthorized,
             CoreCodexErrorInfo::BadRequest => CodexErrorInfo::BadRequest,
-            CoreCodexErrorInfo::InvalidPrompt => CodexErrorInfo::Other,
+            // Fork (nuwax-codex): the fork's context-overflow path reports the
+            // necessary-content failure as InvalidPrompt; give clients a
+            // machine-readable "input too large" instead of an unknown error
+            // they would offer to retry (which can never succeed).
+            CoreCodexErrorInfo::InvalidPrompt => CodexErrorInfo::InputTooLarge,
             CoreCodexErrorInfo::ThreadRollbackFailed => CodexErrorInfo::ThreadRollbackFailed,
             CoreCodexErrorInfo::SandboxError => CodexErrorInfo::SandboxError,
             CoreCodexErrorInfo::ResponseStreamDisconnected { http_status_code } => {

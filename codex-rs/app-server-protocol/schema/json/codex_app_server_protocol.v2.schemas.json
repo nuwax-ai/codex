@@ -4623,6 +4623,13 @@
           "type": "object"
         },
         {
+          "description": "Fork (nuwax-codex): the request itself (instructions + tools + the current input) cannot fit the model's context window no matter how much older history is omitted. Distinct from `contextWindowExceeded`: a new session does not help; the caller must shorten the input or switch to a larger-window model.",
+          "enum": [
+            "inputTooLarge"
+          ],
+          "type": "string"
+        },
+        {
           "additionalProperties": false,
           "description": "The response SSE stream disconnected in the middle of a turn before completion.",
           "properties": {

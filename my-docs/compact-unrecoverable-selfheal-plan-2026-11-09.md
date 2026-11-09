@@ -546,3 +546,14 @@ retry 建议），我加的 `invalidPrompt → input_too_large` 映射在真实�
 
 注意：live 历史录制时受 truncation policy 影响（10k 截断），rollout 保留原文；真实
 回放先过截断策略再施加窗口序列，两端一致——回归必须走真实 reconstruct 路径。
+
+
+---
+
+## 18. 第六轮复审修复（2026-11-10 凌晨，随 0.18.34 发布）
+
+| 发现 | 结论 | 修复 |
+|---|---|---|
+| P2 轮内剪枝用宣称窗口做重试目标，被拒后可能原样重发；最大候选到 stub 即整体退出 | 成立 | 循环目标改 `min(history_budget, necessary_budget)`；到 stub 的输出进 `exhausted` 集合跳过，继续剪下一条 |
+| P2 `input_too_large` 未贯通 v2（InvalidPrompt → Other） | 成立 | v2 新增 `InputTooLarge`（wire `inputTooLarge`），`InvalidPrompt` 映射之；schema fixtures 重新生成；适配器加 `inputTooLarge → input_too_large`，wire 用例 33/33 |
+| FORK.md §5.4 与实现漂移 | 成立 | 补第六轮条目（轮内保护定位本轮第一条 user 输入、观测上限参与调度与重试裁剪） |

@@ -8294,6 +8294,7 @@ class CodexErrorInfo(
         CodexErrorInfoValue
         | HttpConnectionFailedCodexErrorInfo
         | ResponseStreamConnectionFailedCodexErrorInfo
+        | Literal["inputTooLarge"]
         | ResponseStreamDisconnectedCodexErrorInfo
         | ResponseTooManyFailedAttemptsCodexErrorInfo
         | ActiveTurnNotSteerableCodexErrorInfo
@@ -8304,6 +8305,7 @@ class CodexErrorInfo(
         CodexErrorInfoValue
         | HttpConnectionFailedCodexErrorInfo
         | ResponseStreamConnectionFailedCodexErrorInfo
+        | Literal["inputTooLarge"]
         | ResponseStreamDisconnectedCodexErrorInfo
         | ResponseTooManyFailedAttemptsCodexErrorInfo
         | ActiveTurnNotSteerableCodexErrorInfo

@@ -1585,11 +1585,22 @@ pub(crate) async fn degrade_history_to_target_window(
         // projection helper the replay uses, and each window is recorded as its
         // own sequence entry so a reload reproduces this byte-for-byte
         // (review P2: live and replay must share one projection).
+        // Target the RETRY budget (min of advertised and observed), not the
+        // advertised one: a gateway that rejected below its claimed window
+        // otherwise receives the same oversized payload again even though more
+        // tool output could shrink (2026-11-09 review P2).
+        let prune_target = history_budget.min(necessary_budget);
         let mut extra_rounds = 0u8;
-        while retained_tokens > necessary_budget && extra_rounds < MAX_PRUNE_ESCALATION_ROUNDS {
+        let mut exhausted: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        while retained_tokens > prune_target && extra_rounds < MAX_PRUNE_ESCALATION_ROUNDS {
             extra_rounds += 1;
+            // Largest still-shrinkable candidate: outputs already at their stub
+            // are skipped instead of ending the whole loop.
             let mut largest: Option<(usize, i64)> = None;
             for (index, envelope) in retained.iter().enumerate() {
+                if exhausted.contains(&index) {
+                    continue;
+                }
                 let is_text_output = matches!(
                     &envelope.item,
                     ResponseItem::FunctionCallOutput { output, .. }
@@ -1644,9 +1655,10 @@ pub(crate) async fn degrade_history_to_target_window(
                 .map(|envelope| crate::context_manager::estimate_item_token_count(&envelope.item))
                 .sum();
             if new_tokens >= retained_tokens {
-                // No further progress is possible (the output is at its stub).
-                retained_tokens = new_tokens;
-                break;
+                // This output is at its stub: mark it and let the next round
+                // pick a different candidate instead of giving up entirely.
+                exhausted.insert(index);
+                continue;
             }
             retained_tokens = new_tokens;
             pruned_tool_outputs.push(codex_history::PrunedToolOutput {
