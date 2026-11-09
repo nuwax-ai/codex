@@ -389,7 +389,7 @@ completed 事件在失败路径仍未发出，属既有小瑕疵）。
 | P1 轮内降级可能裁掉当前用户指令 | 成立 | 新增 `DegradeProtection::CurrentTurnInput`：边界不越过最新 user 消息；保护后仍超预算则 `NecessaryContentExceedsWindow` |
 | P2 一次采样可能连做两次轮内压缩 | 成立 | 检查点后重算 token status，旧 rollover 分支不再用过期阈值 |
 | P2 观测上限未按路由隔离 | 成立 | `ObservedContextCeiling` 加 `model`/`provider`；新增 `observed_window_limit` 只用于调度，裁剪预算仍用宣称窗口，避免一次图片密集请求把后续轮次误判为"必要内容超窗" |
-| P2 ACP 失败信号未接到客户端终态 | 部分成立 | 客户端改为 `needsNewSession` 时 `throw`（走失败分支）；"必要内容超窗"缺少独立机器判据（需新增 `CodexErrorInfo` 变体）列为后续 |
+| P2 ACP 失败信号未接到客户端终态 | 成立 | ① 客户端在 `new_session` 或 `category=request` 时 `throw`；② "必要内容超窗"改用已存在的 `CodexErrorInfo::InvalidPrompt`（独立 wire tag，无需改 schema），适配器新增 `input_too_large` 失败种类（category=request、actions=[]），legacy `_meta` 也透出 |
 | P2 配置 schema 未更新 | 成立 | `cargo run -p codex-config-schema --bin codex-write-config-schema` 重新生成，`config_schema_matches_fixture` 通过 |
 
 **客户端命名**：`DEFAULT_CODEX_MODEL_CONTEXT_WINDOW` → `DEFAULT_NUWAX_MODEL_CONTEXT_WINDOW`；

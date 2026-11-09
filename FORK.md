@@ -364,6 +364,11 @@ resume 在同一状态上再失败——永久原地打转。
   （`observed_window_limit`），裁剪预算仍用宣称窗口
   （`full_context_window_limit`），所以一次图片密集请求被拒不会让后续纯文本轮次
   被误判成"必要内容都装不下"。
+- **两种"装不下"分流（2026-11-09）**：`NecessaryContentExceedsWindow`（指令+工具+
+  本轮输入本身超窗，换会话也没用）返回 `CodexErr::InvalidPrompt`，协议映射为
+  `CodexErrorInfo::InvalidPrompt`；客户端据此得到"本次输入过大、请缩短输入或换大窗
+  模型"的机器判据，与"会话上下文耗尽"（`ContextWindowExceeded`，动作是开新会话）
+  区分。此前是 `Fatal → Other`，客户端会误判成可重试的 provider 故障。
 - **品牌**：`CodexErrorDetails::ContextWindowExceeded` 的文案改为
   `nuwax-harness ran out of room in the model's context window. ...`。
   机器判据只能是 `codex_error_info == "context_window_exceeded"`；任何按
