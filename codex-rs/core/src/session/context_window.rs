@@ -52,6 +52,25 @@ impl ContextWindowTokenStatus {
     }
 }
 
+/// Fork (nuwax-codex): the active-context size at which this thread last had a
+/// sampling request rejected for exceeding the model window. Gateways can reject
+/// below the advertised window (and image/tool payloads can cost more than the
+/// local estimate), so remembering the observed ceiling lets the next checkpoint
+/// compact before hitting the same wall. In-memory only; never raises a limit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ObservedContextCeiling {
+    pub(crate) tokens: i64,
+}
+
+/// Clamp `limit` to a previously observed rejection point, keeping a 5% margin so
+/// the next request stops short of the exact size that was rejected.
+fn apply_observed_ceiling(limit: i64, ceiling: Option<ObservedContextCeiling>) -> i64 {
+    match ceiling {
+        Some(ceiling) if ceiling.tokens > 0 => limit.min(ceiling.tokens.saturating_mul(95) / 100),
+        _ => limit,
+    }
+}
+
 fn tokens_remaining(limit: Option<i64>, used: i64) -> Option<i64> {
     limit.map(|limit| limit.saturating_sub(used).max(0))
 }
@@ -119,9 +138,17 @@ async fn context_window_token_status_with_config(
         };
 
     // The model's full context window is a hard cap, independent of the auto-compaction scope.
-    let full_context_window_limit = model_info.resolved_context_window().map(|context_window| {
-        context_window.saturating_mul(model_info.effective_context_window_percent) / 100
-    });
+    let observed_ceiling = sess
+        .services
+        .thread_extension_data
+        .get::<ObservedContextCeiling>()
+        .map(|ceiling| *ceiling);
+    let full_context_window_limit = model_info
+        .resolved_context_window()
+        .map(|context_window| {
+            context_window.saturating_mul(model_info.effective_context_window_percent) / 100
+        })
+        .map(|limit| apply_observed_ceiling(limit, observed_ceiling));
 
     // Report remaining tokens against the base (unbuffered) window, capped by the full context.
     let base_window_tokens_remaining = [
@@ -198,6 +225,27 @@ mod pending_input_tests {
             turn_end_compaction_threshold_reached: false,
             mid_turn_compaction_threshold_reached: false,
         }
+    }
+
+    #[test]
+    fn observed_ceiling_clamps_and_keeps_a_margin() {
+        // No observation: the advertised limit is unchanged.
+        assert_eq!(apply_observed_ceiling(190_000, None), 190_000);
+        // A rejection at 160k lowers the working limit to 152k (95%).
+        assert_eq!(
+            apply_observed_ceiling(190_000, Some(ObservedContextCeiling { tokens: 160_000 })),
+            152_000
+        );
+        // An observation above the advertised window never raises it.
+        assert_eq!(
+            apply_observed_ceiling(190_000, Some(ObservedContextCeiling { tokens: 900_000 })),
+            190_000
+        );
+        // A non-positive observation is ignored.
+        assert_eq!(
+            apply_observed_ceiling(190_000, Some(ObservedContextCeiling { tokens: 0 })),
+            190_000
+        );
     }
 
     #[test]

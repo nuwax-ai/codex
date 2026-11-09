@@ -256,15 +256,18 @@ let mid_turn_due = token_status.token_limit_reached
 `replace_compacted_history`,它已经把 tool 调用与输出一起纳入 replacement history,
 不要自己拼历史。
 
-### P1-B 预算估算修正(图片/大输出)
+### P1-B 预算估算修正(图片/大输出)（2026-11-09 已实施：观测上限）
 
 1. 图片:在 `wire_images::canonical_vision_floor` 之上,对**工具返回的图片**追加
    固定下限(建议 4k/张,可由 `vision_token_floor` 配置),避免粗估漏判;
 2. 大输出:工具输出落历史前已有 truncation policy,检查是否与 `estimate_item_token_count`
    使用同一口径(否则"截断了但按未截断算"或反之);
-3. 网关拒绝学习(可选,建议下一迭代):拒绝一次后记 `observed_reject_tokens`,
-   把该 provider 的后续有效窗口取 `min(configured, rejected × 95%)`,会话级生效。
-   不落全局配置,避免污染其它模型。
+3. **网关拒绝学习（已实施）**：采样被拒后把活跃上下文记入
+   `ObservedContextCeiling`（thread 级、仅内存、只降不升），
+   `context_window_token_status` 把有效窗口钳到 `rejected × 95%`，下一次检查点
+   自然提前压缩。单测 `observed_ceiling_clamps_and_keeps_a_margin`。
+   不做"图片固定下限"：缺乏各厂商视觉计费实证，贸然抬高会过度压缩；观测上限
+   用的是真实拒绝点，无需猜。
 
 ---
 

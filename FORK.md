@@ -345,6 +345,11 @@ resume 在同一状态上再失败——永久原地打转。
   补救一次。现在每步采样后（`needs_follow_up` 且活跃上下文达到
   `model_mid_turn_compact_threshold_percent`，默认 90、0 关闭、每轮至多 2 次）执行
   前台 `run_auto_compact(MidTurn)`；摘要装不下同样转上面的降级链并 warn。
+- **观测上限（2026-11-09）**：采样请求被网关以超窗拒绝时，把当时的活跃上下文
+  记入 `ObservedContextCeiling`（仅内存、只降不升），后续
+  `context_window_token_status` 把有效窗口钳到该值的 95%，让下一次检查点提前
+  压缩。针对"网关实际拒绝点低于宣称窗口"和图片/工具负载被本地低估两种情形；
+  resume 后重新学习，不进 rollout。
 - **品牌**：`CodexErrorDetails::ContextWindowExceeded` 的文案改为
   `nuwax-harness ran out of room in the model's context window. ...`。
   机器判据只能是 `codex_error_info == "context_window_exceeded"`；任何按

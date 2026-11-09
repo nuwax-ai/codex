@@ -2218,6 +2218,10 @@ async fn run_sampling_request(
             }
             Err(err) => match err.details() {
                 CodexErrorDetails::ContextWindowExceeded => {
+                    // Fork (2026-11-09): remember where this gateway actually
+                    // rejected us, so the next checkpoint compacts before
+                    // stepping over the same line again.
+                    sess.record_observed_context_ceiling().await;
                     sess.set_total_tokens_full(&turn_context).await;
                     return Err(err);
                 }

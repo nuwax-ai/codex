@@ -1615,6 +1615,29 @@ impl Session {
         state.get_total_token_usage()
     }
 
+    /// Fork (nuwax-codex): remember the active-context size at which a sampling
+    /// request was rejected for exceeding the model window, so later checkpoints
+    /// compact before hitting the same wall. Only ever lowers the ceiling, and
+    /// only for this process (nothing is persisted to the rollout).
+    pub(crate) async fn record_observed_context_ceiling(&self) {
+        let active = self.get_total_token_usage().await;
+        if active <= 0 {
+            return;
+        }
+        let existing = self
+            .services
+            .thread_extension_data
+            .get::<crate::session::context_window::ObservedContextCeiling>();
+        let tokens = existing.map_or(active, |existing| existing.tokens.min(active));
+        self.services
+            .thread_extension_data
+            .insert(crate::session::context_window::ObservedContextCeiling { tokens });
+        tracing::warn!(
+            tokens,
+            "context window rejected a request; lowered the observed ceiling for this thread"
+        );
+    }
+
     pub(crate) async fn auto_compact_window_snapshot(&self) -> AutoCompactWindowSnapshot {
         let state = self.state.lock().await;
         state.auto_compact_window_snapshot()
