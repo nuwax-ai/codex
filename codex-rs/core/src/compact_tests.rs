@@ -994,6 +994,244 @@ async fn migration_pass_cap_exactly_converging_reports_converged() -> anyhow::Re
     Ok(())
 }
 
+/// LIVE harness-side MCP verification (chrome-devtools incident, 2026-11-09):
+/// a real stdio MCP server (the same node shape the client launches) must
+/// have its tools advertised DIRECTLY in the first request's tool list.
+/// Fallback-metadata models (no catalog hit, e.g. deepseek-v4.1-flash-1017)
+/// carry `supports_search_tool = false`, so nothing may hide the tools behind
+/// a deferred `tool_search` tool.
+#[tokio::test]
+#[ignore = "spawns a real node MCP server; run with --run-ignored=only"]
+async fn live_stdio_mcp_tools_are_advertised_directly_for_fallback_models() -> anyhow::Result<()> {
+    let server = responses::start_mock_server().await;
+    let mut provider =
+        ModelProviderInfo::create_openai_provider(Some(format!("{}/v1", server.uri())));
+    provider.provider_id = Some(codex_model_provider_info::OPENAI_PROVIDER_ID.to_string());
+    provider.supports_websockets = false;
+    let node = std::env::var("MINI_MCP_NODE").unwrap_or_else(|_| "node".to_string());
+    let script = std::env::var("MINI_MCP_SERVER")
+        .unwrap_or_else(|_| "/tmp/mcp-verify/mini-server.mjs".to_string());
+
+    #[derive(Default)]
+    struct RequestCapture {
+        bodies: std::sync::Mutex<Vec<Vec<u8>>>,
+    }
+    struct CaptureResponder(std::sync::Arc<RequestCapture>);
+    impl wiremock::Respond for CaptureResponder {
+        fn respond(&self, request: &wiremock::Request) -> wiremock::ResponseTemplate {
+            self.0
+                .bodies
+                .lock()
+                .expect("bodies lock")
+                .push(request.body.clone());
+            let body = responses::sse(vec![
+                responses::ev_assistant_message("message", "done"),
+                responses::ev_completed("mcp-verify"),
+            ]);
+            wiremock::ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body)
+        }
+    }
+    let capture = std::sync::Arc::new(RequestCapture::default());
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path_regex(".*/responses$"))
+        .respond_with(CaptureResponder(std::sync::Arc::clone(&capture)))
+        .mount(&server)
+        .await;
+
+    // Real load path (same as the ACP adapter's thread config): a
+    // config.toml in the session home declares the MCP server.
+    let home = tempfile::tempdir()?;
+    std::fs::write(
+        home.path().join(codex_config::CONFIG_TOML_FILE),
+        format!("[mcp_servers.mini]\ncommand = \"{node}\"\nargs = [\"{script}\"]\n"),
+    )?;
+    let (session, turn, _events) =
+        crate::session::tests::make_session_and_context_with_auth_config_home_and_rx(
+            CodexAuth::create_dummy_chatgpt_auth_for_testing(),
+            Vec::new(),
+            home.path(),
+            move |config| {
+                config.model = Some("deepseek-v4.1-flash-1017".to_string());
+                config.model_provider = provider;
+            },
+        )
+        .await;
+
+    // Give the spawned MCP server time to finish initializing.
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    let result = crate::session::turn::run_turn(
+        Arc::clone(&session),
+        Arc::clone(&turn),
+        vec![crate::session::TurnInput::UserInput {
+            metadata: Default::default(),
+            content: vec![UserInput::Text {
+                text: "use the echo tool to say hi".to_string(),
+                text_elements: Vec::new(),
+            }],
+            client_id: None,
+        }],
+        &mut crate::session::turn::McpStartupRequirements::default(),
+        None,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await?;
+    assert!(result.is_some(), "the turn completed");
+
+    let bodies = capture.bodies.lock().expect("bodies lock").clone();
+    assert!(!bodies.is_empty(), "the model gateway received requests");
+    let first_bytes = &bodies[0];
+    let first = if first_bytes.first() == Some(&0x28) {
+        zstd::stream::decode_all(std::io::Cursor::new(first_bytes)).expect("decode zstd body")
+    } else {
+        first_bytes.clone()
+    };
+    let first = String::from_utf8(first).expect("utf8 body");
+    let direct = first.contains("mcp__mini__echo_tool");
+    let deferred = first.contains("\"name\":\"tool_search\"") || first.contains("tool_search");
+    eprintln!(
+        "LIVE mcp: direct={direct} deferred={deferred} body_len={}",
+        first.len()
+    );
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&first) {
+        if let Some(tools) = value.get("tools").and_then(|t| t.as_array()) {
+            let names: Vec<String> = tools
+                .iter()
+                .filter_map(|t| t.get("name").and_then(|n| n.as_str()).map(String::from))
+                .collect();
+            eprintln!("LIVE tool names ({})", names.len());
+            for tool in tools {
+                let name = tool.get("name").and_then(|n| n.as_str()).unwrap_or("?");
+                if name.starts_with("mcp__") {
+                    eprintln!(
+                        "LIVE mcp entry: {}",
+                        serde_json::to_string(tool).unwrap_or_default()
+                    );
+                }
+            }
+        } else {
+            eprintln!("LIVE no tools array");
+        }
+    }
+    assert!(
+        direct && !deferred,
+        "fallback-model requests must advertise MCP tools directly: direct={direct} deferred={deferred}"
+    );
+    Ok(())
+}
+
+/// LIVE harness-side MCP verification (chrome-devtools incident, 2026-11-09):
+/// a real stdio MCP server (the same node shape the client launches) must
+/// have its tools advertised DIRECTLY in the first request's tool list.
+/// Fallback-metadata models (no catalog hit, e.g. deepseek-v4.1-flash-1017)
+/// carry `supports_search_tool = false`, so nothing may hide the tools behind
+/// a deferred `tool_search` tool.
+#[tokio::test]
+#[ignore = "spawns a real node MCP server and needs a mock chat gateway on MOCK_CHAT_GW_PORT; run with --run-ignored=only"]
+async fn live_stdio_mcp_tools_survive_the_rig_bridge_chat_wire() -> anyhow::Result<()> {
+    // Chat wire through the rig bridge, aimed at the mock gateway the
+    // helper script started (records every request body).
+    let port = std::env::var("MOCK_CHAT_GW_PORT").unwrap_or_else(|_| {
+        std::fs::read_to_string("/tmp/mcp-verify/mock-gw-port")
+            .expect("mock gateway port file; start mock-chat-gw.mjs first")
+            .trim()
+            .to_string()
+    });
+    let server = responses::start_mock_server().await;
+    let mut provider =
+        ModelProviderInfo::create_openai_provider(Some(format!("http://127.0.0.1:{port}/v1")));
+    // No provider_id: fork routing sends this through the rig bridge (chat
+    // wire), the same path the electron client forces via CODEX_WIRE_API=chat.
+    provider.supports_websockets = false;
+    provider.wire_api = codex_model_provider_info::WireApi::Chat;
+    let node = std::env::var("MINI_MCP_NODE").unwrap_or_else(|_| "node".to_string());
+    let script = std::env::var("MINI_MCP_SERVER")
+        .unwrap_or_else(|_| "/tmp/mcp-verify/mini-server.mjs".to_string());
+
+    // Real load path (same as the ACP adapter's thread config): a
+    // config.toml in the session home declares the MCP server.
+    let home = tempfile::tempdir()?;
+    std::fs::write(
+        home.path().join(codex_config::CONFIG_TOML_FILE),
+        format!("[mcp_servers.mini]\ncommand = \"{node}\"\nargs = [\"{script}\"]\n"),
+    )?;
+    let (session, turn, _events) =
+        crate::session::tests::make_session_and_context_with_auth_config_home_and_rx(
+            CodexAuth::create_dummy_chatgpt_auth_for_testing(),
+            Vec::new(),
+            home.path(),
+            move |config| {
+                config.model = Some("deepseek-v4.1-flash-1017".to_string());
+                config.model_provider = provider;
+            },
+        )
+        .await;
+
+    // Give the spawned MCP server time to finish initializing.
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    let result = crate::session::turn::run_turn(
+        Arc::clone(&session),
+        Arc::clone(&turn),
+        vec![crate::session::TurnInput::UserInput {
+            metadata: Default::default(),
+            content: vec![UserInput::Text {
+                text: "use the echo tool to say hi".to_string(),
+                text_elements: Vec::new(),
+            }],
+            client_id: None,
+        }],
+        &mut crate::session::turn::McpStartupRequirements::default(),
+        None,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await?;
+    assert!(result.is_some(), "the turn completed");
+
+    let recorded = std::fs::read_to_string("/tmp/mcp-verify/chat-requests.jsonl")
+        .expect("mock gateway recorded requests");
+    let mut bodies: Vec<&str> = recorded.lines().filter(|l| !l.trim().is_empty()).collect();
+    bodies.reverse();
+    let first_str = bodies.first().copied().expect("at least one chat request");
+    assert!(
+        first_str.contains("echo_tool") || first_str.contains("mcp__mini"),
+        "tools present"
+    );
+    let first_bytes = first_str.as_bytes().to_vec();
+    let first = String::from_utf8(first_bytes).expect("utf8 chat body");
+    let direct = first.contains("mcp__mini__echo_tool");
+    let deferred = first.contains("\"name\":\"tool_search\"") || first.contains("tool_search");
+    eprintln!(
+        "LIVE mcp: direct={direct} deferred={deferred} body_len={}",
+        first.len()
+    );
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&first) {
+        if let Some(tools) = value.get("tools").and_then(|t| t.as_array()) {
+            let names: Vec<String> = tools
+                .iter()
+                .filter_map(|t| t.get("name").and_then(|n| n.as_str()).map(String::from))
+                .collect();
+            eprintln!("LIVE tool names ({})", names.len());
+            for tool in tools {
+                let name = tool.get("name").and_then(|n| n.as_str()).unwrap_or("?");
+                if name.starts_with("mcp__") {
+                    eprintln!(
+                        "LIVE mcp entry: {}",
+                        serde_json::to_string(tool).unwrap_or_default()
+                    );
+                }
+            }
+        } else {
+            eprintln!("LIVE no tools array");
+        }
+    }
+    assert!(
+        direct && !deferred,
+        "fallback-model requests must advertise MCP tools directly: direct={direct} deferred={deferred}"
+    );
+    Ok(())
+}
+
 fn annotated(items: Vec<ResponseItem>) -> Vec<ResponseItemEnvelope> {
     items.into_iter().map(ResponseItemEnvelope::new).collect()
 }
