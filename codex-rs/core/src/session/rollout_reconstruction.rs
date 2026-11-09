@@ -13,9 +13,9 @@ use uuid::Uuid;
 /// Only the newest non-superseded record applies: a later migration absorbs the
 /// earlier one (`supersedes`), so replay has at most one prefix boundary to
 /// honour. Records are appended, so the last candidate wins.
-fn active_surface_replacement(
+fn active_surface_replacements(
     items: &[RolloutItem],
-) -> Option<(usize, &codex_history::SurfaceReplacementItem)> {
+) -> Vec<(usize, &codex_history::SurfaceReplacementItem)> {
     let mut superseded = std::collections::HashSet::new();
     let mut candidates = Vec::new();
     for (index, item) in items.iter().enumerate() {
@@ -26,8 +26,8 @@ fn active_surface_replacement(
     }
     candidates
         .into_iter()
-        .rev()
-        .find(|(_, replacement)| !superseded.contains(replacement.compaction_id.as_str()))
+        .filter(|(_, replacement)| !superseded.contains(replacement.compaction_id.as_str()))
+        .collect()
 }
 
 /// The id of the first response item recorded after `record_index`.
@@ -61,7 +61,8 @@ fn apply_active_surface_replacement(
     history: &mut crate::context_manager::ContextManager,
     rollout_items: &[RolloutItem],
 ) {
-    let Some((record_index, replacement)) = active_surface_replacement(rollout_items) else {
+    let active = active_surface_replacements(rollout_items);
+    let Some(&(record_index, replacement)) = active.last() else {
         return;
     };
     let items = history.annotated_items();
@@ -108,13 +109,28 @@ fn apply_active_surface_replacement(
     }
     next.extend(items[index..].iter().cloned());
     // Re-apply the persisted tool-output windows so a reload sees the same
-    // shortened tail the live session saw (2026-11-09 review P1).
-    for pruned in &replacement.pruned_tool_outputs {
+    // shortened tail the live session saw. Windows ACCUMULATE across every
+    // active record: a second degrade that prunes output B must not restore
+    // output A that an earlier record pruned while A was still in the tail
+    // (2026-11-09 review P1). Later records win when the same call id appears
+    // twice, and windows whose call id no longer exists are skipped by the
+    // per-id prune helper.
+    let mut pruned_windows: std::collections::HashMap<String, (usize, usize)> =
+        std::collections::HashMap::new();
+    for (_, record) in &active {
+        for pruned in &record.pruned_tool_outputs {
+            pruned_windows.insert(
+                pruned.call_id.clone(),
+                (pruned.keep_head_chars, pruned.keep_tail_chars),
+            );
+        }
+    }
+    for (call_id, (keep_head_chars, keep_tail_chars)) in pruned_windows {
         crate::session::compaction_prune::prune_tool_output_by_call_id(
             &mut next,
-            &pruned.call_id,
-            pruned.keep_head_chars,
-            pruned.keep_tail_chars,
+            &call_id,
+            keep_head_chars,
+            keep_tail_chars,
         );
     }
     history.replace_annotated(next);

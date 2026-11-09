@@ -77,6 +77,10 @@ pub(crate) const RESERVED_OUTPUT_TOKENS: i64 = 2_048;
 /// the retry count deterministic for the mock-server tests.
 const MAX_OVERFLOW_TRIM_ROUNDS: u8 = 2;
 
+/// Bound the "halve the largest output" loop; further pressure falls through to
+/// the NecessaryContentExceedsWindow check.
+const MAX_PRUNE_ESCALATION_ROUNDS: u8 = 6;
+
 /// Thread-local policy that preserves inherited context without changing model or skill budgets.
 /// Insert into `StartThreadOptions::thread_extension_init` to disable automatic compaction.
 pub struct AutoCompactionDisabled;
@@ -1572,6 +1576,81 @@ pub(crate) async fn degrade_history_to_target_window(
                 retained_tokens,
                 "mid-turn degrade: pruned tool output in the retained tail"
             );
+        }
+        // Many tool calls in one turn: fixed windows may still overflow. Keep
+        // shrinking the LARGEST remaining output until the tail fits or nothing
+        // more can be cut (2026-11-09 review P2).
+        let mut extra_rounds = 0u8;
+        while retained_tokens > necessary_budget && extra_rounds < MAX_PRUNE_ESCALATION_ROUNDS {
+            let mut largest: Option<(usize, i64)> = None;
+            for (index, envelope) in retained.iter().enumerate() {
+                if let ResponseItem::FunctionCallOutput {
+                    call_id: Some(call_id),
+                    output,
+                    ..
+                } = &envelope.item
+                {
+                    if let codex_protocol::models::FunctionCallOutputBody::Text(text) = &output.body
+                    {
+                        let tokens =
+                            crate::context_manager::estimate_item_token_count(&envelope.item);
+                        if largest.is_none_or(|(_, best)| tokens > best) {
+                            largest = Some((index, tokens));
+                        }
+                    }
+                }
+            }
+            let Some((index, _tokens)) = largest else {
+                break;
+            };
+            let (call_id, next_head, next_tail) = {
+                let ResponseItem::FunctionCallOutput {
+                    call_id, output, ..
+                } = &mut retained[index].item
+                else {
+                    break;
+                };
+                let codex_protocol::models::FunctionCallOutputBody::Text(text) = &mut output.body
+                else {
+                    break;
+                };
+                let call_id = call_id.clone().unwrap_or_default();
+                // Halve the window each round, down to a stub.
+                let current = text.chars().count();
+                let next_total = (current / 2).max(200);
+                let next_head = (next_total * 4) / 5;
+                let next_tail = next_total - next_head;
+                *text = {
+                    let head: String = text.chars().take(next_head).collect();
+                    let tail: String = text
+                        .chars()
+                        .skip(current.saturating_sub(next_tail))
+                        .collect();
+                    format!("{head}\n…<pruned {current} chars>…\n{tail}")
+                };
+                (call_id, next_head, next_tail)
+            };
+            extra_rounds += 1;
+            if !call_id.is_empty() {
+                let existing = pruned_tool_outputs
+                    .iter_mut()
+                    .find(|pruned| pruned.call_id == call_id);
+                match existing {
+                    Some(existing) => {
+                        existing.keep_head_chars = next_head;
+                        existing.keep_tail_chars = next_tail;
+                    }
+                    None => pruned_tool_outputs.push(codex_history::PrunedToolOutput {
+                        call_id,
+                        keep_head_chars: next_head,
+                        keep_tail_chars: next_tail,
+                    }),
+                }
+            }
+            retained_tokens = retained
+                .iter()
+                .map(|envelope| crate::context_manager::estimate_item_token_count(&envelope.item))
+                .sum();
         }
     }
     if protection == DegradeProtection::CurrentTurnInput && retained_tokens > necessary_budget {

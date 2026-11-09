@@ -381,7 +381,12 @@ resume 在同一状态上再失败——永久原地打转。
   （turn_id 归属），追加指令不会挤掉原始任务；③ 裁剪预算与"必要输入超窗"判据
   拆分（前者可含已观测拒绝点，后者只用宣称窗口）；④ 本步已前台压缩时不再取走
   异步候选。
-- **会话不弃（同日起）**：产品目标是"一个会话一直用、可自由换模型"，所以超窗的
+- **复审加固（2026-11-09 第四轮）**：① 回放把**所有**未失效 `SurfaceReplacement` 的
+  `pruned_tool_outputs` 合并施加（后写覆盖同 call_id），连续两次降级各剪不同输出时
+  resume 不再恢复第一个的完整长度；② 轮内降级的工具输出剪枝升级为预算驱动——固定
+  头/尾窗口不够时，循环把"当前最大的输出"窗口减半（至多
+  `MAX_PRUNE_ESCALATION_ROUNDS = 6` 轮），多条工具输出合计超窗不再误报"输入过大"。
+- **会话不弃（同日起）**- **会话不弃（同日起）**：产品目标是"一个会话一直用、可自由换模型"，所以超窗的
   终态提示不再让用户"开新线程"——`ContextWindowExceeded` 文案改为
   "the conversation is kept; retry, or switch to a model with a larger context
   window"，ACP 侧 `context_exhausted` 的 action 从 `new_session` 改为 `retry`；

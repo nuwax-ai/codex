@@ -3364,6 +3364,90 @@ async fn a_persisted_tool_output_window_is_reapplied_on_replay() {
     );
 }
 
+/// Two consecutive degrades each prune a different tool output; replay must
+/// apply BOTH windows, or the first output comes back full length after a
+/// reload (2026-11-09 review P1).
+#[tokio::test]
+async fn consecutive_replacements_accumulate_their_pruned_tool_outputs() {
+    let (session, turn_context) = make_session_and_context().await;
+    let user_item = |id: &str, text: &str| ResponseItemEnvelope {
+        item: ResponseItem::Message {
+            id: Some(codex_protocol::ResponseItemId::from_server(id.to_string())),
+            role: "user".to_owned(),
+            content: vec![ContentItem::InputText {
+                text: text.to_owned(),
+            }],
+            phase: None,
+            status: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    };
+    let tool_output = |call_id: &str| ResponseItemEnvelope {
+        item: ResponseItem::FunctionCallOutput {
+            id: None,
+            call_id: Some(call_id.to_string()),
+            name: None,
+            namespace: None,
+            output: codex_protocol::models::FunctionCallOutputPayload::from_text(
+                "z".repeat(20_000),
+            ),
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    };
+    let replacement =
+        |id: &str, boundary: &str, pruned: &str| codex_history::SurfaceReplacementItem {
+            compaction_id: id.to_string(),
+            resume_at_item_id: boundary.to_string(),
+            summary: String::new(),
+            provider: "local".to_string(),
+            model: "small-window".to_string(),
+            shadowed_tokens: 0,
+            retained_tail_tokens: 5_100,
+            reason: codex_history::SurfaceReplacementReason::Overflow,
+            supersedes: Vec::new(),
+            pruned_tool_outputs: vec![codex_history::PrunedToolOutput {
+                call_id: pruned.to_string(),
+                keep_head_chars: 100,
+                keep_tail_chars: 50,
+            }],
+        };
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(user_item("item_1", "task")),
+        RolloutItem::ResponseItem(tool_output("call-a")),
+        RolloutItem::ResponseItem(tool_output("call-b")),
+        RolloutItem::SurfaceReplacement(Box::new(replacement("cmp_a", "item_1", "call-a"))),
+        RolloutItem::SurfaceReplacement(Box::new(replacement("cmp_b", "item_1", "call-b"))),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+    let mut chars_by_call: Vec<(String, usize)> = Vec::new();
+    for envelope in &reconstructed.history {
+        if let ResponseItem::FunctionCallOutput {
+            call_id: Some(call_id),
+            output,
+            ..
+        } = &envelope.item
+        {
+            if let codex_protocol::models::FunctionCallOutputBody::Text(text) = &output.body {
+                chars_by_call.push((call_id.clone(), text.chars().count()));
+            }
+        }
+    }
+    chars_by_call.sort();
+    assert_eq!(chars_by_call.len(), 2, "both outputs survive");
+    for (call_id, chars) in &chars_by_call {
+        assert!(
+            chars < &1_000,
+            "both windows must be re-applied, {call_id} came back {chars} chars"
+        );
+    }
+}
+
 /// A no-summary trim with an EMPTY retained tail hides everything on replay.
 #[tokio::test]
 async fn a_no_summary_trim_with_empty_tail_hides_everything_on_replay() {

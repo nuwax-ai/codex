@@ -519,3 +519,16 @@ retry 建议），我加的 `invalidPrompt → input_too_large` 映射在真实�
 | P2 客户端 URL/凭据可能来自不同路由 | 成立 | 新增 `resolveCodexRoute()`：保持 URL 既有优先级，但凭据绑定到同一来源（env/config/backend 三选一），并返回 `source` 供日志/断言 | `acpEnvAliases.test.ts` 4 例 |
 
 **未做**：`InputTooLarge` v2 变体（§13）；guardian reviewer 观察（§12）；三端回放验收。
+
+
+---
+
+## 16. 第四轮复审修复（2026-11-09 深夜）
+
+| 发现 | 结论 | 修复 | 回归 |
+|---|---|---|---|
+| P1 第二次 SurfaceReplacement 让第一次的剪枝在 resume 后失效 | 成立 | 回放改为收集**全部**未失效记录的 `pruned_tool_outputs`（HashMap 按 call_id 合并、后写覆盖），统一施加 | `consecutive_replacements_accumulate_their_pruned_tool_outputs` |
+| P1 客户端仍可能跨来源借 key | 成立（review 实测复现） | `resolveCodexRoute` 改为"优先完整对"：URL 来源没有自己的 key 时不从别处借；路由解析移到 `applyOpenAICompatibleEnv` **之前**（用捕获的真实 env 对），keyless 路由清空所有 key 拼写 | `acpEnvAliases.test.ts` 新增 2 例（8/8） |
+| P2 固定剪枝窗口在多工具输出下仍误报输入过大 | 成立 | 保留尾部剪枝升级为预算驱动：`retained_tokens > necessary_budget` 时循环把最大文本输出的窗口减半（200 字符下限，至多 6 轮），同步更新 `pruned_tool_outputs` | 既有 compact 用例 |
+
+**仍未做**：`InputTooLarge` v2 变体（§13）；guardian 观察（§12）；三端回放验收；部分回滚组合。
