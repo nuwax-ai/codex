@@ -340,6 +340,11 @@ resume 在同一状态上再失败——永久原地打转。
   "删到装下为止"的无界重试（每轮都是一次已被网关拒绝的请求）。
 - **路径区分**：降级提示按 `DegradeReason` 分文案（`ModelDownshift` 保持原文案，
   `CompactionOverflow` 点名 nuwax-harness 与省略量）。
+- **中途前台检查点**：`async_compaction` 只在宿主远程压缩 V2 可用时启动，第三方
+  网关没有中途压缩点，长工具循环只能等网关拒绝后靠 `fork_overflow_recoverable`
+  补救一次。现在每步采样后（`needs_follow_up` 且活跃上下文达到
+  `model_mid_turn_compact_threshold_percent`，默认 90、0 关闭、每轮至多 2 次）执行
+  前台 `run_auto_compact(MidTurn)`；摘要装不下同样转上面的降级链并 warn。
 - **品牌**：`CodexErrorDetails::ContextWindowExceeded` 的文案改为
   `nuwax-harness ran out of room in the model's context window. ...`。
   机器判据只能是 `codex_error_info == "context_window_exceeded"`；任何按

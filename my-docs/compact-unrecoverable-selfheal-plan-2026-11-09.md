@@ -234,7 +234,7 @@ Err(e) if matches!(e.details(), CodexErrorDetails::ContextWindowExceeded) => {
 3. 文档:NUWAX-HARNESS.md 环境变量表已列别名,补一句"`CODEX_*` 为兼容名,
    `NUWAX_*` 优先;两者同时设置且不一致时报错"。
 
-### P1-A 工具循环中途的前台压缩检查点
+### P1-A 工具循环中途的前台压缩检查点（2026-11-09 已实施）
 
 **落点**:`core/src/session/turn.rs:929-940`
 

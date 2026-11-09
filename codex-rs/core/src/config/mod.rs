@@ -229,6 +229,12 @@ pub use windows_sandbox_config::windows_mxc_allowed_by_config;
 const DEFAULT_IGNORE_LARGE_UNTRACKED_DIRS: i64 = 200;
 const DEFAULT_IGNORE_LARGE_UNTRACKED_FILES: i64 = 10 * 1024 * 1024;
 const DEFAULT_ASYNC_COMPACTION_THRESHOLD_PERCENT: u8 = 65;
+/// Fork (nuwax-codex): default foreground checkpoint between tool steps. The
+/// hosted async path needs a first-party gateway, so third-party deployments
+/// previously had no checkpoint at all inside a long tool loop (2026-11-09
+/// incident). 90 leaves room for the generation reserve while catching a jump
+/// before the request is rejected; 0 disables the checkpoint.
+const DEFAULT_MID_TURN_COMPACT_THRESHOLD_PERCENT: u8 = 90;
 
 /// Signals that a public config selected the retired `untrusted` approval policy.
 #[derive(Debug, thiserror::Error)]
@@ -747,6 +753,10 @@ pub struct Config {
     /// Percentage of the usable context window that triggers turn-end compaction.
     /// Zero disables turn-end compaction.
     pub model_post_turn_compact_threshold_percent: u8,
+
+    /// Percentage of the usable context window that triggers compaction between
+    /// tool steps of a still-running turn. Zero disables the checkpoint.
+    pub model_mid_turn_compact_threshold_percent: u8,
 
     /// Percentage of the model's full context window at which background compaction starts.
     pub async_compaction_threshold_percent: u8,
@@ -3587,6 +3597,15 @@ impl Config {
                 "model_post_turn_compact_threshold_percent must be between 0 and 100",
             ));
         }
+        if cfg
+            .model_mid_turn_compact_threshold_percent
+            .is_some_and(|percent| percent > 100)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "model_mid_turn_compact_threshold_percent must be between 0 and 100",
+            ));
+        }
         let async_compaction_threshold_percent = cfg.features.as_ref()
             .and_then(|features| features.async_compaction.as_ref())
             .and_then(|feature| match feature {
@@ -4779,6 +4798,9 @@ impl Config {
             model_post_turn_compact_threshold_percent: cfg
                 .model_post_turn_compact_threshold_percent
                 .unwrap_or_default(),
+            model_mid_turn_compact_threshold_percent: cfg
+                .model_mid_turn_compact_threshold_percent
+                .unwrap_or(DEFAULT_MID_TURN_COMPACT_THRESHOLD_PERCENT),
             async_compaction_threshold_percent,
             model_provider_id,
             model_provider,

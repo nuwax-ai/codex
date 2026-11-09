@@ -17,6 +17,9 @@ pub(crate) struct ContextWindowTokenStatus {
     pub(crate) full_context_window_limit_reached: bool,
     pub(crate) token_limit_reached: bool,
     pub(crate) turn_end_compaction_threshold_reached: bool,
+    /// Fork (nuwax-codex): the configured mid-turn line is crossed, so a
+    /// running tool loop should compact before its next sampling request.
+    pub(crate) mid_turn_compaction_threshold_reached: bool,
 }
 
 impl ContextWindowTokenStatus {
@@ -51,6 +54,11 @@ impl ContextWindowTokenStatus {
 
 fn tokens_remaining(limit: Option<i64>, used: i64) -> Option<i64> {
     limit.map(|limit| limit.saturating_sub(used).max(0))
+}
+
+/// True when `active` reaches `percent` of `limit` (0 disables the check).
+fn percent_threshold_reached(active: i64, limit: i64, percent: u8) -> bool {
+    percent > 0 && i128::from(active) * 100 >= i128::from(limit) * i128::from(percent)
 }
 
 pub(crate) async fn context_window_token_status(
@@ -142,8 +150,17 @@ async fn context_window_token_status_with_config(
     let turn_end_compaction_threshold_reached = post_turn_percent > 0
         && (token_limit_reached
             || full_context_window_limit.is_some_and(|limit| {
-                i128::from(active_context_tokens) * 100
-                    >= i128::from(limit) * i128::from(post_turn_percent)
+                percent_threshold_reached(active_context_tokens, limit, post_turn_percent)
+            }));
+    // Fork (nuwax-codex): the same percentage check, but for a turn that is
+    // still running. Hosted async compaction is unavailable on third-party
+    // gateways, so without this the only mid-turn compaction was the one-shot
+    // overflow recovery (after the gateway had already rejected a request).
+    let mid_turn_percent = config.model_mid_turn_compact_threshold_percent;
+    let mid_turn_compaction_threshold_reached = mid_turn_percent > 0
+        && (token_limit_reached
+            || full_context_window_limit.is_some_and(|limit| {
+                percent_threshold_reached(active_context_tokens, limit, mid_turn_percent)
             }));
 
     ContextWindowTokenStatus {
@@ -156,6 +173,7 @@ async fn context_window_token_status_with_config(
         full_context_window_limit_reached,
         token_limit_reached,
         turn_end_compaction_threshold_reached,
+        mid_turn_compaction_threshold_reached,
     }
 }
 
@@ -178,7 +196,17 @@ mod pending_input_tests {
             full_context_window_limit_reached: false,
             token_limit_reached: false,
             turn_end_compaction_threshold_reached: false,
+            mid_turn_compaction_threshold_reached: false,
         }
+    }
+
+    #[test]
+    fn percent_threshold_boundaries() {
+        assert!(!percent_threshold_reached(89_999, 100_000, 90));
+        assert!(percent_threshold_reached(90_000, 100_000, 90));
+        assert!(percent_threshold_reached(100_000, 100_000, 90));
+        // Zero disables the checkpoint even at/over the limit.
+        assert!(!percent_threshold_reached(100_000, 100_000, 0));
     }
 
     #[test]

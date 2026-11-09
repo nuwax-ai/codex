@@ -325,6 +325,10 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
 - 不在模型目录中的**自定义模型**，`model_context_window` 显式覆盖**全额
   生效**（不再被未知模型 272k 占位上限钳制）：大窗口厂商（如 GLM-5.3-Flash
   的 1M）按真实窗口使用，压缩阈值随真实窗口派生。
+- **中途压缩检查点（2026-11-09 起）**：`config.toml` 的
+  `model_mid_turn_compact_threshold_percent`（默认 `90`，`0` 关闭，越界 fail-fast）
+  控制"一轮还没结束时、每步工具调用之后"是否前台压缩。托管异步压缩只在官方网关
+  可用，三方网关此前在工具循环中途没有任何压缩点，只能等请求被拒后补救。
 - **厂商模型目录（2026-11-02 起）**：GLM/MiMo/Step/DeepSeek/MiniMax 等主流厂商的
   模型元数据来自内置目录（models.dev 快照 + fork 实证 overlay），**零配置即得
   真实窗口与档位门**——如 GLM-5.3-Flash 自动 1M 窗口、`medium` 会在发送前被拒

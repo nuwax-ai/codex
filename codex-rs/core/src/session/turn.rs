@@ -604,6 +604,9 @@ pub(crate) async fn run_turn(
 
     let mut next_step_context = Some(first_step_context);
     let mut guardian_budget_compacted = false;
+    // Fork (2026-11-09): bound the foreground mid-turn checkpoints so a
+    // pathological step cannot compact on every iteration.
+    let mut mid_turn_compactions = 0u8;
     loop {
         // Note that pending_input would be something like a message the user
         // submitted through the UI while the model was running. Though the UI
@@ -767,6 +770,61 @@ pub(crate) async fn run_turn(
                     client_session.turn_state_with_auth_owner(),
                 )
                 .await;
+
+                // Fork (2026-11-09): `maybe_start` only launches hosted async
+                // compaction, which third-party gateways do not support. Without
+                // a foreground checkpoint here, a long tool loop had none at all
+                // and could step from below every threshold straight past the
+                // window, leaving only the post-rejection recovery
+                // (`fork_overflow_recoverable`). Compact between steps once the
+                // configured mid-turn line is crossed.
+                if needs_follow_up
+                    && auto_summarization_enabled
+                    && mid_turn_compactions < MAX_MID_TURN_COMPACTIONS
+                    && token_status.mid_turn_compaction_threshold_reached
+                    && !cancellation_token.is_cancelled()
+                {
+                    mid_turn_compactions += 1;
+                    let compaction = run_auto_compact(
+                        &sess,
+                        Arc::clone(&step_context),
+                        Arc::clone(&step_context),
+                        &mut client_session,
+                        CompactionReason::ContextLimit,
+                        CompactionPhase::MidTurn,
+                        /*candidate*/ None,
+                    )
+                    .await;
+                    if let Err(err) = compaction {
+                        if matches!(err.details(), CodexErrorDetails::ContextWindowExceeded) {
+                            // The summary cannot fit either: keep the recent
+                            // tail, omit the oldest history (persisted), and let
+                            // the step retry instead of failing the turn.
+                            match crate::compact::degrade_history_to_target_window(
+                                &sess,
+                                &turn_context,
+                                /*pending_input_tokens*/ 0,
+                                &cancellation_token,
+                                crate::compact::DegradeReason::CompactionOverflow,
+                            )
+                            .await
+                            {
+                                Ok(_) => {}
+                                Err(degrade_err) => {
+                                    warn!(
+                                        error = %degrade_err,
+                                        "mid-turn compaction overflow could not be degraded; continuing the turn"
+                                    );
+                                }
+                            }
+                        } else {
+                            warn!(
+                                error = %err,
+                                "mid-turn compaction failed; continuing the turn"
+                            );
+                        }
+                    }
+                }
 
                 trace!(
                     turn_id = %turn_context.sub_id,
@@ -4019,6 +4077,10 @@ mod tests;
 // Kept in fork-owned helpers so the upstream match arms in the turn loop
 // shrink to one-line calls; the semantics live in one auditable place
 // (see FORK.md §10 "上下文窗口溢出"行).
+
+/// Fork (nuwax-codex): how many foreground mid-turn checkpoints one turn may
+/// run before leaving further pressure to the overflow recovery arm.
+const MAX_MID_TURN_COMPACTIONS: u8 = 2;
 
 /// True when a sampling-stage overflow may self-heal by compacting once:
 /// compaction is enabled, this step has not already compacted for overflow,

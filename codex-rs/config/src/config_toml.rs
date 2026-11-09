@@ -214,6 +214,14 @@ pub struct ConfigToml {
     #[schemars(range(min = 0, max = 100))]
     pub model_post_turn_compact_threshold_percent: Option<u8>,
 
+    /// Percentage of the usable context window that triggers compaction between
+    /// tool steps of a still-running turn. The hosted async compaction path is
+    /// unavailable on third-party gateways, so without this checkpoint a long
+    /// tool loop can step straight past the window. Defaults to 90; omitted or
+    /// zero disables the checkpoint; valid values are 0–100.
+    #[schemars(range(min = 0, max = 100))]
+    pub model_mid_turn_compact_threshold_percent: Option<u8>,
+
     /// Default approval policy for executing commands.
     #[schemars(with = "Option<crate::schema::ConfigAskForApproval>")]
     pub approval_policy: Option<AskForApproval>,
