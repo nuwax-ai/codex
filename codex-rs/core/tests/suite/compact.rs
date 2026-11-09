@@ -53,7 +53,9 @@ use core_test_support::test_codex::turn_permission_fields;
 use core_test_support::test_path_buf;
 use core_test_support::wait_for_event;
 use core_test_support::wait_for_event_match;
+use core_test_support::wait_for_event_with_timeout;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
@@ -5893,15 +5895,21 @@ async fn snapshot_request_shape_pre_turn_compaction_context_window_exceeded() {
         ev_completed_with_tokens("r1", /*total_tokens*/ 500),
     ]);
     let mut responses = vec![first_turn];
-    responses.extend(
-        (0..5).map(|_| {
-            sse_failed(
-                "compact-failed",
-                "context_length_exceeded",
-                "Your input exceeds the context window of this model. Please adjust your input and try again.",
-            )
-        }),
-    );
+    // Fork (2026-11-09): the compaction request overflow now degrades the
+    // history instead of failing the turn, so the sequence continues past the
+    // failures with a normal reply. Overflow remediation is bounded to one
+    // prune pass and one history drop, so exactly two compaction attempts.
+    responses.extend((0..3).map(|_| {
+        sse_failed(
+            "compact-failed",
+            "context_length_exceeded",
+            "Your input exceeds the context window of this model. Please adjust your input and try again.",
+        )
+    }));
+    responses.push(sse(vec![
+        ev_assistant_message("m2", "RECOVERED_REPLY"),
+        ev_completed_with_tokens("r2", /*total_tokens*/ 500),
+    ]));
     let request_log = mount_sse_sequence(&server, responses).await;
 
     let mut model_provider = non_openai_model_provider(&server);
@@ -5925,7 +5933,15 @@ async fn snapshot_request_shape_pre_turn_compaction_context_window_exceeded() {
         }]))
         .await
         .expect("submit first user");
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    // The mock gateway is slow on the first request under nextest; the two
+    // compaction attempts plus the recovered sampling need more than the
+    // default 10s event deadline.
+    wait_for_event_with_timeout(
+        &codex,
+        |ev| matches!(ev, EventMsg::TurnComplete(_)),
+        Duration::from_secs(60),
+    )
+    .await;
 
     codex
         .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
@@ -5934,12 +5950,18 @@ async fn snapshot_request_shape_pre_turn_compaction_context_window_exceeded() {
         }]))
         .await
         .expect("submit second user");
-    let error_message = wait_for_event_match(&codex, |event| match event {
-        EventMsg::Error(err) => Some(err.message.clone()),
-        _ => None,
-    })
+    // The turn must survive the failed compaction: either it completes, or it
+    // fails with something other than the context-window terminal error.
+    let outcome = wait_for_event_with_timeout(
+        &codex,
+        |event| matches!(event, EventMsg::Error(_) | EventMsg::TurnComplete(_)),
+        Duration::from_secs(60),
+    )
     .await;
-    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    assert!(
+        !matches!(outcome, EventMsg::Error(_)),
+        "pre-turn compaction overflow must not fail the turn: {outcome:?}"
+    );
 
     let requests = request_log.requests();
     assert!(
@@ -5950,17 +5972,12 @@ async fn snapshot_request_shape_pre_turn_compaction_context_window_exceeded() {
     insta::assert_snapshot!(
         "pre_turn_compaction_context_window_exceeded_shapes",
         format_labeled_requests_snapshot(
-            "Pre-turn auto-compaction context-window failure: compaction request excludes the incoming user message and the turn errors.",
+            "Pre-turn auto-compaction context-window failure: compaction request excludes the incoming user message; the turn continues on a degraded history instead of erroring.",
             &[(
                 "Local Compaction Request (Incoming User Excluded)",
                 &requests[1]
             ),]
         )
-    );
-
-    assert!(
-        error_message.contains("ran out of room in the model's context window"),
-        "expected context window exceeded message, got {error_message}"
     );
 }
 

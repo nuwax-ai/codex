@@ -297,6 +297,7 @@ pub(crate) async fn run_turn(
             &turn_context,
             estimate_pending_input_tokens(&input),
             &cancellation_token,
+            crate::compact::DegradeReason::ModelDownshift,
         )
         .await
         {
@@ -1016,7 +1017,7 @@ pub(crate) async fn run_turn(
                 ) =>
             {
                 guardian_budget_compacted = true;
-                run_auto_compact(
+                let compaction = run_auto_compact(
                     &sess,
                     Arc::clone(&step_context),
                     Arc::clone(&step_context),
@@ -1025,7 +1026,41 @@ pub(crate) async fn run_turn(
                     CompactionPhase::MidTurn,
                     /*candidate*/ None,
                 )
-                .await?;
+                .await;
+                if let Err(err) = compaction {
+                    if !matches!(err.details(), CodexErrorDetails::ContextWindowExceeded) {
+                        return Err(err);
+                    }
+                    // Fork (2026-11-09): the summary request cannot fit either.
+                    // Omit the oldest history (persisted) and retry this step
+                    // instead of turning a recoverable overflow into a dead
+                    // session.
+                    match crate::compact::degrade_history_to_target_window(
+                        &sess,
+                        &turn_context,
+                        /*pending_input_tokens*/ 0,
+                        &cancellation_token,
+                        crate::compact::DegradeReason::CompactionOverflow,
+                    )
+                    .await?
+                    {
+                        crate::compact::DegradeOutcome::Trimmed {
+                            shadowed_tokens, ..
+                        } => {
+                            warn!(
+                                shadowed_tokens,
+                                "mid-turn overflow: omitted the oldest history and retried the step"
+                            );
+                        }
+                        crate::compact::DegradeOutcome::NecessaryContentExceedsWindow {
+                            window,
+                        } => {
+                            return Err(CodexErr::Fatal(format!(
+                                "The request cannot fit the model's {window}-token context window even after omitting older history: the instructions, tool payload, and the current input alone are too large. Switch to a model with a larger context window, or shorten the input."
+                            )));
+                        }
+                    }
+                }
                 can_drain_pending_input = false;
                 continue;
             }
@@ -1654,7 +1689,7 @@ async fn run_pre_sampling_compact(
         let step_context = sess
             .capture_step_context(Arc::clone(turn_context), cancellation_token)
             .await?;
-        run_auto_compact(
+        let compaction = run_auto_compact(
             sess,
             Arc::clone(&step_context),
             step_context,
@@ -1663,7 +1698,41 @@ async fn run_pre_sampling_compact(
             CompactionPhase::PreTurn,
             candidate,
         )
-        .await?;
+        .await;
+        if let Err(err) = compaction {
+            if !matches!(err.details(), CodexErrorDetails::ContextWindowExceeded) {
+                return Err(err);
+            }
+            // Fork (2026-11-09): the summarization request carries the whole
+            // history, so once the history is past the window the summary
+            // cannot fit either. Omit the oldest history instead of failing the
+            // session; the omission is persisted as a `SurfaceReplacement` so a
+            // later resume does not load the oversized history again
+            // (my-docs/compact-unrecoverable-selfheal-plan-2026-11-09.md).
+            match crate::compact::degrade_history_to_target_window(
+                sess,
+                turn_context,
+                pending_input_tokens.max(0),
+                cancellation_token,
+                crate::compact::DegradeReason::CompactionOverflow,
+            )
+            .await?
+            {
+                crate::compact::DegradeOutcome::Trimmed {
+                    shadowed_tokens, ..
+                } => {
+                    warn!(
+                        shadowed_tokens,
+                        "pre-turn compaction overflow: omitted the oldest history and continued"
+                    );
+                }
+                crate::compact::DegradeOutcome::NecessaryContentExceedsWindow { window } => {
+                    return Err(CodexErr::Fatal(format!(
+                        "The request cannot fit the model's {window}-token context window even after omitting older history: the instructions, tool payload, and the current input alone are too large. Switch to a model with a larger context window, or shorten the input."
+                    )));
+                }
+            }
+        }
     }
     Ok(())
 }

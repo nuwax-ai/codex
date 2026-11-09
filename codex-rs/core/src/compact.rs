@@ -70,6 +70,13 @@ const COMPACT_USER_MESSAGE_MAX_TOKENS: usize = 20_000;
 /// output cap in `summarize_migration_region` — one value, both sides.
 pub(crate) const RESERVED_OUTPUT_TOKENS: i64 = 2_048;
 
+/// Maximum number of "remove the oldest item" retries inside one compaction
+/// before the caller's degrade path (omit oldest history + persist a
+/// `SurfaceReplacement`) takes over. Each round is a request the gateway has
+/// already rejected once, so the loop must stay bounded; two rounds also keep
+/// the retry count deterministic for the mock-server tests.
+const MAX_OVERFLOW_TRIM_ROUNDS: u8 = 2;
+
 /// Thread-local policy that preserves inherited context without changing model or skill budgets.
 /// Insert into `StartThreadOptions::thread_extension_init` to disable automatic compaction.
 pub struct AutoCompactionDisabled;
@@ -300,6 +307,15 @@ async fn run_compact_task_inner_impl(
 
     let max_retries = turn_context.provider.info().stream_max_retries();
     let mut retries = 0;
+    // Fork (2026-11-09): overflow remediation is bounded. Each retry is a
+    // request the gateway has already rejected once, so an unbounded
+    // one-item-at-a-time loop can spend dozens of them before giving up. The
+    // per-failure drop stays "oldest item only" (tool call/output pairs are
+    // preserved; `build_compacted_history` re-injects the base instructions),
+    // but after `MAX_OVERFLOW_TRIM_ROUNDS` the caller's degrade path takes
+    // over instead of retrying forever.
+    let mut overflow_pruned = false;
+    let mut overflow_trim_rounds = 0u8;
     // Reuse one client session so turn-scoped state (sticky routing and websocket incremental
     // request tracking) survives retries within this compact turn.
     let mut client_session = sess.services.model_client.new_session();
@@ -384,10 +400,36 @@ async fn run_compact_task_inner_impl(
                 return Err(e);
             }
             Err(e) if matches!(e.details(), CodexErrorDetails::ContextWindowExceeded) => {
-                if turn_input_len > 1 {
-                    // Trim from the beginning to preserve cache (prefix-based) and keep recent messages intact.
+                // Fork (2026-11-09): shrink deterministically before losing
+                // history. Oversized text tool results (greps, HTML dumps,
+                // log tails) dominate long agent histories; cutting them to a
+                // head/tail window costs no model call and keeps every message
+                // and call/output pair intact for the summarizer.
+                if !overflow_pruned {
+                    overflow_pruned = true;
+                    let pruned = crate::session::compaction_prune::prune_oversized_tool_results(
+                        history.annotated_items_mut(),
+                        /*keep_head_chars*/ 6_000,
+                        /*keep_tail_chars*/ 2_000,
+                        /*min_chars_to_prune*/ 8_000,
+                    );
+                    if !pruned.is_empty() {
+                        error!(
+                            pruned_results = pruned.pruned_results,
+                            chars_removed = pruned.chars_removed,
+                            "Context window exceeded while compacting; pruned oversized tool results. Error: {e}"
+                        );
+                        retries = 0;
+                        continue;
+                    }
+                }
+                if overflow_trim_rounds < MAX_OVERFLOW_TRIM_ROUNDS && turn_input_len > 1 {
+                    overflow_trim_rounds += 1;
+                    // Trim from the beginning to preserve cache (prefix-based)
+                    // and keep recent messages intact.
                     error!(
-                        "Context window exceeded while compacting; removing oldest history item. Error: {e}"
+                        round = overflow_trim_rounds,
+                        "Context window exceeded while compacting; removing the oldest history item. Error: {e}"
                     );
                     history.remove_first_item();
                     retries = 0;
@@ -1276,6 +1318,20 @@ async fn finish_announcement(
     }
 }
 
+/// Why history is being trimmed without a summary.
+///
+/// Two callers share one implementation so the persistence/replay contract
+/// stays single-sourced (see 2026-11-09 incident in
+/// `my-docs/compact-unrecoverable-selfheal-plan-2026-11-09.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DegradeReason {
+    /// The conversation moved to a smaller-window model (downshift path).
+    ModelDownshift,
+    /// Summarizing compaction could not fit the live window, so the oldest
+    /// history is omitted to let the turn continue instead of failing.
+    CompactionOverflow,
+}
+
 /// The result of the degraded downshift path (downshift plan 2026-11-08 §2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DegradeOutcome {
@@ -1320,6 +1376,7 @@ pub(crate) async fn degrade_history_to_target_window(
     turn_context: &Arc<TurnContext>,
     pending_input_tokens: i64,
     cancellation: &tokio_util::sync::CancellationToken,
+    reason: DegradeReason,
 ) -> CodexResult<DegradeOutcome> {
     if cancellation.is_cancelled() {
         return Err(CodexErr::TurnAborted);
@@ -1410,7 +1467,14 @@ pub(crate) async fn degrade_history_to_target_window(
         model: turn_context.model_info().slug.clone(),
         shadowed_tokens,
         retained_tail_tokens: retained_tokens,
-        reason: codex_history::SurfaceReplacementReason::WindowShrinkOmitted,
+        // Downshift records the window-shrink flavor so replay tooling can
+        // tell it apart from a live overflow recovery.
+        reason: match reason {
+            DegradeReason::ModelDownshift => {
+                codex_history::SurfaceReplacementReason::WindowShrinkOmitted
+            }
+            DegradeReason::CompactionOverflow => codex_history::SurfaceReplacementReason::Overflow,
+        },
         supersedes: Vec::new(),
     };
     sess.persist_rollout_items(&[codex_history::RolloutItem::SurfaceReplacement(Box::new(
@@ -1423,13 +1487,19 @@ pub(crate) async fn degrade_history_to_target_window(
         .await;
 
     // One user-visible notice for the actual omission (spec: 提示一次).
+    let notice = match reason {
+        DegradeReason::ModelDownshift => format!(
+            "The context window shrank after the model switch; ~{shadowed_tokens} tokens of older history were omitted (without a summary) so this turn can continue. The original conversation record is preserved."
+        ),
+        // Fork: the user did not switch anything — conversation compaction
+        // itself could not fit, so name the harness and say what was lost.
+        DegradeReason::CompactionOverflow => format!(
+            "nuwax-harness could not summarize this conversation into the model's context window; ~{shadowed_tokens} tokens of older history were omitted (without a summary) so this turn can continue. Start a new thread if the omitted detail is still needed."
+        ),
+    };
     sess.send_event(
         turn_context,
-        EventMsg::Warning(WarningEvent {
-            message: format!(
-                "The context window shrank after the model switch; ~{shadowed_tokens} tokens of older history were omitted (without a summary) so this turn can continue. The original conversation record is preserved."
-            ),
-        }),
+        EventMsg::Warning(WarningEvent { message: notice }),
     )
     .await;
     tracing::info!(
@@ -1438,7 +1508,8 @@ pub(crate) async fn degrade_history_to_target_window(
         shadowed_tokens,
         retained_tokens,
         settings_ratio = settings.ratio,
-        "downshift degrade: trimmed older history without summaries"
+        ?reason,
+        "degrade: trimmed older history without summaries"
     );
     Ok(DegradeOutcome::Trimmed {
         shadowed_tokens,

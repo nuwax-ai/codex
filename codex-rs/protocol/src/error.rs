@@ -125,9 +125,11 @@ pub enum CodexErrorDetails {
     /// A retryable upstream rate limit received inside the response stream.
     #[error("rate limit exceeded: {0}")]
     RateLimitExceeded(String),
-    // The iOS input-limit classifier matches this message's ASCII prefix.
+    /// Machine clients must match `codex_error_info == "context_window_exceeded"`
+    /// (see `to_codex_protocol_error`); this prose is for humans and may be
+    /// reworded. Fork (nuwax-codex): brand the fork, not upstream "Codex".
     #[error(
-        "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying."
+        "nuwax-harness ran out of room in the model's context window. Start a new thread or clear earlier history before retrying."
     )]
     ContextWindowExceeded,
     #[error("no thread with id: {0}")]

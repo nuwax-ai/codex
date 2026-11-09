@@ -677,6 +677,14 @@ impl ContextManager {
         &self.items
     }
 
+    /// Mutable view of the annotated surface, for requests built from a
+    /// throwaway clone (e.g. pruning oversized tool output before a compaction
+    /// summary). Never use this on the session's live history without a
+    /// matching checkpoint write.
+    pub(crate) fn annotated_items_mut(&mut self) -> &mut [ResponseItemEnvelope] {
+        Arc::make_mut(&mut self.items).as_mut_slice()
+    }
+
     /// Returns annotated history items and consumes the snapshot.
     pub(crate) fn into_annotated_items(self) -> Vec<ResponseItemEnvelope> {
         Arc::unwrap_or_clone(self.into_shared_annotated_items())

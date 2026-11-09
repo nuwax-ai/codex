@@ -310,6 +310,9 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
 | `NUWAX_AUTO_COMPACT_RATIO`（同义 `CODEX_AUTO_COMPACT_RATIO`） | 可选 `(0, 1]` 小数，未设置显式 token 阈值时按有效窗口比例触发压缩 |
 | `NUWAX_MODEL_REASONING_EFFORT`（同义 `CODEX_MODEL_REASONING_EFFORT`） | 可选：`none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`、`persistent`；具体模型/协议须支持该值 |
 
+`NUWAX_*` 与 `CODEX_*` 同时设置且取值不一致时启动即报错并点名两个变量；
+只设其一时按上表生效（`NUWAX_*` 优先）。
+
 窗口与压缩种子的行为（2026-10-28 起；压缩默认 2026-11-02 调整为 80%）：
 
 - **未显式配置压缩阈值时，按有效窗口的 80% 触发自动压缩**（2026-11-02 起，

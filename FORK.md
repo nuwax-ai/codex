@@ -312,6 +312,40 @@ CannotSummarize / Cancelled），run_turn 重复 pass（每轮上限 32）后仍
 TUI 进度与 ACP 回执沿用既有 `ContextCompaction` 条目（`compaction_update`），
 未新增协议字段。
 
+### 5.4 摘要装不下时的自我修复 + 品牌（2026-11-09 起）
+
+**问题（事故）**：同事的 ACP 定时任务会话从 2026-11-08 18:03 起每小时都以
+`Codex ran out of room ...` 失败，耗时恒 1.0–1.3 s、`usage:null`；客户端把该
+文本当 `ASSISTANT` 消息写回，下一小时再注入，历史只增不减。根因不是"没有默认
+阈值"（默认 80% 一直在生效，见 §5.2 与 `protocol/src/fork_compact.rs`），而是
+**摘要请求本身必须装进窗口**：历史一旦越线，整段摘要请求同样被拒；失败路径
+又不落盘（`remove_first_item` 只改内存 clone），进程退出后 rollout 原样，下次
+resume 在同一状态上再失败——永久原地打转。
+
+**行为**（`my-docs/compact-unrecoverable-selfheal-plan-2026-11-09.md`）：
+
+- **不变量**：任何一轮开始前，历史必须可发送。轮前压缩（`run_pre_sampling_compact`）
+  与中途恢复臂遇到 `ContextWindowExceeded` 时不再把错误抛给用户，而是转
+  `degrade_history_to_target_window`：按目标窗口预算从尾部保留连续历史，落
+  `SurfaceReplacementReason::Overflow`（本 fork 新增用途），并发出一次
+  `EventMsg::Warning`（"could not summarize … omitted ~N tokens"）。
+  必要内容（指令+工具+本轮输入+预留）本身超窗才返回可行动的 `Fatal`。
+- **落盘是硬要求**：降级必须持久化 `SurfaceReplacement`（回放按同一边界裁剪），
+  否则 resume 会把超窗历史装回来——这是事故的机制性根因。
+- **压缩内部有界补救**：`ContextWindowExceeded` 时先做一次确定性裁剪
+  （`prune_oversized_tool_results`：把超长文本工具输出裁成头/尾窗口加标记，无
+  模型调用、不动消息与配对），仍超再逐条删最旧（`remove_first_item`，保留
+  call/output 配对；`build_compacted_history` 会重新注入 base instructions）。
+  删最旧最多 `MAX_OVERFLOW_TRIM_ROUNDS = 2` 轮，之后交还上面的降级链——避免
+  "删到装下为止"的无界重试（每轮都是一次已被网关拒绝的请求）。
+- **路径区分**：降级提示按 `DegradeReason` 分文案（`ModelDownshift` 保持原文案，
+  `CompactionOverflow` 点名 nuwax-harness 与省略量）。
+- **品牌**：`CodexErrorDetails::ContextWindowExceeded` 的文案改为
+  `nuwax-harness ran out of room in the model's context window. ...`。
+  机器判据只能是 `codex_error_info == "context_window_exceeded"`；任何按
+  ASCII 前缀匹配 "Codex ran out of room" 的客户端（iOS 输入上限分类器）必须
+  同批次改判该字段。
+
 ## 6. daemon：npm 安装不自启（v0.18.8）
 
 官方 TUI 默认自启共享 daemon，需要"完整本地包布局"（codex-package.json、
@@ -719,6 +753,9 @@ Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§
   原样恢复并加解析回归；源码构建因此显示裸 `0.0.0`，npm 制品显示裸 `0.18.x`。
 - live-tests crate（`LIVE_VENDORS` + `.env.local` 凭据）按 厂商×桥×场景 矩阵跑
   真实请求；compact 场景已入 exec 矩阵（三线）。
+- **用户可见文案改名须同批次协同客户端**（2026-11-09 起，§5.4）：错误 prose
+  可以改，但机器判据只能是 `codex_error_info`；任何按字符串前缀匹配的客户端
+  （如 iOS 输入上限分类器）必须同步改为读该字段，否则改名即漏判。
 
 ## 9. 差异未及之处
 
