@@ -24,6 +24,65 @@ impl PruneOutcome {
     }
 }
 
+/// Call ids of text tool outputs longer than `min_chars_to_prune`.
+pub(crate) fn oversized_tool_output_call_ids(
+    items: &[ResponseItemEnvelope],
+    min_chars_to_prune: usize,
+) -> Vec<String> {
+    items
+        .iter()
+        .filter_map(|envelope| match &envelope.item {
+            ResponseItem::FunctionCallOutput {
+                call_id: Some(call_id),
+                output,
+                ..
+            }
+            | ResponseItem::CustomToolCallOutput {
+                call_id, output, ..
+            } => match &output.body {
+                FunctionCallOutputBody::Text(text) if text.chars().count() > min_chars_to_prune => {
+                    Some(call_id.clone())
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
+/// Re-apply a persisted head/tail window to the tool output with `call_id`.
+/// Returns whether the item was found and shortened.
+pub(crate) fn prune_tool_output_by_call_id(
+    items: &mut [ResponseItemEnvelope],
+    call_id: &str,
+    keep_head_chars: usize,
+    keep_tail_chars: usize,
+) -> bool {
+    for envelope in items {
+        let body = match &mut envelope.item {
+            ResponseItem::FunctionCallOutput {
+                call_id: Some(existing),
+                output,
+                ..
+            } if existing == call_id => &mut output.body,
+            ResponseItem::CustomToolCallOutput {
+                call_id: existing,
+                output,
+                ..
+            } if existing == call_id => &mut output.body,
+            _ => continue,
+        };
+        return prune_body(
+            body,
+            keep_head_chars,
+            keep_tail_chars,
+            keep_head_chars.saturating_add(keep_tail_chars),
+        )
+        .is_some();
+    }
+    false
+}
+
 /// Keep `keep_head_chars` characters from the start and `keep_tail_chars` from
 /// the end of every text tool result longer than `min_chars_to_prune`,
 /// replacing the middle with a marker.

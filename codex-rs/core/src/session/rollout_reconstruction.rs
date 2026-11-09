@@ -107,6 +107,16 @@ fn apply_active_surface_replacement(
         });
     }
     next.extend(items[index..].iter().cloned());
+    // Re-apply the persisted tool-output windows so a reload sees the same
+    // shortened tail the live session saw (2026-11-09 review P1).
+    for pruned in &replacement.pruned_tool_outputs {
+        crate::session::compaction_prune::prune_tool_output_by_call_id(
+            &mut next,
+            &pruned.call_id,
+            pruned.keep_head_chars,
+            pruned.keep_tail_chars,
+        );
+    }
     history.replace_annotated(next);
 }
 

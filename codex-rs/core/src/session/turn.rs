@@ -901,7 +901,10 @@ pub(crate) async fn run_turn(
                     );
                 }
 
-                let candidate = if needs_follow_up {
+                // Do not consume a ready async candidate when this step already
+                // compacted in the foreground: taking it here would drop a
+                // valid result that a later step could adopt (2026-11-09 review).
+                let candidate = if needs_follow_up && !checkpoint_compacted {
                     super::async_compaction::take_ready(&sess, &turn_context).await
                 } else {
                     None

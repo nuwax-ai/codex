@@ -375,6 +375,12 @@ resume 在同一状态上再失败——永久原地打转。
   拒绝过的那次重试，其裁剪预算取 `min(宣称窗口, 已观测拒绝点)`，避免原样重发；
   ④ 中途检查点执行后，同一 step 的 rollover 不再二次压缩，且
   `NecessaryContentExceedsWindow` 会明确报成 `InvalidPrompt` 而不是被吞掉。
+- **复审加固（2026-11-09 第三轮）**：① 工具输出剪枝随 `SurfaceReplacement`
+  持久化（`pruned_tool_outputs`，按 `call_id` 记录头/尾窗口），resume 后回放同样的
+  模型可见面，不再恢复完整大输出；② 轮内降级保护"本轮第一条 user 消息"
+  （turn_id 归属），追加指令不会挤掉原始任务；③ 裁剪预算与"必要输入超窗"判据
+  拆分（前者可含已观测拒绝点，后者只用宣称窗口）；④ 本步已前台压缩时不再取走
+  异步候选。
 - **会话不弃（同日起）**：产品目标是"一个会话一直用、可自由换模型"，所以超窗的
   终态提示不再让用户"开新线程"——`ContextWindowExceeded` 文案改为
   "the conversation is kept; retry, or switch to a model with a larger context

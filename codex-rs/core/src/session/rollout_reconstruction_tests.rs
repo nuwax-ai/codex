@@ -2891,6 +2891,7 @@ async fn surface_replacement_hides_shadowed_history_on_replay() {
             retained_tail_tokens: 2_000,
             reason: codex_history::SurfaceReplacementReason::WindowShrink,
             supersedes: Vec::new(),
+            pruned_tool_outputs: Vec::new(),
         })),
         RolloutItem::ResponseItem(user_item("item_3", "kept turn")),
     ];
@@ -2980,6 +2981,7 @@ async fn surface_replacement_cuts_a_compaction_checkpoint_history() {
             retained_tail_tokens: 2_000,
             reason: codex_history::SurfaceReplacementReason::WindowShrink,
             supersedes: Vec::new(),
+            pruned_tool_outputs: Vec::new(),
         })),
     ];
 
@@ -3049,6 +3051,7 @@ async fn an_older_surface_replacement_cannot_override_a_newer_checkpoint() {
             retained_tail_tokens: 2_000,
             reason: codex_history::SurfaceReplacementReason::WindowShrink,
             supersedes: Vec::new(),
+            pruned_tool_outputs: Vec::new(),
         })),
         RolloutItem::Compacted(Box::new(codex_history::CompactedItem {
             message: "fresh full-compaction summary".to_string(),
@@ -3136,6 +3139,7 @@ async fn a_no_summary_trim_replays_to_the_same_boundary_without_planting() {
             retained_tail_tokens: 60,
             reason: codex_history::SurfaceReplacementReason::WindowShrinkOmitted,
             supersedes: Vec::new(),
+            pruned_tool_outputs: Vec::new(),
         })),
         RolloutItem::ResponseItem(user_item("item_3", "kept turn")),
     ];
@@ -3195,6 +3199,7 @@ async fn a_no_summary_trim_with_later_turns_keeps_them_on_replay() {
             retained_tail_tokens: 0,
             reason: codex_history::SurfaceReplacementReason::Overflow,
             supersedes: Vec::new(),
+            pruned_tool_outputs: Vec::new(),
         })),
         RolloutItem::ResponseItem(user_item("item_3", "new question")),
         RolloutItem::ResponseItem(user_item("item_4", "new reply")),
@@ -3254,6 +3259,7 @@ async fn an_empty_tail_trim_stays_hidden_when_the_following_turn_is_rolled_back(
             retained_tail_tokens: 0,
             reason: codex_history::SurfaceReplacementReason::Overflow,
             supersedes: Vec::new(),
+            pruned_tool_outputs: Vec::new(),
         })),
         RolloutItem::ResponseItem(user_item("item_3", "rolled back turn")),
         RolloutItem::EventMsg(EventMsg::ThreadRolledBack(ThreadRolledBackEvent {
@@ -3282,7 +3288,83 @@ async fn an_empty_tail_trim_stays_hidden_when_the_following_turn_is_rolled_back(
     );
 }
 
-/// A no-summary trim with an EMPTY retained tail hides everything on replay./// A no-summary trim with an EMPTY retained tail hides everything on replay.
+/// Persisted tool-output windows must be re-applied on replay, otherwise a
+/// reload restores the full payload that made the turn overflow
+/// (2026-11-09 review P1).
+#[tokio::test]
+async fn a_persisted_tool_output_window_is_reapplied_on_replay() {
+    let (session, turn_context) = make_session_and_context().await;
+    let user_item = |id: &str, text: &str| ResponseItemEnvelope {
+        item: ResponseItem::Message {
+            id: Some(codex_protocol::ResponseItemId::from_server(id.to_string())),
+            role: "user".to_owned(),
+            content: vec![ContentItem::InputText {
+                text: text.to_owned(),
+            }],
+            phase: None,
+            status: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    };
+    let tool_output = ResponseItemEnvelope {
+        item: ResponseItem::FunctionCallOutput {
+            id: None,
+            call_id: Some("call-1".to_string()),
+            name: None,
+            namespace: None,
+            output: codex_protocol::models::FunctionCallOutputPayload::from_text(
+                "y".repeat(20_000),
+            ),
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    };
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(user_item("item_1", "list the files")),
+        RolloutItem::ResponseItem(tool_output),
+        RolloutItem::SurfaceReplacement(Box::new(codex_history::SurfaceReplacementItem {
+            compaction_id: "cmp_prune".to_string(),
+            resume_at_item_id: "item_1".to_string(),
+            summary: String::new(),
+            provider: "local".to_string(),
+            model: "small-window".to_string(),
+            shadowed_tokens: 0,
+            retained_tail_tokens: 5_100,
+            reason: codex_history::SurfaceReplacementReason::Overflow,
+            supersedes: Vec::new(),
+            pruned_tool_outputs: vec![codex_history::PrunedToolOutput {
+                call_id: "call-1".to_string(),
+                keep_head_chars: 100,
+                keep_tail_chars: 50,
+            }],
+        })),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+    let chars = reconstructed
+        .history
+        .iter()
+        .find_map(|envelope| match &envelope.item {
+            ResponseItem::FunctionCallOutput { output, .. } => match &output.body {
+                codex_protocol::models::FunctionCallOutputBody::Text(text) => {
+                    Some(text.chars().count())
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("tool output survives the replay");
+    assert!(
+        chars < 1_000,
+        "replay must re-apply the persisted head/tail window, got {chars} chars"
+    );
+}
+
+/// A no-summary trim with an EMPTY retained tail hides everything on replay.
 #[tokio::test]
 async fn a_no_summary_trim_with_empty_tail_hides_everything_on_replay() {
     let (session, turn_context) = make_session_and_context().await;
@@ -3313,6 +3395,7 @@ async fn a_no_summary_trim_with_empty_tail_hides_everything_on_replay() {
             retained_tail_tokens: 0,
             reason: codex_history::SurfaceReplacementReason::WindowShrinkOmitted,
             supersedes: Vec::new(),
+            pruned_tool_outputs: Vec::new(),
         })),
     ];
 

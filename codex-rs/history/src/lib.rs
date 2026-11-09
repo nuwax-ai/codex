@@ -335,6 +335,15 @@ mod rollout_payload;
 pub use guardian_history::GuardianHistoryCheckpoint;
 pub use guardian_history::GuardianRetainedOmissions;
 
+/// One retained tool output that the model sees shortened.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct PrunedToolOutput {
+    /// Stable call id of the tool output (survives reloads; item ids do not).
+    pub call_id: String,
+    pub keep_head_chars: usize,
+    pub keep_tail_chars: usize,
+}
+
 /// Why a partial-history replacement was written.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -382,6 +391,11 @@ pub struct SurfaceReplacementItem {
     /// Earlier replacements this one absorbs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub supersedes: Vec<String>,
+    /// Tool outputs in the retained tail that the model sees shortened but the
+    /// rollout still stores in full. Replay re-applies the same head/tail window
+    /// so a reload does not reintroduce the oversized payload.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pruned_tool_outputs: Vec<PrunedToolOutput>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

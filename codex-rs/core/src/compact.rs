@@ -1198,6 +1198,7 @@ pub(crate) async fn run_migration_compact_task(
             retained_tail_tokens: (window as f64 * settings.retain_ratio) as i64,
             reason: codex_history::SurfaceReplacementReason::WindowShrink,
             supersedes: Vec::new(),
+            pruned_tool_outputs: Vec::new(),
         };
         sess.persist_rollout_items(&[codex_history::RolloutItem::SurfaceReplacement(Box::new(
             record,
@@ -1343,6 +1344,23 @@ pub(crate) enum DegradeProtection {
     CurrentTurnInput,
 }
 
+/// True when this envelope is a user message recorded by `turn_id`.
+fn is_user_message_of_turn(envelope: &ResponseItemEnvelope, turn_id: &str) -> bool {
+    match &envelope.item {
+        ResponseItem::Message {
+            role,
+            internal_chat_message_metadata_passthrough,
+            ..
+        } if role == "user" => {
+            internal_chat_message_metadata_passthrough
+                .as_ref()
+                .and_then(|metadata| metadata.turn_id.as_deref())
+                == Some(turn_id)
+        }
+        _ => false,
+    }
+}
+
 /// The result of the degraded downshift path (downshift plan 2026-11-08 §2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DegradeOutcome {
@@ -1411,22 +1429,36 @@ pub(crate) async fn degrade_history_to_target_window(
         });
     };
     let instructions_tokens = (sess.get_prompt_base_instructions().await.text.len() as i64) / 4;
+    // Two budgets with different meanings (2026-11-09 review P2):
+    // - `history_budget` is the trim target; after a rejection it also honours
+    //   the observed ceiling so the retry is actually smaller than the rejected
+    //   payload;
+    // - `necessary_budget` keeps the ADVERTISED window and decides whether the
+    //   protected input itself is too large. A single image-heavy rejection must
+    //   not turn a later text-only turn into "input too large".
+    let advertised_window = window;
     let window = observed_window
         .filter(|observed| *observed > 0)
         .map_or(window, |observed| window.min(observed));
-    let history_budget = window
-        .saturating_sub(RESERVED_OUTPUT_TOKENS)
-        .saturating_sub(instructions_tokens)
-        .saturating_sub(degrade_fixed_margin_tokens(window))
-        .saturating_sub(pending_input_tokens.max(0));
-    if history_budget < 0 {
+    let budget_for = |window: i64| {
+        window
+            .saturating_sub(RESERVED_OUTPUT_TOKENS)
+            .saturating_sub(instructions_tokens)
+            .saturating_sub(degrade_fixed_margin_tokens(window))
+            .saturating_sub(pending_input_tokens.max(0))
+    };
+    let history_budget = budget_for(window);
+    let necessary_budget = budget_for(advertised_window);
+    if necessary_budget < 0 {
         tracing::warn!(
-            window,
+            window = advertised_window,
             instructions_tokens,
             pending_input_tokens,
             "downshift degrade: the necessary request content exceeds the target window"
         );
-        return Ok(DegradeOutcome::NecessaryContentExceedsWindow { window });
+        return Ok(DegradeOutcome::NecessaryContentExceedsWindow {
+            window: advertised_window,
+        });
     }
 
     let history = sess.clone_history().await;
@@ -1473,11 +1505,20 @@ pub(crate) async fn degrade_history_to_target_window(
     // would succeed without the task it was asked to perform.
     let protected_index = match protection {
         DegradeProtection::None => None,
-        DegradeProtection::CurrentTurnInput => items
-            .iter()
-            .rposition(|envelope| {
-                matches!(&envelope.item, ResponseItem::Message { role, .. } if role == "user")
-            }),
+        DegradeProtection::CurrentTurnInput => {
+            // Protect from the first user message of THIS turn: a steer arrives
+            // as a second user message in the same turn, so clamping to the last
+            // one could drop the task the turn is actually executing.
+            let turn_id = turn_context.sub_id.as_str();
+            items
+                .iter()
+                .position(|envelope| is_user_message_of_turn(envelope, turn_id))
+                .or_else(|| {
+                    items.iter().rposition(|envelope| {
+                        matches!(&envelope.item, ResponseItem::Message { role, .. } if role == "user")
+                    })
+                })
+        }
     };
     let boundary = match protected_index {
         Some(protected) if boundary > protected => protected,
@@ -1492,22 +1533,39 @@ pub(crate) async fn degrade_history_to_target_window(
     let mut retained: Vec<ResponseItemEnvelope> = items[boundary..].to_vec();
     let mut retained_tokens: i64 = item_tokens[boundary..].iter().sum();
     debug_assert_eq!(shadowed_tokens + retained_tokens, total);
+    let mut pruned_tool_outputs: Vec<codex_history::PrunedToolOutput> = Vec::new();
     if protection == DegradeProtection::CurrentTurnInput && retained_tokens > history_budget {
         // The retained tail is usually dominated by tool output the turn can
         // re-run. Shrink that deterministically before declaring the protected
         // input itself too large: a one-line question followed by a huge tool
-        // result must not fail as "input too large".
+        // result must not fail as "input too large". The call ids are persisted
+        // with the replacement so a reload reproduces the same model-visible
+        // surface instead of restoring the full payload.
+        let keep_head_chars = 4_000;
+        let keep_tail_chars = 1_000;
+        let call_ids = crate::session::compaction_prune::oversized_tool_output_call_ids(
+            &retained,
+            keep_head_chars + keep_tail_chars,
+        );
         let pruned = crate::session::compaction_prune::prune_oversized_tool_results(
             &mut retained,
-            /*keep_head_chars*/ 4_000,
-            /*keep_tail_chars*/ 1_000,
-            /*min_chars_to_prune*/ 4_000,
+            keep_head_chars,
+            keep_tail_chars,
+            keep_head_chars + keep_tail_chars,
         );
         if !pruned.is_empty() {
             retained_tokens = retained
                 .iter()
                 .map(|envelope| crate::context_manager::estimate_item_token_count(&envelope.item))
                 .sum();
+            pruned_tool_outputs = call_ids
+                .into_iter()
+                .map(|call_id| codex_history::PrunedToolOutput {
+                    call_id,
+                    keep_head_chars,
+                    keep_tail_chars,
+                })
+                .collect();
             tracing::info!(
                 pruned_results = pruned.pruned_results,
                 chars_removed = pruned.chars_removed,
@@ -1516,16 +1574,18 @@ pub(crate) async fn degrade_history_to_target_window(
             );
         }
     }
-    if protection == DegradeProtection::CurrentTurnInput && retained_tokens > history_budget {
-        // The protected input plus everything after it cannot fit: no trim can
-        // make this request succeed.
+    if protection == DegradeProtection::CurrentTurnInput && retained_tokens > necessary_budget {
+        // The protected input plus everything after it cannot fit even in the
+        // advertised window: no trim can make this request succeed.
         tracing::warn!(
-            window,
-            history_budget,
+            window = advertised_window,
+            necessary_budget,
             retained_tokens,
             "mid-turn degrade: the current input alone exceeds the window"
         );
-        return Ok(DegradeOutcome::NecessaryContentExceedsWindow { window });
+        return Ok(DegradeOutcome::NecessaryContentExceedsWindow {
+            window: advertised_window,
+        });
     }
 
     let record = codex_history::SurfaceReplacementItem {
@@ -1547,6 +1607,7 @@ pub(crate) async fn degrade_history_to_target_window(
             DegradeReason::CompactionOverflow => codex_history::SurfaceReplacementReason::Overflow,
         },
         supersedes: Vec::new(),
+        pruned_tool_outputs,
     };
     sess.persist_rollout_items(&[codex_history::RolloutItem::SurfaceReplacement(Box::new(
         record,

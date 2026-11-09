@@ -504,3 +504,18 @@ retry 建议），我加的 `invalidPrompt → input_too_large` 映射在真实�
 | P1 客户端改写 NUWAX_ 后旧 CODEX_ 拼写可能冲突 | 成立 | 抽出 `acpEnvAliases.takeAliasedEnv()`：先把两种拼写收敛成一份（NUWAX_ 优先、删除两者），再按明确优先级写回；覆盖 MODEL/BASE_URL/API_KEY/PROVIDER_ID/WIRE_API/API_PROTOCOL/DISABLE_THINKING/MODEL_REASONING_EFFORT/MODEL_CONTEXT_WINDOW | `acpEnvAliases.test.ts`（3 例） |
 
 **未做**：客户端 `_meta` 真机回放验收（需三端联调）；`InputTooLarge` v2 变体（§13）。
+
+
+---
+
+## 15. 第三轮复审修复（2026-11-09 夜）
+
+| 发现 | 结论 | 修复 | 回归 |
+|---|---|---|---|
+| P1 工具输出剪枝在 resume 后丢失 | 成立 | `SurfaceReplacementItem` 新增 `pruned_tool_outputs: Vec<PrunedToolOutput{call_id,keep_head_chars,keep_tail_chars}>`（`#[serde(default)]`，原始输出仍完整保留在 rollout）；写入端记录被剪的 call_id，回放端按 call_id 重新施加同样的头/尾窗口 | `a_persisted_tool_output_window_is_reapplied_on_replay` |
+| P1 追加指令可能挤掉原始任务 | 成立 | `DegradeProtection::CurrentTurnInput` 改为保护"本轮第一条 user 消息"（按 `internal_chat_message_metadata_passthrough.turn_id == turn_context.sub_id` 定位，取不到再回退最后一条 user） | 既有 steer 路径 + 新增剪枝用例 |
+| P2 观测拒绝点参与"必要输入超窗"硬判定 | 成立 | 拆成两个预算：`history_budget`（min(宣称, 观测)，用于裁剪）与 `necessary_budget`（宣称窗口，用于 `NecessaryContentExceedsWindow`） | 既有 compact 用例 |
+| P2 有效异步候选被取走后丢弃 | 成立 | `checkpoint_compacted` 为真时不再 `take_ready`，候选留给后续 step | 既有 async compaction 用例 |
+| P2 客户端 URL/凭据可能来自不同路由 | 成立 | 新增 `resolveCodexRoute()`：保持 URL 既有优先级，但凭据绑定到同一来源（env/config/backend 三选一），并返回 `source` 供日志/断言 | `acpEnvAliases.test.ts` 4 例 |
+
+**未做**：`InputTooLarge` v2 变体（§13）；guardian reviewer 观察（§12）；三端回放验收。
