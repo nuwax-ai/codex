@@ -415,3 +415,77 @@ DISABLE_THINKING/MODEL_CONTEXT_WINDOW`（适配器与 harness 均支持同义别
 
 配套能力（已有）：模型降级时的迁移压缩（FORK.md §5.3）保证换到小窗口模型也能继续，
 本轮的超窗自愈保证换到大窗口之前不会把会话耗死。
+
+
+---
+
+## 12. 后续观察项：guardian reviewer 自身的超窗（本轮不做）
+
+**结论先行**：它不影响用户会话的存活，也不会要求用户换会话；受影响的是 guardian
+reviewer 自己的那一轮。
+
+代码路径（`is_basic_session_source` 只对 reviewer 会话成立，
+`ext/guardian-reviewer/src/session.rs:10`）：
+
+| 位置 | 行为 |
+|---|---|
+| `core/src/session/turn.rs:210` | `check_pending_guardian_input(...)?`，无压缩兜底；在 reviewer 会话插 `ExhaustedReviewBudget::Detected`（`guardian/input_budget.rs:155`） |
+| `core/src/session/turn.rs:488-527` | `finalize_guardian_input` 超窗 → 压一次 → 仍失败则 `?` |
+| `core/src/session/turn.rs:1060-1085` | 采样超窗且 reviewer 会话已有标记 → 压一次 → 仍失败则 `?` |
+
+失败后的既有恢复（所以不是"必须换会话"）：
+
+- `guardian/review_session.rs:679-695`：读取并移除标记，`Detected` → `InputBudgetExceeded`，
+  且 `disposition = Discard`；
+- `guardian/review_session_setup.rs:273`：只有 `Reusable` 才保存 checkpoint；
+- 即 **reviewer 会话被丢弃，下一次审批从干净会话开始**。用户侧只会看到"这次审批
+  没通过/被拒"，对话本身继续。
+
+**观察项**：长会话里 reviewer 对话会持续增长，可能出现"审批周期性失败 → 丢弃重建"
+的抖动；表现是需审批的动作时好时坏。建议先只加结构化日志（窗口、证据 token 数、
+丢弃原因），拿到真实频率后再决定是否做"reviewer 有界化 + 失败语义明确"（把超窗
+审批降级为"转人工确认"而不是无声失败）。不要在没有数据前改 guardian 的 fail-closed
+契约。
+
+
+---
+
+## 13. 自查发现：input_too_large 在 v2 协议上还差一个变体（2026-11-09）
+
+把 `NecessaryContentExceedsWindow` 从 `Fatal` 改成 `InvalidPrompt` 后，实测链条断在
+app-server v2 翻译层：
+
+```rust
+// app-server-protocol/src/protocol/v2/shared.rs
+CoreCodexErrorInfo::InvalidPrompt => CodexErrorInfo::Other,
+```
+
+适配器消费的是 v2 事件，所以它看到的仍是 `other`（→ `provider_error`，还带
+retry 建议），我加的 `invalidPrompt → input_too_large` 映射在真实链路里打不到。
+
+**试过并回退的方案**：把 v2 的 `InvalidPrompt → BadRequest`。它能让客户端拿到
+`bad_request`，但 `bad_request` 同时也是"加密历史 provider 不匹配"等无关错误的
+分类——legacy `_meta.codex.sessionFailure` 于是被这些错误一并带上，导致两个既有
+快照测试变化（`invalid-encrypted-content` 两例）。属于"判据过宽"，已回退。
+
+**正确的后续（单列，需要协议变更）**：
+
+1. `protocol/src/protocol.rs` 的 `CodexErrorInfo` 增加 `InputTooLarge`；
+2. `protocol/src/codex_error_info.rs` 的 wire 枚举加同名项；
+3. `protocol/src/error.rs`：新增 `CodexErrorDetails::InputExceedsContextWindow`（或
+   直接把 `InvalidPrompt` 映射过去）→ `CodexErrorInfo::InputTooLarge`；
+4. `app-server-protocol/src/protocol/v2/shared.rs` 加 v2 变体 + `inputTooLarge` 映射；
+5. 跑 `just write-app-server-schema` 重新生成 `schema/precomputed/*`；
+6. 适配器 `STRING_CODEX_ERROR_CATEGORIES` 加 `inputTooLarge: "input_too_large"`，
+   并把生成的 `src/app-server/v2/CodexErrorInfo.ts` 同步；
+7. 现有 `turn.rs` 三处已返回 `CodexErr::InvalidPrompt`，第 3 步改一行即可接上。
+
+**当前端到端状态（供 review 校准预期）**：
+
+- `context_exhausted`：完整链路（harness `ContextWindowExceeded` → v2
+  `contextWindowExceeded` → 适配器 `context_exhausted` → legacy `_meta.kind`);
+- `input_too_large`：harness 侧已是 `InvalidPrompt`（内部语义正确、非重试），但
+  v2 仍翻成 `Other`，客户端拿不到专门判据，会按普通错误展示。
+
+另：`app-server-protocol` 的 `stable_precomputed_exports_match_schema_fixtures`
+在当前 HEAD 上就是红的（已 stash 验证与本次无关），未在本次提交里改 fixture blob。

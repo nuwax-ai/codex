@@ -380,6 +380,12 @@ resume 在同一状态上再失败——永久原地打转。
   ASCII 前缀匹配 "Codex ran out of room" 的客户端（iOS 输入上限分类器）必须
   同批次改判该字段。
 
+**已知限制（2026-11-09，观察中）**：guardian reviewer 自己的回合超窗时仍按
+fail-closed 失败并丢弃 reviewer 会话（`review_session_setup` 只在 Reusable 时
+保存 checkpoint）。这不影响用户会话：下一次审批会从干净会话重建。长会话里可能
+出现"审批周期性失败"的抖动，先只收集结构化日志（窗口/证据 token/丢弃原因），
+再决定是否做 reviewer 有界化。详见方案文档 §12。
+
 ## 6. daemon：npm 安装不自启（v0.18.8）
 
 官方 TUI 默认自启共享 daemon，需要"完整本地包布局"（codex-package.json、
