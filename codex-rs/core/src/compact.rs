@@ -1332,6 +1332,17 @@ pub(crate) enum DegradeReason {
     CompactionOverflow,
 }
 
+/// What the degraded trim must keep even when the budget says otherwise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DegradeProtection {
+    /// Nothing is protected: the caller reserved room for pending input.
+    None,
+    /// Keep the newest user message. Mid-turn degradation runs while the turn is
+    /// already executing that instruction, so cutting past it would let the next
+    /// sampling succeed on a history that no longer contains the task.
+    CurrentTurnInput,
+}
+
 /// The result of the degraded downshift path (downshift plan 2026-11-08 §2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DegradeOutcome {
@@ -1377,6 +1388,7 @@ pub(crate) async fn degrade_history_to_target_window(
     pending_input_tokens: i64,
     cancellation: &tokio_util::sync::CancellationToken,
     reason: DegradeReason,
+    protection: DegradeProtection,
 ) -> CodexResult<DegradeOutcome> {
     if cancellation.is_cancelled() {
         return Err(CodexErr::TurnAborted);
@@ -1448,6 +1460,22 @@ pub(crate) async fn degrade_history_to_target_window(
     while boundary < items.len() && (items[boundary].id().is_none() || prefix[boundary] != 0) {
         boundary += 1;
     }
+    // Fork (2026-11-09): never cut past the instruction the running turn is
+    // already executing. A long tool output can otherwise push the boundary
+    // after the user's message (or to an empty tail), so the retried request
+    // would succeed without the task it was asked to perform.
+    let protected_index = match protection {
+        DegradeProtection::None => None,
+        DegradeProtection::CurrentTurnInput => items
+            .iter()
+            .rposition(|envelope| {
+                matches!(&envelope.item, ResponseItem::Message { role, .. } if role == "user")
+            }),
+    };
+    let boundary = match protected_index {
+        Some(protected) if boundary > protected => protected,
+        _ => boundary,
+    };
     let boundary_id = items
         .get(boundary)
         .and_then(|item| item.id())
@@ -1456,6 +1484,17 @@ pub(crate) async fn degrade_history_to_target_window(
     let shadowed_tokens: i64 = item_tokens[..boundary].iter().sum();
     let retained_tokens: i64 = item_tokens[boundary..].iter().sum();
     debug_assert_eq!(shadowed_tokens + retained_tokens, total);
+    if protection == DegradeProtection::CurrentTurnInput && retained_tokens > history_budget {
+        // The protected input plus everything after it cannot fit: no trim can
+        // make this request succeed.
+        tracing::warn!(
+            window,
+            history_budget,
+            retained_tokens,
+            "mid-turn degrade: the current input alone exceeds the window"
+        );
+        return Ok(DegradeOutcome::NecessaryContentExceedsWindow { window });
+    }
 
     let record = codex_history::SurfaceReplacementItem {
         compaction_id: uuid::Uuid::new_v4().to_string(),

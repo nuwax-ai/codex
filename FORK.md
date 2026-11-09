@@ -350,6 +350,17 @@ resume 在同一状态上再失败——永久原地打转。
   `context_window_token_status` 把有效窗口钳到该值的 95%，让下一次检查点提前
   压缩。针对"网关实际拒绝点低于宣称窗口"和图片/工具负载被本地低估两种情形；
   resume 后重新学习，不进 rollout。
+- **回放语义（2026-11-09 复审修复）**：空 `resume_at_item_id` 的"空尾部"记录不再按
+  当前历史的末尾截断——回放改为定位**记录之后第一条 item**，因此裁剪之后新增的
+  用户消息/回复不会在 resume 时被一起隐藏（回归
+  `a_no_summary_trim_with_later_turns_keeps_them_on_replay`）。
+- **轮内降级保护当前指令**：`DegradeProtection::CurrentTurnInput` 保证边界不越过
+  最新的 user 消息；若保护后仍装不进预算，返回 `NecessaryContentExceedsWindow`，
+  不会出现"重试成功但任务指令已丢"。
+- **每步只压一次**：中途检查点执行后重算 `context_window_token_status`，旧的
+  rollover 分支不再用压缩前的 `token_limit_reached` 二次压缩。
+- **观测上限按路由隔离**：`ObservedContextCeiling` 记录 model + provider，只对同一
+  路由生效，换模型/换网关不受影响。
 - **品牌**：`CodexErrorDetails::ContextWindowExceeded` 的文案改为
   `nuwax-harness ran out of room in the model's context window. ...`。
   机器判据只能是 `codex_error_info == "context_window_exceeded"`；任何按

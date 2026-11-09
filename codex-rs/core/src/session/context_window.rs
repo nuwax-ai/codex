@@ -57,16 +57,30 @@ impl ContextWindowTokenStatus {
 /// below the advertised window (and image/tool payloads can cost more than the
 /// local estimate), so remembering the observed ceiling lets the next checkpoint
 /// compact before hitting the same wall. In-memory only; never raises a limit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ObservedContextCeiling {
     pub(crate) tokens: i64,
+    /// Model whose request was rejected; a different model may have a different
+    /// real limit, so the ceiling never leaks across routes.
+    pub(crate) model: String,
+    /// Provider route that produced the rejection.
+    pub(crate) provider: String,
 }
 
 /// Clamp `limit` to a previously observed rejection point, keeping a 5% margin so
 /// the next request stops short of the exact size that was rejected.
-fn apply_observed_ceiling(limit: i64, ceiling: Option<ObservedContextCeiling>) -> i64 {
+fn apply_observed_ceiling(
+    limit: i64,
+    ceiling: Option<&ObservedContextCeiling>,
+    model: &str,
+    provider: &str,
+) -> i64 {
     match ceiling {
-        Some(ceiling) if ceiling.tokens > 0 => limit.min(ceiling.tokens.saturating_mul(95) / 100),
+        Some(ceiling)
+            if ceiling.tokens > 0 && ceiling.model == model && ceiling.provider == provider =>
+        {
+            limit.min(ceiling.tokens.saturating_mul(95) / 100)
+        }
         _ => limit,
     }
 }
@@ -141,14 +155,20 @@ async fn context_window_token_status_with_config(
     let observed_ceiling = sess
         .services
         .thread_extension_data
-        .get::<ObservedContextCeiling>()
-        .map(|ceiling| *ceiling);
+        .get::<ObservedContextCeiling>();
     let full_context_window_limit = model_info
         .resolved_context_window()
         .map(|context_window| {
             context_window.saturating_mul(model_info.effective_context_window_percent) / 100
         })
-        .map(|limit| apply_observed_ceiling(limit, observed_ceiling));
+        .map(|limit| {
+            apply_observed_ceiling(
+                limit,
+                observed_ceiling.as_deref(),
+                model_info.slug.as_str(),
+                config.model_provider_id.as_str(),
+            )
+        });
 
     // Report remaining tokens against the base (unbuffered) window, capped by the full context.
     let base_window_tokens_remaining = [
@@ -229,21 +249,48 @@ mod pending_input_tests {
 
     #[test]
     fn observed_ceiling_clamps_and_keeps_a_margin() {
+        let ceiling = |tokens| ObservedContextCeiling {
+            tokens,
+            model: "deepseek-flash".to_string(),
+            provider: "gateway".to_string(),
+        };
         // No observation: the advertised limit is unchanged.
-        assert_eq!(apply_observed_ceiling(190_000, None), 190_000);
+        assert_eq!(
+            apply_observed_ceiling(190_000, None, "deepseek-flash", "gateway"),
+            190_000
+        );
         // A rejection at 160k lowers the working limit to 152k (95%).
         assert_eq!(
-            apply_observed_ceiling(190_000, Some(ObservedContextCeiling { tokens: 160_000 })),
+            apply_observed_ceiling(
+                190_000,
+                Some(&ceiling(160_000)),
+                "deepseek-flash",
+                "gateway"
+            ),
             152_000
         );
         // An observation above the advertised window never raises it.
         assert_eq!(
-            apply_observed_ceiling(190_000, Some(ObservedContextCeiling { tokens: 900_000 })),
+            apply_observed_ceiling(
+                190_000,
+                Some(&ceiling(900_000)),
+                "deepseek-flash",
+                "gateway"
+            ),
             190_000
         );
         // A non-positive observation is ignored.
         assert_eq!(
-            apply_observed_ceiling(190_000, Some(ObservedContextCeiling { tokens: 0 })),
+            apply_observed_ceiling(190_000, Some(&ceiling(0)), "deepseek-flash", "gateway"),
+            190_000
+        );
+        // Another model or provider keeps the advertised window.
+        assert_eq!(
+            apply_observed_ceiling(190_000, Some(&ceiling(160_000)), "other-model", "gateway"),
+            190_000
+        );
+        assert_eq!(
+            apply_observed_ceiling(190_000, Some(&ceiling(160_000)), "deepseek-flash", "other"),
             190_000
         );
     }

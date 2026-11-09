@@ -1619,19 +1619,26 @@ impl Session {
     /// request was rejected for exceeding the model window, so later checkpoints
     /// compact before hitting the same wall. Only ever lowers the ceiling, and
     /// only for this process (nothing is persisted to the rollout).
-    pub(crate) async fn record_observed_context_ceiling(&self) {
+    pub(crate) async fn record_observed_context_ceiling(&self, turn_context: &TurnContext) {
         let active = self.get_total_token_usage().await;
         if active <= 0 {
             return;
         }
+        let model = turn_context.model_info().slug.clone();
+        let provider = turn_context.config.model_provider_id.clone();
         let existing = self
             .services
             .thread_extension_data
-            .get::<crate::session::context_window::ObservedContextCeiling>();
+            .get::<crate::session::context_window::ObservedContextCeiling>()
+            .filter(|existing| existing.model == model && existing.provider == provider);
         let tokens = existing.map_or(active, |existing| existing.tokens.min(active));
-        self.services
-            .thread_extension_data
-            .insert(crate::session::context_window::ObservedContextCeiling { tokens });
+        self.services.thread_extension_data.insert(
+            crate::session::context_window::ObservedContextCeiling {
+                tokens,
+                model,
+                provider,
+            },
+        );
         tracing::warn!(
             tokens,
             "context window rejected a request; lowered the observed ceiling for this thread"

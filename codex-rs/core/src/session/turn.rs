@@ -298,6 +298,7 @@ pub(crate) async fn run_turn(
             estimate_pending_input_tokens(&input),
             &cancellation_token,
             crate::compact::DegradeReason::ModelDownshift,
+            crate::compact::DegradeProtection::None,
         )
         .await
         {
@@ -754,7 +755,10 @@ pub(crate) async fn run_turn(
                 .instrument(trace_span!("run_turn.collect_post_sampling_state"))
                 .await;
                 let needs_follow_up = model_needs_follow_up || has_pending_input;
-                let token_limit_reached = token_status.token_limit_reached;
+                // Fork (2026-11-09): refreshed after the mid-turn checkpoint, so
+                // the rollover decision below never acts on pre-compaction state.
+                let mut token_status = token_status;
+                let mut token_limit_reached = token_status.token_limit_reached;
 
                 super::async_compaction::maybe_start(
                     &sess,
@@ -806,6 +810,7 @@ pub(crate) async fn run_turn(
                                 /*pending_input_tokens*/ 0,
                                 &cancellation_token,
                                 crate::compact::DegradeReason::CompactionOverflow,
+                                crate::compact::DegradeProtection::CurrentTurnInput,
                             )
                             .await
                             {
@@ -824,6 +829,15 @@ pub(crate) async fn run_turn(
                             );
                         }
                     }
+                    // The checkpoint changed the history: recompute so the
+                    // rollover branch below does not compact a second time off
+                    // the stale `token_limit_reached`.
+                    token_status = super::context_window::context_window_token_status(
+                        sess.as_ref(),
+                        turn_context.as_ref(),
+                    )
+                    .await;
+                    token_limit_reached = token_status.token_limit_reached;
                 }
 
                 trace!(
@@ -1099,6 +1113,7 @@ pub(crate) async fn run_turn(
                         /*pending_input_tokens*/ 0,
                         &cancellation_token,
                         crate::compact::DegradeReason::CompactionOverflow,
+                        crate::compact::DegradeProtection::CurrentTurnInput,
                     )
                     .await?
                     {
@@ -1773,6 +1788,7 @@ async fn run_pre_sampling_compact(
                 pending_input_tokens.max(0),
                 cancellation_token,
                 crate::compact::DegradeReason::CompactionOverflow,
+                crate::compact::DegradeProtection::None,
             )
             .await?
             {
@@ -2221,7 +2237,7 @@ async fn run_sampling_request(
                     // Fork (2026-11-09): remember where this gateway actually
                     // rejected us, so the next checkpoint compacts before
                     // stepping over the same line again.
-                    sess.record_observed_context_ceiling().await;
+                    sess.record_observed_context_ceiling(&turn_context).await;
                     sess.set_total_tokens_full(&turn_context).await;
                     return Err(err);
                 }

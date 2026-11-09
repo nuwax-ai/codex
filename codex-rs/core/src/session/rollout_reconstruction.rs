@@ -15,19 +15,42 @@ use uuid::Uuid;
 /// honour. Records are appended, so the last candidate wins.
 fn active_surface_replacement(
     items: &[RolloutItem],
-) -> Option<&codex_history::SurfaceReplacementItem> {
+) -> Option<(usize, &codex_history::SurfaceReplacementItem)> {
     let mut superseded = std::collections::HashSet::new();
     let mut candidates = Vec::new();
-    for item in items {
+    for (index, item) in items.iter().enumerate() {
         if let RolloutItem::SurfaceReplacement(replacement) = item {
             superseded.extend(replacement.supersedes.iter().map(String::as_str));
-            candidates.push(replacement.as_ref());
+            candidates.push((index, replacement.as_ref()));
         }
     }
     candidates
         .into_iter()
         .rev()
-        .find(|replacement| !superseded.contains(replacement.compaction_id.as_str()))
+        .find(|(_, replacement)| !superseded.contains(replacement.compaction_id.as_str()))
+}
+
+/// The id of the first response item recorded after `record_index`.
+///
+/// A record with an empty boundary id has no item to point at: its retained
+/// tail was empty when it was written. Replay therefore anchors on the first
+/// item that was appended afterwards (if any), so reopening a rollout keeps
+/// the turns that followed the trim.
+fn ids_after_record(
+    rollout_items: &[RolloutItem],
+    record_index: usize,
+) -> std::collections::HashSet<&str> {
+    rollout_items
+        .iter()
+        .skip(record_index.saturating_add(1))
+        .filter_map(|item| match item {
+            RolloutItem::ResponseItem(envelope) => envelope.id().map(|id| id.as_str()),
+            RolloutItem::InterAgentCommunication(communication) => {
+                communication.id.as_ref().map(|id| id.as_str())
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// Cut the replayed surface at the newest active replacement's boundary.
@@ -38,14 +61,25 @@ fn apply_active_surface_replacement(
     history: &mut crate::context_manager::ContextManager,
     rollout_items: &[RolloutItem],
 ) {
-    let Some(replacement) = active_surface_replacement(rollout_items) else {
+    let Some((record_index, replacement)) = active_surface_replacement(rollout_items) else {
         return;
     };
     let items = history.annotated_items();
     // An empty boundary id is a no-summary trim with an EMPTY retained tail:
-    // the model sees nothing of the replaced history (downshift plan §3).
+    // the model sees nothing of the history that existed when the record was
+    // written (downshift plan §3). Cut at the first item recorded AFTER the
+    // record, not at the end of the current history: later turns append items
+    // that must stay visible on the next resume.
     let index = if replacement.resume_at_item_id.is_empty() {
-        Some(items.len())
+        let ids_after = ids_after_record(rollout_items, record_index);
+        if ids_after.is_empty() {
+            // Nothing was appended after the trim: hide the history it covered.
+            Some(items.len())
+        } else {
+            items
+                .iter()
+                .position(|item| item.id().is_some_and(|id| ids_after.contains(id.as_str())))
+        }
     } else {
         items.iter().position(|item| {
             item.id()

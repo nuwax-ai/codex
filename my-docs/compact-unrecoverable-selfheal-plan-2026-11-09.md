@@ -377,3 +377,23 @@ completed 事件在失败路径仍未发出，属既有小瑕疵）。
 
 注意：该测试套件在并行跑时偶发 10s 事件超时（与本改动无关，未改动的同类用例同样复现），
 定向复验请用 `--test-threads 1`；Mac 上需 `RUST_MIN_STACK=33554432`。
+
+
+---
+
+## 10. 复审修复（2026-11-09 晚，codex review）
+
+| 发现 | 结论 | 修复 |
+|---|---|---|
+| P1 空尾部裁剪在重载时隐藏后续消息 | 成立 | `rollout_reconstruction` 对空 boundary 改为"定位记录之后第一条 item"；新增回归 `a_no_summary_trim_with_later_turns_keeps_them_on_replay` |
+| P1 轮内降级可能裁掉当前用户指令 | 成立 | 新增 `DegradeProtection::CurrentTurnInput`：边界不越过最新 user 消息；保护后仍超预算则 `NecessaryContentExceedsWindow` |
+| P2 一次采样可能连做两次轮内压缩 | 成立 | 检查点后重算 token status，旧 rollover 分支不再用过期阈值 |
+| P2 观测上限未按路由隔离 | 成立 | `ObservedContextCeiling` 加 `model`/`provider`，只对同一路由生效 |
+| P2 ACP 失败信号未接到客户端终态 | 部分成立 | 客户端改为 `needsNewSession` 时 `throw`（走失败分支）；"必要内容超窗"缺少独立机器判据（需新增 `CodexErrorInfo` 变体）列为后续 |
+| P2 配置 schema 未更新 | 成立 | `cargo run -p codex-config-schema --bin codex-write-config-schema` 重新生成，`config_schema_matches_fixture` 通过 |
+
+**客户端命名**：`DEFAULT_CODEX_MODEL_CONTEXT_WINDOW` → `DEFAULT_NUWAX_MODEL_CONTEXT_WINDOW`；
+客户端下发的环境变量改用 `NUWAX_MODEL/BASE_URL/API_KEY/PROVIDER_ID/WIRE_API/
+DISABLE_THINKING/MODEL_CONTEXT_WINDOW`（适配器与 harness 均支持同义别名），日志里
+不再打印 `CODEX_*`。`CODEX_HOME`/`CODEX_SQLITE_HOME`/`CODEX_LOG_DIR` 因无同义别名
+暂留，目录名 `.codex` 的改名单独评估。
