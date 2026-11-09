@@ -359,8 +359,11 @@ resume 在同一状态上再失败——永久原地打转。
   不会出现"重试成功但任务指令已丢"。
 - **每步只压一次**：中途检查点执行后重算 `context_window_token_status`，旧的
   rollover 分支不再用压缩前的 `token_limit_reached` 二次压缩。
-- **观测上限按路由隔离**：`ObservedContextCeiling` 记录 model + provider，只对同一
-  路由生效，换模型/换网关不受影响。
+- **观测上限按路由隔离，且只影响调度**：`ObservedContextCeiling` 记录 model +
+  provider，只对同一路由生效；它只参与"该不该压缩"的判定
+  （`observed_window_limit`），裁剪预算仍用宣称窗口
+  （`full_context_window_limit`），所以一次图片密集请求被拒不会让后续纯文本轮次
+  被误判成"必要内容都装不下"。
 - **品牌**：`CodexErrorDetails::ContextWindowExceeded` 的文案改为
   `nuwax-harness ran out of room in the model's context window. ...`。
   机器判据只能是 `codex_error_info == "context_window_exceeded"`；任何按

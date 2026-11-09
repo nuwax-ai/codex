@@ -12,6 +12,11 @@ pub(crate) struct ContextWindowTokenStatus {
     pub(crate) auto_compact_scope_tokens: i64,
     pub(crate) auto_compact_scope_limit: Option<i64>,
     pub(crate) full_context_window_limit: Option<i64>,
+    /// Scheduling view of the full window after a gateway rejection
+    /// (`ObservedContextCeiling`). Trim budgets keep using
+    /// `full_context_window_limit`: a single rejection must not turn a later,
+    /// smaller turn into "necessary content exceeds the window".
+    pub(crate) observed_window_limit: Option<i64>,
     pub(crate) base_window_tokens_remaining: Option<i64>,
     pub(crate) auto_compact_window_prefill_tokens: Option<i64>,
     pub(crate) full_context_window_limit_reached: bool,
@@ -156,19 +161,17 @@ async fn context_window_token_status_with_config(
         .services
         .thread_extension_data
         .get::<ObservedContextCeiling>();
-    let full_context_window_limit = model_info
-        .resolved_context_window()
-        .map(|context_window| {
-            context_window.saturating_mul(model_info.effective_context_window_percent) / 100
-        })
-        .map(|limit| {
-            apply_observed_ceiling(
-                limit,
-                observed_ceiling.as_deref(),
-                model_info.slug.as_str(),
-                config.model_provider_id.as_str(),
-            )
-        });
+    let full_context_window_limit = model_info.resolved_context_window().map(|context_window| {
+        context_window.saturating_mul(model_info.effective_context_window_percent) / 100
+    });
+    let observed_window_limit = full_context_window_limit.map(|limit| {
+        apply_observed_ceiling(
+            limit,
+            observed_ceiling.as_deref(),
+            model_info.slug.as_str(),
+            config.model_provider_id.as_str(),
+        )
+    });
 
     // Report remaining tokens against the base (unbuffered) window, capped by the full context.
     let base_window_tokens_remaining = [
@@ -188,15 +191,17 @@ async fn context_window_token_status_with_config(
         .map(|limit| limit.saturating_add(auto_compact_fallback_buffer_tokens));
 
     // Force compaction once the buffered window or the model's full context window is reached.
+    // Scheduling checks use the observed (possibly clamped) window; trim
+    // budgets below use the advertised one.
     let full_context_window_limit_reached =
-        full_context_window_limit.is_some_and(|limit| active_context_tokens >= limit);
+        observed_window_limit.is_some_and(|limit| active_context_tokens >= limit);
     let token_limit_reached = buffered_auto_compact_limit
         .is_some_and(|limit| auto_compact_scope_tokens >= limit)
         || full_context_window_limit_reached;
     let post_turn_percent = config.model_post_turn_compact_threshold_percent;
     let turn_end_compaction_threshold_reached = post_turn_percent > 0
         && (token_limit_reached
-            || full_context_window_limit.is_some_and(|limit| {
+            || observed_window_limit.is_some_and(|limit| {
                 percent_threshold_reached(active_context_tokens, limit, post_turn_percent)
             }));
     // Fork (nuwax-codex): the same percentage check, but for a turn that is
@@ -206,7 +211,7 @@ async fn context_window_token_status_with_config(
     let mid_turn_percent = config.model_mid_turn_compact_threshold_percent;
     let mid_turn_compaction_threshold_reached = mid_turn_percent > 0
         && (token_limit_reached
-            || full_context_window_limit.is_some_and(|limit| {
+            || observed_window_limit.is_some_and(|limit| {
                 percent_threshold_reached(active_context_tokens, limit, mid_turn_percent)
             }));
 
@@ -215,6 +220,7 @@ async fn context_window_token_status_with_config(
         auto_compact_scope_tokens,
         auto_compact_scope_limit,
         full_context_window_limit,
+        observed_window_limit,
         base_window_tokens_remaining,
         auto_compact_window_prefill_tokens,
         full_context_window_limit_reached,
@@ -238,6 +244,7 @@ mod pending_input_tests {
             auto_compact_scope_tokens: active_context_tokens,
             auto_compact_scope_limit,
             full_context_window_limit,
+            observed_window_limit: full_context_window_limit,
             base_window_tokens_remaining: None,
             auto_compact_window_prefill_tokens: None,
             full_context_window_limit_reached: false,
