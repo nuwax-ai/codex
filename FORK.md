@@ -448,6 +448,16 @@ resume 在同一状态上再失败——永久原地打转。
 模型列表对无默认档的模型报 `defaultReasoningEffort: "none"` 占位，适配器已显式
 将其视为"未指定"而非档位。
 
+**审批默认问用户、不问模型（2026-11-10，适配器侧）**：上游 ACP 适配器的默认
+session mode 是 `agent`（"Auto review"：`approvalPolicy=on-request` +
+`approvalsReviewer=auto_review`），每个需要审批的动作都交给引擎的 guardian
+reviewer——**一次模型调用**——由它代替用户批准。nuwax-client 自己就有 ask/yolo
+权限协调器（yolo 本地自动放行、ask 弹窗），被 guardian 抢先后再也收不到
+`session/request_permission`（实测 842 次 guardian、0 次权限请求，ask 模式形同
+虚设）。fork 把默认 mode 改为 `workspace-write`（**沙箱与原默认完全相同**，只是
+审查者从模型换成用户）；`agent` 仍可在 mode 列表里显式选。引擎侧
+`approvals_reviewer` 配置默认仍是 `user`，TUI 一向如此、不受影响。
+
 **未配置时的 fail-fast（2026-11-10）**：`to_api_provider` 在"无 base_url、无 auth
 mode、provider 无 key、headers 无 Authorization、无 aws/auth.command/gateway_oauth、
 环境无 OpenAI key"时直接报错点名配置项，不再发出必然 401 的请求——内置默认域名
