@@ -340,6 +340,15 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
   alpha 全不透明（含截图工具默认 RGBA）打平走 JPEG 阶梯 85→75→65；真半透明
   保 PNG 走尺寸阶梯。token 计数不变。chat 协议每轮重发历史，截图密集的网页
   开发任务靠它把请求体压回网关限制内。
+- **thinking/effort 默认不传（2026-11-10 起）**：用户、环境变量、后端都没设置
+  effort 时，引擎在 chat 与 anthropic 两个 wire 上都**省略**该字段，模型厂商按自己
+  的默认执行（GLM-5.3 官方默认 `max`、现代 Claude 默认开思考、OpenAI GPT-5.x
+  默认 `medium`）——不再由 harness 猜一个档位。要显式控制就用
+  `NUWAX_MODEL_REASONING_EFFORT`（别名 `CODEX_MODEL_REASONING_EFFORT`，取值
+  `low/medium/high/max` 等，非法值 fail-fast 点名）；关闭思考用
+  `NUWAX_DISABLE_THINKING=1`（遇"始终思考"的模型如 GLM-5.3 会 fail-fast 点名，
+  不会把请求发出去吃网关 400）。档位门（vendor 目录档位表）只校验 chat 线。
+  ACP 客户端 UI 会显示 "Vendor default" 表示当前走厂商默认。
 - **网关 413 自愈（2026-11-10 起）**：网关以 `413 Payload Too Large` 拒绝
   请求体时，引擎不再把它当未知失败——自动压缩摘要、按预算裁剪旧截图与工具
   输出后重试；仍被拒才终态。终态文案只说"请求被拒收、会话已保留"，不出现

@@ -741,6 +741,70 @@ mod mapping {
         assert!(req.options.reasoning.is_none());
     }
 
+    /// Fork (2026-11-10): an unset effort must stay unset on BOTH wires. The
+    /// adapter used to invent `medium` for the session identity, which the
+    /// collaboration-mode apply then wrote into the thread settings; gateways
+    /// whose catalog has no `medium` (GLM-5.3 takes low/high/max) rejected
+    /// every request. These tests lock the engine half of the fix: omission is
+    /// a first-class state, not a gap to fill.
+    #[test]
+    fn unset_reasoning_effort_is_omitted_on_both_wires() {
+        let mut request = base_request(vec![user_text("hi")]);
+        request.reasoning = Some(codex_api::Reasoning {
+            effort: None,
+            summary: None,
+            context: None,
+        });
+
+        let (req, _) = responses_request_to_completion_request(&request).expect("convertible");
+        if let Some(params) = &req.additional_params {
+            assert!(
+                params.get("reasoning_effort").is_none(),
+                "the chat wire must omit the key when no effort is set: {params}"
+            );
+        }
+        assert!(
+            req.options.reasoning.is_none(),
+            "the chat wire must not set a reasoning option when no effort is set"
+        );
+
+        let (req, _) = super::responses_request_to_completion_request(
+            &request,
+            RigProtocol::Anthropic,
+            "test",
+        )
+        .expect("convertible");
+        assert!(
+            req.options.reasoning.is_none(),
+            "the anthropic wire must omit the typed channel when no effort is set"
+        );
+        if let Some(params) = &req.additional_params {
+            assert!(
+                params.get("reasoning_effort").is_none(),
+                "the anthropic wire must not inject reasoning_effort: {params}"
+            );
+        }
+    }
+
+    /// The same omission through the request builder's own entry point, so a
+    /// regression in the shared projection cannot hide behind a direct call.
+    #[test]
+    fn unset_reasoning_effort_survives_the_anthropic_typed_channel() {
+        let mut request = base_request(vec![user_text("hi")]);
+        request.reasoning = Some(codex_api::Reasoning {
+            effort: None,
+            summary: None,
+            context: None,
+        });
+        let (req, _) = super::responses_request_to_completion_request(
+            &request,
+            RigProtocol::Anthropic,
+            "test",
+        )
+        .expect("convertible");
+        assert_eq!(req.options.reasoning, None);
+    }
+
     // ─── Robustness fixes (2026-09-25 review round 2) ────────────────
 
     fn convert_items(

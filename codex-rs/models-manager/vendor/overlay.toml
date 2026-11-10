@@ -9,6 +9,14 @@ _version = 1
 
 # Reasoning effort tiers, verified by probe (see ledger §6.71/§6.73). Only
 # models we have probed get a table; everything else stays permissive.
+#
+# `default` is a PROBE RECORD, not a request value: `effort_table_for` exposes
+# only `levels` to the tier gate, and nothing reads `default`. Do NOT wire it
+# into `ModelInfo::default_reasoning_level` — that field feeds
+# `effective_reasoning_effort`, so it would become the tier every request
+# sends, defeating "no explicit tier means the vendor's own default"
+# (FORK.md §5.6). It exists so a future reader can see what the gateway
+# actually defaulted to when we probed it.
 [effort."glm-5.3-flash"]
 levels = ["low", "high", "max"]
 default = "high"

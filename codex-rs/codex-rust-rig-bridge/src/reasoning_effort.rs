@@ -484,8 +484,19 @@ mod tests {
             ReasoningEffort::Persistent,
             ReasoningEffort::Custom("deep".into()),
         ] {
-            let error = check_declared("NUWAX_REASONING_EFFORT_LEVELS", &declared, Some(&effort))
-                .expect_err("these gateways always think");
+            let error = check_declared(
+                "the effort tiers declared for model `glm-5.3-flash` (vendor catalog overlay)",
+                &declared,
+                Some(&effort),
+            )
+            .expect_err("these gateways always think");
+            // The refusal must name the model, so the operator knows which
+            // entry to fix instead of guessing from a bare tier list.
+            assert!(
+                message_of(&error).contains("glm-5.3-flash"),
+                "{effort:?} must be refused naming the model: {}",
+                message_of(&error)
+            );
             assert!(
                 message_of(&error).contains("always think"),
                 "{effort:?} must be refused saying why: {}",

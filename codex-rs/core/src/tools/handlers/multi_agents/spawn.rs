@@ -90,7 +90,13 @@ async fn handle_spawn_agent(
                 receiver_agents: Vec::new(),
                 prompt: Some(prompt.clone()),
                 model: Some(args.model.clone().unwrap_or_default()),
-                reasoning_effort: Some(args.reasoning_effort.clone().unwrap_or_default()),
+                // Fork (2026-11-10): an omitted effort must stay omitted. The
+                // `unwrap_or_default()` this replaces injected `Medium` (the
+                // enum's `#[default]`) into the sub-agent's session, which the
+                // tier gate then refused on gateways without a `medium` tier
+                // (GLM-5.3 takes low/high/max) — the same class of bug as the
+                // adapter's hardcoded fallback.
+                reasoning_effort: args.reasoning_effort.clone(),
                 agents_states: Default::default(),
             }),
         )
@@ -162,9 +168,13 @@ async fn handle_spawn_agent(
     let effective_model = agent_snapshot
         .map(|snapshot| snapshot.model.clone())
         .unwrap_or_else(|| args.model.clone().unwrap_or_default());
-    let effective_reasoning_effort = agent_snapshot
-        .and_then(|snapshot| snapshot.reasoning_effort.clone())
-        .unwrap_or(args.reasoning_effort.unwrap_or_default());
+    // Fork (2026-11-10): `Option` end to end — a sub-agent the caller did not
+    // pin inherits the parent's model default behavior (the engine omits the
+    // field on the wire) instead of an invented tier.
+    let effective_reasoning_effort: Option<ReasoningEffort> = effective_spawn_effort(
+        agent_snapshot.and_then(|snapshot| snapshot.reasoning_effort.clone()),
+        args.reasoning_effort.clone(),
+    );
     let nickname = new_agent_nickname.clone();
     let receiver_thread_ids = new_thread_id.into_iter().collect();
     let receiver_agents = new_thread_id
@@ -190,7 +200,7 @@ async fn handle_spawn_agent(
                 receiver_agents,
                 prompt: Some(prompt),
                 model: Some(effective_model),
-                reasoning_effort: Some(effective_reasoning_effort),
+                reasoning_effort: effective_reasoning_effort,
                 agents_states,
             }),
         )
@@ -213,6 +223,50 @@ async fn handle_spawn_agent(
 impl CoreToolRuntime for Handler {
     fn matches_kind(&self, payload: &ToolPayload) -> bool {
         matches!(payload, ToolPayload::Function { .. })
+    }
+}
+
+
+/// The effort a spawned sub-agent runs with: the caller's explicit pin, else
+/// the parent snapshot's, else nothing.
+///
+/// Fork (2026-11-10): the last arm used to be `unwrap_or_default()`, which
+/// injected `ReasoningEffort::Medium` (the enum's `#[default]`) whenever the
+/// caller omitted the argument. The tier gate then refused that invented tier
+/// on gateways without a `medium` level (GLM-5.3 takes low/high/max) — the same
+/// class of bug as the ACP adapter's hardcoded fallback. `None` now stays
+/// `None`, and the engine omits the field so the vendor applies its own
+/// default.
+fn effective_spawn_effort(
+    snapshot_effort: Option<ReasoningEffort>,
+    requested_effort: Option<ReasoningEffort>,
+) -> Option<ReasoningEffort> {
+    requested_effort.or(snapshot_effort)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_omitted_effort_stays_omitted() {
+        assert_eq!(effective_spawn_effort(None, None), None);
+    }
+
+    #[test]
+    fn the_callers_pin_wins_over_the_parent_snapshot() {
+        assert_eq!(
+            effective_spawn_effort(Some(ReasoningEffort::High), Some(ReasoningEffort::Low)),
+            Some(ReasoningEffort::Low),
+        );
+    }
+
+    #[test]
+    fn the_parent_snapshot_applies_when_the_caller_omits_it() {
+        assert_eq!(
+            effective_spawn_effort(Some(ReasoningEffort::High), None),
+            Some(ReasoningEffort::High),
+        );
     }
 }
 
