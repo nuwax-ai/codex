@@ -342,6 +342,17 @@ pub struct PrunedToolOutput {
     pub call_id: String,
     pub keep_head_chars: usize,
     pub keep_tail_chars: usize,
+    /// How many of the output's OLDEST inline images were replaced with a
+    /// placeholder (Fork 2026-11-10, FORK.md §5.5). Replay re-applies this so
+    /// a reload does not reintroduce the full-size payloads. Zero means the
+    /// text window was the only change.
+    #[serde(default, skip_serializing_if = "crate::pruned_images_is_zero")]
+    pub pruned_images: usize,
+}
+
+/// serde predicate for `PrunedToolOutput::pruned_images`.
+pub(crate) fn pruned_images_is_zero(value: &usize) -> bool {
+    *value == 0
 }
 
 /// Why a partial-history replacement was written.

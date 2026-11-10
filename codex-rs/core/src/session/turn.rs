@@ -4161,7 +4161,10 @@ pub(super) fn fork_overflow_recoverable(
     sess: &Session,
 ) -> bool {
     auto_summarization_enabled
-        && matches!(error.details(), CodexErrorDetails::ContextWindowExceeded)
+        && matches!(
+            error.details(),
+            CodexErrorDetails::ContextWindowExceeded | CodexErrorDetails::RequestTooLarge { .. }
+        )
         && !guardian_budget_compacted
         && sess
             .services

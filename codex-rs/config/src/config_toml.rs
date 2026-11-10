@@ -222,6 +222,14 @@ pub struct ConfigToml {
     #[schemars(range(min = 0, max = 100))]
     pub model_mid_turn_compact_threshold_percent: Option<u8>,
 
+    /// Fork (nuwax-codex): per-image encoded byte budget applied when images
+    /// enter conversation history (FORK.md §5.5). Images larger than this are
+    /// re-encoded lossless-first (opaque -> JPEG ladder, transparent -> PNG
+    /// dimension ladder). Omitted or zero keeps the historical behavior of
+    /// only bounding by token/patch dimensions.
+    #[schemars(range(min = 0, max = 536870912))]
+    pub image_byte_budget_bytes: Option<u32>,
+
     /// Default approval policy for executing commands.
     #[schemars(with = "Option<crate::schema::ConfigAskForApproval>")]
     pub approval_policy: Option<AskForApproval>,

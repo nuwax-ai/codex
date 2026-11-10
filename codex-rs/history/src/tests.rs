@@ -1229,6 +1229,12 @@ fn surface_replacement_round_trips_with_its_range() -> Result<()> {
         retained_tail_tokens: 40_000,
         reason: SurfaceReplacementReason::WindowShrink,
         supersedes: vec!["cmp_0".to_string()],
+        pruned_tool_outputs: vec![PrunedToolOutput {
+            call_id: "call_7".to_string(),
+            keep_head_chars: 100,
+            keep_tail_chars: 50,
+            pruned_images: 1,
+        }],
     }));
 
     let json = serde_json::to_value(&item)?;

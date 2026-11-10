@@ -122,6 +122,18 @@ fn apply_active_surface_replacement(
                 pruned.keep_head_chars,
                 pruned.keep_tail_chars,
             );
+            // Image windows ride the same ordered sequence: the live path
+            // replaced this output's oldest `pruned_images` inline images with
+            // placeholders right after (or before) the text window, in record
+            // order. Replay applies the same replacement so a reload does not
+            // reintroduce the full-size payloads (Fork 2026-11-10, §5.5).
+            if pruned.pruned_images > 0 {
+                crate::session::compaction_prune::replay_pruned_images(
+                    &mut next,
+                    &pruned.call_id,
+                    pruned.pruned_images,
+                );
+            }
         }
     }
     history.replace_annotated(next);

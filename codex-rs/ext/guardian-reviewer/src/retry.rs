@@ -208,6 +208,7 @@ fn should_retry_guardian_review(outcome: &GuardianReviewOutcome) -> bool {
             // The request itself cannot fit the window; retrying the same
             // input can never succeed.
             | CodexErrorInfo::InputTooLarge
+            | CodexErrorInfo::RequestTooLarge
             | CodexErrorInfo::SandboxError
             | CodexErrorInfo::ActiveTurnNotSteerable { .. }
             | CodexErrorInfo::ThreadRollbackFailed

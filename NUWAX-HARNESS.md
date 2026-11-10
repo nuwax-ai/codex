@@ -334,6 +334,17 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
   `model_mid_turn_compact_threshold_percent`（默认 `90`，`0` 关闭，越界 fail-fast）
   控制"一轮还没结束时、每步工具调用之后"是否前台压缩。托管异步压缩只在官方网关
   可用，三方网关此前在工具循环中途没有任何压缩点，只能等请求被拒后补救。
+- **图片字节预算（2026-11-10 起）**：`NUWAX_IMAGE_MAX_BYTES`（别名
+  `CODEX_IMAGE_MAX_BYTES`，config 键 `image_byte_budget_bytes`，默认 `0`=关闭）
+  限制单张图片进入会话历史时的编码体积。超限图片**无损优先**处理：已达标直通；
+  alpha 全不透明（含截图工具默认 RGBA）打平走 JPEG 阶梯 85→75→65；真半透明
+  保 PNG 走尺寸阶梯。token 计数不变。chat 协议每轮重发历史，截图密集的网页
+  开发任务靠它把请求体压回网关限制内。
+- **网关 413 自愈（2026-11-10 起）**：网关以 `413 Payload Too Large` 拒绝
+  请求体时，引擎不再把它当未知失败——自动压缩摘要、按预算裁剪旧截图与工具
+  输出后重试；仍被拒才终态。终态文案只说"请求被拒收、会话已保留"，不出现
+  字节数等底层细节（排查看 `app-server.log` 的 `gateway rejected the request
+  body size` warn）。
 - **厂商模型目录（2026-11-02 起）**：GLM/MiMo/Step/DeepSeek/MiniMax 等主流厂商的
   模型元数据来自内置目录（models.dev 快照 + fork 实证 overlay），**零配置即得
   真实窗口与档位门**——如 GLM-5.3-Flash 自动 1M 窗口、`medium` 会在发送前被拒

@@ -2112,6 +2112,9 @@ pub enum CodexErrorInfo {
     /// history is omitted. Emitted only by the context-overflow recovery path —
     /// a gateway `invalid_prompt` stays `InvalidPrompt`.
     InputTooLarge,
+    /// Fork (nuwax-codex): the gateway rejected the request for its byte size
+    /// (HTTP 413). See `CodexErrorDetails::RequestTooLarge`.
+    RequestTooLarge,
     SandboxError,
     /// The response SSE stream disconnected in the middle of a turnbefore completion.
     ResponseStreamDisconnected {
@@ -2155,6 +2158,7 @@ impl CodexErrorInfo {
             | Self::BadRequest
             | Self::InvalidPrompt
             | Self::InputTooLarge
+            | Self::RequestTooLarge
             | Self::SandboxError
             | Self::ResponseStreamDisconnected { .. }
             | Self::ResponseTooManyFailedAttempts { .. }

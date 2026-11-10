@@ -1,6 +1,7 @@
 use std::io::Cursor;
 use std::num::NonZeroUsize;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
@@ -249,6 +250,200 @@ fn load_for_prompt_bytes_uncached(
 
         admit_encoded_image(encoded)
     })()
+}
+
+
+
+/// Fork (nuwax-codex, 2026-11-10): JPEG quality ladder applied when an encoded
+/// image must shrink to fit a byte budget. The first rung that fits wins; if
+/// none fits, the smallest (last) rung is kept so the budget path always has
+/// an output. Quality is applied only to lossy re-encodes — never to a
+/// pass-through of bytes that already fit.
+pub const IMAGE_BYTE_BUDGET_QUALITY_LADDER: [u8; 3] = [85, 75, 65];
+
+/// Downscale ladder for images that must keep their alpha channel (JPEG has
+/// none). Applied longest-edge-first; the first rung that fits wins.
+const ALPHA_PRESERVING_DIMENSION_LADDER: [u32; 3] = [1600, 1280, 1024];
+
+/// True when every pixel's alpha is fully opaque. Screenshot tools commonly
+/// emit 32-bit RGBA even for opaque content; those images can be flattened to
+/// RGB and JPEG-encoded with no visual loss.
+pub fn alpha_is_fully_opaque(image: &DynamicImage) -> bool {
+    let rgba = image.to_rgba8();
+    rgba.pixels().all(|pixel| pixel.0[3] == 255)
+}
+
+/// Encodes `image` as JPEG at `quality` (alpha is dropped), returning the
+/// encoded bytes without any metadata side channel.
+fn encode_jpeg_at_quality(
+    image: &DynamicImage,
+    quality: u8,
+) -> Result<Vec<u8>, ImageProcessingError> {
+    let mut buffer = Vec::new();
+    let mut encoder = JpegEncoder::new_with_quality(&mut buffer, quality);
+    encoder
+        .encode_image(image)
+        .map_err(|source| ImageProcessingError::Encode {
+            format: ImageFormat::Jpeg,
+            source,
+        })?;
+    Ok(buffer)
+}
+
+/// Encodes `image` as PNG (alpha preserved).
+fn encode_png(image: &DynamicImage) -> Result<Vec<u8>, ImageProcessingError> {
+    let mut buffer = Vec::new();
+    let rgba = image.to_rgba8();
+    let encoder = PngEncoder::new(&mut buffer);
+    encoder
+        .write_image(
+            rgba.as_raw(),
+            image.width(),
+            image.height(),
+            ColorType::Rgba8.into(),
+        )
+        .map_err(|source| ImageProcessingError::Encode {
+            format: ImageFormat::Png,
+            source,
+        })?;
+    Ok(buffer)
+}
+
+/// Shrinks an already-prepared image to fit `max_bytes`, lossless-first
+/// (Fork 2026-11-10, see FORK.md §5.5):
+///
+/// 1. Fully-opaque images (including RGBA screenshots whose alpha is all 255)
+///    are flattened and JPEG-laddered at 85/75/65 — screenshots of UI and text
+///    shrink 5-10x with no visible change.
+/// 2. Genuinely transparent images keep PNG and walk the dimension ladder
+///    (2048 -> 1600 -> 1280 -> 1024 longest edge), preserving alpha.
+/// 3. If nothing fits, the smallest produced candidate is returned; callers
+///    treat it as best-effort.
+///
+/// Returns `None` when the source bytes already fit, so the caller can pass
+/// the original data URL through untouched.
+pub fn fit_data_url_to_byte_budget(
+    image_url: &str,
+    max_bytes: usize,
+) -> Result<(String, Vec<u8>, String), ImageProcessingError> {
+    let decoded = decode_data_url_to_dynamic(image_url)?;
+    let (bytes, format) = match fit_dynamic_to_byte_budget(&decoded, max_bytes)? {
+        Some(pair) => pair,
+        // Already fits on the ladder's first rung: hand the caller back the
+        // source untouched rather than re-encoding for nothing.
+        None => return Ok((image_url.to_string(), decoded_bytes(image_url), image_url_mime(image_url))),
+    };
+    let mime = format_to_mime(format);
+    Ok((
+        data_url_from_bytes(&mime, &bytes),
+        bytes,
+        mime,
+    ))
+}
+
+/// Decodes the base64 payload of a data URL (best-effort; callers already
+/// validated the URL before reaching the ladder).
+fn decoded_bytes(image_url: &str) -> Vec<u8> {
+    image_url
+        .split_once(',')
+        .map(|(_, encoded)| encoded)
+        .map(|encoded| BASE64_STANDARD.decode(encoded).unwrap_or_default())
+        .unwrap_or_default()
+}
+
+/// Extracts the mime type of a `data:<mime>;base64,<payload>` URL.
+fn image_url_mime(image_url: &str) -> String {
+    image_url
+        .split_once(',')
+        .and_then(|(metadata, _)| metadata.split_once(':'))
+        .map(|(_, mime)| mime.to_string())
+        .unwrap_or_else(|| "image/png".to_string())
+}
+
+/// Decodes a `data:...;base64,...` URL into a `DynamicImage`. Only base64
+/// data URLs are accepted; anything else is an error at this layer.
+fn decode_data_url_to_dynamic(image_url: &str) -> Result<DynamicImage, ImageProcessingError> {
+    let rest = image_url
+        .get(..DATA_URL_PREFIX.len())
+        .filter(|prefix| prefix.eq_ignore_ascii_case(DATA_URL_PREFIX))
+        .and_then(|_| image_url.get(DATA_URL_PREFIX.len()..))
+        .ok_or_else(|| ImageProcessingError::InvalidDataUrl {
+            reason: "missing data: prefix".to_string(),
+        })?;
+    let (metadata, encoded) =
+        rest.split_once(',').ok_or_else(|| ImageProcessingError::InvalidDataUrl {
+            reason: "missing comma separator".to_string(),
+        })?;
+    if !metadata
+        .split(';')
+        .any(|part| part.eq_ignore_ascii_case("base64"))
+    {
+        return Err(ImageProcessingError::InvalidDataUrl {
+            reason: "only base64 data URLs are supported".to_string(),
+        });
+    }
+    let bytes = BASE64_STANDARD
+        .decode(encoded)
+        .map_err(|_| ImageProcessingError::InvalidDataUrl {
+            reason: "invalid base64 payload".to_string(),
+        })?;
+    image::load_from_memory(&bytes).map_err(|source| ImageProcessingError::Decode {
+        path: PathBuf::from("<data-url>"),
+        source,
+    })
+}
+
+/// The shared ladder over a decoded image. Returns `None` when the image
+/// already fits at its current encoding path (opaque + quality ladder at the
+/// first rung already small enough), or the winning `(bytes, format)`.
+fn fit_dynamic_to_byte_budget(
+    image: &DynamicImage,
+    max_bytes: usize,
+) -> Result<Option<(Vec<u8>, ImageFormat)>, ImageProcessingError> {
+    if alpha_is_fully_opaque(image) {
+        // Flatten to RGB via a JPEG encode; no visual information is lost
+        // because the alpha channel carries none.
+        for quality in IMAGE_BYTE_BUDGET_QUALITY_LADDER {
+            let bytes = encode_jpeg_at_quality(image, quality)?;
+            if bytes.len() <= max_bytes {
+                return Ok(Some((bytes, ImageFormat::Jpeg)));
+            }
+        }
+        // Nothing fits: keep the smallest rung so the caller still has an
+        // output to compare against the original.
+        let smallest = *IMAGE_BYTE_BUDGET_QUALITY_LADDER
+            .last()
+            .unwrap_or(&IMAGE_BYTE_BUDGET_QUALITY_LADDER[0]);
+        let bytes = encode_jpeg_at_quality(image, smallest)?;
+        return Ok(Some((bytes, ImageFormat::Jpeg)));
+    }
+
+    for max_dimension in ALPHA_PRESERVING_DIMENSION_LADDER {
+        let (width, height) = image.dimensions();
+        let longest_edge = width.max(height);
+        let candidate = if longest_edge > max_dimension {
+            let scale = f64::from(max_dimension) / f64::from(longest_edge);
+            let scaled_width = (f64::from(width) * scale).round() as u32;
+            let scaled_height = (f64::from(height) * scale).round() as u32;
+            image.resize_exact(scaled_width.max(1), scaled_height.max(1), FilterType::Triangle)
+        } else {
+            image.clone()
+        };
+        let bytes = encode_png(&candidate)?;
+        if bytes.len() <= max_bytes {
+            return Ok(Some((bytes, ImageFormat::Png)));
+        }
+    }
+    let (width, height) = image.dimensions();
+    let longest_edge = width.max(height);
+    let scale = f64::from(ALPHA_PRESERVING_DIMENSION_LADDER
+        [ALPHA_PRESERVING_DIMENSION_LADDER.len() - 1])
+        / f64::from(longest_edge);
+    let scaled_width = ((f64::from(width) * scale).round() as u32).max(1);
+    let scaled_height = ((f64::from(height) * scale).round() as u32).max(1);
+    let resized = image.resize_exact(scaled_width, scaled_height, FilterType::Triangle);
+    let bytes = encode_png(&resized)?;
+    Ok(Some((bytes, ImageFormat::Png)))
 }
 
 /// Refuse images whose data URL and request headroom exceed the wire ceiling,

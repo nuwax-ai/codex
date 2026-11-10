@@ -189,6 +189,10 @@ impl From<CoreCodexErrorInfo> for CodexErrorInfo {
             // `InputTooLarge` instead (2026-11-10 review: mapping all
             // InvalidPrompt here misclassified ordinary gateway rejections).
             CoreCodexErrorInfo::InvalidPrompt => CodexErrorInfo::Other,
+            // A byte-size rejection is an input problem the client can act on
+            // (shorten/shrink), so it maps to the input family rather than a
+            // generic provider failure.
+            CoreCodexErrorInfo::RequestTooLarge => CodexErrorInfo::InputTooLarge,
             CoreCodexErrorInfo::InputTooLarge => CodexErrorInfo::InputTooLarge,
             CoreCodexErrorInfo::ThreadRollbackFailed => CodexErrorInfo::ThreadRollbackFailed,
             CoreCodexErrorInfo::SandboxError => CodexErrorInfo::SandboxError,

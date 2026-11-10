@@ -173,6 +173,29 @@ fn map_api_error_details(err: ApiError) -> CodexErr {
                     return CodexErr::ContextWindowExceeded;
                 }
 
+                // Fork (nuwax-codex, 2026-11-10): a gateway 413 that is NOT a
+                // context-window rejection is a request-body size limit. It is
+                // recoverable — the payload shrinks (stale images pruned, tool
+                // output trimmed) and the step retries — so classify it as its
+                // own kind instead of an opaque UnexpectedStatus, and log the
+                // payload size that tripped it: gateway limits are invisible
+                // from here and this line is the only evidence.
+                if status == http::StatusCode::PAYLOAD_TOO_LARGE {
+                    let payload_bytes = body_text.len();
+                    tracing::warn!(
+                        status = status.as_u16(),
+                        payload_bytes,
+                        payload_mib = payload_bytes as f64 / (1024.0 * 1024.0),
+                        "gateway rejected the request body size (413); shrinking the payload and retrying"
+                    );
+                    return CodexErr::new(CodexErrorDetails::RequestTooLarge {
+                        message: format!(
+                            "The gateway rejected this request because its body was too large ({} bytes). The request will be shrunk and retried.",
+                            payload_bytes
+                        ),
+                    });
+                }
+
                 if status == http::StatusCode::SERVICE_UNAVAILABLE
                     && let Some(error) = provider_error
                 {

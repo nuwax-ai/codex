@@ -1569,6 +1569,7 @@ pub(crate) async fn degrade_history_to_target_window(
                     call_id,
                     keep_head_chars,
                     keep_tail_chars,
+                    pruned_images: 0,
                 })
                 .collect();
             tracing::info!(
@@ -1589,6 +1590,50 @@ pub(crate) async fn degrade_history_to_target_window(
         // advertised one: a gateway that rejected below its claimed window
         // otherwise receives the same oversized payload again even though more
         // tool output could shrink (2026-11-09 review P2).
+        // Many tool calls carry inline images (browser screenshots, viewed
+        // files). Each is re-sent on every chat-protocol turn, so stale ones
+        // dominate the request bytes long after their information value is
+        // gone. Keep the newest `PROTECTED_RECENT_IMAGES` and drop the rest to
+        // a placeholder BEFORE shrinking the text outputs further: it removes
+        // far more bytes per unit of information lost (Fork 2026-11-10, see
+        // FORK.md §5.5). Recorded through the same durable mechanism as the
+        // text windows so replay reproduces the identical surface.
+        let pruned_images = crate::session::compaction_prune::prune_stale_images(
+            &mut retained,
+            crate::session::compaction_prune::PROTECTED_RECENT_IMAGES,
+        );
+        if !pruned_images.is_empty() {
+            retained_tokens = retained
+                .iter()
+                .map(|envelope| crate::context_manager::estimate_item_token_count(&envelope.item))
+                .sum();
+            // Persist the image replacements with the same per-call-id shape as
+            // the text windows so replay re-applies them in order and a reload
+            // never reintroduces the full-size payloads.
+            for (call_id, count) in &pruned_images {
+                if call_id.is_empty() {
+                    continue;
+                }
+                match pruned_tool_outputs
+                    .iter_mut()
+                    .find(|entry| entry.call_id == *call_id)
+                {
+                    Some(entry) => entry.pruned_images += count,
+                    None => pruned_tool_outputs.push(codex_history::PrunedToolOutput {
+                        call_id: call_id.clone(),
+                        keep_head_chars: 0,
+                        keep_tail_chars: 0,
+                        pruned_images: *count,
+                    }),
+                }
+            }
+            tracing::info!(
+                pruned_images = pruned_images.len(),
+                pruned_image_count = pruned_images.iter().map(|(_, n)| n).sum::<usize>(),
+                retained_tokens,
+                "mid-turn degrade: replaced stale inline images with placeholders"
+            );
+        }
         let prune_target = history_budget.min(necessary_budget);
         let mut extra_rounds = 0u8;
         let mut exhausted: std::collections::HashSet<usize> = std::collections::HashSet::new();
@@ -1675,6 +1720,7 @@ pub(crate) async fn degrade_history_to_target_window(
                 call_id,
                 keep_head_chars: next_head,
                 keep_tail_chars: next_tail,
+                pruned_images: 0,
             });
         }
     }

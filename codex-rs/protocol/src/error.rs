@@ -187,6 +187,13 @@ pub enum CodexErrorDetails {
     /// gateway rejections unrelated to the window size.
     #[error("{message}")]
     InputTooLarge { message: String },
+    /// Fork (nuwax-codex): a gateway rejected the request for its byte size
+    /// (HTTP 413 Payload Too Large) rather than its token count. Recoverable
+    /// like a context overflow — the payload shrinks (stale images pruned,
+    /// tool output trimmed) and the step retries — but the budget dimension is
+    /// bytes, not tokens.
+    #[error("{message}")]
+    RequestTooLarge { message: String },
     /// Multiple registered tools share the same effective name.
     #[error("duplicate tool: {0}")]
     ToolCollision(String),
@@ -462,6 +469,7 @@ impl CodexErr {
             | CodexErrorDetails::ModelNotFound { .. }
             | CodexErrorDetails::InvalidPrompt { .. }
             | CodexErrorDetails::InputTooLarge { .. }
+            | CodexErrorDetails::RequestTooLarge { .. }
             | CodexErrorDetails::ToolCollision(_)
             | CodexErrorDetails::RefreshTokenFailed(_)
             | CodexErrorDetails::GatewayLoginRequired(_)
@@ -545,6 +553,7 @@ impl CodexErr {
             CodexErrorDetails::ModelNotFound { .. } => CodexErrorInfo::ModelNotFound,
             CodexErrorDetails::InvalidPrompt { .. } => CodexErrorInfo::InvalidPrompt,
             CodexErrorDetails::InputTooLarge { .. } => CodexErrorInfo::InputTooLarge,
+            CodexErrorDetails::RequestTooLarge { .. } => CodexErrorInfo::RequestTooLarge,
             CodexErrorDetails::MisalignmentPolicyViolation { .. } => {
                 CodexErrorInfo::MisalignmentPolicyViolation
             }

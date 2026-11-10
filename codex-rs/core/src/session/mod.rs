@@ -1789,24 +1789,17 @@ impl Session {
                     .apply_rollout_reconstruction(&turn_context, &rollout_items)
                     .await;
 
-                // If resuming, warn when the last recorded model differs from the current one.
+                // If resuming, log when the last recorded model differs from the current one.
+                // Fork (2026-11-10): model switching within one session is a
+                // supported product flow, so this is no longer surfaced as a
+                // user-facing warning suggesting to switch back — it is log-only.
                 let curr: &str = turn_context.model_info().slug.as_str();
                 if let Some(prev) = previous_turn_settings
                     .as_ref()
                     .map(|settings| settings.model.as_str())
                     .filter(|model| *model != curr)
                 {
-                    warn!("resuming session with different model: previous={prev}, current={curr}");
-                    self.send_event(
-                        &turn_context,
-                        EventMsg::Warning(WarningEvent {
-                            message: format!(
-                                "This session was recorded with model `{prev}` but is resuming with `{curr}`. \
-                         Consider switching back to `{prev}` as it may affect Codex performance."
-                            ),
-                        }),
-                    )
-                    .await;
+                    info!("resuming session with different model: previous={prev}, current={curr}");
                 }
 
                 // Seed usage info from the recorded rollout so UIs can show token counts

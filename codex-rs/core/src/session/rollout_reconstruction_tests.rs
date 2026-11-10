@@ -3338,6 +3338,7 @@ async fn a_persisted_tool_output_window_is_reapplied_on_replay() {
                 call_id: "call-1".to_string(),
                 keep_head_chars: 100,
                 keep_tail_chars: 50,
+                pruned_images: 0,
             }],
         })),
     ];
@@ -3412,6 +3413,7 @@ async fn consecutive_replacements_accumulate_their_pruned_tool_outputs() {
                 call_id: pruned.to_string(),
                 keep_head_chars: 100,
                 keep_tail_chars: 50,
+                pruned_images: 0,
             }],
         };
     let rollout_items = vec![

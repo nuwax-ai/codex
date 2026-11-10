@@ -970,3 +970,41 @@ fn map_api_error_keeps_generic_bad_requests_invalid() {
         );
     }
 }
+
+#[test]
+fn map_api_error_classifies_payload_too_large_as_request_too_large() {
+    // A 413 that is not a context-window rejection is a gateway body-size
+    // limit: recoverable (shrink and retry), so it must carry its own kind
+    // instead of an opaque UnexpectedStatus (Fork 2026-11-10, FORK.md §5.5).
+    for body in [
+        "Payload Too Large",
+        r#"{"error":{"code":"request_too_large","message":"body exceeds limit"}}"#,
+    ] {
+        let err = map_api_error(ApiError::Transport(TransportError::Http {
+            retry_after: None,
+            status: http::StatusCode::PAYLOAD_TOO_LARGE,
+            url: None,
+            headers: None,
+            body: Some(body.to_string()),
+        }));
+        assert!(
+            matches!(err.details(), CodexErrorDetails::RequestTooLarge { .. }),
+            "body {body:?} must classify as request too large"
+        );
+    }
+    // A 413 whose body IS a context-window rejection still classifies as a
+    // context overflow, which the token-budget recovery already handles.
+    let err = map_api_error(ApiError::Transport(TransportError::Http {
+        retry_after: None,
+        status: http::StatusCode::PAYLOAD_TOO_LARGE,
+        url: None,
+        headers: None,
+        body: Some(
+            r#"{"error":{"code":"context_length_exceeded","message":"too long"}}"#.to_string(),
+        ),
+    }));
+    assert!(
+        matches!(err.details(), CodexErrorDetails::ContextWindowExceeded),
+        "a context-window body keeps its overflow classification"
+    );
+}

@@ -529,3 +529,69 @@ fn legitimately_large_dimensions_still_decode() {
     // the point here is the 40 MP decode guard did not reject it.
     assert!(prepared.width <= 6_000 && prepared.height <= 6_000);
 }
+
+// ---- Fork (2026-11-10): byte-budget ladder (FORK.md §5.5) ----
+
+#[test]
+fn opaque_image_is_flattened_to_jpeg_within_budget() {
+    // A large RGBA screenshot whose alpha is entirely 255: the ladder must
+    // flatten it to JPEG instead of keeping the PNG (or walking the PNG
+    // dimension ladder).
+    let mut image = ImageBuffer::new(2048, 2048);
+    for (x, y, pixel) in image.enumerate_pixels_mut() {
+        *pixel = Rgba([(x % 256) as u8, (y % 256) as u8, 128, 255]);
+    }
+    let url = data_url_from_bytes("image/png", &image_bytes(&image, ImageFormat::Png));
+    let (fitted, bytes, mime) =
+        fit_data_url_to_byte_budget(&url, 512 * 1024).expect("ladder output");
+    assert_eq!(mime, "image/jpeg");
+    assert!(bytes.len() <= 512 * 1024, "jpeg rung must fit the budget");
+    assert_ne!(fitted, url, "the payload must actually change");
+}
+
+#[test]
+fn fully_transparent_image_keeps_png() {
+    // Genuinely transparent content must not be flattened: JPEG has no alpha,
+    // so the ladder walks the PNG dimension ladder instead.
+    let mut image = ImageBuffer::new(2048, 2048);
+    for (x, y, pixel) in image.enumerate_pixels_mut() {
+        *pixel = Rgba([255, 255, 255, (x % 256) as u8]);
+    }
+    assert!(!alpha_is_fully_opaque(&DynamicImage::ImageRgba8(image.clone())));
+    let url = data_url_from_bytes("image/png", &image_bytes(&image, ImageFormat::Png));
+    let (_, bytes, mime) = fit_data_url_to_byte_budget(&url, 512 * 1024).expect("ladder output");
+    assert_eq!(mime, "image/png", "transparent images stay PNG");
+    assert!(bytes.len() <= 512 * 1024);
+}
+
+#[test]
+fn alpha_probe_detects_opaque_rgba_screenshots() {
+    let opaque = ImageBuffer::from_pixel(64, 64, Rgba([10, 20, 30, 255]));
+    assert!(alpha_is_fully_opaque(&DynamicImage::ImageRgba8(opaque)));
+    let mut mixed = ImageBuffer::from_pixel(64, 64, Rgba([10, 20, 30, 255]));
+    mixed.put_pixel(0, 0, Rgba([10, 20, 30, 254]));
+    assert!(!alpha_is_fully_opaque(&DynamicImage::ImageRgba8(mixed)));
+}
+
+#[test]
+fn budget_ladder_returns_smallest_rung_when_nothing_fits() {
+    // A tiny budget cannot be met: the smallest JPEG rung is returned as the
+    // best-effort output rather than an error, so callers still shrink.
+    let image = ImageBuffer::from_pixel(2048, 2048, Rgba([123, 222, 40, 255]));
+    let url = data_url_from_bytes("image/png", &image_bytes(&image, ImageFormat::Png));
+    let (_, bytes, mime) = fit_data_url_to_byte_budget(&url, 1).expect("ladder output");
+    assert_eq!(mime, "image/jpeg");
+    let smallest = fit_data_url_to_byte_budget(
+        &data_url_from_bytes(
+            "image/png",
+            &image_bytes(
+                &ImageBuffer::from_pixel(2048, 2048, Rgba([123, 222, 40, 255])),
+                ImageFormat::Png,
+            ),
+        ),
+        1,
+    )
+    .expect("ladder output")
+    .1;
+    assert_eq!(bytes.len(), smallest.len(), "the smallest rung is deterministic");
+}

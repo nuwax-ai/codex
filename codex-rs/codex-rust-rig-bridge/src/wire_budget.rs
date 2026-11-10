@@ -1,7 +1,11 @@
 //! Final wire guard, after all hosted replay and pause injection. Byte-based
 //! estimates are not a provider tokenizer or an accounting claim.
 
-const MAX_WIRE_BYTES: usize = 32 * 1024 * 1024;
+// Fork (2026-11-10): aligned with OpenAI's documented 512 MB request payload
+// limit. The gate is an out-of-control guard against serialization blowups,
+// not a pre-judgment of third-party gateway body limits — those are learned
+// from observed 413 responses (see the gateway-payload log) instead.
+const MAX_WIRE_BYTES: usize = 512 * 1024 * 1024;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct RigCallContext {
@@ -31,7 +35,7 @@ pub(crate) enum WireBudgetExceeded {
 impl std::fmt::Display for WireBudgetExceeded {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
-            Self::Bytes => "final wire request exceeds the 32 MiB byte budget",
+            Self::Bytes => "final wire request exceeds the 512 MB byte budget",
             Self::Context => "final wire request exceeds the estimated model context budget",
             Self::Configuration => {
                 "model context must be positive and larger than the configured output budget"

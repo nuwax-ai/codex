@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 
 use crate::config::ManagedFeatures;
 use crate::context::ContextualUserFragment;
@@ -27,6 +29,7 @@ use codex_utils_image::EncodedImage;
 use codex_utils_image::ImageProcessingError;
 use codex_utils_image::PromptImageMode;
 use codex_utils_image::data_url_from_bytes;
+use codex_utils_image::fit_data_url_to_byte_budget;
 use codex_utils_image::load_data_url_for_prompt;
 use tracing::warn;
 
@@ -345,6 +348,7 @@ async fn prepare_tool_output_content(
     resized_images
 }
 
+
 fn is_remote_image_url(image_url: &str) -> bool {
     image_url.split_once(':').is_some_and(|(scheme, _)| {
         scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
@@ -435,6 +439,26 @@ async fn prepare_image(
     Ok(resize)
 }
 
+
+/// Fork (nuwax-codex): process-wide per-image byte budget for prompt-image
+/// normalization (FORK.md §5.5). `resize_image` is synchronous and is reached
+/// from several call sites without a config handle, so the resolved
+/// `Config::image_byte_budget_bytes` is parked here when the session config is
+/// loaded. Zero (the default) disables re-encoding and keeps the historical
+/// dimension-only behavior.
+static IMAGE_BYTE_BUDGET_BYTES: AtomicU32 = AtomicU32::new(0);
+
+/// Publishes the configured per-image byte budget. Called once per resolved
+/// config load; a zero budget disables the re-encode step.
+pub(crate) fn set_image_byte_budget(bytes: u32) {
+    IMAGE_BYTE_BUDGET_BYTES.store(bytes, Ordering::Relaxed);
+}
+
+fn image_byte_budget() -> Option<usize> {
+    let bytes = IMAGE_BYTE_BUDGET_BYTES.load(Ordering::Relaxed);
+    (bytes > 0).then_some(bytes as usize)
+}
+
 pub(crate) fn resize_image(
     image_url: &str,
     detail: &mut Option<ImageDetail>,
@@ -463,7 +487,20 @@ pub(crate) fn resize_image(
             Some(ImageDetail::Low) => return Err(ImagePreparationError::UnsupportedLowDetail),
         },
     };
-    let encoded = load_data_url_for_prompt(image_url, image_mode)?;
+    let mut encoded = load_data_url_for_prompt(image_url, image_mode)?;
+    // Fork (2026-11-10): bound the encoded payload to the configured byte
+    // budget before it enters history. Lossless-first (see
+    // `fit_encoded_to_budget`): opaque images flatten to a JPEG ladder,
+    // genuinely transparent ones keep PNG and shrink by dimension. Every
+    // later turn re-sends history, so a small image here pays off forever.
+    if let Some(max_bytes) = image_byte_budget()
+        && encoded.bytes.len() > max_bytes
+    {
+        let (_fitted_url, fitted_bytes, fitted_mime) =
+            fit_data_url_to_byte_budget(image_url, max_bytes)?;
+        encoded.bytes = fitted_bytes.into();
+        encoded.mime = fitted_mime;
+    }
     let resize = ((encoded.source_width, encoded.source_height) != (encoded.width, encoded.height))
         .then_some(PreparedImageResize {
             source_width: encoded.source_width,

@@ -101,6 +101,10 @@ impl CliConfigOverrides {
             &mut overrides,
             resolve_seed_alias(NUWAX_TOOL_SEARCH_ENV, TOOL_SEARCH_ENV)?,
         )?;
+        seed_env_image_byte_budget(
+            &mut overrides,
+            resolve_seed_alias(NUWAX_IMAGE_MAX_BYTES_ENV, IMAGE_MAX_BYTES_ENV)?,
+        )?;
         Ok(overrides)
     }
 }
@@ -153,6 +157,14 @@ const NUWAX_AUTO_COMPACT_RATIO_ENV: &str = "NUWAX_AUTO_COMPACT_RATIO";
 const TOOL_SEARCH_ENV: &str = "CODEX_TOOL_SEARCH";
 const NUWAX_TOOL_SEARCH_ENV: &str = "NUWAX_TOOL_SEARCH";
 const TOOL_SEARCH_CONFIG_KEY: &str = "tools.tool_search";
+
+/// Fork: `CODEX_IMAGE_MAX_BYTES` (alias `NUWAX_IMAGE_MAX_BYTES`) seeds
+/// `image_byte_budget_bytes`, the per-image encoded byte budget applied when
+/// images enter history (FORK.md §5.5). Zero disables the re-encoding; a
+/// negative or non-integer value errors instead of silently disabling.
+const IMAGE_MAX_BYTES_ENV: &str = "CODEX_IMAGE_MAX_BYTES";
+const NUWAX_IMAGE_MAX_BYTES_ENV: &str = "NUWAX_IMAGE_MAX_BYTES";
+const IMAGE_BYTE_BUDGET_CONFIG_KEY: &str = "image_byte_budget_bytes";
 
 fn apply_env_context_seeds(
     overrides: &mut Vec<(String, Value)>,
@@ -251,6 +263,25 @@ fn seed_env_integer(
         return Err(invalid());
     }
     overrides.push((config_key.into(), Value::Integer(parsed)));
+    Ok(())
+}
+
+fn seed_env_image_byte_budget(
+    overrides: &mut Vec<(String, Value)>,
+    seed: (Option<OsString>, &'static str),
+) -> Result<(), String> {
+    let (value, env_name) = seed;
+    let Some(raw) = env_override_text(overrides, IMAGE_BYTE_BUDGET_CONFIG_KEY, env_name, value.as_deref())?
+    else {
+        return Ok(());
+    };
+    let invalid =
+        || format!("Invalid {env_name} value {raw:?}; expected a non-negative integer byte count");
+    let parsed: i64 = raw.parse().map_err(|_| invalid())?;
+    if parsed < 0 || parsed > 512 * 1024 * 1024 {
+        return Err(invalid());
+    }
+    overrides.push((IMAGE_BYTE_BUDGET_CONFIG_KEY.into(), Value::Integer(parsed)));
     Ok(())
 }
 

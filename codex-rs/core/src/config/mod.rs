@@ -761,6 +761,10 @@ pub struct Config {
     /// Percentage of the model's full context window at which background compaction starts.
     pub async_compaction_threshold_percent: u8,
 
+    /// Fork (nuwax-codex): per-image encoded byte budget applied when images
+    /// enter history (FORK.md §5.5). Zero disables re-encoding.
+    pub image_byte_budget_bytes: u32,
+
     /// Key into the model_providers map that specifies which provider to use.
     pub model_provider_id: String,
 
@@ -3565,6 +3569,12 @@ impl Config {
         codex_home: AbsolutePathBuf,
         config_layer_stack: ConfigLayerStack,
     ) -> std::io::Result<Self> {
+        // Fork (nuwax-codex): publish the per-image byte budget to the
+        // image-preparation module (FORK.md §5.5). Done here so every config
+        // load path (CLI, app-server, tests) shares one resolution point.
+        crate::image_preparation::set_image_byte_budget(
+            cfg.image_byte_budget_bytes.unwrap_or(0),
+        );
         config_layer_stack.validate_project_mitm_profiles()?;
         // Keep the large config-construction future off small test thread stacks.
         Box::pin(async move {
@@ -3604,6 +3614,15 @@ impl Config {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "model_mid_turn_compact_threshold_percent must be between 0 and 100",
+            ));
+        }
+        if cfg
+            .image_byte_budget_bytes
+            .is_some_and(|bytes| bytes > 512 * 1024 * 1024)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "image_byte_budget_bytes must be between 0 and 536870912 (512 MiB)",
             ));
         }
         let async_compaction_threshold_percent = cfg.features.as_ref()
@@ -4802,6 +4821,7 @@ impl Config {
                 .model_mid_turn_compact_threshold_percent
                 .unwrap_or(DEFAULT_MID_TURN_COMPACT_THRESHOLD_PERCENT),
             async_compaction_threshold_percent,
+            image_byte_budget_bytes: cfg.image_byte_budget_bytes.unwrap_or(0),
             model_provider_id,
             model_provider,
             cwd: resolved_cwd,
