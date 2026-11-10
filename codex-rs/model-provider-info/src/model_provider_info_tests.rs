@@ -29,8 +29,11 @@ fn runtime_internal_metadata_opt_in_is_not_serialized_or_configurable() {
 
 #[test]
 fn test_api_provider_applies_current_managed_residency() {
+    // A credential, so the provider is configured: this test is about header
+    // merging, and the no-credential fail-fast is covered separately.
     let info = ModelProviderInfo {
         http_headers: Some(maplit::hashmap! {
+            "Authorization".to_string() => "Bearer sk-test".into(),
             "X-OpenAI-Internal-Codex-Residency".to_string() => "eu".into(),
             "x-provider-header".to_string() => "preserved".into(),
         }),
@@ -55,6 +58,10 @@ fn test_api_provider_applies_current_managed_residency() {
                 HeaderName::from_static("x-provider-header"),
                 HeaderValue::from_static("preserved")
             ),
+            (
+                HeaderName::from_static("authorization"),
+                HeaderValue::from_static("Bearer sk-test")
+            ),
         ])
     );
     assert_eq!(
@@ -69,6 +76,10 @@ fn test_api_provider_applies_current_managed_residency() {
             (
                 HeaderName::from_static("x-provider-header"),
                 HeaderValue::from_static("preserved")
+            ),
+            (
+                HeaderName::from_static("authorization"),
+                HeaderValue::from_static("Bearer sk-test")
             ),
         ])
     );
@@ -1304,4 +1315,86 @@ fn direct_api_key_is_never_serialized_into_public_projections() {
         reloaded.api_key().expect("resolves").as_deref(),
         Some("sk-kept")
     );
+}
+
+// ---- Fork (2026-11-10): the no-credential fail-fast ----
+
+/// A provider with nothing configured: no base_url, no key, no auth.
+fn bare_provider() -> ModelProviderInfo {
+    ModelProviderInfo {
+        name: "openai".to_owned(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_bare_provider_with_no_credential_fails_before_sending() {
+    // The point of the check: a keyless request to the built-in default can
+    // only 401, and it surfaces a foreign domain with no hint what to fix.
+    // The message names the knobs and deliberately never names the URL.
+    let error = bare_provider()
+        .to_api_provider(None)
+        .expect_err("nothing is configured");
+    let message = error.to_string();
+    assert!(message.contains("no model provider is configured"), "{message}");
+    assert!(message.contains("model_provider"), "{message}");
+    assert!(message.contains("env_key"), "{message}");
+    assert!(!message.contains("openai.com"), "the URL must stay out of it: {message}");
+}
+
+#[test]
+fn a_configured_base_url_keeps_working_without_a_key() {
+    // A domestic gateway that needs no key (or resolves it elsewhere) is a
+    // valid configuration; the fail-fast must not fire for it.
+    let provider = ModelProviderInfo {
+        name: "glm".to_owned(),
+        base_url: Some("https://open.bigmodel.cn/api/v1".to_owned()),
+        ..Default::default()
+    };
+    assert!(provider.to_api_provider(None).is_ok());
+}
+
+#[test]
+fn a_static_key_source_keeps_working_without_a_base_url() {
+    // Explicit OpenAI setups are unaffected: env_key, api_key, or a bearer
+    // token each count as a credential.
+    for provider in [
+        ModelProviderInfo {
+            name: "openai".to_owned(),
+            env_key: Some("SOME_KEY".to_owned()),
+            ..Default::default()
+        },
+        ModelProviderInfo {
+            name: "openai".to_owned(),
+            api_key: Some("sk-test".to_owned().into()),
+            ..Default::default()
+        },
+        ModelProviderInfo {
+            name: "openai".to_owned(),
+            experimental_bearer_token: Some("sk-test".to_owned().into()),
+            ..Default::default()
+        },
+    ] {
+        assert!(provider.to_api_provider(None).is_ok());
+    }
+}
+
+#[test]
+fn an_authorization_header_counts_as_a_credential() {
+    let mut http_headers = std::collections::HashMap::new();
+    http_headers.insert("Authorization".to_owned(), "Bearer sk-test".to_owned().into());
+    let provider = ModelProviderInfo {
+        name: "openai".to_owned(),
+        http_headers: Some(http_headers),
+        ..Default::default()
+    };
+    assert!(provider.to_api_provider(None).is_ok());
+}
+
+#[test]
+fn sign_in_auth_keeps_working_without_a_base_url() {
+    // ChatGPT sign-in resolves its own credentials at request time.
+    let provider = bare_provider();
+    assert!(provider.to_api_provider(Some(AuthMode::Chatgpt)).is_ok());
+    assert!(provider.to_api_provider(Some(AuthMode::ApiKey)).is_ok());
 }

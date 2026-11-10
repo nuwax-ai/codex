@@ -440,6 +440,22 @@ fn default_aws_auth_refresh_timeout_ms() -> NonZeroU64 {
     }
 }
 
+/// Fork (nuwax-codex): credential env vars the auth manager reads for the
+/// built-in OpenAI provider. Mirrored here because this crate must not depend
+/// on the login crate that owns them.
+const OPENAI_API_KEY_ENV_VAR: &str = "OPENAI_API_KEY";
+const CODEX_API_KEY_ENV_VAR: &str = "CODEX_API_KEY";
+
+/// Whether `name` names a present, non-blank environment variable. A non-Unicode
+/// value counts as present: it is still a credential the process can pass on.
+fn env_credential_present(name: &str) -> bool {
+    match std::env::var(name) {
+        Ok(value) => !value.trim().is_empty(),
+        Err(std::env::VarError::NotUnicode(_)) => true,
+        Err(std::env::VarError::NotPresent) => false,
+    }
+}
+
 impl ModelProviderInfo {
     /// Checks that a configured Bedrock entry only customizes supported fields.
     /// Call this on the override before merging it with the built-in provider.
@@ -681,6 +697,42 @@ other non-default provider fields are not supported"
             .clone()
             .unwrap_or_else(|| default_base_url.to_string());
 
+        // Fork (nuwax-codex, 2026-11-10): nothing is configured — no provider
+        // `base_url`, no auth, and no key in the provider, its headers, or the
+        // environment. Such a request can only come back 401, and it puts a
+        // foreign domain in front of the user with no hint about what to fix.
+        // Fail before anything is sent, and name the knobs instead.
+        //
+        // Deliberately does NOT name the default URL: the point is that it never
+        // reaches the user's eyes. An explicit OpenAI setup is unaffected — a
+        // configured key, a key in `http_headers`, the OpenAI key env vars, or
+        // any sign-in auth mode all pass this check.
+        // `aws`, `auth.command` and `gateway_oauth` resolve credentials outside
+        // this struct (the AWS SDK, a helper command, an OAuth flow), so a
+        // provider that uses one of them is configured even when no key field
+        // is set. `requires_openai_auth` is NOT such an escape: it means the
+        // sign-in path or the OpenAI key env must supply the credential, and
+        // when `auth_mode` is `None` neither did — the built-in default then
+        // sends a keyless request that can only 401.
+        if self.base_url.is_none()
+            && auth_mode.is_none()
+            && !self.has_static_api_key_source()
+            && !self.has_authorization_header()
+            && self.aws.is_none()
+            && self.auth.is_none()
+            && self.gateway_oauth.is_none()
+            && !env_credential_present(OPENAI_API_KEY_ENV_VAR)
+            && !env_credential_present(CODEX_API_KEY_ENV_VAR)
+        {
+            return Err(codex_protocol::error::CodexErr::InvalidRequest(
+                "no model provider is configured: there is no base_url, no credentials, and no \
+                 sign-in, so no request can be sent. Set `model_provider` to an entry under \
+                 `[model_providers.<id>]` with `base_url` and `env_key` (then export the key it \
+                 names), or sign in with ChatGPT."
+                    .to_string(),
+            ));
+        }
+
         let mut headers = self.build_header_map()?;
         if let Some(requirement) = read_managed_residency_requirement() {
             let value = match requirement {
@@ -749,6 +801,16 @@ other non-default provider fields are not supported"
     /// or network), and false for command auth, OAuth, and login flows.
     pub fn has_static_api_key_source(&self) -> bool {
         self.api_key.is_some() || self.env_key.is_some() || self.experimental_bearer_token.is_some()
+    }
+
+    /// True when the operator put an `Authorization` header in `http_headers`,
+    /// which is a credential even though it is not a key field.
+    pub fn has_authorization_header(&self) -> bool {
+        self.http_headers.as_ref().is_some_and(|headers| {
+            headers
+                .keys()
+                .any(|name| name.eq_ignore_ascii_case("authorization"))
+        })
     }
 
     /// Effective maximum number of request retries for this provider.

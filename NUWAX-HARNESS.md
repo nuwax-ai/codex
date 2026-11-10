@@ -340,6 +340,13 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
   alpha 全不透明（含截图工具默认 RGBA）打平走 JPEG 阶梯 85→75→65；真半透明
   保 PNG 走尺寸阶梯。token 计数不变。chat 协议每轮重发历史，截图密集的网页
   开发任务靠它把请求体压回网关限制内。
+- **没配 provider 时fail-fast，不再静默打官方域名（2026-11-10 起）**：既没配
+  `model_provider`（于是用内置默认）、也没有任何凭据（provider 里没 key、headers
+  里没 Authorization、环境里没 `OPENAI_API_KEY`/`CODEX_API_KEY`、没登录）时，引擎
+  **在请求发出前**就报错点名该配什么，不会再发出一个必然 401 的请求、也不会让
+  `api.openai.com` 出现在错误里。显式配了 `model_provider`、配了 key、或用
+  ChatGPT 登录的用户完全不受影响；AWS / `auth.command` / `gateway_oauth` 等凭据
+  在别处的 provider 也不受影响。
 - **thinking/effort 默认不传（2026-11-10 起）**：用户、环境变量、后端都没设置
   effort 时，引擎在 chat 与 anthropic 两个 wire 上都**省略**该字段，模型厂商按自己
   的默认执行（GLM-5.3 官方默认 `max`、现代 Claude 默认开思考、OpenAI GPT-5.x
