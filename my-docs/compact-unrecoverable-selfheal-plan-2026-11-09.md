@@ -576,3 +576,32 @@ retry 建议），我加的 `invalidPrompt → input_too_large` 映射在真实�
 
 **FORK.md §5.4**：合并为单一当前契约（观测上限参与调度+重试裁剪但不参与必要内容
 判定；保护本轮第一条 user；InputTooLarge 专用错误）。
+
+
+---
+
+## 20. 请求体治理（2026-11-10，随 0.18.36 发布）
+
+**触发**：三会话并行实测——chat 线（deepseek）截图密集的网页开发任务连续
+8 次 `413 Payload Too Large`，同会话历史里已有 `final wire request exceeds
+the 32 MiB byte budget`。
+
+**根因链**：chat 协议每轮全量重发历史（OpenAI 官方文档证实：请求独立无
+状态，Responses 才有 previous_response_id/store）→ 10+ 张 2048px PNG 累计
+数十 MB → 引擎 32 MiB 闸门（本地拒绝）与网关 413（远端拒收）双重暴露。
+
+| 项 | 修复 |
+|---|---|
+| Fix-A | `MAX_WIRE_BYTES` 32 MiB → 512 MB（对齐官方 payload 上限），闸门退化为失控保护 |
+| P0 | 入图归一无损优先：达标直通 / alpha 全 255 打平走 JPEG 阶梯 85-75-65 / 真透明保 PNG 走尺寸阶梯 / 兜底取最小档；`NUWAX_IMAGE_MAX_BYTES`（默认 0 关闭） |
+| P1 | 旧图降级：保留最近 2 张，更早的换占位文本；`PrunedToolOutput.pruned_images` 持久化 + 回放按序重放，live/resume 逐字节一致 |
+| Fix-B | 413 → `RequestTooLarge` 新错误（wire requestTooLarge，v2 归 InputTooLarge）接入既有降级-重试链；warn 日志带 payload_bytes；用户文案不含底层细节 |
+| 顺带 | resume 换模型的 "consider switching back" 告警改为日志级（换模型是产品支持流程）；引擎与适配器双侧过滤旧引擎的兼容消息 |
+
+**参照实现**：deepseek-harness 的三层图片治理（sharp JPEG 质量阶梯 2MB/张、
+Files API 引用 128MB 预算、`IMAGE_OFFLOAD_REQUIRED` 触发 durable offload 且
+不耗重试预算）。ZCode 的 zcode-agent 同为截图原样 PNG，但其主路径是
+Anthropic 协议且有 prompt caching，暴露面小。
+
+**未做（P2 下轮）**：413 观测字节上限自适应（`ObservedContextCeiling` 字节
+版）——先攒真实网关拒收档位数据再定策略。
