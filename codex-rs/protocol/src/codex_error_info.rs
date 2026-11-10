@@ -40,6 +40,7 @@ enum CodexErrorInfoWire {
     Unauthorized,
     BadRequest,
     InvalidPrompt,
+    InputTooLarge,
     SandboxError,
     ResponseStreamDisconnected {
         http_status_code: Option<u16>,

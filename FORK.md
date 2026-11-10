@@ -345,18 +345,20 @@ resume 在同一状态上再失败——永久原地打转。
   补救一次。现在每步采样后（`needs_follow_up` 且活跃上下文达到
   `model_mid_turn_compact_threshold_percent`，默认 90、0 关闭、每轮至多 2 次）执行
   前台 `run_auto_compact(MidTurn)`；摘要装不下同样转上面的降级链并 warn。
-- **观测上限（2026-11-09）**：采样请求被网关以超窗拒绝时，把当时的活跃上下文
-  记入 `ObservedContextCeiling`（仅内存、只降不升），后续
-  `context_window_token_status` 把有效窗口钳到该值的 95%，让下一次检查点提前
-  压缩。针对"网关实际拒绝点低于宣称窗口"和图片/工具负载被本地低估两种情形；
-  resume 后重新学习，不进 rollout。
+- **观测上限（2026-11-09 起，2026-11-10 契约合定）**：采样被网关以超窗拒绝时把
+  当时活跃上下文记入 `ObservedContextCeiling`（含 model+provider、仅内存、只降
+  不升，resume 重新学习、不进 rollout）。`observed_window_limit` 参与两类判定：
+  ① 调度（token_limit_reached 与 post/mid-turn 百分比）；② 轮内降级的**裁剪与
+  剪枝预算**（含升级循环的 `prune_target`）——被拒后的重试必须真正变小。它**不**
+  参与"必要内容超窗"判定（该判据只用宣称窗口）。
 - **回放语义（2026-11-09 复审修复）**：空 `resume_at_item_id` 的"空尾部"记录不再按
   当前历史的末尾截断——回放改为定位**记录之后第一条 item**，因此裁剪之后新增的
   用户消息/回复不会在 resume 时被一起隐藏（回归
   `a_no_summary_trim_with_later_turns_keeps_them_on_replay`）。
-- **轮内降级保护当前指令**：`DegradeProtection::CurrentTurnInput` 保证边界不越过
-  最新的 user 消息；若保护后仍装不进预算，返回 `NecessaryContentExceedsWindow`，
-  不会出现"重试成功但任务指令已丢"。
+- **轮内降级保护当前指令**：`DegradeProtection::CurrentTurnInput` 按 turn_id 定位
+  **本轮第一条** user 消息（steer 追加的指令与原始任务一起保护；无 turn_id 时回退
+  最后一条 user）；保护后先做确定性工具输出剪枝（含升级循环），仍装不进**宣称窗口**
+  预算才返回 `NecessaryContentExceedsWindow`（新错误 `InputTooLarge`，见下条）。
 - **每步只压一次**：中途检查点执行后重算 `context_window_token_status`，旧的
   rollover 分支不再用压缩前的 `token_limit_reached` 二次压缩。
 - **观测上限按路由隔离，且只影响调度**：`ObservedContextCeiling` 记录 model +
@@ -365,8 +367,8 @@ resume 在同一状态上再失败——永久原地打转。
   （`full_context_window_limit`），所以一次图片密集请求被拒不会让后续纯文本轮次
   被误判成"必要内容都装不下"。
 - **两种"装不下"分流（2026-11-09）**：`NecessaryContentExceedsWindow`（指令+工具+
-  本轮输入本身超窗）返回 `CodexErr::InvalidPrompt`，协议映射为
-  `CodexErrorInfo::InvalidPrompt`；与"会话上下文耗尽"（`ContextWindowExceeded`）
+  本轮输入本身超窗）返回专用错误
+  `CodexErrorDetails::InputTooLarge`（v2 wire `inputTooLarge`）；与"会话上下文耗尽"（`ContextWindowExceeded`）
   形成两个机器判据。此前是 `Fatal → Other`，客户端会误判成可重试的 provider 故障。
 - **复审加固（2026-11-09 第二轮）**：① 空尾部裁剪的回放按"记录之后第一条 item"
   定位，若其后的轮次被回滚（id 不再出现在重建历史里）则隐藏全部，不会把被裁掉的
@@ -396,6 +398,11 @@ resume 在同一状态上再失败——永久原地打转。
   `CodexErrorInfo::InputTooLarge`（wire `inputTooLarge`），harness 的
   `InvalidPrompt`（必要内容超窗）不再翻成 `Other`，客户端经适配器得到
   `input_too_large`（category `request`、actions `[]`），端到端贯通。
+- **复审加固（2026-11-10 第七轮）**：① 新增专用错误 `InputTooLarge`——网关的
+  `invalid_prompt`（与窗口无关）保持 `InvalidPrompt → Other` 原分类，仅必要内容
+  超窗报 `inputTooLarge`；② 升级循环改为"快照试剪"：投影会让文本变长（短输出 +
+  marker）时回滚该条并跳过，内存与回放记录都不受污染；③ 无 call_id/非文本/拒剪
+  的候选跳过不终止循环。
 - **会话不弃（同日起）**：产品目标是"一个会话一直用、可自由换模型"，所以超窗的
   终态提示不再让用户"开新线程"——`ContextWindowExceeded` 文案改为
   "the conversation is kept; retry, or switch to a model with a larger context

@@ -4857,7 +4857,8 @@ fn core_error_info_converts_to_camel_case() {
         ),
         (CoreCodexErrorInfo::CyberPolicy, json!("cyberPolicy")),
         (CoreCodexErrorInfo::BioPolicy, json!("other")),
-        (CoreCodexErrorInfo::InvalidPrompt, json!("inputTooLarge")),
+        (CoreCodexErrorInfo::InvalidPrompt, json!("other")),
+        (CoreCodexErrorInfo::InputTooLarge, json!("inputTooLarge")),
         (
             CoreCodexErrorInfo::FlexUnavailable,
             json!("flexUnavailable"),

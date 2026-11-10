@@ -2107,6 +2107,11 @@ pub enum CodexErrorInfo {
     Unauthorized,
     BadRequest,
     InvalidPrompt,
+    /// Fork (nuwax-codex): the request itself (instructions + tools + the current
+    /// input) cannot fit the model's context window no matter how much older
+    /// history is omitted. Emitted only by the context-overflow recovery path —
+    /// a gateway `invalid_prompt` stays `InvalidPrompt`.
+    InputTooLarge,
     SandboxError,
     /// The response SSE stream disconnected in the middle of a turnbefore completion.
     ResponseStreamDisconnected {
@@ -2149,6 +2154,7 @@ impl CodexErrorInfo {
             | Self::Unauthorized
             | Self::BadRequest
             | Self::InvalidPrompt
+            | Self::InputTooLarge
             | Self::SandboxError
             | Self::ResponseStreamDisconnected { .. }
             | Self::ResponseTooManyFailedAttempts { .. }

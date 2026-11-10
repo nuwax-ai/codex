@@ -181,6 +181,12 @@ pub enum CodexErrorDetails {
     },
     #[error("{message}")]
     InvalidPrompt { message: String },
+    /// Fork (nuwax-codex): the necessary request content (instructions + tools +
+    /// the current input) cannot fit the model's context window even after
+    /// omitting older history. Distinct from `InvalidPrompt`, which also covers
+    /// gateway rejections unrelated to the window size.
+    #[error("{message}")]
+    InputTooLarge { message: String },
     /// Multiple registered tools share the same effective name.
     #[error("duplicate tool: {0}")]
     ToolCollision(String),
@@ -455,6 +461,7 @@ impl CodexErr {
             | CodexErrorDetails::ResponseIncomplete(_)
             | CodexErrorDetails::ModelNotFound { .. }
             | CodexErrorDetails::InvalidPrompt { .. }
+            | CodexErrorDetails::InputTooLarge { .. }
             | CodexErrorDetails::ToolCollision(_)
             | CodexErrorDetails::RefreshTokenFailed(_)
             | CodexErrorDetails::GatewayLoginRequired(_)
@@ -537,6 +544,7 @@ impl CodexErr {
             CodexErrorDetails::BioPolicy { .. } => CodexErrorInfo::BioPolicy,
             CodexErrorDetails::ModelNotFound { .. } => CodexErrorInfo::ModelNotFound,
             CodexErrorDetails::InvalidPrompt { .. } => CodexErrorInfo::InvalidPrompt,
+            CodexErrorDetails::InputTooLarge { .. } => CodexErrorInfo::InputTooLarge,
             CodexErrorDetails::MisalignmentPolicyViolation { .. } => {
                 CodexErrorInfo::MisalignmentPolicyViolation
             }

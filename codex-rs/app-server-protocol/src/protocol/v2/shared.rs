@@ -183,11 +183,13 @@ impl From<CoreCodexErrorInfo> for CodexErrorInfo {
             CoreCodexErrorInfo::InternalServerError => CodexErrorInfo::InternalServerError,
             CoreCodexErrorInfo::Unauthorized => CodexErrorInfo::Unauthorized,
             CoreCodexErrorInfo::BadRequest => CodexErrorInfo::BadRequest,
-            // Fork (nuwax-codex): the fork's context-overflow path reports the
-            // necessary-content failure as InvalidPrompt; give clients a
-            // machine-readable "input too large" instead of an unknown error
-            // they would offer to retry (which can never succeed).
-            CoreCodexErrorInfo::InvalidPrompt => CodexErrorInfo::InputTooLarge,
+            // Fork (nuwax-codex): a gateway `invalid_prompt` is not necessarily
+            // about the window size, so it keeps the generic classification.
+            // The context-overflow recovery reports the dedicated
+            // `InputTooLarge` instead (2026-11-10 review: mapping all
+            // InvalidPrompt here misclassified ordinary gateway rejections).
+            CoreCodexErrorInfo::InvalidPrompt => CodexErrorInfo::Other,
+            CoreCodexErrorInfo::InputTooLarge => CodexErrorInfo::InputTooLarge,
             CoreCodexErrorInfo::ThreadRollbackFailed => CodexErrorInfo::ThreadRollbackFailed,
             CoreCodexErrorInfo::SandboxError => CodexErrorInfo::SandboxError,
             CoreCodexErrorInfo::ResponseStreamDisconnected { http_status_code } => {

@@ -325,14 +325,14 @@ pub(crate) async fn run_turn(
                     PersistContext::Standard,
                 )
                 .await;
-                // Fork (2026-11-09): classify as `InvalidPrompt` rather than
+                // Fork (2026-11-09): classify as `InputTooLarge` rather than
                 // `Fatal`. `Fatal` surfaces as `CodexErrorInfo::Other`, which
                 // clients map to a retryable provider failure — retrying the same
                 // oversized input can never succeed. `InvalidPrompt` is its own
                 // wire tag (already in the app-server schema), so clients can tell
                 // "this input is too large" apart from "the thread's context is
                 // exhausted".
-                return Err(CodexErr::new(CodexErrorDetails::InvalidPrompt {
+                return Err(CodexErr::new(CodexErrorDetails::InputTooLarge {
                     message: format!(
                         "The request cannot fit the model's {window}-token context window even after omitting older history: the instructions, tool payload, and the current input alone are too large. Switch to a model with a larger context window, or shorten the input."
                     ),
@@ -838,7 +838,7 @@ pub(crate) async fn run_turn(
                                     // Nothing the harness can trim makes this request
                                     // fit: report it as an input problem instead of
                                     // silently continuing into the same failure.
-                                    return Err(CodexErr::new(CodexErrorDetails::InvalidPrompt {
+                                    return Err(CodexErr::new(CodexErrorDetails::InputTooLarge {
                                         message: format!(
                                             "The request cannot fit the model's {window}-token context window even after omitting older history: the instructions, tool payload, and the current input alone are too large. Switch to a model with a larger context window, or shorten the input."
                                         ),
@@ -1167,9 +1167,9 @@ pub(crate) async fn run_turn(
                         crate::compact::DegradeOutcome::NecessaryContentExceedsWindow {
                             window,
                         } => {
-                            // See the pre-turn arm: `InvalidPrompt` keeps this
+                            // See the pre-turn arm: `InputTooLarge` keeps this
                             // distinct from a retryable provider failure.
-                            return Err(CodexErr::new(CodexErrorDetails::InvalidPrompt {
+                            return Err(CodexErr::new(CodexErrorDetails::InputTooLarge {
                                 message: format!(
                                     "The request cannot fit the model's {window}-token context window even after omitting older history: the instructions, tool payload, and the current input alone are too large. Switch to a model with a larger context window, or shorten the input."
                                 ),
@@ -1845,9 +1845,9 @@ async fn run_pre_sampling_compact(
                     );
                 }
                 crate::compact::DegradeOutcome::NecessaryContentExceedsWindow { window } => {
-                    // See the pre-turn arm: `InvalidPrompt`, not a
+                    // See the pre-turn arm: `InputTooLarge`, not a
                     // retryable provider failure.
-                    return Err(CodexErr::new(CodexErrorDetails::InvalidPrompt {
+                    return Err(CodexErr::new(CodexErrorDetails::InputTooLarge {
                         message: format!(
                             "The request cannot fit the model's {window}-token context window even after omitting older history: the instructions, tool payload, and the current input alone are too large. Switch to a model with a larger context window, or shorten the input."
                         ),

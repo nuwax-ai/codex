@@ -1618,6 +1618,9 @@ pub(crate) async fn degrade_history_to_target_window(
             let Some((index, _tokens)) = largest else {
                 break;
             };
+            // Unprunable shapes (no call id, non-text body, apply refused) skip
+            // to the next candidate instead of ending the whole loop
+            // (2026-11-10 review P2).
             let call_id = match &retained[index].item {
                 ResponseItem::FunctionCallOutput { call_id, .. } => {
                     call_id.clone().unwrap_or_default()
@@ -1626,7 +1629,8 @@ pub(crate) async fn degrade_history_to_target_window(
                 _ => String::new(),
             };
             if call_id.is_empty() {
-                break;
+                exhausted.insert(index);
+                continue;
             }
             let current_chars = match &retained[index].item {
                 ResponseItem::FunctionCallOutput { output, .. }
@@ -1634,29 +1638,35 @@ pub(crate) async fn degrade_history_to_target_window(
                     codex_protocol::models::FunctionCallOutputBody::Text(text) => {
                         text.chars().count()
                     }
-                    _ => break,
+                    _ => 0,
                 },
-                _ => break,
+                _ => 0,
             };
+            if current_chars == 0 {
+                exhausted.insert(index);
+                continue;
+            }
             let next_total = (current_chars / 2).max(200);
             let next_head = (next_total * 4) / 5;
             let next_tail = next_total - next_head;
+            // Trial projection on a snapshot: a short output plus the marker
+            // can end up LONGER than the original, which must neither hit the
+            // live history nor stay unrecorded (live/replay divergence,
+            // 2026-11-10 review P2). Commit only a real shrink.
+            let snapshot = retained[index].clone();
             let applied = crate::session::compaction_prune::prune_tool_output_by_call_id(
                 &mut retained,
                 &call_id,
                 next_head,
                 next_tail,
             );
-            if !applied {
-                break;
-            }
             let new_tokens: i64 = retained
                 .iter()
                 .map(|envelope| crate::context_manager::estimate_item_token_count(&envelope.item))
                 .sum();
-            if new_tokens >= retained_tokens {
-                // This output is at its stub: mark it and let the next round
-                // pick a different candidate instead of giving up entirely.
+            if !applied || new_tokens >= retained_tokens {
+                // Restore the pre-trial item; this candidate cannot shrink.
+                retained[index] = snapshot;
                 exhausted.insert(index);
                 continue;
             }

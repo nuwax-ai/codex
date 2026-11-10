@@ -557,3 +557,22 @@ retry 建议），我加的 `invalidPrompt → input_too_large` 映射在真实�
 | P2 轮内剪枝用宣称窗口做重试目标，被拒后可能原样重发；最大候选到 stub 即整体退出 | 成立 | 循环目标改 `min(history_budget, necessary_budget)`；到 stub 的输出进 `exhausted` 集合跳过，继续剪下一条 |
 | P2 `input_too_large` 未贯通 v2（InvalidPrompt → Other） | 成立 | v2 新增 `InputTooLarge`（wire `inputTooLarge`），`InvalidPrompt` 映射之；schema fixtures 重新生成；适配器加 `inputTooLarge → input_too_large`，wire 用例 33/33 |
 | FORK.md §5.4 与实现漂移 | 成立 | 补第六轮条目（轮内保护定位本轮第一条 user 输入、观测上限参与调度与重试裁剪） |
+
+
+---
+
+## 19. 第七轮复审修复 + 自查发现的预存回归（2026-11-10）
+
+| 发现 | 来源 | 结论 | 修复 |
+|---|---|---|---|
+| P2 v2 把所有 InvalidPrompt 报成 inputTooLarge | codex | 成立（网关 invalid_prompt 与窗口无关） | 新增专用 `CodexErrorDetails::InputTooLarge{message}` → `CodexErrorInfo::InputTooLarge`（wire/v2/协议三处）；v2 恢复 `InvalidPrompt → Other`；turn.rs 四处改用新错误；guardian retry 覆盖新变体（不重试） |
+| P2 无进展剪枝改内存但不记录 | codex | 成立（短输出+marker 会变长） | 升级循环改"快照试剪"：先 clone，施加后 token 未降则回滚该条并标记 exhausted，内存与记录都不受污染；回归：repeated_pruning 测试混入 210 字符输出，断言原样保留 |
+| P2 剩余可剪输出时提前退出 | codex | 成立 | 无 call_id / 非文本 / 拒剪的候选标 exhausted 后 continue，不再 break |
+| **预存**：HTTP body 超窗分类丢失 | **自查**（codex 未报） | 成立（v0.18.32 即红，529 合并 rewiring 丢失 4cf361d08c 的 marker 表） | 恢复 `body_indicates_context_window_exceeded`（JSON code + 6 个 marker）与 400/413 早退臂；预存红测 `map_api_error_classifies_http_context_window_rejections` 转绿 |
+
+**意义**：第 4 项比本轮三项都重——bridge 网关以非 SSE 的 HTTP body 报超窗时，此前
+会被归为 InvalidRequest，fork_overflow_recoverable/降级链完全不会触发。事故链路
+走的是 SSE（未受影响），但同族网关的 HTTP 拒绝自 v0.18.2x 起就没有恢复路径。
+
+**FORK.md §5.4**：合并为单一当前契约（观测上限参与调度+重试裁剪但不参与必要内容
+判定；保护本轮第一条 user；InputTooLarge 专用错误）。

@@ -52,6 +52,34 @@ pub fn map_api_error(err: ApiError) -> CodexErr {
     }
 }
 
+/// Fork (nuwax-codex): recognizes vendor context-window rejections on HTTP
+/// bodies. The structured check covers the OpenAI-family error code that most
+/// OpenAI-compatible gateways use (DeepSeek, GLM, ...); the marker list covers
+/// Anthropic's Messages wording and the common free-text spellings. Markers
+/// stay specific — a generic 400 must keep classifying as an invalid request,
+/// not silently shed history.
+fn body_indicates_context_window_exceeded(body_text: &str) -> bool {
+    if let Ok(parsed) = serde_json::from_str::<Value>(body_text)
+        && let Some(code) = parsed
+            .get("error")
+            .and_then(|error| error.get("code"))
+            .and_then(Value::as_str)
+        && code == "context_length_exceeded"
+    {
+        return true;
+    }
+    const MARKERS: [&str; 6] = [
+        "context_length_exceeded",
+        "context length exceeded",
+        "exceeds the context window",
+        "exceed the context window",
+        "maximum context length",
+        "prompt is too long",
+    ];
+    let lowered = body_text.to_ascii_lowercase();
+    MARKERS.iter().any(|marker| lowered.contains(marker))
+}
+
 fn map_api_error_details(err: ApiError) -> CodexErr {
     match err {
         ApiError::ContextWindowExceeded => CodexErr::ContextWindowExceeded,
@@ -130,6 +158,19 @@ fn map_api_error_details(err: ApiError) -> CodexErr {
                 let provider_error = parsed_body.as_ref().and_then(|body| body.get("error"));
                 if let Some(error) = parse_terminal_provider_error(provider_error, Some(status)) {
                     return map_api_error_details(error);
+                }
+
+                // Fork (nuwax-codex): vendor context-window rejections arrive
+                // as plain HTTP 400/413 bodies; classify them so the compaction
+                // trim-retry loop and the turn overflow handling engage.
+                // (Restored 2026-11-10: lost in the 529-commit merge rewiring,
+                // caught by the pre-existing red test below.)
+                if matches!(
+                    status,
+                    http::StatusCode::BAD_REQUEST | http::StatusCode::PAYLOAD_TOO_LARGE
+                ) && body_indicates_context_window_exceeded(&body_text)
+                {
+                    return CodexErr::ContextWindowExceeded;
                 }
 
                 if status == http::StatusCode::SERVICE_UNAVAILABLE

@@ -1075,12 +1075,20 @@ async fn repeated_pruning_matches_between_live_history_and_replay() -> anyhow::R
             encrypted_function_args: None,
             internal_chat_message_metadata_passthrough: None,
         });
+        // call-5 stays short: halving it to the 200-char stub plus the prune
+        // marker would GROW the text; the trial projection must be reverted so
+        // live and replay both keep the original (2026-11-10 review P2).
+        let payload = if call_id == "call-5" {
+            "s".repeat(210)
+        } else {
+            "w".repeat(40_000)
+        };
         items.push(ResponseItem::FunctionCallOutput {
             id: None,
             call_id: Some(call_id.clone()),
             name: None,
             namespace: None,
-            output: FunctionCallOutputPayload::from_text("w".repeat(40_000)),
+            output: FunctionCallOutputPayload::from_text(payload),
             internal_chat_message_metadata_passthrough: None,
         });
     }
@@ -1183,6 +1191,13 @@ async fn repeated_pruning_matches_between_live_history_and_replay() -> anyhow::R
             live_text, replay_text,
             "live and replay projections must be byte-identical for {call_id}"
         );
+        if call_id == "call-5" {
+            assert_eq!(
+                live_text.chars().count(),
+                210,
+                "a projection that would grow the output must be reverted, not applied"
+            );
+        }
     }
     Ok(())
 }

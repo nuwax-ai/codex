@@ -205,6 +205,9 @@ fn should_retry_guardian_review(outcome: &GuardianReviewOutcome) -> bool {
             | CodexErrorInfo::BadRequest
             | CodexErrorInfo::ModelNotFound
             | CodexErrorInfo::InvalidPrompt
+            // The request itself cannot fit the window; retrying the same
+            // input can never succeed.
+            | CodexErrorInfo::InputTooLarge
             | CodexErrorInfo::SandboxError
             | CodexErrorInfo::ActiveTurnNotSteerable { .. }
             | CodexErrorInfo::ThreadRollbackFailed
