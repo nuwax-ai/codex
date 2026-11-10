@@ -5010,7 +5010,19 @@ impl Config {
                 .and_then(|tui| tui.disable_paste_burst)
                 .or(cfg.disable_paste_burst)
                 .unwrap_or(false),
-            analytics_enabled: cfg.analytics.as_ref().and_then(|a| a.enabled),
+            // Fork (nuwax-codex): analytics is opt-in. An unset `[analytics]` section
+            // resolves to Some(false) — never None — so every downstream gate
+            // (AnalyticsEventsClient construction, session queue, TUI telemetry, OTel
+            // exporter consent) sees an explicit off instead of relying on
+            // per-entrypoint defaults or auth-side send gating. Enterprise/intranet
+            // deployments expect zero side-channel traffic; `[analytics] enabled =
+            // true` opts back in.
+            analytics_enabled: Some(
+                cfg.analytics
+                    .as_ref()
+                    .and_then(|a| a.enabled)
+                    .unwrap_or(false),
+            ),
             feedback_enabled: cfg
                 .feedback
                 .as_ref()

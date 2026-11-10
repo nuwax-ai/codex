@@ -210,6 +210,11 @@ async fn actual_turn_elicitation_analytics(scenario: Scenario) -> Result<()> {
     let mut builder = search_capable_apps_builder(server.uri())
         .with_analytics_events_client(client.clone())
         .with_config(move |config| {
+            // Fork (nuwax-codex): analytics is opt-in; these scenarios assert
+            // analytics emission, so opt in explicitly — otherwise the session
+            // gate (config.analytics_enabled == Some(false)) would discard the
+            // injected enabled client.
+            config.analytics_enabled = Some(true);
             config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
             config.approvals_reviewer = ApprovalsReviewer::User;
             if scenario != Scenario::DefaultAuth {

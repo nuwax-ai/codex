@@ -296,6 +296,10 @@ async fn build_analytics_plugin_test_codex(
         .with_model("gpt-5.2")
         .with_config(move |config| {
             config.chatgpt_base_url = chatgpt_base_url;
+            // Fork (nuwax-codex): analytics is opt-in; callers of this helper
+            // wait for analytics events, so opt in explicitly instead of
+            // relying on the old unset-me-enabled default.
+            config.analytics_enabled = Some(true);
         });
     builder.build_with_auto_env(server).await
 }
@@ -389,6 +393,10 @@ async fn shared_analytics_client_preserves_session_products() -> Result<()> {
             test_codex()
                 .with_analytics_events_client(client.clone())
                 .with_config(move |config| {
+                    // Fork (nuwax-codex): analytics is opt-in; this test
+                    // asserts flushed plugin measurements, so opt in
+                    // explicitly to keep the injected client alive in session.
+                    config.analytics_enabled = Some(true);
                     config.apps_mcp_product_sku = product.map(str::to_string);
                 })
                 .build_with_auto_env(&server)

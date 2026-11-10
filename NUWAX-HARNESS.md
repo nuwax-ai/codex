@@ -200,6 +200,11 @@ anthropic_prompt_caching = true  # 可选：Anthropic 线 prompt 缓存（opt-in
 # max_output_tokens = 8192       # 可选：输出上限；Anthropic 线不设时默认 16384
 ```
 
+隐私默认(2026-11-09 起):analytics(产品分析事件)与内置 statsig 遥测**默认
+关闭**,fork 改为 opt-in——未配置 `[analytics]` 时分析客户端彻底不驻留,除你配置
+的模型网关(模型请求 + `/models` 目录发现)外零外联;如需开启写
+`[analytics] enabled = true`。
+
 选 `env_key` 方式时，Key 放进受保护环境文件（沿用 §2 的 agent.env 模式，`chmod 600`）：
 
 ```bash

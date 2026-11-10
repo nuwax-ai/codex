@@ -41,6 +41,7 @@ use codex_config::permissions_toml::NetworkToml;
 use codex_config::permissions_toml::PermissionProfileToml;
 use codex_config::permissions_toml::PermissionsToml;
 use codex_config::permissions_toml::WorkspaceRootsToml;
+use codex_config::types::AnalyticsConfigToml;
 use codex_config::types::AppToolApproval;
 use codex_config::types::ApprovalsReviewer;
 use codex_config::types::BundledSkillsConfig;
@@ -575,6 +576,37 @@ async fn load_config_resolves_experimental_request_user_input_enabled() -> std::
     .await?;
 
     assert!(!config.experimental_request_user_input_enabled);
+    Ok(())
+}
+
+#[tokio::test]
+async fn load_config_analytics_is_opt_in_default_off() -> std::io::Result<()> {
+    // Fork (nuwax-codex): an unset `[analytics]` section must resolve to an
+    // explicit Some(false) so the analytics client is disabled outright,
+    // never left queuing behind auth-side send gating.
+    let codex_home = tempdir()?;
+    let config = Config::load_from_base_config_with_overrides(
+        ConfigToml::default(),
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await?;
+    assert_eq!(config.analytics_enabled, Some(false));
+
+    // Explicit opt-in still resolves to Some(true).
+    let codex_home = tempdir()?;
+    let config = Config::load_from_base_config_with_overrides(
+        ConfigToml {
+            analytics: Some(AnalyticsConfigToml {
+                enabled: Some(true),
+            }),
+            ..ConfigToml::default()
+        },
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await?;
+    assert_eq!(config.analytics_enabled, Some(true));
     Ok(())
 }
 
