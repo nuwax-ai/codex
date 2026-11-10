@@ -265,6 +265,11 @@ pub const IMAGE_BYTE_BUDGET_QUALITY_LADDER: [u8; 3] = [85, 75, 65];
 /// none). Applied longest-edge-first; the first rung that fits wins.
 const ALPHA_PRESERVING_DIMENSION_LADDER: [u32; 3] = [1600, 1280, 1024];
 
+/// Longest-edge caps tried after the quality ladder alone cannot reach the
+/// budget. Quality first, then size: a screenshot of UI text stays readable
+/// far longer at a lower quality than at a smaller size (Fork 2026-11-10).
+const BYTE_BUDGET_DIMENSION_LADDER: [u32; 4] = [2048, 1600, 1280, 1024];
+
 /// True when every pixel's alpha is fully opaque. Screenshot tools commonly
 /// emit 32-bit RGBA even for opaque content; those images can be flattened to
 /// RGB and JPEG-encoded with no visual loss.
@@ -307,6 +312,58 @@ fn encode_png(image: &DynamicImage) -> Result<Vec<u8>, ImageProcessingError> {
             source,
         })?;
     Ok(buffer)
+}
+
+/// Scales `image` so its longest edge is at most `max_dimension`, leaving
+/// smaller images untouched.
+fn resize_to_longest_edge(image: &DynamicImage, max_dimension: u32) -> DynamicImage {
+    let (width, height) = image.dimensions();
+    let longest_edge = width.max(height);
+    if longest_edge <= max_dimension {
+        return image.clone();
+    }
+    let scale = f64::from(max_dimension) / f64::from(longest_edge);
+    let scaled_width = ((f64::from(width) * scale).round() as u32).max(1);
+    let scaled_height = ((f64::from(height) * scale).round() as u32).max(1);
+    image.resize_exact(scaled_width, scaled_height, FilterType::Triangle)
+}
+
+/// Caps the longest edge of a data-URL image at `max_edge`, re-encoding only
+/// when the image is actually larger. Returns `None` when nothing changed.
+///
+/// Fork (2026-11-10): `detail: Original` images are charged one token per
+/// 16x16 patch, so a 4000x4000 screenshot costs the whole per-output visual
+/// budget no matter how few bytes it has. Shrinking bytes alone therefore does
+/// not make such an image admissible — the pixels must come down too.
+pub fn cap_data_url_dimensions(
+    image_url: &str,
+    max_edge: u32,
+) -> Result<Option<String>, ImageProcessingError> {
+    let decoded = decode_data_url_to_dynamic(image_url)?;
+    let (width, height) = decoded.dimensions();
+    if width.max(height) <= max_edge {
+        return Ok(None);
+    }
+    let resized = resize_to_longest_edge(&decoded, max_edge);
+    // Keep the format family: opaque images take the JPEG path (no alpha to
+    // lose), genuinely transparent ones stay PNG.
+    let (bytes, format) = if alpha_is_fully_opaque(&resized) {
+        let quality = *IMAGE_BYTE_BUDGET_QUALITY_LADDER
+            .last()
+            .unwrap_or(&IMAGE_BYTE_BUDGET_QUALITY_LADDER[0]);
+        (encode_jpeg_at_quality(&resized, quality)?, ImageFormat::Jpeg)
+    } else {
+        (encode_png(&resized)?, ImageFormat::Png)
+    };
+    Ok(Some(data_url_from_bytes(&format_to_mime(format), &bytes)))
+}
+
+/// The longest edge that keeps a square-ish image inside `budget_tokens`
+/// patches, with headroom for the estimator's ceiling and control overhead.
+pub fn longest_edge_for_visual_budget(budget_tokens: usize) -> u32 {
+    let patches = (budget_tokens as f64) * 0.8;
+    let edge = (PROMPT_IMAGE_PATCH_SIZE as f64) * patches.sqrt();
+    (edge.floor() as u32).max(256)
 }
 
 /// Shrinks an already-prepared image to fit `max_bytes`, lossless-first
@@ -402,19 +459,33 @@ fn fit_dynamic_to_byte_budget(
 ) -> Result<Option<(Vec<u8>, ImageFormat)>, ImageProcessingError> {
     if alpha_is_fully_opaque(image) {
         // Flatten to RGB via a JPEG encode; no visual information is lost
-        // because the alpha channel carries none.
+        // because the alpha channel carries none. Quality first at the source
+        // size, then the dimension ladder crossed with the quality ladder.
         for quality in IMAGE_BYTE_BUDGET_QUALITY_LADDER {
             let bytes = encode_jpeg_at_quality(image, quality)?;
             if bytes.len() <= max_bytes {
                 return Ok(Some((bytes, ImageFormat::Jpeg)));
             }
         }
+        for max_dimension in BYTE_BUDGET_DIMENSION_LADDER {
+            let resized = resize_to_longest_edge(image, max_dimension);
+            for quality in IMAGE_BYTE_BUDGET_QUALITY_LADDER {
+                let bytes = encode_jpeg_at_quality(&resized, quality)?;
+                if bytes.len() <= max_bytes {
+                    return Ok(Some((bytes, ImageFormat::Jpeg)));
+                }
+            }
+        }
         // Nothing fits: keep the smallest rung so the caller still has an
         // output to compare against the original.
+        let resized = resize_to_longest_edge(
+            image,
+            *BYTE_BUDGET_DIMENSION_LADDER.last().unwrap_or(&2048),
+        );
         let smallest = *IMAGE_BYTE_BUDGET_QUALITY_LADDER
             .last()
             .unwrap_or(&IMAGE_BYTE_BUDGET_QUALITY_LADDER[0]);
-        let bytes = encode_jpeg_at_quality(image, smallest)?;
+        let bytes = encode_jpeg_at_quality(&resized, smallest)?;
         return Ok(Some((bytes, ImageFormat::Jpeg)));
     }
 

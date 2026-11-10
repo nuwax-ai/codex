@@ -285,6 +285,134 @@ fn normalize_boundaries(
     }
 }
 
+/// Re-encodes inline tool-output images that exceed the entrance bounds so
+/// they fit, instead of letting the admission drop them.
+///
+/// Returns how many images were re-encoded. Lossless-first (see
+/// `codex_utils_image::fit_data_url_to_byte_budget`): quality is lowered before
+/// size, because a screenshot of UI text stays readable far longer at a lower
+/// JPEG quality than at a smaller pixel size. Images that already fit, and
+/// images whose smallest rung still does not fit, are left untouched — the
+/// latter fall through to the admission's drop path with its marker.
+fn shrink_oversized_tool_output_images(
+    mut items: Vec<FunctionCallOutputContentItem>,
+) -> Vec<FunctionCallOutputContentItem> {
+    let per_image_limit = MAX_TOOL_OUTPUT_IMAGE_BYTES;
+    let total_limit = MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES;
+
+    let encoded_len = |item: &FunctionCallOutputContentItem| match item {
+        FunctionCallOutputContentItem::InputImage {
+            image: codex_protocol::models::ImageReference::Inline { image_url },
+            ..
+        } => image_url.len(),
+        _ => 0,
+    };
+
+    let mut reencoded = 0usize;
+    // Pass 0: pixel cost. `detail: Original` charges one token per 16x16 patch,
+    // so a 4000x4000 screenshot costs the whole per-output visual budget no
+    // matter how few bytes it has — shrinking bytes alone would still be
+    // dropped by the visual bound. Cap the longest edge first (2026-11-10).
+    let longest_edge_cap = codex_utils_image::longest_edge_for_visual_budget(
+        MAX_TOOL_OUTPUT_VISIBLE_TOKENS,
+    );
+    for item in items.iter_mut() {
+        let FunctionCallOutputContentItem::InputImage {
+            image: codex_protocol::models::ImageReference::Inline { image_url },
+            ..
+        } = item
+        else {
+            continue;
+        };
+        // Over the visual budget, or too large for the estimator to judge
+        // (it refuses URLs past the per-image byte bound, which is exactly the
+        // oversized case). Either way the pixels have to come down.
+        let over_visual_budget = image_url.len() > per_image_limit
+            || codex_utils_image::estimate_original_image_tokens(image_url)
+                .is_some_and(|tokens| tokens > MAX_TOOL_OUTPUT_VISIBLE_TOKENS);
+        if !over_visual_budget {
+            continue;
+        }
+        if let Ok(Some(capped)) =
+            codex_utils_image::cap_data_url_dimensions(image_url, longest_edge_cap)
+        {
+            *image_url = capped;
+            reencoded += 1;
+        }
+    }
+
+    // Pass 1: per-image bound. Nothing else to do when every image fits.
+    if items.iter().map(encoded_len).all(|len| len <= per_image_limit) {
+        return items;
+    }
+    for item in items.iter_mut() {
+        let FunctionCallOutputContentItem::InputImage {
+            image: codex_protocol::models::ImageReference::Inline { image_url },
+            ..
+        } = item
+        else {
+            continue;
+        };
+        if image_url.len() <= per_image_limit {
+            continue;
+        }
+        // Shrink to the per-image limit with headroom for the base64 growth
+        // the admission measures (it compares the encoded URL length).
+        let target = per_image_limit.saturating_sub(image_url.len() - image_url.len() / 4 * 3);
+        match codex_utils_image::fit_data_url_to_byte_budget(image_url, target) {
+            Ok((fitted_url, _, _)) if fitted_url.len() <= per_image_limit => {
+                *image_url = fitted_url;
+                reencoded += 1;
+            }
+            _ => {}
+        }
+    }
+
+    // Pass 2: aggregate bound. Shrink the OLDEST images (newest is the
+    // evidence the turn still needs) down to the remaining budget rather than
+    // dropping them.
+    let total: usize = items.iter().map(encoded_len).sum();
+    if total > total_limit {
+        let mut overflow = total - total_limit;
+        let image_positions: Vec<usize> = items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| encoded_len(item) > 0)
+            .map(|(index, _)| index)
+            .collect();
+        for &index in &image_positions {
+            if overflow == 0 {
+                break;
+            }
+            let FunctionCallOutputContentItem::InputImage {
+                image: codex_protocol::models::ImageReference::Inline { image_url },
+                ..
+            } = &mut items[index]
+            else {
+                continue;
+            };
+            let current = image_url.len();
+            // Aim just under the overflow, never below a floor that would
+            // make the image useless.
+            let target = current.saturating_sub(overflow).max(64 * 1024);
+            if target >= current {
+                continue;
+            }
+            if let Ok((fitted_url, _, _)) =
+                codex_utils_image::fit_data_url_to_byte_budget(image_url, target)
+                && fitted_url.len() < current
+            {
+                overflow = overflow.saturating_sub(current - fitted_url.len());
+                *image_url = fitted_url;
+                reencoded += 1;
+            }
+        }
+    }
+
+    let _ = reencoded;
+    items
+}
+
 fn truncate_output_items(
     items: Cow<'_, [FunctionCallOutputContentItem]>,
     policy: TruncationPolicy,
@@ -295,6 +423,14 @@ fn truncate_output_items(
     // budget (image visual cost charged up front) apply on every path into
     // the item pipeline, boundary-aware or not (FORK.md §4 图片边界).
     let policy = tool_output_items_policy(&items, policy);
+    // Fork (2026-11-10): shrink before dropping. The admission bounds below
+    // are byte-based (encoded size), so a large-but-legitimate screenshot used
+    // to be discarded whole and the model saw only a marker line — it could
+    // not read the page it had just captured. Re-encode it to fit first, and
+    // only let the still-oversized ones fall through to the drop path.
+    let items = Cow::Owned(shrink_oversized_tool_output_images(
+        items.into_owned().to_vec(),
+    ));
     let admission = admit_tool_output_images(&items, policy);
     match items {
         Cow::Borrowed(items) => truncate_output_iter(

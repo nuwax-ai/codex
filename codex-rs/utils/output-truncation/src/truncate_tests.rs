@@ -808,3 +808,152 @@ fn owned_mixed_output_moves_a_preserved_image_across_text_truncation() {
         "expected consolidated image omission marker"
     );
 }
+
+// ---- Fork (2026-11-10): shrink before drop (FORK.md §5.5) ----
+
+/// Builds a real, decodable PNG data URL of `width`x`height` whose encoded
+/// size is large: smooth gradients compress poorly, so a big canvas lands in
+/// the megabyte range like a retina screenshot does.
+fn large_png(width: u32, height: u32) -> String {
+    use image::{ImageBuffer, Rgba};
+    let mut img = ImageBuffer::new(width, height);
+    for (x, y, pixel) in img.enumerate_pixels_mut() {
+        *pixel = Rgba([(x % 251) as u8, (y % 241) as u8, ((x + y) % 239) as u8, 255]);
+    }
+    let mut bytes = Vec::new();
+    image::DynamicImage::ImageRgba8(img)
+        .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+        .expect("encode fixture png");
+    format!("data:image/png;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes))
+}
+
+fn inline_image_for_shrink(url: &str) -> FunctionCallOutputContentItem {
+    FunctionCallOutputContentItem::InputImage {
+        image: ImageReference::Inline {
+            image_url: url.to_string(),
+        },
+        detail: Some(codex_protocol::models::ImageDetail::Original),
+    }
+}
+
+#[test]
+fn an_oversized_image_is_re_encoded_instead_of_dropped() {
+    // 4000x4000 smooth gradient: past the 16 MiB encoded entrance bound, the
+    // shape of a retina full-page screenshot.
+    let url = large_png(/*width*/ 4000, /*height*/ 4000);
+    assert!(
+        url.len() > MAX_TOOL_OUTPUT_IMAGE_BYTES,
+        "fixture must exceed the entrance bound ({} bytes)",
+        url.len()
+    );
+
+    let items = vec![inline_image_for_shrink(&url)];
+    let shrunk = crate::shrink_oversized_tool_output_images(items);
+
+    // The image SURVIVES: it is still an image, now inside the bound.
+    let FunctionCallOutputContentItem::InputImage { image, .. } = &shrunk[0] else {
+        panic!("the image must not be replaced by a text marker");
+    };
+    let ImageReference::Inline { image_url } = image else {
+        panic!("the image must stay inline");
+    };
+    assert!(
+        image_url.len() <= MAX_TOOL_OUTPUT_IMAGE_BYTES,
+        "re-encoded size {} must fit the entrance bound",
+        image_url.len()
+    );
+    // Lossless-first: the flattening only drops an alpha channel that carries
+    // nothing (the fixture is fully opaque), and the payload is JPEG.
+    assert!(
+        image_url.starts_with("data:image/jpeg;base64,"),
+        "an opaque image is flattened to JPEG: {}",
+        &image_url[..40]
+    );
+}
+
+#[test]
+fn images_that_already_fit_are_left_untouched() {
+    let small = large_png(/*width*/ 64, /*height*/ 64);
+    assert!(small.len() <= MAX_TOOL_OUTPUT_IMAGE_BYTES);
+    let items = vec![inline_image_for_shrink(&small)];
+    let shrunk = crate::shrink_oversized_tool_output_images(items);
+    let FunctionCallOutputContentItem::InputImage { image, .. } = &shrunk[0] else {
+        panic!("expected an image");
+    };
+    let ImageReference::Inline { image_url } = image else {
+        panic!("expected an inline image");
+    };
+    assert_eq!(image_url, &small, "a fitting image must pass through byte-identical");
+}
+
+#[test]
+fn the_aggregate_bound_shrinks_the_oldest_first() {
+    // Three oversized images: the total is over the 24 MiB aggregate bound, so
+    // the OLDEST must be shrunk while the newest keeps its pixels.
+    let a = large_png(3000, 3000);
+    let b = large_png(3000, 3000);
+    let c = large_png(3000, 3000);
+    let items = vec![inline_image_for_shrink(&a), inline_image_for_shrink(&b), inline_image_for_shrink(&c)];
+    let shrunk = crate::shrink_oversized_tool_output_images(items);
+    let len_of = |item: &FunctionCallOutputContentItem| match item {
+        FunctionCallOutputContentItem::InputImage {
+            image: ImageReference::Inline { image_url },
+            ..
+        } => image_url.len(),
+        _ => 0,
+    };
+    assert!(
+        len_of(&shrunk[2]) >= len_of(&shrunk[1]) && len_of(&shrunk[1]) >= len_of(&shrunk[0]),
+        "oldest shrinks most: {:?}",
+        shrunk.iter().map(len_of).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_pathological_image_still_falls_through_to_the_drop_path() {
+    // An oversized payload that cannot be decoded (a producer bug, or a
+    // truncated upload): no re-encoding is possible, so the function leaves it
+    // alone and the admission drops it with its marker rather than looping.
+    let url = format!("data:image/png;base64,{}", "A".repeat(MAX_TOOL_OUTPUT_IMAGE_BYTES + 1024));
+    let items = vec![inline_image_for_shrink(&url)];
+    let shrunk = crate::shrink_oversized_tool_output_images(items);
+    let FunctionCallOutputContentItem::InputImage { image, .. } = &shrunk[0] else {
+        panic!("expected an image");
+    };
+    let ImageReference::Inline { image_url } = image else {
+        panic!("expected an inline image");
+    };
+    assert_eq!(image_url, &url, "an undecodable payload passes through untouched");
+}
+
+#[test]
+fn the_full_pipeline_keeps_a_shrunken_image_instead_of_a_marker() {
+    // End-to-end over the real pipeline (what the model actually receives): a
+    // retina screenshot over the per-image bound used to come back as the
+    // omission marker — the model saw "image omitted" instead of the page.
+    let url = large_png(/*width*/ 4000, /*height*/ 4000);
+    let items = vec![inline_image_for_shrink(&url)];
+    let out = crate::truncate_function_output_items_with_policy(
+        &items,
+        TruncationPolicy::Tokens(10_000),
+        |_| 0,
+    );
+    let image_count = out
+        .iter()
+        .filter(|item| {
+            matches!(
+                item,
+                FunctionCallOutputContentItem::InputImage {
+                    image: ImageReference::Inline { image_url },
+                    ..
+                } if image_url.starts_with("data:image/")
+            )
+        })
+        .count();
+    let marker_count = out
+        .iter()
+        .filter(|item| matches!(item, FunctionCallOutputContentItem::InputText { text } if text.contains("omitted")))
+        .count();
+    assert_eq!(image_count, 1, "the model must still receive an image");
+    assert_eq!(marker_count, 0, "and not the omission marker");
+}

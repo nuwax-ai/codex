@@ -458,6 +458,18 @@ reviewer——**一次模型调用**——由它代替用户批准。nuwax-clien
 审查者从模型换成用户）；`agent` 仍可在 mode 列表里显式选。引擎侧
 `approvals_reviewer` 配置默认仍是 `user`，TUI 一向如此、不受影响。
 
+**超大截图先缩小再丢弃（2026-11-10）**：工具输出的图片入口界（单张 16 MiB
+编码后、合计 24 MiB、`detail: Original` 按 16×16 patch 计费至 10000 token）此前
+是**纯丢弃**——一张 12 MB 的 Retina 全页截图（base64 16.35 MB）会整张变成一行
+"[omitted 1 image(s): ...]" marker，模型完全看不到画面（用户 agent 实测反馈）。
+现在入口前加三级收缩：**① 像素**——超视觉预算的图先把最长边压到
+`longest_edge_for_visual_budget`（10000 token 预算 → 约 1430px，只降尺寸不降质量，
+因为 UI 文字在小图上比低画质上更可读）；**② 单张字节**——JPEG 质量阶梯
+85→75→65，再不够才走尺寸阶梯 2048→1600→1280→1024；**③ 合计字节**——从最旧的图
+开始收缩到剩余预算（最新的图是本轮证据，优先保像素）。仍放不下的才走原丢弃路径
+（含 marker）。无损优先：alpha 全 255 的截图打平转 JPEG（视觉无损），真半透明保
+PNG。无法解码的 payload 原样透传、交给入口丢弃。
+
 **未配置时的 fail-fast（2026-11-10）**：`to_api_provider` 在"无 base_url、无 auth
 mode、provider 无 key、headers 无 Authorization、无 aws/auth.command/gateway_oauth、
 环境无 OpenAI key"时直接报错点名配置项，不再发出必然 401 的请求——内置默认域名
