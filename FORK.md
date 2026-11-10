@@ -408,6 +408,53 @@ resume 在同一状态上再失败——永久原地打转。
   ASCII 前缀匹配 "Codex ran out of room" 的客户端（iOS 输入上限分类器）必须
   同批次改判该字段。
 
+
+### 5.6 thinking / reasoning_effort 默认不传（2026-11-10 起）
+
+**背景**：厂商档位表互不相同（GLM-5.3 只 `low/high/max` 且**不能关闭思考**、官方
+默认 `max`；OpenAI GPT-5.x 有 `medium`；现代 Claude 默认开思考），而 ACP 适配器
+曾对"无显式档位"硬编码兜底 `medium`，写进 thread settings 后 GLM-5.3 每请求必被
+档位门拒。协议侧三家官方文档一致：**该字段非必填，省略 = 模型厂商默认**
+（OpenAI 推理指南、Anthropic thinking 总览、GLM-5.3 模型文档）。
+
+**契约**：
+
+- **未设置（用户/环境变量/后端都没给）→ 两个 wire 都不发** `reasoning_effort` /
+  `thinking`，厂商按自己的默认执行。适配器身份串用哨兵 `model[default]`（UI 显示
+  "Vendor default"），`ModelId.fromString` 也接受无括号的裸 model id（映射为哨兵）——
+  裸 id 此前会抛错，使客户端的模型同步静默失效。
+- **哨兵永不作为档位下发**：`createCodexCollaborationMode`（resume 与模式切换的
+  thread settings 写入路径，即事故路径）把哨兵映射为 `null`。
+- **显式设置照发**，档位门校验；`none`（关闭思考）遇"始终思考"网关 fail-fast 并
+  点名模型与应设的变量（适配器 `applyModelAndEffort` + 引擎档位门双侧）。
+- **后端/环境变量显式设置优先级最高**（`NUWAX_MODEL_REASONING_EFFORT` /
+  `CODEX_MODEL_REASONING_EFFORT`）。
+- 客户端**不再按模型名播种**档位（删除两处 GLM-5.3→low 播种）；确需低成本默认由
+  后端统一下发，单一策略源。
+
+**引擎侧既有行为（本轮加测试锁定，无行为变更）**：`convert_request.rs` chat wire
+`if let Some(effort)` 才插键、anthropic wire 走 rig 类型化通道（`rig_reasoning(None)`
+返回 `None`）；档位门对 `None` 放行。目录模型 `default_reasoning_level` 全为
+`None`——引擎本来就不会发明档位；注入者只有适配器（已修）与
+`multi_agents/spawn.rs` 的 `unwrap_or_default()`（= `Medium`，已改为 Option 透传，
+子智能体不带 effort 时不再注入）。
+
+**overlay `default` 字段是探测记录而非请求值**：`effort_table_for` 只取 `levels`；
+**禁止**把 `default` 接进 `default_reasoning_level`（那会进入
+`effective_reasoning_effort` 变成发送值，违背"默认不传"）。
+
+**已知边界**：档位门（catalog overlay 档位表）只挂在 **chat wire**；Responses 线
+由网关自行校验（实测 GLM Responses 端点对 `medium` 宽容、chat 端点拒绝）。引擎
+模型列表对无默认档的模型报 `defaultReasoningEffort: "none"` 占位，适配器已显式
+将其视为"未指定"而非档位。
+
+**未配置时的 fail-fast（2026-11-10）**：`to_api_provider` 在"无 base_url、无 auth
+mode、provider 无 key、headers 无 Authorization、无 aws/auth.command/gateway_oauth、
+环境无 OpenAI key"时直接报错点名配置项，不再发出必然 401 的请求——内置默认域名
+因此不会出现在用户可见的错误里（产品考量：避免用户对国外域名产生数据泄露疑虑）。
+显式选择官方 OpenAI（配 key 或 ChatGPT 登录）完全不受影响；AWS / `auth.command` /
+`gateway_oauth` 等凭据在别处的 provider 也不受影响。
+
 **已知限制（2026-11-09，观察中）**：guardian reviewer 自己的回合超窗时仍按
 fail-closed 失败并丢弃 reviewer 会话（`review_session_setup` 只在 Reusable 时
 保存 checkpoint）。这不影响用户会话：下一次审批会从干净会话重建。长会话里可能
