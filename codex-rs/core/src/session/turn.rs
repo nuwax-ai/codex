@@ -1809,18 +1809,22 @@ async fn run_pre_sampling_compact(
         super::context_window::context_window_token_status(sess.as_ref(), turn_context.as_ref())
             .await;
     let candidate = super::async_compaction::take_ready(sess, turn_context).await;
-    // Fork (2026-11-11): compact LAZILY. The scheduling threshold (80% of the
-    // window, `token_limit_reached`) is the right trigger for a background
-    // checkpoint, not for blocking a user's new message: a session resting
-    // just above 80% then compacts before every single message, which shows up
-    // as a "Compact conversation" block right after the previous answer and
-    // costs minutes before the user sees anything. Only compact here when the
-    // request genuinely would not fit — the full usable window is exhausted,
-    // or this turn's pending input pushes it over. Everything else is still
-    // covered: the mid-turn checkpoint (its own 90% line) catches a tool loop
-    // drifting toward the window, and `fork_overflow_recoverable` reacts if a
-    // gateway rejects anyway.
-    if token_status.full_context_window_limit_reached
+    // Fork (2026-11-11): compact LAZILY on the derived line. The 80% default
+    // (`fork_compact::effective_auto_compact_limit`) is a scheduling heuristic,
+    // not a reason to block a user's new message: a session resting just above
+    // it used to compact before every single message, which showed up as a
+    // "Compact conversation" block right after the previous answer and cost
+    // minutes before the user saw anything.
+    //
+    // An EXPLICIT limit — the operator's `model_auto_compact_token_limit` or a
+    // catalog-declared value — still blocks, because that is intent, not a
+    // heuristic. Everything else stays covered: the mid-turn checkpoint (its
+    // own 90% line) catches a tool loop drifting toward the window, and
+    // `fork_overflow_recoverable` self-heals reactively if a gateway rejects.
+    let compact_on_configured_limit =
+        token_status.token_limit_reached && token_status.auto_compact_limit_is_explicit;
+    if compact_on_configured_limit
+        || token_status.full_context_window_limit_reached
         || token_status.pending_input_reaches_limit(pending_input_tokens)
         || candidate.is_some()
     {

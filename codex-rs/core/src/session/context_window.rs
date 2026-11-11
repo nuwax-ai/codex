@@ -21,6 +21,12 @@ pub(crate) struct ContextWindowTokenStatus {
     pub(crate) auto_compact_window_prefill_tokens: Option<i64>,
     pub(crate) full_context_window_limit_reached: bool,
     pub(crate) token_limit_reached: bool,
+    /// Fork (2026-11-11): whether `auto_compact_scope_limit` came from an
+    /// explicit source (user config or the model catalog) rather than the
+    /// derived ratio default. The pre-turn check compacts on the derived line
+    /// only when the request genuinely cannot fit — an EXPLICIT limit is the
+    /// operator saying "compact at this size", so it keeps blocking.
+    pub(crate) auto_compact_limit_is_explicit: bool,
     pub(crate) turn_end_compaction_threshold_reached: bool,
     /// Fork (nuwax-codex): the configured mid-turn line is crossed, so a
     /// running tool loop should compact before its next sampling request.
@@ -219,6 +225,10 @@ async fn context_window_token_status_with_config(
         active_context_tokens,
         auto_compact_scope_tokens,
         auto_compact_scope_limit,
+        // A user-set limit or a catalog-declared one is intent; the 80%
+        // derivation is a scheduling heuristic (fork_compact).
+        auto_compact_limit_is_explicit: config.model_auto_compact_token_limit.is_some()
+            || model_info.auto_compact_token_limit.is_some(),
         full_context_window_limit,
         observed_window_limit,
         base_window_tokens_remaining,
@@ -249,6 +259,7 @@ mod pending_input_tests {
             auto_compact_window_prefill_tokens: None,
             full_context_window_limit_reached: false,
             token_limit_reached: false,
+            auto_compact_limit_is_explicit: false,
             turn_end_compaction_threshold_reached: false,
             mid_turn_compaction_threshold_reached: false,
         }
