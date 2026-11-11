@@ -23,3 +23,11 @@ codex-rs/collaboration-mode-templates/templates/** text eol=lf
 # Raw SSE recordings end with a blank line delimiting the final event.
 codex-rs/live-tests/tests/fixtures/*/responses-sse-*.txt whitespace=-blank-at-eof
 patches/v8_array_sort_elements_kind.patch text eol=lf
+
+# Windows batch files must keep CRLF: cmd.exe mis-parses some constructs
+# (`cd /d ... || exit /b 1`, labels) when the file is LF-only. An editor or a
+# scripted rewrite that silently normalizes to LF breaks the whole step with a
+# bare "系统找不到指定的路径".
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
