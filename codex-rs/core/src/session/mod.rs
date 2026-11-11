@@ -1808,16 +1808,14 @@ impl Session {
                 // recorded count already covers the items that were loaded, and leaving
                 // the boundary at 0 made the next token status add a full re-estimate of
                 // the reloaded history on top of it (fork 2026-11-11).
-                if let Some((info, covered_hint)) =
-                    Self::last_token_usage_with_coverage(&rollout_items)
                 {
                     let mut state = self.state.lock().await;
                     let loaded = state.history.annotated_items().len();
-                    // Never claim more coverage than the loaded surface has: a
-                    // boundary past the end would hide real items from the
-                    // estimate.
-                    let covered = covered_hint.min(loaded);
-                    state.set_token_info_with_boundary(Some(info), covered);
+                    if let Some((info, covered)) =
+                        Self::resume_usage_coverage(&rollout_items, loaded)
+                    {
+                        state.set_token_info_with_boundary(Some(info), covered);
+                    }
                 }
                 {
                     let mut state = self.state.lock().await;
@@ -1866,16 +1864,14 @@ impl Session {
                 // recorded count already covers the items that were loaded, and leaving
                 // the boundary at 0 made the next token status add a full re-estimate of
                 // the reloaded history on top of it (fork 2026-11-11).
-                if let Some((info, covered_hint)) =
-                    Self::last_token_usage_with_coverage(&rollout_items)
                 {
                     let mut state = self.state.lock().await;
                     let loaded = state.history.annotated_items().len();
-                    // Never claim more coverage than the loaded surface has: a
-                    // boundary past the end would hide real items from the
-                    // estimate.
-                    let covered = covered_hint.min(loaded);
-                    state.set_token_info_with_boundary(Some(info), covered);
+                    if let Some((info, covered)) =
+                        Self::resume_usage_coverage(&rollout_items, loaded)
+                    {
+                        state.set_token_info_with_boundary(Some(info), covered);
+                    }
                 }
                 {
                     let mut state = self.state.lock().await;
@@ -2144,6 +2140,36 @@ impl Session {
             .filter(|item| matches!(item, RolloutItem::ResponseItem(_)))
             .count();
         Some((info, covered))
+    }
+
+    /// The usage to seed a resumed session with, and how much of the RELOADED
+    /// surface that usage already covers.
+    ///
+    /// Fork (2026-11-11): the recorded position is only meaningful when
+    /// reconstruction was LOSSLESS. Every rewrite — compaction, surface
+    /// replacement, thread rollback, a dropped orphan — changes which raw items
+    /// survive, so a position counted over the raw rollout then points at the
+    /// wrong item. Comparing the two totals catches all of them without
+    /// enumerating the transforms one by one; that enumeration already missed
+    /// rollback (two reported turns, rollback of the second, one unreported
+    /// input: reloaded as 2 items, and the new input was counted as covered).
+    /// Claiming nothing only costs an earlier compaction; claiming too much
+    /// silently drops real content from the estimate.
+    fn resume_usage_coverage(
+        rollout_items: &[RolloutItem],
+        loaded: usize,
+    ) -> Option<(TokenUsageInfo, usize)> {
+        let (info, covered_hint) = Self::last_token_usage_with_coverage(rollout_items)?;
+        let recorded_items = rollout_items
+            .iter()
+            .filter(|item| matches!(item, RolloutItem::ResponseItem(_)))
+            .count();
+        if recorded_items != loaded {
+            return Some((info, 0));
+        }
+        // Never claim more than the surface has: a boundary past the end would
+        // hide real items from the estimate.
+        Some((info, covered_hint.min(loaded)))
     }
 
     fn last_token_usage_record_from_rollout(

@@ -13935,9 +13935,33 @@ fn token_usage_coverage_tracks_the_same_report_and_respects_rewrites() {
         RolloutItem::SurfaceReplacement(Box::default()),
         response_item("kept one"),
         response_item("kept two"),
-        token_count(Some(usage)),
+        token_count(Some(usage.clone())),
         response_item("never reported"),
     ];
     let (_, covered) = Session::last_token_usage_with_coverage(&rewrite_before).expect("usage");
     assert_eq!(covered, 2, "pre-rewrite items are not part of the covered surface");
+
+    // Rollback: two reported turns, the second rolled back, then one unreported
+    // input. Replay leaves [turn 1, new input] — the new input was charged to no
+    // report, so claiming coverage 2 would hide it from the estimate.
+    let rolled_back = vec![
+        response_item("turn 1"),
+        response_item("turn 2"),
+        token_count(Some(usage.clone())),
+        RolloutItem::EventMsg(EventMsg::ThreadRolledBack(
+            codex_protocol::protocol::ThreadRolledBackEvent { num_turns: 1 },
+        )),
+        response_item("new input (never reported)"),
+    ];
+    let (_, covered) = Session::resume_usage_coverage(&rolled_back, /*loaded*/ 2).expect("usage");
+    assert_eq!(covered, 0, "a lossy reconstruction must not claim any coverage");
+
+    // A lossless rollout keeps the optimization.
+    let lossless = vec![
+        response_item("one"),
+        response_item("two"),
+        token_count(Some(usage.clone())),
+    ];
+    let (_, covered) = Session::resume_usage_coverage(&lossless, /*loaded*/ 2).expect("usage");
+    assert_eq!(covered, 2);
 }
