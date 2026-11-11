@@ -17,6 +17,11 @@ rem include paths in scope. This script now refuses to fall back silently: it
 rem preflights the toolset and names the missing component.
 setlocal
 
+rem `shift` moves %0 as well, so `%~dp0` becomes the path of the first ARGUMENT
+rem after it. Capture the script directory first — doing it later resolved to the
+rem current directory ("C:\ci\src") and `cd ..\..\codex-rs` failed with the
+rem bare "系统找不到指定的路径" that took a whole CI round to pin down.
+set "SCRIPT_DIR=%~dp0"
 set "TARGET=%~1"
 shift
 
@@ -79,6 +84,12 @@ if defined LIB (echo [win-build] LIB=set) else (echo [win-build] LIB=EMPTY)
 where clang-cl >nul 2>&1 && echo [win-build] clang-cl=found || echo [win-build] clang-cl=NOT FOUND
 where llvm-lib >nul 2>&1 && echo [win-build] llvm-lib=found || echo [win-build] llvm-lib=NOT FOUND
 
-cd /d "%~dp0..\..\codex-rs" || exit /b 1
+set "SRC_ROOT=%SCRIPT_DIR%..\.."
+cd /d "%SRC_ROOT%\codex-rs"
+if errorlevel 1 (
+    echo [win-build] ERROR: cannot enter %SRC_ROOT%\codex-rs 1>&2
+    exit /b 1
+)
+echo [win-build] cwd=%CD%
 cargo build --target %TARGET% %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %errorlevel%
