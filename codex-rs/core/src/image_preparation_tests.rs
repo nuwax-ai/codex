@@ -679,3 +679,83 @@ fn preparation_errors_use_bounded_actionable_placeholders() {
         assert_eq!(error.placeholder(), expected);
     }
 }
+
+/// Fork (2026-11-11): the byte-budget ladder can resize as well as re-encode, so
+/// the dimensions reported back must come from the bytes actually sent. They used
+/// to keep the pre-fit values, which made resize notices (and any coordinate
+/// mapping built on them) describe an image that no longer existed.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_byte_budget_shrink_reports_the_new_dimensions() {
+    // Noise, not a flat colour: a flat PNG compresses to a few hundred bytes and
+    // never reaches the dimension ladder.
+    let (width, height) = (1_600u32, 800u32);
+    let noise = ImageBuffer::from_fn(width, height, |x, y| {
+        Rgba([
+            (x.wrapping_mul(7) % 251) as u8,
+            (y.wrapping_mul(13) % 251) as u8,
+            ((x ^ y).wrapping_mul(3) % 251) as u8,
+            255,
+        ])
+    });
+    let mut encoded = Cursor::new(Vec::new());
+    DynamicImage::ImageRgba8(noise)
+        .write_to(&mut encoded, ImageFormat::Png)
+        .expect("encode PNG");
+    let data_url = data_url_from_bytes("image/png", &encoded.into_inner());
+    let mut items = vec![ResponseItem::Message {
+        id: None,
+        role: "user".to_owned(),
+        content: vec![ContentItem::InputImage {
+            image: ImageReference::Inline {
+                image_url: data_url.clone(),
+            },
+            detail: Some(ImageDetail::High),
+        }],
+        phase: None,
+        status: None,
+        encrypted_content: None,
+        internal_chat_message_metadata_passthrough: None,
+    }];
+
+    let metadata = prepare_response_items(
+        "image-budget-thread",
+        /*ephemeral*/ false,
+        &mut items,
+        ImagePreparationMode::DetailBased,
+        ImageResizeNoticeMode::Disabled,
+        &InlineAttachmentStore,
+        /*byte_budget*/ Some(40_000),
+    )
+    .await;
+
+    let ResponseItem::Message { content, .. } = &items[0] else {
+        panic!("expected message");
+    };
+    let ContentItem::InputImage {
+        image: ImageReference::Inline { image_url },
+        ..
+    } = &content[0]
+    else {
+        panic!("expected inline image");
+    };
+
+    let (_, decoded) = decoded_image(image_url);
+    let (actual_width, actual_height) = (decoded.width(), decoded.height());
+    assert_ne!(
+        (actual_width, actual_height),
+        (256, 128),
+        "the budget must have shrunk the payload for this test to mean anything"
+    );
+
+    let entry = metadata.first().expect("one prepared image");
+    assert_eq!(
+        (entry.source_width, entry.source_height),
+        (width, height),
+        "the source dimensions stay the original ones"
+    );
+    assert_eq!(
+        (entry.prepared_width, entry.prepared_height),
+        (actual_width, actual_height),
+        "reported dimensions must describe the bytes on the wire"
+    );
+}

@@ -13956,6 +13956,17 @@ fn token_usage_coverage_tracks_the_same_report_and_respects_rewrites() {
     let (_, covered) = Session::resume_usage_coverage(&rolled_back, /*loaded*/ 2).expect("usage");
     assert_eq!(covered, 0, "a lossy reconstruction must not claim any coverage");
 
+    // Counting alone is not proof: a rollback that drops one item plus an
+    // inter-agent message that adds one keeps the totals equal (3 recorded
+    // ResponseItems, 3 loaded) while every position after the rollback moves.
+    // The position-changing item must veto coverage on its own.
+    let (_, covered) =
+        Session::resume_usage_coverage(&rolled_back, /*loaded*/ 3).expect("usage");
+    assert_eq!(
+        covered, 0,
+        "matching totals must not paper over a rollback"
+    );
+
     // A lossless rollout keeps the optimization.
     let lossless = vec![
         response_item("one"),

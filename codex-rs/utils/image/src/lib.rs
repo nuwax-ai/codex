@@ -420,7 +420,11 @@ fn image_url_mime(image_url: &str) -> String {
 /// Reads an image's declared dimensions without decoding the raster, so a
 /// pixel bomb can be refused before any allocation. `None` when the header
 /// cannot be read at all.
-fn header_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+/// Pixel dimensions read from an encoded image header, without decoding pixels.
+///
+/// Public so callers that re-encode an image (the byte-budget ladder) can refresh
+/// the width/height they report instead of keeping the pre-fit values.
+pub fn header_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
     let format = image::guess_format(bytes).ok()?;
     if format == ImageFormat::Png {
         let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));

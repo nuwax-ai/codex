@@ -2160,11 +2160,26 @@ impl Session {
         loaded: usize,
     ) -> Option<(TokenUsageInfo, usize)> {
         let (info, covered_hint) = Self::last_token_usage_with_coverage(rollout_items)?;
+        // Every item that can add, drop, or replace surface entries. A raw item
+        // count says nothing about the reloaded positions once one of these is in
+        // play — and counting alone is not enough even when the totals match:
+        // "rollback removes one + an inter-agent message adds one" keeps the
+        // count identical while shifting every position after the rollback.
+        let reorders_surface = |item: &RolloutItem| {
+            matches!(
+                item,
+                RolloutItem::Compacted(_)
+                    | RolloutItem::SurfaceReplacement(_)
+                    | RolloutItem::InterAgentCommunication(_)
+                    | RolloutItem::EventMsg(EventMsg::ThreadRolledBack(_))
+            )
+        };
+        let rolled = rollout_items.iter().any(reorders_surface);
         let recorded_items = rollout_items
             .iter()
             .filter(|item| matches!(item, RolloutItem::ResponseItem(_)))
             .count();
-        if recorded_items != loaded {
+        if rolled || recorded_items != loaded {
             return Some((info, 0));
         }
         // Never claim more than the surface has: a boundary past the end would

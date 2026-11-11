@@ -506,6 +506,15 @@ pub(crate) fn resize_image(
     {
         let (_fitted_url, fitted_bytes, fitted_mime) =
             fit_data_url_to_byte_budget(image_url, max_bytes)?;
+        // Fork (2026-11-11): the ladder may resize as well as re-encode, so the
+        // reported dimensions have to come from the bytes we are actually about
+        // to send. Keeping the pre-fit width/height made the resize notice (and
+        // anything mapping screenshot coordinates) describe an image that no
+        // longer exists.
+        if let Some((width, height)) = codex_utils_image::header_dimensions(&fitted_bytes) {
+            encoded.width = width;
+            encoded.height = height;
+        }
         encoded.bytes = fitted_bytes.into();
         encoded.mime = fitted_mime;
     }

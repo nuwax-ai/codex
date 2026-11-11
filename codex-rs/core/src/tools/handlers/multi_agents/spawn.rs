@@ -241,7 +241,13 @@ fn effective_spawn_effort(
     snapshot_effort: Option<ReasoningEffort>,
     requested_effort: Option<ReasoningEffort>,
 ) -> Option<ReasoningEffort> {
-    requested_effort.or(snapshot_effort)
+    // Fork (2026-11-11): prefer the SNAPSHOT — it is the config the sub-agent
+    // actually started with. The caller's argument is applied first and a role
+    // profile can override it afterwards (`agent::role`), so "requested" is not
+    // evidence of what ran: pinning `low` on a role that fixes `high` used to
+    // report `low` for a thread running `high`. The argument only fills the gap
+    // when the snapshot carries no explicit tier.
+    snapshot_effort.or(requested_effort)
 }
 
 #[cfg(test)]
@@ -254,10 +260,12 @@ mod tests {
     }
 
     #[test]
-    fn the_callers_pin_wins_over_the_parent_snapshot() {
+    fn the_started_config_wins_over_the_callers_pin() {
+        // A role profile can override the caller's pin, so the snapshot is the
+        // only evidence of what the sub-agent actually ran with.
         assert_eq!(
             effective_spawn_effort(Some(ReasoningEffort::High), Some(ReasoningEffort::Low)),
-            Some(ReasoningEffort::Low),
+            Some(ReasoningEffort::High),
         );
     }
 
