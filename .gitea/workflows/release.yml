@@ -54,9 +54,23 @@ jobs:
           - runner: windows-host
             target: x86_64-pc-windows-msvc
             ext: ".exe"
-          - runner: windows-host
-            target: aarch64-pc-windows-msvc
-            ext: ".exe"
+          # aarch64-pc-windows-msvc is DISABLED here on purpose (2026-11-11).
+          #
+          # GitHub does not cross-compile this target either: release.yml runs it
+          # on `windows-11-arm`, a native ARM64 runner with its own cl.exe. Our
+          # windows-host is x64, so the target needs the VS ARM64 toolset
+          # (VC\Tools\MSVC\*\bin\Hostx64\arm64\cl.exe) — which is not
+          # installed. The 2026-11-06 run failed with "fatal error: 'assert.h'
+          # file not found" because cc-rs fell back to PATH clang with no MSVC
+          # include paths (scripts/gitea-ci/win-build.cmd now refuses that
+          # fallback and names the missing component instead).
+          #
+          # Re-enable by installing the component and uncommenting:
+          #   VS Installer -> Build Tools 2022 -> Individual components ->
+          #   "MSVC v143 - VS 2022 C++ ARM64 build tools (latest)"
+          # - runner: windows-host
+          #   target: aarch64-pc-windows-msvc
+          #   ext: ".exe"
     runs-on: ${{ matrix.runner }}
     steps:
       # Gitea does not expose `needs.<job>.outputs` here (it evaluated to an
@@ -372,9 +386,12 @@ jobs:
           set -euo pipefail
           tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
           version="${tag#v}"
+          # aarch64-pc-windows-msvc is absent until the VS ARM64 toolset is
+          # installed on windows-host (see the matrix comment); GitHub is the
+          # only builder of that target today.
           targets=(aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu \
                    x86_64-unknown-linux-musl aarch64-unknown-linux-musl \
-                   x86_64-pc-windows-msvc aarch64-pc-windows-msvc)
+                   x86_64-pc-windows-msvc)
           entries="$(mktemp -d)"
           found=0
           for t in "${targets[@]}"; do

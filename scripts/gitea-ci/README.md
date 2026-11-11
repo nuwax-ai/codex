@@ -291,9 +291,38 @@ git push gitea HEAD:main          # 注意：不要带 --tags，tag 会触发 re
 8. Windows 的 `tar`：Git Bash 的 `/usr/bin/tar` 处理不了 `C:\...`（当成远程主机），用 `C:\Windows\System32\tar.exe`。
 9. 打包脚本 `hashlib.file_digest` 需 Python 3.11+ → 改成流式 sha256（对所有平台安全）。
 
-**aarch64-windows 的建议**：装 VS BuildTools 的 ARM64 组件
-（`Microsoft.VisualStudio.Component.VC.Tools.ARM64`，需要管理员跑 VS Installer，
-约 1–2 GB）后再打开该目标；在那之前让 GitHub CI 继续负责它。
+**aarch64-windows 的根因与现状（2026-11-11 复核）**
+
+GitHub 那条链路**根本没有交叉编译**这个目标：`release.yml` 把它放在
+`windows-11-arm`（原生 ARM64 runner，自带 ARM64 `cl.exe`）。我们只有一台 x64 的
+`windows-host`，所以必然要走交叉编译，而交叉编译需要：
+
+1. VS ARM64 工具链 `VC\Tools\MSVC\*\bin\Hostx64\arm64\cl.exe`（**当前没装**）；
+2. `vcvarsall amd64_arm64`（为 ARM64 的 UCRT/SDK 设置 INCLUDE/LIB）；
+3. C 依赖（ring 等）走 `clang-cl`。
+
+2026-11-06 那次失败的实际报错是 `fatal error: 'assert.h' file not found`，
+日志里的命令行是**裸 `clang` + GNU 风格参数**——说明 cc-rs 没拿到
+`CC_aarch64_pc_windows_msvc`，回退到了 PATH 上的 clang，而它没有 MSVC 的 include 路径。
+（这就是 README 早先写"缺 ARM64 组件"的实证来源。）
+
+已做的两件事：
+
+- `win-build.cmd` **不再静默回退**：先 preflight ARM64 `cl.exe`，缺失时直接打印要装的
+  组件名并 `exit /b 1`；同时把 `CC/CXX/AR`（通用 + target 专属）都设上，并把
+  `INCLUDE/LIB/clang-cl/llvm-lib` 的存在性打进日志，下次失败一眼能看出来。
+- `release.yml` 里该目标**暂时注释掉**（矩阵 + verify 目标列表同步），pipeline 现在
+  按 6 个平台变绿；补齐方式写在注释里：
+
+  ```text
+  VS Installer → Visual Studio Build Tools 2022 → Individual components →
+  "MSVC v143 - VS 2022 C++ ARM64 build tools (latest)"   （约 1–2 GB，需管理员）
+  ```
+
+  装完把矩阵里那三行取消注释、verify 列表加回 `aarch64-pc-windows-msvc` 即可。
+
+在那之前，`aarch64-pc-windows-msvc` 由 GitHub 的 `windows-11-arm` 负责——两条链路
+各出一半，发布时把两边的产物合并即可。
 
 ### 多 Linux 并行（2026-11-06 追加）
 
