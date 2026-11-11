@@ -1,4 +1,3 @@
-use codex_history::ResponseItemEnvelope;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -248,8 +247,8 @@ pub(crate) async fn run_turn(
             .previous_turn_settings()
             .await
             .map(|settings| settings.model);
-        let model_changed = previous_model
-            .is_some_and(|model| model != turn_context.model_info().slug);
+        let model_changed =
+            previous_model.is_some_and(|model| model != turn_context.model_info().slug);
         if model_changed {
             true
         } else {

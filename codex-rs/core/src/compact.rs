@@ -1574,12 +1574,32 @@ pub(crate) async fn degrade_history_to_target_window(
         .map(|id| id.as_str().to_string())
         .unwrap_or_default();
     let shadowed_tokens: i64 = item_tokens[..boundary].iter().sum();
+    // Fork (2026-11-11): an empty boundary id means "hide everything" to the
+    // replay side. That is right when items were actually shadowed, but the
+    // byte-overflow fall-through reaches here with boundary 0 and nothing
+    // shadowed — and if the first item carries no id, writing that record would
+    // wipe the whole thread on the next reload. Refuse instead.
+    if shadowed_tokens == 0 && boundary_id.is_empty() {
+        tracing::warn!(
+            "degrade: nothing to shadow and no boundary id to resume at; leaving history untouched"
+        );
+        return Ok(DegradeOutcome::Trimmed {
+            shadowed_tokens: 0,
+            retained_tokens: total,
+        });
+    }
     let mut retained: Vec<ResponseItemEnvelope> = items[boundary..].to_vec();
     let mut retained_tokens: i64 = item_tokens[boundary..].iter().sum();
     debug_assert_eq!(shadowed_tokens + retained_tokens, total);
     let mut pruned_tool_outputs: Vec<codex_history::PrunedToolOutput> = Vec::new();
+    // A byte-driven rejection only needs the prune pass when the token path had
+    // nothing to trim (`boundary == 0`). When trimming already brought the tail
+    // under budget, pruning images and tool text on top of that would destroy
+    // context the model can still afford.
+    let bytes_over_without_trim =
+        reason == DegradeReason::CompactionOverflow && boundary == 0;
     if protection == DegradeProtection::CurrentTurnInput
-        && (retained_tokens > history_budget || reason == DegradeReason::CompactionOverflow)
+        && (retained_tokens > history_budget || bytes_over_without_trim)
     {
         // The retained tail is usually dominated by tool output the turn can
         // re-run. Shrink that deterministically before declaring the protected
@@ -1808,22 +1828,26 @@ pub(crate) async fn degrade_history_to_target_window(
     // Apply the same cut in memory: the tail only, nothing planted.
     sess.replace_history_for_migration(retained).await;
 
-    // One user-visible notice for the actual omission (spec: 提示一次).
-    let notice = match reason {
-        DegradeReason::ModelDownshift => format!(
-            "The context window shrank after the model switch; ~{shadowed_tokens} tokens of older history were omitted (without a summary) so this turn can continue. The original conversation record is preserved."
-        ),
-        // Fork: the user did not switch anything — conversation compaction
-        // itself could not fit, so name the harness and say what was lost.
-        DegradeReason::CompactionOverflow => format!(
-            "nuwax-harness could not summarize this conversation into the model's context window; ~{shadowed_tokens} tokens of older history were omitted (without a summary) so this turn can continue. The local record is complete; switch to a larger-window model if the model still needs that detail."
-        ),
-    };
-    sess.send_event(
-        turn_context,
-        EventMsg::Warning(WarningEvent { message: notice }),
-    )
-    .await;
+    // One user-visible notice for the actual omission (spec: 提示一次). A
+    // prune-only pass (byte overflow with the token count already in budget)
+    // omits no history and must not claim "~0 tokens were omitted".
+    if shadowed_tokens > 0 {
+        let notice = match reason {
+            DegradeReason::ModelDownshift => format!(
+                "The context window shrank after the model switch; ~{shadowed_tokens} tokens of older history were omitted (without a summary) so this turn can continue. The original conversation record is preserved."
+            ),
+            // Fork: the user did not switch anything — conversation compaction
+            // itself could not fit, so name the harness and say what was lost.
+            DegradeReason::CompactionOverflow => format!(
+                "nuwax-harness could not summarize this conversation into the model's context window; ~{shadowed_tokens} tokens of older history were omitted (without a summary) so this turn can continue. The local record is complete; switch to a larger-window model if the model still needs that detail."
+            ),
+        };
+        sess.send_event(
+            turn_context,
+            EventMsg::Warning(WarningEvent { message: notice }),
+        )
+        .await;
+    }
     tracing::info!(
         window,
         history_budget,

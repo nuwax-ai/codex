@@ -7,7 +7,6 @@
 //! for this request.
 
 use codex_history::ResponseItemEnvelope;
-use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputBody;
 use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::ImageReference;
@@ -230,9 +229,10 @@ pub(crate) fn prune_stale_images(
                     _ => false,
                 }
             }
-            ResponseItem::Message { content, .. } => {
-                replace_message_image_at(content, content_index, placeholder)
-            }
+            // No `ResponseItem::Message` arm: message images are never
+            // collected into `positions` (see above), so this branch would be
+            // unreachable — and a live one would silently destroy the operator's
+            // own upload.
             _ => false,
         };
         if replaced_one {
@@ -270,18 +270,6 @@ fn replace_image_at(
     match content.get_mut(index) {
         Some(FunctionCallOutputContentItem::InputImage { .. }) => {
             content[index] = FunctionCallOutputContentItem::InputText { text: placeholder };
-            true
-        }
-        _ => false,
-    }
-}
-
-/// Replaces the image at `index` in a message content list with a text
-/// placeholder. Returns whether a replacement happened.
-fn replace_message_image_at(content: &mut [ContentItem], index: usize, placeholder: String) -> bool {
-    match content.get_mut(index) {
-        Some(ContentItem::InputImage { .. }) => {
-            content[index] = ContentItem::InputText { text: placeholder };
             true
         }
         _ => false,
@@ -347,6 +335,8 @@ pub(crate) fn replay_pruned_images(
 /// confirm a pass actually reduced what the model will receive.
 #[cfg(test)]
 pub(crate) fn surface_text_chars(items: &[ResponseItemEnvelope]) -> usize {
+    use codex_protocol::models::ContentItem;
+
     items
         .iter()
         .map(|envelope| match &envelope.item {
