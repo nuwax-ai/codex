@@ -470,6 +470,18 @@ reviewer——**一次模型调用**——由它代替用户批准。nuwax-clien
 （含 marker）。无损优先：alpha 全 255 的截图打平转 JPEG（视觉无损），真半透明保
 PNG。无法解码的 payload 原样透传、交给入口丢弃。
 
+**413 走完整自愈链 + 压缩剪掉保留尾部的旧截图（2026-11-11）**：两处实战缺陷。
+
+- ① **413 在压缩路径上变成终态**：采样 413 → 触发压缩 → 压缩请求本身也带全量
+  历史 → 又 413 → 三个"压缩失败"分支只认 `ContextWindowExceeded`，`RequestTooLarge`
+  被当未知错误直接返回，于是**从未走到降级链**，用户只看到终态错误。三处判断
+  （轮前、轮内、guardian 待处理输入）都改为同时接受 `RequestTooLarge`。
+- ② **截图密集任务无限压缩**：正常摘要压缩只切前缀，保留尾部按 `retain_ratio`
+  （0.16）想留 30k，但当前轮全是浏览器截图、自己就 100k+，结果压缩后仍贴近 80%
+  触发线，下一轮立刻再压——UI 上就是连续三条 "Compact conversation"、数分钟没有
+  回复。修复：摘要成功后对**保留尾部**同样做确定性剪枝（旧图换占位、保留最新两张），
+  并把剪枝窗口写进 `SurfaceReplacement.pruned_tool_outputs`，回放逐字节一致。
+
 **未配置时的 fail-fast（2026-11-10）**：`to_api_provider` 在"无 base_url、无 auth
 mode、provider 无 key、headers 无 Authorization、无 aws/auth.command/gateway_oauth、
 环境无 OpenAI key"时直接报错点名配置项，不再发出必然 401 的请求——内置默认域名

@@ -255,6 +255,8 @@ async fn new_config(
         model_auto_compact_token_limit_scope: AutoCompactTokenLimitScope::Total,
         migration_compact: Default::default(),
         model_post_turn_compact_threshold_percent: 0,
+        model_mid_turn_compact_threshold_percent: 0,
+        image_byte_budget_bytes: 0,
         async_compaction_threshold_percent: 65,
         model_provider_id,
         model_provider,

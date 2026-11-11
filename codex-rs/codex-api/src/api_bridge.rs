@@ -181,18 +181,19 @@ fn map_api_error_details(err: ApiError) -> CodexErr {
                 // payload size that tripped it: gateway limits are invisible
                 // from here and this line is the only evidence.
                 if status == http::StatusCode::PAYLOAD_TOO_LARGE {
-                    let payload_bytes = body_text.len();
+                    // The response body of a 413 is usually empty — it says
+                    // nothing about how large OUR request was. Reporting it as
+                    // the payload size read "too large (0 bytes)" to users
+                    // (2026-11-11), so the message no longer quotes a number and
+                    // the log names the field for what it is.
                     tracing::warn!(
                         status = status.as_u16(),
-                        payload_bytes,
-                        payload_mib = payload_bytes as f64 / (1024.0 * 1024.0),
+                        response_body_bytes = body_text.len(),
                         "gateway rejected the request body size (413); shrinking the payload and retrying"
                     );
                     return CodexErr::new(CodexErrorDetails::RequestTooLarge {
-                        message: format!(
-                            "The gateway rejected this request because its body was too large ({} bytes). The request will be shrunk and retried.",
-                            payload_bytes
-                        ),
+                        message: "The gateway rejected this request because its body exceeded its size limit. The request will be shrunk and retried."
+                            .to_string(),
                     });
                 }
 

@@ -308,7 +308,6 @@ fn shrink_oversized_tool_output_images(
         _ => 0,
     };
 
-    let mut reencoded = 0usize;
     // Pass 0: pixel cost. `detail: Original` charges one token per 16x16 patch,
     // so a 4000x4000 screenshot costs the whole per-output visual budget no
     // matter how few bytes it has — shrinking bytes alone would still be
@@ -337,7 +336,6 @@ fn shrink_oversized_tool_output_images(
             codex_utils_image::cap_data_url_dimensions(image_url, longest_edge_cap)
         {
             *image_url = capped;
-            reencoded += 1;
         }
     }
 
@@ -356,13 +354,15 @@ fn shrink_oversized_tool_output_images(
         if image_url.len() <= per_image_limit {
             continue;
         }
-        // Shrink to the per-image limit with headroom for the base64 growth
-        // the admission measures (it compares the encoded URL length).
-        let target = per_image_limit.saturating_sub(image_url.len() - image_url.len() / 4 * 3);
+        // The ladder's budget bounds the RAW image bytes, while the admission
+        // measures the base64 URL (~4/3 of raw). Convert once: a raw budget of
+        // 3/4 of the URL bound keeps the re-encoded URL inside it. The old
+        // formula subtracted this image's own overhead, which for a URL just
+        // over the bound left the result still over it.
+        let target = per_image_limit / 4 * 3;
         match codex_utils_image::fit_data_url_to_byte_budget(image_url, target) {
             Ok((fitted_url, _, _)) if fitted_url.len() <= per_image_limit => {
                 *image_url = fitted_url;
-                reencoded += 1;
             }
             _ => {}
         }
@@ -392,10 +392,15 @@ fn shrink_oversized_tool_output_images(
                 continue;
             };
             let current = image_url.len();
-            // Aim just under the overflow, never below a floor that would
-            // make the image useless.
-            let target = current.saturating_sub(overflow).max(64 * 1024);
-            if target >= current {
+            // Aim just under the overflow (URL units), converted to the raw
+            // budget the ladder takes, never below a floor that would make the
+            // image useless.
+            let target = current
+                .saturating_sub(overflow)
+                .max(64 * 1024)
+                / 4
+                * 3;
+            if target == 0 {
                 continue;
             }
             if let Ok((fitted_url, _, _)) =
@@ -404,12 +409,10 @@ fn shrink_oversized_tool_output_images(
             {
                 overflow = overflow.saturating_sub(current - fitted_url.len());
                 *image_url = fitted_url;
-                reencoded += 1;
             }
         }
     }
 
-    let _ = reencoded;
     items
 }
 

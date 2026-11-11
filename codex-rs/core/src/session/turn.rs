@@ -497,8 +497,14 @@ pub(crate) async fn run_turn(
     {
         // Token-budget compaction resets history, which can discard the evidence
         // referenced by a pending delta review. Leave budget failures unreusable.
+        // Fork (2026-11-11): a byte-size rejection while compacting the
+        // incoming evidence is recoverable the same way as a token overflow.
         if !auto_summarization_enabled
-            || !matches!(error.details(), CodexErrorDetails::ContextWindowExceeded)
+            || !matches!(
+                error.details(),
+                CodexErrorDetails::ContextWindowExceeded
+                    | CodexErrorDetails::RequestTooLarge { .. }
+            )
         {
             return Err(error);
         }
@@ -1138,7 +1144,16 @@ pub(crate) async fn run_turn(
                 )
                 .await;
                 if let Err(err) = compaction {
-                    if !matches!(err.details(), CodexErrorDetails::ContextWindowExceeded) {
+                    // Fork (2026-11-11): the compaction request carries the
+                    // full history, so a byte-size rejection (413) hits it too.
+                    // It is recoverable exactly like a token overflow — fall
+                    // through to the degrade path instead of returning a
+                    // terminal error the user cannot act on.
+                    if !matches!(
+                        err.details(),
+                        CodexErrorDetails::ContextWindowExceeded
+                            | CodexErrorDetails::RequestTooLarge { .. }
+                    ) {
                         return Err(err);
                     }
                     // Fork (2026-11-09): the summary request cannot fit either.
@@ -1816,7 +1831,14 @@ async fn run_pre_sampling_compact(
         )
         .await;
         if let Err(err) = compaction {
-            if !matches!(err.details(), CodexErrorDetails::ContextWindowExceeded) {
+            // Fork (2026-11-11): a byte-size rejection (413) hits the summary
+            // request too; treat it exactly like a token overflow so the
+            // degrade path below still runs.
+            if !matches!(
+                err.details(),
+                CodexErrorDetails::ContextWindowExceeded
+                    | CodexErrorDetails::RequestTooLarge { .. }
+            ) {
                 return Err(err);
             }
             // Fork (2026-11-09): the summarization request carries the whole

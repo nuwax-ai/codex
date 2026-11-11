@@ -3493,3 +3493,113 @@ async fn a_no_summary_trim_with_empty_tail_hides_everything_on_replay() {
         "an empty boundary id hides the entire replaced history"
     );
 }
+
+/// Fork (2026-11-11): a compaction record now carries the inline-image prunes
+/// it applied to the retained tail. Replay must reproduce that smaller surface
+/// — otherwise a reload resurrects every screenshot the compaction removed and
+/// the next turn compacts again (the "endless Compact conversation" loop).
+#[tokio::test]
+async fn a_compaction_record_replays_its_image_prunes() {
+    let (session, turn_context) = make_session_and_context().await;
+    let user_item = |id: &str, text: &str| ResponseItemEnvelope {
+        item: ResponseItem::Message {
+            id: Some(codex_protocol::ResponseItemId::from_server(id.to_string())),
+            role: "user".to_owned(),
+            content: vec![ContentItem::InputText {
+                text: text.to_string(),
+            }],
+            phase: None,
+            status: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    };
+    let image_output = |call_id: &str, images: usize| ResponseItemEnvelope {
+        item: ResponseItem::FunctionCallOutput {
+            id: None,
+            call_id: Some(call_id.to_string()),
+            name: None,
+            namespace: None,
+            output: codex_protocol::models::FunctionCallOutputPayload::from_content_items(
+                (0..images)
+                    .map(|_| {
+                        codex_protocol::models::FunctionCallOutputContentItem::InputImage {
+                            image: codex_protocol::models::ImageReference::Inline {
+                                image_url: "data:image/png;base64,AAAA".to_string(),
+                            },
+                            detail: None,
+                        }
+                    })
+                    .collect(),
+            ),
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    };
+    // The output needs its paired call, or the reconstruction drops it as an
+    // orphan before any pruning is even considered.
+    let call = ResponseItemEnvelope {
+        item: ResponseItem::FunctionCall {
+            id: None,
+            call_id: "call-shots".to_string(),
+            name: "view_image".to_string(),
+            namespace: None,
+            arguments: "{}".to_string(),
+            status: None,
+            encrypted_content: None,
+            encrypted_function_args: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    };
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(user_item("item_1", "verify the page")),
+        RolloutItem::ResponseItem(call),
+        RolloutItem::ResponseItem(image_output("call-shots", 3)),
+        RolloutItem::SurfaceReplacement(Box::new(codex_history::SurfaceReplacementItem {
+            compaction_id: "cmp_images".to_string(),
+            resume_at_item_id: "item_1".to_string(),
+            summary: String::new(),
+            provider: "local".to_string(),
+            model: "glm-5.3-flash".to_string(),
+            shadowed_tokens: 0,
+            retained_tail_tokens: 30_000,
+            reason: codex_history::SurfaceReplacementReason::Pressure,
+            supersedes: Vec::new(),
+            pruned_tool_outputs: vec![codex_history::PrunedToolOutput {
+                call_id: "call-shots".to_string(),
+                keep_head_chars: 0,
+                keep_tail_chars: 0,
+                pruned_images: 1,
+            }],
+        })),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+    // Count the placeholder the prune plants. It is TEXT, so the assertion
+    // holds whether or not the test model accepts images (a text-only model
+    // strips the surviving images, but never the placeholder).
+    let placeholders = reconstructed
+        .history
+        .iter()
+        .filter_map(|envelope| match &envelope.item {
+            ResponseItem::FunctionCallOutput { output, .. } => output.content_items(),
+            _ => None,
+        })
+        .flatten()
+        .filter(|item| {
+            matches!(
+                item,
+                codex_protocol::models::FunctionCallOutputContentItem::InputText { text }
+                    if text.contains("image omitted to fit the request byte budget")
+            )
+        })
+        .count();
+    assert_eq!(
+        placeholders, 1,
+        "replay must re-apply the image prune the compaction recorded"
+    );
+}

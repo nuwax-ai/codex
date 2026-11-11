@@ -1193,6 +1193,39 @@ pub(crate) async fn run_migration_compact_task(
             break;
         }
 
+        // Fork (2026-11-11): the retained tail is often dominated by inline
+        // images — a screenshot-heavy turn (browser verification) can be over
+        // 100k on its own, so cutting the prefix alone leaves the surface just
+        // above the trigger and the NEXT turn compacts again. Observed live as
+        // an endless "Compact conversation" loop with no answer. Prune the
+        // stale images (the newest two survive) and oversized tool output in
+        // the retained tail, and record every window in the replacement so a
+        // reload reproduces exactly this smaller surface.
+        let mut retained_tail: Vec<ResponseItemEnvelope> =
+            items[region.end..].to_vec();
+        let mut pruned_tool_outputs: Vec<codex_history::PrunedToolOutput> = Vec::new();
+        let pruned_images = crate::session::compaction_prune::prune_stale_images(
+            &mut retained_tail,
+            crate::session::compaction_prune::PROTECTED_RECENT_IMAGES,
+        );
+        for (call_id, count) in &pruned_images {
+            if call_id.is_empty() {
+                continue;
+            }
+            pruned_tool_outputs.push(codex_history::PrunedToolOutput {
+                call_id: call_id.clone(),
+                keep_head_chars: 0,
+                keep_tail_chars: 0,
+                pruned_images: *count,
+            });
+        }
+        if !pruned_tool_outputs.is_empty() {
+            tracing::info!(
+                pruned_images = pruned_images.iter().map(|(_, count)| count).sum::<usize>(),
+                "compaction: replaced stale inline images in the retained tail with placeholders"
+            );
+        }
+
         let record = codex_history::SurfaceReplacementItem {
             compaction_id: uuid::Uuid::new_v4().to_string(),
             resume_at_item_id: boundary_id,
@@ -1203,7 +1236,7 @@ pub(crate) async fn run_migration_compact_task(
             retained_tail_tokens: (window as f64 * settings.retain_ratio) as i64,
             reason: codex_history::SurfaceReplacementReason::WindowShrink,
             supersedes: Vec::new(),
-            pruned_tool_outputs: Vec::new(),
+            pruned_tool_outputs,
         };
         sess.persist_rollout_items(&[codex_history::RolloutItem::SurfaceReplacement(Box::new(
             record,
@@ -1212,8 +1245,8 @@ pub(crate) async fn run_migration_compact_task(
 
         // Apply the same cut in memory so the rest of this turn sees the smaller
         // surface without waiting for a reload.
-        let mut replacement = Vec::with_capacity(items.len() - region.end + 1);
-        replacement.extend(items[region.end..].iter().cloned());
+        let mut replacement = Vec::with_capacity(retained_tail.len() + 1);
+        replacement.extend(retained_tail.into_iter());
         replacement.insert(
             0,
             codex_history::ResponseItemEnvelope {

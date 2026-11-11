@@ -5472,9 +5472,11 @@ dependencies = [
 name = "codex-utils-output-truncation"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "codex-protocol",
  "codex-utils-image",
  "codex-utils-string",
+ "image",
  "pretty_assertions",
  "serde_json",
 ]

@@ -417,6 +417,21 @@ fn image_url_mime(image_url: &str) -> String {
         .unwrap_or_else(|| "image/png".to_string())
 }
 
+/// Reads an image's declared dimensions without decoding the raster, so a
+/// pixel bomb can be refused before any allocation. `None` when the header
+/// cannot be read at all.
+fn header_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    let format = image::guess_format(bytes).ok()?;
+    if format == ImageFormat::Png {
+        let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+        let info = decoder.read_header_info().ok()?;
+        return Some((info.width, info.height));
+    }
+    image::ImageReader::with_format(std::io::Cursor::new(bytes), format)
+        .into_dimensions()
+        .ok()
+}
+
 /// Decodes a `data:...;base64,...` URL into a `DynamicImage`. Only base64
 /// data URLs are accepted; anything else is an error at this layer.
 fn decode_data_url_to_dynamic(image_url: &str) -> Result<DynamicImage, ImageProcessingError> {
@@ -444,6 +459,19 @@ fn decode_data_url_to_dynamic(image_url: &str) -> Result<DynamicImage, ImageProc
         .map_err(|_| ImageProcessingError::InvalidDataUrl {
             reason: "invalid base64 payload".to_string(),
         })?;
+    // Pixel-bomb pre-check on the header, before any raster allocation. The
+    // tool-output path reaches this function with bytes no upstream guard has
+    // seen, and a small file can declare a gigantic canvas. A header that
+    // cannot be read is left to `load_from_memory`, which reports it properly.
+    if let Some((width, height)) = header_dimensions(&bytes)
+        && u64::from(width) * u64::from(height) > MAX_PROMPT_IMAGE_PIXELS
+    {
+        return Err(ImageProcessingError::ImageTooLarge {
+            representation: "declared pixels",
+            size: usize::try_from(u64::from(width) * u64::from(height)).unwrap_or(usize::MAX),
+            max: usize::try_from(MAX_PROMPT_IMAGE_PIXELS).unwrap_or(usize::MAX),
+        });
+    }
     image::load_from_memory(&bytes).map_err(|source| ImageProcessingError::Decode {
         path: PathBuf::from("<data-url>"),
         source,

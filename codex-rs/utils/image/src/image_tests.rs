@@ -595,3 +595,38 @@ fn budget_ladder_returns_smallest_rung_when_nothing_fits() {
     .1;
     assert_eq!(bytes.len(), smallest.len(), "the smallest rung is deterministic");
 }
+
+#[test]
+fn a_declared_pixel_bomb_is_refused_before_any_raster_allocation() {
+    // Fork (2026-11-10): the tool-output shrink path decodes data URLs that no
+    // upstream guard has seen. A tiny file can declare a gigantic canvas, so
+    // the header is checked before `load_from_memory` allocates.
+    // 20000x20000 = 400M pixels, past MAX_PROMPT_IMAGE_PIXELS (40M).
+    fn crc32(bytes: &[u8]) -> u32 {
+        let mut crc: u32 = 0xFFFF_FFFF;
+        for byte in bytes {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                let mask = (crc & 1).wrapping_neg();
+                crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+            }
+        }
+        !crc
+    }
+    let mut ihdr = Vec::new();
+    ihdr.extend_from_slice(&20000u32.to_be_bytes());
+    ihdr.extend_from_slice(&20000u32.to_be_bytes());
+    ihdr.extend_from_slice(&[8, 2, 0, 0, 0]); // 8-bit truecolor
+    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+    let mut chunk = b"IHDR".to_vec();
+    chunk.extend_from_slice(&ihdr);
+    png.extend_from_slice(&(ihdr.len() as u32).to_be_bytes());
+    png.extend_from_slice(&chunk);
+    png.extend_from_slice(&crc32(&chunk).to_be_bytes());
+    let url = data_url_from_bytes("image/png", &png);
+    let error = fit_data_url_to_byte_budget(&url, 1024).expect_err("a pixel bomb must be refused");
+    assert!(
+        matches!(error, ImageProcessingError::ImageTooLarge { .. }),
+        "got {error:?}"
+    );
+}
