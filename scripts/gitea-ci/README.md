@@ -334,6 +334,22 @@ gnu/musl 互相排队。现在多接了一台 `192.168.31.41`（**72 核 / 62 GB
   该跑动器在启动 daemon 时 export 自己的路径（`$HOME/ci/{data,cache}`）。
 - 每台 Linux runner 都需要：rustup 1.99.1 + 两个 musl target、Zig 0.14.0、
   **cargo vendor 目录**（1.9 G，`vendor-deps.sh`）、rusty_v8 的三个 Linux 归档、以及 act_runner。
+- **光有 vendor 目录不够，还要让 cargo 用它**（2026-11-11 修）：新接的 `192.168.31.41`
+  有 `~/ci/cache/vendor/ci-vendor`（1329 个 crate，含全部 git 依赖），但
+  `~/.cargo/config.toml` 只有 6 行 USTC 镜像配置——于是 job 在 40 分钟后死于
+  `unable to update registry crates-io → transfer too slow: 0 bytes in 30s`
+  （这是 `aarch64-unknown-linux-musl` 0 成功 / 23 失败的真因）。修法就是把
+  vendor 的 `config.generated.toml` 装成 cargo 配置：
+
+  ```bash
+  bash scripts/gitea-ci/vendor-deps.sh --install ~/ci/cache/vendor/ci-vendor \
+    --cargo-home ~/.cargo
+  ```
+
+  它会把 `[source.crates-io] replace-with="vendored-sources"`、全部 git-source 替换
+  和 `directory = "<vendor>"` 一次写好（50 行、10 个 replace-with）。已在新 runner
+  上验证 `cargo build --offline` 3.8 秒通过。workflow 现在也有 preflight：缺这个
+  配置会**立刻**报错并打印上面的命令，不再白跑 40 分钟。
 - 国内下载 rustup 组件很慢，**用 `RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static`**
   （rsproxy 的 rustup 路径已 404，tuna 403）。
 - 装完 zig 后要确认没有半写状态：job 报 `zig: Text file busy` 说明安装脚本还在写文件，

@@ -170,6 +170,21 @@ jobs:
             echo "missing ${CARGO_HOME}/bin (run scripts/gitea-ci/install-host-runner.sh)" >&2
             exit 1
           }
+          # A runner without the vendored-source config silently falls back to
+          # whatever registry mirror its ~/.cargo points at, and the job then
+          # dies 40 minutes later on `unable to update registry crates-io /
+          # transfer too slow` (observed on the second Linux runner, 2026-11-06).
+          # Fail fast and name the fix instead.
+          if [ "$(uname -s)" = "Linux" ]; then
+            if ! grep -qs "vendored-sources" "${CARGO_HOME}/config.toml" 2>/dev/null \
+               && ! grep -qs "vendored-sources" "$HOME/.cargo/config.toml" 2>/dev/null; then
+              echo "no vendored-source cargo config on this runner: crates would be" >&2
+              echo "fetched from the network and the job would die on a slow mirror." >&2
+              echo "fix: bash scripts/gitea-ci/vendor-deps.sh --install <vendor-dir> \\" >&2
+              echo "        --cargo-home \"${CARGO_HOME}\"" >&2
+              exit 1
+            fi
+          fi
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
           # Zig is only needed for the musl targets, which only the Linux host
           # builds; on macOS/Windows the directory simply does not exist.
