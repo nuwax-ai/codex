@@ -470,11 +470,25 @@ reviewer——**一次模型调用**——由它代替用户批准。nuwax-clien
 （含 marker）。无损优先：alpha 全 255 的截图打平转 JPEG（视觉无损），真半透明保
 PNG。无法解码的 payload 原样透传、交给入口丢弃。
 
-**resume 的覆盖边界按 rollout 位置恢复（2026-11-11 二次修正）**：第一版把"全部重载
-条目"都标成已被最后一次上报覆盖，会**漏算上报之后追加、然后被中断的条目**（工具结果、
-用户输入）——它们从未计入任何上报用量，resume 时仍应估算。改为数出最后一次
-`TokenCount` 之前的 `ResponseItem` 条数作为覆盖边界（并 clamp 到重载条目数），
-`token_usage_coverage_counts_items_before_the_last_report` 锁定该语义。
+**resume 的覆盖边界：与用量同源，且不跨越表面重写（2026-11-11 三次修正）**
+
+这一项改了三轮，前两轮都不够正确，记录清楚免得再踩：
+
+1. 第一版把**全部重载条目**标成已覆盖 → 漏算上报之后追加、随后被中断的条目。
+2. 第二版数"最后一次 `TokenCount` 之前的 `ResponseItem` 条数" → 两个缺陷：(a) 用量查找
+   会跳过 `info: None`，边界却取最后一个任意 `TokenCount`，两者可能指向**不同事件**；
+   (b) 该计数取自**原始 rollout**，而 `Compacted`/`SurfaceReplacement` 会重写它前面的
+   表面（100 条压成 5 条再追加 2 条 → 原始计数 100、重载后 7，`min(100,7)=7` 把两条
+   未上报的也标成已覆盖）。
+3. 现行：`last_token_usage_with_coverage` 一次性返回**同一个事件**的用量与边界；
+   若该事件**之后**有任何表面重写，覆盖数直接记 0（宁可在估算上保守，也不能把真实条目
+   藏起来——少算只会提前压缩，多算会漏掉内容）；否则只数**最后一次重写之后**到该事件
+   之间的 `ResponseItem`。调用方再 clamp 到重载条目数。
+   `token_usage_coverage_tracks_the_same_report_and_respects_rewrites` 覆盖四种组合。
+
+代价：被压缩过的会话在 resume 后会退化成"整段重估"，可能重新出现提前压缩。彻底修法是把
+边界在**回放过程中**与 checkpoint/裁剪/回滚一起推导出来（回放是逆序的，需要给
+`RolloutReconstruction` 增加一个"有效用量 + 对应重建位置"的字段）。
 
 **重启后立刻压缩的真因：恢复用量时丢了边界（2026-11-11 复盘修复）**：
 `get_total_token_usage()` = 上次服务端用量 + 未上报条目的估算。恢复会话时只调了

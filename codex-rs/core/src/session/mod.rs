@@ -1808,17 +1808,15 @@ impl Session {
                 // recorded count already covers the items that were loaded, and leaving
                 // the boundary at 0 made the next token status add a full re-estimate of
                 // the reloaded history on top of it (fork 2026-11-11).
-                if let Some(info) = Self::last_token_info_from_rollout(&rollout_items) {
-                    let covered_hint =
-                        Self::token_usage_covered_item_count_from_rollout(&rollout_items);
+                if let Some((info, covered_hint)) =
+                    Self::last_token_usage_with_coverage(&rollout_items)
+                {
                     let mut state = self.state.lock().await;
                     let loaded = state.history.annotated_items().len();
-                    // The rollout position is an upper bound: reconstruction can
-                    // drop items (orphans, replacements), and a boundary larger
-                    // than the loaded surface would under-count. Clamp, and
-                    // fall back to 0 (estimate everything) when the rollout
-                    // carries no positional hint.
-                    let covered = covered_hint.unwrap_or(0).min(loaded);
+                    // Never claim more coverage than the loaded surface has: a
+                    // boundary past the end would hide real items from the
+                    // estimate.
+                    let covered = covered_hint.min(loaded);
                     state.set_token_info_with_boundary(Some(info), covered);
                 }
                 {
@@ -1868,17 +1866,15 @@ impl Session {
                 // recorded count already covers the items that were loaded, and leaving
                 // the boundary at 0 made the next token status add a full re-estimate of
                 // the reloaded history on top of it (fork 2026-11-11).
-                if let Some(info) = Self::last_token_info_from_rollout(&rollout_items) {
-                    let covered_hint =
-                        Self::token_usage_covered_item_count_from_rollout(&rollout_items);
+                if let Some((info, covered_hint)) =
+                    Self::last_token_usage_with_coverage(&rollout_items)
+                {
                     let mut state = self.state.lock().await;
                     let loaded = state.history.annotated_items().len();
-                    // The rollout position is an upper bound: reconstruction can
-                    // drop items (orphans, replacements), and a boundary larger
-                    // than the loaded surface would under-count. Clamp, and
-                    // fall back to 0 (estimate everything) when the rollout
-                    // carries no positional hint.
-                    let covered = covered_hint.unwrap_or(0).min(loaded);
+                    // Never claim more coverage than the loaded surface has: a
+                    // boundary past the end would hide real items from the
+                    // estimate.
+                    let covered = covered_hint.min(loaded);
                     state.set_token_info_with_boundary(Some(info), covered);
                 }
                 {
@@ -2098,29 +2094,56 @@ impl Session {
         state.set_auto_compact_window_estimated_prefill(tokens);
     }
 
-    fn last_token_info_from_rollout(rollout_items: &[RolloutItem]) -> Option<TokenUsageInfo> {
-        rollout_items.iter().rev().find_map(|item| match item {
-            RolloutItem::EventMsg(EventMsg::TokenCount(ev)) => ev.info.clone(),
-            _ => None,
-        })
-    }
-
-    /// Fork (2026-11-11): how many history items the recorded usage actually
-    /// covered — the number of `ResponseItem`s recorded before the last
-    /// `TokenCount` event. Marking the WHOLE reloaded history as covered (the
-    /// first cut of this fix) under-counts whatever was appended after that
-    /// event and then interrupted: those items were never charged to any
-    /// reported usage, so a resume must still estimate them.
-    fn token_usage_covered_item_count_from_rollout(rollout_items: &[RolloutItem]) -> Option<usize> {
-        let last_usage = rollout_items
+    /// The recorded usage and how much of the reloaded surface it covers.
+    ///
+    /// Fork (2026-11-11): usage and boundary must come from the SAME event. They
+    /// used to be looked up separately — the usage skipped `info: None` while the
+    /// boundary took the last `TokenCount` of any kind — so the two could refer
+    /// to different reports.
+    ///
+    /// The covered count is also a property of the RECONSTRUCTED surface, not of
+    /// the raw rollout: a `Compacted`/`SurfaceReplacement` rewrites what came
+    /// before it, so a raw item count measured across such a rewrite does not map
+    /// onto the loaded history. When the surface was rewritten at or after the
+    /// report, claim no coverage at all — under-estimating tokens only costs an
+    /// early compaction, while over-claiming coverage silently drops unreported
+    /// items from the estimate (the bug this replaces).
+    fn last_token_usage_with_coverage(
+        rollout_items: &[RolloutItem],
+    ) -> Option<(TokenUsageInfo, usize)> {
+        let is_usage = |item: &RolloutItem| {
+            matches!(
+                item,
+                RolloutItem::EventMsg(EventMsg::TokenCount(ev)) if ev.info.is_some()
+            )
+        };
+        let index = rollout_items.iter().rposition(is_usage)?;
+        let info = match &rollout_items[index] {
+            RolloutItem::EventMsg(EventMsg::TokenCount(ev)) => ev.info.clone()?,
+            _ => return None,
+        };
+        let rewrites_surface = |item: &RolloutItem| {
+            matches!(
+                item,
+                RolloutItem::Compacted(_) | RolloutItem::SurfaceReplacement(_)
+            )
+        };
+        // A rewrite after the report invalidates the mapping entirely.
+        if rollout_items[index..].iter().any(rewrites_surface) {
+            return Some((info, 0));
+        }
+        // Even without a rewrite after it, count only the items that belong to the
+        // surface this report was made against: those after the last rewrite.
+        let start = rollout_items[..index]
             .iter()
-            .rposition(|item| matches!(item, RolloutItem::EventMsg(EventMsg::TokenCount(_))))?;
-        Some(
-            rollout_items[..last_usage]
-                .iter()
-                .filter(|item| matches!(item, RolloutItem::ResponseItem(_)))
-                .count(),
-        )
+            .rposition(rewrites_surface)
+            .map(|rewrite| rewrite + 1)
+            .unwrap_or(0);
+        let covered = rollout_items[start..index]
+            .iter()
+            .filter(|item| matches!(item, RolloutItem::ResponseItem(_)))
+            .count();
+        Some((info, covered))
     }
 
     fn last_token_usage_record_from_rollout(

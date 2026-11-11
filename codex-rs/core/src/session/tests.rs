@@ -13851,13 +13851,12 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
     );
 }
 
-/// Fork (2026-11-11): the recorded usage covers only the items that existed when
-/// it was reported. Items appended afterwards (tool results, user input) and
-/// then interrupted were never charged to any reported count, so a resume must
-/// still estimate them — marking the whole reloaded history as covered would
-/// hide them.
+/// Fork (2026-11-11): usage and its covered boundary must describe the same
+/// report and the same (reconstructed) surface. Claiming coverage past a
+/// `Compacted`/`SurfaceReplacement` rewrite would hide unreported items from the
+/// estimate — the bug this replaced.
 #[test]
-fn token_usage_coverage_counts_items_before_the_last_report() {
+fn token_usage_coverage_tracks_the_same_report_and_respects_rewrites() {
     use codex_protocol::models::{ContentItem, ResponseItem};
 
     let response_item = |text: &str| {
@@ -13876,30 +13875,69 @@ fn token_usage_coverage_counts_items_before_the_last_report() {
             metadata: None,
         })
     };
-    let token_count = || {
+    let token_count = |info: Option<TokenUsageInfo>| {
         RolloutItem::EventMsg(EventMsg::TokenCount(TokenCountEvent {
-            info: None,
+            info,
             rate_limits: None,
         }))
     };
+    let usage = TokenUsageInfo {
+        total_token_usage: TokenUsage::default(),
+        last_usage_includes_reasoning: None,
+        last_token_usage: TokenUsage {
+            input_tokens: 1_000,
+            cached_input_tokens: 0,
+            cache_write_input_tokens: 0,
+            output_tokens: 0,
+            reasoning_output_tokens: 0,
+            total_tokens: 1_000,
+            codex_rollout_budget_units: None,
+        },
+        model_context_window: Some(2_000),
+    };
 
-    // Reported after two items, then a third item landed and the turn died.
+    // Reported after two items, then a third landed and the turn died.
     let rollout = vec![
         response_item("one"),
         response_item("two"),
-        token_count(),
+        token_count(Some(usage.clone())),
         response_item("three (never reported)"),
     ];
-    assert_eq!(
-        Session::token_usage_covered_item_count_from_rollout(&rollout),
-        Some(2),
-        "only the items recorded before the report are covered"
-    );
+    let (_, covered) = Session::last_token_usage_with_coverage(&rollout).expect("usage");
+    assert_eq!(covered, 2, "only items before the report are covered");
 
-    // No report at all: nothing is covered, so everything gets estimated.
-    let without_report = vec![response_item("one")];
-    assert_eq!(
-        Session::token_usage_covered_item_count_from_rollout(&without_report),
-        None
-    );
+    // A trailing `info: None` report must not be mistaken for the boundary:
+    // usage and coverage come from the same event.
+    let trailing_empty = vec![
+        response_item("one"),
+        token_count(Some(usage.clone())),
+        response_item("two"),
+        token_count(None),
+    ];
+    let (info, covered) =
+        Session::last_token_usage_with_coverage(&trailing_empty).expect("usage");
+    assert_eq!(info.last_token_usage.total_tokens, 1_000);
+    assert_eq!(covered, 1, "boundary follows the event that carried the usage");
+
+    // A rewrite AFTER the report invalidates the mapping: claim nothing.
+    let rewrite_after = vec![
+        response_item("one"),
+        token_count(Some(usage.clone())),
+        RolloutItem::SurfaceReplacement(Box::default()),
+        response_item("two"),
+    ];
+    let (_, covered) = Session::last_token_usage_with_coverage(&rewrite_after).expect("usage");
+    assert_eq!(covered, 0, "a rewritten surface cannot claim coverage");
+
+    // A rewrite BEFORE the report means only post-rewrite items were charged.
+    let rewrite_before = vec![
+        response_item("dropped"),
+        RolloutItem::SurfaceReplacement(Box::default()),
+        response_item("kept one"),
+        response_item("kept two"),
+        token_count(Some(usage)),
+        response_item("never reported"),
+    ];
+    let (_, covered) = Session::last_token_usage_with_coverage(&rewrite_before).expect("usage");
+    assert_eq!(covered, 2, "pre-rewrite items are not part of the covered surface");
 }
