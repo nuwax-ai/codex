@@ -8444,6 +8444,13 @@
       ],
       "description": "Lifecycle hooks configured inline in TOML plus user-level overrides."
     },
+    "image_byte_budget_bytes": {
+      "description": "Fork (nuwax-codex): per-image encoded byte budget applied when images enter conversation history (FORK.md §5.5). Images larger than this are re-encoded lossless-first (opaque -> JPEG ladder, transparent -> PNG dimension ladder). Omitted or zero keeps the historical behavior of only bounding by token/patch dimensions.",
+      "format": "uint32",
+      "maximum": 536870912.0,
+      "minimum": 0.0,
+      "type": "integer"
+    },
     "include_apps_instructions": {
       "description": "Whether to inject the `<apps_instructions>` developer block.",
       "type": "boolean"

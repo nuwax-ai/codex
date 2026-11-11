@@ -339,8 +339,14 @@ fn shrink_oversized_tool_output_images(
         }
     }
 
-    // Pass 1: per-image bound. Nothing else to do when every image fits.
-    if items.iter().map(encoded_len).all(|len| len <= per_image_limit) {
+    // Pass 1: per-image bound. Nothing else to do when every image fits AND the
+    // aggregate already fits — checking only the per-image bound here skipped
+    // Pass 2 for a set of individually-fine images whose SUM is over the
+    // aggregate bound, so those images were dropped whole by the admission
+    // step instead of being shrunk (fork 2026-11-11).
+    let fits_every_bound = items.iter().map(encoded_len).all(|len| len <= per_image_limit)
+        && items.iter().map(encoded_len).sum::<usize>() <= total_limit;
+    if fits_every_bound {
         return items;
     }
     for item in items.iter_mut() {

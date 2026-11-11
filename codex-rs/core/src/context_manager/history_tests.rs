@@ -3936,3 +3936,55 @@ fn user_input_token_estimate_counts_text_and_charges_the_image_floor() {
     };
     assert_eq!(estimate_user_input_token_count(&skill), 0);
 }
+
+/// Fork (2026-11-11): resuming a thread must not re-estimate the whole reloaded
+/// history on top of the count it already recorded. Leaving
+/// `last_server_reported_usage_item_count` at 0 made a 148k-token session look
+/// like "full window" and compacted about one second after every respawn.
+#[test]
+fn resuming_anchors_the_token_count_to_the_recorded_usage() {
+    let mut history = create_history_with_items(vec![
+        user_msg("first question"),
+        assistant_msg("first answer"),
+        user_msg("second question"),
+    ]);
+
+    let info = TokenUsageInfo::new_or_append(
+        &None,
+        &TokenUsage {
+            input_tokens: 120_000,
+            cached_input_tokens: 0,
+            cache_write_input_tokens: 0,
+            output_tokens: 0,
+            reasoning_output_tokens: 0,
+            codex_rollout_budget_units: None,
+            total_tokens: 148_000,
+        },
+        /*includes_reasoning*/ false,
+        Some(200_000),
+    );
+
+    // Without the boundary the reloaded items are charged twice: once inside
+    // the recorded count, once by the estimate.
+    history.set_token_info(Some(info.clone()));
+    let unbounded = history.get_total_token_usage();
+    assert!(
+        unbounded > 148_000,
+        "reloading without a boundary must over-count (got {unbounded})"
+    );
+
+    // With the boundary the recorded count already covers the loaded items.
+    let covered = history.annotated_items().len();
+    history.set_token_info_with_boundary(Some(info), covered);
+    assert_eq!(history.get_total_token_usage(), 148_000);
+
+    // Items recorded after the resume are still charged.
+    history.record_items(
+        std::iter::once(&user_msg("third question")),
+        TruncationPolicy::Tokens(10_000),
+    );
+    assert!(
+        history.get_total_token_usage() > 148_000,
+        "post-resume items must still be estimated"
+    );
+}

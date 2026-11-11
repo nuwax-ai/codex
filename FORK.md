@@ -470,6 +470,35 @@ reviewer——**一次模型调用**——由它代替用户批准。nuwax-clien
 （含 marker）。无损优先：alpha 全 255 的截图打平转 JPEG（视觉无损），真半透明保
 PNG。无法解码的 payload 原样透传、交给入口丢弃。
 
+**重启后立刻压缩的真因：恢复用量时丢了边界（2026-11-11 复盘修复）**：
+`get_total_token_usage()` = 上次服务端用量 + 未上报条目的估算。恢复会话时只调了
+`set_token_info`，没设 `last_server_reported_usage_item_count`，边界停在 0——于是
+**整个重载历史被再估算一遍叠加上去**，14.8 万 token 的会话看起来像几十万，
+`full_context_window_limit_reached` 在第一条消息就为真。实测：7 次引擎重启，
+每次 **+0.9 秒**都出现一次 Compact conversation。改为 `set_token_info_with_boundary`
+（覆盖数 = 重载条目数），并加回归测试
+`resuming_anchors_the_token_count_to_the_recorded_usage`（断开边界时断言"必然多算"）。
+
+同批代码审查修复：
+
+- **用户上传的图片绝不被剪枝**：`prune_stale_images` 原先把 `Message` 里的图片也计入
+  候选，用户传三张会有一张被换成占位符——那是用户自己的输入；且 Message 没有 call id，
+  剪了无法写进 `SurfaceReplacement`，导致实时与重载不一致。现在只剪工具输出。
+- **413 在 token 合规时也真的剪**：`degrade_history_to_target_window` 原先
+  `total <= history_budget` 就直接返回"没裁"，于是 body 超限的重试原样再发一次 → 再
+  413 → 终态。现在 `CompactionOverflow` 会走完确定性剪枝（旧图 + 超大工具输出），并
+  照常记录回放。
+- **迁移压缩不再抢跑**：它原先每轮按 `ratio*窗口`（≈80%）无条件跑，绕过惰性轮前判断。
+  现在只在**换模型**或**真的装不下**时执行。
+- **单图合规时仍做合计收缩**：`shrink_oversized_tool_output_images` 原先"每张都合规"
+  就 return，多张图合计超限时进不到 Pass 2，只能被入口整张丢弃。
+- **fail-fast 认环境授权头**：`has_authorization_header` 只看静态 `http_headers`，
+  漏了 `env_http_headers.Authorization`——合法配置会被误拒。
+- **配置 schema 补 `image_byte_budget_bytes`**（`config_schema_matches_fixture` 此前
+  实红）。
+- **图片字节预算的写入移到校验之后**：失败的配置加载不再改动进程级预算；跨会话共享
+  这个进程级单元是结构性限制，彻底修法是把预算穿进 image-preparation 调用链（待办）。
+
 **压缩惰性化：不在每轮开头按 80% 线压缩（2026-11-11）**：`run_pre_sampling_compact`
 此前只要 `token_limit_reached`（自动压缩额度，未显式配置时=窗口的 80%）就压缩。
 结果是一个停在 80% 出头的会话，**每发一条新消息都先压一次**——UI 上表现为上一轮

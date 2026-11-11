@@ -202,19 +202,13 @@ pub(crate) fn prune_stale_images(
                     }
                 }
             }
-            ResponseItem::Message { content, .. } => {
-                for (content_index, content_item) in content.iter().enumerate() {
-                    if matches!(
-                        content_item,
-                        ContentItem::InputImage {
-                            image: ImageReference::Inline { .. },
-                            ..
-                        }
-                    ) {
-                        positions.push((item_index, content_index));
-                    }
-                }
-            }
+            // Fork (2026-11-11): user/assistant message images are NEVER
+            // pruned. They are the operator's own input — replacing one with a
+            // placeholder silently drops the picture the task is about — and a
+            // message has no call id, so the prune could not be recorded in a
+            // SurfaceReplacement either: the live surface would lose the image
+            // while a reload brought it back. Only tool output is re-obtainable
+            // and keyed by a call id.
             _ => {}
         }
     }

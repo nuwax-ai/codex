@@ -1512,12 +1512,18 @@ pub(crate) async fn degrade_history_to_target_window(
         .map(|envelope| crate::context_manager::estimate_item_token_count(&envelope.item))
         .collect();
     let total: i64 = item_tokens.iter().sum();
-    if total <= history_budget {
+    if total <= history_budget && reason != DegradeReason::CompactionOverflow {
         return Ok(DegradeOutcome::Trimmed {
             shadowed_tokens: 0,
             retained_tokens: total,
         });
     }
+    // Fork (2026-11-11): when the overflow came from a gateway rejecting the
+    // request BODY (413) while the token estimate still fits — a handful of
+    // multi-MB base64 screenshots is cheap in tokens — returning "nothing
+    // trimmed" made the caller retry the identical body and fail again. Fall
+    // through to the prune pass below, which shrinks the re-obtainable parts of
+    // the surface and records them for replay.
 
     // Largest retained tail fitting the budget: walk the boundary forward
     // from the oldest item until the remaining tail fits, then keep moving
@@ -1572,7 +1578,9 @@ pub(crate) async fn degrade_history_to_target_window(
     let mut retained_tokens: i64 = item_tokens[boundary..].iter().sum();
     debug_assert_eq!(shadowed_tokens + retained_tokens, total);
     let mut pruned_tool_outputs: Vec<codex_history::PrunedToolOutput> = Vec::new();
-    if protection == DegradeProtection::CurrentTurnInput && retained_tokens > history_budget {
+    if protection == DegradeProtection::CurrentTurnInput
+        && (retained_tokens > history_budget || reason == DegradeReason::CompactionOverflow)
+    {
         // The retained tail is usually dominated by tool output the turn can
         // re-run. Shrink that deterministically before declaring the protected
         // input itself too large: a one-line question followed by a huge tool

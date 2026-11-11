@@ -281,6 +281,23 @@ impl SessionState {
         self.history.set_token_info(info);
     }
 
+    /// Fork (2026-11-11): install the recorded usage together with the history it
+    /// covers. Resuming a thread used to call `set_token_info` alone, which left
+    /// `last_server_reported_usage_item_count` at 0 — so `get_total_token_usage()`
+    /// added a fresh estimate of the ENTIRE reloaded history on top of the last
+    /// reported count. A 148k-token session then looked like several hundred
+    /// thousand, `full_context_window_limit_reached` was true on the very first
+    /// turn, and the engine compacted about one second after every respawn
+    /// (observed 2026-11-11: compaction +0.9s after each of 7 spawns).
+    pub(crate) fn set_token_info_with_boundary(
+        &mut self,
+        info: Option<TokenUsageInfo>,
+        covered_item_count: usize,
+    ) {
+        self.history
+            .set_token_info_with_boundary(info, covered_item_count);
+    }
+
     pub(crate) fn record_token_usage(&mut self, report: TokenUsageReport<'_>) -> TokenUsageRecord {
         let TokenUsageReport {
             thread_id,

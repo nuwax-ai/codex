@@ -1803,10 +1803,14 @@ impl Session {
                 }
 
                 // Seed usage info from the recorded rollout so UIs can show token counts
-                // immediately on resume/fork.
+                // immediately on resume/fork. The boundary must travel with it: the
+                // recorded count already covers the items that were loaded, and leaving
+                // the boundary at 0 made the next token status add a full re-estimate of
+                // the reloaded history on top of it (fork 2026-11-11).
                 if let Some(info) = Self::last_token_info_from_rollout(&rollout_items) {
                     let mut state = self.state.lock().await;
-                    state.set_token_info(Some(info));
+                    let covered = state.history.annotated_items().len();
+                    state.set_token_info_with_boundary(Some(info), covered);
                 }
                 {
                     let mut state = self.state.lock().await;
@@ -1851,10 +1855,14 @@ impl Session {
                     .await;
 
                 // Seed usage info from the recorded rollout so UIs can show token counts
-                // immediately on resume/fork.
+                // immediately on resume/fork. The boundary must travel with it: the
+                // recorded count already covers the items that were loaded, and leaving
+                // the boundary at 0 made the next token status add a full re-estimate of
+                // the reloaded history on top of it (fork 2026-11-11).
                 if let Some(info) = Self::last_token_info_from_rollout(&rollout_items) {
                     let mut state = self.state.lock().await;
-                    state.set_token_info(Some(info));
+                    let covered = state.history.annotated_items().len();
+                    state.set_token_info_with_boundary(Some(info), covered);
                 }
                 {
                     let mut state = self.state.lock().await;

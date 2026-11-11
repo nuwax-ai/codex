@@ -806,11 +806,19 @@ other non-default provider fields are not supported"
     /// True when the operator put an `Authorization` header in `http_headers`,
     /// which is a credential even though it is not a key field.
     pub fn has_authorization_header(&self) -> bool {
-        self.http_headers.as_ref().is_some_and(|headers| {
-            headers
-                .keys()
-                .any(|name| name.eq_ignore_ascii_case("authorization"))
-        })
+        // Fork (2026-11-11): an authorization header may come from the
+        // environment instead of the config file. Checking only `http_headers`
+        // made the unconfigured-provider fail-fast reject a provider whose
+        // credential arrives through `env_http_headers`.
+        let named_authorization =
+            |name: &String| name.eq_ignore_ascii_case("authorization");
+        self.http_headers
+            .as_ref()
+            .is_some_and(|headers| headers.keys().any(named_authorization))
+            || self
+                .env_http_headers
+                .as_ref()
+                .is_some_and(|headers| headers.keys().any(named_authorization))
     }
 
     /// Effective maximum number of request retries for this provider.

@@ -238,7 +238,30 @@ pub(crate) async fn run_turn(
     // plan 2026-11-08).
     let mut downshift_handled = false;
     let mut degrade_needed = false;
-    if auto_compaction_enabled {
+    // Fork (2026-11-11): migration compaction exists for a model DOWNSHIFT, or
+    // for a history that genuinely no longer fits the window. It used to run on
+    // every turn whenever the history passed the ~80% scheduling line, which
+    // pre-empted the lazy pre-turn check for a same-model continuation and
+    // still produced a "Compact conversation" block before the user's message.
+    let migration_needed = {
+        let previous_model = sess
+            .previous_turn_settings()
+            .await
+            .map(|settings| settings.model);
+        let model_changed = previous_model
+            .is_some_and(|model| model != turn_context.model_info().slug);
+        if model_changed {
+            true
+        } else {
+            let status = super::context_window::context_window_token_status(
+                sess.as_ref(),
+                turn_context.as_ref(),
+            )
+            .await;
+            status.full_context_window_limit_reached
+        }
+    };
+    if auto_compaction_enabled && migration_needed {
         const MAX_MIGRATION_PASSES_PER_TURN: usize = 32;
         let mut passes = 0usize;
         let mut outcome = crate::compact::run_migration_compact_task(
