@@ -1596,10 +1596,15 @@ pub(crate) async fn degrade_history_to_target_window(
     // nothing to trim (`boundary == 0`). When trimming already brought the tail
     // under budget, pruning images and tool text on top of that would destroy
     // context the model can still afford.
+    //
+    // Fork (2026-11-11): pruning is NOT gated on `CurrentTurnInput`. The
+    // pre-turn 413 recovery passes `DegradeProtection::None`, so requiring the
+    // protected-input variant skipped the shrink entirely and the retry went out
+    // byte-identical — the exact case this exists for. Only the "necessary
+    // content exceeds the window" verdict below stays protection-specific.
     let bytes_over_without_trim =
         reason == DegradeReason::CompactionOverflow && boundary == 0;
-    if protection == DegradeProtection::CurrentTurnInput
-        && (retained_tokens > history_budget || bytes_over_without_trim)
+    if retained_tokens > history_budget || bytes_over_without_trim
     {
         // The retained tail is usually dominated by tool output the turn can
         // re-run. Shrink that deterministically before declaring the protected

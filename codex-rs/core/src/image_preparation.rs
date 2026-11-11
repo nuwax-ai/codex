@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::sync::atomic::AtomicU32;
-use std::sync::atomic::Ordering;
 
 use crate::config::ManagedFeatures;
 use crate::context::ContextualUserFragment;
@@ -133,6 +131,10 @@ pub(crate) async fn prepare_response_items(
     mode: ImagePreparationMode,
     resize_notice_mode: ImageResizeNoticeMode,
     image_store: &dyn AttachmentStore,
+    // Fork (2026-11-11): the per-image byte budget travels with the call
+    // instead of a process-wide cell. Two sessions with different configs used
+    // to read whichever value was written last.
+    byte_budget: Option<usize>,
 ) -> Vec<ImagePreparationMetadata> {
     let mut metadata = Vec::new();
     let mut prepared_items = Vec::with_capacity(items.len());
@@ -159,6 +161,7 @@ pub(crate) async fn prepare_response_items(
                     &mut metadata,
                     mode,
                     image_store,
+                    byte_budget,
                 )
                 .await;
                 let _ = set_annotated_content(&mut item, content);
@@ -178,6 +181,7 @@ pub(crate) async fn prepare_response_items(
                     &mut metadata,
                     mode,
                     image_store,
+                    byte_budget,
                 )
                 .await
             }
@@ -193,6 +197,7 @@ pub(crate) async fn prepare_response_items(
                     &mut metadata,
                     mode,
                     image_store,
+                    byte_budget,
                 )
                 .await
             }
@@ -231,6 +236,7 @@ async fn prepare_tool_output(
     metadata: &mut Vec<ImagePreparationMetadata>,
     mode: ImagePreparationMode,
     image_store: &dyn AttachmentStore,
+    byte_budget: Option<usize>,
 ) -> Option<ImageResizeNotice> {
     let content = output.content_items_mut()?;
     let resized_images = prepare_tool_output_content(
@@ -245,6 +251,7 @@ async fn prepare_tool_output(
         metadata,
         mode,
         image_store,
+        byte_budget,
     )
     .await;
     if resized_images.is_empty() {
@@ -264,6 +271,7 @@ async fn prepare_message_content(
     metadata: &mut Vec<ImagePreparationMetadata>,
     mode: ImagePreparationMode,
     image_store: &dyn AttachmentStore,
+    byte_budget: Option<usize>,
 ) -> Vec<ResizedImage> {
     // File-backed images are already prepared and pass through while retaining their positions in
     // resize notices.
@@ -276,7 +284,7 @@ async fn prepare_message_content(
     for item in items {
         if let ContentItem::InputImage { image, detail } = item.content_mut() {
             image_number += 1;
-            match prepare_image(image, detail, origin, metadata, mode, image_store).await {
+            match prepare_image(image, detail, origin, metadata, mode, image_store, byte_budget).await {
                 Ok(Some(resize)) if resize_notice_mode == ImageResizeNoticeMode::Enabled => {
                     resized_images.push(ResizedImage {
                         image_number,
@@ -309,6 +317,7 @@ async fn prepare_tool_output_content(
     metadata: &mut Vec<ImagePreparationMetadata>,
     mode: ImagePreparationMode,
     image_store: &dyn AttachmentStore,
+    byte_budget: Option<usize>,
 ) -> Vec<ResizedImage> {
     // Submission-time backstop for the per-result image entrance limits:
     // every producer normally truncates through codex-utils-output-truncation
@@ -324,7 +333,7 @@ async fn prepare_tool_output_content(
     for item in items {
         if let FunctionCallOutputContentItem::InputImage { image, detail } = item {
             image_number += 1;
-            match prepare_image(image, detail, origin, metadata, mode, image_store).await {
+            match prepare_image(image, detail, origin, metadata, mode, image_store, byte_budget).await {
                 Ok(Some(resize)) if resize_notice_mode == ImageResizeNoticeMode::Enabled => {
                     resized_images.push(ResizedImage {
                         image_number,
@@ -391,6 +400,16 @@ fn is_data_url(image_url: &str) -> bool {
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:"))
 }
 
+/// The configured per-image byte budget, or `None` when disabled.
+///
+/// Fork (2026-11-11): this used to be a process-wide `AtomicU32` written by
+/// every config load, so two sessions with different values clobbered each
+/// other and a failing load still changed it. It now travels with the call,
+/// read from the session's own config.
+pub(crate) fn image_byte_budget(config: &crate::config::Config) -> Option<usize> {
+    (config.image_byte_budget_bytes > 0).then_some(config.image_byte_budget_bytes as usize)
+}
+
 async fn prepare_image(
     image: &mut ImageReference,
     detail: &mut Option<ImageDetail>,
@@ -398,11 +417,12 @@ async fn prepare_image(
     metadata: &mut Vec<ImagePreparationMetadata>,
     mode: ImagePreparationMode,
     image_store: &dyn AttachmentStore,
+    byte_budget: Option<usize>,
 ) -> Result<Option<PreparedImageResize>, ImagePreparationError> {
     let ImageReference::Inline { image_url } = image else {
         return Ok(None);
     };
-    let Some(prepared) = resize_image(image_url, detail, mode)? else {
+    let Some(prepared) = resize_image(image_url, detail, mode, byte_budget)? else {
         return Ok(None);
     };
     metadata.push(prepared.metadata(origin));
@@ -445,24 +465,12 @@ async fn prepare_image(
 /// from several call sites without a config handle, so the resolved
 /// `Config::image_byte_budget_bytes` is parked here when the session config is
 /// loaded. Zero (the default) disables re-encoding and keeps the historical
-/// dimension-only behavior.
-static IMAGE_BYTE_BUDGET_BYTES: AtomicU32 = AtomicU32::new(0);
-
-/// Publishes the configured per-image byte budget. Called once per resolved
-/// config load; a zero budget disables the re-encode step.
-pub(crate) fn set_image_byte_budget(bytes: u32) {
-    IMAGE_BYTE_BUDGET_BYTES.store(bytes, Ordering::Relaxed);
-}
-
-fn image_byte_budget() -> Option<usize> {
-    let bytes = IMAGE_BYTE_BUDGET_BYTES.load(Ordering::Relaxed);
-    (bytes > 0).then_some(bytes as usize)
-}
 
 pub(crate) fn resize_image(
     image_url: &str,
     detail: &mut Option<ImageDetail>,
     mode: ImagePreparationMode,
+    byte_budget: Option<usize>,
 ) -> Result<Option<PreparedInlineImage>, ImagePreparationError> {
     if is_remote_image_url(image_url) {
         return Err(ImagePreparationError::RemoteUrlUnsupported);
@@ -493,7 +501,7 @@ pub(crate) fn resize_image(
     // `fit_encoded_to_budget`): opaque images flatten to a JPEG ladder,
     // genuinely transparent ones keep PNG and shrink by dimension. Every
     // later turn re-sends history, so a small image here pays off forever.
-    if let Some(max_bytes) = image_byte_budget()
+    if let Some(max_bytes) = byte_budget
         && encoded.bytes.len() > max_bytes
     {
         let (_fitted_url, fitted_bytes, fitted_mime) =

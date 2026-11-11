@@ -13850,3 +13850,56 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
         "rejection must not permit same-name ordinary-auth replacement in this session"
     );
 }
+
+/// Fork (2026-11-11): the recorded usage covers only the items that existed when
+/// it was reported. Items appended afterwards (tool results, user input) and
+/// then interrupted were never charged to any reported count, so a resume must
+/// still estimate them — marking the whole reloaded history as covered would
+/// hide them.
+#[test]
+fn token_usage_coverage_counts_items_before_the_last_report() {
+    use codex_protocol::models::{ContentItem, ResponseItem};
+
+    let response_item = |text: &str| {
+        RolloutItem::ResponseItem(codex_history::ResponseItemEnvelope {
+            item: ResponseItem::Message {
+                id: None,
+                role: "user".to_owned(),
+                content: vec![ContentItem::InputText {
+                    text: text.to_owned(),
+                }],
+                phase: None,
+                status: None,
+                encrypted_content: None,
+                internal_chat_message_metadata_passthrough: None,
+            },
+            metadata: None,
+        })
+    };
+    let token_count = || {
+        RolloutItem::EventMsg(EventMsg::TokenCount(TokenCountEvent {
+            info: None,
+            rate_limits: None,
+        }))
+    };
+
+    // Reported after two items, then a third item landed and the turn died.
+    let rollout = vec![
+        response_item("one"),
+        response_item("two"),
+        token_count(),
+        response_item("three (never reported)"),
+    ];
+    assert_eq!(
+        Session::token_usage_covered_item_count_from_rollout(&rollout),
+        Some(2),
+        "only the items recorded before the report are covered"
+    );
+
+    // No report at all: nothing is covered, so everything gets estimated.
+    let without_report = vec![response_item("one")];
+    assert_eq!(
+        Session::token_usage_covered_item_count_from_rollout(&without_report),
+        None
+    );
+}

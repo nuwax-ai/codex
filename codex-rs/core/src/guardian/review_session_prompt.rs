@@ -108,7 +108,7 @@ impl codex_guardian_context::SyncImagePreparer for ReviewImagePreparer<'_> {
         };
         match image {
             ImageReference::Inline { image_url } => {
-                match resize_image(image_url, detail, self.mode) {
+                match resize_image(image_url, detail, self.mode, None) {
                     Ok(Some(prepared)) => Some(Cow::Owned(ImageReference::Inline {
                         image_url: prepared.into_data_url(),
                     })),

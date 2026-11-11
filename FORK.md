@@ -470,6 +470,12 @@ reviewer——**一次模型调用**——由它代替用户批准。nuwax-clien
 （含 marker）。无损优先：alpha 全 255 的截图打平转 JPEG（视觉无损），真半透明保
 PNG。无法解码的 payload 原样透传、交给入口丢弃。
 
+**resume 的覆盖边界按 rollout 位置恢复（2026-11-11 二次修正）**：第一版把"全部重载
+条目"都标成已被最后一次上报覆盖，会**漏算上报之后追加、然后被中断的条目**（工具结果、
+用户输入）——它们从未计入任何上报用量，resume 时仍应估算。改为数出最后一次
+`TokenCount` 之前的 `ResponseItem` 条数作为覆盖边界（并 clamp 到重载条目数），
+`token_usage_coverage_counts_items_before_the_last_report` 锁定该语义。
+
 **重启后立刻压缩的真因：恢复用量时丢了边界（2026-11-11 复盘修复）**：
 `get_total_token_usage()` = 上次服务端用量 + 未上报条目的估算。恢复会话时只调了
 `set_token_info`，没设 `last_server_reported_usage_item_count`，边界停在 0——于是
@@ -496,8 +502,11 @@ PNG。无法解码的 payload 原样透传、交给入口丢弃。
   漏了 `env_http_headers.Authorization`——合法配置会被误拒。
 - **配置 schema 补 `image_byte_budget_bytes`**（`config_schema_matches_fixture` 此前
   实红）。
-- **图片字节预算的写入移到校验之后**：失败的配置加载不再改动进程级预算；跨会话共享
-  这个进程级单元是结构性限制，彻底修法是把预算穿进 image-preparation 调用链（待办）。
+- **图片字节预算改为随调用传递**：它原本是进程级 `AtomicU32`，每次配置加载写一次——
+  两个会话配不同预算会互相覆盖，失败的加载也会改写。现在预算作为参数穿过
+  `prepare_response_items → prepare_message_content / prepare_tool_output_content →
+  prepare_image`，由调用方从**会话自己的 config** 读取（`image_byte_budget(&config)`），
+  全局单元与其 setter 已删除。guardian 审阅图走 `resize_image(..., None)`（不设预算）。
 
 **压缩惰性化：不在每轮开头按 80% 线压缩（2026-11-11）**：`run_pre_sampling_compact`
 此前只要 `token_limit_reached`（自动压缩额度，未显式配置时=窗口的 80%）就压缩。

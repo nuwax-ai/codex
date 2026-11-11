@@ -3574,15 +3574,6 @@ impl Config {
         // image-preparation module (FORK.md §5.5). Done here so every config
         // load path (CLI, app-server, tests) shares one resolution point.
         //
-        // Published AFTER validation (fork 2026-11-11): it used to run first, so
-        // a load that then failed still changed the value for every session in
-        // the process. The remaining limitation is structural — the budget is a
-        // process-wide cell, so two sessions with different values share the
-        // last one written. Threading it through the image-preparation call
-        // chain is the real fix and is tracked in FORK.md §5.5.
-        crate::image_preparation::set_image_byte_budget(
-            cfg.image_byte_budget_bytes.unwrap_or(0),
-        );
         // Keep the large config-construction future off small test thread stacks.
         Box::pin(async move {
         if cfg.experimental_thread_store_endpoint.is_some() {

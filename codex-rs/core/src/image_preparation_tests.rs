@@ -117,6 +117,7 @@ async fn preparation_preserves_small_image_bytes_and_replaces_remote_urls() {
         ImagePreparationMode::DetailBased,
         ImageResizeNoticeMode::Disabled,
         &InlineAttachmentStore,
+        /*byte_budget*/ None,
     )
     .await;
 
@@ -209,6 +210,7 @@ async fn detail_policies_apply_the_expected_budgets() {
             ImagePreparationMode::DetailBased,
             ImageResizeNoticeMode::Disabled,
             &InlineAttachmentStore,
+            /*byte_budget*/ None,
         )
         .await;
 
@@ -264,6 +266,7 @@ async fn preparation_reports_tool_output_item_id() {
         ImagePreparationMode::DetailBased,
         ImageResizeNoticeMode::Disabled,
         &InlineAttachmentStore,
+        /*byte_budget*/ None,
     )
     .await;
 
@@ -304,6 +307,7 @@ async fn upload_failure_keeps_resized_image_inline() {
         ImagePreparationMode::DetailBased,
         ImageResizeNoticeMode::Disabled,
         &FailingAttachmentStore,
+        /*byte_budget*/ None,
     )
     .await;
 
@@ -408,6 +412,7 @@ async fn resize_notices_count_file_backed_images_and_skip_failed_images() {
         ImagePreparationMode::DetailBased,
         ImageResizeNoticeMode::Enabled,
         &InlineAttachmentStore,
+        /*byte_budget*/ None,
     )
     .await;
     let expected_user_notice = concat!(
@@ -605,6 +610,7 @@ async fn preparation_replaces_only_failed_tool_images_and_preserves_metadata() {
         ImagePreparationMode::DetailBased,
         ImageResizeNoticeMode::Disabled,
         &InlineAttachmentStore,
+        /*byte_budget*/ None,
     )
     .await;
 

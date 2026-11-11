@@ -45,6 +45,7 @@ use crate::exec_policy::ExecPolicyManager;
 use crate::exec_policy::default_policy_path;
 use crate::image_preparation::ImagePreparationMode;
 use crate::image_preparation::ImageResizeNoticeMode;
+use crate::image_preparation::image_byte_budget;
 use crate::image_preparation::prepare_response_items as prepare_image_response_items;
 use crate::image_preparation::unified_image_budget_enabled;
 use crate::parse_turn_item;
@@ -1808,8 +1809,16 @@ impl Session {
                 // the boundary at 0 made the next token status add a full re-estimate of
                 // the reloaded history on top of it (fork 2026-11-11).
                 if let Some(info) = Self::last_token_info_from_rollout(&rollout_items) {
+                    let covered_hint =
+                        Self::token_usage_covered_item_count_from_rollout(&rollout_items);
                     let mut state = self.state.lock().await;
-                    let covered = state.history.annotated_items().len();
+                    let loaded = state.history.annotated_items().len();
+                    // The rollout position is an upper bound: reconstruction can
+                    // drop items (orphans, replacements), and a boundary larger
+                    // than the loaded surface would under-count. Clamp, and
+                    // fall back to 0 (estimate everything) when the rollout
+                    // carries no positional hint.
+                    let covered = covered_hint.unwrap_or(0).min(loaded);
                     state.set_token_info_with_boundary(Some(info), covered);
                 }
                 {
@@ -1860,8 +1869,16 @@ impl Session {
                 // the boundary at 0 made the next token status add a full re-estimate of
                 // the reloaded history on top of it (fork 2026-11-11).
                 if let Some(info) = Self::last_token_info_from_rollout(&rollout_items) {
+                    let covered_hint =
+                        Self::token_usage_covered_item_count_from_rollout(&rollout_items);
                     let mut state = self.state.lock().await;
-                    let covered = state.history.annotated_items().len();
+                    let loaded = state.history.annotated_items().len();
+                    // The rollout position is an upper bound: reconstruction can
+                    // drop items (orphans, replacements), and a boundary larger
+                    // than the loaded surface would under-count. Clamp, and
+                    // fall back to 0 (estimate everything) when the rollout
+                    // carries no positional hint.
+                    let covered = covered_hint.unwrap_or(0).min(loaded);
                     state.set_token_info_with_boundary(Some(info), covered);
                 }
                 {
@@ -1990,6 +2007,7 @@ impl Session {
             ImagePreparationMode::DetailBased,
             ImageResizeNoticeMode::Disabled,
             &InlineAttachmentStore,
+            image_byte_budget(&turn_context.config),
         ))
         .await;
         prepare_audio_response_items(&mut prepared_history);
@@ -2085,6 +2103,24 @@ impl Session {
             RolloutItem::EventMsg(EventMsg::TokenCount(ev)) => ev.info.clone(),
             _ => None,
         })
+    }
+
+    /// Fork (2026-11-11): how many history items the recorded usage actually
+    /// covered — the number of `ResponseItem`s recorded before the last
+    /// `TokenCount` event. Marking the WHOLE reloaded history as covered (the
+    /// first cut of this fix) under-counts whatever was appended after that
+    /// event and then interrupted: those items were never charged to any
+    /// reported usage, so a resume must still estimate them.
+    fn token_usage_covered_item_count_from_rollout(rollout_items: &[RolloutItem]) -> Option<usize> {
+        let last_usage = rollout_items
+            .iter()
+            .rposition(|item| matches!(item, RolloutItem::EventMsg(EventMsg::TokenCount(_))))?;
+        Some(
+            rollout_items[..last_usage]
+                .iter()
+                .filter(|item| matches!(item, RolloutItem::ResponseItem(_)))
+                .count(),
+        )
     }
 
     fn last_token_usage_record_from_rollout(
@@ -3921,6 +3957,7 @@ impl Session {
             image_preparation_mode,
             image_resize_notice_mode,
             self.services.image_store.as_ref(),
+            image_byte_budget(&turn_context.config),
         ))
         .await;
         prepare_audio_response_items(&mut items);
