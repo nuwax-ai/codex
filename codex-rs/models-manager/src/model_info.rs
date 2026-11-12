@@ -257,7 +257,13 @@ pub fn model_info_from_slug(slug: &str) -> ModelInfo {
         web_search_tool_type: WebSearchToolType::Text,
         web_search_provider: None,
         truncation_policy: TruncationPolicyConfig::bytes(/*limit*/ 10_000),
-        supports_image_detail_original: false,
+        // Fork (nuwax-codex): an unknown model is treated as image-capable,
+        // `detail: original` included, instead of hiding the capability behind
+        // a catalog entry the user cannot write for a vendor model. The wire
+        // still decides what survives (`Chat` rewrites original to `high`), and
+        // the per-image byte budget follows the wire — see
+        // `core/src/image_preparation.rs::wire_honors_original_detail`.
+        supports_image_detail_original: true,
         context_window: Some(272_000),
         max_context_window: Some(272_000),
         auto_compact_token_limit: None,
