@@ -41,6 +41,19 @@ warn() { printf '\033[1;33m[bootstrap] WARN\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[bootstrap] ERROR\033[0m %s\n' "$*" >&2; exit 1; }
 run()  { if [ "$DRY_RUN" = 1 ]; then printf '  [dry-run] %s\n' "$*"; else "$@"; fi; }
 
+# 需要 root 才能装包。要么整个脚本用 sudo 跑，要么该用户有免密 sudo；
+# 两者都不满足时**立刻报清楚**，不要让调用者对着 apt 的权限错误猜。
+if [ "$(id -u)" -ne 0 ]; then
+  if command -v sudo >/dev/null && sudo -n true 2>/dev/null; then
+    APT_SUDO=(sudo -n)
+  else
+    APT_SUDO=()
+    NEED_MANUAL_APT=1
+  fi
+else
+  APT_SUDO=()
+fi
+
 usage() {
   sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
@@ -87,8 +100,15 @@ missing=()
 for p in "${need_pkgs[@]}"; do dpkg -s "$p" >/dev/null 2>&1 || missing+=("$p"); done
 if [ ${#missing[@]} -gt 0 ]; then
   log "安装系统依赖: ${missing[*]}"
-  run apt-get update -y
-  run apt-get install -y "${missing[@]}"
+  if [ "${NEED_MANUAL_APT:-0}" = 1 ]; then
+    die "需要 root 装这些包，但当前用户既不是 root 也没有免密 sudo：
+     ${missing[*]}
+   两种做法：
+     1) sudo $0 <同样的参数>
+     2) 先手工执行： sudo apt-get install -y ${missing[*]}"
+  fi
+  run "${APT_SUDO[@]}" apt-get update -y
+  run "${APT_SUDO[@]}" apt-get install -y "${missing[@]}"
 else
   log "系统依赖已齐"
 fi
