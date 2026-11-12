@@ -160,18 +160,22 @@ jobs:
             echo "CI_ZIG_DIR=$zig_dir"
             echo "CARGO_TARGET_DIR=$cache/target/${{ matrix.target }}"
             echo "ARTIFACTS_DIR=$root/artifacts"
-            # Bound cargo parallelism on every runner. The 72-core Linux host
-            # saturates memory and I/O when several jobs each build with full
-            # `-j`: on 2026-11-12 three Linux jobs died together mid-compile with
-            # no error in the log, and that host stopped answering SSH handshakes
-            # (ping and port 22 stayed fine — sshd could not get CPU). A fixed job
-            # count keeps the machine responsive; this build is memory- and
-            # IO-bound long before it is core-bound. Override with CI_CARGO_JOBS.
-            # 3, not 6: one codex rustc peaks around 4 GB (core links v8), and the
-            # 62 GB runner can host three concurrent jobs. 3 jobs x 6 x 4 GB = 72 GB
-            # still exhausted it on 2026-11-12 (load 236, swap full, SSH dead);
-            # 3 jobs x 3 x 4 GB = 36 GB fits. Lower it further with CI_CARGO_JOBS.
-            echo "CARGO_BUILD_JOBS=${CI_CARGO_JOBS:-3}"
+            # Fork (2026-11-12): size cargo's parallelism from this host's RAM.
+            # The build is memory-bound long before it is core-bound: three jobs
+            # each building with full -j took the 62 GB host to 72 GB, filled swap
+            # and left sshd unable to answer (ping and port 22 stayed fine). The
+            # two Linux runners also differ by 2x in RAM (62 GB / 31 GB) while both
+            # hold two concurrent jobs, so one fixed number cannot suit both.
+            # A codex rustc peaks near 10 GB with v8 in the graph; budget 30 GB per
+            # parallel unit and cap at 3:
+            #   62 GB host -> 2 units per job, 2 jobs = ~40 GB  (safe)
+            #   31 GB host -> 1 unit per job,  2 jobs = ~20 GB  (safe)
+            # Override with CI_CARGO_JOBS.
+            mem_gb=$(awk '/MemTotal/ {printf "%d", $2/1048576}' /proc/meminfo)
+            jobs=$(( mem_gb / 30 ))
+            [ "$jobs" -lt 1 ] && jobs=1
+            [ "$jobs" -gt 3 ] && jobs=3
+            echo "CARGO_BUILD_JOBS=${CI_CARGO_JOBS:-$jobs}"
           } >> "$GITHUB_ENV"
 
       - name: Put the host toolchain on PATH
