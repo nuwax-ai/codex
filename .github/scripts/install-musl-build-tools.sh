@@ -16,8 +16,31 @@ if [[ -n "${APT_INSTALL_ARGS:-}" ]]; then
   apt_install_args=(${APT_INSTALL_ARGS})
 fi
 
-sudo apt-get update "${apt_update_args[@]}"
-sudo apt-get install -y "${apt_install_args[@]}" ca-certificates curl musl-tools pkg-config libcap-dev g++ clang libc++-dev libc++abi-dev lld xz-utils perl make
+pkgs=(ca-certificates curl musl-tools pkg-config libcap-dev g++ clang libc++-dev libc++abi-dev lld xz-utils perl make)
+
+# Fork (2026-11-12): only touch apt when something is actually missing, and never
+# block on a password prompt. A runner whose user lacks passwordless sudo used to
+# hang here for 17 minutes x 3 attempts before the job failed with
+# "sudo: 3 incorrect password attempts" and no hint about the cause.
+missing_pkgs=()
+for p in "${pkgs[@]}"; do
+  dpkg -s "$p" >/dev/null 2>&1 || missing_pkgs+=("$p")
+done
+
+if [ ${#missing_pkgs[@]} -eq 0 ]; then
+  echo "[musl-tools] 依赖已齐，跳过 apt（无需 sudo）"
+else
+  echo "[musl-tools] 缺少: ${missing_pkgs[*]}"
+  if ! sudo -n true 2>/dev/null; then
+    echo "[musl-tools] 该 runner 的用户没有免密 sudo，无法自动安装。" >&2
+    echo "[musl-tools] 请在机器上手工执行一次：" >&2
+    echo "  sudo apt-get install -y ${missing_pkgs[*]}" >&2
+    echo "[musl-tools] （或给该用户配置 NOPASSWD sudo）" >&2
+    exit 1
+  fi
+  sudo -n apt-get update "${apt_update_args[@]}"
+  sudo -n apt-get install -y "${apt_install_args[@]}" "${missing_pkgs[@]}"
+fi
 
 case "${TARGET}" in
   x86_64-unknown-linux-musl)

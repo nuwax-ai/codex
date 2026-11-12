@@ -250,6 +250,58 @@ find <CI_DATA_ROOT>/gitea/gitea/actions_log/<owner>/<repo> -name "<task-id>.log.
 对比 GitHub Actions 同构矩阵 5+ 小时、且 mac job 常被取消——**自建 Gitea 是主通道**，
 GitHub 保留为备份/兜底（尤其 `aarch64-pc-windows-msvc`）。
 
+## 9. sudo 策略（构建机需要 root 权限时怎么办）
+
+工作流里唯一需要 root 的地方是 **musl 目标的 apt 依赖**（`musl-tools`/`clang`/`lld`/
+`libc++-dev` …）。三种做法，按推荐度排列：
+
+### ✅ 方案 A（首选）：一次性手工装齐，CI 不再碰 sudo
+
+在机器上执行一次即可，之后每次构建都跳过 apt：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl musl-tools pkg-config libcap-dev \
+  g++ clang libc++-dev libc++abi-dev lld xz-utils perl make
+```
+
+工作流的 `install-musl-build-tools.sh` 现在会**先检查包是否齐全**：
+
+* 齐了 → 打印「依赖已齐，跳过 apt」直接继续（完全不调用 sudo）；
+* 缺了且**没有免密 sudo** → 立刻失败并打印需要执行的那条命令，
+  不再像以前那样卡 17 分钟 × 3 次后报一句 `sudo: 3 incorrect password attempts`。
+
+检查一台机器是否就绪：
+
+```bash
+for p in ca-certificates curl musl-tools pkg-config libcap-dev g++ clang \
+         libc++-dev libc++abi-dev lld xz-utils perl make; do
+  dpkg -s "$p" >/dev/null 2>&1 || echo "MISS $p"
+done
+```
+
+### ✅ 方案 B：只给这一条命令配免密 sudo
+
+比 `NOPASSWD: ALL` 安全得多，且机器重装后仍然有效：
+
+```bash
+# /etc/sudoers.d/gitea-runner-apt
+Cmnd_Alias CI_APT = /usr/bin/apt-get update, /usr/bin/apt-get install
+<构建用户> ALL=(root) NOPASSWD: CI_APT
+```
+
+校验：`sudo -n apt-get --version && echo ok`。
+
+### ❌ 不要把密码交给 CI
+
+* **不要**在 workflow 里 `echo <密码> | sudo -S ...` —— 密码会进 job 日志和
+  `actions_log/*.log.zst`，任何能看构建日志的人都能读到；
+* **不要**把密码写进 runner 的 config/systemd；
+* **不要**为了省事给构建用户 `NOPASSWD: ALL`（等于让 CI 拥有 root）。
+
+> 如果某台机器既装不了包、又不能配 sudo，就别把它加入 `linux-host` 标签——
+> 它会让每个 musl 目标都失败。这类机器只适合挂 `ubuntu-latest` 跑轻任务。
+
 ## 8. 已知未完成
 
 - `aarch64-pc-windows-msvc`：需在 Windows 机装 VS BuildTools 的 ARM64 组件
