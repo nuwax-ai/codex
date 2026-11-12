@@ -147,10 +147,43 @@ python3 -c "import json;print(json.load(open('<runner目录>/.runner'))['labels'
 
 ---
 
-## 9. 汇总：新机器上最容易犯的五个错
+## 9. 归档打好了，上传步骤却报 `nuwax-upload is not installed on this runner`
+
+**现象**：`x86_64-unknown-linux-musl` 编译 80 分钟、`nuwax-codex-0.18.49-*.tar.gz`
+也生成了，最后一步失败，日志只有这一行。
+
+**根因**：工作流先用 `command -v nuwax-upload`，再查
+`$CI_DATA_ROOT/bin`、`~/ci/bin`、`~/.npm-global/bin`；那台机器（`.45`）一个都没有。
+`nuwax-upload` 是 Node 包（`nuwax-upload@0.1.3`），不是编译依赖，初始化清单里
+从来没写过它——所以"能编译"和"能发布"是两件事。
+
+**修法**：`gitea-ops/bootstrap/linux-build-host.sh` 增加发布工具段：
+装 `nodejs/npm`，再 `npm i -g nuwax-upload@0.1.3`，最后 `command -v` 自检。
+机器上没网时也可从已装好的机器复制 `~/.npm-global/lib/node_modules/nuwax-upload`。
+
+---
+
+## 10. 交叉产物在 strip 步骤失败：`Unable to recognise the format`
+
+**现象**：`aarch64-unknown-linux-musl` 编译 145 分钟完成，最后
+`strip: Unable to recognise the format of the input file .../release/codex`，
+整个 job 失败，构建白跑。
+
+**根因**：工作流对所有目标都调用裸 `strip`，而那台机器（`.23`）的 binutils 2.42
+**只编了 x86 后端**（`objdump -i | grep -c aarch64` 为 0），读不了 aarch64 ELF。
+
+**修法**：装 `binutils-aarch64-linux-gnu`，并在 `/usr/local/bin/strip` 放一个按
+`file -b` 输出派发的包装脚本（aarch64 → `aarch64-linux-gnu-strip`，其余 → 系统
+`strip`）。bootstrap 已内置这两步；长期方案是工作流改用 `${target}-strip`。
+strip 只是体积优化，但失败会连带整条 release 失败，所以必须让它按目标工作。
+
+---
+
+## 11. 汇总：新机器上最容易犯的几个错
 
 1. runner 标签写错（`linux-host` vs `ubuntu-latest`，`host` 后缀漏了）；
 2. 启动 runner 时漏 `CI_*` 变量（非默认布局的机器必踩）；
 3. `capacity` × cargo 并行度超过内存承受能力；
 4. 在 job 运行中重启 runner；
-5. Windows 脚本的换行符与 `shift`/`%~dp0`。
+5. Windows 脚本的换行符与 `shift`/`%~dp0`；
+6. 只装编译依赖、不装发布工具（`nuwax-upload`），或跑机 binutils 没有交叉后端。

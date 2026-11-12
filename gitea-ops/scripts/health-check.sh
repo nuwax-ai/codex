@@ -41,10 +41,12 @@ else
   for h in $HOSTS; do
     printf '  %-28s ' "$h"
     info=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$h" \
-      'printf "%s|%s|%s|%s" "$(cat /proc/loadavg | cut -d" " -f1)" \
+      'printf "%s|%s|%s|%s|%s|%s" "$(cat /proc/loadavg | cut -d" " -f1)" \
          "$(free -g | sed -n 2p | awk "{print \$3}")" \
          "$(free -g | sed -n 2p | awk "{print \$2}")" \
-         "$(pgrep -c rustc 2>/dev/null || echo 0)"' 2>/dev/null)
+         "$(pgrep -c rustc 2>/dev/null || echo 0)" \
+         "$(command -v nuwax-upload >/dev/null 2>&1 && echo yes || echo no)" \
+         "$(command -v aarch64-linux-gnu-strip >/dev/null 2>&1 && echo yes || echo no)"' 2>/dev/null)
     if [ -z "$info" ]; then
       echo "✗ SSH 不可达（若是 banner exchange 超时：机器被压垮，需重启并下调 capacity）"
       warn=1
@@ -52,10 +54,15 @@ else
     fi
     load=${info%%|*}; rest=${info#*|}
     used=${rest%%|*}; rest=${rest#*|}
-    total=${rest%%|*}; rustc=${rest#*|}
+    total=${rest%%|*}; rest=${rest#*|}
+    rustc=${rest%%|*}; rest=${rest#*|}
+    upload=${rest%%|*}; crossstrip=${rest#*|}
     pct=$(( total > 0 ? used * 100 / total : 0 ))
     flag="✓"
     [ "$pct" -ge 85 ] && { flag="⚠ 内存紧张"; warn=1; }
+    # 缺发布工具时 job 能编译却发不出去（见 INCIDENTS.md §9/§10）
+    [ "$upload" = yes ] || { flag="$flag ⚠ 缺 nuwax-upload"; warn=1; }
+    [ "$crossstrip" = yes ] || { flag="$flag ⚠ 缺交叉 strip"; warn=1; }
     echo "load=$load  mem=${used}/${total}GB (${pct}%)  rustc=$rustc  $flag"
   done
 fi

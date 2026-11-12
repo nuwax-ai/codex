@@ -23,6 +23,7 @@
 #   * cargo vendor 目录 + CARGO_HOME/config.toml（指向 vendor，避免走网络镜像）
 #   * rusty_v8 预编译归档（每个 target 一份）
 #   * aarch64-linux-musl 交叉工具链
+#   * 发布用工具：node/npm + nuwax-upload、aarch64 交叉 strip 与 strip 分发器
 #   * act_runner + .runner 注册 + config.yaml + systemd 单元
 set -euo pipefail
 
@@ -31,6 +32,7 @@ ZIG_VERSION="${ZIG_VERSION:-0.14.0}"
 RUNNER_LABEL="${RUNNER_LABEL:-linux-host}"
 RUNNER_CAPACITY="${RUNNER_CAPACITY:-2}"
 ACT_RUNNER_VERSION="${ACT_RUNNER_VERSION:-0.2.11}"
+NUWAX_UPLOAD_VERSION="${NUWAX_UPLOAD_VERSION:-0.1.3}"
 DRY_RUN=0
 
 DATA_ROOT=""; CACHE_ROOT=""; RUNNER_NAME=""; INSTANCE=""; TOKEN=""
@@ -156,6 +158,89 @@ else
   log "系统依赖已齐"
 fi
 command -v cc >/dev/null || die "找不到 C 编译器"
+
+# ------------------------------------------------- 1b. 发布链路需要的工具
+# 2026-11-13 的 v0.18.49 Gitea 构建暴露了两处"跑机能编译、却发布不出去"的缺口：
+#   * .45 没有 nuwax-upload，musl 归档打好了却在上传步骤失败；
+#   * .23 的 binutils 没有 aarch64 后端，交叉产物在 strip 步骤报
+#     "Unable to recognise the format"，145 分钟的构建白跑。
+# 这两样都不属于"编译依赖"，所以之前没进清单；缺了它们 release 永远红。
+log "检查发布工具（node/nuwax-upload、aarch64 交叉 strip）"
+
+pkg_name_for() {
+  case "$PKG_MGR" in
+    apt) echo "$1" ;;
+    dnf|yum) echo "$1" ;;
+    pacman) echo "$2" ;;
+  esac
+}
+
+# node/npm：nuwax-upload 是 Node 脚本，没有 node 就装不了。
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  node_pkgs=("$(pkg_name_for nodejs nodejs)" "$(pkg_name_for npm npm)")
+  log "安装 node/npm: ${node_pkgs[*]}"
+  run "${APT_SUDO[@]}" true
+  case "$PKG_MGR" in
+    apt)    run "${APT_SUDO[@]}" apt-get install -y "${node_pkgs[@]}" ;;
+    dnf)    run "${APT_SUDO[@]}" dnf install -y "${node_pkgs[@]}" ;;
+    yum)    run "${APT_SUDO[@]}" yum install -y "${node_pkgs[@]}" ;;
+    pacman) run "${APT_SUDO[@]}" pacman -S --noconfirm --needed "${node_pkgs[@]}" ;;
+  esac
+  command -v node >/dev/null 2>&1 || warn "node 仍不可用：上传步骤会失败（echo 给运维看）"
+fi
+
+# aarch64 交叉 strip：系统 binutils 常常只编了本机架构。
+if ! command -v aarch64-linux-gnu-strip >/dev/null 2>&1; then
+  cross_pkg="$(pkg_name_for binutils-aarch64-linux-gnu aarch64-linux-gnu-binutils)"
+  log "安装交叉 strip: $cross_pkg"
+  run "${APT_SUDO[@]}" true
+  case "$PKG_MGR" in
+    apt)    run "${APT_SUDO[@]}" apt-get install -y "$cross_pkg" || warn "装不上 $cross_pkg" ;;
+    dnf)    run "${APT_SUDO[@]}" dnf install -y "$cross_pkg" || warn "装不上 $cross_pkg" ;;
+    yum)    run "${APT_SUDO[@]}" yum install -y "$cross_pkg" || warn "装不上 $cross_pkg" ;;
+    pacman) run "${APT_SUDO[@]}" pacman -S --noconfirm --needed "$cross_pkg" || warn "装不上 $cross_pkg" ;;
+  esac
+fi
+
+# strip 分发器：release 工作流对所有目标都调用裸 `strip`，按文件真实格式派发。
+# 只有交叉 strip 存在时才装，避免把本机 strip 包一层没意义。
+if command -v aarch64-linux-gnu-strip >/dev/null 2>&1; then
+  if ! grep -qs "codex-strip-dispatch" /usr/local/bin/strip 2>/dev/null; then
+    if [ "$DRY_RUN" = 1 ]; then
+      printf '  [dry-run] write /usr/local/bin/strip (aarch64 dispatcher)\n'
+    else
+      cat > /tmp/codex-strip-dispatch <<'STRIP_EOF'
+#!/bin/sh
+# codex-strip-dispatch: 构建跑机用裸 `strip` 处理所有交叉目标，而系统 binutils
+# 往往只编了本机架构。按文件真实格式派发，别让 release 因为一个体积优化失败。
+for arg in "$@"; do
+  case "$arg" in
+    -*) continue ;;
+  esac
+  if file -b "$arg" 2>/dev/null | grep -q "ARM aarch64"; then
+    exec /usr/bin/aarch64-linux-gnu-strip "$@"
+  fi
+  break
+done
+exec /usr/bin/strip "$@"
+STRIP_EOF
+      "${APT_SUDO[@]}" install -m 0755 /tmp/codex-strip-dispatch /usr/local/bin/strip
+      rm -f /tmp/codex-strip-dispatch
+    fi
+  fi
+else
+  warn "没有 aarch64-linux-gnu-strip：aarch64 产物的 strip 步骤可能失败"
+fi
+
+# nuwax-upload：release 用它把归档推到 S3；缺了它上传步骤直接 exit 1。
+if ! command -v nuwax-upload >/dev/null 2>&1; then
+  if command -v npm >/dev/null 2>&1; then
+    log "安装 nuwax-upload@$NUWAX_UPLOAD_VERSION"
+    run "${APT_SUDO[@]}" npm i -g "nuwax-upload@$NUWAX_UPLOAD_VERSION" || warn "nuwax-upload 安装失败（上传步骤会失败）"
+  else
+    warn "没有 npm，无法安装 nuwax-upload：上传步骤会失败"
+  fi
+fi
 
 # ---------------------------------------------------------------- 2. Rust
 export RUSTUP_HOME="$RUSTUP_HOME_DIR" CARGO_HOME="$CARGO_HOME_DIR"

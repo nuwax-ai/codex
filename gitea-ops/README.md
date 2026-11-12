@@ -26,6 +26,8 @@ sudo gitea-ops/bootstrap/linux-build-host.sh \
   --runner-name linux-a \
   --instance http://<gitea-host>:3301 --token <token>
 #    → 无外网的机器加 --warm-vendor/--warm-rusty-v8/--musl-cross-tarball
+#    → 脚本同时装发布工具：node/npm + nuwax-upload、aarch64 交叉 strip 与
+#      /usr/local/bin/strip 分发器（缺了它们 release 会在上传/strip 步骤失败）
 
 # ③ macOS 构建机：见 bootstrap/macos-runner.md
 # ④ Windows 构建机：见 bootstrap/windows-runner.md
@@ -44,6 +46,7 @@ HOSTS="user@host-a user@host-b" ./gitea-ops/scripts/health-check.sh
 | runner 进程带着 `CI_*` 环境 | `tr '\0' '\n' < /proc/<pid>/environ \| grep CI_DATA_ROOT` |
 | `CARGO_HOME/config.toml` 指向 vendor | `grep -c vendored-sources <CARGO_HOME>/config.toml` |
 | `capacity` × 并行单元 ≤ 内存 65% | `grep capacity <runner>/config.yaml` + `free -g` |
+| 发布工具在位 | `command -v nuwax-upload && aarch64-linux-gnu-strip --version` |
 
 ## 1. 拓扑
 
