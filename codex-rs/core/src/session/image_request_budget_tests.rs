@@ -92,6 +92,7 @@ fn a_request_already_under_budget_is_not_re_encoded() {
     ];
     let outcome = fit_request_images_to_budget(&mut items, 4096);
     assert!(outcome.is_empty());
+    assert!(outcome.fits);
     assert_eq!(outcome.total_bytes, inline_image_bytes(&items));
     assert_eq!(inline_image_bytes(&items), first.len() + second.len());
 }
@@ -109,6 +110,64 @@ fn undecodable_payloads_are_left_alone_instead_of_looping() {
     let before = inline_image_bytes(&items);
     let outcome = fit_request_images_to_budget(&mut items, 1024);
     assert!(outcome.is_empty(), "nothing could be re-encoded");
+    assert!(
+        !outcome.fits,
+        "the caller must know the request is still over"
+    );
     assert_eq!(outcome.total_bytes, before);
     assert_eq!(inline_image_bytes(&items), before);
+}
+
+fn resize_notice(body: &str) -> ResponseItem {
+    ResponseItem::Message {
+        encrypted_content: None,
+        status: None,
+        id: None,
+        phase: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: format!("<image_resize_notice>\n{body}\n</image_resize_notice>"),
+        }],
+        internal_chat_message_metadata_passthrough: None,
+    }
+}
+
+/// A second downscale must not leave the model with the dimensions from the
+/// first one: an agent that maps screenshot coordinates through a stale notice
+/// clicks the wrong place.
+#[test]
+fn a_second_downscale_corrects_the_resize_notice() {
+    let mut items = vec![
+        tool_output_image("call_a", "data:image/png;base64,AAAA"),
+        resize_notice(
+            "Image 1 of 1 in the preceding tool output was resized from 4320x16764 to 1546x6000 pixels.",
+        ),
+    ];
+    {
+        let mut refs: Vec<&mut ResponseItem> = items.iter_mut().collect();
+        annotate_downscaled_notices(&mut refs, &[(0, 0, 1_024, 3_968)]);
+    }
+    let ResponseItem::Message { content, .. } = &items[1] else {
+        panic!("expected the notice message");
+    };
+    let ContentItem::InputText { text } = &content[0] else {
+        panic!("expected notice text");
+    };
+    assert!(
+        text.contains("downscaled again to 1024x3968 pixels"),
+        "notice must carry the corrected size: {text}"
+    );
+    assert!(text.contains("no longer apply"));
+}
+
+/// Without a notice there is nothing to correct, and the pass must not invent
+/// one.
+#[test]
+fn a_downscale_without_a_notice_adds_nothing() {
+    let mut items = vec![tool_output_image("call_a", "data:image/png;base64,AAAA")];
+    {
+        let mut refs: Vec<&mut ResponseItem> = items.iter_mut().collect();
+        annotate_downscaled_notices(&mut refs, &[(0, 0, 1_024, 3_968)]);
+    }
+    assert_eq!(items.len(), 1);
 }

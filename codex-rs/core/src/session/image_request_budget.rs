@@ -33,7 +33,7 @@ pub(crate) const DEFAULT_REQUEST_IMAGE_BYTES: usize = 20 * 1024 * 1024;
 /// default; the variable is read per request because it is process-wide config.
 pub(crate) const REQUEST_IMAGE_BYTES_ENV: &str = "NUWAX_REQUEST_IMAGE_MAX_BYTES";
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct RequestImageBudgetOutcome {
     /// Inline image bytes still in the request after fitting.
     pub(crate) total_bytes: usize,
@@ -41,6 +41,12 @@ pub(crate) struct RequestImageBudgetOutcome {
     pub(crate) rewritten: usize,
     /// Budget the pass was given.
     pub(crate) budget: usize,
+    /// Whether the request now fits. `false` means the pass did everything it
+    /// could (floor reached, payload undecodable, or the ladder ran out) and the
+    /// request is still over budget.
+    pub(crate) fits: bool,
+    /// Images that were re-encoded, in request order.
+    pub(crate) changed: Vec<(usize, usize, u32, u32)>,
 }
 
 impl RequestImageBudgetOutcome {
@@ -50,12 +56,35 @@ impl RequestImageBudgetOutcome {
 }
 
 /// The budget for one request, from the environment or the default.
+///
+/// `0` disables the pass; a value that is not a byte count is reported once,
+/// naming the variable, and falls back to the default instead of silently
+/// doing something the operator did not ask for.
 pub(crate) fn request_image_budget() -> usize {
-    std::env::var(REQUEST_IMAGE_BYTES_ENV)
-        .ok()
-        .and_then(|raw| raw.trim().parse::<usize>().ok())
-        .filter(|bytes| *bytes > 0)
-        .unwrap_or(DEFAULT_REQUEST_IMAGE_BYTES)
+    static BUDGET: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *BUDGET.get_or_init(|| {
+        let Some(raw) = std::env::var(REQUEST_IMAGE_BYTES_ENV).ok() else {
+            return DEFAULT_REQUEST_IMAGE_BYTES;
+        };
+        match raw.trim().parse::<usize>() {
+            Ok(0) => {
+                tracing::debug!(
+                    variable = REQUEST_IMAGE_BYTES_ENV,
+                    "request image budget disabled"
+                );
+                usize::MAX
+            }
+            Ok(bytes) => bytes,
+            Err(_) => {
+                tracing::warn!(
+                    variable = REQUEST_IMAGE_BYTES_ENV,
+                    value = %raw,
+                    "ignoring unparsable request image budget; using the default"
+                );
+                DEFAULT_REQUEST_IMAGE_BYTES
+            }
+        }
+    })
 }
 
 /// Re-encodes the largest inline images until the request fits `budget`.
@@ -102,6 +131,8 @@ fn fit_to_budget(items: &mut [&mut ResponseItem], budget: usize) -> RequestImage
             total_bytes: total,
             rewritten: 0,
             budget,
+            fits: true,
+            changed: Vec::new(),
         };
     }
 
@@ -117,6 +148,8 @@ fn fit_to_budget(items: &mut [&mut ResponseItem], budget: usize) -> RequestImage
                     total_bytes: total,
                     rewritten: 0,
                     budget,
+                    fits: true,
+                    changed: Vec::new(),
                 };
             }
         }
@@ -138,11 +171,89 @@ fn fit_to_budget(items: &mut [&mut ResponseItem], budget: usize) -> RequestImage
             rewritten += 1;
         }
     }
+
+    let mut changed: Vec<(usize, usize, u32, u32)> = fitted
+        .changed
+        .iter()
+        .filter_map(|image| {
+            let (item_index, slot) = slots.get(image.index)?;
+            Some((*item_index, *slot, image.width, image.height))
+        })
+        .collect();
+    changed.sort_unstable();
+    if !changed.is_empty() {
+        annotate_downscaled_notices(items, &changed);
+    }
+
     RequestImageBudgetOutcome {
         total_bytes: fitted.total_bytes,
         rewritten,
         budget,
+        fits: fitted.total_bytes <= budget,
+        changed,
     }
+}
+
+/// The resize notice a prepared batch put right after its images.
+const RESIZE_NOTICE_MARKER: &str = "<image_resize_notice>";
+
+/// How far past an item its resize notice may sit before the search gives up.
+const NOTICE_LOOKAHEAD: usize = 2;
+
+/// Fork (nuwax-codex): a resize notice already in the conversation states the
+/// dimensions the model was given. When this pass shrinks that image again the
+/// numbers would lie, and an agent mapping screenshot coordinates through them
+/// would click the wrong place — so the notice gets a correction instead of a
+/// silent contradiction.
+fn annotate_downscaled_notices(
+    items: &mut [&mut ResponseItem],
+    changed: &[(usize, usize, u32, u32)],
+) {
+    for &(item_index, slot, width, height) in changed {
+        let Some(notice_index) = notice_after(items, item_index) else {
+            continue;
+        };
+        let Some(notice) = items.get_mut(notice_index) else {
+            continue;
+        };
+        let ResponseItem::Message { content, .. } = notice else {
+            continue;
+        };
+        let correction = format!(
+            "Image {} in the preceding message was downscaled again to {width}x{height} pixels to \
+             fit the request size budget; the dimensions stated in the notice above no longer apply \
+             to that image.",
+            slot + 1
+        );
+        match content.first_mut() {
+            Some(ContentItem::InputText { text }) => {
+                text.push('\n');
+                text.push_str(&correction);
+            }
+            _ => content.push(ContentItem::InputText { text: correction }),
+        }
+    }
+}
+
+/// Index of the resize-notice message that follows `item_index`, if any.
+fn notice_after(items: &[&mut ResponseItem], item_index: usize) -> Option<usize> {
+    for offset in 1..=NOTICE_LOOKAHEAD {
+        let index = item_index.checked_add(offset)?;
+        let item = items.get(index)?;
+        let ResponseItem::Message { role, content, .. } = item else {
+            return None;
+        };
+        if role != "developer" {
+            return None;
+        }
+        let is_notice = content.iter().any(|entry| {
+            matches!(entry, ContentItem::InputText { text } if text.contains(RESIZE_NOTICE_MARKER))
+        });
+        if is_notice {
+            return Some(index);
+        }
+    }
+    None
 }
 
 /// The `slot`-th inline image in `item`, counted the same way as the pass above.

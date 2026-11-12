@@ -522,13 +522,27 @@ fn check_declared_pixels(
 /// Below this a screenshot stops being usable evidence.
 const IMAGE_BUDGET_FLOOR_BYTES: usize = 192 * 1024;
 
+/// One image the budget fit actually re-encoded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FittedImage {
+    /// Position in the slice handed to the fit.
+    pub index: usize,
+    /// Pixel width after fitting.
+    pub width: u32,
+    /// Pixel height after fitting.
+    pub height: u32,
+}
+
 /// What one budget fit changed.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct FitImagesOutcome {
     /// Total bytes across `urls` after fitting.
     pub total_bytes: usize,
     /// Number of images that were re-encoded at least once.
     pub rewritten: usize,
+    /// Every re-encoded image with its final dimensions, so callers can keep
+    /// any size notes they already showed the model truthful.
+    pub changed: Vec<FittedImage>,
 }
 
 impl FitImagesOutcome {
@@ -548,6 +562,7 @@ pub fn fit_data_urls_to_total_budget(urls: &mut [String], budget: usize) -> FitI
     let mut sizes: Vec<usize> = urls.iter().map(|url| url.len()).collect();
     let mut total: usize = sizes.iter().sum();
     let mut rewritten = 0;
+    let mut changed: Vec<FittedImage> = Vec::new();
     let mut stuck = vec![false; sizes.len()];
     // One image can be shrunk a handful of times at most; the bound keeps a
     // pathological encoder from turning this into an unbounded loop.
@@ -564,8 +579,15 @@ pub fn fit_data_urls_to_total_budget(urls: &mut [String], budget: usize) -> FitI
         let target = (sizes[index] / 2).max(IMAGE_BUDGET_FLOOR_BYTES);
         let before = urls[index].len();
         match fit_data_url_to_byte_budget(&urls[index], target) {
-            Ok((fitted, _, _)) if fitted.len() < before => {
+            Ok((fitted, fitted_bytes, _)) if fitted.len() < before => {
                 let after = fitted.len();
+                if let Some((width, height)) = header_dimensions(&fitted_bytes) {
+                    changed.push(FittedImage {
+                        index,
+                        width,
+                        height,
+                    });
+                }
                 urls[index] = fitted;
                 total = total.saturating_sub(before - after);
                 sizes[index] = after;
@@ -579,6 +601,7 @@ pub fn fit_data_urls_to_total_budget(urls: &mut [String], budget: usize) -> FitI
     FitImagesOutcome {
         total_bytes: total,
         rewritten,
+        changed,
     }
 }
 

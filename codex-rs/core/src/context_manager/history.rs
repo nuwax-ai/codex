@@ -675,6 +675,18 @@ impl ContextManager {
                 "re-encoded inline images to fit the request image budget"
             );
         }
+        if !fitted.fits {
+            // Everything the ladder could do is done (floor reached, payload
+            // undecodable, or the budget is smaller than what one image needs).
+            // Sending anyway keeps the turn alive, but the operator needs to
+            // know the gateway may answer 413.
+            tracing::warn!(
+                budget = fitted.budget,
+                total_bytes = fitted.total_bytes,
+                images = fitted.changed.len(),
+                "request image payload is still over budget; the gateway may reject this request"
+            );
+        }
         items
     }
 
