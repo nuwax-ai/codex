@@ -99,6 +99,16 @@ need_pkgs=(build-essential pkg-config libssl-dev musl-tools clang lld cmake perl
 missing=()
 for p in "${need_pkgs[@]}"; do dpkg -s "$p" >/dev/null 2>&1 || missing+=("$p"); done
 if [ ${#missing[@]} -gt 0 ]; then
+  # 与 CI 共用同一把锁：工作流的 musl 步骤用 `flock /tmp/codex-musl-tools.lock`
+  # 串行化 apt，引导脚本不拿锁就会和正在跑的构建撞在 dpkg 前端锁上
+  # （实测报 "E: 无法获得锁 /var/lib/dpkg/lock-frontend"）。
+  if command -v flock >/dev/null 2>&1; then
+    exec 9>/tmp/codex-musl-tools.lock
+    if ! flock -w 900 9; then
+      die "等待 /tmp/codex-musl-tools.lock 超时：有别的 apt 或构建正在跑，稍后重试。"
+    fi
+    log "已取得 apt 锁（/tmp/codex-musl-tools.lock）"
+  fi
   log "安装系统依赖: ${missing[*]}"
   if [ "${NEED_MANUAL_APT:-0}" = 1 ]; then
     die "需要 root 装这些包，但当前用户既不是 root 也没有免密 sudo：
