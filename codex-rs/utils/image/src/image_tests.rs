@@ -577,6 +577,44 @@ fn legitimately_large_dimensions_still_decode() {
     assert!(prepared.width <= 6_000 && prepared.height <= 6_000);
 }
 
+/// An image may be halved more than once; only the size actually sent may reach
+/// the caller, otherwise a larger intermediate size can overwrite the final one.
+#[test]
+fn repeated_encodes_report_only_the_final_dimensions() {
+    let changed = vec![
+        FittedImage {
+            index: 1,
+            width: 1_600,
+            height: 800,
+        },
+        FittedImage {
+            index: 0,
+            width: 2_048,
+            height: 1_024,
+        },
+        FittedImage {
+            index: 1,
+            width: 1_024,
+            height: 512,
+        },
+    ];
+    assert_eq!(
+        final_dimensions_per_image(changed),
+        vec![
+            FittedImage {
+                index: 0,
+                width: 2_048,
+                height: 1_024,
+            },
+            FittedImage {
+                index: 1,
+                width: 1_024,
+                height: 512,
+            },
+        ]
+    );
+}
+
 /// Fork (2026-11-12): the 72 MP deadlock, end to end. A DPR-3 full-page
 /// screenshot (~4320×16764) used to hit the same 40 MP guard that the shrink
 /// ladder had to get past in order to shrink it, so it was dropped with

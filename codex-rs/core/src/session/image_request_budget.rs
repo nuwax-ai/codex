@@ -180,7 +180,9 @@ fn fit_to_budget(items: &mut [&mut ResponseItem], budget: usize) -> RequestImage
             Some((*item_index, *slot, image.width, image.height))
         })
         .collect();
-    changed.sort_unstable();
+    // One entry per image (the library keeps only the final size), sorted into
+    // request order so corrections read top to bottom.
+    changed.sort_unstable_by_key(|(item_index, slot, _, _)| (*item_index, *slot));
     if !changed.is_empty() {
         annotate_downscaled_notices(items, &changed);
     }
@@ -210,6 +212,12 @@ fn annotate_downscaled_notices(
     changed: &[(usize, usize, u32, u32)],
 ) {
     for &(item_index, slot, width, height) in changed {
+        // The notice numbers every image in the message, file-backed ones
+        // included; `slot` only counts inline images, so it cannot be reused
+        // as the ordinal.
+        let Some(ordinal) = inline_image_ordinal(items[item_index], slot) else {
+            continue;
+        };
         let Some(notice_index) = notice_after(items, item_index) else {
             continue;
         };
@@ -220,10 +228,9 @@ fn annotate_downscaled_notices(
             continue;
         };
         let correction = format!(
-            "Image {} in the preceding message was downscaled again to {width}x{height} pixels to \
-             fit the request size budget; the dimensions stated in the notice above no longer apply \
-             to that image.",
-            slot + 1
+            "Image {ordinal} in the preceding message was downscaled again to {width}x{height} \
+             pixels to fit the request size budget; the dimensions stated in the notice above no \
+             longer apply to that image."
         );
         match content.first_mut() {
             Some(ContentItem::InputText { text }) => {
@@ -232,6 +239,45 @@ fn annotate_downscaled_notices(
             }
             _ => content.push(ContentItem::InputText { text: correction }),
         }
+    }
+}
+
+/// 1-based position of the `slot`-th inline image among *all* images in the
+/// item, which is how the resize notice numbers them.
+fn inline_image_ordinal(item: &ResponseItem, slot: usize) -> Option<usize> {
+    let mut seen_all = 0usize;
+    let mut seen_inline = 0usize;
+    match item {
+        ResponseItem::Message { content, .. } => {
+            for entry in content {
+                if let ContentItem::InputImage { image, .. } = entry {
+                    seen_all += 1;
+                    if matches!(image, ImageReference::Inline { .. }) {
+                        if seen_inline == slot {
+                            return Some(seen_all);
+                        }
+                        seen_inline += 1;
+                    }
+                }
+            }
+            None
+        }
+        ResponseItem::FunctionCallOutput { output, .. }
+        | ResponseItem::CustomToolCallOutput { output, .. } => {
+            for entry in output.content_items()? {
+                if let FunctionCallOutputContentItem::InputImage { image, .. } = entry {
+                    seen_all += 1;
+                    if matches!(image, ImageReference::Inline { .. }) {
+                        if seen_inline == slot {
+                            return Some(seen_all);
+                        }
+                        seen_inline += 1;
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
     }
 }
 

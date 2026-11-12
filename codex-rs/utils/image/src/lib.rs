@@ -601,8 +601,24 @@ pub fn fit_data_urls_to_total_budget(urls: &mut [String], budget: usize) -> FitI
     FitImagesOutcome {
         total_bytes: total,
         rewritten,
-        changed,
+        changed: final_dimensions_per_image(changed),
     }
+}
+
+/// One entry per image, carrying the *last* encode's dimensions.
+///
+/// An image can be halved more than once, and every intermediate encode is a
+/// correction the caller has already shown the model. Keeping them all would let
+/// a larger intermediate size overwrite the final one downstream — the notice
+/// must end on the size actually sent.
+fn final_dimensions_per_image(changed: Vec<FittedImage>) -> Vec<FittedImage> {
+    let mut latest: Vec<Option<FittedImage>> = vec![None; changed.iter().map(|i| i.index + 1).max().unwrap_or(0)];
+    for image in changed {
+        if let Some(slot) = latest.get_mut(image.index) {
+            *slot = Some(image);
+        }
+    }
+    latest.into_iter().flatten().collect()
 }
 
 /// The shared ladder over a decoded image. Returns `None` when the image

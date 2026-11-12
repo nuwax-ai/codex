@@ -160,6 +160,62 @@ fn a_second_downscale_corrects_the_resize_notice() {
     assert!(text.contains("no longer apply"));
 }
 
+fn message_with_file_then_inline(file_id: &str, image_url: &str) -> ResponseItem {
+    ResponseItem::Message {
+        encrypted_content: None,
+        status: None,
+        id: None,
+        phase: None,
+        role: "user".to_string(),
+        content: vec![
+            ContentItem::InputImage {
+                image: ImageReference::File {
+                    file_id: file_id.to_string(),
+                },
+                detail: None,
+            },
+            ContentItem::InputImage {
+                image: ImageReference::Inline {
+                    image_url: image_url.to_string(),
+                },
+                detail: None,
+            },
+        ],
+        internal_chat_message_metadata_passthrough: None,
+    }
+}
+
+/// The notice numbers every image in the message, file-backed ones included.
+/// The correction must use the same ordinal, or it points at the wrong image.
+#[test]
+fn the_correction_numbers_images_the_way_the_notice_does() {
+    let mut items = vec![
+        message_with_file_then_inline("file_1", "data:image/png;base64,AAAA"),
+        resize_notice(
+            "Image 2 of 2 in the preceding user message was resized from 1600x800 to 1200x600 pixels.",
+        ),
+    ];
+    {
+        let mut refs: Vec<&mut ResponseItem> = items.iter_mut().collect();
+        // Slot 0 is the second image in the message: the first one is file-backed.
+        annotate_downscaled_notices(&mut refs, &[(0, 0, 800, 400)]);
+    }
+    let ResponseItem::Message { content, .. } = &items[1] else {
+        panic!("expected the notice message");
+    };
+    let ContentItem::InputText { text } = &content[0] else {
+        panic!("expected notice text");
+    };
+    assert!(
+        text.contains("Image 2 in the preceding message was downscaled again"),
+        "correction must keep the notice's numbering: {text}"
+    );
+    assert!(
+        !text.contains("Image 1 in the preceding message was downscaled"),
+        "file-backed images occupy an ordinal too: {text}"
+    );
+}
+
 /// Without a notice there is nothing to correct, and the pass must not invent
 /// one.
 #[test]
