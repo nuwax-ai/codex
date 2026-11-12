@@ -62,6 +62,7 @@ use tokio_util::sync::CancellationToken;
 
 #[cfg(test)]
 use super::RemoteControlEnrollmentState;
+use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::warn;
@@ -461,26 +462,42 @@ impl RemoteControlWebsocket {
         app_server_client_name_rx: Option<oneshot::Receiver<String>>,
     ) {
         let auth_owner = self.auth_manager.owner.clone();
-        info!(
-            remote_control_url = %self.remote_control_url,
-            installation_id = %self.installation_id,
-            server_name = %self.server_name,
-            initial_desired_state = ?*self.desired_state_rx.borrow(),
-            "app-server remote control websocket loop started"
-        );
+        let initial_desired_state = *self.desired_state_rx.borrow();
+        let disabled_loop = matches!(initial_desired_state, RemoteControlDesiredState::Disabled);
+        if disabled_loop {
+            // Fork (nuwax-codex): a disabled loop never connects, so it must not
+            // print the OpenAI endpoint or this host's identity at info level.
+            // The transition to `Enabled` logs the full line when someone
+            // explicitly turns remote control on.
+            debug!("app-server remote control is disabled; no connection will be attempted");
+        } else {
+            info!(
+                remote_control_url = %self.remote_control_url,
+                installation_id = %self.installation_id,
+                server_name = %self.server_name,
+                initial_desired_state = ?initial_desired_state,
+                "app-server remote control websocket loop started"
+            );
+        }
         let app_server_client_name = match self
             .wait_for_app_server_client_name(app_server_client_name_rx)
             .await
         {
             Ok(app_server_client_name) => app_server_client_name,
             Err(_) => {
-                warn!(
-                    remote_control_url = %self.remote_control_url,
-                    installation_id = %self.installation_id,
-                    server_name = %self.server_name,
-                    shutdown_requested = self.shutdown_token.is_cancelled(),
-                    "app-server remote control websocket loop stopped before client name was ready"
-                );
+                // Fork (nuwax-codex): a loop that never connects has no peer
+                // identity worth logging.
+                if disabled_loop {
+                    debug!("app-server remote control is disabled; the loop stopped");
+                } else {
+                    warn!(
+                        remote_control_url = %self.remote_control_url,
+                        installation_id = %self.installation_id,
+                        server_name = %self.server_name,
+                        shutdown_requested = self.shutdown_token.is_cancelled(),
+                        "app-server remote control websocket loop stopped before client name was ready"
+                    );
+                }
                 self.client_tracker.lock().await.shutdown().await;
                 return;
             }

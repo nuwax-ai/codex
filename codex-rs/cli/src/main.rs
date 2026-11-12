@@ -1302,20 +1302,41 @@ async fn dispatch_cli(
                     {
                         let _ = codex_app_server_daemon::maintain_stderr_log();
                     }
+                    // Fork (nuwax-codex): OpenAI first-party egress stays closed
+                    // unless the operator opts in with NUWAX_OPENAI_EGRESS=1.
+                    // Plugin startup tasks dial `chatgpt.com/backend-api/plugins/*`
+                    // and `api.github.com`, and remote control opens a websocket to
+                    // `chatgpt.com/backend-api/` while logging the hostname and
+                    // installation_id — none of that may happen on its own in a
+                    // deployment that talks to vendor models through its own
+                    // gateway. See FORK.md §7.
+                    let openai_egress = codex_http_client::openai_egress_enabled();
                     let runtime_options = codex_app_server::AppServerRuntimeOptions {
                         cloud_skills_snapshot,
                         code_mode_host_transport: code_mode_host.into(),
                         managed_daemon,
-                        remote_control_startup_mode: match (remote_control, remote_control_disabled)
-                        {
-                            (true, _) => {
+                        plugin_startup_tasks: if openai_egress {
+                            codex_app_server::PluginStartupTasks::Start
+                        } else {
+                            codex_app_server::PluginStartupTasks::Skip
+                        },
+                        remote_control_startup_mode: match (
+                            remote_control,
+                            remote_control_disabled,
+                            openai_egress,
+                        ) {
+                            // The explicit flag is an operator decision, not egress by default.
+                            (true, _, _) => {
                                 codex_app_server::RemoteControlStartupMode::EnabledEphemeral
                             }
-                            (false, true) => {
+                            (false, true, _) => {
                                 codex_app_server::RemoteControlStartupMode::DisabledEphemeral
                             }
-                            (false, false) => {
+                            (false, false, true) => {
                                 codex_app_server::RemoteControlStartupMode::ResolvePersisted
+                            }
+                            (false, false, false) => {
+                                codex_app_server::RemoteControlStartupMode::DisabledEphemeral
                             }
                         },
                         ..Default::default()

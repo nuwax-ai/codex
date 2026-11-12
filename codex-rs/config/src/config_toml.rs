@@ -225,8 +225,11 @@ pub struct ConfigToml {
     /// Fork (nuwax-codex): per-image encoded byte budget applied when images
     /// enter conversation history (FORK.md §5.5). Images larger than this are
     /// re-encoded lossless-first (opaque -> JPEG ladder, transparent -> PNG
-    /// dimension ladder). Omitted or zero keeps the historical behavior of
-    /// only bounding by token/patch dimensions.
+    /// dimension ladder). Omitted means the wire decides: unless the request
+    /// runs on a Responses wire to a model that accepts `detail: original`, a
+    /// 2 MiB default applies, because every other wire hands the image to a
+    /// provider that rescales it anyway. Zero disables the re-encoding; a
+    /// positive value is the budget.
     #[schemars(range(min = 0, max = 536870912))]
     pub image_byte_budget_bytes: Option<u32>,
 

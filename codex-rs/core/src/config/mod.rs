@@ -762,8 +762,12 @@ pub struct Config {
     pub async_compaction_threshold_percent: u8,
 
     /// Fork (nuwax-codex): per-image encoded byte budget applied when images
-    /// enter history (FORK.md §5.5). Zero disables re-encoding.
-    pub image_byte_budget_bytes: u32,
+    /// enter history (FORK.md §5.5). `None` leaves the choice to the wire: a
+    /// non-Responses wire, or a model without `detail: original` support, gets
+    /// the default budget because anything past `high` is discarded anyway.
+    /// `Some(0)` is the explicit off switch; `Some(n)` is the operator's
+    /// number.
+    pub image_byte_budget_bytes: Option<u32>,
 
     /// Key into the model_providers map that specifies which provider to use.
     pub model_provider_id: String,
@@ -4819,7 +4823,7 @@ impl Config {
                 .model_mid_turn_compact_threshold_percent
                 .unwrap_or(DEFAULT_MID_TURN_COMPACT_THRESHOLD_PERCENT),
             async_compaction_threshold_percent,
-            image_byte_budget_bytes: cfg.image_byte_budget_bytes.unwrap_or(0),
+            image_byte_budget_bytes: cfg.image_byte_budget_bytes,
             model_provider_id,
             model_provider,
             cwd: resolved_cwd,

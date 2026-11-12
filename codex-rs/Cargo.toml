@@ -655,6 +655,33 @@ debug = "line-tables-only"
 [profile.dev.package.sha2]
 opt-level = 3
 
+# Screenshot handling decodes and re-encodes multi-megapixel images: the
+# byte-budget ladder walks quality × dimension rungs, and the harness does it on
+# every image that enters history. Unoptimized codecs are two orders of
+# magnitude slower, which turns an image test into a multi-minute CPU burn and
+# makes an oversize screenshot feel like a hang. Optimize only the codec crates,
+# so the rest of the workspace keeps ordinary debug assertions and fast builds.
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.png]
+opt-level = 3
+
+[profile.dev.package.zlib-rs]
+opt-level = 3
+
+[profile.dev.package.zune-core]
+opt-level = 3
+
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+
+[profile.dev.package.image-webp]
+opt-level = 3
+
+[profile.dev.package.gif]
+opt-level = 3
+
 [profile.dev-small]
 inherits = "dev"
 opt-level = 0

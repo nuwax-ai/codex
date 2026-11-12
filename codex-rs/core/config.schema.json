@@ -8445,7 +8445,7 @@
       "description": "Lifecycle hooks configured inline in TOML plus user-level overrides."
     },
     "image_byte_budget_bytes": {
-      "description": "Fork (nuwax-codex): per-image encoded byte budget applied when images enter conversation history (FORK.md §5.5). Images larger than this are re-encoded lossless-first (opaque -> JPEG ladder, transparent -> PNG dimension ladder). Omitted or zero keeps the historical behavior of only bounding by token/patch dimensions.",
+      "description": "Fork (nuwax-codex): per-image encoded byte budget applied when images enter conversation history (FORK.md §5.5). Images larger than this are re-encoded lossless-first (opaque -> JPEG ladder, transparent -> PNG dimension ladder). Omitted means the wire decides: unless the request runs on a Responses wire to a model that accepts `detail: original`, a 2 MiB default applies, because every other wire hands the image to a provider that rescales it anyway. Zero disables the re-encoding; a positive value is the budget.",
       "format": "uint32",
       "maximum": 536870912.0,
       "minimum": 0.0,

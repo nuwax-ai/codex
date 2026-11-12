@@ -30,7 +30,24 @@ pub const MAX_DIMENSION: u32 = 2048;
 /// format header BEFORE the full decode allocates width × height × channels.
 /// This decode-safety guard permits 6000 × 6000 (36 MP) originals while
 /// rejecting larger sources, including otherwise valid photos above 40 MP.
+///
+/// Fork (nuwax-codex): this is the ceiling for `PromptImageMode::Original` —
+/// the policy that sends the source unchanged. Both resize policies
+/// (`HIGH_DETAIL`, `ORIGINAL_DETAIL`) are bounded by
+/// [`MAX_PROMPT_IMAGE_DECODE_PIXELS`] instead — see the note there.
 pub const MAX_PROMPT_IMAGE_PIXELS: u64 = 40_000_000;
+
+/// Fork (nuwax-codex): decode ceiling for images this fork will downscale.
+///
+/// A DPR-3 full-page screenshot is routinely 4320 × 16764 ≈ 72 MP. Judging
+/// those against the 40 MP *prompt* ceiling dropped exactly the evidence the
+/// agent had just captured, and because the same guard also ran inside the
+/// shrink ladder, the image could never be decoded in order to be shrunk — the
+/// two limits deadlocked each other. Anything we resize (`high`/`auto`
+/// detail, or a shrinking tool-output image) only needs the memory ceiling:
+/// 80 MP ≈ 320 MB peak RGBA, one shot, then immediately re-encoded smaller.
+/// Larger declarations are still refused as pixel bombs.
+pub const MAX_PROMPT_IMAGE_DECODE_PIXELS: u64 = 80_000_000;
 
 /// Wire ceiling for one prepared image's Base64 data URL and request headroom.
 /// Check its serialized representation rather than just the smaller binary
@@ -161,15 +178,16 @@ fn load_for_prompt_bytes_uncached(
         // cheap to read; a bomb declares far more pixels than it encodes.
         {
             let (width, height) = decoder.dimensions();
-            if u64::from(width) * u64::from(height) > MAX_PROMPT_IMAGE_PIXELS {
-                return Err(ImageProcessingError::ImageTooLarge {
-                    representation: "declared pixels",
-                    size: (u64::from(width) * u64::from(height))
-                        .try_into()
-                        .unwrap_or(usize::MAX),
-                    max: usize::try_from(MAX_PROMPT_IMAGE_PIXELS).unwrap_or(usize::MAX),
-                });
-            }
+            // Fork (nuwax-codex): an image that is about to be downscaled only
+            // has to fit the memory ceiling; the 40 MP prompt ceiling belongs to
+            // the as-is (`Original`) policy.
+            let pixel_limit = match mode {
+                PromptImageMode::Original => MAX_PROMPT_IMAGE_PIXELS,
+                PromptImageMode::ResizeToFit | PromptImageMode::ResizeWithLimits(_) => {
+                    MAX_PROMPT_IMAGE_DECODE_PIXELS
+                }
+            };
+            check_declared_pixels(width, height, pixel_limit)?;
         }
         // Preserve the metadata most important for rendering prompt images faithfully: the color
         // profile and EXIF data, including orientation. Other format-specific metadata is
@@ -467,19 +485,101 @@ fn decode_data_url_to_dynamic(image_url: &str) -> Result<DynamicImage, ImageProc
     // tool-output path reaches this function with bytes no upstream guard has
     // seen, and a small file can declare a gigantic canvas. A header that
     // cannot be read is left to `load_from_memory`, which reports it properly.
-    if let Some((width, height)) = header_dimensions(&bytes)
-        && u64::from(width) * u64::from(height) > MAX_PROMPT_IMAGE_PIXELS
-    {
-        return Err(ImageProcessingError::ImageTooLarge {
-            representation: "declared pixels",
-            size: usize::try_from(u64::from(width) * u64::from(height)).unwrap_or(usize::MAX),
-            max: usize::try_from(MAX_PROMPT_IMAGE_PIXELS).unwrap_or(usize::MAX),
-        });
+    //
+    // Fork (nuwax-codex): every caller of this helper is a downscale ladder, so
+    // the ceiling is the decode budget — not the 40 MP prompt ceiling, which
+    // used to make a too-large screenshot impossible to shrink precisely
+    // because it was too large.
+    if let Some((width, height)) = header_dimensions(&bytes) {
+        check_declared_pixels(width, height, MAX_PROMPT_IMAGE_DECODE_PIXELS)?;
     }
     image::load_from_memory(&bytes).map_err(|source| ImageProcessingError::Decode {
         path: PathBuf::from("<data-url>"),
         source,
     })
+}
+
+/// Fork (nuwax-codex): refuses a declared pixel count before any raster is
+/// allocated. Reports the real width × height so the caller can name the limit
+/// that was hit instead of guessing at a byte threshold.
+fn check_declared_pixels(
+    width: u32,
+    height: u32,
+    max_pixels: u64,
+) -> Result<(), ImageProcessingError> {
+    let pixels = u64::from(width) * u64::from(height);
+    if pixels <= max_pixels {
+        return Ok(());
+    }
+    Err(ImageProcessingError::ImagePixelsTooLarge {
+        width,
+        height,
+        max: usize::try_from(max_pixels).unwrap_or(usize::MAX),
+    })
+}
+
+/// Smallest payload a budget fit will produce before giving up on an image.
+/// Below this a screenshot stops being usable evidence.
+const IMAGE_BUDGET_FLOOR_BYTES: usize = 192 * 1024;
+
+/// What one budget fit changed.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct FitImagesOutcome {
+    /// Total bytes across `urls` after fitting.
+    pub total_bytes: usize,
+    /// Number of images that were re-encoded at least once.
+    pub rewritten: usize,
+}
+
+impl FitImagesOutcome {
+    pub fn is_empty(&self) -> bool {
+        self.rewritten == 0
+    }
+}
+
+/// Fits a set of inline images into `budget` bytes in total, largest first.
+///
+/// This is the one place that decides *which* image gives up bytes: the largest
+/// one is halved until the total fits, an image that cannot shrink further is
+/// left alone, and nothing is ever dropped. Callers that already know the
+/// per-image limits (tool-output admission) or the request surface
+/// (conversation prompts) share this policy instead of re-implementing it.
+pub fn fit_data_urls_to_total_budget(urls: &mut [String], budget: usize) -> FitImagesOutcome {
+    let mut sizes: Vec<usize> = urls.iter().map(|url| url.len()).collect();
+    let mut total: usize = sizes.iter().sum();
+    let mut rewritten = 0;
+    let mut stuck = vec![false; sizes.len()];
+    // One image can be shrunk a handful of times at most; the bound keeps a
+    // pathological encoder from turning this into an unbounded loop.
+    for _ in 0..=sizes.len().saturating_mul(8) {
+        if total <= budget {
+            break;
+        }
+        let Some(index) = (0..sizes.len())
+            .filter(|index| !stuck[*index] && sizes[*index] > IMAGE_BUDGET_FLOOR_BYTES)
+            .max_by_key(|index| sizes[*index])
+        else {
+            break;
+        };
+        let target = (sizes[index] / 2).max(IMAGE_BUDGET_FLOOR_BYTES);
+        let before = urls[index].len();
+        match fit_data_url_to_byte_budget(&urls[index], target) {
+            Ok((fitted, _, _)) if fitted.len() < before => {
+                let after = fitted.len();
+                urls[index] = fitted;
+                total = total.saturating_sub(before - after);
+                sizes[index] = after;
+                rewritten += 1;
+            }
+            // The ladder cannot do better for this image; leave it alone and
+            // let the next-largest one carry the reduction.
+            _ => stuck[index] = true,
+        }
+    }
+    FitImagesOutcome {
+        total_bytes: total,
+        rewritten,
+    }
 }
 
 /// The shared ladder over a decoded image. Returns `None` when the image

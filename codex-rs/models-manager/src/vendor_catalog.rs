@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use codex_protocol::config_types::ReasoningSummary;
+use codex_protocol::openai_models::ApplyPatchToolType;
 use codex_protocol::openai_models::CatalogModel;
 use codex_protocol::openai_models::ConfigShellToolType;
 use codex_protocol::openai_models::InputModality;
@@ -425,7 +426,12 @@ pub fn vendor_model_info(entry: &VendorModel) -> CatalogModel {
         default_reasoning_summary: ReasoningSummary::Auto,
         support_verbosity: false,
         default_verbosity: None,
-        apply_patch_tool_type: None,
+        // Fork (nuwax-codex): vendor models get the apply_patch tool. Without
+        // it an agent edits files through shell heredocs and Python one-liners,
+        // which is where half of the "wrote the wrong file" incidents came
+        // from. The freeform patch format is plain text; a model that fumbles
+        // it gets a tool error, not a corrupted file.
+        apply_patch_tool_type: Some(ApplyPatchToolType::Freeform),
         web_search_tool_type: WebSearchToolType::Text,
         web_search_provider: None,
         truncation_policy: TruncationPolicyConfig::bytes(/*limit*/ 10_000),

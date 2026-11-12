@@ -1954,7 +1954,8 @@ pub fn local_image_content_items_with_label_number(
             ImageProcessingError::Read { .. }
             | ImageProcessingError::Encode { .. }
             | ImageProcessingError::InvalidDataUrl { .. }
-            | ImageProcessingError::ImageTooLarge { .. } => {
+            | ImageProcessingError::ImageTooLarge { .. }
+            | ImageProcessingError::ImagePixelsTooLarge { .. } => {
                 vec![local_media_error_placeholder(
                     path,
                     &err,

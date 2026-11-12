@@ -648,16 +648,43 @@ async fn preparation_replaces_only_failed_tool_images_and_preserves_metadata() {
     );
 }
 
+/// Fork (2026-11-12): the auto budget follows the wire, not the catalog flag.
+/// Only a Responses wire can deliver original-detail pixels; the Chat bridge
+/// rewrites them to `high` and the Anthropic wire has no such field, so on both
+/// the extra bytes are discarded by the provider.
+#[test]
+fn only_a_responses_wire_honors_original_detail_pixels() {
+    use codex_model_provider_info::WireApi;
+
+    assert!(wire_honors_original_detail_for(WireApi::Responses, true));
+    assert!(!wire_honors_original_detail_for(WireApi::Responses, false));
+    assert!(!wire_honors_original_detail_for(WireApi::Chat, true));
+    assert!(!wire_honors_original_detail_for(WireApi::Anthropic, true));
+}
+
 #[test]
 fn preparation_errors_use_bounded_actionable_placeholders() {
+    // Fork (2026-11-12): the pixel and byte ceilings name themselves and their
+    // numbers. "exceeded the supported size limit" made agents hunt for a byte
+    // threshold while the real cause was a pixel ceiling.
     let cases = [
         (
             ImagePreparationError::RemoteUrlUnsupported,
-            REMOTE_IMAGE_URL_PLACEHOLDER,
+            REMOTE_IMAGE_URL_PLACEHOLDER.to_string(),
         ),
         (
             ImagePreparationError::UnsupportedLowDetail,
-            UNSUPPORTED_LOW_DETAIL_PLACEHOLDER,
+            UNSUPPORTED_LOW_DETAIL_PLACEHOLDER.to_string(),
+        ),
+        (
+            ImagePreparationError::Processing(ImageProcessingError::ImagePixelsTooLarge {
+                width: 4320,
+                height: 16764,
+                max: 40_000_000,
+            }),
+            "image content omitted because it is 4320×16764 pixels, over the 40000000-pixel \
+             prompt limit; capture a smaller region or a lower device pixel ratio"
+                .to_string(),
         ),
         (
             ImagePreparationError::Processing(ImageProcessingError::ImageTooLarge {
@@ -665,13 +692,15 @@ fn preparation_errors_use_bounded_actionable_placeholders() {
                 size: 2,
                 max: 1,
             }),
-            IMAGE_TOO_LARGE_PLACEHOLDER,
+            "image content omitted because it is 2 bytes, over the 1-byte prompt limit; capture a \
+             smaller image"
+                .to_string(),
         ),
         (
             ImagePreparationError::Processing(ImageProcessingError::InvalidDataUrl {
                 reason: "details remain in logs".to_string(),
             }),
-            IMAGE_PROCESSING_ERROR_PLACEHOLDER,
+            IMAGE_PROCESSING_ERROR_PLACEHOLDER.to_string(),
         ),
     ];
 

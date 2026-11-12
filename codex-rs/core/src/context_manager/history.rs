@@ -657,7 +657,25 @@ impl ContextManager {
             image_store,
         )
         .await;
-        Arc::unwrap_or_clone(self.items)
+        let mut items = Arc::unwrap_or_clone(self.items);
+        // Fork (nuwax-codex): the per-output image limits bound one tool result,
+        // not the request. Fit the whole payload here, where the request is
+        // actually assembled, instead of discovering the gateway's body limit
+        // through a 413. See session/image_request_budget.rs.
+        let image_budget = crate::session::image_request_budget::request_image_budget();
+        let fitted = crate::session::image_request_budget::fit_request_envelopes_to_budget(
+            &mut items,
+            image_budget,
+        );
+        if !fitted.is_empty() {
+            tracing::info!(
+                budget = fitted.budget,
+                total_bytes = fitted.total_bytes,
+                rewritten = fitted.rewritten,
+                "re-encoded inline images to fit the request image budget"
+            );
+        }
+        items
     }
 
     /// Iterates over raw response items without exposing their history envelopes.

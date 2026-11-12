@@ -256,7 +256,7 @@ async fn new_config(
         migration_compact: Default::default(),
         model_post_turn_compact_threshold_percent: 0,
         model_mid_turn_compact_threshold_percent: 0,
-        image_byte_budget_bytes: 0,
+        image_byte_budget_bytes: None,
         async_compaction_threshold_percent: 65,
         model_provider_id,
         model_provider,

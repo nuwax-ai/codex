@@ -104,10 +104,20 @@ fn main() -> anyhow::Result<()> {
         };
         let transport = listen;
         let auth = auth.try_into_settings()?;
+        // Fork (nuwax-codex): OpenAI first-party egress is closed by default.
+        // `AppServerRuntimeOptions::default()` already skips plugin startup
+        // tasks and starts remote control disabled; this is the explicit
+        // opt-in path back to upstream behaviour.
+        let openai_egress = codex_http_client::openai_egress_enabled();
         let mut runtime_options = AppServerRuntimeOptions {
             cloud_skills_snapshot,
             code_mode_host_transport: code_mode_host.into(),
             managed_daemon,
+            plugin_startup_tasks: if openai_egress {
+                PluginStartupTasks::Start
+            } else {
+                PluginStartupTasks::Skip
+            },
             ..Default::default()
         };
         #[cfg(debug_assertions)]
@@ -115,10 +125,16 @@ fn main() -> anyhow::Result<()> {
             runtime_options.plugin_startup_tasks = PluginStartupTasks::Skip;
         }
         runtime_options.remote_control_startup_mode =
-            match (remote_control, remote_control_disabled) {
-                (true, _) => codex_app_server::RemoteControlStartupMode::EnabledEphemeral,
-                (false, true) => codex_app_server::RemoteControlStartupMode::DisabledEphemeral,
-                (false, false) => codex_app_server::RemoteControlStartupMode::ResolvePersisted,
+            match (remote_control, remote_control_disabled, openai_egress) {
+                // The explicit flag is an operator decision, not egress by default.
+                (true, _, _) => codex_app_server::RemoteControlStartupMode::EnabledEphemeral,
+                (false, true, _) => codex_app_server::RemoteControlStartupMode::DisabledEphemeral,
+                (false, false, true) => {
+                    codex_app_server::RemoteControlStartupMode::ResolvePersisted
+                }
+                (false, false, false) => {
+                    codex_app_server::RemoteControlStartupMode::DisabledEphemeral
+                }
             };
 
         let exit = run_main_with_transport_options(

@@ -33,6 +33,15 @@ pub enum ImageProcessingError {
         size: usize,
         max: usize,
     },
+    /// Fork (nuwax-codex): a pixel ceiling is not a byte ceiling, and saying
+    /// "too large (N bytes)" for a pixel count sent agents hunting for a byte
+    /// threshold that never existed.
+    #[error("image is {width}×{height} pixels, over the {max}-pixel limit")]
+    ImagePixelsTooLarge {
+        width: u32,
+        height: u32,
+        max: usize,
+    },
 }
 
 impl ImageProcessingError {

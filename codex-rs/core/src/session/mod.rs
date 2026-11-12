@@ -256,6 +256,7 @@ mod extension_interruption;
 pub(crate) mod extension_metrics;
 mod guardian_checkpoint;
 mod handlers;
+pub(crate) mod image_request_budget;
 pub(crate) mod inject;
 mod reasoning_effort;
 mod submission;
@@ -1999,7 +2000,7 @@ impl Session {
             ImagePreparationMode::DetailBased,
             ImageResizeNoticeMode::Disabled,
             &InlineAttachmentStore,
-            image_byte_budget(&turn_context.config),
+            image_byte_budget(&turn_context.config, turn_context.model_info()),
         ))
         .await;
         prepare_audio_response_items(&mut prepared_history);
@@ -4021,7 +4022,7 @@ impl Session {
             image_preparation_mode,
             image_resize_notice_mode,
             self.services.image_store.as_ref(),
-            image_byte_budget(&turn_context.config),
+            image_byte_budget(&turn_context.config, model_info),
         ))
         .await;
         prepare_audio_response_items(&mut items);

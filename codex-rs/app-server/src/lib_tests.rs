@@ -79,5 +79,20 @@ fn debug_test_user_config_file_overrides_loader_path() {
     );
 }
 
+#[test]
+fn openai_first_party_egress_is_off_by_default() {
+    // Fork (nuwax-codex): the library default must never dial OpenAI on its
+    // own. Executables opt back in explicitly from NUWAX_OPENAI_EGRESS.
+    let options = super::AppServerRuntimeOptions::default();
+    assert_eq!(
+        options.plugin_startup_tasks,
+        super::PluginStartupTasks::Skip
+    );
+    assert_eq!(
+        options.remote_control_startup_mode,
+        super::RemoteControlStartupMode::DisabledEphemeral
+    );
+}
+
 #[path = "stderr_logging_tests.rs"]
 mod stderr_logging_tests;

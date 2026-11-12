@@ -33,8 +33,12 @@ use tracing::warn;
 
 pub(crate) const IMAGE_PROCESSING_ERROR_PLACEHOLDER: &str =
     "image content omitted because it could not be processed";
-const IMAGE_TOO_LARGE_PLACEHOLDER: &str =
-    "image content omitted because it exceeded the supported size limit; use a smaller image";
+/// Fork (nuwax-codex): per-image encoded budget used when the request path
+/// cannot deliver `detail: original` pixels (FORK.md §5.5). A 2048-pixel
+/// screenshot stays readable in well under 2 MiB; every byte above that is
+/// discarded by the gateway.
+pub(crate) const DEFAULT_DOWNSAMPLED_IMAGE_BUDGET_BYTES: usize = 2 * 1024 * 1024;
+
 const UNSUPPORTED_LOW_DETAIL_PLACEHOLDER: &str = "image content omitted because detail 'low' is not supported; use 'high', 'original', or 'auto'";
 const REMOTE_IMAGE_URL_PLACEHOLDER: &str =
     "image content omitted because remote image URLs are not supported";
@@ -112,14 +116,36 @@ pub(crate) enum ImagePreparationError {
 impl ImagePreparationError {
     pub(crate) const KIND: &str = "images.preparation_error";
 
-    fn placeholder(&self) -> &'static str {
+    /// Fork (nuwax-codex): the placeholder carries the numbers that were
+    /// actually hit. "exceeded the supported size limit" sent agents hunting
+    /// for a byte threshold while the real cause was a pixel ceiling, and a
+    /// model that cannot see the limit cannot ask for a smaller capture.
+    fn placeholder(&self) -> String {
         match self {
-            ImagePreparationError::RemoteUrlUnsupported => REMOTE_IMAGE_URL_PLACEHOLDER,
-            ImagePreparationError::UnsupportedLowDetail => UNSUPPORTED_LOW_DETAIL_PLACEHOLDER,
-            ImagePreparationError::Processing(ImageProcessingError::ImageTooLarge { .. }) => {
-                IMAGE_TOO_LARGE_PLACEHOLDER
+            ImagePreparationError::RemoteUrlUnsupported => REMOTE_IMAGE_URL_PLACEHOLDER.to_string(),
+            ImagePreparationError::UnsupportedLowDetail => {
+                UNSUPPORTED_LOW_DETAIL_PLACEHOLDER.to_string()
             }
-            ImagePreparationError::Processing(_) => IMAGE_PROCESSING_ERROR_PLACEHOLDER,
+            ImagePreparationError::Processing(ImageProcessingError::ImagePixelsTooLarge {
+                width,
+                height,
+                max,
+                ..
+            }) => format!(
+                "image content omitted because it is {width}×{height} pixels, over the {max}-pixel \
+                 prompt limit; capture a smaller region or a lower device pixel ratio"
+            ),
+            ImagePreparationError::Processing(ImageProcessingError::ImageTooLarge {
+                size,
+                max,
+                ..
+            }) => {
+                format!(
+                    "image content omitted because it is {size} bytes, over the {max}-byte prompt \
+                     limit; capture a smaller image"
+                )
+            }
+            ImagePreparationError::Processing(_) => IMAGE_PROCESSING_ERROR_PLACEHOLDER.to_string(),
         }
     }
 }
@@ -284,7 +310,17 @@ async fn prepare_message_content(
     for item in items {
         if let ContentItem::InputImage { image, detail } = item.content_mut() {
             image_number += 1;
-            match prepare_image(image, detail, origin, metadata, mode, image_store, byte_budget).await {
+            match prepare_image(
+                image,
+                detail,
+                origin,
+                metadata,
+                mode,
+                image_store,
+                byte_budget,
+            )
+            .await
+            {
                 Ok(Some(resize)) if resize_notice_mode == ImageResizeNoticeMode::Enabled => {
                     resized_images.push(ResizedImage {
                         image_number,
@@ -333,7 +369,17 @@ async fn prepare_tool_output_content(
     for item in items {
         if let FunctionCallOutputContentItem::InputImage { image, detail } = item {
             image_number += 1;
-            match prepare_image(image, detail, origin, metadata, mode, image_store, byte_budget).await {
+            match prepare_image(
+                image,
+                detail,
+                origin,
+                metadata,
+                mode,
+                image_store,
+                byte_budget,
+            )
+            .await
+            {
                 Ok(Some(resize)) if resize_notice_mode == ImageResizeNoticeMode::Enabled => {
                     resized_images.push(ResizedImage {
                         image_number,
@@ -348,7 +394,7 @@ async fn prepare_tool_output_content(
                 Err(error) => {
                     warn!(%error, "failed to prepare tool output image");
                     *item = FunctionCallOutputContentItem::InputText {
-                        text: error.placeholder().to_string(),
+                        text: error.placeholder(),
                     };
                 }
             }
@@ -356,7 +402,6 @@ async fn prepare_tool_output_content(
     }
     resized_images
 }
-
 
 fn is_remote_image_url(image_url: &str) -> bool {
     image_url.split_once(':').is_some_and(|(scheme, _)| {
@@ -406,8 +451,48 @@ fn is_data_url(image_url: &str) -> bool {
 /// every config load, so two sessions with different values clobbered each
 /// other and a failing load still changed it. It now travels with the call,
 /// read from the session's own config.
-pub(crate) fn image_byte_budget(config: &crate::config::Config) -> Option<usize> {
-    (config.image_byte_budget_bytes > 0).then_some(config.image_byte_budget_bytes as usize)
+pub(crate) fn image_byte_budget(
+    config: &crate::config::Config,
+    model_info: &codex_protocol::openai_models::ModelInfo,
+) -> Option<usize> {
+    match config.image_byte_budget_bytes {
+        // Explicit number.
+        Some(bytes) if bytes > 0 => Some(bytes as usize),
+        // Explicit off switch.
+        Some(_) => None,
+        // Fork (nuwax-codex): budget images whose extra detail the wire throws
+        // away. See `wire_honors_original_detail`.
+        None if !wire_honors_original_detail(config, model_info) => {
+            Some(DEFAULT_DOWNSAMPLED_IMAGE_BUDGET_BYTES)
+        }
+        None => None,
+    }
+}
+
+/// Whether the request path can actually deliver a `detail: original` image's
+/// pixels to the provider.
+///
+/// Fork (nuwax-codex): the model catalog's `supports_image_detail_original` is
+/// only half the answer. On the Chat wire the bridge rewrites `original` to
+/// `high` unconditionally (`request_content::image_detail`), and the Anthropic
+/// wire has no detail field at all — the provider rescales to its own ceiling.
+/// Sending a 6000 px origin on either wire means paying for bytes nobody reads,
+/// so only a Responses wire with model support counts as honouring the pixels.
+fn wire_honors_original_detail(
+    config: &crate::config::Config,
+    model_info: &codex_protocol::openai_models::ModelInfo,
+) -> bool {
+    wire_honors_original_detail_for(
+        config.model_provider.wire_api,
+        model_info.supports_image_detail_original,
+    )
+}
+
+fn wire_honors_original_detail_for(
+    wire_api: codex_model_provider_info::WireApi,
+    supports_original: bool,
+) -> bool {
+    matches!(wire_api, codex_model_provider_info::WireApi::Responses) && supports_original
 }
 
 async fn prepare_image(
@@ -458,13 +543,6 @@ async fn prepare_image(
     };
     Ok(resize)
 }
-
-
-/// Fork (nuwax-codex): process-wide per-image byte budget for prompt-image
-/// normalization (FORK.md §5.5). `resize_image` is synchronous and is reached
-/// from several call sites without a config handle, so the resolved
-/// `Config::image_byte_budget_bytes` is parked here when the session config is
-/// loaded. Zero (the default) disables re-encoding and keeps the historical
 
 pub(crate) fn resize_image(
     image_url: &str,

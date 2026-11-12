@@ -507,9 +507,56 @@ fn declared_pixel_bomb_is_refused_before_the_full_decode() {
     )
     .expect_err("2.5 billion declared pixels must be refused");
     assert!(
-        matches!(error, ImageProcessingError::ImageTooLarge { representation, .. }
-            if representation == "declared pixels"),
-        "the refusal names the decode-time guard: {error:?}"
+        matches!(
+            error,
+            ImageProcessingError::ImagePixelsTooLarge {
+                width: 50_000,
+                height: 50_000,
+                ..
+            }
+        ),
+        "the refusal names the decode-time guard and the real dimensions: {error:?}"
+    );
+}
+
+/// Fork (2026-11-12): a DPR-3 full-page screenshot is routinely 4320 x 16764
+/// (~72 MP). Judged against the 40 MP *original* ceiling it was dropped, and
+/// because the shrink ladder used the same guard it could never decode the
+/// image in order to shrink it. Anything that is downscaled on the way in is
+/// now bounded by the decode ceiling instead.
+#[test]
+fn downscaled_prompt_images_use_the_decode_ceiling_not_the_original_one() {
+    // 8000 x 8000 = 64 MP: over the 40 MP original ceiling, under the 80 MP
+    // decode ceiling. The synthetic body cannot decode, which is exactly the
+    // point: the pixel gate let it through and decoding is where it stopped.
+    let downscaled = load_for_prompt_bytes(
+        std::path::Path::new("<full-page.png>"),
+        png_declaring_dimensions(8_000, 8_000),
+        PromptImageMode::HIGH_DETAIL,
+    )
+    .expect_err("the synthetic body is not a decodable image");
+    assert!(
+        matches!(downscaled, ImageProcessingError::Decode { .. }),
+        "high detail must attempt the decode, got {downscaled:?}"
+    );
+
+    // `original` sends the source as-is, so the 40 MP ceiling still applies.
+    let original = load_for_prompt_bytes(
+        std::path::Path::new("<full-page.png>"),
+        png_declaring_dimensions(8_000, 8_000),
+        PromptImageMode::Original,
+    )
+    .expect_err("64 MP must stay over the original-detail ceiling");
+    assert!(
+        matches!(
+            original,
+            ImageProcessingError::ImagePixelsTooLarge {
+                width: 8_000,
+                height: 8_000,
+                ..
+            }
+        ),
+        "got {original:?}"
     );
 }
 
@@ -528,6 +575,53 @@ fn legitimately_large_dimensions_still_decode() {
     // Original-detail still applies its own patch ceiling and may resize;
     // the point here is the 40 MP decode guard did not reject it.
     assert!(prepared.width <= 6_000 && prepared.height <= 6_000);
+}
+
+/// Fork (2026-11-12): the 72 MP deadlock, end to end. A DPR-3 full-page
+/// screenshot (~4320×16764) used to hit the same 40 MP guard that the shrink
+/// ladder had to get past in order to shrink it, so it was dropped with
+/// "exceeded the supported size limit" and could never be recovered. Ignored by
+/// default: the raster peaks near 300 MB.
+#[test]
+#[ignore = "peaks near 300 MB of RGBA; run with `--ignored`"]
+fn a_dpr3_full_page_screenshot_is_downscaled_instead_of_dropped() {
+    let (width, height) = (4_320, 16_764);
+    let image = ImageBuffer::from_pixel(width, height, Rgba([200, 30, 40, 255]));
+    let encoded = image_bytes(&image, ImageFormat::Png);
+    drop(image);
+
+    // Both resizing policies downscale, so only the decode ceiling applies:
+    // the image must survive and come out smaller than the source.
+    for mode in [
+        PromptImageMode::HIGH_DETAIL,
+        PromptImageMode::ORIGINAL_DETAIL,
+    ] {
+        let prepared = load_for_prompt_bytes(
+            std::path::Path::new("<full-page.png>"),
+            encoded.clone(),
+            mode,
+        )
+        .expect("a 72 MP screenshot must be decodable in order to be downscaled");
+        assert!(
+            prepared.width < width && prepared.height < height,
+            "{mode:?} must downscale, got {}×{}",
+            prepared.width,
+            prepared.height
+        );
+    }
+
+    // The as-is policy cannot shrink, so the 40 MP ceiling still refuses it.
+    let refused = load_for_prompt_bytes(
+        std::path::Path::new("<full-page.png>"),
+        encoded,
+        PromptImageMode::Original,
+    )
+    .expect_err("72 MP must stay over the as-is ceiling");
+    assert!(
+        matches!(refused, ImageProcessingError::ImagePixelsTooLarge { .. }),
+        "got {:?}",
+        refused
+    );
 }
 
 // ---- Fork (2026-11-10): byte-budget ladder (FORK.md §5.5) ----
@@ -626,7 +720,7 @@ fn a_declared_pixel_bomb_is_refused_before_any_raster_allocation() {
     let url = data_url_from_bytes("image/png", &png);
     let error = fit_data_url_to_byte_budget(&url, 1024).expect_err("a pixel bomb must be refused");
     assert!(
-        matches!(error, ImageProcessingError::ImageTooLarge { .. }),
+        matches!(error, ImageProcessingError::ImagePixelsTooLarge { .. }),
         "got {error:?}"
     );
 }

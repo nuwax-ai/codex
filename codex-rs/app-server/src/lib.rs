@@ -486,7 +486,18 @@ pub struct AppServerRuntimeOptions {
     /// Optional host-owned frozen cloud skill catalog and resources, loaded once at startup.
     pub cloud_skills_snapshot: Option<std::path::PathBuf>,
     pub code_mode_host_transport: CodeModeHostTransport,
+    /// Startup plugin tasks contact the OpenAI plugin directory.
+    ///
+    /// Fork (nuwax-codex): this default is `Skip` because those tasks dial
+    /// `chatgpt.com` (and `api.github.com` for the curated sync). Executables
+    /// that want the upstream behaviour opt back in explicitly, gated on
+    /// [`codex_http_client::openai_egress_enabled`].
     pub plugin_startup_tasks: PluginStartupTasks,
+    /// Remote control dials `chatgpt.com/backend-api/` and reports the local
+    /// hostname plus `installation_id`.
+    ///
+    /// Fork (nuwax-codex): this default is `DisabledEphemeral`; same opt-in
+    /// rule as `plugin_startup_tasks`.
     pub remote_control_startup_mode: RemoteControlStartupMode,
     pub install_shutdown_signal_handler: bool,
     pub managed_daemon: bool,
@@ -497,8 +508,9 @@ impl Default for AppServerRuntimeOptions {
         Self {
             cloud_skills_snapshot: None,
             code_mode_host_transport: CodeModeHostTransport::Local,
-            plugin_startup_tasks: PluginStartupTasks::Start,
-            remote_control_startup_mode: RemoteControlStartupMode::ResolvePersisted,
+            // Fork (nuwax-codex): no OpenAI first-party egress by default.
+            plugin_startup_tasks: PluginStartupTasks::Skip,
+            remote_control_startup_mode: RemoteControlStartupMode::DisabledEphemeral,
             install_shutdown_signal_handler: true,
             managed_daemon: false,
         }

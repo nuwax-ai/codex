@@ -167,6 +167,15 @@ Core默认Cached据此降级Disabled。手工构造Responses请求的同协议�
 
 
 
+### apply_patch 对厂商模型开放（2026-11-12 起）
+
+厂商目录与占位模型此前 `apply_patch_tool_type = None`，工具列表里没有
+`apply_patch`——agent 只能把补丁塞进 shell heredoc 或 `python3 -c`，那正是
+"改错文件/改半截"事故的来源；实测里 agent 甚至先感叹 "apply_patch isn't
+available in this harness?"，再靠 shell 里恰好存在的 `apply_patch` 命令绕过。
+现在两类模型都取 `ApplyPatchToolType::Freeform`：补丁是纯文本，模型写坏只会得到
+一次工具报错，不会损坏文件。官方目录模型维持原判定。
+
 ### 图片与附件的边界
 
 MCP typed image、Code Mode `image()` 与用户图片走准备、图文共享预算及最终
@@ -182,7 +191,37 @@ typed 媒体已可并存；原图跨协议转换预算及普通图混合的下�
 [字段与图片说明](my-docs/rig-production-completion-2026-10-10/rig-field-image-closure-2026-10-18.md)
 和最新台账。
 
+**图片字节预算（2026-11-12 起）**：两级。
+- **单图**：`image_byte_budget_bytes` 现在区分"未设置"与"0"。未设置时**由线路决定**：
+  只有 Responses 线且模型声明支持 `detail: original` 才不设默认预算；其余（Chat 桥
+  一律把 original 改写成 `high`，Anthropic 线根本没有 detail 字段）默认 **2 MiB**，
+  因为上游只会按自己的上限重采样，多出的字节纯属白传。设 `0` 是显式关闭，设正整数
+  是操作者自己的预算。判定在 `image_preparation::wire_honors_original_detail`。
+- **回合**：新增请求级预算 `NUWAX_REQUEST_IMAGE_MAX_BYTES`（默认 **20 MiB**），
+  在会话准备完图片后、发请求前执行：只要请求内联图片总量超预算，就按"从最大的一张
+  开始对半重压"，直到回到预算内；单张压到 192 KiB 以下就不再压（再小就不是证据了）。
+  之前只有"单个工具结果"的 8 张/16 MiB/24 MiB 上限，跨结果聚合毫无约束，最终由
+  网关 32 MiB 兜底成 413——那是错误的地方发现错误的事。
+
+**像素上限与降采样（2026-11-12 起）**：`MAX_PROMPT_IMAGE_PIXELS`（40 MP）只约束
+不变换直接发出的图（`PromptImageMode::Original`，本地上传那条路）；两个会重采样的
+策略（`HIGH_DETAIL` 2048/2500 patch、`ORIGINAL_DETAIL` 6000/10000 patch）以及工具
+输出收缩阶梯，改由 `MAX_PROMPT_IMAGE_DECODE_PIXELS`（80 MP）约束。起因是一个真实
+死锁：DPR-3 整页截图 4320×16764≈72 MP，被 40 MP 判超限直接丢弃；而收缩阶梯
+`cap_data_url_dimensions` 内部用的正是同一个 40 MP 解码闸，于是"大到无法被
+缩小"——最需要降采样的事实上永远解不出来。伴随两处修正：像素超限改用独立的
+`ImagePixelsTooLarge` 错误（不再套 `too large (N bytes)` 文案），占位文本给出
+真实 `宽×高`、上限和补救方式（降低 DPR / 截更小区域），不再让 agent 去猜一个
+并不存在的字节阈值。注意 80 MP 解码约 320 MB 峰值内存，一次性且随即重编码变小。
+
 ## 5. 上下文压缩（compact）
+
+**交接摘要的"必须保留"项（2026-11-12 起）**：`templates/compact/prompt.md` 从
+四句话扩到六项，显式要求保留"已验证结论及其量测数据""已排除的假设与误报""改过的
+文件/命令/环境细节""横跨步骤也不能丢的用户约束"。起因是实测交接后 agent 会重复
+报同一个已排除的假缺陷、并把早轮的结论当新发现——摘要缺的不是文采，是可复核的
+事实。
+
 
 ### 5.1 超窗错误分类（v0.18.10，修复同事的压缩失败）
 
@@ -606,6 +645,33 @@ cache_control 断点，rig 0.45 原语，5m TTL；远程 thread config 无该字
 种子层（utils/cli）与 daemon 子进程剥离名单（NUWAX 种子随 CODEX 种子一并剥）
 均已接线；launcher 注入的 `CODEX_INSTALL_SOURCE`、包管理器 shim 的
 `CODEX_MANAGED_BY_*` 与程序间传信变量不加别名（非用户配置面）。
+
+**图片请求预算（2026-11-12 起）**：`NUWAX_REQUEST_IMAGE_MAX_BYTES`（字节数，
+默认 20 MiB）限制一次请求里内联图片的总量，超了从最大的一张开始降采样，见 §4
+"图片字节预算"。`NUWAX_IMAGE_MAX_BYTES`/`image_byte_budget_bytes` 仍是单图预算：
+未设置为"按模型自动"，`0` 为关闭。
+
+**OpenAI 出站总闸（2026-11-12 起）**：`NUWAX_OPENAI_EGRESS`（别名
+`CODEX_OPENAI_EGRESS`，`NUWAX_` 优先）默认**关闭**。fork 面向的是经自有网关访问
+厂商模型的部署，"抓包看到 chatgpt.com"或"日志里出现本机 hostname +
+installation_id"是信任事故，不是文案问题，因此上游那些会自行联网的启动行为统一
+过这道闸：
+- app-server remote control：向 `https://chatgpt.com/backend-api/` 开 websocket，
+  并把 `installation_id` 与本机 `server_name` 写进日志；未登录时会以约 1 Hz
+  循环解析偏好（日志实测 1500+ 行/天）。
+- 插件启动任务：`chatgpt.com/backend-api/plugins/*`（featured、目录、已安装态
+  同步）与 curated 同步（`api.github.com`、`github.com/openai/plugins.git`、
+  `chatgpt.com/backend-api/plugins/export/curated`）。其中 featured 请求在
+  API-key 鉴权下**不带认证头也照发**，必然 401。
+- 落点：`AppServerRuntimeOptions::default()` 取 `PluginStartupTasks::Skip` 与
+  `RemoteControlStartupMode::DisabledEphemeral`，`codex`/`codex app-server` 两个
+  二进制仅在闸开时才改回 `Start`/`ResolvePersisted`。判定点
+  `codex-http-client/src/openai_egress.rs`。
+设为 `1`（`true`/`yes`/`on` 同义）恢复上游行为；无法识别的值按关闭处理并告警
+一次（不静默选边）。显式 `--remote-control` 仍然生效——那是操作者主动要求。
+Analytics 不在此闸内：仍由 `[analytics] enabled` / `--analytics-default-enabled`
+控制（默认关），开启后同样指向 `chatgpt.com/backend-api/codex/analytics-events`，
+需要彻底禁网时两处都要关。
 
 **provider 级输出预算**（2026-10-01 起）：`model_providers.*.max_output_tokens`
 （正整数）→ 桥线输出 cap（Anthropic `max_tokens` 覆盖默认 16384；Chat 可选，
