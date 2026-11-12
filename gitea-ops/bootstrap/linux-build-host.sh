@@ -142,9 +142,20 @@ elif [ -n "$WARM_VENDOR" ] && [ -d "$WARM_VENDOR" ]; then
   mkdir -p "$(dirname "$VENDOR_DIR")"
   run cp -a "$WARM_VENDOR" "$VENDOR_DIR"
 else
-  log "本地 vendor 生成（需要能访问 crates.io / git）"
+  # vendor 采集脚本在 fork-nuwax-codex 仓库里（scripts/gitea-ci/）。本目录可能被复制到
+  # 别的仓库使用，所以先探测；找不到就要求用 --warm-vendor 提供现成目录。
   repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-  run bash "$repo_root/scripts/gitea-ci/vendor-deps.sh" --repo "$repo_root/codex-rs" --out "$VENDOR_DIR"
+  vendor_tool="$repo_root/scripts/gitea-ci/vendor-deps.sh"
+  if [ -f "$vendor_tool" ] && [ -d "$repo_root/codex-rs" ]; then
+    log "本地 vendor 生成（需要能访问 crates.io / git）"
+    run bash "$vendor_tool" --repo "$repo_root/codex-rs" --out "$VENDOR_DIR"
+  else
+    die "本仓库没有 scripts/gitea-ci/vendor-deps.sh（它在 fork-nuwax-codex 里）。
+     两种做法：
+       1) 在 fork-nuwax-codex 仓库根目录执行本脚本；或
+       2) 用 --warm-vendor <现成的 ci-vendor 目录> 传入（在能上网的机器上用
+          scripts/gitea-ci/vendor-deps.sh 采好再拷过来）。"
+  fi
 fi
 
 log "写 CARGO_HOME/config.toml（指向 vendor；不写就会走网络镜像然后超时）"
