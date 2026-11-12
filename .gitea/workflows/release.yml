@@ -167,7 +167,11 @@ jobs:
             # (ping and port 22 stayed fine — sshd could not get CPU). A fixed job
             # count keeps the machine responsive; this build is memory- and
             # IO-bound long before it is core-bound. Override with CI_CARGO_JOBS.
-            echo "CARGO_BUILD_JOBS=${CI_CARGO_JOBS:-6}"
+            # 3, not 6: one codex rustc peaks around 4 GB (core links v8), and the
+            # 62 GB runner can host three concurrent jobs. 3 jobs x 6 x 4 GB = 72 GB
+            # still exhausted it on 2026-11-12 (load 236, swap full, SSH dead);
+            # 3 jobs x 3 x 4 GB = 36 GB fits. Lower it further with CI_CARGO_JOBS.
+            echo "CARGO_BUILD_JOBS=${CI_CARGO_JOBS:-3}"
           } >> "$GITHUB_ENV"
 
       - name: Put the host toolchain on PATH
