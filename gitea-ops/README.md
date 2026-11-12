@@ -96,7 +96,26 @@ bash scripts/gitea-ci/install-gitea.sh --data-dir <数据目录> --port 3301 --s
 > 标签写错是最隐蔽的故障：runner 明明在线、机器空闲，job 却永远排队。
 > 判断方法见 §5「runner 在线但不接任务」。
 
-### 2.3 构建机的工具链
+### 2.3 发行版支持
+
+引导脚本会自动识别包管理器并按族映射包名：
+
+| 族 | 识别方式 | 安装命令 |
+|---|---|---|
+| Debian / Ubuntu | `apt-get` | `apt-get install -y` |
+| Fedora / RHEL / Rocky | `dnf` 或 `yum` | `dnf install -y` |
+| Arch | `pacman` | `pacman -Sy --noconfirm` |
+
+包名不通用（`libssl-dev` ↔ `openssl-devel` ↔ `openssl`），脚本内已按族列好清单。
+四者都不是时报错并打印需要手工安装的能力清单（C 工具链、clang、lld、libcap、
+libc++、openssl、musl 工具链）。
+
+> 已验证：Ubuntu 24 / Ubuntu 26。
+> 未实测：Fedora / RHEL / Arch —— 包名映射是按官方仓库名写的，首次在上面跑时
+> 请留意 `dnf install` 的解析结果；musl 交叉编译在非 Debian 系上建议直接用
+> musl.cc 的工具链包（`--musl-cross-tarball`）。
+
+### 2.4 构建机的工具链
 
 Linux 宿主机模式每台都要有：rustup + 目标 target、Zig、cargo vendor 目录、
 rusty_v8 预编译归档。`scripts/gitea-ci/install-host-runner.sh` 负责大部分。

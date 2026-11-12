@@ -95,14 +95,47 @@ V8_TARGETS=(x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-l
 log "data=$DATA_ROOT  cache=$CACHE_ROOT  toolchain=$TOOLCHAIN  label=$RUNNER_LABEL"
 
 # ---------------------------------------------------------------- 1. 基础依赖
-need_pkgs=(build-essential pkg-config libssl-dev musl-tools clang lld cmake perl curl git zstd xz-utils)
+# 自动识别包管理器：Debian/Ubuntu 用 apt，Fedora/RHEL 用 dnf/yum，Arch 用 pacman。
+# 包名在三族之间并不通用（libssl-dev ↔ openssl-devel ↔ openssl），所以按族映射。
+if command -v apt-get >/dev/null 2>&1; then
+  PKG_MGR=apt
+elif command -v dnf >/dev/null 2>&1; then
+  PKG_MGR=dnf
+elif command -v yum >/dev/null 2>&1; then
+  PKG_MGR=yum
+elif command -v pacman >/dev/null 2>&1; then
+  PKG_MGR=pacman
+else
+  die "不支持的发行版：找不到 apt-get / dnf / yum / pacman。
+   请手工装好这些再重跑（或参考 gitea-ops/README.md 的依赖清单）：
+     C 工具链(gcc/g++/make)、perl、pkg-config、clang、lld、cmake、curl、git、zstd、xz、
+     libcap 开发包、libc++/libc++abi 开发包、openssl 开发包、musl 工具链"
+fi
+log "包管理器: $PKG_MGR"
+
+case "$PKG_MGR" in
+  apt)    pkgs=(build-essential pkg-config libssl-dev musl-tools clang lld cmake perl curl git zstd xz-utils libc++-dev libc++abi-dev libcap-dev) ;;
+  dnf|yum)
+          pkgs=(gcc gcc-c++ make perl pkgconf-pkg-config openssl-devel clang lld cmake curl git zstd xz libcxx-devel libcxxabi-devel libcap-devel musl-gcc) ;;
+  pacman) pkgs=(base-devel pkgconf openssl clang lld cmake perl curl git zstd xz libc++ libcap musl) ;;
+esac
+
+pkg_installed() {
+  case "$PKG_MGR" in
+    apt)    dpkg -s "$1" >/dev/null 2>&1 ;;
+    dnf|yum) rpm -q "$1" >/dev/null 2>&1 ;;
+    pacman) pacman -Qi "$1" >/dev/null 2>&1 ;;
+  esac
+}
+
 missing=()
-for p in "${need_pkgs[@]}"; do dpkg -s "$p" >/dev/null 2>&1 || missing+=("$p"); done
+for p in "${pkgs[@]}"; do pkg_installed "$p" || missing+=("$p"); done
+
 if [ ${#missing[@]} -gt 0 ]; then
   # 与 CI 共用同一把锁：工作流的 musl 步骤用 `flock /tmp/codex-musl-tools.lock`
   # 串行化 apt，引导脚本不拿锁就会和正在跑的构建撞在 dpkg 前端锁上
   # （实测报 "E: 无法获得锁 /var/lib/dpkg/lock-frontend"）。
-  if command -v flock >/dev/null 2>&1; then
+  if [ "$PKG_MGR" = apt ] && command -v flock >/dev/null 2>&1; then
     exec 9>/tmp/codex-musl-tools.lock
     if ! flock -w 900 9; then
       die "等待 /tmp/codex-musl-tools.lock 超时：有别的 apt 或构建正在跑，稍后重试。"
@@ -110,15 +143,15 @@ if [ ${#missing[@]} -gt 0 ]; then
     log "已取得 apt 锁（/tmp/codex-musl-tools.lock）"
   fi
   log "安装系统依赖: ${missing[*]}"
-  if [ "${NEED_MANUAL_APT:-0}" = 1 ]; then
-    die "需要 root 装这些包，但当前用户既不是 root 也没有免密 sudo：
-     ${missing[*]}
-   两种做法：
-     1) sudo $0 <同样的参数>
-     2) 先手工执行： sudo apt-get install -y ${missing[*]}"
-  fi
-  run "${APT_SUDO[@]}" apt-get update -y
-  run "${APT_SUDO[@]}" apt-get install -y "${missing[@]}"
+  run "${APT_SUDO[@]}" true  # 先探一次权限，失败信息更清楚
+  case "$PKG_MGR" in
+    apt)
+      run "${APT_SUDO[@]}" apt-get update -y
+      run "${APT_SUDO[@]}" apt-get install -y "${missing[@]}" ;;
+    dnf)    run "${APT_SUDO[@]}" dnf install -y "${missing[@]}" ;;
+    yum)    run "${APT_SUDO[@]}" yum install -y "${missing[@]}" ;;
+    pacman) run "${APT_SUDO[@]}" pacman -Sy --noconfirm "${missing[@]}" ;;
+  esac
 else
   log "系统依赖已齐"
 fi
@@ -274,6 +307,9 @@ EOF
 fi
 
 # ---------------------------------------------------------------- 8. 启动
+if [ "$DRY_RUN" = 1 ]; then
+  log "dry-run: 跳过写 $RUNNER_DIR/start.sh 与 systemd 单元"
+else
 cat > "$RUNNER_DIR/start.sh" <<EOF
 #!/usr/bin/env bash
 # 由 gitea-ops/bootstrap/linux-build-host.sh 生成。
@@ -286,7 +322,8 @@ export CI_ZIG_DIR=$ZIG_DIR
 cd $RUNNER_DIR || exit 1
 exec $ACT_RUNNER daemon --config config.yaml
 EOF
-run chmod +x "$RUNNER_DIR/start.sh"
+chmod +x "$RUNNER_DIR/start.sh"
+fi
 
 if [ "$START_RUNNER" = 1 ] && [ ! -f /etc/systemd/system/gitea-runner-host.service ] && [ "$DRY_RUN" = 0 ]; then
   cat > /tmp/gitea-runner-host.service <<EOF
