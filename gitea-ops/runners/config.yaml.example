@@ -1,0 +1,18 @@
+# act_runner 配置示例。
+#
+# capacity 决定这台机器同时接几个 job。它是**启动时读取**的，改完必须重启 runner。
+# 估算方式：capacity × CARGO_BUILD_JOBS × 约 10 GB（含 v8 的 rustc 峰值）≤ 内存 × 0.65
+# 工作流里的 CARGO_BUILD_JOBS 按内存自适应（mem_gb / 30，夹在 1..3），所以：
+#   62 GB 机器：capacity 2 → 每 job 2 单元 ≈ 40 GB ✅
+#   31 GB 机器：capacity 2 → 每 job 1 单元 ≈ 20 GB ✅
+# 反例：capacity 3 且全开 -j（=72）会把机器打到 sshd 无法握手。
+log:
+  level: info
+runner:
+  file: <runner目录>/.runner
+  capacity: 2
+cache:
+  enabled: true
+  dir: <CI_CACHE_ROOT>/act
+container:
+  force_pull: false

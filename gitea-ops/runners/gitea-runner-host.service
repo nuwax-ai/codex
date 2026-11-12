@@ -1,0 +1,27 @@
+# 宿主机模式 runner 的 systemd 单元。
+#   sudo cp gitea-runner-host.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now gitea-runner-host
+# 路径/用户按实际改。正在跑 job 时不要 restart（会杀死该 job）。
+[Unit]
+Description=Gitea act_runner (host mode)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=<runner-user>
+Group=<runner-user>
+WorkingDirectory=<runner目录>
+# 这几行是本项目的关键：工作流靠它们定位该机的 ci 布局。
+# 布局与默认一致（/data/nvme1/gitea-ci + /data/nvme0/ci-cache）时可省略。
+Environment=CI_DATA_ROOT=/srv/ci/data
+Environment=CI_CACHE_ROOT=/srv/ci/cache
+Environment=CI_CARGO_HOME=/srv/ci/data/toolchain/cargo
+Environment=CI_RUSTUP_HOME=/srv/ci/data/toolchain/rustup
+Environment=CI_ZIG_DIR=/srv/ci/data/toolchain/zig
+ExecStart=<act_runner二进制> daemon --config config.yaml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
