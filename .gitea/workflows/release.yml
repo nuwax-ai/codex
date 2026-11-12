@@ -297,6 +297,21 @@ jobs:
               ;;
             *)
               cd "${GITHUB_WORKSPACE}/codex-rs"
+              # Fork (2026-11-12): keep the musl linker's memory down. The
+              # musl-cross toolchain ships GNU ld 2.37, which cached every input
+              # symbol table while linking this binary: `aarch64-unknown-linux-musl`
+              # died with "final link failed: memory exhausted" on a 62 GB host
+              # that still had 43 GB free either side of the spike.
+              # `--no-keep-memory` re-reads them instead of holding them, and
+              # `--reduce-memory-overheads` trades a little link time for a much
+              # smaller working set. (Switching to lld is not an option: this gcc
+              # driver finds ld only inside its own toolchain, so `-fuse-ld=lld`
+              # reports "cannot find 'ld'" and `-B/usr/bin` picks up the host `as`.)
+              case "${{ matrix.target }}" in
+                *unknown-linux-musl)
+                  export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,--no-keep-memory -C link-arg=-Wl,--reduce-memory-overheads"
+                  ;;
+              esac
               cargo build --target ${{ matrix.target }} --release \
                 -p codex-cli --bin codex \
                 -p codex-code-mode-host --bin codex-code-mode-host
