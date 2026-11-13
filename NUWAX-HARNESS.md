@@ -48,7 +48,7 @@ npm 组织包名是 **`@nuwax-ai/nuwax-harness`**，主命令和发布归档内�
 **`nuwax-harness`**（Windows 为 `nuwax-harness.exe`）。该组织包只导出新主命令。
 兼容命令 `nuwax-codex` 由 npm 层的 JS 转发（`bin/nuwax-codex.js`）提供，
 **发布归档与平台分包内不再附带 `nuwax-codex` 二进制别名**——请勿在安装脚本中
-按该文件名解析二进制路径（2026-11-06 起；ACP 的 `CODEX_PATH` 使用
+按该文件名解析二进制路径（2026-11-06 起；ACP 的 `NUWAX_PATH` 使用
 `command -v nuwax-harness` 返回的绝对路径）。
 Rust crate、源码构建目标和 `codex-code-mode-host` 等辅助程序保持内部名称；
 发布包会处理主程序改名，请完整安装同一版本，保留其配套辅助程序。
@@ -104,7 +104,7 @@ nuwax-harness exec '请只回复 OK'
 ```
 
 环境模板是可信的 **Shell 配置**，不会被程序自动读取，也不是 Docker 或 systemd 的
-原始 env-file 格式。只加载自己维护的文件。`$CODEX_HOME/.env` 不能激活 `NUWAX_*`
+原始 env-file 格式。只加载自己维护的文件。`$NUWAX_HOME/.env` 不能激活 `NUWAX_*`
 启动组，变量必须进入启动进程的真实环境。
 
 ### 协议与桥选择
@@ -152,7 +152,7 @@ nuwax-harness doctor --json
 | `NUWAX_REQUEST_MAX_RETRIES` | 可选非负整数，HTTP 请求重试次数，`0` 表示本层仅发一次 |
 | `NUWAX_STREAM_MAX_RETRIES` | 可选非负整数，流恢复/采样重试预算，`0` 禁用本层重试 |
 | `NUWAX_STREAM_IDLE_TIMEOUT_MS` | 可选正整数，流空闲超时，单位毫秒；不是整轮总时限 |
-| `CODEX_HOME` | 会话、配置、状态目录；不设时为 `~/.nuwax-harness`，可覆盖为外接盘或持久化卷绝对路径。同义别名 `NUWAX_HOME`（同时设置且值相同视为迁移期写法；值不同则启动报错，两个变量名都会出现在错误里） |
+| `NUWAX_HOME` | 会话、配置、状态目录；不设时为 `~/.nuwax-harness`，可覆盖为外接盘或持久化卷绝对路径。旧拼写 `CODEX_HOME` 永久兼容（同时设置且值相同视为迁移期写法；值不同则启动报错，两个变量名都会出现在错误里） |
 
 `NUWAX_BRIDGE`、输出上限和重试变量必须随完整启动组使用，孤立设置会报错。
 仅单独设置 `NUWAX_MODEL` 可以选择既有 provider 的模型，并不会自动切换端点。
@@ -166,7 +166,7 @@ nuwax-harness doctor --json
 ## 3. 持久配置：config.toml（日常推荐）
 
 环境变量组适合一次性对比；日常长期使用建议把 provider 写进
-`~/.nuwax-harness/config.toml`（目录可用 `CODEX_HOME`/`NUWAX_HOME` 改）。
+`~/.nuwax-harness/config.toml`（目录用 `NUWAX_HOME` 改）。
 **API Key 有两种写法**（2026-11-05 起，见 [FORK.md §7.6](FORK.md)）：
 
 - `api_key = "<key>"`——直接把 key 存进**用户级** config.toml（TUI 向导的默认方式；
@@ -334,9 +334,12 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
   `model_mid_turn_compact_threshold_percent`（默认 `90`，`0` 关闭，越界 fail-fast）
   控制"一轮还没结束时、每步工具调用之后"是否前台压缩。托管异步压缩只在官方网关
   可用，三方网关此前在工具循环中途没有任何压缩点，只能等请求被拒后补救。
-- **图片字节预算（2026-11-10 起）**：`NUWAX_IMAGE_MAX_BYTES`（别名
-  `CODEX_IMAGE_MAX_BYTES`，config 键 `image_byte_budget_bytes`，默认 `0`=关闭）
-  限制单张图片进入会话历史时的编码体积。超限图片**无损优先**处理：已达标直通；
+- **图片字节预算（2026-11-10 起）**：`NUWAX_IMAGE_MAX_BYTES`（同义
+  `CODEX_IMAGE_MAX_BYTES`，config 键 `image_byte_budget_bytes`）限制单张图片进入
+  会话历史时的编码体积。不设置时**按线路决定**：Chat 桥把 `detail: original` 改写成
+  `high`、Anthropic 线没有 detail 字段，这两条线默认 **2 MiB**；只有 Responses 线且
+  模型声明支持 `detail: original` 才不设预算。设 `0` 是显式关闭。超限图片**无损优先**
+  处理：已达标直通；
   alpha 全不透明（含截图工具默认 RGBA）打平走 JPEG 阶梯 85→75→65；真半透明
   保 PNG 走尺寸阶梯。token 计数不变。chat 协议每轮重发历史，截图密集的网页
   开发任务靠它把请求体压回网关限制内。
@@ -480,28 +483,26 @@ GLM-5.3 全系仅 `max`/`high`/`low`，GLM-5.2 为七档（`low`/`medium` 均映
 值不同则启动报错并点名两个变量。
 输出、文本和图片都占窗口；增大配置数字不会扩大服务端的实际能力。
 
-## 5. 通过 ACP agent 使用：`CODEX_*`
+## 5. 通过 ACP agent 使用：`NUWAX_*`
 
-你目前的使用路径是 `fork-codex-acp-ts` 的 **`dev` 分支**启动本 fork 的 App Server。
-以下网关变量应放入 **ACP agent 进程**的环境，不是仅放在其外层交互终端。
-**每个 `CODEX_*` 网关变量都有同义 `NUWAX_*` 别名**（`NUWAX_PATH`、`NUWAX_BASE_URL`、
-`NUWAX_API_KEY`、`NUWAX_API_PROTOCOL`、`NUWAX_WIRE_API`、`NUWAX_BRIDGE`、
-`NUWAX_MODEL`、`NUWAX_MODEL_CONTEXT_WINDOW`、`NUWAX_PROVIDER_ID/NAME`、
-`NUWAX_CONFIG`、`NUWAX_LOG_DIR`、`NUWAX_MODEL_REASONING_EFFORT`）：仅设其一即生效，
-`NUWAX_*` 是推荐写法；两者同设且值相同视为迁移期写法，值不同则 ACP 启动报错并
-点名两个变量。**例外**：`NUWAX_REASONING_EFFORT_LEVELS` 没有 `CODEX_` 同义名
-（非上游 codex 变量，见 §4）。
-适配器消费掉的别名（BASE_URL/API_PROTOCOL/WIRE_API/API_KEY/BRIDGE/
-MAX_OUTPUT_TOKENS）不会透传给 app-server 子进程，因此引擎自身的
-`NUWAX_*` 启动组不会看到孤儿变量。无前缀的 `MODEL_PROVIDER`、
-`INITIAL_AGENT_MODE`、`NO_BROWSER`、`APP_SERVER_LOGS` 不设别名（非 codex
-命名空间）。
+网关变量必须放进 **ACP agent 进程**的环境（不是只放在外层的交互终端）。本 fork 的
+推荐拼写统一为 `NUWAX_*`：每个变量也接受旧拼写（前缀不同、变量名同义），只设其一即
+生效、同值幂等、异值 ACP 启动报错并点名两个变量。`NUWAX_REASONING_EFFORT_LEVELS`
+只有一种拼写（它不是上游 codex 变量，见 §4）。
+
+适配器**自己消费**的网关变量（`NUWAX_BASE_URL`、`NUWAX_API_PROTOCOL`、
+`NUWAX_WIRE_API`、`NUWAX_API_KEY`、`NUWAX_BRIDGE`、`NUWAX_MAX_OUTPUT_TOKENS`）
+不会透传给 app-server 子进程，因此引擎侧不会看到孤儿启动组（`NUWAX_MODEL` 例外地
+留在子进程环境里：单独设置它本来就合法，只换模型不换端点）；其余引擎开关（`NUWAX_IMAGE_MAX_BYTES`、`NUWAX_REQUEST_IMAGE_MAX_BYTES`、
+`NUWAX_TOOL_SEARCH`、`NUWAX_OPENAI_EGRESS`、`NUWAX_AUTO_COMPACT_*`、`NUWAX_HOME`）
+由 app-server 子进程读取，与 CLI 语义相同。无前缀的 `MODEL_PROVIDER`、
+`INITIAL_AGENT_MODE`、`NO_BROWSER`、`APP_SERVER_LOGS` 不设别名。
 
 ```bash
-export CODEX_PATH='/absolute/path/to/nuwax-harness'
-export CODEX_BASE_URL='https://your-provider.example/v1'
-export CODEX_API_PROTOCOL='openai'
-export CODEX_WIRE_API='chat'
+export NUWAX_PATH='/absolute/path/to/nuwax-harness'
+export NUWAX_BASE_URL='https://your-provider.example/v1'
+export NUWAX_API_PROTOCOL='openai'
+export NUWAX_WIRE_API='chat'
 export NUWAX_BRIDGE='rig'
 export NUWAX_MODEL='your-model-id'
 # 从受保护环境注入 NUWAX_API_KEY。
@@ -512,7 +513,7 @@ cd /absolute/path/to/fork-codex-acp-ts
 node --import tsx src/index.ts
 ```
 
-`CODEX_PATH` 使用安装后 `command -v nuwax-harness` 返回的绝对路径，或正式归档解压后
+`NUWAX_PATH` 使用安装后 `command -v nuwax-harness` 返回的绝对路径，或正式归档解压后
 主二进制的绝对路径。它指向 **CLI 主程序**，ACP 自己附加 `app-server` 子命令；
 不要指向 `codex-exec`、`codex-app-server`，也不要把 `app-server` 写进路径。
 
@@ -526,49 +527,50 @@ ACP 是 stdio 协议服务，由 ACP 宿主配置上述命令、工作目录和�
 
 | 变量 | ACP 网关用途与默认值 |
 | --- | --- |
-| `CODEX_PATH` | 固定实际运行的 fork CLI，使用绝对路径 |
-| `CODEX_BASE_URL` | 设置后启用 ACP 环境网关，默认 provider ID 为 `custom-gateway` |
-| `CODEX_API_KEY` | 网关 Key；未设置时可回退到 `OPENAI_API_KEY`，建议只设前者避免串用 |
-| `CODEX_API_PROTOCOL` | `openai`（默认）或 `anthropic` |
-| `CODEX_WIRE_API` | OpenAI 协议族下为 `responses`（默认）或 `chat`；Anthropic 时无需设置 |
-| `CODEX_BRIDGE` | `rig`、`native`、`genai`；不设则让实际 Codex 二进制保留默认桥 |
-| `CODEX_MODEL` | 活动网关使用的平台模型 ID |
-| `NUWAX_MODEL_CONTEXT_WINDOW`（同义 `CODEX_MODEL_CONTEXT_WINDOW`） | 活动网关的真实上下文窗口，正整数 token 数 |
-| `NUWAX_MODEL_REASONING_EFFORT`（同义 `CODEX_MODEL_REASONING_EFFORT`） | 可选：Default 模式使用的 effort 档位；不设则不发送，由网关自定。**不影响 Plan 模式**（见 §4） |
-| `NUWAX_REASONING_EFFORT_LEVELS` | 可选：逗号分隔的 rig 档位词，声明后选表外档位在请求发出前报错。**无 `CODEX_` 同义名**（非上游 codex 变量）；适配器只做形状解析，不消费该变量 |
-| `CODEX_PROVIDER_ID` / `CODEX_PROVIDER_NAME` | 可选 provider ID / 展示名，不需要时不设 |
-| `CODEX_CONFIG` | 可选 JSON 对象，传入会话配置；高级配置需核对网关覆盖优先级 |
+| `NUWAX_PATH` | 固定实际运行的 fork CLI，使用绝对路径；不能带子命令 |
+| `NUWAX_BASE_URL` | 设置后启用 ACP 环境网关，默认 provider ID 为 `custom-gateway` |
+| `NUWAX_API_KEY` | 网关 Key；未设置时可回退到 `OPENAI_API_KEY`，建议只设前者避免串用 |
+| `NUWAX_API_PROTOCOL` | `openai`（默认）或 `anthropic` |
+| `NUWAX_WIRE_API` | OpenAI 协议族下为 `responses`（默认）或 `chat`；Anthropic 时无需设置 |
+| `NUWAX_BRIDGE` | `rig`、`native`、`genai`；不设则保持 rig 默认 |
+| `NUWAX_MODEL` | 活动网关使用的平台模型 ID |
+| `NUWAX_MAX_OUTPUT_TOKENS` | 每次生成的输出上限，与 CLI 同一旋钮（不是上下文窗口） |
+| `NUWAX_MODEL_CONTEXT_WINDOW` | 活动网关的真实上下文窗口，正整数 token 数 |
+| `NUWAX_MODEL_REASONING_EFFORT` | 可选：Default 模式使用的 effort 档位；不设则由适配器兜底（档位表首项 → `medium`）。**不影响 Plan 模式**（见 §4） |
+| `NUWAX_REASONING_EFFORT_LEVELS` | 可选：逗号分隔的 rig 档位词，声明后选表外档位在请求发出前报错。**只有这一种拼写**；适配器只做形状解析，实际校验由引擎执行 |
+| `NUWAX_DISABLE_THINKING` | `true`/`1`/`yes`/`on` = 把 effort 固定为 `none`（关闭思考）；始终思考的模型会拒绝，这时改给显式档位 |
+| `NUWAX_PROVIDER_ID` / `NUWAX_PROVIDER_NAME` | 可选 provider ID / 展示名，不需要时不设 |
+| `NUWAX_CONFIG` | 可选 JSON 对象，传入会话配置；高级配置需核对网关覆盖优先级 |
 | `MODEL_PROVIDER` | 无活动网关时可选的 provider 选择；不要用它与环境网关表达矛盾选择 |
 | `INITIAL_AGENT_MODE` | `read-only`、`workspace-write`、`agent`、`agent-full-access`；按实际授权选择 |
 | `NO_BROWSER` | 设置后隐藏 ChatGPT 浏览器登录入口，适合无浏览器部署 |
-| `APP_SERVER_LOGS` / `CODEX_LOG_DIR` | 可选日志目录，前者优先；日志也需按敏感数据管理 |
+| `APP_SERVER_LOGS` / `NUWAX_LOG_DIR` | 可选日志目录，前者优先；日志也需按敏感数据管理 |
 
 ACP 三种常用配置：
 
-| 目标 | `CODEX_API_PROTOCOL` | `CODEX_WIRE_API` | `CODEX_BRIDGE` |
+| 目标 | `NUWAX_API_PROTOCOL` | `NUWAX_WIRE_API` | `NUWAX_BRIDGE` |
 | --- | --- | --- | --- |
 | Chat 经 rig | `openai` | `chat` | `rig` |
-| Anthropic 经 rig | `anthropic` | `unset CODEX_WIRE_API` | `rig` |
+| Anthropic 经 rig | `anthropic` | `unset` | `rig` |
 | Responses 经 rig | `openai` | `responses` | `rig` |
 | 原生 Responses | `openai` | `responses` | `native` |
 
-同时替换对应基址、Key、模型。Anthropic 入口由 `CODEX_API_PROTOCOL=anthropic` 选择，
-**不能**写 `CODEX_WIRE_API=anthropic`。`native` 仅支持 OpenAI Responses；
-`genai` 仅支持 Chat/Anthropic。设置 `CODEX_BRIDGE` 却未设置 `CODEX_BASE_URL` 会报错。
+同时替换对应基址、Key、模型。Anthropic 入口由 `NUWAX_API_PROTOCOL=anthropic` 选择，
+**不能**写 `NUWAX_WIRE_API=anthropic`。`native` 仅支持 OpenAI Responses；
+`genai` 仅支持 Chat/Anthropic。设置 `NUWAX_BRIDGE` 却未设置 `NUWAX_BASE_URL` 会报错。
 
 环境网关本身已授权，**无需额外发送显式 `authenticate`**。ACP 宿主若发送
 `providers/set` 或任何显式 `authenticate`（API-key、ChatGPT、gateway），会按既有优先级
 替换或清除环境网关、桥选择与凭据。想继续使用部署环境时，不要再让宿主主动改登录方式。
 
-选择一套入口配置同一次运行：ACP 的 `CODEX_*` 会显式选择 provider，
-`NUWAX_BRIDGE` 不能覆盖它；`NUWAX_MAX_OUTPUT_TOKENS` 等也不是这套网关的控制旋钮。
-若采用 ACP 透传 `NUWAX_*` 的另一种部署方式，须保持 `CODEX_BASE_URL`、`MODEL_PROVIDER`
-及宿主显式 provider/auth 配置不与之冲突；日常使用优先选上面的 ACP `CODEX_*` 入口。
+同一次运行只选一套入口配置：上面这组变量就是 ACP 的环境网关本身，`NUWAX_BRIDGE`、
+`NUWAX_MAX_OUTPUT_TOKENS` 等都由适配器消费并翻译成会话配置，不会再与"引擎侧启动组"
+叠成第二套网关。若改用 CLI（§2），则那套启动组与这里的差异只在协议的表达方式。
 
 ## 6. Linux / 容器与 Windows
 
 Linux 服务和容器同样要求变量进入实际 agent 进程。为独立服务实例设置各自的
-`CODEX_HOME`，放在可写的持久化目录；使用不同凭据的实例分别启动，不复用共享 daemon
+`NUWAX_HOME`，放在可写的持久化目录；使用不同凭据的实例分别启动，不复用共享 daemon
 来承载各自进程环境凭据。NUWAX 启动组激活时会排除共享 daemon 路径。
 
 Docker 已有镜像可显式透传当前环境，例如主程序和配套文件安装在镜像 `/opt/nuwax/`：
@@ -577,7 +579,7 @@ Docker 已有镜像可显式透传当前环境，例如主程序和配套文件�
 docker run --rm -i \
   --env NUWAX_BASE_URL --env NUWAX_WIRE_API --env NUWAX_MODEL \
   --env NUWAX_API_KEY --env NUWAX_BRIDGE \
-  --env CODEX_HOME=/state \
+  --env NUWAX_HOME=/state \
   --mount type=volume,source=nuwax-harness-state,target=/state \
   --entrypoint /opt/nuwax/nuwax-harness \
   your-built-image:your-version app-server --stdio
@@ -598,7 +600,7 @@ $env:NUWAX_MODEL = 'your-model-id'
 & 'C:\Tools\nuwax-harness\nuwax-harness.exe' exec '请只回复 OK'
 ```
 
-Windows 的发布主程序名是 `nuwax-harness.exe`；ACP 的 `CODEX_PATH` 相应填该绝对路径。
+Windows 的发布主程序名是 `nuwax-harness.exe`；ACP 的 `NUWAX_PATH` 相应填该绝对路径。
 已接受的 Windows 沙箱/终端平台限制不等于模型接入未实现，验收边界见项目 ROADMAP。
 
 ## 7. 图片与排查
@@ -609,13 +611,32 @@ Anthropic 使用 `image` 的 Base64 source。无法提供服务端可访问的 U
 MCP 工具应返回 image 内容块，Code Mode 使用图片输出接口。图片仍消耗视觉 token，
 本项目的图片预算与压缩会处理它们，但不能把附件引用理解成零上下文成本。
 
+**两级图片预算**（都可关闭，都不是"越大越好"）：
+
+- **单图**：`NUWAX_IMAGE_MAX_BYTES` 限制单张图片进入会话历史的编码体积，config 键为
+  `image_byte_budget_bytes`。不设置时**按线路决定**：Chat 桥一律把 `detail: original`
+  改写成 `high`、Anthropic 线没有 detail 字段，这两条线默认 **2 MiB**（多出的字节上游
+  也会按自己的上限重采样）；只有 Responses 线且模型声明支持 `detail: original` 才不设
+  预算。设 `0` 是显式关闭，设正整数是操作者自己的预算。
+- **整请求**：`NUWAX_REQUEST_IMAGE_MAX_BYTES` 限制一次请求内联图片的总量，默认
+  **20 MiB**，在会话准备完图片、发请求前执行：超预算就从最大的一张开始对半重压，单张
+  压到 192 KiB 以下不再压；压到下限仍超预算时保留原图并打 `warn`（点名 budget/total），
+  请求照发。设 `0` 关闭该 pass，非法值告警一次后回落默认。
+
+网关仍返回 413 时先看整请求预算，再看单图预算；token 计数两者都不改变。
+
 遇到接入问题，依次核对：
 
-1. `command -v nuwax-harness`、`--version` 和 ACP 的 `CODEX_PATH` 是否指向本轮 fork。
+1. `command -v nuwax-harness`、`--version` 和 ACP 的 `NUWAX_PATH` 是否指向本轮 fork。
 2. Base URL、协议、Key、模型是否属于同一个平台/套餐，是否留有上一套环境变量。
 3. `nuwax-harness doctor --json` 的 provider、wire 和 bridge 是否符合选择。
 4. 是否有 CLI `-c`、本地配置或 ACP 的显式 provider/auth 选择覆盖了环境入口。
 5. 上下文窗口、输出上限和模型实际能力是否一致。
+6. 抓包看到 `chatgpt.com`，或日志里出现本机 hostname 与 `installation_id`：说明 OpenAI
+   第一方出站总闸被打开了。它默认**关闭**，只有 `NUWAX_OPENAI_EGRESS=1` 才打开（其他
+   非空值按"写错"处理：报一次并保持关闭）。fork 面向经自有网关访问厂商模型的部署，
+   这类自行联网的启动行为（app-server 远程控制、插件目录/已装态同步、curated 同步）
+   不应在默认配置下发生。
 
 自定义/未知模型收到的身份声明会注入**实际模型名**（"You are the {模型} model
 … running in nuwax-harness"），因此询问"你是什么模型"应回答真实型号与
@@ -638,16 +659,18 @@ nuwax-harness；目录内官方模型（gpt-\*）保持上游身份声明。
 
 - 引擎侧（Rust 二进制读取）：`NUWAX_HOME`、`NUWAX_MODEL_CONTEXT_WINDOW`、
   `NUWAX_AUTO_COMPACT_TOKEN_LIMIT`、`NUWAX_AUTO_COMPACT_RATIO`、
-  `NUWAX_MODEL_REASONING_EFFORT`、`NUWAX_TOOL_SEARCH`。
+  `NUWAX_MODEL_REASONING_EFFORT`、`NUWAX_TOOL_SEARCH`、`NUWAX_IMAGE_MAX_BYTES`、
+  `NUWAX_OPENAI_EGRESS`。
 - ACP 适配层（fork-codex-acp-ts 读取）：`NUWAX_PATH`、`NUWAX_BASE_URL`、
   `NUWAX_API_KEY`、`NUWAX_API_PROTOCOL`、`NUWAX_WIRE_API`、`NUWAX_BRIDGE`、
   `NUWAX_MODEL`、`NUWAX_MODEL_CONTEXT_WINDOW`、`NUWAX_PROVIDER_ID`、
-  `NUWAX_PROVIDER_NAME`、`NUWAX_CONFIG`、`NUWAX_LOG_DIR`。注意
+  `NUWAX_PROVIDER_NAME`、`NUWAX_CONFIG`、`NUWAX_LOG_DIR`、`NUWAX_DISABLE_THINKING`。注意
   `NUWAX_BASE_URL/WIRE_API/API_KEY/BRIDGE` 在两层语义相同（配置活动厂商），
   ACP 消费后会从 app-server 子进程剥离，不会触发引擎侧的孤儿检测。
 
-**不设别名**（非 codex 命名空间或行业标准名）：`OPENAI_API_KEY`、
-`MODEL_PROVIDER`、`INITIAL_AGENT_MODE`、`NO_BROWSER`、`APP_SERVER_LOGS`。
+**不设别名**（非 codex 命名空间、行业标准名，或新增即只有一种拼写）：
+`OPENAI_API_KEY`、`MODEL_PROVIDER`、`INITIAL_AGENT_MODE`、`NO_BROWSER`、
+`APP_SERVER_LOGS`、`NUWAX_REQUEST_IMAGE_MAX_BYTES`。
 
 launcher/shim 管道变量（`CODEX_INSTALL_SOURCE`、`CODEX_MANAGED_BY_*`）由
 程序注入，不是用户配置面，同样不设别名。
