@@ -165,6 +165,8 @@ nuwax-harness doctor --json
 
 ## 3. 持久配置：config.toml（日常推荐）
 
+> 本目录同时承载 skills、agent 角色、模型覆盖等扩展配置，完整布局见 §8。
+
 环境变量组适合一次性对比；日常长期使用建议把 provider 写进
 `~/.nuwax-harness/config.toml`（目录用 `NUWAX_HOME` 改）。
 **API Key 有两种写法**（2026-11-05 起，见 [FORK.md §7.6](FORK.md)）：
@@ -648,7 +650,91 @@ nuwax-harness；目录内官方模型（gpt-\*）保持上游身份声明。
 `doctor` 验证配置与路由，不代表实际端点已经完成模型调用；用短文本和真实工具各验一轮。
 进一步的实现状态见 [ROADMAP](my-docs/ROADMAP.md)。
 
-## 8. 附录：环境变量速查
+## 8. 目录布局与扩展配置：skills / agents（subagent 自定义提示词）/ 模型覆盖
+
+配置根目录是 **`~/.nuwax-harness`**（`NUWAX_HOME`/`CODEX_HOME` 可整体改走他处，
+如外接盘或持久化卷）。与上游 codex 的 `~/.codex` 完全隔离，互不读写。
+
+```
+~/.nuwax-harness/
+├── config.toml                  # 主配置：provider、模型、[agents]、[skills]、[plugins] 等
+├── <name>.config.toml           # 多 profile（--profile <name> 切换）
+├── skills/                      # 技能目录
+│   ├── <my-skill>/SKILL.md      # 用户技能：一个目录一个 SKILL.md
+│   └── .system/                 # 内置技能，启动时自动刷新，不要手改
+├── models.d/*.toml              # 自定义模型覆盖（逐字段深合并，fail-fast）
+├── sessions/  history.jsonl     # 运行时产物（自动生成）
+└── tmp/  *.sqlite               # 运行时产物（自动生成）
+```
+
+### 8.1 Skills（技能）
+
+- **用户技能**：`~/.nuwax-harness/skills/<技能名>/SKILL.md`。一个技能一个目录；
+  SKILL.md 带 frontmatter 元数据（名称/描述），正文是技能指令。
+- **内置技能**（`skills/.system/`，如 skill-creator、imagegen）由启动器按指纹自动
+  安装/刷新——**手工修改会被覆盖**，自定义一律放 `skills/` 直下自己的子目录。
+- **项目/插件来源**：插件可在 manifest 声明 `./skills` 目录，随插件加载。
+- `config.toml` 可控开关（`[skills]` 表）：
+
+```toml
+[skills]
+include_instructions = true        # 是否向模型注入可用技能目录说明（默认 true）
+max_context_tokens = 10000         # 技能目录占用的 token 上限（默认窗口 2%，封顶 10000）
+# 逐技能启停（按名字或 SKILL.md 绝对路径二选一）：
+[[skills.config]]
+name = "my-skill"
+enabled = true
+```
+
+### 8.2 Agents 与 subagent 自定义提示词
+
+**支持，两级机制：**
+
+**① 角色级（推荐）**：`config.toml` 的 `[agents]` 表定义具名角色；每个角色用
+`config_file` 指向一个角色文件，角色文件里 `developer_instructions` **必填且非空**
+（空串/缺失会 fail-fast 点名文件），这就是 subagent 的自定义提示词：
+
+```toml
+[agents]
+enabled = true                                  # 多 agent 工具总开关（默认 true）
+max_concurrent_threads_per_session = 8          # 单会话并发 subagent 上限
+default_subagent_model = "GLM-5.3-Flash"        # spawn 未选模型时的兜底
+default_subagent_reasoning_effort = "high"      # spawn 未选档位时的兜底
+
+[agents.reviewer]
+description = "代码评审子代理"                    # 会在 spawn 工具说明里露出
+nickname_candidates = ["评审", "reviewer"]
+config_file = "/absolute/path/reviewer.agent.toml"
+```
+
+角色文件（`reviewer.agent.toml`）是完整的 config 层，常用字段：
+
+```toml
+name = "reviewer"
+description = "代码评审子代理"
+nickname_candidates = ["评审", "reviewer"]
+
+# ★ subagent 的自定义提示词（必填）
+developer_instructions = """
+你是代码评审专家。只审查变更，不重写实现；
+输出按 严重度排序的问题列表，每条带文件与行号。
+"""
+
+# 还可以整层覆盖该角色的沙箱/模型等任意 config 字段
+```
+
+**② 全局级**：`[features.multi_agent_v2]` 的 `subagent_developer_instructions`
+为**没有角色专属提示词**的 subagent 提供兜底提示词；`subagent_usage_hint_text`、
+`root_agent_usage_hint_text` 可改 spawn 工具的使用提示文案。顶层
+`developer_instructions` 则是主线程自己的 developer 消息。
+
+### 8.3 模型覆盖（models.d）
+
+`~/.nuwax-harness/models.d/*.toml`：每个文件声明一个自定义模型（slug 匹配后逐字段
+深合并），用于给目录里查不到的模型补窗口/档位/能力声明。文件解析失败会 fail-fast
+点名文件。
+
+## 9. 附录：环境变量速查
 
 **NUWAX_* 直接启动组**（§2；三件套 `NUWAX_BASE_URL`+`NUWAX_WIRE_API`+
 `NUWAX_API_KEY` 成组激活临时 provider `nuwax_env`；其余须随组使用）：
