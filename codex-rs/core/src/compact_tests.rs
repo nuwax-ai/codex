@@ -17,6 +17,8 @@ use codex_protocol::models::ExecutedToolCall;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ImageReference;
 use codex_protocol::models::InternalChatMessageMetadataPassthrough;
+use codex_protocol::protocol::ItemCompletedEvent;
+use codex_protocol::protocol::ItemStartedEvent;
 use codex_tools::ToolName;
 use core_test_support::responses;
 use core_test_support::skip_if_no_network;
@@ -691,9 +693,33 @@ async fn migration_cap_degrades_to_trim_and_completes_on_the_target_model() -> a
         "the oldest history was omitted"
     );
 
-    // Exactly one user-visible notice for the omission.
-    let warnings: Vec<String> = drain_events(&events)
-        .await
+    // Exactly one user-visible notice for the omission, and the item that
+    // announced the compaction must close with the id it opened: ACP closes its
+    // tool call by item id, so a completion built from a fresh item leaves a
+    // permanently in_progress call next to a stray completed one.
+    let messages = drain_events(&events).await;
+    let mut started_compactions = Vec::new();
+    let mut completed_compactions = Vec::new();
+    for msg in &messages {
+        match msg {
+            EventMsg::ItemStarted(ItemStartedEvent {
+                item: TurnItem::ContextCompaction(item),
+                ..
+            }) => started_compactions.push(item.id.clone()),
+            EventMsg::ItemCompleted(ItemCompletedEvent {
+                item: TurnItem::ContextCompaction(item),
+                ..
+            }) => completed_compactions.push(item.id.clone()),
+            _ => {}
+        }
+    }
+    assert_eq!(
+        started_compactions.len(),
+        1,
+        "one announced compaction for the pass"
+    );
+    assert_eq!(completed_compactions, started_compactions);
+    let warnings: Vec<String> = messages
         .into_iter()
         .filter_map(|msg| match msg {
             EventMsg::Warning(warning) => Some(warning.message),
@@ -2610,4 +2636,28 @@ async fn live_downshift_from_1m_to_64k_llamacpp_continues_the_same_session() -> 
         "the history shrank to fit the 64K window"
     );
     Ok(())
+}
+
+#[test]
+fn migration_announcement_completes_the_item_it_started() {
+    // ACP closes a compaction tool call by item id, so a completion that builds a
+    // fresh item leaves the announced call in_progress forever.
+    let mut announcement = MigrationAnnouncement::default();
+    let started_id = announcement.start().map(TurnItem::id);
+    assert!(started_id.is_some(), "first summarizing pass must announce");
+    assert!(
+        announcement.start().is_none(),
+        "a later range in the same pass must not announce a second call"
+    );
+    assert_eq!(announcement.finish().map(|item| item.id()), started_id);
+    assert!(
+        announcement.finish().is_none(),
+        "the same item must not be completed twice"
+    );
+}
+
+#[test]
+fn migration_announcement_without_a_summary_announces_nothing() {
+    let mut announcement = MigrationAnnouncement::default();
+    assert!(announcement.finish().is_none());
 }

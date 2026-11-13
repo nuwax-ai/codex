@@ -1073,7 +1073,7 @@ pub(crate) async fn run_migration_compact_task(
     let settings = turn_context.config.migration_compact;
 
     let mut replaced = false;
-    let mut announced = false;
+    let mut announcement = MigrationAnnouncement::default();
     // Whether this pass shrank the history at all; a pass whose summaries do
     // not reduce the surface must not be repeated (downshift plan §1).
     let mut progress = false;
@@ -1088,7 +1088,7 @@ pub(crate) async fn run_migration_compact_task(
     for _ in 0..settings.max_ranges {
         if cancellation.is_cancelled() {
             let outcome = MigrationOutcome::Cancelled;
-            finish_announcement(sess.as_ref(), &turn_context, announced, outcome).await;
+            finish_announcement(sess.as_ref(), &turn_context, &mut announcement).await;
             return outcome;
         }
         let history = sess.clone_history().await;
@@ -1164,12 +1164,10 @@ pub(crate) async fn run_migration_compact_task(
             }
         };
 
-        if !announced {
+        if let Some(item) = announcement.start() {
             // TUI and ACP both surface this item, so the user sees the
             // compaction instead of a silent pause.
-            let item = TurnItem::ContextCompaction(ContextCompactionItem::new());
-            sess.emit_turn_item_started(&turn_context, &item).await;
-            announced = true;
+            sess.emit_turn_item_started(&turn_context, item).await;
         }
         let summary = match summarize_migration_region(
             &sess,
@@ -1317,7 +1315,7 @@ pub(crate) async fn run_migration_compact_task(
     if let Some(reason) = failure {
         tracing::warn!(reason, "migration compaction pass cannot summarize");
     }
-    finish_announcement(sess.as_ref(), &turn_context, announced, outcome).await;
+    finish_announcement(sess.as_ref(), &turn_context, &mut announcement).await;
     outcome
 }
 
@@ -1348,12 +1346,42 @@ async fn history_over_budget_at_entry(
 async fn finish_announcement(
     sess: &Session,
     turn_context: &Arc<TurnContext>,
-    announced: bool,
-    _outcome: MigrationOutcome,
+    announcement: &mut MigrationAnnouncement,
 ) {
-    if announced {
-        let item = TurnItem::ContextCompaction(ContextCompactionItem::new());
+    if let Some(item) = announcement.finish() {
         sess.emit_turn_item_completed(turn_context, item).await;
+    }
+}
+
+/// The compaction item one migration pass announces, if it summarizes anything.
+///
+/// The completion must carry the **same** item the start carried: ACP renders this
+/// item as a tool call and closes it by `toolCallId`, so building a fresh item for
+/// `ItemCompleted` leaves the announced call `in_progress` forever next to a stray
+/// completed one that no call ever opened (2026-11-13 client report).
+#[derive(Default)]
+struct MigrationAnnouncement {
+    item: Option<TurnItem>,
+    started: bool,
+}
+
+impl MigrationAnnouncement {
+    /// Returns the item to announce, or `None` when this pass already announced.
+    fn start(&mut self) -> Option<&TurnItem> {
+        if self.started {
+            return None;
+        }
+        self.started = true;
+        self.item = Some(TurnItem::ContextCompaction(ContextCompactionItem::new()));
+        self.item.as_ref()
+    }
+
+    /// Hands back the announced item so the completion reuses its id.
+    fn finish(&mut self) -> Option<TurnItem> {
+        if !self.started {
+            return None;
+        }
+        self.item.take()
     }
 }
 
