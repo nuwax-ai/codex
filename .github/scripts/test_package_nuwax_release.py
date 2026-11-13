@@ -85,6 +85,17 @@ class ReleasePackageContracts(unittest.TestCase):
                 package(build, root / "out", "0.18.13", target)
             self.assertEqual(digest, hashlib.sha256(archive.read_bytes()).hexdigest())
 
+    def test_replace_existing_lets_a_retry_overwrite_the_stale_archive(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = "x86_64-unknown-linux-gnu"
+            build, _ = self.fixture(root, target)
+            stale = package(build, root / "out", "0.18.13", target)
+            stale.write_bytes(b"leftover from an aborted run\n")
+            rebuilt = package(build, root / "out", "0.18.13", target, replace_existing=True)
+            self.assertEqual(stale, rebuilt)
+            self.assertNotIn(b"leftover", rebuilt.read_bytes())
+
 
 if __name__ == "__main__":
     unittest.main()

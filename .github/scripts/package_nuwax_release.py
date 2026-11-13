@@ -34,7 +34,7 @@ def _sha256_of(binary) -> str:
     return digest.hexdigest()
 
 
-def package(build_dir, output_dir, version, target):
+def package(build_dir, output_dir, version, target, replace_existing=False):
     if target not in TARGETS:
         raise ValueError("unsupported release target")
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?", version):
@@ -62,7 +62,13 @@ def package(build_dir, output_dir, version, target):
     # The npm package and CDN namespace stay stable for existing installers.
     archive = output_dir / f"nuwax-codex-{version}-{target}{suffix}"
     if archive.exists():
-        raise FileExistsError("release archive already exists; refusing stale artifact reuse")
+        if not replace_existing:
+            raise FileExistsError("release archive already exists; refusing stale artifact reuse")
+        # Self-hosted CI keeps one artifact directory per runner across runs, so
+        # an aborted attempt can leave a same-version archive behind and every
+        # retry then fails on this guard. Dropping it first also keeps a failing
+        # retry from leaving a half-trusted file for the next run to reuse.
+        archive.unlink()
     with tempfile.TemporaryDirectory(prefix="nuwax-package-", dir=output_dir) as temp:
         stage = Path(temp) / "stage"
         stage.mkdir()
@@ -99,8 +105,22 @@ def main():
     parser.add_argument("--version", required=True)
     parser.add_argument("--target", required=True, choices=TARGETS)
     parser.add_argument("--github-output", type=Path)
+    parser.add_argument(
+        "--replace-existing",
+        action="store_true",
+        help=(
+            "replace a same-version archive left by an earlier run; only for "
+            "self-hosted CI where the artifact directory survives between runs"
+        ),
+    )
     args = parser.parse_args()
-    archive = package(args.build_dir, args.output_dir, args.version, args.target)
+    archive = package(
+        args.build_dir,
+        args.output_dir,
+        args.version,
+        args.target,
+        replace_existing=args.replace_existing,
+    )
     if args.github_output:
         with args.github_output.open("a", encoding="utf-8") as output:
             output.write(f"archive_path={archive.name}\narchive_name={archive.name}\n")

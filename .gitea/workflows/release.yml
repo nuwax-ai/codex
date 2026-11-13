@@ -357,7 +357,8 @@ jobs:
             --output-dir "${ARTIFACTS_DIR}" \
             --version "${VERSION}" \
             --target "${{ matrix.target }}" \
-            --github-output "${GITHUB_OUTPUT}"
+            --github-output "${GITHUB_OUTPUT}" \
+            --replace-existing
           ls -la "${ARTIFACTS_DIR}"
 
       # Each runner publishes its own archive so the artifacts are reachable
