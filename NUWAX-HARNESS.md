@@ -728,7 +728,31 @@ developer_instructions = """
 `root_agent_usage_hint_text` 可改 spawn 工具的使用提示文案。顶层
 `developer_instructions` 则是主线程自己的 developer 消息。
 
-### 8.3 模型覆盖（models.d）
+### 8.3 项目级配置：`.codex/`（注意不是 `.nuwax-harness`）
+
+**项目目录下放的是 `.codex/`（沿用上游约定），不是 `.nuwax-harness`**——后者只存在于
+用户主目录。项目级配置有三个加载层（自上而下优先级递增）：
+
+| 层 | 位置 | 说明 |
+| --- | --- | --- |
+| cwd | `${PWD}/config.toml` | 当前目录根直接放 config.toml |
+| tree | 逐级父目录的 `.codex/config.toml` | 从 cwd 向上找到根为止 |
+| repo | `$(git rev-parse --show-toplevel)/.codex/config.toml` | git 仓库根 |
+
+规则：
+
+- **信任**：目录被显式标记 untrusted 时，这些层"加载但禁用"（AGENTS.md 同样跳过）；
+  没有信任决策的目录按 fork 新默认加载为 workspace-write（见 FORK.md 2026-11-13）。
+- **能放什么**：任何 config 字段都可在项目层覆盖——`[agents]` 角色、`[skills]`、
+  `[model_providers]`、模型档位等，与用户层按 layer 顺序合并。
+- **skills 无项目级目录自动发现**：项目内技能要么经插件 manifest 的 `./skills`
+  提供，要么在项目 `.codex/config.toml` 的 `[[skills.config]]` 用 `path` 选择器
+  指向项目内路径。
+- **AGENTS.md（项目指令）**：从 cwd 沿目录树向上找 `AGENTS.override.md` >
+  `AGENTS.md`（可配 `project_doc_fallback_filenames` 追加候选名），与用户级指令
+  拼接注入；`project_doc_max_bytes` 限大小。
+
+### 8.4 模型覆盖（models.d）
 
 `~/.nuwax-harness/models.d/*.toml`：每个文件声明一个自定义模型（slug 匹配后逐字段
 深合并），用于给目录里查不到的模型补窗口/档位/能力声明。文件解析失败会 fail-fast
