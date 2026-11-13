@@ -1043,6 +1043,27 @@ macOS 使用当前标准 runner，musl 编译并行限制为 2；Rust/V8 继续�
 [发布记录](my-docs/rig-production-completion-2026-10-10/nuwax-harness-release-0.18.14.md)。
 Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§10维护，主线已收口。
 
+**发布执行者：Gitea 优先（2026-11-13 起）**。GitHub 那条链的 `aarch64-apple-darwin`
+在冷缓存 runner 上撞到单 job 6 小时上限被取消（run 43257256775），Release 与 npm
+发布被跳过；同一天把 Gitea 侧补齐成可以独立发 npm：
+
+- 构建矩阵仍是 6 个目标（2 darwin / 3 Linux / x86_64 Windows），每个 build job 在打完
+  包后**同时**上传 S3（`ci-gitea/<version>/<target>/`，给内部下载用）与**阿里云 OSS**
+  （`nuwax-codex/v<version>/nuwax-codex-<version>-<target>.<ext>`，npm postinstall 的
+  唯一来源，布局见 `npm/bin/runtime.js`）。
+- 新增 `publish-npm` job（needs `build` + `verify-artifacts`）：先逐个 HEAD 校验 OSS 上
+  6 个平台归档都是 200，再 `npm/publish/update-base-package.sh <version>` + `npm publish
+  --access public --registry=https://registry.npmjs.org`。顺序不可反：npm 同版本不可重发，
+  先发布会留下装不上的版本。
+- 需要的仓库 secrets（已写入 Gitea）：`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`、
+  `NPM_TOKEN`（新版 90 天有效，过期需换）；S3 那套 `NUWAX_UPLOAD_*` 仍用于内部归档。
+- **已知缺口**：`aarch64-pc-windows-msvc` 在 Gitea 侧关闭（`windows-host` 没装 VS
+  ARM64 工具链），GitHub 才有。publish 校验 6/6 即可发布，但 Windows-on-ARM 用户会
+  404；补齐工具链后把该矩阵项打开即回到 7/7。
+- 并发度按宿主内存派生，但**必须按 OS 读内存**：Linux 读 `/proc/meminfo`、Darwin 用
+  `sysctl -n hw.memsize`（2026-11-13 之前只写了前者，macOS job 在 `set -e` 下直接
+  `awk: can't open file /proc/meminfo` 失败）。
+
 - workspace 版本恒为占位 `0.0.0`；npm 版本号来自 git tag（`v*` → release.yml，
   7 平台构建 → 阿里云 OSS 二进制 → npm publish；cargo bin 名保持官方 `codex`，
   npm 打包时主程序改名 `nuwax-harness`，postinstall 从 OSS 下载平台二进制到

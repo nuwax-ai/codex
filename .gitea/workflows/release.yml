@@ -171,7 +171,15 @@ jobs:
             #   62 GB host -> 2 units per job, 2 jobs = ~40 GB  (safe)
             #   31 GB host -> 1 unit per job,  2 jobs = ~20 GB  (safe)
             # Override with CI_CARGO_JOBS.
-            mem_gb=$(awk '/MemTotal/ {printf "%d", $2/1048576}' /proc/meminfo)
+            #
+            # Memory size has to be read per OS: /proc/meminfo only exists on
+            # Linux, and `awk: can't open file /proc/meminfo` failed the whole
+            # macOS job under `set -e` (2026-11-13, task 293).
+            case "$(uname -s)" in
+              Linux) mem_gb=$(awk '/MemTotal/ {printf "%d", $2/1048576}' /proc/meminfo) ;;
+              Darwin) mem_gb=$(( $(sysctl -n hw.memsize) / 1073741824 )) ;;
+              *) mem_gb=16 ;;
+            esac
             jobs=$(( mem_gb / 30 ))
             [ "$jobs" -lt 1 ] && jobs=1
             [ "$jobs" -gt 3 ] && jobs=3
@@ -399,6 +407,33 @@ jobs:
             --prefix "ci-gitea/${VERSION}/${{ matrix.target }}" \
             "${archive}" "${entry}"
 
+      # Second destination for the same file: npm's postinstall downloads from
+      # Aliyun OSS keyed by version+target, so the publish job must not depend on
+      # which host happened to build the archive. Layout matches
+      # npm/bin/runtime.js: nuwax-codex/v<version>/nuwax-codex-<version>-<target>.<ext>
+      - name: Upload the archive to Aliyun OSS
+        shell: bash
+        env:
+          OSS_AK: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_SK: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OSS_AK:-}" ] || [ -z "${OSS_SK:-}" ]; then
+            echo "no OSS credentials configured; npm publishing stays unavailable" >&2
+            exit 1
+          fi
+          tool="$(command -v nuwax-ossutil || true)"
+          if [ -z "${tool}" ]; then
+            npm install -g nuwax-ossutil --registry=https://registry.npmmirror.com >/dev/null 2>&1 || true
+            tool="$(command -v nuwax-ossutil || true)"
+          fi
+          [ -n "${tool}" ] || { echo "nuwax-ossutil is not installed on this runner" >&2; exit 1; }
+          archive="$(ls "${ARTIFACTS_DIR}"/nuwax-codex-"${VERSION}"-"${{ matrix.target }}".* | head -1)"
+          "${tool}" config --endpoint oss-rg-china-mainland.aliyuncs.com \
+            --key-id "${OSS_AK}" --key-secret "${OSS_SK}" --bucket nuwa-packages
+          "${tool}" upload -r "nuwax-codex/${TAG}" "${archive}"
+          echo "oss://nuwa-packages/nuwax-codex/${TAG}/$(basename "${archive}")"
+
   # Publishing (OSS upload + npm publish) stays manual until the archives above
   # are verified: this pipeline is new, and a half-built release must not reach
   # a registry. See .github/workflows/release.yml for the OSS layout.
@@ -483,3 +518,91 @@ jobs:
           "${tool}" --access-key "${S3_AK}" --secret-key "${S3_SK}" \
             --prefix "ci-gitea/${version}" "${entries}/manifest.json"
           echo "manifest: ${S3_BASE}/ci-gitea/${version}/manifest.json"
+
+  # Publishes the npm package (Gitea is the preferred path; see FORK.md §8).
+  # Runs only after every build job succeeded and the S3 manifest verified, so a
+  # half-built release never reaches the registry — npm rejects a same-version
+  # republish, which would make the version permanently broken.
+  publish-npm:
+    name: publish npm
+    needs: [build, verify-artifacts]
+    runs-on: linux-host
+    env:
+      REQUESTED_TAG: ${{ inputs.tag_name }}
+      OSS_BASE: https://nuwa-packages.oss-rg-china-mainland.aliyuncs.com/nuwax-codex
+    steps:
+      - name: Resolve version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${REQUESTED_TAG:-${GITHUB_REF_NAME}}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a stable tag: $tag" >&2; exit 1; }
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          echo "VERSION=${tag#v}" >> "$GITHUB_ENV"
+
+      - name: Check out the tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          server="${CI_GITEA_BASE:-${GITHUB_SERVER_URL%/}}"
+          host="${server#http://}"; host="${host#https://}"
+          auth=""; [ -n "${GH_TOKEN:-}" ] && auth="oauth2:${GH_TOKEN}@"
+          rm -rf ./* ./.git 2>/dev/null || true
+          if git clone --depth 1 --branch "${TAG}" "http://${auth}${host}/${GITHUB_REPOSITORY}.git" .; then
+            echo "checked out ${TAG} with git"
+          else
+            curl -fsSL -H "Authorization: token ${GH_TOKEN}" \
+              "${server}/api/v1/repos/${GITHUB_REPOSITORY}/archive/${TAG}.tar.gz" \
+              | tar -xz --strip-components=1
+            echo "checked out ${TAG} from the API archive"
+          fi
+
+      # Every asset must already be downloadable: publishing first creates a
+      # window where installs 404, and a failed upload afterwards cannot be fixed
+      # by re-running (npm refuses a second publish of the same version).
+      - name: Verify the archives on the CDN
+        shell: bash
+        run: |
+          set -euo pipefail
+          targets=(aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu \
+                   x86_64-unknown-linux-musl aarch64-unknown-linux-musl \
+                   x86_64-pc-windows-msvc)
+          found=0
+          for t in "${targets[@]}"; do
+            ext=tar.gz; case "$t" in *windows*) ext=zip ;; esac
+            url="${OSS_BASE}/${TAG}/nuwax-codex-${VERSION}-${t}.${ext}"
+            code="$(curl -s -o /dev/null -w '%{http_code}' -I --max-time 60 "$url" || echo 000)"
+            echo "$t -> HTTP $code"
+            [ "$code" = "200" ] && found=$((found + 1))
+          done
+          echo "assets reachable: ${found}/${#targets[@]}"
+          [ "$found" -eq "${#targets[@]}" ] || {
+            echo "refusing to publish: expected ${#targets[@]} platform archives under ${OSS_BASE}/${TAG}" >&2
+            exit 1
+          }
+          # aarch64-pc-windows-msvc is not built here (no VS ARM64 toolset on
+          # windows-host); GitHub still builds it. Publish anyway only when an
+          # operator pre-seeded that asset, and say so loudly either way.
+          armwin="${OSS_BASE}/${TAG}/nuwax-codex-${VERSION}-aarch64-pc-windows-msvc.zip"
+          armwin_code="$(curl -s -o /dev/null -w '%{http_code}' -I --max-time 60 "$armwin" || echo 000)"
+          if [ "$armwin_code" = "200" ]; then
+            echo "aarch64-pc-windows-msvc -> HTTP 200"
+          else
+            echo "WARNING: aarch64-pc-windows-msvc is missing (HTTP ${armwin_code});" >&2
+            echo "         Windows-on-ARM installs will fail until it is uploaded." >&2
+          fi
+
+      - name: Publish to npm (latest)
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -n "${NODE_AUTH_TOKEN:-}" ] || { echo "NPM_TOKEN secret is not configured" >&2; exit 1; }
+          command -v node >/dev/null || { echo "node is required on this runner" >&2; exit 1; }
+          bash npm/publish/update-base-package.sh "${VERSION}"
+          printf '//registry.npmjs.org/:_authToken=%s\n' "${NODE_AUTH_TOKEN}" > "${HOME}/.npmrc"
+          cd npm
+          npm publish --access public --registry=https://registry.npmjs.org
