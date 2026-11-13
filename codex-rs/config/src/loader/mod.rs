@@ -1892,6 +1892,32 @@ async fn load_project_layers(
     })
 }
 
+/// Fork (nuwax-codex): project-level config lives in `.nuwax-harness/` when
+/// present, falling back to upstream's `.codex/` for compatibility. Both keep
+/// the same on-disk shape (`config.toml` plus hooks/plugins subfolders).
+const PROJECT_CONFIG_DIR_NAME_NUWAX: &str = ".nuwax-harness";
+const PROJECT_CONFIG_DIR_NAME_COMPAT: &str = ".codex";
+
+/// Returns the first project config directory under `dir` that exists:
+/// `.nuwax-harness` wins over the `.codex` compatibility path.
+async fn project_config_dir(
+    fs: &dyn ExecutorFileSystem,
+    dir: &AbsolutePathBuf,
+) -> Option<AbsolutePathBuf> {
+    for name in [PROJECT_CONFIG_DIR_NAME_NUWAX, PROJECT_CONFIG_DIR_NAME_COMPAT] {
+        let candidate = dir.join(name);
+        let exists = fs
+            .get_metadata(&PathUri::from_abs_path(&candidate), Default::default(), /*sandbox*/ None)
+            .await
+            .map(|metadata| metadata.is_directory)
+            .unwrap_or(false);
+        if exists {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 async fn discover_project_layers(
     fs: &dyn ExecutorFileSystem,
     cwd: &AbsolutePathBuf,
@@ -1921,20 +1947,36 @@ async fn discover_project_layers(
     let mut layers = Vec::new();
     let mut startup_warnings = Vec::new();
     for dir in dirs {
-        let dot_codex_abs = dir.join(".codex");
-        let dot_codex_uri = PathUri::from_abs_path(&dot_codex_abs);
-        if !fs
-            .get_metadata(&dot_codex_uri, Default::default(), /*sandbox*/ None)
-            .await
-            .map(|metadata| metadata.is_directory)
-            .unwrap_or(false)
-        {
+        // Fork (nuwax-codex): `.nuwax-harness/` is preferred; `.codex/` remains
+        // the compatibility path for existing checkouts.
+        let Some(dot_codex_abs) = project_config_dir(fs, &dir).await else {
             continue;
-        }
+        };
 
         let decision = trust_context.decision_for_dir(&dir);
         let disabled_reason = trust_context.disabled_reason_for_decision(&decision);
-        let hooks_config_folder_override = trust_context.root_checkout_hooks_folder_for_dir(&dir);
+        let mut hooks_config_folder_override =
+            trust_context.root_checkout_hooks_folder_for_dir(&dir);
+        if let Some(folder) = hooks_config_folder_override.as_ref() {
+            // Mirror the same preference for the linked-worktree hooks folder:
+            // point at the checkout root's `.nuwax-harness` only when it
+            // exists, keeping the `.codex` fallback otherwise.
+            if let Some(parent) = folder.parent() {
+                let nuwax_hooks = parent.join(PROJECT_CONFIG_DIR_NAME_NUWAX);
+                let nuwax_exists = fs
+                    .get_metadata(
+                        &PathUri::from_abs_path(&nuwax_hooks),
+                        Default::default(),
+                        /*sandbox*/ None,
+                    )
+                    .await
+                    .map(|metadata| metadata.is_directory)
+                    .unwrap_or(false);
+                if nuwax_exists {
+                    hooks_config_folder_override = Some(nuwax_hooks);
+                }
+            }
+        }
         let dot_codex_normalized =
             normalize_path(dot_codex_abs.as_path()).unwrap_or_else(|_| dot_codex_abs.to_path_buf());
         if dot_codex_abs == codex_home_abs || dot_codex_normalized == codex_home_normalized {

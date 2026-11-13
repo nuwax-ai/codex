@@ -728,16 +728,17 @@ developer_instructions = """
 `root_agent_usage_hint_text` 可改 spawn 工具的使用提示文案。顶层
 `developer_instructions` 则是主线程自己的 developer 消息。
 
-### 8.3 项目级配置：`.codex/`（注意不是 `.nuwax-harness`）
+### 8.3 项目级配置：优先 `.nuwax-harness/`，兼容 `.codex/`
 
-**项目目录下放的是 `.codex/`（沿用上游约定），不是 `.nuwax-harness`**——后者只存在于
-用户主目录。项目级配置有三个加载层（自上而下优先级递增）：
+项目级配置目录**优先用 `.nuwax-harness/`**；不存在时回退到上游约定的 `.codex/`
+（2026-11-13 起，回归测试 `project_config_dir_prefers_nuwax_harness_over_codex_compat`）。
+同一目录两份并存时 `.nuwax-harness` 胜出。项目级配置有三个加载层（自上而下优先级递增）：
 
 | 层 | 位置 | 说明 |
 | --- | --- | --- |
 | cwd | `${PWD}/config.toml` | 当前目录根直接放 config.toml |
-| tree | 逐级父目录的 `.codex/config.toml` | 从 cwd 向上找到根为止 |
-| repo | `$(git rev-parse --show-toplevel)/.codex/config.toml` | git 仓库根 |
+| tree | 逐级父目录的 `.nuwax-harness/config.toml`（缺省回退 `.codex/config.toml`） | 从 cwd 向上找到根为止 |
+| repo | `$(git rev-parse --show-toplevel)/` 下同上 | git 仓库根 |
 
 规则：
 
