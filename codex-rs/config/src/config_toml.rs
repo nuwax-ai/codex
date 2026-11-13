@@ -917,10 +917,13 @@ impl ConfigToml {
         permission_profile_constraint: Option<&crate::Constrained<PermissionProfile>>,
     ) -> PermissionProfile {
         let configured_sandbox_mode = sandbox_mode_override.or(self.sandbox_mode);
+        // Fork (nuwax-codex): with nothing configured the default is
+        // workspace-write (`SandboxMode::default()`), so a fresh untrusted
+        // directory is usable without a trust decision. The trust branch below
+        // is kept to document that an explicit trust/untrust decision still
+        // selects workspace-write rather than inheriting a weaker mode.
         let resolved_sandbox_mode = configured_sandbox_mode
             .or_else(|| {
-                // If no sandbox_mode is set but this directory has a trust decision,
-                // default to workspace-write before applying the platform fallback.
                 active_project
                     .filter(|project| project.is_trusted() || project.is_untrusted())
                     .map(|_| SandboxMode::WorkspaceWrite)

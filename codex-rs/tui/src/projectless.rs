@@ -9,8 +9,21 @@ use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::PermissionProfileSnapshot;
+use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::GranularApprovalConfig;
+
+/// Fork (nuwax-codex): projectless defaults apply the workspace preset with
+/// outbound network access enabled, matching `sandbox_workspace_write`'s new
+/// serde default — see `default_workspace_write_network_access`.
+fn builtin_workspace_profile() -> PermissionProfile {
+    PermissionProfile::workspace_write_with(
+        /*writable_roots*/ &[],
+        NetworkSandboxPolicy::Enabled,
+        /*exclude_tmpdir_env_var*/ false,
+        /*exclude_slash_tmp*/ false,
+    )
+}
 
 #[derive(Default)]
 pub(crate) struct AppliedDefaults {
@@ -64,7 +77,7 @@ pub(crate) fn apply_defaults(
             .is_some()
         || !config.is_permission_profile_allowed(
             BUILT_IN_PERMISSION_PROFILE_WORKSPACE,
-            &PermissionProfile::workspace_write(),
+            &builtin_workspace_profile(),
         )
     {
         return AppliedDefaults::default();
@@ -92,7 +105,7 @@ pub(crate) fn apply_defaults(
     }
     if config
         .permissions
-        .set_permission_profile(PermissionProfile::workspace_write())
+        .set_permission_profile(builtin_workspace_profile())
         .is_err()
     {
         return applied;

@@ -809,6 +809,10 @@ impl Session {
                 config.legacy_sandbox_policy(),
                 SandboxPolicy::DangerFullAccess
             ) {
+                // Deliberate demotion with the *restricted* workspace profile:
+                // an untrusted guardian reviewer must not inherit outbound
+                // network from either danger-full-access or the fork's
+                // workspace-write network default.
                 let permission_profile = PermissionProfile::workspace_write();
                 config
                     .permissions

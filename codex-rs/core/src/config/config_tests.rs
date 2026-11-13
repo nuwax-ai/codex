@@ -218,6 +218,43 @@ async fn derive_legacy_sandbox_policy_for_test(
         })
 }
 
+/// Fork (nuwax-codex): a directory with no trust decision and no sandbox
+/// config must load as workspace-write **with network enabled**, so `curl` and
+/// package installs work out of the box. `read-only` remains opt-in.
+#[tokio::test]
+async fn default_permission_profile_is_workspace_write_with_network() -> std::io::Result<()> {
+    let codex_home = tempdir()?;
+    let cwd = tempdir()?;
+    let config = Config::load_from_base_config_with_overrides(
+        ConfigToml::default(),
+        ConfigOverrides {
+            cwd: Some(cwd.path().to_path_buf()),
+            ..Default::default()
+        },
+        codex_home.abs(),
+    )
+    .await?;
+
+    let profile = config.permissions.effective_permission_profile();
+    assert_eq!(
+        profile.network_sandbox_policy(),
+        NetworkSandboxPolicy::Enabled,
+        "default profile must allow outbound network"
+    );
+    assert!(
+        matches!(
+            config.legacy_sandbox_policy(),
+            SandboxPolicy::WorkspaceWrite {
+                network_access: true,
+                ..
+            }
+        ),
+        "default policy must be workspace-write with network, got: {:?}",
+        config.legacy_sandbox_policy()
+    );
+    Ok(())
+}
+
 #[tokio::test]
 async fn load_config_normalizes_relative_cwd_override() -> std::io::Result<()> {
     let expected_cwd = AbsolutePathBuf::relative_to_current_dir("nested")?;

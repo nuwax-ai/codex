@@ -103,10 +103,17 @@ pub enum Verbosity {
 #[strum(serialize_all = "kebab-case")]
 pub enum SandboxMode {
     #[serde(rename = "read-only")]
-    #[default]
     ReadOnly,
 
+    /// Fork (nuwax-codex): the default sandbox mode. Upstream defaults to
+    /// `read-only`, which in a fresh directory means the model can neither
+    /// edit the project nor run `curl` until a trust decision or an explicit
+    /// mode is chosen. The fork's local CLI/client deployments treat
+    /// "work in this directory" as the baseline, so an unconfigured,
+    /// untrusted directory gets the same write scope and outbound network as
+    /// a trusted one. `read-only` remains available by asking for it.
     #[serde(rename = "workspace-write")]
+    #[default]
     WorkspaceWrite,
 
     #[serde(rename = "danger-full-access")]

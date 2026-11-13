@@ -532,6 +532,20 @@ v2 的 `SandboxWorkspaceWrite` 与 `SandboxPolicy`（线格式默认值同步，
 时会重新收紧），以及随之重生成的 `core/config.schema.json` 与
 `app-server-protocol/schema/**`。
 
+**未做信任决定的目录也默认 workspace-write（2026-11-13）**：`SandboxMode` 的
+`#[default]` 从 `read-only` 改为 `workspace-write`，`default_builtin_permission_profile_name`
+对"没有信任决策的目录"同样返回 `:workspace`。上游语义是"新目录先只读，等用户做出
+信任决定"，实际效果是本地客户端/CLI 在任意非信任目录里既不能改文件也跑不了 `curl`。
+写盘边界仍然只到工作区与显式 `writable_roots`；`read-only` 与
+`danger-full-access` 都还能显式选中。UI 侧同步：`approval-presets` 的
+"Default/workspace" 预设、TUI 无项目目录默认值、debug_config 的权限探测、cyber
+模型设置页都改用带 `NetworkSandboxPolicy::Enabled` 的 workspace 构造器（否则从 UI
+选一次就又把网络收回去）。**唯一保留受限的路径**是 session 的 guardian 降级
+（审查者不受信任时从 `danger-full-access` 降到 workspace-write 且禁网），属安全
+降级，不可继承网络默认。注意 `nuwax-harness sandbox`（调试子命令）仍刻意强制
+read-only，它用来验证沙箱本体，不代表产品默认。回归测试：
+`config::tests::default_permission_profile_is_workspace_write_with_network`。
+
 **超大截图先缩小再丢弃（2026-11-10）**：工具输出的图片入口界（单张 16 MiB
 编码后、合计 24 MiB、`detail: Original` 按 16×16 patch 计费至 10000 token）此前
 是**纯丢弃**——一张 12 MB 的 Retina 全页截图（base64 16.35 MB）会整张变成一行

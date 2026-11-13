@@ -99,7 +99,12 @@ fn sandbox_mode_is_allowed_by_permissions(
 ) -> bool {
     let permission_profile = match mode {
         SandboxModeRequirement::ReadOnly => PermissionProfile::read_only(),
-        SandboxModeRequirement::WorkspaceWrite => PermissionProfile::workspace_write(),
+        SandboxModeRequirement::WorkspaceWrite => PermissionProfile::workspace_write_with(
+            /*writable_roots*/ &[],
+            NetworkSandboxPolicy::Enabled,
+            /*exclude_tmpdir_env_var*/ false,
+            /*exclude_slash_tmp*/ false,
+        ),
         SandboxModeRequirement::DangerFullAccess => PermissionProfile::Disabled,
         SandboxModeRequirement::ExternalSandbox => PermissionProfile::External {
             network: NetworkSandboxPolicy::Restricted,

@@ -73,12 +73,16 @@ pub(crate) fn default_builtin_permission_profile_name(
     active_project: &ProjectConfig,
     windows_sandbox_level: WindowsSandboxLevel,
 ) -> &'static str {
-    if (active_project.is_trusted() || active_project.is_untrusted())
-        && !(cfg!(target_os = "windows") && windows_sandbox_level == WindowsSandboxLevel::Disabled)
-    {
-        BUILT_IN_WORKSPACE_PROFILE
-    } else {
+    // Fork (nuwax-codex): an undecided directory defaults to the workspace
+    // profile too. Upstream falls back to read-only until the user makes a
+    // trust decision, which in practice means a fresh directory can be neither
+    // edited nor have `curl` run until a mode is chosen explicitly.
+    // `read-only` stays selectable by asking for it.
+    let _ = active_project;
+    if cfg!(target_os = "windows") && windows_sandbox_level == WindowsSandboxLevel::Disabled {
         BUILT_IN_READ_ONLY_PROFILE
+    } else {
+        BUILT_IN_WORKSPACE_PROFILE
     }
 }
 
@@ -113,7 +117,14 @@ fn builtin_permission_profile(
                 *exclude_tmpdir_env_var,
                 *exclude_slash_tmp,
             ),
-            None => PermissionProfile::workspace_write(),
+            // Fork (nuwax-codex): no `[sandbox_workspace_write]` table means the
+            // workspace profile's own default — outbound network enabled.
+            None => PermissionProfile::workspace_write_with(
+                &[],
+                NetworkSandboxPolicy::Enabled,
+                /*exclude_tmpdir_env_var*/ false,
+                /*exclude_slash_tmp*/ false,
+            ),
         }),
         BUILT_IN_DANGER_FULL_ACCESS_PROFILE => Some(PermissionProfile::Disabled),
         _ => None,

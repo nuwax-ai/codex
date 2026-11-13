@@ -17,6 +17,7 @@ use codex_protocol::config_types::ModeKind;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::openai_models::MODEL_SPECIALTY_CYBER;
+use codex_protocol::permissions::NetworkSandboxPolicy;
 
 impl App {
     pub(super) async fn sync_active_thread_model_setting(
@@ -92,7 +93,16 @@ impl App {
         };
 
         if is_cyber_model {
-            let workspace_profile = PermissionProfile::workspace_write();
+            // Probe with the profile that `":workspace"` actually applies
+            // (fork: outbound network enabled) so a requirements policy that
+            // allows workspace-write only with network enabled is not
+            // wrongly rejected here.
+            let workspace_profile = PermissionProfile::workspace_write_with(
+                /*writable_roots*/ &[],
+                NetworkSandboxPolicy::Enabled,
+                /*exclude_tmpdir_env_var*/ false,
+                /*exclude_slash_tmp*/ false,
+            );
             let workspace_allowed = self
                 .config
                 .permissions

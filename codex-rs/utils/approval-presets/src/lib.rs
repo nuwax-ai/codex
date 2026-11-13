@@ -3,7 +3,21 @@ use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_READ_ONLY;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
 use codex_protocol::models::PermissionProfile;
+use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AskForApproval;
+
+/// Fork (nuwax-codex): the built-in workspace preset matches the engine's
+/// workspace-write default — outbound network access enabled, write scope
+/// unchanged. Selecting "workspace" in any UI must not silently re-restrict
+/// network after `sandbox_workspace_write.network_access` defaulted to `true`.
+fn builtin_workspace_profile() -> PermissionProfile {
+    PermissionProfile::workspace_write_with(
+        /*writable_roots*/ &[],
+        NetworkSandboxPolicy::Enabled,
+        /*exclude_tmpdir_env_var*/ false,
+        /*exclude_slash_tmp*/ false,
+    )
+}
 
 /// A simple preset pairing an approval policy with a permission profile.
 #[derive(Debug, Clone)]
@@ -45,7 +59,7 @@ pub fn builtin_approval_presets() -> Vec<ApprovalPreset> {
             active_permission_profile: ActivePermissionProfile::new(
                 BUILT_IN_PERMISSION_PROFILE_WORKSPACE,
             ),
-            permission_profile: PermissionProfile::workspace_write(),
+            permission_profile: builtin_workspace_profile(),
         },
         ApprovalPreset {
             id: "ask",
@@ -80,7 +94,7 @@ pub fn builtin_permission_profile_for_active_permission_profile(
 
     match active_permission_profile.id.as_str() {
         BUILT_IN_PERMISSION_PROFILE_READ_ONLY => Some(PermissionProfile::read_only()),
-        BUILT_IN_PERMISSION_PROFILE_WORKSPACE => Some(PermissionProfile::workspace_write()),
+        BUILT_IN_PERMISSION_PROFILE_WORKSPACE => Some(builtin_workspace_profile()),
         BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS => Some(PermissionProfile::Disabled),
         _ => None,
     }
