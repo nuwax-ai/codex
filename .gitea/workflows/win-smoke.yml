@@ -1,0 +1,13 @@
+name: Windows Smoke
+on:
+  push:
+    branches: ["**"]
+jobs:
+  win-smoke:
+    runs-on: windows-host
+    steps:
+      - name: Probe bash
+        shell: bash
+        run: |
+          echo "bash OK on $(uname -s)"
+          which bash
