@@ -185,6 +185,14 @@ jobs:
             case "$(uname -s)" in
               Linux) mem_gb=$(awk '/MemTotal/ {printf "%d", $2/1048576}' /proc/meminfo) ;;
               Darwin) mem_gb=$(( $(sysctl -n hw.memsize) / 1073741824 )) ;;
+              MINGW*|MSYS*|CYGWIN*)
+                # Git Bash on windows-host: ask the OS instead of guessing.
+                # Four concurrent codex rustc runs (~10 GB each) hard-hung the
+                # 34 GB box on 2026-11-13, so this number must be real.
+                mem_gb=$(powershell -NoProfile -Command \
+                  "[int][math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)" 2>/dev/null)
+                case "$mem_gb" in ''|*[!0-9]*) mem_gb=16 ;; esac
+                ;;
               *) mem_gb=16 ;;
             esac
             jobs=$(( mem_gb / 30 ))
