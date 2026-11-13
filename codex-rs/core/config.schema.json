@@ -4780,7 +4780,8 @@
           "type": "boolean"
         },
         "network_access": {
-          "default": false,
+          "default": true,
+          "description": "Fork (nuwax-codex): missing key deserializes to `true` — workspace-write sessions default to outbound network access, matching the legacy `SandboxPolicy::WorkspaceWrite` serde default in `codex_protocol`. An explicit `false` in any config layer still restricts.",
           "type": "boolean"
         },
         "writable_roots": {

@@ -297,6 +297,9 @@ allowed_sandbox_modes = ["read-only"]
         (config, requirements)
     });
 
+    // Fork (nuwax-codex): `[sandbox_workspace_write]` without a
+    // `network_access` key deserializes to `true` — workspace-write sessions
+    // default to outbound network access; an explicit `false` would restrict.
     assert_eq!(
         config.sandbox_workspace_write,
         Some(SandboxWorkspaceWrite {
@@ -308,7 +311,9 @@ allowed_sandbox_modes = ["read-only"]
                 )
                 .expect("absolute relative root"),
             ],
-            ..Default::default()
+            network_access: true,
+            exclude_tmpdir_env_var: false,
+            exclude_slash_tmp: false,
         })
     );
     assert_eq!(

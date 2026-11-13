@@ -953,7 +953,20 @@ impl ConfigToml {
                         *exclude_slash_tmp,
                     )
                 }
-                None => PermissionProfile::workspace_write(),
+                None => {
+                    // Fork (nuwax-codex): an absent `[sandbox_workspace_write]`
+                    // table means workspace-write with outbound network access,
+                    // matching the serde default on the table's
+                    // `network_access` key. Set `[sandbox_workspace_write]
+                    // network_access = false` to restore upstream's
+                    // restricted-by-default behavior.
+                    PermissionProfile::workspace_write_with(
+                        /*writable_roots*/ &[],
+                        NetworkSandboxPolicy::Enabled,
+                        /*exclude_tmpdir_env_var*/ false,
+                        /*exclude_slash_tmp*/ false,
+                    )
+                }
             },
             SandboxMode::DangerFullAccess => PermissionProfile::Disabled,
         };

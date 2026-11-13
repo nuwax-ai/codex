@@ -4483,7 +4483,13 @@ class WorkspaceWriteSandboxPolicy(BaseModel):
     )
     exclude_slash_tmp: Annotated[bool | None, Field(alias="excludeSlashTmp")] = False
     exclude_tmpdir_env_var: Annotated[bool | None, Field(alias="excludeTmpdirEnvVar")] = False
-    network_access: Annotated[bool | None, Field(alias="networkAccess")] = False
+    network_access: Annotated[
+        bool | None,
+        Field(
+            alias="networkAccess",
+            description="Fork (nuwax-codex): missing key defaults to `true`; an explicit `false` still restricts. Matches `codex_protocol::SandboxPolicy`.",
+        ),
+    ] = True
     type: Annotated[Literal["workspaceWrite"], Field(title="WorkspaceWriteSandboxPolicyType")]
     writable_roots: Annotated[
         list[AbsolutePathBuf] | None, Field(alias="writableRoots", validate_default=True)
@@ -4512,7 +4518,12 @@ class SandboxWorkspaceWrite(BaseModel):
     )
     exclude_slash_tmp: bool | None = False
     exclude_tmpdir_env_var: bool | None = False
-    network_access: bool | None = False
+    network_access: Annotated[
+        bool | None,
+        Field(
+            description="Fork (nuwax-codex): missing key defaults to `true`; an explicit `false` still restricts. Matches the config-side `SandboxWorkspaceWrite`."
+        ),
+    ] = True
     writable_roots: list[str] | None = []
 
 

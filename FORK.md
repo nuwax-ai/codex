@@ -504,6 +504,18 @@ reviewer——**一次模型调用**——由它代替用户批准。nuwax-clien
 审查者从模型换成用户）；`agent` 仍可在 mode 列表里显式选。引擎侧
 `approvals_reviewer` 配置默认仍是 `user`，TUI 一向如此、不受影响。
 
+**workspace-write 默认放行出站网络（2026-11-13）**：上游 `SandboxPolicy::WorkspaceWrite`
+的 `network_access` 缺省 `false`，在本地 CLI/客户端部署里等于每次 `curl`、包安装都要
+走一轮审批。fork 把**缺省值**改成 `true`，`config.toml` 里不写
+`[sandbox_workspace_write]` 表时也按放行构造 `PermissionProfile`；写盘边界不变（仍只
+允许工作区与显式 `writable_roots`）。收紧仍是一行配置：
+`[sandbox_workspace_write] network_access = false`，客户端显式发 `false` 同样生效；
+`read-only` / `danger-full-access` 不受影响。落点：`protocol/src/protocol.rs`（serde
+default）、`config/src/types.rs`、`config/src/config_toml.rs`（无表路径）、app-server
+v2 的 `SandboxWorkspaceWrite` 与 `SandboxPolicy`（线格式默认值同步，否则客户端省略字段
+时会重新收紧），以及随之重生成的 `core/config.schema.json` 与
+`app-server-protocol/schema/**`。
+
 **超大截图先缩小再丢弃（2026-11-10）**：工具输出的图片入口界（单张 16 MiB
 编码后、合计 24 MiB、`detail: Original` 按 16×16 patch 计费至 10000 token）此前
 是**纯丢弃**——一张 12 MB 的 Retina 全页截图（base64 16.35 MB）会整张变成一行

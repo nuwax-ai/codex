@@ -21200,7 +21200,8 @@
                 "type": "boolean"
               },
               "networkAccess": {
-                "default": false,
+                "default": true,
+                "description": "Fork (nuwax-codex): missing key defaults to `true`; an explicit `false` still restricts. Matches `codex_protocol::SandboxPolicy`.",
                 "type": "boolean"
               },
               "type": {
@@ -21237,7 +21238,8 @@
             "type": "boolean"
           },
           "network_access": {
-            "default": false,
+            "default": true,
+            "description": "Fork (nuwax-codex): missing key defaults to `true`; an explicit `false` still restricts. Matches the config-side `SandboxWorkspaceWrite`.",
             "type": "boolean"
           },
           "writable_roots": {

@@ -1265,12 +1265,20 @@ pub enum MarketplaceSourceType {
 pub struct SandboxWorkspaceWrite {
     #[serde(default)]
     pub writable_roots: Vec<AbsolutePathBuf>,
-    #[serde(default)]
+    /// Fork (nuwax-codex): missing key deserializes to `true` — workspace-write
+    /// sessions default to outbound network access, matching the legacy
+    /// `SandboxPolicy::WorkspaceWrite` serde default in `codex_protocol`. An
+    /// explicit `false` in any config layer still restricts.
+    #[serde(default = "default_workspace_write_network_access")]
     pub network_access: bool,
     #[serde(default)]
     pub exclude_tmpdir_env_var: bool,
     #[serde(default)]
     pub exclude_slash_tmp: bool,
+}
+
+fn default_workspace_write_network_access() -> bool {
+    true
 }
 
 #[cfg(test)]

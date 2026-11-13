@@ -148,12 +148,20 @@ impl PartialOrd for ConfigLayerSource {
 pub struct SandboxWorkspaceWrite {
     #[serde(default)]
     pub writable_roots: Vec<PathBuf>,
-    #[serde(default)]
+    /// Fork (nuwax-codex): missing key defaults to `true`; an explicit `false`
+    /// still restricts. Matches the config-side `SandboxWorkspaceWrite`.
+    #[serde(default = "default_workspace_write_network_access")]
     pub network_access: bool,
     #[serde(default)]
     pub exclude_tmpdir_env_var: bool,
     #[serde(default)]
     pub exclude_slash_tmp: bool,
+}
+
+/// Fork (nuwax-codex): workspace-write sessions default to outbound network
+/// access; see `codex_protocol::protocol::default_workspace_write_network_access`.
+fn default_workspace_write_network_access() -> bool {
+    true
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

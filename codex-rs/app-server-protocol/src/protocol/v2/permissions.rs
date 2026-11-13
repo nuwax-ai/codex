@@ -557,13 +557,21 @@ pub enum SandboxPolicy {
     WorkspaceWrite {
         #[serde(default)]
         writable_roots: Vec<AbsolutePathBuf>,
-        #[serde(default)]
+        /// Fork (nuwax-codex): missing key defaults to `true`; an explicit
+        /// `false` still restricts. Matches `codex_protocol::SandboxPolicy`.
+        #[serde(default = "default_workspace_write_network_access")]
         network_access: bool,
         #[serde(default)]
         exclude_tmpdir_env_var: bool,
         #[serde(default)]
         exclude_slash_tmp: bool,
     },
+}
+
+/// Fork (nuwax-codex): workspace-write sessions default to outbound network
+/// access; see `codex_protocol::protocol::default_workspace_write_network_access`.
+fn default_workspace_write_network_access() -> bool {
+    true
 }
 
 #[derive(Deserialize)]
@@ -588,7 +596,9 @@ enum SandboxPolicyDeserialize {
         writable_roots: Vec<AbsolutePathBuf>,
         #[serde(default)]
         read_only_access: Option<LegacyReadOnlyAccess>,
-        #[serde(default)]
+        /// Fork (nuwax-codex): missing key defaults to `true`, matching the
+        /// public `SandboxPolicy` above.
+        #[serde(default = "default_workspace_write_network_access")]
         network_access: bool,
         #[serde(default)]
         exclude_tmpdir_env_var: bool,

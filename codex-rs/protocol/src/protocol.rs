@@ -1242,6 +1242,15 @@ impl NetworkAccess {
     }
 }
 
+/// Fork (nuwax-codex): workspace-write sessions default to outbound network
+/// access. Upstream defaults this knob to `false` and expects operators (or
+/// the client) to opt in; the fork's local CLI/client deployments treat
+/// `curl`-style egress as baseline capability, so a missing key means
+/// enabled. An explicit `false` in any config layer still restricts.
+fn default_workspace_write_network_access() -> bool {
+    true
+}
+
 /// Determines execution restrictions for model shell commands.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Display, JsonSchema, TS)]
 #[strum(serialize_all = "kebab-case")]
@@ -1278,9 +1287,13 @@ pub enum SandboxPolicy {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         writable_roots: Vec<AbsolutePathBuf>,
 
-        /// When set to `true`, outbound network access is allowed. `false` by
-        /// default.
-        #[serde(default)]
+        /// When set to `true`, outbound network access is allowed.
+        ///
+        /// Fork (nuwax-codex): missing key defaults to `true` — the workspace
+        /// sandbox exists to bound writes, and local CLI/client usage expects
+        /// `curl`/package installs to work without per-command approval.
+        /// Set `false` explicitly to restore upstream's restricted default.
+        #[serde(default = "default_workspace_write_network_access")]
         network_access: bool,
 
         /// When set to `true`, will NOT include the per-user `TMPDIR`
