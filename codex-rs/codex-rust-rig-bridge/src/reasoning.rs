@@ -109,6 +109,11 @@ fn convert_legacy_reasoning(block: LegacyReasoning) -> Vec<Reasoning> {
                 reasoning.native = Some(Native {
                     item,
                     fingerprint: AssistantContent::Reasoning(reasoning.clone()).fingerprint(),
+    // rig 0.46: legacy/native records carry no float baseline, no edit
+                    // marker, and no reasoning blob slot.
+                    baseline: None,
+                    edited: false,
+                    blob_slot: None,
                 });
             }
             reasoning
@@ -130,6 +135,11 @@ fn legacy_replay_blocks(
                 reasoning.native = Some(Native {
                     item: serde_json::json!({"type":"thinking","thinking":reasoning.text}),
                     fingerprint: AssistantContent::Reasoning(reasoning.clone()).fingerprint(),
+                    // rig 0.46: synthesized thinking carries no float baseline,
+                    // no edit marker, and no blob slot.
+                    baseline: None,
+                    edited: false,
+                    blob_slot: None,
                 });
             }
             reasoning

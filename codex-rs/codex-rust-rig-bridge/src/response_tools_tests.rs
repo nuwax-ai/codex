@@ -116,6 +116,10 @@ fn invalid_arguments_with_a_native_item_stay_a_tool_shape_error_not_a_cut() {
         fingerprint: rig_core::completion::message::Fingerprint::of(&serde_json::json!(
             {"type": "function_call", "call_id": "call_cut"}
         )),
+        // rig 0.46: no float baseline, no edit marker, no blob slot.
+        baseline: None,
+        edited: false,
+        blob_slot: None,
     });
     // A provider that DELIVERED an item with unparseable arguments is a
     // tool-shape complaint, not a budget cut: it must raise immediately.

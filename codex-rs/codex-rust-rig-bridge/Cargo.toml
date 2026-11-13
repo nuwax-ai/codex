@@ -9,10 +9,10 @@ codex-model-provider-info = { path = "../model-provider-info" }
 codex-models-manager = { path = "../models-manager" }
 # Pinned exactly: rig's post-0.42 main carries frequent breaking changes; see
 # my-docs/rig-bridge-implementation-plan.md before upgrading.
-rig-core = { version = "=0.45", features = ["rustls"] }
+rig-core = { version = "=0.46", features = ["rustls"] }
 # The bundled reqwest 0.13 transport: wraps a configured reqwest client in
 # rig's HttpClientExt. Features unify with rig-core's (rustls TLS).
-rig-reqwest = { version = "=0.45", default-features = false, features = ["rustls"] }
+rig-reqwest = { version = "=0.46", default-features = false, features = ["rustls"] }
 codex-api = { workspace = true }
 codex-client = { workspace = true }
 codex-protocol = { workspace = true }
