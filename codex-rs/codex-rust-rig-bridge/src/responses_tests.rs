@@ -250,3 +250,128 @@ async fn idle_timeout_errors_instead_of_hanging() {
     );
     assert!(matches_timeout, "unexpected event: {event:?}");
 }
+
+#[cfg(test)]
+mod trailing_tool_result_shim_tests {
+    use codex_api::ResponsesApiRequest;
+    use codex_protocol::models::ContentItem;
+    use codex_protocol::models::FunctionCallOutputBody;
+    use codex_protocol::models::ImageReference;
+    use codex_protocol::models::ResponseItem;
+    use pretty_assertions::assert_eq;
+
+    fn base_request(input: Vec<ResponseItem>) -> ResponsesApiRequest {
+        ResponsesApiRequest {
+            model: "m".into(),
+            input,
+            tools: None,
+            tool_choice: "auto".into(),
+            parallel_tool_calls: true,
+            max_output_tokens: None,
+            reasoning: None,
+            store: false,
+            stream: true,
+            stream_options: None,
+            include: vec![],
+            service_tier: None,
+            prompt_cache_key: None,
+            text: None,
+            client_metadata: None,
+            access_programs: None,
+        }
+    }
+
+    fn user_text(text: &str) -> ResponseItem {
+        ResponseItem::Message {
+            id: None,
+            role: "user".into(),
+            content: vec![ContentItem::InputText {
+                text: text.to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
+        }
+    }
+
+    fn function_call() -> ResponseItem {
+        ResponseItem::FunctionCall {
+            id: None,
+            name: "view_image".into(),
+            namespace: None,
+            arguments: "{}".into(),
+            encrypted_function_args: None,
+            call_id: "c1".into(),
+            internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
+        }
+    }
+
+    fn function_call_output_with_image() -> ResponseItem {
+        ResponseItem::FunctionCallOutput {
+            id: None,
+            call_id: Some("c1".into()),
+            name: None,
+            namespace: None,
+            output: codex_protocol::models::FunctionCallOutputPayload {
+                body: FunctionCallOutputBody::ContentItems(vec![
+                    codex_protocol::models::FunctionCallOutputContentItem::InputImage {
+                        image: ImageReference::Inline {
+                            image_url: "data:image/png;base64,aGVsbG8=".into(),
+                        },
+                        detail: None,
+                    },
+                    codex_protocol::models::FunctionCallOutputContentItem::InputText {
+                        text: "screenshot".into(),
+                    },
+                ]),
+                success: Some(true),
+            },
+            internal_chat_message_metadata_passthrough: None,
+        }
+    }
+
+    fn shimmed_body(request: &ResponsesApiRequest) -> serde_json::Value {
+        let mut wire = request.clone();
+        crate::responses::project_cross_protocol_history(&mut wire.input);
+        crate::responses::append_trailing_tool_result_user_turn(&mut wire.input);
+        serde_json::to_value(&wire).expect("serialize")
+    }
+
+    /// Zhipu's `/v1/responses` rejects a conversation that ends with a
+    /// function_call_output; the passthrough appends a minimal user turn
+    /// there (my-docs/proxy-responses-image-bug-2026-11-13.md, 矩阵 Z3/Z10).
+    #[test]
+    fn trailing_function_call_output_gets_a_follow_up_user_turn() {
+        let request = base_request(vec![
+            user_text("看截图"),
+            function_call(),
+            function_call_output_with_image(),
+        ]);
+        let body = shimmed_body(&request);
+        let input = body["input"].as_array().expect("input array");
+        let last = input.last().expect("non-empty");
+        assert_eq!(last["role"], "user", "trailing fco must gain a user turn");
+        assert!(last["content"][0]["text"]
+            .as_str()
+            .expect("text part")
+            .contains("tool results above"));
+    }
+
+    /// A request that already ends with a user message is untouched.
+    #[test]
+    fn user_ending_request_is_not_augmented() {
+        let request = base_request(vec![
+            user_text("看截图"),
+            function_call(),
+            function_call_output_with_image(),
+            user_text("继续"),
+        ]);
+        let body = shimmed_body(&request);
+        let input = body["input"].as_array().expect("input array");
+        assert_eq!(input.len(), 4, "no extra turn expected");
+        assert_eq!(input.last().unwrap()["content"][0]["text"], "继续");
+    }
+}

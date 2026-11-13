@@ -199,6 +199,15 @@ async fn stream_responses_via_rig_inner(
     let mut wire_request = request.clone();
     wire_request.max_output_tokens = request.max_output_tokens.or(api_provider.max_output_tokens);
     let projected = project_cross_protocol_history(&mut wire_request.input);
+    // Fork (nuwax-codex, 2026-11-13): Zhipu's official `/v1/responses` rejects
+    // a conversation whose final input item is a `function_call_output` —
+    // `400 messages 参数非法。请检查文档。` — regardless of output shape, tools,
+    // or streaming. Standard OpenAI Responses semantics allow it, and every
+    // image-reading tool (view_image et al.) ends its turn with exactly that
+    // shape, so append a minimal user turn after a trailing tool result.
+    // Verified against open.bigmodel.cn/api/v1/responses and harmless on MiMo
+    // (my-docs/proxy-responses-image-bug-2026-11-13.md).
+    append_trailing_tool_result_user_turn(&mut wire_request.input);
 
     let model = request.model.clone();
     tracing::info!(
@@ -282,7 +291,32 @@ async fn stream_responses_via_rig_inner(
 /// passes through verbatim; cross-provider ciphertext may be rejected. The persisted rollout is never
 /// rewritten. Anthropic search wire blocks are also cleared from the copy;
 /// returns the number of projected items.
-fn project_cross_protocol_history(input: &mut [codex_protocol::models::ResponseItem]) -> usize {
+
+/// Fork (nuwax-codex, 2026-11-13): Zhipu's official `/v1/responses` rejects
+/// a conversation whose final input item is a `function_call_output` —
+/// `400 messages 参数非法。请检查文档。` — regardless of output shape, tools,
+/// or streaming. Standard OpenAI Responses semantics allow it, and every
+/// image-reading tool (view_image et al.) ends its turn with exactly that
+/// shape, so append a minimal user turn after a trailing tool result.
+/// Verified against open.bigmodel.cn/api/v1/responses and harmless on MiMo
+/// (my-docs/proxy-responses-image-bug-2026-11-13.md).
+pub(crate) fn append_trailing_tool_result_user_turn(input: &mut Vec<codex_protocol::models::ResponseItem>) {
+    if matches!(input.last(), Some(codex_protocol::models::ResponseItem::FunctionCallOutput { .. })) {
+        input.push(codex_protocol::models::ResponseItem::Message {
+            id: None,
+            role: "user".into(),
+            content: vec![codex_protocol::models::ContentItem::InputText {
+                text: "(The tool results above are complete. Continue based on them.)".into(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+            encrypted_content: None,
+            status: None,
+        });
+    }
+}
+
+pub(crate) fn project_cross_protocol_history(input: &mut [codex_protocol::models::ResponseItem]) -> usize {
     let mut projected = 0;
     for item in input {
         // This fork's persisted Anthropic payload is not a Responses field.
