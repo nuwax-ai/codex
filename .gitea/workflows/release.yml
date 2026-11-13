@@ -386,9 +386,20 @@ jobs:
           tool="$(command -v nuwax-upload || true)"
           if [ -z "${tool}" ]; then
             for candidate in "${CI_DATA_ROOT}/bin/nuwax-upload" \
+                             "${CI_DATA_ROOT}/bin/npm-global/bin/nuwax-upload" \
+                             "${CI_DATA_ROOT}/bin/npm-global/nuwax-upload.cmd" \
                              "$HOME/ci/bin/nuwax-upload" \
                              "$HOME/.npm-global/bin/nuwax-upload" \
                              "$HOME/AppData/Roaming/npm/nuwax-upload.cmd"; do
+              [ -x "${candidate}" ] && tool="${candidate}" && break
+            done
+          fi
+          if [ -z "${tool}" ] && command -v npm >/dev/null 2>&1; then
+            prefix="${CI_DATA_ROOT}/bin/npm-global"
+            mkdir -p "${prefix}"
+            npm install -g --prefix "${prefix}" nuwax-upload \
+              --registry=https://registry.npmmirror.com >/dev/null 2>&1 || true
+            for candidate in "${prefix}/bin/nuwax-upload" "${prefix}/nuwax-upload.cmd"; do
               [ -x "${candidate}" ] && tool="${candidate}" && break
             done
           fi
@@ -424,8 +435,27 @@ jobs:
           fi
           tool="$(command -v nuwax-ossutil || true)"
           if [ -z "${tool}" ]; then
-            npm install -g nuwax-ossutil --registry=https://registry.npmmirror.com >/dev/null 2>&1 || true
+            for candidate in "${CI_DATA_ROOT}/bin/npm-global/bin/nuwax-ossutil" \
+                             "${CI_DATA_ROOT}/bin/npm-global/nuwax-ossutil.cmd" \
+                             "$HOME/.npm-global/bin/nuwax-ossutil" \
+                             "$HOME/AppData/Roaming/npm/nuwax-ossutil.cmd"; do
+              [ -x "${candidate}" ] && tool="${candidate}" && break
+            done
+          fi
+          if [ -z "${tool}" ]; then
+            # Runners whose npm prefix is /usr/local cannot install globally
+            # without sudo, so bootstrap into a private prefix instead.
+            prefix="${CI_DATA_ROOT}/bin/npm-global"
+            mkdir -p "${prefix}"
+            npm install -g --prefix "${prefix}" nuwax-ossutil \
+              --registry=https://registry.npmmirror.com >/dev/null 2>&1 || true
             tool="$(command -v nuwax-ossutil || true)"
+            if [ -z "${tool}" ] && [ -x "${prefix}/bin/nuwax-ossutil" ]; then
+              tool="${prefix}/bin/nuwax-ossutil"
+            fi
+            if [ -z "${tool}" ] && [ -x "${prefix}/nuwax-ossutil.cmd" ]; then
+              tool="${prefix}/nuwax-ossutil.cmd"
+            fi
           fi
           [ -n "${tool}" ] || { echo "nuwax-ossutil is not installed on this runner" >&2; exit 1; }
           archive="$(ls "${ARTIFACTS_DIR}"/nuwax-codex-"${VERSION}"-"${{ matrix.target }}".* | head -1)"
