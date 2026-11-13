@@ -504,6 +504,22 @@ reviewer——**一次模型调用**——由它代替用户批准。nuwax-clien
 审查者从模型换成用户）；`agent` 仍可在 mode 列表里显式选。引擎侧
 `approvals_reviewer` 配置默认仍是 `user`，TUI 一向如此、不受影响。
 
+**压缩工具调用一定有终态（2026-11-13）**：ACP 用 item id 收尾工具调用，所以任何
+`ItemStarted` 都必须配一次 `ItemCompleted`。此前的两类漏口径：
+
+- **id 不同**：迁移压缩的 `finish_announcement` 另建了一个 item 去发完成，客户端因此
+  留下一个永远 in_progress 的 `Compact conversation`，旁边多一条没有 start 的
+  completed（`core/src/compact.rs` 的 `MigrationAnnouncement` 已修）。
+- **缺完成**：主压缩路径的取消/超限/重试耗尽、`compact_remote_v2` 与 installation 的
+  `Err` 早退都只发过 start。现在 `run_compact_task_inner_impl` 由外层 wrapper 统一补
+  completed，`remote_v2`/installation 在 `Err` 前补。
+
+适配器侧（`fork-codex-acp-ts` 1.2.36 起）对 ACP v1 客户端补了兜底：登记已 announce 的
+压缩 id，完成事件 id 对不上时按 announce 的 id 收尾；turn 结束时仍未终结的压缩补终态
+（interrupted→failed+取消文案）。终态带英文结果文本：`Context compaction completed.` /
+`Context compaction failed.` / `Context compaction cancelled.`（ACP 没有 cancelled 状态，
+取消也发 failed，用文案区分）。
+
 **workspace-write 默认放行出站网络（2026-11-13）**：上游 `SandboxPolicy::WorkspaceWrite`
 的 `network_access` 缺省 `false`，在本地 CLI/客户端部署里等于每次 `curl`、包安装都要
 走一轮审批。fork 把**缺省值**改成 `true`，`config.toml` 里不写
