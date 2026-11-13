@@ -29,6 +29,13 @@ on:
         description: "Tag to build (e.g. v0.18.29); defaults to the pushed tag"
         required: false
 
+# libgit2 (cargo's default git transport) cannot update the v8 git dependency on
+# this network and overflows Windows' MAX_PATH; the git CLI can (with
+# core.longpaths + LongPathsEnabled, see gitea-ops/bootstrap/windows-runner.md).
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
 jobs:
   build:
     name: build ${{ matrix.target }}
