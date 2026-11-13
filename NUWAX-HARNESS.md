@@ -446,8 +446,9 @@ Chat 由桥自己校验)，但对你是同一件事：**配了档位表，选了
 ### GLM-5.3-Flash 的推荐配置
 
 引擎在 Default 模式**并不发送 effort**：网关模型对内置模型目录是陌生 slug，
-`default_reasoning_level` 为 `None`（[model_info.rs:170](codex-rs/models-manager/src/model_info.rs:170)），
-effort 整个字段都不上線，档位由网关自己定。真正固定发 `medium` 的是 **TUI 的 Plan
+`default_reasoning_level` 为 `None`（`models-manager/src/model_info.rs#L234`：未知 slug 的
+fallback `ModelInfo` 里 `default_reasoning_level: None`），effort 整个字段都不上线，
+档位由网关自己定。真正固定发 `medium` 的是 **TUI 的 Plan
 模式预设**（`collaboration_mode_presets.rs` 的 Plan mask 钉死 `medium`，且按上游设计
 `model_reasoning_effort` 不影响 Plan 模式——见 `chatwidget/settings.rs` 的
 "Plan reasoning is controlled exclusively by the Plan preset"）。
@@ -493,9 +494,10 @@ GLM-5.3 全系仅 `max`/`high`/`low`，GLM-5.2 为七档（`low`/`medium` 均映
 适配器**自己消费**的网关变量（`NUWAX_BASE_URL`、`NUWAX_API_PROTOCOL`、
 `NUWAX_WIRE_API`、`NUWAX_API_KEY`、`NUWAX_BRIDGE`、`NUWAX_MAX_OUTPUT_TOKENS`）
 不会透传给 app-server 子进程，因此引擎侧不会看到孤儿启动组（`NUWAX_MODEL` 例外地
-留在子进程环境里：单独设置它本来就合法，只换模型不换端点）；其余引擎开关（`NUWAX_IMAGE_MAX_BYTES`、`NUWAX_REQUEST_IMAGE_MAX_BYTES`、
-`NUWAX_TOOL_SEARCH`、`NUWAX_OPENAI_EGRESS`、`NUWAX_AUTO_COMPACT_*`、`NUWAX_HOME`）
-由 app-server 子进程读取，与 CLI 语义相同。无前缀的 `MODEL_PROVIDER`、
+留在子进程环境里：单独设置它本来就合法，只换模型不换端点）。其余引擎开关
+（`NUWAX_IMAGE_MAX_BYTES`、`NUWAX_REQUEST_IMAGE_MAX_BYTES`、`NUWAX_TOOL_SEARCH`、
+`NUWAX_OPENAI_EGRESS`、`NUWAX_AUTO_COMPACT_*`、`NUWAX_HOME`）由 app-server 子进程
+读取，与 CLI 语义相同。无前缀的 `MODEL_PROVIDER`、
 `INITIAL_AGENT_MODE`、`NO_BROWSER`、`APP_SERVER_LOGS` 不设别名。
 
 ```bash
@@ -546,7 +548,7 @@ ACP 是 stdio 协议服务，由 ACP 宿主配置上述命令、工作目录和�
 | `NO_BROWSER` | 设置后隐藏 ChatGPT 浏览器登录入口，适合无浏览器部署 |
 | `APP_SERVER_LOGS` / `NUWAX_LOG_DIR` | 可选日志目录，前者优先；日志也需按敏感数据管理 |
 
-ACP 三种常用配置：
+ACP 四种常用配置：
 
 | 目标 | `NUWAX_API_PROTOCOL` | `NUWAX_WIRE_API` | `NUWAX_BRIDGE` |
 | --- | --- | --- | --- |
