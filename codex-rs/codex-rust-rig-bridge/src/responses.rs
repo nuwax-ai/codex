@@ -300,8 +300,13 @@ async fn stream_responses_via_rig_inner(
 /// shape, so append a minimal user turn after a trailing tool result.
 /// Verified against open.bigmodel.cn/api/v1/responses and harmless on MiMo
 /// (my-docs/proxy-responses-image-bug-2026-11-13.md).
-pub(crate) fn append_trailing_tool_result_user_turn(input: &mut Vec<codex_protocol::models::ResponseItem>) {
-    if matches!(input.last(), Some(codex_protocol::models::ResponseItem::FunctionCallOutput { .. })) {
+pub(crate) fn append_trailing_tool_result_user_turn(
+    input: &mut Vec<codex_protocol::models::ResponseItem>,
+) {
+    if matches!(
+        input.last(),
+        Some(codex_protocol::models::ResponseItem::FunctionCallOutput { .. })
+    ) {
         input.push(codex_protocol::models::ResponseItem::Message {
             id: None,
             role: "user".into(),
@@ -316,7 +321,9 @@ pub(crate) fn append_trailing_tool_result_user_turn(input: &mut Vec<codex_protoc
     }
 }
 
-pub(crate) fn project_cross_protocol_history(input: &mut [codex_protocol::models::ResponseItem]) -> usize {
+pub(crate) fn project_cross_protocol_history(
+    input: &mut [codex_protocol::models::ResponseItem],
+) -> usize {
     let mut projected = 0;
     for item in input {
         // This fork's persisted Anthropic payload is not a Responses field.

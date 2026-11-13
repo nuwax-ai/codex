@@ -226,7 +226,6 @@ impl CoreToolRuntime for Handler {
     }
 }
 
-
 /// The effort a spawned sub-agent runs with: the caller's explicit pin, else
 /// the parent snapshot's, else nothing.
 ///

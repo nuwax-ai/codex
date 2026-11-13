@@ -810,8 +810,7 @@ other non-default provider fields are not supported"
         // environment instead of the config file. Checking only `http_headers`
         // made the unconfigured-provider fail-fast reject a provider whose
         // credential arrives through `env_http_headers`.
-        let named_authorization =
-            |name: &String| name.eq_ignore_ascii_case("authorization");
+        let named_authorization = |name: &String| name.eq_ignore_ascii_case("authorization");
         self.http_headers
             .as_ref()
             .is_some_and(|headers| headers.keys().any(named_authorization))

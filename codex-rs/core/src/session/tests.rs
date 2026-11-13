@@ -13914,10 +13914,12 @@ fn token_usage_coverage_tracks_the_same_report_and_respects_rewrites() {
         response_item("two"),
         token_count(None),
     ];
-    let (info, covered) =
-        Session::last_token_usage_with_coverage(&trailing_empty).expect("usage");
+    let (info, covered) = Session::last_token_usage_with_coverage(&trailing_empty).expect("usage");
     assert_eq!(info.last_token_usage.total_tokens, 1_000);
-    assert_eq!(covered, 1, "boundary follows the event that carried the usage");
+    assert_eq!(
+        covered, 1,
+        "boundary follows the event that carried the usage"
+    );
 
     // A rewrite AFTER the report invalidates the mapping: claim nothing.
     let rewrite_after = vec![
@@ -13939,7 +13941,10 @@ fn token_usage_coverage_tracks_the_same_report_and_respects_rewrites() {
         response_item("never reported"),
     ];
     let (_, covered) = Session::last_token_usage_with_coverage(&rewrite_before).expect("usage");
-    assert_eq!(covered, 2, "pre-rewrite items are not part of the covered surface");
+    assert_eq!(
+        covered, 2,
+        "pre-rewrite items are not part of the covered surface"
+    );
 
     // Rollback: two reported turns, the second rolled back, then one unreported
     // input. Replay leaves [turn 1, new input] — the new input was charged to no
@@ -13954,18 +13959,17 @@ fn token_usage_coverage_tracks_the_same_report_and_respects_rewrites() {
         response_item("new input (never reported)"),
     ];
     let (_, covered) = Session::resume_usage_coverage(&rolled_back, /*loaded*/ 2).expect("usage");
-    assert_eq!(covered, 0, "a lossy reconstruction must not claim any coverage");
+    assert_eq!(
+        covered, 0,
+        "a lossy reconstruction must not claim any coverage"
+    );
 
     // Counting alone is not proof: a rollback that drops one item plus an
     // inter-agent message that adds one keeps the totals equal (3 recorded
     // ResponseItems, 3 loaded) while every position after the rollback moves.
     // The position-changing item must veto coverage on its own.
-    let (_, covered) =
-        Session::resume_usage_coverage(&rolled_back, /*loaded*/ 3).expect("usage");
-    assert_eq!(
-        covered, 0,
-        "matching totals must not paper over a rollback"
-    );
+    let (_, covered) = Session::resume_usage_coverage(&rolled_back, /*loaded*/ 3).expect("usage");
+    assert_eq!(covered, 0, "matching totals must not paper over a rollback");
 
     // A lossless rollout keeps the optimization.
     let lossless = vec![

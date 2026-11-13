@@ -271,7 +271,12 @@ fn seed_env_image_byte_budget(
     seed: (Option<OsString>, &'static str),
 ) -> Result<(), String> {
     let (value, env_name) = seed;
-    let Some(raw) = env_override_text(overrides, IMAGE_BYTE_BUDGET_CONFIG_KEY, env_name, value.as_deref())?
+    let Some(raw) = env_override_text(
+        overrides,
+        IMAGE_BYTE_BUDGET_CONFIG_KEY,
+        env_name,
+        value.as_deref(),
+    )?
     else {
         return Ok(());
     };

@@ -1227,8 +1227,7 @@ pub(crate) async fn run_migration_compact_task(
         // stale images (the newest two survive) and oversized tool output in
         // the retained tail, and record every window in the replacement so a
         // reload reproduces exactly this smaller surface.
-        let mut retained_tail: Vec<ResponseItemEnvelope> =
-            items[region.end..].to_vec();
+        let mut retained_tail: Vec<ResponseItemEnvelope> = items[region.end..].to_vec();
         let mut pruned_tool_outputs: Vec<codex_history::PrunedToolOutput> = Vec::new();
         let pruned_images = crate::session::compaction_prune::prune_stale_images(
             &mut retained_tail,
@@ -1658,10 +1657,8 @@ pub(crate) async fn degrade_history_to_target_window(
     // protected-input variant skipped the shrink entirely and the retry went out
     // byte-identical — the exact case this exists for. Only the "necessary
     // content exceeds the window" verdict below stays protection-specific.
-    let bytes_over_without_trim =
-        reason == DegradeReason::CompactionOverflow && boundary == 0;
-    if retained_tokens > history_budget || bytes_over_without_trim
-    {
+    let bytes_over_without_trim = reason == DegradeReason::CompactionOverflow && boundary == 0;
+    if retained_tokens > history_budget || bytes_over_without_trim {
         // The retained tail is usually dominated by tool output the turn can
         // re-run. Shrink that deterministically before declaring the protected
         // input itself too large: a one-line question followed by a huge tool

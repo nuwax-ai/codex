@@ -1904,10 +1904,17 @@ async fn project_config_dir(
     fs: &dyn ExecutorFileSystem,
     dir: &AbsolutePathBuf,
 ) -> Option<AbsolutePathBuf> {
-    for name in [PROJECT_CONFIG_DIR_NAME_NUWAX, PROJECT_CONFIG_DIR_NAME_COMPAT] {
+    for name in [
+        PROJECT_CONFIG_DIR_NAME_NUWAX,
+        PROJECT_CONFIG_DIR_NAME_COMPAT,
+    ] {
         let candidate = dir.join(name);
         let exists = fs
-            .get_metadata(&PathUri::from_abs_path(&candidate), Default::default(), /*sandbox*/ None)
+            .get_metadata(
+                &PathUri::from_abs_path(&candidate),
+                Default::default(),
+                /*sandbox*/ None,
+            )
             .await
             .map(|metadata| metadata.is_directory)
             .unwrap_or(false);

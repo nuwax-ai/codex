@@ -151,7 +151,6 @@ fn prune_body(
     Some(removed)
 }
 
-
 /// Number of most recent inline images in a surface that are always kept.
 /// Older images are replaced with a text placeholder when a surface must
 /// shrink: the model keeps the latest visual context and every earlier image
@@ -221,14 +220,12 @@ pub(crate) fn prune_stale_images(
         let call_id = tool_call_id_of(&items[item_index].item);
         let replaced_one = match &mut items[item_index].item {
             ResponseItem::FunctionCallOutput { output, .. }
-            | ResponseItem::CustomToolCallOutput { output, .. } => {
-                match &mut output.body {
-                    FunctionCallOutputBody::ContentItems(content) => {
-                        replace_image_at(content, content_index, placeholder)
-                    }
-                    _ => false,
+            | ResponseItem::CustomToolCallOutput { output, .. } => match &mut output.body {
+                FunctionCallOutputBody::ContentItems(content) => {
+                    replace_image_at(content, content_index, placeholder)
                 }
-            }
+                _ => false,
+            },
             // No `ResponseItem::Message` arm: message images are never
             // collected into `positions` (see above), so this branch would be
             // unreachable — and a live one would silently destroy the operator's
@@ -252,9 +249,7 @@ pub(crate) fn prune_stale_images(
 /// turn) and the placeholder still stands in the live surface.
 fn tool_call_id_of(item: &ResponseItem) -> String {
     match item {
-        ResponseItem::FunctionCallOutput { call_id, .. } => {
-            call_id.clone().unwrap_or_default()
-        }
+        ResponseItem::FunctionCallOutput { call_id, .. } => call_id.clone().unwrap_or_default(),
         ResponseItem::CustomToolCallOutput { call_id, .. } => call_id.clone(),
         _ => String::new(),
     }
@@ -275,7 +270,6 @@ fn replace_image_at(
         _ => false,
     }
 }
-
 
 /// Re-applies a persisted image replacement: the `count` oldest inline images
 /// of the tool output with `call_id` become `PRUNED_IMAGE_PLACEHOLDER`.

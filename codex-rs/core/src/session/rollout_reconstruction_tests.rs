@@ -3523,14 +3523,14 @@ async fn a_compaction_record_replays_its_image_prunes() {
             namespace: None,
             output: codex_protocol::models::FunctionCallOutputPayload::from_content_items(
                 (0..images)
-                    .map(|_| {
-                        codex_protocol::models::FunctionCallOutputContentItem::InputImage {
+                    .map(
+                        |_| codex_protocol::models::FunctionCallOutputContentItem::InputImage {
                             image: codex_protocol::models::ImageReference::Inline {
                                 image_url: "data:image/png;base64,AAAA".to_string(),
                             },
                             detail: None,
-                        }
-                    })
+                        },
+                    )
                     .collect(),
             ),
             internal_chat_message_metadata_passthrough: None,

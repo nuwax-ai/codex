@@ -354,10 +354,12 @@ mod trailing_tool_result_shim_tests {
         let input = body["input"].as_array().expect("input array");
         let last = input.last().expect("non-empty");
         assert_eq!(last["role"], "user", "trailing fco must gain a user turn");
-        assert!(last["content"][0]["text"]
-            .as_str()
-            .expect("text part")
-            .contains("tool results above"));
+        assert!(
+            last["content"][0]["text"]
+                .as_str()
+                .expect("text part")
+                .contains("tool results above")
+        );
     }
 
     /// A request that already ends with a user message is untouched.

@@ -111,10 +111,7 @@ fn image_count(envelope: &ResponseItemEnvelope) -> usize {
     let FunctionCallOutputBody::ContentItems(items) = &output.body else {
         panic!("expected content items");
     };
-    items
-        .iter()
-        .filter(|item| is_inline_image(item))
-        .count()
+    items.iter().filter(|item| is_inline_image(item)).count()
 }
 
 fn placeholder_count(envelope: &ResponseItemEnvelope) -> usize {
@@ -142,10 +139,7 @@ fn keeps_the_newest_images_and_drops_older_ones() {
     // 7 images total, newest 2 survive: 5 replaced, reported per call id.
     assert_eq!(
         pruned,
-        vec![
-            ("call_old".to_owned(), 3),
-            ("call_mid".to_owned(), 2),
-        ]
+        vec![("call_old".to_owned(), 3), ("call_mid".to_owned(), 2),]
     );
     assert_eq!(image_count(&items[2]), 2, "the newest images survive");
     assert_eq!(placeholder_count(&items[0]), 3);

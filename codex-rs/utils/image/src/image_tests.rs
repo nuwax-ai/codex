@@ -689,7 +689,9 @@ fn fully_transparent_image_keeps_png() {
     for (x, y, pixel) in image.enumerate_pixels_mut() {
         *pixel = Rgba([255, 255, 255, (x % 256) as u8]);
     }
-    assert!(!alpha_is_fully_opaque(&DynamicImage::ImageRgba8(image.clone())));
+    assert!(!alpha_is_fully_opaque(&DynamicImage::ImageRgba8(
+        image.clone()
+    )));
     let url = data_url_from_bytes("image/png", &image_bytes(&image, ImageFormat::Png));
     let (_, bytes, mime) = fit_data_url_to_byte_budget(&url, 512 * 1024).expect("ladder output");
     assert_eq!(mime, "image/png", "transparent images stay PNG");
@@ -725,7 +727,11 @@ fn budget_ladder_returns_smallest_rung_when_nothing_fits() {
     )
     .expect("ladder output")
     .1;
-    assert_eq!(bytes.len(), smallest.len(), "the smallest rung is deterministic");
+    assert_eq!(
+        bytes.len(),
+        smallest.len(),
+        "the smallest rung is deterministic"
+    );
 }
 
 #[test]

@@ -1299,7 +1299,6 @@ async fn runtime_override_carries_auto_compact_ratio_into_merged_config() {
     assert_eq!(parsed.model_auto_compact_ratio, Some(0.2));
 }
 
-
 /// Fork (nuwax-codex): a project `.nuwax-harness/config.toml` is preferred
 /// over the `.codex/config.toml` compatibility path; the `.codex` layer must
 /// still be picked up when `.nuwax-harness` does not exist.
@@ -1309,7 +1308,9 @@ async fn project_config_dir_prefers_nuwax_harness_over_codex_compat() -> std::io
     use codex_utils_absolute_path::AbsolutePathBuf;
     use tempfile::tempdir;
 
-    for (config_dir, expected_marker) in [(".nuwax-harness", "from-nuwax"), (".codex", "from-codex")] {
+    for (config_dir, expected_marker) in
+        [(".nuwax-harness", "from-nuwax"), (".codex", "from-codex")]
+    {
         let tmp = tempdir()?;
         let codex_home = tmp.path().join("codex-home");
         let project = tmp.path().join("project");
@@ -1343,7 +1344,8 @@ async fn project_config_dir_prefers_nuwax_harness_over_codex_compat() -> std::io
         .await?;
 
         let merged = stack.effective_config();
-        let parsed: crate::config_toml::ConfigToml = merged.try_into().expect("parse merged config");
+        let parsed: crate::config_toml::ConfigToml =
+            merged.try_into().expect("parse merged config");
         assert_eq!(
             parsed.developer_instructions.as_deref(),
             Some(expected_marker),

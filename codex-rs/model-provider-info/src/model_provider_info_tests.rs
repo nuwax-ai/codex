@@ -1336,10 +1336,16 @@ fn a_bare_provider_with_no_credential_fails_before_sending() {
         .to_api_provider(None)
         .expect_err("nothing is configured");
     let message = error.to_string();
-    assert!(message.contains("no model provider is configured"), "{message}");
+    assert!(
+        message.contains("no model provider is configured"),
+        "{message}"
+    );
     assert!(message.contains("model_provider"), "{message}");
     assert!(message.contains("env_key"), "{message}");
-    assert!(!message.contains("openai.com"), "the URL must stay out of it: {message}");
+    assert!(
+        !message.contains("openai.com"),
+        "the URL must stay out of it: {message}"
+    );
 }
 
 #[test]
@@ -1382,7 +1388,10 @@ fn a_static_key_source_keeps_working_without_a_base_url() {
 #[test]
 fn an_authorization_header_counts_as_a_credential() {
     let mut http_headers = std::collections::HashMap::new();
-    http_headers.insert("Authorization".to_owned(), "Bearer sk-test".to_owned().into());
+    http_headers.insert(
+        "Authorization".to_owned(),
+        "Bearer sk-test".to_owned().into(),
+    );
     let provider = ModelProviderInfo {
         name: "openai".to_owned(),
         http_headers: Some(http_headers),

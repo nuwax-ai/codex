@@ -270,8 +270,6 @@ fn load_for_prompt_bytes_uncached(
     })()
 }
 
-
-
 /// Fork (nuwax-codex, 2026-11-10): JPEG quality ladder applied when an encoded
 /// image must shrink to fit a byte budget. The first rung that fits wins; if
 /// none fits, the smallest (last) rung is kept so the budget path always has
@@ -369,7 +367,10 @@ pub fn cap_data_url_dimensions(
         let quality = *IMAGE_BYTE_BUDGET_QUALITY_LADDER
             .last()
             .unwrap_or(&IMAGE_BYTE_BUDGET_QUALITY_LADDER[0]);
-        (encode_jpeg_at_quality(&resized, quality)?, ImageFormat::Jpeg)
+        (
+            encode_jpeg_at_quality(&resized, quality)?,
+            ImageFormat::Jpeg,
+        )
     } else {
         (encode_png(&resized)?, ImageFormat::Png)
     };
@@ -406,14 +407,16 @@ pub fn fit_data_url_to_byte_budget(
         Some(pair) => pair,
         // Already fits on the ladder's first rung: hand the caller back the
         // source untouched rather than re-encoding for nothing.
-        None => return Ok((image_url.to_string(), decoded_bytes(image_url), image_url_mime(image_url))),
+        None => {
+            return Ok((
+                image_url.to_string(),
+                decoded_bytes(image_url),
+                image_url_mime(image_url),
+            ));
+        }
     };
     let mime = format_to_mime(format);
-    Ok((
-        data_url_from_bytes(&mime, &bytes),
-        bytes,
-        mime,
-    ))
+    Ok((data_url_from_bytes(&mime, &bytes), bytes, mime))
 }
 
 /// Decodes the base64 payload of a data URL (best-effort; callers already
@@ -465,9 +468,10 @@ fn decode_data_url_to_dynamic(image_url: &str) -> Result<DynamicImage, ImageProc
             reason: "missing data: prefix".to_string(),
         })?;
     let (metadata, encoded) =
-        rest.split_once(',').ok_or_else(|| ImageProcessingError::InvalidDataUrl {
-            reason: "missing comma separator".to_string(),
-        })?;
+        rest.split_once(',')
+            .ok_or_else(|| ImageProcessingError::InvalidDataUrl {
+                reason: "missing comma separator".to_string(),
+            })?;
     if !metadata
         .split(';')
         .any(|part| part.eq_ignore_ascii_case("base64"))
@@ -476,11 +480,12 @@ fn decode_data_url_to_dynamic(image_url: &str) -> Result<DynamicImage, ImageProc
             reason: "only base64 data URLs are supported".to_string(),
         });
     }
-    let bytes = BASE64_STANDARD
-        .decode(encoded)
-        .map_err(|_| ImageProcessingError::InvalidDataUrl {
-            reason: "invalid base64 payload".to_string(),
-        })?;
+    let bytes =
+        BASE64_STANDARD
+            .decode(encoded)
+            .map_err(|_| ImageProcessingError::InvalidDataUrl {
+                reason: "invalid base64 payload".to_string(),
+            })?;
     // Pixel-bomb pre-check on the header, before any raster allocation. The
     // tool-output path reaches this function with bytes no upstream guard has
     // seen, and a small file can declare a gigantic canvas. A header that
@@ -612,7 +617,8 @@ pub fn fit_data_urls_to_total_budget(urls: &mut [String], budget: usize) -> FitI
 /// a larger intermediate size overwrite the final one downstream — the notice
 /// must end on the size actually sent.
 fn final_dimensions_per_image(changed: Vec<FittedImage>) -> Vec<FittedImage> {
-    let mut latest: Vec<Option<FittedImage>> = vec![None; changed.iter().map(|i| i.index + 1).max().unwrap_or(0)];
+    let mut latest: Vec<Option<FittedImage>> =
+        vec![None; changed.iter().map(|i| i.index + 1).max().unwrap_or(0)];
     for image in changed {
         if let Some(slot) = latest.get_mut(image.index) {
             *slot = Some(image);
@@ -649,10 +655,8 @@ fn fit_dynamic_to_byte_budget(
         }
         // Nothing fits: keep the smallest rung so the caller still has an
         // output to compare against the original.
-        let resized = resize_to_longest_edge(
-            image,
-            *BYTE_BUDGET_DIMENSION_LADDER.last().unwrap_or(&2048),
-        );
+        let resized =
+            resize_to_longest_edge(image, *BYTE_BUDGET_DIMENSION_LADDER.last().unwrap_or(&2048));
         let smallest = *IMAGE_BYTE_BUDGET_QUALITY_LADDER
             .last()
             .unwrap_or(&IMAGE_BYTE_BUDGET_QUALITY_LADDER[0]);
@@ -667,7 +671,11 @@ fn fit_dynamic_to_byte_budget(
             let scale = f64::from(max_dimension) / f64::from(longest_edge);
             let scaled_width = (f64::from(width) * scale).round() as u32;
             let scaled_height = (f64::from(height) * scale).round() as u32;
-            image.resize_exact(scaled_width.max(1), scaled_height.max(1), FilterType::Triangle)
+            image.resize_exact(
+                scaled_width.max(1),
+                scaled_height.max(1),
+                FilterType::Triangle,
+            )
         } else {
             image.clone()
         };
@@ -678,9 +686,9 @@ fn fit_dynamic_to_byte_budget(
     }
     let (width, height) = image.dimensions();
     let longest_edge = width.max(height);
-    let scale = f64::from(ALPHA_PRESERVING_DIMENSION_LADDER
-        [ALPHA_PRESERVING_DIMENSION_LADDER.len() - 1])
-        / f64::from(longest_edge);
+    let scale =
+        f64::from(ALPHA_PRESERVING_DIMENSION_LADDER[ALPHA_PRESERVING_DIMENSION_LADDER.len() - 1])
+            / f64::from(longest_edge);
     let scaled_width = ((f64::from(width) * scale).round() as u32).max(1);
     let scaled_height = ((f64::from(height) * scale).round() as u32).max(1);
     let resized = image.resize_exact(scaled_width, scaled_height, FilterType::Triangle);

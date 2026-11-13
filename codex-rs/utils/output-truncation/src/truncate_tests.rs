@@ -822,9 +822,15 @@ fn large_png(width: u32, height: u32) -> String {
     }
     let mut bytes = Vec::new();
     image::DynamicImage::ImageRgba8(img)
-        .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
         .expect("encode fixture png");
-    format!("data:image/png;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes))
+    format!(
+        "data:image/png;base64,{}",
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes)
+    )
 }
 
 fn inline_image_for_shrink(url: &str) -> FunctionCallOutputContentItem {
@@ -883,7 +889,10 @@ fn images_that_already_fit_are_left_untouched() {
     let ImageReference::Inline { image_url } = image else {
         panic!("expected an inline image");
     };
-    assert_eq!(image_url, &small, "a fitting image must pass through byte-identical");
+    assert_eq!(
+        image_url, &small,
+        "a fitting image must pass through byte-identical"
+    );
 }
 
 #[test]
@@ -893,7 +902,11 @@ fn the_aggregate_bound_shrinks_the_oldest_first() {
     let a = large_png(3000, 3000);
     let b = large_png(3000, 3000);
     let c = large_png(3000, 3000);
-    let items = vec![inline_image_for_shrink(&a), inline_image_for_shrink(&b), inline_image_for_shrink(&c)];
+    let items = vec![
+        inline_image_for_shrink(&a),
+        inline_image_for_shrink(&b),
+        inline_image_for_shrink(&c),
+    ];
     let shrunk = crate::shrink_oversized_tool_output_images(items);
     let len_of = |item: &FunctionCallOutputContentItem| match item {
         FunctionCallOutputContentItem::InputImage {
@@ -914,7 +927,10 @@ fn a_pathological_image_still_falls_through_to_the_drop_path() {
     // An oversized payload that cannot be decoded (a producer bug, or a
     // truncated upload): no re-encoding is possible, so the function leaves it
     // alone and the admission drops it with its marker rather than looping.
-    let url = format!("data:image/png;base64,{}", "A".repeat(MAX_TOOL_OUTPUT_IMAGE_BYTES + 1024));
+    let url = format!(
+        "data:image/png;base64,{}",
+        "A".repeat(MAX_TOOL_OUTPUT_IMAGE_BYTES + 1024)
+    );
     let items = vec![inline_image_for_shrink(&url)];
     let shrunk = crate::shrink_oversized_tool_output_images(items);
     let FunctionCallOutputContentItem::InputImage { image, .. } = &shrunk[0] else {
@@ -923,7 +939,10 @@ fn a_pathological_image_still_falls_through_to_the_drop_path() {
     let ImageReference::Inline { image_url } = image else {
         panic!("expected an inline image");
     };
-    assert_eq!(image_url, &url, "an undecodable payload passes through untouched");
+    assert_eq!(
+        image_url, &url,
+        "an undecodable payload passes through untouched"
+    );
 }
 
 #[test]

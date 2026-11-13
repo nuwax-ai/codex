@@ -312,9 +312,8 @@ fn shrink_oversized_tool_output_images(
     // so a 4000x4000 screenshot costs the whole per-output visual budget no
     // matter how few bytes it has — shrinking bytes alone would still be
     // dropped by the visual bound. Cap the longest edge first (2026-11-10).
-    let longest_edge_cap = codex_utils_image::longest_edge_for_visual_budget(
-        MAX_TOOL_OUTPUT_VISIBLE_TOKENS,
-    );
+    let longest_edge_cap =
+        codex_utils_image::longest_edge_for_visual_budget(MAX_TOOL_OUTPUT_VISIBLE_TOKENS);
     for item in items.iter_mut() {
         let FunctionCallOutputContentItem::InputImage {
             image: codex_protocol::models::ImageReference::Inline { image_url },
@@ -344,7 +343,10 @@ fn shrink_oversized_tool_output_images(
     // Pass 2 for a set of individually-fine images whose SUM is over the
     // aggregate bound, so those images were dropped whole by the admission
     // step instead of being shrunk (fork 2026-11-11).
-    let fits_every_bound = items.iter().map(encoded_len).all(|len| len <= per_image_limit)
+    let fits_every_bound = items
+        .iter()
+        .map(encoded_len)
+        .all(|len| len <= per_image_limit)
         && items.iter().map(encoded_len).sum::<usize>() <= total_limit;
     if fits_every_bound {
         return items;
@@ -401,11 +403,7 @@ fn shrink_oversized_tool_output_images(
             // Aim just under the overflow (URL units), converted to the raw
             // budget the ladder takes, never below a floor that would make the
             // image useless.
-            let target = current
-                .saturating_sub(overflow)
-                .max(64 * 1024)
-                / 4
-                * 3;
+            let target = current.saturating_sub(overflow).max(64 * 1024) / 4 * 3;
             if target == 0 {
                 continue;
             }
