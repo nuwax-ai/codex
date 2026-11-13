@@ -29,12 +29,13 @@
   HTTP 接口用 utoipa 补 OpenAPI;dashmap 并发场景只用 entry API。
 - **测试用 `cargo nextest`**;Mac 上跑 core 集成测试需 `RUST_MIN_STACK=33554432`
   (成批 ABRT 先怀疑环境,不是回归)。
-- **构建/测试必须限量并发**。不要同时跑两个 `cargo`(共用 target 目录时各自按核数
-  起 `rustc`,`codex-core` 一个 crate 就 GB 级);统一加 `-j 4`,图像/压缩测试加
-  `-- --test-threads=1`。2026-11-12 一次并发 debug 测试 + 双 cargo 把整机内存吃满,
-  机器被迫强关;图像编解码在 dev/test profile 已按 crate 开 `opt-level = 3`
-  (见 `codex-rs/Cargo.toml` 的 `[profile.dev.package.*]`),72 MP 用例从 42 s 降到
-  3 s,但**并发本身**才是那次事故的主因。重图像用例(`#[ignore]`)只在需要时手动跑。
+- **编译不限并发**。单个 `cargo build` / `check` / `nextest` 正常跑就行,不必加 `-j`:
+  18 核 / 64 GB 的机器默认并行度够用,限成 4 只是把编译时间拉长两三倍。
+- **只有图像 / 压缩相关测试要限并行**:加 `-- --test-threads=1`,并且**跑它们时不要再
+  起第二个 `cargo`**。2026-11-12 的事故是**并发跑的图片编解码用例**吃满内存(不是编译):
+  debug 测试进程 + 双 cargo 叠加,整机被迫强关。图像编解码在 dev/test profile 已按 crate
+  开 `opt-level = 3`(见 `codex-rs/Cargo.toml` 的 `[profile.dev.package.*]`),72 MP 用例
+  从 42 s 降到 3 s;重图像用例(`#[ignore]`)只在需要时手动跑。
 - **insta 快照**:不要用宽过滤器 `INSTA_FORCE_UPDATE`(会翻刷大量无关快照);用窄过滤器
   逐个接受,并先目视核对 diff。
 
