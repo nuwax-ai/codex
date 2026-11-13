@@ -241,6 +241,12 @@ async fn run_remote_compact_task_inner(
         }
         return Ok(false);
     }
+    // The announced item must close even when the attempt failed: ACP ends its tool call by item id.
+    if result.is_err()
+        && let Some(item) = started_item.clone()
+    {
+        sess.emit_turn_item_completed(turn_context, item).await;
+    }
     let status = compaction_status_from_result(&result);
     let codex_error = result.as_ref().err();
     if result.is_ok() {

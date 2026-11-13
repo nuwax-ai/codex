@@ -288,9 +288,39 @@ async fn run_compact_task_inner_impl(
     world_state: Arc<WorldState>,
     compaction_metadata: CompactionTurnMetadata,
 ) -> CodexResult<String> {
+    // ACP closes a compaction tool call by item id, so a started item must always
+    // complete. Early returns below cover cancellation and every failure path, and
+    // an item that only ever started leaves a tool call running forever.
     let compaction_item = TurnItem::ContextCompaction(ContextCompactionItem::new());
     sess.emit_turn_item_started(&turn_context, &compaction_item)
         .await;
+    let completion_session = Arc::clone(&sess);
+    let completion_context = Arc::clone(&turn_context);
+    let result = run_compact_task_inner_impl_body(
+        sess,
+        turn_context,
+        replacement_step_context,
+        input,
+        world_state,
+        compaction_metadata,
+    )
+    .await;
+    completion_session
+        .emit_turn_item_completed(&completion_context, compaction_item)
+        .await;
+    result
+}
+
+/// The compaction body of [`run_compact_task_inner_impl`]; the wrapper owns the turn item so that
+/// the completion is reported on every exit path.
+async fn run_compact_task_inner_impl_body(
+    sess: Arc<Session>,
+    turn_context: Arc<TurnContext>,
+    replacement_step_context: Arc<StepContext>,
+    input: Vec<UserInput>,
+    world_state: Arc<WorldState>,
+    compaction_metadata: CompactionTurnMetadata,
+) -> CodexResult<String> {
     let initial_input_for_turn: ResponseInputItem = ResponseInputItem::from(input);
 
     let mut history = sess.clone_history().await;
@@ -511,8 +541,6 @@ async fn run_compact_task_inner_impl(
     sess.recompute_token_usage(&replacement_step_context.turn)
         .await;
 
-    sess.emit_turn_item_completed(&turn_context, compaction_item)
-        .await;
     Ok(summary_suffix)
 }
 

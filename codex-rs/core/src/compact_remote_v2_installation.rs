@@ -137,6 +137,11 @@ async fn build_and_install_compaction(
             Err(error) => {
                 let fallback_turn_context = &replacement_step_context.turn;
                 if !should_retry_with_current_model(&error, turn_context, fallback_turn_context) {
+                    // The item was announced above; close it before the error propagates.
+                    if needs_start {
+                        sess.emit_turn_item_completed(turn_context, compaction_item.clone())
+                            .await;
+                    }
                     return Err(error);
                 }
                 sess.set_last_known_step_context(replacement_step_context)
