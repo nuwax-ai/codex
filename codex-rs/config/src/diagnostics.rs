@@ -411,16 +411,16 @@ fn clamp_provider_span(
         Ok(doc) => doc,
         Err(_) => return span,
     };
-    if let Some(table) = doc.get("model_providers").and_then(|item| item.as_table()) {
-        if let Some(header) = table.span() {
-            // Header line only ("[model_providers.<id>]"): one line of
-            // structure at most.
-            let header_end = contents[header.start..header.end]
-                .find('\n')
-                .map(|offset| header.start + offset)
-                .unwrap_or(header.end);
-            return header.start..header_end;
-        }
+    if let Some(table) = doc.get("model_providers").and_then(|item| item.as_table())
+        && let Some(header) = table.span()
+    {
+        // Header line only ("[model_providers.<id>]"): one line of
+        // structure at most.
+        let header_end = contents[header.start..header.end]
+            .find('\n')
+            .map(|offset| header.start + offset)
+            .unwrap_or(header.end);
+        return header.start..header_end;
     }
     span
 }

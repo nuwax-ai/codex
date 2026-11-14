@@ -291,55 +291,44 @@ async fn stream_responses_via_rig_inner(
 }
 
 /// Request-time cross-protocol projection: history recorded on the
-/// Chat/Anthropic wires carries this bridge's replay envelopes in
-/// `Reasoning.encrypted_content`. Those payloads are bridge-internal and
-/// vendor-specific signatures that must not be replayed on the Responses
-/// wire, so the request COPY clears the field (serializing as `null`, the
-/// same on-wire shape as any reasoning item without ciphertext) while
-/// keeping the item, its summary, and its identity. Everything else —
-/// including non-envelope ciphertext whose origin is not known here —
-/// passes through verbatim; cross-provider ciphertext may be rejected. The persisted rollout is never
-/// rewritten. Anthropic search wire blocks are also cleared from the copy;
-/// returns the number of projected items.
-
-/// Fork (nuwax-codex, 2026-11-13): Zhipu's official `/v1/responses` rejects
-/// a conversation whose final input item is a `function_call_output` —
-/// `400 messages 参数非法。请检查文档。` — regardless of output shape, tools,
-/// or streaming. Standard OpenAI Responses semantics allow it, and every
-/// image-reading tool (view_image et al.) ends its turn with exactly that
-/// shape, so append a minimal user turn after a trailing tool result.
-/// Verified against open.bigmodel.cn/api/v1/responses and harmless on MiMo
-/// (my-docs/proxy-responses-image-bug-2026-11-13.md).
-/// Fork (nuwax-codex, 2026-11-13): the Nuwax model proxy rejects every
-/// `function_call_output` whose `output` is a content-parts array — even a
-/// text-only one (`messages 参数非法`; verified matrix A-E in
-/// my-docs/proxy-responses-image-bug-2026-11-13.md). Standard shape puts
-/// view_image's screenshot there, so every image-reading turn would fail and
-/// poison the rest of the session (every later turn replays the array).
+// Fork (nuwax-codex, 2026-11-13): Zhipu's official `/v1/responses` rejects
+// a conversation whose final input item is a `function_call_output` —
+// `400 messages 参数非法。请检查文档。` — regardless of output shape, tools,
+// or streaming. Standard OpenAI Responses semantics allow it, and every
+// image-reading tool (view_image et al.) ends its turn with exactly that
+// shape, so append a minimal user turn after a trailing tool result.
+// Verified against open.bigmodel.cn/api/v1/responses and harmless on MiMo
+// (my-docs/proxy-responses-image-bug-2026-11-13.md).
+// Fork (nuwax-codex, 2026-11-13): the Nuwax model proxy rejects every
+// `function_call_output` whose `output` is a content-parts array — even a
+// text-only one (`messages 参数非法`; verified matrix A-E in
+// my-docs/proxy-responses-image-bug-2026-11-13.md). Standard shape puts
+// view_image's screenshot there, so every image-reading turn would fail and
+// poison the rest of the session (every later turn replays the array).
 ///
-/// Rewrite: images (and the result's text) move into a user message inserted
-/// right after the tool result; the tool result keeps a plain-string output.
-/// This is the exact shape the proxy accepts (matrix E) and OpenAI-official
-/// treats as equivalent — the model sees the image right after the call.
-/// Plain-string outputs are untouched.
-/// Fork (nuwax-codex, 2026-11-14): Zhipu's `/v1/responses` rejects
-/// `input_image` with `detail: "original"` outright (`400 API 调用参数有误`,
-/// any image size — verified matrix in my-docs/proxy-responses-image-bug-
-/// 2026-11-13.md). The Chat bridge already rewrites original → high for the
-/// same reason; the Responses passthrough must match, or every image-carrying
-/// turn on a detail-original provider 400s. The safe neutral target is
-/// `auto`: legal on OpenAI official, accepted by Zhipu, and it lets each
-/// model pick a detail it actually supports (some reject `high`).
+// Rewrite: images (and the result's text) move into a user message inserted
+// right after the tool result; the tool result keeps a plain-string output.
+// This is the exact shape the proxy accepts (matrix E) and OpenAI-official
+// treats as equivalent — the model sees the image right after the call.
+// Plain-string outputs are untouched.
+// Fork (nuwax-codex, 2026-11-14): Zhipu's `/v1/responses` rejects
+// `input_image` with `detail: "original"` outright (`400 API 调用参数有误`,
+// any image size — verified matrix in my-docs/proxy-responses-image-bug-
+// 2026-11-13.md). The Chat bridge already rewrites original → high for the
+// same reason; the Responses passthrough must match, or every image-carrying
+// turn on a detail-original provider 400s. The safe neutral target is
+// `auto`: legal on OpenAI official, accepted by Zhipu, and it lets each
+// model pick a detail it actually supports (some reject `high`).
 pub(crate) fn downgrade_original_detail_to_auto(input: &mut [ResponseItem]) {
     for item in input {
         if let ResponseItem::Message { content, .. } = item {
             for part in content {
-                if let codex_protocol::models::ContentItem::InputImage { detail, .. } = part {
-                    if matches!(detail, Some(codex_protocol::models::ImageDetail::Original)) {
-                        // `auto` lets the model pick a detail it supports —
-                        // safer than `high`, which some models reject.
-                        *detail = Some(codex_protocol::models::ImageDetail::Auto);
-                    }
+                if let codex_protocol::models::ContentItem::InputImage { detail, .. } = part
+                    && matches!(detail, Some(codex_protocol::models::ImageDetail::Original))
+                {
+                    // `auto` lets the model pick a detail it supports —
+                    // safer than `high`, which some models reject.
+                    *detail = Some(codex_protocol::models::ImageDetail::Auto);
                 }
             }
         }
@@ -357,12 +346,11 @@ pub(crate) fn downgrade_original_detail_to_auto(input: &mut [ResponseItem]) {
                     detail,
                     ..
                 } = part
+                    && matches!(detail, Some(codex_protocol::models::ImageDetail::Original))
                 {
-                    if matches!(detail, Some(codex_protocol::models::ImageDetail::Original)) {
-                        // `auto` lets the model pick a detail it supports —
-                        // safer than `high`, which some models reject.
-                        *detail = Some(codex_protocol::models::ImageDetail::Auto);
-                    }
+                    // `auto` lets the model pick a detail it supports —
+                    // safer than `high`, which some models reject.
+                    *detail = Some(codex_protocol::models::ImageDetail::Auto);
                 }
             }
         }
@@ -487,6 +475,16 @@ pub(crate) fn append_trailing_tool_result_user_turn(
     }
 }
 
+/// Chat/Anthropic wires carries this bridge's replay envelopes in
+/// `Reasoning.encrypted_content`. Those payloads are bridge-internal and
+/// vendor-specific signatures that must not be replayed on the Responses
+/// wire, so the request COPY clears the field (serializing as `null`, the
+/// same on-wire shape as any reasoning item without ciphertext) while
+/// keeping the item, its summary, and its identity. Everything else —
+/// including non-envelope ciphertext whose origin is not known here —
+/// passes through verbatim; cross-provider ciphertext may be rejected. The persisted rollout is never
+/// rewritten. Anthropic search wire blocks are also cleared from the copy;
+/// returns the number of projected items.
 pub(crate) fn project_cross_protocol_history(
     input: &mut [codex_protocol::models::ResponseItem],
 ) -> usize {

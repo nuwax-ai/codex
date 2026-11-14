@@ -88,7 +88,7 @@ pub fn with_config_overrides(
         // a value that reaches the full-window compaction line: routine
         // auto-compaction would never fire before the full-window backstop.
         if let Some(context_window) = model.context_window {
-            let percent = i64::from(model.effective_context_window_percent.clamp(0, 100));
+            let percent = model.effective_context_window_percent.clamp(0, 100);
             let full_window_line = context_window.saturating_mul(percent) / 100;
             if auto_compact_token_limit >= full_window_line {
                 warn!(

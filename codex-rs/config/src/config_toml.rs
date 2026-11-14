@@ -1093,22 +1093,22 @@ where
     let mut raw = HashMap::<String, toml::Value>::deserialize(deserializer)?;
     let mut model_providers = HashMap::with_capacity(raw.len());
     for (key, value) in raw.iter_mut() {
-        if let Some(table) = value.as_table_mut() {
-            if let Some(flag) = table.remove("ignore_catalog_effort_levels") {
-                match flag.as_bool() {
-                    Some(true) => {
-                        // Register under the config key; the display name is
-                        // added after parsing below (the wire Provider carries
-                        // only the display name).
-                        codex_model_provider_info::set_ignores_catalog_defaults(key)
-                    }
-                    Some(false) => {}
-                    None => {
-                        return Err(serde::de::Error::custom(format!(
-                            "model_providers.{key}.ignore_catalog_effort_levels \
-                             must be a boolean"
-                        )));
-                    }
+        if let Some(table) = value.as_table_mut()
+            && let Some(flag) = table.remove("ignore_catalog_effort_levels")
+        {
+            match flag.as_bool() {
+                Some(true) => {
+                    // Register under the config key; the display name is
+                    // added after parsing below (the wire Provider carries
+                    // only the display name).
+                    codex_model_provider_info::set_ignores_catalog_defaults(key)
+                }
+                Some(false) => {}
+                None => {
+                    return Err(serde::de::Error::custom(format!(
+                        "model_providers.{key}.ignore_catalog_effort_levels \
+                         must be a boolean"
+                    )));
                 }
             }
         }

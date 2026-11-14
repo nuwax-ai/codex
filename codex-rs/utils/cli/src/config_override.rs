@@ -283,7 +283,7 @@ fn seed_env_image_byte_budget(
     let invalid =
         || format!("Invalid {env_name} value {raw:?}; expected a non-negative integer byte count");
     let parsed: i64 = raw.parse().map_err(|_| invalid())?;
-    if parsed < 0 || parsed > 512 * 1024 * 1024 {
+    if !(0..=512 * 1024 * 1024).contains(&parsed) {
         return Err(invalid());
     }
     overrides.push((IMAGE_BYTE_BUDGET_CONFIG_KEY.into(), Value::Integer(parsed)));

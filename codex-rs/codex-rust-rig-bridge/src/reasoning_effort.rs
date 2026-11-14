@@ -249,7 +249,7 @@ pub(crate) fn effort_spec(vendor: &str, model: &str, levels: &[Effort]) -> Optio
     let mut spec = nuwax_catalog()
         .get(catalog_vendor, model)
         .map(|resolved| resolved.shared())
-        .unwrap_or_else(|| Arc::new(ModelSpec::new(declared.clone(), model)));
+        .unwrap_or_else(|| Arc::new(ModelSpec::new(declared, model)));
     // `make_mut` copies a row the catalog shares, so rig's own entry is never
     // written through.
     let spec = Arc::make_mut(&mut spec);

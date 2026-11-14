@@ -1,4 +1,7 @@
 //! Model-history and persisted-rollout domain types.
+// Box-ing RolloutItem's large variants would ripple through every consumer
+// for a size hint; the layout is upstream's and measured acceptable here.
+#![allow(clippy::large_enum_variant)]
 
 mod heartbeat;
 pub use heartbeat::HEARTBEAT_CONTENT_KIND;
@@ -351,6 +354,9 @@ pub struct PrunedToolOutput {
 }
 
 /// serde predicate for `PrunedToolOutput::pruned_images`.
+// serde's `with` predicates take `&T`; the 8-byte copy lint does not apply to
+// the signature serde requires.
+#[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn pruned_images_is_zero(value: &usize) -> bool {
     *value == 0
 }

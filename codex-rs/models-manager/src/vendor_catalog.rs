@@ -30,6 +30,8 @@ const CATALOG_JSON: &str = include_str!("../vendor/catalog.json");
 const OVERLAY_TOML: &str = include_str!("../vendor/overlay.toml");
 
 /// Keep this in sync with `SIZE_BUDGET_BYTES` in the refresh script.
+/// Audited by the refresh script's anchor check, not read at runtime.
+#[allow(dead_code)]
 const SIZE_BUDGET_BYTES: usize = 200 * 1024;
 
 /// Parsed overlay (see `vendor/overlay.toml`). Unknown tables/fields are
@@ -169,7 +171,9 @@ pub fn effort_table_for(slug: &str, user: Option<&Overlay>) -> Option<EffortTabl
 
 #[derive(Debug, Deserialize)]
 struct CatalogFile {
+    // Present in every models.dev snapshot; retained for fidelity, not read.
     #[serde(rename = "_meta")]
+    #[allow(dead_code)]
     meta: Value,
     providers: BTreeMap<String, Value>,
 }
@@ -205,6 +209,8 @@ fn value_i64(value: &Value, key: &str) -> Option<i64> {
 }
 
 impl VendorCatalog {
+    /// Kept for diagnostics and the next catalog refresh iteration.
+    #[allow(dead_code)]
     pub(crate) fn provider_ids(&self) -> Vec<&str> {
         self.providers.keys().map(String::as_str).collect()
     }
