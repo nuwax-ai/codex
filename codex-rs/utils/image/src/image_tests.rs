@@ -657,8 +657,7 @@ fn a_dpr3_full_page_screenshot_is_downscaled_instead_of_dropped() {
     .expect_err("72 MP must stay over the as-is ceiling");
     assert!(
         matches!(refused, ImageProcessingError::ImagePixelsTooLarge { .. }),
-        "got {:?}",
-        refused
+        "got {refused:?}"
     );
 }
 
@@ -686,7 +685,7 @@ fn fully_transparent_image_keeps_png() {
     // Genuinely transparent content must not be flattened: JPEG has no alpha,
     // so the ladder walks the PNG dimension ladder instead.
     let mut image = ImageBuffer::new(2048, 2048);
-    for (x, y, pixel) in image.enumerate_pixels_mut() {
+    for (x, _y, pixel) in image.enumerate_pixels_mut() {
         *pixel = Rgba([255, 255, 255, (x % 256) as u8]);
     }
     assert!(!alpha_is_fully_opaque(&DynamicImage::ImageRgba8(
