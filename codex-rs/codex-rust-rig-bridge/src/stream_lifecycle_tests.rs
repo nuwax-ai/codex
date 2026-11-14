@@ -72,6 +72,10 @@ fn signed_reasoning_value(id: &str, text: &str) -> Reasoning {
         native: Some(rig_core::completion::message::Native {
             item: json!({ "signature": signature }),
             fingerprint: rig_core::completion::message::Fingerprint::of(&signature),
+            // rig 0.46: no float baseline, no edit marker, no blob slot.
+            baseline: None,
+            edited: false,
+            blob_slot: None,
         }),
     }
 }

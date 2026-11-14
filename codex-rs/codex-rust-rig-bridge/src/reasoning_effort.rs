@@ -20,6 +20,7 @@
 //! [`OnUnsupported::Error`]: rig_core::completion::OnUnsupported::Error
 
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 use codex_api::ApiError;
 use codex_protocol::openai_models::ReasoningEffort;
@@ -28,6 +29,37 @@ use rig_core::catalog::ReasoningSupport;
 use rig_core::completion::Effort;
 use rig_core::completion::Reasoning;
 use rig_core::providers::registry::ProviderId;
+
+/// Fork (nuwax-codex, 2026-11-13): a lenient re-build of rig 0.46's builtin
+/// catalog. rig 0.46's `Catalog::builtin()` panics on first use when its
+/// bundled models.dev snapshot has rows the deserializer cannot read — and in
+/// this workspace it always has: `exec-server-protocol` enables serde_json's
+/// `arbitrary_precision`, which (unified across the workspace) buffers numbers
+/// as maps and breaks rig's flattened `CostTier` rows (`invalid type: map,
+/// expected f64`; 191 of 1744 rows). Vendoring the same snapshot and parsing
+/// it through the lenient `from_models_dev` keeps the 1553 readable rows and
+/// drops the 191 vendor rows we do not serve (claude/gpt/...), independent of
+/// serde_json features. Revisit when rig fixes the flatten interaction.
+static NUWAX_CATALOG: LazyLock<rig_core::catalog::Catalog> = LazyLock::new(|| {
+    match rig_core::catalog::Catalog::from_models_dev(include_str!("catalog_models.json")) {
+        Ok((catalog, skipped)) => {
+            if !skipped.is_empty() {
+                tracing::warn!(
+                    skipped = skipped.len(),
+                    "nuwax catalog: skipped models.dev rows unreadable under                      arbitrary_precision (expected: vendor rows we do not serve)"
+                );
+            }
+            catalog
+        }
+        Err(error) => panic!("nuwax catalog snapshot does not parse: {error}"),
+    }
+});
+
+/// The catalog backing reasoning-effort binding: rig's builtin data, parsed
+/// leniently so one unreadable vendor row cannot take down the process.
+fn nuwax_catalog() -> &'static rig_core::catalog::Catalog {
+    &NUWAX_CATALOG
+}
 use serde::de::Deserialize;
 
 /// Codex's effort vocabulary onto rig's portable levels. `Ultra` has no rig
@@ -213,7 +245,7 @@ fn rig_level(source: &str, word: &str) -> Result<Effort, ApiError> {
 pub(crate) fn effort_spec(vendor: &str, model: &str, levels: &[Effort]) -> Option<Arc<ModelSpec>> {
     let declared = ProviderId::declare("nuwax").ok()?;
     let catalog_vendor = ProviderId::catalog(vendor)?;
-    let mut spec = rig_core::catalog::Catalog::builtin()
+    let mut spec = nuwax_catalog()
         .get(catalog_vendor, model)
         .map(|resolved| resolved.shared())
         .unwrap_or_else(|| Arc::new(ModelSpec::new(declared.clone(), model)));
