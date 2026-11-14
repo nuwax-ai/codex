@@ -1098,7 +1098,12 @@ responses_trailing_tool_result_user_turn = false`（规格忠实网关恢复 ver
 1. `move_tool_result_arrays_to_user_turns`：所有 fco content 数组改为纯字符串
    output，图片挪进紧随的 user message（代理矩阵 E 实测可用；官方线语义等价）；
 2. `append_trailing_tool_result_user_turn`：末项为 fco 时追加最小 user turn
-   （智谱直连矩阵 Z7/Z10 实测可用）。
+   （智谱直连矩阵 Z7/Z10 实测可用）；
+3. `downgrade_original_detail_to_high`：智谱 `/v1/responses` 不接受
+   `input_image` 的 `detail: "original"`（任意尺寸均 400，二分定位实证）——
+   Responses 线把 original 降级为 high，与 Chat 桥的既有改写对齐（§5）。
+   **识图 400 的真根因**：fco 数组与挪图形态在直连智谱时都正常，真正的 400
+   触发点是 detail original（130 项真实请求二分定位）。
 
 **merge 指引**：上游 rig 若原生支持上述网关兼容（或智谱修复），可删除两个 pass
 与开关；上游重构 Responses 透传时保留开关位。配置字段：
