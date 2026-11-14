@@ -407,8 +407,13 @@ pub(crate) fn move_tool_result_arrays_to_user_turns(input: &mut Vec<ResponseItem
                     texts.push(text)
                 }
                 codex_protocol::models::FunctionCallOutputContentItem::EncryptedContent {
-                    encrypted_content,
-                } => texts.push(format!("(encrypted content omitted: {encrypted_content})")),
+                    ..
+                } => {
+                    // Provider-encrypted bytes are opaque to this wire; a
+                    // placeholder keeps the tool result visible without
+                    // replaying blobs it cannot decode.
+                    texts.push("(encrypted content omitted)".into())
+                }
                 codex_protocol::models::FunctionCallOutputContentItem::InputAudio { .. } => {
                     // Audio has no place in the string fallback or the image
                     // user turn; drop it rather than fail the whole request.
