@@ -41,6 +41,16 @@ fork 通过 rig 桥统一第三方模型的协议转换、传输与会话生命�
 `.nuwax-codex`或官方`.codex`，也不删除旧数据。已存在的新路径若是文件/坏symlink则报错，
 有效目录symlink保留路径语义。官方Codex不受影响；fork专属配置写在新的隔离目录。
 环境变量启动指南与模板见[NUWAX-HARNESS](NUWAX-HARNESS.md)。
+**项目级配置目录偏好 `.nuwax-harness/`（2026-11-13 起）**：项目内的配置层目录
+**优先用 `.nuwax-harness/`**，不存在时回退上游的 `.codex/`（同一目录两份并存时
+`.nuwax-harness` 胜出）。改动点：`config/src/loader/mod.rs` 的
+`project_config_dir()`（cwd/tree/repo 三层都走该偏好）+ linked-worktree 的
+hooks 回指目录仅在 `.nuwax-harness` 实际存在时切换（避免 `.codex` 用户 hooks
+失联）。**merge 指引**：上游若改动 `discover_project_layers` 的目录探测逻辑，
+保留 `project_config_dir` 助手与两层探测顺序，把上游的新行为叠加在选出的目录上；
+上游若引入自己的目录名，改为三选一优先级（`.nuwax-harness` > 上游名 > `.codex`）。
+回归测试：`loader::tests::project_config_dir_prefers_nuwax_harness_over_codex_compat`。
+
 
 ## 3. 模型协议与路由
 
@@ -1059,6 +1069,47 @@ OSC 21337 字段不变。快照覆盖全部状态。该改动不重命名 Cargo 
 （Display 即脱敏文本），exec/TUI 兜底分支再叠加 `redact_config_error_text`，
 日志 `Failed to deserialize overridden config` 也随之脱敏；`diagnostics` 补 1 例，
 共 11 例。
+
+**Responses 线 fco 收尾自动补占位 user turn（2026-11-13，rig 桥）**：智谱官方
+`/v1/responses` 拒绝以 `function_call_output` 结尾的对话（400 `messages 参数非法`，
+与图片/数组/tools/流式无关；直连实测矩阵 Z1-Z11 与独立复现 crate 见
+[验证报告](my-docs/proxy-responses-image-bug-2026-11-13.md)）。标准 OpenAI
+Responses 语义允许该形态，而 view_image 等读图工具的结果恰以此收尾。
+`codex-rust-rig-bridge/src/responses.rs` 的
+`append_trailing_tool_result_user_turn`：透传发送前末项为 fco 时追加一条最小
+user turn（矩阵 Z7/Z10 实测智谱接受且模型能读工具图）。仅作用于 Responses 线，
+Chat/Anthropic 无此限制不受影响。**merge 指引**：上游 rig/桥若重构 Responses
+透传，保留该追加逻辑（识别上游是否原生支持 fco 收尾再决定去留）；上游 OpenAI
+官方线不受影响，追加对官方线无害。回归测试：`trailing_tool_result_shim_tests`。
+
+### 7.x rig-core 0.45 → 0.46 升级（2026-11-13，分支 `rig-0.46-upgrade`，未合主线）
+
+rig 升级到 0.46（`rig-core`/`rig-reqwest` =0.46，bridge + live-tests 两处 pin）。
+迁移本体很小：`Native` 结构新增 `baseline`/`edited`/`blob_slot` 三字段，6 处
+构造点补齐。**阻塞项与 fork 侧解法**（这是 merge 官方源码时最容易丢的部分）：
+
+- **根因**：`exec-server-protocol` 为 JSON-RPC 数字精确透传启用 serde_json 的
+  `arbitrary_precision`；Cargo feature 统一后全 workspace 的 serde_json 都带它，
+  而 rig 0.46 新 catalog 的 `CostTier` 用 serde flatten，数字经缓冲变 map →
+  `invalid type: map, expected f64` → 内嵌 models.dev 快照 1744 行中 191 行
+  解析失败 → `Catalog::builtin()` 首次访问 panic（进程崩溃，无 feature 开关）。
+  实验对照：无 arbitrary_precision 0 skipped；加它 191 skipped，首条
+  claude-haiku-5-5 一字不差。官方 rig 自己的测试环境无此 feature，其
+  `the_checked_in_catalog_loads_whole` 全绿——**不是上游数据坏，是 feature
+  组合 × flatten 的已知不兼容**。
+- **fork 解法**：vendored 快照 `codex-rust-rig-bridge/src/catalog_models.json`
+  （rig 0.46 同一份 models.json）+ `reasoning_effort.rs` 的 `nuwax_catalog()`：
+  改用 `Catalog::from_models_dev()` **宽容解析**（一次性 warn 记录跳过数；
+  191 行为 claude/gpt 等 vendor 行，fork 不服务），`Catalog::builtin()` 不再
+  被调用——catalog 从此与 serde_json feature 环境解耦。
+- **merge 指引**：①上游合并 catalog 解析修复（arbitrary_precision 兼容或
+  claude-haiku-5-5 行修正）后，可删除 vendored 快照与 `nuwax_catalog()` 恢复
+  `builtin()`；②上游 catalog row/`CostTier` 结构再变时，同步
+  `catalog_models.json`（`cargo xtask catalog sync` 的产物）与 `nuwax_catalog()`
+  的解析注释；③`reasoning_effort.rs` 是唯一 `builtin()` 调用点，merge 时确认
+  没有新增调用点绕过宽容目录。遗留：给 rig 上游报 catalog 解析在
+  arbitrary_precision 下失败的兼容问题；153 个桥测试超时需在低负载时复验
+  （与本升级无关的环境噪声嫌疑）。
 
 ## 8. 版本与发布
 
