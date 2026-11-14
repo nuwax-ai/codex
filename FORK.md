@@ -1087,10 +1087,13 @@ OSC 21337 字段不变。快照覆盖全部状态。该改动不重命名 Cargo 
 且经代理实测**拒绝任何形态的 fco content-parts 数组**（连纯文本数组都拒，矩阵 A-E）
 ——读图工具（view_image 等）的结果恰是数组形态，导致识图必败且毒化整个会话
 （后续每轮重放数组继续失败，"无法恢复对话"）。
-`codex-rust-rig-bridge/src/responses.rs` 两个变换，**均由 provider 级开关
-`model_providers.<id>.responses_trailing_tool_result_user_turn = true` 显式启用**
-（默认关闭，OpenAI 官方与规格忠实网关保持 verbatim 透传；契约测试
-`responses_wire_sends_the_request_verbatim` 锁定）：
+`codex-rust-rig-bridge/src/responses.rs` 两个变换，**默认启用**（2026-11-14
+起）：数组形态是较新的协议特性，国产网关的 Responses 转换器普遍可能不完整
+（智谱是第一个实测确认的），默认开启让识图开箱即用；对官方 OpenAI 该搬移
+形态完全合法、语义等价。opt-out：`model_providers.<id>.
+responses_trailing_tool_result_user_turn = false`（规格忠实网关恢复 verbatim
+透传；契约测试 `responses_wire_sends_the_request_verbatim` 显式关闭以锁定
+该契约）：
 
 1. `move_tool_result_arrays_to_user_turns`：所有 fco content 数组改为纯字符串
    output，图片挪进紧随的 user message（代理矩阵 E 实测可用；官方线语义等价）；

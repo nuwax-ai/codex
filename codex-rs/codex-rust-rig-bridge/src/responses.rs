@@ -208,7 +208,12 @@ async fn stream_responses_via_rig_inner(
     // shape, so append a minimal user turn after a trailing tool result.
     // Verified against open.bigmodel.cn/api/v1/responses and harmless on MiMo
     // (my-docs/proxy-responses-image-bug-2026-11-13.md).
-    if api_provider.trailing_tool_result_user_turn.unwrap_or(false) {
+    // Default ON: the array form breaks several gateway Responses
+    // converters (Zhipu verified; the array shape is new enough that other
+    // implementations likely share the gap), while the moved shape is valid
+    // everywhere including OpenAI-official. Providers can opt out with
+    // `responses_trailing_tool_result_user_turn = false`.
+    if api_provider.trailing_tool_result_user_turn.unwrap_or(true) {
         move_tool_result_arrays_to_user_turns(&mut wire_request.input);
         append_trailing_tool_result_user_turn(&mut wire_request.input);
     }

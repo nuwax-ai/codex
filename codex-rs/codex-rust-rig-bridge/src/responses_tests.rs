@@ -394,6 +394,32 @@ mod trailing_tool_result_shim_tests {
         );
     }
 
+    /// Default-on through `codex_api::Provider`: an unset flag enables the
+    /// shims (opt-out is the explicit `false`).
+    #[test]
+    fn unset_provider_flag_enables_the_shims() {
+        let provider = codex_api::Provider {
+            name: "p".into(),
+            base_url: "https://gw.example/v1".into(),
+            query_params: None,
+            headers: Default::default(),
+            retry: codex_api::RetryConfig {
+                max_attempts: 1,
+                base_delay: std::time::Duration::ZERO,
+                retry_429: false,
+                retry_5xx: false,
+                retry_transport: false,
+            },
+            stream_idle_timeout: Default::default(),
+            max_output_tokens: None,
+            hosted_results_replay: None,
+            anthropic_prompt_caching: None,
+            trailing_tool_result_user_turn: None,
+            reasoning_effort_levels: None,
+        };
+        assert!(provider.trailing_tool_result_user_turn.unwrap_or(true));
+    }
+
     /// A request that already ends with a user message is untouched.
     #[test]
     fn user_ending_request_is_not_augmented() {

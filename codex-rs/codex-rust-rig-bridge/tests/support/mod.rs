@@ -190,7 +190,9 @@ fn local_provider(address: std::net::SocketAddr, effort_levels: Option<Vec<Strin
         max_output_tokens: None,
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
-        trailing_tool_result_user_turn: None,
+        // The verbatim contract is about a spec-faithful gateway: the shim
+        // stays off so the passthrough is byte-for-byte.
+        trailing_tool_result_user_turn: Some(false),
         reasoning_effort_levels: effort_levels,
     }
 }
