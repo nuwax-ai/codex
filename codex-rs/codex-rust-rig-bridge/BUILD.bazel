@@ -2,6 +2,9 @@ load("//:defs.bzl", "codex_rust_crate")
 
 codex_rust_crate(
     name = "codex-rust-rig-bridge",
-    compile_data = glob(["tests/fixtures/**"]),
+    compile_data = glob(["tests/fixtures/**"]) + [
+        # include_str! by reasoning_effort::nuwax_catalog
+        ["catalog_models.json"],
+    ],
     crate_name = "codex_rust_rig_bridge",
 )

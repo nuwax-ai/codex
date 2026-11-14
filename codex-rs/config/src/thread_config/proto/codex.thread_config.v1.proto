@@ -63,6 +63,10 @@ message ModelProvider {
   // Fork: user-declared model slugs served by this provider (see
   // ModelProviderInfo::models); empty means undeclared.
   repeated string models = 27;
+  // Fork: Responses gateway compat shims (image detail original→auto, tool
+  // result arrays move to user turn, trailing fco gains user turn). Default
+  // on; explicit false opts a spec-faithful gateway back to verbatim.
+  optional bool responses_trailing_tool_result_user_turn = 28;
 }
 
 message ModelProviderCapabilities {

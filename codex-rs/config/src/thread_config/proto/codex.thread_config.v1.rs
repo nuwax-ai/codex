@@ -106,6 +106,10 @@ pub struct ModelProvider {
     /// undeclared.
     #[prost(string, repeated, tag = "27")]
     pub models: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Fork: Responses gateway compat shims. Default on (absent = on);
+    /// explicit false opts a spec-faithful gateway back to verbatim.
+    #[prost(bool, optional, tag = "28")]
+    pub responses_trailing_tool_result_user_turn: ::core::option::Option<bool>,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ModelProviderCapabilities {

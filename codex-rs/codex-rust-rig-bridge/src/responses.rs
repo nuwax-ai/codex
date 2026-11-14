@@ -384,6 +384,7 @@ pub(crate) fn move_tool_result_arrays_to_user_turns(input: &mut Vec<ResponseItem
             continue;
         };
         let mut images = Vec::new();
+        let mut audios = Vec::new();
         let mut texts = Vec::new();
         for part in parts {
             match part {
@@ -402,9 +403,10 @@ pub(crate) fn move_tool_result_arrays_to_user_turns(input: &mut Vec<ResponseItem
                     // replaying blobs it cannot decode.
                     texts.push("(encrypted content omitted)".into())
                 }
-                codex_protocol::models::FunctionCallOutputContentItem::InputAudio { .. } => {
-                    // Audio has no place in the string fallback or the image
-                    // user turn; drop it rather than fail the whole request.
+                codex_protocol::models::FunctionCallOutputContentItem::InputAudio { audio_url } => {
+                    audios.push(codex_protocol::models::ContentItem::InputAudio {
+                        audio: codex_protocol::models::AudioReference::Inline { audio_url },
+                    })
                 }
             }
         }
@@ -424,7 +426,7 @@ pub(crate) fn move_tool_result_arrays_to_user_turns(input: &mut Vec<ResponseItem
             },
             internal_chat_message_metadata_passthrough,
         });
-        if !images.is_empty() {
+        if !images.is_empty() || !audios.is_empty() {
             let mut content: Vec<codex_protocol::models::ContentItem> = images
                 .into_iter()
                 .map(
@@ -433,11 +435,12 @@ pub(crate) fn move_tool_result_arrays_to_user_turns(input: &mut Vec<ResponseItem
                         detail,
                     },
                 )
+                .chain(audios)
                 .collect();
             content.push(codex_protocol::models::ContentItem::InputText {
                 text: match &name {
-                    Some(name) => format!("(image(s) above are the result of tool {name}.)"),
-                    None => "(image(s) above are a tool result.)".into(),
+                    Some(name) => format!("(image(s)/audio above are the result of tool {name}.)"),
+                    None => "(image(s)/audio above are a tool result.)".into(),
                 },
             });
             rebuilt.push(ResponseItem::Message {

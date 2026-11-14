@@ -5533,7 +5533,9 @@ async fn twenty_synthetic_screenshots_trigger_formal_compaction() -> anyhow::Res
         include_internal_metadata: false,
         max_output_tokens: Some(1_024),
         hosted_results_replay: None,
+        responses_trailing_tool_result_user_turn: None,
         anthropic_prompt_caching: None,
+
         reasoning_effort_levels: None,
     };
     let server_name = "rmcp";

@@ -3282,6 +3282,10 @@
           "description": "Does this provider require an OpenAI API key or ChatGPT login token? If true, the user is presented with a login screen on first run, and credentials are stored using the backend selected by `cli_auth_credentials_store`. If false (the default), the login screen is skipped, and the API key (if needed) comes from the environment variable specified by `env_key`.",
           "type": "boolean"
         },
+        "responses_trailing_tool_result_user_turn": {
+          "description": "Fork (nuwax-codex): opt-in for the Responses-line gateway compatibility shims — tool-result image arrays move into a follow-up user message and a trailing `function_call_output` gains a minimal user turn. Needed for gateways whose Responses converter rejects content-part arrays (Zhipu `/v1/responses`: `messages 参数非法`). Default ON (2026-11-14): the moved shape is valid everywhere including OpenAI-official; spec-faithful gateways can opt out with `false` to keep the passthrough verbatim.",
+          "type": "boolean"
+        },
         "stream_idle_timeout_ms": {
           "description": "Idle timeout (in milliseconds) to wait for activity on a streaming response before treating the connection as lost.",
           "format": "uint64",
@@ -4761,12 +4765,22 @@
       ]
     },
     "SandboxMode": {
-      "enum": [
-        "read-only",
-        "workspace-write",
-        "danger-full-access"
-      ],
-      "type": "string"
+      "oneOf": [
+        {
+          "enum": [
+            "read-only",
+            "danger-full-access"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Fork (nuwax-codex): the default sandbox mode. Upstream defaults to `read-only`, which in a fresh directory means the model can neither edit the project nor run `curl` until a trust decision or an explicit mode is chosen. The fork's local CLI/client deployments treat \"work in this directory\" as the baseline, so an unconfigured, untrusted directory gets the same write scope and outbound network as a trusted one. `read-only` remains available by asking for it.",
+          "enum": [
+            "workspace-write"
+          ],
+          "type": "string"
+        }
+      ]
     },
     "SandboxWorkspaceWrite": {
       "additionalProperties": false,

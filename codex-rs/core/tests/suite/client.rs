@@ -1796,7 +1796,9 @@ async fn send_provider_auth_request(server: &MockServer, auth: ModelProviderAuth
         include_internal_metadata: false,
         max_output_tokens: None,
         hosted_results_replay: None,
+        responses_trailing_tool_result_user_turn: None,
         anthropic_prompt_caching: None,
+
         reasoning_effort_levels: None,
     };
 
@@ -3314,7 +3316,9 @@ async fn azure_responses_request_does_not_store_and_preserves_prefixed_item_ids(
         include_internal_metadata: false,
         max_output_tokens: None,
         hosted_results_replay: None,
+        responses_trailing_tool_result_user_turn: None,
         anthropic_prompt_caching: None,
+
         reasoning_effort_levels: None,
     };
 
@@ -4175,7 +4179,9 @@ async fn azure_overrides_assign_properties_used_for_responses_url() {
         include_internal_metadata: false,
         max_output_tokens: None,
         hosted_results_replay: None,
+        responses_trailing_tool_result_user_turn: None,
         anthropic_prompt_caching: None,
+
         reasoning_effort_levels: None,
     };
 
@@ -4274,7 +4280,9 @@ async fn env_var_overrides_loaded_auth() {
         include_internal_metadata: false,
         max_output_tokens: None,
         hosted_results_replay: None,
+        responses_trailing_tool_result_user_turn: None,
         anthropic_prompt_caching: None,
+
         reasoning_effort_levels: None,
     };
 

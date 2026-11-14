@@ -213,7 +213,7 @@ fn model_provider_from_proto(
         // Empty repeated field on the wire means "undeclared" (None).
         models: (!provider.models.is_empty()).then_some(provider.models),
         anthropic_prompt_caching: None,
-        responses_trailing_tool_result_user_turn: None,
+        responses_trailing_tool_result_user_turn: provider.responses_trailing_tool_result_user_turn,
         reasoning_effort_levels: None,
         stream_max_retries: provider.stream_max_retries,
         stream_idle_timeout_ms: provider.stream_idle_timeout_ms,
@@ -309,6 +309,7 @@ fn model_provider_to_proto(
         max_output_tokens,
         hosted_results_replay,
         models: models.unwrap_or_default(),
+        responses_trailing_tool_result_user_turn: provider.responses_trailing_tool_result_user_turn,
         stream_max_retries,
         stream_idle_timeout_ms,
         websocket_connect_timeout_ms,
@@ -567,6 +568,7 @@ mod tests {
                         model_providers: vec![proto::ModelProvider {
                             id: "local".to_string(),
                             name: "Local".to_string(),
+                            responses_trailing_tool_result_user_turn: Some(true),
                             base_url: Some("http://127.0.0.1:8061/api/codex".to_string()),
                             model_catalog_url: Some(
                                 "http://127.0.0.1:8061/api/codex/models".to_string(),
@@ -697,8 +699,8 @@ mod tests {
             // must survive the remote thread config.
             max_output_tokens: Some(16_384),
             hosted_results_replay: Some(false),
+            responses_trailing_tool_result_user_turn: Some(true),
             anthropic_prompt_caching: None,
-            responses_trailing_tool_result_user_turn: None,
             reasoning_effort_levels: None,
         }
     }
