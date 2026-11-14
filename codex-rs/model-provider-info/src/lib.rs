@@ -318,8 +318,9 @@ pub struct ModelProviderInfo {
     /// shims — tool-result image arrays move into a follow-up user message and
     /// a trailing `function_call_output` gains a minimal user turn. Needed for
     /// gateways whose Responses converter rejects content-part arrays (Zhipu
-    /// `/v1/responses`: `messages 参数非法`). Default off: official OpenAI and
-    /// spec-faithful gateways must keep the passthrough verbatim.
+    /// `/v1/responses`: `messages 参数非法`). Default ON (2026-11-14): the
+    /// moved shape is valid everywhere including OpenAI-official; spec-faithful
+    /// gateways can opt out with `false` to keep the passthrough verbatim.
     pub responses_trailing_tool_result_user_turn: Option<bool>,
     /// Fork (nuwax-codex): the reasoning-effort tiers this provider's models
     /// actually take, in rig's own vocabulary (e.g. GLM-5.3-Flash is

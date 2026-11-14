@@ -61,9 +61,11 @@ pub struct Provider {
     /// tool, conversation tail) with the 5-minute TTL. Default off so
     /// gateways that reject the markers stay unaffected.
     pub anthropic_prompt_caching: Option<bool>,
-    /// Fork (nuwax-codex): opt-in for the Responses gateway compatibility
-    /// shims (tool-result image arrays move into a follow-up user message;
-    /// trailing `function_call_output` gains a minimal user turn). See
+    /// Fork (nuwax-codex): Responses gateway compatibility shims — image
+    /// detail `original` downgrades to `auto`, tool-result image arrays move
+    /// into a follow-up user message, and a trailing `function_call_output`
+    /// gains a minimal user turn. Default ON; `Some(false)` opts a
+    /// spec-faithful gateway back to verbatim passthrough. See
     /// `ModelProviderInfo::responses_trailing_tool_result_user_turn`.
     pub trailing_tool_result_user_turn: Option<bool>,
     /// The reasoning-effort tiers this provider's models take (fork

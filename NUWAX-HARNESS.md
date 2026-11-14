@@ -238,6 +238,7 @@ provider 常用字段：
 | `env_key` | **方式二**：存 Key 的环境变量名，Key 不落盘；与 `api_key` 互斥 |
 | `wire_api` | `responses` / `chat` / `anthropic`（后两者为 fork 扩展） |
 | `anthropic_prompt_caching` | 可选；Anthropic 线 `cache_control` 断点，默认关 |
+| `responses_trailing_tool_result_user_turn` | 可选；Responses 线网关兼容三件套（图片 `detail:"original"`→`auto`、工具结果图片数组挪进紧随 user turn、fco 结尾补占位 user turn），**默认开**；官方 OpenAI 等规格忠实网关可设 `false` 恢复逐字透传（2026-11-14 起） |
 | `max_output_tokens` | 可选；每次生成的输出上限 |
 | `request_max_retries` / `stream_max_retries` / `stream_idle_timeout_ms` | 可选；重试与流空闲超时 |
 | `reasoning_effort_levels` | 可选；该网关的模型真实接受的 effort 档位(如 `["low","high","max"]`)，见 §4 |
