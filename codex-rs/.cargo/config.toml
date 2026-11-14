@@ -19,3 +19,10 @@ rustflags = ["-C", "link-arg=/STACK:8388608", "-C", "link-arg=/arm64hazardfree"]
 
 [target.'cfg(all(windows, target_env = "gnu"))']
 rustflags = ["-C", "link-arg=-Wl,--stack,8388608"]
+
+# Fork (nuwax-codex, 2026-11-14): the Windows release link of codex-cli can
+# exhaust the commit charge on 32GB runners (link.exe + debuginfo spikes past
+# RAM+pagefile, killing the process with no output). rust-lld links the same
+# MSVC target with far less memory. Linux/macOS targets are unaffected.
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
