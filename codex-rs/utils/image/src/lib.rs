@@ -564,7 +564,7 @@ impl FitImagesOutcome {
 /// per-image limits (tool-output admission) or the request surface
 /// (conversation prompts) share this policy instead of re-implementing it.
 pub fn fit_data_urls_to_total_budget(urls: &mut [String], budget: usize) -> FitImagesOutcome {
-    let mut sizes: Vec<usize> = urls.iter().map(|url| url.len()).collect();
+    let mut sizes: Vec<usize> = urls.iter().map(str::len).collect();
     let mut total: usize = sizes.iter().sum();
     let mut rewritten = 0;
     let mut changed: Vec<FittedImage> = Vec::new();
