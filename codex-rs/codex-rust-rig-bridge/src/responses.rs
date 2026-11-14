@@ -214,6 +214,7 @@ async fn stream_responses_via_rig_inner(
     // everywhere including OpenAI-official. Providers can opt out with
     // `responses_trailing_tool_result_user_turn = false`.
     if api_provider.trailing_tool_result_user_turn.unwrap_or(true) {
+        downgrade_original_detail_to_high(&mut wire_request.input);
         move_tool_result_arrays_to_user_turns(&mut wire_request.input);
         append_trailing_tool_result_user_turn(&mut wire_request.input);
     }
@@ -321,6 +322,48 @@ async fn stream_responses_via_rig_inner(
 /// This is the exact shape the proxy accepts (matrix E) and OpenAI-official
 /// treats as equivalent — the model sees the image right after the call.
 /// Plain-string outputs are untouched.
+/// Fork (nuwax-codex, 2026-11-13): Zhipu's `/v1/responses` rejects
+/// `input_image` with `detail: "original"` outright (`400 API 调用参数有误`,
+/// any image size — verified matrix in my-docs/proxy-responses-image-bug-
+/// 2026-11-13.md). The Chat bridge already rewrites original → high for the
+/// same reason; the Responses passthrough must match, or every image-carrying
+/// turn on a detail-original provider 400s. `high` is legal on OpenAI
+/// official too — this only trades detail fidelity for compatibility.
+pub(crate) fn downgrade_original_detail_to_high(input: &mut [ResponseItem]) {
+    for item in input {
+        if let ResponseItem::Message { content, .. } = item {
+            for part in content {
+                if let codex_protocol::models::ContentItem::InputImage { detail, .. } = part {
+                    if matches!(detail, Some(codex_protocol::models::ImageDetail::Original)) {
+                        *detail = Some(codex_protocol::models::ImageDetail::High);
+                    }
+                }
+            }
+        }
+        if let ResponseItem::FunctionCallOutput {
+            output:
+                codex_protocol::models::FunctionCallOutputPayload {
+                    body: FunctionCallOutputBody::ContentItems(parts),
+                    ..
+                },
+            ..
+        } = item
+        {
+            for part in parts {
+                if let codex_protocol::models::FunctionCallOutputContentItem::InputImage {
+                    detail,
+                    ..
+                } = part
+                {
+                    if matches!(detail, Some(codex_protocol::models::ImageDetail::Original)) {
+                        *detail = Some(codex_protocol::models::ImageDetail::High);
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub(crate) fn move_tool_result_arrays_to_user_turns(input: &mut Vec<ResponseItem>) {
     let mut rebuilt = Vec::with_capacity(input.len() + 4);
     for item in input.drain(..) {
