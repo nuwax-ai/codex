@@ -556,6 +556,18 @@ v2 的 `SandboxWorkspaceWrite` 与 `SandboxPolicy`（线格式默认值同步，
 read-only，它用来验证沙箱本体，不代表产品默认。回归测试：
 `config::tests::default_permission_profile_is_workspace_write_with_network`。
 
+**`.nuwax-harness/` 列入工作区元数据写保护（2026-11-14）**：项目配置目录偏好
+`.nuwax-harness/`（见 §2）后，模型必须不能改写其中的 config/hooks——否则可以
+改写后续生效的项目配置。`PROTECTED_METADATA_PATH_NAMES` 增加 `.nuwax-harness`
+（protocol/src/permissions.rs）：元数据拒写判断、target 投影、profile 交集、
+seatbelt 投影、orchestrator 均从该列表消费，一处添加全平台生效。FS-policy
+workspace-write 构建器对其追加**无条件**的 skip_missing 只读条目（目录尚不存在
+也保护——评审发现的缺口）；legacy subpaths 路径按 `.aws` 先例仅目录存在时加入。
+**merge 指引**：上游给 PROTECTED_METADATA_PATH_NAMES 增删名字时，同步三处：
+FS-policy 构建器的 append 列表、legacy `default_read_only_subpaths_for_writable_root`
+的条件 push、`permissions_tests` 的期望列表。回归测试：
+`filesystem_policy_blocks_protected_metadata_path_writes_by_default`。
+
 **超大截图先缩小再丢弃（2026-11-10）**：工具输出的图片入口界（单张 16 MiB
 编码后、合计 24 MiB、`detail: Original` 按 16×16 patch 计费至 10000 token）此前
 是**纯丢弃**——一张 12 MB 的 Retina 全页截图（base64 16.35 MB）会整张变成一行
@@ -1070,17 +1082,26 @@ OSC 21337 字段不变。快照覆盖全部状态。该改动不重命名 Cargo 
 日志 `Failed to deserialize overridden config` 也随之脱敏；`diagnostics` 补 1 例，
 共 11 例。
 
-**Responses 线 fco 收尾自动补占位 user turn（2026-11-13，rig 桥）**：智谱官方
-`/v1/responses` 拒绝以 `function_call_output` 结尾的对话（400 `messages 参数非法`，
-与图片/数组/tools/流式无关；直连实测矩阵 Z1-Z11 与独立复现 crate 见
-[验证报告](my-docs/proxy-responses-image-bug-2026-11-13.md)）。标准 OpenAI
-Responses 语义允许该形态，而 view_image 等读图工具的结果恰以此收尾。
-`codex-rust-rig-bridge/src/responses.rs` 的
-`append_trailing_tool_result_user_turn`：透传发送前末项为 fco 时追加一条最小
-user turn（矩阵 Z7/Z10 实测智谱接受且模型能读工具图）。仅作用于 Responses 线，
-Chat/Anthropic 无此限制不受影响。**merge 指引**：上游 rig/桥若重构 Responses
-透传，保留该追加逻辑（识别上游是否原生支持 fco 收尾再决定去留）；上游 OpenAI
-官方线不受影响，追加对官方线无害。回归测试：`trailing_tool_result_shim_tests`。
+**Responses 线网关兼容 shim（2026-11-14，provider 级 opt-in）**：智谱官方
+`/v1/responses` 拒绝以 `function_call_output` 结尾的对话（400 `messages 参数非法`），
+且经代理实测**拒绝任何形态的 fco content-parts 数组**（连纯文本数组都拒，矩阵 A-E）
+——读图工具（view_image 等）的结果恰是数组形态，导致识图必败且毒化整个会话
+（后续每轮重放数组继续失败，"无法恢复对话"）。
+`codex-rust-rig-bridge/src/responses.rs` 两个变换，**均由 provider 级开关
+`model_providers.<id>.responses_trailing_tool_result_user_turn = true` 显式启用**
+（默认关闭，OpenAI 官方与规格忠实网关保持 verbatim 透传；契约测试
+`responses_wire_sends_the_request_verbatim` 锁定）：
+
+1. `move_tool_result_arrays_to_user_turns`：所有 fco content 数组改为纯字符串
+   output，图片挪进紧随的 user message（代理矩阵 E 实测可用；官方线语义等价）；
+2. `append_trailing_tool_result_user_turn`：末项为 fco 时追加最小 user turn
+   （智谱直连矩阵 Z7/Z10 实测可用）。
+
+**merge 指引**：上游 rig 若原生支持上述网关兼容（或智谱修复），可删除两个 pass
+与开关；上游重构 Responses 透传时保留开关位。配置字段：
+`ModelProviderInfo::responses_trailing_tool_result_user_turn` →
+`codex_client::Provider::trailing_tool_result_user_turn`。回归测试：
+`trailing_tool_result_shim_tests`（3 个，构造带开关的请求体断言线格式）。
 
 ### 7.x rig-core 0.45 → 0.46 升级（2026-11-13，分支 `rig-0.46-upgrade`，未合主线）
 

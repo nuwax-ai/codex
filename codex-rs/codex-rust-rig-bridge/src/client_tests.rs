@@ -19,6 +19,7 @@ fn provider(base_url: &str) -> Provider {
         max_output_tokens: None,
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
+        trailing_tool_result_user_turn: None,
         reasoning_effort_levels: None,
     }
 }

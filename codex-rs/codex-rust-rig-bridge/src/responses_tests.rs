@@ -336,6 +336,7 @@ mod trailing_tool_result_shim_tests {
     fn shimmed_body(request: &ResponsesApiRequest) -> serde_json::Value {
         let mut wire = request.clone();
         crate::responses::project_cross_protocol_history(&mut wire.input);
+        crate::responses::move_tool_result_arrays_to_user_turns(&mut wire.input);
         crate::responses::append_trailing_tool_result_user_turn(&mut wire.input);
         serde_json::to_value(&wire).expect("serialize")
     }
@@ -352,13 +353,44 @@ mod trailing_tool_result_shim_tests {
         ]);
         let body = shimmed_body(&request);
         let input = body["input"].as_array().expect("input array");
+        // After the move pass the trailing item is the moved user turn
+        // (image first, then a note naming the tool) — the plain
+        // "trailing user turn" shim no longer fires.
         let last = input.last().expect("non-empty");
         assert_eq!(last["role"], "user", "trailing fco must gain a user turn");
+        assert_eq!(last["content"][0]["type"], "input_image");
+        let note = last["content"][1]["text"].as_str().expect("note text");
+        assert!(note.contains("image"), "note = {note:?}");
+    }
+
+    /// Tool-result arrays move their images into a following user message
+    /// (proxy matrix E) — including when the array sits mid-history, which is
+    /// what a poisoned session replays on every later turn.
+    #[test]
+    fn tool_result_arrays_move_images_to_user_turn() {
+        let request = base_request(vec![
+            user_text("看截图"),
+            function_call(),
+            function_call_output_with_image(),
+            user_text("继续"),
+        ]);
+        let body = shimmed_body(&request);
+        let input = body["input"].as_array().expect("input array");
+        assert_eq!(input.len(), 5, "images move into an inserted user turn");
+        let fco = &input[2];
+        assert_eq!(fco["type"], "function_call_output");
         assert!(
-            last["content"][0]["text"]
-                .as_str()
-                .expect("text part")
-                .contains("tool results above")
+            fco["output"].is_string(),
+            "fco output must become a plain string, got {fco:?}"
+        );
+        let moved = &input[3];
+        assert_eq!(moved["role"], "user");
+        let parts = moved["content"].as_array().expect("content array");
+        assert_eq!(parts[0]["type"], "input_image");
+        let note = parts[1]["text"].as_str().expect("text part");
+        assert!(
+            note.contains("view_image") || note.contains("tool"),
+            "moved turn should name the tool, note = {note:?}"
         );
     }
 
@@ -373,7 +405,7 @@ mod trailing_tool_result_shim_tests {
         ]);
         let body = shimmed_body(&request);
         let input = body["input"].as_array().expect("input array");
-        assert_eq!(input.len(), 4, "no extra turn expected");
+        assert_eq!(input.len(), 5, "move inserts the image user turn");
         assert_eq!(input.last().unwrap()["content"][0]["text"], "继续");
     }
 }

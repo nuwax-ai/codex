@@ -213,6 +213,7 @@ fn model_provider_from_proto(
         // Empty repeated field on the wire means "undeclared" (None).
         models: (!provider.models.is_empty()).then_some(provider.models),
         anthropic_prompt_caching: None,
+        responses_trailing_tool_result_user_turn: None,
         reasoning_effort_levels: None,
         stream_max_retries: provider.stream_max_retries,
         stream_idle_timeout_ms: provider.stream_idle_timeout_ms,
@@ -265,6 +266,9 @@ fn model_provider_to_proto(
         // Fork field without a remote thread-config wire format yet, like
         // `max_output_tokens` once was: dropped on remote sync.
         anthropic_prompt_caching: _,
+        // Fork field with no remote wire format either: remote sessions keep
+        // the permissive default (shims off) rather than the local opt-in.
+        responses_trailing_tool_result_user_turn: _,
         // Fork field with no remote wire format either: the declared effort
         // tiers are a local provider concern, so a remote session keeps the
         // permissive default rather than the tiers its own config declared.
@@ -694,6 +698,7 @@ mod tests {
             max_output_tokens: Some(16_384),
             hosted_results_replay: Some(false),
             anthropic_prompt_caching: None,
+            responses_trailing_tool_result_user_turn: None,
             reasoning_effort_levels: None,
         }
     }

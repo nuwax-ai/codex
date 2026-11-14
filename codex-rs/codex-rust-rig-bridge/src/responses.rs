@@ -19,6 +19,7 @@ use codex_api::ResponsesApiRequest;
 use codex_api::SharedAuthProvider;
 use codex_api::StreamResponse;
 use codex_api::TransportError;
+use codex_protocol::models::{FunctionCallOutputBody, ResponseItem};
 use futures::StreamExt;
 use http::HeaderMap;
 use rig_core::http_client::HttpClientExt;
@@ -207,7 +208,10 @@ async fn stream_responses_via_rig_inner(
     // shape, so append a minimal user turn after a trailing tool result.
     // Verified against open.bigmodel.cn/api/v1/responses and harmless on MiMo
     // (my-docs/proxy-responses-image-bug-2026-11-13.md).
-    append_trailing_tool_result_user_turn(&mut wire_request.input);
+    if api_provider.trailing_tool_result_user_turn.unwrap_or(false) {
+        move_tool_result_arrays_to_user_turns(&mut wire_request.input);
+        append_trailing_tool_result_user_turn(&mut wire_request.input);
+    }
 
     let model = request.model.clone();
     tracing::info!(
@@ -300,6 +304,110 @@ async fn stream_responses_via_rig_inner(
 /// shape, so append a minimal user turn after a trailing tool result.
 /// Verified against open.bigmodel.cn/api/v1/responses and harmless on MiMo
 /// (my-docs/proxy-responses-image-bug-2026-11-13.md).
+/// Fork (nuwax-codex, 2026-11-13): the Nuwax model proxy rejects every
+/// `function_call_output` whose `output` is a content-parts array — even a
+/// text-only one (`messages 参数非法`; verified matrix A-E in
+/// my-docs/proxy-responses-image-bug-2026-11-13.md). Standard shape puts
+/// view_image's screenshot there, so every image-reading turn would fail and
+/// poison the rest of the session (every later turn replays the array).
+///
+/// Rewrite: images (and the result's text) move into a user message inserted
+/// right after the tool result; the tool result keeps a plain-string output.
+/// This is the exact shape the proxy accepts (matrix E) and OpenAI-official
+/// treats as equivalent — the model sees the image right after the call.
+/// Plain-string outputs are untouched.
+pub(crate) fn move_tool_result_arrays_to_user_turns(input: &mut Vec<ResponseItem>) {
+    let mut rebuilt = Vec::with_capacity(input.len() + 4);
+    for item in input.drain(..) {
+        let ResponseItem::FunctionCallOutput {
+            id,
+            call_id,
+            name,
+            namespace,
+            output,
+            internal_chat_message_metadata_passthrough,
+        } = item
+        else {
+            rebuilt.push(item);
+            continue;
+        };
+        let FunctionCallOutputBody::ContentItems(parts) = output.body else {
+            rebuilt.push(ResponseItem::FunctionCallOutput {
+                id,
+                call_id,
+                name,
+                namespace,
+                output,
+                internal_chat_message_metadata_passthrough,
+            });
+            continue;
+        };
+        let mut images = Vec::new();
+        let mut texts = Vec::new();
+        for part in parts {
+            match part {
+                codex_protocol::models::FunctionCallOutputContentItem::InputImage {
+                    image,
+                    detail,
+                } => images.push((image, detail)),
+                codex_protocol::models::FunctionCallOutputContentItem::InputText { text } => {
+                    texts.push(text)
+                }
+                codex_protocol::models::FunctionCallOutputContentItem::EncryptedContent {
+                    encrypted_content,
+                } => texts.push(format!("(encrypted content omitted: {encrypted_content})")),
+                codex_protocol::models::FunctionCallOutputContentItem::InputAudio { .. } => {
+                    // Audio has no place in the string fallback or the image
+                    // user turn; drop it rather than fail the whole request.
+                }
+            }
+        }
+        let text = if texts.is_empty() {
+            "(The tool returned the image(s) attached to the next message.)".to_string()
+        } else {
+            texts.join("\n")
+        };
+        rebuilt.push(ResponseItem::FunctionCallOutput {
+            id,
+            call_id: call_id.clone(),
+            name: name.clone(),
+            namespace,
+            output: codex_protocol::models::FunctionCallOutputPayload {
+                body: FunctionCallOutputBody::Text(text),
+                success: output.success,
+            },
+            internal_chat_message_metadata_passthrough,
+        });
+        if !images.is_empty() {
+            let mut content: Vec<codex_protocol::models::ContentItem> = images
+                .into_iter()
+                .map(
+                    |(image, detail)| codex_protocol::models::ContentItem::InputImage {
+                        image,
+                        detail,
+                    },
+                )
+                .collect();
+            content.push(codex_protocol::models::ContentItem::InputText {
+                text: match &name {
+                    Some(name) => format!("(image(s) above are the result of tool {name}.)"),
+                    None => "(image(s) above are a tool result.)".into(),
+                },
+            });
+            rebuilt.push(ResponseItem::Message {
+                id: None,
+                role: "user".into(),
+                content,
+                phase: None,
+                internal_chat_message_metadata_passthrough: None,
+                encrypted_content: None,
+                status: None,
+            });
+        }
+    }
+    *input = rebuilt;
+}
+
 pub(crate) fn append_trailing_tool_result_user_turn(
     input: &mut Vec<codex_protocol::models::ResponseItem>,
 ) {

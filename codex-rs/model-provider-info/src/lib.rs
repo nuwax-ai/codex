@@ -314,6 +314,13 @@ pub struct ModelProviderInfo {
     /// flow back. Default off: only enable for gateways that accept
     /// Anthropic cache markers.
     pub anthropic_prompt_caching: Option<bool>,
+    /// Fork (nuwax-codex): opt-in for the Responses-line gateway compatibility
+    /// shims — tool-result image arrays move into a follow-up user message and
+    /// a trailing `function_call_output` gains a minimal user turn. Needed for
+    /// gateways whose Responses converter rejects content-part arrays (Zhipu
+    /// `/v1/responses`: `messages 参数非法`). Default off: official OpenAI and
+    /// spec-faithful gateways must keep the passthrough verbatim.
+    pub responses_trailing_tool_result_user_turn: Option<bool>,
     /// Fork (nuwax-codex): the reasoning-effort tiers this provider's models
     /// actually take, in rig's own vocabulary (e.g. GLM-5.3-Flash is
     /// `["low", "high", "max"]`). The Anthropic bridge answers rig's typed
@@ -763,6 +770,7 @@ other non-default provider fields are not supported"
             max_output_tokens: self.max_output_tokens,
             hosted_results_replay: self.hosted_results_replay,
             anthropic_prompt_caching: self.anthropic_prompt_caching,
+            trailing_tool_result_user_turn: self.responses_trailing_tool_result_user_turn,
             reasoning_effort_levels: self.reasoning_effort_levels.clone(),
         })
     }
@@ -898,6 +906,7 @@ other non-default provider fields are not supported"
             max_output_tokens: None,
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
+            responses_trailing_tool_result_user_turn: None,
             reasoning_effort_levels: None,
             provider_id: None,
             include_internal_metadata: true,
@@ -949,6 +958,7 @@ other non-default provider fields are not supported"
             max_output_tokens: None,
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
+            responses_trailing_tool_result_user_turn: None,
             reasoning_effort_levels: None,
             provider_id: None,
             include_internal_metadata: false,
@@ -1001,6 +1011,7 @@ other non-default provider fields are not supported"
             max_output_tokens: None,
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
+            responses_trailing_tool_result_user_turn: None,
             reasoning_effort_levels: None,
             include_internal_metadata: false,
         }
@@ -1356,6 +1367,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         max_output_tokens: None,
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
+        responses_trailing_tool_result_user_turn: None,
         reasoning_effort_levels: None,
         provider_id: None,
         include_internal_metadata: false,

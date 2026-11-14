@@ -109,7 +109,7 @@ fn convert_legacy_reasoning(block: LegacyReasoning) -> Vec<Reasoning> {
                 reasoning.native = Some(Native {
                     item,
                     fingerprint: AssistantContent::Reasoning(reasoning.clone()).fingerprint(),
-    // rig 0.46: legacy/native records carry no float baseline, no edit
+                    // rig 0.46: legacy/native records carry no float baseline, no edit
                     // marker, and no reasoning blob slot.
                     baseline: None,
                     edited: false,

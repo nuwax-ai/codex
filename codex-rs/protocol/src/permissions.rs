@@ -43,6 +43,10 @@ pub use windows_glob::windows_deny_read_glob_scan;
 const PROTECTED_METADATA_GIT_PATH_NAME: &str = ".git";
 const PROTECTED_METADATA_AGENTS_PATH_NAME: &str = ".agents";
 const PROTECTED_METADATA_CODEX_PATH_NAME: &str = ".codex";
+/// Fork (nuwax-codex, 2026-11-13): the project config dir prefers
+/// `.nuwax-harness/` over `.codex/` (see config/src/loader), so the model must
+/// not be able to rewrite session config or hooks through it either.
+const PROTECTED_METADATA_NUWAX_HARNESS_PATH_NAME: &str = ".nuwax-harness";
 const PROTECTED_METADATA_AWS_PATH_NAME: &str = ".aws";
 
 /// Top-level workspace metadata paths that stay protected under writable roots.
@@ -50,6 +54,7 @@ pub const PROTECTED_METADATA_PATH_NAMES: &[&str] = &[
     PROTECTED_METADATA_GIT_PATH_NAME,
     PROTECTED_METADATA_AGENTS_PATH_NAME,
     PROTECTED_METADATA_CODEX_PATH_NAME,
+    PROTECTED_METADATA_NUWAX_HARNESS_PATH_NAME,
     PROTECTED_METADATA_AWS_PATH_NAME,
 ];
 
@@ -832,6 +837,14 @@ impl FileSystemSandboxPolicy {
         append_default_read_only_project_root_subpath_if_no_explicit_rule(&mut entries, ".git");
         append_default_read_only_project_root_subpath_if_no_explicit_rule(&mut entries, ".agents");
         append_default_read_only_project_root_subpath_if_no_explicit_rule(&mut entries, ".codex");
+        // Fork (nuwax-codex, 2026-11-13): the project config dir prefers
+        // `.nuwax-harness/` — protect it like `.codex` (the model must not
+        // rewrite session config or hooks through it), including when the
+        // directory does not exist yet.
+        append_default_read_only_project_root_subpath_if_no_explicit_rule(
+            &mut entries,
+            PROTECTED_METADATA_NUWAX_HARNESS_PATH_NAME,
+        );
         append_default_read_only_project_root_subpath_if_no_explicit_rule(&mut entries, ".aws");
         for writable_root in writable_roots {
             for protected_path in default_read_only_subpaths_for_writable_root(
@@ -2386,6 +2399,16 @@ pub(crate) fn default_read_only_subpaths_for_writable_root(
     let top_level_codex = writable_root.join(PROTECTED_METADATA_CODEX_PATH_NAME);
     if protect_missing_dot_codex || top_level_codex.as_path().is_dir() {
         subpaths.push(top_level_codex);
+    }
+
+    // Fork (nuwax-codex, 2026-11-13): the project config dir prefers
+    // `.nuwax-harness/` — keep it read-only to the agent once it exists.
+    // The modern FS-policy path additionally protects a not-yet-existing
+    // `.nuwax-harness` via the unconditional default read entry (see the
+    // `.aws` append in workspace_write), matching `.codex`'s intent.
+    let top_level_nuwax = writable_root.join(PROTECTED_METADATA_NUWAX_HARNESS_PATH_NAME);
+    if top_level_nuwax.as_path().is_dir() {
+        subpaths.push(top_level_nuwax);
     }
 
     // AWS profiles can select credential helpers that the application executes.

@@ -734,6 +734,12 @@ fn legacy_workspace_write_projection_preserves_symbolic_project_root() {
             ),
             FileSystemSandboxEntry::skip_missing_path(
                 FileSystemPath::Special {
+                    value: FileSystemSpecialPath::project_roots(Some(".nuwax-harness".into())),
+                },
+                FileSystemAccessMode::Read,
+            ),
+            FileSystemSandboxEntry::skip_missing_path(
+                FileSystemPath::Special {
                     value: FileSystemSpecialPath::project_roots(Some(".aws".into())),
                 },
                 FileSystemAccessMode::Read,
@@ -833,6 +839,11 @@ fn filesystem_policy_blocks_protected_metadata_path_writes_by_default() {
     assert!(!file_system_policy.can_write_local_path_with_cwd(&dot_git_config, cwd.path()));
     assert!(!file_system_policy.can_write_local_path_with_cwd(&dot_agents_config, cwd.path()));
     assert!(!file_system_policy.can_write_local_path_with_cwd(&dot_codex_config, cwd.path()));
+    let dot_nuwax_config = cwd.path().join(".nuwax-harness").join("config.toml");
+    assert!(
+        !file_system_policy.can_write_local_path_with_cwd(&dot_nuwax_config, cwd.path()),
+        ".nuwax-harness config must be write-protected like .codex"
+    );
     assert!(!file_system_policy.can_write_local_path_with_cwd(&dot_aws_config, cwd.path()));
 
     let writable_roots = file_system_policy.get_writable_roots_with_cwd(cwd.path());
@@ -843,6 +854,7 @@ fn filesystem_policy_blocks_protected_metadata_path_writes_by_default() {
             ".git".to_string(),
             ".agents".to_string(),
             ".codex".to_string(),
+            ".nuwax-harness".to_string(),
             ".aws".to_string(),
         ]
     );

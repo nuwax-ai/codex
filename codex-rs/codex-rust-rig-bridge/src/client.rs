@@ -276,7 +276,14 @@ pub(crate) fn build_chat_model(
         // checks them itself (`reasoning_effort::check_declared`) and keeps the
         // effort as a raw body key. Same rule, same refusal point, same
         // vocabulary — FORK.md §10.
-        facts: rig_core::catalog::ModelFacts::default(),
+        //
+        // The facts stay unbound but answer from the lenient vendored catalog:
+        // `ModelFacts::default()` falls back to rig's builtin catalog, which
+        // panics under this workspace's arbitrary_precision feature (191
+        // unreadable vendor rows — FORK.md §7.x). `bound` staying `None`
+        // preserves the per-model output-cap scoping described above.
+        facts: rig_core::catalog::ModelFacts::default()
+            .with_catalog(crate::reasoning_effort::nuwax_catalog()),
     };
     Ok(model_via_bridge(wire, http))
 }

@@ -55,9 +55,10 @@ static NUWAX_CATALOG: LazyLock<rig_core::catalog::Catalog> = LazyLock::new(|| {
     }
 });
 
-/// The catalog backing reasoning-effort binding: rig's builtin data, parsed
+/// The catalog backing reasoning-effort binding and any wire that would
+/// otherwise answer from rig's builtin data: rig's builtin rows, parsed
 /// leniently so one unreadable vendor row cannot take down the process.
-fn nuwax_catalog() -> &'static rig_core::catalog::Catalog {
+pub(crate) fn nuwax_catalog() -> &'static rig_core::catalog::Catalog {
     &NUWAX_CATALOG
 }
 use serde::de::Deserialize;

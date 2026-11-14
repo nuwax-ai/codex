@@ -190,6 +190,7 @@ fn local_provider(address: std::net::SocketAddr, effort_levels: Option<Vec<Strin
         max_output_tokens: None,
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
+        trailing_tool_result_user_turn: None,
         reasoning_effort_levels: effort_levels,
     }
 }

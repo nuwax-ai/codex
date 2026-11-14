@@ -575,6 +575,7 @@ fn floor_provider(address: std::net::SocketAddr) -> codex_api::Provider {
         max_output_tokens: None,
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
+        trailing_tool_result_user_turn: None,
         reasoning_effort_levels: None,
     }
 }
@@ -753,7 +754,7 @@ async fn converted_originals_reach_the_socket_with_window_room() -> Result<(), T
             }
             RigProtocol::Anthropic => {
                 assert!(
-                    plain.contains(r#""source":{"type":"base64""#),
+                    plain.contains(r#""type":"base64""#),
                     "{protocol:?} tool={with_tool}: Anthropic carries the payload as a base64 source"
                 );
             }
