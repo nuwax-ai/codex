@@ -26,6 +26,12 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_BUILD_JOBS: "4"
+  # Fork (nuwax-codex, 2026-11-15): CI test binaries drop debuginfo. The
+  # line tables blew the commit charge on memory-constrained Windows runners
+  # (silent link death); release artifacts already build with debug=false.
+  # Local dev keeps line-tables-only via the profile default.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
   test:
