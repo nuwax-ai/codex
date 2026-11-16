@@ -690,10 +690,13 @@ strip = "symbols"
 
 [profile.release]
 lto = "thin"
-debug = "line-tables-only"
+# Fork (nuwax-codex, 2026-11-15): drop debuginfo from release artifacts.
+# The line tables made the Windows link exceed the 64GB commit charge
+# (RAM+pagefile) on the 32GB Gitea runner and the process died silently at
+# link time. Release builds don't need them; panic backtraces keep function
+# names, only file/line details are lost.
+debug = false
 split-debuginfo = "off"
-# Keep release binaries symbolicateable until packaging has archived the
-# sidecar symbols and stripped the binaries.
 strip = false
 
 # Balance parallel release code generation against binary size.
