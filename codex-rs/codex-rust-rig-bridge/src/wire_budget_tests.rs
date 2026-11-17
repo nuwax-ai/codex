@@ -52,12 +52,12 @@ fn typed_budget_failure_survives_the_completion_error_chain() {
 
 #[test]
 fn impossible_output_reservation_is_a_configuration_error_before_network_or_compaction() {
+    // Fork (2026-11-17): `output >= window` is no longer a configuration
+    // error — a gateway deployment whose window is smaller than the model's
+    // catalog output limit is legitimate, and the budget is clamped to the
+    // window instead (deepseek-flash 256k-on-gateway vs 384k catalog output).
+    // Only a non-positive window fails fast here.
     for budget in [
-        WireBudget {
-            context_window_tokens: Some(100),
-            output_tokens: Some(100),
-            vision_floor_tokens: 0,
-        },
         WireBudget {
             context_window_tokens: Some(0),
             output_tokens: None,

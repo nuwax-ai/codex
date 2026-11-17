@@ -72,11 +72,14 @@ impl WireBudget {
         wire_bytes: usize,
         image_costs: Option<crate::wire_images::WireImageCosts>,
     ) -> Result<(), rig_core::http_client::Error> {
-        if self.context_window_tokens.is_some_and(|window| {
-            window <= 0
-                || u64::try_from(window)
-                    .is_ok_and(|window| self.output_tokens.is_some_and(|output| output >= window))
-        }) {
+        // Fork (2026-11-17): only a non-positive window is a configuration
+        // error. `output >= window` used to fail too, but a deployment whose
+        // gateway window is smaller than the model's catalog output limit is
+        // legitimate (proxy deployments expose a reduced window — e.g.
+        // deepseek-flash at 256k on a gateway vs the catalog's 384k output);
+        // there the output budget is simply clamped to the window and the
+        // context estimate below still guards the request.
+        if self.context_window_tokens.is_some_and(|window| window <= 0) {
             return Err(rig_core::http_client::Error::Instance(Box::new(
                 WireBudgetExceeded::Configuration {
                     context_window_tokens: self.context_window_tokens,
@@ -121,8 +124,8 @@ pub(crate) fn api_error(
                     message: failure.to_string(),
                 },
                 WireBudgetExceeded::Configuration {
-                    context_window_tokens,
-                    output_tokens,
+                    context_window_tokens: _,
+                    output_tokens: _,
                 } => codex_api::ApiError::InvalidRequest {
                     message: failure.to_string(),
                 },
