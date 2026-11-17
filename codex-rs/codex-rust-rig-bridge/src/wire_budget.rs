@@ -29,18 +29,33 @@ pub(crate) struct WireBudget {
 pub(crate) enum WireBudgetExceeded {
     Bytes,
     Context,
-    Configuration,
+    /// Carries the observed `context_window_tokens` and `output_tokens` so the
+    /// message names the values that tripped the check (the bare text gave no
+    /// way to tell a misconfigured window from an oversized output budget).
+    Configuration {
+        context_window_tokens: Option<i64>,
+        output_tokens: Option<u64>,
+    },
 }
 
 impl std::fmt::Display for WireBudgetExceeded {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            Self::Bytes => "final wire request exceeds the 512 MB byte budget",
-            Self::Context => "final wire request exceeds the estimated model context budget",
-            Self::Configuration => {
-                "model context must be positive and larger than the configured output budget"
+        match self {
+            Self::Bytes => {
+                formatter.write_str("final wire request exceeds the 512 MB byte budget")
             }
-        })
+            Self::Context => {
+                formatter.write_str("final wire request exceeds the estimated model context budget")
+            }
+            Self::Configuration {
+                context_window_tokens,
+                output_tokens,
+            } => write!(
+                formatter,
+                "model context must be positive and larger than the configured output budget \
+                 (context_window_tokens={context_window_tokens:?}, output_tokens={output_tokens:?})"
+            ),
+        }
     }
 }
 
@@ -63,7 +78,10 @@ impl WireBudget {
                     .is_ok_and(|window| self.output_tokens.is_some_and(|output| output >= window))
         }) {
             return Err(rig_core::http_client::Error::Instance(Box::new(
-                WireBudgetExceeded::Configuration,
+                WireBudgetExceeded::Configuration {
+                    context_window_tokens: self.context_window_tokens,
+                    output_tokens: self.output_tokens,
+                },
             )));
         }
         let estimate = match image_costs {
@@ -102,7 +120,10 @@ pub(crate) fn api_error(
                 WireBudgetExceeded::Bytes => codex_api::ApiError::InvalidRequest {
                     message: failure.to_string(),
                 },
-                WireBudgetExceeded::Configuration => codex_api::ApiError::InvalidRequest {
+                WireBudgetExceeded::Configuration {
+                    context_window_tokens,
+                    output_tokens,
+                } => codex_api::ApiError::InvalidRequest {
                     message: failure.to_string(),
                 },
                 WireBudgetExceeded::Context => codex_api::ApiError::ContextWindowExceeded,
