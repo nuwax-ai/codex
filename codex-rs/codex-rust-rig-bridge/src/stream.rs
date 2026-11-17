@@ -295,6 +295,21 @@ fn stream_via_rig_attempt(
         {
             completion_request.max_tokens = Some(max_output_tokens);
         }
+        // Fork (2026-11-17): never ask a gateway for more output than half the
+        // deployment window. rig fills `max_tokens` from the model catalog when
+        // the caller sets none, and a catalog cap can exceed the window
+        // (deepseek-v4: 384k cap vs a 243k gateway window) — such a request is
+        // rejected upstream and also trips the wire budget's output
+        // reservation.
+        if let (Some(window), Some(max_tokens)) = (
+            context.context_window_tokens.filter(|window| *window > 0),
+            completion_request.max_tokens,
+        ) {
+            let cap = u64::try_from(window).unwrap_or(u64::MAX) / 2;
+            if max_tokens > cap {
+                completion_request.max_tokens = Some(cap.max(1));
+            }
+        }
         let (base_url, query) = crate::client::endpoint(&api_provider.base_url, api_provider)?;
         let mut headers = api_provider.headers.clone();
         let chainer_headers = extra_headers.clone();

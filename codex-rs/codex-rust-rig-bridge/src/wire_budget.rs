@@ -113,7 +113,16 @@ impl WireBudget {
         };
         let exceeds_context = self.context_window_tokens.is_some_and(|window| {
             u64::try_from(window).map_or(true, |window| {
-                estimate.saturating_add(self.output_tokens.unwrap_or_default()) > window
+                // Fork (2026-11-17): reserve at most the room left after the
+                // estimate. A catalog-declared output cap can exceed the
+                // deployment window (deepseek-v4: 384k cap vs 243k window on a
+                // gateway), and adding it wholesale made every request fail
+                // with "ran out of room" no matter how small the history.
+                let reserve = self
+                    .output_tokens
+                    .unwrap_or_default()
+                    .min(window.saturating_sub(estimate));
+                estimate.saturating_add(reserve) > window
             })
         });
         let failure = if wire_bytes > MAX_WIRE_BYTES {
