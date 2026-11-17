@@ -1170,6 +1170,39 @@ and larger than the configured output budget"）。该比较把**两个不同数
 测试二进制时 outbound_tests 偶发资源干扰（4 例失败、单线程全过）——
 复验用 `cargo test --test wire -- --test-threads=1`。
 
+#### 续：超窗判定同样改为"只按历史估算"，三条线都钳制 max_output（2026-11-17 同日）
+
+上一条只解决了 `Configuration`（装配阶段）报错，**`Context` 超窗判定仍在犯同类错误**：
+`exceeds_context = estimate + output_tokens > window`。而 `output_tokens` 是模型目录
+（models.dev）声明的**理论上限**，与网关部署窗口来自两个数据源——deepseek-v4 目录
+声明 `limit.output=384000`，女娲网关窗口只有 243200，于是
+`56,020 + 384,000 > 243,200` **恒真**：任何请求、任凭历史多短都报
+`ran out of room`，降级裁剪到 50k 仍失败。实测四元组（`Context` 错误已带值）：
+
+```
+estimate_tokens=56020, context_window_tokens=Some(243200),
+output_tokens=Some(384000), wire_bytes=224077
+```
+
+修复三点：
+
+1. **预留按剩余空间钳制**：`reserve = min(output_tokens, window - estimate)`，
+   只有 `estimate` 本身超过窗口才判超窗（原式等价于"给历史留 0 时也算超"）。
+2. **chat/anthropic 线**（`stream.rs`）：发给网关的 `max_tokens` 钳到窗口一半——
+   请求 384k 输出给 243k 窗口的网关，上游本来也会拒。
+3. **responses 透传线**（`responses.rs`）：同样钳制 `max_output_tokens`（透传线
+   不经过 `stream.rs`，最初漏了这一处，复查时补上）。
+
+**为什么数值本身没错**：384000 是 DeepSeek V4 系列声明的单次响应上限（平台
+`OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX` 也下发同一个值），不是实际用量；错的是
+"把理论上限当作每次请求都要预留的空间，并拿去和部署窗口硬比"。
+
+**merge 指引**：①三处钳制（`stream.rs` 的 chat/anthropic、`responses.rs`、
+`wire_budget.rs` 的 reserve）必须同时保留，漏一处就会有某条线重新发出超窗请求；
+②`Context` 现在是带四个字段的 struct variant，`to_api_error` 的 match 需同步
+（`ContextWindowExceeded` 的映射不变，字段仅供报错文本）；③上游若引入
+"按窗口推导输出上限"的机制，可直接替换 fork 的钳制，但需保证钳制值 ≤ 窗口一半。
+
 #### release 产物 debuginfo 清零（2026-11-15）
 
 `[profile.release]` 的 `debug = "line-tables-only"` 改为 `debug = false`：
