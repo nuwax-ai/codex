@@ -28,7 +28,15 @@ pub(crate) struct WireBudget {
 #[derive(Debug)]
 pub(crate) enum WireBudgetExceeded {
     Bytes,
-    Context,
+    /// Carries the estimate and window so the message names what tripped the
+    /// check: a large history, a large vision floor and a small window all
+    /// produce the same bare text otherwise.
+    Context {
+        estimate_tokens: u64,
+        context_window_tokens: Option<i64>,
+        output_tokens: Option<u64>,
+        wire_bytes: usize,
+    },
     /// Carries the observed `context_window_tokens` and `output_tokens` so the
     /// message names the values that tripped the check (the bare text gave no
     /// way to tell a misconfigured window from an oversized output budget).
@@ -44,9 +52,17 @@ impl std::fmt::Display for WireBudgetExceeded {
             Self::Bytes => {
                 formatter.write_str("final wire request exceeds the 512 MB byte budget")
             }
-            Self::Context => {
-                formatter.write_str("final wire request exceeds the estimated model context budget")
-            }
+            Self::Context {
+                estimate_tokens,
+                context_window_tokens,
+                output_tokens,
+                wire_bytes,
+            } => write!(
+                formatter,
+                "final wire request exceeds the estimated model context budget \
+                 (estimate_tokens={estimate_tokens}, context_window_tokens={context_window_tokens:?}, \
+                 output_tokens={output_tokens:?}, wire_bytes={wire_bytes})"
+            ),
             Self::Configuration {
                 context_window_tokens,
                 output_tokens,
@@ -103,7 +119,12 @@ impl WireBudget {
         let failure = if wire_bytes > MAX_WIRE_BYTES {
             Some(WireBudgetExceeded::Bytes)
         } else if exceeds_context {
-            Some(WireBudgetExceeded::Context)
+            Some(WireBudgetExceeded::Context {
+                estimate_tokens: estimate,
+                context_window_tokens: self.context_window_tokens,
+                output_tokens: self.output_tokens,
+                wire_bytes,
+            })
         } else {
             None
         };
@@ -129,7 +150,12 @@ pub(crate) fn api_error(
                 } => codex_api::ApiError::InvalidRequest {
                     message: failure.to_string(),
                 },
-                WireBudgetExceeded::Context => codex_api::ApiError::ContextWindowExceeded,
+                WireBudgetExceeded::Context {
+                    estimate_tokens: _,
+                    context_window_tokens: _,
+                    output_tokens: _,
+                    wire_bytes: _,
+                } => codex_api::ApiError::ContextWindowExceeded,
             });
         }
         // Rig 0.44's `ProviderError::Http` keeps its transport error in an
