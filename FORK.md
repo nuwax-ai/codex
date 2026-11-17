@@ -1142,6 +1142,52 @@ rig 升级到 0.46（`rig-core`/`rig-reqwest` =0.46，bridge + live-tests 两处
   arbitrary_precision 下失败的兼容问题；153 个桥测试超时需在低负载时复验
   （与本升级无关的环境噪声嫌疑）。
 
+### 7.x wire_budget：`output >= window` 不再判为配置矛盾 + 错误带实测值（2026-11-17）
+
+`rig-bridge/src/wire_budget.rs` 的快速失败校验原语义：`output_tokens >=
+context_window_tokens` 即报 `Configuration`（"model context must be positive
+and larger than the configured output budget"）。该比较把**两个不同数据源**
+硬性对撞：
+
+- `context_window_tokens` = 平台/部署配置的窗口（如女娲网关下发的
+  deepseek-flash 256k，经 95% effective 折算 243k）；
+- `output_tokens` = rig catalog（models.dev）声明的模型理论输出上限
+  （deepseek-v4-flash 384k）。
+
+网关部署窗口小于模型理论输出上限是**合法现实**（代理只暴露缩减窗口），
+跨源比较会把每个此类部署误判为配置矛盾——deepseek-flash 会话恢复即在
+对话开头报错、无法使用。
+
+**修复语义**：只有 `window <= 0` 才快速失败；`output >= window` 时输出
+预算被窗口钳制，由既有的 context estimate 校验兜底。`Configuration`
+错误现在携带 `context_window_tokens` / `output_tokens` 实际值，报错即可
+定位成因（裸文本曾无法区分窗口配错与预算过大）。
+
+**merge 指引**：上游若对同位置有改动，保留 fork 分支的钳制语义与新错误
+签名（含字段的 struct variant）；`wire_budget_tests.rs` 的
+`impossible_output_reservation_is_a_configuration_error` 期望已同步更新
+（`output >= window` 用例移出失败清单）。测试注意：nextest 并发跑多个
+测试二进制时 outbound_tests 偶发资源干扰（4 例失败、单线程全过）——
+复验用 `cargo test --test wire -- --test-threads=1`。
+
+#### release 产物 debuginfo 清零（2026-11-15）
+
+`[profile.release]` 的 `debug = "line-tables-only"` 改为 `debug = false`：
+Windows Gitea runner（31.52，32GB）链接 release 产物时 line tables 把提交
+内存推过上限，链接进程静默死亡（run 197/199/203 三轮复现，无错误输出）。
+发布产物不需要行表；panic backtrace 保留函数名。同批 CI 测试编译设
+`CARGO_PROFILE_DEV_DEBUG=0` / `TEST_DEBUG=0`（fork-cargo-pr 的 nextest）。
+**merge 指引**：上游改 `[profile.release]` 时保留 `debug = false`。
+
+#### 已知数据差异：目录 deepseek 系声明与网关实测（2026-11-17 观察）
+
+vendor/rig 两份目录声明 deepseek-v4 系 `context 1M / output 384k`；女娲
+网关实测窗口 190k（平台下发 `NUWAX_MODEL_CONTEXT_WINDOW=190000`，客户端
+注入链：平台 agent_config.env → 客户端 `NUWAX_MODEL_CONTEXT_WINDOW` →
+引擎）。目录值虚高导致**首次撞墙前压缩不触发**（触发点按 1M×80%=838k
+永不到达），撞墙后 observed-ceiling 机制才按实测收紧。平台下发值优先级
+高于目录，现网行为正确；models.dev 上游数据问题不修，记录备查。
+
 ## 8. 版本与发布
 
 正式版本 `v0.18.14` → `f82730975` 已发布（2026-10-23）：
