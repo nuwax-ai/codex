@@ -199,6 +199,18 @@ async fn stream_responses_via_rig_inner(
     // tools field clones without copying.
     let mut wire_request = request.clone();
     wire_request.max_output_tokens = request.max_output_tokens.or(api_provider.max_output_tokens);
+    // Fork (2026-11-17): mirror the Chat/Anthropic clamp — a catalog or
+    // platform output cap can exceed the deployment window (deepseek-v4: 384k
+    // cap vs a 243k gateway window) and such a request is rejected upstream.
+    if let (Some(window), Some(max_output_tokens)) = (
+        context.context_window_tokens.filter(|window| *window > 0),
+        wire_request.max_output_tokens,
+    ) {
+        let cap = u64::try_from(window).unwrap_or(u64::MAX) / 2;
+        if max_output_tokens > cap {
+            wire_request.max_output_tokens = Some(cap.max(1));
+        }
+    }
     let projected = project_cross_protocol_history(&mut wire_request.input);
     // Fork (nuwax-codex, 2026-11-13): Zhipu's official `/v1/responses` rejects
     // a conversation whose final input item is a `function_call_output` —
