@@ -28,6 +28,10 @@ http = { workspace = true }
 bytes = { workspace = true }
 sha2 = { workspace = true }
 codex-http-client = { workspace = true }
+# Reuse the engine's identity headers (`originator` + `User-Agent`) on the rig
+# wires: gateways such as Kimi's Coding Plan whitelist requests by client
+# identity, and a request with no User-Agent at all is rejected.
+codex-login = { workspace = true }
 codex-utils-string = { workspace = true }
 codex-utils-image = { workspace = true }
 # rig 0.42 embeds a reqwest 0.13 transport while the workspace pins 0.12 for

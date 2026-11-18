@@ -141,7 +141,7 @@ async fn stream_responses_via_rig_inner(
     context: crate::wire_budget::RigCallContext,
 ) -> Result<ResponseStream, ApiError> {
     let (base_url, query) = crate::client::endpoint(&api_provider.base_url, api_provider)?;
-    let mut headers = api_provider.headers.clone();
+    let mut headers = crate::client::with_identity_headers(api_provider.headers.clone());
     headers.extend(extra_headers);
     // Resolve once: refreshable credentials and gateway conflict checks are
     // part of the outbound auth contract, not the synchronous telemetry snapshot.

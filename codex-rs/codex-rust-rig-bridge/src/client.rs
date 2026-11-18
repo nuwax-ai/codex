@@ -2,6 +2,23 @@
 
 use codex_api::Provider;
 use http::HeaderMap;
+
+/// Fork (2026-11-18): identify this client the way the first-party transport
+/// does. Gateways that whitelist coding agents (Kimi Coding Plan returns
+/// "Coding Plan is currently only available for Coding Agents") read the
+/// request's identity, and the rig wires previously sent **no** `User-Agent`
+/// at all, so every such gateway rejected us regardless of the protocol.
+///
+/// Headers the caller already set win: an operator-configured `http_headers`
+/// entry is an explicit choice, not something to overwrite.
+pub(crate) fn with_identity_headers(mut headers: HeaderMap) -> HeaderMap {
+    for (name, value) in codex_login::default_client::default_headers() {
+        if let Some(name) = name {
+            headers.entry(name).or_insert(value);
+        }
+    }
+    headers
+}
 // rig 0.42 embeds a reqwest 0.13 transport; the workspace pins 0.12 for the
 // rest of codex. Depend on rig's major explicitly (renamed) so the two never
 // share a type — features unify with rig-core's defaults (rustls TLS).

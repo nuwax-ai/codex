@@ -131,7 +131,8 @@ pub async fn stream_via_rig_with_recorders(
     // logical call's pause continuations when that proof is unavailable.
     let mut context = crate::wire_budget::RigCallContext::default();
     if let Some(snapshot) = api_auth.immutable_credential_headers() {
-        let mut actual_headers = api_provider.headers.clone();
+        let mut actual_headers =
+            crate::client::with_identity_headers(api_provider.headers.clone());
         actual_headers.extend(extra_headers.clone());
         actual_headers.extend(snapshot);
         let mut scoped_headers = HeaderMap::new();
@@ -311,7 +312,7 @@ fn stream_via_rig_attempt(
             }
         }
         let (base_url, query) = crate::client::endpoint(&api_provider.base_url, api_provider)?;
-        let mut headers = api_provider.headers.clone();
+        let mut headers = crate::client::with_identity_headers(api_provider.headers.clone());
         let chainer_headers = extra_headers.clone();
         headers.extend(extra_headers);
         // Resolve once: refreshable credentials and gateway conflict checks are
