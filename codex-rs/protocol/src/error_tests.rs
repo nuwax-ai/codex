@@ -65,6 +65,35 @@ fn retryability_preserves_error_details_distinctions() {
             }),
             true,
         ),
+        // Fork (2026-11-18): an auth rejection is terminal. Retrying it only
+        // burns attempts and, at a compaction checkpoint, renders repeated
+        // "compact conversation" cards for requests that can never succeed.
+        (
+            CodexErr::UnexpectedStatus(UnexpectedResponseError {
+                status: StatusCode::UNAUTHORIZED,
+                body: String::new(),
+                user_message: None,
+                url: None,
+                cf_ray: None,
+                request_id: None,
+                identity_authorization_error: None,
+                identity_error_code: None,
+            }),
+            false,
+        ),
+        (
+            CodexErr::UnexpectedStatus(UnexpectedResponseError {
+                status: StatusCode::FORBIDDEN,
+                body: String::new(),
+                user_message: None,
+                url: None,
+                cf_ray: None,
+                request_id: None,
+                identity_authorization_error: None,
+                identity_error_code: None,
+            }),
+            false,
+        ),
         (
             CodexErrorDetails::ToolCollision("functions.update_plan".to_string()).into(),
             false,

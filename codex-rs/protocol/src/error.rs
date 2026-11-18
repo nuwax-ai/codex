@@ -489,6 +489,23 @@ impl CodexErr {
             CodexErrorDetails::ServerOverloaded
             | CodexErrorDetails::PolicyCapacityUnavailable
             | CodexErrorDetails::RetryLimit(_) => self.server_retry_delay(),
+            // Fork (2026-11-18): an authentication/authorization rejection is
+            // terminal, not transient. Retrying it burned the whole retry
+            // budget on requests that can never succeed — and when the driver
+            // is a compaction checkpoint it surfaced as repeated
+            // "compact conversation" cards before the auth error.
+            CodexErrorDetails::UnexpectedStatus(error)
+                if matches!(
+                    error.status,
+                    StatusCode::BAD_REQUEST
+                        | StatusCode::UNAUTHORIZED
+                        | StatusCode::FORBIDDEN
+                        | StatusCode::NOT_FOUND
+                        | StatusCode::UNPROCESSABLE_ENTITY
+                ) =>
+            {
+                None
+            }
             CodexErrorDetails::Stream(..)
             | CodexErrorDetails::ContentFilter
             | CodexErrorDetails::RateLimitExceeded(_)
