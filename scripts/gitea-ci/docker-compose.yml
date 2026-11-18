@@ -22,6 +22,9 @@ services:
       GITEA__actions__ENABLED: "true"
       # Gitea 1.23 only accepts the shorthand here (a full URL is rejected).
       GITEA__actions__DEFAULT_ACTIONS_URL: github
+      # aarch64-musl 单平台全流程实测 ≈2h58m（v0.18.53 热缓存），默认 3h 上限
+      # 几乎没有余量、冷缓存必超时（run 215 白跑 178 分钟）。给 6h。
+      GITEA__actions__DEFAULT_ACTIONS_JOB_TIMEOUT: 6h
     ports:
       - "3301:3000"
       - "2223:22"
