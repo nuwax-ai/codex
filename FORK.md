@@ -1203,6 +1203,25 @@ output_tokens=Some(384000), wire_bytes=224077
 （`ContextWindowExceeded` 的映射不变，字段仅供报错文本）；③上游若引入
 "按窗口推导输出上限"的机制，可直接替换 fork 的钳制，但需保证钳制值 ≤ 窗口一半。
 
+#### 身份头：rig 三线补 User-Agent / originator + 鉴权错误不重试（2026-11-18）
+
+**身份头**：抓包发现 rig 桥的 chat / anthropic / responses 三条线**完全不发
+`User-Agent`**（只有 `x-api-key` 与 `x-codex-*` 元数据）。按客户端身份白名单准入
+的网关（Kimi Coding Plan 报 `Coding Plan is currently only available for Coding
+Agents`）因此一律拒绝，与协议选择无关。现在出站 header map 构造处合并
+`codex_login::default_client::default_headers()`（`originator` +
+`get_codex_user_agent()`），调用方已设置的同名头优先、不覆盖显式 `http_headers`。
+
+**鉴权错误不重试**：`CodexErr::retry_delay()` 把 `UnexpectedStatus` 一律当可重试，
+实测一次 401（平台 token 失效）连打 7 个请求，压缩检查点也各打一次（必然同样
+401），界面表现为重复的 "Compact conversation" 卡片后才报错。现在按状态码分流：
+`400/401/403/404/422` 为终态不重试，`5xx/408/429` 仍退避重试。
+
+**merge 指引**：①`retry_delay` 只有两个消费点（`responses_retry.rs` 的模型流重试、
+`client.rs` 的 401 恢复选择），工具调用不经过它——上游若新增消费点需重新评估；
+②`with_identity_headers` 依赖 `codex-login` 依赖，上游若把该函数挪走需同步；
+③身份头的具体值由 `get_codex_user_agent()` 决定，不要在此处硬编码产品名。
+
 #### release 产物 debuginfo 清零（2026-11-15）
 
 `[profile.release]` 的 `debug = "line-tables-only"` 改为 `debug = false`：
