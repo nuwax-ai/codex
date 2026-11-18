@@ -211,20 +211,44 @@ fn is_h1_heading(line: &str) -> bool {
 /// placeholder metadata. The placeholder window (272k) silently budgeting a
 /// session was invisible to users; the warning names the knob to set.
 pub fn model_info_from_slug(slug: &str) -> ModelInfo {
+    model_info_from_slug_with_context_window(slug, /*context_window*/ None)
+}
+
+/// Fallback descriptor for an unknown slug, aware of a configured window.
+///
+/// Fork (2026-11-18): the placeholder warning used to fire even when
+/// `model_context_window` (or `NUWAX_MODEL_CONTEXT_WINDOW`) was set and in
+/// effect, telling the operator to configure a knob they had already
+/// configured — the override is applied *after* this fallback, so runtime
+/// data showed `model_context_window_effective: 190000` next to a
+/// "set NUWAX_MODEL_CONTEXT_WINDOW" warning. Only warn when no override
+/// exists; otherwise the placeholder is a temporary value the caller replaces.
+pub fn model_info_from_slug_with_context_window(
+    slug: &str,
+    context_window: Option<i64>,
+) -> ModelInfo {
     static WARNED_SLUGS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
         std::sync::OnceLock::new();
     let warned = WARNED_SLUGS.get_or_init(Default::default);
     if let Ok(mut seen) = warned.lock()
         && seen.insert(slug.to_string())
     {
-        warn!(
-            slug,
-            placeholder_context_window = 272_000,
-            "model `{slug}` is not in any catalog; using fallback placeholder \
-             metadata with a 272,000-token context window — set \
-             `model_context_window` (or NUWAX_MODEL_CONTEXT_WINDOW) to the \
-             model's real window so budgets and compaction are derived from it"
-        );
+        if context_window.is_some() {
+            debug!(
+                slug,
+                "model `{slug}` is not in any catalog; the placeholder window is \
+                 replaced by the configured `model_context_window`"
+            );
+        } else {
+            warn!(
+                slug,
+                placeholder_context_window = 272_000,
+                "model `{slug}` is not in any catalog; using fallback placeholder \
+                 metadata with a 272,000-token context window — set \
+                 `model_context_window` (or NUWAX_MODEL_CONTEXT_WINDOW) to the \
+                 model's real window so budgets and compaction are derived from it"
+            );
+        }
     }
     debug!("Unknown model {slug} is used. This will use fallback model metadata.");
     ModelInfo {

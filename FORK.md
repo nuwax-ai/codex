@@ -1203,6 +1203,25 @@ output_tokens=Some(384000), wire_bytes=224077
 （`ContextWindowExceeded` 的映射不变，字段仅供报错文本）；③上游若引入
 "按窗口推导输出上限"的机制，可直接替换 fork 的钳制，但需保证钳制值 ≤ 窗口一半。
 
+#### 占位窗口告警按“是否已配置窗口”分流（2026-11-18）
+
+`models-manager` 对目录里没有的模型用 272k 占位窗口，并 WARN 提示“设置
+`model_context_window`（或 `NUWAX_MODEL_CONTEXT_WINDOW`）”。但该覆盖是在
+占位值**之后**才应用的，于是出现自相矛盾的日志组合：
+
+```
+model_context_window: 200000          ← env 种子已生效
+model_context_window_override: true
+model_context_window_effective: 190000
+WARN ... using fallback placeholder ... set NUWAX_MODEL_CONTEXT_WINDOW ...
+```
+
+（源码核对：`app-server/src/startup_config.rs` **确实**调用
+`parse_overrides()`，env 种子在 ACP 路径生效——这一点曾经被误判为“ACP 不消费”。）
+现在 `model_info_from_slug_with_context_window(slug, Option<i64>)`：已配置窗口时只
+打 debug，未配置时才 WARN。`construct_model_info` 传入
+`config.model_context_window`；`declared_catalog_model`（选择阶段、无 config）保持原样。
+
 #### 身份头：rig 三线补 User-Agent / originator + 鉴权错误不重试（2026-11-18）
 
 **身份头**：抓包发现 rig 桥的 chat / anthropic / responses 三条线**完全不发

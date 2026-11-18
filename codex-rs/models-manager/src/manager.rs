@@ -1097,7 +1097,11 @@ fn construct_model_info(
             crate::vendor_catalog::vendor_model_info(&entry)
         } else {
             CatalogModel {
-                model: model_info::model_info_from_slug(model).into(),
+                model: model_info::model_info_from_slug_with_context_window(
+                    model,
+                    config.model_context_window,
+                )
+                .into(),
                 origin: ModelOrigin::Synthetic,
             }
         }
