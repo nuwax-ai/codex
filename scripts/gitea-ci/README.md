@@ -205,6 +205,7 @@ github.com 但 `crates.io` 返回 403、`chromium.googlesource.com` 超时。因
 |---|---|---|---|
 | Rust 1.99.1 + musl target | `install-host-runner.sh` | `/data/nvme1/gitea-ci/toolchain/{cargo,rustup}` | rustc/cargo 1.99.1 |
 | Zig 0.14.0（musl 链接） | 同上 | `.../toolchain/zig` | 0.14.0 |
+| 任务超时 | `GITEA__actions__DEFAULT_ACTIONS_JOB_TIMEOUT=6h`（compose） | `app.ini` `[actions]` | aarch64-musl 单平台实测 ≈2h58m，默认 3h 无余量 |
 | crates 与 git 依赖（含 `rules_rust`/`nucleo`/`h3`/`mxc`/`rusty_v8`） | 有网机器 `cargo vendor`，整包搬过去 | `/data/nvme0/ci-cache/vendor/ci-vendor`（1.9G） | 目录源替代所有 registry |
 | rusty_v8 归档 | `fetch-rusty-v8.sh`（校验 `third_party/v8` 清单） | `/data/nvme0/ci-cache/rusty_v8/<target>`（87M/3 target） | 校验 OK |
 | 构建缓存 | `CARGO_TARGET_DIR` 指到大盘 | `/data/nvme0/ci-cache/target/<target>` | — |
