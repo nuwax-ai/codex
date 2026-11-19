@@ -1375,6 +1375,12 @@ Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§
   `sysctl -n hw.memsize`、Windows 用 `CIM Win32_ComputerSystem`。2026-11-19 把预算从
   “30 GB/单元、上限 3”下调为 **6 GB/单元、上限 4**：实测 rustc 常驻 1.5–3 GB，
   旧值让 31 GB/16 GB 机器单核编译 1.5–2 小时；可按 runner 用 `CI_CARGO_JOBS` 覆盖。
+- **取消 run 不会杀 runner 上的编译进程**（2026-11-19 踩到）：`v0.18.55/56` 取消后，
+  31 GB runner 上残留一个 `ppid=1` 的 `cargo build aarch64-musl`（跑了 2 小时），
+  一直占着 target 锁，新 job 的 `bwrap` 空等 1 小时。取消/重发前先在该 runner 清理
+  本仓库路径下 `ppid=1` 的 cargo/rustc：
+  `ps -eo pid,ppid,args | awk '$2==1 && /cargo build|bin\/rustc /'` 后逐个 kill。
+  注意只杀 `ppid=1` 的孤儿，正在跑的 job 的 cargo 有 job shell 作父进程。
 
 - workspace 版本恒为占位 `0.0.0`；npm 版本号来自 git tag（`v*` → release.yml，
   7 平台构建 → 阿里云 OSS 二进制 → npm publish；cargo bin 名保持官方 `codex`，
