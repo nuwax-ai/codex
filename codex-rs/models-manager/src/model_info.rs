@@ -223,23 +223,44 @@ pub fn model_info_from_slug(slug: &str) -> ModelInfo {
 /// data showed `model_context_window_effective: 190000` next to a
 /// "set NUWAX_MODEL_CONTEXT_WINDOW" warning. Only warn when no override
 /// exists; otherwise the placeholder is a temporary value the caller replaces.
+static WARNED_SLUGS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::OnceLock::new();
+static DEBUGGED_SLUGS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::OnceLock::new();
+
+/// 记录"这个 slug 已经报过一次"，返回是否为首次。
+///
+/// 关键：调用方只在**确实要输出**时才登记——先登记再判断会让"配了窗口"的
+/// provider A 把 slug 占掉，导致后来没配窗口的 provider B 不再告警。
+fn note_placeholder_once(warn: bool, slug: &str) -> bool {
+    let seen = if warn {
+        WARNED_SLUGS.get_or_init(Default::default)
+    } else {
+        DEBUGGED_SLUGS.get_or_init(Default::default)
+    };
+    seen.lock()
+        .map(|mut seen| seen.insert(slug.to_string()))
+        .unwrap_or(false)
+}
+
 pub fn model_info_from_slug_with_context_window(
     slug: &str,
     context_window: Option<i64>,
 ) -> ModelInfo {
-    static WARNED_SLUGS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
-        std::sync::OnceLock::new();
-    let warned = WARNED_SLUGS.get_or_init(Default::default);
-    if let Ok(mut seen) = warned.lock()
-        && seen.insert(slug.to_string())
-    {
-        if context_window.is_some() {
+
+    // Fork (2026-11-19): 去重必须按"实际告警"登记，不能先登记再判断。
+    // 否则 provider A 配了窗口（只写 debug）会把同名 slug 登记掉，后来
+    // 未配窗口的 provider B 就再也不会 WARN。debug 与 warn 各自去重。
+    if context_window.is_some() {
+        if note_placeholder_once(/*warn*/ false, slug) {
             debug!(
                 slug,
                 "model `{slug}` is not in any catalog; the placeholder window is \
                  replaced by the configured `model_context_window`"
             );
-        } else {
+        }
+    } else {
+        if note_placeholder_once(/*warn*/ true, slug) {
             warn!(
                 slug,
                 placeholder_context_window = 272_000,

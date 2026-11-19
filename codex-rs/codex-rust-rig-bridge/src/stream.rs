@@ -302,15 +302,11 @@ fn stream_via_rig_attempt(
         // (deepseek-v4: 384k cap vs a 243k gateway window) — such a request is
         // rejected upstream and also trips the wire budget's output
         // reservation.
-        if let (Some(window), Some(max_tokens)) = (
-            context.context_window_tokens.filter(|window| *window > 0),
+        // 与 responses 线共用同一个"窗口一半"上限函数,避免两条线规则漂移。
+        completion_request.max_tokens = crate::responses::wire_output_cap(
             completion_request.max_tokens,
-        ) {
-            let cap = u64::try_from(window).unwrap_or(u64::MAX) / 2;
-            if max_tokens > cap {
-                completion_request.max_tokens = Some(cap.max(1));
-            }
-        }
+            context.context_window_tokens,
+        );
         let (base_url, query) = crate::client::endpoint(&api_provider.base_url, api_provider)?;
         let mut headers = crate::client::with_identity_headers(api_provider.headers.clone());
         let chainer_headers = extra_headers.clone();

@@ -119,3 +119,54 @@ fn vision_floor_raises_the_estimate_without_ever_adding_or_lowering() {
         .is_ok()
     );
 }
+
+/// Review 2026-11-19: the check must charge the cap that is actually sent.
+/// Window 1100 / input estimate 875 / sent cap 550 = 1425 > 1100, so the local
+/// check has to reject it instead of letting a gateway do it.
+#[test]
+fn sent_output_cap_participates_in_the_context_check() {
+    // 3500 bytes ≈ 875 tokens at 4 bytes/token.
+    let bytes = 3_500;
+    let over = WireBudget {
+        context_window_tokens: Some(1_100),
+        output_tokens: Some(550),
+        vision_floor_tokens: 0,
+    };
+    let error = over
+        .clone()
+        .check_body(bytes, None)
+        .expect_err("over-budget request must be rejected locally");
+    // 诊断值必须出现在错误文本里（转换前的唯一可观测点）
+    let text = error.to_string();
+    assert!(text.contains("estimate_tokens=875"), "missing estimate: {text}");
+    assert!(text.contains("output_tokens=Some(550)"), "missing cap: {text}");
+    assert!(text.contains("context_window_tokens=Some(1100)"), "missing window: {text}");
+
+    // Tightened to the remaining room it fits again.
+    let fitted = WireBudget {
+        output_tokens: Some(225),
+        ..over
+    };
+    assert!(fitted.check_body(bytes, None).is_ok());
+}
+
+/// The tightening helper names the cap that still fits next to this body.
+#[test]
+fn tightened_output_tokens_uses_the_remaining_room() {
+    let budget = WireBudget {
+        context_window_tokens: Some(1_100),
+        output_tokens: Some(550),
+        vision_floor_tokens: 0,
+    };
+    assert_eq!(budget.tightened_output_tokens(3_500, None), Some(225));
+
+    // Already inside the window: nothing to do.
+    let roomy = WireBudget {
+        output_tokens: Some(100),
+        ..budget.clone()
+    };
+    assert_eq!(roomy.tightened_output_tokens(3_500, None), None);
+
+    // Body alone exceeds the window: cannot be fixed by shrinking output.
+    assert_eq!(budget.tightened_output_tokens(5_000, None), None);
+}

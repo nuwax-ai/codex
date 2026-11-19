@@ -1239,6 +1239,31 @@ output_tokens=Some(384000), wire_bytes=224077
 （`ContextWindowExceeded` 的映射不变，字段仅供报错文本）；③上游若引入
 "按窗口推导输出上限"的机制，可直接替换 fork 的钳制，但需保证钳制值 ≤ 窗口一半。
 
+#### 输出上限与预算校验对齐 + 诊断值落日志（2026-11-19，代码复审后修）
+
+复审指出三处，已全部核实并修复：
+
+1. **预算校验与实发上限脱节**：`check_body` 用的是"钳制后的预留"
+   `min(output, window - estimate)`，而实发 `max_output_tokens` 只钳到 `window/2`。
+   例：窗口 1100、输入估算 875、实发 550 → 本地通过，但 `875 + 550 > 1100`，
+   凡是校验"输入+输出"的网关都会拒。
+   现在 `check_body` 直接用**实发上限**判定（`estimate + output_tokens > window`），
+   `responses` 线还会按剩余空间把上限**收紧**到 `window - estimate` 并重序列化
+   （transport 的预算用收紧后的值）；`chat`/`anthropic` 线共用
+   `responses::wire_output_cap`（窗口一半）；输入本身就放不下时仍走可恢复的
+   `ContextWindowExceeded`（压缩/降级）。
+2. **`Context` 诊断值在转换时丢失**：桥把 `WireBudgetExceeded::Context{..}` 转成
+   无字段的 `ApiError::ContextWindowExceeded`（分类不能改，否则丢恢复路径），
+   现在转换前打 `WARN`，带出 `estimate_tokens` / `context_window_tokens` /
+   `output_tokens` / `wire_bytes`。
+3. **占位窗口告警去重顺序**：去重集合原先"先登记再判断"，导致配了窗口的 provider A
+   把同名 slug 登记掉，未配窗口的 provider B 不再 WARN。现在 warn/debug 各自去重，
+   且只在真正输出时登记（`note_placeholder_once`）。
+
+**merge 指引**：`check_body` 的语义是"实发上限参与预算"，不要退回预留钳制；
+`responses` 的收紧必须发生在 transport 构造**之前**（否则预算仍用旧上限，
+见本次修复中间态）；`wire_output_cap` 是两条输出线的唯一上限规则。
+
 #### 占位窗口告警按“是否已配置窗口”分流（2026-11-18）
 
 `models-manager` 对目录里没有的模型用 272k 占位窗口，并 WARN 提示“设置

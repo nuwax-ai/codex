@@ -598,3 +598,26 @@ fn a_vendor_model_with_image_modality_admits_reviewer_images() {
     );
     assert!(!matches!(model.origin, ModelOrigin::Synthetic));
 }
+
+/// Review 2026-11-19: a configured window must not swallow the warning for a
+/// *different* provider using the same unknown slug without one.
+///
+/// 断言的是去重登记本身（日志不可直接断言）：同一个 slug 先按“已配置窗口”
+/// 登记（只 debug），之后再按“未配置窗口”登记，必须**仍然算首次**——否则就
+/// 复现了“provider A 把 provider B 的告警吞掉”的问题。
+#[test]
+fn configured_window_does_not_suppress_another_providers_warning() {
+    let slug = "review-dedupe-shared-slug";
+    assert!(
+        note_placeholder_once(/*warn*/ false, slug),
+        "debug 路径首次登记应为 true"
+    );
+    assert!(
+        note_placeholder_once(/*warn*/ true, slug),
+        "同一 slug 的告警登记不应被 debug 登记吞掉"
+    );
+    assert!(
+        !note_placeholder_once(/*warn*/ true, slug),
+        "同一 warn 重复调用只报一次"
+    );
+}

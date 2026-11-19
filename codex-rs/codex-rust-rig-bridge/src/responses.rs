@@ -151,45 +151,20 @@ async fn stream_responses_via_rig_inner(
             .await
             .map_err(|error| ApiError::Transport(error.into()))?,
     );
-    let request_id = Arc::new(std::sync::Mutex::new(None));
-    let http = crate::transport::RigHttpClient {
-        retry: Some(api_provider.retry.clone()),
-        inner: crate::client::http_client(crate::RigProtocol::Responses)?,
-        request_headers: crate::client::request_headers(&headers, crate::RigProtocol::Responses),
-        wire_auth: None,
-        anthropic_pause_raw_content: None,
-        query: query.clone(),
-        request_id: request_id.clone(),
-        authorization_override: headers
-            .get(http::header::AUTHORIZATION)
-            .filter(|_| crate::client::bearer_token(&headers).is_none())
-            .cloned(),
-        protocol: crate::RigProtocol::Responses,
-        // Chat/Anthropic-only knobs; all empty on the Responses wire.
-        disable_anthropic_parallel: false,
-        anthropic_service_tier: None,
-        anthropic_tool_choice: None,
-        chat_drop_orphan_tool_choice: false,
-        anthropic_websearch_replay: Vec::new(),
-        tool_strict: Default::default(),
-        tool_result_errors: Default::default(),
-        anthropic_server_tools: Vec::new(),
-        anthropic_usage: Arc::new(std::sync::Mutex::new(Default::default())),
-        chat_usage: Arc::new(std::sync::Mutex::new(Default::default())),
-        final_request_recorder,
-        wire_budget: crate::wire_budget::WireBudget {
-            context_window_tokens: context.context_window_tokens,
-            output_tokens: request.max_output_tokens.or(api_provider.max_output_tokens),
-            // The passthrough serializes Codex's request verbatim, so
-            // `detail: "original"` reaches the wire walk intact and is
-            // already priced there by the same estimator the floor uses.
-            vision_floor_tokens: 0,
-        },
-        responses_sse_recorder: sse_recorder,
-        anthropic_sse_tee: None,
+    let mut budget = crate::wire_budget::WireBudget {
+        context_window_tokens: context.context_window_tokens,
+        // 这里必须是"实际会发出去的上限":下面的 tightening 会基于它收敛,
+        // transport 的最终校验也用同一个值,避免"检查用预留、实发用另一套"。
+        output_tokens: wire_output_cap(
+            request.max_output_tokens.or(api_provider.max_output_tokens),
+            context.context_window_tokens,
+        ),
+        // The passthrough serializes Codex's request verbatim, so
+        // `detail: "original"` reaches the wire walk intact and is
+        // already priced there by the same estimator the floor uses.
+        vision_floor_tokens: 0,
     };
 
-    let client = crate::client::build_responses_client(&base_url, &headers, http)?;
 
     // Clone-and-project at the TYPE level, then serialize the copy once.
     // A serde_json::Value round-trip would reorder keys (BTreeMap without
@@ -198,7 +173,7 @@ async fn stream_responses_via_rig_inner(
     // original byte-for-byte serialization semantics; the Arc<RawValue>
     // tools field clones without copying.
     let mut wire_request = request.clone();
-    wire_request.max_output_tokens = request.max_output_tokens.or(api_provider.max_output_tokens);
+    wire_request.max_output_tokens = budget.output_tokens;
     // Fork (2026-11-17): mirror the Chat/Anthropic clamp — a catalog or
     // platform output cap can exceed the deployment window (deepseek-v4: 384k
     // cap vs a 243k gateway window) and such a request is rejected upstream.
@@ -241,14 +216,68 @@ async fn stream_responses_via_rig_inner(
         projected_history_payloads = projected,
         "Dispatching responses stream via rig"
     );
-    let body = serde_json::to_vec(&wire_request).map_err(|error| ApiError::InvalidRequest {
+    // Fork (2026-11-19): tighten the declared output cap to the room left after
+    // this body, using the same estimator the wire budget charges. Without it a
+    // request can pass the local check (which reserved `min(cap, room)`) while
+    // the wire still declares `min(requested, window/2)` — a gateway validating
+    // input+output then rejects it (window 1100 / input 875 / sent 550).
+    let mut body = serde_json::to_vec(&wire_request).map_err(|error| ApiError::InvalidRequest {
         message: format!("failed to serialize responses request: {error}"),
     })?;
+    if budget.context_window_tokens.is_some_and(|window| window > 0) {
+        let image_costs = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .map(|value| crate::wire_images::measure(crate::RigProtocol::Responses, &value));
+        if let Some(tightened) = budget.tightened_output_tokens(body.len(), image_costs) {
+            wire_request.max_output_tokens = Some(tightened);
+            body = serde_json::to_vec(&wire_request).map_err(|error| ApiError::InvalidRequest {
+                message: format!("failed to serialize responses request: {error}"),
+            })?;
+            budget.output_tokens = Some(tightened);
+            tracing::debug!(
+                tightened_output_tokens = tightened,
+                "responses output cap tightened to the remaining context room"
+            );
+        }
+    }
 
     // rig 0.44 has no provider post_sse builder: the passthrough assembles
     // the request itself. The transport decorator owns auth synthesis
     // (wire_auth), query joining, and per-attempt headers on send — the
     // URI carries no query, `prepare` appends the provider's pairs.
+    let request_id = Arc::new(std::sync::Mutex::new(None));
+    let http = crate::transport::RigHttpClient {
+        retry: Some(api_provider.retry.clone()),
+        inner: crate::client::http_client(crate::RigProtocol::Responses)?,
+        request_headers: crate::client::request_headers(&headers, crate::RigProtocol::Responses),
+        wire_auth: None,
+        anthropic_pause_raw_content: None,
+        query: query.clone(),
+        request_id: request_id.clone(),
+        authorization_override: headers
+            .get(http::header::AUTHORIZATION)
+            .filter(|_| crate::client::bearer_token(&headers).is_none())
+            .cloned(),
+        protocol: crate::RigProtocol::Responses,
+        // Chat/Anthropic-only knobs; all empty on the Responses wire.
+        disable_anthropic_parallel: false,
+        anthropic_service_tier: None,
+        anthropic_tool_choice: None,
+        chat_drop_orphan_tool_choice: false,
+        anthropic_websearch_replay: Vec::new(),
+        tool_strict: Default::default(),
+        tool_result_errors: Default::default(),
+        anthropic_server_tools: Vec::new(),
+        anthropic_usage: Arc::new(std::sync::Mutex::new(Default::default())),
+        chat_usage: Arc::new(std::sync::Mutex::new(Default::default())),
+        final_request_recorder,
+        wire_budget: budget.clone(),
+        responses_sse_recorder: sse_recorder,
+        anthropic_sse_tee: None,
+    };
+
+    let client = crate::client::build_responses_client(&base_url, &headers, http)?;
+
     let uri = format!("{}/responses", base_url.trim_end_matches('/'));
     let mut stream_request = http::Request::builder()
         .method(http::Method::POST)
@@ -594,4 +623,15 @@ pub async fn replay_responses_sse(sse: &str) -> Result<Vec<ResponseEvent>, ApiEr
         }
     }
     Ok(events)
+}
+
+/// 实发输出上限：请求值(或 provider 默认)与"窗口一半"取小。
+/// 384k 的目录上限对 243k 窗口的网关必然被拒，这一层先把它压下来；
+/// 更紧的"剩余空间"收敛由 `WireBudget::tightened_output_tokens` 负责。
+pub(crate) fn wire_output_cap(requested: Option<u64>, context_window_tokens: Option<i64>) -> Option<u64> {
+    let Some(window) = context_window_tokens.filter(|window| *window > 0) else {
+        return requested;
+    };
+    let half = u64::try_from(window).unwrap_or(u64::MAX) / 2;
+    Some(requested.map_or(half.max(1), |cap| cap.min(half).max(1)))
 }

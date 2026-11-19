@@ -25,6 +25,42 @@ pub(crate) struct WireBudget {
     pub(crate) vision_floor_tokens: u64,
 }
 
+impl WireBudget {
+    /// Tokens the final body is charged, using the same math the check applies.
+    pub(crate) fn estimate_tokens(
+        &self,
+        wire_bytes: usize,
+        image_costs: Option<crate::wire_images::WireImageCosts>,
+    ) -> u64 {
+        match image_costs {
+            Some(costs) => {
+                let text_bytes = wire_bytes.saturating_sub(costs.inline_payload_bytes);
+                codex_utils_string::approx_tokens_from_byte_count(text_bytes)
+                    .saturating_add(costs.vision_tokens.max(self.vision_floor_tokens))
+            }
+            None => codex_utils_string::approx_tokens_from_byte_count(wire_bytes),
+        }
+    }
+
+    /// Output cap that still fits next to this body, when the current cap does
+    /// not. `None` means "keep the current cap" (it fits, or the window cannot
+    /// be honoured at all and the check reports that).
+    pub(crate) fn tightened_output_tokens(
+        &self,
+        wire_bytes: usize,
+        image_costs: Option<crate::wire_images::WireImageCosts>,
+    ) -> Option<u64> {
+        let window = u64::try_from(self.context_window_tokens.filter(|w| *w > 0)?).ok()?;
+        let cap = self.output_tokens?;
+        let estimate = self.estimate_tokens(wire_bytes, image_costs);
+        if estimate.saturating_add(cap) <= window {
+            return None;
+        }
+        // 剩余空间 < 1 时无法自洽,交给 check_body 报超窗(可恢复路径会压缩历史)。
+        (window > estimate).then(|| window.saturating_sub(estimate).max(1))
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum WireBudgetExceeded {
     Bytes,
@@ -103,26 +139,17 @@ impl WireBudget {
                 },
             )));
         }
-        let estimate = match image_costs {
-            Some(costs) => {
-                let text_bytes = wire_bytes.saturating_sub(costs.inline_payload_bytes);
-                codex_utils_string::approx_tokens_from_byte_count(text_bytes)
-                    .saturating_add(costs.vision_tokens.max(self.vision_floor_tokens))
-            }
-            None => codex_utils_string::approx_tokens_from_byte_count(wire_bytes),
-        };
+        let estimate = self.estimate_tokens(wire_bytes, image_costs);
+        // Fork (2026-11-19): the check must use the output cap that is actually
+        // sent, not a reservation clamped to the remaining room. Clamping the
+        // reservation made the local check agree with itself while the wire
+        // still carried `min(requested, window/2)` — e.g. window 1100, input
+        // 875, sent cap 550 passes here and is rejected by any gateway that
+        // validates input+output. Callers now pass the effective cap (post
+        // window/2 clamp and post remaining-room tightening).
         let exceeds_context = self.context_window_tokens.is_some_and(|window| {
             u64::try_from(window).map_or(true, |window| {
-                // Fork (2026-11-17): reserve at most the room left after the
-                // estimate. A catalog-declared output cap can exceed the
-                // deployment window (deepseek-v4: 384k cap vs 243k window on a
-                // gateway), and adding it wholesale made every request fail
-                // with "ran out of room" no matter how small the history.
-                let reserve = self
-                    .output_tokens
-                    .unwrap_or_default()
-                    .min(window.saturating_sub(estimate));
-                estimate.saturating_add(reserve) > window
+                estimate.saturating_add(self.output_tokens.unwrap_or_default()) > window
             })
         });
         let failure = if wire_bytes > MAX_WIRE_BYTES {
@@ -160,11 +187,25 @@ pub(crate) fn api_error(
                     message: failure.to_string(),
                 },
                 WireBudgetExceeded::Context {
-                    estimate_tokens: _,
-                    context_window_tokens: _,
-                    output_tokens: _,
-                    wire_bytes: _,
-                } => codex_api::ApiError::ContextWindowExceeded,
+                    estimate_tokens,
+                    context_window_tokens,
+                    output_tokens,
+                    wire_bytes,
+                } => {
+                    // Interception point: the mapped error is the bare
+                    // `ContextWindowExceeded` variant (its classification drives
+                    // the compaction/degrade recovery path, so it must not
+                    // change), which cannot carry the measurements. Surface them
+                    // here so an operator sees the numbers the budget used.
+                    tracing::warn!(
+                        estimate_tokens,
+                        context_window_tokens = ?context_window_tokens,
+                        output_tokens = ?output_tokens,
+                        wire_bytes,
+                        "wire request exceeded the model context budget"
+                    );
+                    codex_api::ApiError::ContextWindowExceeded
+                }
             });
         }
         // Rig 0.44's `ProviderError::Http` keeps its transport error in an
