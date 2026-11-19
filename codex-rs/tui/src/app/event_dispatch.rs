@@ -361,16 +361,22 @@ impl App {
                 // conversation on the target route.
                 //
                 // Fork (2026-11-19): a **failed read is not an empty thread**.
-                // Treating every `thread/read` error as "nothing to preserve"
-                // silently dropped a conversation with history into a brand-new
-                // empty session whenever the read timed out or pagination
-                // failed. Only an explicit empty/absent rollout may start fresh;
-                // any other error keeps the current session and asks to retry.
+                // Treating every read error as "nothing to preserve" silently
+                // dropped a conversation with history into a brand-new empty
+                // session whenever the read timed out or pagination failed.
+                // Only an explicit empty/absent rollout may start fresh; any
+                // other error keeps the current session and asks to retry.
+                //
+                // Fork (2026-11-19, paginated history): ask for a single turn
+                // of the paged history instead of hydrating the whole thread.
+                // The app server deprecates `thread/read(includeTurns: true)`
+                // for paginated threads, and this switch only needs to know
+                // whether anything exists to preserve.
                 let has_turns = match app_server
-                    .thread_read(thread_id, /*include_turns*/ true)
+                    .thread_turns_page(thread_id, /*cursor*/ None, /*limit*/ 1)
                     .await
                 {
-                    Ok(thread) => !thread.turns.is_empty(),
+                    Ok(page) => !page.data.is_empty(),
                     Err(error) if is_empty_thread_read_error(&error) => false,
                     Err(error) => {
                         self.chat_widget.add_error_message(format!(
