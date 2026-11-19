@@ -1370,9 +1370,11 @@ Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§
 - **已知缺口**：`aarch64-pc-windows-msvc` 在 Gitea 侧关闭（`windows-host` 没装 VS
   ARM64 工具链），GitHub 才有。publish 校验 6/6 即可发布，但 Windows-on-ARM 用户会
   404；补齐工具链后把该矩阵项打开即回到 7/7。
-- 并发度按宿主内存派生，但**必须按 OS 读内存**：Linux 读 `/proc/meminfo`、Darwin 用
-  `sysctl -n hw.memsize`（2026-11-13 之前只写了前者，macOS job 在 `set -e` 下直接
-  `awk: can't open file /proc/meminfo` 失败）。
+- 并发度按宿主内存派生，但**必须按 OS 读内存**：Linux 读 `/proc/meminfo` 的
+  `MemAvailable`（宿主还跑 gitea/容器，31 GB 机器常被占掉一半）、Darwin 用
+  `sysctl -n hw.memsize`、Windows 用 `CIM Win32_ComputerSystem`。2026-11-19 把预算从
+  “30 GB/单元、上限 3”下调为 **6 GB/单元、上限 4**：实测 rustc 常驻 1.5–3 GB，
+  旧值让 31 GB/16 GB 机器单核编译 1.5–2 小时；可按 runner 用 `CI_CARGO_JOBS` 覆盖。
 
 - workspace 版本恒为占位 `0.0.0`；npm 版本号来自 git tag（`v*` → release.yml，
   7 平台构建 → 阿里云 OSS 二进制 → npm publish；cargo bin 名保持官方 `codex`，

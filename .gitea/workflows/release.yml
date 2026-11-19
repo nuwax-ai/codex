@@ -167,23 +167,35 @@ jobs:
             echo "CI_ZIG_DIR=$zig_dir"
             echo "CARGO_TARGET_DIR=$cache/target/${{ matrix.target }}"
             echo "ARTIFACTS_DIR=$root/artifacts"
-            # Fork (2026-11-12): size cargo's parallelism from this host's RAM.
-            # The build is memory-bound long before it is core-bound: three jobs
-            # each building with full -j took the 62 GB host to 72 GB, filled swap
-            # and left sshd unable to answer (ping and port 22 stayed fine). The
-            # two Linux runners also differ by 2x in RAM (62 GB / 31 GB) while both
-            # hold two concurrent jobs, so one fixed number cannot suit both.
-            # A codex rustc peaks near 10 GB with v8 in the graph; budget 30 GB per
-            # parallel unit and cap at 3:
-            #   62 GB host -> 2 units per job, 2 jobs = ~40 GB  (safe)
-            #   31 GB host -> 1 unit per job,  2 jobs = ~20 GB  (safe)
-            # Override with CI_CARGO_JOBS.
+            # Size cargo's parallelism from this host's RAM.
+            #
+            # History: a 2026-11-12 incident (three jobs each building with full
+            # -j) took the 62 GB host to 72 GB, filled swap and left sshd unable
+            # to answer, so the rule was "30 GB per parallel unit, cap 3". That
+            # was far too conservative: measured rustc resident memory is ~1.5-3
+            # GB for the bulk of a build (10 GB only at the biggest link peaks),
+            # and the single-unit hosts were compiling for 1.5-2 hours.
+            #
+            # Current rule (2026-11-19): budget 6 GB per parallel rustc, cap 4,
+            # and prefer `MemAvailable` on Linux so a host that also serves gitea
+            # and containers is not over-committed (the 31 GB runner has ~15 GB
+            # used by other services):
+            #   62 GB host (idle)  -> 4 units per job, 2 jobs = ~48 GB peak budget
+            #   31 GB host         -> 2 units per job, 2 jobs = ~24 GB peak budget
+            #   16 GB mac mini     -> 2 units per job (one job at a time)
+            #   34 GB windows host -> 4 units per job
+            # Override per runner with CI_CARGO_JOBS.
             #
             # Memory size has to be read per OS: /proc/meminfo only exists on
             # Linux, and `awk: can't open file /proc/meminfo` failed the whole
             # macOS job under `set -e` (2026-11-13, task 293).
             case "$(uname -s)" in
-              Linux) mem_gb=$(awk '/MemTotal/ {printf "%d", $2/1048576}' /proc/meminfo) ;;
+              Linux)
+                # MemAvailable, not MemTotal: the CI host also serves gitea and
+                # its containers, which can hold half of a 31 GB box.
+                mem_gb=$(awk '/MemAvailable/ {printf "%d", $2/1048576}' /proc/meminfo)
+                [ "${mem_gb:-0}" -lt 1 ] && mem_gb=$(awk '/MemTotal/ {printf "%d", $2/1048576}' /proc/meminfo)
+                ;;
               Darwin) mem_gb=$(( $(sysctl -n hw.memsize) / 1073741824 )) ;;
               MINGW*|MSYS*|CYGWIN*)
                 # Git Bash on windows-host: ask the OS instead of guessing.
@@ -195,9 +207,9 @@ jobs:
                 ;;
               *) mem_gb=16 ;;
             esac
-            jobs=$(( mem_gb / 30 ))
+            jobs=$(( mem_gb / 6 ))
             [ "$jobs" -lt 1 ] && jobs=1
-            [ "$jobs" -gt 3 ] && jobs=3
+            [ "$jobs" -gt 4 ] && jobs=4
             echo "CARGO_BUILD_JOBS=${CI_CARGO_JOBS:-$jobs}"
           } >> "$GITHUB_ENV"
 
