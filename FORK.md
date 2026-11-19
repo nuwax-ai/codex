@@ -873,6 +873,14 @@ bundled GPT 种子（11 个 gpt-\*，与该 provider 毫无关系），Enter 会
   model/list、get_remote_models）恰好给出声明 slugs（保持声明顺序），
   同时替换 bundled 种子、缓存快照与线上 catalog——显式声明最高。
   实现：`SelectedCatalog::Declared`（models-manager），per-slug 携带真实 origin。
+  - 可见性（2026-11-19 修复）：声明 slug 一律 `ModelVisibility::List`。
+    此前沿用 vendor 目录默认的 `None`，于是 `model/list`（不带
+    `includeHidden`）和 TUI `/model` 对声明 provider 返回空列表——与本节
+    契约相反，ACP 客户端还会在 `session/new` 直接报
+    `nuwax-harness did not return any models`。实现：
+    `models-manager::manager::declared_catalog_model`；测试：
+    `declared_models_replace_remote_seed_and_cache_lists`（断言
+    `ModelVisibility::List`）。
 - 元数据按 slug 仍走 `vendor_catalog::resolve`：命中 → `ModelOrigin::Vendor`，
   fork 窗口覆盖策略走"显式全额生效"路径（与未声明时 `-m GLM-5.3-Flash`
   的既有行为一致，声明不改变窗口语义）；未命中 → 占位元数据（272k 窗口）

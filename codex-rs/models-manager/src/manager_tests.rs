@@ -1919,6 +1919,15 @@ async fn declared_models_replace_remote_seed_and_cache_lists() {
     assert_eq!(models[0].context_window, Some(1_000_000));
     assert_eq!(models[1].display_name, "my-uncataloged-model");
     assert_eq!(models[1].context_window, Some(272_000));
+    // Declared models are what the provider actually serves, so they must be
+    // picker-visible: the vendor-catalog default (`ModelVisibility::None`)
+    // would hide every model of a third-party provider from `model/list`.
+    assert!(
+        models
+            .iter()
+            .all(|model| model.visibility == codex_protocol::openai_models::ModelVisibility::List),
+        "declared models must be picker-visible"
+    );
 }
 
 #[tokio::test]

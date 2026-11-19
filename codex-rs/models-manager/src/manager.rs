@@ -1119,13 +1119,20 @@ fn construct_model_info(
 /// about the placeholder window. `construct_model_info` re-resolves per slug
 /// on selection for anything not found here.
 fn declared_catalog_model(slug: &str) -> CatalogModel {
-    match crate::vendor_catalog::resolve(slug) {
+    let mut catalog = match crate::vendor_catalog::resolve(slug) {
         Some(entry) => crate::vendor_catalog::vendor_model_info(&entry),
         None => CatalogModel {
             model: model_info::model_info_from_slug(slug).into(),
             origin: ModelOrigin::Synthetic,
         },
-    }
+    };
+    // Fork: a slug the user declared for this provider is exactly what the
+    // picker must offer. The vendor catalog defaults to `ModelVisibility::None`
+    // (stay out of every picker); keeping that here hid the only models the
+    // provider serves, so `model/list` and the TUI picker came back empty for
+    // third-party providers.
+    Arc::make_mut(&mut catalog.model).visibility = ModelVisibility::List;
+    catalog
 }
 
 #[cfg(test)]
