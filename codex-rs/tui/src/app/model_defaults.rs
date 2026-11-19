@@ -92,6 +92,40 @@ impl App {
         }
     }
 
+    /// Fork: the provider that serves `model` when the conversation's provider
+    /// does not declare it.
+    ///
+    /// The model picker's catalog is refreshed per session, not per provider
+    /// switch, so it can still list a slug owned by another configured
+    /// provider after a cross-vendor switch. Selecting that slug must re-home
+    /// the conversation (the same path the picker's cross-vendor entries take)
+    /// instead of applying a model the active provider cannot serve and then
+    /// failing to save it as a default.
+    ///
+    /// `Some(provider)` only when exactly one other provider declares the
+    /// slug; an active provider without a declaration keeps the old behavior,
+    /// and an ambiguous slug stays with the persistence guard below.
+    pub(super) fn rehome_provider_for_model(&self, model: &str) -> Option<String> {
+        let declared = self.config.model_provider.models.as_ref()?;
+        if declared.iter().any(|slug| slug.eq_ignore_ascii_case(model)) {
+            return None;
+        }
+        let active = self.config.model_provider.provider_id.as_deref();
+        let mut candidates = self
+            .config
+            .model_providers
+            .iter()
+            .filter(|(id, _)| Some(id.as_str()) != active)
+            .filter(|(_, provider)| {
+                provider.models.as_ref().is_some_and(|models| {
+                    models.iter().any(|slug| slug.eq_ignore_ascii_case(model))
+                })
+            })
+            .map(|(id, _)| id.clone());
+        let provider = candidates.next()?;
+        candidates.next().is_none().then_some(provider)
+    }
+
     /// Fork: `Some(reason)` when the active provider declares a `models` list
     /// and `model` is not on it; `None` when the provider declares nothing
     /// (persistence keeps its existing behavior) or the slug is declared.

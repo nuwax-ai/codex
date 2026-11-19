@@ -2571,6 +2571,22 @@ impl App {
                 }
             }
             AppEvent::ApplyModelSelection { model, effort } => {
+                // Fork (nuwax-codex): the picker can still list a slug owned by
+                // another configured provider after a cross-vendor switch.
+                // Re-home the conversation (the picker's cross-vendor path)
+                // rather than applying a model this provider cannot serve and
+                // then failing to save it as a default.
+                if let Some(provider_id) = self.rehome_provider_for_model(&model)
+                    && let Some(thread_id) = self.chat_widget.thread_id()
+                {
+                    self.app_event_tx
+                        .send(AppEvent::RehomeThreadToProvider {
+                            thread_id,
+                            model,
+                            provider_id,
+                        });
+                    return Ok(AppRunControl::Continue);
+                }
                 if app_server.thread_params_mode().settings_owner()
                     == ThreadSettingsOwner::Server
                 {

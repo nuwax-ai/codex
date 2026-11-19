@@ -375,3 +375,57 @@ async fn model_default_saves_report_server_outcomes_and_target_server_profile() 
     }
     Ok(())
 }
+
+/// A slug that the active provider does not declare but exactly one other
+/// configured provider does must re-home the conversation (the picker's
+/// cross-vendor path) instead of applying a model that provider cannot serve
+/// and then reporting that the default was not saved.
+#[tokio::test]
+async fn a_model_owned_by_another_provider_rehomes_instead_of_saving_a_default() -> Result<()> {
+    let (mut app, mut events, _ops) = make_test_app_with_channels().await;
+    app.config.model = Some("step-5-preview".into());
+    app.config.model_provider.name = "Step Plan (Anthropic)".into();
+    app.config.model_provider.provider_id = Some("step".into());
+    app.config.model_provider.models = Some(vec!["step-5-preview".into()]);
+    app.config
+        .model_providers
+        .insert("step".into(), app.config.model_provider.clone());
+    let mut mimo = app.config.model_provider.clone();
+    mimo.name = "Xiaomi MiMo (Anthropic)".into();
+    mimo.provider_id = Some("mimo".into());
+    mimo.models = Some(vec!["mimo-v2.6-flash".into(), "mimo-v2.5".into()]);
+    app.config.model_providers.insert("mimo".into(), mimo);
+
+    let mut server = Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await?;
+    let started = server.start_thread(&app.config).await?;
+    app.enqueue_primary_thread_session(started.session, started.turns)
+        .await?;
+    let mut tui = crate::tui::test_support::make_test_tui()?;
+    while events.try_recv().is_ok() {}
+
+    Box::pin(app.handle_event(
+        &mut tui,
+        &mut server,
+        AppEvent::ApplyModelSelection {
+            model: "mimo-v2.6-flash".into(),
+            effort: None,
+        },
+    ))
+    .await?;
+
+    let mut rehomed = Vec::new();
+    while let Ok(event) = events.try_recv() {
+        if let AppEvent::RehomeThreadToProvider {
+            model, provider_id, ..
+        } = event
+        {
+            rehomed.push((model, provider_id));
+        }
+    }
+    assert_eq!(
+        rehomed,
+        vec![("mimo-v2.6-flash".to_string(), "mimo".to_string())]
+    );
+    server.shutdown().await?;
+    Ok(())
+}
