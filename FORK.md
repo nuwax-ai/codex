@@ -2,8 +2,9 @@
 
 维护说明：本文是 fork 行为差异的权威索引。改动 fork 行为时同步更新本文与
 `my-docs/codex-review-prompt.md`（§二 补丁面清单）。2026-10-22 的上游同步目标为
-`main@342ed69a1`，Rust `1.99.1`、V8 `152.2.0`，rig 升至 `0.45.0`（2026-10-26，用户解除
-0.44 冻结；桥机械适配 Model 构造器/Arc 消息与非穷尽错误，行为合同不变）；合并冲突已解，
+`main@342ed69a1`，Rust `1.99.1`、V8 `152.2.0`，rig 升至 `0.46`（2026-10-26 用户解除
+0.44 冻结升 `0.45.0`，2026-11-13 再升 `0.46`，见 §7.x；桥机械适配 Model 构造器/Arc
+消息与非穷尽错误，行为合同不变）；合并冲突已解，
 main集成与晚间批次已推送，复审输入origin/test=850a87390；备用genai现为0.7.0。
 不同源码的实网、fixture与CI证据分开，不宣称全部厂商/全部平台已通过。
 当前优先级与本轮验证快照见 [ROADMAP.md](my-docs/ROADMAP.md)，
@@ -64,7 +65,7 @@ hooks 回指目录仅在 `.nuwax-harness` 实际存在时切换（避免 `.codex
 
 ### 3.2 双桥 + 逃生舱
 
-`experimental_bridge`（fork 字段）：`"rig"`（默认，rig-core / rig-reqwest `=0.45.0`）/
+`experimental_bridge`（fork 字段）：`"rig"`（默认，rig-core / rig-reqwest `=0.46`）/
 `"genai"`（备用，rust-genai 0.7.0）/`"native"`（显式选择上游原生Responses传输）。
 
 桥的中立 trait 在 `codex-api/src/bridge.rs`（`ModelBridge` / `ModelWireProtocol`，
@@ -94,6 +95,33 @@ idle timeout 包裹）→ 原始 SSE 进 codex-api 完整解码器，**严格终
 排除主Authorization、保留同值secondary；不可表达的非文本/同层多值头明确报错，
 provider/auth/extra跨层覆盖顺序保留。
 
+### 3.5 Chat 线终止判定归属 rig（2026-11-19）
+
+Chat 线**不再要求 `[DONE]` 才认终止**：帧耗尽（EOF）直接交给 rig 的
+`ChatDecoder::eof()`（`rig-core/src/providers/openai/wire/chat.rs`），由它按
+`finish_reason` 判定——收到非空 `finish_reason` 即正常结束，从未收到才回
+`ProviderError::Truncated`（可重试；桥映射为 `TransportError::Network`，走流重试预算）。
+
+背景：**MiniMax-M3 的 chat 流给 `finish_reason:"stop"` 但不发 `data: [DONE]`**
+（同厂商 M3.1-Flash 会发，Moonshot 两条线都发）。旧实现（0.18.54 及以前）在桥的
+SSE 包装层 `codex-rust-rig-bridge/src/sse.rs` 无条件要求 `[DONE]`，EOF 即报
+`model stream ended before its SSE terminal`，导致该组合每次请求都被判截断、重试
+5 次后失败（实测 `minimax-chat` + `MiniMax-M3`：6/6 次全部同一错）。
+
+这条拦截属 rig 0.42 时代的产物（那时 rig 对 EOF 宽松，会把截断读成正常结束）；
+rig 0.43 起新增 `eof()` 与 `ProviderError::Truncated`（`49ad36191`，首个带它的
+发布是 v0.43.0），0.46 语义未变，故删除这段重复策略。**本条取代 2026-10-04 的
+那次回退**（`my-docs/claude-acceptance-results-2026-10-04.md` 记录当时"EOF 无
+`[DONE]` = 未交付终局"是钉死契约——因为那时的 rig 自己不会在 EOF 判截断，桥的
+拦截是唯一防线；rig 0.43 的 `eof()` 接管这条防线后，该前提不再成立）。
+Anthropic 线不变（包装层仍持有 `message_delta` 直到 `message_stop`，
+EOF 缺 `message_stop` 照旧判截断）。验收：
+`core/tests/suite/rig_output_cap.rs` 的
+`chat_cap_finish_chunk_without_done_still_reports_the_cap`（有 finish_reason、无
+`[DONE]` → 正常结束并报 cap 错误）与
+`chat_wire_cut_before_finish_reason_is_retryable_truncation`（无 finish_reason →
+rig 截断、仍重试）。
+
 ## 4. hosted（服务端）工具翻译（v0.18.8+）
 
 codex 以 Responses 形态声明 hosted 工具（`{"type":"web_search"}`）；官方在
@@ -112,7 +140,7 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
   cached → 新增 `ProviderCapabilities.cached_web_search`，默认 cached 在此类线
   上降级为 Disabled（此前字段丢弃翻译会让 GLM 实际执行 live 搜索，与配置模式
   相反）。需要搜索请显式 `web_search = "live"`。
-- 响应侧：当前 rig 0.45 转换路径仍借助 transport 层 tee 原始
+- 响应侧：当前 rig 0.46 转换路径仍借助 transport 层 tee 原始
   SSE（`anthropic_sse_tee`，eventsource-stream 解帧），流泵在 Completed 前回收
   web-search 块 → `WebSearchCall` 条目（兼容 GLM 的 `web_search_prime` 改名、
   `search_query` 字段、非标准 assistant 侧 `tool_result` 块）。
@@ -695,7 +723,7 @@ code-mode-host、rg）。先前fork npm包只发单二进制，自启所需布�
 `model_providers.*.wire_api = "chat"|"anthropic"`、`experimental_bridge`、
 `experimental_bearer_token`、`model_auto_compact_ratio`、
 `model_providers.*.anthropic_prompt_caching`（2026-10-26 起：Anthropic 线 opt-in
-cache_control 断点，rig 0.45 原语，5m TTL；远程 thread config 无该字段线格式，
+cache_control 断点，rig 0.45 起原语，5m TTL；远程 thread config 无该字段线格式，
 同步时丢弃、恢复为 None，同 `max_output_tokens` 的既有边界）、
 `[tools] tool_search = false`（2026-10-26 起：MCP 工具全量直出开关，见 §7.1）、
 `model_providers.*.models`（2026-11-04 起：声明式模型列表，见 §7.2）。
@@ -1113,7 +1141,7 @@ responses_trailing_tool_result_user_turn = false`（规格忠实网关恢复 ver
 `codex_client::Provider::trailing_tool_result_user_turn`。回归测试：
 `trailing_tool_result_shim_tests`（3 个，构造带开关的请求体断言线格式）。
 
-### 7.x rig-core 0.45 → 0.46 升级（2026-11-13，分支 `rig-0.46-upgrade`，未合主线）
+### 7.x rig-core 0.45 → 0.46 升级（2026-11-13，分支 `rig-0.46-upgrade`，已合入 `test`）
 
 rig 升级到 0.46（`rig-core`/`rig-reqwest` =0.46，bridge + live-tests 两处 pin）。
 迁移本体很小：`Native` 结构新增 `baseline`/`edited`/`blob_slot` 三字段，6 处

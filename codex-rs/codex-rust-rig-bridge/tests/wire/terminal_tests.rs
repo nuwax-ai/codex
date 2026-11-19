@@ -160,7 +160,15 @@ async fn controlled_stream(
 #[tokio::test]
 async fn confirmed_function_and_custom_tools_are_not_published_after_terminal_failure() {
     for protocol in [RigProtocol::Chat, RigProtocol::Anthropic] {
-        for ending in [Ending::Eof, Ending::Error, Ending::Malformed] {
+        // A Chat turn that ends at EOF is complete — its `finish_reason`
+        // arrived, which is the sentinel-less dialect's terminal (MiniMax-M3);
+        // the released-terminal test covers that lifecycle. Only error and
+        // malformed endings stay unpublishable there.
+        let endings: &[Ending] = match protocol {
+            RigProtocol::Chat => &[Ending::Error, Ending::Malformed],
+            _ => &[Ending::Eof, Ending::Error, Ending::Malformed],
+        };
+        for ending in endings.iter().copied() {
             let (mut stream, release, server) = controlled_stream(protocol, ending).await;
             release.send(()).unwrap();
             let mut events = Vec::new();
@@ -282,6 +290,74 @@ async fn function_and_custom_lifecycles_wait_for_the_released_terminal_frame() {
             serde_json::to_value(expected).unwrap()
         );
         server.await.unwrap();
+    }
+}
+
+/// A Chat wire whose provider ends the turn with `finish_reason` and closes
+/// without `[DONE]` is complete: rig ends the reply at EOF, so the calls it
+/// streamed are published instead of being held for a sentinel that never
+/// arrives. MiniMax-M3's dialect is this shape.
+#[tokio::test]
+async fn chat_eof_after_finish_reason_publishes_the_call_lifecycle() {
+    let (mut stream, release, server) = controlled_stream(RigProtocol::Chat, Ending::Eof).await;
+    let mut events = Vec::new();
+    timeout(Duration::from_secs(3), async {
+        while let Some(event) = stream.next().await {
+            events.push(event.expect("a sentinel-less Chat reply must complete"));
+        }
+    })
+    .await
+    .expect("EOF must close the stream");
+    release.send(()).ok();
+    server.await.unwrap();
+
+    let added = events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                ResponseEvent::OutputItemAdded(
+                    ResponseItem::FunctionCall { .. } | ResponseItem::CustomToolCall { .. }
+                )
+            )
+        })
+        .count();
+    assert_eq!(
+        added, 2,
+        "both streamed calls must be published: {events:?}"
+    );
+    let finished = events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                ResponseEvent::OutputItemDone(
+                    ResponseItem::FunctionCall { .. } | ResponseItem::CustomToolCall { .. }
+                )
+            )
+        })
+        .count();
+    assert_eq!(finished, 2, "both calls must finish: {events:?}");
+    let completed: Vec<&ResponseEvent> = events
+        .iter()
+        .filter(|event| matches!(event, ResponseEvent::Completed { .. }))
+        .collect();
+    assert_eq!(completed.len(), 1, "exactly one completion: {events:?}");
+    match completed[0] {
+        ResponseEvent::Completed {
+            response_id,
+            token_usage,
+            end_turn,
+            ..
+        } => {
+            assert_eq!(response_id, "chatcmpl-tools");
+            assert_eq!(end_turn, &Some(false));
+            assert_eq!(
+                token_usage.as_ref().map(|usage| usage.total_tokens),
+                Some(6)
+            );
+        }
+        other => panic!("not a completion: {other:?}"),
     }
 }
 

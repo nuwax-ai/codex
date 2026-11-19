@@ -81,6 +81,7 @@ fn output_cap_provider(base_url: &str, wire_api: WireApi) -> ModelProviderInfo {
         max_output_tokens: Some(64),
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
+        responses_trailing_tool_result_user_turn: None,
         reasoning_effort_levels: None,
     }
 }
@@ -1540,13 +1541,13 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<Vec<Val
     ])
 }
 
-/// Symmetric with the Anthropic boundary: a Chat wire that breaks after the
-/// finish_reason chunk but before `[DONE]` has NOT delivered its terminal —
-/// the stream is a retryable truncation, never a success and never a claim
-/// of the cap error.
+/// A Chat wire that ends right after its `finish_reason` chunk delivered its
+/// terminal even without `[DONE]` — MiniMax-M3's dialect never sends the
+/// sentinel — so the turn reports the cap error and core does not resample.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn chat_cap_finish_chunk_without_done_is_retryable_truncation() -> Result<()> {
+async fn chat_cap_finish_chunk_without_done_still_reports_the_cap() -> Result<()> {
     skip_if_no_network!(Ok(()));
+    let server = MockServer::start().await;
     let body = sse(&[
         chat_chunk(
             json!({"role": "assistant", "content": "partial cap answer"}),
@@ -1554,6 +1555,24 @@ async fn chat_cap_finish_chunk_without_done_is_retryable_truncation() -> Result<
         ),
         chat_chunk(json!({}), Some("length")),
     ]);
+    let log = mount_capturing_response(&server, "/v1/chat/completions", body).await?;
+    let (test, _env) = cap_test_instance(&server.uri(), WireApi::Chat).await?;
+    let outcome = run_turn_until_complete(&test, "chat cap without done").await?;
+    assert_cap_terminal(&outcome, log.posts(), "partial cap answer");
+    assert_chat_wire_cap(&log.first_body());
+    Ok(())
+}
+
+/// A Chat wire cut before any `finish_reason` has NOT delivered its terminal:
+/// rig reports the truncation, core retries it within the stream budget, and
+/// the turn never claims a reply.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn chat_wire_cut_before_finish_reason_is_retryable_truncation() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    let body = sse(&[chat_chunk(
+        json!({"role": "assistant", "content": "partial answer"}),
+        None,
+    )]);
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
     let captured: std::sync::Arc<std::sync::Mutex<Vec<Value>>> = Default::default();
@@ -1577,7 +1596,10 @@ async fn chat_cap_finish_chunk_without_done_is_retryable_truncation() -> Result<
                 .await
                 .expect("write frames");
             socket.flush().await.expect("flush frames");
-            socket.shutdown().await.expect("close without [DONE]");
+            socket
+                .shutdown()
+                .await
+                .expect("close before any finish_reason");
             served += 1;
             if served == 3 {
                 return served;
@@ -1597,12 +1619,12 @@ async fn chat_cap_finish_chunk_without_done_is_retryable_truncation() -> Result<
         .as_deref()
         .context("truncated wire must end in an error")?;
     assert!(
-        terminal.contains("ended before its SSE terminal"),
-        "the failure must be the truncation class, not a success or cap error: {terminal}"
+        terminal.contains("the reply ended before the provider ended it"),
+        "the failure must be rig's truncation class, not a success or cap error: {terminal}"
     );
     assert!(
         !terminal.contains("Output token limit reached"),
-        "an undelivered terminal must not claim the cap error: {terminal}"
+        "a wire cut before its terminal must not claim the cap error: {terminal}"
     );
     assert_eq!(
         outcome.completed_tool_items,
@@ -1616,9 +1638,10 @@ async fn chat_cap_finish_chunk_without_done_is_retryable_truncation() -> Result<
 /// V-D2-1: a usage-only chunk arriving AFTER the `finish_reason=length`
 /// chunk but before `[DONE]` — the wire order several gateways use — must
 /// still ride the cap terminal's presence-preserving report. The wire check
-/// observes every frame that flows, and rig publishes its final record only
-/// after `[DONE]`, so the snapshot the cap error carries includes the late
-/// chunk; an explicit zero stays zero and unreported counters stay absent.
+/// observes every frame that flows, and rig publishes its final record at the
+/// turn's terminal (`[DONE]`, or a `finish_reason` and then EOF), so the
+/// snapshot the cap error carries includes the late chunk; an explicit zero
+/// stays zero and unreported counters stay absent.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn chat_cap_usage_only_chunk_after_length_finish_is_retained() -> Result<()> {
     skip_if_no_network!(Ok(()));

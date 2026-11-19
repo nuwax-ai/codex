@@ -77,6 +77,7 @@ fn interrupt_provider(base_url: &str, wire_api: WireApi) -> ModelProviderInfo {
         max_output_tokens: Some(64),
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
+        responses_trailing_tool_result_user_turn: None,
         reasoning_effort_levels: None,
     }
 }

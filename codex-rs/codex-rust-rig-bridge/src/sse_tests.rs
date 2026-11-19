@@ -90,3 +90,73 @@ async fn unsafe_anthropic_counters_only_change_the_rig_decoder_copy() {
     assert_eq!(normalized.cache_creation_input_tokens, Some(9));
     assert_eq!(normalized.total_tokens, Some(u64::MAX));
 }
+
+/// The Chat side of the same check: frames reach rig unchanged, and the
+/// stream's end is not the bridge's to judge.
+async fn checked_chat_frames(
+    events: &[Value],
+) -> (
+    Vec<Value>,
+    Option<codex_protocol::protocol::ReportedResponseUsage>,
+) {
+    let wire = events
+        .iter()
+        .map(|event| format!("data: {event}\n\n"))
+        .collect::<String>();
+    let usage = Arc::new(Mutex::new(crate::usage::ChatUsage::default()));
+    let body: BoxedStream = Box::pin(futures::stream::iter([Ok(Bytes::from(wire))]));
+    let frames = with_terminal_check(
+        body,
+        RigProtocol::Chat,
+        WireUsageObserver::Chat(Arc::clone(&usage)),
+    )
+    .eventsource()
+    .map_ok(|event| serde_json::from_str::<Value>(&event.data).expect("decoded frame"))
+    .try_collect::<Vec<_>>()
+    .await
+    .expect("the bridge must not pre-empt rig's Chat terminal decision");
+    let report = usage
+        .lock()
+        .map(|usage| usage.snapshot_report())
+        .ok()
+        .flatten();
+    (frames, report)
+}
+
+/// MiniMax-M3's dialect: the provider ends the turn with `finish_reason` and
+/// closes without `data: [DONE]`. Every frame is forwarded and the terminal
+/// decision — complete here, not truncated — stays rig's.
+#[tokio::test]
+async fn chat_eof_after_a_finish_reason_is_not_a_bridge_error() {
+    let events = vec![
+        json!({"id":"chatcmpl-sentinel-less","object":"chat.completion.chunk","created":1,"model":"server-model","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":null}]}),
+        json!({"id":"chatcmpl-sentinel-less","object":"chat.completion.chunk","created":1,"model":"server-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":1,"total_tokens":5}}),
+    ];
+    let (frames, report) = checked_chat_frames(&events).await;
+    assert_eq!(frames, events);
+    assert_eq!(
+        report,
+        codex_protocol::protocol::ReportedResponseUsage::from_counters(
+            codex_protocol::protocol::ReportedUsageCounters {
+                input_tokens: Some(4),
+                output_tokens: Some(1),
+                total_tokens: Some(5),
+                ..Default::default()
+            }
+        ),
+        "the terminal chunk's usage is observed before the body ends"
+    );
+}
+
+/// A body cut before any `finish_reason` is rig's
+/// `ProviderError::Truncated`; the bridge must let the frames run out rather
+/// than report an error of its own, so one place owns the decision.
+#[tokio::test]
+async fn chat_eof_before_a_finish_reason_is_left_to_rig() {
+    let events = vec![
+        json!({"id":"chatcmpl-cut","object":"chat.completion.chunk","created":1,"model":"server-model","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}),
+    ];
+    let (frames, report) = checked_chat_frames(&events).await;
+    assert_eq!(frames, events);
+    assert_eq!(report, None, "no usage object reached the wire");
+}

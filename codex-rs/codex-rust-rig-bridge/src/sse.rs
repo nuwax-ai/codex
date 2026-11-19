@@ -1,4 +1,8 @@
-//! Verify the wire terminal before allowing Rig to publish its final record.
+//! Observe the frames the bridge's usage report needs, and hold Anthropic's
+//! terminal in order. Chat's terminal policy stays rig's: a reply ends at its
+//! `finish_reason`, which lets a sentinel-less dialect — MiniMax-M3 sends no
+//! `[DONE]` — complete while a wire cut before any reason still fails as
+//! truncation.
 use crate::RigProtocol;
 use bytes::Bytes;
 use eventsource_stream::Eventsource;
@@ -61,6 +65,15 @@ pub(crate) fn with_terminal_check(
                         ));
                     }
                     None => {
+                        // Chat's exhausted frame stream reaches rig as-is: its
+                        // decoder ends a reply whose `finish_reason` arrived
+                        // and answers `ProviderError::Truncated` for one that
+                        // never did. Requiring `[DONE]` here pre-empted that
+                        // and made every sentinel-less gateway a truncation,
+                        // even though the provider had delivered its terminal.
+                        if protocol == RigProtocol::Chat {
+                            return None;
+                        }
                         let error = std::io::Error::new(
                             std::io::ErrorKind::UnexpectedEof,
                             "model stream ended before its SSE terminal",
@@ -118,7 +131,9 @@ pub(crate) fn with_terminal_check(
                             // First terminal wins for all subsequent primary
                             // content, including deltas without a finish reason.
                             // Usage-only frames (choices=[]) still reach Rig,
-                            // and EOF still fails unless [DONE] arrives.
+                            // and EOF reaches it too, which is why the flag
+                            // only drops late primaries: the terminal decision
+                            // itself is rig's.
                             if chat_terminal_seen && primary.is_some() {
                                 tracing::warn!(
                                     "dropping a late Chat primary-choice chunk after the first terminal"

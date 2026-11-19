@@ -188,8 +188,37 @@ async fn serve(
     (stream, server)
 }
 
+/// Chat's terminal is its `finish_reason`, not the sentinel: the dialect that
+/// omits `[DONE]` (MiniMax-M3) completed the reply, so the text it streamed
+/// and the counters it reported are published instead of failing the turn.
 #[tokio::test]
-async fn finish_reason_alone_cannot_hide_truncation_or_late_errors() {
+async fn sentinel_less_chat_finish_reason_completes_the_reply() {
+    let (result, server) = serve(RigProtocol::Chat, Reply::MissingTerminal).await;
+    let mut stream = result.expect("a sentinel-less Chat reply must open a stream");
+    let mut text = String::new();
+    let mut completed = 0usize;
+    while let Some(event) = stream.next().await {
+        let event = event.expect("a reply whose finish_reason arrived must not fail");
+        match event {
+            ResponseEvent::OutputTextDelta(delta) => text.push_str(&delta),
+            ResponseEvent::Completed { token_usage, .. } => {
+                completed += 1;
+                assert_eq!(
+                    token_usage.as_ref().map(|usage| usage.total_tokens),
+                    Some(5),
+                    "the wire usage survives the sentinel-less terminal"
+                );
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(text, "ok");
+    assert_eq!(completed, 1, "the reply completes exactly once");
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn finish_reason_cannot_hide_late_errors_or_malformed_frames() {
     for protocol in [
         RigProtocol::Responses,
         RigProtocol::Chat,
@@ -200,6 +229,11 @@ async fn finish_reason_alone_cannot_hide_truncation_or_late_errors() {
             Reply::ErrorAfterFinish,
             Reply::Malformed,
         ] {
+            // Chat's sentinel-less completion is asserted above; a missing
+            // terminal is still a truncation on the other protocols.
+            if protocol == RigProtocol::Chat && matches!(reply, Reply::MissingTerminal) {
+                continue;
+            }
             let (result, server) = serve(protocol, reply).await;
             let mut failed = result.is_err();
             if let Ok(mut stream) = result {
