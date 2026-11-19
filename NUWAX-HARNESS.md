@@ -536,7 +536,7 @@ ACP 是 stdio 协议服务，由 ACP 宿主配置上述命令、工作目录和�
 | `NUWAX_BASE_URL` | 设置后启用 ACP 环境网关，默认 provider ID 为 `custom-gateway` |
 | `NUWAX_API_KEY` | 网关 Key；未设置时可回退到 `OPENAI_API_KEY`，建议只设前者避免串用 |
 | `NUWAX_API_PROTOCOL` | `openai`（默认）或 `anthropic` |
-| `NUWAX_WIRE_API` | OpenAI 协议族下为 `responses`（默认）或 `chat`；Anthropic 时无需设置 |
+| `NUWAX_WIRE_API` | OpenAI 协议族下为 `chat`（默认）或 `responses`；`NUWAX_BRIDGE=native` 时默认 `responses`（native 仅支持 Responses）；Anthropic 时无需设置 |
 | `NUWAX_BRIDGE` | `rig`、`native`、`genai`；不设则保持 rig 默认 |
 | `NUWAX_MODEL` | 活动网关使用的平台模型 ID |
 | `NUWAX_MAX_OUTPUT_TOKENS` | 每次生成的输出上限，与 CLI 同一旋钮（不是上下文窗口） |
