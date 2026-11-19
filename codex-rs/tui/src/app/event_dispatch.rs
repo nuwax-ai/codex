@@ -371,7 +371,7 @@ impl App {
                     .await
                 {
                     Ok(thread) => !thread.turns.is_empty(),
-                    Err(error) if is_no_rollout_resume_error(&error) => false,
+                    Err(error) if is_empty_thread_read_error(&error) => false,
                     Err(error) => {
                         self.chat_widget.add_error_message(format!(
                             "Could not read this conversation, so it was not switched: {error}. \
@@ -405,7 +405,7 @@ impl App {
                 // Safety net: a conversation whose rollout was deleted still
                 // reports the same error, and there is nothing to preserve.
                 let result = match result {
-                    Err(error) if is_no_rollout_resume_error(&error) => self
+                    Err(error) if is_empty_thread_read_error(&error) => self
                         .start_fresh_session_on_route(
                             tui,
                             app_server,
@@ -4394,13 +4394,62 @@ impl App {
     }
 }
 
-/// Whether the failure is "this conversation has no stored rollout".
+/// Whether a thread read failed because the conversation has nothing stored.
 ///
 /// Cross-vendor switching re-homes a thread through `thread/resume`; the app
-/// server can only rebuild a conversation that was persisted, and answers
-/// `no rollout found for thread id …` for one that never produced a turn.
-fn is_no_rollout_resume_error(error: &color_eyre::eyre::Error) -> bool {
-    error
-        .chain()
-        .any(|cause| cause.to_string().contains("no rollout found for thread id"))
+/// server can only rebuild a conversation that was persisted. A conversation
+/// that never produced a turn answers one of:
+///
+///   * `no rollout found for thread id …` — nothing persisted yet;
+///   * `thread not loaded: …` — the server has neither a live thread nor a
+///     stored rollout for it;
+///   * `list_turns is not supported yet` — the in-memory store a brand-new
+///     thread uses has no turn listing (what the TUI hits right after startup,
+///     before the first message).
+///
+/// A transport error or an unknown failure is not an empty conversation: those
+/// keep the current session so history is never silently dropped.
+fn is_empty_thread_read_error(error: &color_eyre::eyre::Error) -> bool {
+    error.chain().any(|cause| {
+        let text = cause.to_string();
+        text.contains("no rollout found for thread id")
+            || text.contains("thread not loaded:")
+            || text.contains("list_turns is not supported yet")
+    })
+}
+
+#[cfg(test)]
+mod empty_thread_read_tests {
+    use super::is_empty_thread_read_error;
+    use color_eyre::eyre::{WrapErr, eyre};
+
+    fn read_error(cause: &str) -> color_eyre::eyre::Report {
+        Err::<(), _>(eyre!(cause.to_string()))
+            .wrap_err("thread/read failed during TUI session lookup")
+            .expect_err("cause is always an error")
+    }
+
+    #[test]
+    fn a_thread_that_never_produced_a_turn_reads_as_empty() {
+        for cause in [
+            "no rollout found for thread id thr_1",
+            "thread not loaded: thr_1",
+            "list_turns is not supported yet",
+        ] {
+            assert!(
+                is_empty_thread_read_error(&read_error(cause)),
+                "{cause} must count as an empty conversation"
+            );
+        }
+    }
+
+    #[test]
+    fn transport_and_unknown_failures_keep_the_current_session() {
+        for cause in ["broken pipe", "thread/read timed out", "internal error"] {
+            assert!(
+                !is_empty_thread_read_error(&read_error(cause)),
+                "{cause} must not count as an empty conversation"
+            );
+        }
+    }
 }
