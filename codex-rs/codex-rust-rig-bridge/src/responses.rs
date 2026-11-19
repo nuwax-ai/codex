@@ -165,7 +165,6 @@ async fn stream_responses_via_rig_inner(
         vision_floor_tokens: 0,
     };
 
-
     // Clone-and-project at the TYPE level, then serialize the copy once.
     // A serde_json::Value round-trip would reorder keys (BTreeMap without
     // `preserve_order`) and re-encode the raw `tools` JSON through Value —
@@ -224,7 +223,10 @@ async fn stream_responses_via_rig_inner(
     let mut body = serde_json::to_vec(&wire_request).map_err(|error| ApiError::InvalidRequest {
         message: format!("failed to serialize responses request: {error}"),
     })?;
-    if budget.context_window_tokens.is_some_and(|window| window > 0) {
+    if budget
+        .context_window_tokens
+        .is_some_and(|window| window > 0)
+    {
         let image_costs = serde_json::from_slice::<serde_json::Value>(&body)
             .ok()
             .map(|value| crate::wire_images::measure(crate::RigProtocol::Responses, &value));
@@ -628,10 +630,17 @@ pub async fn replay_responses_sse(sse: &str) -> Result<Vec<ResponseEvent>, ApiEr
 /// 实发输出上限：请求值(或 provider 默认)与"窗口一半"取小。
 /// 384k 的目录上限对 243k 窗口的网关必然被拒，这一层先把它压下来；
 /// 更紧的"剩余空间"收敛由 `WireBudget::tightened_output_tokens` 负责。
-pub(crate) fn wire_output_cap(requested: Option<u64>, context_window_tokens: Option<i64>) -> Option<u64> {
+pub(crate) fn wire_output_cap(
+    requested: Option<u64>,
+    context_window_tokens: Option<i64>,
+) -> Option<u64> {
     let Some(window) = context_window_tokens.filter(|window| *window > 0) else {
         return requested;
     };
     let half = u64::try_from(window).unwrap_or(u64::MAX) / 2;
     Some(requested.map_or(half.max(1), |cap| cap.min(half).max(1)))
 }
+
+#[cfg(test)]
+#[path = "responses_cap_tests.rs"]
+mod cap_tests;

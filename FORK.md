@@ -1239,6 +1239,26 @@ output_tokens=Some(384000), wire_bytes=224077
 （`ContextWindowExceeded` 的映射不变，字段仅供报错文本）；③上游若引入
 "按窗口推导输出上限"的机制，可直接替换 fork 的钳制，但需保证钳制值 ≤ 窗口一半。
 
+#### 复审第二轮：三条线都收紧上限 + 读取失败不再当空会话 + 测试/格式接线（2026-11-19）
+
+1. **Chat/Anthropic 也按剩余空间收紧上限**（`transport.rs`）：这两条线的请求体由 rig
+   在深处序列化，拿不到"最终下发值"就 tightening，只能退回硬校验——于是同一份请求
+   Responses 能发、Chat/Anthropic 各报 `ContextWindowExceeded`（窗口 8000：输入 5732 +
+   上限 4000 > 8000，但 5732 + 2268 是够的），触发本可避免的压缩。
+   现在在 `RigHttpClient` 拿到最终 body 后：用 `WireBudget::tightened_output_tokens`
+   算剩余空间 → 改写 body 的 `max_tokens` → **用收紧后的上限**校验并发送。
+   实测三线一致：`est + cap = 生效窗口`，全部成功发包。
+2. **TUI 跨 provider 切换不再把读取失败当空会话**（`event_dispatch.rs`）：原实现
+   `thread_read(..).ok()` 把所有错误当"线程还没落盘"，读取超时/分页失败会把有历史的
+   会话静默丢进新空线程。现在只有 `Ok(turns.is_empty())` 或明确的
+   `no rollout found for thread id …` 才允许新建；其他错误保留当前会话并提示重试。
+   相应测试 `rehome_keeps_the_conversation_when_the_thread_read_fails` 改为验证新语义。
+3. **测试接线与格式**：`responses_cap_tests.rs` 之前没被 `mod` 挂载（Nextest 看不见那
+   3 个用例），已挂载；`cargo fmt -p` 三个 crate 已通过 `--check`。
+
+**已知（非本轮引入）**：`codex-tui` 的 `startup_defaults_tests` 有 4 个用例在
+`b84cea4001..f1b5dfee3e` 上就失败（permission profile 断言），与本轮改动无关。
+
 #### 输出上限与预算校验对齐 + 诊断值落日志（2026-11-19，代码复审后修）
 
 复审指出三处，已全部核实并修复：

@@ -138,9 +138,18 @@ fn sent_output_cap_participates_in_the_context_check() {
         .expect_err("over-budget request must be rejected locally");
     // 诊断值必须出现在错误文本里（转换前的唯一可观测点）
     let text = error.to_string();
-    assert!(text.contains("estimate_tokens=875"), "missing estimate: {text}");
-    assert!(text.contains("output_tokens=Some(550)"), "missing cap: {text}");
-    assert!(text.contains("context_window_tokens=Some(1100)"), "missing window: {text}");
+    assert!(
+        text.contains("estimate_tokens=875"),
+        "missing estimate: {text}"
+    );
+    assert!(
+        text.contains("output_tokens=Some(550)"),
+        "missing cap: {text}"
+    );
+    assert!(
+        text.contains("context_window_tokens=Some(1100)"),
+        "missing window: {text}"
+    );
 
     // Tightened to the remaining room it fits again.
     let fitted = WireBudget {

@@ -131,8 +131,7 @@ pub async fn stream_via_rig_with_recorders(
     // logical call's pause continuations when that proof is unavailable.
     let mut context = crate::wire_budget::RigCallContext::default();
     if let Some(snapshot) = api_auth.immutable_credential_headers() {
-        let mut actual_headers =
-            crate::client::with_identity_headers(api_provider.headers.clone());
+        let mut actual_headers = crate::client::with_identity_headers(api_provider.headers.clone());
         actual_headers.extend(extra_headers.clone());
         actual_headers.extend(snapshot);
         let mut scoped_headers = HeaderMap::new();

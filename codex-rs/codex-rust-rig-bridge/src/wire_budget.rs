@@ -85,9 +85,7 @@ pub(crate) enum WireBudgetExceeded {
 impl std::fmt::Display for WireBudgetExceeded {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Bytes => {
-                formatter.write_str("final wire request exceeds the 512 MB byte budget")
-            }
+            Self::Bytes => formatter.write_str("final wire request exceeds the 512 MB byte budget"),
             Self::Context {
                 estimate_tokens,
                 context_window_tokens,

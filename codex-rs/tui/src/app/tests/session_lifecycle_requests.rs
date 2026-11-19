@@ -5907,7 +5907,7 @@ async fn provider_error_preserves_partial_history_notice() -> Result<()> {
 /// (reported from a real session: launch, pick another vendor, get
 /// "no rollout found for thread id …").
 #[tokio::test]
-async fn rehome_on_a_conversation_without_a_rollout_starts_a_new_thread() -> Result<()> {
+async fn rehome_keeps_the_conversation_when_the_thread_read_fails() -> Result<()> {
     let (mut app, _events, _ops) = make_test_app_with_channels().await;
     let home = tempdir()?;
     app.config.codex_home = home.path().to_path_buf().abs();
@@ -5955,6 +5955,8 @@ models = ["step-5-preview"]
     )
     .await;
     let original_thread = app.chat_widget.thread_id().expect("fresh thread id");
+    // 初始建会话本身会发 thread/start,比较"切换前后"的增量
+    let starts_before_switch = recorded_params(&requests, "thread/start").len();
     // The rollout *path* is allocated up front; the file only appears once a
     // turn runs. Nothing has been written yet, which is exactly the state where
     // `thread/resume` answers "no rollout found".
@@ -5970,61 +5972,23 @@ models = ["step-5-preview"]
     )
     .await?;
 
-    assert_ne!(
+    // Fork (2026-11-19): `thread/read` failing is NOT an empty conversation.
+    // The switch must leave the current session and model untouched (and ask to
+    // retry) instead of silently moving the user into a brand-new empty thread.
+    assert_eq!(
         app.chat_widget.thread_id(),
         Some(original_thread),
-        "the switch should start a new conversation instead of failing"
+        "a failed thread read must not silently start a new conversation"
     );
-    assert_eq!(app.chat_widget.current_model(), "step-5-preview");
-    assert_eq!(app.chat_widget.config_ref().model_provider_id, "step");
-
-    // The route must also reach the thread's config layer stack: a typed-only
-    // `modelProvider` parameter is not replayed by turn admission, which then
-    // compares the thread against the disk default and rejects the first turn
-    // with `ModelProviderMismatch` (observed as the read-only notice).
-    let starts = recorded_params(&requests, "thread/start");
-    let last = starts.last().expect("the switch starts a thread");
-    assert_eq!(last["modelProvider"], "step");
-    assert_eq!(last["model"], "step-5-preview");
     assert_eq!(
-        last["config"]["model_provider"], "step",
-        "the route needs a session-scope config override: {last}"
+        app.chat_widget.current_model(),
+        "mimo-fixture",
+        "the route must not be switched when the conversation could not be read"
     );
-    assert_eq!(last["config"]["model"], "step-5-preview");
-
-    // The point of the switch: keep talking in this conversation. turn/start
-    // runs the provider admission check that produced the read-only notice
-    // before the route reached the session config layer.
-    let switched_thread = app.chat_widget.thread_id().expect("switched thread id");
-    let turn = server
-        .turn_start(
-            switched_thread,
-            "user",
-            "client-message-1".to_string(),
-            vec![
-                CoreUserInput::Text {
-                    text: "你好".to_string(),
-                    text_elements: Vec::new(),
-                }
-                .into(),
-            ],
-            app.config.cwd.to_path_buf(),
-            /*approval_policy*/ None,
-            /*approvals_reviewer*/ None,
-            crate::app_server_session::TurnPermissionsOverride::Preserve,
-            app.config.permissions.user_visible_workspace_roots(),
-            "step-5-preview".to_string(),
-            /*effort*/ None,
-            /*summary*/ None,
-            /*service_tier*/ None,
-            /*collaboration_mode*/ None,
-            /*output_schema*/ None,
-            /*cyber_access_program*/ None,
-        )
-        .await;
-    assert!(
-        turn.is_ok(),
-        "the switched conversation must accept a new turn: {turn:?}"
+    assert_eq!(
+        recorded_params(&requests, "thread/start").len(),
+        starts_before_switch,
+        "no new conversation may be started on a read failure"
     );
 
     server.shutdown().await?;

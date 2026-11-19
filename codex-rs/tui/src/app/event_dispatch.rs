@@ -358,13 +358,29 @@ impl App {
                 // rollout, and the route-override resume can only rebuild one
                 // that was persisted (app server answers `no rollout found`).
                 // Nothing exists to preserve there, so switch by starting a new
-                // conversation on the target route; a failed read means the
-                // same (the thread is not materialized yet).
-                let has_turns = app_server
+                // conversation on the target route.
+                //
+                // Fork (2026-11-19): a **failed read is not an empty thread**.
+                // Treating every `thread/read` error as "nothing to preserve"
+                // silently dropped a conversation with history into a brand-new
+                // empty session whenever the read timed out or pagination
+                // failed. Only an explicit empty/absent rollout may start fresh;
+                // any other error keeps the current session and asks to retry.
+                let has_turns = match app_server
                     .thread_read(thread_id, /*include_turns*/ true)
                     .await
-                    .ok()
-                    .is_some_and(|thread| !thread.turns.is_empty());
+                {
+                    Ok(thread) => !thread.turns.is_empty(),
+                    Err(error) if is_no_rollout_resume_error(&error) => false,
+                    Err(error) => {
+                        self.chat_widget.add_error_message(format!(
+                            "Could not read this conversation, so it was not switched: {error}. \
+                             The current session is unchanged; retry the switch when the app \
+                             server is responsive."
+                        ));
+                        return Ok(AppRunControl::Continue);
+                    }
+                };
                 let result = if has_turns {
                     self.resume_target_session_with_source(
                         tui,

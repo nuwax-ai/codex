@@ -446,6 +446,37 @@ impl HttpClientExt for RigHttpClient {
                     Err(error) => return Err(Error::Instance(error.into())),
                 }
             }
+            // Fork (2026-11-19): Chat/Anthropic bodies only exist after rig
+            // serializes them, so the "shrink the output cap to the room that is
+            // actually left" step happens here, on the final body. Without it
+            // these two wires hard-failed on requests the Responses wire sends
+            // successfully (window 8000: input 5732 + cap 4000 > 8000, although
+            // 5732 + 2268 fits) and triggered a needless compaction.
+            let mut budget = self.wire_budget;
+            if self.protocol != crate::RigProtocol::Responses
+                && budget
+                    .context_window_tokens
+                    .is_some_and(|window| window > 0)
+                && let Some(body) = measured_body.as_mut()
+            {
+                let costs = crate::wire_images::measure(self.protocol, body);
+                if let Some(tightened) =
+                    budget.tightened_output_tokens(request.body().len(), Some(costs))
+                    && let Some(slot) = body.get_mut("max_tokens")
+                {
+                    *slot = serde_json::json!(tightened);
+                    *request.body_mut() = serde_json::to_vec(body)
+                        .map_err(|error| Error::Instance(error.into()))?
+                        .into();
+                    request.headers_mut().remove(http::header::CONTENT_LENGTH);
+                    budget.output_tokens = Some(tightened);
+                    tracing::debug!(
+                        tightened_output_tokens = tightened,
+                        protocol = ?self.protocol,
+                        "output cap tightened to the remaining context room"
+                    );
+                }
+            }
             let image_costs = if budget_measures_body {
                 measured_body
                     .as_ref()
@@ -453,8 +484,7 @@ impl HttpClientExt for RigHttpClient {
             } else {
                 None
             };
-            self.wire_budget
-                .check_body(request.body().len(), image_costs)?;
+            budget.check_body(request.body().len(), image_costs)?;
             let response = crate::request_retry::send_streaming(
                 &self.inner,
                 request,
