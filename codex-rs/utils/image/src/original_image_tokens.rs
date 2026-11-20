@@ -24,22 +24,40 @@ const ORIGINAL_PATCH_CEILING: u64 = 10_000;
 /// not make an unknown image free. PNG inspection stops at IHDR without inflating
 /// or interpreting later metadata; other formats use the bounded header decoder.
 pub fn estimate_original_image_tokens(image_url: &str) -> Option<usize> {
-    if image_url.len() > MAX_ESTIMATE_DATA_URL_BYTES
-        || !image_url.get(..5)?.eq_ignore_ascii_case("data:")
-    {
+    estimate_original_image_tokens_with_limit(image_url, MAX_ESTIMATE_DATA_URL_BYTES)
+}
+
+/// Same as [`estimate_original_image_tokens`] with an explicit data-URL byte bound.
+///
+/// Callers that accept payloads larger than the default 16 MiB entrance bound
+/// (for example a deployment that raised `NUWAX_IMAGE_ENTRY_MAX_BYTES`) must pass
+/// that bound here: otherwise a legal-but-large image has no estimate, gets
+/// charged the 10,000-patch ceiling, and is then dropped by the visual budget.
+/// The decoded-bytes bound scales with the URL bound; pixel and decoder-allocation
+/// safety limits stay fixed.
+pub fn estimate_original_image_tokens_with_limit(
+    image_url: &str,
+    max_data_url_bytes: usize,
+) -> Option<usize> {
+    let max_data_url_bytes = max_data_url_bytes.max(MAX_ESTIMATE_DATA_URL_BYTES);
+    if image_url.len() > max_data_url_bytes || !image_url.get(..5)?.eq_ignore_ascii_case("data:") {
         return None;
     }
+    let max_decoded_bytes = max_data_url_bytes
+        .div_ceil(4)
+        .saturating_mul(3)
+        .max(MAX_ESTIMATE_DECODED_BYTES);
     let (metadata, encoded) = image_url.split_once(',')?;
     if metadata.len() > MAX_ESTIMATE_METADATA_BYTES
         || !metadata
             .split(';')
             .any(|part| part.eq_ignore_ascii_case("base64"))
-        || encoded.len().div_ceil(4).checked_mul(3)? > MAX_ESTIMATE_DECODED_BYTES
+        || encoded.len().div_ceil(4).checked_mul(3)? > max_decoded_bytes
     {
         return None;
     }
     let bytes = BASE64_STANDARD.decode(encoded).ok()?;
-    if bytes.len() > MAX_ESTIMATE_DECODED_BYTES {
+    if bytes.len() > max_decoded_bytes {
         return None;
     }
     let format = image::guess_format(&bytes).ok()?;

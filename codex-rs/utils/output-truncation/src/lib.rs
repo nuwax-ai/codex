@@ -337,8 +337,11 @@ fn shrink_oversized_tool_output_images(
         // (it refuses URLs past the per-image byte bound, which is exactly the
         // oversized case). Either way the pixels have to come down.
         let over_visual_budget = image_url.len() > per_image_limit
-            || codex_utils_image::estimate_original_image_tokens(image_url)
-                .is_some_and(|tokens| tokens > MAX_TOOL_OUTPUT_VISIBLE_TOKENS);
+            || codex_utils_image::estimate_original_image_tokens_with_limit(
+                image_url,
+                per_image_limit,
+            )
+            .is_some_and(|tokens| tokens > MAX_TOOL_OUTPUT_VISIBLE_TOKENS);
         if !over_visual_budget {
             continue;
         }

@@ -67,6 +67,7 @@ mod original_image_tokens;
 
 pub use crate::error::ImageProcessingError;
 pub use original_image_tokens::estimate_original_image_tokens;
+pub use original_image_tokens::estimate_original_image_tokens_with_limit;
 
 #[derive(Debug, Clone)]
 pub struct EncodedImage {

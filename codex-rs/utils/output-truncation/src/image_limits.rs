@@ -1,6 +1,7 @@
 use crate::TruncationPolicy;
 use crate::approx_bytes_for_tokens;
 use codex_protocol::models::FunctionCallOutputContentItem;
+use std::ffi::OsString;
 use std::sync::OnceLock;
 
 /// Hard cap for model-visible text and charged media in one image-bearing tool result.
@@ -88,16 +89,23 @@ pub(crate) fn omission_marker(text: &str) -> Option<(OmissionKind, usize)> {
     match suffix {
         "text items ...]" => Some((OmissionKind::Text, count)),
         "audio items ...]" => Some((OmissionKind::Audio, count)),
-        _ if omitted_images_marker(count)
-            == (FunctionCallOutputContentItem::InputText {
-                text: text.to_owned(),
-            }) =>
+        // Match the marker by its stable shape, not by regenerating it with the
+        // current limits: history written under one configuration must stay
+        // recognizable after the operator changes the environment (the numbers
+        // in the marker describe the limits that produced it).
+        _ if suffix.starts_with(IMAGE_OMISSION_MARKER_PREFIX)
+            && suffix.ends_with(IMAGE_OMISSION_MARKER_SUFFIX) =>
         {
             Some((OmissionKind::Image, count))
         }
         _ => None,
     }
 }
+
+/// Stable head of the image omission marker (after `[omitted N `).
+const IMAGE_OMISSION_MARKER_PREFIX: &str = "image(s): over the per-output image limits (";
+/// Stable tail of the image omission marker.
+const IMAGE_OMISSION_MARKER_SUFFIX: &str = ") ...]";
 
 /// Bounded omission text shared by the producer and the history-preparation backstop.
 pub fn omitted_images_marker(dropped: usize) -> FunctionCallOutputContentItem {
@@ -181,7 +189,7 @@ const ENV_ENTRY_MAX_TOTAL_BYTES: (&str, &str) = (
 
 const MIN_IMAGE_COUNT: usize = 1;
 const MAX_IMAGE_COUNT: usize = 16;
-const MIN_ENTRY_IMAGE_BYTES: usize = 1;
+const MIN_ENTRY_IMAGE_BYTES: usize = 1024 * 1024;
 const MAX_ENTRY_IMAGE_BYTES: usize = 64 * 1024 * 1024;
 const MIN_ENTRY_TOTAL_BYTES: usize = 8 * 1024 * 1024;
 const MAX_ENTRY_TOTAL_BYTES: usize = 128 * 1024 * 1024;
@@ -193,7 +201,7 @@ static IMAGE_LIMITS: OnceLock<Result<ImageLimits, String>> = OnceLock::new();
 /// An invalid environment value keeps the built-in defaults here; call
 /// [`env_error`] at startup to turn it into a hard failure naming the variable.
 pub fn current() -> ImageLimits {
-    match IMAGE_LIMITS.get_or_init(|| parse_limits(&|name| std::env::var(name).ok())) {
+    match IMAGE_LIMITS.get_or_init(|| parse_limits(&|name| std::env::var_os(name))) {
         Ok(limits) => *limits,
         Err(_) => ImageLimits::default(),
     }
@@ -201,13 +209,13 @@ pub fn current() -> ImageLimits {
 
 /// The environment-parsing error, if any. Startup paths call this to fail fast.
 pub fn env_error() -> Option<&'static str> {
-    match IMAGE_LIMITS.get_or_init(|| parse_limits(&|name| std::env::var(name).ok())) {
+    match IMAGE_LIMITS.get_or_init(|| parse_limits(&|name| std::env::var_os(name))) {
         Ok(_) => None,
         Err(error) => Some(error.as_str()),
     }
 }
 
-fn parse_limits(get: &dyn Fn(&str) -> Option<String>) -> Result<ImageLimits, String> {
+fn parse_limits(get: &dyn Fn(&str) -> Option<OsString>) -> Result<ImageLimits, String> {
     let mut limits = ImageLimits::default();
     let mut entry_name = ENV_ENTRY_MAX_BYTES.0;
     let mut total_name = ENV_ENTRY_MAX_TOTAL_BYTES.0;
@@ -245,12 +253,12 @@ fn parse_limits(get: &dyn Fn(&str) -> Option<String>) -> Result<ImageLimits, Str
 }
 
 fn read_setting(
-    get: &dyn Fn(&str) -> Option<String>,
+    get: &dyn Fn(&str) -> Option<OsString>,
     names: (&'static str, &'static str),
 ) -> Result<Option<(String, &'static str)>, String> {
     let (nuwax_name, codex_name) = names;
-    let nuwax = get(nuwax_name).filter(|value| !value.trim().is_empty());
-    let codex = get(codex_name).filter(|value| !value.trim().is_empty());
+    let nuwax = read_env_text(get, nuwax_name)?;
+    let codex = read_env_text(get, codex_name)?;
     match (nuwax, codex) {
         (Some(nuwax_value), Some(codex_value)) if nuwax_value.trim() != codex_value.trim() => Err(
             format!("{nuwax_name} ({nuwax_value:?}) and {codex_name} ({codex_value:?}) disagree"),
@@ -259,6 +267,24 @@ fn read_setting(
         (None, Some(value)) => Ok(Some((value, codex_name))),
         (None, None) => Ok(None),
     }
+}
+
+/// Reads one variable as UTF-8 text, treating only blank values as unset.
+///
+/// `std::env::var` maps a non-Unicode value to the same `None` as an unset
+/// variable, which silently skips fail-fast validation; read the raw `OsString`
+/// and reject it with the variable named instead.
+fn read_env_text(
+    get: &dyn Fn(&str) -> Option<OsString>,
+    name: &str,
+) -> Result<Option<String>, String> {
+    let Some(raw) = get(name) else {
+        return Ok(None);
+    };
+    let text = raw
+        .into_string()
+        .map_err(|raw| format!("Invalid {name}: value must be UTF-8 text; got {raw:?}"))?;
+    Ok((!text.trim().is_empty()).then_some(text))
 }
 
 fn parse_bounded(
@@ -283,12 +309,19 @@ fn parse_bounded(
 fn charged_visual_tokens(
     image: &codex_protocol::models::ImageReference,
     detail: Option<codex_protocol::models::ImageDetail>,
+    limits: ImageLimits,
 ) -> usize {
     match detail {
         Some(codex_protocol::models::ImageDetail::Original) => match image {
             codex_protocol::models::ImageReference::Inline { image_url } => {
-                codex_utils_image::estimate_original_image_tokens(image_url)
-                    .unwrap_or(TOOL_OUTPUT_IMAGE_ORIGINAL_VISUAL_TOKENS)
+                // Use the configured entry bound so a legal image above the
+                // built-in 16 MiB estimate bound still gets a real patch count
+                // instead of the conservative 10,000-token ceiling.
+                codex_utils_image::estimate_original_image_tokens_with_limit(
+                    image_url,
+                    limits.max_image_bytes,
+                )
+                .unwrap_or(TOOL_OUTPUT_IMAGE_ORIGINAL_VISUAL_TOKENS)
             }
             codex_protocol::models::ImageReference::File { .. } => {
                 TOOL_OUTPUT_IMAGE_ORIGINAL_VISUAL_TOKENS
@@ -404,7 +437,7 @@ pub fn admit_tool_output_images_with(
         let FunctionCallOutputContentItem::InputImage { image, detail } = &items[index] else {
             unreachable!("filtered to images");
         };
-        let cost = charged_visual_tokens(image, *detail);
+        let cost = charged_visual_tokens(image, *detail, limits);
         if approx_bytes_for_tokens(visual_total + cost) <= budget_bytes {
             visual_total += cost;
             visual_kept.push(index);
@@ -426,13 +459,15 @@ pub fn admit_tool_output_images_with(
 #[cfg(test)]
 mod limits_tests {
     use super::ImageLimits;
+    use super::omitted_images_marker_with;
     use super::parse_limits;
+    use codex_protocol::models::FunctionCallOutputContentItem;
     use std::collections::HashMap;
 
-    fn lookup(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
-        let map: HashMap<String, String> = pairs
+    fn lookup(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<std::ffi::OsString> {
+        let map: HashMap<String, std::ffi::OsString> = pairs
             .iter()
-            .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+            .map(|(key, value)| ((*key).to_string(), std::ffi::OsString::from(*value)))
             .collect();
         move |name| map.get(name).cloned()
     }
@@ -539,6 +574,125 @@ mod limits_tests {
             !error.contains("NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn omission_marker_is_recognized_after_limits_change() {
+        // Written under one configuration, parsed under another: the numbers in
+        // the marker describe the old limits, but the shape must stay stable.
+        let written = omitted_images_marker_with(3, ImageLimits::default());
+        let FunctionCallOutputContentItem::InputText { text } = written else {
+            panic!("marker must be text");
+        };
+        assert!(matches!(
+            super::omission_marker(&text),
+            Some((super::OmissionKind::Image, 3))
+        ));
+
+        let other = ImageLimits {
+            max_images: 16,
+            max_image_bytes: 48 * 1024 * 1024,
+            max_total_bytes: 96 * 1024 * 1024,
+        };
+        let rewritten = omitted_images_marker_with(7, other);
+        let FunctionCallOutputContentItem::InputText { text } = rewritten else {
+            panic!("marker must be text");
+        };
+        assert!(matches!(
+            super::omission_marker(&text),
+            Some((super::OmissionKind::Image, 7))
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_environment_value_fails_instead_of_being_ignored() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let get = |name: &str| {
+            (name == "NUWAX_IMAGE_MAX_COUNT").then(|| std::ffi::OsString::from_vec(vec![0xff]))
+        };
+        let error = parse_limits(&get).expect_err("non-UTF-8 must fail");
+        assert!(error.contains("NUWAX_IMAGE_MAX_COUNT"), "{error}");
+        assert!(error.contains("UTF-8"), "{error}");
+    }
+
+    /// A legal PNG larger than the built-in 16 MiB estimate bound: header-only
+    /// inspection must still produce a real patch count once the entry bound is
+    /// raised, instead of charging the 10,000-token ceiling and dropping it.
+    #[test]
+    fn original_image_above_16_mib_keeps_a_real_visual_estimate() {
+        use crate::TruncationPolicy;
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+        use codex_protocol::models::FunctionCallOutputContentItem;
+        use codex_protocol::models::ImageDetail;
+        use codex_protocol::models::ImageReference;
+
+        fn png_chunk(kind: [u8; 4], data: &[u8]) -> Vec<u8> {
+            let mut out = Vec::with_capacity(data.len() + 12);
+            out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+            out.extend_from_slice(&kind);
+            out.extend_from_slice(data);
+            out.extend_from_slice(&crc32(&kind, data).to_be_bytes());
+            out
+        }
+
+        fn crc32(kind: &[u8], data: &[u8]) -> u32 {
+            let mut crc = 0xFFFF_FFFFu32;
+            for byte in kind.iter().chain(data.iter()) {
+                crc ^= u32::from(*byte);
+                for _ in 0..8 {
+                    let mask = (crc & 1).wrapping_neg();
+                    crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+                }
+            }
+            !crc
+        }
+
+        let width = 2400u32;
+        let height = 1750u32;
+        let mut ihdr = Vec::new();
+        ihdr.extend_from_slice(&width.to_be_bytes());
+        ihdr.extend_from_slice(&height.to_be_bytes());
+        ihdr.extend_from_slice(&[8, 6, 0, 0, 0]);
+
+        let mut png = Vec::new();
+        png.extend_from_slice(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+        png.extend_from_slice(&png_chunk(*b"IHDR", &ihdr));
+        // Header inspection never inflates IDAT; its size only makes the data URL
+        // exceed the built-in 16 MiB estimate bound.
+        png.extend_from_slice(&png_chunk(*b"IDAT", &vec![0u8; 13_000_000]));
+        png.extend_from_slice(&png_chunk(*b"IEND", &[]));
+
+        let encoded = BASE64_STANDARD.encode(&png);
+        assert!(encoded.len() > 16 * 1024 * 1024);
+        let image_url = format!("data:image/png;base64,{encoded}");
+        assert!(image_url.len() <= 24 * 1024 * 1024);
+
+        let items = vec![FunctionCallOutputContentItem::InputImage {
+            image: ImageReference::Inline { image_url },
+            detail: Some(ImageDetail::Original),
+        }];
+        let policy = TruncationPolicy::Tokens(10_000);
+
+        // Default entry bound (16 MiB) refuses the payload outright.
+        let default =
+            super::admit_tool_output_images_with(&items, policy, super::ImageLimits::default());
+        assert_eq!(default.dropped, 1);
+
+        // Raised entry bound admits it and charges the real patch count (75×55).
+        let raised = super::admit_tool_output_images_with(
+            &items,
+            policy,
+            super::ImageLimits {
+                max_image_bytes: 24 * 1024 * 1024,
+                max_total_bytes: 24 * 1024 * 1024,
+                ..super::ImageLimits::default()
+            },
+        );
+        assert_eq!(raised.dropped, 0);
+        assert_eq!(raised.visual_tokens, 75 * 55);
     }
 
     #[test]
