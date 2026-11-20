@@ -767,3 +767,12 @@ fn a_declared_pixel_bomb_is_refused_before_any_raster_allocation() {
         "got {error:?}"
     );
 }
+
+/// A readable header whose pixels exceed the 40 MP original-image ceiling must
+/// report the conservative 10,000-token ceiling (not `None`): the entrance can
+/// then shrink it instead of dropping a legal 40-80 MP screenshot whole.
+#[test]
+fn pixels_over_the_original_ceiling_report_the_conservative_ceiling() {
+    let url = data_url_from_bytes("image/png", &png_declaring_dimensions(8_000, 5_001));
+    assert_eq!(estimate_original_image_tokens(&url), Some(10_000));
+}

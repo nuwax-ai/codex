@@ -8,6 +8,7 @@ use image::ImageFormat;
 use image::ImageReader;
 use image::Limits;
 
+use crate::MAX_PROMPT_IMAGE_DECODE_PIXELS;
 use crate::MAX_PROMPT_IMAGE_PIXELS;
 use crate::PROMPT_IMAGE_PATCH_SIZE;
 
@@ -21,8 +22,12 @@ const ORIGINAL_PATCH_CEILING: u64 = 10_000;
 ///
 /// Only bounded Base64 data URLs in supported image formats are inspected. A missing
 /// estimate means callers must charge the conservative 10,000-patch ceiling; it does
-/// not make an unknown image free. PNG inspection stops at IHDR without inflating
-/// or interpreting later metadata; other formats use the bounded header decoder.
+/// not make an unknown image free. Images whose header is readable but whose pixels
+/// exceed [`MAX_PROMPT_IMAGE_PIXELS`] return the ceiling — explicitly, so a shrink
+/// pass can act on them — as long as they stay within
+/// [`MAX_PROMPT_IMAGE_DECODE_PIXELS`]; unparseable, unsupported, or beyond-decode
+/// payloads stay `None`. PNG inspection stops at IHDR without inflating or interpreting later
+/// metadata; other formats use the bounded header decoder.
 pub fn estimate_original_image_tokens(image_url: &str) -> Option<usize> {
     estimate_original_image_tokens_with_limit(image_url, MAX_ESTIMATE_DATA_URL_BYTES)
 }
@@ -86,7 +91,18 @@ pub fn estimate_original_image_tokens_with_limit(
         // Header inspection never constructs a DynamicImage or raster.
         reader.into_dimensions().ok()?
     };
-    if width == 0 || height == 0 || u64::from(width) * u64::from(height) > MAX_PROMPT_IMAGE_PIXELS {
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let pixels = u64::from(width) * u64::from(height);
+    if pixels > MAX_PROMPT_IMAGE_PIXELS {
+        // Dimensions are known but exceed the original-detail ceiling. Within
+        // the decode bound a shrink pass can still save the image, so report
+        // the conservative ceiling explicitly instead of "unknown"; beyond it
+        // there is nothing safe to shrink and the payload stays unknown.
+        if pixels <= MAX_PROMPT_IMAGE_DECODE_PIXELS {
+            return usize::try_from(ORIGINAL_PATCH_CEILING).ok();
+        }
         return None;
     }
     let patches = u64::from(width.div_ceil(PROMPT_IMAGE_PATCH_SIZE))

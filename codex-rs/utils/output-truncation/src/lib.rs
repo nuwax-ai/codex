@@ -336,13 +336,7 @@ fn shrink_oversized_tool_output_images(
         // Over the visual budget, or too large for the estimator to judge
         // (it refuses URLs past the per-image byte bound, which is exactly the
         // oversized case). Either way the pixels have to come down.
-        let over_visual_budget = image_url.len() > per_image_limit
-            || codex_utils_image::estimate_original_image_tokens_with_limit(
-                image_url,
-                per_image_limit,
-            )
-            .is_some_and(|tokens| tokens > image_limits::effective_visual_budget_tokens());
-        if !over_visual_budget {
+        if !image_needs_visual_cap(image_url, per_image_limit) {
             continue;
         }
         if let Ok(Some(capped)) =
@@ -432,6 +426,19 @@ fn shrink_oversized_tool_output_images(
     }
 
     items
+}
+
+/// Whether the image must be dimension-capped before admission.
+///
+/// Two triggers: the encoded data URL is over the entrance byte bound, or the
+/// header estimate is over the visual budget admission actually enforces
+/// (9,744). The estimator reports the conservative 10,000-token ceiling for
+/// readable headers whose pixels exceed the original-image bound, so those
+/// impressions are shrunk here instead of being dropped as "unknown".
+fn image_needs_visual_cap(image_url: &str, per_image_limit: usize) -> bool {
+    image_url.len() > per_image_limit
+        || codex_utils_image::estimate_original_image_tokens_with_limit(image_url, per_image_limit)
+            .is_some_and(|tokens| tokens > image_limits::effective_visual_budget_tokens())
 }
 
 fn truncate_output_items(

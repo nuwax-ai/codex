@@ -651,7 +651,6 @@ mod limits_tests {
         ));
     }
 
-    #[cfg(unix)]
     #[test]
     fn effective_visual_budget_excludes_control_headroom() {
         // Admission charges images against 10,000 minus 256 control tokens;
@@ -682,6 +681,7 @@ mod limits_tests {
         ));
     }
 
+    #[cfg(unix)]
     #[test]
     fn non_utf8_environment_value_fails_instead_of_being_ignored() {
         use std::os::unix::ffi::OsStringExt;

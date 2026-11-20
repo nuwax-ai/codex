@@ -1023,3 +1023,51 @@ fn a_square_original_above_the_effective_visual_budget_is_shrunk_not_dropped() {
     );
     assert_eq!(admission.dropped, 0);
 }
+
+/// 8000×5001 (~40 MP) is over the original-image pixel ceiling: the estimator
+/// reports the 10,000-token ceiling, which must be treated as "needs a
+/// dimension cap" — otherwise the admission drops it as unknown.
+#[test]
+fn a_readable_header_over_the_pixel_ceiling_triggers_the_visual_cap() {
+    fn png_declaring(width: u32, height: u32) -> Vec<u8> {
+        fn chunk(kind: [u8; 4], data: &[u8]) -> Vec<u8> {
+            let mut out = Vec::new();
+            out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+            out.extend_from_slice(&kind);
+            out.extend_from_slice(data);
+            let mut crc = 0xFFFF_FFFFu32;
+            for byte in kind.iter().chain(data) {
+                crc ^= u32::from(*byte);
+                for _ in 0..8 {
+                    crc = if crc & 1 != 0 {
+                        (crc >> 1) ^ 0xEDB8_8320
+                    } else {
+                        crc >> 1
+                    };
+                }
+            }
+            out.extend_from_slice(&(!crc).to_be_bytes());
+            out
+        }
+        let mut png = Vec::new();
+        png.extend_from_slice(&[0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n']);
+        let mut ihdr = Vec::new();
+        ihdr.extend_from_slice(&width.to_be_bytes());
+        ihdr.extend_from_slice(&height.to_be_bytes());
+        ihdr.extend_from_slice(&[8, 6, 0, 0, 0]);
+        png.extend_from_slice(&chunk(*b"IHDR", &ihdr));
+        png.extend_from_slice(&chunk(*b"IDAT", &[0u8; 8]));
+        png.extend_from_slice(&chunk(*b"IEND", &[]));
+        png
+    }
+
+    let url = codex_utils_image::data_url_from_bytes("image/png", &png_declaring(8_000, 5_001));
+    assert_eq!(
+        codex_utils_image::estimate_original_image_tokens(&url),
+        Some(10_000)
+    );
+    assert!(crate::image_needs_visual_cap(&url, 16 * 1024 * 1024));
+
+    let small = codex_utils_image::data_url_from_bytes("image/png", &png_declaring(640, 480));
+    assert!(!crate::image_needs_visual_cap(&small, 16 * 1024 * 1024));
+}
