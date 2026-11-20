@@ -653,6 +653,17 @@ mod limits_tests {
 
     #[cfg(unix)]
     #[test]
+    fn effective_visual_budget_excludes_control_headroom() {
+        // Admission charges images against 10,000 minus 256 control tokens;
+        // shrink must use the same number or the comparison can never fire.
+        assert_eq!(
+            super::effective_visual_budget_tokens(),
+            super::MAX_TOOL_OUTPUT_VISIBLE_TOKENS - 256
+        );
+        assert_eq!(super::effective_visual_budget_tokens(), 9_744);
+    }
+
+    #[test]
     fn marker_shape_rejects_lookalike_tool_text() {
         // Same prefix and suffix, unrelated payload: must stay ordinary text.
         let lookalike =
