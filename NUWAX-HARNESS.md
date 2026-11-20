@@ -628,6 +628,15 @@ MCP 工具应返回 image 内容块，Code Mode 使用图片输出接口。图�
   压到 192 KiB 以下不再压；压到下限仍超预算时保留原图并打 `warn`（点名 budget/total），
   请求照发。设 `0` 关闭该 pass，非法值告警一次后回落默认。
 
+- **工具输出入口**（2026-11-20 起，可按需调大）：工具结果里的图片在进入历史前还有一道
+  入口限额——张数（默认 **8**）、单图 data URL（默认 **16 MiB**）、合计（默认 **24 MiB**）。
+  超限会先把最旧的图重编码压小（JPEG 质量阶梯 + 尺寸阶梯，最小档是 64 KiB 量级），
+  缩到最小档仍放不下才丢弃并写一行 `[omitted N image(s): …]`。环境变量：
+  `NUWAX_IMAGE_MAX_COUNT`、`NUWAX_IMAGE_ENTRY_MAX_BYTES`、
+  `NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES`（兼容 `CODEX_` 前缀，异值启动报错）。要求
+  `合计 ≥ 单图`；非法值或越界在启动时点名变量报错。注意：调大它们只影响"丢不丢"，
+  清晰度仍由单图预算和视觉 token 预算决定。
+
 网关仍返回 413 时先看整请求预算，再看单图预算；token 计数两者都不改变。
 
 遇到接入问题，依次核对：
@@ -774,7 +783,8 @@ developer_instructions = """
 - 引擎侧（Rust 二进制读取）：`NUWAX_HOME`、`NUWAX_MODEL_CONTEXT_WINDOW`、
   `NUWAX_AUTO_COMPACT_TOKEN_LIMIT`、`NUWAX_AUTO_COMPACT_RATIO`、
   `NUWAX_MODEL_REASONING_EFFORT`、`NUWAX_TOOL_SEARCH`、`NUWAX_IMAGE_MAX_BYTES`、
-  `NUWAX_OPENAI_EGRESS`。
+  `NUWAX_IMAGE_MAX_COUNT`、`NUWAX_IMAGE_ENTRY_MAX_BYTES`、
+  `NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES`、`NUWAX_OPENAI_EGRESS`。
 - ACP 适配层（fork-codex-acp-ts 读取）：`NUWAX_PATH`、`NUWAX_BASE_URL`、
   `NUWAX_API_KEY`、`NUWAX_API_PROTOCOL`、`NUWAX_WIRE_API`、`NUWAX_BRIDGE`、
   `NUWAX_MODEL`、`NUWAX_MODEL_CONTEXT_WINDOW`、`NUWAX_PROVIDER_ID`、

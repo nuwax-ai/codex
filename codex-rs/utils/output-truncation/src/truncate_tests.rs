@@ -854,7 +854,7 @@ fn an_oversized_image_is_re_encoded_instead_of_dropped() {
     );
 
     let items = vec![inline_image_for_shrink(&url)];
-    let shrunk = crate::shrink_oversized_tool_output_images(items);
+    let shrunk = crate::shrink_oversized_tool_output_images(items, crate::ImageLimits::default());
 
     // The image SURVIVES: it is still an image, now inside the bound.
     let FunctionCallOutputContentItem::InputImage { image, .. } = &shrunk[0] else {
@@ -882,7 +882,7 @@ fn images_that_already_fit_are_left_untouched() {
     let small = large_png(/*width*/ 64, /*height*/ 64);
     assert!(small.len() <= MAX_TOOL_OUTPUT_IMAGE_BYTES);
     let items = vec![inline_image_for_shrink(&small)];
-    let shrunk = crate::shrink_oversized_tool_output_images(items);
+    let shrunk = crate::shrink_oversized_tool_output_images(items, crate::ImageLimits::default());
     let FunctionCallOutputContentItem::InputImage { image, .. } = &shrunk[0] else {
         panic!("expected an image");
     };
@@ -907,7 +907,7 @@ fn the_aggregate_bound_shrinks_the_oldest_first() {
         inline_image_for_shrink(&b),
         inline_image_for_shrink(&c),
     ];
-    let shrunk = crate::shrink_oversized_tool_output_images(items);
+    let shrunk = crate::shrink_oversized_tool_output_images(items, crate::ImageLimits::default());
     let len_of = |item: &FunctionCallOutputContentItem| match item {
         FunctionCallOutputContentItem::InputImage {
             image: ImageReference::Inline { image_url },
@@ -932,7 +932,7 @@ fn a_pathological_image_still_falls_through_to_the_drop_path() {
         "A".repeat(MAX_TOOL_OUTPUT_IMAGE_BYTES + 1024)
     );
     let items = vec![inline_image_for_shrink(&url)];
-    let shrunk = crate::shrink_oversized_tool_output_images(items);
+    let shrunk = crate::shrink_oversized_tool_output_images(items, crate::ImageLimits::default());
     let FunctionCallOutputContentItem::InputImage { image, .. } = &shrunk[0] else {
         panic!("expected an image");
     };

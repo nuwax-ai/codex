@@ -608,6 +608,13 @@ FS-policy 构建器的 append 列表、legacy `default_read_only_subpaths_for_wr
 （含 marker）。无损优先：alpha 全 255 的截图打平转 JPEG（视觉无损），真半透明保
 PNG。无法解码的 payload 原样透传、交给入口丢弃。
 
+**入口限额可按部署调大（2026-11-20）**：上面那组入口界（张数 / 单图 / 合计）从编译期
+常量改为进程级可配置——`NUWAX_IMAGE_MAX_COUNT`、`NUWAX_IMAGE_ENTRY_MAX_BYTES`、
+`NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES`（兼容 `CODEX_` 前缀），默认值仍是 8 / 16 MiB /
+24 MiB。解析集中在新 `codex_utils_output_truncation::image_limits`：首次使用时读一次
+环境（`current()`），非法值在 core 加载配置时经 `env_error()` 失败并点名变量；要求
+`合计 ≥ 单图`，范围分别是 1–16、1–64 MiB、8–128 MiB。默认行为不变，纯增量。
+
 **resume 的覆盖边界：与用量同源，且不跨越表面重写（2026-11-11 三次修正）**
 
 这一项改了三轮，前两轮都不够正确，记录清楚免得再踩：

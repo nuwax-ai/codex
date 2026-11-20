@@ -3627,6 +3627,16 @@ impl Config {
                 "image_byte_budget_bytes must be between 0 and 536870912 (512 MiB)",
             ));
         }
+        // Fork (nuwax-codex, 2026-11-20): tool-output image entrance limits are
+        // tunable through NUWAX_IMAGE_* environment variables. Validate them at
+        // startup so a bad value fails fast with the variable named instead of
+        // silently falling back to the defaults inside the truncation path.
+        if let Some(error) = codex_utils_output_truncation::image_limits::env_error() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                error.to_string(),
+            ));
+        }
         let async_compaction_threshold_percent = cfg.features.as_ref()
             .and_then(|features| features.async_compaction.as_ref())
             .and_then(|feature| match feature {

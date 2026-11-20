@@ -1,6 +1,7 @@
 use crate::TruncationPolicy;
 use crate::approx_bytes_for_tokens;
 use codex_protocol::models::FunctionCallOutputContentItem;
+use std::sync::OnceLock;
 
 /// Hard cap for model-visible text and charged media in one image-bearing tool result.
 pub const MAX_TOOL_OUTPUT_VISIBLE_TOKENS: usize = 10_000;
@@ -100,12 +101,19 @@ pub(crate) fn omission_marker(text: &str) -> Option<(OmissionKind, usize)> {
 
 /// Bounded omission text shared by the producer and the history-preparation backstop.
 pub fn omitted_images_marker(dropped: usize) -> FunctionCallOutputContentItem {
+    omitted_images_marker_with(dropped, current())
+}
+
+fn omitted_images_marker_with(
+    dropped: usize,
+    limits: ImageLimits,
+) -> FunctionCallOutputContentItem {
     FunctionCallOutputContentItem::InputText {
         text: format!(
             "[omitted {dropped} image(s): over the per-output image limits (max {} images, {} MiB each, {} MiB total, {} KiB reference/header, {} visual tokens; unknown original costs {} tokens plus control headroom) ...]",
-            MAX_TOOL_OUTPUT_IMAGES,
-            MAX_TOOL_OUTPUT_IMAGE_BYTES / (1024 * 1024),
-            MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES / (1024 * 1024),
+            limits.max_images,
+            limits.max_image_bytes / (1024 * 1024),
+            limits.max_total_bytes / (1024 * 1024),
             MAX_IMAGE_REFERENCE_BYTES / 1024,
             MAX_TOOL_OUTPUT_VISIBLE_TOKENS,
             TOOL_OUTPUT_IMAGE_ORIGINAL_VISUAL_TOKENS,
@@ -132,6 +140,125 @@ pub const TOOL_OUTPUT_IMAGE_VISUAL_TOKENS: usize = 1_844;
 /// Visual token cost for a `detail: original` image: the conservative patch
 /// ceiling used when pixel dimensions are unknown at this layer.
 pub const TOOL_OUTPUT_IMAGE_ORIGINAL_VISUAL_TOKENS: usize = 10_000;
+
+/// Fork (nuwax-codex, 2026-11-20): the entrance bounds above are defaults;
+/// deployments may tune them with `NUWAX_IMAGE_*` environment variables when a
+/// model or workflow legitimately needs larger screenshots. Parsed once, and
+/// validated at process startup so a bad value fails fast instead of silently
+/// using the default deep in the truncation path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ImageLimits {
+    /// Images kept per tool result (newest first).
+    pub max_images: usize,
+    /// Data-URL length bound for one image before anything decodes it.
+    pub max_image_bytes: usize,
+    /// Data-URL length bound for all images of one tool result.
+    pub max_total_bytes: usize,
+}
+
+impl Default for ImageLimits {
+    fn default() -> Self {
+        Self {
+            max_images: MAX_TOOL_OUTPUT_IMAGES,
+            max_image_bytes: MAX_TOOL_OUTPUT_IMAGE_BYTES,
+            max_total_bytes: MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES,
+        }
+    }
+}
+
+/// `NUWAX_IMAGE_MAX_COUNT` / `CODEX_IMAGE_MAX_COUNT`.
+const ENV_MAX_COUNT: (&str, &str) = ("NUWAX_IMAGE_MAX_COUNT", "CODEX_IMAGE_MAX_COUNT");
+/// `NUWAX_IMAGE_ENTRY_MAX_BYTES` / `CODEX_IMAGE_ENTRY_MAX_BYTES`.
+const ENV_ENTRY_MAX_BYTES: (&str, &str) =
+    ("NUWAX_IMAGE_ENTRY_MAX_BYTES", "CODEX_IMAGE_ENTRY_MAX_BYTES");
+/// `NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES` / `CODEX_IMAGE_ENTRY_MAX_TOTAL_BYTES`.
+const ENV_ENTRY_MAX_TOTAL_BYTES: (&str, &str) = (
+    "NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES",
+    "CODEX_IMAGE_ENTRY_MAX_TOTAL_BYTES",
+);
+
+const MIN_IMAGE_COUNT: usize = 1;
+const MAX_IMAGE_COUNT: usize = 16;
+const MIN_IMAGE_BYTES: usize = 1;
+const MAX_IMAGE_BYTES: usize = 64 * 1024 * 1024;
+const MIN_TOTAL_BYTES: usize = 8 * 1024 * 1024;
+const MAX_TOTAL_BYTES: usize = 128 * 1024 * 1024;
+
+static IMAGE_LIMITS: OnceLock<Result<ImageLimits, String>> = OnceLock::new();
+
+/// Limits for this process, initialised from the environment on first use.
+///
+/// An invalid environment value keeps the built-in defaults here; call
+/// [`env_error`] at startup to turn it into a hard failure naming the variable.
+pub fn current() -> ImageLimits {
+    match IMAGE_LIMITS.get_or_init(|| parse_limits(&|name| std::env::var(name).ok())) {
+        Ok(limits) => *limits,
+        Err(_) => ImageLimits::default(),
+    }
+}
+
+/// The environment-parsing error, if any. Startup paths call this to fail fast.
+pub fn env_error() -> Option<&'static str> {
+    match IMAGE_LIMITS.get_or_init(|| parse_limits(&|name| std::env::var(name).ok())) {
+        Ok(_) => None,
+        Err(error) => Some(error.as_str()),
+    }
+}
+
+fn parse_limits(get: &dyn Fn(&str) -> Option<String>) -> Result<ImageLimits, String> {
+    let mut limits = ImageLimits::default();
+    if let Some((raw, name)) = read_setting(get, ENV_MAX_COUNT)? {
+        limits.max_images = parse_bounded(&raw, name, MIN_IMAGE_COUNT, MAX_IMAGE_COUNT)?;
+    }
+    if let Some((raw, name)) = read_setting(get, ENV_ENTRY_MAX_BYTES)? {
+        limits.max_image_bytes = parse_bounded(&raw, name, MIN_IMAGE_BYTES, MAX_IMAGE_BYTES)?;
+    }
+    if let Some((raw, name)) = read_setting(get, ENV_ENTRY_MAX_TOTAL_BYTES)? {
+        limits.max_total_bytes = parse_bounded(&raw, name, MIN_TOTAL_BYTES, MAX_TOTAL_BYTES)?;
+    }
+    if limits.max_total_bytes < limits.max_image_bytes {
+        return Err(format!(
+            "{} ({}) must be at least {} ({})",
+            ENV_ENTRY_MAX_TOTAL_BYTES.0,
+            limits.max_total_bytes,
+            ENV_ENTRY_MAX_BYTES.0,
+            limits.max_image_bytes,
+        ));
+    }
+    Ok(limits)
+}
+
+fn read_setting(
+    get: &dyn Fn(&str) -> Option<String>,
+    names: (&'static str, &'static str),
+) -> Result<Option<(String, &'static str)>, String> {
+    let (nuwax_name, codex_name) = names;
+    let nuwax = get(nuwax_name).filter(|value| !value.trim().is_empty());
+    let codex = get(codex_name).filter(|value| !value.trim().is_empty());
+    match (nuwax, codex) {
+        (Some(nuwax_value), Some(codex_value)) if nuwax_value.trim() != codex_value.trim() => Err(
+            format!("{nuwax_name} ({nuwax_value:?}) and {codex_name} ({codex_value:?}) disagree"),
+        ),
+        (Some(value), _) => Ok(Some((value, nuwax_name))),
+        (None, Some(value)) => Ok(Some((value, codex_name))),
+        (None, None) => Ok(None),
+    }
+}
+
+fn parse_bounded(raw: &str, name: &str, min: usize, max: usize) -> Result<usize, String> {
+    let parsed: i64 = raw.trim().parse().map_err(|_| {
+        format!("Invalid {name} value {raw:?}; expected an integer between {min} and {max}")
+    })?;
+    let value = usize::try_from(parsed).map_err(|_| {
+        format!("Invalid {name} value {raw:?}; expected an integer between {min} and {max}")
+    })?;
+    if !(min..=max).contains(&value) {
+        return Err(format!(
+            "Invalid {name} value {raw:?}; expected an integer between {min} and {max}"
+        ));
+    }
+    Ok(value)
+}
 
 /// Conservative visual cost, without decoding untrusted image bytes.
 fn charged_visual_tokens(
@@ -173,6 +300,16 @@ pub fn admit_tool_output_images(
     items: &[FunctionCallOutputContentItem],
     policy: TruncationPolicy,
 ) -> ImageAdmission {
+    admit_tool_output_images_with(items, policy, current())
+}
+
+/// Same as [`admit_tool_output_images`] with explicit limits (used by tests and
+/// by callers that already hold a resolved configuration).
+pub fn admit_tool_output_images_with(
+    items: &[FunctionCallOutputContentItem],
+    policy: TruncationPolicy,
+    limits: ImageLimits,
+) -> ImageAdmission {
     let image_indices: Vec<usize> = items
         .iter()
         .enumerate()
@@ -200,7 +337,7 @@ pub fn admit_tool_output_images(
                             .split_once(',')
                             .map_or(image_url.len(), |(header, _)| header.len())
                             <= MAX_IMAGE_REFERENCE_BYTES;
-                    image_url.len() <= MAX_TOOL_OUTPUT_IMAGE_BYTES && header_fits
+                    image_url.len() <= limits.max_image_bytes && header_fits
                 }
                 // File references carry no payload here; the wire layer
                 // already charges them full visual cost.
@@ -212,10 +349,10 @@ pub fn admit_tool_output_images(
         .collect();
     dropped += image_indices.len().saturating_sub(candidates.len());
 
-    // Entrance bound 2: at most MAX_TOOL_OUTPUT_IMAGES, keeping the NEWEST
+    // Entrance bound 2: at most `limits.max_images`, keeping the NEWEST
     // (the latest screenshot is the evidence the turn still needs).
-    if candidates.len() > MAX_TOOL_OUTPUT_IMAGES {
-        let excess = candidates.len() - MAX_TOOL_OUTPUT_IMAGES;
+    if candidates.len() > limits.max_images {
+        let excess = candidates.len() - limits.max_images;
         dropped += excess;
         candidates.drain(..excess);
     }
@@ -231,7 +368,7 @@ pub fn admit_tool_output_images(
         }
     };
     let mut total: usize = candidates.iter().copied().map(encoded_len).sum();
-    while total > MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES && candidates.len() > 1 {
+    while total > limits.max_total_bytes && candidates.len() > 1 {
         let removed = candidates.remove(0);
         total -= encoded_len(removed);
         dropped += 1;
@@ -264,5 +401,120 @@ pub fn admit_tool_output_images(
         keep,
         dropped,
         visual_tokens: visual_total,
+    }
+}
+
+#[cfg(test)]
+mod limits_tests {
+    use super::ImageLimits;
+    use super::parse_limits;
+    use std::collections::HashMap;
+
+    fn lookup(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let map: HashMap<String, String> = pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+            .collect();
+        move |name| map.get(name).cloned()
+    }
+
+    #[test]
+    fn defaults_without_environment() {
+        let limits = parse_limits(&lookup(&[])).expect("defaults");
+        assert_eq!(limits, ImageLimits::default());
+    }
+
+    #[test]
+    fn nuwax_values_override_defaults() {
+        let limits = parse_limits(&lookup(&[
+            ("NUWAX_IMAGE_MAX_COUNT", "12"),
+            ("NUWAX_IMAGE_ENTRY_MAX_BYTES", "33554432"),
+            ("NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES", "50331648"),
+        ]))
+        .expect("valid limits");
+        assert_eq!(limits.max_images, 12);
+        assert_eq!(limits.max_image_bytes, 33_554_432);
+        assert_eq!(limits.max_total_bytes, 50_331_648);
+    }
+
+    #[test]
+    fn codex_alias_is_accepted() {
+        let limits = parse_limits(&lookup(&[("CODEX_IMAGE_MAX_COUNT", "4")])).expect("alias");
+        assert_eq!(limits.max_images, 4);
+    }
+
+    #[test]
+    fn non_integer_and_out_of_range_fail_with_the_variable_name() {
+        let error = parse_limits(&lookup(&[("NUWAX_IMAGE_MAX_COUNT", "many")]))
+            .expect_err("non-integer must fail");
+        assert!(error.contains("NUWAX_IMAGE_MAX_COUNT"), "{error}");
+
+        let error = parse_limits(&lookup(&[("NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES", "1024")]))
+            .expect_err("below the floor must fail");
+        assert!(
+            error.contains("NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn total_below_entry_limit_fails() {
+        let error = parse_limits(&lookup(&[
+            ("NUWAX_IMAGE_ENTRY_MAX_BYTES", "33554432"),
+            ("NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES", "16777216"),
+        ]))
+        .expect_err("total < entry must fail");
+        assert!(error.contains("at least"), "{error}");
+    }
+
+    #[test]
+    fn custom_total_keeps_images_the_default_would_drop() {
+        use crate::TruncationPolicy;
+        use codex_protocol::models::FunctionCallOutputContentItem;
+        use codex_protocol::models::ImageReference;
+
+        let image = |len: usize| FunctionCallOutputContentItem::InputImage {
+            image: ImageReference::Inline {
+                image_url: format!("data:image/png;base64,{}", "A".repeat(len)),
+            },
+            detail: None,
+        };
+        let ten_mib = 10 * 1024 * 1024;
+        let items = vec![image(ten_mib), image(ten_mib), image(ten_mib)];
+        let policy = TruncationPolicy::Tokens(10_000);
+
+        let default = super::admit_tool_output_images_with(
+            &items,
+            policy,
+            super::ImageLimits::default(),
+        );
+        assert!(
+            default.dropped >= 1,
+            "30 MiB of images must exceed the 24 MiB default total"
+        );
+
+        let raised = super::admit_tool_output_images_with(
+            &items,
+            policy,
+            super::ImageLimits {
+                max_total_bytes: 48 * 1024 * 1024,
+                ..super::ImageLimits::default()
+            },
+        );
+        assert_eq!(
+            raised.dropped, 0,
+            "raised total must keep images the default drops"
+        );
+    }
+
+    #[test]
+    fn conflicting_aliases_fail_naming_both() {
+        let error = parse_limits(&lookup(&[
+            ("NUWAX_IMAGE_MAX_COUNT", "8"),
+            ("CODEX_IMAGE_MAX_COUNT", "4"),
+        ]))
+        .expect_err("conflict must fail");
+        assert!(error.contains("NUWAX_IMAGE_MAX_COUNT"), "{error}");
+        assert!(error.contains("CODEX_IMAGE_MAX_COUNT"), "{error}");
     }
 }

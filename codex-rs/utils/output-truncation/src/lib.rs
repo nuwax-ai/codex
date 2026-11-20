@@ -1,8 +1,9 @@
 //! Shared byte/token truncation for tool and exec output.
 
-mod image_limits;
+pub mod image_limits;
 
 pub use image_limits::ImageAdmission;
+pub use image_limits::ImageLimits;
 pub use image_limits::MAX_IMAGE_REFERENCE_BYTES;
 pub use image_limits::MAX_TOOL_OUTPUT_IMAGE_BYTES;
 pub use image_limits::MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES;
@@ -12,6 +13,7 @@ use image_limits::OmissionKind;
 pub use image_limits::TOOL_OUTPUT_IMAGE_ORIGINAL_VISUAL_TOKENS;
 pub use image_limits::TOOL_OUTPUT_IMAGE_VISUAL_TOKENS;
 pub use image_limits::admit_tool_output_images;
+pub use image_limits::admit_tool_output_images_with;
 use image_limits::image_budget_charge;
 use image_limits::is_tool_output_header;
 use image_limits::omission_marker;
@@ -201,7 +203,13 @@ fn formatted_output(
     let mut combined_len = 0;
     for item in items.iter() {
         let FunctionCallOutputContentItem::InputText { text } = item else {
-            return truncate_output_items(items, policy, estimate_audio_token_count, boundaries);
+            return truncate_output_items(
+                items,
+                policy,
+                estimate_audio_token_count,
+                boundaries,
+                image_limits::current(),
+            );
         };
         combined_len += usize::from(combined_len != 0) + text.len();
     }
@@ -246,6 +254,7 @@ pub fn truncate_function_output_items_with_policy(
         policy,
         estimate_audio_token_count,
         &mut [],
+        image_limits::current(),
     )
 }
 
@@ -264,6 +273,7 @@ pub fn mixed_output_at_token_boundaries<'a>(
         TruncationPolicy::Tokens(max_tokens),
         estimate_audio_token_count,
         boundaries,
+        image_limits::current(),
     )
 }
 
@@ -296,9 +306,10 @@ fn normalize_boundaries(
 /// latter fall through to the admission's drop path with its marker.
 fn shrink_oversized_tool_output_images(
     mut items: Vec<FunctionCallOutputContentItem>,
+    limits: ImageLimits,
 ) -> Vec<FunctionCallOutputContentItem> {
-    let per_image_limit = MAX_TOOL_OUTPUT_IMAGE_BYTES;
-    let total_limit = MAX_TOOL_OUTPUT_IMAGE_TOTAL_BYTES;
+    let per_image_limit = limits.max_image_bytes;
+    let total_limit = limits.max_total_bytes;
 
     let encoded_len = |item: &FunctionCallOutputContentItem| match item {
         FunctionCallOutputContentItem::InputImage {
@@ -425,6 +436,7 @@ fn truncate_output_items(
     policy: TruncationPolicy,
     estimate_audio_token_count: impl Fn(&str) -> usize,
     boundaries: &mut [OutputBoundary],
+    limits: ImageLimits,
 ) -> Vec<FunctionCallOutputContentItem> {
     // Fork (nuwax-codex): tool-output image caps and one bounded shared
     // budget (image visual cost charged up front) apply on every path into
@@ -437,8 +449,9 @@ fn truncate_output_items(
     // only let the still-oversized ones fall through to the drop path.
     let items = Cow::Owned(shrink_oversized_tool_output_images(
         items.into_owned().to_vec(),
+        limits,
     ));
-    let admission = admit_tool_output_images(&items, policy);
+    let admission = admit_tool_output_images_with(&items, policy, limits);
     match items {
         Cow::Borrowed(items) => truncate_output_iter(
             items.iter().map(Cow::Borrowed),
