@@ -853,7 +853,11 @@ fn an_oversized_image_is_re_encoded_instead_of_dropped() {
     );
 
     let items = vec![inline_image_for_shrink(&url)];
-    let shrunk = crate::shrink_oversized_tool_output_images(items, crate::ImageLimits::default());
+    let shrunk = crate::shrink_oversized_tool_output_images(
+        items,
+        crate::ImageLimits::default(),
+        crate::image_limits::effective_visual_budget_tokens(),
+    );
 
     // The image SURVIVES: it is still an image, now inside the bound.
     let FunctionCallOutputContentItem::InputImage { image, .. } = &shrunk[0] else {
@@ -881,7 +885,11 @@ fn images_that_already_fit_are_left_untouched() {
     let small = large_png(/*width*/ 64, /*height*/ 64);
     assert!(small.len() <= MAX_TOOL_OUTPUT_IMAGE_BYTES);
     let items = vec![inline_image_for_shrink(&small)];
-    let shrunk = crate::shrink_oversized_tool_output_images(items, crate::ImageLimits::default());
+    let shrunk = crate::shrink_oversized_tool_output_images(
+        items,
+        crate::ImageLimits::default(),
+        crate::image_limits::effective_visual_budget_tokens(),
+    );
     let FunctionCallOutputContentItem::InputImage { image, .. } = &shrunk[0] else {
         panic!("expected an image");
     };
@@ -906,7 +914,11 @@ fn the_aggregate_bound_shrinks_the_oldest_first() {
         inline_image_for_shrink(&b),
         inline_image_for_shrink(&c),
     ];
-    let shrunk = crate::shrink_oversized_tool_output_images(items, crate::ImageLimits::default());
+    let shrunk = crate::shrink_oversized_tool_output_images(
+        items,
+        crate::ImageLimits::default(),
+        crate::image_limits::effective_visual_budget_tokens(),
+    );
     let len_of = |item: &FunctionCallOutputContentItem| match item {
         FunctionCallOutputContentItem::InputImage {
             image: ImageReference::Inline { image_url },
@@ -931,7 +943,11 @@ fn a_pathological_image_still_falls_through_to_the_drop_path() {
         "A".repeat(MAX_TOOL_OUTPUT_IMAGE_BYTES + 1024)
     );
     let items = vec![inline_image_for_shrink(&url)];
-    let shrunk = crate::shrink_oversized_tool_output_images(items, crate::ImageLimits::default());
+    let shrunk = crate::shrink_oversized_tool_output_images(
+        items,
+        crate::ImageLimits::default(),
+        crate::image_limits::effective_visual_budget_tokens(),
+    );
     let FunctionCallOutputContentItem::InputImage { image, .. } = &shrunk[0] else {
         panic!("expected an image");
     };
@@ -1002,7 +1018,11 @@ fn a_square_original_above_the_effective_visual_budget_is_shrunk_not_dropped() {
         detail: Some(ImageDetail::Original),
     };
 
-    let shrunk = crate::shrink_oversized_tool_output_images(vec![item], ImageLimits::default());
+    let shrunk = crate::shrink_oversized_tool_output_images(
+        vec![item],
+        ImageLimits::default(),
+        crate::image_limits::effective_visual_budget_tokens(),
+    );
     let FunctionCallOutputContentItem::InputImage {
         image: ImageReference::Inline { image_url },
         ..
@@ -1066,8 +1086,85 @@ fn a_readable_header_over_the_pixel_ceiling_triggers_the_visual_cap() {
         codex_utils_image::estimate_original_image_tokens(&url),
         Some(10_000)
     );
-    assert!(crate::image_needs_visual_cap(&url, 16 * 1024 * 1024));
+    assert!(crate::image_needs_visual_cap(
+        &url,
+        16 * 1024 * 1024,
+        crate::image_limits::effective_visual_budget_tokens()
+    ));
 
     let small = codex_utils_image::data_url_from_bytes("image/png", &png_declaring(640, 480));
-    assert!(!crate::image_needs_visual_cap(&small, 16 * 1024 * 1024));
+    assert!(!crate::image_needs_visual_cap(
+        &small,
+        16 * 1024 * 1024,
+        crate::image_limits::effective_visual_budget_tokens()
+    ));
+}
+
+/// A small tool budget (e.g. a placeholder model's `Bytes(10_000)`) caps the
+/// admission at ~2,500 visual tokens. Shrinking to the global 9,744 cap would
+/// re-encode the image only to have it dropped anyway; the shrink target must
+/// come from the same policy the admission uses.
+#[test]
+fn shrink_uses_the_callers_tool_budget_not_the_global_cap() {
+    use crate::ImageLimits;
+    use crate::admit_tool_output_images_with;
+    use crate::image_limits;
+    use codex_protocol::models::ImageDetail;
+
+    let side = 4000u32;
+    let image = image::GrayImage::from_pixel(side, side, image::Luma([7]));
+    let mut bytes = Vec::new();
+    image
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
+        .expect("encode png");
+    let image_url = codex_utils_image::data_url_from_bytes("image/png", &bytes);
+    let item = FunctionCallOutputContentItem::InputImage {
+        image: ImageReference::Inline { image_url },
+        detail: Some(ImageDetail::Original),
+    };
+
+    let policy = image_limits::tool_output_items_policy(
+        std::slice::from_ref(&item),
+        TruncationPolicy::Bytes(10_000),
+    );
+    let budget = image_limits::visual_budget_tokens_for(policy);
+    assert!(budget < image_limits::effective_visual_budget_tokens());
+
+    let shrunk =
+        crate::shrink_oversized_tool_output_images(vec![item], ImageLimits::default(), budget);
+    let FunctionCallOutputContentItem::InputImage {
+        image: ImageReference::Inline { image_url },
+        ..
+    } = &shrunk[0]
+    else {
+        panic!("image must survive shrinking");
+    };
+    let tokens = codex_utils_image::estimate_original_image_tokens(image_url).expect("estimate");
+    assert!(
+        tokens <= budget,
+        "shrink must target {budget}, got {tokens}"
+    );
+
+    let admission = admit_tool_output_images_with(&shrunk, policy, ImageLimits::default());
+    assert_eq!(admission.dropped, 0);
+
+    // Same call through the public entry point the tool pipeline uses.
+    let out = crate::truncate_function_output_items_with_policy(
+        &[FunctionCallOutputContentItem::InputImage {
+            image: ImageReference::Inline {
+                image_url: codex_utils_image::data_url_from_bytes("image/png", &bytes),
+            },
+            detail: Some(ImageDetail::Original),
+        }],
+        TruncationPolicy::Bytes(10_000),
+        |_| 0,
+    );
+    assert!(
+        out.iter()
+            .any(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. })),
+        "the image must survive a small tool budget, got {out:?}"
+    );
 }

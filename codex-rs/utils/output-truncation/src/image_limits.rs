@@ -31,7 +31,16 @@ fn bounded_image_output_policy(policy: TruncationPolicy) -> TruncationPolicy {
 /// `> 10_000` test never fires and a large-but-legal original image would skip
 /// shrinking and then be dropped by the admission's 9,744-token budget.
 pub(crate) fn effective_visual_budget_tokens() -> usize {
-    bounded_image_output_policy(TruncationPolicy::Tokens(usize::MAX)).token_budget()
+    visual_budget_tokens_for(TruncationPolicy::Tokens(usize::MAX))
+}
+
+/// Visual tokens the admission will actually enforce for this call.
+///
+/// The shrink pass must use the same number: targeting the global cap while a
+/// small tool policy (e.g. `Bytes(10_000)`) caps admission at ~2,500 tokens
+/// re-encodes the image only to have it dropped anyway.
+pub(crate) fn visual_budget_tokens_for(policy: TruncationPolicy) -> usize {
+    bounded_image_output_policy(policy).token_budget()
 }
 
 pub(crate) fn tool_output_items_policy(

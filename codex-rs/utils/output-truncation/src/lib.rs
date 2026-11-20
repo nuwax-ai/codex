@@ -307,6 +307,7 @@ fn normalize_boundaries(
 fn shrink_oversized_tool_output_images(
     mut items: Vec<FunctionCallOutputContentItem>,
     limits: ImageLimits,
+    visual_budget_tokens: usize,
 ) -> Vec<FunctionCallOutputContentItem> {
     let per_image_limit = limits.max_image_bytes;
     let total_limit = limits.max_total_bytes;
@@ -323,8 +324,9 @@ fn shrink_oversized_tool_output_images(
     // so a 4000x4000 screenshot costs the whole per-output visual budget no
     // matter how few bytes it has — shrinking bytes alone would still be
     // dropped by the visual bound. Cap the longest edge first (2026-11-10).
-    let longest_edge_cap =
-        codex_utils_image::longest_edge_for_visual_budget(MAX_TOOL_OUTPUT_VISIBLE_TOKENS);
+    // Use the caller's admission budget, not the global cap: a small tool
+    // policy must shrink further or the image is dropped after re-encoding.
+    let longest_edge_cap = codex_utils_image::longest_edge_for_visual_budget(visual_budget_tokens);
     for item in items.iter_mut() {
         let FunctionCallOutputContentItem::InputImage {
             image: codex_protocol::models::ImageReference::Inline { image_url },
@@ -336,7 +338,7 @@ fn shrink_oversized_tool_output_images(
         // Over the visual budget, or too large for the estimator to judge
         // (it refuses URLs past the per-image byte bound, which is exactly the
         // oversized case). Either way the pixels have to come down.
-        if !image_needs_visual_cap(image_url, per_image_limit) {
+        if !image_needs_visual_cap(image_url, per_image_limit, visual_budget_tokens) {
             continue;
         }
         if let Ok(Some(capped)) =
@@ -435,10 +437,14 @@ fn shrink_oversized_tool_output_images(
 /// (9,744). The estimator reports the conservative 10,000-token ceiling for
 /// readable headers whose pixels exceed the original-image bound, so those
 /// impressions are shrunk here instead of being dropped as "unknown".
-fn image_needs_visual_cap(image_url: &str, per_image_limit: usize) -> bool {
+fn image_needs_visual_cap(
+    image_url: &str,
+    per_image_limit: usize,
+    visual_budget_tokens: usize,
+) -> bool {
     image_url.len() > per_image_limit
         || codex_utils_image::estimate_original_image_tokens_with_limit(image_url, per_image_limit)
-            .is_some_and(|tokens| tokens > image_limits::effective_visual_budget_tokens())
+            .is_some_and(|tokens| tokens > visual_budget_tokens)
 }
 
 fn truncate_output_items(
@@ -452,6 +458,7 @@ fn truncate_output_items(
     // budget (image visual cost charged up front) apply on every path into
     // the item pipeline, boundary-aware or not (FORK.md §4 图片边界).
     let policy = tool_output_items_policy(&items, policy);
+    let visual_budget_tokens = image_limits::visual_budget_tokens_for(policy);
     // Fork (2026-11-10): shrink before dropping. The admission bounds below
     // are byte-based (encoded size), so a large-but-legitimate screenshot used
     // to be discarded whole and the model saw only a marker line — it could
@@ -460,6 +467,7 @@ fn truncate_output_items(
     let items = Cow::Owned(shrink_oversized_tool_output_images(
         items.into_owned().to_vec(),
         limits,
+        visual_budget_tokens,
     ));
     let admission = admit_tool_output_images_with(&items, policy, limits);
     match items {
