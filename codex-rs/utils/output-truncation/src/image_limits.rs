@@ -30,10 +30,6 @@ fn bounded_image_output_policy(policy: TruncationPolicy) -> TruncationPolicy {
 /// original-image estimator caps at `ORIGINAL_PATCH_CEILING` (10,000), so a
 /// `> 10_000` test never fires and a large-but-legal original image would skip
 /// shrinking and then be dropped by the admission's 9,744-token budget.
-pub(crate) fn effective_visual_budget_tokens() -> usize {
-    visual_budget_tokens_for(TruncationPolicy::Tokens(usize::MAX))
-}
-
 /// Visual tokens the admission will actually enforce for this call.
 ///
 /// The shrink pass must use the same number: targeting the global cap while a
@@ -665,10 +661,13 @@ mod limits_tests {
         // Admission charges images against 10,000 minus 256 control tokens;
         // shrink must use the same number or the comparison can never fire.
         assert_eq!(
-            super::effective_visual_budget_tokens(),
+            super::visual_budget_tokens_for(crate::TruncationPolicy::Tokens(usize::MAX)),
             super::MAX_TOOL_OUTPUT_VISIBLE_TOKENS - 256
         );
-        assert_eq!(super::effective_visual_budget_tokens(), 9_744);
+        assert_eq!(
+            super::visual_budget_tokens_for(crate::TruncationPolicy::Tokens(usize::MAX)),
+            9_744
+        );
     }
 
     #[test]

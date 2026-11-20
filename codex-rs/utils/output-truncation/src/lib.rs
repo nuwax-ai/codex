@@ -330,15 +330,16 @@ fn shrink_oversized_tool_output_images(
     for item in items.iter_mut() {
         let FunctionCallOutputContentItem::InputImage {
             image: codex_protocol::models::ImageReference::Inline { image_url },
-            ..
+            detail,
         } = item
         else {
             continue;
         };
         // Over the visual budget, or too large for the estimator to judge
         // (it refuses URLs past the per-image byte bound, which is exactly the
-        // oversized case). Either way the pixels have to come down.
-        if !image_needs_visual_cap(image_url, per_image_limit, visual_budget_tokens) {
+        // oversized case). Either way the pixels have to come down. Only
+        // `original` images pay per patch, so only they have a visual trigger.
+        if !image_needs_visual_cap(image_url, per_image_limit, visual_budget_tokens, *detail) {
             continue;
         }
         if let Ok(Some(capped)) =
@@ -441,9 +442,16 @@ fn image_needs_visual_cap(
     image_url: &str,
     per_image_limit: usize,
     visual_budget_tokens: usize,
+    detail: Option<codex_protocol::models::ImageDetail>,
 ) -> bool {
-    image_url.len() > per_image_limit
-        || codex_utils_image::estimate_original_image_tokens_with_limit(image_url, per_image_limit)
+    if image_url.len() > per_image_limit {
+        return true;
+    }
+    // `high`/`auto`/`low` charge a flat 1,844 tokens regardless of pixel count,
+    // so shrinking them cannot lower the visual charge — it would only lose
+    // quality. Their byte limits are handled by Passes 1 and 2.
+    matches!(detail, Some(codex_protocol::models::ImageDetail::Original))
+        && codex_utils_image::estimate_original_image_tokens_with_limit(image_url, per_image_limit)
             .is_some_and(|tokens| tokens > visual_budget_tokens)
 }
 

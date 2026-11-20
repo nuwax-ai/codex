@@ -15,6 +15,11 @@ use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::ImageReference;
 use pretty_assertions::assert_eq;
 
+/// Visual budget the admission uses when no narrower tool policy applies.
+fn global_visual_budget() -> usize {
+    crate::image_limits::visual_budget_tokens_for(TruncationPolicy::Tokens(usize::MAX))
+}
+
 #[test]
 fn truncate_mcp_tool_result_borrows_small_result() {
     let result = CallToolResult {
@@ -856,7 +861,7 @@ fn an_oversized_image_is_re_encoded_instead_of_dropped() {
     let shrunk = crate::shrink_oversized_tool_output_images(
         items,
         crate::ImageLimits::default(),
-        crate::image_limits::effective_visual_budget_tokens(),
+        global_visual_budget(),
     );
 
     // The image SURVIVES: it is still an image, now inside the bound.
@@ -888,7 +893,7 @@ fn images_that_already_fit_are_left_untouched() {
     let shrunk = crate::shrink_oversized_tool_output_images(
         items,
         crate::ImageLimits::default(),
-        crate::image_limits::effective_visual_budget_tokens(),
+        global_visual_budget(),
     );
     let FunctionCallOutputContentItem::InputImage { image, .. } = &shrunk[0] else {
         panic!("expected an image");
@@ -917,7 +922,7 @@ fn the_aggregate_bound_shrinks_the_oldest_first() {
     let shrunk = crate::shrink_oversized_tool_output_images(
         items,
         crate::ImageLimits::default(),
-        crate::image_limits::effective_visual_budget_tokens(),
+        global_visual_budget(),
     );
     let len_of = |item: &FunctionCallOutputContentItem| match item {
         FunctionCallOutputContentItem::InputImage {
@@ -946,7 +951,7 @@ fn a_pathological_image_still_falls_through_to_the_drop_path() {
     let shrunk = crate::shrink_oversized_tool_output_images(
         items,
         crate::ImageLimits::default(),
-        crate::image_limits::effective_visual_budget_tokens(),
+        global_visual_budget(),
     );
     let FunctionCallOutputContentItem::InputImage { image, .. } = &shrunk[0] else {
         panic!("expected an image");
@@ -1021,7 +1026,7 @@ fn a_square_original_above_the_effective_visual_budget_is_shrunk_not_dropped() {
     let shrunk = crate::shrink_oversized_tool_output_images(
         vec![item],
         ImageLimits::default(),
-        crate::image_limits::effective_visual_budget_tokens(),
+        global_visual_budget(),
     );
     let FunctionCallOutputContentItem::InputImage {
         image: ImageReference::Inline { image_url },
@@ -1032,7 +1037,7 @@ fn a_square_original_above_the_effective_visual_budget_is_shrunk_not_dropped() {
     };
     let tokens = codex_utils_image::estimate_original_image_tokens(image_url).expect("estimate");
     assert!(
-        tokens <= crate::image_limits::effective_visual_budget_tokens(),
+        tokens <= global_visual_budget(),
         "shrunk image must fit the admission budget: {tokens}"
     );
 
@@ -1089,14 +1094,16 @@ fn a_readable_header_over_the_pixel_ceiling_triggers_the_visual_cap() {
     assert!(crate::image_needs_visual_cap(
         &url,
         16 * 1024 * 1024,
-        crate::image_limits::effective_visual_budget_tokens()
+        global_visual_budget(),
+        Some(codex_protocol::models::ImageDetail::Original)
     ));
 
     let small = codex_utils_image::data_url_from_bytes("image/png", &png_declaring(640, 480));
     assert!(!crate::image_needs_visual_cap(
         &small,
         16 * 1024 * 1024,
-        crate::image_limits::effective_visual_budget_tokens()
+        global_visual_budget(),
+        Some(codex_protocol::models::ImageDetail::Original)
     ));
 }
 
@@ -1131,7 +1138,7 @@ fn shrink_uses_the_callers_tool_budget_not_the_global_cap() {
         TruncationPolicy::Bytes(10_000),
     );
     let budget = image_limits::visual_budget_tokens_for(policy);
-    assert!(budget < image_limits::effective_visual_budget_tokens());
+    assert!(budget < global_visual_budget());
 
     let shrunk =
         crate::shrink_oversized_tool_output_images(vec![item], ImageLimits::default(), budget);
@@ -1166,5 +1173,45 @@ fn shrink_uses_the_callers_tool_budget_not_the_global_cap() {
         out.iter()
             .any(|item| matches!(item, FunctionCallOutputContentItem::InputImage { .. })),
         "the image must survive a small tool budget, got {out:?}"
+    );
+}
+
+/// `high`/`auto` images pay a flat 1,844 tokens regardless of pixel count, so
+/// a 2048×2048 high-detail image already fits a ~2,500-token budget. Shrinking
+/// it (as the original-detail pixel estimate would) only loses quality; the
+/// visual trigger must follow the admission's pricing rule per `detail`.
+#[test]
+fn high_detail_images_within_the_flat_charge_are_not_re_encoded() {
+    let side = 2048u32;
+    let image = image::GrayImage::from_pixel(side, side, image::Luma([9]));
+    let mut bytes = Vec::new();
+    image
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
+        .expect("encode png");
+    let original_url = codex_utils_image::data_url_from_bytes("image/png", &bytes);
+
+    let out = crate::truncate_function_output_items_with_policy(
+        &[FunctionCallOutputContentItem::InputImage {
+            image: ImageReference::Inline {
+                image_url: original_url.clone(),
+            },
+            detail: Some(codex_protocol::models::ImageDetail::High),
+        }],
+        TruncationPolicy::Bytes(10_000),
+        |_| 0,
+    );
+    let FunctionCallOutputContentItem::InputImage {
+        image: ImageReference::Inline { image_url },
+        ..
+    } = &out[0]
+    else {
+        panic!("image must survive, got {out:?}");
+    };
+    assert_eq!(
+        image_url, &original_url,
+        "high-detail image within the flat charge must not be re-encoded"
     );
 }
