@@ -209,6 +209,8 @@ pub fn env_error() -> Option<&'static str> {
 
 fn parse_limits(get: &dyn Fn(&str) -> Option<String>) -> Result<ImageLimits, String> {
     let mut limits = ImageLimits::default();
+    let mut entry_name = ENV_ENTRY_MAX_BYTES.0;
+    let mut total_name = ENV_ENTRY_MAX_TOTAL_BYTES.0;
     if let Some((raw, name)) = read_setting(get, ENV_MAX_COUNT)? {
         limits.max_images =
             parse_bounded(&raw, name, "image count", MIN_IMAGE_COUNT, MAX_IMAGE_COUNT)?;
@@ -221,6 +223,7 @@ fn parse_limits(get: &dyn Fn(&str) -> Option<String>) -> Result<ImageLimits, Str
             MIN_ENTRY_IMAGE_BYTES,
             MAX_ENTRY_IMAGE_BYTES,
         )?;
+        entry_name = name;
     }
     if let Some((raw, name)) = read_setting(get, ENV_ENTRY_MAX_TOTAL_BYTES)? {
         limits.max_total_bytes = parse_bounded(
@@ -230,14 +233,12 @@ fn parse_limits(get: &dyn Fn(&str) -> Option<String>) -> Result<ImageLimits, Str
             MIN_ENTRY_TOTAL_BYTES,
             MAX_ENTRY_TOTAL_BYTES,
         )?;
+        total_name = name;
     }
     if limits.max_total_bytes < limits.max_image_bytes {
         return Err(format!(
-            "{} ({}) must be at least {} ({})",
-            ENV_ENTRY_MAX_TOTAL_BYTES.0,
-            limits.max_total_bytes,
-            ENV_ENTRY_MAX_BYTES.0,
-            limits.max_image_bytes,
+            "{total_name} ({}) must be at least {entry_name} ({})",
+            limits.max_total_bytes, limits.max_image_bytes,
         ));
     }
     Ok(limits)
@@ -519,6 +520,24 @@ mod limits_tests {
         assert_eq!(
             raised.dropped, 0,
             "raised total must keep images the default drops"
+        );
+    }
+
+    #[test]
+    fn relationship_error_names_the_spelling_that_was_set() {
+        let error = parse_limits(&lookup(&[
+            ("CODEX_IMAGE_ENTRY_MAX_BYTES", "33554432"),
+            ("CODEX_IMAGE_ENTRY_MAX_TOTAL_BYTES", "16777216"),
+        ]))
+        .expect_err("total < entry must fail");
+        assert!(
+            error.contains("CODEX_IMAGE_ENTRY_MAX_TOTAL_BYTES"),
+            "{error}"
+        );
+        assert!(error.contains("CODEX_IMAGE_ENTRY_MAX_BYTES"), "{error}");
+        assert!(
+            !error.contains("NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES"),
+            "{error}"
         );
     }
 
