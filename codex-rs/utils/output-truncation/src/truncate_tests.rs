@@ -975,3 +975,51 @@ fn the_full_pipeline_keeps_a_shrunken_image_instead_of_a_marker() {
     assert_eq!(image_count, 1, "the model must still receive an image");
     assert_eq!(marker_count, 0, "and not the omission marker");
 }
+
+/// A 4000×4000 original image is over the effective visual budget (9,744)
+/// even though its patch estimate is capped at 10,000. Shrinking must key off
+/// the effective budget: with the old `> 10,000` comparison the image skipped
+/// shrinking and the admission then dropped it whole. Verified at the default
+/// byte limits as well, not just after raising the entrance bound.
+#[test]
+fn a_square_original_above_the_effective_visual_budget_is_shrunk_not_dropped() {
+    use crate::ImageLimits;
+    use crate::admit_tool_output_images_with;
+    use codex_protocol::models::ImageDetail;
+
+    let side = 4000u32;
+    let image = image::RgbaImage::from_pixel(side, side, image::Rgba([32, 64, 96, 255]));
+    let mut bytes = Vec::new();
+    image::DynamicImage::ImageRgba8(image)
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
+        .expect("encode png");
+    let image_url = codex_utils_image::data_url_from_bytes("image/png", &bytes);
+    let item = FunctionCallOutputContentItem::InputImage {
+        image: ImageReference::Inline { image_url },
+        detail: Some(ImageDetail::Original),
+    };
+
+    let shrunk = crate::shrink_oversized_tool_output_images(vec![item], ImageLimits::default());
+    let FunctionCallOutputContentItem::InputImage {
+        image: ImageReference::Inline { image_url },
+        ..
+    } = &shrunk[0]
+    else {
+        panic!("image must survive shrinking");
+    };
+    let tokens = codex_utils_image::estimate_original_image_tokens(image_url).expect("estimate");
+    assert!(
+        tokens <= crate::image_limits::effective_visual_budget_tokens(),
+        "shrunk image must fit the admission budget: {tokens}"
+    );
+
+    let admission = admit_tool_output_images_with(
+        &shrunk,
+        TruncationPolicy::Tokens(10_000),
+        ImageLimits::default(),
+    );
+    assert_eq!(admission.dropped, 0);
+}

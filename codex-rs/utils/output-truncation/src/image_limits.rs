@@ -23,6 +23,17 @@ fn bounded_image_output_policy(policy: TruncationPolicy) -> TruncationPolicy {
     }
 }
 
+/// Visual tokens actually available to image items in one tool result: the
+/// per-output cap minus control headroom (9,744 of 10,000).
+///
+/// Shrink decisions must compare against this number, not the raw cap: the
+/// original-image estimator caps at `ORIGINAL_PATCH_CEILING` (10,000), so a
+/// `> 10_000` test never fires and a large-but-legal original image would skip
+/// shrinking and then be dropped by the admission's 9,744-token budget.
+pub(crate) fn effective_visual_budget_tokens() -> usize {
+    bounded_image_output_policy(TruncationPolicy::Tokens(usize::MAX)).token_budget()
+}
+
 pub(crate) fn tool_output_items_policy(
     items: &[FunctionCallOutputContentItem],
     policy: TruncationPolicy,
@@ -93,11 +104,7 @@ pub(crate) fn omission_marker(text: &str) -> Option<(OmissionKind, usize)> {
         // current limits: history written under one configuration must stay
         // recognizable after the operator changes the environment (the numbers
         // in the marker describe the limits that produced it).
-        _ if suffix.starts_with(IMAGE_OMISSION_MARKER_PREFIX)
-            && suffix.ends_with(IMAGE_OMISSION_MARKER_SUFFIX) =>
-        {
-            Some((OmissionKind::Image, count))
-        }
+        _ if is_image_omission_marker(suffix) => Some((OmissionKind::Image, count)),
         _ => None,
     }
 }
@@ -106,6 +113,46 @@ pub(crate) fn omission_marker(text: &str) -> Option<(OmissionKind, usize)> {
 const IMAGE_OMISSION_MARKER_PREFIX: &str = "image(s): over the per-output image limits (";
 /// Stable tail of the image omission marker.
 const IMAGE_OMISSION_MARKER_SUFFIX: &str = ") ...]";
+
+/// Whether `suffix` is the body of an engine-generated image omission marker.
+///
+/// The numbers describe the limits that produced the marker, so they are not
+/// compared against the current configuration; the field *shape* is validated
+/// instead, so ordinary tool text that merely starts and ends like the marker
+/// is not mistaken for one.
+fn is_image_omission_marker(suffix: &str) -> bool {
+    let Some(body) = suffix.strip_prefix(IMAGE_OMISSION_MARKER_PREFIX) else {
+        return false;
+    };
+    let Some(body) = body.strip_suffix(IMAGE_OMISSION_MARKER_SUFFIX) else {
+        return false;
+    };
+    let Some((limits, tail)) = body.split_once("; ") else {
+        return false;
+    };
+    let parts: Vec<&str> = limits.split(", ").collect();
+    let [count, per_image, total, reference, visual] = parts.as_slice() else {
+        return false;
+    };
+    let Some(count) = count.strip_prefix("max ") else {
+        return false;
+    };
+    number_segment(count, " images")
+        && number_segment(per_image, " MiB each")
+        && number_segment(total, " MiB total")
+        && number_segment(reference, " KiB reference/header")
+        && number_segment(visual, " visual tokens")
+        && tail
+            .strip_prefix("unknown original costs ")
+            .and_then(|rest| rest.strip_suffix(" tokens plus control headroom"))
+            .is_some_and(|value| value.parse::<u64>().is_ok())
+}
+
+fn number_segment(segment: &str, suffix: &str) -> bool {
+    segment
+        .strip_suffix(suffix)
+        .is_some_and(|value| !value.is_empty() && value.parse::<u64>().is_ok())
+}
 
 /// Bounded omission text shared by the producer and the history-preparation backstop.
 pub fn omitted_images_marker(dropped: usize) -> FunctionCallOutputContentItem {
@@ -605,6 +652,25 @@ mod limits_tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn marker_shape_rejects_lookalike_tool_text() {
+        // Same prefix and suffix, unrelated payload: must stay ordinary text.
+        let lookalike =
+            "[omitted 1 image(s): over the per-output image limits (report: disk is full) ...]";
+        assert!(super::omission_marker(lookalike).is_none());
+
+        // A real marker still parses after the strict body check.
+        let FunctionCallOutputContentItem::InputText { text } =
+            omitted_images_marker_with(2, ImageLimits::default())
+        else {
+            panic!("marker must be text");
+        };
+        assert!(matches!(
+            super::omission_marker(&text),
+            Some((super::OmissionKind::Image, 2))
+        ));
+    }
+
     #[test]
     fn non_utf8_environment_value_fails_instead_of_being_ignored() {
         use std::os::unix::ffi::OsStringExt;

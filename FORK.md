@@ -617,8 +617,13 @@ PNG。无法解码的 payload 原样透传、交给入口丢弃。
 注意张数仍受每结果 10,000 视觉 token 预算约束（标准 detail 每张 1,844 token），实际
 上限约 5 张——`NUWAX_IMAGE_MAX_COUNT` 大于 5 不会多留图，只是把入口界放宽。
 原图视觉估算也跟随入口单图上限（此前固定 16 MiB：调大入口后，16–64 MiB 的合规
-original 图会因估算失败被按 10,000 token 丢弃）；省略 marker 的识别改成稳定格式，
-历史里旧配置写下的一行在配置变更后仍能被识别。本地跑 `cargo nextest` 的图片断言
+original 图会因估算失败被按 10,000 token 丢弃）；桥侧（`wire_images` 的 original
+计费与转换前估值）同样取配置的入口上限，避免入口按真实 patch 数放行、请求却按
+10,000 计费。收缩触发改用**准入实际可用的视觉预算**（9,744 = 10,000 − 256 控制余量），
+因为估算器上限是 10,000，用 `> 10_000` 判断永远不成立——那样 4000×4000 这类图在
+入口放宽后反而跳过收缩、被准入丢弃。省略 marker 的识别改成稳定格式并校验括号内
+字段（`max N images, N MiB each, …; unknown original costs N tokens …`），数字允许
+是历史限额，但形似文本不会被误判为引擎生成的提示。本地跑 `cargo nextest` 的图片断言
 假设默认限额；导出了这些变量再跑测试会改变期望（CI 环境干净，不受影响）。
 
 **resume 的覆盖边界：与用量同源，且不跨越表面重写（2026-11-11 三次修正）**
@@ -1406,19 +1411,20 @@ cd fork-codex-acp-ts
 
 # 反例：非法值必须在 initialize/session-new 阶段失败并点名变量
 NUWAX_PATH="$HOME/.nuwax-cargo/bin/codex" NUWAX_IMAGE_MAX_COUNT=abc \
-  node --import tsx examples/simple-client.ts < /dev/null
+  node --import tsx examples/simple-client.ts --no-build < /dev/null
 # 期望：RequestError: nuwax-harness process has exited with code 1:
 #       Error: Invalid NUWAX_IMAGE_MAX_COUNT value "abc"; ...
 
 # 正例：合法值下会话建立成功
 NUWAX_PATH="$HOME/.nuwax-cargo/bin/codex" NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES=50331648 \
-  node --import tsx examples/simple-client.ts < /dev/null
+  node --import tsx examples/simple-client.ts --no-build < /dev/null
 # 期望：connected to @nuwax-ai/nuwax-harness-acp-ts <ver>
 #       session <id> in <cwd>     （stdin EOF 后正常退出）
 ```
 
-`< /dev/null` 让客户端在 `session/new` 后立即退出，适合无交互冒烟；要手工发
-prompt 就去掉重定向。更重的验证：`npm run test:acp-validation`（mock vendor
+`--no-build` 复用已构建的 `dist/index.js`（示例客户端默认会先重新构建，冒烟时
+没必要）；`< /dev/null` 让客户端在 `session/new` 后立即退出，适合无交互冒烟；
+要手工发 prompt 就去掉重定向。更重的验证：`npm run test:acp-validation`（mock vendor
 契约）、`npm run test:integration` / `test:e2e`（需真实网关）；客户端侧可导出
 `NUWAX_*` 后启动 Nuwax 客户端，查 `NUWAX_LOG_DIR` 下 app-server 日志确认。
 

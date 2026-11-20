@@ -438,3 +438,33 @@ fn budget_lets_a_large_legal_image_through_while_rejecting_the_same_text_size() 
             .is_err()
     );
 }
+
+#[test]
+fn canonical_original_tokens_use_the_configured_entry_bound() {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+    use codex_protocol::models::ImageDetail;
+    use codex_protocol::models::ImageReference;
+
+    // Turn the 45-byte 2560x2048 header fixture into a >16 MiB data URL by
+    // padding after the header: the bounded estimator only reads IHDR.
+    let encoded = ORIGINAL_2560X2048.split_once(',').expect("data URL").1;
+    let mut bytes = BASE64_STANDARD.decode(encoded).expect("fixture base64");
+    bytes.resize(13_000_000, 0);
+    let image_url = format!("data:image/png;base64,{}", BASE64_STANDARD.encode(&bytes));
+    assert!(image_url.len() > 16 * 1024 * 1024);
+    let image = ImageReference::Inline { image_url };
+
+    // 2560/32 * 2048/32 = 80 * 64 = 5120 patches; with the entrance bound
+    // raised to 24 MiB the bridge must charge that, not the 10,000 ceiling.
+    assert_eq!(
+        canonical_image_tokens_with_limit(&image, Some(ImageDetail::Original), 24 * 1024 * 1024),
+        5120
+    );
+
+    // The built-in 16 MiB bound still yields the conservative ceiling.
+    assert_eq!(
+        canonical_image_tokens_with_limit(&image, Some(ImageDetail::Original), 16 * 1024 * 1024),
+        ORIGINAL_DETAIL_PATCH_CEILING
+    );
+}

@@ -34,6 +34,9 @@ codex-http-client = { workspace = true }
 codex-login = { workspace = true }
 codex-utils-string = { workspace = true }
 codex-utils-image = { workspace = true }
+# Fork: the image entrance limit (NUWAX_IMAGE_ENTRY_MAX_BYTES) bounds the
+# original-detail estimate on every wire, so the bridge and the admission agree.
+codex-utils-output-truncation = { workspace = true }
 # rig 0.42 embeds a reqwest 0.13 transport while the workspace pins 0.12 for
 # the rest of codex. Depend on rig's major under a rename so the two majors
 # never share a type; TLS comes from feature unification with rig-core.
@@ -43,6 +46,7 @@ reqwest-rig = { package = "reqwest", version = "0.13", default-features = false 
 workspace = true
 
 [dev-dependencies]
+base64 = { workspace = true }
 h2 = "0.4"
 pretty_assertions = { workspace = true }
 # The workspace's other reqwest major (the codex core stack) as a reference

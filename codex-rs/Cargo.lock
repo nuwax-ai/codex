@@ -4857,6 +4857,7 @@ dependencies = [
 name = "codex-rust-rig-bridge"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "bytes",
  "codex-api",
  "codex-client",
@@ -4867,6 +4868,7 @@ dependencies = [
  "codex-protocol",
  "codex-tools",
  "codex-utils-image",
+ "codex-utils-output-truncation",
  "codex-utils-string",
  "eventsource-stream",
  "futures",

@@ -341,7 +341,7 @@ fn shrink_oversized_tool_output_images(
                 image_url,
                 per_image_limit,
             )
-            .is_some_and(|tokens| tokens > MAX_TOOL_OUTPUT_VISIBLE_TOKENS);
+            .is_some_and(|tokens| tokens > image_limits::effective_visual_budget_tokens());
         if !over_visual_budget {
             continue;
         }

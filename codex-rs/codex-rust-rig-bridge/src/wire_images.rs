@@ -198,13 +198,27 @@ fn record_image_reference(url: Option<&str>, detail: Option<&str>, costs: &mut W
     let vision = match detail {
         // Reuse the entrance's bounded header estimate. Unknown/file references
         // still pay the conservative ceiling; the wire must not make them free.
-        Some("original") => url
-            .and_then(codex_utils_image::estimate_original_image_tokens)
-            .and_then(|tokens| u64::try_from(tokens).ok())
-            .unwrap_or(ORIGINAL_DETAIL_PATCH_CEILING),
+        // The byte bound follows the configured entrance limit so an image the
+        // admission priced by its real patch count is not re-priced at 10,000.
+        Some("original") => original_detail_tokens(url, current_entry_image_bytes()),
         _ => prepared_image_vision_tokens(),
     };
     costs.vision_tokens = costs.vision_tokens.saturating_add(vision);
+}
+
+/// Data-URL byte bound the admission uses for one tool-output image.
+fn current_entry_image_bytes() -> usize {
+    codex_utils_output_truncation::image_limits::current().max_image_bytes
+}
+
+/// Original-detail tokens from a bounded header estimate; unknown payloads
+/// fall back to the conservative patch ceiling.
+fn original_detail_tokens(url: Option<&str>, max_image_bytes: usize) -> u64 {
+    url.and_then(|url| {
+        codex_utils_image::estimate_original_image_tokens_with_limit(url, max_image_bytes)
+    })
+    .and_then(|tokens| u64::try_from(tokens).ok())
+    .unwrap_or(ORIGINAL_DETAIL_PATCH_CEILING)
 }
 
 fn prepared_image_vision_tokens() -> u64 {
@@ -265,14 +279,20 @@ pub(crate) fn canonical_vision_floor(input: &[ResponseItem]) -> u64 {
 /// charges it on the passthrough wire, so the floor and the walk share one
 /// pricing rule and can be compared without double-counting.
 fn canonical_image_tokens(image: &ImageReference, detail: Option<ImageDetail>) -> u64 {
+    canonical_image_tokens_with_limit(image, detail, current_entry_image_bytes())
+}
+
+fn canonical_image_tokens_with_limit(
+    image: &ImageReference,
+    detail: Option<ImageDetail>,
+    max_image_bytes: usize,
+) -> u64 {
     if detail != Some(ImageDetail::Original) {
         return prepared_image_vision_tokens();
     }
     match image {
         ImageReference::Inline { image_url } => {
-            codex_utils_image::estimate_original_image_tokens(image_url)
-                .and_then(|tokens| u64::try_from(tokens).ok())
-                .unwrap_or(ORIGINAL_DETAIL_PATCH_CEILING)
+            original_detail_tokens(Some(image_url), max_image_bytes)
         }
         // Conversion rejects file references on these wires; if one ever
         // gets this far it must not be under-priced.
