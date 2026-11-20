@@ -1215,3 +1215,76 @@ fn high_detail_images_within_the_flat_charge_are_not_re_encoded() {
         "high-detail image within the flat charge must not be re-encoded"
     );
 }
+
+/// A `high` image over the per-image byte limit must be re-encoded at the
+/// source dimensions (Pass 1/2), not visually resized to the visual budget's
+/// longest edge — its flat 1,844-token charge does not depend on pixels.
+#[test]
+fn high_detail_byte_overflow_is_not_a_visual_resize_trigger() {
+    fn png_with_idat(width: u32, height: u32, idat_len: usize) -> Vec<u8> {
+        fn chunk(kind: [u8; 4], data: &[u8]) -> Vec<u8> {
+            let mut out = Vec::new();
+            out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+            out.extend_from_slice(&kind);
+            out.extend_from_slice(data);
+            let mut crc = 0xFFFF_FFFFu32;
+            for byte in kind.iter().chain(data) {
+                crc ^= u32::from(*byte);
+                for _ in 0..8 {
+                    crc = if crc & 1 != 0 {
+                        (crc >> 1) ^ 0xEDB8_8320
+                    } else {
+                        crc >> 1
+                    };
+                }
+            }
+            out.extend_from_slice(&(!crc).to_be_bytes());
+            out
+        }
+        let mut png = Vec::new();
+        png.extend_from_slice(&[0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n']);
+        let mut ihdr = Vec::new();
+        ihdr.extend_from_slice(&width.to_be_bytes());
+        ihdr.extend_from_slice(&height.to_be_bytes());
+        ihdr.extend_from_slice(&[8, 6, 0, 0, 0]);
+        png.extend_from_slice(&chunk(*b"IHDR", &ihdr));
+        png.extend_from_slice(&chunk(*b"IDAT", &vec![0u8; idat_len]));
+        png.extend_from_slice(&chunk(*b"IEND", &[]));
+        png
+    }
+
+    let url = codex_utils_image::data_url_from_bytes(
+        "image/png",
+        &png_with_idat(2_048, 2_048, 1_500_000),
+    );
+    let per_image_limit = 1024 * 1024;
+    assert!(url.len() > per_image_limit);
+
+    let policy = crate::image_limits::tool_output_items_policy(
+        &[FunctionCallOutputContentItem::InputImage {
+            image: ImageReference::Inline {
+                image_url: url.clone(),
+            },
+            detail: Some(codex_protocol::models::ImageDetail::High),
+        }],
+        TruncationPolicy::Bytes(10_000),
+    );
+    let budget = crate::image_limits::visual_budget_tokens_for(policy);
+
+    assert!(
+        !crate::image_needs_visual_cap(
+            &url,
+            per_image_limit,
+            budget,
+            Some(codex_protocol::models::ImageDetail::High),
+        ),
+        "high detail must not be visually resized for byte overflow"
+    );
+    // Original detail still prices per patch and exceeds this small budget.
+    assert!(crate::image_needs_visual_cap(
+        &url,
+        per_image_limit,
+        budget,
+        Some(codex_protocol::models::ImageDetail::Original),
+    ));
+}

@@ -335,10 +335,10 @@ fn shrink_oversized_tool_output_images(
         else {
             continue;
         };
-        // Over the visual budget, or too large for the estimator to judge
-        // (it refuses URLs past the per-image byte bound, which is exactly the
-        // oversized case). Either way the pixels have to come down. Only
-        // `original` images pay per patch, so only they have a visual trigger.
+        // Only `original` images pay per patch and therefore have a visual
+        // dimension trigger. `high`/`auto`/`low` charge a flat 1,844 tokens;
+        // their byte overflow is handled by Passes 1 and 2, which re-encode
+        // without a visual-budget-driven resize.
         if !image_needs_visual_cap(image_url, per_image_limit, visual_budget_tokens, *detail) {
             continue;
         }
@@ -444,15 +444,22 @@ fn image_needs_visual_cap(
     visual_budget_tokens: usize,
     detail: Option<codex_protocol::models::ImageDetail>,
 ) -> bool {
-    if image_url.len() > per_image_limit {
-        return true;
-    }
-    // `high`/`auto`/`low` charge a flat 1,844 tokens regardless of pixel count,
-    // so shrinking them cannot lower the visual charge — it would only lose
-    // quality. Their byte limits are handled by Passes 1 and 2.
+    // Only `original` pays per patch. `high`/`auto`/`low` charge a flat 1,844
+    // tokens regardless of pixel count, so a visual resize would lose quality
+    // without lowering the charge; their byte limits belong to Passes 1/2,
+    // which re-encode at the source dimensions.
+    //
+    // For `original`, byte overflow is also a visual trigger: the estimator
+    // refuses URLs past the byte bound, and a pass-1 re-encode alone can leave
+    // a 4000x4000 image over the visual budget. Capping the longest edge first
+    // is what keeps it admissible.
     matches!(detail, Some(codex_protocol::models::ImageDetail::Original))
-        && codex_utils_image::estimate_original_image_tokens_with_limit(image_url, per_image_limit)
-            .is_some_and(|tokens| tokens > visual_budget_tokens)
+        && (image_url.len() > per_image_limit
+            || codex_utils_image::estimate_original_image_tokens_with_limit(
+                image_url,
+                per_image_limit,
+            )
+            .is_some_and(|tokens| tokens > visual_budget_tokens))
 }
 
 fn truncate_output_items(

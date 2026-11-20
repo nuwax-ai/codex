@@ -628,8 +628,9 @@ original 图会因估算失败被按 10,000 token 丢弃）；桥侧（`wire_ima
 >80 MP 仍返回未知（无法安全解码）。视觉缩图按 `detail` 与准入同口径：只有
 `original` 按 patch 计费并触发像素收缩，`high`/`auto`/`low` 固定 1,844 token，
 不因像素数缩图（字节超限仍由 Pass 1/2 处理）。另注意
-`longest_edge_for_visual_budget` 有 **256 px 画质下限**：预算低于约 64 patch 时，
-再缩也满足不了准入，图片会被丢弃——这是有意的画质下限。省略 marker 的识别改成稳定格式并校验括号内
+`longest_edge_for_visual_budget` 有 **256 px 最长边下限**：方图缩到下限是 256×256
+（约 64 patch），预算更小时方图仍会被丢弃；长条图（如 256×32 只需 8 patch）可以保留。
+这是有意的画质下限，不是缺陷。省略 marker 的识别改成稳定格式并校验括号内
 字段（`max N images, N MiB each, …; unknown original costs N tokens …`），数字允许
 是历史限额，但形似文本不会被误判为引擎生成的提示。本地跑 `cargo nextest` 的图片断言
 假设默认限额；导出了这些变量再跑测试会改变期望（CI 环境干净，不受影响）。
