@@ -1395,6 +1395,33 @@ Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§
   `ps -eo pid,ppid,args | awk '$2==1 && /cargo build|bin\/rustc /'` 后逐个 kill。
   注意只杀 `ppid=1` 的孤儿，正在跑的 job 的 cargo 有 job shell 作父进程。
 
+**ACP 冒烟：真实会话验证配置透传（2026-11-20）**。改引擎侧环境变量（如
+`NUWAX_IMAGE_*`）后，用适配器自带的 ACP 客户端起一次真实会话，确认变量确实
+透传到 app-server 子进程、且非法值按预期 fail-fast。前置：适配器仓库
+`npm install && npm run build`（`dist/index.js` 存在），本机引擎可执行文件路径
+用 `NUWAX_PATH` 指过去（源码装即 `~/.nuwax-cargo/bin/codex`）。
+
+```bash
+cd fork-codex-acp-ts
+
+# 反例：非法值必须在 initialize/session-new 阶段失败并点名变量
+NUWAX_PATH="$HOME/.nuwax-cargo/bin/codex" NUWAX_IMAGE_MAX_COUNT=abc \
+  node --import tsx examples/simple-client.ts < /dev/null
+# 期望：RequestError: nuwax-harness process has exited with code 1:
+#       Error: Invalid NUWAX_IMAGE_MAX_COUNT value "abc"; ...
+
+# 正例：合法值下会话建立成功
+NUWAX_PATH="$HOME/.nuwax-cargo/bin/codex" NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES=50331648 \
+  node --import tsx examples/simple-client.ts < /dev/null
+# 期望：connected to @nuwax-ai/nuwax-harness-acp-ts <ver>
+#       session <id> in <cwd>     （stdin EOF 后正常退出）
+```
+
+`< /dev/null` 让客户端在 `session/new` 后立即退出，适合无交互冒烟；要手工发
+prompt 就去掉重定向。更重的验证：`npm run test:acp-validation`（mock vendor
+契约）、`npm run test:integration` / `test:e2e`（需真实网关）；客户端侧可导出
+`NUWAX_*` 后启动 Nuwax 客户端，查 `NUWAX_LOG_DIR` 下 app-server 日志确认。
+
 - workspace 版本恒为占位 `0.0.0`；npm 版本号来自 git tag（`v*` → release.yml，
   7 平台构建 → 阿里云 OSS 二进制 → npm publish；cargo bin 名保持官方 `codex`，
   npm 打包时主程序改名 `nuwax-harness`，postinstall 从 OSS 下载平台二进制到
