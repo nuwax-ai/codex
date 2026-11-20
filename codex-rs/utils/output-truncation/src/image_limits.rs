@@ -121,12 +121,14 @@ fn omitted_images_marker_with(
     }
 }
 
-/// Named per-tool-output media limits. These are entrance bounds for images
-/// inside ONE tool result (screenshots, MCP `image` blocks, Code Mode
-/// `image()`): they complement — never replace — the wire byte limit, the
-/// output reserve, and the decode-safety pixel cap in `codex-utils-image`.
+/// Default entrance bounds for images inside ONE tool result (screenshots, MCP
+/// `image` blocks, Code Mode `image()`): they complement — never replace — the
+/// wire byte limit, the output reserve, and the decode-safety pixel cap in
+/// `codex-utils-image`.
 ///
-/// The values deliberately bound the model-visible cost of a single tool
+/// These constants are the built-in defaults; deployments tune them through
+/// [`current`] (the `NUWAX_IMAGE_*` environment variables, see [`ImageLimits`]).
+/// The defaults deliberately bound the model-visible cost of a single tool
 /// result without silently discarding the newest evidence: when limits bite,
 /// the newest images are retained and the dropped ones are reported through
 /// one bounded text marker.
@@ -179,10 +181,10 @@ const ENV_ENTRY_MAX_TOTAL_BYTES: (&str, &str) = (
 
 const MIN_IMAGE_COUNT: usize = 1;
 const MAX_IMAGE_COUNT: usize = 16;
-const MIN_IMAGE_BYTES: usize = 1;
-const MAX_IMAGE_BYTES: usize = 64 * 1024 * 1024;
-const MIN_TOTAL_BYTES: usize = 8 * 1024 * 1024;
-const MAX_TOTAL_BYTES: usize = 128 * 1024 * 1024;
+const MIN_ENTRY_IMAGE_BYTES: usize = 1;
+const MAX_ENTRY_IMAGE_BYTES: usize = 64 * 1024 * 1024;
+const MIN_ENTRY_TOTAL_BYTES: usize = 8 * 1024 * 1024;
+const MAX_ENTRY_TOTAL_BYTES: usize = 128 * 1024 * 1024;
 
 static IMAGE_LIMITS: OnceLock<Result<ImageLimits, String>> = OnceLock::new();
 
@@ -208,13 +210,26 @@ pub fn env_error() -> Option<&'static str> {
 fn parse_limits(get: &dyn Fn(&str) -> Option<String>) -> Result<ImageLimits, String> {
     let mut limits = ImageLimits::default();
     if let Some((raw, name)) = read_setting(get, ENV_MAX_COUNT)? {
-        limits.max_images = parse_bounded(&raw, name, MIN_IMAGE_COUNT, MAX_IMAGE_COUNT)?;
+        limits.max_images =
+            parse_bounded(&raw, name, "image count", MIN_IMAGE_COUNT, MAX_IMAGE_COUNT)?;
     }
     if let Some((raw, name)) = read_setting(get, ENV_ENTRY_MAX_BYTES)? {
-        limits.max_image_bytes = parse_bounded(&raw, name, MIN_IMAGE_BYTES, MAX_IMAGE_BYTES)?;
+        limits.max_image_bytes = parse_bounded(
+            &raw,
+            name,
+            "byte count",
+            MIN_ENTRY_IMAGE_BYTES,
+            MAX_ENTRY_IMAGE_BYTES,
+        )?;
     }
     if let Some((raw, name)) = read_setting(get, ENV_ENTRY_MAX_TOTAL_BYTES)? {
-        limits.max_total_bytes = parse_bounded(&raw, name, MIN_TOTAL_BYTES, MAX_TOTAL_BYTES)?;
+        limits.max_total_bytes = parse_bounded(
+            &raw,
+            name,
+            "byte count",
+            MIN_ENTRY_TOTAL_BYTES,
+            MAX_ENTRY_TOTAL_BYTES,
+        )?;
     }
     if limits.max_total_bytes < limits.max_image_bytes {
         return Err(format!(
@@ -245,17 +260,20 @@ fn read_setting(
     }
 }
 
-fn parse_bounded(raw: &str, name: &str, min: usize, max: usize) -> Result<usize, String> {
-    let parsed: i64 = raw.trim().parse().map_err(|_| {
-        format!("Invalid {name} value {raw:?}; expected an integer between {min} and {max}")
-    })?;
-    let value = usize::try_from(parsed).map_err(|_| {
-        format!("Invalid {name} value {raw:?}; expected an integer between {min} and {max}")
-    })?;
+fn parse_bounded(
+    raw: &str,
+    name: &str,
+    unit: &str,
+    min: usize,
+    max: usize,
+) -> Result<usize, String> {
+    let invalid = || {
+        format!("Invalid {name} value {raw:?}; expected an integer {unit} between {min} and {max}")
+    };
+    let parsed: i64 = raw.trim().parse().map_err(|_| invalid())?;
+    let value = usize::try_from(parsed).map_err(|_| invalid())?;
     if !(min..=max).contains(&value) {
-        return Err(format!(
-            "Invalid {name} value {raw:?}; expected an integer between {min} and {max}"
-        ));
+        return Err(invalid());
     }
     Ok(value)
 }
@@ -483,11 +501,8 @@ mod limits_tests {
         let items = vec![image(ten_mib), image(ten_mib), image(ten_mib)];
         let policy = TruncationPolicy::Tokens(10_000);
 
-        let default = super::admit_tool_output_images_with(
-            &items,
-            policy,
-            super::ImageLimits::default(),
-        );
+        let default =
+            super::admit_tool_output_images_with(&items, policy, super::ImageLimits::default());
         assert!(
             default.dropped >= 1,
             "30 MiB of images must exceed the 24 MiB default total"

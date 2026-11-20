@@ -343,7 +343,7 @@ fn formatted_mixed_output_budgets_text_and_audio_in_order() {
         inline_image("img:one".to_owned()),
         text("efgh"),
         audio.clone(),
-        file_image.clone(),
+        file_image,
         text("ijkl"),
         inline_image("img:two".to_owned()),
     ];
@@ -778,7 +778,6 @@ fn boundary_formatters_normalize_input_and_remap_truncated_text() {
 #[test]
 fn owned_mixed_output_moves_a_preserved_image_across_text_truncation() {
     let image_url = "data:image/png;base64,".to_owned() + &"a".repeat(4096);
-    let url_ptr = image_url.as_ptr();
     let items = vec![
         text("long prefix"),
         inline_image(image_url),

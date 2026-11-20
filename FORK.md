@@ -614,6 +614,8 @@ PNG。无法解码的 payload 原样透传、交给入口丢弃。
 24 MiB。解析集中在新 `codex_utils_output_truncation::image_limits`：首次使用时读一次
 环境（`current()`），非法值在 core 加载配置时经 `env_error()` 失败并点名变量；要求
 `合计 ≥ 单图`，范围分别是 1–16、1–64 MiB、8–128 MiB。默认行为不变，纯增量。
+注意张数仍受每结果 10,000 视觉 token 预算约束（标准 detail 每张 1,844 token），实际
+上限约 5 张——`NUWAX_IMAGE_MAX_COUNT` 大于 5 不会多留图，只是把入口界放宽。
 
 **resume 的覆盖边界：与用量同源，且不跨越表面重写（2026-11-11 三次修正）**
 

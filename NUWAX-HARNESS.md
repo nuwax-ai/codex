@@ -634,8 +634,10 @@ MCP 工具应返回 image 内容块，Code Mode 使用图片输出接口。图�
   缩到最小档仍放不下才丢弃并写一行 `[omitted N image(s): …]`。环境变量：
   `NUWAX_IMAGE_MAX_COUNT`、`NUWAX_IMAGE_ENTRY_MAX_BYTES`、
   `NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES`（兼容 `CODEX_` 前缀，异值启动报错）。要求
-  `合计 ≥ 单图`；非法值或越界在启动时点名变量报错。注意：调大它们只影响"丢不丢"，
-  清晰度仍由单图预算和视觉 token 预算决定。
+  `合计 ≥ 单图`；非法值或越界在启动时点名变量报错。注意两点：① 调大它们只影响
+  "丢不丢/压多狠"，清晰度仍由单图预算和视觉 token 预算决定；② 张数还受**视觉 token
+  预算**约束（标准 detail 每张约 1,844 token，单结果上限约 9,744 token），所以
+  `NUWAX_IMAGE_MAX_COUNT` 实际超过约 5 张不会带来更多图片。
 
 网关仍返回 413 时先看整请求预算，再看单图预算；token 计数两者都不改变。
 
