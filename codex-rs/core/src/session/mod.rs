@@ -4723,6 +4723,21 @@ impl Session {
             return false;
         }
 
+        // Fork (nuwax-codex): a different model in the reply is a reroute only
+        // on OpenAI's own backend; see `server_model_mismatch_is_a_reroute`.
+        if !server_model_mismatch_is_a_reroute(
+            turn_context.provider.info(),
+            &requested_model,
+            &server_model,
+        ) {
+            info!(
+                server_model,
+                requested_model,
+                "the provider is not OpenAI; a differing reply model is not a reroute"
+            );
+            return false;
+        }
+
         warn!("server reported model {server_model} while requested model was {requested_model}");
 
         let warning_message = format!(
@@ -6210,9 +6225,33 @@ async fn build_hooks_config(
     }
 }
 
+/// Whether a reply that names a model other than the one requested is a
+/// reroute the user must hear about.
+///
+/// Fork (nuwax-codex): only OpenAI's own backend reroutes a request without
+/// saying so in any other way — an account flagged for high-risk cyber activity
+/// is served `gpt-5.2` instead, and the reply's `model` is the only trace. A
+/// third-party gateway names a snapshot, an alias or its upstream channel's
+/// model as a matter of course, which is not a reroute: telling those users
+/// their account was flagged is a false alarm. The provider is recognised by
+/// its configured id — the display name is the operator's to choose, and the
+/// managed cloud transports do not reroute this way.
+pub(crate) fn server_model_mismatch_is_a_reroute(
+    provider: &ModelProviderInfo,
+    requested_model: &str,
+    server_model: &str,
+) -> bool {
+    provider.provider_id.as_deref() == Some(codex_model_provider_info::OPENAI_PROVIDER_ID)
+        && server_model.to_ascii_lowercase() != requested_model.to_ascii_lowercase()
+}
+
 #[cfg(test)]
 #[path = "elicitation_holders_tests.rs"]
 mod elicitation_holders_tests;
+
+#[cfg(test)]
+#[path = "server_model_mismatch_tests.rs"]
+mod server_model_mismatch_tests;
 
 #[cfg(test)]
 pub(crate) mod tests;

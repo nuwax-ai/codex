@@ -823,6 +823,27 @@ Analytics 不在此闸内：仍由 `[analytics] enabled` / `--analytics-default-
 控制（默认关），开启后同样指向 `chatgpt.com/backend-api/codex/analytics-events`，
 需要彻底禁网时两处都要关。
 
+**模型改派告警仅限 OpenAI 第一方（2026-11-23 起）**：上游在回复里的 `model` 与请求的
+模型 slug（各自小写后）不一致时，发 `ModelReroute{reason: HighRiskCyberActivity}` 与一条
+「Your account was flagged for potentially high-risk cyber activity … routed to gpt-5.2 …
+chatgpt.com/cyber」告警。这是为 OpenAI 自己的后端写的：账号被风控改派时，回复的 `model`
+是唯一线索。上游没有"仅第一方"的门控，而第三方网关返回带日期后缀的快照名、别名或上游
+通道的真实模型名是常态——对这类用户它就是一条凭空捏造的"封号"提示（文案是引擎本地的
+`core/src/session/mod.rs` 硬编码，不涉及任何账号查询或外部请求）。
+- 现由 `server_model_mismatch_is_a_reroute(provider, requested, server)` 判定：仅当
+  provider 的 **`provider_id == "openai"`** 且名字不同才告警；其余只记一条 info 日志
+  （`… the provider is not OpenAI, so this is not a reroute`）。
+- 为什么不用现成的两个判定：`is_openai()` 看的是**显示名**（第三方 provider 完全可以叫
+  "OpenAI"）；`is_first_party()` 把 Bedrock 两条托管传输也算在内，而它们不做这种改派。
+- 实测：MiMo/Step 三条线回复的模型名与请求一致，GLM chat 回小写 `glm-5.3-flash`
+  （大小写差异本就不告警），所以现网三家原本就不触发；本地假服务器可稳定复现旧问题。
+- 回归：`session::server_model_mismatch_tests`（5 例，含显示名与 Bedrock 两个反例）与
+  `core/tests/suite/server_model_mismatch.rs`（走完整采样循环 × rig 桥 Chat 线：第三方
+  网关回带日期后缀的名字 → 无告警；OpenAI provider → 仍告警）。变异验证：去掉 provider
+  判定后 4 例转红、OpenAI 两例与同名用例保持通过。
+- 顺带发现：上游自带的桥端到端用例（如 `rig_output_cap.rs`）用的是第三方 provider +
+  `"model": "cap-test"`，此前每条都在向事件流里塞这条告警，只是没有断言。
+
 **provider 级输出预算**（2026-10-01 起）：`model_providers.*.max_output_tokens`
 （正整数）→ 桥线输出 cap（Anthropic `max_tokens` 覆盖默认 16384；Chat 可选，
 Rig 对部分 OpenAI reasoning 模型转换为 `max_completion_tokens`）；
@@ -1480,11 +1501,8 @@ live-tests 两个依赖方），迁移集中在 HTTP 客户端层、错误分类
     全局配置实测：`mimo-chat` 发 498073（MiMo 上限 131072）→ 400；`glm-responses` 同类
     400，且被当作流断连重试 5 次。Anthropic 线有 `DEFAULT_ANTHROPIC_MAX_TOKENS=16384`
     兜底，不受影响。
-  - **模型名不一致会误报封号告警**：`ResponseEvent::ServerModel` 触发
-    `maybe_warn_on_server_model_mismatch`（上游为第一方写的逻辑，无"仅第一方"门控），
-    响应 `model` 与请求 slug（小写后）不同即提示"账号因高风险网络活动被标记、已 reroute
-    到 gpt-5.2"。本地假服务器可复现；本轮实网的 MiMo/Step 未触发（模型名一致），带日期
-    后缀或别名返回模型名的网关会中招。
+  - **模型名不一致会误报封号告警**：响应 `model` 与请求 slug 不同即提示"账号因高风险
+    网络活动被标记"。**已于 2026-11-23 修复**，见「模型改派告警仅限 OpenAI 第一方」。
   - **`exec` 会请求 `chatgpt.com/backend-api/plugins/featured` 与 `github.com`**
     （`NUWAX_OPENAI_EGRESS` 未设置时照样发出）：**已于 2026-11-23 修复**，根因与
     两道闸见「OpenAI 出站总闸」的补洞一条。
