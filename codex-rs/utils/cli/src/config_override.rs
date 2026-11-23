@@ -112,6 +112,10 @@ impl CliConfigOverrides {
             &mut overrides,
             resolve_seed_alias(NUWAX_MAX_OUTPUT_TOKENS_ENV, MAX_OUTPUT_TOKENS_ENV)?,
         )?;
+        seed_env_hook_trust_bypass(
+            &mut overrides,
+            resolve_seed_alias(NUWAX_BYPASS_HOOK_TRUST_ENV, BYPASS_HOOK_TRUST_ENV)?,
+        )?;
         Ok(overrides)
     }
 }
@@ -179,6 +183,16 @@ const TOOL_SEARCH_CONFIG_KEY: &str = "tools.tool_search";
 /// `image_byte_budget_bytes`, the per-image encoded byte budget applied when
 /// images enter history (FORK.md §5.5). Zero disables the re-encoding; a
 /// negative or non-integer value errors instead of silently disabling.
+/// Fork: `CODEX_BYPASS_HOOK_TRUST` (alias `NUWAX_BYPASS_HOOK_TRUST`) seeds
+/// `bypass_hook_trust`, letting enabled hooks run without persisted hook
+/// trust. Default off. This grants command execution, so it is never implied:
+/// an app-server host (ACP, containers) that has no TUI review step sets it
+/// explicitly. Same precedence as every other seed: an explicit `-c` wins,
+/// config.toml loses.
+const BYPASS_HOOK_TRUST_ENV: &str = "CODEX_BYPASS_HOOK_TRUST";
+const NUWAX_BYPASS_HOOK_TRUST_ENV: &str = "NUWAX_BYPASS_HOOK_TRUST";
+const BYPASS_HOOK_TRUST_CONFIG_KEY: &str = "bypass_hook_trust";
+
 const IMAGE_MAX_BYTES_ENV: &str = "CODEX_IMAGE_MAX_BYTES";
 const NUWAX_IMAGE_MAX_BYTES_ENV: &str = "NUWAX_IMAGE_MAX_BYTES";
 const IMAGE_BYTE_BUDGET_CONFIG_KEY: &str = "image_byte_budget_bytes";
@@ -238,6 +252,36 @@ fn seed_env_tool_search(
         }
     };
     overrides.push((TOOL_SEARCH_CONFIG_KEY.into(), Value::Boolean(parsed)));
+    Ok(())
+}
+
+/// Fork: seeds `bypass_hook_trust` from the environment. Only `true`/`false`
+/// (case-insensitive) are accepted; anything else errors naming the variable
+/// instead of half-applying a grant this powerful.
+fn seed_env_hook_trust_bypass(
+    overrides: &mut Vec<(String, Value)>,
+    seed: (Option<OsString>, &'static str),
+) -> Result<(), String> {
+    let (value, env_name) = seed;
+    let Some(raw) = env_override_text(
+        overrides,
+        BYPASS_HOOK_TRUST_CONFIG_KEY,
+        env_name,
+        value.as_deref(),
+    )?
+    else {
+        return Ok(());
+    };
+    let parsed = match raw.to_ascii_lowercase().as_str() {
+        "true" => true,
+        "false" => false,
+        _ => {
+            return Err(format!(
+                "Invalid {env_name} value {raw:?}; expected true or false"
+            ));
+        }
+    };
+    overrides.push((BYPASS_HOOK_TRUST_CONFIG_KEY.into(), Value::Boolean(parsed)));
     Ok(())
 }
 
@@ -514,6 +558,10 @@ mod env_context_seeds_tests;
 #[cfg(test)]
 #[path = "env_tool_search_seed_tests.rs"]
 mod env_tool_search_seed_tests;
+
+#[cfg(test)]
+#[path = "env_hook_trust_seed_tests.rs"]
+mod env_hook_trust_seed_tests;
 
 #[cfg(test)]
 #[path = "env_max_output_tokens_tests.rs"]

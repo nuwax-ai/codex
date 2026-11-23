@@ -12119,11 +12119,84 @@ async fn bypass_hook_trust_adds_startup_warning() -> std::io::Result<()> {
         .await?;
 
     assert!(
-        config.startup_warnings.iter().any(|warning| warning
-            == "`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."),
+        config
+            .startup_warnings
+            .iter()
+            .any(|warning| warning.contains("hook trust bypass is enabled")),
         "{:?}",
         config.startup_warnings
     );
+    assert!(config.bypass_hook_trust);
+    Ok(())
+}
+
+/// Fork (nuwax-codex): the bypass is off unless something turns it on. This
+/// is the default that keeps a config file from granting itself command
+/// execution.
+#[tokio::test]
+async fn hook_trust_bypass_defaults_to_off() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+
+    assert!(!config.bypass_hook_trust);
+    assert!(
+        !config
+            .startup_warnings
+            .iter()
+            .any(|warning| warning.contains("hook trust bypass")),
+        "no warning when nothing is on: {:?}",
+        config.startup_warnings
+    );
+    Ok(())
+}
+
+/// Fork (nuwax-codex): a deployment opts in from config.toml. An app-server
+/// host has no TUI review step, so this is how its hooks ever get to run.
+#[tokio::test]
+async fn hook_trust_bypass_can_be_configured() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let config_toml: ConfigToml = toml::from_str("bypass_hook_trust = true").expect("config toml");
+    let config = Config::load_from_base_config_with_overrides(
+        config_toml,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await?;
+
+    assert!(config.bypass_hook_trust);
+    // The grant is never silent.
+    assert!(
+        config
+            .startup_warnings
+            .iter()
+            .any(|warning| warning.contains("hook trust bypass is enabled")),
+        "{:?}",
+        config.startup_warnings
+    );
+    Ok(())
+}
+
+/// An explicit invocation flag outranks the configured default in both
+/// directions: `--dangerously-bypass-hook-trust` turns it on over a `false`
+/// config, and the typed override is what the CLI flag feeds.
+#[tokio::test]
+async fn explicit_hook_trust_bypass_flag_outranks_config() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let config_toml: ConfigToml = toml::from_str("bypass_hook_trust = false").expect("config toml");
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .harness_overrides(ConfigOverrides {
+            bypass_hook_trust: Some(true),
+            ..Default::default()
+        })
+        .build()
+        .await?;
+    assert!(config.bypass_hook_trust);
     Ok(())
 }
 

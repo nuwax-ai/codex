@@ -65,6 +65,11 @@ struct HookHandlerSource<'a> {
     is_managed: bool,
     requirement: HookRequirement<'a>,
     bypass_hook_trust: bool,
+    /// Fork: set for a hook declared by an enabled project layer. The trust
+    /// gate already decided to trust that project (it disables the layer
+    /// otherwise), so the project's hooks are trusted with it and need no
+    /// per-hook approval.
+    trusted_by_project: bool,
     hook_states: &'a HashMap<String, HookStateToml>,
     env: HashMap<String, String>,
     plugin_id: Option<String>,
@@ -155,6 +160,21 @@ pub(crate) fn discover_handlers(
 
         for layer in config_layer_stack.layers_low_to_high() {
             let (hook_source, is_managed) = hook_metadata_for_config_layer_source(&layer.name);
+            // Fork (nuwax-codex, 2026-11-23): trusting a project trusts the
+            // hooks it declares. Upstream still requires a per-hook approval,
+            // and that approval can only be written from a TUI review — an
+            // app-server host (ACP, containers) has none, so a trusted
+            // project's hooks were discovered but never registered, with no
+            // error and no log.
+            //
+            // The trust gate itself is not re-decided here: `layers_low_to_high`
+            // yields only enabled layers, and the project trust gate disables a
+            // layer it does not trust (an untrusted checkout's hooks.json is
+            // therefore never read). So any project layer that reaches this
+            // loop belongs to a trusted project. The explicit check keeps that
+            // dependency on the iterator visible instead of implicit.
+            let trusted_by_project =
+                hook_source == HookSource::Project && layer.disabled_reason.is_none();
             let policy_path = config_toml_source_path(layer);
             let policy_source = HookHandlerSource {
                 path: &policy_path,
@@ -163,6 +183,7 @@ pub(crate) fn discover_handlers(
                 is_managed,
                 requirement: HookRequirement::Optional,
                 bypass_hook_trust: false,
+                trusted_by_project,
                 hook_states: &hook_states,
                 env: HashMap::new(),
                 plugin_id: None,
@@ -206,6 +227,7 @@ pub(crate) fn discover_handlers(
                         is_managed,
                         requirement: HookRequirement::Optional,
                         bypass_hook_trust: policy.bypass_hook_trust,
+                        trusted_by_project,
                         hook_states: &hook_states,
                         env: HashMap::new(),
                         plugin_id: None,
@@ -264,6 +286,7 @@ fn append_managed_requirement_handlers(
             is_managed: true,
             requirement: HookRequirement::Required(&mut required_load_errors),
             bypass_hook_trust: false,
+            trusted_by_project: false,
             hook_states,
             env: HashMap::new(),
             plugin_id: None,
@@ -332,6 +355,7 @@ fn append_plugin_hook_sources(
                 is_managed: false,
                 requirement: HookRequirement::Optional,
                 bypass_hook_trust: policy.bypass_hook_trust,
+                trusted_by_project: false,
                 hook_states,
                 env,
                 plugin_id: Some(plugin_id),
@@ -568,6 +592,7 @@ fn append_environment_hooks(
             is_managed: true,
             requirement: HookRequirement::Required(&mut discovered.required_load_errors),
             bypass_hook_trust: false,
+            trusted_by_project: false,
             hook_states: &HashMap::new(),
             env: HashMap::new(),
             plugin_id: None,
@@ -878,6 +903,9 @@ fn append_matcher_groups(
                         continue;
                     }
                 }
+            } else if source.trusted_by_project {
+                // Fork: the project is trusted, so its declaration is too.
+                HookTrustStatus::Trusted
             } else {
                 hook_trust_status(source.is_managed, builtin, &current_hash, trusted_hash)
             };
@@ -1116,6 +1144,7 @@ mod tests {
             is_managed: true,
             requirement: super::HookRequirement::Optional,
             bypass_hook_trust: false,
+            trusted_by_project: false,
             hook_states,
             env: std::collections::HashMap::new(),
             plugin_id: None,
@@ -1137,6 +1166,7 @@ mod tests {
             is_managed: false,
             requirement: super::HookRequirement::Optional,
             bypass_hook_trust,
+            trusted_by_project: false,
             hook_states,
             env: std::collections::HashMap::new(),
             plugin_id: None,

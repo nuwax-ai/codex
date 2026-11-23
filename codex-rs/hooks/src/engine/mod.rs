@@ -569,3 +569,8 @@ impl ClaudeHooksEngine {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
+
+// Fork (nuwax-codex): a trusted project's hooks are trusted with it.
+#[cfg(test)]
+#[path = "project_trust_tests.rs"]
+mod project_trust_tests;

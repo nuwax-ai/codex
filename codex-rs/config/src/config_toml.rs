@@ -179,6 +179,15 @@ pub struct ConfigToml {
     /// Size of the context window for the model, in tokens.
     pub model_context_window: Option<i64>,
 
+    /// Fork (nuwax-codex): whether enabled hooks run without persisted hook
+    /// trust. Upstream keeps this a runtime-only flag so a config file cannot
+    /// grant itself command execution; the fork lets deployments opt in —
+    /// app-server hosts (ACP, containers) have no TUI review step, so without
+    /// this knob their hooks are discovered but never registered. Default
+    /// `false`; a startup warning names the bypass whenever it is on. Seeded
+    /// from `NUWAX_BYPASS_HOOK_TRUST` (alias `CODEX_BYPASS_HOOK_TRUST`).
+    pub bypass_hook_trust: Option<bool>,
+
     /// Fork (nuwax-codex): default cap on generated output tokens for the
     /// selected provider. Fills providers that declare no
     /// `max_output_tokens` of their own; a provider-level value still wins,

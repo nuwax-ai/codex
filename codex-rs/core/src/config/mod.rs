@@ -3759,11 +3759,20 @@ impl Config {
             additional_writable_roots,
             workspace_roots: workspace_roots_override,
         } = overrides;
-        let bypass_hook_trust = bypass_hook_trust.unwrap_or_default();
+        // Fork (nuwax-codex, 2026-11-23): upstream keeps this a runtime-only
+        // flag so no config file can grant itself command execution. The fork
+        // lets a deployment opt in through config.toml or
+        // `NUWAX_BYPASS_HOOK_TRUST` (alias `CODEX_BYPASS_HOOK_TRUST`): an
+        // app-server host (ACP, containers) has no TUI review step, so without
+        // the knob its hooks are discovered but never registered. An explicit
+        // invocation flag still wins over the configured default.
+        let bypass_hook_trust = bypass_hook_trust
+            .or(cfg.bypass_hook_trust)
+            .unwrap_or_default();
 
         if bypass_hook_trust {
             startup_warnings.push(
-                "`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."
+                "hook trust bypass is enabled (`--dangerously-bypass-hook-trust`,                  `bypass_hook_trust = true`, or NUWAX_BYPASS_HOOK_TRUST). Enabled hooks                  may run without review — including hooks from unreviewed projects."
                     .to_string(),
             );
         }

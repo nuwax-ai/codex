@@ -1354,3 +1354,133 @@ async fn project_config_dir_prefers_nuwax_harness_over_codex_compat() -> std::io
     }
     Ok(())
 }
+
+// ── Fork (nuwax-codex): project hooks under `.nuwax-harness/` ──────────────
+//
+// Trusting a project must be enough for its hooks to load. These go through
+// the real loader so they cover the trust gate's own decision for the layer,
+// not a hand-built `ConfigLayerEntry`.
+
+/// Loads a stack for `cwd`, whose `.nuwax-harness/` holds a `hooks.json`, with
+/// `user_config` as the user layer's config.toml. Returns the project layer's
+/// disabled reason (`None` = the trust gate let it load).
+async fn project_layer_disabled_reason(
+    tmp: &tempfile::TempDir,
+    user_config: &str,
+) -> Option<String> {
+    let codex_home = tmp.path().join("home");
+    let cwd = tmp.path().join("checkout");
+    std::fs::create_dir_all(cwd.join(".nuwax-harness")).expect("create project config dir");
+    std::fs::write(
+        cwd.join(".nuwax-harness").join("hooks.json"),
+        r#"{"hooks":{"PreToolUse":[{"matcher":"exec","hooks":[{"type":"command","command":"echo hi"}]}]}}"#,
+    )
+    .expect("write hooks.json");
+    std::fs::create_dir_all(&codex_home).expect("create codex home");
+    std::fs::write(codex_home.join(CONFIG_TOML_FILE), user_config).expect("write user config");
+
+    let cwd = AbsolutePathBuf::try_from(cwd).expect("absolute cwd");
+    let stack = load_config_layers_state(
+        &TestFileSystem,
+        &codex_home,
+        Some(cwd),
+        &[],
+        ConfigLoadOptions {
+            loader_overrides: LoaderOverrides::without_managed_config_for_tests(),
+            ..LoaderOverrides::without_managed_config_for_tests().into()
+        },
+        &crate::NoopThreadConfigLoader,
+    )
+    .await
+    .expect("load config layers");
+
+    let project = stack
+        .all_layers_low_to_high()
+        .find(|layer| matches!(layer.name, ConfigLayerSource::Project { .. }));
+    // A missing layer is a discovery failure, which must not read as "loaded".
+    Some(match project {
+        Some(layer) => layer.disabled_reason.clone(),
+        None => Some("<no project layer was discovered>".to_string()),
+    }?)
+}
+
+/// Mirrors the end-to-end repro that regressed: a checkout with only a
+/// `hooks.json` (no project `config.toml`), a user config that trusts nothing,
+/// and a `HOME`-style codex home outside the checkout. The project layer must
+/// be disabled.
+#[tokio::test]
+async fn project_layer_with_only_hooks_json_is_disabled_when_untrusted() {
+    let tmp = tempdir().expect("tempdir");
+    let codex_home = tmp.path().join("home");
+    let cwd = tmp.path().join("checkout");
+    std::fs::create_dir_all(cwd.join(".nuwax-harness")).expect("create project config dir");
+    std::fs::write(
+        cwd.join(".nuwax-harness").join("hooks.json"),
+        r#"{"hooks":{"PreToolUse":[{"matcher":"","hooks":[{"type":"command","command":"touch /tmp/x"}]}]}}"#,
+    )
+    .expect("write hooks.json");
+    std::fs::create_dir_all(&codex_home).expect("create codex home");
+    std::fs::write(
+        codex_home.join(CONFIG_TOML_FILE),
+        "model_reasoning_effort = \"low\"\n",
+    )
+    .expect("write user config");
+
+    let cwd = AbsolutePathBuf::try_from(cwd).expect("absolute cwd");
+    let stack = load_config_layers_state(
+        &TestFileSystem,
+        &codex_home,
+        Some(cwd),
+        &[],
+        ConfigLoadOptions {
+            loader_overrides: LoaderOverrides::without_managed_config_for_tests(),
+            ..LoaderOverrides::without_managed_config_for_tests().into()
+        },
+        &crate::NoopThreadConfigLoader,
+    )
+    .await
+    .expect("load config layers");
+
+    let project = stack
+        .all_layers_low_to_high()
+        .find(|layer| matches!(layer.name, ConfigLayerSource::Project { .. }));
+    let reason = project.and_then(|layer| layer.disabled_reason.clone());
+    assert!(
+        reason.is_some(),
+        "an untrusted checkout's layer must be disabled; got {reason:?} (layers: {:?})",
+        stack
+            .all_layers_low_to_high()
+            .map(|layer| (layer.name.clone(), layer.disabled_reason.is_some()))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn untrusted_project_layer_is_disabled_so_its_hooks_never_load() {
+    let tmp = tempdir().expect("tempdir");
+    let reason = project_layer_disabled_reason(&tmp, "").await;
+    let reason = reason.expect("an untrusted project keeps its (disabled) layer");
+    assert!(
+        reason.contains("trusted project") || reason.contains("untrusted"),
+        "reason should explain the trust gate: {reason}"
+    );
+}
+
+#[tokio::test]
+async fn trusted_project_layer_loads_so_its_hooks_are_discovered() {
+    let tmp = tempdir().expect("tempdir");
+    let checkout = tmp.path().join("checkout");
+    let canonical = std::fs::create_dir_all(&checkout)
+        .map(|()| checkout.canonicalize().expect("canonical checkout"))
+        .expect("create checkout");
+    let user_config = format!(
+        "[projects.\"{}\"]\ntrust_level = \"trusted\"\n",
+        canonical.display()
+    );
+
+    let reason = project_layer_disabled_reason(&tmp, &user_config).await;
+    assert_eq!(
+        reason, None,
+        "a trusted project's layer must load — this is what lets the engine discover its hooks"
+    );
+}
