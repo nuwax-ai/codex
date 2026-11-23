@@ -2,9 +2,9 @@
 
 维护说明：本文是 fork 行为差异的权威索引。改动 fork 行为时同步更新本文与
 `my-docs/codex-review-prompt.md`（§二 补丁面清单）。2026-10-22 的上游同步目标为
-`main@342ed69a1`，Rust `1.99.1`、V8 `152.2.0`，rig 升至 `0.46`（2026-10-26 用户解除
-0.44 冻结升 `0.45.0`，2026-11-13 再升 `0.46`，见 §7.x；桥机械适配 Model 构造器/Arc
-消息与非穷尽错误，行为合同不变）；合并冲突已解，
+`main@342ed69a1`，Rust `1.99.1`、V8 `152.2.0`，rig 升至 `0.47`（2026-10-26 用户解除
+0.44 冻结升 `0.45.0`，2026-11-13 升 `0.46`，2026-11-23 再升 `0.47`，见 §7.x；桥机械适配
+Model 构造器/Arc 消息与非穷尽错误，行为合同不变）；合并冲突已解，
 main集成与晚间批次已推送，复审输入origin/test=850a87390；备用genai现为0.7.0。
 不同源码的实网、fixture与CI证据分开，不宣称全部厂商/全部平台已通过。
 当前优先级与本轮验证快照见 [ROADMAP.md](my-docs/ROADMAP.md)，
@@ -65,7 +65,7 @@ hooks 回指目录仅在 `.nuwax-harness` 实际存在时切换（避免 `.codex
 
 ### 3.2 双桥 + 逃生舱
 
-`experimental_bridge`（fork 字段）：`"rig"`（默认，rig-core / rig-reqwest `=0.46`）/
+`experimental_bridge`（fork 字段）：`"rig"`（默认，rig-core / rig-reqwest `=0.47`）/
 `"genai"`（备用，rust-genai 0.7.0）/`"native"`（显式选择上游原生Responses传输）。
 
 桥的中立 trait 在 `codex-api/src/bridge.rs`（`ModelBridge` / `ModelWireProtocol`，
@@ -140,7 +140,7 @@ Chat 转换中直接丢弃。fork 的 `hosted_tools.rs` 翻译表：
   cached → 新增 `ProviderCapabilities.cached_web_search`，默认 cached 在此类线
   上降级为 Disabled（此前字段丢弃翻译会让 GLM 实际执行 live 搜索，与配置模式
   相反）。需要搜索请显式 `web_search = "live"`。
-- 响应侧：当前 rig 0.46 转换路径仍借助 transport 层 tee 原始
+- 响应侧：当前 rig 0.47 转换路径仍借助 transport 层 tee 原始
   SSE（`anthropic_sse_tee`，eventsource-stream 解帧），流泵在 Completed 前回收
   web-search 块 → `WebSearchCall` 条目（兼容 GLM 的 `web_search_prime` 改名、
   `search_query` 字段、非标准 assistant 侧 `tool_result` 块）。
@@ -1366,6 +1366,41 @@ vendor/rig 两份目录声明 deepseek-v4 系 `context 1M / output 384k`；女�
 引擎）。目录值虚高导致**首次撞墙前压缩不触发**（触发点按 1M×80%=838k
 永不到达），撞墙后 observed-ceiling 机制才按实测收紧。平台下发值优先级
 高于目录，现网行为正确；models.dev 上游数据问题不修，记录备查。
+
+### 7.x rig-core 0.46 → 0.47 升级（2026-11-23，分支 `test`）
+
+rig 升到 0.47（`rig-core`/`rig-reqwest` =0.47，bridge pin 同步；live-tests 的 pin 随后
+一并更新）。0.47 的 changelog 有 215 条，绝大多数在 rig-agent / rig-basics / rig-ecs /
+rig-tui / rig-cli / rig-memory，**桥只依赖 rig-core + rig-reqwest**，迁移集中在 HTTP
+客户端层与错误分类：
+
+- **`http_client::Error::Instance` / `Unbuilt` → `Transient` / `Permanent`**：重试与否由
+  `Error::is_transient()` 决定（`StreamEnded`、`Transient`、408/425/429/5xx 可重试）。
+  桥内 12 处构造改为 `Error::transient`（流读取/连接类）或 `Error::permanent`（预算拒绝、
+  请求构造、协议解析）。**必须传具体错误值，不要 `Box::new(value)`**：后者的 boxed 具体
+  类型是 `Box<T>`，`api_error()`/`classify()` 对 `T` 的 downcast 会失败（本轮实测踩过）。
+- **`HttpClientExt` 签名**：`send` / `send_multipart` / `send_streaming` 统一为
+  `Request<Bytes>` / `Request<MultipartForm>` → `Response<LazyBody>` / `StreamingResponse`，
+  去掉 `<T,U>` 泛型；`LazyBody` 不再泛型。`transport.rs` 的实现、`prepare` 与
+  `sanitize_response` 同步简化；`sanitize_error` 对 `Transient`/`Permanent` 都剥离
+  reqwest 的 URL。
+- **错误链回溯**：`wire_budget::api_error` / `request_capture::api_error` 显式下钻
+  `Transient`/`Permanent` 的 boxed source（与原有 `ProviderError::Http(Arc)` 下钻一致）；
+  否则预算/捕获错误会被当成普通网络错误重试（两个既有测试因此转红，修好后恢复）。
+- **SSE 分类**：`sse.rs` 的传输错误 → `Transient`；供应商 terminal 前的 EOF →
+  `Error::StreamEnded`（rig 的截断语义，可重试）；JSON/usage/重复 terminal 等协议违规 →
+  `Permanent`。
+- **重试分类**：`request_retry::classify` 匹配 `Transient|Permanent` 并 downcast reqwest
+  错误；移除已删除的 `NoHeaders`/`InvalidHeaderValue` 分支；重试耗尽哨兵改用
+  `Error::transient`，保持原有可重试语义。
+- **新增运行时行为（rig 侧，桥无法关闭）**：流超过 **5 分钟无帧** → `ProviderError::Stalled`
+  （可重试；桥映射为 `TransportError::Network`）；rig-http 对每条流有
+  **64 MiB/帧、行或输入** 上限（`SseFramer::push` 返回 `Result`）；**2xx 流式回复一律按流
+  读取**（原仅 200）。常规 delta 与工具参数远低于上限，但长思考/静默模型、超大单帧的
+  供应商需实网回归；`ProviderError::Stalled` / `Truncated` / `StreamEnded` 的可重试映射已由
+  `provider_error_tests` 钉住。
+- **验证**：`codex-rust-rig-bridge` **387/387**；`codex-core --features rust-rig` 编译通过；
+  三协议实网矩阵（chat/responses/anthropic × 各厂商）仍待跑，跑通后本 pin 才算最终。
 
 ## 8. 版本与发布
 

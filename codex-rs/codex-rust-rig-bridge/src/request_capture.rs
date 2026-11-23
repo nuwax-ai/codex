@@ -110,7 +110,7 @@ impl std::fmt::Display for RequestCaptureError {
 impl std::error::Error for RequestCaptureError {}
 
 fn capture_error(message: impl Into<String>) -> Error {
-    Error::Instance(Box::new(RequestCaptureError(message.into())))
+    Error::permanent(RequestCaptureError(message.into()))
 }
 
 pub(crate) fn api_error(
@@ -121,6 +121,18 @@ pub(crate) fn api_error(
             return Some(codex_api::ApiError::InvalidRequest {
                 message: error.to_string(),
             });
+        }
+        // Rig 0.47 splits the transport's own error into Transient and
+        // Permanent, each holding a boxed source that `source()` may not
+        // surface. Descend into it explicitly, like ProviderError::Http below.
+        if let Some(
+            rig_core::http_client::Error::Transient(inner)
+            | rig_core::http_client::Error::Permanent(inner),
+        ) = error.downcast_ref::<rig_core::http_client::Error>()
+        {
+            let inner: &(dyn std::error::Error + 'static) = inner.as_ref();
+            error = inner;
+            continue;
         }
         // Rig 0.44's `ProviderError::Http` keeps its transport error in an
         // `Arc` that `source()` does not expose; descend into it explicitly

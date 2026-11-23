@@ -753,3 +753,7 @@ fn pending_calls_from_wire<'a>(
 #[cfg(test)]
 #[path = "stream_replay_tests.rs"]
 mod replay_tests;
+
+#[cfg(test)]
+#[path = "provider_error_tests.rs"]
+mod provider_error_tests;

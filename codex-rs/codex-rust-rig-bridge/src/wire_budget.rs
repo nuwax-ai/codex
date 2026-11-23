@@ -130,12 +130,12 @@ impl WireBudget {
         // there the output budget is simply clamped to the window and the
         // context estimate below still guards the request.
         if self.context_window_tokens.is_some_and(|window| window <= 0) {
-            return Err(rig_core::http_client::Error::Instance(Box::new(
+            return Err(rig_core::http_client::Error::permanent(
                 WireBudgetExceeded::Configuration {
                     context_window_tokens: self.context_window_tokens,
                     output_tokens: self.output_tokens,
                 },
-            )));
+            ));
         }
         let estimate = self.estimate_tokens(wire_bytes, image_costs);
         // Fork (2026-11-19): the check must use the output cap that is actually
@@ -163,7 +163,7 @@ impl WireBudget {
             None
         };
         if let Some(failure) = failure {
-            return Err(rig_core::http_client::Error::Instance(Box::new(failure)));
+            return Err(rig_core::http_client::Error::permanent(failure));
         }
         Ok(())
     }
@@ -205,6 +205,18 @@ pub(crate) fn api_error(
                     codex_api::ApiError::ContextWindowExceeded
                 }
             });
+        }
+        // Rig 0.47 splits the transport's own error into Transient and
+        // Permanent, each holding a boxed source that `source()` may not
+        // surface. Descend into it explicitly, like ProviderError::Http below.
+        if let Some(
+            rig_core::http_client::Error::Transient(inner)
+            | rig_core::http_client::Error::Permanent(inner),
+        ) = error.downcast_ref::<rig_core::http_client::Error>()
+        {
+            let inner: &(dyn std::error::Error + 'static) = inner.as_ref();
+            error = inner;
+            continue;
         }
         // Rig 0.44's `ProviderError::Http` keeps its transport error in an
         // `Arc` that `source()` does not expose; descend into it explicitly

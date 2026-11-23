@@ -66,7 +66,7 @@ pub(crate) async fn send_streaming(
         }
     }
     // All non-retryable/final errors return from the loop, including zero retries.
-    Err(Error::Instance(Box::new(TransportError::RetryLimit)))
+    Err(Error::transient(TransportError::RetryLimit))
 }
 
 fn classify(error: &Error) -> Option<TransportError> {
@@ -78,8 +78,8 @@ fn classify(error: &Error) -> Option<TransportError> {
             body: None,
             retry_after: None,
         }),
-        Error::Instance(error) => {
-            let error = error.downcast_ref::<reqwest_rig::Error>()?;
+        Error::Transient(source) | Error::Permanent(source) => {
+            let error = source.downcast_ref::<reqwest_rig::Error>()?;
             if error.is_timeout() {
                 Some(TransportError::Timeout)
             } else if error.is_connect() || error.is_request() || error.is_body() {
@@ -88,11 +88,7 @@ fn classify(error: &Error) -> Option<TransportError> {
                 None
             }
         }
-        Error::Protocol(_)
-        | Error::InvalidHeaderValue(_)
-        | Error::NoHeaders
-        | Error::StreamEnded
-        | Error::InvalidContentType(_) => None,
+        Error::Protocol(_) | Error::StreamEnded | Error::InvalidContentType(_) => None,
         // `http_client::Error` is `#[non_exhaustive]` since rig 0.45. Unknown
         // variants stay non-retryable: retrying an unclassified failure would
         // hide it behind the retry budget instead of failing fast.

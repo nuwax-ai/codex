@@ -113,13 +113,10 @@ impl RigHttpClient {
             }
         }
         if !self.query.is_empty() {
-            let mut url = reqwest_rig::Url::parse(&request.uri().to_string())
-                .map_err(|error| Error::Instance(error.into()))?;
+            let mut url =
+                reqwest_rig::Url::parse(&request.uri().to_string()).map_err(Error::permanent)?;
             url.query_pairs_mut().extend_pairs(&self.query);
-            *request.uri_mut() = url
-                .as_str()
-                .parse()
-                .map_err(|error: http::uri::InvalidUri| Error::Instance(error.into()))?;
+            *request.uri_mut() = url.as_str().parse().map_err(Error::permanent)?;
         }
         Ok(request)
     }
@@ -360,15 +357,11 @@ impl ChatFamilyRewrite<'_> {
 }
 
 impl HttpClientExt for RigHttpClient {
-    fn send<T, U>(
+    fn send(
         &self,
-        request: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>, Error>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        let request = self.prepare(request).map(|request| request.map(Into::into));
+        request: Request<Bytes>,
+    ) -> impl Future<Output = Result<Response<LazyBody>, Error>> + WasmCompatSend + 'static {
+        let request = self.prepare(request);
         let inner = rig_reqwest::ReqwestClient::from(self.inner.clone());
         async move {
             HttpClientExt::send(&inner, request?)
@@ -378,13 +371,10 @@ impl HttpClientExt for RigHttpClient {
         }
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         request: Request<MultipartForm>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>, Error>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
+    ) -> impl Future<Output = Result<Response<LazyBody>, Error>> + WasmCompatSend + 'static {
         let request = self.prepare(request);
         let inner = rig_reqwest::ReqwestClient::from(self.inner.clone());
         async move {
@@ -395,14 +385,11 @@ impl HttpClientExt for RigHttpClient {
         }
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        request: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse, Error>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let request = self.prepare(request).map(|request| request.map(Into::into));
+        request: Request<Bytes>,
+    ) -> impl Future<Output = Result<StreamingResponse, Error>> + WasmCompatSend {
+        let request = self.prepare(request);
         async move {
             let mut request: Request<Bytes> = request?;
             // Responses passthrough sends Codex's serialized request verbatim:
@@ -426,9 +413,8 @@ impl HttpClientExt for RigHttpClient {
                         let text_changed =
                             chat_text_rewrite && wire_text::normalize_chat_text(&mut body);
                         if chat_family_rewrite || text_changed {
-                            *request.body_mut() = serde_json::to_vec(&body)
-                                .map_err(|error| Error::Instance(error.into()))?
-                                .into();
+                            *request.body_mut() =
+                                serde_json::to_vec(&body).map_err(Error::permanent)?.into();
                             request.headers_mut().remove(http::header::CONTENT_LENGTH);
                         }
                         measured_body = Some(body);
@@ -443,7 +429,7 @@ impl HttpClientExt for RigHttpClient {
                             "wire body is not measurable JSON; context budget falls back to the whole-body text estimate"
                         );
                     }
-                    Err(error) => return Err(Error::Instance(error.into())),
+                    Err(error) => return Err(Error::permanent(error)),
                 }
             }
             // Fork (2026-11-19): Chat/Anthropic bodies only exist after rig
@@ -465,9 +451,8 @@ impl HttpClientExt for RigHttpClient {
                     && let Some(slot) = body.get_mut("max_tokens")
                 {
                     *slot = serde_json::json!(tightened);
-                    *request.body_mut() = serde_json::to_vec(body)
-                        .map_err(|error| Error::Instance(error.into()))?
-                        .into();
+                    *request.body_mut() =
+                        serde_json::to_vec(body).map_err(Error::permanent)?.into();
                     request.headers_mut().remove(http::header::CONTENT_LENGTH);
                     budget.output_tokens = Some(tightened);
                     tracing::debug!(
@@ -604,16 +589,21 @@ fn sanitize_error(error: Error) -> Error {
                 body: "failed to read error response body".into(),
             }
         }
-        Error::Instance(error) => match error.downcast::<reqwest_rig::Error>() {
-            Ok(error) => Error::Instance(Box::new(error.without_url())),
-            Err(error) => Error::Instance(error),
-        },
+        Error::Transient(source) => Error::Transient(sanitize_boxed(source)),
+        Error::Permanent(source) => Error::Permanent(sanitize_boxed(source)),
         error => error,
     }
 }
 
-fn sanitize_response<U: Send + 'static>(response: Response<LazyBody<U>>) -> Response<LazyBody<U>> {
-    response.map(|body| Box::pin(async move { body.await.map_err(sanitize_error) }) as LazyBody<U>)
+fn sanitize_boxed(source: rig_core::http_client::BoxError) -> rig_core::http_client::BoxError {
+    match source.downcast::<reqwest_rig::Error>() {
+        Ok(error) => Box::new(error.without_url()),
+        Err(source) => source,
+    }
+}
+
+fn sanitize_response(response: Response<LazyBody>) -> Response<LazyBody> {
+    response.map(|body| Box::pin(async move { body.await.map_err(sanitize_error) }) as LazyBody)
 }
 
 #[cfg(test)]
