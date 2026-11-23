@@ -26,7 +26,9 @@ use crate::request_draft::RequestDraft;
 
 #[must_use = "requests are not sent unless `send` is awaited"]
 pub struct RequestBuilder {
-    backend: HttpClientBackend,
+    /// `None` only for a request that is refused before it is built; see
+    /// [`RequestBuilder::refused`].
+    backend: Option<HttpClientBackend>,
     request: Result<RequestDraft, HttpError>,
 }
 
@@ -50,7 +52,7 @@ impl fmt::Debug for RequestBuilder {
 impl RequestBuilder {
     pub(crate) fn direct<U: IntoUrl>(client: &TransportClient, method: Method, url: U) -> Self {
         Self {
-            backend: HttpClientBackend::Direct(client.clone()),
+            backend: Some(HttpClientBackend::Direct(client.clone())),
             request: RequestDraft::new(method, url).map_err(HttpError::Request),
         }
     }
@@ -61,8 +63,19 @@ impl RequestBuilder {
         url: U,
     ) -> Self {
         Self {
-            backend: HttpClientBackend::Routed(pool),
+            backend: Some(HttpClientBackend::Routed(pool)),
             request: RequestDraft::new(method, url).map_err(HttpError::Request),
+        }
+    }
+
+    /// A request that is never sent: awaiting [`Self::send`] fails with `reason`
+    /// before a route is selected or a name resolved, so nothing leaves the
+    /// process. For a caller that is refused by policy rather than by the
+    /// network, so that retrying cannot help and the operator reads why.
+    pub fn refused(reason: impl Into<String>) -> Self {
+        Self {
+            backend: None,
+            request: Err(HttpError::Build(reason.into())),
         }
     }
 
@@ -179,11 +192,17 @@ impl RequestBuilder {
     }
 
     pub async fn send(self) -> Result<HttpResponse, HttpError> {
+        // A request that failed to build is reported before its transport is
+        // touched, which is also what makes a refused request never leave.
+        let request = self.request?;
         match self.backend {
-            HttpClientBackend::Routed(pool) => pool.send(self.request?).await,
-            HttpClientBackend::Direct(client) => {
-                Ok(client.execute(self.request?.build(&client)?).await?.into())
+            Some(HttpClientBackend::Routed(pool)) => pool.send(request).await,
+            Some(HttpClientBackend::Direct(client)) => {
+                Ok(client.execute(request.build(&client)?).await?.into())
             }
+            None => Err(HttpError::Build(
+                "request has no transport to send it with".into(),
+            )),
         }
     }
 }

@@ -5,6 +5,7 @@ pub(crate) use measurement_catalog::fetch_measurement_reference_bundle;
 use crate::app_mcp_routing::apply_app_mcp_routing_policy;
 use crate::error_subtype::http_status_sub_error_type;
 use crate::http_client_selector::HttpClientSelector;
+use crate::http_client_selector::OpenAiEgressGatedClientPool;
 use crate::loader::plugin_app_declarations_from_value;
 use crate::store::PLUGINS_CACHE_DIR;
 use crate::store::PluginStore;
@@ -173,7 +174,7 @@ impl RemotePluginServiceConfig {
         Self {
             chatgpt_base_url,
             product_sku: product_sku.unwrap_or_else(|| CODEX_PRODUCT_SKU.to_string()),
-            http_clients: Arc::new(http_clients),
+            http_clients: Arc::new(OpenAiEgressGatedClientPool::new(http_clients)),
         }
     }
 

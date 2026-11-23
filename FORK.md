@@ -794,6 +794,29 @@ installation_id"是信任事故，不是文案问题，因此上游那些会自�
   `RemoteControlStartupMode::DisabledEphemeral`，`codex`/`codex app-server` 两个
   二进制仅在闸开时才改回 `Start`/`ResolvePersisted`。判定点
   `codex-http-client/src/openai_egress.rs`。
+- **2026-11-23 补洞（`exec` 路径此前不经过这道闸）**：上面两个落点只覆盖独立的
+  app-server 进程；`codex exec` 走 `InProcessAppServerClient`，其消息处理器固定以
+  `PluginStartupConfig::Current` 构造（`app-server/src/in_process.rs`），启动任务照常
+  拉起。实测方法：本地记录型转发代理 + 隔离 home + 本地假模型服务，让引擎经代理出网
+  并只记录目标主机。修复前 `exec` 每次运行（`--ephemeral` 亦然）都连接
+  `chatgpt.com`（featured）与 `github.com`（curated 同步）各若干次，并在用户目录
+  落下 OpenAI 的 curated 插件市场；TUI 与 app-server 无外部连接。现改为在源头设
+  两道闸，对任何入口都成立：
+  1. `maybe_start_plugin_startup_tasks_for_config` 在闸关时**不启动**——包括 curated
+     同步与 marketplace 的 git 自动升级，这些走 git 子进程，不经过 HTTP 客户端；
+  2. `OpenAiEgressGatedClientPool` 包住插件服务的全部 HTTP 客户端（管理器的
+     `remote_plugin_service_config`、`RemotePluginServiceConfig::new`、
+     `StartupSyncHttpClient` 三处构造）：闸关时指向 OpenAI 运营目的地的请求在进程内
+     即被拒绝（`codex_http_client::RequestBuilder::refused`，不解析域名、不建连接），
+     错误带原因「OpenAI first-party egress is closed by default; set
+     NUWAX_OPENAI_EGRESS=1 …」。
+  判定**按目的地而非按进程**：`chatgpt.com` / `openai.com` 及其子域，以及 GitHub 上
+  `openai` 组织的仓库路径。操作者自建的插件目录镜像、内网 marketplace 在闸关时照常
+  可用（政企自建目录不受影响），上游用回环 mock 充当 chatgpt.com 的测试也不受影响。
+  修复后同一审计：`exec` / TUI / app-server 默认均无外部连接，`exec` 不再刷 featured
+  401 告警；设 `NUWAX_OPENAI_EGRESS=1` 则恢复为 `chatgpt.com`×1、`github.com`×2。
+  回归：`core-plugins` 的 `http_client_selector` 5 例（含关闸仍可达回环镜像）、
+  `http-client` 的 `a_refused_request_never_reaches_a_transport`。
 设为 `1`（`true`/`yes`/`on` 同义）恢复上游行为；无法识别的值按关闭处理并告警
 一次（不静默选边）。显式 `--remote-control` 仍然生效——那是操作者主动要求。
 Analytics 不在此闸内：仍由 `[analytics] enabled` / `--analytics-default-enabled`
@@ -1462,10 +1485,9 @@ live-tests 两个依赖方），迁移集中在 HTTP 客户端层、错误分类
     响应 `model` 与请求 slug（小写后）不同即提示"账号因高风险网络活动被标记、已 reroute
     到 gpt-5.2"。本地假服务器可复现；本轮实网的 MiMo/Step 未触发（模型名一致），带日期
     后缀或别名返回模型名的网关会中招。
-  - **`exec`（非 `--ephemeral`）会请求 `chatgpt.com/backend-api/plugins/featured`**
-    （`codex_core_plugins::manager` 的 featured 预热；进程存活 3 秒以上可见 401 日志），
-    `NUWAX_OPENAI_EGRESS` 未设置时照样发出，与 NUWAX-HARNESS.md「默认不自行联网」的
-    描述不符。
+  - **`exec` 会请求 `chatgpt.com/backend-api/plugins/featured` 与 `github.com`**
+    （`NUWAX_OPENAI_EGRESS` 未设置时照样发出）：**已于 2026-11-23 修复**，根因与
+    两道闸见「OpenAI 出站总闸」的补洞一条。
 
 ## 8. 版本与发布
 

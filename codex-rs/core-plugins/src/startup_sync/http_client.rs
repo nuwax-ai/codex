@@ -23,7 +23,9 @@ impl StartupSyncHttpClient {
                 ClientRouteClass::Api,
             )
             .with_legacy_custom_ca_fallback();
-        Self(Arc::new(http_clients))
+        Self(Arc::new(
+            crate::http_client_selector::OpenAiEgressGatedClientPool::new(http_clients),
+        ))
     }
 
     #[cfg(test)]

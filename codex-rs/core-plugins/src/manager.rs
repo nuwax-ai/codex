@@ -24,6 +24,7 @@ use crate::PluginGitMode;
 use crate::app_mcp_routing::apply_app_mcp_routing_policy;
 use crate::app_mcp_routing::plugin_supports_apps;
 use crate::http_client_selector::HttpClientSelector;
+use crate::http_client_selector::OpenAiEgressGatedClientPool;
 use crate::installed_marketplaces::installed_marketplace_roots_from_layer_stack;
 use crate::is_openai_curated_marketplace_name;
 use crate::loaded_cache_metrics;
@@ -207,12 +208,14 @@ impl PluginsConfigInput {
     /// Request metadata remains current; new config inputs own a new pool.
     pub fn remote_plugin_service_config(&self) -> RemotePluginServiceConfig {
         let http_clients = self.remote_http_clients.get_or_init(|| {
-            Arc::new(
+            // Fork: OpenAI-operated destinations are refused while egress is
+            // closed; see `OpenAiEgressGatedClientPool`.
+            Arc::new(OpenAiEgressGatedClientPool::new(
                 RouteAwareClientPool::with_chatgpt_cloudflare_cookies_without_request_logging(
                     self.http_client_factory.clone(),
                     ClientRouteClass::Api,
                 ),
-            )
+            ))
         });
         RemotePluginServiceConfig {
             chatgpt_base_url: self.chatgpt_base_url.clone(),
@@ -2897,7 +2900,14 @@ impl PluginsManager {
         on_effective_plugins_changed: Option<EffectivePluginsChangedCallback>,
         upgrade_warnings: mpsc::UnboundedSender<String>,
     ) {
-        if config.plugins_enabled {
+        // Fork (nuwax-codex): plugin startup tasks are unsolicited traffic to
+        // infrastructure OpenAI operates — the curated repository on GitHub,
+        // its marketplace upgrade over git, and the `chatgpt.com/backend-api/
+        // plugins/*` directory — so they do not start at all while OpenAI
+        // first-party egress is closed. `exec` and the TUI start them through
+        // core, outside the app-server's `PluginStartupTasks` switch, and the
+        // git work never passes the HTTP gate on the plugin clients.
+        if config.plugins_enabled && codex_http_client::openai_egress_enabled() {
             self.maybe_start_curated_repo_sync_for_config(
                 config,
                 on_effective_plugins_changed.clone(),

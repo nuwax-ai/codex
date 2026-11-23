@@ -115,3 +115,21 @@ fn request_draft_preserves_reqwest_url_auth_and_header_precedence() {
         }
     }
 }
+
+/// A refused request fails before a transport is involved: awaiting it is
+/// immediate, touches no network, and reports the reason it was given — also
+/// after the usual modifiers were chained onto it.
+#[tokio::test]
+async fn a_refused_request_never_reaches_a_transport() {
+    let refused = RequestBuilder::refused("egress is closed")
+        .header("x-unused", "1")
+        .timeout(std::time::Duration::from_secs(30));
+    let error = tokio::time::timeout(std::time::Duration::from_secs(1), refused.send())
+        .await
+        .expect("a refusal is immediate")
+        .expect_err("a refused request cannot succeed");
+    assert!(
+        matches!(&error, HttpError::Build(reason) if reason == "egress is closed"),
+        "{error:?}"
+    );
+}

@@ -652,7 +652,11 @@ MCP 工具应返回 image 内容块，Code Mode 使用图片输出接口。图�
    第一方出站总闸被打开了。它默认**关闭**，只有 `NUWAX_OPENAI_EGRESS=1` 才打开（其他
    非空值按"写错"处理：报一次并保持关闭）。fork 面向经自有网关访问厂商模型的部署，
    这类自行联网的启动行为（app-server 远程控制、插件目录/已装态同步、curated 同步）
-   不应在默认配置下发生。
+   不应在默认配置下发生。**版本注意**：引擎 `0.18.59` 及更早版本的 `codex exec`
+   （含 `--ephemeral`）不经过这道闸，每次运行都会自行请求
+   `chatgpt.com/backend-api/plugins/featured` 与 `github.com`（curated 同步）；之后的
+   版本里 `exec`、TUI、app-server 全部受闸。内网部署不要用 `0.18.59` 及更早版本
+   直接跑 `exec`。自建的插件目录镜像（非 OpenAI 域名）在闸关时照常可用。
 
 自定义/未知模型收到的身份声明会注入**实际模型名**（"You are the {模型} model
 … running in nuwax-harness"），因此询问"你是什么模型"应回答真实型号与
