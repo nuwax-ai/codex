@@ -2367,6 +2367,7 @@ mod tests {
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
             reasoning_effort_levels: None,
+            trailing_tool_result_user_turn: None,
         });
 
         let url = client
@@ -2567,6 +2568,7 @@ mod tests {
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
             reasoning_effort_levels: None,
+            trailing_tool_result_user_turn: None,
         };
         let client = test_client(provider);
         let connection = client
@@ -2897,6 +2899,7 @@ mod tests {
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
             reasoning_effort_levels: None,
+            trailing_tool_result_user_turn: None,
         };
         let client = test_client(provider);
         let connection = client
@@ -3028,6 +3031,7 @@ mod tests {
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
             reasoning_effort_levels: None,
+            trailing_tool_result_user_turn: None,
         };
         let client = test_client(provider);
         let connection = client
@@ -3138,6 +3142,7 @@ mod tests {
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
             reasoning_effort_levels: None,
+            trailing_tool_result_user_turn: None,
         };
         let client = test_client(provider);
         let connection = client
@@ -3234,6 +3239,7 @@ mod tests {
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
             reasoning_effort_levels: None,
+            trailing_tool_result_user_turn: None,
         };
         let client = test_client(provider);
         let connection = client

@@ -92,6 +92,7 @@ mod tests {
             hosted_results_replay: None,
             anthropic_prompt_caching: None,
             reasoning_effort_levels: None,
+            responses_trailing_tool_result_user_turn: None,
         };
 
         let telemetry =

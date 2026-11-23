@@ -91,6 +91,7 @@ fn provider_for(base_url: String) -> ModelProviderInfo {
         max_output_tokens: None,
         hosted_results_replay: None,
         anthropic_prompt_caching: None,
+        responses_trailing_tool_result_user_turn: None,
         reasoning_effort_levels: None,
         provider_id: None,
         include_internal_metadata: false,
