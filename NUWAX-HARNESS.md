@@ -151,7 +151,7 @@ nuwax-harness doctor --json
 | `NUWAX_MAX_OUTPUT_TOKENS` | 可选正整数，每次生成的输出上限；不是上下文窗口大小 |
 | `NUWAX_REQUEST_MAX_RETRIES` | 可选非负整数，HTTP 请求重试次数，`0` 表示本层仅发一次 |
 | `NUWAX_STREAM_MAX_RETRIES` | 可选非负整数，流恢复/采样重试预算，`0` 禁用本层重试 |
-| `NUWAX_STREAM_IDLE_TIMEOUT_MS` | 可选正整数，流空闲超时，单位毫秒；不是整轮总时限 |
+| `NUWAX_STREAM_IDLE_TIMEOUT_MS` | 可选正整数，流空闲超时，单位毫秒；不是整轮总时限。rig 0.47 起（引擎 0.18.59 之后）Chat/Anthropic 线上大于 300000（5 分钟）的值完整生效——更早的引擎在完全没有字节的静默段里最多只等 5 分钟 |
 | `NUWAX_HOME` | 会话、配置、状态目录；不设时为 `~/.nuwax-harness`，可覆盖为外接盘或持久化卷绝对路径。旧拼写 `CODEX_HOME` 永久兼容（同时设置且值相同视为迁移期写法；值不同则启动报错，两个变量名都会出现在错误里） |
 
 `NUWAX_BRIDGE`、输出上限和重试变量必须随完整启动组使用，孤立设置会报错。

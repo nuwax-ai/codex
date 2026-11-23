@@ -160,3 +160,97 @@ async fn chat_eof_before_a_finish_reason_is_left_to_rig() {
     assert_eq!(frames, events);
     assert_eq!(report, None, "no usage object reached the wire");
 }
+
+const ANTHROPIC_START: &str = "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n";
+
+/// Drives the Anthropic wrapper on a scripted body: the frames it let through,
+/// and the error it ended with, if it failed.
+async fn anthropic_outcome(chunks: Vec<Result<Bytes, Error>>) -> (usize, Option<Error>) {
+    let usage = Arc::new(Mutex::new(crate::usage::AnthropicUsage::default()));
+    let body: BoxedStream = Box::pin(futures::stream::iter(chunks));
+    let items: Vec<Result<Bytes, Error>> = with_terminal_check(
+        body,
+        RigProtocol::Anthropic,
+        WireUsageObserver::Anthropic(Arc::clone(&usage)),
+    )
+    .collect()
+    .await;
+    let frames = items.iter().flatten().count();
+    let error = items.into_iter().rev().find_map(Result::err);
+    (frames, error)
+}
+
+/// A transport error of the inner body is already an `http_client::Error`:
+/// rig's own verdict, or a preserved non-success status. It must surface
+/// unchanged. Wrapping it as `Transient` made a `Permanent` failure and a
+/// 4xx/5xx reply retryable, and hid the status codex-core's recovery reads.
+#[tokio::test]
+async fn an_inner_transport_error_keeps_its_own_verdict_and_status() {
+    let preserved = |status| Error::InvalidStatusCodeWithDetails {
+        status,
+        body: "the provider's own reply".into(),
+        headers: http::HeaderMap::new(),
+    };
+    let cases = [
+        // A 5xx reply is retryable and a 401 is not: the status decides, and
+        // codex-core's 401 recovery must still see it.
+        (
+            preserved(http::StatusCode::BAD_GATEWAY),
+            true,
+            Some(http::StatusCode::BAD_GATEWAY),
+        ),
+        (
+            preserved(http::StatusCode::UNAUTHORIZED),
+            false,
+            Some(http::StatusCode::UNAUTHORIZED),
+        ),
+        (
+            Error::permanent(std::io::Error::other("decode pipe closed")),
+            false,
+            None,
+        ),
+        (
+            Error::transient(std::io::Error::other("connection reset")),
+            true,
+            None,
+        ),
+    ];
+    for (inner, transient, status) in cases {
+        let (frames, error) =
+            anthropic_outcome(vec![Ok(Bytes::from(ANTHROPIC_START)), Err(inner)]).await;
+        let error = error.unwrap_or_else(|| panic!("the transport error must end the stream"));
+        assert_eq!(frames, 1, "the frame before the error still reaches rig");
+        assert_eq!(error.is_transient(), transient, "{error}");
+        assert_eq!(error.non_success_status(), status, "{error}");
+    }
+}
+
+/// The Anthropic wrapper owns the truncation verdict, as FORK.md §4 records by
+/// this very text: a body that ends before `message_stop` fails, and the next
+/// attempt may complete.
+#[tokio::test]
+async fn a_body_ending_before_the_anthropic_terminal_is_a_retryable_named_failure() {
+    let (frames, error) = anthropic_outcome(vec![Ok(Bytes::from(ANTHROPIC_START))]).await;
+    let error = error.expect("a reply without message_stop must not end as a success");
+    assert_eq!(frames, 1);
+    assert!(
+        error.is_transient(),
+        "a reply cut short may end on the next attempt: {error}"
+    );
+    assert!(
+        error
+            .to_string()
+            .contains("model stream ended before its SSE terminal"),
+        "the failure FORK.md documents by this text: {error}"
+    );
+}
+
+/// A malformed counter is a failure the fork reports rather than folding into
+/// a default terminal, and — as before rig 0.47 — a retryable one.
+#[tokio::test]
+async fn a_malformed_usage_counter_fails_the_stream_as_retryable() {
+    let frame = "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":\"many\",\"output_tokens\":0}}}\n\n";
+    let (_frames, error) = anthropic_outcome(vec![Ok(Bytes::from(frame))]).await;
+    let error = error.expect("a malformed counter must fail the stream");
+    assert!(error.is_transient(), "{error}");
+}

@@ -19,13 +19,18 @@ fn stalled_and_truncated_streams_are_retryable_transport_failures() {
     }
 }
 
+/// The wrapper's own verdict for a reply that ended before its terminal is a
+/// transient transport failure; codex-core must keep retrying it, as it did
+/// when rig 0.46 reported every such failure as retryable.
 #[test]
-fn stream_ended_from_the_bridge_maps_to_a_retryable_network_failure() {
-    let error = ProviderError::Http(std::sync::Arc::new(
-        rig_core::http_client::Error::StreamEnded,
+fn a_reply_cut_before_its_terminal_stays_a_retryable_failure() {
+    let cut = rig_core::http_client::Error::transient(std::io::Error::new(
+        std::io::ErrorKind::UnexpectedEof,
+        "model stream ended before its SSE terminal",
     ));
+    assert!(cut.is_transient());
     assert!(matches!(
-        map_provider_error(error),
+        map_provider_error(ProviderError::Http(std::sync::Arc::new(cut))),
         ApiError::Transport(TransportError::Network(_))
     ));
 }

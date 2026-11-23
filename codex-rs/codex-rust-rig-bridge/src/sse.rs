@@ -35,6 +35,11 @@ impl WireUsageObserver {
     }
 }
 
+/// A failure the wrapper detects in a reply is `Transient`, the verdict rig
+/// gave every such failure before 0.47 (`Error::Instance` was always
+/// retryable): a malformed counter, a corrupt frame or a missing terminal
+/// ends the reply, and the next attempt starts afresh. `Permanent` is for a
+/// request that cannot be sent as it is — never for a reply that went wrong.
 pub(crate) fn with_terminal_check(
     body: BoxedStream,
     protocol: RigProtocol,
@@ -56,14 +61,16 @@ pub(crate) fn with_terminal_check(
                 let event = match frames.next().await {
                     Some(Ok(event)) => event,
                     Some(Err(eventsource_stream::EventStreamError::Transport(error))) => {
-                        return Some((
-                            Err(Error::transient(error)),
-                            (frames, true, None, usage, false),
-                        ));
+                        // Already an `http_client::Error`: the transport's own
+                        // verdict, or a preserved non-success status. It must
+                        // surface unchanged — re-wrapping it as `Transient`
+                        // made a `Permanent` failure and a 4xx/5xx reply
+                        // retryable, and hid the status codex-core reads.
+                        return Some((Err(error), (frames, true, None, usage, false)));
                     }
                     Some(Err(error)) => {
                         return Some((
-                            Err(Error::permanent(error)),
+                            Err(Error::transient(error)),
                             (frames, true, None, usage, false),
                         ));
                     }
@@ -77,7 +84,14 @@ pub(crate) fn with_terminal_check(
                         if protocol == RigProtocol::Chat {
                             return None;
                         }
-                        return Some((Err(Error::StreamEnded), (frames, true, None, usage, false)));
+                        let error = std::io::Error::new(
+                            std::io::ErrorKind::UnexpectedEof,
+                            "model stream ended before its SSE terminal",
+                        );
+                        return Some((
+                            Err(Error::transient(error)),
+                            (frames, true, None, usage, false),
+                        ));
                     }
                 };
                 // Parse actual SSE frames, including split UTF-8, CRLF and
@@ -111,7 +125,7 @@ pub(crate) fn with_terminal_check(
                             {
                                 let error = std::io::Error::other(message);
                                 return Some((
-                                    Err(Error::permanent(error)),
+                                    Err(Error::transient(error)),
                                     (frames, true, None, usage, false),
                                 ));
                             }
@@ -151,7 +165,7 @@ pub(crate) fn with_terminal_check(
                             Ok(value) => value,
                             Err(error) => {
                                 return Some((
-                                    Err(Error::permanent(error)),
+                                    Err(Error::transient(error)),
                                     (frames, true, None, usage, false),
                                 ));
                             }
@@ -163,7 +177,7 @@ pub(crate) fn with_terminal_check(
                         if let Err(message) = usage.observe(&value) {
                             let error = std::io::Error::other(message);
                             return Some((
-                                Err(Error::permanent(error)),
+                                Err(Error::transient(error)),
                                 (frames, true, None, usage, false),
                             ));
                         }
@@ -208,7 +222,7 @@ pub(crate) fn with_terminal_check(
                                     let error =
                                         std::io::Error::other("duplicate Anthropic terminal delta");
                                     return Some((
-                                        Err(Error::permanent(error)),
+                                        Err(Error::transient(error)),
                                         (frames, true, None, usage, false),
                                     ));
                                 }

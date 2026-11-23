@@ -2,6 +2,7 @@
 
 use codex_api::Provider;
 use http::HeaderMap;
+use std::time::Duration;
 
 /// Fork (2026-11-18): identify this client the way the first-party transport
 /// does. Gateways that whitelist coding agents (Kimi Coding Plan returns
@@ -166,13 +167,31 @@ pub(crate) type RigAnthropicModel = rig_core::driver::Model<
 
 /// `wire` sent through the bridge's own transport decorator, keeping the
 /// decorator's budget gate, capture, and auth rewrite on every attempt.
+///
+/// `rig_idle_timeout` is the stall timer of rig's own driver, already adjusted
+/// by [`rig_stream_idle_timeout`].
+/// How long rig's own frame-idle backstop waits for a streamed reply.
+///
+/// rig drops a reply that sends no *frame* for this long (`ProviderError::Stalled`)
+/// and defaults to five minutes, regardless of the provider's configured
+/// `stream_idle_timeout`. The bridge keeps its own event-idle timer, which
+/// yields the codex-native timeout. rig's stays the backstop it was: never
+/// shorter than the configured wait — otherwise one configured above five
+/// minutes was cut short at rig's default — and never shorter than rig's own
+/// default either, so a wait configured below it still expires on the bridge's
+/// timer and reports the same timeout as before.
+fn rig_stream_idle_timeout(idle_timeout: Duration) -> Duration {
+    idle_timeout.max(rig_core::driver::STREAM_IDLE_TIMEOUT)
+}
+
 fn model_via_bridge<W>(
     wire: W,
     transport: crate::transport::RigHttpClient,
+    rig_idle_timeout: Duration,
 ) -> rig_core::driver::Model<W, crate::transport::RigHttpClient> {
     // 0.45 made `prepared` private state; the constructor starts it fresh,
     // which is what the direct struct literal expressed before.
-    rig_core::driver::Model::new(wire, transport)
+    rig_core::driver::Model::new(wire, transport).with_idle_timeout(Some(rig_idle_timeout))
 }
 
 /// The SDK appends an endpoint by string concatenation. Remove query/fragment
@@ -267,6 +286,7 @@ pub(crate) fn build_chat_model(
     base_url: &str,
     headers: &HeaderMap,
     mut http: crate::transport::RigHttpClient,
+    stream_idle_timeout: Duration,
 ) -> Result<RigChatModel, codex_api::ApiError> {
     let (api_key, wire_auth) = crate::wire_auth::resolved_sdk_auth(headers, RigProtocol::Chat)?;
     http.wire_auth = Some(wire_auth);
@@ -302,7 +322,11 @@ pub(crate) fn build_chat_model(
         facts: rig_core::catalog::ModelFacts::default()
             .with_catalog(crate::reasoning_effort::nuwax_catalog()),
     };
-    Ok(model_via_bridge(wire, http))
+    Ok(model_via_bridge(
+        wire,
+        http,
+        rig_stream_idle_timeout(stream_idle_timeout),
+    ))
 }
 
 /// rig's OpenAI client speaking the Responses wire. The model capability is
@@ -365,6 +389,7 @@ pub(crate) fn build_anthropic_model(
     mut http: crate::transport::RigHttpClient,
     prompt_caching: bool,
     declared_levels: &[rig_core::completion::Effort],
+    stream_idle_timeout: Duration,
 ) -> Result<RigAnthropicModel, codex_api::ApiError> {
     let (api_key, wire_auth) =
         crate::wire_auth::resolved_sdk_auth(headers, RigProtocol::Anthropic)?;
@@ -398,7 +423,11 @@ pub(crate) fn build_anthropic_model(
         tool_input_streaming: rig_core::providers::anthropic::wire::ToolInputStreaming::Off,
         facts,
     };
-    Ok(model_via_bridge(wire, http))
+    Ok(model_via_bridge(
+        wire,
+        http,
+        rig_stream_idle_timeout(stream_idle_timeout),
+    ))
 }
 
 #[cfg(test)]
@@ -408,3 +437,7 @@ mod tests;
 #[cfg(test)]
 #[path = "client_retry_tests.rs"]
 mod client_retry_tests;
+
+#[cfg(test)]
+#[path = "client_idle_tests.rs"]
+mod client_idle_tests;

@@ -39,7 +39,7 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
 
 | 路径 | 作用 |
 |---|---|
-| `codex-rs/codex-rust-rig-bridge/` | **默认桥**。基于 rig-core =0.45(精确锁版本),把 `ResponsesApiRequest` 转成 rig `CompletionRequest`(OpenAI Chat Completions 或 Anthropic Messages),流式转回 codex `ResponseEvent`。核心文件:`convert_request.rs`(请求映射)、`convert_response.rs`(响应/流事件映射)、`stream.rs`(流泵+错误映射)、`client.rs`(rig 客户端构造)、`bridge_impl.rs`(trait 实现) |
+| `codex-rs/codex-rust-rig-bridge/` | **默认桥**。基于 rig-core =0.47(精确锁版本),把 `ResponsesApiRequest` 转成 rig `CompletionRequest`(OpenAI Chat Completions 或 Anthropic Messages),流式转回 codex `ResponseEvent`。核心文件:`convert_request.rs`(请求映射)、`convert_response.rs`(响应/流事件映射)、`stream.rs`(流泵+错误映射)、`client.rs`(rig 客户端构造)、`bridge_impl.rs`(trait 实现) |
 | `codex-rs/codex-rust-genai-bridge/` | 备用桥(基于 rust-genai 0.7.0)。**已降级为回退选项**,配置 `experimental_bridge = "genai"` 才启用。结构与 rig 桥同构 |
 | `codex-rs/live-tests/` | 独立集成测试 crate(不耦合业务代码)。三厂商(MiMo/GLM/StepFun)× 两桥 × 多场景的真实模型测试矩阵 + 编译产物 E2E + 录制回放 cassette + A/B diff。凭据从 gitignored 的 `.env.local` 读 |
 
@@ -71,7 +71,7 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
    - `experimental_bridge` 可显式选 `"rig"`(默认)/`"genai"`/`"native"`(强制原生,逃生舱)
 2. **trait 隔离**:`codex-api::ModelBridge` 是唯一契约,两桥以单元结构体实现;
    core 的 `dispatch_model_bridge` 只见 `&dyn ModelBridge`。
-3. **rig 版本策略**：`rig-core` / `rig-reqwest = "=0.45"` 精确锁定。此次合并保持该版本，
+3. **rig 版本策略**：`rig-core` / `rig-reqwest = "=0.47"` 精确锁定。此次合并保持该版本，
    SDK 升级须另做协议/历史/最终出站回归，不能以本地 rig checkout 的 HEAD 替代锁定源码。
 4. **双 reqwest 共存**:workspace 其他部分用 reqwest 0.12,rig-bridge 以重命名依赖
    `reqwest_rig`(package = "reqwest", version = "0.13")使用 rig 内嵌的 0.13,类型不跨界。
@@ -102,9 +102,9 @@ Completions(或 Anthropic Messages)协议发给厂商,再把流式响应转回 c
 ## 五、审查重点(请重点检查这些)
 
 1. **正确性**:
-   - rig 桥的 convert_request/convert_response 映射是否正确(对照锁定的 rig-core 0.45 源码，
-     位于 `~/.cargo/registry/src/*/rig-core-0.45.0/`；参考 checkout 在
-     `/Volumes/soddy/git_workspace/rig`，但以 Cargo.lock 锁定内容为准)
+   - rig 桥的 convert_request/convert_response 映射是否正确(对照锁定的 rig-core 0.47 源码，
+     位于 `~/.cargo/registry/src/*/rig-core-0.47.0/`；参考 checkout 在
+     `/Volumes/zhitai/git_workspace/rig`，但以 Cargo.lock 锁定内容为准)
    - 事件契约五条(见三.5)是否有遗漏场景(如:并行工具、流中断、超长参数)
    - `stream_via_rig` 的急切首事件 + mpsc 泵逻辑:`next_event` 预取模式是否有竞态或
      事件丢失/乱序风险;`Created` 合成的位置

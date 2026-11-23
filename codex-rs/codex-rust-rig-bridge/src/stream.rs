@@ -510,8 +510,13 @@ fn stream_via_rig_attempt(
         }
         let stream_response = match protocol {
             RigProtocol::Chat => {
-                let chat_model =
-                    crate::client::build_chat_model(&model, &base_url, &headers, http)?;
+                let chat_model = crate::client::build_chat_model(
+                    &model,
+                    &base_url,
+                    &headers,
+                    http,
+                    idle_timeout,
+                )?;
                 chat_model.stream(completion_request)
             }
             RigProtocol::Anthropic => {
@@ -522,6 +527,7 @@ fn stream_via_rig_attempt(
                     http,
                     api_provider.anthropic_prompt_caching.unwrap_or(false),
                     &declared_levels,
+                    idle_timeout,
                 )?;
                 anthropic_model.stream(completion_request)
             }

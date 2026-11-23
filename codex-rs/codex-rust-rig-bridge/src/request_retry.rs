@@ -15,7 +15,7 @@ pub(crate) async fn send_streaming(
     retry: Option<&RetryConfig>,
     recorder: &crate::FinalRequestRecorder,
 ) -> Result<StreamingResponse, Error> {
-    // rig 0.44's HttpClientExt lives on rig-reqwest's client wrapper; the
+    // rig's HttpClientExt lives on rig-reqwest's client wrapper; the
     // decorator's pooled reqwest client is wrapped per attempt (cheap clone).
     let client = rig_reqwest::ReqwestClient::from(client.clone());
     let policy = retry.map(RetryConfig::to_policy);
@@ -78,7 +78,12 @@ fn classify(error: &Error) -> Option<TransportError> {
             body: None,
             retry_after: None,
         }),
-        Error::Transient(source) | Error::Permanent(source) => {
+        // Only a failure the transport itself called transient is worth
+        // another attempt. rig 0.47 splits that verdict into `Transient` and
+        // `Permanent`: a `Permanent` one — a request that cannot be sent as
+        // it is, a builder or redirect error — fails at once, whatever it
+        // wraps, instead of being re-judged from the reqwest error inside.
+        Error::Transient(source) => {
             let error = source.downcast_ref::<reqwest_rig::Error>()?;
             if error.is_timeout() {
                 Some(TransportError::Timeout)
@@ -88,7 +93,10 @@ fn classify(error: &Error) -> Option<TransportError> {
                 None
             }
         }
-        Error::Protocol(_) | Error::StreamEnded | Error::InvalidContentType(_) => None,
+        Error::Permanent(_)
+        | Error::Protocol(_)
+        | Error::StreamEnded
+        | Error::InvalidContentType(_) => None,
         // `http_client::Error` is `#[non_exhaustive]` since rig 0.45. Unknown
         // variants stay non-retryable: retrying an unclassified failure would
         // hide it behind the retry budget instead of failing fast.

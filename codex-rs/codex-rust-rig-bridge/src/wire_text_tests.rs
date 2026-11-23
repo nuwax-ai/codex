@@ -321,6 +321,7 @@ async fn post_compact_consecutive_users_cross_rig_and_http_as_one_ordered_string
         &format!("http://{address}/v1"),
         &headers,
         client,
+        Duration::from_secs(1),
     )?;
     let mut stream = model.stream(completion)?;
     // The server returns an intentional HTTP error after capturing the request;

@@ -3,8 +3,9 @@
 维护说明：本文是 fork 行为差异的权威索引。改动 fork 行为时同步更新本文与
 `my-docs/codex-review-prompt.md`（§二 补丁面清单）。2026-10-22 的上游同步目标为
 `main@342ed69a1`，Rust `1.99.1`、V8 `152.2.0`，rig 升至 `0.47`（2026-10-26 用户解除
-0.44 冻结升 `0.45.0`，2026-11-13 升 `0.46`，2026-11-23 再升 `0.47`，见 §7.x；桥机械适配
-Model 构造器/Arc 消息与非穷尽错误，行为合同不变）；合并冲突已解，
+0.44 冻结升 `0.45.0`，2026-11-13 升 `0.46`，2026-11-23 再升 `0.47`；0.45/0.46 是机械
+适配，行为合同不变；0.47 除适配 HTTP 客户端签名与错误分类外，把停摆计时器接入了
+`NUWAX_STREAM_IDLE_TIMEOUT_MS`，rig 侧停摆语义的差异见 §7.x）；合并冲突已解，
 main集成与晚间批次已推送，复审输入origin/test=850a87390；备用genai现为0.7.0。
 不同源码的实网、fixture与CI证据分开，不宣称全部厂商/全部平台已通过。
 当前优先级与本轮验证快照见 [ROADMAP.md](my-docs/ROADMAP.md)，
@@ -1369,16 +1370,31 @@ vendor/rig 两份目录声明 deepseek-v4 系 `context 1M / output 384k`；女�
 
 ### 7.x rig-core 0.46 → 0.47 升级（2026-11-23，分支 `test`）
 
-rig 升到 0.47（`rig-core`/`rig-reqwest` =0.47，bridge pin 同步；live-tests 的 pin 随后
-一并更新）。0.47 的 changelog 有 215 条，绝大多数在 rig-agent / rig-basics / rig-ecs /
-rig-tui / rig-cli / rig-memory，**桥只依赖 rig-core + rig-reqwest**，迁移集中在 HTTP
-客户端层与错误分类：
+rig 升到 0.47（`rig-core`/`rig-reqwest` =0.47；bridge 与 live-tests 两处 pin 同步）。0.47
+的 changelog 有 215 条，绝大多数在 rig-agent / rig-basics / rig-ecs / rig-tui / rig-cli /
+rig-memory；**桥只依赖 rig-core + rig-reqwest**（`cargo tree -i rig-core` 只有桥与
+live-tests 两个依赖方），迁移集中在 HTTP 客户端层、错误分类与停摆计时器三处。
 
-- **`http_client::Error::Instance` / `Unbuilt` → `Transient` / `Permanent`**：重试与否由
-  `Error::is_transient()` 决定（`StreamEnded`、`Transient`、408/425/429/5xx 可重试）。
-  桥内 12 处构造改为 `Error::transient`（流读取/连接类）或 `Error::permanent`（预算拒绝、
-  请求构造、协议解析）。**必须传具体错误值，不要 `Box::new(value)`**：后者的 boxed 具体
-  类型是 `Box<T>`，`api_error()`/`classify()` 对 `T` 的 downcast 会失败（本轮实测踩过）。
+- **先弄清 0.46 的旧语义，再逐处选类**（本条是升级后自审纠回的）：0.46 的
+  `transient_transport()` 对 `Error::Instance` **一律返回 true**——旧桥所有 `Instance`
+  在 rig 眼里都是可重试的。0.47 把它拆成 `Transient` / `Permanent`，迁移指南明说
+  "只有 `Transient` 会重试，custom `HttpClientExt` 必须谨慎选类"。桥的选类：
+  - **发送前就确定的失败 → `Permanent`**：URL/请求构造、请求体改写与序列化、
+    `wire_budget` 拒绝、`request_capture` 失败。它们本来就在两个决策点（桥的握手重试
+    `classify`、codex 侧 `api_error` 拦截）被判为不可重试，`Permanent` 只是让 rig 的
+    判定与事实一致。
+  - **回复中途的失败 → `Transient`**：坏帧、usage 计数畸形、缺/重复 terminal。这是 0.46
+    的原判定，也是 §4 写明的"可重试失败"契约。初版迁移曾把它们标成 `Permanent`，等于
+    悄悄翻转 rig 侧判定。
+  - **内层传输错误原样透传**：`sse.rs` 的 `EventStreamError::Transport(error)` 里的
+    `error` 已经是 `http_client::Error`（带 rig 的判定或保留的状态码）。初版把它又包了
+    一层 `Transient`，会让 401/`Permanent` 变成可重试并丢掉状态码——codex-core 的 401
+    恢复正靠读它。
+  - **EOF 文案不变**：Anthropic 线 terminal 前 EOF 仍报
+    `model stream ended before its SSE terminal`（§4 以此文案记录该症状），只是外层从
+    `Instance` 变成 `Transient`；没有改用 `Error::StreamEnded`。
+  - **必须传具体错误值，不要 `Box::new(value)`**：后者的 boxed 具体类型是 `Box<T>`，
+    `api_error()`/`classify()` 对 `T` 的 downcast 会失败（本轮实测踩过）。
 - **`HttpClientExt` 签名**：`send` / `send_multipart` / `send_streaming` 统一为
   `Request<Bytes>` / `Request<MultipartForm>` → `Response<LazyBody>` / `StreamingResponse`，
   去掉 `<T,U>` 泛型；`LazyBody` 不再泛型。`transport.rs` 的实现、`prepare` 与
@@ -1387,20 +1403,69 @@ rig-tui / rig-cli / rig-memory，**桥只依赖 rig-core + rig-reqwest**，迁�
 - **错误链回溯**：`wire_budget::api_error` / `request_capture::api_error` 显式下钻
   `Transient`/`Permanent` 的 boxed source（与原有 `ProviderError::Http(Arc)` 下钻一致）；
   否则预算/捕获错误会被当成普通网络错误重试（两个既有测试因此转红，修好后恢复）。
-- **SSE 分类**：`sse.rs` 的传输错误 → `Transient`；供应商 terminal 前的 EOF →
-  `Error::StreamEnded`（rig 的截断语义，可重试）；JSON/usage/重复 terminal 等协议违规 →
-  `Permanent`。
-- **重试分类**：`request_retry::classify` 匹配 `Transient|Permanent` 并 downcast reqwest
-  错误；移除已删除的 `NoHeaders`/`InvalidHeaderValue` 分支；重试耗尽哨兵改用
-  `Error::transient`，保持原有可重试语义。
-- **新增运行时行为（rig 侧，桥无法关闭）**：流超过 **5 分钟无帧** → `ProviderError::Stalled`
-  （可重试；桥映射为 `TransportError::Network`）；rig-http 对每条流有
-  **64 MiB/帧、行或输入** 上限（`SseFramer::push` 返回 `Result`）；**2xx 流式回复一律按流
-  读取**（原仅 200）。常规 delta 与工具参数远低于上限，但长思考/静默模型、超大单帧的
-  供应商需实网回归；`ProviderError::Stalled` / `Truncated` / `StreamEnded` 的可重试映射已由
-  `provider_error_tests` 钉住。
-- **验证**：`codex-rust-rig-bridge` **387/387**；`codex-core --features rust-rig` 编译通过；
-  三协议实网矩阵（chat/responses/anthropic × 各厂商）仍待跑，跑通后本 pin 才算最终。
+- **握手重试尊重传输层的判定**：`request_retry::classify` 只对 `Transient` downcast
+  reqwest 错误判超时/连接；`Permanent` 一律不重试，不再从里面的 reqwest 错误二次判断
+  （rig 0.47 起 builder/redirect 错误"立即失败"）。移除已删除的
+  `NoHeaders`/`InvalidHeaderValue` 分支。
+- **停摆计时器接入配置**：rig 的 `driver::Model` 自带"无**帧**即 `ProviderError::Stalled`"
+  的计时器，默认 `STREAM_IDLE_TIMEOUT` = 5 分钟；0.47 起只有真正的帧能重置它（SSE 注释
+  keep-alive 不算，0.46 任意字节都算）。桥此前从未把 `stream_idle_timeout`
+  （`NUWAX_STREAM_IDLE_TIMEOUT_MS`）传给它，所以配置超过 5 分钟时，静默段会被悄悄截断在
+  5 分钟。现在 `build_chat_model` / `build_anthropic_model` 经
+  `rig_stream_idle_timeout()` 把它交给 `Model::with_idle_timeout`，规则是
+  **`max(配置值, rig 默认 5 分钟)`**：
+  - 配置 ≤ 5 分钟：rig 的计时器仍是 5 分钟，到点先触发的是桥自己的计时器，产出与升级前
+    完全相同的 `TransportError::Timeout`；
+  - 配置 > 5 分钟：rig 的计时器跟随配置值，等待不再被截断。
+  - 不能简单取"等于配置值"：`codex-api/src/api_bridge.rs` 把 `Timeout` 映射为
+    `CodexErr::RequestTimeout`、把 `Network` 映射为 `CodexErr::Stream`，两者在 codex-core
+    的后续处理不同。配置短于 5 分钟时若让 rig 的计时器也等于配置值，两个计时器会几乎
+    同时到期，错误类别随毫秒级时序在两种之间摆动；取 `max` 让 5 分钟以内的配置有确定
+    结果（只有桥的计时器会到点）。配置恰为或超过 5 分钟时两个计时器等长、近乎同时到期，
+    报出的是二者之一——本轮实测 330 秒配置下先到的是桥的计时器（`request timed out`）。
+- **rig 侧的运行时行为变化（桥无法关闭，属已知差异）**：
+  - 默认 5 分钟配置下，**只发注释 keep-alive 的静默段**（如 OpenRouter 的
+    `: OPENROUTER PROCESSING`）现在到点报 `Stalled`（映射为 `Network` → `CodexErr::Stream`，
+    走流重试），此前是桥自己的 `Timeout`（→ `CodexErr::RequestTimeout`）。触发时刻相同
+    （都是 5 分钟），差别只在错误类别与是否按流重试。
+  - rig-http 对每条流有 **64 MiB/帧、行或输入** 上限；**2xx 流式回复一律按流读取**
+    （原仅 200）。常规 delta 与工具参数远低于上限；超大单帧的供应商需实网回归。
+  - `ProviderError::Stalled` / `Truncated` / 截断前 EOF 的可重试映射由
+    `provider_error_tests` 钉住。
+- **验证**（2026-11-23，全部在本机完成）：
+  - 单测：`codex-rust-rig-bridge` **394/394**。本轮新增的 7 个用例逐一做过变异验证——
+    把 bug 改回去，对应用例必须变红，再恢复。core 侧走桥的端到端 suite（`rust-rig`
+    feature，需注入 `CARGO_BIN_EXE_codex` / `test_stdio_server` /
+    `test_streamable_http_server`，nextest 不会代建辅助二进制）：`rig_*` **54/54**、
+    `rig_image_history` 串行 **16/16**、`truncation`/`retry_after`/`direct_api_key` 等 **65/70**
+    ——余 5 个是上游「内置 OpenAI provider」的 CLI 用例，走原生 Responses 传输、不经
+    rig，**rig 0.46 基线二进制上同样 5 个失败**。
+  - 停摆计时器（真实 CLI + 本地假 SSE 服务器，静默流，`stream_idle_timeout_ms=330000`）：
+    0.46 基线在 **301 秒**被 rig 截断（`stream disconnected … sent nothing for 300s`）；
+    0.47 在 **331 秒**由桥的计时器结束（`request timed out`）。配置 3 秒时,"只发注释
+    keep-alive"与"完全静默"两种流都在 3 秒报 `request timed out`。
+  - 实网 A/B（3 厂商 × 3 协议共 8 个组合，新旧二进制各跑一遍）：成败与报错**逐字一致**
+    ——3 个成功（MiMo/Step 的 Anthropic 线、Step 的 Chat 线），5 个是与 rig 无关的既有
+    失败（见下「升级外发现」）。控制执行顺序后，两版的 `cached_input_tokens` 相同
+    （step 9728 / step-chat 9664 / mimo 9536，输入约 9.8k），且能互相命中对方焐热的
+    前缀缓存。
+  - 线格式（假服务器落盘请求体再比对）：Anthropic 线请求体新旧**逐字节相同**；Chat 线
+    仅 `prompt_cache_key`（每次运行的会话 UUID）不同。
+- **升级外发现（0.46 基线同样存在，本次未改，待定夺）**：
+  - **Chat / Responses 线的 `max_tokens` 可能超过模型上限**：`wire_output_cap` 取
+    `min(请求值, 窗口/2)`，不看模型自身最大输出；未显式给上限时就发 `窗口/2`。按当前
+    全局配置实测：`mimo-chat` 发 498073（MiMo 上限 131072）→ 400；`glm-responses` 同类
+    400，且被当作流断连重试 5 次。Anthropic 线有 `DEFAULT_ANTHROPIC_MAX_TOKENS=16384`
+    兜底，不受影响。
+  - **模型名不一致会误报封号告警**：`ResponseEvent::ServerModel` 触发
+    `maybe_warn_on_server_model_mismatch`（上游为第一方写的逻辑，无"仅第一方"门控），
+    响应 `model` 与请求 slug（小写后）不同即提示"账号因高风险网络活动被标记、已 reroute
+    到 gpt-5.2"。本地假服务器可复现；本轮实网的 MiMo/Step 未触发（模型名一致），带日期
+    后缀或别名返回模型名的网关会中招。
+  - **`exec`（非 `--ephemeral`）会请求 `chatgpt.com/backend-api/plugins/featured`**
+    （`codex_core_plugins::manager` 的 featured 预热；进程存活 3 秒以上可见 401 日志），
+    `NUWAX_OPENAI_EGRESS` 未设置时照样发出，与 NUWAX-HARNESS.md「默认不自行联网」的
+    描述不符。
 
 ## 8. 版本与发布
 
