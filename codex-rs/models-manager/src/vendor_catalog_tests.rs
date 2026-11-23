@@ -132,3 +132,17 @@ fn the_overlay_alias_matches_display_casing_too() {
     let pinned = super::resolve_with("glm-5.3-flash", Some(&user)).expect("resolves");
     assert_eq!(pinned.provider, "zai");
 }
+
+/// Fork (nuwax-codex): the request builder reads the catalog's own output cap
+/// so a 1M-window / 128k-completion gateway is not sent `window/2`.
+#[test]
+fn output_limit_comes_from_the_catalog_row() {
+    assert_eq!(
+        crate::vendor_catalog::output_limit_for("mimo-v2.6-flash"),
+        Some(131_072)
+    );
+    assert_eq!(
+        crate::vendor_catalog::output_limit_for("not-a-real-model"),
+        None
+    );
+}

@@ -366,6 +366,21 @@ pub fn resolve(slug: &str) -> Option<VendorModel> {
     resolve_with(slug, None)
 }
 
+/// The output cap the bundled catalog states for `slug` (`limit.output`).
+///
+/// Fork (nuwax-codex, 2026-11-23): the request side used to fall back to
+/// "half the context window" whenever neither the prompt nor the provider
+/// declared a cap. For a 1M-window model whose real completion limit is
+/// 128k (MiMo, DeepSeek, GLM) that half is four times what the gateway
+/// accepts, so the whole turn 400s. The catalog has carried the right number
+/// all along (`read` → `VendorModel::output_limit`); this exposes it to the
+/// request builder.
+pub fn output_limit_for(slug: &str) -> Option<i64> {
+    resolve(slug)
+        .and_then(|entry| entry.output_limit)
+        .filter(|limit| *limit > 0)
+}
+
 /// The process-wide bundled catalog. A snapshot that fails to parse (upstream
 /// schema drift beyond tolerance) yields `None`: callers fall back to the
 /// placeholder path, and the anchor tests fail loudly on the same data.

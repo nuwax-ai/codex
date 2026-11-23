@@ -179,6 +179,13 @@ pub struct ConfigToml {
     /// Size of the context window for the model, in tokens.
     pub model_context_window: Option<i64>,
 
+    /// Fork (nuwax-codex): default cap on generated output tokens for the
+    /// selected provider. Fills providers that declare no
+    /// `max_output_tokens` of their own; a provider-level value still wins,
+    /// and a model-catalog output limit is used when neither is set. Seeded
+    /// from `NUWAX_MAX_OUTPUT_TOKENS` (alias `CODEX_MAX_OUTPUT_TOKENS`).
+    pub model_max_output_tokens: Option<i64>,
+
     /// Token usage threshold triggering auto-compaction of conversation history.
     pub model_auto_compact_token_limit: Option<i64>,
 

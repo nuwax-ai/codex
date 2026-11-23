@@ -199,7 +199,7 @@ fork 明确每个跨协议字段在三条线（Responses passthrough / Chat / An
 
 | 字段/能力 | Responses passthrough | Chat 桥 | Anthropic 桥 |
 |---|---|---|---|
-| `max_output_tokens` | 请求值优先，否则采用 provider 值；两者未设则省略 | 映射 `max_tokens`（Rig 可按模型转为 `max_completion_tokens`） | 映射 `max_tokens`；未配置默认 16384 |
+| `max_output_tokens` | 请求值 → provider 值 → **模型目录 `limit.output`** → 窗口一半（后两级是 2026-11-23 起的推导顺序，见 §10） | 映射 `max_tokens`（Rig 可按模型转为 `max_completion_tokens`），同样按上面的顺序取上限 | 映射 `max_tokens`；未配置默认 16384 |
 | `hosted_results_replay` | 不适用（无桥回放） | 不适用 | false 时整体关闭回放（含旧格式） |
 | reasoning effort/summary | 同协议字段保留 | effort 映射 `reasoning_effort`；summary/context 无等价字段，不转发 | 按 Messages 的 thinking/effort 语义映射；不承诺 OpenAI summary/context |
 | structured output | 同协议字段保留 | `response_format.json_schema` 保留 schema/name/strict | `output_config.format` 保留 schema；无 name/strict 等价字段 |
@@ -1322,6 +1322,29 @@ output_tokens=Some(384000), wire_bytes=224077
 ②`Context` 现在是带四个字段的 struct variant，`to_api_error` 的 match 需同步
 （`ContextWindowExceeded` 的映射不变，字段仅供报错文本）；③上游若引入
 "按窗口推导输出上限"的机制，可直接替换 fork 的钳制，但需保证钳制值 ≤ 窗口一半。
+
+#### 输出上限不再只按窗口推导（2026-11-23）
+
+MiMo token-plan 的 `/v1/responses` 对 1M 窗口 / 128k 完成上限的模型报了
+`max_completion_tokens is too large: 498073`：请求与 provider 都没声明上限时，桥回退到
+`window/2`（996147/2 = 498073），而网关只接受 131072。
+
+改成三级来源，任何一级命中都不再用 `window/2`：
+
+1. `Prompt.max_output_tokens`（逐请求覆盖，压缩摘要用）；
+2. `model_providers.<id>.max_output_tokens`（provider 级；`-c` 或 config.toml）；
+3. **模型目录的 `limit.output`**——`models-manager` 早已解析成
+   `VendorModel::output_limit`，只是没接到请求上；现在由
+   `vendor_catalog::output_limit_for(slug)` 供给 `client.rs`；
+4. 都没有才回退 `window/2`。
+
+配套新增**全局默认上限** `model_max_output_tokens`：`NUWAX_MAX_OUTPUT_TOKENS`
+（别名 `CODEX_MAX_OUTPUT_TOKENS`）会 seed 这个键，config load 时**填空**到选中
+provider 的 `max_output_tokens`（provider 自己声明了就不覆盖）。因此这个环境变量
+现在对 config.toml 选中的 provider 也生效，不再只属于 NUWAX 临时 provider 组。
+
+三条线共用这一处推导（`core/src/client.rs` 的请求构造），桥里的
+`wire_output_cap` 只负责再和窗口一半取小、`WireBudget` 负责与输入一起收敛。
 
 #### 复审第二轮：三条线都收紧上限 + 读取失败不再当空会话 + 测试/格式接线（2026-11-19）
 

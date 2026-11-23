@@ -529,26 +529,24 @@ fn adopted_output_cap_rejects_non_unicode() {
 }
 
 #[test]
-fn standalone_output_cap_requires_the_complete_group_but_unselected_groups_are_ignored() {
+fn standalone_output_cap_no_longer_requires_the_group() {
+    // Fork (2026-11-23): the cap seeds the global `model_max_output_tokens`
+    // key (`config_override`), so it applies to whichever provider is
+    // selected and must be valid on its own — this group no longer owns it.
     let environment = NuwaxEnvInput {
         max_output_tokens: Some("2048".into()),
         ..Default::default()
     };
-    let error = nuwax_env_overrides(
-        environment.clone(),
-        /*cli_model*/ None,
-        /*cli_provider*/ None,
-        &[],
-    )
-    .expect_err("standalone cap has no provider owner");
-    for variable in [
-        "NUWAX_MAX_OUTPUT_TOKENS",
-        "NUWAX_BASE_URL",
-        "NUWAX_WIRE_API",
-        "NUWAX_API_KEY",
-    ] {
-        assert!(error.contains(variable), "{error}");
-    }
+    assert_eq!(
+        nuwax_env_overrides(
+            environment.clone(),
+            /*cli_model*/ None,
+            /*cli_provider*/ None,
+            &[],
+        )
+        .expect("a standalone cap is valid now"),
+        Vec::new()
+    );
     assert_eq!(
         nuwax_env_overrides(
             environment.clone(),
@@ -572,6 +570,25 @@ fn standalone_output_cap_requires_the_complete_group_but_unselected_groups_are_i
         .expect("explicit -c provider wins"),
         Vec::new()
     );
+
+    // A partial *group* still fails, and the error names only group members:
+    // the cap is not one of them any more.
+    let partial = input(
+        Some("m1"),
+        Some("https://gw.example"),
+        /*wire_api*/ None,
+        Some("private-key"),
+    );
+    let error = nuwax_env_overrides(
+        partial,
+        /*cli_model*/ None,
+        /*cli_provider*/ None,
+        &[],
+    )
+    .expect_err("partial group still fails");
+    assert!(error.contains("NUWAX_WIRE_API"), "{error}");
+    assert!(!error.contains("NUWAX_MAX_OUTPUT_TOKENS"), "{error}");
+
     let mut unused = input(
         Some("m1"),
         Some("invalid-url"),

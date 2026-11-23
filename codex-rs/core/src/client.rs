@@ -1208,9 +1208,18 @@ impl ModelClient {
             tools,
             tool_choice: "auto".to_string(),
             parallel_tool_calls: prompt.parallel_tool_calls && !model_info.use_responses_lite,
+            // Fork (nuwax-codex, 2026-11-23): fall back to the model's own
+            // catalog output limit before letting the bridge derive one from
+            // the window. Without this a 1M-window / 128k-completion gateway
+            // (MiMo token-plan) received `window/2` = 498k and rejected the
+            // whole request.
             max_output_tokens: prompt
                 .max_output_tokens
-                .or_else(|| self.state.provider.info().max_output_tokens),
+                .or_else(|| self.state.provider.info().max_output_tokens)
+                .or_else(|| {
+                    codex_models_manager::vendor_catalog::output_limit_for(&model_info.slug)
+                        .and_then(|limit| u64::try_from(limit).ok())
+                }),
             reasoning: Some(reasoning),
             store: false,
             stream: true,

@@ -148,7 +148,7 @@ nuwax-harness doctor --json
 | `NUWAX_API_KEY` | 该协议端点的 Key，与上述两项成组设置，不允许空值 |
 | `NUWAX_MODEL` | 平台实际模型 ID；完整启动组需要它，或用显式 `--model` / `-m` 提供模型 |
 | `NUWAX_BRIDGE` | 可选：`rig`、`native`、`genai`；不设时保持本 fork 的 rig 默认值 |
-| `NUWAX_MAX_OUTPUT_TOKENS` | 可选正整数，每次生成的输出上限；不是上下文窗口大小 |
+| `NUWAX_MAX_OUTPUT_TOKENS` | 可选正整数，每次生成的输出上限（同义 `CODEX_MAX_OUTPUT_TOKENS`）。**不只属于本组**：对 config.toml 里选中的 provider 也生效（填到它没声明的 `max_output_tokens`）；不是上下文窗口大小 |
 | `NUWAX_REQUEST_MAX_RETRIES` | 可选非负整数，HTTP 请求重试次数，`0` 表示本层仅发一次 |
 | `NUWAX_STREAM_MAX_RETRIES` | 可选非负整数，流恢复/采样重试预算，`0` 禁用本层重试 |
 | `NUWAX_STREAM_IDLE_TIMEOUT_MS` | 可选正整数，流空闲超时，单位毫秒；不是整轮总时限。rig 0.47 起（引擎 0.18.59 之后）Chat/Anthropic 线上大于 300000（5 分钟）的值完整生效——更早的引擎在完全没有字节的静默段里最多只等 5 分钟 |
@@ -317,6 +317,7 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
 | `NUWAX_AUTO_COMPACT_TOKEN_LIMIT`（同义 `CODEX_AUTO_COMPACT_TOKEN_LIMIT`） | 可选正整数，指定触发自动压缩的 token 阈值 |
 | `NUWAX_AUTO_COMPACT_RATIO`（同义 `CODEX_AUTO_COMPACT_RATIO`） | 可选 `(0, 1]` 小数，未设置显式 token 阈值时按有效窗口比例触发压缩 |
 | `NUWAX_MODEL_REASONING_EFFORT`（同义 `CODEX_MODEL_REASONING_EFFORT`） | 可选：`none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`、`persistent`；具体模型/协议须支持该值 |
+| `NUWAX_MAX_OUTPUT_TOKENS`（同义 `CODEX_MAX_OUTPUT_TOKENS`） | 可选正整数，全局输出上限。优先级：`-c model_providers.<id>.max_output_tokens` > 本变量 > provider 在 config.toml 声明的 `max_output_tokens`（声明了就不覆盖）> 模型目录的 `limit.output` > 窗口一半。未设置时自动用目录值，例如 MiMo 会得到 131072 而不是窗口一半 |
 
 `NUWAX_*` 与 `CODEX_*` 同时设置且取值不一致时启动即报错并点名两个变量；
 只设其一时按上表生效（`NUWAX_*` 优先）。

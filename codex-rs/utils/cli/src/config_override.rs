@@ -105,6 +105,13 @@ impl CliConfigOverrides {
             &mut overrides,
             resolve_seed_alias(NUWAX_IMAGE_MAX_BYTES_ENV, IMAGE_MAX_BYTES_ENV)?,
         )?;
+        // Fork (nuwax-codex, 2026-11-23): the global output cap applies to
+        // whichever provider is selected, so it seeds a config key instead of
+        // only the NUWAX temporary provider group's own field.
+        seed_env_max_output_tokens(
+            &mut overrides,
+            resolve_seed_alias(NUWAX_MAX_OUTPUT_TOKENS_ENV, MAX_OUTPUT_TOKENS_ENV)?,
+        )?;
         Ok(overrides)
     }
 }
@@ -154,6 +161,16 @@ const NUWAX_AUTO_COMPACT_RATIO_ENV: &str = "NUWAX_AUTO_COMPACT_RATIO";
 /// (see FORK.md §7.1). Same precedence as the other seeds: explicit `-c`
 /// wins, config.toml loses; anything other than `true`/`false`
 /// (case-insensitive) errors here instead of silently half-applying.
+/// Fork: `CODEX_MAX_OUTPUT_TOKENS` (alias `NUWAX_MAX_OUTPUT_TOKENS`) seeds
+/// `model_max_output_tokens`, the deployment-wide output cap applied to
+/// whichever provider is selected. A provider that declares its own
+/// `max_output_tokens` keeps it; a model-catalog output limit is used only
+/// when neither is set. Same precedence as every other seed: an explicit `-c`
+/// wins, config.toml loses.
+const MAX_OUTPUT_TOKENS_ENV: &str = "CODEX_MAX_OUTPUT_TOKENS";
+const NUWAX_MAX_OUTPUT_TOKENS_ENV: &str = "NUWAX_MAX_OUTPUT_TOKENS";
+const MAX_OUTPUT_TOKENS_CONFIG_KEY: &str = "model_max_output_tokens";
+
 const TOOL_SEARCH_ENV: &str = "CODEX_TOOL_SEARCH";
 const NUWAX_TOOL_SEARCH_ENV: &str = "NUWAX_TOOL_SEARCH";
 const TOOL_SEARCH_CONFIG_KEY: &str = "tools.tool_search";
@@ -264,6 +281,21 @@ fn seed_env_integer(
     }
     overrides.push((config_key.into(), Value::Integer(parsed)));
     Ok(())
+}
+
+/// Fork: seeds the deployment-wide output cap (`model_max_output_tokens`)
+/// from `CODEX_MAX_OUTPUT_TOKENS` / `NUWAX_MAX_OUTPUT_TOKENS`.
+fn seed_env_max_output_tokens(
+    overrides: &mut Vec<(String, Value)>,
+    seed: (Option<OsString>, &'static str),
+) -> Result<(), String> {
+    let (value, env_name) = seed;
+    seed_env_integer(
+        overrides,
+        env_name,
+        MAX_OUTPUT_TOKENS_CONFIG_KEY,
+        value.as_deref(),
+    )
 }
 
 fn seed_env_image_byte_budget(
@@ -482,3 +514,7 @@ mod env_context_seeds_tests;
 #[cfg(test)]
 #[path = "env_tool_search_seed_tests.rs"]
 mod env_tool_search_seed_tests;
+
+#[cfg(test)]
+#[path = "env_max_output_tokens_tests.rs"]
+mod env_max_output_tokens_tests;

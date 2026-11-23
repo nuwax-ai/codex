@@ -4307,7 +4307,7 @@ impl Config {
             apply_default_gcp_auth(provider, &resolved_cwd);
         }
 
-        let model_provider = model_providers
+        let mut model_provider = model_providers
             .get(&model_provider_id)
             .ok_or_else(|| {
                 let message = if model_provider_id == LEGACY_OLLAMA_CHAT_PROVIDER_ID {
@@ -4318,6 +4318,17 @@ impl Config {
                 std::io::Error::new(std::io::ErrorKind::NotFound, message)
             })?
             .clone();
+        // Fork (nuwax-codex): `model_max_output_tokens` is a deployment-wide
+        // default, not a provider override — it fills a provider that declares
+        // no cap of its own, so an explicit provider value (config.toml or
+        // `-c model_providers.<id>.max_output_tokens`) still wins.
+        if model_provider.max_output_tokens.is_none()
+            && let Some(cap) = cfg
+                .model_max_output_tokens
+                .and_then(|cap| u64::try_from(cap).ok())
+        {
+            model_provider.max_output_tokens = Some(cap);
+        }
 
         let shell_environment_policy = ShellEnvironmentPolicy::from(cfg.shell_environment_policy);
         let allow_login_shell = cfg.allow_login_shell.unwrap_or(true);
@@ -4796,6 +4807,16 @@ impl Config {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "model_context_window must be a positive token count",
+            ));
+        }
+        // Fork (nuwax-codex): a non-positive global output cap would silently
+        // zero the wire's max_output_tokens; reject it like the window seeds.
+        if let Some(cap) = cfg.model_max_output_tokens
+            && cap <= 0
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "model_max_output_tokens must be a positive token count",
             ));
         }
         if let Some(limit) = cfg.model_auto_compact_token_limit

@@ -247,7 +247,6 @@ pub fn model_info_from_slug_with_context_window(
     slug: &str,
     context_window: Option<i64>,
 ) -> ModelInfo {
-
     // Fork (2026-11-19): 去重必须按"实际告警"登记，不能先登记再判断。
     // 否则 provider A 配了窗口（只写 debug）会把同名 slug 登记掉，后来
     // 未配窗口的 provider B 就再也不会 WARN。debug 与 warn 各自去重。

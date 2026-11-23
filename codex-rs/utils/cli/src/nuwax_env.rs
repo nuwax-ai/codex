@@ -149,11 +149,11 @@ pub fn nuwax_env_overrides(
     let group_set = [base_url, wire_api, api_key];
     let set_count = group_set.iter().filter(|value| value.is_some()).count();
     if set_count == 0 {
+        // `MAX_OUTPUT_TOKENS_ENV` is absent on purpose (2026-11-23): the cap
+        // now seeds the global `model_max_output_tokens` key instead
+        // (`codex_utils_cli::config_override`), so it applies to whichever
+        // provider is selected and no longer needs this group to be complete.
         let orphaned = [
-            input
-                .max_output_tokens
-                .is_some()
-                .then_some(MAX_OUTPUT_TOKENS_ENV),
             input
                 .request_max_retries
                 .is_some()

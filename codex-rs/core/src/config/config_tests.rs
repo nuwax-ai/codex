@@ -292,6 +292,86 @@ async fn load_config_applies_optional_mcp_startup_grace() -> std::io::Result<()>
     Ok(())
 }
 
+/// Fork (nuwax-codex): `model_max_output_tokens` is a deployment-wide default.
+/// It must reach the selected provider when that provider declares no cap of
+/// its own — that is what makes `NUWAX_MAX_OUTPUT_TOKENS` work for config.toml
+/// providers instead of only the NUWAX temporary group.
+#[tokio::test]
+async fn global_output_cap_fills_a_provider_without_one() -> anyhow::Result<()> {
+    let codex_home = tempdir()?;
+    let config_toml: ConfigToml = toml::from_str(
+        r#"
+model_provider = "gw"
+model_max_output_tokens = 131072
+
+[model_providers.gw]
+name = "gw"
+base_url = "https://gateway.test/v1"
+wire_api = "responses"
+"#,
+    )?;
+    let config = Config::load_from_base_config_with_overrides(
+        config_toml,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await?;
+
+    assert_eq!(config.model_provider.max_output_tokens, Some(131_072));
+    Ok(())
+}
+
+/// A provider-level value is more specific than the global default and wins.
+#[tokio::test]
+async fn provider_output_cap_beats_the_global_default() -> anyhow::Result<()> {
+    let codex_home = tempdir()?;
+    let config_toml: ConfigToml = toml::from_str(
+        r#"
+model_provider = "gw"
+model_max_output_tokens = 131072
+
+[model_providers.gw]
+name = "gw"
+base_url = "https://gateway.test/v1"
+wire_api = "responses"
+max_output_tokens = 32768
+"#,
+    )?;
+    let config = Config::load_from_base_config_with_overrides(
+        config_toml,
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await?;
+
+    assert_eq!(config.model_provider.max_output_tokens, Some(32_768));
+    Ok(())
+}
+
+/// A non-positive cap would silently zero the wire's `max_output_tokens`.
+#[tokio::test]
+async fn non_positive_global_output_cap_is_rejected() -> anyhow::Result<()> {
+    let codex_home = tempdir()?;
+    for invalid in ["0", "-5"] {
+        let config_toml: ConfigToml =
+            toml::from_str(&format!("model_max_output_tokens = {invalid}"))?;
+        let error = Config::load_from_base_config_with_overrides(
+            config_toml,
+            ConfigOverrides::default(),
+            codex_home.abs(),
+        )
+        .await
+        .expect_err("non-positive cap must be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("model_max_output_tokens must be a positive token count"),
+            "unexpected error: {error}"
+        );
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn load_config_resolves_thread_unload_delay() -> anyhow::Result<()> {
     let codex_home = tempdir()?;
