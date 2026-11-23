@@ -90,6 +90,18 @@ idle timeout 包裹）→ 原始 SSE 进 codex-api 完整解码器，**严格终
 畸形帧报错、[DONE] 容忍）。官方原生路径的宽松策略不变。Authorization 在 rig
 自动合成 Bearer 后**精确恢复**（api-key-only/无鉴权网关不被改写）。
 
+**custom/freeform 工具默认降级为 function（2026-11-23）**：多数第三方
+`/v1/responses` 只实现 Responses 的 function 半边，遇到 `"type":"custom"` 直接
+400（MiMo token-plan：`responses_feature_not_supported / custom tools require
+MiMo freeform Responses lite mode`，请求根本没到模型）。Codex 把 `apply_patch`
+声明为 custom（freeform）工具，于是每个带着补丁工具的请求都会撞上这类网关。
+因此透传默认在序列化前把 custom 声明改写成 Chat/Anthropic 线一直在发的 function
+包装（单一 `input` 字符串 + grammar 注入 description，见
+`request_tools::custom_tool_as_function`）；call 回来时引擎侧
+`patch_input_from_payload` 接受两种形状（custom 原文 / function 的 `input`）。
+要保留逐字透传，设 `NUWAX_FREEFORM_TOOLS=1`（别名 `CODEX_FREEFORM_TOOLS`，
+两值不一致启动即报错点名两个变量）。只影响声明形状，不改任何其他字段。
+
 备用genai0.7与主rig不承诺完全等价：Responses不支持；OpenAI端点的path/query已
 修正并有真实loopback合同；Anthropic endpoint携带query时明确拒绝，可改用rig，
 不能静默吞参数。主rig的严格usage presence与身份合同不能从备用桥编译通过推导。备用桥的header按名称
@@ -191,7 +203,7 @@ fork 明确每个跨协议字段在三条线（Responses passthrough / Chat / An
 | `hosted_results_replay` | 不适用（无桥回放） | 不适用 | false 时整体关闭回放（含旧格式） |
 | reasoning effort/summary | 同协议字段保留 | effort 映射 `reasoning_effort`；summary/context 无等价字段，不转发 | 按 Messages 的 thinking/effort 语义映射；不承诺 OpenAI summary/context |
 | structured output | 同协议字段保留 | `response_format.json_schema` 保留 schema/name/strict | `output_config.format` 保留 schema；无 name/strict 等价字段 |
-| custom/freeform 工具 | `format` 原样透传 | grammar（syntax+definition）保留到 tool description，区分外层 JSON 参数与 input 原始文本；仅为模型提示，不等价于服务端 grammar 强约束；声明 grammar 但缺 syntax/definition、或空白工具名均 fail-fast | 同 Chat 注入（Messages 线同样无 grammar 通道） |
+| custom/freeform 工具 | 默认改写成 function 包装（单一 `input` 字符串 + grammar 注入 description，`NUWAX_FREEFORM_TOOLS=1` 才逐字透传 `format`）；call 回来两种形状都接受 | grammar（syntax+definition）保留到 tool description，区分外层 JSON 参数与 input 原始文本；仅为模型提示，不等价于服务端 grammar 强约束；声明 grammar 但缺 syntax/definition、或空白工具名均 fail-fast | 同 Chat 注入（Messages 线同样无 grammar 通道） |
 | namespace 声明 | 原样透传 | 展平子工具名；namespace description 追加到每个子工具 description；缺 name/tools 或空白 namespace 的坏声明 fail-fast | 同 Chat |
 | usage/缓存计数 | 同协议解码，保留字段 presence | wire 观察器按 presence 保留缺失/部分/显式零，缺失或 null usage 合法；非法 counter 报错；CapExhausted 与回放携带 `ReportedResponseUsage`；成功终态按 Rig `Usage::is_reported()` 决定 `TokenUsage` 的 Some/None（不是按 usage 对象是否出现），已映射的缺失 token counter 呈现为 0 | message_start/delta 中的 usage 对象必需，内部 counter 可缺席；跨帧累积且显式零覆盖；错误/回放保留 presence，成功终态聚合规则同 Chat |
 | 重试/限流 | 受 provider 配置及 Core 采样策略约束 | 桥传输/流重试与 Core 采样分层；无统一总尝试数保证 | 同 Chat |

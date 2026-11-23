@@ -204,6 +204,21 @@ async fn stream_responses_via_rig_inner(
         move_tool_result_arrays_to_user_turns(&mut wire_request.input);
         append_trailing_tool_result_user_turn(&mut wire_request.input);
     }
+    // Fork (nuwax-codex, 2026-11-23): many gateway `/v1/responses`
+    // implementations serve only the function half of the Responses tool model
+    // and reject `type: "custom"` outright — MiMo token-plan answers `400
+    // responses_feature_not_supported: custom tools require MiMo freeform
+    // Responses lite mode`, and the turn dies before the model runs. Codex
+    // declares `apply_patch` as a custom (freeform) tool, so every request
+    // carried one and no such gateway could serve this wire at all.
+    //
+    // Default: rewrite those declarations into the function wrapper the
+    // Chat/Anthropic wires already send (one `input` string, grammar in the
+    // description). `NUWAX_FREEFORM_TOOLS=1` (alias `CODEX_FREEFORM_TOOLS`)
+    // keeps the verbatim custom declaration for gateways that implement it.
+    if !freeform_tools_enabled()? {
+        downgrade_custom_tools(&mut wire_request)?;
+    }
 
     let model = request.model.clone();
     tracing::info!(
@@ -644,3 +659,94 @@ pub(crate) fn wire_output_cap(
 #[cfg(test)]
 #[path = "responses_cap_tests.rs"]
 mod cap_tests;
+
+#[cfg(test)]
+#[path = "responses_freeform_tests.rs"]
+mod freeform_tests;
+
+/// Whether this process keeps Responses `type: "custom"` (freeform) tool
+/// declarations on the wire. Default `false`: the passthrough rewrites them as
+/// functions, because a custom-only declaration makes gateways that implement
+/// just the function half reject the whole request (see the call site).
+///
+/// `NUWAX_FREEFORM_TOOLS=1` / `CODEX_FREEFORM_TOOLS=1` opts back in; the
+/// aliased pair follows the shared rules — both set to the same value is fine,
+/// both set to different values is a hard error naming both.
+fn freeform_tools_enabled() -> Result<bool, ApiError> {
+    let resolved = codex_utils_home_dir::env_alias::resolve_env_alias(
+        "NUWAX_FREEFORM_TOOLS",
+        "CODEX_FREEFORM_TOOLS",
+    )
+    .map_err(|message| ApiError::InvalidRequest { message })?;
+    let Some((value, from_nuwax)) = resolved else {
+        return Ok(false);
+    };
+    let name = if from_nuwax {
+        "NUWAX_FREEFORM_TOOLS"
+    } else {
+        "CODEX_FREEFORM_TOOLS"
+    };
+    let Some(text) = value.to_str() else {
+        return Err(ApiError::InvalidRequest {
+            message: format!("{name} must be valid UTF-8"),
+        });
+    };
+    parse_freeform_tools_flag(text).map_err(|message| ApiError::InvalidRequest {
+        message: format!("{name}={message}"),
+    })
+}
+
+/// Pure parser for the flag's value, shared with the tests.
+fn parse_freeform_tools_flag(text: &str) -> Result<bool, String> {
+    match text.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        other => Err(format!(
+            "{other:?} is not a boolean; use 1/0, true/false, yes/no, or on/off"
+        )),
+    }
+}
+
+/// Rewrites every `type: "custom"` tool declaration into the function wrapper
+/// the Chat/Anthropic wires use, leaving other declarations untouched.
+///
+/// A no-op when the request carries no custom tools, so function-only requests
+/// keep their bytes (and their large-integer fidelity: untouched entries are
+/// cloned values, not re-encoded through a fresh tree).
+fn downgrade_custom_tools(request: &mut ResponsesApiRequest) -> Result<(), ApiError> {
+    let Some(tools) = request.tools.as_ref() else {
+        return Ok(());
+    };
+    let value = serde_json::to_value(tools).map_err(|error| ApiError::InvalidRequest {
+        message: format!("failed to read the tool declarations for the Responses wire: {error}"),
+    })?;
+    let Some(items) = value.as_array() else {
+        return Ok(());
+    };
+    let mut rewritten = Vec::with_capacity(items.len());
+    let mut downgraded = 0usize;
+    for tool in items {
+        match crate::request_tools::custom_tool_as_function(tool)? {
+            Some(function) => {
+                downgraded += 1;
+                rewritten.push(function);
+            }
+            None => rewritten.push(tool.clone()),
+        }
+    }
+    if downgraded == 0 {
+        return Ok(());
+    }
+    let raw =
+        serde_json::value::to_raw_value(&serde_json::Value::Array(rewritten)).map_err(|error| {
+            ApiError::InvalidRequest {
+                message: format!("failed to serialize the rewritten tool declarations: {error}"),
+            }
+        })?;
+    request.tools = Some(codex_api::ResponsesApiTools::from(Arc::from(raw)));
+    tracing::debug!(
+        downgraded_custom_tools = downgraded,
+        "responses wire rewrote custom tools as function tools (NUWAX_FREEFORM_TOOLS=1 keeps them verbatim)"
+    );
+    Ok(())
+}

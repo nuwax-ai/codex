@@ -278,9 +278,34 @@ fn write_permissions_for_paths(
 
 /// Extracts the raw patch text used as the command-shaped hook input for apply_patch.
 fn apply_patch_payload_command(payload: &ToolPayload) -> Option<String> {
+    patch_input_from_payload(payload).ok()
+}
+
+/// The patch text a call carries, whichever wire shape delivered it.
+///
+/// `apply_patch` is declared as a custom (freeform) tool, so the engine's own
+/// payload is `Custom`. A gateway that cannot express custom tools gets the
+/// function wrapper instead (rig bridge: `NUWAX_FREEFORM_TOOLS` default
+/// rewrites it, one string field `input`), and the call then arrives as a
+/// `Function` payload whose JSON carries the same text.
+fn patch_input_from_payload(payload: &ToolPayload) -> Result<String, FunctionCallError> {
     match payload {
-        ToolPayload::Custom { input } => Some(input.clone()),
-        _ => None,
+        ToolPayload::Custom { input } => Ok(input.clone()),
+        ToolPayload::Function { arguments } => {
+            #[derive(serde::Deserialize)]
+            struct FunctionArgs {
+                input: String,
+            }
+            let parsed: FunctionArgs = serde_json::from_str(arguments).map_err(|error| {
+                FunctionCallError::RespondToModel(format!(
+                    "apply_patch function arguments must be a JSON object with a string `input`: {error}"
+                ))
+            })?;
+            Ok(parsed.input)
+        }
+        ToolPayload::ToolSearch { .. } => Err(FunctionCallError::RespondToModel(
+            "apply_patch received a tool_search payload".to_string(),
+        )),
     }
 }
 
@@ -318,11 +343,7 @@ impl ApplyPatchHandler {
             ..
         } = invocation;
 
-        let ToolPayload::Custom { input: patch_input } = payload else {
-            return Err(FunctionCallError::RespondToModel(
-                "apply_patch handler received unsupported payload".to_string(),
-            ));
-        };
+        let patch_input = patch_input_from_payload(&payload)?;
         let turn_environment = selected_executor(&environments, &step_context.environments)?;
         let request = prepare_patch_request(&patch_input, turn_environment, &step_context).await?;
         let tool_ctx = ToolCtx {
@@ -342,12 +363,8 @@ impl CoreToolRuntime for ApplyPatchHandler {
         &self,
         invocation: &ToolInvocation,
     ) -> Result<ToolEnvironments, FunctionCallError> {
-        let ToolPayload::Custom { input } = &invocation.payload else {
-            return Err(FunctionCallError::Fatal(
-                "expected apply_patch input".to_string(),
-            ));
-        };
-        let args = codex_apply_patch::parse_patch(input).map_err(|err| {
+        let input = patch_input_from_payload(&invocation.payload)?;
+        let args = codex_apply_patch::parse_patch(&input).map_err(|err| {
             FunctionCallError::RespondToModel(format!("apply_patch verification failed: {err}"))
         })?;
         let environment_id =
@@ -360,7 +377,10 @@ impl CoreToolRuntime for ApplyPatchHandler {
     }
 
     fn matches_kind(&self, payload: &ToolPayload) -> bool {
-        matches!(payload, ToolPayload::Custom { .. })
+        matches!(
+            payload,
+            ToolPayload::Custom { .. } | ToolPayload::Function { .. }
+        )
     }
 
     fn create_diff_consumer(&self) -> Option<Box<dyn ToolArgumentDiffConsumer>> {
@@ -394,6 +414,11 @@ impl CoreToolRuntime for ApplyPatchHandler {
         invocation.payload = match invocation.payload {
             ToolPayload::Custom { .. } => ToolPayload::Custom {
                 input: patch.to_string(),
+            },
+            // Keep the wire's shape: a function-wrapped call must go back with
+            // the same single `input` field the model already knows.
+            ToolPayload::Function { .. } => ToolPayload::Function {
+                arguments: serde_json::json!({ "input": patch }).to_string(),
             },
             payload => payload,
         };

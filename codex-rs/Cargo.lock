@@ -4867,6 +4867,7 @@ dependencies = [
  "codex-models-manager",
  "codex-protocol",
  "codex-tools",
+ "codex-utils-home-dir",
  "codex-utils-image",
  "codex-utils-output-truncation",
  "codex-utils-string",

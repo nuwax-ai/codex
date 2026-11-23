@@ -231,7 +231,7 @@ fn append_tool(
     let parameters = match tool["type"].as_str() {
         Some("custom") => {
             custom.insert(name.clone());
-            json!({"type":"object", "properties":{"input":{"type":"string", "description":"The complete tool input text"}}, "required":["input"], "additionalProperties":false})
+            custom_input_schema()
         }
         Some("function") => tool
             .get("parameters")
@@ -283,6 +283,53 @@ fn append_tool(
         annotations: rig_core::completion::ToolAnnotations::default(),
     });
     Ok(())
+}
+
+/// The wrapper schema a custom (freeform) tool gets on a wire with no grammar
+/// channel: the whole tool input rides a single JSON string field.
+pub(crate) fn custom_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {"input": {"type": "string", "description": "The complete tool input text"}},
+        "required": ["input"],
+        "additionalProperties": false
+    })
+}
+
+/// Rewrites one `type: "custom"` declaration into the function wrapper the
+/// Chat/Anthropic wires already send — same `input` schema, grammar note
+/// appended to the description. `None` means the declaration is not custom and
+/// the caller must pass it through untouched.
+///
+/// Used by the Responses wire when a gateway implements only the function half
+/// of the tool model (see `responses::freeform_tools_enabled`).
+pub(crate) fn custom_tool_as_function(tool: &Value) -> Result<Option<Value>, codex_api::ApiError> {
+    if tool["type"].as_str() != Some("custom") {
+        return Ok(None);
+    }
+    let Some(name) = tool["name"].as_str().filter(|name| !name.trim().is_empty()) else {
+        return Err(codex_api::ApiError::InvalidRequest {
+            message: "Custom tool declaration has no name (or a blank name); the Responses bridge cannot rewrite it as a function"
+                .into(),
+        });
+    };
+    let mut description = tool["description"]
+        .as_str()
+        .filter(|description| !description.is_empty())
+        .unwrap_or("Custom tool; pass the complete tool input text in the `input` field.")
+        .to_owned();
+    if let Some(note) = custom_grammar_note(tool)? {
+        if !description.is_empty() {
+            description.push_str("\n\n");
+        }
+        description.push_str(&note);
+    }
+    Ok(Some(json!({
+        "type": "function",
+        "name": name,
+        "description": description,
+        "parameters": custom_input_schema(),
+    })))
 }
 
 /// The Chat/Anthropic wires have no channel for a custom tool's grammar: the

@@ -33,6 +33,8 @@ codex-http-client = { workspace = true }
 # identity, and a request with no User-Agent at all is rejected.
 codex-login = { workspace = true }
 codex-utils-string = { workspace = true }
+# Fork: NUWAX_*/CODEX_* alias resolution (NUWAX_FREEFORM_TOOLS).
+codex-utils-home-dir = { workspace = true }
 codex-utils-image = { workspace = true }
 # Fork: the image entrance limit (NUWAX_IMAGE_ENTRY_MAX_BYTES) bounds the
 # original-detail estimate on every wire, so the bridge and the admission agree.

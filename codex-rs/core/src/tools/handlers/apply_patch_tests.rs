@@ -394,3 +394,43 @@ fn write_permissions_for_windows_paths_uses_executor_uris() {
         )]),
     );
 }
+
+/// The wire may advertise `apply_patch` as a function tool (gateways without
+/// custom-tool support); its arguments then arrive as JSON with the same single
+/// `input` string the wrapper schema promises.
+#[test]
+fn patch_input_accepts_the_function_wrapper_shape() {
+    let payload = ToolPayload::Function {
+        arguments: json!({"input": "*** Begin Patch\n*** End Patch\n"}).to_string(),
+    };
+    assert_eq!(
+        patch_input_from_payload(&payload).expect("function input"),
+        "*** Begin Patch\n*** End Patch\n"
+    );
+}
+
+/// A function call that does not carry the promised field must fail toward the
+/// model instead of panicking or treating the JSON as patch text.
+#[test]
+fn patch_input_rejects_function_arguments_without_a_string_input() {
+    let payload = ToolPayload::Function {
+        arguments: json!({"patch": "*** Begin Patch"}).to_string(),
+    };
+    let error = patch_input_from_payload(&payload).expect_err("missing input");
+    assert!(
+        format!("{error:?}").contains("string `input`"),
+        "unexpected error: {error:?}"
+    );
+}
+
+/// Custom payloads stay verbatim: that is the shape the engine declares.
+#[test]
+fn patch_input_passes_custom_payloads_through() {
+    let payload = ToolPayload::Custom {
+        input: "*** Begin Patch\n*** End Patch\n".to_string(),
+    };
+    assert_eq!(
+        patch_input_from_payload(&payload).expect("custom input"),
+        "*** Begin Patch\n*** End Patch\n"
+    );
+}
