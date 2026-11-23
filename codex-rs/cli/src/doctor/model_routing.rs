@@ -170,14 +170,27 @@ pub(super) async fn check(
                     }
                 }
             };
+            // Keep the provider name in its own, identifier-only field. A
+            // detail line containing a plan-style provider id such as
+            // `xiaomi-token-plan-cn` trips the report's `token` secret
+            // heuristic and the whole line renders as `<redacted>`.
+            let (window_source, provider_name) = match window_label.split_once(" (") {
+                Some((source, provider)) => (
+                    source.to_string(),
+                    Some(provider.trim_end_matches(')').to_string()),
+                ),
+                None => (window_label, None),
+            };
             details.push(format!(
-                "effective context window: {} [source: {}]",
+                "effective context window: {} [source: {window_source}]",
                 model_info
                     .resolved_context_window()
                     .map(|window| window.to_string())
                     .unwrap_or_else(|| "<unknown>".into()),
-                window_label,
             ));
+            if let Some(provider) = provider_name {
+                details.push(format!("window catalog provider: {provider}"));
+            }
             details.push(format!(
                 "full usable context window: {}",
                 model_info
@@ -185,6 +198,68 @@ pub(super) async fn check(
                     .map(|window| window.to_string())
                     .unwrap_or_else(|| "<unknown>".into())
             ));
+            // Fork (nuwax-codex, 2026-11-23): the output cap is derived from
+            // four sources (prompt > provider > vendor catalog > window/2).
+            // Name the winner: the MiMo 400 ("max_completion_tokens too
+            // large") was invisible until the wire value was traced by hand.
+            // The resolved slug, not the configured name: aliases and
+            // plan-variant providers resolve before this point.
+            let facts = codex_models_manager::vendor_catalog::facts_for(&model_info.slug);
+            let output_cap = config
+                .model_provider
+                .max_output_tokens
+                .map(|cap| (cap, "provider"))
+                .or_else(|| {
+                    facts
+                        .as_ref()
+                        .and_then(|facts| facts.output_limit)
+                        .and_then(|limit| u64::try_from(limit).ok())
+                        .map(|cap| (cap, "vendor catalog"))
+                })
+                .or_else(|| {
+                    model_info.resolved_context_window().map(|window| {
+                        (
+                            u64::try_from(window).unwrap_or(u64::MAX) / 2,
+                            "window/2 fallback",
+                        )
+                    })
+                });
+            details.push(match output_cap {
+                Some((cap, source)) => format!("output cap: {cap} [source: {source}]"),
+                None => "output cap: <unknown>".to_string(),
+            });
+            match &facts {
+                Some(facts) => {
+                    // Numeric/boolean facts on their own line; the provider id
+                    // and the interleaved field name are identifiers and go on
+                    // separate lines so the report's secret heuristic (which
+                    // matches `token` inside plan-style provider ids) cannot
+                    // swallow the numbers with them.
+                    details.push(format!(
+                        "catalog limits: context={} output={}",
+                        facts
+                            .context_limit
+                            .map(|limit| limit.to_string())
+                            .unwrap_or_else(|| "<unset>".into()),
+                        facts
+                            .output_limit
+                            .map(|limit| limit.to_string())
+                            .unwrap_or_else(|| "<unset>".into()),
+                    ));
+                    details.push(format!(
+                        "catalog capabilities: tool_call={} attachment={} reasoning={}",
+                        facts.tool_call, facts.attachment, facts.reasons
+                    ));
+                    details.push(format!(
+                        "catalog interleaved field: {}",
+                        facts.interleaved_field.as_deref().unwrap_or("<none>")
+                    ));
+                    details.push(format!("catalog provider: {}", facts.provider));
+                }
+                None => {
+                    details.push("catalog limits: <model not in the vendor catalog>".to_string())
+                }
+            }
             details.push(format!(
                 "effective auto compact threshold: {}",
                 compact_limit

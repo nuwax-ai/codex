@@ -53,6 +53,52 @@ hooks 回指目录仅在 `.nuwax-harness` 实际存在时切换（避免 `.codex
 上游若引入自己的目录名，改为三选一优先级（`.nuwax-harness` > 上游名 > `.codex`）。
 回归测试：`loader::tests::project_config_dir_prefers_nuwax_harness_over_codex_compat`。
 
+**项目 hook 随项目受信（2026-11-23 起）**：项目被信任后，它声明的 hook 不再需要
+逐个审阅。上游把 hook 信任与项目信任分成两层——项目受信只让 `hooks.json` 被发现，
+每个 hook 仍要用户层写入 `trusted_hash` 才注册，而那个审批只能从 TUI 的启动审阅
+写出。于是没有 TUI 的宿主（app-server、ACP、容器）里，受信项目的 hook 被发现、
+被列出为 `untrusted`、**从不注册**，既不报错也不打日志。
+
+- 判定点：`hooks/src/engine/discovery.rs` 的 `HookHandlerSource::trusted_by_project`，
+  在 `hook_trust_status` 之前短路为 `Trusted`。信任门本身不在这里重判——
+  `layers_low_to_high` 只产出启用的层，不受信的 checkout 其项目层已被禁用，
+  `hooks.json` 根本不会被读取。
+- 范围仅限项目层。用户层 `~/.nuwax-harness/hooks.json`、插件 hook、受管 hook 的
+  语义不变（`user_layer_hook_is_untouched_by_the_project_rule`）。
+- **这一放宽不构成新的安全边界**：项目是否受信完全由上游的信任门决定，fork 没有
+  改它。app-server 的 `thread/start`（`app-server/src/request_processors/
+  thread_processor.rs`）在"有效权限能写 cwd"时把 cwd 写入用户受信表并重载；
+  `exec` 与 ACP 适配器都经同一入口（exec 把权限档位映射成沙箱模式后转交，
+  见 `exec/src/lib.rs` 的 `sandbox_mode_from_permission_profile`）。实测：
+
+  | 沙箱档位 | 项目是否隐含受信 | 已受信项目的 hook |
+  |---|---|---|
+  | `workspace-write` / `danger-full-access` | 是（自动写入受信表） | 注册并执行 |
+  | `read-only` | **否** | **不发现**（项目层被禁用，无告警） |
+
+  所以 `read-only` 会话即使 `config.toml` 里已写了 `trust_level = "trusted"`，
+  项目 hook 也不会运行——这是上游行为，不是 bug。fork 的改动只是让"已被信任
+  的项目"名副其实地信任它自己的 hook，不再要求一个 app-server 宿主无法完成的
+  逐个审阅步骤。
+- **matcher 是正则，按引擎的工具名匹配**，不是显示名。fork 的 shell 工具在 hook
+  stdin 里的 `tool_name` 是 `exec`（`apply_patch`、`view_image` 等同理），所以
+  `"matcher": "shell"` 永远不会命中；要匹配 shell 调用请写 `"exec"` 或留空
+  `""`。`SessionStart` / `UserPromptSubmit` 不带工具名，任意 matcher 都触发。
+- 回归测试：`hooks/src/engine/project_trust_tests.rs`（5 例，断言的是**注册数**
+  `discovered.handlers.len()`，不只是 `hooks list` 的状态）、
+  `loader::tests::project_layer_with_only_hooks_json_is_disabled_when_untrusted`。
+
+**未受信 hook 的显式放行（2026-11-23 起）**：`bypass_hook_trust` 原本是纯运行时
+开关（`core/src/config/mod.rs` 注释明写 "not from config files"）。现在可由
+config.toml 的 `bypass_hook_trust = true` 或 `NUWAX_BYPASS_HOOK_TRUST`（别名
+`CODEX_BYPASS_HOOK_TRUST`）提供，**默认关闭**。这是宽闸：开了以后所有来源的已启用
+hook 都执行，包括用户层与未审阅项目的。优先级为显式调用参数 > 环境变量 > config.toml，
+所以 `NUWAX_BYPASS_HOOK_TRUST=false` 可以临时关掉配置里的授权。只接受
+`true`/`false`（大小写不敏感），`1`/`yes`/`on` 一律启动失败而不是猜成真值。开启
+时必有一条启动告警。注意它不能穿透信任门：项目层若被信任门禁用，hook 连发现都不会。
+回归测试：`config::tests::hook_trust_bypass_{defaults_to_off,can_be_configured}`、
+`utils/cli` 的 `env_hook_trust_seed_tests`。
+
 
 ## 3. 模型协议与路由
 
@@ -761,7 +807,9 @@ code-mode-host、rg）。先前fork npm包只发单二进制，自启所需布�
 
 **config.toml 键**（官方 schema 不认识，只写 `~/.nuwax-harness`）：
 `model_providers.*.wire_api = "chat"|"anthropic"`、`experimental_bridge`、
-`experimental_bearer_token`、`model_auto_compact_ratio`、
+`experimental_bearer_token`、`model_auto_compact_ratio`、`model_max_output_tokens`
+（全局输出上限，填空到未声明 `max_output_tokens` 的 provider）、`bypass_hook_trust`
+（默认 `false`，见 §2）、
 `model_providers.*.anthropic_prompt_caching`（2026-10-26 起：Anthropic 线 opt-in
 cache_control 断点，rig 0.45 起原语，5m TTL；远程 thread config 无该字段线格式，
 同步时丢弃、恢复为 None，同 `max_output_tokens` 的既有边界）、
@@ -1345,6 +1393,28 @@ provider 的 `max_output_tokens`（provider 自己声明了就不覆盖）。因
 
 三条线共用这一处推导（`core/src/client.rs` 的请求构造），桥里的
 `wire_output_cap` 只负责再和窗口一半取小、`WireBudget` 负责与输入一起收敛。
+
+**目录数据源（2026-11-23 起）**：`models-manager/vendor/catalog.json` 以
+**rig-core 自带的快照**（`rig-core-*/src/catalog/models.json`）为准刷新——我们用 rig，
+升级 rig 就等于升级这些事实，不用再手动盯 models.dev。rig 对 provider 做了归一化
+（`zai`/`xiaomimimo`/`moonshot`），且不收录 Qwen/StepFun/SiliconFlow/智谱官方与
+plan 变体，因此那些条目仍由 models.dev 种下、不由 rig 刷新；provider 键与白名单
+永远是我们自己的，刷新不会改写。刷新命令：`python3
+codex-rs/models-manager/scripts/refresh_vendor_catalog.py`（默认读工作区解析到的
+rig-core 快照；`--check` 只校验白名单、锚点与体积预算；`--input api.json` 才引入
+models.dev 重建 rig 不收录的条目）。只有带 `limit.context` 的文本模型会被新增，
+图片/语音行与无窗口的预览版不会进目录。
+
+`doctor` 的 model_routing 现在打印输出来源与目录事实：`output cap: N [source:
+provider|vendor catalog|window/2 fallback]`，以及 `catalog limits` / `catalog
+capabilities` / `catalog interleaved field` / `catalog provider` 四行。后两者单独
+成行是有意的：plan 类 provider id（如 `xiaomi-token-plan-cn`）含 `token` 一词，曾
+触发 doctor 报告的密钥脱敏启发式，把同行的窗口数字一起吞成 `<redacted>`；脱敏
+匹配已改为按词边界（`redact_detail_does_not_treat_plan_provider_ids_as_secrets`）。
+
+另外，529 提交大合并保留了 `routing_sources` 与 `model_routing::check` 却丢了调用，
+导致有效窗口、压缩阈值、输出来源从未进入任何报告（测试里仍在调用，所以一直
+是绿的）。2026-11-23 已把它重新接回 config 分支。
 
 #### 复审第二轮：三条线都收紧上限 + 读取失败不再当空会话 + 测试/格式接线（2026-11-19）
 

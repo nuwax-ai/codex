@@ -904,7 +904,10 @@ pub(super) fn redact_detail(detail: &str) -> String {
         // echoes the offending source line verbatim, which carries the key.
         "api_key",
     ];
-    if secret_keys.iter().any(|key| lower.contains(key)) {
+    if secret_keys
+        .iter()
+        .any(|key| contains_secret_key(&lower, key))
+    {
         // make sure that windows drives in paths are not matches C:/ if they are a first token
         detail.split_once(": ").map_or_else(
             || "<redacted>".to_string(),
@@ -913,6 +916,19 @@ pub(super) fn redact_detail(detail: &str) -> String {
     } else {
         redact_urls(detail)
     }
+}
+
+/// Whether `text` names the secret key `key` as a word, not merely as a
+/// substring. Plan-style provider ids such as `xiaomi-token-plan-cn` or a
+/// `max_tokens` count would otherwise match the `token` key and redact a
+/// whole diagnostic line that carries no credential.
+fn contains_secret_key(text: &str, key: &str) -> bool {
+    text.match_indices(key).any(|(at, _)| {
+        let before = text[..at].chars().next_back();
+        let after = text[at + key.len()..].chars().next();
+        let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        !before.is_some_and(is_word) && !after.is_some_and(is_word)
+    })
 }
 
 fn redact_identifier(identifier: &str) -> &str {
@@ -1954,6 +1970,34 @@ Run nuwax-harness doctor without --summary for detailed diagnostics.
         insta::assert_snapshot!(
             "missing_env_diagnostics",
             render_human_report(&report, detailed_all_no_color_unicode_options())
+        );
+    }
+
+    #[test]
+    fn redact_detail_does_not_treat_plan_provider_ids_as_secrets() {
+        // `token` inside a provider id is a word of its own, not a credential.
+        assert_eq!(
+            redact_detail(
+                "effective context window: 1048576 [source: vendor catalog (xiaomi-token-plan-cn)]"
+            ),
+            "effective context window: 1048576 [source: vendor catalog (xiaomi-token-plan-cn)]"
+        );
+        assert_eq!(
+            redact_detail("catalog limits: context=1048576 output=131072"),
+            "catalog limits: context=1048576 output=131072"
+        );
+    }
+
+    #[test]
+    fn redact_detail_still_hides_real_credentials() {
+        // Standalone words still match, whatever their position.
+        assert_eq!(
+            redact_detail("bearer token: sk-live-value"),
+            "bearer token: <redacted>"
+        );
+        assert_eq!(
+            redact_detail("provider api_key is configured for gw"),
+            "provider api_key: <redacted>"
         );
     }
 

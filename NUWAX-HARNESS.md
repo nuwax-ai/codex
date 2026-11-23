@@ -317,7 +317,7 @@ export NUWAX_AUTO_COMPACT_RATIO='0.8'
 | `NUWAX_AUTO_COMPACT_TOKEN_LIMIT`（同义 `CODEX_AUTO_COMPACT_TOKEN_LIMIT`） | 可选正整数，指定触发自动压缩的 token 阈值 |
 | `NUWAX_AUTO_COMPACT_RATIO`（同义 `CODEX_AUTO_COMPACT_RATIO`） | 可选 `(0, 1]` 小数，未设置显式 token 阈值时按有效窗口比例触发压缩 |
 | `NUWAX_MODEL_REASONING_EFFORT`（同义 `CODEX_MODEL_REASONING_EFFORT`） | 可选：`none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`、`persistent`；具体模型/协议须支持该值 |
-| `NUWAX_MAX_OUTPUT_TOKENS`（同义 `CODEX_MAX_OUTPUT_TOKENS`） | 可选正整数，全局输出上限。优先级：`-c model_providers.<id>.max_output_tokens` > 本变量 > provider 在 config.toml 声明的 `max_output_tokens`（声明了就不覆盖）> 模型目录的 `limit.output` > 窗口一半。未设置时自动用目录值，例如 MiMo 会得到 131072 而不是窗口一半 |
+| `NUWAX_MAX_OUTPUT_TOKENS`（同义 `CODEX_MAX_OUTPUT_TOKENS`） | 可选正整数，全局输出上限。优先级：`-c model_providers.<id>.max_output_tokens` > 本变量 > provider 在 config.toml 声明的 `max_output_tokens`（声明了就不覆盖）> 模型目录的 `limit.output` > 窗口一半。未设置时自动用目录值，例如 MiMo 会得到 131072 而不是窗口一半。**经 ACP 适配器启动时**：适配器自己消费 `NUWAX_MAX_OUTPUT_TOKENS` 写进网关 provider 并从子进程环境剥离，所以引擎侧收不到它；两条路径结果一致（同一个上限），不会互相覆盖 |
 
 `NUWAX_*` 与 `CODEX_*` 同时设置且取值不一致时启动即报错并点名两个变量；
 只设其一时按上表生效（`NUWAX_*` 优先）。
@@ -776,6 +776,44 @@ developer_instructions = """
 深合并），用于给目录里查不到的模型补窗口/档位/能力声明。文件解析失败会 fail-fast
 点名文件。
 
+### 8.5 Hooks：项目 hook 随项目受信
+
+`hooks.json` 用 Codex 原生格式，放在 `<项目>/.nuwax-harness/hooks.json`（用户级放
+`~/.nuwax-harness/hooks.json`）。**项目一旦被信任，它声明的 hook 直接生效，不需要
+逐个审阅**（2026-11-23 起；此前每个 hook 还要在用户 config.toml 里写一条
+`trusted_hash`，而那个审批只有 TUI 能做，所以 app-server / ACP / 容器里的项目 hook
+从不运行）。
+
+要让项目 hook 生效，需要同时满足：
+
+1. **项目受信**。`workspace-write` 及以上的会话会自动把 cwd 写入受信表；也可以在
+   `~/.nuwax-harness/config.toml` 手写：
+   ```toml
+   [projects."/abs/path/to/project"]
+   trust_level = "trusted"
+   ```
+   **`read-only` 会话不隐含信任项目**，即使已手写了上面这条，项目 hook 也不会运行
+   （上游行为：项目层整体被禁用，没有告警）。
+2. **matcher 能匹配引擎的工具名**。matcher 是正则，匹配的是 hook 输入里的
+   `tool_name`，不是界面上的显示名：shell 工具叫 **`exec`**，所以
+   `"matcher": "shell"` 永远不命中，应写 `"exec"` 或留空 `""`（匹配全部工具）。
+   `SessionStart` / `UserPromptSubmit` 不带工具名，任何 matcher 都会触发。
+
+排查用 `nuwax-harness doctor`，或看会话启动时的 hook 事件输出。诊断脚本见仓库
+`my-docs/` 的 hook 信任记录。
+
+**显式放行所有 hook（宽闸，默认关闭）**：
+
+```toml
+# ~/.nuwax-harness/config.toml
+bypass_hook_trust = true
+```
+
+或设环境变量 `NUWAX_BYPASS_HOOK_TRUST=true`（同义 `CODEX_BYPASS_HOOK_TRUST`）。
+开启后所有来源的已启用 hook 都执行，包括用户级和未审阅项目的；只接受
+`true`/`false`，其它值启动失败。**它不能绕过项目信任**：`read-only` 或未受信项目
+的 hook 连发现都不会。开启时每次启动都有一条告警。
+
 ## 9. 附录：环境变量速查
 
 **NUWAX_* 直接启动组**（§2；三件套 `NUWAX_BASE_URL`+`NUWAX_WIRE_API`+
@@ -792,7 +830,7 @@ developer_instructions = """
   `NUWAX_MODEL_REASONING_EFFORT`、`NUWAX_TOOL_SEARCH`、`NUWAX_IMAGE_MAX_BYTES`、
   `NUWAX_IMAGE_MAX_COUNT`、`NUWAX_IMAGE_ENTRY_MAX_BYTES`、
   `NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES`、`NUWAX_FREEFORM_TOOLS`、
-  `NUWAX_OPENAI_EGRESS`。
+  `NUWAX_BYPASS_HOOK_TRUST`、`NUWAX_OPENAI_EGRESS`。
 - ACP 适配层（fork-codex-acp-ts 读取）：`NUWAX_PATH`、`NUWAX_BASE_URL`、
   `NUWAX_API_KEY`、`NUWAX_API_PROTOCOL`、`NUWAX_WIRE_API`、`NUWAX_BRIDGE`、
   `NUWAX_MODEL`、`NUWAX_MODEL_CONTEXT_WINDOW`、`NUWAX_PROVIDER_ID`、

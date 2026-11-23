@@ -146,3 +146,19 @@ fn output_limit_comes_from_the_catalog_row() {
         None
     );
 }
+
+/// Fork (nuwax-codex): the diagnostics surface carries the facts the request
+/// path does not act on yet, so `doctor` can show them without JSON poking.
+#[test]
+fn catalog_facts_expose_the_diagnostic_fields() {
+    let facts = crate::vendor_catalog::facts_for("mimo-v2.6-flash").expect("catalog row");
+    assert_eq!(facts.output_limit, Some(131_072));
+    assert_eq!(facts.context_limit, Some(1_048_576));
+    assert!(facts.tool_call, "MiMo accepts tools");
+    assert!(facts.attachment, "MiMo takes attachments");
+    assert_eq!(
+        facts.interleaved_field.as_deref(),
+        Some("reasoning_content")
+    );
+    assert_eq!(crate::vendor_catalog::facts_for("not-a-real-model"), None);
+}

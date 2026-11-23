@@ -425,6 +425,9 @@ async fn build_report(
             let auth_manager_result =
                 AuthManager::shared_from_config(config, /*enable_codex_api_key_env*/ true).await;
             let auth_manager = auth_manager_result.as_ref().ok().cloned();
+            // The routing check owns its own handle: `tokio::join!` borrows
+            // `auth_manager` for the websocket arm while that arm moves one.
+            let routing_auth_manager = auth_manager_result.as_ref().ok().cloned();
             let reachability_plan = provider_reachability_plan(config);
             #[cfg(target_os = "macos")]
             let reachability_url = reachability_plan
@@ -433,6 +436,7 @@ async fn build_report(
                 .map(|endpoint| endpoint.url.clone());
             let (
                 config_check,
+                model_routing_check,
                 auth_check,
                 updates_check,
                 network_check,
@@ -454,6 +458,18 @@ async fn build_report(
                             config_duration.as_millis()
                         ))
                     })
+                },
+                async {
+                    // Fork (nuwax-codex, 2026-11-23): the 529-commit merge kept
+                    // `routing_sources` and `model_routing::check` but dropped
+                    // the call, so the effective window, compaction threshold,
+                    // output-cap provenance and catalog facts never reached a
+                    // report. Re-wire it: it is the one check that shows where
+                    // a session would actually send requests.
+                    progress.begin("model routing");
+                    let check = model_routing::check(config, routing_auth_manager, &sources).await;
+                    progress.finish("model routing", check.status);
+                    check
                 },
                 async {
                     run_sync_check("auth", progress.clone(), || {
@@ -525,6 +541,7 @@ async fn build_report(
             );
             checks.extend([
                 config_check,
+                model_routing_check,
                 auth_check,
                 updates_check,
                 network_check,
