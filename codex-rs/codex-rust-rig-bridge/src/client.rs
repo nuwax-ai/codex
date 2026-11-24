@@ -511,6 +511,39 @@ mod tls_fallback_tests {
         }
     }
 
+    /// Opt-in: proves the compiled-in roots validate real certificates, which is
+    /// the whole point of the fallback. Ignored by default to keep the suite
+    /// hermetic; run with `cargo nextest run -p codex-rust-rig-bridge --run-ignored tls_fallback`.
+    #[test]
+    #[ignore = "network: verifies the bundled roots against a live HTTPS endpoint"]
+    fn bundled_roots_validate_a_real_certificate_chain() {
+        let client = bundled_roots_builder()
+            .expect("builder")
+            .build()
+            .expect("client");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        runtime.block_on(async {
+            // Any HTTP status is fine: a TLS failure would surface as an error
+            // before the response is read.
+            let response = client
+                .get("https://token-plan-cn.xiaomimimo.com/v1/models")
+                .header("Authorization", "Bearer invalid-probe")
+                .send()
+                .await;
+            match response {
+                Ok(response) => assert!(
+                    response.status().is_client_error() || response.status().is_success(),
+                    "unexpected status {}",
+                    response.status()
+                ),
+                Err(error) => panic!("bundled roots failed a real handshake: {error}"),
+            }
+        });
+    }
+
     #[test]
     fn the_pooled_client_builds_on_this_host() {
         // Whatever the host's trust store looks like, resolution must yield a
