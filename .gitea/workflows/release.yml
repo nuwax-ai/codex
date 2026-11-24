@@ -235,6 +235,29 @@ jobs:
               echo "        --cargo-home \"${CARGO_HOME}\"" >&2
               exit 1
             fi
+            # Fork (2026-11-24): "a vendor config exists" is not "the vendor dir
+            # matches Cargo.lock". After the rig 0.46 -> 0.47 bump this config
+            # was still present and the grep above still passed; the three
+            # Linux jobs then failed ~40 minutes in with "failed to select a
+            # version for the requirement rig-core = "=0.47"". Resolve the
+            # lockfile against the vendor dir instead: offline, seconds, and it
+            # names the crate that is missing or at the wrong version.
+            vendor_dir="$(sed -n 's/^directory *= *"\(.*\)"$/\1/p' "${CARGO_HOME}/config.toml" | head -1)"
+            if [ -z "${vendor_dir}" ] || [ ! -d "${vendor_dir}" ]; then
+              echo "cannot locate the vendor dir behind ${CARGO_HOME}/config.toml" >&2
+              exit 1
+            fi
+            if ! bash "${GITHUB_WORKSPACE}/scripts/gitea-ci/sync-vendor.sh" \
+                   --repo "${GITHUB_WORKSPACE}/codex-rs" --vendor "${vendor_dir}" --check; then
+              echo "" >&2
+              echo "the vendor dir is stale for this Cargo.lock (see the cargo error above)." >&2
+              echo "It cannot be refreshed on this runner: cargo vendor opens a git db per" >&2
+              echo "git dependency (rusty_v8 pulls ~20 submodules). Fix it from a host whose" >&2
+              echo "cargo cache holds the pinned git checkouts, then rsync the dir here:" >&2
+              echo "  bash scripts/gitea-ci/sync-vendor.sh --repo codex-rs --vendor <vendor-dir> \\" >&2
+              echo "       --cargo-home <cargo-home> --toolchain <toolchain>" >&2
+              exit 1
+            fi
           fi
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
           # Zig is only needed for the musl targets, which only the Linux host
