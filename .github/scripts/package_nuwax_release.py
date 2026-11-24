@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Package upstream-named Cargo outputs as the Nuwax Harness distribution."""
+from __future__ import annotations
+
 
 import argparse
 import hashlib
@@ -9,6 +11,7 @@ from pathlib import Path
 import re
 import shutil
 import tarfile
+import sys
 import tempfile
 import urllib.request
 import zipfile
@@ -77,7 +80,10 @@ def bundled_ripgrep(target: str) -> Path | None:
             else:
                 with tarfile.open(archive, "r:gz") as bundle:
                     member = next(m for m in bundle.getmembers() if m.name.endswith("/" + name))
-                    bundle.extract(member, temp, filter="data")
+                    if sys.version_info >= (3, 12):
+                        bundle.extract(member, temp, filter="data")
+                    else:  # the macOS runner still ships 3.9
+                        bundle.extract(member, temp)
                     extracted = Path(temp, member.name)
             shutil.copy2(extracted, cached)
         cached.chmod(0o755)
