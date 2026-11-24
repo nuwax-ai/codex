@@ -108,7 +108,9 @@ test("maps all seven release targets and rejects unsupported architectures", () 
   const examples = [
     ["darwin", "arm64", null, "aarch64-apple-darwin"],
     ["darwin", "x64", null, "x86_64-apple-darwin"],
-    ["linux", "x64", "glibc", "x86_64-unknown-linux-gnu"],
+    // Fork: Linux defaults to musl on every libc — the gnu build pins the
+    // build host's glibc (2.39) and cannot start on Ubuntu 22.04 or older.
+    ["linux", "x64", "glibc", "x86_64-unknown-linux-musl"],
     ["linux", "x64", "musl", "x86_64-unknown-linux-musl"],
     ["linux", "arm64", "glibc", "aarch64-unknown-linux-musl"],
     ["linux", "arm64", "musl", "aarch64-unknown-linux-musl"],
@@ -118,6 +120,13 @@ test("maps all seven release targets and rejects unsupported architectures", () 
   for (const [platform, arch, libc, expected] of examples) {
     assert.equal(runtime.getTargetTriple(platform, arch, libc), expected);
   }
+  // NUWAX_LIBC opts into gnu for hosts needing glibc NSS, and is refused where
+  // that binary cannot run.
+  assert.equal(runtime.getTargetTriple("linux", "x64", "glibc", "gnu"), "x86_64-unknown-linux-gnu");
+  assert.equal(runtime.getTargetTriple("linux", "x64", "glibc", "glibc"), "x86_64-unknown-linux-gnu");
+  assert.equal(runtime.getTargetTriple("linux", "x64", "glibc", "musl"), "x86_64-unknown-linux-musl");
+  assert.throws(() => runtime.getTargetTriple("linux", "x64", "musl", "gnu"), /cannot be used on a musl host/);
+  assert.throws(() => runtime.getTargetTriple("linux", "x64", "glibc", "uclibc"), /Invalid NUWAX_LIBC/);
   assert.throws(() => runtime.getTargetTriple("linux", "riscv64", "glibc"), /Unsupported/);
   assert.throws(() => runtime.getTargetTriple("darwin", "ia32", null), /Unsupported/);
   assert.deepEqual(runtime.requiredBundleFiles("win32"), ["nuwax-harness.exe", "codex-code-mode-host.exe", "codex-windows-sandbox-setup.exe", "codex-command-runner.exe"]);

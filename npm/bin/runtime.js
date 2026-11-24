@@ -12,14 +12,43 @@ const require = createRequire(import.meta.url);
 const VERSION = require("../package.json").version;
 const OSS_CDN_BASE = "https://nuwa-packages.oss-rg-china-mainland.aliyuncs.com/nuwax-codex";
 
-export function getTargetTriple(platform = process.platform, arch = process.arch, libc = familySync()) {
+// Fork (nuwax-codex): Linux now defaults to the musl build on every libc.
+//
+// The musl build is statically linked, so it starts on any distribution no
+// matter which glibc the kernel host ships. The gnu build links the *build
+// host's* glibc — 2.39 on the current CI runners (Ubuntu 24.04) — and refuses
+// to start on Ubuntu 22.04 (2.35) or Debian 12 (2.36) with
+// `GLIBC_2.39 not found`. Upstream codex ships only the musl variant for Linux
+// for the same reason, and our ACP adapter / Electron client already resolve
+// musl first (`resolveCodexBinary.ts`, `binaryLocator.ts`); the npm CLI was the
+// last path still preferring gnu.
+//
+// `NUWAX_LIBC=gnu` opts back into the gnu build for hosts that need glibc's NSS
+// (Active Directory / LDAP / sssd name and user resolution), which musl does
+// not implement. Forcing gnu on a musl host is refused: that binary cannot run
+// there.
+function forcedLibcPreference(value) {
+  if (value === undefined || value === null || String(value).trim() === "") return undefined;
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === "gnu" || normalized === "glibc") return "gnu";
+  if (normalized === "musl") return "musl";
+  throw new Error(`Invalid NUWAX_LIBC="${value}"; expected "musl" or "gnu".`);
+}
+
+export function getTargetTriple(platform = process.platform, arch = process.arch, libc = familySync(), forcedLibc = process.env.NUWAX_LIBC) {
   if (platform === "darwin") {
     if (arch === "arm64") return "aarch64-apple-darwin";
     if (arch === "x64") return "x86_64-apple-darwin";
   } else if (platform === "linux") {
     if (arch === "arm64") return "aarch64-unknown-linux-musl";
     if (arch === "x64") {
-      return libc === "musl" ? "x86_64-unknown-linux-musl" : "x86_64-unknown-linux-gnu";
+      if (forcedLibcPreference(forcedLibc) === "gnu") {
+        if (libc === "musl") {
+          throw new Error("NUWAX_LIBC=gnu cannot be used on a musl host: the gnu build needs glibc");
+        }
+        return "x86_64-unknown-linux-gnu";
+      }
+      return "x86_64-unknown-linux-musl";
     }
   } else if (platform === "win32") {
     if (arch === "arm64") return "aarch64-pc-windows-msvc";

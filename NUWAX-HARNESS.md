@@ -19,6 +19,17 @@ command -v nuwax-harness
 nuwax-harness --version
 ```
 
+**Linux 一律装 musl 版（2026-11-24 起）**。musl 是静态链接，Ubuntu 18/20/22/24、
+Debian、麒麟、UOS 都能直接跑；gnu 版链接的是构建机的 glibc（当前 CI 是 2.39/2.43），
+在 Ubuntu 22.04（2.35）上会报 `GLIBC_2.39 not found`。需要 glibc 的 NSS（加域机器
+用 AD/LDAP/sssd 解析账号与主机名，musl 不实现）时显式回退：
+
+```bash
+NUWAX_LIBC=gnu npm install -g @nuwax-ai/nuwax-harness@latest
+```
+
+在 musl 主机（Alpine）上写 `NUWAX_LIBC=gnu` 会直接报错——那个二进制在那里跑不起来。
+
 ### 源码安装(开发与日常 dogfood)
 
 改完代码一条命令更新本地 `nuwax-harness`,不必等 npm 发布:
@@ -831,6 +842,8 @@ bypass_hook_trust = true
   `NUWAX_IMAGE_MAX_COUNT`、`NUWAX_IMAGE_ENTRY_MAX_BYTES`、
   `NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES`、`NUWAX_FREEFORM_TOOLS`、
   `NUWAX_BYPASS_HOOK_TRUST`、`NUWAX_OPENAI_EGRESS`。
+- 安装期（npm 包装层 `bin/runtime.js` 读取，引擎不读）：`NUWAX_LIBC`——
+  `gnu`/`glibc` 在 Linux x64 上改取 gnu 制品，缺省或 `musl` 取 musl（见 §1）。
 - ACP 适配层（fork-codex-acp-ts 读取）：`NUWAX_PATH`、`NUWAX_BASE_URL`、
   `NUWAX_API_KEY`、`NUWAX_API_PROTOCOL`、`NUWAX_WIRE_API`、`NUWAX_BRIDGE`、
   `NUWAX_MODEL`、`NUWAX_MODEL_CONTEXT_WINDOW`、`NUWAX_PROVIDER_ID`、

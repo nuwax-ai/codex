@@ -838,6 +838,20 @@ cache_control 断点，rig 0.45 起原语，5m TTL；远程 thread config 无该
 "图片字节预算"。`NUWAX_IMAGE_MAX_BYTES`/`image_byte_budget_bytes` 仍是单图预算：
 未设置为"按模型自动"，`0` 为关闭。
 
+**Linux 制品默认 musl（2026-11-24 起）**：npm 包装层（`npm/bin/runtime.js`）在
+Linux x64 上一律取 `x86_64-unknown-linux-musl`（arm64 本来就只有 musl）。理由：
+musl 是**静态链接**，任何发行版都能启动；gnu 制品链接的是**构建宿主**的 glibc——
+当前三台 `linux-host` 是 Ubuntu 24.04（2.39）与 26.04（2.43），所以 0.18.60 的
+gnu 制品在 Ubuntu 22.04（2.35）上直接 `GLIBC_2.39 not found`，Debian 12（2.36）
+同理。上游 codex 的 Linux 包**只发 musl**（`@openai/codex@0.172.0-linux-x64` 的
+vendor 目录就是 `x86_64-unknown-linux-musl/`），ACP 适配器与 Electron 客户端也
+早已 musl 优先（`resolveCodexBinary.ts`、`binaryLocator.ts`、`prepare-harness.js`），
+npm 包装层是最后一个仍优先 gnu 的入口——本次只是把它对齐。
+`NUWAX_LIBC=gnu`（接受 `glibc` 拼写）显式回退 gnu，供需要 glibc NSS 的主机
+（AD / LDAP / sssd 的账号与主机名解析，musl 不实现）使用；在 musl 主机上强制
+gnu 会 fail-fast 点名变量（那个二进制在 musl 上跑不起来），非法取值同样报错
+而不是静默取默认。**gnu 制品继续发布**，改的只是默认选择。
+
 **OpenAI 出站总闸（2026-11-12 起）**：`NUWAX_OPENAI_EGRESS`（别名
 `CODEX_OPENAI_EGRESS`，`NUWAX_` 优先）默认**关闭**。fork 面向的是经自有网关访问
 厂商模型的部署，"抓包看到 chatgpt.com"或"日志里出现本机 hostname +
@@ -1720,6 +1734,9 @@ NUWAX_PATH="$HOME/.nuwax-cargo/bin/codex" NUWAX_IMAGE_ENTRY_MAX_TOTAL_BYTES=5033
 
 | 局限 | 坐标/依据 | 状态 |
 |---|---|---|
+| **Ubuntu 24.04+ 沙箱起不来**：`bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`。原因是 24.04 默认 `kernel.apparmor_restrict_unprivileged_userns=1`，非特权 userns 被 AppArmor 挡掉；实测同机 `unshare -Ur true` 与系统自带 bwrap 同样失败 | `bwrap`（上游资产，见 `codex-rs/bwrap` 与 `npm/bin/runtime.js` 的 Linux 文件清单） | **上游同源问题，非 fork 缺陷**：2026-11-24 在 31.23（Ubuntu 24.04）实测官方 `@openai/codex@0.172.0` 与我们 0.18.60 报**一字不差**的同一错误。规避：临时 `--dangerously-bypass-approvals-and-sandbox`，或给 bwrap 装 AppArmor profile / 放开该 sysctl。待补：`doctor` 里加这一条检测并给指引 |
+| **Chat 线偶发整轮失败：`Invalid Rig tool call: arguments must be a JSON object`**。模型偶尔返回的 tool call arguments 不是 JSON 对象，rig 把它放进 `ToolCall.function.invalid_arguments`（**原文保留**），桥在 `complete()` 里直接 `ApiError::Stream` 终止整轮，用户看到 `Reconnecting… 5/5` 然后本轮报废 | `codex-rust-rig-bridge/src/response_tools.rs:62-74`（`invalid_arguments.is_some()` 且 `native.is_some()` → `invalid_tool()`） | **已记录，待定（2026-11-24）**：MiMo chat 线实测 3 次里成功 2 次，与架构/libc 无关（macOS arm64 同样偶发）。用户倾向「允许 agent 自动重试，而不是终止整轮」。可行修法：既然 rig 给了原文，(a) 若它是双重编码的 JSON 字符串则解一层；(b) 若目标工具是 `apply_patch` 且原文像补丁，按已公布的 `{"input": …}` 形状包装；(c) 否则把解析失败作为**工具结果**回给模型（`FunctionCallError::RespondToModel`）让它自己改，而不是提升成 stream error 终止 turn |
+| **Linux npm 默认从 gnu 改为 musl**（2026-11-24）：gnu 制品链接构建宿主的 glibc，runner 升级到 24.04/26.04 后地板从 2.35 悄悄升到 2.39/2.43，Ubuntu 22.04 用户 `npm i -g` 装到的是跑不起来的包 | `npm/bin/runtime.js::getTargetTriple`、`scripts/test_nuwax_npm_package.mjs` | **已修（2026-11-24）**：Linux x64 一律 musl，`NUWAX_LIBC=gnu` 显式回退（需要 glibc NSS 的域机器）；ACP 适配器与 Electron 客户端本就 musl 优先，仅 npm 入口滞后。真机验证：31.23（linux/x64，glibc 2.39）默认解析为 `x86_64-unknown-linux-musl`；契约测试 8/8；musl 制品在 Alpine、Ubuntu 24.04、麒麟 UOS 均实跑通过 |
 | 显式 `:danger-full-access` 命令曾被同 profile ID 的 Ask preset 抢先匹配，跳过确认 | `tui/src/chatwidget/permissions_menu.rs`；`15283cc98` | 已修：profile-id 入口选 canonical full-access，显式 on-request 与两 reviewer 仍先确认；Ask 菜单既有语义保留，权限模块 49/49 |
 | Windows legacy 沙箱 workspace-write **不约束既有文件删除**（内核 WRITE_RESTRICTED 不覆盖 DELETE 权位，diag1-7 证据链见台账 §6.57；显式 deny-write 路径有 DENY ACE、删除受保护）。运行时降级有 WARNING 日志；完整删除约束需 elevated 后端 | `windows-sandbox-rs/src/unified_exec/backends/legacy.rs`、台账 §6.57 | 用户决策 B+警告（2026-10-22），上游继承问题不再扩fork补丁面 |
 | Chat/Anthropic 输出预算可通过 provider.max_output_tokens 配置；Anthropic 未配置时仍默认 16384，Responses typed HTTP/WS、Rig passthrough 与预算已采用该字段 | `codex-rust-rig-bridge/src/stream.rs`、`client.rs` | 三协议已接线；验收见 `provider-request-controls-2026-10-03/tasks.md` |
