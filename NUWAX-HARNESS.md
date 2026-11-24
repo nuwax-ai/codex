@@ -19,6 +19,11 @@ command -v nuwax-harness
 nuwax-harness --version
 ```
 
+**发布包自带 ripgrep（2026-11-24 起）**：归档里有 `codex-path/rg` 与
+`codex-package.json`，引擎认出包布局后把它前置到 PATH，`doctor` 的
+`search` 行会显示 `file exists (bundled, …/codex-path/rg)`，不再依赖系统装
+ripgrep。aarch64 Linux musl 例外（上游没有该目标的 musl rg），该平台回退到系统 rg。
+
 **Linux 一律装 musl 版（2026-11-24 起）**。musl 是静态链接，Ubuntu 18/20/22/24、
 Debian、麒麟、UOS 都能直接跑；gnu 版链接的是构建机的 glibc（当前 CI 是 2.39/2.43），
 在 Ubuntu 22.04（2.35）上会报 `GLIBC_2.39 not found`。需要 glibc 的 NSS（加域机器

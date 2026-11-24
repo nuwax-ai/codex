@@ -243,9 +243,16 @@ impl CodexPackageLayout {
     fn from_exe(exe_path: &Path) -> Option<Self> {
         let canonical_exe = canonical_absolute_path(exe_path)?;
         let exe_dir = canonical_exe.parent()?;
-        // WinGet preserves a target-qualified executable at the package root.
-        // Only recognize that layout when metadata names this exact executable.
-        #[cfg(windows)]
+        // A package may keep its executable at the package root instead of
+        // `bin/`: WinGet does that on Windows, and the nuwax fork ships a flat
+        // release archive on every platform (`nuwax-harness` beside
+        // `codex-resources/`). Both are self-describing — `codex-package.json`
+        // names the exact executable and the helper directories — so honour
+        // the metadata wherever it sits rather than requiring `bin/`.
+        // Fork (2026-11-24): without this, the flat layout was recognized only
+        // on Windows, so `path_dir` stayed None on Linux/macOS and the bundled
+        // `codex-path/rg` was never found (search fell back to a system rg that
+        // is usually absent).
         if let Ok(contents) = std::fs::read(exe_dir.join(PACKAGE_METADATA_FILENAME))
             && let Ok(metadata) = serde_json::from_slice::<serde_json::Value>(&contents)
             && metadata["layoutVersion"] == 1

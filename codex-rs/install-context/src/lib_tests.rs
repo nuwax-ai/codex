@@ -516,3 +516,98 @@ fn brew_is_detected_on_macos_prefixes() {
 
 #[path = "bundle_tests.rs"]
 mod bundle_tests;
+
+/// The nuwax release archive keeps the executable at the package root beside
+/// `codex-package.json`, `codex-path/rg` and `codex-resources/bwrap` instead of
+/// nesting it under `bin/`. The metadata names the exact executable, so the
+/// layout must be recognized on every platform — it used to be Windows-only,
+/// which left `path_dir` empty on Linux/macOS and hid the bundled ripgrep.
+#[test]
+fn flat_package_layout_with_metadata_is_recognized_on_every_platform() -> std::io::Result<()> {
+    let codex_home = tempfile::tempdir()?;
+    let package_dir = codex_home.path().join("packages/flat/0.18.61");
+    let resources_dir = package_dir.join(RESOURCES_DIRNAME);
+    let path_dir = package_dir.join(PATH_DIRNAME);
+    fs::create_dir_all(&resources_dir)?;
+    fs::create_dir_all(&path_dir)?;
+    let exe_name = if cfg!(windows) {
+        "nuwax-harness.exe"
+    } else {
+        "nuwax-harness"
+    };
+    let exe_path = package_dir.join(exe_name);
+    fs::write(&exe_path, "")?;
+    fs::write(
+        package_dir.join(PACKAGE_METADATA_FILENAME),
+        serde_json::json!({
+            "layoutVersion": 1,
+            "version": "0.18.61",
+            "variant": "codex",
+            "entrypoint": exe_name,
+            "resourcesDir": RESOURCES_DIRNAME,
+            "pathDir": PATH_DIRNAME,
+        })
+        .to_string(),
+    )?;
+    fs::write(resources_dir.join(TEST_RESOURCE_NAME), "")?;
+    fs::write(path_dir.join(default_rg_command()), "")?;
+
+    let canonical_package_dir = AbsolutePathBuf::from_absolute_path(package_dir.canonicalize()?)?;
+    let canonical_path_dir = AbsolutePathBuf::from_absolute_path(path_dir.canonicalize()?)?;
+    let canonical_resources_dir =
+        AbsolutePathBuf::from_absolute_path(resources_dir.canonicalize()?)?;
+
+    let context = InstallContext::from_exe_with_codex_home(
+        /*is_macos*/ false,
+        /*current_exe*/ Some(&exe_path),
+        /*method_override*/ None,
+        /*codex_home*/ Some(codex_home.path()),
+    );
+    assert_eq!(
+        context.package_layout,
+        Some(CodexPackageLayout {
+            package_dir: canonical_package_dir.clone(),
+            bin_dir: canonical_package_dir,
+            resources_dir: Some(canonical_resources_dir.clone()),
+            path_dir: Some(canonical_path_dir.clone()),
+        }),
+        "metadata beside the executable must identify the package on every platform"
+    );
+    assert_eq!(
+        context.rg_command(),
+        canonical_path_dir.join(default_rg_command()).into_path_buf(),
+        "the bundled ripgrep must win over a system one"
+    );
+    assert_eq!(
+        context.bundled_resource(TEST_RESOURCE_NAME),
+        Some(canonical_resources_dir.join(TEST_RESOURCE_NAME))
+    );
+    Ok(())
+}
+
+/// The metadata is what makes a root-level executable trustworthy: without it
+/// (or when it names a different executable) the layout stays unrecognized.
+#[test]
+fn flat_layout_without_matching_metadata_is_not_a_package() -> std::io::Result<()> {
+    let codex_home = tempfile::tempdir()?;
+    let package_dir = codex_home.path().join("packages/nometa/0.18.61");
+    fs::create_dir_all(&package_dir)?;
+    let exe_path = package_dir.join(if cfg!(windows) {
+        "nuwax-harness.exe"
+    } else {
+        "nuwax-harness"
+    });
+    fs::write(&exe_path, "")?;
+
+    let context = InstallContext::from_exe_with_codex_home(
+        /*is_macos*/ false,
+        /*current_exe*/ Some(&exe_path),
+        /*method_override*/ None,
+        /*codex_home*/ Some(codex_home.path()),
+    );
+    assert_eq!(
+        context.package_layout, None,
+        "a bare executable is not a package"
+    );
+    Ok(())
+}
