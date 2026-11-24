@@ -1639,6 +1639,17 @@ macOS 使用当前标准 runner，musl 编译并行限制为 2；Rust/V8 继续�
 [发布记录](my-docs/rig-production-completion-2026-10-10/nuwax-harness-release-0.18.14.md)。
 Release成功不改写旧完整Core CI三条nextest红，平台限制继续按§10维护，主线已收口。
 
+**"publish npm 成功"必须回查（2026-11-24 起）**：npm 对 publish 先回 `202`，版本
+还在传播时 npm CLI 就打印 `+ pkg@version` 并退出 0 —— 于是"CI 绿了但用户装不到"
+可以真实发生。0.18.61 的发布就是这样：07:12:11Z 发布、07:14:16Z 才对 registry 可见，
+中间 `npm view` 一律 404，重发同版本还会拿到
+`409 Cannot publish over previously staged version`（那条 staged 记录属于正在转正的
+本次发布，不是遗留垃圾）。现在 publish job 在 `npm publish` 之后会轮询
+`npm view <pkg>@<version> version` 最多 15 分钟，只有真正可下载才判成功；失败时把
+"传播延迟"与"悬空 staged 版本（需 npm 支持清理）"两种成因分别写出来。
+注意：撤销 staged 版本需要**非 bypass-2fa 的 token**（granular access token 带
+`bypass_2fa` 会被 `403 ... may not perform this action` 拒绝）。
+
 **发布执行者：Gitea 优先（2026-11-13 起）**。GitHub 那条链的 `aarch64-apple-darwin`
 在冷缓存 runner 上撞到单 job 6 小时上限被取消（run 43257256775），Release 与 npm
 发布被跳过；同一天把 Gitea 侧补齐成可以独立发 npm：

@@ -686,3 +686,31 @@ jobs:
           printf '//registry.npmjs.org/:_authToken=%s\n' "${NODE_AUTH_TOKEN}" > "${HOME}/.npmrc"
           cd npm
           npm publish --access public --registry=https://registry.npmjs.org
+          # "Job succeeded" is not "users can install it". npm answers a publish
+          # with 202 while the version is still propagating; the CLI prints
+          # "+ pkg@version" and exits 0, so a slow or stuck publication reads as
+          # a green job. On 2026-11-24 that looked like a staged version for
+          # ~2 minutes (0.18.61 published 07:12:11Z, visible 07:14:16Z) and cost
+          # a false-alarm investigation. Poll the registry until the exact
+          # version resolves, and name the two outcomes explicitly on failure.
+          echo "==> verifying that @nuwax-ai/nuwax-harness@${VERSION} is downloadable"
+          deadline=$((SECONDS + 900))
+          while :; do
+            if npm view "@nuwax-ai/nuwax-harness@${VERSION}" version \
+                 --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+              echo "    registry serves ${VERSION}"
+              break
+            fi
+            if [ "${SECONDS}" -ge "${deadline}" ]; then
+              echo "" >&2
+              echo "npm accepted the publish but the version never became" >&2
+              echo "downloadable within 15 minutes. Two known causes:" >&2
+              echo "  * propagation: npm's CDN can take a few minutes; check again" >&2
+              echo "    with: npm view @nuwax-ai/nuwax-harness@${VERSION} version" >&2
+              echo "  * a dangling staged version: re-publishing the same version" >&2
+              echo "    then fails with 409 'Cannot publish over previously staged" >&2
+              echo "    version'; that needs npm support to clear." >&2
+              exit 1
+            fi
+            sleep 20
+          done
