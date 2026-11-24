@@ -97,6 +97,40 @@ fn http_client_builder() -> reqwest13::ClientBuilder {
     reqwest13::Client::builder().retry(reqwest13::retry::never())
 }
 
+/// A client whose TLS roots are the Mozilla bundle compiled into this binary.
+///
+/// reqwest 0.13 resolves trust roots through `rustls-platform-verifier` while
+/// the client is being *built*, so a host without a platform trust store (a
+/// minimal container, a trimmed distribution) fails `build()` with
+/// "builder error" for every target — plain `http://` included, because the
+/// client exists before a URL is known. Falling back to the compiled-in roots
+/// keeps HTTPS verifying real certificates; disabling verification would hand a
+/// man-in-the-middle every API key and prompt this process sends.
+fn bundled_roots_builder() -> Result<reqwest13::ClientBuilder, reqwest13::Error> {
+    let mut builder = http_client_builder().use_rustls_tls();
+    for certificate in webpki_root_certs::TLS_SERVER_ROOT_CERTS {
+        builder =
+            builder.add_root_certificate(reqwest13::Certificate::from_der(certificate.as_ref())?);
+    }
+    Ok(builder)
+}
+
+/// A build failure is deterministic — retrying cannot conjure a trust store — so
+/// it is reported as an invalid request with the fix spelled out, instead of a
+/// retryable transport error that core resamples and then ends silently.
+fn client_build_failure(error: impl std::fmt::Display, tried_bundled: bool) -> codex_api::ApiError {
+    let detail = if tried_bundled {
+        "the TLS roots compiled into this binary could not be used either"
+    } else {
+        "the platform TLS trust store could not be loaded"
+    };
+    codex_api::ApiError::InvalidRequest {
+        message: format!(
+            "HTTP client could not be built: {detail} ({error}). Install a CA bundle              (Debian/Ubuntu: `apt install ca-certificates`, Alpine: `apk add ca-certificates`,              RHEL: `dnf install ca-certificates`) or point SSL_CERT_FILE at a valid PEM bundle."
+        ),
+    }
+}
+
 pub(crate) fn http_client(protocol: RigProtocol) -> Result<reqwest13::Client, codex_api::ApiError> {
     // Headers belong to the request decorator, including gateway credentials
     // and per-turn trace IDs. Keeping them in client defaults would create a
@@ -108,21 +142,15 @@ pub(crate) fn http_client(protocol: RigProtocol) -> Result<reqwest13::Client, co
                 message: format!("Rig TLS configuration: {error}"),
             }
         })?;
-    let build = || {
-        let mut builder = http_client_builder();
-        if let Some(config) = custom_ca.as_ref() {
-            builder = builder.tls_backend_preconfigured((**config).clone());
-        }
-        builder.build().map_err(|e| {
-            codex_api::ApiError::Transport(codex_api::TransportError::Network(format!(
-                "rig http client build failed: {e}"
-            )))
-        })
-    };
-    if custom_ca.is_some() {
-        return build();
+    match custom_ca.as_ref() {
+        // An explicit bundle is the operator's choice: never second-guess it,
+        // and keep it off the shared pool because it differs per request.
+        Some(config) => http_client_builder()
+            .tls_backend_preconfigured((**config).clone())
+            .build()
+            .map_err(|error| client_build_failure(error, false)),
+        None => Ok((*pooled_http_client(protocol)?).clone()),
     }
-    Ok((*pooled_http_client(protocol)?).clone())
 }
 
 fn pooled_http_client(
@@ -137,11 +165,13 @@ fn pooled_http_client(
     if let Some(client) = cache.get(&protocol) {
         return Ok(std::sync::Arc::clone(client));
     }
-    let client = std::sync::Arc::new(http_client_builder().build().map_err(|error| {
-        codex_api::ApiError::Transport(codex_api::TransportError::Network(format!(
-            "rig http client build failed: {error}"
-        )))
-    })?);
+    let client = std::sync::Arc::new(match http_client_builder().build() {
+        Ok(client) => client,
+        Err(_) => bundled_roots_builder()
+            .map_err(|error| client_build_failure(error, true))?
+            .build()
+            .map_err(|error| client_build_failure(error, true))?,
+    });
     cache.insert(protocol, std::sync::Arc::clone(&client));
     Ok(client)
 }
@@ -441,3 +471,53 @@ mod client_retry_tests;
 #[cfg(test)]
 #[path = "client_idle_tests.rs"]
 mod client_idle_tests;
+
+#[cfg(test)]
+mod tls_fallback_tests {
+    use super::*;
+
+    #[test]
+    fn bundled_roots_build_a_usable_client() {
+        // A host with no platform trust store depends on this path, so it must
+        // produce a real client from the Mozilla roots compiled into the binary.
+        let client = bundled_roots_builder()
+            .expect("bundled roots configure the builder")
+            .build()
+            .expect("a client built from compiled-in roots");
+        drop(client);
+    }
+
+    #[test]
+    fn a_missing_trust_store_is_an_invalid_request_not_a_retryable_transport_error() {
+        // The original defect surfaced this as a transport error, so core retried
+        // five times and then ended the turn with no reply at all.
+        let error = client_build_failure("builder error", true);
+        match error {
+            codex_api::ApiError::InvalidRequest { message } => {
+                assert!(
+                    message.contains("ca-certificates"),
+                    "the message must name the fix: {message}"
+                );
+                assert!(
+                    message.contains("SSL_CERT_FILE"),
+                    "the message must mention the env override: {message}"
+                );
+                assert!(
+                    message.contains("compiled into this binary"),
+                    "it must say the bundled roots were tried too: {message}"
+                );
+            }
+            other => panic!("a build failure must not be retryable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_pooled_client_builds_on_this_host() {
+        // Whatever the host's trust store looks like, resolution must yield a
+        // client (falling back to bundled roots) rather than an error.
+        for protocol in [RigProtocol::Responses, RigProtocol::Chat] {
+            let client = http_client(protocol).expect("a usable rig client");
+            drop(client);
+        }
+    }
+}

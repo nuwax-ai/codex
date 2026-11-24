@@ -4887,6 +4887,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "webpki-root-certs",
 ]
 
 [[package]]

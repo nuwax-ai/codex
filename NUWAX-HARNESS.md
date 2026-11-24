@@ -24,6 +24,12 @@ nuwax-harness --version
 `search` 行会显示 `file exists (bundled, …/codex-path/rg)`，不再依赖系统装
 ripgrep。aarch64 Linux musl 例外（上游没有该目标的 musl rg），该平台回退到系统 rg。
 
+**精简系统缺 CA 证书时（2026-11-24 起）**：引擎会在平台信任根不可用时回退到
+编译进二进制的 Mozilla 根，所以大多数情况无需额外安装；如果两条路径都失败，会直接报
+`HTTP client could not be built: …` 并给出修复命令（`apt install ca-certificates` /
+`apk add ca-certificates` / `dnf install ca-certificates`，或设 `SSL_CERT_FILE`
+指向可读的 PEM 包），不会再重试几次后静默结束。
+
 **Linux 一律装 musl 版（2026-11-24 起）**。musl 是静态链接，Ubuntu 18/20/22/24、
 Debian、麒麟、UOS 都能直接跑；gnu 版链接的是构建机的 glibc（当前 CI 是 2.39/2.43），
 在 Ubuntu 22.04（2.35）上会报 `GLIBC_2.39 not found`。需要 glibc 的 NSS（加域机器

@@ -12,6 +12,7 @@ codex-models-manager = { path = "../models-manager" }
 rig-core = { version = "=0.47", features = ["rustls"] }
 # The bundled reqwest 0.13 transport: wraps a configured reqwest client in
 # rig's HttpClientExt. Features unify with rig-core's (rustls TLS).
+webpki-root-certs = "1"
 rig-reqwest = { version = "=0.47", default-features = false, features = ["rustls"] }
 codex-api = { workspace = true }
 codex-client = { workspace = true }
