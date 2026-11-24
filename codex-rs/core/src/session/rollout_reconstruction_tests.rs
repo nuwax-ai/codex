@@ -3603,3 +3603,226 @@ async fn a_compaction_record_replays_its_image_prunes() {
         "replay must re-apply the image prune the compaction recorded"
     );
 }
+
+fn usage_with_total(total_tokens: i64) -> codex_protocol::protocol::TokenUsage {
+    codex_protocol::protocol::TokenUsage {
+        input_tokens: total_tokens,
+        cached_input_tokens: 0,
+        cache_write_input_tokens: 0,
+        output_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens,
+        codex_rollout_budget_units: None,
+    }
+}
+
+fn usage_report(total_tokens: i64) -> RolloutItem {
+    RolloutItem::EventMsg(EventMsg::TokenCount(
+        codex_protocol::protocol::TokenCountEvent {
+            info: Some(codex_protocol::protocol::TokenUsageInfo {
+                total_token_usage: usage_with_total(total_tokens),
+                last_usage_includes_reasoning: None,
+                last_token_usage: usage_with_total(total_tokens),
+                model_context_window: Some(200_000),
+            }),
+            rate_limits: None,
+        },
+    ))
+}
+
+/// Fork (2026-11-24): the usage report of a thread that was compacted must map
+/// onto the REBUILT surface. Reconstruction replays the compaction's
+/// replacement history and then the raw suffix, so a report in that suffix
+/// covers `replacement + every replayed item before it`.
+#[tokio::test]
+async fn usage_report_after_a_compaction_maps_onto_the_rebuilt_surface() {
+    let (session, turn_context) = make_session_and_context().await;
+    let replacement = vec![ResponseItemEnvelope::new(ResponseItem::Message {
+        status: None,
+        encrypted_content: None,
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputText {
+            text: "summary of the compacted turns".to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    })];
+    let user_message = |text: &str| {
+        RolloutItem::ResponseItem(ResponseItemEnvelope::new(ResponseItem::Message {
+            status: None,
+            encrypted_content: None,
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: text.to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }))
+    };
+    let rollout_items = vec![
+        // Would be replayed only without a usable compaction; must not count.
+        user_message("before the compaction (dropped by it)"),
+        RolloutItem::Compacted(Box::new(CompactedItem {
+            message: String::new(),
+            replacement_history: Some(replacement.clone()),
+            retained_context: None,
+            guardian_history: None,
+            mcp_resource_origins: None,
+            window_number: Some(7),
+            first_window_id: None,
+            previous_window_id: None,
+            window_id: None,
+            compaction_response_id: None,
+            latest_token_usage_record: None,
+            resume_metadata: None,
+        })),
+        user_message("after the compaction, reported"),
+        user_message("after the compaction, reported too"),
+        usage_report(5_000),
+        user_message("landed after the report (unreported)"),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+
+    // replacement (1) + two reported suffix items; the last one is unreported.
+    assert_eq!(reconstructed.usage_covered_items, Some(3));
+    assert_eq!(reconstructed.history.len(), 4);
+}
+
+/// A report written BEFORE the compaction measured a surface that the
+/// compaction has since replaced, so its position cannot be claimed.
+#[tokio::test]
+async fn usage_report_before_a_compaction_claims_no_coverage() {
+    let (session, turn_context) = make_session_and_context().await;
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(ResponseItemEnvelope::new(ResponseItem::Message {
+            status: None,
+            encrypted_content: None,
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "reported, then compacted away".to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        })),
+        usage_report(5_000),
+        RolloutItem::Compacted(Box::new(CompactedItem {
+            message: String::new(),
+            replacement_history: Some(Vec::new()),
+            retained_context: None,
+            guardian_history: None,
+            mcp_resource_origins: None,
+            window_number: Some(2),
+            first_window_id: None,
+            previous_window_id: None,
+            window_id: None,
+            compaction_response_id: None,
+            latest_token_usage_record: None,
+            resume_metadata: None,
+        })),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+
+    assert_eq!(reconstructed.usage_covered_items, None);
+    // The compaction replaced that surface with nothing, so the report (5_000
+    // tokens) describes content that is no longer on it.
+    assert!(reconstructed.history.is_empty());
+}
+
+/// Fork (2026-11-24): a thread with a compaction in its rollout must not resume
+/// at `reported usage + the whole history`.
+///
+/// Resume seeds token usage from the last recorded report and estimates
+/// everything after a boundary. The raw-rollout arithmetic refuses to place
+/// that boundary once any compaction exists, so the entire reloaded history was
+/// estimated AGAIN on top of the report. A long thread then resumed over its
+/// window and compacted before the user's first message — on every resume.
+#[tokio::test]
+async fn resuming_a_compacted_thread_does_not_count_its_history_twice() {
+    let (session, _turn_context) = make_session_and_context().await;
+    let user_message = |text: &str| {
+        RolloutItem::ResponseItem(ResponseItemEnvelope::new(ResponseItem::Message {
+            status: None,
+            encrypted_content: None,
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: text.to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }))
+    };
+    let summary = ResponseItemEnvelope::new(ResponseItem::Message {
+        status: None,
+        encrypted_content: None,
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputText {
+            text: "summary of the compacted turns".to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    });
+    let reported_body = "reported turn body ".repeat(400);
+    let rollout_items = vec![
+        // Compacted away: it must contribute nothing to the resumed usage.
+        user_message(&"compacted away ".repeat(2_000)),
+        RolloutItem::Compacted(Box::new(CompactedItem {
+            message: String::new(),
+            replacement_history: Some(vec![summary]),
+            retained_context: None,
+            guardian_history: None,
+            mcp_resource_origins: None,
+            window_number: Some(7),
+            first_window_id: None,
+            previous_window_id: None,
+            window_id: None,
+            compaction_response_id: None,
+            latest_token_usage_record: None,
+            resume_metadata: None,
+        })),
+        user_message(&reported_body),
+        user_message(&reported_body),
+        usage_report(5_000),
+        user_message("landed after the report"),
+    ];
+
+    session
+        .record_initial_history(InitialHistory::Resumed(ResumedHistory {
+            history_revision: None,
+            conversation_id: ThreadId::default(),
+            history: Arc::new(rollout_items),
+            rollout_path: Some(PathBuf::from("/tmp/resume-compacted-usage.jsonl")),
+        }))
+        .await;
+
+    // The report already covers the summary and both reported turns. Only the
+    // trailing message may be added; before the fix both reported turns (and
+    // the summary) were estimated a second time on top of the 5,000.
+    let total = session.get_total_token_usage().await;
+    let trailing = crate::context_manager::estimate_item_token_count(&ResponseItem::Message {
+        status: None,
+        encrypted_content: None,
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputText {
+            text: "landed after the report".to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    });
+    assert_eq!(
+        total,
+        5_000 + trailing,
+        "resumed usage must be the report plus only what it does not cover"
+    );
+}

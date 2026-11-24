@@ -1794,6 +1794,7 @@ impl Session {
                 let previous_turn_settings = self
                     .apply_rollout_reconstruction(&turn_context, &rollout_items)
                     .await;
+                let reconstructed_covered = self.take_reconstructed_usage_covered_items();
 
                 // If resuming, log when the last recorded model differs from the current one.
                 // Fork (2026-11-10): model switching within one session is a
@@ -1816,9 +1817,11 @@ impl Session {
                 {
                     let mut state = self.state.lock().await;
                     let loaded = state.history.annotated_items().len();
-                    if let Some((info, covered)) =
-                        Self::resume_usage_coverage(&rollout_items, loaded)
-                    {
+                    if let Some((info, covered)) = Self::resume_usage_coverage_with_reconstructed(
+                        &rollout_items,
+                        loaded,
+                        reconstructed_covered,
+                    ) {
                         state.set_token_info_with_boundary(Some(info), covered);
                     }
                 }
@@ -1863,6 +1866,7 @@ impl Session {
                 Self::assign_missing_rollout_response_item_ids(&mut rollout_items);
                 self.apply_rollout_reconstruction(&turn_context, &rollout_items)
                     .await;
+                let reconstructed_covered = self.take_reconstructed_usage_covered_items();
 
                 // Seed usage info from the recorded rollout so UIs can show token counts
                 // immediately on resume/fork. The boundary must travel with it: the
@@ -1872,9 +1876,11 @@ impl Session {
                 {
                     let mut state = self.state.lock().await;
                     let loaded = state.history.annotated_items().len();
-                    if let Some((info, covered)) =
-                        Self::resume_usage_coverage(&rollout_items, loaded)
-                    {
+                    if let Some((info, covered)) = Self::resume_usage_coverage_with_reconstructed(
+                        &rollout_items,
+                        loaded,
+                        reconstructed_covered,
+                    ) {
                         state.set_token_info_with_boundary(Some(info), covered);
                     }
                 }
@@ -1969,7 +1975,23 @@ impl Session {
         turn_context: &Arc<TurnContext>,
         rollout_items: &[RolloutItem],
     ) -> Option<PreviousTurnSettings> {
+        let (previous_turn_settings, usage_covered_items) = self
+            .apply_rollout_reconstruction_inner(turn_context, rollout_items)
+            .await;
+        self.reconstructed_usage_covered_items.store(
+            usage_covered_items.unwrap_or(usize::MAX),
+            std::sync::atomic::Ordering::SeqCst,
+        );
+        previous_turn_settings
+    }
+
+    async fn apply_rollout_reconstruction_inner(
+        &self,
+        turn_context: &Arc<TurnContext>,
+        rollout_items: &[RolloutItem],
+    ) -> (Option<PreviousTurnSettings>, Option<usize>) {
         let rollout_reconstruction::RolloutReconstruction {
+            usage_covered_items,
             mut history,
             retained_context,
             guardian_history,
@@ -2076,7 +2098,16 @@ impl Session {
             self.set_auto_compact_window_estimated_prefill_for_scope(turn_context, prefix_tokens)
                 .await;
         }
-        previous_turn_settings
+        (previous_turn_settings, usage_covered_items)
+    }
+
+    /// Leading surface items the newest usage report already covers, as read
+    /// during the last reconstruction; `usize::MAX` when it was not established.
+    fn take_reconstructed_usage_covered_items(&self) -> Option<usize> {
+        let stored = self
+            .reconstructed_usage_covered_items
+            .swap(usize::MAX, std::sync::atomic::Ordering::SeqCst);
+        (stored != usize::MAX).then_some(stored)
     }
 
     async fn set_auto_compact_window_estimated_prefill_for_scope(
@@ -2160,11 +2191,33 @@ impl Session {
     /// input: reloaded as 2 items, and the new input was counted as covered).
     /// Claiming nothing only costs an earlier compaction; claiming too much
     /// silently drops real content from the estimate.
+    /// The raw-rollout arithmetic on its own; every caller now supplies the
+    /// rebuilt position too, so only the tests exercise this directly.
+    #[cfg(test)]
     fn resume_usage_coverage(
         rollout_items: &[RolloutItem],
         loaded: usize,
     ) -> Option<(TokenUsageInfo, usize)> {
-        let (info, covered_hint) = Self::last_token_usage_with_coverage(rollout_items)?;
+        Self::resume_usage_coverage_with_reconstructed(rollout_items, loaded, None)
+    }
+
+    /// [`Self::resume_usage_coverage`], preferring a position read while the
+    /// surface was being rebuilt. That position already accounts for the
+    /// compaction a resume replays from, which the raw-rollout arithmetic below
+    /// cannot see and therefore refuses — and refusing re-estimates the whole
+    /// history on top of the reported usage (fork 2026-11-24).
+    fn resume_usage_coverage_with_reconstructed(
+        rollout_items: &[RolloutItem],
+        loaded: usize,
+        reconstructed_covered: Option<usize>,
+    ) -> Option<(TokenUsageInfo, usize)> {
+        let (info, raw_covered) = Self::last_token_usage_with_coverage(rollout_items)?;
+        if let Some(covered) = reconstructed_covered {
+            // The report was replayed onto the surface, so its position is
+            // exact as long as the installed history is the rebuilt one.
+            return Some((info, covered.min(loaded)));
+        }
+        let covered_hint = raw_covered;
         // Every item that can add, drop, or replace surface entries. A raw item
         // count says nothing about the reloaded positions once one of these is in
         // play — and counting alone is not enough even when the totals match:

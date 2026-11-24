@@ -106,6 +106,10 @@ pub(crate) struct Session {
     pub(super) history_initialization: HistoryInitialization,
     pub(super) forked_from_ordinal_exclusive: Option<u64>,
     pub(super) next_internal_sub_id: AtomicU64,
+    /// Leading history items the usage report covered when the rollout was last
+    /// rebuilt; `usize::MAX` until a reconstruction establishes it. Fork
+    /// (2026-11-24); see `resume_usage_coverage_with_reconstructed`.
+    pub(super) reconstructed_usage_covered_items: std::sync::atomic::AtomicUsize,
     /// Fresh identity for this runtime, including resumes of an existing turn.
     pub(super) sampling_key_namespace: Uuid,
     /// Monotonic source of host sampling keys; see
@@ -1984,6 +1988,7 @@ impl Session {
                 history_initialization,
                 forked_from_ordinal_exclusive,
                 next_internal_sub_id: AtomicU64::new(0),
+                reconstructed_usage_covered_items: std::sync::atomic::AtomicUsize::new(usize::MAX),
                 sampling_key_namespace: Uuid::new_v4(),
                 sampling_key_sequence: AtomicU64::new(0),
             });

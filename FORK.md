@@ -1643,6 +1643,45 @@ live-tests 两个依赖方），迁移集中在 HTTP 客户端层、错误分类
 - 回归：`GLM-5.4` 在 chat / anthropic / responses 三条线均 `turn.completed`；无
   fallback 元数据警告；声明档位后 `medium` 在请求发出前被拒并点名可用档位。
 
+### 7.x 恢复会话时 token 用量重复计数 → 一恢复就压缩（2026-11-24 修复）
+
+**现象**：带压缩记录的长会话，每次重启 agent 恢复后，用户第一条消息之前就触发
+`Compact conversation`。实测某个 7 次压缩、9.8 MB 的会话：恢复后立刻
+`migration compaction … history_tokens=65165 budget=6873 window=190000`。
+
+**根因**（fork 独有，官方无此路径）：resume 时用量 = 「上次报告的用量」+「边界之后
+所有条目的估算」。边界由 `resume_usage_coverage` 给出，而它只要看到 rollout 里有
+`Compacted`/`SurfaceReplacement`/rollback 就一律返回 `covered = 0`（2026-11-11 为防
+「过度申报覆盖」引入的保守策略）。于是整段恢复出来的历史在报告之上**再被估算一遍**：
+
+```
+125,691 (报告) + 65,165 (历史重复估算) = 190,856 > 190,000 → 判定窗口已满
+```
+
+注释里「Claiming nothing only costs an earlier compaction」这个前提在 fork 里不成立：
+多估出来的量会直接触发 migration compaction（`full_context_window_limit_reached`，
+或其 `prefix_tokens = active − history` 被推高到 ~14 万使预算只剩 6873）。
+
+**修复**：重建（`reconstruct_rollout`）在重放后缀时，于「usage 报告被重放的那一刻」
+记录当前表面条数，作为 `RolloutReconstruction::usage_covered_items` 返回；resume 播种
+用量时优先采用它（`resume_usage_coverage_with_reconstructed`）。只有报告位于
+**被实际采用的压缩之后**时才给值——报告测的正是「该压缩的 replacement_history +
+其后按序重放的条目」。报告在压缩之前、或存在无 window_number 的 legacy 压缩（整卷
+重放）时仍返回 `None`，保持原有保守行为。
+
+**验证**：
+- 新增 3 例：报告在压缩之后 → 覆盖 = replacement + 已报告后缀（`Some(3)`）；报告在
+  压缩之前 → `None` 且表面确已被替换为空；端到端 `record_initial_history` 恢复后
+  `get_total_token_usage() == 报告 + 仅未报告的尾巴`。
+- 变异验证：播种类忽略重建位置 → 端到端用例变红（8,814 vs 5,006：修复前历史被重复
+  估算，修复后只多出未报告的 6 token）。
+- 重建/覆盖范围既有用例 55/55。
+
+**排查提示**：`rollout_reconstruction` 现在会在 info 级打印
+`resumed a thread from its rollout restored_kib=… compaction_baseline_kib=…
+suffix_kib=…`，配合 `codex_core::compact` 的 `migration compaction` 日志即可判断恢复后
+是否会立刻压缩。
+
 ## 8. 版本与发布
 
 正式版本 `v0.18.14` → `f82730975` 已发布（2026-10-23）：

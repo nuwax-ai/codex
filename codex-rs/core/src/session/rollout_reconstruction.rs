@@ -167,6 +167,16 @@ fn surface_replacement_summary_item(
 #[derive(Debug, PartialEq)]
 pub(crate) struct RolloutReconstruction {
     pub(crate) history: Vec<ResponseItemEnvelope>,
+    /// How many leading items of `history` the newest usage report already
+    /// covers; `None` when that position cannot be established.
+    ///
+    /// Fork (2026-11-24): a resumed session seeds its token usage from the
+    /// last recorded report and estimates everything after a boundary. With no
+    /// boundary the WHOLE reloaded history is estimated again on top of the
+    /// report, so a thread with any compaction in its rollout resumed at
+    /// `reported + full history`, read as "window full", and compacted before
+    /// the user's first message — on every resume.
+    pub(crate) usage_covered_items: Option<usize>,
     pub(crate) retained_context: codex_history::RetainedContext,
     pub(super) guardian_history: Option<codex_history::GuardianHistoryCheckpoint>,
     pub(super) last_started_turn_id: Option<String>,
@@ -242,6 +252,14 @@ fn select_input_compaction(
         compacted,
         suffix: &rollout_items[index + 1..],
     })
+}
+
+/// A usage report event, i.e. a token count that carries real usage.
+fn is_usage_report(item: &RolloutItem) -> bool {
+    matches!(
+        item,
+        RolloutItem::EventMsg(EventMsg::TokenCount(event)) if event.info.is_some()
+    )
 }
 
 #[derive(Debug, Default)]
@@ -664,7 +682,16 @@ impl ContextManager {
         }
         let rollout_suffix =
             history_checkpoint.map_or(rollout_items, |checkpoint| checkpoint.suffix);
+        // The surface grows only as items are replayed, so the report's
+        // position is read at the moment it is replayed. Only a report in the
+        // replayed suffix can be located this way: what it measured is either
+        // the compaction's replacement history or an item replayed in order
+        // below it. The newest report wins, so keep overwriting.
+        let mut usage_covered_items = None;
         for item in rollout_suffix {
+            if is_usage_report(item) {
+                usage_covered_items = Some(history.annotated_items().len());
+            }
             match item {
                 RolloutItem::SurfaceReplacement(_) => {}
                 RolloutItem::RetainedContext(event) => {
@@ -807,7 +834,18 @@ impl ContextManager {
             ?history_mode,
             "resumed a thread from its rollout"
         );
+        // A legacy compaction without a window number replays the whole rollout,
+        // so no compaction bounds the surface and a raw position means nothing.
+        // `rollout_suffix` is bounded by whichever compaction the replay actually
+        // started from — the selected input checkpoint, or the one a replayed
+        // segment established when no input checkpoint qualified. Without one
+        // the whole rollout replays and a raw position describes a surface that
+        // a later compaction may still replace.
+        let usage_covered_items = usage_covered_items.filter(|_| {
+            !has_legacy_compaction_without_window_number && history_checkpoint.is_some()
+        });
         RolloutReconstruction {
+            usage_covered_items,
             retained_context: history.retained_context().clone(),
             guardian_history: history.guardian_history_checkpoint(),
             last_started_turn_id,

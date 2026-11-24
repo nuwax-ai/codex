@@ -7194,6 +7194,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         history_initialization: HistoryInitialization::New,
         forked_from_ordinal_exclusive: None,
         next_internal_sub_id: AtomicU64::new(0),
+        reconstructed_usage_covered_items: std::sync::atomic::AtomicUsize::new(usize::MAX),
         sampling_key_namespace: Uuid::new_v4(),
         sampling_key_sequence: AtomicU64::new(0),
     };
@@ -9527,6 +9528,7 @@ where
         history_initialization: HistoryInitialization::New,
         forked_from_ordinal_exclusive: None,
         next_internal_sub_id: AtomicU64::new(0),
+        reconstructed_usage_covered_items: std::sync::atomic::AtomicUsize::new(usize::MAX),
         sampling_key_namespace: Uuid::new_v4(),
         sampling_key_sequence: AtomicU64::new(0),
     });
