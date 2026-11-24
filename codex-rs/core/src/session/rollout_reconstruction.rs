@@ -779,6 +779,34 @@ impl ContextManager {
             previous_id: None,
             id: None,
         });
+        // 诊断（2026-11-24）：恢复会话时上下文有多大、压缩基线占多少、压缩之后又
+        // 新增了多少。三者一起决定恢复后的第一轮会不会立刻触发自动压缩——总量超过
+        // 窗口×ratio 就会压，而基线 + 增量正是总量的来源。
+        let restored_items = history.annotated_items();
+        let restored_bytes = serde_json::to_vec(&history.raw_items().collect::<Vec<_>>())
+            .map_or(0, |bytes| bytes.len());
+        let baseline_bytes = input_checkpoint
+            .and_then(|checkpoint| checkpoint.compacted.replacement_history.as_deref())
+            .map_or(0, |items| {
+                let items = items
+                    .iter()
+                    .map(|envelope| &envelope.item)
+                    .collect::<Vec<_>>();
+                serde_json::to_vec(&items).map_or(0, |bytes| bytes.len())
+            });
+        let suffix_bytes = serde_json::to_vec(replay_items).map_or(0, |bytes| bytes.len());
+        tracing::info!(
+            restored_items = restored_items.len(),
+            restored_kib = restored_bytes / 1024,
+            compaction_window =
+                input_checkpoint.and_then(|checkpoint| checkpoint.compacted.window_number),
+            compaction_baseline_kib = baseline_bytes / 1024,
+            suffix_records = replay_items.len(),
+            suffix_kib = suffix_bytes / 1024,
+            rollout_records = rollout_items.len(),
+            ?history_mode,
+            "resumed a thread from its rollout"
+        );
         RolloutReconstruction {
             retained_context: history.retained_context().clone(),
             guardian_history: history.guardian_history_checkpoint(),
